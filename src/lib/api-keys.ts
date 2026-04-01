@@ -9,12 +9,13 @@ function generateKey(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
 }
 
-export async function createApiKey(name: string): Promise<ApiKey> {
+export async function createApiKey(name: string, ownerId?: string): Promise<ApiKey> {
   const key: ApiKey = {
     id: crypto.randomUUID(),
     name,
     key: generateKey(),
     createdAt: new Date().toISOString(),
+    ownerId,
   }
   await getRepo().apiKeys.save(key)
   return key
@@ -22,6 +23,10 @@ export async function createApiKey(name: string): Promise<ApiKey> {
 
 export function listApiKeys(): Promise<ApiKey[]> {
   return getRepo().apiKeys.list()
+}
+
+export function listApiKeysByOwner(ownerId: string): Promise<ApiKey[]> {
+  return getRepo().apiKeys.listByOwner(ownerId)
 }
 
 export function getApiKeyById(id: string): Promise<ApiKey | null> {
@@ -48,10 +53,10 @@ export function deleteApiKey(id: string): Promise<boolean> {
   return getRepo().apiKeys.delete(id)
 }
 
-export async function validateApiKey(rawKey: string): Promise<{ id: string; name: string } | null> {
+export async function validateApiKey(rawKey: string): Promise<{ id: string; name: string; ownerId?: string } | null> {
   const key = await getRepo().apiKeys.findByRawKey(rawKey)
   if (!key) return null
-  return { id: key.id, name: key.name }
+  return { id: key.id, name: key.name, ownerId: key.ownerId }
 }
 
 export async function touchApiKeyLastUsed(id: string): Promise<void> {

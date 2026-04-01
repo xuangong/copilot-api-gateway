@@ -4,6 +4,12 @@ import { getRepo, type ApiKey, type GitHubAccount, type UsageRecord, type Latenc
 import { getGithubCredentials } from "~/lib/github"
 import { createGithubHeaders } from "~/config/constants"
 
+interface AuthCtx {
+  isAdmin?: boolean
+  isUser?: boolean
+  userId?: string
+}
+
 interface ExportPayload {
   version: 1
   exportedAt: string
@@ -15,11 +21,18 @@ interface ExportPayload {
   }
 }
 
+/** Get key IDs for the current user (for scoping usage/latency queries) */
+async function getUserKeyIds(userId: string): Promise<string[]> {
+  const keys = await getRepo().apiKeys.listByOwner(userId)
+  return keys.map(k => k.id)
+}
+
 export const dashboardRoute = new Elysia({ prefix: "/api" })
   // GET /api/copilot-quota - fetch Copilot usage/quota info from GitHub API
-  .get("/copilot-quota", async () => {
+  .get("/copilot-quota", async (ctx) => {
+    const { userId } = ctx as unknown as AuthCtx
     try {
-      const { token: githubToken } = await getGithubCredentials()
+      const { token: githubToken } = await getGithubCredentials(userId)
       const resp = await fetch("https://api.github.com/copilot_internal/user", {
         headers: createGithubHeaders(githubToken),
       })
@@ -43,7 +56,9 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
   })
 
   // GET /api/token-usage - query per-key token usage records
-  .get("/token-usage", async ({ query }) => {
+  .get("/token-usage", async (ctx) => {
+    const { query } = ctx
+    const { isAdmin, userId } = ctx as unknown as AuthCtx
     const keyId = query.key_id || undefined
     const start = query.start ?? ""
     const end = query.end ?? ""
@@ -56,8 +71,24 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
     }
 
     const repo = getRepo()
-    const [records, keys] = await Promise.all([repo.usage.query({ keyId, start, end }), repo.apiKeys.list()])
 
+    // Scope query to user's keys if not admin
+    let queryOpts: { keyId?: string; keyIds?: string[]; start: string; end: string }
+    let keys: ApiKey[]
+
+    if (isAdmin) {
+      queryOpts = { keyId, start, end }
+      keys = await repo.apiKeys.list()
+    } else if (userId) {
+      const userKeyIds = await getUserKeyIds(userId)
+      queryOpts = { keyIds: userKeyIds, start, end }
+      keys = await repo.apiKeys.listByOwner(userId)
+    } else {
+      queryOpts = { keyId, start, end }
+      keys = await repo.apiKeys.list()
+    }
+
+    const records = await repo.usage.query(queryOpts)
     const nameMap = new Map(keys.map((k) => [k.id, k.name]))
     return records.map((r) => ({
       ...r,
@@ -66,7 +97,9 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
   })
 
   // GET /api/latency - query per-key latency records
-  .get("/latency", async ({ query }) => {
+  .get("/latency", async (ctx) => {
+    const { query } = ctx
+    const { isAdmin, userId } = ctx as unknown as AuthCtx
     const keyId = query.key_id || undefined
     const start = query.start ?? ""
     const end = query.end ?? ""
@@ -79,8 +112,23 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
     }
 
     const repo = getRepo()
-    const [records, keys] = await Promise.all([repo.latency.query({ keyId, start, end }), repo.apiKeys.list()])
 
+    let queryOpts: { keyId?: string; keyIds?: string[]; start: string; end: string }
+    let keys: ApiKey[]
+
+    if (isAdmin) {
+      queryOpts = { keyId, start, end }
+      keys = await repo.apiKeys.list()
+    } else if (userId) {
+      const userKeyIds = await getUserKeyIds(userId)
+      queryOpts = { keyIds: userKeyIds, start, end }
+      keys = await repo.apiKeys.listByOwner(userId)
+    } else {
+      queryOpts = { keyId, start, end }
+      keys = await repo.apiKeys.list()
+    }
+
+    const records = await repo.latency.query(queryOpts)
     const nameMap = new Map(keys.map((k) => [k.id, k.name]))
     return records.map((r) => ({
       ...r,
@@ -88,8 +136,12 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
     }))
   })
 
-  // GET /api/export - dump all data as JSON
-  .get("/export", async () => {
+  // GET /api/export - dump all data as JSON (admin only)
+  .get("/export", async (ctx) => {
+    const { isAdmin } = ctx as unknown as AuthCtx
+    if (!isAdmin) {
+      return new Response(JSON.stringify({ error: "Admin only" }), { status: 403, headers: { "Content-Type": "application/json" } })
+    }
     const repo = getRepo()
     const [apiKeys, githubAccounts, activeGithubAccountId, usage] = await Promise.all([
       repo.apiKeys.list(),
@@ -107,8 +159,13 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
     return payload
   })
 
-  // POST /api/import - import data with merge or replace mode
-  .post("/import", async ({ body }) => {
+  // POST /api/import - import data with merge or replace mode (admin only)
+  .post("/import", async (ctx) => {
+    const { body } = ctx
+    const { isAdmin } = ctx as unknown as AuthCtx
+    if (!isAdmin) {
+      return new Response(JSON.stringify({ error: "Admin only" }), { status: 403, headers: { "Content-Type": "application/json" } })
+    }
     const { mode, data } = body as { mode: string; data: Record<string, unknown> }
 
     if (mode !== "merge" && mode !== "replace") {
@@ -136,27 +193,22 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
       await Promise.all([repo.apiKeys.deleteAll(), repo.github.deleteAllAccounts(), repo.usage.deleteAll()])
     }
 
-    // Import API keys
     for (const key of apiKeys) {
       await repo.apiKeys.save(key)
     }
 
-    // Import GitHub accounts
     for (const account of githubAccounts) {
       await repo.github.saveAccount(account.user.id, account)
     }
 
-    // Import usage records
     for (const record of usage) {
       await repo.usage.set(record)
     }
 
-    // Set active GitHub account
     if (activeId != null) {
       if (mode === "replace") {
         await repo.github.setActiveId(activeId)
       } else {
-        // Merge: only set if currently unset
         const current = await repo.github.getActiveId()
         if (current == null) {
           await repo.github.setActiveId(activeId)

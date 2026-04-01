@@ -7,6 +7,7 @@ import {
   renderSettingsTab,
   renderUpstreamTab,
   renderUsageTab,
+  renderUsersTab,
 } from "./dashboard/tabs"
 import { Layout } from "./layout"
 
@@ -27,7 +28,7 @@ export function DashboardPage(): string {
         ${renderDashboardHeader()}
 
         <main class="max-w-6xl mx-auto px-6 py-8">
-          ${renderUpstreamTab()} ${renderKeysTab()} ${renderUsageTab()} ${renderLatencyTab()} ${renderSettingsTab()}
+          ${renderUpstreamTab()} ${renderUsersTab()} ${renderKeysTab()} ${renderUsageTab()} ${renderLatencyTab()} ${renderSettingsTab()}
         </main>
       </div>
 

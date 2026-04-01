@@ -4,11 +4,17 @@ import type {
   CacheRepo,
   GitHubAccount,
   GitHubRepo,
+  InviteCode,
+  InviteCodeRepo,
   LatencyRecord,
   LatencyRepo,
   Repo,
+  SessionRepo,
   UsageRecord,
   UsageRepo,
+  User,
+  UserRepo,
+  UserSession,
 } from "./types"
 
 interface D1Result<T = Record<string, unknown>> {
@@ -33,34 +39,42 @@ class D1ApiKeyRepo implements ApiKeyRepo {
 
   async list(): Promise<ApiKey[]> {
     const { results } = await this.db
-      .prepare("SELECT id, name, key, created_at, last_used_at FROM api_keys ORDER BY created_at")
-      .all<{ id: string; name: string; key: string; created_at: string; last_used_at: string | null }>()
+      .prepare("SELECT id, name, key, created_at, last_used_at, owner_id FROM api_keys ORDER BY created_at")
+      .all<{ id: string; name: string; key: string; created_at: string; last_used_at: string | null; owner_id: string | null }>()
+    return results.map(toApiKey)
+  }
+
+  async listByOwner(ownerId: string): Promise<ApiKey[]> {
+    const { results } = await this.db
+      .prepare("SELECT id, name, key, created_at, last_used_at, owner_id FROM api_keys WHERE owner_id = ? ORDER BY created_at")
+      .bind(ownerId)
+      .all<{ id: string; name: string; key: string; created_at: string; last_used_at: string | null; owner_id: string | null }>()
     return results.map(toApiKey)
   }
 
   async findByRawKey(rawKey: string): Promise<ApiKey | null> {
     const row = await this.db
-      .prepare("SELECT id, name, key, created_at, last_used_at FROM api_keys WHERE key = ?")
+      .prepare("SELECT id, name, key, created_at, last_used_at, owner_id FROM api_keys WHERE key = ?")
       .bind(rawKey)
-      .first<{ id: string; name: string; key: string; created_at: string; last_used_at: string | null }>()
+      .first<{ id: string; name: string; key: string; created_at: string; last_used_at: string | null; owner_id: string | null }>()
     return row ? toApiKey(row) : null
   }
 
   async getById(id: string): Promise<ApiKey | null> {
     const row = await this.db
-      .prepare("SELECT id, name, key, created_at, last_used_at FROM api_keys WHERE id = ?")
+      .prepare("SELECT id, name, key, created_at, last_used_at, owner_id FROM api_keys WHERE id = ?")
       .bind(id)
-      .first<{ id: string; name: string; key: string; created_at: string; last_used_at: string | null }>()
+      .first<{ id: string; name: string; key: string; created_at: string; last_used_at: string | null; owner_id: string | null }>()
     return row ? toApiKey(row) : null
   }
 
   async save(key: ApiKey): Promise<void> {
     await this.db
       .prepare(
-        `INSERT INTO api_keys (id, name, key, created_at, last_used_at) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at`,
+        `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id`,
       )
-      .bind(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null)
+      .bind(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null)
       .run()
   }
 
@@ -74,13 +88,14 @@ class D1ApiKeyRepo implements ApiKeyRepo {
   }
 }
 
-function toApiKey(row: { id: string; name: string; key: string; created_at: string; last_used_at: string | null }): ApiKey {
+function toApiKey(row: { id: string; name: string; key: string; created_at: string; last_used_at: string | null; owner_id: string | null }): ApiKey {
   return {
     id: row.id,
     name: row.name,
     key: row.key,
     createdAt: row.created_at,
     lastUsedAt: row.last_used_at ?? undefined,
+    ownerId: row.owner_id ?? undefined,
   }
 }
 
@@ -89,26 +104,34 @@ class D1GitHubRepo implements GitHubRepo {
 
   async listAccounts(): Promise<GitHubAccount[]> {
     const { results } = await this.db
-      .prepare("SELECT user_id, token, account_type, login, name, avatar_url FROM github_accounts")
-      .all<{ user_id: number; token: string; account_type: string; login: string; name: string | null; avatar_url: string }>()
+      .prepare("SELECT user_id, token, account_type, login, name, avatar_url, owner_id FROM github_accounts")
+      .all<{ user_id: number; token: string; account_type: string; login: string; name: string | null; avatar_url: string; owner_id: string | null }>()
+    return results.map(toGitHubAccount)
+  }
+
+  async listAccountsByOwner(ownerId: string): Promise<GitHubAccount[]> {
+    const { results } = await this.db
+      .prepare("SELECT user_id, token, account_type, login, name, avatar_url, owner_id FROM github_accounts WHERE owner_id = ?")
+      .bind(ownerId)
+      .all<{ user_id: number; token: string; account_type: string; login: string; name: string | null; avatar_url: string; owner_id: string | null }>()
     return results.map(toGitHubAccount)
   }
 
   async getAccount(userId: number): Promise<GitHubAccount | null> {
     const row = await this.db
-      .prepare("SELECT user_id, token, account_type, login, name, avatar_url FROM github_accounts WHERE user_id = ?")
+      .prepare("SELECT user_id, token, account_type, login, name, avatar_url, owner_id FROM github_accounts WHERE user_id = ?")
       .bind(userId)
-      .first<{ user_id: number; token: string; account_type: string; login: string; name: string | null; avatar_url: string }>()
+      .first<{ user_id: number; token: string; account_type: string; login: string; name: string | null; avatar_url: string; owner_id: string | null }>()
     return row ? toGitHubAccount(row) : null
   }
 
   async saveAccount(userId: number, account: GitHubAccount): Promise<void> {
     await this.db
       .prepare(
-        `INSERT INTO github_accounts (user_id, token, account_type, login, name, avatar_url) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT (user_id) DO UPDATE SET token = excluded.token, account_type = excluded.account_type, login = excluded.login, name = excluded.name, avatar_url = excluded.avatar_url`,
+        `INSERT INTO github_accounts (user_id, token, account_type, login, name, avatar_url, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (user_id) DO UPDATE SET token = excluded.token, account_type = excluded.account_type, login = excluded.login, name = excluded.name, avatar_url = excluded.avatar_url, owner_id = excluded.owner_id`,
       )
-      .bind(userId, account.token, account.accountType, account.user.login, account.user.name, account.user.avatar_url)
+      .bind(userId, account.token, account.accountType, account.user.login, account.user.name, account.user.avatar_url, account.ownerId ?? null)
       .run()
   }
 
@@ -141,12 +164,38 @@ class D1GitHubRepo implements GitHubRepo {
   async clearActiveId(): Promise<void> {
     await this.db.prepare("DELETE FROM config WHERE key = 'active_github_account'").run()
   }
+
+  async getActiveIdForUser(ownerId: string): Promise<number | null> {
+    const configKey = `active_github_account:${ownerId}`
+    const row = await this.db
+      .prepare("SELECT value FROM config WHERE key = ?")
+      .bind(configKey)
+      .first<{ value: string }>()
+    return row ? Number(row.value) : null
+  }
+
+  async setActiveIdForUser(ownerId: string, userId: number): Promise<void> {
+    const configKey = `active_github_account:${ownerId}`
+    await this.db
+      .prepare(
+        `INSERT INTO config (key, value) VALUES (?, ?)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+      )
+      .bind(configKey, String(userId))
+      .run()
+  }
+
+  async clearActiveIdForUser(ownerId: string): Promise<void> {
+    const configKey = `active_github_account:${ownerId}`
+    await this.db.prepare("DELETE FROM config WHERE key = ?").bind(configKey).run()
+  }
 }
 
-function toGitHubAccount(row: { user_id: number; token: string; account_type: string; login: string; name: string | null; avatar_url: string }): GitHubAccount {
+function toGitHubAccount(row: { user_id: number; token: string; account_type: string; login: string; name: string | null; avatar_url: string; owner_id: string | null }): GitHubAccount {
   return {
     token: row.token,
     accountType: row.account_type,
+    ownerId: row.owner_id ?? undefined,
     user: {
       id: row.user_id,
       login: row.login,
@@ -179,11 +228,22 @@ class D1UsageRepo implements UsageRepo {
       .run()
   }
 
-  async query(opts: { keyId?: string; start: string; end: string }): Promise<UsageRecord[]> {
-    const sql = opts.keyId
-      ? "SELECT key_id, model, hour, requests, input_tokens, output_tokens FROM usage WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour"
-      : "SELECT key_id, model, hour, requests, input_tokens, output_tokens FROM usage WHERE hour >= ? AND hour < ? ORDER BY hour"
-    const binds = opts.keyId ? [opts.keyId, opts.start, opts.end] : [opts.start, opts.end]
+  async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<UsageRecord[]> {
+    let sql: string
+    let binds: unknown[]
+
+    if (opts.keyIds && opts.keyIds.length > 0) {
+      const placeholders = opts.keyIds.map(() => "?").join(",")
+      sql = `SELECT key_id, model, hour, requests, input_tokens, output_tokens FROM usage WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`
+      binds = [...opts.keyIds, opts.start, opts.end]
+    } else if (opts.keyId) {
+      sql = "SELECT key_id, model, hour, requests, input_tokens, output_tokens FROM usage WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour"
+      binds = [opts.keyId, opts.start, opts.end]
+    } else {
+      sql = "SELECT key_id, model, hour, requests, input_tokens, output_tokens FROM usage WHERE hour >= ? AND hour < ? ORDER BY hour"
+      binds = [opts.start, opts.end]
+    }
+
     const { results } = await this.db
       .prepare(sql)
       .bind(...binds)
@@ -287,11 +347,22 @@ class D1LatencyRepo implements LatencyRepo {
       .run()
   }
 
-  async query(opts: { keyId?: string; start: string; end: string }): Promise<LatencyRecord[]> {
-    const sql = opts.keyId
-      ? "SELECT key_id, model, hour, colo, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour"
-      : "SELECT key_id, model, hour, colo, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE hour >= ? AND hour < ? ORDER BY hour"
-    const binds = opts.keyId ? [opts.keyId, opts.start, opts.end] : [opts.start, opts.end]
+  async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<LatencyRecord[]> {
+    let sql: string
+    let binds: unknown[]
+
+    if (opts.keyIds && opts.keyIds.length > 0) {
+      const placeholders = opts.keyIds.map(() => "?").join(",")
+      sql = `SELECT key_id, model, hour, colo, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`
+      binds = [...opts.keyIds, opts.start, opts.end]
+    } else if (opts.keyId) {
+      sql = "SELECT key_id, model, hour, colo, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour"
+      binds = [opts.keyId, opts.start, opts.end]
+    } else {
+      sql = "SELECT key_id, model, hour, colo, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE hour >= ? AND hour < ? ORDER BY hour"
+      binds = [opts.start, opts.end]
+    }
+
     const { results } = await this.db
       .prepare(sql)
       .bind(...binds)
@@ -324,12 +395,132 @@ class D1LatencyRepo implements LatencyRepo {
   }
 }
 
+class D1UserRepo implements UserRepo {
+  constructor(private db: D1Database) {}
+
+  async create(user: User): Promise<void> {
+    await this.db
+      .prepare("INSERT INTO users (id, name, created_at, disabled, last_login_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(user.id, user.name, user.createdAt, user.disabled ? 1 : 0, user.lastLoginAt ?? null)
+      .run()
+  }
+
+  async getById(id: string): Promise<User | null> {
+    const row = await this.db
+      .prepare("SELECT id, name, created_at, disabled, last_login_at FROM users WHERE id = ?")
+      .bind(id)
+      .first<{ id: string; name: string; created_at: string; disabled: number; last_login_at: string | null }>()
+    return row ? toUser(row) : null
+  }
+
+  async list(): Promise<User[]> {
+    const { results } = await this.db
+      .prepare("SELECT id, name, created_at, disabled, last_login_at FROM users ORDER BY created_at")
+      .all<{ id: string; name: string; created_at: string; disabled: number; last_login_at: string | null }>()
+    return results.map(toUser)
+  }
+
+  async update(id: string, fields: Partial<Pick<User, "name" | "disabled" | "lastLoginAt">>): Promise<void> {
+    const sets: string[] = []
+    const binds: unknown[] = []
+    if (fields.name !== undefined) { sets.push("name = ?"); binds.push(fields.name) }
+    if (fields.disabled !== undefined) { sets.push("disabled = ?"); binds.push(fields.disabled ? 1 : 0) }
+    if (fields.lastLoginAt !== undefined) { sets.push("last_login_at = ?"); binds.push(fields.lastLoginAt) }
+    if (sets.length === 0) return
+    binds.push(id)
+    await this.db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).bind(...binds).run()
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.db.prepare("DELETE FROM users WHERE id = ?").bind(id).run()
+  }
+}
+
+function toUser(row: { id: string; name: string; created_at: string; disabled: number; last_login_at: string | null }): User {
+  return { id: row.id, name: row.name, createdAt: row.created_at, disabled: row.disabled === 1, lastLoginAt: row.last_login_at ?? undefined }
+}
+
+class D1InviteCodeRepo implements InviteCodeRepo {
+  constructor(private db: D1Database) {}
+
+  async create(code: InviteCode): Promise<void> {
+    await this.db
+      .prepare("INSERT INTO invite_codes (id, code, name, created_at, used_at, used_by) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(code.id, code.code, code.name, code.createdAt, code.usedAt ?? null, code.usedBy ?? null)
+      .run()
+  }
+
+  async findByCode(code: string): Promise<InviteCode | null> {
+    const row = await this.db
+      .prepare("SELECT id, code, name, created_at, used_at, used_by FROM invite_codes WHERE code = ?")
+      .bind(code)
+      .first<{ id: string; code: string; name: string; created_at: string; used_at: string | null; used_by: string | null }>()
+    return row ? toInviteCode(row) : null
+  }
+
+  async list(): Promise<InviteCode[]> {
+    const { results } = await this.db
+      .prepare("SELECT id, code, name, created_at, used_at, used_by FROM invite_codes ORDER BY created_at DESC")
+      .all<{ id: string; code: string; name: string; created_at: string; used_at: string | null; used_by: string | null }>()
+    return results.map(toInviteCode)
+  }
+
+  async markUsed(id: string, userId: string): Promise<void> {
+    await this.db
+      .prepare("UPDATE invite_codes SET used_at = ?, used_by = ? WHERE id = ?")
+      .bind(new Date().toISOString(), userId, id)
+      .run()
+  }
+
+  async clearUsedBy(userId: string): Promise<void> {
+    await this.db.prepare("UPDATE invite_codes SET used_by = NULL WHERE used_by = ?").bind(userId).run()
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.db.prepare("DELETE FROM invite_codes WHERE id = ?").bind(id).run()
+  }
+}
+
+function toInviteCode(row: { id: string; code: string; name: string; created_at: string; used_at: string | null; used_by: string | null }): InviteCode {
+  return { id: row.id, code: row.code, name: row.name, createdAt: row.created_at, usedAt: row.used_at ?? undefined, usedBy: row.used_by ?? undefined }
+}
+
+class D1SessionRepo implements SessionRepo {
+  constructor(private db: D1Database) {}
+
+  async create(session: UserSession): Promise<void> {
+    await this.db
+      .prepare("INSERT INTO user_sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
+      .bind(session.token, session.userId, session.createdAt, session.expiresAt)
+      .run()
+  }
+
+  async findByToken(token: string): Promise<UserSession | null> {
+    const row = await this.db
+      .prepare("SELECT token, user_id, created_at, expires_at FROM user_sessions WHERE token = ?")
+      .bind(token)
+      .first<{ token: string; user_id: string; created_at: string; expires_at: string }>()
+    return row ? { token: row.token, userId: row.user_id, createdAt: row.created_at, expiresAt: row.expires_at } : null
+  }
+
+  async deleteByUserId(userId: string): Promise<void> {
+    await this.db.prepare("DELETE FROM user_sessions WHERE user_id = ?").bind(userId).run()
+  }
+
+  async deleteExpired(): Promise<void> {
+    await this.db.prepare("DELETE FROM user_sessions WHERE expires_at < ?").bind(new Date().toISOString()).run()
+  }
+}
+
 export class D1Repo implements Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
   usage: UsageRepo
   cache: CacheRepo
   latency: LatencyRepo
+  users: UserRepo
+  inviteCodes: InviteCodeRepo
+  sessions: SessionRepo
 
   constructor(db: D1Database) {
     this.apiKeys = new D1ApiKeyRepo(db)
@@ -337,5 +528,8 @@ export class D1Repo implements Repo {
     this.usage = new D1UsageRepo(db)
     this.cache = new D1CacheRepo(db)
     this.latency = new D1LatencyRepo(db)
+    this.users = new D1UserRepo(db)
+    this.inviteCodes = new D1InviteCodeRepo(db)
+    this.sessions = new D1SessionRepo(db)
   }
 }

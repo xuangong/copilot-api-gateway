@@ -40,10 +40,16 @@ export function renderDashboardHeader(): string {
 
       <div class="max-w-6xl mx-auto px-6 pb-3">
         <nav class="flex gap-1 bg-surface-800 rounded-lg p-0.5 w-fit">
-          <template x-if="isAdmin">
+          <template x-if="isAdmin || isUser">
             <button @click="switchTab('upstream')" class="px-4 py-2 rounded-md text-sm font-medium transition-all"
               :class="tab === 'upstream' ? 'bg-surface-600 text-white' : 'text-gray-500 hover:text-gray-300'">
               Upstream
+            </button>
+          </template>
+          <template x-if="isAdmin">
+            <button @click="switchTab('users')" class="px-4 py-2 rounded-md text-sm font-medium transition-all"
+              :class="tab === 'users' ? 'bg-surface-600 text-white' : 'text-gray-500 hover:text-gray-300'">
+              Users
             </button>
           </template>
           <button @click="switchTab('keys')" class="px-4 py-2 rounded-md text-sm font-medium transition-all"
@@ -67,6 +73,92 @@ export function renderDashboardHeader(): string {
         </nav>
       </div>
     </header>
+  `
+}
+
+export function renderUsersTab(): string {
+  return `
+    <div x-show="tab === 'users'" x-cloak>
+      <!-- Invite Codes -->
+      <div class="glass-card p-6 mb-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Invite Codes</h2>
+        <div class="flex gap-3 mb-4">
+          <input type="text" x-model="newInviteName" placeholder="User name for invite..." class="flex-1" @keydown.enter="createInviteCode()" />
+          <button @click="createInviteCode()" class="btn-primary text-sm" :disabled="inviteCreating || !newInviteName.trim()">
+            <span x-show="!inviteCreating">Create Invite</span>
+            <span x-show="inviteCreating">Creating...</span>
+          </button>
+        </div>
+
+        <div x-show="inviteCodesLoading" class="text-center py-4 text-gray-500 text-sm">Loading...</div>
+        <div x-show="!inviteCodesLoading && inviteCodes.length === 0" class="text-center py-4 text-gray-600 text-sm">No invite codes yet</div>
+
+        <div x-show="!inviteCodesLoading && inviteCodes.length > 0" class="space-y-2">
+          <template x-for="inv in inviteCodes" :key="inv.id">
+            <div class="flex items-center justify-between p-3 rounded-lg bg-surface-800/50 border border-white/[0.04]">
+              <div class="flex items-center gap-4">
+                <span class="text-sm font-medium text-white" x-text="inv.name"></span>
+                <template x-if="!inv.usedAt">
+                  <span class="px-2 py-0.5 rounded text-xs font-mono bg-accent-cyan/10 text-accent-cyan cursor-pointer" @click="copySnippet(inv.code, 'inv-' + inv.id)" x-text="inv.code"></span>
+                </template>
+                <template x-if="inv.usedAt">
+                  <span class="px-2 py-0.5 rounded text-xs bg-accent-emerald/10 text-accent-emerald">Used</span>
+                </template>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="text-xs text-gray-600" x-text="timeAgo(inv.createdAt)"></span>
+                <template x-if="!inv.usedAt">
+                  <button @click="deleteInviteCode(inv.id)" class="text-gray-600 hover:text-accent-rose transition-colors">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                  </button>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Users List -->
+      <div class="glass-card p-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Users</h2>
+        <div x-show="adminUsersLoading" class="text-center py-4 text-gray-500 text-sm">Loading...</div>
+        <div x-show="!adminUsersLoading && adminUsers.length === 0" class="text-center py-8 text-gray-600 text-sm">No users yet. Create an invite code above.</div>
+
+        <div x-show="!adminUsersLoading && adminUsers.length > 0" class="space-y-2">
+          <template x-for="u in adminUsers" :key="u.id">
+            <div class="flex items-center justify-between p-4 rounded-lg bg-surface-800/50 border border-white/[0.04]">
+              <div class="flex items-center gap-4">
+                <template x-if="u.githubAccounts && u.githubAccounts.length > 0">
+                  <img :src="u.githubAccounts[0].avatar_url" class="w-8 h-8 rounded-full" />
+                </template>
+                <template x-if="!u.githubAccounts || u.githubAccounts.length === 0">
+                  <div class="w-8 h-8 rounded-full bg-surface-700 flex items-center justify-center text-gray-500 text-xs">?</div>
+                </template>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium text-white" x-text="u.name"></span>
+                    <template x-if="u.disabled">
+                      <span class="px-1.5 py-0.5 rounded text-[10px] bg-accent-rose/10 text-accent-rose uppercase">Disabled</span>
+                    </template>
+                  </div>
+                  <div class="flex items-center gap-3 mt-0.5">
+                    <template x-for="gh in (u.githubAccounts || [])" :key="gh.id">
+                      <span class="text-xs text-gray-500" x-text="'@' + gh.login"></span>
+                    </template>
+                    <span class="text-xs text-gray-600" x-text="u.keyCount + ' key' + (u.keyCount !== 1 ? 's' : '')"></span>
+                    <span class="text-xs text-gray-600" x-text="'Joined ' + timeAgo(u.createdAt)"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <button @click="toggleUser(u.id, u.disabled)" class="btn-ghost text-xs" x-text="u.disabled ? 'Enable' : 'Disable'"></button>
+                <button @click="deleteUser(u.id, u.name)" class="btn-ghost text-xs text-accent-rose hover:bg-accent-rose/10">Delete</button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
   `
 }
 
@@ -283,7 +375,7 @@ export function renderKeysTab(): string {
       <div class="glass-card p-6 mb-6 animate-in">
         <div class="flex items-center justify-between mb-6">
           <span class="text-xs font-medium text-gray-500 uppercase tracking-widest">API Keys</span>
-          <div x-show="isAdmin" class="flex items-center gap-2">
+          <div x-show="isAdmin || isUser" class="flex items-center gap-2">
             <input type="text" x-model="newKeyName" placeholder="Name" class="!text-xs !py-1.5 !px-3 !w-32 !rounded-lg" @keydown.enter="createNewKey()" />
             <button @click="createNewKey()" class="btn-primary !text-xs !py-1.5 !px-3 !rounded-lg whitespace-nowrap" :disabled="!newKeyName.trim() || keyCreating">
               <span x-show="!keyCreating">+ Create</span>
@@ -316,7 +408,7 @@ export function renderKeysTab(): string {
                   <th class="text-left py-2 pr-4 text-xs font-medium text-gray-500 uppercase tracking-widest">Key</th>
                   <th class="text-left py-2 pr-4 text-xs font-medium text-gray-500 uppercase tracking-widest">Created</th>
                   <th class="text-left py-2 pr-4 text-xs font-medium text-gray-500 uppercase tracking-widest">Last Used</th>
-                  <th x-show="isAdmin" class="text-right py-2 pr-2 text-xs font-medium text-gray-500 uppercase tracking-widest">Actions</th>
+                  <th x-show="isAdmin || isUser" class="text-right py-2 pr-2 text-xs font-medium text-gray-500 uppercase tracking-widest">Actions</th>
                 </tr>
               </thead>
               <tbody>

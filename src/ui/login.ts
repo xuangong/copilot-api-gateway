@@ -43,7 +43,7 @@ export function LoginPage(): string {
           </div>
 
           <div class="glass-card p-8 glow-cyan animate-in delay-1">
-            <p class="text-xs text-gray-500 mb-6 leading-relaxed">Log in with the <span class="text-gray-400">ADMIN_KEY</span> for full dashboard access, or any <span class="text-gray-400">API key</span> for limited access.</p>
+            <p class="text-xs text-gray-500 mb-6 leading-relaxed">Log in with <span class="text-gray-400">ADMIN_KEY</span>, <span class="text-gray-400">API key</span>, or <span class="text-gray-400">invite code</span>.</p>
 
             <form @submit.prevent="login()" class="space-y-5">
               <div>
@@ -110,9 +110,14 @@ export function LoginPage(): string {
                 });
                 const data = await resp.json();
                 if (data.ok) {
-                  localStorage.setItem('authKey', this.authKey);
+                  // Store session token if provided (invite code or session login)
+                  const authToken = data.sessionToken || this.authKey;
+                  localStorage.setItem('authKey', authToken);
                   localStorage.setItem('isAdmin', data.isAdmin ? '1' : '0');
-                  if (!data.isAdmin) {
+                  localStorage.setItem('isUser', data.isUser ? '1' : '0');
+                  if (data.userId) localStorage.setItem('userId', data.userId);
+                  if (data.userName) localStorage.setItem('userName', data.userName);
+                  if (!data.isAdmin && !data.isUser) {
                     localStorage.setItem('login_key_id', data.keyId);
                     localStorage.setItem('login_key_name', data.keyName);
                     localStorage.setItem('login_key_hint', data.keyHint);

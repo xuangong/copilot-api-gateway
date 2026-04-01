@@ -8,8 +8,9 @@ export function dashboardAssets(): string {
     <script>
     function dashboardApp() {
     const isAdmin = localStorage.getItem('isAdmin') === '1';
-    const TABS = isAdmin ? ['upstream', 'keys', 'usage', 'latency', 'settings'] : ['keys', 'usage', 'latency'];
-    const defaultTab = isAdmin ? 'upstream' : 'keys';
+    const isUser = localStorage.getItem('isUser') === '1';
+    const TABS = isAdmin ? ['upstream', 'users', 'keys', 'usage', 'latency', 'settings'] : (isUser ? ['upstream', 'keys', 'usage', 'latency'] : ['keys', 'usage', 'latency']);
+    const defaultTab = isAdmin ? 'upstream' : (isUser ? 'upstream' : 'keys');
     const initTab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : defaultTab;
 
     const CLAUDE_TIER = { opus: 0, sonnet: 1, haiku: 2 };
@@ -42,6 +43,7 @@ export function dashboardAssets(): string {
     return {
       authKey: '',
       isAdmin,
+      isUser,
       tab: initTab,
       meLoaded: false,
       githubAccounts: [],
@@ -83,6 +85,14 @@ export function dashboardAssets(): string {
       latencyLoading: false,
       latencySummary: { avgTotal: 0, avgUpstream: 0, avgTtfb: 0, tokenMissRate: 0 },
       latencyByColo: [],
+
+      // User management (admin)
+      adminUsers: [],
+      adminUsersLoading: false,
+      inviteCodes: [],
+      inviteCodesLoading: false,
+      newInviteName: '',
+      inviteCreating: false,
 
       get baseUrl() { return location.origin; },
 
@@ -157,9 +167,12 @@ export function dashboardAssets(): string {
 
           this.loadModels();
 
-          if (this.tab === 'upstream' && this.isAdmin) {
+          if ((this.tab === 'upstream') && (this.isAdmin || this.isUser)) {
             this.loadMe();
             this.loadUsage();
+          } else if (this.tab === 'users' && this.isAdmin) {
+            this.loadInviteCodes();
+            this.loadAdminUsers();
           } else if (this.tab === 'keys') {
             this.loadKeys();
           } else if (this.tab === 'usage') {
@@ -179,7 +192,7 @@ export function dashboardAssets(): string {
           }
 
           setInterval(() => {
-            if (this.tab === 'upstream' && this.isAdmin) this.loadUsage();
+            if (this.tab === 'upstream' && (this.isAdmin || this.isUser)) this.loadUsage();
             if (this.tab === 'usage') this.loadTokenUsage();
             if (this.tab === 'latency') this.loadLatencyData();
           }, 60000);
@@ -209,9 +222,12 @@ export function dashboardAssets(): string {
           }
           this.tab = t;
           location.hash = '#' + t;
-          if (t === 'upstream' && this.isAdmin) {
+          if (t === 'upstream' && (this.isAdmin || this.isUser)) {
             if (!this.meLoaded) this.loadMe();
             this.loadUsage();
+          } else if (t === 'users' && this.isAdmin) {
+            this.loadInviteCodes();
+            this.loadAdminUsers();
           } else if (t === 'usage') {
             this.tokenLoading = true;
             await this.fetchTokenData();
@@ -1051,9 +1067,91 @@ export function dashboardAssets(): string {
             }
           },
 
+          // === Admin: Invite Codes ===
+          async loadInviteCodes() {
+            this.inviteCodesLoading = true;
+            try {
+              const resp = await fetch('/auth/admin/invite-codes', { headers: this.authHeaders() });
+              if (resp.ok) this.inviteCodes = await resp.json();
+            } catch (e) {
+              console.error('loadInviteCodes:', e);
+            } finally {
+              this.inviteCodesLoading = false;
+            }
+          },
+
+          async createInviteCode() {
+            const name = this.newInviteName.trim();
+            if (!name) return;
+            this.inviteCreating = true;
+            try {
+              const resp = await fetch('/auth/admin/invite-codes', {
+                method: 'POST',
+                headers: { ...this.authHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name }),
+              });
+              if (resp.ok) {
+                this.newInviteName = '';
+                await this.loadInviteCodes();
+              } else {
+                alert((await resp.json()).error || 'Failed');
+              }
+            } catch (e) {
+              console.error('createInviteCode:', e);
+            } finally {
+              this.inviteCreating = false;
+            }
+          },
+
+          async deleteInviteCode(id) {
+            if (!confirm('Delete this invite code?')) return;
+            try {
+              await fetch('/auth/admin/invite-codes/' + id, { method: 'DELETE', headers: this.authHeaders() });
+              await this.loadInviteCodes();
+            } catch (e) {
+              console.error('deleteInviteCode:', e);
+            }
+          },
+
+          // === Admin: User Management ===
+          async loadAdminUsers() {
+            this.adminUsersLoading = true;
+            try {
+              const resp = await fetch('/auth/admin/users', { headers: this.authHeaders() });
+              if (resp.ok) this.adminUsers = await resp.json();
+            } catch (e) {
+              console.error('loadAdminUsers:', e);
+            } finally {
+              this.adminUsersLoading = false;
+            }
+          },
+
+          async toggleUser(id, disabled) {
+            const action = disabled ? 'enable' : 'disable';
+            try {
+              await fetch('/auth/admin/users/' + id + '/' + action, { method: 'POST', headers: this.authHeaders() });
+              await this.loadAdminUsers();
+            } catch (e) {
+              console.error('toggleUser:', e);
+            }
+          },
+
+          async deleteUser(id, name) {
+            if (!confirm('Delete user "' + name + '"? All their API keys, GitHub accounts, and sessions will be removed.')) return;
+            try {
+              await fetch('/auth/admin/users/' + id, { method: 'DELETE', headers: this.authHeaders() });
+              await this.loadAdminUsers();
+            } catch (e) {
+              console.error('deleteUser:', e);
+            }
+          },
+
           logout() {
             localStorage.removeItem('authKey');
             localStorage.removeItem('isAdmin');
+            localStorage.removeItem('isUser');
+            localStorage.removeItem('userId');
+            localStorage.removeItem('userName');
             localStorage.removeItem('login_key_id');
             localStorage.removeItem('login_key_name');
             localStorage.removeItem('login_key_hint');
