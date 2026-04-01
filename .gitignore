@@ -36,3 +36,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Local development data
 .data/
 data/
+
+# Wrangler local state
+.wrangler/
