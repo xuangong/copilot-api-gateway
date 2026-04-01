@@ -1,0 +1,33 @@
+{
+  "name": "copilot-api-gateway",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev --port ${PORT:-4141}",
+    "local": "bun run src/local.ts",
+    "local:watch": "bun --hot run src/local.ts",
+    "deploy": "wrangler deploy",
+    "auth": "bun run scripts/auth.ts",
+    "test": "bun test tests/transforms.test.ts tests/formatter.test.ts tests/storage.test.ts tests/error.test.ts tests/interceptor.test.ts",
+    "test:integration": "bun run scripts/integration-test.ts",
+    "test:integration:anthropic": "bun run scripts/integration-test.ts tests/sdk-anthropic.test.ts",
+    "test:integration:openai": "bun run scripts/integration-test.ts tests/sdk-openai.test.ts",
+    "test:integration:gemini": "bun run scripts/integration-test.ts tests/sdk-gemini.test.ts",
+    "test:integration:web-search": "bun run scripts/integration-test.ts tests/sdk-web-search.test.ts",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@cloudflare/workers-types": "^4.20260329.1",
+    "@google/genai": "^1.47.0",
+    "@types/bun": "latest",
+    "openai": "^6.27.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.78.0"
+  },
+  "dependencies": {
+    "@elysiajs/cors": "^1.4.1",
+    "elysia": "^1.4.28"
+  }
+}

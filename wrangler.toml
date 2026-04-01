@@ -1,0 +1,42 @@
+name = "copilot-api-gateway"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Smart Placement: run Worker close to upstream APIs (GitHub/Copilot in US)
+# instead of close to the end user, reducing API round-trip latency.
+[placement]
+mode = "smart"
+
+# Custom domain
+routes = [
+  { pattern = "token.xianliao.de5.net", custom_domain = true }
+]
+
+# KV Namespace binding
+[[kv_namespaces]]
+binding = "KV"
+id = "55077c6d26dd493d9752c07176c35237"
+
+# D1 Database binding
+# Create with: wrangler d1 create copilot-db
+# Then update the database_id below
+[[d1_databases]]
+binding = "DB"
+database_name = "copilot-db"
+database_id = "9a81ab21-8c45-4fce-bf32-95796e574b16"
+migrations_dir = "migrations"
+
+# Environment variables (secrets should be set via wrangler secret)
+[vars]
+ACCOUNT_TYPE = "individual"
+# ADMIN_KEY = "your_admin_key"  # For dashboard access
+# GITHUB_TOKEN = "your_github_token"  # Or use /auth/github
+# LANGSEARCH_API_KEY = "your_langsearch_key"
+# TAVILY_API_KEY = "your_tavily_key"
+
+# Development settings
+[dev]
+port = 4141
+local_protocol = "http"
