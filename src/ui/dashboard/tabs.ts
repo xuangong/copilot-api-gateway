@@ -196,7 +196,7 @@ export function renderUpstreamTab(): string {
               <p class="text-gray-500 text-xs text-center mb-2">
                 Visit <a :href="deviceFlow.verificationUri" class="text-accent-cyan hover:underline" x-text="deviceFlow.verificationUri" target="_blank"></a>
               </p>
-              <a :href="deviceFlow.verificationUri" target="_blank" class="btn-primary w-full block text-center mb-4">Open GitHub</a>
+              <a :href="deviceFlow.verificationUri" target="_blank" class="btn-primary w-full block text-center mb-4" @click="navigator.clipboard.writeText(deviceFlow.userCode)">Open GitHub</a>
               <div class="flex items-center justify-center gap-2 text-sm text-gray-500">
                 <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
                   <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
@@ -613,6 +613,36 @@ export function renderLatencyTab(): string {
             <p class="text-xs text-gray-500 mb-1">Token Miss Rate</p>
             <p class="text-lg font-bold font-mono" :class="latencySummary.tokenMissRate > 50 ? 'text-accent-rose' : latencySummary.tokenMissRate > 20 ? 'text-accent-amber' : 'text-accent-emerald'" x-text="latencySummary.tokenMissRate + '%'"></p>
           </div>
+        </div>
+      </div>
+
+      <div class="glass-card p-6 mt-5 animate-in delay-1" x-show="latencyByType.length > 0">
+        <span class="text-xs font-medium text-gray-500 uppercase tracking-widest mb-4 block">By Type</span>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-white/5">
+                <th class="text-left py-2 pr-4 text-xs font-medium text-gray-500 uppercase tracking-widest">Type</th>
+                <th class="text-right py-2 pr-4 text-xs font-medium text-gray-500 uppercase tracking-widest">Requests</th>
+                <th class="text-right py-2 pr-4 text-xs font-medium text-gray-500 uppercase tracking-widest">Avg Total</th>
+                <th class="text-right py-2 pr-4 text-xs font-medium text-gray-500 uppercase tracking-widest">Avg Upstream</th>
+                <th class="text-right py-2 pr-4 text-xs font-medium text-gray-500 uppercase tracking-widest">Avg TTFB</th>
+                <th class="text-right py-2 text-xs font-medium text-gray-500 uppercase tracking-widest">Token Miss</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="t in latencyByType" :key="t.type">
+                <tr class="border-b border-white/[0.03]">
+                  <td class="py-2.5 pr-4"><code class="text-xs font-mono" :class="t.type === 'Stream' ? 'text-accent-cyan' : 'text-accent-amber'" x-text="t.type"></code></td>
+                  <td class="py-2.5 pr-4 text-right text-gray-300 font-mono text-xs" x-text="t.requests.toLocaleString()"></td>
+                  <td class="py-2.5 pr-4 text-right text-gray-300 font-mono text-xs" x-text="t.avgTotal + ' ms'"></td>
+                  <td class="py-2.5 pr-4 text-right text-gray-300 font-mono text-xs" x-text="t.avgUpstream + ' ms'"></td>
+                  <td class="py-2.5 pr-4 text-right text-gray-300 font-mono text-xs" x-text="t.avgTtfb + ' ms'"></td>
+                  <td class="py-2.5 text-right font-mono text-xs" :class="t.tokenMissRate > 50 ? 'text-accent-rose' : t.tokenMissRate > 20 ? 'text-accent-amber' : 'text-accent-emerald'" x-text="t.tokenMissRate + '%'"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
         </div>
       </div>
 

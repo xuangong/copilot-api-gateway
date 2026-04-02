@@ -103,12 +103,15 @@ export function LoginPage(): string {
               this.loading = true;
               this.error = '';
               try {
+                console.log('[login] authKey length:', this.authKey.length, 'value:', this.authKey.slice(0, 3) + '...');
                 const resp = await fetch('/auth/login', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ key: this.authKey }),
                 });
+                console.log('[login] resp status:', resp.status);
                 const data = await resp.json();
+                console.log('[login] data:', JSON.stringify(data));
                 if (data.ok) {
                   // Store session token if provided (invite code or session login)
                   const authToken = data.sessionToken || this.authKey;

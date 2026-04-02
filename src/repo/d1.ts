@@ -318,6 +318,7 @@ class D1LatencyRepo implements LatencyRepo {
     model: string
     hour: string
     colo: string
+    stream: boolean
     totalMs: number
     upstreamMs: number
     ttfbMs: number
@@ -325,9 +326,9 @@ class D1LatencyRepo implements LatencyRepo {
   }): Promise<void> {
     await this.db
       .prepare(
-        `INSERT INTO latency (key_id, model, hour, colo, requests, total_ms, upstream_ms, ttfb_ms, token_miss)
-         VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
-         ON CONFLICT (key_id, model, hour, colo) DO UPDATE SET
+        `INSERT INTO latency (key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss)
+         VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+         ON CONFLICT (key_id, model, hour, colo, stream) DO UPDATE SET
            requests = requests + 1,
            total_ms = total_ms + excluded.total_ms,
            upstream_ms = upstream_ms + excluded.upstream_ms,
@@ -339,6 +340,7 @@ class D1LatencyRepo implements LatencyRepo {
         entry.model,
         entry.hour,
         entry.colo,
+        entry.stream ? 1 : 0,
         entry.totalMs,
         entry.upstreamMs,
         entry.ttfbMs,
@@ -353,13 +355,13 @@ class D1LatencyRepo implements LatencyRepo {
 
     if (opts.keyIds && opts.keyIds.length > 0) {
       const placeholders = opts.keyIds.map(() => "?").join(",")
-      sql = `SELECT key_id, model, hour, colo, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`
+      sql = `SELECT key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`
       binds = [...opts.keyIds, opts.start, opts.end]
     } else if (opts.keyId) {
-      sql = "SELECT key_id, model, hour, colo, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour"
+      sql = "SELECT key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour"
       binds = [opts.keyId, opts.start, opts.end]
     } else {
-      sql = "SELECT key_id, model, hour, colo, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE hour >= ? AND hour < ? ORDER BY hour"
+      sql = "SELECT key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE hour >= ? AND hour < ? ORDER BY hour"
       binds = [opts.start, opts.end]
     }
 
@@ -371,6 +373,7 @@ class D1LatencyRepo implements LatencyRepo {
         model: string
         hour: string
         colo: string
+        stream: number
         requests: number
         total_ms: number
         upstream_ms: number
@@ -382,6 +385,7 @@ class D1LatencyRepo implements LatencyRepo {
       model: r.model,
       hour: r.hour,
       colo: r.colo,
+      stream: r.stream === 1,
       requests: r.requests,
       totalMs: r.total_ms,
       upstreamMs: r.upstream_ms,

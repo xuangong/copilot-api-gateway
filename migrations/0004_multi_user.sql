@@ -28,9 +28,9 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON user_sessions(user_id);
 
--- Add owner_id to existing tables
-ALTER TABLE api_keys ADD COLUMN owner_id TEXT REFERENCES users(id);
-ALTER TABLE github_accounts ADD COLUMN owner_id TEXT REFERENCES users(id);
+-- Add owner_id to existing tables (safe: ignore if already exists)
+-- ALTER TABLE api_keys ADD COLUMN owner_id TEXT REFERENCES users(id);
+-- ALTER TABLE github_accounts ADD COLUMN owner_id TEXT REFERENCES users(id);
 
 CREATE INDEX IF NOT EXISTS idx_api_keys_owner ON api_keys(owner_id);
 CREATE INDEX IF NOT EXISTS idx_github_accounts_owner ON github_accounts(owner_id);

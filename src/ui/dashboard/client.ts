@@ -85,6 +85,7 @@ export function dashboardAssets(): string {
       latencyLoading: false,
       latencySummary: { avgTotal: 0, avgUpstream: 0, avgTtfb: 0, tokenMissRate: 0 },
       latencyByColo: [],
+      latencyByType: [],
 
       // User management (admin)
       adminUsers: [],
@@ -160,7 +161,10 @@ export function dashboardAssets(): string {
 
         init() {
           this.authKey = localStorage.getItem('authKey') || '';
+          console.log('[dashboard] init authKey:', this.authKey ? this.authKey.slice(0, 3) + '...' : 'EMPTY');
+          console.log('[dashboard] isAdmin:', this.isAdmin, 'isUser:', this.isUser);
           if (!this.authKey) {
+            console.log('[dashboard] no authKey, redirecting to /');
             window.location.href = '/';
             return;
           }
@@ -331,6 +335,7 @@ export function dashboardAssets(): string {
                   verificationUri: d.verification_uri,
                   deviceCode: d.device_code,
                 });
+                try { await navigator.clipboard.writeText(d.user_code); } catch {}
                 this.pollDeviceFlow(d.interval || 5);
               }
             } catch (e) {
@@ -805,6 +810,29 @@ export function dashboardAssets(): string {
               tokenMissRate: totalReqs > 0 ? Math.round((sumMiss / totalReqs) * 100) : 0,
             };
 
+            // Compute by-type breakdown (stream vs sync)
+            const typeMap = new Map();
+            for (const r of data) {
+              const key = r.stream ? 'Stream' : 'Sync';
+              if (!typeMap.has(key)) typeMap.set(key, { requests: 0, totalMs: 0, upstreamMs: 0, ttfbMs: 0, tokenMiss: 0 });
+              const t = typeMap.get(key);
+              t.requests += r.requests;
+              t.totalMs += r.totalMs;
+              t.upstreamMs += r.upstreamMs;
+              t.ttfbMs += r.ttfbMs;
+              t.tokenMiss += r.tokenMiss;
+            }
+            this.latencyByType = [...typeMap.entries()]
+              .map(([type, v]) => ({
+                type,
+                requests: v.requests,
+                avgTotal: v.requests > 0 ? Math.round(v.totalMs / v.requests) : 0,
+                avgUpstream: v.requests > 0 ? Math.round(v.upstreamMs / v.requests) : 0,
+                avgTtfb: v.requests > 0 ? Math.round(v.ttfbMs / v.requests) : 0,
+                tokenMissRate: v.requests > 0 ? Math.round((v.tokenMiss / v.requests) * 100) : 0,
+              }))
+              .sort((a, b) => b.requests - a.requests);
+
             // Compute by-colo breakdown
             const coloMap = new Map();
             for (const r of data) {
@@ -844,25 +872,26 @@ export function dashboardAssets(): string {
               }
             }
 
-            // Aggregate per bucket: avg total, avg upstream, avg ttfb
-            const aggTotal = new Map();
-            const aggUpstream = new Map();
-            const aggTtfb = new Map();
-            const aggReqs = new Map();
+            // Aggregate per bucket per type (stream/sync): avg total latency
+            const aggStream = new Map();
+            const aggSync = new Map();
+            const reqsStream = new Map();
+            const reqsSync = new Map();
             for (const [key] of bucketMap) {
-              aggTotal.set(key, 0);
-              aggUpstream.set(key, 0);
-              aggTtfb.set(key, 0);
-              aggReqs.set(key, 0);
+              aggStream.set(key, 0); aggSync.set(key, 0);
+              reqsStream.set(key, 0); reqsSync.set(key, 0);
             }
             for (const r of data) {
               const utc = new Date(r.hour + ':00:00Z');
               const bucket = isDaily ? this.localDateKey(utc) : this.localHourKey(utc);
-              if (!aggReqs.has(bucket)) continue;
-              aggReqs.set(bucket, aggReqs.get(bucket) + r.requests);
-              aggTotal.set(bucket, aggTotal.get(bucket) + r.totalMs);
-              aggUpstream.set(bucket, aggUpstream.get(bucket) + r.upstreamMs);
-              aggTtfb.set(bucket, aggTtfb.get(bucket) + r.ttfbMs);
+              if (!aggStream.has(bucket)) continue;
+              if (r.stream) {
+                reqsStream.set(bucket, reqsStream.get(bucket) + r.requests);
+                aggStream.set(bucket, aggStream.get(bucket) + r.totalMs);
+              } else {
+                reqsSync.set(bucket, reqsSync.get(bucket) + r.requests);
+                aggSync.set(bucket, aggSync.get(bucket) + r.totalMs);
+              }
             }
 
             const labels = [...bucketMap.values()];
@@ -871,8 +900,8 @@ export function dashboardAssets(): string {
 
             const datasets = [
               {
-                label: 'Total',
-                data: bucketKeys.map((k) => avg(aggTotal.get(k), aggReqs.get(k))),
+                label: 'Stream',
+                data: bucketKeys.map((k) => avg(aggStream.get(k), reqsStream.get(k))),
                 borderColor: '#00e5ff',
                 backgroundColor: '#00e5ff18',
                 borderWidth: 2,
@@ -882,19 +911,8 @@ export function dashboardAssets(): string {
                 fill: true,
               },
               {
-                label: 'Upstream',
-                data: bucketKeys.map((k) => avg(aggUpstream.get(k), aggReqs.get(k))),
-                borderColor: '#00e676',
-                backgroundColor: '#00e67618',
-                borderWidth: 2,
-                pointRadius: 2,
-                pointHoverRadius: 5,
-                tension: 0.3,
-                fill: true,
-              },
-              {
-                label: 'TTFB',
-                data: bucketKeys.map((k) => avg(aggTtfb.get(k), aggReqs.get(k))),
+                label: 'Sync',
+                data: bucketKeys.map((k) => avg(aggSync.get(k), reqsSync.get(k))),
                 borderColor: '#ffd740',
                 backgroundColor: '#ffd74018',
                 borderWidth: 2,

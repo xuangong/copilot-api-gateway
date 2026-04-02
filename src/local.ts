@@ -310,7 +310,7 @@ async function createApp() {
     const method = request.method
 
     // Public paths - no auth needed
-    if (PUBLIC_GET_PATHS.has(path) && method === "GET") {
+    if (PUBLIC_GET_PATHS.has(path) && (method === "GET" || method === "HEAD")) {
       return { authKey: "", isAdmin: false, apiKeyId: undefined }
     }
 

@@ -105,6 +105,7 @@ export interface LatencyRecord {
   model: string
   hour: string
   colo: string
+  stream: boolean
   requests: number
   totalMs: number
   upstreamMs: number
@@ -118,6 +119,7 @@ export interface LatencyRepo {
     model: string
     hour: string
     colo: string
+    stream: boolean
     totalMs: number
     upstreamMs: number
     ttfbMs: number

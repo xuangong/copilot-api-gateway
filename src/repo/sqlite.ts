@@ -60,12 +60,13 @@ CREATE TABLE IF NOT EXISTS latency (
   model TEXT NOT NULL,
   hour TEXT NOT NULL,
   colo TEXT NOT NULL,
+  stream INTEGER NOT NULL DEFAULT 0,
   requests INTEGER NOT NULL DEFAULT 0,
   total_ms INTEGER NOT NULL DEFAULT 0,
   upstream_ms INTEGER NOT NULL DEFAULT 0,
   ttfb_ms INTEGER NOT NULL DEFAULT 0,
   token_miss INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (key_id, model, hour, colo)
+  PRIMARY KEY (key_id, model, hour, colo, stream)
 );
 
 CREATE INDEX IF NOT EXISTS idx_latency_hour ON latency (hour);
@@ -265,24 +266,24 @@ class SqliteCacheRepo implements CacheRepo {
 class SqliteLatencyRepo implements LatencyRepo {
   constructor(private db: Database) {}
 
-  async record(entry: { keyId: string; model: string; hour: string; colo: string; totalMs: number; upstreamMs: number; ttfbMs: number; tokenMiss: boolean }): Promise<void> {
+  async record(entry: { keyId: string; model: string; hour: string; colo: string; stream: boolean; totalMs: number; upstreamMs: number; ttfbMs: number; tokenMiss: boolean }): Promise<void> {
     this.db.query(
-      `INSERT INTO latency (key_id, model, hour, colo, requests, total_ms, upstream_ms, ttfb_ms, token_miss) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
-       ON CONFLICT (key_id, model, hour, colo) DO UPDATE SET requests = requests + 1, total_ms = total_ms + excluded.total_ms, upstream_ms = upstream_ms + excluded.upstream_ms, ttfb_ms = ttfb_ms + excluded.ttfb_ms, token_miss = token_miss + excluded.token_miss`,
-    ).run(entry.keyId, entry.model, entry.hour, entry.colo, entry.totalMs, entry.upstreamMs, entry.ttfbMs, entry.tokenMiss ? 1 : 0)
+      `INSERT INTO latency (key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+       ON CONFLICT (key_id, model, hour, colo, stream) DO UPDATE SET requests = requests + 1, total_ms = total_ms + excluded.total_ms, upstream_ms = upstream_ms + excluded.upstream_ms, ttfb_ms = ttfb_ms + excluded.ttfb_ms, token_miss = token_miss + excluded.token_miss`,
+    ).run(entry.keyId, entry.model, entry.hour, entry.colo, entry.stream ? 1 : 0, entry.totalMs, entry.upstreamMs, entry.ttfbMs, entry.tokenMiss ? 1 : 0)
   }
 
   async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<LatencyRecord[]> {
     let rows: any[]
     if (opts.keyIds && opts.keyIds.length > 0) {
       const placeholders = opts.keyIds.map(() => "?").join(",")
-      rows = this.db.query(`SELECT key_id, model, hour, colo, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`).all(...opts.keyIds, opts.start, opts.end)
+      rows = this.db.query(`SELECT key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`).all(...opts.keyIds, opts.start, opts.end)
     } else if (opts.keyId) {
-      rows = this.db.query("SELECT key_id, model, hour, colo, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour").all(opts.keyId, opts.start, opts.end)
+      rows = this.db.query("SELECT key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour").all(opts.keyId, opts.start, opts.end)
     } else {
-      rows = this.db.query("SELECT key_id, model, hour, colo, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE hour >= ? AND hour < ? ORDER BY hour").all(opts.start, opts.end)
+      rows = this.db.query("SELECT key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss FROM latency WHERE hour >= ? AND hour < ? ORDER BY hour").all(opts.start, opts.end)
     }
-    return rows.map((r: any) => ({ keyId: r.key_id, model: r.model, hour: r.hour, colo: r.colo, requests: r.requests, totalMs: r.total_ms, upstreamMs: r.upstream_ms, ttfbMs: r.ttfb_ms, tokenMiss: r.token_miss }))
+    return rows.map((r: any) => ({ keyId: r.key_id, model: r.model, hour: r.hour, colo: r.colo, stream: r.stream === 1, requests: r.requests, totalMs: r.total_ms, upstreamMs: r.upstream_ms, ttfbMs: r.ttfb_ms, tokenMiss: r.token_miss }))
   }
 
   async deleteAll(): Promise<void> {
@@ -374,6 +375,46 @@ class SqliteSessionRepo implements SessionRepo {
   }
 }
 
+function hasColumn(db: Database, table: string, column: string): boolean {
+  const rows = db.query<{ name: string }, [string]>("SELECT name FROM pragma_table_info(?) WHERE name = ?").all(table, column)
+  return rows.length > 0
+}
+
+function migrateSchema(db: Database): void {
+  // Add owner_id to github_accounts (multi-user isolation)
+  if (!hasColumn(db, "github_accounts", "owner_id")) {
+    db.exec("ALTER TABLE github_accounts ADD COLUMN owner_id TEXT")
+  }
+  // Add owner_id to api_keys (multi-user isolation)
+  if (!hasColumn(db, "api_keys", "owner_id")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN owner_id TEXT")
+  }
+  // Rebuild latency table if PK does NOT include 'stream' column (needs stream for separate tracking)
+  if (!hasColumn(db, "latency", "stream")) {
+    db.exec(`
+      ALTER TABLE latency RENAME TO latency_old;
+      CREATE TABLE latency (
+        key_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        hour TEXT NOT NULL,
+        colo TEXT NOT NULL,
+        stream INTEGER NOT NULL DEFAULT 0,
+        requests INTEGER NOT NULL DEFAULT 0,
+        total_ms INTEGER NOT NULL DEFAULT 0,
+        upstream_ms INTEGER NOT NULL DEFAULT 0,
+        ttfb_ms INTEGER NOT NULL DEFAULT 0,
+        token_miss INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (key_id, model, hour, colo, stream)
+      );
+      INSERT INTO latency (key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss)
+        SELECT key_id, model, hour, colo, 0, requests, total_ms, upstream_ms, ttfb_ms, token_miss
+        FROM latency_old;
+      DROP TABLE latency_old;
+      CREATE INDEX IF NOT EXISTS idx_latency_hour ON latency (hour);
+    `)
+  }
+}
+
 export class SqliteRepo implements Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -386,6 +427,7 @@ export class SqliteRepo implements Repo {
 
   constructor(db: Database) {
     db.exec(INIT_SQL)
+    migrateSchema(db)
     this.apiKeys = new SqliteApiKeyRepo(db)
     this.github = new SqliteGitHubRepo(db)
     this.usage = new SqliteUsageRepo(db)

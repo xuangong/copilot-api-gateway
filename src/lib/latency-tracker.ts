@@ -44,6 +44,7 @@ export function recordLatency(
     model,
     hour: currentHour(),
     colo,
+    stream: logInfo?.stream ?? false,
     ...timings,
   })
 }

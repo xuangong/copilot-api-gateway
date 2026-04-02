@@ -122,7 +122,7 @@ export const messagesRoute = new Elysia()
       if (apiKeyId) {
         recordLatency(apiKeyId, payload.model, colo, {
           totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
-        }, requestId, { stream: true }).catch(() => {})
+        }, requestId, { stream: true }).catch((e) => console.error('[latency] record error:', e))
       }
       return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, payload.model) : streamResponse
     }
@@ -140,7 +140,7 @@ export const messagesRoute = new Elysia()
         inputTokens: json.usage?.input_tokens,
         outputTokens: json.usage?.output_tokens,
         userAgent,
-      }).catch(() => {})
+      }).catch((e) => console.error('[latency] record error:', e))
     }
     return jsonResponse
   })
