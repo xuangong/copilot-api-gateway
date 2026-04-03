@@ -81,6 +81,7 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
       keys = await repo.apiKeys.list()
     } else if (userId) {
       const userKeyIds = await getUserKeyIds(userId)
+      if (userKeyIds.length === 0) return []
       queryOpts = { keyIds: userKeyIds, start, end }
       keys = await repo.apiKeys.listByOwner(userId)
     } else {
@@ -121,6 +122,7 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
       keys = await repo.apiKeys.list()
     } else if (userId) {
       const userKeyIds = await getUserKeyIds(userId)
+      if (userKeyIds.length === 0) return []
       queryOpts = { keyIds: userKeyIds, start, end }
       keys = await repo.apiKeys.listByOwner(userId)
     } else {

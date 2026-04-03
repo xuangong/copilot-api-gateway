@@ -315,31 +315,48 @@ async function createApp() {
 
     // Public paths - no auth needed
     if (PUBLIC_GET_PATHS.has(path) && (method === "GET" || method === "HEAD")) {
-      return { authKey: "", isAdmin: false, apiKeyId: undefined }
+      return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
     }
 
     // Auth validation path - no auth needed
     if (AUTH_VALIDATE_PATHS.has(path) && method === "POST") {
-      return { authKey: "", isAdmin: false, apiKeyId: undefined }
+      return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
     }
 
     // Auth routes before GitHub connected don't need a key
     if (path.startsWith("/auth/")) {
       const key = extractKey(request)
       if (!key) {
-        return { authKey: "", isAdmin: false, apiKeyId: undefined }
+        return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
       }
       // With a key, check if it's valid
       const adminKey = env.ADMIN_KEY
       if (adminKey && key === adminKey) {
-        return { authKey: key, isAdmin: true, apiKeyId: undefined }
+        return { authKey: key, isAdmin: true, isUser: false, apiKeyId: undefined, userId: undefined }
+      }
+      // Check session token
+      if (key.startsWith("ses_")) {
+        const repo = getRepo()
+        const session = await repo.sessions.findByToken(key)
+        if (session && new Date(session.expiresAt) > new Date()) {
+          const user = await repo.users.getById(session.userId)
+          if (user) {
+            return { authKey: key, isAdmin: false, isUser: true, apiKeyId: undefined, userId: session.userId }
+          }
+        }
+        return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
       }
       const result = await validateApiKey(key)
       if (result) {
-        return { authKey: key, isAdmin: false, apiKeyId: result.id }
+        return { authKey: key, isAdmin: false, isUser: !!result.ownerId, apiKeyId: result.id, userId: result.ownerId }
+      }
+      // Check User Key on auth routes
+      const userByKey = await getRepo().users.findByKey(key)
+      if (userByKey) {
+        return { authKey: key, isAdmin: false, isUser: true, apiKeyId: undefined, userId: userByKey.id }
       }
       // Invalid key but on auth route - allow anyway (will be handled by route)
-      return { authKey: "", isAdmin: false, apiKeyId: undefined }
+      return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
     }
 
     const key = extractKey(request)
@@ -352,15 +369,48 @@ async function createApp() {
     if (adminKey && key === adminKey) {
       // Admin key can only access dashboard routes
       if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
-        return { authKey: key, isAdmin: true, apiKeyId: undefined }
+        return { authKey: key, isAdmin: true, isUser: false, apiKeyId: undefined, userId: undefined }
       }
       throw new Error("This key is for dashboard only. Create an API key for API access.")
+    }
+
+    // Check session token - dashboard only
+    if (key.startsWith("ses_")) {
+      const repo = getRepo()
+      const session = await repo.sessions.findByToken(key)
+      if (!session || new Date(session.expiresAt) <= new Date()) {
+        throw new Error("Session expired")
+      }
+      const user = await repo.users.getById(session.userId)
+      if (!user) {
+        throw new Error("User not found")
+      }
+      if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
+        return { authKey: key, isAdmin: false, isUser: true, apiKeyId: undefined, userId: session.userId }
+      }
+      throw new Error("Session token is for dashboard only. Create an API key for API access.")
     }
 
     // Check API key - full access
     const result = await validateApiKey(key)
     if (result) {
-      return { authKey: key, isAdmin: false, apiKeyId: result.id }
+      // Block disabled users from API routes (dashboard access still allowed)
+      if (result.ownerId && !DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
+        const repo = getRepo()
+        const user = await repo.users.getById(result.ownerId)
+        if (user?.disabled) {
+          throw new Error("User disabled")
+        }
+      }
+      return { authKey: key, isAdmin: false, isUser: !!result.ownerId, apiKeyId: result.id, userId: result.ownerId }
+    }
+
+    // Check User Key - dashboard access only
+    if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
+      const userByKey = await getRepo().users.findByKey(key)
+      if (userByKey) {
+        return { authKey: key, isAdmin: false, isUser: true, apiKeyId: undefined, userId: userByKey.id }
+      }
     }
 
     throw new Error("Unauthorized")

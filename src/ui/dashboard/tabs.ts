@@ -107,11 +107,9 @@ export function renderUsersTab(): string {
               </div>
               <div class="flex items-center gap-3">
                 <span class="text-xs text-gray-600" x-text="timeAgo(inv.createdAt)"></span>
-                <template x-if="!inv.usedAt">
-                  <button @click="deleteInviteCode(inv.id)" class="text-gray-600 hover:text-accent-rose transition-colors">
-                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                  </button>
-                </template>
+                <button @click="deleteInviteCode(inv.id)" class="text-gray-600 hover:text-accent-rose transition-colors">
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                </button>
               </div>
             </div>
           </template>
@@ -164,7 +162,7 @@ export function renderUsersTab(): string {
 
 export function renderUpstreamTab(): string {
   return `
-    <template x-if="isAdmin">
+    <template x-if="isAdmin || isUser">
       <div x-show="tab === 'upstream'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
         <template x-if="meLoaded && githubAccounts.length === 0">
           <div class="glass-card p-6 mb-8 glow-border animate-in flex items-center justify-between">
@@ -254,8 +252,14 @@ export function renderUpstreamTab(): string {
                 <p class="text-xs text-gray-500">Plan: <span class="text-gray-300" x-text="usageData.copilot_plan"></span></p>
               </div>
             </template>
-            <template x-if="!usageData">
-              <div class="h-8 bg-surface-600 rounded animate-pulse"></div>
+            <template x-if="!usageData && !usageError">
+              <div class="space-y-2">
+                <div class="h-8 bg-surface-600 rounded animate-pulse"></div>
+                <div class="h-2 bg-surface-600 rounded animate-pulse"></div>
+              </div>
+            </template>
+            <template x-if="usageError">
+              <p class="text-sm text-gray-500">Unable to load</p>
             </template>
           </div>
 
@@ -273,8 +277,14 @@ export function renderUpstreamTab(): string {
                 <p class="text-xs text-gray-500">Code completions</p>
               </div>
             </template>
-            <template x-if="!usageData">
-              <div class="h-8 bg-surface-600 rounded animate-pulse"></div>
+            <template x-if="!usageData && !usageError">
+              <div class="space-y-2">
+                <div class="h-8 bg-surface-600 rounded animate-pulse"></div>
+                <div class="h-2 bg-surface-600 rounded animate-pulse"></div>
+              </div>
+            </template>
+            <template x-if="usageError">
+              <p class="text-sm text-gray-500">Unable to load</p>
             </template>
           </div>
         </div>
@@ -313,23 +323,28 @@ export function renderUpstreamTab(): string {
             <template x-if="meLoaded && githubAccounts.length > 0">
               <div class="space-y-1">
                 <template x-for="acct in githubAccounts" :key="acct.id">
-                  <div @click="!acct.active && acct.token_valid && switchGithubAccount(acct.id)" class="flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors"
-                    :class="!acct.token_valid ? 'bg-accent-rose/5 border border-accent-rose/15' : acct.active ? 'bg-accent-cyan/5 border border-accent-cyan/15' : 'hover:bg-white/[0.03] cursor-pointer border border-transparent'">
+                  <div @click="!acct.active && acct.token_valid && !(isAdmin && acct.owner_id) && switchGithubAccount(acct.id)" class="flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors"
+                    :class="isAdmin && acct.owner_id ? 'opacity-50 border border-white/[0.04]' : !acct.token_valid ? 'bg-accent-rose/5 border border-accent-rose/15' : acct.active ? 'bg-accent-cyan/5 border border-accent-cyan/15' : 'hover:bg-white/[0.03] cursor-pointer border border-transparent'">
                     <div class="flex items-center gap-3">
                       <div class="relative">
-                        <img :src="acct.avatar_url" class="w-9 h-9 rounded-lg ring-1 ring-white/5" :class="!acct.token_valid ? 'opacity-50' : ''" />
+                        <img :src="acct.avatar_url" class="w-9 h-9 rounded-lg ring-1 ring-white/5" :class="(!acct.token_valid || (isAdmin && acct.owner_id)) ? 'opacity-50' : ''" />
                         <div x-show="!acct.token_valid" class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-accent-rose ring-2 ring-surface-800"></div>
                         <div x-show="acct.token_valid && acct.active" class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-accent-emerald ring-2 ring-surface-800"></div>
                       </div>
                       <div>
-                        <p class="text-sm font-medium" :class="!acct.token_valid ? 'text-gray-400' : 'text-white'" x-text="acct.name || acct.login"></p>
-                        <p class="text-xs text-gray-500" x-text="'@' + acct.login"></p>
+                        <p class="text-sm font-medium" :class="(isAdmin && acct.owner_id) ? 'text-gray-500' : !acct.token_valid ? 'text-gray-400' : 'text-white'" x-text="acct.name || acct.login"></p>
+                        <div class="flex items-center gap-2">
+                          <p class="text-xs text-gray-500" x-text="'@' + acct.login"></p>
+                          <template x-if="isAdmin && acct.owner_name">
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-surface-700 text-gray-500" x-text="acct.owner_name"></span>
+                          </template>
+                        </div>
                       </div>
                     </div>
                     <div class="flex items-center gap-2">
                       <span x-show="!acct.token_valid" class="text-[10px] font-medium text-accent-rose uppercase tracking-widest">Token Expired</span>
                       <span x-show="acct.token_valid && acct.active" class="text-[10px] font-medium text-accent-emerald uppercase tracking-widest">Active</span>
-                      <button @click.stop="disconnectGithub(acct.id, acct.login)" class="text-gray-600 hover:text-accent-rose transition-colors p-1" title="Disconnect">
+                      <button x-show="!(isAdmin && acct.owner_id)" @click.stop="disconnectGithub(acct.id, acct.login)" class="text-gray-600 hover:text-accent-rose transition-colors p-1" title="Disconnect">
                         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <line x1="18" y1="6" x2="6" y2="18" />
                           <line x1="6" y1="6" x2="18" y2="18" />
@@ -405,6 +420,7 @@ export function renderKeysTab(): string {
               <thead>
                 <tr class="border-b border-white/5">
                   <th class="text-left py-2 pr-4 pl-7 text-xs font-medium text-gray-500 uppercase tracking-widest">Name</th>
+                  <th x-show="isAdmin" class="text-left py-2 pr-4 text-xs font-medium text-gray-500 uppercase tracking-widest">Owner</th>
                   <th class="text-left py-2 pr-4 text-xs font-medium text-gray-500 uppercase tracking-widest">Key</th>
                   <th class="text-left py-2 pr-4 text-xs font-medium text-gray-500 uppercase tracking-widest">Created</th>
                   <th class="text-left py-2 pr-4 text-xs font-medium text-gray-500 uppercase tracking-widest">Last Used</th>
@@ -420,6 +436,10 @@ export function renderKeysTab(): string {
                         <div class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors" :class="selectedKeyId === k.id ? 'bg-accent-cyan' : 'bg-transparent'"></div>
                         <span class="text-white font-medium" x-text="k.name"></span>
                       </div>
+                    </td>
+                    <td x-show="isAdmin" class="py-3 pr-4">
+                      <span x-show="k.owner_name" class="text-xs text-gray-400" x-text="k.owner_name"></span>
+                      <span x-show="!k.owner_name" class="text-xs text-gray-600">—</span>
                     </td>
                     <td class="py-3 pr-4">
                       <code class="text-xs font-mono text-gray-500 bg-surface-800 rounded px-2 py-1" x-text="truncateKey(k.key)"></code>
@@ -442,7 +462,7 @@ export function renderKeysTab(): string {
                             <polyline points="20 6 9 17 4 12" />
                           </svg>
                         </button>
-                        <template x-if="isAdmin">
+                        <template x-if="isAdmin || isUser">
                           <button @click.stop="deleteKeyById(k.id, k.name)" class="text-gray-600 hover:text-accent-rose transition-colors p-1" :disabled="keyDeleting === k.id" title="Delete key">
                             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                               <polyline points="3 6 5 6 21 6" />

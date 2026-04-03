@@ -30,7 +30,7 @@ export async function addGithubAccount(
 
 export async function removeGithubAccount(userId: number, ownerId?: string): Promise<void> {
   const repo = getRepo().github
-  await repo.deleteAccount(userId)
+  await repo.deleteAccount(userId, ownerId ?? "")
   if (ownerId) {
     const activeId = await repo.getActiveIdForUser(ownerId)
     if (activeId === userId) {
@@ -46,7 +46,7 @@ export async function removeGithubAccount(userId: number, ownerId?: string): Pro
 
 export async function setActiveGithubAccount(userId: number, ownerId?: string): Promise<boolean> {
   const repo = getRepo().github
-  const account = await repo.getAccount(userId)
+  const account = await repo.getAccount(userId, ownerId ?? "")
   if (!account) return false
   if (ownerId) {
     await repo.setActiveIdForUser(ownerId, userId)
@@ -62,7 +62,7 @@ export async function getActiveGithubAccount(ownerId?: string): Promise<GitHubAc
     ? await repo.getActiveIdForUser(ownerId)
     : await repo.getActiveId()
   if (activeId == null) return null
-  return repo.getAccount(activeId)
+  return repo.getAccount(activeId, ownerId ?? "")
 }
 
 export async function getGithubCredentials(ownerId?: string): Promise<GithubCredentials> {

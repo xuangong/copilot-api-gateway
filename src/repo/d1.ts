@@ -117,26 +117,32 @@ class D1GitHubRepo implements GitHubRepo {
     return results.map(toGitHubAccount)
   }
 
-  async getAccount(userId: number): Promise<GitHubAccount | null> {
+  async getAccount(userId: number, ownerId?: string): Promise<GitHubAccount | null> {
+    const ownerVal = ownerId ?? ""
     const row = await this.db
-      .prepare("SELECT user_id, token, account_type, login, name, avatar_url, owner_id FROM github_accounts WHERE user_id = ?")
-      .bind(userId)
+      .prepare("SELECT user_id, token, account_type, login, name, avatar_url, owner_id FROM github_accounts WHERE user_id = ? AND owner_id = ?")
+      .bind(userId, ownerVal)
       .first<{ user_id: number; token: string; account_type: string; login: string; name: string | null; avatar_url: string; owner_id: string | null }>()
     return row ? toGitHubAccount(row) : null
   }
 
   async saveAccount(userId: number, account: GitHubAccount): Promise<void> {
+    const ownerId = account.ownerId ?? ""
     await this.db
       .prepare(
         `INSERT INTO github_accounts (user_id, token, account_type, login, name, avatar_url, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (user_id) DO UPDATE SET token = excluded.token, account_type = excluded.account_type, login = excluded.login, name = excluded.name, avatar_url = excluded.avatar_url, owner_id = excluded.owner_id`,
+         ON CONFLICT (user_id, owner_id) DO UPDATE SET token = excluded.token, account_type = excluded.account_type, login = excluded.login, name = excluded.name, avatar_url = excluded.avatar_url`,
       )
-      .bind(userId, account.token, account.accountType, account.user.login, account.user.name, account.user.avatar_url, account.ownerId ?? null)
+      .bind(userId, account.token, account.accountType, account.user.login, account.user.name, account.user.avatar_url, ownerId)
       .run()
   }
 
-  async deleteAccount(userId: number): Promise<void> {
-    await this.db.prepare("DELETE FROM github_accounts WHERE user_id = ?").bind(userId).run()
+  async deleteAccount(userId: number, ownerId?: string): Promise<void> {
+    if (ownerId !== undefined) {
+      await this.db.prepare("DELETE FROM github_accounts WHERE user_id = ? AND owner_id = ?").bind(userId, ownerId).run()
+    } else {
+      await this.db.prepare("DELETE FROM github_accounts WHERE user_id = ?").bind(userId).run()
+    }
   }
 
   async deleteAllAccounts(): Promise<void> {
@@ -404,32 +410,41 @@ class D1UserRepo implements UserRepo {
 
   async create(user: User): Promise<void> {
     await this.db
-      .prepare("INSERT INTO users (id, name, created_at, disabled, last_login_at) VALUES (?, ?, ?, ?, ?)")
-      .bind(user.id, user.name, user.createdAt, user.disabled ? 1 : 0, user.lastLoginAt ?? null)
+      .prepare("INSERT INTO users (id, name, created_at, disabled, last_login_at, user_key) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(user.id, user.name, user.createdAt, user.disabled ? 1 : 0, user.lastLoginAt ?? null, user.userKey ?? null)
       .run()
   }
 
   async getById(id: string): Promise<User | null> {
     const row = await this.db
-      .prepare("SELECT id, name, created_at, disabled, last_login_at FROM users WHERE id = ?")
+      .prepare("SELECT id, name, created_at, disabled, last_login_at, user_key FROM users WHERE id = ?")
       .bind(id)
-      .first<{ id: string; name: string; created_at: string; disabled: number; last_login_at: string | null }>()
+      .first<{ id: string; name: string; created_at: string; disabled: number; last_login_at: string | null; user_key: string | null }>()
+    return row ? toUser(row) : null
+  }
+
+  async findByKey(userKey: string): Promise<User | null> {
+    const row = await this.db
+      .prepare("SELECT id, name, created_at, disabled, last_login_at, user_key FROM users WHERE user_key = ?")
+      .bind(userKey)
+      .first<{ id: string; name: string; created_at: string; disabled: number; last_login_at: string | null; user_key: string | null }>()
     return row ? toUser(row) : null
   }
 
   async list(): Promise<User[]> {
     const { results } = await this.db
-      .prepare("SELECT id, name, created_at, disabled, last_login_at FROM users ORDER BY created_at")
-      .all<{ id: string; name: string; created_at: string; disabled: number; last_login_at: string | null }>()
+      .prepare("SELECT id, name, created_at, disabled, last_login_at, user_key FROM users ORDER BY created_at")
+      .all<{ id: string; name: string; created_at: string; disabled: number; last_login_at: string | null; user_key: string | null }>()
     return results.map(toUser)
   }
 
-  async update(id: string, fields: Partial<Pick<User, "name" | "disabled" | "lastLoginAt">>): Promise<void> {
+  async update(id: string, fields: Partial<Pick<User, "name" | "disabled" | "lastLoginAt" | "userKey">>): Promise<void> {
     const sets: string[] = []
     const binds: unknown[] = []
     if (fields.name !== undefined) { sets.push("name = ?"); binds.push(fields.name) }
     if (fields.disabled !== undefined) { sets.push("disabled = ?"); binds.push(fields.disabled ? 1 : 0) }
     if (fields.lastLoginAt !== undefined) { sets.push("last_login_at = ?"); binds.push(fields.lastLoginAt) }
+    if (fields.userKey !== undefined) { sets.push("user_key = ?"); binds.push(fields.userKey) }
     if (sets.length === 0) return
     binds.push(id)
     await this.db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).bind(...binds).run()
@@ -440,8 +455,8 @@ class D1UserRepo implements UserRepo {
   }
 }
 
-function toUser(row: { id: string; name: string; created_at: string; disabled: number; last_login_at: string | null }): User {
-  return { id: row.id, name: row.name, createdAt: row.created_at, disabled: row.disabled === 1, lastLoginAt: row.last_login_at ?? undefined }
+function toUser(row: { id: string; name: string; created_at: string; disabled: number; last_login_at: string | null; user_key?: string | null }): User {
+  return { id: row.id, name: row.name, createdAt: row.created_at, disabled: row.disabled === 1, lastLoginAt: row.last_login_at ?? undefined, userKey: row.user_key ?? undefined }
 }
 
 class D1InviteCodeRepo implements InviteCodeRepo {

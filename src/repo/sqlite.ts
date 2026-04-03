@@ -29,13 +29,14 @@ CREATE TABLE IF NOT EXISTS api_keys (
 );
 
 CREATE TABLE IF NOT EXISTS github_accounts (
-  user_id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL,
   token TEXT NOT NULL,
   account_type TEXT NOT NULL DEFAULT 'individual',
   login TEXT NOT NULL,
   name TEXT,
   avatar_url TEXT,
-  owner_id TEXT
+  owner_id TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (user_id, owner_id)
 );
 
 CREATE TABLE IF NOT EXISTS config (
@@ -76,7 +77,8 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   created_at TEXT NOT NULL,
   disabled INTEGER NOT NULL DEFAULT 0,
-  last_login_at TEXT
+  last_login_at TEXT,
+  user_key TEXT UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS invite_codes (
@@ -149,20 +151,26 @@ class SqliteGitHubRepo implements GitHubRepo {
     return this.db.query<any, [string]>("SELECT user_id, token, account_type, login, name, avatar_url, owner_id FROM github_accounts WHERE owner_id = ?").all(ownerId).map(toGitHubAccount)
   }
 
-  async getAccount(userId: number): Promise<GitHubAccount | null> {
-    const row = this.db.query<any, [number]>("SELECT user_id, token, account_type, login, name, avatar_url, owner_id FROM github_accounts WHERE user_id = ?").get(userId)
+  async getAccount(userId: number, ownerId?: string): Promise<GitHubAccount | null> {
+    const ownerVal = ownerId ?? ""
+    const row = this.db.query<any, [number, string]>("SELECT user_id, token, account_type, login, name, avatar_url, owner_id FROM github_accounts WHERE user_id = ? AND owner_id = ?").get(userId, ownerVal)
     return row ? toGitHubAccount(row) : null
   }
 
   async saveAccount(userId: number, account: GitHubAccount): Promise<void> {
+    const ownerId = account.ownerId ?? ""
     this.db.query(
       `INSERT INTO github_accounts (user_id, token, account_type, login, name, avatar_url, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (user_id) DO UPDATE SET token = excluded.token, account_type = excluded.account_type, login = excluded.login, name = excluded.name, avatar_url = excluded.avatar_url, owner_id = excluded.owner_id`,
-    ).run(userId, account.token, account.accountType, account.user.login, account.user.name, account.user.avatar_url, account.ownerId ?? null)
+       ON CONFLICT (user_id, owner_id) DO UPDATE SET token = excluded.token, account_type = excluded.account_type, login = excluded.login, name = excluded.name, avatar_url = excluded.avatar_url`,
+    ).run(userId, account.token, account.accountType, account.user.login, account.user.name, account.user.avatar_url, ownerId)
   }
 
-  async deleteAccount(userId: number): Promise<void> {
-    this.db.query("DELETE FROM github_accounts WHERE user_id = ?").run(userId)
+  async deleteAccount(userId: number, ownerId?: string): Promise<void> {
+    if (ownerId !== undefined) {
+      this.db.query("DELETE FROM github_accounts WHERE user_id = ? AND owner_id = ?").run(userId, ownerId)
+    } else {
+      this.db.query("DELETE FROM github_accounts WHERE user_id = ?").run(userId)
+    }
   }
 
   async deleteAllAccounts(): Promise<void> {
@@ -295,25 +303,31 @@ class SqliteUserRepo implements UserRepo {
   constructor(private db: Database) {}
 
   async create(user: User): Promise<void> {
-    this.db.query("INSERT INTO users (id, name, created_at, disabled, last_login_at) VALUES (?, ?, ?, ?, ?)").run(user.id, user.name, user.createdAt, user.disabled ? 1 : 0, user.lastLoginAt ?? null)
+    this.db.query("INSERT INTO users (id, name, created_at, disabled, last_login_at, user_key) VALUES (?, ?, ?, ?, ?, ?)").run(user.id, user.name, user.createdAt, user.disabled ? 1 : 0, user.lastLoginAt ?? null, user.userKey ?? null)
   }
 
   async getById(id: string): Promise<User | null> {
-    const row = this.db.query<any, [string]>("SELECT id, name, created_at, disabled, last_login_at FROM users WHERE id = ?").get(id)
-    return row ? { id: row.id, name: row.name, createdAt: row.created_at, disabled: row.disabled === 1, lastLoginAt: row.last_login_at ?? undefined } : null
+    const row = this.db.query<any, [string]>("SELECT id, name, created_at, disabled, last_login_at, user_key FROM users WHERE id = ?").get(id)
+    return row ? { id: row.id, name: row.name, createdAt: row.created_at, disabled: row.disabled === 1, lastLoginAt: row.last_login_at ?? undefined, userKey: row.user_key ?? undefined } : null
+  }
+
+  async findByKey(userKey: string): Promise<User | null> {
+    const row = this.db.query<any, [string]>("SELECT id, name, created_at, disabled, last_login_at, user_key FROM users WHERE user_key = ?").get(userKey)
+    return row ? { id: row.id, name: row.name, createdAt: row.created_at, disabled: row.disabled === 1, lastLoginAt: row.last_login_at ?? undefined, userKey: row.user_key ?? undefined } : null
   }
 
   async list(): Promise<User[]> {
-    return this.db.query<any, []>("SELECT id, name, created_at, disabled, last_login_at FROM users ORDER BY created_at").all()
-      .map((r: any) => ({ id: r.id, name: r.name, createdAt: r.created_at, disabled: r.disabled === 1, lastLoginAt: r.last_login_at ?? undefined }))
+    return this.db.query<any, []>("SELECT id, name, created_at, disabled, last_login_at, user_key FROM users ORDER BY created_at").all()
+      .map((r: any) => ({ id: r.id, name: r.name, createdAt: r.created_at, disabled: r.disabled === 1, lastLoginAt: r.last_login_at ?? undefined, userKey: r.user_key ?? undefined }))
   }
 
-  async update(id: string, fields: Partial<Pick<User, "name" | "disabled" | "lastLoginAt">>): Promise<void> {
+  async update(id: string, fields: Partial<Pick<User, "name" | "disabled" | "lastLoginAt" | "userKey">>): Promise<void> {
     const sets: string[] = []
     const binds: any[] = []
     if (fields.name !== undefined) { sets.push("name = ?"); binds.push(fields.name) }
     if (fields.disabled !== undefined) { sets.push("disabled = ?"); binds.push(fields.disabled ? 1 : 0) }
     if (fields.lastLoginAt !== undefined) { sets.push("last_login_at = ?"); binds.push(fields.lastLoginAt) }
+    if (fields.userKey !== undefined) { sets.push("user_key = ?"); binds.push(fields.userKey) }
     if (sets.length === 0) return
     binds.push(id)
     this.db.query(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).run(...binds)
@@ -411,6 +425,34 @@ function migrateSchema(db: Database): void {
         FROM latency_old;
       DROP TABLE latency_old;
       CREATE INDEX IF NOT EXISTS idx_latency_hour ON latency (hour);
+    `)
+  }
+  // Add user_key to users table
+  if (!hasColumn(db, "users", "user_key")) {
+    db.exec("ALTER TABLE users ADD COLUMN user_key TEXT")
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_key ON users(user_key)")
+  }
+  // Migrate github_accounts to composite PK (user_id, owner_id)
+  const pkInfo = db.query<{ name: string }, []>("PRAGMA table_info(github_accounts)").all()
+  const ownerCol = pkInfo.find(c => c.name === "owner_id")
+  // If owner_id column is missing pk flag or allows NULL, rebuild with composite PK
+  if (ownerCol && (ownerCol as any).pk === 0) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS github_accounts_new (
+        user_id INTEGER NOT NULL,
+        token TEXT NOT NULL,
+        account_type TEXT NOT NULL DEFAULT 'individual',
+        login TEXT NOT NULL,
+        name TEXT,
+        avatar_url TEXT,
+        owner_id TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (user_id, owner_id)
+      );
+      INSERT OR IGNORE INTO github_accounts_new (user_id, token, account_type, login, name, avatar_url, owner_id)
+        SELECT user_id, token, account_type, login, name, avatar_url, COALESCE(owner_id, '')
+        FROM github_accounts;
+      DROP TABLE github_accounts;
+      ALTER TABLE github_accounts_new RENAME TO github_accounts;
     `)
   }
 }

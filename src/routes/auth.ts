@@ -71,9 +71,9 @@ export const authRoute = new Elysia({ prefix: "/auth" })
       const session = await repo.sessions.findByToken(key)
       if (session && new Date(session.expiresAt) > new Date()) {
         const user = await repo.users.getById(session.userId)
-        if (user && !user.disabled) {
+        if (user) {
           await repo.users.update(user.id, { lastLoginAt: new Date().toISOString() })
-          return { ok: true, isAdmin: false, isUser: true, userId: user.id, userName: user.name, sessionToken: key }
+          return { ok: true, isAdmin: false, isUser: true, userId: user.id, userName: user.name, sessionToken: key, disabled: user.disabled }
         }
       }
       return new Response(JSON.stringify({ error: "Invalid or expired session" }), {
@@ -96,46 +96,112 @@ export const authRoute = new Elysia({ prefix: "/auth" })
       }
     }
 
-    // 4. Check invite code
+    // 4. Check User Key (user's personal login key)
     const repo = getRepo()
-    const invite = await repo.inviteCodes.findByCode(key)
-    if (invite && !invite.usedAt) {
-      // Redeem invite: create user + session
-      const userId = crypto.randomUUID()
+    const userByKey = await repo.users.findByKey(key)
+    if (userByKey) {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)
       const sessionToken = generateSessionToken()
-
-      await repo.users.create({
-        id: userId,
-        name: invite.name,
-        createdAt: now.toISOString(),
-        disabled: false,
-        lastLoginAt: now.toISOString(),
-      })
-      await repo.inviteCodes.markUsed(invite.id, userId)
       await repo.sessions.create({
         token: sessionToken,
-        userId,
+        userId: userByKey.id,
         createdAt: now.toISOString(),
         expiresAt: expiresAt.toISOString(),
       })
-
+      await repo.users.update(userByKey.id, { lastLoginAt: now.toISOString() })
       return {
         ok: true,
         isAdmin: false,
         isUser: true,
-        userId,
-        userName: invite.name,
+        userId: userByKey.id,
+        userName: userByKey.name,
         sessionToken,
-        invited: true,
+        disabled: userByKey.disabled,
       }
+    }
+
+    // 5. Check invite code (unused only → prompt to set User Key)
+    const invite = await repo.inviteCodes.findByCode(key)
+    if (invite && !invite.usedAt) {
+      return { ok: false, needSetKey: true, name: invite.name }
     }
 
     return new Response(JSON.stringify({ error: "Invalid key" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
     })
+  })
+
+  // POST /auth/register - register with invite code + set User Key
+  .post("/register", async (ctx) => {
+    const { body } = ctx
+    const { inviteCode, userKey } = body as { inviteCode: string; userKey: string }
+
+    if (!inviteCode || !userKey) {
+      return new Response(JSON.stringify({ error: "inviteCode and userKey are required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    if (userKey.length < 8) {
+      return new Response(JSON.stringify({ error: "User Key must be at least 8 characters" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    const repo = getRepo()
+
+    // Validate invite code
+    const invite = await repo.inviteCodes.findByCode(inviteCode)
+    if (!invite || invite.usedAt) {
+      return new Response(JSON.stringify({ error: "Invalid or already used invite code" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    // Check User Key uniqueness
+    const existing = await repo.users.findByKey(userKey)
+    if (existing) {
+      return new Response(JSON.stringify({ error: "This User Key is already taken, please choose another" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    // Create user with User Key
+    const userId = crypto.randomUUID()
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)
+    const sessionToken = generateSessionToken()
+
+    await repo.users.create({
+      id: userId,
+      name: invite.name,
+      createdAt: now.toISOString(),
+      disabled: false,
+      lastLoginAt: now.toISOString(),
+      userKey,
+    })
+    await repo.inviteCodes.markUsed(invite.id, userId)
+    await repo.sessions.create({
+      token: sessionToken,
+      userId,
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    })
+
+    return {
+      ok: true,
+      isAdmin: false,
+      isUser: true,
+      userId,
+      userName: invite.name,
+      sessionToken,
+    }
   })
 
   // POST /auth/logout - no-op
@@ -272,6 +338,22 @@ export const authRoute = new Elysia({ prefix: "/auth" })
       }
     }
 
+    // For admin: build owner name lookup for accounts that belong to users
+    let ownerNameMap: Map<string, string> | null = null
+    if (isAdmin) {
+      const ownerIds = new Set(accounts.map((a) => a.ownerId).filter((id): id is string => !!id))
+      if (ownerIds.size > 0) {
+        const repo = getRepo()
+        const entries = await Promise.all(
+          [...ownerIds].map(async (id) => {
+            const user = await repo.users.getById(id)
+            return [id, user?.name ?? id] as const
+          }),
+        )
+        ownerNameMap = new Map(entries)
+      }
+    }
+
     // Check token validity for each account in parallel
     const healthChecks = await Promise.allSettled(
       accounts.map(async (a) => {
@@ -301,6 +383,7 @@ export const authRoute = new Elysia({ prefix: "/auth" })
         account_type: a.accountType,
         active: active?.user.id === a.user.id,
         token_valid: (() => { const r = healthChecks[i]; return r && r.status === "fulfilled" && r.value })(),
+        ...(isAdmin ? { owner_id: a.ownerId || null, owner_name: (a.ownerId && ownerNameMap?.get(a.ownerId)) || null } : {}),
       })),
     }
   })
@@ -455,7 +538,7 @@ export const authRoute = new Elysia({ prefix: "/auth" })
     }
     const accounts = await repo.github.listAccountsByOwner(userId)
     for (const a of accounts) {
-      await repo.github.deleteAccount(a.user.id)
+      await repo.github.deleteAccount(a.user.id, userId)
     }
     await repo.github.clearActiveIdForUser(userId)
     await repo.users.delete(userId)

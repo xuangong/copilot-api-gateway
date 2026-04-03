@@ -201,7 +201,8 @@ const response = await ai.models.generateContent({
 - 每个用户只能看到自己的 GitHub 账号、API key、用量数据
 - API key 绑定创建者的 Copilot 账号，调用时使用对应用户的 token
 - Admin 可以查看所有用户、禁用/启用/删除用户
-- 用户被禁用后，其所有 API key 和会话立即失效
+- 用户被禁用后，其所有 API key 无法调用 AI API（Dashboard 仍可登录查看）；重新启用后立即恢复
+- 用户被删除后，其所有 API key、GitHub 账号、会话数据一并清除
 
 ## 环境变量
 

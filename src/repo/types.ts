@@ -36,6 +36,7 @@ export interface User {
   createdAt: string
   disabled: boolean
   lastLoginAt?: string
+  userKey?: string
 }
 
 export interface InviteCode {
@@ -67,9 +68,9 @@ export interface ApiKeyRepo {
 export interface GitHubRepo {
   listAccounts(): Promise<GitHubAccount[]>
   listAccountsByOwner(ownerId: string): Promise<GitHubAccount[]>
-  getAccount(userId: number): Promise<GitHubAccount | null>
+  getAccount(userId: number, ownerId?: string): Promise<GitHubAccount | null>
   saveAccount(userId: number, account: GitHubAccount): Promise<void>
-  deleteAccount(userId: number): Promise<void>
+  deleteAccount(userId: number, ownerId?: string): Promise<void>
   deleteAllAccounts(): Promise<void>
   getActiveId(): Promise<number | null>
   setActiveId(userId: number): Promise<void>
@@ -132,8 +133,9 @@ export interface LatencyRepo {
 export interface UserRepo {
   create(user: User): Promise<void>
   getById(id: string): Promise<User | null>
+  findByKey(userKey: string): Promise<User | null>
   list(): Promise<User[]>
-  update(id: string, fields: Partial<Pick<User, "name" | "disabled" | "lastLoginAt">>): Promise<void>
+  update(id: string, fields: Partial<Pick<User, "name" | "disabled" | "lastLoginAt" | "userKey">>): Promise<void>
   delete(id: string): Promise<void>
 }
 

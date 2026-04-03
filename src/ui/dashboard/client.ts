@@ -115,7 +115,8 @@ export function dashboardAssets(): string {
       get activeKey() {
         const sel = this.selectedKeyId && this.keys.find((k) => k.id === this.selectedKeyId);
         if (sel) return sel.key;
-        return this.isAdmin ? '<your-api-key>' : this.authKey;
+        if (this.keys.length > 0) return this.keys[0].key;
+        return '<your-api-key>';
       },
 
       truncateKey(key) {

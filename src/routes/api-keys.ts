@@ -9,9 +9,10 @@ import {
   deleteApiKey,
   type ApiKey,
 } from "~/lib/api-keys"
+import { getRepo } from "~/repo"
 
-function keyToJson(k: ApiKey) {
-  return { id: k.id, name: k.name, key: k.key, created_at: k.createdAt, last_used_at: k.lastUsedAt ?? null, owner_id: k.ownerId ?? null }
+function keyToJson(k: ApiKey, ownerName?: string) {
+  return { id: k.id, name: k.name, key: k.key, created_at: k.createdAt, last_used_at: k.lastUsedAt ?? null, owner_id: k.ownerId ?? null, owner_name: ownerName ?? null }
 }
 
 interface AuthCtx {
@@ -36,7 +37,14 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
 
     if (isAdmin) {
       const keys = await listApiKeys()
-      return keys.map(keyToJson)
+      const repo = getRepo()
+      const ownerIds = [...new Set(keys.map(k => k.ownerId).filter(Boolean))] as string[]
+      const ownerMap = new Map<string, string>()
+      await Promise.all(ownerIds.map(async (id) => {
+        const user = await repo.users.getById(id)
+        if (user) ownerMap.set(id, user.name)
+      }))
+      return keys.map(k => keyToJson(k, k.ownerId ? ownerMap.get(k.ownerId) : undefined))
     }
 
     // User: return their own keys

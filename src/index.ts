@@ -213,6 +213,11 @@ function createApp(env: Env) {
       if (result) {
         return { authKey: key, isAdmin: false, isUser: !!result.ownerId, apiKeyId: result.id, userId: result.ownerId }
       }
+      // Check User Key on auth routes
+      const userByKey = await getRepo().users.findByKey(key)
+      if (userByKey && !userByKey.disabled) {
+        return { authKey: key, isAdmin: false, isUser: true, apiKeyId: undefined, userId: userByKey.id }
+      }
       // Invalid key but on auth route - allow anyway (will be handled by route)
       return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
     }
@@ -240,8 +245,8 @@ function createApp(env: Env) {
         throw new Error("Session expired")
       }
       const user = await repo.users.getById(session.userId)
-      if (!user || user.disabled) {
-        throw new Error("User disabled")
+      if (!user) {
+        throw new Error("User not found")
       }
       if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
         return { authKey: key, isAdmin: false, isUser: true, apiKeyId: undefined, userId: session.userId }
@@ -252,8 +257,8 @@ function createApp(env: Env) {
     // Check API key - full access
     const result = await validateApiKey(key)
     if (result) {
-      // Check if the owner user is disabled
-      if (result.ownerId) {
+      // Block disabled users from API routes (dashboard access still allowed)
+      if (result.ownerId && !DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
         const repo = getRepo()
         const user = await repo.users.getById(result.ownerId)
         if (user?.disabled) {
@@ -261,6 +266,15 @@ function createApp(env: Env) {
         }
       }
       return { authKey: key, isAdmin: false, isUser: !!result.ownerId, apiKeyId: result.id, userId: result.ownerId }
+    }
+
+    // Check User Key - dashboard access only (same as session token)
+    if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
+      const repo = getRepo()
+      const userByKey = await repo.users.findByKey(key)
+      if (userByKey) {
+        return { authKey: key, isAdmin: false, isUser: true, apiKeyId: undefined, userId: userByKey.id }
+      }
     }
 
     throw new Error("Unauthorized")
