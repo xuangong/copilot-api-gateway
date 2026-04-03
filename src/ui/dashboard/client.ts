@@ -68,11 +68,24 @@ export function dashboardAssets(): string {
       claudeSmallModel: '',
       codexModels: [],
       codexModel: '',
+      geminiModels: [],
+      geminiModel: '',
+      configTab: 'claude',
       tokenRange: 'today',
       tokenData: [],
       tokenChart: null,
       tokenLoading: false,
       tokenSummary: { requests: 0, input: 0, output: 0 },
+      tokenByModel: [],
+      hoveredModel: null,
+
+      modelColors: ['#22d3ee','#a78bfa','#34d399','#fb923c','#f472b6','#60a5fa','#fbbf24','#e879f9','#4ade80','#f87171'],
+
+      modelPercent(field) {
+        const total = this.tokenByModel.reduce((s, m) => s + m[field], 0);
+        if (!total) return this.tokenByModel.map(() => 0);
+        return this.tokenByModel.map((m) => Math.round(m[field] / total * 1000) / 10);
+      },
       exportLoading: false,
       importFile: null,
       importData: null,
@@ -86,6 +99,8 @@ export function dashboardAssets(): string {
       latencySummary: { avgTotal: 0, avgUpstream: 0, avgTtfb: 0, tokenMissRate: 0 },
       latencyByColo: [],
       latencyByType: [],
+      latencyModels: [],
+      latencyModel: '',
 
       // User management (admin)
       adminUsers: [],
@@ -149,14 +164,27 @@ export function dashboardAssets(): string {
             '[model_providers.copilot_gateway]',
             'name = "Copilot Gateway"',
             'base_url = "' + this.baseUrl + '/"',
-            'env_key = "COPILOT_GATEWAY_API_KEY"',
+            'env_key = "OPENAI_API_KEY"',
             'wire_api = "responses"',
           ];
           return lines.join('\\n');
         },
 
         codexEnvSnippet() {
-          return 'export COPILOT_GATEWAY_API_KEY=' + this.activeKey;
+          return 'export OPENAI_API_KEY=' + this.activeKey;
+        },
+
+        codexStartSnippet() {
+          return 'codex -c model_provider=copilot_gateway -m ' + this.codexModel;
+        },
+
+        geminiSnippet() {
+          const lines = [
+            'export GEMINI_API_KEY=' + this.activeKey,
+            'export GEMINI_API_BASE_URL=' + this.baseUrl,
+            'export GEMINI_MODEL=' + this.geminiModel,
+          ];
+          return lines.join('\\n');
         },
 
         init() {
@@ -267,10 +295,15 @@ export function dashboardAssets(): string {
               this.claudeSmallModel = this.claudeModelsSmall[0] || '';
 
               this.codexModels = data
-                .filter((m) => m.supported_endpoints?.includes('/responses'))
+                .filter((m) => m.id.startsWith('gpt-') && m.supported_endpoints?.includes('/responses'))
                 .map((m) => m.id)
                 .sort(sortCodex);
               this.codexModel = this.codexModels[0] || '';
+
+              this.geminiModels = data
+                .filter((m) => m.id.startsWith('gemini-'))
+                .map((m) => m.id);
+              this.geminiModel = this.geminiModels[0] || '';
 
               this.modelsLoaded = true;
             } catch {}
@@ -634,6 +667,21 @@ export function dashboardAssets(): string {
             }
             this.tokenSummary = { requests: totalReqs, input: totalIn, output: totalOut };
 
+            // Per-model breakdown
+            const modelMap = new Map();
+            for (const r of data) {
+              const m = r.model || 'unknown';
+              const existing = modelMap.get(m);
+              if (existing) {
+                existing.requests += r.requests;
+                existing.input += r.inputTokens;
+                existing.output += r.outputTokens;
+              } else {
+                modelMap.set(m, { model: m, requests: r.requests, input: r.inputTokens, output: r.outputTokens });
+              }
+            }
+            this.tokenByModel = [...modelMap.values()].sort((a, b) => (b.input + b.output) - (a.input + a.output));
+
             const bucketMap = new Map();
             const now = new Date();
             if (this.tokenRange === 'today') {
@@ -792,7 +840,15 @@ export function dashboardAssets(): string {
             if (!canvas || canvas.clientWidth === 0) return;
 
             const isDaily = this.latencyRange !== 'today';
-            const data = this.latencyData;
+            const allData = this.latencyData;
+
+            // Extract unique models for the filter dropdown
+            const modelSet = new Set();
+            for (const r of allData) if (r.model) modelSet.add(r.model);
+            this.latencyModels = [...modelSet].sort();
+
+            // Filter by selected model
+            const data = this.latencyModel ? allData.filter((r) => r.model === this.latencyModel) : allData;
 
             // Compute summary
             let totalReqs = 0, sumTotal = 0, sumUpstream = 0, sumTtfb = 0, sumMiss = 0;
@@ -990,6 +1046,11 @@ export function dashboardAssets(): string {
           switchLatencyRange(range) {
             this.latencyRange = range;
             this.loadLatencyData();
+          },
+
+          switchLatencyModel(model) {
+            this.latencyModel = model;
+            this.$nextTick().then(() => this.renderLatencyChart());
           },
 
           async exportData() {

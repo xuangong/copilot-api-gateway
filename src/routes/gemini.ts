@@ -13,6 +13,7 @@ import {
   type ChatCompletionChunk,
 } from "~/services/gemini/format-conversion"
 import type { GeminiGenerateContentRequest } from "~/services/gemini/types"
+import { createSSETransform } from "~/lib/sse-transform"
 
 interface RouteContext {
   state: AppState
@@ -23,14 +24,21 @@ interface RouteContext {
   params: { modelWithMethod: string }
 }
 
-const STREAM_DONE_MARKER = "[DONE]"
+
+// Map unsupported Gemini model names to supported Copilot equivalents
+const GEMINI_MODEL_MAP: Record<string, string> = {
+  "gemini-2.5-flash-lite": "gemini-3-flash-preview",
+  "gemini-2.5-flash": "gemini-3-flash-preview",
+}
 
 function extractModelId(modelWithMethod: string): string {
   const parts = modelWithMethod.split(/[:\/]/)
   if (parts.length === 0 || !parts[0]) {
     throw new Error("Invalid model parameter")
   }
-  return parts[0]
+  // Strip Gemini CLI suffixes like "-customtools"
+  const raw = parts[0].replace(/-customtools$/, "")
+  return GEMINI_MODEL_MAP[raw] ?? raw
 }
 
 function isGenerateContentRequest(modelWithMethod: string): boolean {
@@ -55,10 +63,13 @@ async function handleGenerateContent(ctx: RouteContext) {
   const openAIPayload = translateGeminiToOpenAI(body, model)
   openAIPayload.stream = false
 
+  // Strip undefined/null values to avoid sending them
+  const cleanPayload = JSON.parse(JSON.stringify(openAIPayload)) as Record<string, unknown>
+
   const upstreamTimer = startTimer()
   const response = await callCopilotAPI({
     endpoint: "/chat/completions",
-    payload: openAIPayload as unknown as Record<string, unknown>,
+    payload: cleanPayload,
     operationName: "gemini generate content",
     copilotToken: state.copilotToken,
     accountType: state.accountType,
@@ -114,10 +125,13 @@ async function handleStreamGenerateContent(
   const openAIPayload = translateGeminiToOpenAI(body, model)
   openAIPayload.stream = true
 
+  // Strip undefined/null values to avoid sending them
+  const cleanPayload = JSON.parse(JSON.stringify(openAIPayload)) as Record<string, unknown>
+
   const upstreamTimer = startTimer()
   const response = await callCopilotAPI({
     endpoint: "/chat/completions",
-    payload: openAIPayload as unknown as Record<string, unknown>,
+    payload: cleanPayload,
     operationName: "gemini stream generate content",
     copilotToken: state.copilotToken,
     accountType: state.accountType,
@@ -143,36 +157,22 @@ async function handleStreamGenerateContent(
   const streamState = createStreamState(model)
   const encoder = new TextEncoder()
 
-  const transformStream = new TransformStream({
-    transform(chunk: Uint8Array, controller) {
-      const text = new TextDecoder().decode(chunk)
-      const lines = text.split("\n")
+  const transformStream = createSSETransform((data) => {
+    try {
+      const openAIChunk = JSON.parse(data) as ChatCompletionChunk
+      const geminiChunk = translateChunkToGemini(openAIChunk, streamState)
 
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue
-        const data = line.slice(6).trim()
-        if (data === STREAM_DONE_MARKER || !data) continue
-
-        try {
-          const openAIChunk = JSON.parse(data) as ChatCompletionChunk
-          const geminiChunk = translateChunkToGemini(openAIChunk, streamState)
-
-          if (geminiChunk) {
-            if (useSSE) {
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify(geminiChunk)}\n\n`),
-              )
-            } else {
-              controller.enqueue(
-                encoder.encode(JSON.stringify(geminiChunk) + "\n"),
-              )
-            }
-          }
-        } catch {
-          // Skip invalid JSON chunks
+      if (geminiChunk) {
+        if (useSSE) {
+          return encoder.encode(`data: ${JSON.stringify(geminiChunk)}\n\n`)
+        } else {
+          return encoder.encode(JSON.stringify(geminiChunk) + "\n")
         }
       }
-    },
+    } catch {
+      // Skip invalid JSON chunks
+    }
+    return null
   })
 
   const transformedBody = response.body?.pipeThrough(transformStream)

@@ -141,21 +141,34 @@ export function translateGeminiToOpenAI(
   // Handle tool choice
   const toolChoice = translateGeminiToolConfigToOpenAI(request.toolConfig)
 
-  return {
-    model,
-    messages,
-    max_tokens: request.generationConfig?.maxOutputTokens,
-    temperature: request.generationConfig?.temperature,
-    top_p: request.generationConfig?.topP,
-    stop: request.generationConfig?.stopSequences,
-    tools,
-    tool_choice: toolChoice,
-    n: request.generationConfig?.candidateCount,
-    response_format:
-      request.generationConfig?.responseMimeType === "application/json"
-        ? { type: "json_object" }
-        : undefined,
+  const result: ChatCompletionsPayload = { model, messages }
+
+  if (request.generationConfig?.maxOutputTokens != null) {
+    result.max_tokens = request.generationConfig.maxOutputTokens
   }
+  if (request.generationConfig?.temperature != null) {
+    result.temperature = request.generationConfig.temperature
+  }
+  if (request.generationConfig?.topP != null) {
+    result.top_p = request.generationConfig.topP
+  }
+  if (request.generationConfig?.stopSequences?.length) {
+    result.stop = request.generationConfig.stopSequences
+  }
+  if (tools) {
+    result.tools = tools
+  }
+  if (toolChoice) {
+    result.tool_choice = toolChoice
+  }
+  if (request.generationConfig?.candidateCount != null && request.generationConfig.candidateCount > 1) {
+    result.n = request.generationConfig.candidateCount
+  }
+  if (request.generationConfig?.responseMimeType === "application/json") {
+    result.response_format = { type: "json_object" }
+  }
+
+  return result
 }
 
 function convertContentToMessages(
@@ -272,12 +285,16 @@ function translateGeminiToolsToOpenAI(
   for (const tool of tools) {
     if (tool.functionDeclarations) {
       for (const func of tool.functionDeclarations) {
+        // Ensure parameters is a valid JSON Schema; empty {} causes 400 on some backends
+        const params = func.parameters && Object.keys(func.parameters).length > 0
+          ? func.parameters
+          : { type: "object", properties: {} }
         result.push({
           type: "function",
           function: {
             name: func.name,
             description: func.description,
-            parameters: func.parameters || {},
+            parameters: params,
           },
         })
       }

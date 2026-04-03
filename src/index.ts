@@ -34,6 +34,10 @@ function extractKey(request: Request): string | null {
   const apiKey = request.headers.get("x-api-key")
   if (apiKey) return apiKey
 
+  // Gemini SDK sends API key via x-goog-api-key header
+  const googApiKey = request.headers.get("x-goog-api-key")
+  if (googApiKey) return googApiKey
+
   const auth = request.headers.get("authorization")
   if (auth?.toLowerCase().startsWith("bearer ")) {
     return auth.slice(7)

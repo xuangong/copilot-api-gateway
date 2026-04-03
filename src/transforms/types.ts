@@ -83,11 +83,20 @@ export interface AnthropicTool {
 export interface ResponsesPayload {
   model: string
   input: string | ResponseInputItem[]
+  instructions?: string
   tools?: ResponseTool[] | null
   stream?: boolean
+  temperature?: number
+  top_p?: number
+  max_output_tokens?: number
+  tool_choice?: string | { type: string; name?: string }
+  parallel_tool_calls?: boolean
+  truncation?: string
+  store?: boolean
+  metadata?: Record<string, string> | null
   reasoning?: {
     effort: "low" | "medium" | "high"
-    summary: "detailed" | "auto"
+    summary?: "detailed" | "auto"
   }
 }
 

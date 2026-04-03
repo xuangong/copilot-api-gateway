@@ -1,16 +1,17 @@
 # Copilot API Gateway
 
-将 GitHub Copilot API 转换为标准 AI SDK 接口的网关代理。支持 **Anthropic**、**OpenAI**、**Google Gemini** 三大 SDK 直接对接，开箱即用。
+将 GitHub Copilot API 转换为标准 AI SDK 接口的网关代理。让 **Claude Code**、**Codex CLI**、**Gemini CLI** 三大 AI 编程工具直接使用你的 GitHub Copilot 订阅，无需额外 API 费用。
 
 基于 **Elysia + Bun** 构建，支持部署到 **Cloudflare Workers**（D1 + KV）或通过 **Docker** 自托管。
 
 ## 特性
 
+- **三大 CLI 直连** — Claude Code、OpenAI Codex CLI、Google Gemini CLI 开箱即用
 - **多 SDK 兼容** — 同时支持 Anthropic Messages API、OpenAI Chat Completions / Responses API、Google Gemini API
 - **多用户隔离** — Admin 通过邀请码邀请用户，每个用户独立绑定自己的 GitHub Copilot 账号，API key 和用量数据完全隔离
 - **Web Search** — 内置 Web 搜索工具，支持 LangSearch / Tavily / Bing 三引擎自动降级
-- **Dashboard** — 暗色风格管理面板，支持 GitHub 账号管理、API key 管理、用量统计、延迟监控
-- **兼容性修复** — 自动处理 Copilot API 的 6 项兼容性问题（billing header、工具类型、thinking 块等）
+- **Dashboard** — 暗色风格管理面板，支持 GitHub 账号管理、API key 管理、用量统计（按模型分）、延迟监控（按模型筛选）、三大 CLI 配置指引
+- **兼容性修复** — 自动处理 Copilot API 的兼容性问题（billing header、工具类型、thinking 块、Gemini model mapping 等）
 - **双部署模式** — Cloudflare Workers（全球边缘 + Smart Placement）或 Docker 自托管
 - **SDK 集成测试** — 适配自官方 SDK 仓库的测试用例，确保真实兼容性
 
@@ -63,7 +64,8 @@ bun run local:watch    # 热重载开发服务器，端口 41414
 |------|------|-----|
 | `POST /v1/messages` | Messages API | Anthropic SDK |
 | `POST /v1/messages/count_tokens` | Token 计数 | Anthropic SDK |
-| `POST /v1/responses` | Responses API | OpenAI SDK |
+| `POST /v1/responses` | Responses API | OpenAI SDK / Codex CLI |
+| `POST /responses` | Responses API（无 /v1 前缀） | Codex CLI |
 | `POST /chat/completions` | Chat Completions | OpenAI SDK |
 | `POST /v1beta/models/{model}:generateContent` | Generate Content | Gemini SDK |
 | `POST /v1beta/models/{model}:streamGenerateContent` | Stream Generate | Gemini SDK |
@@ -80,7 +82,46 @@ bun run local:watch    # 热重载开发服务器，端口 41414
 | `GET /api/keys` | API key 列表 |
 | `POST /api/keys` | 创建 API key |
 
-## 使用示例
+## CLI 工具配置
+
+部署完成后，在 Dashboard 的 **Configuration** 标签页可以看到每个 CLI 工具的完整配置，包括推荐模型和 API key。以下是快速参考：
+
+### Claude Code
+
+```bash
+export ANTHROPIC_BASE_URL=https://your-gateway.workers.dev
+export ANTHROPIC_AUTH_TOKEN=your-api-key
+export ANTHROPIC_MODEL=claude-sonnet-4-20250514
+export ANTHROPIC_SMALL_FAST_MODEL=claude-haiku-4-5-20251001
+```
+
+### Codex CLI
+
+`~/.codex/config.toml`:
+
+```toml
+model = "gpt-4.1"
+model_provider = "copilot_gateway"
+
+[model_providers.copilot_gateway]
+name = "Copilot Gateway"
+base_url = "https://your-gateway.workers.dev/"
+env_key = "OPENAI_API_KEY"
+wire_api = "responses"
+```
+
+```bash
+export OPENAI_API_KEY=your-api-key
+```
+
+### Gemini CLI
+
+```bash
+export GEMINI_API_KEY=your-api-key
+export GEMINI_API_BASE_URL=https://your-gateway.workers.dev
+```
+
+## SDK 使用示例
 
 ### Anthropic SDK
 
@@ -173,7 +214,7 @@ const response = await ai.models.generateContent({
 
 ## 兼容性处理
 
-项目自动处理以下 Copilot API 兼容性问题：
+项目自动处理以下兼容性问题：
 
 1. **Billing Header 过滤** — 移除系统提示中触发计费校验的保留关键字
 2. **工具类型转换** — 将 `type: "custom"` 转为标准 `type: "function"`
@@ -181,6 +222,10 @@ const response = await ai.models.generateContent({
 4. **Thinking 块清理** — 移除空的思考内容块
 5. **无限空白检测** — 防止流式输出中的缓冲区溢出
 6. **流式 ID 一致性** — 修复 Responses API 中 output_item ID 不匹配问题
+7. **Gemini 模型映射** — `gemini-2.5-flash-lite` → `gemini-3-flash-preview` 等不支持型号自动映射
+8. **Gemini `-customtools` 后缀** — 自动剥离 Gemini CLI 追加的 `-customtools` 模型后缀
+9. **空工具参数修复** — Gemini CLI 发送的 `parameters: {}` 自动补全为有效 JSON Schema
+10. **SSE 分块缓冲** — 跨 TCP 包的 SSE 事件正确缓冲，防止 chunk 边界截断
 
 ## 项目结构
 
@@ -189,13 +234,14 @@ const response = await ai.models.generateContent({
 │   ├── index.ts              # Cloudflare Workers 入口
 │   ├── local.ts              # 本地开发入口（Bun + SQLite）
 │   ├── config/               # 常量配置
-│   ├── lib/                  # 核心库（认证、API key、GitHub、用量追踪）
+│   ├── lib/                  # 核心库（认证、API key、GitHub、用量追踪、SSE 缓冲）
 │   ├── middleware/            # 中间件（请求头、用量统计）
 │   ├── repo/                 # 数据层（D1 + SQLite 双实现）
 │   ├── routes/               # API 路由
 │   ├── services/
 │   │   ├── copilot/          # Copilot API 转发
-│   │   ├── gemini/           # Gemini 格式转换
+│   │   ├── gemini/           # Gemini 格式转换（模型映射、工具参数修复）
+│   │   ├── responses/        # Responses API ↔ Chat Completions 格式转换
 │   │   ├── github/           # GitHub OAuth
 │   │   └── web-search/       # Web 搜索（LangSearch / Tavily / Bing）
 │   ├── transforms/           # 请求/响应兼容性转换
