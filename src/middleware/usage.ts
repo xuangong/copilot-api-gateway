@@ -102,7 +102,7 @@ export function trackStreamingUsage(
         } catch { /* ignore non-JSON lines */ }
       }
     },
-    flush() {
+    async flush() {
       if (buffer.startsWith("data: ")) {
         const data = buffer.slice(6).trim()
         if (data && data !== "[DONE]") {
@@ -117,9 +117,7 @@ export function trackStreamingUsage(
       }
 
       if (inputTokens > 0 || outputTokens > 0) {
-        // In CF Workers, flush completes before the response ends,
-        // so this fire-and-forget should still work within the stream lifecycle.
-        persistUsage(keyId, model, inputTokens, outputTokens).catch(() => {})
+        await persistUsage(keyId, model, inputTokens, outputTokens).catch(() => {})
       }
     },
   })
