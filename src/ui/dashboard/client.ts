@@ -76,10 +76,11 @@ export function dashboardAssets(): string {
       geminiModel: '',
       configTab: 'claude',
       tokenRange: 'today',
+      tokenWeekOffset: 0,
       tokenData: [],
       tokenChart: null,
       tokenLoading: false,
-      tokenSummary: { requests: 0, input: 0, output: 0 },
+      tokenSummary: { requests: 0, input: 0, output: 0, cacheRead: 0, cacheCreation: 0 },
       tokenByModel: [],
       hoveredModel: null,
 
@@ -111,6 +112,7 @@ export function dashboardAssets(): string {
       importLoading: false,
       importPreview: { ready: false, exportedAt: null, apiKeys: 0, githubAccounts: 0, usage: 0 },
       latencyRange: 'today',
+      latencyWeekOffset: 0,
       latencyData: [],
       latencyChart: null,
       latencyLoading: false,
@@ -641,18 +643,35 @@ export function dashboardAssets(): string {
             this.tokenLoading = true;
             try {
               const now = new Date();
-              const rangeStart = new Date(now);
-              if (this.tokenRange === 'today') {
-                rangeStart.setHours(0, 0, 0, 0);
-              } else if (this.tokenRange === '7d') {
-                rangeStart.setDate(rangeStart.getDate() - 6);
-                rangeStart.setHours(0, 0, 0, 0);
+              let rangeStart, rangeEnd;
+              if (this.tokenRange === 'week') {
+                // ISO week: Monday to Sunday
+                const ref = new Date(now);
+                ref.setDate(ref.getDate() + this.tokenWeekOffset * 7);
+                const day = ref.getDay();
+                const monday = new Date(ref);
+                monday.setDate(ref.getDate() - ((day + 6) % 7));
+                monday.setHours(0, 0, 0, 0);
+                const sunday = new Date(monday);
+                sunday.setDate(monday.getDate() + 7);
+                sunday.setHours(0, 0, 0, 0);
+                rangeStart = monday;
+                rangeEnd = sunday;
               } else {
-                rangeStart.setDate(rangeStart.getDate() - 29);
-                rangeStart.setHours(0, 0, 0, 0);
+                rangeStart = new Date(now);
+                if (this.tokenRange === 'today') {
+                  rangeStart.setHours(0, 0, 0, 0);
+                } else if (this.tokenRange === '7d') {
+                  rangeStart.setDate(rangeStart.getDate() - 6);
+                  rangeStart.setHours(0, 0, 0, 0);
+                } else {
+                  rangeStart.setDate(rangeStart.getDate() - 29);
+                  rangeStart.setHours(0, 0, 0, 0);
+                }
+                rangeEnd = new Date(now.getTime() + 3600000);
               }
               const start = rangeStart.toISOString().slice(0, 13);
-              const end = new Date(now.getTime() + 3600000).toISOString().slice(0, 13);
+              const end = rangeEnd.toISOString().slice(0, 13);
               const resp = await fetch('/api/token-usage?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { headers: this.authHeaders() });
               if (resp.status === 401) {
                 this.kickToLogin();
@@ -675,7 +694,9 @@ export function dashboardAssets(): string {
 
           renderTokenChart() {
             const canvas = document.getElementById('tokenChart');
-            if (!canvas || canvas.clientWidth === 0) return;
+            if (!canvas || canvas.clientWidth === 0 || !canvas.getContext) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
 
             const palette = isDarkTheme() ? PALETTE_DARK : PALETTE_LIGHT;
             const _dark = isDarkTheme();
@@ -713,12 +734,16 @@ export function dashboardAssets(): string {
             let totalReqs = 0;
             let totalIn = 0;
             let totalOut = 0;
+            let totalCacheRead = 0;
+            let totalCacheCreation = 0;
             for (const r of data) {
               totalReqs += r.requests;
               totalIn += r.inputTokens;
               totalOut += r.outputTokens;
+              totalCacheRead += r.cacheReadTokens || 0;
+              totalCacheCreation += r.cacheCreationTokens || 0;
             }
-            this.tokenSummary = { requests: totalReqs, input: totalIn, output: totalOut };
+            this.tokenSummary = { requests: totalReqs, input: totalIn, output: totalOut, cacheRead: totalCacheRead, cacheCreation: totalCacheCreation };
 
             // Build distributions for each "All" dimension
             // By Model (when model filter is All)
@@ -806,6 +831,19 @@ export function dashboardAssets(): string {
                 d.setHours(h, 0, 0, 0);
                 bucketMap.set(this.localHourKey(d), String(h).padStart(2, '0') + ':00 \\u2013 ' + String((h + 1) % 24).padStart(2, '0') + ':00');
               }
+            } else if (this.tokenRange === 'week') {
+              const ref = new Date(now);
+              ref.setDate(ref.getDate() + this.tokenWeekOffset * 7);
+              const day = ref.getDay();
+              const monday = new Date(ref);
+              monday.setDate(ref.getDate() - ((day + 6) % 7));
+              monday.setHours(0, 0, 0, 0);
+              const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+              for (let i = 0; i < 7; i++) {
+                const d = new Date(monday);
+                d.setDate(monday.getDate() + i);
+                bucketMap.set(this.localDateKey(d), weekdays[i] + ' ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+              }
             } else {
               const days = this.tokenRange === '7d' ? 7 : 30;
               for (let i = days - 1; i >= 0; i--) {
@@ -861,8 +899,10 @@ export function dashboardAssets(): string {
             const bucketKeys = [...bucketMap.keys()];
 
             if (this.tokenChart) {
-              this.tokenChart.stop();
-              this.tokenChart.destroy();
+              try {
+                this.tokenChart.stop();
+                this.tokenChart.destroy();
+              } catch { /* ignore destroy errors */ }
               this.tokenChart = null;
             }
 
@@ -966,7 +1006,30 @@ export function dashboardAssets(): string {
 
           switchTokenRange(range) {
             this.tokenRange = range;
+            if (range !== 'week') this.tokenWeekOffset = 0;
             this.loadTokenUsage();
+          },
+
+          shiftWeek(delta) {
+            this.tokenWeekOffset += delta;
+            if (this.tokenWeekOffset > 0) this.tokenWeekOffset = 0;
+            this.loadTokenUsage();
+          },
+
+          weekLabel() {
+            const now = new Date();
+            const ref = new Date(now);
+            ref.setDate(ref.getDate() + this.tokenWeekOffset * 7);
+            const day = ref.getDay();
+            const monday = new Date(ref);
+            monday.setDate(ref.getDate() - ((day + 6) % 7));
+            monday.setHours(0, 0, 0, 0);
+            const sunday = new Date(monday);
+            sunday.setDate(monday.getDate() + 6);
+            const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            if (this.tokenWeekOffset === 0) return 'This Week (' + fmt(monday) + ' – ' + fmt(sunday) + ')';
+            if (this.tokenWeekOffset === -1) return 'Last Week (' + fmt(monday) + ' – ' + fmt(sunday) + ')';
+            return fmt(monday) + ' – ' + fmt(sunday);
           },
 
           switchTokenFilter() {
@@ -983,18 +1046,34 @@ export function dashboardAssets(): string {
             this.latencyLoading = true;
             try {
               const now = new Date();
-              const rangeStart = new Date(now);
-              if (this.latencyRange === 'today') {
-                rangeStart.setHours(0, 0, 0, 0);
-              } else if (this.latencyRange === '7d') {
-                rangeStart.setDate(rangeStart.getDate() - 6);
-                rangeStart.setHours(0, 0, 0, 0);
+              let rangeStart, rangeEnd;
+              if (this.latencyRange === 'week') {
+                const ref = new Date(now);
+                ref.setDate(ref.getDate() + this.latencyWeekOffset * 7);
+                const day = ref.getDay();
+                const monday = new Date(ref);
+                monday.setDate(ref.getDate() - ((day + 6) % 7));
+                monday.setHours(0, 0, 0, 0);
+                const sunday = new Date(monday);
+                sunday.setDate(monday.getDate() + 7);
+                sunday.setHours(0, 0, 0, 0);
+                rangeStart = monday;
+                rangeEnd = sunday;
               } else {
-                rangeStart.setDate(rangeStart.getDate() - 29);
-                rangeStart.setHours(0, 0, 0, 0);
+                rangeStart = new Date(now);
+                if (this.latencyRange === 'today') {
+                  rangeStart.setHours(0, 0, 0, 0);
+                } else if (this.latencyRange === '7d') {
+                  rangeStart.setDate(rangeStart.getDate() - 6);
+                  rangeStart.setHours(0, 0, 0, 0);
+                } else {
+                  rangeStart.setDate(rangeStart.getDate() - 29);
+                  rangeStart.setHours(0, 0, 0, 0);
+                }
+                rangeEnd = new Date(now.getTime() + 3600000);
               }
               const start = rangeStart.toISOString().slice(0, 13);
-              const end = new Date(now.getTime() + 3600000).toISOString().slice(0, 13);
+              const end = rangeEnd.toISOString().slice(0, 13);
               const resp = await fetch('/api/latency?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { headers: this.authHeaders() });
               if (resp.status === 401) {
                 this.kickToLogin();
@@ -1017,7 +1096,9 @@ export function dashboardAssets(): string {
 
           renderLatencyChart() {
             const canvas = document.getElementById('latencyChart');
-            if (!canvas || canvas.clientWidth === 0) return;
+            if (!canvas || canvas.clientWidth === 0 || !canvas.getContext) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
 
             const isDaily = this.latencyRange !== 'today';
             const allData = this.latencyData;
@@ -1097,6 +1178,19 @@ export function dashboardAssets(): string {
                 const d = new Date(now);
                 d.setHours(h, 0, 0, 0);
                 bucketMap.set(this.localHourKey(d), String(h).padStart(2, '0') + ':00');
+              }
+            } else if (this.latencyRange === 'week') {
+              const ref = new Date(now);
+              ref.setDate(ref.getDate() + this.latencyWeekOffset * 7);
+              const day = ref.getDay();
+              const monday = new Date(ref);
+              monday.setDate(ref.getDate() - ((day + 6) % 7));
+              monday.setHours(0, 0, 0, 0);
+              const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+              for (let i = 0; i < 7; i++) {
+                const d = new Date(monday);
+                d.setDate(monday.getDate() + i);
+                bucketMap.set(this.localDateKey(d), weekdays[i] + ' ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
               }
             } else {
               const days = this.latencyRange === '7d' ? 7 : 30;
@@ -1257,7 +1351,30 @@ export function dashboardAssets(): string {
 
           switchLatencyRange(range) {
             this.latencyRange = range;
+            if (range !== 'week') this.latencyWeekOffset = 0;
             this.loadLatencyData();
+          },
+
+          shiftLatencyWeek(delta) {
+            this.latencyWeekOffset += delta;
+            if (this.latencyWeekOffset > 0) this.latencyWeekOffset = 0;
+            this.loadLatencyData();
+          },
+
+          latencyWeekLabel() {
+            const now = new Date();
+            const ref = new Date(now);
+            ref.setDate(ref.getDate() + this.latencyWeekOffset * 7);
+            const day = ref.getDay();
+            const monday = new Date(ref);
+            monday.setDate(ref.getDate() - ((day + 6) % 7));
+            monday.setHours(0, 0, 0, 0);
+            const sunday = new Date(monday);
+            sunday.setDate(monday.getDate() + 6);
+            const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            if (this.latencyWeekOffset === 0) return 'This Week (' + fmt(monday) + ' – ' + fmt(sunday) + ')';
+            if (this.latencyWeekOffset === -1) return 'Last Week (' + fmt(monday) + ' – ' + fmt(sunday) + ')';
+            return fmt(monday) + ' – ' + fmt(sunday);
           },
 
           switchLatencyModel(model) {

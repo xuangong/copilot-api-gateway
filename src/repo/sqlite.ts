@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS usage (
   requests INTEGER NOT NULL DEFAULT 0,
   input_tokens INTEGER NOT NULL DEFAULT 0,
   output_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (key_id, model, hour, client)
 );
 
@@ -218,38 +220,38 @@ function toGitHubAccount(row: any): GitHubAccount {
 class SqliteUsageRepo implements UsageRepo {
   constructor(private db: Database) {}
 
-  async record(keyId: string, model: string, hour: string, requests: number, inputTokens: number, outputTokens: number, client?: string): Promise<void> {
+  async record(keyId: string, model: string, hour: string, requests: number, inputTokens: number, outputTokens: number, client?: string, cacheReadTokens?: number, cacheCreationTokens?: number): Promise<void> {
     const c = client || ""
     this.db.query(
-      `INSERT INTO usage (key_id, model, hour, client, requests, input_tokens, output_tokens) VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (key_id, model, hour, client) DO UPDATE SET requests = requests + excluded.requests, input_tokens = input_tokens + excluded.input_tokens, output_tokens = output_tokens + excluded.output_tokens`,
-    ).run(keyId, model, hour, c, requests, inputTokens, outputTokens)
+      `INSERT INTO usage (key_id, model, hour, client, requests, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (key_id, model, hour, client) DO UPDATE SET requests = requests + excluded.requests, input_tokens = input_tokens + excluded.input_tokens, output_tokens = output_tokens + excluded.output_tokens, cache_read_tokens = cache_read_tokens + excluded.cache_read_tokens, cache_creation_tokens = cache_creation_tokens + excluded.cache_creation_tokens`,
+    ).run(keyId, model, hour, c, requests, inputTokens, outputTokens, cacheReadTokens ?? 0, cacheCreationTokens ?? 0)
   }
 
   async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<UsageRecord[]> {
     let rows: any[]
     if (opts.keyIds && opts.keyIds.length > 0) {
       const placeholders = opts.keyIds.map(() => "?").join(",")
-      rows = this.db.query(`SELECT key_id, model, hour, client, requests, input_tokens, output_tokens FROM usage WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`).all(...opts.keyIds, opts.start, opts.end)
+      rows = this.db.query(`SELECT key_id, model, hour, client, requests, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens FROM usage WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`).all(...opts.keyIds, opts.start, opts.end)
     } else if (opts.keyId) {
-      rows = this.db.query("SELECT key_id, model, hour, client, requests, input_tokens, output_tokens FROM usage WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour").all(opts.keyId, opts.start, opts.end)
+      rows = this.db.query("SELECT key_id, model, hour, client, requests, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens FROM usage WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour").all(opts.keyId, opts.start, opts.end)
     } else {
-      rows = this.db.query("SELECT key_id, model, hour, client, requests, input_tokens, output_tokens FROM usage WHERE hour >= ? AND hour < ? ORDER BY hour").all(opts.start, opts.end)
+      rows = this.db.query("SELECT key_id, model, hour, client, requests, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens FROM usage WHERE hour >= ? AND hour < ? ORDER BY hour").all(opts.start, opts.end)
     }
-    return rows.map((r: any) => ({ keyId: r.key_id, model: r.model, hour: r.hour, client: r.client || "", requests: r.requests, inputTokens: r.input_tokens, outputTokens: r.output_tokens }))
+    return rows.map((r: any) => ({ keyId: r.key_id, model: r.model, hour: r.hour, client: r.client || "", requests: r.requests, inputTokens: r.input_tokens, outputTokens: r.output_tokens, cacheReadTokens: r.cache_read_tokens ?? 0, cacheCreationTokens: r.cache_creation_tokens ?? 0 }))
   }
 
   async listAll(): Promise<UsageRecord[]> {
-    return this.db.query<any, []>("SELECT key_id, model, hour, client, requests, input_tokens, output_tokens FROM usage ORDER BY hour").all()
-      .map((r: any) => ({ keyId: r.key_id, model: r.model, hour: r.hour, client: r.client || "", requests: r.requests, inputTokens: r.input_tokens, outputTokens: r.output_tokens }))
+    return this.db.query<any, []>("SELECT key_id, model, hour, client, requests, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens FROM usage ORDER BY hour").all()
+      .map((r: any) => ({ keyId: r.key_id, model: r.model, hour: r.hour, client: r.client || "", requests: r.requests, inputTokens: r.input_tokens, outputTokens: r.output_tokens, cacheReadTokens: r.cache_read_tokens ?? 0, cacheCreationTokens: r.cache_creation_tokens ?? 0 }))
   }
 
   async set(record: UsageRecord): Promise<void> {
     const c = record.client || ""
     this.db.query(
-      `INSERT INTO usage (key_id, model, hour, client, requests, input_tokens, output_tokens) VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (key_id, model, hour, client) DO UPDATE SET requests = excluded.requests, input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens`,
-    ).run(record.keyId, record.model, record.hour, c, record.requests, record.inputTokens, record.outputTokens)
+      `INSERT INTO usage (key_id, model, hour, client, requests, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (key_id, model, hour, client) DO UPDATE SET requests = excluded.requests, input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens, cache_read_tokens = excluded.cache_read_tokens, cache_creation_tokens = excluded.cache_creation_tokens`,
+    ).run(record.keyId, record.model, record.hour, c, record.requests, record.inputTokens, record.outputTokens, record.cacheReadTokens ?? 0, record.cacheCreationTokens ?? 0)
   }
 
   async deleteAll(): Promise<void> {
@@ -478,6 +480,13 @@ function migrateSchema(db: Database): void {
       ALTER TABLE usage_new RENAME TO usage;
       CREATE INDEX IF NOT EXISTS idx_usage_hour ON usage (hour);
     `)
+  }
+  // Add cache token columns to usage table
+  if (!hasColumn(db, "usage", "cache_read_tokens")) {
+    db.exec("ALTER TABLE usage ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0")
+  }
+  if (!hasColumn(db, "usage", "cache_creation_tokens")) {
+    db.exec("ALTER TABLE usage ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0")
   }
 }
 

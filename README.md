@@ -17,6 +17,7 @@
   - 延迟监控 — 按模型筛选，Stream/Sync 分离，按 Colo 分布
   - 三大 CLI 配置指引（含推荐模型选择）
   - 数据导入导出
+- **Prompt Caching** — 透传 Anthropic prompt cache 控制，dashboard 展示 Cache Read / Cache Creation / 缓存命中率
 - **兼容性修复** — 自动处理 Copilot API 的兼容性问题（billing header、工具类型、thinking 块、Gemini model mapping 等）
 - **双部署模式** — Cloudflare Workers（全球边缘 + Smart Placement）或 Docker 自托管
 - **SDK 集成测试** — 适配自官方 SDK 仓库的测试用例，确保真实兼容性
@@ -227,7 +228,8 @@ const response = await ai.models.generateContent({
 
 - 多维度正交筛选：User / Key / Client / Model
 - 选中某个维度作为筛选条件，其余维度展示分布
-- 支持 Today / 7 Days / 30 Days 时间范围
+- 支持 Today / 7 Days / 30 Days / Week（ISO 自然周导航）时间范围
+- Cache 统计：Cache Read Tokens、Uncached Input Tokens、缓存命中率
 - 每个维度显示堆叠分布条（Hover 显示百分比）和详细表格
 
 ### 延迟监控
@@ -254,12 +256,13 @@ const response = await ai.models.generateContent({
 2. **工具类型转换** — 将 `type: "custom"` 转为标准 `type: "function"`
 3. **Web Search 本地化** — 在网关层执行搜索，而非透传给上游
 4. **Thinking 块清理** — 移除空的思考内容块
-5. **无限空白检测** — 防止流式输出中的缓冲区溢出
-6. **流式 ID 一致性** — 修复 Responses API 中 output_item ID 不匹配问题
-7. **Gemini 模型映射** — `gemini-2.5-flash-lite` → `gemini-3-flash-preview` 等不支持型号自动映射
-8. **Gemini `-customtools` 后缀** — 自动剥离 Gemini CLI 追加的 `-customtools` 模型后缀
-9. **空工具参数修复** — Gemini CLI 发送的 `parameters: {}` 自动补全为有效 JSON Schema
-10. **SSE 分块缓冲** — 跨 TCP 包的 SSE 事件正确缓冲，防止 chunk 边界截断
+5. **Cache Scope 过滤** — 仅移除上游不支持的 `cache_control.scope` 字段，保留 prompt caching 功能
+6. **无限空白检测** — 防止流式输出中的缓冲区溢出
+7. **流式 ID 一致性** — 修复 Responses API 中 output_item ID 不匹配问题
+8. **Gemini 模型映射** — `gemini-2.5-flash-lite` → `gemini-3-flash-preview` 等不支持型号自动映射
+9. **Gemini `-customtools` 后缀** — 自动剥离 Gemini CLI 追加的 `-customtools` 模型后缀
+10. **空工具参数修复** — Gemini CLI 发送的 `parameters: {}` 自动补全为有效 JSON Schema
+11. **SSE 分块缓冲** — 跨 TCP 包的 SSE 事件正确缓冲，防止 chunk 边界截断
 
 ## 项目结构
 

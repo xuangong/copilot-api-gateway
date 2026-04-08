@@ -4,45 +4,53 @@ import { touchApiKeyLastUsed } from "~/lib/api-keys"
 interface UsageInfo {
   input: number
   output: number
+  cacheRead: number
+  cacheCreation: number
 }
 
 // deno-lint-ignore no-explicit-any
 function extractUsageFromJson(json: any): UsageInfo | null {
   // Anthropic Messages: { usage: { input_tokens, output_tokens } }
   if (json?.usage?.input_tokens != null) {
-    return { input: json.usage.input_tokens, output: json.usage.output_tokens ?? 0 }
+    return {
+      input: json.usage.input_tokens,
+      output: json.usage.output_tokens ?? 0,
+      cacheRead: json.usage.cache_read_input_tokens ?? 0,
+      cacheCreation: json.usage.cache_creation_input_tokens ?? 0,
+    }
   }
   // OpenAI Chat Completions: { usage: { prompt_tokens, completion_tokens } }
   if (json?.usage?.prompt_tokens != null) {
-    return { input: json.usage.prompt_tokens, output: json.usage.completion_tokens ?? 0 }
+    return { input: json.usage.prompt_tokens, output: json.usage.completion_tokens ?? 0, cacheRead: 0, cacheCreation: 0 }
   }
   return null
 }
 
 // deno-lint-ignore no-explicit-any
-function extractUsageFromStreamEvent(parsed: any, add: (input: number, output: number) => void): void {
-  // Anthropic message_start: { message: { usage: { input_tokens } } }
+function extractUsageFromStreamEvent(parsed: any, add: (input: number, output: number, cacheRead: number, cacheCreation: number) => void): void {
+  // Anthropic message_start: { message: { usage: { input_tokens, cache_read_input_tokens, cache_creation_input_tokens } } }
   if (parsed.type === "message_start" && parsed.message?.usage?.input_tokens != null) {
-    add(parsed.message.usage.input_tokens, 0)
+    const u = parsed.message.usage
+    add(u.input_tokens, 0, u.cache_read_input_tokens ?? 0, u.cache_creation_input_tokens ?? 0)
   }
   // Anthropic message_delta: { usage: { output_tokens } }
   if (parsed.type === "message_delta" && parsed.usage?.output_tokens != null) {
-    add(0, parsed.usage.output_tokens)
+    add(0, parsed.usage.output_tokens, 0, 0)
   }
   // Responses response.completed: { response: { usage: { input_tokens, output_tokens } } }
   if (parsed.type === "response.completed" && parsed.response?.usage) {
     const u = parsed.response.usage
-    add(u.input_tokens ?? 0, u.output_tokens ?? 0)
+    add(u.input_tokens ?? 0, u.output_tokens ?? 0, 0, 0)
   }
   // OpenAI Chat Completions chunk with usage
   if (parsed.usage?.prompt_tokens != null) {
-    add(parsed.usage.prompt_tokens, parsed.usage.completion_tokens ?? 0)
+    add(parsed.usage.prompt_tokens, parsed.usage.completion_tokens ?? 0, 0, 0)
   }
 }
 
-async function persistUsage(keyId: string, model: string, inputTokens: number, outputTokens: number, client?: string): Promise<void> {
+async function persistUsage(keyId: string, model: string, inputTokens: number, outputTokens: number, client?: string, cacheReadTokens?: number, cacheCreationTokens?: number): Promise<void> {
   await Promise.all([
-    recordUsage(keyId, model, inputTokens, outputTokens, client),
+    recordUsage(keyId, model, inputTokens, outputTokens, client, cacheReadTokens, cacheCreationTokens),
     touchApiKeyLastUsed(keyId),
   ])
 }
@@ -60,7 +68,7 @@ export async function trackNonStreamingUsage(
 ): Promise<void> {
   const usage = extractUsageFromJson(json)
   if (usage) {
-    await persistUsage(keyId, model, usage.input, usage.output, client)
+    await persistUsage(keyId, model, usage.input, usage.output, client, usage.cacheRead, usage.cacheCreation)
   }
 }
 
@@ -80,6 +88,8 @@ export function trackStreamingUsage(
 
   let inputTokens = 0
   let outputTokens = 0
+  let cacheReadTokens = 0
+  let cacheCreationTokens = 0
   let buffer = ""
 
   const transform = new TransformStream<Uint8Array, Uint8Array>({
@@ -97,9 +107,11 @@ export function trackStreamingUsage(
 
         try {
           const parsed = JSON.parse(data)
-          extractUsageFromStreamEvent(parsed, (i, o) => {
+          extractUsageFromStreamEvent(parsed, (i, o, cr, cc) => {
             inputTokens += i
             outputTokens += o
+            cacheReadTokens += cr
+            cacheCreationTokens += cc
           })
         } catch { /* ignore non-JSON lines */ }
       }
@@ -110,16 +122,18 @@ export function trackStreamingUsage(
         if (data && data !== "[DONE]") {
           try {
             const parsed = JSON.parse(data)
-            extractUsageFromStreamEvent(parsed, (i, o) => {
+            extractUsageFromStreamEvent(parsed, (i, o, cr, cc) => {
               inputTokens += i
               outputTokens += o
+              cacheReadTokens += cr
+              cacheCreationTokens += cc
             })
           } catch { /* ignore */ }
         }
       }
 
       if (inputTokens > 0 || outputTokens > 0) {
-        await persistUsage(keyId, model, inputTokens, outputTokens, client).catch(() => {})
+        await persistUsage(keyId, model, inputTokens, outputTokens, client, cacheReadTokens, cacheCreationTokens).catch(() => {})
       }
     },
   })

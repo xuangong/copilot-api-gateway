@@ -588,11 +588,26 @@ export function renderUsageTab(): string {
             <div class="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5">
               <button @click="switchTokenRange('today')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
                 :class="tokenRange === 'today' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">Today</button>
+              <button @click="switchTokenRange('week')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                :class="tokenRange === 'week' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">Week</button>
               <button @click="switchTokenRange('7d')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
                 :class="tokenRange === '7d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">7 Days</button>
               <button @click="switchTokenRange('30d')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
                 :class="tokenRange === '30d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">30 Days</button>
             </div>
+          </div>
+
+          <!-- Week navigator -->
+          <div x-show="tokenRange === 'week'" class="flex items-center gap-3 ml-1">
+            <button @click="shiftWeek(-1)" class="p-1 rounded hover:bg-surface-600 text-themed-dim hover:text-themed transition-all" title="Previous week">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <span class="text-xs text-themed-secondary font-medium min-w-[180px] text-center" x-text="weekLabel()"></span>
+            <button @click="shiftWeek(1)" :disabled="tokenWeekOffset >= 0"
+              class="p-1 rounded transition-all"
+              :class="tokenWeekOffset >= 0 ? 'text-themed-dim/30 cursor-not-allowed' : 'hover:bg-surface-600 text-themed-dim hover:text-themed'" title="Next week">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </button>
           </div>
 
           <!-- Multi-dimension filters -->
@@ -680,13 +695,23 @@ export function renderUsageTab(): string {
           <canvas id="tokenChart"></canvas>
         </div>
 
-        <div class="grid grid-cols-3 gap-4 mt-6 pt-5 border-t border-white/5">
+        <div class="grid grid-cols-3 sm:grid-cols-5 gap-4 mt-6 pt-5 border-t border-white/5">
           <div class="text-center">
             <p class="text-xs text-themed-dim mb-1">Requests</p>
             <p class="text-lg font-bold font-mono text-themed" x-text="tokenSummary.requests.toLocaleString()"></p>
           </div>
           <div class="text-center">
-            <p class="text-xs text-themed-dim mb-1">Input Tokens</p>
+            <p class="text-xs text-themed-dim mb-1">Total Input</p>
+            <p class="text-lg font-bold font-mono text-themed" x-text="(tokenSummary.input + tokenSummary.cacheRead + tokenSummary.cacheCreation).toLocaleString()"></p>
+          </div>
+          <div class="text-center">
+            <p class="text-xs text-themed-dim mb-1">Cache Read</p>
+            <p class="text-lg font-bold font-mono text-green-400" x-text="tokenSummary.cacheRead.toLocaleString()"></p>
+            <p class="text-[10px] text-themed-dim mt-0.5"
+              x-text="(() => { const total = tokenSummary.input + tokenSummary.cacheRead + tokenSummary.cacheCreation; return total > 0 ? (tokenSummary.cacheRead / total * 100).toFixed(1) + '% hit' : ''; })()"></p>
+          </div>
+          <div class="text-center">
+            <p class="text-xs text-themed-dim mb-1">Uncached Input</p>
             <p class="text-lg font-bold font-mono text-themed" x-text="tokenSummary.input.toLocaleString()"></p>
           </div>
           <div class="text-center">
@@ -806,34 +831,51 @@ export function renderLatencyTab(): string {
   return `
     <div x-show="tab === 'latency'">
       <div class="glass-card p-6 animate-in">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div class="flex items-center gap-3">
-            <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Latency</span>
-            <template x-if="latencyLoading">
-              <svg class="animate-spin h-3.5 w-3.5 text-themed-dim" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
-                <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" opacity="0.75"/>
-              </svg>
-            </template>
-          </div>
-          <div class="flex items-center gap-3">
-            <div class="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5">
-              <button @click="switchLatencyRange('today')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                :class="latencyRange === 'today' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">Today</button>
-              <button @click="switchLatencyRange('7d')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                :class="latencyRange === '7d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">7 Days</button>
-              <button @click="switchLatencyRange('30d')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                :class="latencyRange === '30d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">30 Days</button>
+        <div class="flex flex-col gap-4 mb-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Latency</span>
+              <template x-if="latencyLoading">
+                <svg class="animate-spin h-3.5 w-3.5 text-themed-dim" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
+                  <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" opacity="0.75"/>
+                </svg>
+              </template>
             </div>
-            <template x-if="latencyModels.length > 0">
-              <select @change="switchLatencyModel($event.target.value)" x-model="latencyModel"
-                class="text-xs font-mono bg-surface-800 text-themed-secondary border border-white/10 rounded-lg px-2 py-1.5 outline-none focus:border-accent-violet/50 cursor-pointer">
-                <option value="">All Models</option>
-                <template x-for="m in latencyModels" :key="m">
-                  <option :value="m" x-text="m"></option>
-                </template>
-              </select>
-            </template>
+            <div class="flex items-center gap-3">
+              <div class="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5">
+                <button @click="switchLatencyRange('today')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                  :class="latencyRange === 'today' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">Today</button>
+                <button @click="switchLatencyRange('week')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                  :class="latencyRange === 'week' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">Week</button>
+                <button @click="switchLatencyRange('7d')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                  :class="latencyRange === '7d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">7 Days</button>
+                <button @click="switchLatencyRange('30d')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                  :class="latencyRange === '30d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">30 Days</button>
+              </div>
+              <template x-if="latencyModels.length > 0">
+                <select @change="switchLatencyModel($event.target.value)" x-model="latencyModel"
+                  class="text-xs font-mono bg-surface-800 text-themed-secondary border border-white/10 rounded-lg px-2 py-1.5 outline-none focus:border-accent-violet/50 cursor-pointer">
+                  <option value="">All Models</option>
+                  <template x-for="m in latencyModels" :key="m">
+                    <option :value="m" x-text="m"></option>
+                  </template>
+                </select>
+              </template>
+            </div>
+          </div>
+
+          <!-- Week navigator -->
+          <div x-show="latencyRange === 'week'" class="flex items-center gap-3 ml-1">
+            <button @click="shiftLatencyWeek(-1)" class="p-1 rounded hover:bg-surface-600 text-themed-dim hover:text-themed transition-all" title="Previous week">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <span class="text-xs text-themed-secondary font-medium min-w-[180px] text-center" x-text="latencyWeekLabel()"></span>
+            <button @click="shiftLatencyWeek(1)" :disabled="latencyWeekOffset >= 0"
+              class="p-1 rounded transition-all"
+              :class="latencyWeekOffset >= 0 ? 'text-themed-dim/30 cursor-not-allowed' : 'hover:bg-surface-600 text-themed-dim hover:text-themed'" title="Next week">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </button>
           </div>
         </div>
 
