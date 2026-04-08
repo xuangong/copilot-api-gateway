@@ -91,6 +91,27 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
 
     const records = await repo.usage.query(queryOpts)
     const nameMap = new Map(keys.map((k) => [k.id, k.name]))
+
+    // For admin: enrich with owner info so frontend can group by user
+    if (isAdmin) {
+      const ownerIdMap = new Map(keys.map((k) => [k.id, k.ownerId]))
+      const userIds = new Set(keys.map((k) => k.ownerId).filter(Boolean) as string[])
+      const users = await Promise.all([...userIds].map((id) => repo.users.getById(id)))
+      const userNameMap = new Map<string, string>()
+      for (const u of users) {
+        if (u) userNameMap.set(u.id, u.name)
+      }
+      return records.map((r) => {
+        const ownerId = ownerIdMap.get(r.keyId)
+        return {
+          ...r,
+          keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),
+          ownerId: ownerId ?? '',
+          ownerName: ownerId ? (userNameMap.get(ownerId) ?? '') : '',
+        }
+      })
+    }
+
     return records.map((r) => ({
       ...r,
       keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),

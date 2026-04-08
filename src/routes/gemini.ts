@@ -4,6 +4,7 @@ import type { AppState } from "~/lib/state"
 import { callCopilotAPI } from "~/services/copilot"
 import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
+import { detectClient } from "~/lib/client-detect"
 import {
   translateGeminiToOpenAI,
   translateOpenAIToGemini,
@@ -21,6 +22,7 @@ interface RouteContext {
   apiKeyId?: string
   colo: string
   requestId?: string
+  userAgent?: string
   params: { modelWithMethod: string }
 }
 
@@ -56,8 +58,9 @@ function isStreamGenerateContentRequest(modelWithMethod: string): boolean {
 }
 
 async function handleGenerateContent(ctx: RouteContext) {
-  const { state, body, apiKeyId, colo, requestId, params } = ctx
+  const { state, body, apiKeyId, colo, requestId, userAgent, params } = ctx
   const elapsed = startTimer()
+  const client = detectClient(userAgent)
 
   const model = extractModelId(params.modelWithMethod)
   const openAIPayload = translateGeminiToOpenAI(body, model)
@@ -89,6 +92,7 @@ async function handleGenerateContent(ctx: RouteContext) {
       },
       apiKeyId,
       model,
+      client,
     )
     recordLatency(
       apiKeyId,
@@ -118,8 +122,9 @@ async function handleStreamGenerateContent(
   ctx: RouteContext,
   useSSE: boolean,
 ) {
-  const { state, body, apiKeyId, colo, requestId, params } = ctx
+  const { state, body, apiKeyId, colo, requestId, userAgent, params } = ctx
   const elapsed = startTimer()
+  const client = detectClient(userAgent)
 
   const model = extractModelId(params.modelWithMethod)
   const openAIPayload = translateGeminiToOpenAI(body, model)
@@ -191,7 +196,7 @@ async function handleStreamGenerateContent(
   })
 
   return apiKeyId
-    ? trackStreamingUsage(streamResponse, apiKeyId, model)
+    ? trackStreamingUsage(streamResponse, apiKeyId, model, client)
     : streamResponse
 }
 

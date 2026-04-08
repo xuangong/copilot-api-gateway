@@ -315,7 +315,8 @@ function createApp(env: Env) {
     // Derive env and auth context for all routes
     .derive(async ({ request, path }) => {
       const auth = await authCheck(request, path)
-      return { env, ...auth }
+      const userAgent = request.headers.get("user-agent") || ""
+      return { env, ...auth, userAgent }
     })
     // Auth routes (don't need Copilot token)
     .use(authRoute)

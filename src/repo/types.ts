@@ -25,6 +25,7 @@ export interface UsageRecord {
   keyId: string
   model: string
   hour: string
+  client: string
   requests: number
   inputTokens: number
   outputTokens: number
@@ -88,6 +89,7 @@ export interface UsageRepo {
     requests: number,
     inputTokens: number,
     outputTokens: number,
+    client?: string,
   ): Promise<void>
   query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<UsageRecord[]>
   listAll(): Promise<UsageRecord[]>

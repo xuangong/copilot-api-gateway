@@ -9,8 +9,9 @@ export function recordUsage(
   model: string,
   inputTokens: number,
   outputTokens: number,
+  client?: string,
 ): Promise<void> {
-  return getRepo().usage.record(keyId, model, currentHour(), 1, inputTokens, outputTokens)
+  return getRepo().usage.record(keyId, model, currentHour(), 1, inputTokens, outputTokens, client)
 }
 
 export function queryUsage(opts: { keyId?: string; start: string; end: string }) {

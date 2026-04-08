@@ -17,11 +17,11 @@ export function DashboardPage(): string {
     children: `
       <div class="min-h-screen" x-data="dashboardApp()" x-init="init()">
         <div
-          class="fixed top-0 left-1/4 w-[500px] h-[300px] bg-accent-cyan/3 rounded-full blur-[100px] pointer-events-none"
+          class="fixed top-0 left-1/4 w-[500px] h-[300px] bg-accent-violet/3 rounded-full blur-[100px] pointer-events-none"
         >
         </div>
         <div
-          class="fixed top-0 right-1/4 w-[400px] h-[250px] bg-accent-emerald/3 rounded-full blur-[100px] pointer-events-none"
+          class="fixed top-0 right-1/4 w-[400px] h-[250px] bg-accent-teal/3 rounded-full blur-[100px] pointer-events-none"
         >
         </div>
 

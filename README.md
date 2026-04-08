@@ -10,7 +10,13 @@
 - **多 SDK 兼容** — 同时支持 Anthropic Messages API、OpenAI Chat Completions / Responses API、Google Gemini API
 - **多用户隔离** — Admin 通过邀请码邀请用户，每个用户独立绑定自己的 GitHub Copilot 账号，API key 和用量数据完全隔离
 - **Web Search** — 内置 Web 搜索工具，支持 LangSearch / Tavily / Bing 三引擎自动降级
-- **Dashboard** — 暗色风格管理面板，支持 GitHub 账号管理、API key 管理、用量统计（按模型分）、延迟监控（按模型筛选）、三大 CLI 配置指引
+- **Dashboard** — 双主题管理面板（Midnight Aurora 暗色 / Clean White 亮色），支持：
+  - GitHub 账号管理（Admin 可查看所有用户的 GitHub 账号）
+  - API key 管理（创建、删除、轮换、重命名）
+  - 用量统计 — 多维度筛选（User / Key / Client / Model），分布图 + 趋势图
+  - 延迟监控 — 按模型筛选，Stream/Sync 分离，按 Colo 分布
+  - 三大 CLI 配置指引（含推荐模型选择）
+  - 数据导入导出
 - **兼容性修复** — 自动处理 Copilot API 的兼容性问题（billing header、工具类型、thinking 块、Gemini model mapping 等）
 - **双部署模式** — Cloudflare Workers（全球边缘 + Smart Placement）或 Docker 自托管
 - **SDK 集成测试** — 适配自官方 SDK 仓库的测试用例，确保真实兼容性
@@ -77,14 +83,19 @@ bun run local:watch    # 热重载开发服务器，端口 41414
 |------|------|
 | `GET /` | Dashboard 登录页 |
 | `GET /dashboard` | 管理面板 |
-| `POST /auth/login` | 登录（ADMIN_KEY / API key / 邀请码 / 会话 token） |
+| `POST /auth/login` | 登录（ADMIN_KEY / User Key / API key / 邀请码） |
+| `POST /auth/register` | 邀请码注册（设置 User Key） |
 | `POST /auth/github` | GitHub Device Flow 绑定 |
 | `GET /api/keys` | API key 列表 |
 | `POST /api/keys` | 创建 API key |
+| `GET /api/token-usage` | 用量统计查询 |
+| `GET /api/latency` | 延迟数据查询 |
+| `GET /api/export` | 数据导出（Admin） |
+| `POST /api/import` | 数据导入（Admin） |
 
 ## CLI 工具配置
 
-部署完成后，在 Dashboard 的 **Configuration** 标签页可以看到每个 CLI 工具的完整配置，包括推荐模型和 API key。以下是快速参考：
+部署完成后，在 Dashboard 的 **API Keys → Configuration** 可以看到每个 CLI 工具的完整配置。以下是快速参考：
 
 ### Claude Code
 
@@ -192,7 +203,7 @@ const response = await ai.models.generateContent({
 
 1. **Admin** 使用 ADMIN_KEY 登录 Dashboard
 2. **Admin** 在 Users 标签页生成邀请码（指定用户名称）
-3. **用户** 使用邀请码登录 → 自动创建账号 → 获取会话 token
+3. **用户** 使用邀请码登录 → 设置 User Key → 自动创建账号
 4. **用户** 在 Upstream 标签页通过 GitHub Device Flow 绑定自己的 Copilot 账号
 5. **用户** 在 Keys 标签页创建 API key → 使用该 key 调用 AI API
 
@@ -200,9 +211,31 @@ const response = await ai.models.generateContent({
 
 - 每个用户只能看到自己的 GitHub 账号、API key、用量数据
 - API key 绑定创建者的 Copilot 账号，调用时使用对应用户的 token
-- Admin 可以查看所有用户、禁用/启用/删除用户
+- Admin 可以查看所有用户、GitHub 账号、禁用/启用/删除用户
+- Admin 用量统计页可按 User 维度查看分布
 - 用户被禁用后，其所有 API key 无法调用 AI API（Dashboard 仍可登录查看）；重新启用后立即恢复
 - 用户被删除后，其所有 API key、GitHub 账号、会话数据一并清除
+
+## Dashboard
+
+双主题设计，跟随系统偏好或手动切换：
+
+- **Midnight Aurora**（暗色）— 深邃背景 + 极光渐变高光
+- **Clean White**（亮色）— 纯净白底 + 高对比强调色
+
+### 用量分析
+
+- 多维度正交筛选：User / Key / Client / Model
+- 选中某个维度作为筛选条件，其余维度展示分布
+- 支持 Today / 7 Days / 30 Days 时间范围
+- 每个维度显示堆叠分布条（Hover 显示百分比）和详细表格
+
+### 延迟监控
+
+- Stream / Sync 双曲线趋势图
+- 按模型筛选
+- 按类型和数据中心分布统计
+- Token Miss Rate 监控
 
 ## 环境变量
 
@@ -247,7 +280,7 @@ const response = await ai.models.generateContent({
 │   │   └── web-search/       # Web 搜索（LangSearch / Tavily / Bing）
 │   ├── transforms/           # 请求/响应兼容性转换
 │   ├── storage/              # KV 存储抽象
-│   └── ui/                   # Dashboard 前端（Alpine.js + Tailwind）
+│   └── ui/                   # Dashboard 前端（Alpine.js + Tailwind + Chart.js）
 ├── migrations/               # D1 数据库迁移
 ├── tests/                    # SDK 集成测试
 ├── Dockerfile                # Docker 构建

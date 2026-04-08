@@ -2,7 +2,7 @@
 export function dashboardAssets(): string {
   return `
     <style>
-    select option { background: #13181f; color: #e0e0e0; }
+    select option { background: var(--surface-800); color: var(--text-primary); }
     </style>
 
     <script>
@@ -39,6 +39,10 @@ export function dashboardAssets(): string {
       const bm = b.includes('mini') ? 1 : 0;
       return am !== bm ? am - bm : b.localeCompare(a);
     }
+
+    // Refined cool palettes — clean, readable, not muddy; slightly muted from Apple system colors
+    const PALETTE_LIGHT = ['#4E6CF5','#2CA87A','#D88A2E','#8058C8','#C85878','#1E98A0','#9B60B8','#2E9080','#5078C0','#5A9850'];
+    const PALETTE_DARK  = ['#7B90FF','#50D48A','#F0B050','#A880F0','#F07898','#50C5D0','#C098E0','#58CCB0','#7098E0','#90C880'];
 
     return {
       authKey: '',
@@ -79,7 +83,21 @@ export function dashboardAssets(): string {
       tokenByModel: [],
       hoveredModel: null,
 
-      modelColors: ['#22d3ee','#a78bfa','#34d399','#fb923c','#f472b6','#60a5fa','#fbbf24','#e879f9','#4ade80','#f87171'],
+      // Multi-dimension filters
+      tokenFilterKey: '',       // '' = All Keys
+      tokenFilterClient: '',    // '' = All Clients
+      tokenFilterModel: '',     // '' = All Models
+      tokenFilterUser: '',      // '' = All Users (admin only)
+      tokenAvailableKeys: [],   // [{id, name}]
+      tokenAvailableClients: [],// string[]
+      tokenAvailableModels: [], // string[]
+      tokenAvailableUsers: [],  // [{id, name}] (admin only)
+      tokenByKey: [],           // distribution by key
+      tokenByClient: [],        // distribution by client
+      tokenByUser: [],          // distribution by user (admin only)
+      hoveredDist: null,        // hovered item in any distribution
+
+      modelColors: isDarkTheme() ? PALETTE_DARK : PALETTE_LIGHT,
 
       modelPercent(field) {
         const total = this.tokenByModel.reduce((s, m) => s + m[field], 0);
@@ -189,11 +207,10 @@ export function dashboardAssets(): string {
         },
 
         init() {
+          if (this._initialized) return;
+          this._initialized = true;
           this.authKey = localStorage.getItem('authKey') || '';
-          console.log('[dashboard] init authKey:', this.authKey ? this.authKey.slice(0, 3) + '...' : 'EMPTY');
-          console.log('[dashboard] isAdmin:', this.isAdmin, 'isUser:', this.isUser);
           if (!this.authKey) {
-            console.log('[dashboard] no authKey, redirecting to /');
             window.location.href = '/';
             return;
           }
@@ -214,7 +231,7 @@ export function dashboardAssets(): string {
               if (this.tab === 'usage') {
                 this.$nextTick().then(() => this.renderTokenChart());
               }
-            });
+            }).catch(() => {});
           } else if (this.tab === 'latency') {
             this.latencyLoading = true;
             this.fetchLatencyData().then(() => {
@@ -237,6 +254,15 @@ export function dashboardAssets(): string {
           window.addEventListener('hashchange', () => {
             const h = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : defaultTab;
             if (this.tab !== h) this.switchTab(h);
+          });
+
+          window.addEventListener('theme-changed', () => {
+            this.modelColors = isDarkTheme() ? PALETTE_DARK : PALETTE_LIGHT;
+            if (this.tab === 'usage' && this.tokenData.length) {
+              this.$nextTick().then(() => this.renderTokenChart());
+            } else if (this.tab === 'latency' && this.latencyData.length) {
+              this.$nextTick().then(() => this.renderLatencyChart());
+            }
           });
         },
 
@@ -651,13 +677,39 @@ export function dashboardAssets(): string {
             const canvas = document.getElementById('tokenChart');
             if (!canvas || canvas.clientWidth === 0) return;
 
-            const palette = ['#00e5ff', '#00e676', '#ffd740', '#ff5252', '#7c4dff', '#ff6e40', '#64ffda', '#eeff41', '#40c4ff', '#ea80fc'];
+            const palette = isDarkTheme() ? PALETTE_DARK : PALETTE_LIGHT;
+            const _dark = isDarkTheme();
             const isDaily = this.tokenRange !== 'today';
-            const data = this.tokenData;
+            const allData = this.tokenData;
 
+            // Extract available dimensions from all data (before filtering)
             const keyNameMap = new Map();
-            for (const r of data) keyNameMap.set(r.keyId, r.keyName);
+            const keySet = new Set();
+            const clientSet = new Set();
+            const modelSet = new Set();
+            const userMap = new Map();
+            for (const r of allData) {
+              keyNameMap.set(r.keyId, r.keyName);
+              keySet.add(r.keyId);
+              if (r.client) clientSet.add(r.client);
+              if (r.model) modelSet.add(r.model);
+              if (r.ownerId) userMap.set(r.ownerId, r.ownerName || r.ownerId.slice(0, 8));
+            }
+            this.tokenAvailableKeys = [...keySet].map(id => ({ id, name: keyNameMap.get(id) || id.slice(0, 8) })).sort((a, b) => a.name.localeCompare(b.name));
+            this.tokenAvailableClients = [...clientSet].sort();
+            this.tokenAvailableModels = [...modelSet].sort();
+            if (this.isAdmin) {
+              this.tokenAvailableUsers = [...userMap.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+            }
 
+            // Apply filters
+            let data = allData;
+            if (this.tokenFilterKey) data = data.filter(r => r.keyId === this.tokenFilterKey);
+            if (this.tokenFilterClient) data = data.filter(r => r.client === this.tokenFilterClient);
+            if (this.tokenFilterModel) data = data.filter(r => r.model === this.tokenFilterModel);
+            if (this.tokenFilterUser) data = data.filter(r => r.ownerId === this.tokenFilterUser);
+
+            // Summary
             let totalReqs = 0;
             let totalIn = 0;
             let totalOut = 0;
@@ -668,21 +720,84 @@ export function dashboardAssets(): string {
             }
             this.tokenSummary = { requests: totalReqs, input: totalIn, output: totalOut };
 
-            // Per-model breakdown
-            const modelMap = new Map();
-            for (const r of data) {
-              const m = r.model || 'unknown';
-              const existing = modelMap.get(m);
-              if (existing) {
-                existing.requests += r.requests;
-                existing.input += r.inputTokens;
-                existing.output += r.outputTokens;
-              } else {
-                modelMap.set(m, { model: m, requests: r.requests, input: r.inputTokens, output: r.outputTokens });
+            // Build distributions for each "All" dimension
+            // By Model (when model filter is All)
+            if (!this.tokenFilterModel) {
+              const mMap = new Map();
+              for (const r of data) {
+                const m = r.model || 'unknown';
+                const existing = mMap.get(m);
+                if (existing) {
+                  existing.requests += r.requests;
+                  existing.input += r.inputTokens;
+                  existing.output += r.outputTokens;
+                } else {
+                  mMap.set(m, { model: m, requests: r.requests, input: r.inputTokens, output: r.outputTokens });
+                }
               }
+              this.tokenByModel = [...mMap.values()].sort((a, b) => (b.input + b.output) - (a.input + a.output));
+            } else {
+              this.tokenByModel = [];
             }
-            this.tokenByModel = [...modelMap.values()].sort((a, b) => (b.input + b.output) - (a.input + a.output));
 
+            // By Key (when key filter is All)
+            if (!this.tokenFilterKey) {
+              const kMap = new Map();
+              for (const r of data) {
+                const existing = kMap.get(r.keyId);
+                if (existing) {
+                  existing.requests += r.requests;
+                  existing.input += r.inputTokens;
+                  existing.output += r.outputTokens;
+                } else {
+                  kMap.set(r.keyId, { label: keyNameMap.get(r.keyId) || r.keyId.slice(0, 8), requests: r.requests, input: r.inputTokens, output: r.outputTokens });
+                }
+              }
+              this.tokenByKey = [...kMap.values()].sort((a, b) => (b.input + b.output) - (a.input + a.output));
+            } else {
+              this.tokenByKey = [];
+            }
+
+            // By Client (when client filter is All)
+            if (!this.tokenFilterClient) {
+              const cMap = new Map();
+              for (const r of data) {
+                const c = r.client || 'unknown';
+                const existing = cMap.get(c);
+                if (existing) {
+                  existing.requests += r.requests;
+                  existing.input += r.inputTokens;
+                  existing.output += r.outputTokens;
+                } else {
+                  cMap.set(c, { label: c, requests: r.requests, input: r.inputTokens, output: r.outputTokens });
+                }
+              }
+              this.tokenByClient = [...cMap.values()].sort((a, b) => (b.input + b.output) - (a.input + a.output));
+            } else {
+              this.tokenByClient = [];
+            }
+
+            // By User (admin only, when user filter is All)
+            if (this.isAdmin && !this.tokenFilterUser) {
+              const uMap = new Map();
+              for (const r of data) {
+                const uid = r.ownerId || '_admin';
+                const uname = r.ownerName || (uid === '_admin' ? 'Admin' : uid.slice(0, 8));
+                const existing = uMap.get(uid);
+                if (existing) {
+                  existing.requests += r.requests;
+                  existing.input += r.inputTokens;
+                  existing.output += r.outputTokens;
+                } else {
+                  uMap.set(uid, { label: uname, requests: r.requests, input: r.inputTokens, output: r.outputTokens });
+                }
+              }
+              this.tokenByUser = [...uMap.values()].sort((a, b) => (b.input + b.output) - (a.input + a.output));
+            } else {
+              this.tokenByUser = [];
+            }
+
+            // Build time-series chart
             const bucketMap = new Map();
             const now = new Date();
             if (this.tokenRange === 'today') {
@@ -701,35 +816,49 @@ export function dashboardAssets(): string {
               }
             }
 
-            const keyIds = new Set();
+            // Determine groupBy dimension for chart series
+            // If exactly one dimension is "All", group by that dimension
+            // If multiple are "All", group by first "All" dimension (user > key > client > model)
+            // If none are "All", just show a single total line
+            const allDims = [];
+            if (this.isAdmin && !this.tokenFilterUser) allDims.push('user');
+            if (!this.tokenFilterKey) allDims.push('key');
+            if (!this.tokenFilterClient) allDims.push('client');
+            if (!this.tokenFilterModel) allDims.push('model');
+
+            let groupBy = allDims.length > 0 ? allDims[0] : 'total';
+
+            const seriesMap = new Map();
             const agg = new Map();
             for (const [key] of bucketMap) agg.set(key, new Map());
             for (const r of data) {
               const utc = new Date(r.hour + ':00:00Z');
               const bucket = isDaily ? this.localDateKey(utc) : this.localHourKey(utc);
               if (!agg.has(bucket)) continue;
-              keyIds.add(r.keyId);
+              let seriesKey;
+              if (groupBy === 'user') {
+                seriesKey = r.ownerId || '_admin';
+                seriesMap.set(seriesKey, r.ownerName || (seriesKey === '_admin' ? 'Admin' : seriesKey.slice(0, 8)));
+              } else if (groupBy === 'key') {
+                seriesKey = r.keyId;
+                seriesMap.set(r.keyId, keyNameMap.get(r.keyId) || r.keyId.slice(0, 8));
+              } else if (groupBy === 'client') {
+                seriesKey = r.client || 'unknown';
+                seriesMap.set(seriesKey, seriesKey);
+              } else if (groupBy === 'model') {
+                seriesKey = r.model || 'unknown';
+                seriesMap.set(seriesKey, seriesKey);
+              } else {
+                seriesKey = 'total';
+                seriesMap.set('total', 'Total');
+              }
               const m = agg.get(bucket);
-              m.set(r.keyId, (m.get(r.keyId) || 0) + r.inputTokens + r.outputTokens);
+              m.set(seriesKey, (m.get(seriesKey) || 0) + r.inputTokens + r.outputTokens);
             }
 
-            const keyList = [...keyIds].sort((a, b) => (keyNameMap.get(a) || a).localeCompare(keyNameMap.get(b) || b));
+            const seriesList = [...seriesMap.keys()];
             const labels = [...bucketMap.values()];
             const bucketKeys = [...bucketMap.keys()];
-            const datasets = keyList.map((keyId, i) => {
-              const c = palette[i % palette.length];
-              return {
-                label: keyNameMap.get(keyId) || keyId.slice(0, 8),
-                data: bucketKeys.map((k) => agg.get(k)?.get(keyId) || 0),
-                borderColor: c,
-                backgroundColor: c + '18',
-                borderWidth: 2,
-                pointRadius: 2,
-                pointHoverRadius: 5,
-                tension: 0.3,
-                fill: true,
-              };
-            });
 
             if (this.tokenChart) {
               this.tokenChart.stop();
@@ -737,67 +866,117 @@ export function dashboardAssets(): string {
               this.tokenChart = null;
             }
 
+            const _ptBg = _dark ? '#161922' : '#ffffff';
+            const _fillAlpha = _dark ? '20' : '30';
+
+            const datasets = seriesList.map((sk, i) => {
+              const c = palette[i % palette.length];
+              return {
+                label: seriesMap.get(sk),
+                data: bucketKeys.map((k) => agg.get(k)?.get(sk) || 0),
+                borderColor: c,
+                backgroundColor: c + _fillAlpha,
+                borderWidth: 2,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                pointHoverBorderWidth: 2,
+                pointHoverBackgroundColor: _ptBg,
+                pointHoverBorderColor: c,
+                tension: 0.4,
+                fill: true,
+                borderCapStyle: 'round',
+                borderJoinStyle: 'round',
+              };
+            });
+
+            const _tc = getComputedStyle(document.documentElement);
+            const _gridC = _tc.getPropertyValue('--grid-color').trim();
+            const _tickC = _tc.getPropertyValue('--tick-color').trim();
+            const _ttBg = _tc.getPropertyValue('--tooltip-bg').trim();
+            const _ttBorder = _tc.getPropertyValue('--tooltip-border').trim();
+            const _ttText = _tc.getPropertyValue('--tooltip-text').trim();
+            const _ttText2 = _tc.getPropertyValue('--tooltip-text2').trim();
+
+            try {
             this.tokenChart = new Chart(canvas, {
               type: 'line',
               data: { labels, datasets },
               options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: false,
+                animation: { duration: 400, easing: 'easeOutQuart' },
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
                   legend: {
                     position: 'bottom',
                     labels: {
-                      color: '#9e9e9e',
-                      font: { size: 11, family: "'DM Sans', sans-serif" },
-                      boxWidth: 12,
-                      padding: 16,
+                      color: _tickC,
+                      font: { size: 11, family: "'Outfit', sans-serif", weight: '400' },
+                      boxWidth: 8,
+                      boxHeight: 8,
+                      padding: 20,
                       usePointStyle: true,
                       pointStyle: 'circle',
                     },
                   },
                   tooltip: {
-                    backgroundColor: 'rgba(12,16,21,0.95)',
-                    borderColor: 'rgba(255,255,255,0.1)',
+                    backgroundColor: _ttBg,
+                    borderColor: _ttBorder,
                     borderWidth: 1,
-                    titleColor: '#e0e0e0',
-                    bodyColor: '#b0bec5',
-                    padding: 12,
-                    bodyFont: { family: "'JetBrains Mono', monospace", size: 11 },
+                    cornerRadius: 8,
+                    titleColor: _ttText,
+                    titleFont: { family: "'Outfit', sans-serif", size: 12, weight: '500' },
+                    bodyColor: _ttText2,
+                    bodyFont: { family: "'IBM Plex Mono', monospace", size: 11 },
+                    padding: { top: 10, bottom: 10, left: 14, right: 14 },
+                    boxPadding: 6,
+                    usePointStyle: true,
                     callbacks: {
-                      label: (ctx) => ctx.dataset.label + ': ' + ctx.parsed.y.toLocaleString() + ' tokens',
+                      label: (ctx) => ' ' + ctx.dataset.label + '  ' + ctx.parsed.y.toLocaleString() + ' tokens',
                     },
                   },
                 },
                 scales: {
                   x: {
-                    grid: { color: 'rgba(255,255,255,0.04)' },
+                    grid: { display: false },
                     ticks: {
-                      color: '#9e9e9e',
-                      font: { size: 10, family: "'DM Sans', sans-serif" },
-                      maxRotation: 45,
+                      color: _tickC,
+                      font: { size: 10, family: "'Outfit', sans-serif" },
+                      maxRotation: 0,
+                      padding: 8,
                     },
-                    border: { color: 'rgba(255,255,255,0.06)' },
+                    border: { display: false },
                   },
                   y: {
                     beginAtZero: true,
-                    grid: { color: 'rgba(255,255,255,0.04)' },
+                    grid: { color: _gridC, lineWidth: 0.5, drawTicks: false },
                     ticks: {
-                      color: '#9e9e9e',
-                      font: { size: 10, family: "'JetBrains Mono', monospace" },
+                      color: _tickC,
+                      font: { size: 10, family: "'IBM Plex Mono', monospace" },
+                      padding: 12,
                       callback: (v) => v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(0) + 'K' : v,
                     },
-                    border: { color: 'rgba(255,255,255,0.06)' },
+                    border: { display: false },
                   },
                 },
               },
             });
+            } catch(e) { /* chart creation can fail on double-init */ }
           },
 
           switchTokenRange(range) {
             this.tokenRange = range;
             this.loadTokenUsage();
+          },
+
+          switchTokenFilter() {
+            this.$nextTick().then(() => this.renderTokenChart());
+          },
+
+          distPercent(items, field) {
+            const total = items.reduce((s, m) => s + m[field], 0);
+            if (!total) return items.map(() => 0);
+            return items.map((m) => Math.round(m[field] / total * 1000) / 10);
           },
 
           async fetchLatencyData() {
@@ -955,30 +1134,10 @@ export function dashboardAssets(): string {
             const bucketKeys = [...bucketMap.keys()];
             const avg = (sum, reqs) => reqs > 0 ? Math.round(sum / reqs) : 0;
 
-            const datasets = [
-              {
-                label: 'Stream',
-                data: bucketKeys.map((k) => avg(aggStream.get(k), reqsStream.get(k))),
-                borderColor: '#00e5ff',
-                backgroundColor: '#00e5ff18',
-                borderWidth: 2,
-                pointRadius: 2,
-                pointHoverRadius: 5,
-                tension: 0.3,
-                fill: true,
-              },
-              {
-                label: 'Sync',
-                data: bucketKeys.map((k) => avg(aggSync.get(k), reqsSync.get(k))),
-                borderColor: '#ffd740',
-                backgroundColor: '#ffd74018',
-                borderWidth: 2,
-                pointRadius: 2,
-                pointHoverRadius: 5,
-                tension: 0.3,
-                fill: true,
-              },
-            ];
+            const _lDark = isDarkTheme();
+            const _streamC = _lDark ? '#7B90FF' : '#4E6CF5';
+            const _syncC = _lDark ? '#50D48A' : '#2CA87A';
+            const _lFillAlpha = _lDark ? '20' : '30';
 
             if (this.latencyChart) {
               this.latencyChart.stop();
@@ -986,58 +1145,110 @@ export function dashboardAssets(): string {
               this.latencyChart = null;
             }
 
+            const _lPtBg = _lDark ? '#161922' : '#ffffff';
+
+            const datasets = [
+              {
+                label: 'Stream',
+                data: bucketKeys.map((k) => avg(aggStream.get(k), reqsStream.get(k))),
+                borderColor: _streamC,
+                backgroundColor: _streamC + _lFillAlpha,
+                borderWidth: 2,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                pointHoverBorderWidth: 2,
+                pointHoverBackgroundColor: _lPtBg,
+                pointHoverBorderColor: _streamC,
+                tension: 0.4,
+                fill: true,
+                borderCapStyle: 'round',
+                borderJoinStyle: 'round',
+              },
+              {
+                label: 'Sync',
+                data: bucketKeys.map((k) => avg(aggSync.get(k), reqsSync.get(k))),
+                borderColor: _syncC,
+                backgroundColor: _syncC + _lFillAlpha,
+                borderWidth: 2,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                pointHoverBorderWidth: 2,
+                pointHoverBackgroundColor: _lPtBg,
+                pointHoverBorderColor: _syncC,
+                tension: 0.4,
+                fill: true,
+                borderCapStyle: 'round',
+                borderJoinStyle: 'round',
+              },
+            ];
+
+            const _lc = getComputedStyle(document.documentElement);
+            const _lGridC = _lc.getPropertyValue('--grid-color').trim();
+            const _lTickC = _lc.getPropertyValue('--tick-color').trim();
+            const _lTtBg = _lc.getPropertyValue('--tooltip-bg').trim();
+            const _lTtBorder = _lc.getPropertyValue('--tooltip-border').trim();
+            const _lTtText = _lc.getPropertyValue('--tooltip-text').trim();
+            const _lTtText2 = _lc.getPropertyValue('--tooltip-text2').trim();
+
             this.latencyChart = new Chart(canvas, {
               type: 'line',
               data: { labels, datasets },
               options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: false,
+                animation: { duration: 400, easing: 'easeOutQuart' },
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
                   legend: {
                     position: 'bottom',
                     labels: {
-                      color: '#9e9e9e',
-                      font: { size: 11, family: "'DM Sans', sans-serif" },
-                      boxWidth: 12,
-                      padding: 16,
+                      color: _lTickC,
+                      font: { size: 11, family: "'Outfit', sans-serif", weight: '400' },
+                      boxWidth: 8,
+                      boxHeight: 8,
+                      padding: 20,
                       usePointStyle: true,
                       pointStyle: 'circle',
                     },
                   },
                   tooltip: {
-                    backgroundColor: 'rgba(12,16,21,0.95)',
-                    borderColor: 'rgba(255,255,255,0.1)',
+                    backgroundColor: _lTtBg,
+                    borderColor: _lTtBorder,
                     borderWidth: 1,
-                    titleColor: '#e0e0e0',
-                    bodyColor: '#b0bec5',
-                    padding: 12,
-                    bodyFont: { family: "'JetBrains Mono', monospace", size: 11 },
+                    cornerRadius: 8,
+                    titleColor: _lTtText,
+                    titleFont: { family: "'Outfit', sans-serif", size: 12, weight: '500' },
+                    bodyColor: _lTtText2,
+                    bodyFont: { family: "'IBM Plex Mono', monospace", size: 11 },
+                    padding: { top: 10, bottom: 10, left: 14, right: 14 },
+                    boxPadding: 6,
+                    usePointStyle: true,
                     callbacks: {
-                      label: (ctx) => ctx.dataset.label + ': ' + ctx.parsed.y.toLocaleString() + ' ms',
+                      label: (ctx) => ' ' + ctx.dataset.label + '  ' + ctx.parsed.y.toLocaleString() + ' ms',
                     },
                   },
                 },
                 scales: {
                   x: {
-                    grid: { color: 'rgba(255,255,255,0.04)' },
+                    grid: { display: false },
                     ticks: {
-                      color: '#9e9e9e',
-                      font: { size: 10, family: "'DM Sans', sans-serif" },
-                      maxRotation: 45,
+                      color: _lTickC,
+                      font: { size: 10, family: "'Outfit', sans-serif" },
+                      maxRotation: 0,
+                      padding: 8,
                     },
-                    border: { color: 'rgba(255,255,255,0.06)' },
+                    border: { display: false },
                   },
                   y: {
                     beginAtZero: true,
-                    grid: { color: 'rgba(255,255,255,0.04)' },
+                    grid: { color: _lGridC, lineWidth: 0.5, drawTicks: false },
                     ticks: {
-                      color: '#9e9e9e',
-                      font: { size: 10, family: "'JetBrains Mono', monospace" },
+                      color: _lTickC,
+                      font: { size: 10, family: "'IBM Plex Mono', monospace" },
+                      padding: 12,
                       callback: (v) => v >= 1000 ? (v / 1000).toFixed(1) + 's' : v + 'ms',
                     },
-                    border: { color: 'rgba(255,255,255,0.06)' },
+                    border: { display: false },
                   },
                 },
               },

@@ -18,6 +18,7 @@ import {
 import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { createSSETransform } from "~/lib/sse-transform"
+import { detectClient } from "~/lib/client-detect"
 
 interface RouteContext {
   state: AppState
@@ -25,6 +26,7 @@ interface RouteContext {
   apiKeyId?: string
   colo: string
   requestId?: string
+  userAgent?: string
 }
 
 /**
@@ -70,8 +72,9 @@ function buildStreamTransform(
 }
 
 const handleResponses = async (ctx: unknown) => {
-  const { state, body, apiKeyId, colo, requestId } = ctx as unknown as RouteContext
+  const { state, body, apiKeyId, colo, requestId, userAgent } = ctx as unknown as RouteContext
   const elapsed = startTimer()
+  const client = detectClient(userAgent)
 
   const payload: ResponsesPayload = { ...(body as ResponsesPayload) }
 
@@ -110,12 +113,12 @@ const handleResponses = async (ctx: unknown) => {
           totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
         }, requestId, { stream: true }).catch(() => {})
       }
-      return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, model) : streamResponse
+      return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, model, client) : streamResponse
     }
 
     const json = await response.json() as { usage?: { input_tokens?: number; output_tokens?: number } }
     if (apiKeyId) {
-      await trackNonStreamingUsage(json, apiKeyId, model)
+      await trackNonStreamingUsage(json, apiKeyId, model, client)
       recordLatency(apiKeyId, model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
       }, requestId, {
@@ -162,7 +165,7 @@ const handleResponses = async (ctx: unknown) => {
       },
     })
 
-    return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, model) : streamResponse
+    return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, model, client) : streamResponse
   }
 
   // Non-streaming fallback
@@ -186,6 +189,7 @@ const handleResponses = async (ctx: unknown) => {
       { usage: { input_tokens: responsesResult.usage.input_tokens, output_tokens: responsesResult.usage.output_tokens } },
       apiKeyId,
       model,
+      client,
     )
     recordLatency(apiKeyId, model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,

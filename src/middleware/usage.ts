@@ -40,9 +40,9 @@ function extractUsageFromStreamEvent(parsed: any, add: (input: number, output: n
   }
 }
 
-async function persistUsage(keyId: string, model: string, inputTokens: number, outputTokens: number): Promise<void> {
+async function persistUsage(keyId: string, model: string, inputTokens: number, outputTokens: number, client?: string): Promise<void> {
   await Promise.all([
-    recordUsage(keyId, model, inputTokens, outputTokens),
+    recordUsage(keyId, model, inputTokens, outputTokens, client),
     touchApiKeyLastUsed(keyId),
   ])
 }
@@ -56,10 +56,11 @@ export async function trackNonStreamingUsage(
   json: any,
   keyId: string,
   model: string,
+  client?: string,
 ): Promise<void> {
   const usage = extractUsageFromJson(json)
   if (usage) {
-    await persistUsage(keyId, model, usage.input, usage.output)
+    await persistUsage(keyId, model, usage.input, usage.output, client)
   }
 }
 
@@ -72,6 +73,7 @@ export function trackStreamingUsage(
   response: Response,
   keyId: string,
   model: string,
+  client?: string,
 ): Response {
   const body = response.body
   if (!body) return response
@@ -117,7 +119,7 @@ export function trackStreamingUsage(
       }
 
       if (inputTokens > 0 || outputTokens > 0) {
-        await persistUsage(keyId, model, inputTokens, outputTokens).catch(() => {})
+        await persistUsage(keyId, model, inputTokens, outputTokens, client).catch(() => {})
       }
     },
   })

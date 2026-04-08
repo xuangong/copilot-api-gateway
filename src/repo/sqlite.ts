@@ -48,10 +48,11 @@ CREATE TABLE IF NOT EXISTS usage (
   key_id TEXT NOT NULL,
   model TEXT NOT NULL,
   hour TEXT NOT NULL,
+  client TEXT NOT NULL DEFAULT '',
   requests INTEGER NOT NULL DEFAULT 0,
   input_tokens INTEGER NOT NULL DEFAULT 0,
   output_tokens INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (key_id, model, hour)
+  PRIMARY KEY (key_id, model, hour, client)
 );
 
 CREATE INDEX IF NOT EXISTS idx_usage_hour ON usage (hour);
@@ -217,36 +218,38 @@ function toGitHubAccount(row: any): GitHubAccount {
 class SqliteUsageRepo implements UsageRepo {
   constructor(private db: Database) {}
 
-  async record(keyId: string, model: string, hour: string, requests: number, inputTokens: number, outputTokens: number): Promise<void> {
+  async record(keyId: string, model: string, hour: string, requests: number, inputTokens: number, outputTokens: number, client?: string): Promise<void> {
+    const c = client || ""
     this.db.query(
-      `INSERT INTO usage (key_id, model, hour, requests, input_tokens, output_tokens) VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT (key_id, model, hour) DO UPDATE SET requests = requests + excluded.requests, input_tokens = input_tokens + excluded.input_tokens, output_tokens = output_tokens + excluded.output_tokens`,
-    ).run(keyId, model, hour, requests, inputTokens, outputTokens)
+      `INSERT INTO usage (key_id, model, hour, client, requests, input_tokens, output_tokens) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (key_id, model, hour, client) DO UPDATE SET requests = requests + excluded.requests, input_tokens = input_tokens + excluded.input_tokens, output_tokens = output_tokens + excluded.output_tokens`,
+    ).run(keyId, model, hour, c, requests, inputTokens, outputTokens)
   }
 
   async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<UsageRecord[]> {
     let rows: any[]
     if (opts.keyIds && opts.keyIds.length > 0) {
       const placeholders = opts.keyIds.map(() => "?").join(",")
-      rows = this.db.query(`SELECT key_id, model, hour, requests, input_tokens, output_tokens FROM usage WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`).all(...opts.keyIds, opts.start, opts.end)
+      rows = this.db.query(`SELECT key_id, model, hour, client, requests, input_tokens, output_tokens FROM usage WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`).all(...opts.keyIds, opts.start, opts.end)
     } else if (opts.keyId) {
-      rows = this.db.query("SELECT key_id, model, hour, requests, input_tokens, output_tokens FROM usage WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour").all(opts.keyId, opts.start, opts.end)
+      rows = this.db.query("SELECT key_id, model, hour, client, requests, input_tokens, output_tokens FROM usage WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour").all(opts.keyId, opts.start, opts.end)
     } else {
-      rows = this.db.query("SELECT key_id, model, hour, requests, input_tokens, output_tokens FROM usage WHERE hour >= ? AND hour < ? ORDER BY hour").all(opts.start, opts.end)
+      rows = this.db.query("SELECT key_id, model, hour, client, requests, input_tokens, output_tokens FROM usage WHERE hour >= ? AND hour < ? ORDER BY hour").all(opts.start, opts.end)
     }
-    return rows.map((r: any) => ({ keyId: r.key_id, model: r.model, hour: r.hour, requests: r.requests, inputTokens: r.input_tokens, outputTokens: r.output_tokens }))
+    return rows.map((r: any) => ({ keyId: r.key_id, model: r.model, hour: r.hour, client: r.client || "", requests: r.requests, inputTokens: r.input_tokens, outputTokens: r.output_tokens }))
   }
 
   async listAll(): Promise<UsageRecord[]> {
-    return this.db.query<any, []>("SELECT key_id, model, hour, requests, input_tokens, output_tokens FROM usage ORDER BY hour").all()
-      .map((r: any) => ({ keyId: r.key_id, model: r.model, hour: r.hour, requests: r.requests, inputTokens: r.input_tokens, outputTokens: r.output_tokens }))
+    return this.db.query<any, []>("SELECT key_id, model, hour, client, requests, input_tokens, output_tokens FROM usage ORDER BY hour").all()
+      .map((r: any) => ({ keyId: r.key_id, model: r.model, hour: r.hour, client: r.client || "", requests: r.requests, inputTokens: r.input_tokens, outputTokens: r.output_tokens }))
   }
 
   async set(record: UsageRecord): Promise<void> {
+    const c = record.client || ""
     this.db.query(
-      `INSERT INTO usage (key_id, model, hour, requests, input_tokens, output_tokens) VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT (key_id, model, hour) DO UPDATE SET requests = excluded.requests, input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens`,
-    ).run(record.keyId, record.model, record.hour, record.requests, record.inputTokens, record.outputTokens)
+      `INSERT INTO usage (key_id, model, hour, client, requests, input_tokens, output_tokens) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (key_id, model, hour, client) DO UPDATE SET requests = excluded.requests, input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens`,
+    ).run(record.keyId, record.model, record.hour, c, record.requests, record.inputTokens, record.outputTokens)
   }
 
   async deleteAll(): Promise<void> {
@@ -453,6 +456,27 @@ function migrateSchema(db: Database): void {
         FROM github_accounts;
       DROP TABLE github_accounts;
       ALTER TABLE github_accounts_new RENAME TO github_accounts;
+    `)
+  }
+  // Migrate usage table to include client column in PK
+  if (!hasColumn(db, "usage", "client")) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS usage_new (
+        key_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        hour TEXT NOT NULL,
+        client TEXT NOT NULL DEFAULT '',
+        requests INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (key_id, model, hour, client)
+      );
+      INSERT OR IGNORE INTO usage_new (key_id, model, hour, client, requests, input_tokens, output_tokens)
+        SELECT key_id, model, hour, '', requests, input_tokens, output_tokens
+        FROM usage;
+      DROP TABLE usage;
+      ALTER TABLE usage_new RENAME TO usage;
+      CREATE INDEX IF NOT EXISTS idx_usage_hour ON usage (hour);
     `)
   }
 }

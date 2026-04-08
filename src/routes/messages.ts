@@ -16,6 +16,7 @@ import {
 } from "~/transforms"
 import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
+import { detectClient } from "~/lib/client-detect"
 
 interface RouteContext {
   state: AppState
@@ -45,6 +46,7 @@ export const messagesRoute = new Elysia()
   .post("/v1/messages", async (ctx) => {
     const { state, body, apiKeyId, colo, requestId, userAgent } = ctx as unknown as RouteContext
     const elapsed = startTimer()
+    const client = detectClient(userAgent)
 
     const payload: AnthropicMessagesPayload = {
       ...(body as AnthropicMessagesPayload),
@@ -84,7 +86,7 @@ export const messagesRoute = new Elysia()
 
       const wsResponse = new Response(JSON.stringify(response), { headers })
       if (apiKeyId) {
-        await trackNonStreamingUsage(response, apiKeyId, payload.model)
+        await trackNonStreamingUsage(response, apiKeyId, payload.model, client)
         const usage = response as { usage?: { input_tokens?: number; output_tokens?: number } }
         recordLatency(apiKeyId, payload.model, colo, {
           totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
@@ -124,7 +126,7 @@ export const messagesRoute = new Elysia()
           totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
         }, requestId, { stream: true }).catch((e) => console.error('[latency] record error:', e))
       }
-      return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, payload.model) : streamResponse
+      return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, payload.model, client) : streamResponse
     }
 
     const json = await response.json() as { usage?: { input_tokens?: number; output_tokens?: number } }
@@ -132,7 +134,7 @@ export const messagesRoute = new Elysia()
       headers: { "Content-Type": "application/json" },
     })
     if (apiKeyId) {
-      await trackNonStreamingUsage(json, apiKeyId, payload.model)
+      await trackNonStreamingUsage(json, apiKeyId, payload.model, client)
       recordLatency(apiKeyId, payload.model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
       }, requestId, {

@@ -6,20 +6,20 @@ export function LoginPage(): string {
     title: "Login",
     children: `
       <div class="min-h-screen flex items-center justify-center p-4">
-        <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-accent-cyan/5 rounded-full blur-[120px] pointer-events-none"></div>
+        <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-accent-violet/5 rounded-full blur-[120px] pointer-events-none"></div>
 
         <div class="w-full max-w-md" x-data="loginApp()">
           <template x-if="autoLogin">
             <div class="flex flex-col items-center gap-4 animate-in">
               <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-surface-700 glow-border">
-                <svg class="w-8 h-8 text-accent-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="w-8 h-8 text-accent-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M12 2L2 7l10 5 10-5-10-5z"/>
                   <path d="M2 17l10 5 10-5"/>
                   <path d="M2 12l10 5 10-5"/>
                 </svg>
               </div>
-              <div class="flex items-center gap-2.5 text-gray-400">
-                <svg class="animate-spin h-4 w-4 text-accent-cyan/60" viewBox="0 0 24 24">
+              <div class="flex items-center gap-2.5 text-themed-dim">
+                <svg class="animate-spin h-4 w-4 text-accent-violet/60" viewBox="0 0 24 24">
                   <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
                   <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" opacity="0.75"/>
                 </svg>
@@ -34,22 +34,22 @@ export function LoginPage(): string {
           <div>
           <div class="text-center mb-8 animate-in">
             <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-surface-700 glow-border mb-6">
-              <svg class="w-8 h-8 text-accent-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg class="w-8 h-8 text-accent-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 2L2 7l10 5 10-5-10-5z"/>
                 <path d="M2 17l10 5 10-5"/>
                 <path d="M2 12l10 5 10-5"/>
               </svg>
             </div>
-            <h1 class="text-2xl font-semibold tracking-tight text-white">Copilot Gateway</h1>
-            <p class="text-sm text-gray-500 mt-2 font-light">Enter your key to continue</p>
+            <h1 class="text-2xl font-semibold tracking-tight text-themed">Copilot Gateway</h1>
+            <p class="text-sm text-themed-dim mt-2 font-light">Enter your key to continue</p>
           </div>
 
-          <div class="glass-card p-8 glow-cyan animate-in delay-1">
-            <p class="text-xs text-gray-500 mb-6 leading-relaxed">Log in with <span class="text-gray-400">ADMIN_KEY</span>, <span class="text-gray-400">User Key</span>, <span class="text-gray-400">API key</span>, or <span class="text-gray-400">invite code</span>.</p>
+          <div class="glass-card p-8 glow-primary animate-in delay-1">
+            <p class="text-xs text-themed-dim mb-6 leading-relaxed">Log in with <span class="text-themed-secondary">ADMIN_KEY</span>, <span class="text-themed-secondary">User Key</span>, <span class="text-themed-secondary">API key</span>, or <span class="text-themed-secondary">invite code</span>.</p>
 
             <form @submit.prevent="login()" class="space-y-5">
               <div>
-                <label class="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-widest">Key</label>
+                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest">Key</label>
                 <input
                   type="password"
                   x-model="authKey"
@@ -71,13 +71,13 @@ export function LoginPage(): string {
               </button>
             </form>
 
-            <div x-show="error" x-transition class="mt-4 p-3 rounded-lg bg-accent-rose/10 border border-accent-rose/20 text-accent-rose text-sm">
+            <div x-show="error" x-transition class="mt-4 p-3 rounded-lg bg-accent-red/10 border border-accent-red/20 text-accent-red text-sm">
               <span x-text="error"></span>
             </div>
           </div>
 
           <div class="text-center mt-6 animate-in delay-2">
-            <p class="text-xs text-gray-600">
+            <p class="text-xs text-themed-dim">
               Powered by GitHub Copilot API
             </p>
           </div>
@@ -88,23 +88,23 @@ export function LoginPage(): string {
           <div>
           <div class="text-center mb-8 animate-in">
             <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-surface-700 glow-border mb-6">
-              <svg class="w-8 h-8 text-accent-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg class="w-8 h-8 text-accent-teal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
                 <circle cx="9" cy="7" r="4"/>
                 <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
                 <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
               </svg>
             </div>
-            <h1 class="text-2xl font-semibold tracking-tight text-white">Welcome, <span x-text="inviteName" class="text-accent-cyan"></span></h1>
-            <p class="text-sm text-gray-500 mt-2 font-light">Set your User Key for future logins</p>
+            <h1 class="text-2xl font-semibold tracking-tight text-themed">Welcome, <span x-text="inviteName" class="text-accent-violet"></span></h1>
+            <p class="text-sm text-themed-dim mt-2 font-light">Set your User Key for future logins</p>
           </div>
 
-          <div class="glass-card p-8 glow-cyan animate-in delay-1">
-            <p class="text-xs text-gray-500 mb-6 leading-relaxed">Choose a <span class="text-gray-400">User Key</span> (min 8 characters). You'll use this to log in from now on.</p>
+          <div class="glass-card p-8 glow-primary animate-in delay-1">
+            <p class="text-xs text-themed-dim mb-6 leading-relaxed">Choose a <span class="text-themed-secondary">User Key</span> (min 8 characters). You'll use this to log in from now on.</p>
 
             <form @submit.prevent="register()" class="space-y-5">
               <div>
-                <label class="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-widest">User Key</label>
+                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest">User Key</label>
                 <input
                   type="password"
                   x-model="userKey"
@@ -126,12 +126,12 @@ export function LoginPage(): string {
                 </span>
               </button>
 
-              <button type="button" @click="step='login'; error=''" class="w-full text-center text-xs text-gray-500 hover:text-gray-400 transition-colors">
+              <button type="button" @click="step='login'; error=''" class="w-full text-center text-xs text-themed-dim hover:text-themed-secondary transition-colors">
                 Back to login
               </button>
             </form>
 
-            <div x-show="error" x-transition class="mt-4 p-3 rounded-lg bg-accent-rose/10 border border-accent-rose/20 text-accent-rose text-sm">
+            <div x-show="error" x-transition class="mt-4 p-3 rounded-lg bg-accent-red/10 border border-accent-red/20 text-accent-red text-sm">
               <span x-text="error"></span>
             </div>
           </div>

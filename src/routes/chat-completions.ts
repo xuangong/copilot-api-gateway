@@ -4,6 +4,7 @@ import type { AppState } from "~/lib/state"
 import { callCopilotAPI } from "~/services/copilot"
 import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
+import { detectClient } from "~/lib/client-detect"
 
 interface ChatMessage {
   role: "system" | "user" | "assistant"
@@ -25,12 +26,14 @@ interface RouteContext {
   apiKeyId?: string
   colo: string
   requestId?: string
+  userAgent?: string
 }
 
 export const chatCompletionsRoute = new Elysia()
   .post("/chat/completions", async (ctx) => {
-    const { state, body, apiKeyId, colo, requestId } = ctx as unknown as RouteContext
+    const { state, body, apiKeyId, colo, requestId, userAgent } = ctx as unknown as RouteContext
     const elapsed = startTimer()
+    const client = detectClient(userAgent)
 
     const payload = body as ChatCompletionsPayload
 
@@ -58,7 +61,7 @@ export const chatCompletionsRoute = new Elysia()
           totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
         }, requestId, { stream: true }).catch(() => {})
       }
-      return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, payload.model) : streamResponse
+      return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, payload.model, client) : streamResponse
     }
 
     const json = await response.json() as { usage?: { prompt_tokens?: number; completion_tokens?: number } }
@@ -66,7 +69,7 @@ export const chatCompletionsRoute = new Elysia()
       headers: { "Content-Type": "application/json" },
     })
     if (apiKeyId) {
-      await trackNonStreamingUsage(json, apiKeyId, payload.model)
+      await trackNonStreamingUsage(json, apiKeyId, payload.model, client)
       recordLatency(apiKeyId, payload.model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
       }, requestId, {
@@ -78,8 +81,9 @@ export const chatCompletionsRoute = new Elysia()
     return jsonResponse
   })
   .post("/v1/chat/completions", async (ctx) => {
-    const { state, body, apiKeyId, colo, requestId } = ctx as unknown as RouteContext
+    const { state, body, apiKeyId, colo, requestId, userAgent } = ctx as unknown as RouteContext
     const elapsed = startTimer()
+    const client = detectClient(userAgent)
 
     const payload = body as ChatCompletionsPayload
 
@@ -106,7 +110,7 @@ export const chatCompletionsRoute = new Elysia()
           totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
         }, requestId, { stream: true }).catch(() => {})
       }
-      return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, payload.model) : streamResponse
+      return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, payload.model, client) : streamResponse
     }
 
     const json2 = await response.json() as { usage?: { prompt_tokens?: number; completion_tokens?: number } }
@@ -114,7 +118,7 @@ export const chatCompletionsRoute = new Elysia()
       headers: { "Content-Type": "application/json" },
     })
     if (apiKeyId) {
-      await trackNonStreamingUsage(json2, apiKeyId, payload.model)
+      await trackNonStreamingUsage(json2, apiKeyId, payload.model, client)
       recordLatency(apiKeyId, payload.model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
       }, requestId, {
