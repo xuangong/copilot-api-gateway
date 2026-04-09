@@ -363,14 +363,17 @@ function createApp(env: Env) {
     .use(geminiRoute)
 }
 
-// Cloudflare Workers export
+// Cloudflare Workers export — cache the Elysia app across requests
+// to avoid re-creating routes/middleware on every invocation (saves CPU).
+let cachedApp: ReturnType<typeof createApp> | null = null
+
 export default {
   async fetch(
     request: Request,
     env: Env,
     _ctx: ExecutionContext,
   ): Promise<Response> {
-    const app = createApp(env)
-    return app.handle(request)
+    cachedApp ??= createApp(env)
+    return cachedApp.handle(request)
   },
 }
