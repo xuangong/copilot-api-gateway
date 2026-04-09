@@ -732,7 +732,7 @@ export function renderUsageTab(): string {
         </div>
       </div>
 
-      ${renderDistributionPanel('tokenByModel', 'By Model', 'model')}
+      ${renderDistributionPanel('tokenByModel', 'By Model', 'label')}
       ${renderDistributionPanel('tokenByUser', 'By User', 'label')}
       ${renderDistributionPanel('tokenByKey', 'By Key', 'label')}
       ${renderDistributionPanel('tokenByClient', 'By Client', 'label')}

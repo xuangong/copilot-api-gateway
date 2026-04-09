@@ -44,6 +44,143 @@ export function dashboardAssets(): string {
     const PALETTE_LIGHT = ['#4E6CF5','#2CA87A','#D88A2E','#8058C8','#C85878','#1E98A0','#9B60B8','#2E9080','#5078C0','#5A9850'];
     const PALETTE_DARK  = ['#7B90FF','#50D48A','#F0B050','#A880F0','#F07898','#50C5D0','#C098E0','#58CCB0','#7098E0','#90C880'];
 
+    // Safely destroy a Chart.js instance by replacing the canvas element first.
+    // This prevents the "Cannot read properties of null (reading 'save')" error
+    // caused by Chart.js animation frames firing after destroy() nullifies ctx.
+    function safeChartDestroy(chart, canvasId) {
+      if (!chart) return;
+      try { chart.stop(); } catch {}
+      const canvas = document.getElementById(canvasId);
+      if (canvas && canvas.parentElement) {
+        const fresh = document.createElement('canvas');
+        fresh.id = canvasId;
+        canvas.parentElement.replaceChild(fresh, canvas);
+      }
+      setTimeout(() => { try { chart.destroy(); } catch {} }, 0);
+    }
+
+    function computeTimeRange(range, weekOffset) {
+      const now = new Date();
+      let start, end;
+      if (range === 'week') {
+        const ref = new Date(now);
+        ref.setDate(ref.getDate() + weekOffset * 7);
+        const day = ref.getDay();
+        const monday = new Date(ref);
+        monday.setDate(ref.getDate() - ((day + 6) % 7));
+        monday.setHours(0, 0, 0, 0);
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 7);
+        sunday.setHours(0, 0, 0, 0);
+        start = monday;
+        end = sunday;
+      } else {
+        start = new Date(now);
+        if (range === 'today') {
+          start.setHours(0, 0, 0, 0);
+        } else if (range === '7d') {
+          start.setDate(start.getDate() - 6);
+          start.setHours(0, 0, 0, 0);
+        } else {
+          start.setDate(start.getDate() - 29);
+          start.setHours(0, 0, 0, 0);
+        }
+        end = new Date(now.getTime() + 3600000);
+      }
+      return {
+        start: start.toISOString().slice(0, 13),
+        end: end.toISOString().slice(0, 13),
+      };
+    }
+
+    function formatWeekLabel(weekOffset) {
+      const now = new Date();
+      const ref = new Date(now);
+      ref.setDate(ref.getDate() + weekOffset * 7);
+      const day = ref.getDay();
+      const monday = new Date(ref);
+      monday.setDate(ref.getDate() - ((day + 6) % 7));
+      monday.setHours(0, 0, 0, 0);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      if (weekOffset === 0) return 'This Week (' + fmt(monday) + ' \\u2013 ' + fmt(sunday) + ')';
+      if (weekOffset === -1) return 'Last Week (' + fmt(monday) + ' \\u2013 ' + fmt(sunday) + ')';
+      return fmt(monday) + ' \\u2013 ' + fmt(sunday);
+    }
+
+    function buildDistribution(data, keyFn, labelFn) {
+      const m = new Map();
+      for (const r of data) {
+        const k = keyFn(r);
+        const existing = m.get(k);
+        if (existing) {
+          existing.requests += r.requests;
+          existing.input += r.inputTokens;
+          existing.output += r.outputTokens;
+        } else {
+          m.set(k, { label: labelFn(r, k), requests: r.requests, input: r.inputTokens, output: r.outputTokens });
+        }
+      }
+      return [...m.values()].sort((a, b) => (b.input + b.output) - (a.input + a.output));
+    }
+
+    function chartBaseOptions(labelCallback) {
+      const dark = isDarkTheme();
+      const cs = getComputedStyle(document.documentElement);
+      const gridC = cs.getPropertyValue('--grid-color').trim();
+      const tickC = cs.getPropertyValue('--tick-color').trim();
+      const ttBg = cs.getPropertyValue('--tooltip-bg').trim();
+      const ttBorder = cs.getPropertyValue('--tooltip-border').trim();
+      const ttText = cs.getPropertyValue('--tooltip-text').trim();
+      const ttText2 = cs.getPropertyValue('--tooltip-text2').trim();
+      const ptBg = dark ? '#161922' : '#ffffff';
+      const fillAlpha = dark ? '20' : '30';
+      return {
+        ptBg, fillAlpha,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 400, easing: 'easeOutQuart' },
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                color: tickC,
+                font: { size: 11, family: "'Outfit', sans-serif", weight: '400' },
+                boxWidth: 8, boxHeight: 8, padding: 20,
+                usePointStyle: true, pointStyle: 'circle',
+              },
+            },
+            tooltip: {
+              backgroundColor: ttBg, borderColor: ttBorder, borderWidth: 1, cornerRadius: 8,
+              titleColor: ttText,
+              titleFont: { family: "'Outfit', sans-serif", size: 12, weight: '500' },
+              bodyColor: ttText2,
+              bodyFont: { family: "'IBM Plex Mono', monospace", size: 11 },
+              padding: { top: 10, bottom: 10, left: 14, right: 14 },
+              boxPadding: 6, usePointStyle: true,
+              callbacks: { label: labelCallback },
+            },
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { color: tickC, font: { size: 10, family: "'Outfit', sans-serif" }, maxRotation: 0, padding: 8 },
+              border: { display: false },
+            },
+            y: {
+              beginAtZero: true,
+              grid: { color: gridC, lineWidth: 0.5, drawTicks: false },
+              ticks: { color: tickC, font: { size: 10, family: "'IBM Plex Mono', monospace" }, padding: 12 },
+              border: { display: false },
+            },
+          },
+        },
+      };
+    }
+
     return {
       authKey: '',
       isAdmin,
@@ -210,12 +347,13 @@ export function dashboardAssets(): string {
 
         init() {
           if (this._initialized) return;
-          this._initialized = true;
           this.authKey = localStorage.getItem('authKey') || '';
           if (!this.authKey) {
             window.location.href = '/';
             return;
           }
+
+          this._initialized = true;
 
           this.loadModels();
 
@@ -231,14 +369,14 @@ export function dashboardAssets(): string {
             this.tokenLoading = true;
             this.fetchTokenData().then(() => {
               if (this.tab === 'usage') {
-                this.$nextTick().then(() => this.renderTokenChart());
+                this.$nextTick().then(() => { if (this.tab === 'usage') this.renderTokenChart(); });
               }
             }).catch(() => {});
           } else if (this.tab === 'latency') {
             this.latencyLoading = true;
             this.fetchLatencyData().then(() => {
               if (this.tab === 'latency') {
-                this.$nextTick().then(() => this.renderLatencyChart());
+                this.$nextTick().then(() => { if (this.tab === 'latency') this.renderLatencyChart(); });
               }
             });
           }
@@ -270,15 +408,17 @@ export function dashboardAssets(): string {
 
         authHeaders() { return { 'x-api-key': this.authKey }; },
 
+        _switchId: 0,
+
         async switchTab(t) {
+          const switchId = ++this._switchId;
+
           if (t !== 'usage' && this.tokenChart) {
-            this.tokenChart.stop();
-            this.tokenChart.destroy();
+            safeChartDestroy(this.tokenChart, 'tokenChart');
             this.tokenChart = null;
           }
           if (t !== 'latency' && this.latencyChart) {
-            this.latencyChart.stop();
-            this.latencyChart.destroy();
+            safeChartDestroy(this.latencyChart, 'latencyChart');
             this.latencyChart = null;
           }
           this.tab = t;
@@ -292,66 +432,74 @@ export function dashboardAssets(): string {
           } else if (t === 'usage') {
             this.tokenLoading = true;
             await this.fetchTokenData();
-            if (this.tab === 'usage') {
-              await this.$nextTick();
-              this.renderTokenChart();
-            }
+            if (this._switchId !== switchId) return;
+            await this.$nextTick();
+            if (this._switchId !== switchId) return;
+            this.renderTokenChart();
           } else if (t === 'latency') {
             this.latencyLoading = true;
             await this.fetchLatencyData();
-            if (this.tab === 'latency') {
-              await this.$nextTick();
-              this.renderLatencyChart();
-            }
+            if (this._switchId !== switchId) return;
+            await this.$nextTick();
+            if (this._switchId !== switchId) return;
+            this.renderLatencyChart();
           } else if (t === 'keys') {
             await this.loadKeys();
           }
         },
 
-        async loadModels() {
+        async loadModels(retries) {
+          retries = retries || 0;
           try {
             const resp = await fetch('/api/models', { headers: this.authHeaders() });
-            if (!resp.ok) return;
+            if (!resp.ok) throw new Error('models fetch failed: ' + resp.status);
             const { data } = await resp.json();
 
             const claudeAll = data
               .filter((m) => m.id.startsWith('claude-') && m.supported_endpoints?.includes('/v1/messages'))
               .map((m) => m.id);
+            this.claudeModelsBig = [...claudeAll].sort(sortClaudeBig);
+            this.claudeModelsSmall = [...claudeAll].sort(sortClaudeSmall);
+            this.claudeModel = this.claudeModelsBig[0] || '';
+            this.claudeSmallModel = this.claudeModelsSmall[0] || '';
 
-              this.claudeModelsBig = [...claudeAll].sort(sortClaudeBig);
-              this.claudeModelsSmall = [...claudeAll].sort(sortClaudeSmall);
-              this.claudeModel = this.claudeModelsBig[0] || '';
-              this.claudeSmallModel = this.claudeModelsSmall[0] || '';
+            this.codexModels = data
+              .filter((m) => m.id.startsWith('gpt-') && m.supported_endpoints?.includes('/responses'))
+              .map((m) => m.id)
+              .sort(sortCodex);
+            this.codexModel = this.codexModels[0] || '';
 
-              this.codexModels = data
-                .filter((m) => m.id.startsWith('gpt-') && m.supported_endpoints?.includes('/responses'))
-                .map((m) => m.id)
-                .sort(sortCodex);
-              this.codexModel = this.codexModels[0] || '';
+            this.geminiModels = data
+              .filter((m) => m.id.startsWith('gemini-'))
+              .map((m) => m.id);
+            this.geminiModel = this.geminiModels[0] || '';
 
-              this.geminiModels = data
-                .filter((m) => m.id.startsWith('gemini-'))
-                .map((m) => m.id);
-              this.geminiModel = this.geminiModels[0] || '';
-
-              this.modelsLoaded = true;
-            } catch {}
-          },
+            this.modelsLoaded = true;
+          } catch (e) {
+            console.error('loadModels:', e);
+            if (retries < 2) {
+              setTimeout(() => this.loadModels(retries + 1), 2000 * (retries + 1));
+            }
+          }
+        },
 
           async loadMe() {
             try {
               const resp = await fetch('/auth/me', { headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.kickToLogin();
+                this.logout();
                 return;
+              }
+              if (!resp.ok) {
+                throw new Error('loadMe failed: ' + resp.status);
               }
               const data = await resp.json();
               this.githubConnected = data.github_connected;
               this.githubAccounts = data.accounts || [];
+              this.meLoaded = true;
             } catch (e) {
               console.error('loadMe:', e);
-            } finally {
-              this.meLoaded = true;
+              // Don't set meLoaded = true on failure, so switchTab can retry
             }
           },
 
@@ -387,7 +535,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/auth/github', { headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.kickToLogin();
+                this.logout();
                 return;
               }
               const d = await resp.json();
@@ -416,7 +564,7 @@ export function dashboardAssets(): string {
                   body: JSON.stringify({ device_code: this.deviceFlow.deviceCode }),
                 });
                 if (resp.status === 401) {
-                  this.kickToLogin();
+                  this.logout();
                   return;
                 }
                 const d = await resp.json();
@@ -453,7 +601,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/auth/github/' + userId, { method: 'DELETE', headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.kickToLogin();
+                this.logout();
                 return;
               }
               if (resp.ok) {
@@ -482,7 +630,7 @@ export function dashboardAssets(): string {
                 body: JSON.stringify({ user_id: userId }),
               });
               if (resp.status === 401) {
-                this.kickToLogin();
+                this.logout();
                 return;
               }
               if (resp.ok) {
@@ -501,7 +649,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/api/keys', { headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.kickToLogin();
+                this.logout();
                 return;
               }
               if (resp.ok) {
@@ -528,7 +676,7 @@ export function dashboardAssets(): string {
                 body: JSON.stringify({ name }),
               });
               if (resp.status === 401) {
-                this.kickToLogin();
+                this.logout();
                 return;
               }
               if (resp.ok) {
@@ -552,7 +700,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/api/keys/' + id, { method: 'DELETE', headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.kickToLogin();
+                this.logout();
                 return;
               }
               if (resp.ok) {
@@ -573,7 +721,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/api/keys/' + id + '/rotate', { method: 'POST', headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.kickToLogin();
+                this.logout();
                 return;
               }
               if (resp.ok) {
@@ -599,7 +747,7 @@ export function dashboardAssets(): string {
                 body: JSON.stringify({ name: newName }),
               });
               if (resp.status === 401) {
-                this.kickToLogin();
+                this.logout();
                 return;
               }
               if (resp.ok) {
@@ -642,39 +790,10 @@ export function dashboardAssets(): string {
           async fetchTokenData() {
             this.tokenLoading = true;
             try {
-              const now = new Date();
-              let rangeStart, rangeEnd;
-              if (this.tokenRange === 'week') {
-                // ISO week: Monday to Sunday
-                const ref = new Date(now);
-                ref.setDate(ref.getDate() + this.tokenWeekOffset * 7);
-                const day = ref.getDay();
-                const monday = new Date(ref);
-                monday.setDate(ref.getDate() - ((day + 6) % 7));
-                monday.setHours(0, 0, 0, 0);
-                const sunday = new Date(monday);
-                sunday.setDate(monday.getDate() + 7);
-                sunday.setHours(0, 0, 0, 0);
-                rangeStart = monday;
-                rangeEnd = sunday;
-              } else {
-                rangeStart = new Date(now);
-                if (this.tokenRange === 'today') {
-                  rangeStart.setHours(0, 0, 0, 0);
-                } else if (this.tokenRange === '7d') {
-                  rangeStart.setDate(rangeStart.getDate() - 6);
-                  rangeStart.setHours(0, 0, 0, 0);
-                } else {
-                  rangeStart.setDate(rangeStart.getDate() - 29);
-                  rangeStart.setHours(0, 0, 0, 0);
-                }
-                rangeEnd = new Date(now.getTime() + 3600000);
-              }
-              const start = rangeStart.toISOString().slice(0, 13);
-              const end = rangeEnd.toISOString().slice(0, 13);
+              const { start, end } = computeTimeRange(this.tokenRange, this.tokenWeekOffset);
               const resp = await fetch('/api/token-usage?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.kickToLogin();
+                this.logout();
                 return;
               }
               if (resp.ok) this.tokenData = await resp.json();
@@ -689,14 +808,20 @@ export function dashboardAssets(): string {
             await this.fetchTokenData();
             if (this.tab !== 'usage') return;
             await this.$nextTick();
+            if (this.tab !== 'usage') return;
             this.renderTokenChart();
           },
 
           renderTokenChart() {
-            const canvas = document.getElementById('tokenChart');
+            let canvas = document.getElementById('tokenChart');
             if (!canvas || canvas.clientWidth === 0 || !canvas.getContext) return;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return;
+
+            if (this.tokenChart) {
+              safeChartDestroy(this.tokenChart, 'tokenChart');
+              this.tokenChart = null;
+              canvas = document.getElementById('tokenChart');
+              if (!canvas) return;
+            }
 
             const palette = isDarkTheme() ? PALETTE_DARK : PALETTE_LIGHT;
             const _dark = isDarkTheme();
@@ -745,79 +870,21 @@ export function dashboardAssets(): string {
             }
             this.tokenSummary = { requests: totalReqs, input: totalIn, output: totalOut, cacheRead: totalCacheRead, cacheCreation: totalCacheCreation };
 
-            // Build distributions for each "All" dimension
-            // By Model (when model filter is All)
-            if (!this.tokenFilterModel) {
-              const mMap = new Map();
-              for (const r of data) {
-                const m = r.model || 'unknown';
-                const existing = mMap.get(m);
-                if (existing) {
-                  existing.requests += r.requests;
-                  existing.input += r.inputTokens;
-                  existing.output += r.outputTokens;
-                } else {
-                  mMap.set(m, { model: m, requests: r.requests, input: r.inputTokens, output: r.outputTokens });
-                }
-              }
-              this.tokenByModel = [...mMap.values()].sort((a, b) => (b.input + b.output) - (a.input + a.output));
-            } else {
-              this.tokenByModel = [];
-            }
-
-            // By Key (when key filter is All)
-            if (!this.tokenFilterKey) {
-              const kMap = new Map();
-              for (const r of data) {
-                const existing = kMap.get(r.keyId);
-                if (existing) {
-                  existing.requests += r.requests;
-                  existing.input += r.inputTokens;
-                  existing.output += r.outputTokens;
-                } else {
-                  kMap.set(r.keyId, { label: keyNameMap.get(r.keyId) || r.keyId.slice(0, 8), requests: r.requests, input: r.inputTokens, output: r.outputTokens });
-                }
-              }
-              this.tokenByKey = [...kMap.values()].sort((a, b) => (b.input + b.output) - (a.input + a.output));
-            } else {
-              this.tokenByKey = [];
-            }
-
-            // By Client (when client filter is All)
-            if (!this.tokenFilterClient) {
-              const cMap = new Map();
-              for (const r of data) {
-                const c = r.client || 'unknown';
-                const existing = cMap.get(c);
-                if (existing) {
-                  existing.requests += r.requests;
-                  existing.input += r.inputTokens;
-                  existing.output += r.outputTokens;
-                } else {
-                  cMap.set(c, { label: c, requests: r.requests, input: r.inputTokens, output: r.outputTokens });
-                }
-              }
-              this.tokenByClient = [...cMap.values()].sort((a, b) => (b.input + b.output) - (a.input + a.output));
-            } else {
-              this.tokenByClient = [];
-            }
-
-            // By User (admin only, when user filter is All)
+            // Build distributions for each unfiltered dimension
+            this.tokenByModel = !this.tokenFilterModel
+              ? buildDistribution(data, (r) => r.model || 'unknown', (r, k) => k)
+              : [];
+            this.tokenByKey = !this.tokenFilterKey
+              ? buildDistribution(data, (r) => r.keyId, (r) => keyNameMap.get(r.keyId) || r.keyId.slice(0, 8))
+              : [];
+            this.tokenByClient = !this.tokenFilterClient
+              ? buildDistribution(data, (r) => r.client || 'unknown', (r, k) => k)
+              : [];
             if (this.isAdmin && !this.tokenFilterUser) {
-              const uMap = new Map();
-              for (const r of data) {
-                const uid = r.ownerId || '_admin';
-                const uname = r.ownerName || (uid === '_admin' ? 'Admin' : uid.slice(0, 8));
-                const existing = uMap.get(uid);
-                if (existing) {
-                  existing.requests += r.requests;
-                  existing.input += r.inputTokens;
-                  existing.output += r.outputTokens;
-                } else {
-                  uMap.set(uid, { label: uname, requests: r.requests, input: r.inputTokens, output: r.outputTokens });
-                }
-              }
-              this.tokenByUser = [...uMap.values()].sort((a, b) => (b.input + b.output) - (a.input + a.output));
+              this.tokenByUser = buildDistribution(data,
+                (r) => r.ownerId || '_admin',
+                (r, k) => r.ownerName || (k === '_admin' ? 'Admin' : k.slice(0, 8))
+              );
             } else {
               this.tokenByUser = [];
             }
@@ -898,16 +965,7 @@ export function dashboardAssets(): string {
             const labels = [...bucketMap.values()];
             const bucketKeys = [...bucketMap.keys()];
 
-            if (this.tokenChart) {
-              try {
-                this.tokenChart.stop();
-                this.tokenChart.destroy();
-              } catch { /* ignore destroy errors */ }
-              this.tokenChart = null;
-            }
-
-            const _ptBg = _dark ? '#161922' : '#ffffff';
-            const _fillAlpha = _dark ? '20' : '30';
+            const base = chartBaseOptions((ctx) => ' ' + ctx.dataset.label + '  ' + ctx.parsed.y.toLocaleString() + ' tokens');
 
             const datasets = seriesList.map((sk, i) => {
               const c = palette[i % palette.length];
@@ -915,12 +973,12 @@ export function dashboardAssets(): string {
                 label: seriesMap.get(sk),
                 data: bucketKeys.map((k) => agg.get(k)?.get(sk) || 0),
                 borderColor: c,
-                backgroundColor: c + _fillAlpha,
+                backgroundColor: c + base.fillAlpha,
                 borderWidth: 2,
                 pointRadius: 0,
                 pointHoverRadius: 4,
                 pointHoverBorderWidth: 2,
-                pointHoverBackgroundColor: _ptBg,
+                pointHoverBackgroundColor: base.ptBg,
                 pointHoverBorderColor: c,
                 tension: 0.4,
                 fill: true,
@@ -929,77 +987,16 @@ export function dashboardAssets(): string {
               };
             });
 
-            const _tc = getComputedStyle(document.documentElement);
-            const _gridC = _tc.getPropertyValue('--grid-color').trim();
-            const _tickC = _tc.getPropertyValue('--tick-color').trim();
-            const _ttBg = _tc.getPropertyValue('--tooltip-bg').trim();
-            const _ttBorder = _tc.getPropertyValue('--tooltip-border').trim();
-            const _ttText = _tc.getPropertyValue('--tooltip-text').trim();
-            const _ttText2 = _tc.getPropertyValue('--tooltip-text2').trim();
+            if (this.tab !== 'usage') return;
+
+            const opts = base.options;
+            opts.scales.y.ticks.callback = (v) => v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(0) + 'K' : v;
 
             try {
             this.tokenChart = new Chart(canvas, {
               type: 'line',
               data: { labels, datasets },
-              options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: { duration: 400, easing: 'easeOutQuart' },
-                interaction: { mode: 'index', intersect: false },
-                plugins: {
-                  legend: {
-                    position: 'bottom',
-                    labels: {
-                      color: _tickC,
-                      font: { size: 11, family: "'Outfit', sans-serif", weight: '400' },
-                      boxWidth: 8,
-                      boxHeight: 8,
-                      padding: 20,
-                      usePointStyle: true,
-                      pointStyle: 'circle',
-                    },
-                  },
-                  tooltip: {
-                    backgroundColor: _ttBg,
-                    borderColor: _ttBorder,
-                    borderWidth: 1,
-                    cornerRadius: 8,
-                    titleColor: _ttText,
-                    titleFont: { family: "'Outfit', sans-serif", size: 12, weight: '500' },
-                    bodyColor: _ttText2,
-                    bodyFont: { family: "'IBM Plex Mono', monospace", size: 11 },
-                    padding: { top: 10, bottom: 10, left: 14, right: 14 },
-                    boxPadding: 6,
-                    usePointStyle: true,
-                    callbacks: {
-                      label: (ctx) => ' ' + ctx.dataset.label + '  ' + ctx.parsed.y.toLocaleString() + ' tokens',
-                    },
-                  },
-                },
-                scales: {
-                  x: {
-                    grid: { display: false },
-                    ticks: {
-                      color: _tickC,
-                      font: { size: 10, family: "'Outfit', sans-serif" },
-                      maxRotation: 0,
-                      padding: 8,
-                    },
-                    border: { display: false },
-                  },
-                  y: {
-                    beginAtZero: true,
-                    grid: { color: _gridC, lineWidth: 0.5, drawTicks: false },
-                    ticks: {
-                      color: _tickC,
-                      font: { size: 10, family: "'IBM Plex Mono', monospace" },
-                      padding: 12,
-                      callback: (v) => v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(0) + 'K' : v,
-                    },
-                    border: { display: false },
-                  },
-                },
-              },
+              options: opts,
             });
             } catch(e) { /* chart creation can fail on double-init */ }
           },
@@ -1017,19 +1014,7 @@ export function dashboardAssets(): string {
           },
 
           weekLabel() {
-            const now = new Date();
-            const ref = new Date(now);
-            ref.setDate(ref.getDate() + this.tokenWeekOffset * 7);
-            const day = ref.getDay();
-            const monday = new Date(ref);
-            monday.setDate(ref.getDate() - ((day + 6) % 7));
-            monday.setHours(0, 0, 0, 0);
-            const sunday = new Date(monday);
-            sunday.setDate(monday.getDate() + 6);
-            const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            if (this.tokenWeekOffset === 0) return 'This Week (' + fmt(monday) + ' – ' + fmt(sunday) + ')';
-            if (this.tokenWeekOffset === -1) return 'Last Week (' + fmt(monday) + ' – ' + fmt(sunday) + ')';
-            return fmt(monday) + ' – ' + fmt(sunday);
+            return formatWeekLabel(this.tokenWeekOffset);
           },
 
           switchTokenFilter() {
@@ -1045,38 +1030,10 @@ export function dashboardAssets(): string {
           async fetchLatencyData() {
             this.latencyLoading = true;
             try {
-              const now = new Date();
-              let rangeStart, rangeEnd;
-              if (this.latencyRange === 'week') {
-                const ref = new Date(now);
-                ref.setDate(ref.getDate() + this.latencyWeekOffset * 7);
-                const day = ref.getDay();
-                const monday = new Date(ref);
-                monday.setDate(ref.getDate() - ((day + 6) % 7));
-                monday.setHours(0, 0, 0, 0);
-                const sunday = new Date(monday);
-                sunday.setDate(monday.getDate() + 7);
-                sunday.setHours(0, 0, 0, 0);
-                rangeStart = monday;
-                rangeEnd = sunday;
-              } else {
-                rangeStart = new Date(now);
-                if (this.latencyRange === 'today') {
-                  rangeStart.setHours(0, 0, 0, 0);
-                } else if (this.latencyRange === '7d') {
-                  rangeStart.setDate(rangeStart.getDate() - 6);
-                  rangeStart.setHours(0, 0, 0, 0);
-                } else {
-                  rangeStart.setDate(rangeStart.getDate() - 29);
-                  rangeStart.setHours(0, 0, 0, 0);
-                }
-                rangeEnd = new Date(now.getTime() + 3600000);
-              }
-              const start = rangeStart.toISOString().slice(0, 13);
-              const end = rangeEnd.toISOString().slice(0, 13);
+              const { start, end } = computeTimeRange(this.latencyRange, this.latencyWeekOffset);
               const resp = await fetch('/api/latency?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.kickToLogin();
+                this.logout();
                 return;
               }
               if (resp.ok) this.latencyData = await resp.json();
@@ -1091,14 +1048,20 @@ export function dashboardAssets(): string {
             await this.fetchLatencyData();
             if (this.tab !== 'latency') return;
             await this.$nextTick();
+            if (this.tab !== 'latency') return;
             this.renderLatencyChart();
           },
 
           renderLatencyChart() {
-            const canvas = document.getElementById('latencyChart');
+            let canvas = document.getElementById('latencyChart');
             if (!canvas || canvas.clientWidth === 0 || !canvas.getContext) return;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return;
+
+            if (this.latencyChart) {
+              safeChartDestroy(this.latencyChart, 'latencyChart');
+              this.latencyChart = null;
+              canvas = document.getElementById('latencyChart');
+              if (!canvas) return;
+            }
 
             const isDaily = this.latencyRange !== 'today';
             const allData = this.latencyData;
@@ -1228,30 +1191,21 @@ export function dashboardAssets(): string {
             const bucketKeys = [...bucketMap.keys()];
             const avg = (sum, reqs) => reqs > 0 ? Math.round(sum / reqs) : 0;
 
-            const _lDark = isDarkTheme();
-            const _streamC = _lDark ? '#7B90FF' : '#4E6CF5';
-            const _syncC = _lDark ? '#50D48A' : '#2CA87A';
-            const _lFillAlpha = _lDark ? '20' : '30';
-
-            if (this.latencyChart) {
-              this.latencyChart.stop();
-              this.latencyChart.destroy();
-              this.latencyChart = null;
-            }
-
-            const _lPtBg = _lDark ? '#161922' : '#ffffff';
+            const base = chartBaseOptions((ctx) => ' ' + ctx.dataset.label + '  ' + ctx.parsed.y.toLocaleString() + ' ms');
+            const _streamC = isDarkTheme() ? '#7B90FF' : '#4E6CF5';
+            const _syncC = isDarkTheme() ? '#50D48A' : '#2CA87A';
 
             const datasets = [
               {
                 label: 'Stream',
                 data: bucketKeys.map((k) => avg(aggStream.get(k), reqsStream.get(k))),
                 borderColor: _streamC,
-                backgroundColor: _streamC + _lFillAlpha,
+                backgroundColor: _streamC + base.fillAlpha,
                 borderWidth: 2,
                 pointRadius: 0,
                 pointHoverRadius: 4,
                 pointHoverBorderWidth: 2,
-                pointHoverBackgroundColor: _lPtBg,
+                pointHoverBackgroundColor: base.ptBg,
                 pointHoverBorderColor: _streamC,
                 tension: 0.4,
                 fill: true,
@@ -1262,12 +1216,12 @@ export function dashboardAssets(): string {
                 label: 'Sync',
                 data: bucketKeys.map((k) => avg(aggSync.get(k), reqsSync.get(k))),
                 borderColor: _syncC,
-                backgroundColor: _syncC + _lFillAlpha,
+                backgroundColor: _syncC + base.fillAlpha,
                 borderWidth: 2,
                 pointRadius: 0,
                 pointHoverRadius: 4,
                 pointHoverBorderWidth: 2,
-                pointHoverBackgroundColor: _lPtBg,
+                pointHoverBackgroundColor: base.ptBg,
                 pointHoverBorderColor: _syncC,
                 tension: 0.4,
                 fill: true,
@@ -1276,76 +1230,15 @@ export function dashboardAssets(): string {
               },
             ];
 
-            const _lc = getComputedStyle(document.documentElement);
-            const _lGridC = _lc.getPropertyValue('--grid-color').trim();
-            const _lTickC = _lc.getPropertyValue('--tick-color').trim();
-            const _lTtBg = _lc.getPropertyValue('--tooltip-bg').trim();
-            const _lTtBorder = _lc.getPropertyValue('--tooltip-border').trim();
-            const _lTtText = _lc.getPropertyValue('--tooltip-text').trim();
-            const _lTtText2 = _lc.getPropertyValue('--tooltip-text2').trim();
+            if (this.tab !== 'latency') return;
+
+            const opts = base.options;
+            opts.scales.y.ticks.callback = (v) => v >= 1000 ? (v / 1000).toFixed(1) + 's' : v + 'ms';
 
             this.latencyChart = new Chart(canvas, {
               type: 'line',
               data: { labels, datasets },
-              options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: { duration: 400, easing: 'easeOutQuart' },
-                interaction: { mode: 'index', intersect: false },
-                plugins: {
-                  legend: {
-                    position: 'bottom',
-                    labels: {
-                      color: _lTickC,
-                      font: { size: 11, family: "'Outfit', sans-serif", weight: '400' },
-                      boxWidth: 8,
-                      boxHeight: 8,
-                      padding: 20,
-                      usePointStyle: true,
-                      pointStyle: 'circle',
-                    },
-                  },
-                  tooltip: {
-                    backgroundColor: _lTtBg,
-                    borderColor: _lTtBorder,
-                    borderWidth: 1,
-                    cornerRadius: 8,
-                    titleColor: _lTtText,
-                    titleFont: { family: "'Outfit', sans-serif", size: 12, weight: '500' },
-                    bodyColor: _lTtText2,
-                    bodyFont: { family: "'IBM Plex Mono', monospace", size: 11 },
-                    padding: { top: 10, bottom: 10, left: 14, right: 14 },
-                    boxPadding: 6,
-                    usePointStyle: true,
-                    callbacks: {
-                      label: (ctx) => ' ' + ctx.dataset.label + '  ' + ctx.parsed.y.toLocaleString() + ' ms',
-                    },
-                  },
-                },
-                scales: {
-                  x: {
-                    grid: { display: false },
-                    ticks: {
-                      color: _lTickC,
-                      font: { size: 10, family: "'Outfit', sans-serif" },
-                      maxRotation: 0,
-                      padding: 8,
-                    },
-                    border: { display: false },
-                  },
-                  y: {
-                    beginAtZero: true,
-                    grid: { color: _lGridC, lineWidth: 0.5, drawTicks: false },
-                    ticks: {
-                      color: _lTickC,
-                      font: { size: 10, family: "'IBM Plex Mono', monospace" },
-                      padding: 12,
-                      callback: (v) => v >= 1000 ? (v / 1000).toFixed(1) + 's' : v + 'ms',
-                    },
-                    border: { display: false },
-                  },
-                },
-              },
+              options: opts,
             });
           },
 
@@ -1362,19 +1255,7 @@ export function dashboardAssets(): string {
           },
 
           latencyWeekLabel() {
-            const now = new Date();
-            const ref = new Date(now);
-            ref.setDate(ref.getDate() + this.latencyWeekOffset * 7);
-            const day = ref.getDay();
-            const monday = new Date(ref);
-            monday.setDate(ref.getDate() - ((day + 6) % 7));
-            monday.setHours(0, 0, 0, 0);
-            const sunday = new Date(monday);
-            sunday.setDate(monday.getDate() + 6);
-            const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            if (this.latencyWeekOffset === 0) return 'This Week (' + fmt(monday) + ' – ' + fmt(sunday) + ')';
-            if (this.latencyWeekOffset === -1) return 'Last Week (' + fmt(monday) + ' – ' + fmt(sunday) + ')';
-            return fmt(monday) + ' – ' + fmt(sunday);
+            return formatWeekLabel(this.latencyWeekOffset);
           },
 
           switchLatencyModel(model) {
@@ -1387,7 +1268,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/api/export', { headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.kickToLogin();
+                this.logout();
                 return;
               }
               if (!resp.ok) {
@@ -1455,7 +1336,7 @@ export function dashboardAssets(): string {
                 body: JSON.stringify({ mode: this.importMode, data: this.importData }),
               });
               if (resp.status === 401) {
-                this.kickToLogin();
+                this.logout();
                 return;
               }
               const result = await resp.json();
@@ -1566,9 +1447,6 @@ export function dashboardAssets(): string {
             window.location.href = '/';
           },
 
-          kickToLogin() {
-            this.logout();
-          },
         };
       }
     </script>

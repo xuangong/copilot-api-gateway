@@ -283,15 +283,14 @@ export const authRoute = new Elysia({ prefix: "/auth" })
         },
       })
 
-      let user: GitHubUser = {
-        login: "unknown",
-        avatar_url: "",
-        name: null,
-        id: 0,
+      if (!userResp.ok) {
+        return new Response(
+          JSON.stringify({ status: "error", error: "Failed to fetch GitHub user info" }),
+          { status: 502, headers: { "Content-Type": "application/json" } },
+        )
       }
-      if (userResp.ok) {
-        user = (await userResp.json()) as GitHubUser
-      }
+
+      const user = (await userResp.json()) as GitHubUser
 
       // Store account and set as active — scoped to the authenticated user
       const accountType = await detectAccountType(data.access_token)
