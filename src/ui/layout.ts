@@ -373,6 +373,10 @@ export function Layout({ title, children }: { title: string; children: string })
 
     /* Override Tailwind white/black opacity borders for theme awareness */
     .border-themed { border-color: var(--border-color); }
+
+    /* Scrollbar hide utility */
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
   </style>
 </head>
 <body class="min-h-screen">

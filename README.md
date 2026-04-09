@@ -223,6 +223,7 @@ const response = await ai.models.generateContent({
 
 - **Midnight Aurora**（暗色）— 深邃背景 + 极光渐变高光
 - **Clean White**（亮色）— 纯净白底 + 高对比强调色
+- **移动端适配** — 导航栏横向滚动、表格横向滚动、筛选器自动堆叠对齐、统计网格自适应列数
 
 ### 用量分析
 

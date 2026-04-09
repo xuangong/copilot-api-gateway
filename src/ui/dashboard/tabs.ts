@@ -24,7 +24,7 @@ function codeBlock(lang: string, ref: string, snippetFn: string, copyId: string)
 export function renderDashboardHeader(): string {
   return `
     <header class="border-b border-white/5 bg-surface-900/80 backdrop-blur-md sticky top-0 z-50" style="border-color: var(--border-color);">
-      <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div class="w-8 h-8 rounded-lg bg-surface-700 glow-border flex items-center justify-center">
             <svg class="w-4 h-4 text-accent-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -46,34 +46,34 @@ export function renderDashboardHeader(): string {
         </div>
       </div>
 
-      <div class="max-w-6xl mx-auto px-6 pb-3">
-        <nav class="flex gap-1 bg-surface-800 rounded-lg p-0.5 w-fit">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 pb-3">
+        <nav class="flex gap-1 bg-surface-800 rounded-lg p-0.5 overflow-x-auto scrollbar-hide">
           <template x-if="isAdmin || isUser">
-            <button @click="switchTab('upstream')" class="px-4 py-2 rounded-md text-sm font-medium transition-all"
+            <button @click="switchTab('upstream')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
               :class="tab === 'upstream' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
               Upstream
             </button>
           </template>
           <template x-if="isAdmin">
-            <button @click="switchTab('users')" class="px-4 py-2 rounded-md text-sm font-medium transition-all"
+            <button @click="switchTab('users')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
               :class="tab === 'users' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
               Users
             </button>
           </template>
-          <button @click="switchTab('keys')" class="px-4 py-2 rounded-md text-sm font-medium transition-all"
+          <button @click="switchTab('keys')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
             :class="tab === 'keys' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
             API Keys
           </button>
-          <button @click="switchTab('usage')" class="px-4 py-2 rounded-md text-sm font-medium transition-all"
+          <button @click="switchTab('usage')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
             :class="tab === 'usage' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
             Usage
           </button>
-          <button @click="switchTab('latency')" class="px-4 py-2 rounded-md text-sm font-medium transition-all"
+          <button @click="switchTab('latency')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
             :class="tab === 'latency' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
             Latency
           </button>
           <template x-if="isAdmin">
-            <button @click="switchTab('settings')" class="px-4 py-2 rounded-md text-sm font-medium transition-all"
+            <button @click="switchTab('settings')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
               :class="tab === 'settings' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
               Settings
             </button>
@@ -90,7 +90,7 @@ export function renderUsersTab(): string {
       <!-- Invite Codes -->
       <div class="glass-card p-6 mb-6">
         <h2 class="text-lg font-semibold text-themed mb-4">Invite Codes</h2>
-        <div class="flex gap-3 mb-4">
+        <div class="flex flex-col sm:flex-row gap-3 mb-4">
           <input type="text" x-model="newInviteName" placeholder="User name for invite..." class="flex-1" @keydown.enter="createInviteCode()" />
           <button @click="createInviteCode()" class="btn-primary text-sm" :disabled="inviteCreating || !newInviteName.trim()">
             <span x-show="!inviteCreating">Create Invite</span>
@@ -103,8 +103,8 @@ export function renderUsersTab(): string {
 
         <div x-show="!inviteCodesLoading && inviteCodes.length > 0" class="space-y-2">
           <template x-for="inv in inviteCodes" :key="inv.id">
-            <div class="flex items-center justify-between p-3 rounded-lg bg-surface-800/50 border border-white/[0.04]">
-              <div class="flex items-center gap-4">
+            <div class="flex items-center gap-3 p-3 rounded-lg bg-surface-800/50 border border-white/[0.04] overflow-x-auto scrollbar-hide whitespace-nowrap">
+              <div class="flex items-center gap-3">
                 <span class="text-sm font-medium text-themed" x-text="inv.name"></span>
                 <template x-if="!inv.usedAt">
                   <span class="px-2 py-0.5 rounded text-xs font-mono bg-accent-violet/10 text-accent-violet cursor-pointer" @click="copySnippet(inv.code, 'inv-' + inv.id)" x-text="inv.code"></span>
@@ -115,6 +115,17 @@ export function renderUsersTab(): string {
               </div>
               <div class="flex items-center gap-3">
                 <span class="text-xs text-themed-dim" x-text="timeAgo(inv.createdAt)"></span>
+                <template x-if="!inv.usedAt">
+                  <button @click="copySnippet(inv.code, 'inv-' + inv.id)" class="text-themed-dim hover:text-accent-violet transition-colors" title="Copy code">
+                    <svg x-show="copied !== 'inv-' + inv.id" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                    <svg x-show="copied === 'inv-' + inv.id" class="w-4 h-4 text-accent-teal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </button>
+                </template>
                 <button @click="deleteInviteCode(inv.id)" class="text-themed-dim hover:text-accent-red transition-colors">
                   <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                 </button>
@@ -132,7 +143,7 @@ export function renderUsersTab(): string {
 
         <div x-show="!adminUsersLoading && adminUsers.length > 0" class="space-y-2">
           <template x-for="u in adminUsers" :key="u.id">
-            <div class="flex items-center justify-between p-4 rounded-lg bg-surface-800/50 border border-white/[0.04]">
+            <div class="flex items-start sm:items-center justify-between gap-3 p-4 rounded-lg bg-surface-800/50 border border-white/[0.04] flex-wrap">
               <div class="flex items-center gap-4">
                 <template x-if="u.githubAccounts && u.githubAccounts.length > 0">
                   <img :src="u.githubAccounts[0].avatar_url" class="w-8 h-8 rounded-full" />
@@ -224,7 +235,7 @@ export function renderUpstreamTab(): string {
             <template x-if="usageData">
               <div>
                 <div class="flex items-baseline gap-2 mb-3">
-                  <span class="text-3xl font-bold text-themed font-mono" x-text="usageData.quota_snapshots.premium_interactions.entitlement - usageData.quota_snapshots.premium_interactions.remaining"></span>
+                  <span class="text-2xl sm:text-3xl font-bold text-themed font-mono" x-text="usageData.quota_snapshots.premium_interactions.entitlement - usageData.quota_snapshots.premium_interactions.remaining"></span>
                   <span class="text-sm text-themed-dim">/ <span x-text="usageData.quota_snapshots.premium_interactions.entitlement"></span></span>
                 </div>
                 <div class="progress-track">
@@ -396,10 +407,10 @@ export function renderKeysTab(): string {
   return `
     <div x-show="tab === 'keys'">
       <div class="glass-card p-6 mb-6 animate-in">
-        <div class="flex items-center justify-between mb-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">API Keys</span>
           <div x-show="isAdmin || isUser" class="flex items-center gap-2">
-            <input type="text" x-model="newKeyName" placeholder="Name" class="!text-xs !py-1.5 !px-3 !w-32 !rounded-lg" @keydown.enter="createNewKey()" />
+            <input type="text" x-model="newKeyName" placeholder="Name" class="!text-xs !py-1.5 !px-3 !w-full sm:!w-32 !rounded-lg" @keydown.enter="createNewKey()" />
             <button @click="createNewKey()" class="btn-primary !text-xs !py-1.5 !px-3 !rounded-lg whitespace-nowrap" :disabled="!newKeyName.trim() || keyCreating">
               <span x-show="!keyCreating">+ Create</span>
               <span x-show="keyCreating" class="flex items-center gap-1.5">
@@ -424,14 +435,14 @@ export function renderKeysTab(): string {
             </div>
           </template>
           <template x-if="keys.length > 0">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm whitespace-nowrap">
               <thead>
                 <tr class="border-b border-white/5">
                   <th class="text-left py-2 pr-4 pl-7 text-xs font-medium text-themed-dim uppercase tracking-widest">Name</th>
                   <th x-show="isAdmin" class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest">Owner</th>
                   <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest">Key</th>
-                  <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest">Created</th>
-                  <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest">Last Used</th>
+                  <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest hidden sm:table-cell">Created</th>
+                  <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest hidden sm:table-cell">Last Used</th>
                   <th x-show="isAdmin || isUser" class="text-right py-2 pr-2 text-xs font-medium text-themed-dim uppercase tracking-widest">Actions</th>
                 </tr>
               </thead>
@@ -452,10 +463,10 @@ export function renderKeysTab(): string {
                     <td class="py-3 pr-4">
                       <code class="text-xs font-mono text-themed-dim bg-surface-800 rounded px-2 py-1" x-text="truncateKey(k.key)"></code>
                     </td>
-                    <td class="py-3 pr-4">
+                    <td class="py-3 pr-4 hidden sm:table-cell">
                       <span class="text-themed-dim text-xs cursor-default" :title="fullDateTime(k.created_at)" x-text="timeAgo(k.created_at)"></span>
                     </td>
-                    <td class="py-3 pr-4">
+                    <td class="py-3 pr-4 hidden sm:table-cell">
                       <span x-show="k.last_used_at" class="text-themed-dim text-xs cursor-default" :title="fullDateTime(k.last_used_at)" x-text="timeAgo(k.last_used_at)"></span>
                       <span x-show="!k.last_used_at" class="text-themed-dim text-xs">Never</span>
                     </td>
@@ -613,10 +624,10 @@ export function renderUsageTab(): string {
           <!-- Multi-dimension filters -->
           <div class="flex flex-wrap items-center gap-3">
             <template x-if="isAdmin && tokenAvailableUsers.length > 0">
-              <div class="flex items-center gap-2">
-                <label class="text-[11px] text-themed-dim uppercase tracking-wide">User</label>
+              <div class="flex items-center gap-2 w-full sm:w-auto">
+                <label class="text-[11px] text-themed-dim uppercase tracking-wide shrink-0 w-12 sm:w-auto">User</label>
                 <select x-model="tokenFilterUser" @change="switchTokenFilter()"
-                  class="bg-surface-800 border border-white/10 text-themed-secondary text-xs rounded-md px-2.5 py-1.5 focus:border-accent-violet/50 focus:outline-none min-w-[120px]">
+                  class="bg-surface-800 border border-white/10 text-themed-secondary text-xs rounded-md px-2.5 py-1.5 focus:border-accent-violet/50 focus:outline-none min-w-0 sm:min-w-[120px] flex-1 sm:flex-none">
                   <option value="">All Users</option>
                   <template x-for="u in tokenAvailableUsers" :key="u.id">
                     <option :value="u.id" x-text="u.name"></option>
@@ -624,30 +635,30 @@ export function renderUsageTab(): string {
                 </select>
               </div>
             </template>
-            <div class="flex items-center gap-2">
-              <label class="text-[11px] text-themed-dim uppercase tracking-wide">Key</label>
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+              <label class="text-[11px] text-themed-dim uppercase tracking-wide shrink-0 w-12 sm:w-auto">Key</label>
               <select x-model="tokenFilterKey" @change="switchTokenFilter()"
-                class="bg-surface-800 border border-white/10 text-themed-secondary text-xs rounded-md px-2.5 py-1.5 focus:border-accent-violet/50 focus:outline-none min-w-[120px]">
+                class="bg-surface-800 border border-white/10 text-themed-secondary text-xs rounded-md px-2.5 py-1.5 focus:border-accent-violet/50 focus:outline-none min-w-0 sm:min-w-[120px] flex-1 sm:flex-none">
                 <option value="">All Keys</option>
                 <template x-for="k in tokenAvailableKeys" :key="k.id">
                   <option :value="k.id" x-text="k.name"></option>
                 </template>
               </select>
             </div>
-            <div class="flex items-center gap-2">
-              <label class="text-[11px] text-themed-dim uppercase tracking-wide">Client</label>
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+              <label class="text-[11px] text-themed-dim uppercase tracking-wide shrink-0 w-12 sm:w-auto">Client</label>
               <select x-model="tokenFilterClient" @change="switchTokenFilter()"
-                class="bg-surface-800 border border-white/10 text-themed-secondary text-xs rounded-md px-2.5 py-1.5 focus:border-accent-violet/50 focus:outline-none min-w-[120px]">
+                class="bg-surface-800 border border-white/10 text-themed-secondary text-xs rounded-md px-2.5 py-1.5 focus:border-accent-violet/50 focus:outline-none min-w-0 sm:min-w-[120px] flex-1 sm:flex-none">
                 <option value="">All Clients</option>
                 <template x-for="c in tokenAvailableClients" :key="c">
                   <option :value="c" x-text="c"></option>
                 </template>
               </select>
             </div>
-            <div class="flex items-center gap-2">
-              <label class="text-[11px] text-themed-dim uppercase tracking-wide">Model</label>
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+              <label class="text-[11px] text-themed-dim uppercase tracking-wide shrink-0 w-12 sm:w-auto">Model</label>
               <select x-model="tokenFilterModel" @change="switchTokenFilter()"
-                class="bg-surface-800 border border-white/10 text-themed-secondary text-xs rounded-md px-2.5 py-1.5 focus:border-accent-violet/50 focus:outline-none min-w-[120px]">
+                class="bg-surface-800 border border-white/10 text-themed-secondary text-xs rounded-md px-2.5 py-1.5 focus:border-accent-violet/50 focus:outline-none min-w-0 sm:min-w-[120px] flex-1 sm:flex-none">
                 <option value="">All Models</option>
                 <template x-for="m in tokenAvailableModels" :key="m">
                   <option :value="m" x-text="m"></option>
@@ -695,7 +706,7 @@ export function renderUsageTab(): string {
           <canvas id="tokenChart"></canvas>
         </div>
 
-        <div class="grid grid-cols-3 sm:grid-cols-5 gap-4 mt-6 pt-5 border-t border-white/5">
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-6 pt-5 border-t border-white/5">
           <div class="text-center">
             <p class="text-xs text-themed-dim mb-1">Requests</p>
             <p class="text-lg font-bold font-mono text-themed" x-text="tokenSummary.requests.toLocaleString()"></p>
@@ -795,7 +806,7 @@ function renderDistributionPanel(dataVar: string, title: string, labelField: str
         </div>
 
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full text-sm whitespace-nowrap">
             <thead>
               <tr class="border-b" style="border-color: var(--border-color)">
                 <th class="text-left py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest">${title.replace('By ', '')}</th>
@@ -842,7 +853,7 @@ export function renderLatencyTab(): string {
                 </svg>
               </template>
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 flex-wrap">
               <div class="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5">
                 <button @click="switchLatencyRange('today')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
                   :class="latencyRange === 'today' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">Today</button>
@@ -894,7 +905,7 @@ export function renderLatencyTab(): string {
           <canvas id="latencyChart"></canvas>
         </div>
 
-        <div class="grid grid-cols-4 gap-4 mt-6 pt-5 border-t border-white/5">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-5 border-t border-white/5">
           <div class="text-center">
             <p class="text-xs text-themed-dim mb-1">Avg Total</p>
             <p class="text-lg font-bold font-mono text-themed" x-text="latencySummary.avgTotal + ' ms'"></p>
@@ -917,7 +928,7 @@ export function renderLatencyTab(): string {
       <div class="glass-card p-6 mt-5 animate-in delay-1" x-show="latencyByType.length > 0">
         <span class="text-xs font-medium text-themed-dim uppercase tracking-widest mb-4 block">By Type</span>
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full text-sm whitespace-nowrap">
             <thead>
               <tr class="border-b border-white/5">
                 <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest">Type</th>
@@ -947,7 +958,7 @@ export function renderLatencyTab(): string {
       <div class="glass-card p-6 mt-5 animate-in delay-1" x-show="latencyByColo.length > 0">
         <span class="text-xs font-medium text-themed-dim uppercase tracking-widest mb-4 block">By Data Center</span>
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full text-sm whitespace-nowrap">
             <thead>
               <tr class="border-b border-white/5">
                 <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest">Colo</th>
