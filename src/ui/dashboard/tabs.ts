@@ -72,6 +72,12 @@ export function renderDashboardHeader(): string {
             :class="tab === 'latency' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
             Latency
           </button>
+          <template x-if="isAdmin || isUser">
+            <button @click="switchTab('clients')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
+              :class="tab === 'clients' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
+              Relays
+            </button>
+          </template>
           <template x-if="isAdmin">
             <button @click="switchTab('settings')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
               :class="tab === 'settings' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
@@ -1010,6 +1016,87 @@ export function renderSettingsTab(): string {
               Exporting...
             </span>
           </button>
+        </div>
+      </div>
+    </template>
+  `
+}
+
+export function renderClientsTab(): string {
+  return `
+    <template x-if="isAdmin || isUser">
+      <div x-show="tab === 'clients'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
+        <div class="glass-card p-6 animate-in">
+          <div class="flex items-center justify-between mb-4">
+            <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Connected Relays</span>
+            <button @click="loadClients()" class="btn-ghost text-xs" :disabled="clientsLoading">
+              <svg :class="clientsLoading ? 'animate-spin' : ''" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+              </svg>
+            </button>
+          </div>
+
+          <div x-show="clientsLoading && clients.length === 0" class="text-center py-8 text-themed-dim text-sm">Loading...</div>
+          <div x-show="!clientsLoading && clients.length === 0" class="text-center py-8 text-themed-dim text-sm">
+            No relays have sent heartbeats yet. LLM Relay will report here after its next health check.
+          </div>
+
+          <div x-show="clients.length > 0" class="space-y-2">
+            <template x-for="c in clients" :key="c.clientId">
+              <div class="flex items-center justify-between gap-3 p-4 rounded-lg bg-surface-800/50 border border-white/[0.04]">
+                <div class="flex items-center gap-3">
+                  <div class="relative shrink-0">
+                    <div class="w-8 h-8 rounded-lg bg-surface-700 flex items-center justify-center">
+                      <svg class="w-4 h-4 text-themed-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+                      </svg>
+                    </div>
+                    <div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-surface-800"
+                      :class="c.isActive ? 'bg-accent-teal status-pulse' : c.isOnline ? 'bg-accent-violet' : 'bg-surface-600'"></div>
+                  </div>
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-medium text-themed" x-text="c.clientName"></span>
+                      <template x-if="c.isActive">
+                        <span class="text-[10px] font-medium text-accent-teal uppercase tracking-widest">Active</span>
+                      </template>
+                      <template x-if="!c.isActive && c.isOnline">
+                        <span class="text-[10px] font-medium text-accent-violet uppercase tracking-widest">Online</span>
+                      </template>
+                      <template x-if="!c.isOnline">
+                        <span class="text-[10px] font-medium text-themed-dim uppercase tracking-widest">Offline</span>
+                      </template>
+                    </div>
+                    <div class="flex items-center gap-3 mt-0.5">
+                      <template x-if="c.keyName">
+                        <span class="text-xs text-themed-dim flex items-center gap-1">
+                          <svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                          </svg>
+                          <span x-text="c.keyName"></span>
+                        </span>
+                      </template>
+                      <template x-if="isAdmin && c.ownerId">
+                        <span class="text-xs text-themed-dim" x-text="'owner: ' + (c.ownerId || '—')"></span>
+                      </template>
+                      <template x-if="c.gatewayUrl">
+                        <span class="text-xs text-themed-dim font-mono truncate max-w-[160px]" :title="c.gatewayUrl" x-text="c.gatewayUrl.replace(/https?:\\/\\//, '')"></span>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+                <div class="text-right shrink-0">
+                  <span class="text-xs text-themed-dim" :title="c.lastSeenAt" x-text="timeAgo(c.lastSeenAt)"></span>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <p class="text-[11px] text-themed-dim mt-4">
+            <span class="text-accent-teal">Active</span> — routed traffic in the last 2 hours &nbsp;·&nbsp;
+            <span class="text-accent-violet">Online</span> — heartbeat received, no recent traffic &nbsp;·&nbsp;
+            <span class="text-themed-dim">Offline</span> — no heartbeat in 3 minutes
+          </p>
         </div>
       </div>
     </template>

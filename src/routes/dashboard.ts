@@ -8,6 +8,7 @@ interface AuthCtx {
   isAdmin?: boolean
   isUser?: boolean
   userId?: string
+  apiKeyId?: string
 }
 
 interface ExportPayload {
@@ -247,4 +248,92 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
         usage: usage.length,
       },
     }
+  })
+
+  // POST /api/heartbeat - called by LLM Relay clients to report presence
+  // Auth: API key (apiKeyId must be set). Registers which client is using which key.
+  .post("/heartbeat", async (ctx) => {
+    const { body } = ctx
+    const { apiKeyId, userId } = ctx as unknown as AuthCtx
+    if (!apiKeyId) {
+      return new Response(JSON.stringify({ error: "API key required for heartbeat" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+    const { clientId, clientName, hostname, gatewayUrl } = body as {
+      clientId?: string
+      clientName?: string
+      hostname?: string
+      gatewayUrl?: string
+    }
+    if (!clientId || !hostname) {
+      return new Response(JSON.stringify({ error: "clientId and hostname are required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    // Get real client IP from request
+    const ip =
+      ctx.request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      (ctx.server as any)?.requestIP?.(ctx.request)?.address ??
+      null
+
+    // Format display name: "name@hostname (ip)" or "hostname (ip)"
+    const ipSuffix = ip ? ` (${ip})` : ""
+    const displayName = clientName ? `${clientName}@${hostname}${ipSuffix}` : `${hostname}${ipSuffix}`
+
+    const repo = getRepo()
+    const apiKey = await repo.apiKeys.getById(apiKeyId)
+    await repo.presence.upsert({
+      clientId,
+      clientName: displayName,
+      keyId: apiKeyId,
+      keyName: apiKey?.name ?? null,
+      ownerId: userId ?? null,
+      gatewayUrl: gatewayUrl ?? null,
+      lastSeenAt: new Date().toISOString(),
+    })
+    return { ok: true }
+  })
+
+  // GET /api/clients - list clients with presence info
+  // Admin sees all, users see only clients using their own keys
+  .get("/clients", async (ctx) => {
+    const { isAdmin, userId } = ctx as unknown as AuthCtx
+    const repo = getRepo()
+    const onlineThresholdMinutes = 3
+
+    let clients
+    if (isAdmin) {
+      clients = await repo.presence.list()
+    } else if (userId) {
+      const userKeyIds = await getUserKeyIds(userId)
+      clients = await repo.presence.listByKeyIds(userKeyIds)
+    } else {
+      return []
+    }
+
+    const now = Date.now()
+    const activeThresholdHours = 2 // check current + previous hour
+    const activeHour = new Date(now - activeThresholdHours * 3600 * 1000).toISOString().slice(0, 13)
+
+    // Collect unique keyIds to batch-check active traffic
+    const keyIds = [...new Set(clients.map(c => c.keyId).filter(Boolean) as string[])]
+    const activeKeyIds = new Set<string>()
+    if (keyIds.length > 0) {
+      try {
+        const usageRows = await repo.usage.query({ keyIds, start: activeHour, end: new Date(now + 3600 * 1000).toISOString().slice(0, 13) })
+        for (const r of usageRows) activeKeyIds.add(r.keyId)
+      } catch {
+        // usage query failure should not break clients endpoint
+      }
+    }
+
+    return clients.map((c) => ({
+      ...c,
+      isOnline: now - new Date(c.lastSeenAt).getTime() < onlineThresholdMinutes * 60 * 1000,
+      isActive: c.keyId ? activeKeyIds.has(c.keyId) : false,
+    }))
   })
