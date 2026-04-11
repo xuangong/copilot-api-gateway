@@ -297,6 +297,10 @@ export function dashboardAssets(): string {
       newInviteName: '',
       inviteCreating: false,
 
+      // Relays tab
+      clients: [],
+      clientsLoading: false,
+
       get baseUrl() { return location.origin; },
 
       get activeKey() {
@@ -475,6 +479,8 @@ export function dashboardAssets(): string {
             this.renderLatencyChart();
           } else if (t === 'keys') {
             await this.loadKeys();
+          } else if (t === 'relays') {
+            await this.loadClients();
           }
         },
 
@@ -1443,6 +1449,23 @@ export function dashboardAssets(): string {
               console.error('loadAdminUsers:', e);
             } finally {
               this.adminUsersLoading = false;
+            }
+          },
+
+          // === Relays ===
+          async loadClients() {
+            this.clientsLoading = true;
+            try {
+              const resp = await fetch('/api/clients', { headers: this.authHeaders() });
+              if (resp.status === 401) {
+                this.logout('Session expired, please log in again');
+                return;
+              }
+              if (resp.ok) this.clients = await resp.json();
+            } catch (e) {
+              console.error('loadClients:', e);
+            } finally {
+              this.clientsLoading = false;
             }
           },
 
