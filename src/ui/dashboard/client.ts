@@ -3,9 +3,39 @@ export function dashboardAssets(): string {
   return `
     <style>
     select option { background: var(--surface-800); color: var(--text-primary); }
+
+    /* Toast notification */
+    .toast-container {
+      position: fixed; top: 24px; right: 24px; z-index: 9999;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .toast {
+      padding: 12px 20px; border-radius: 8px; font-size: 13px;
+      font-family: 'Outfit', sans-serif; color: #fff;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      animation: toast-in 0.3s ease-out;
+      max-width: 360px;
+    }
+    .toast-error { background: #dc3545; }
+    .toast-warning { background: #e67e22; }
+    .toast-info { background: #3b82f6; }
+    @keyframes toast-in { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 
+    <div class="toast-container" id="toastContainer"></div>
+
     <script>
+    function showToast(message, type) {
+      type = type || 'error';
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      const el = document.createElement('div');
+      el.className = 'toast toast-' + type;
+      el.textContent = message;
+      container.appendChild(el);
+      setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 4000);
+    }
+
     function dashboardApp() {
     const isAdmin = localStorage.getItem('isAdmin') === '1';
     const isUser = localStorage.getItem('isUser') === '1';
@@ -487,7 +517,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/auth/me', { headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.logout();
+                this.logout('Session expired, please log in again');
                 return;
               }
               if (!resp.ok) {
@@ -509,6 +539,7 @@ export function dashboardAssets(): string {
               if (resp.status === 401) {
                 // GitHub token expired, not auth issue — don't kick to login
                 this.usageError = true;
+                showToast('Copilot token expired. Try reconnecting your GitHub account.', 'warning');
                 return;
               }
               if (resp.ok) {
@@ -535,7 +566,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/auth/github', { headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.logout();
+                this.logout('Session expired, please log in again');
                 return;
               }
               const d = await resp.json();
@@ -564,7 +595,7 @@ export function dashboardAssets(): string {
                   body: JSON.stringify({ device_code: this.deviceFlow.deviceCode }),
                 });
                 if (resp.status === 401) {
-                  this.logout();
+                  this.logout('Session expired, please log in again');
                   return;
                 }
                 const d = await resp.json();
@@ -601,7 +632,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/auth/github/' + userId, { method: 'DELETE', headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.logout();
+                this.logout('Session expired, please log in again');
                 return;
               }
               if (resp.ok) {
@@ -630,7 +661,7 @@ export function dashboardAssets(): string {
                 body: JSON.stringify({ user_id: userId }),
               });
               if (resp.status === 401) {
-                this.logout();
+                this.logout('Session expired, please log in again');
                 return;
               }
               if (resp.ok) {
@@ -649,7 +680,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/api/keys', { headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.logout();
+                this.logout('Session expired, please log in again');
                 return;
               }
               if (resp.ok) {
@@ -676,7 +707,7 @@ export function dashboardAssets(): string {
                 body: JSON.stringify({ name }),
               });
               if (resp.status === 401) {
-                this.logout();
+                this.logout('Session expired, please log in again');
                 return;
               }
               if (resp.ok) {
@@ -700,7 +731,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/api/keys/' + id, { method: 'DELETE', headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.logout();
+                this.logout('Session expired, please log in again');
                 return;
               }
               if (resp.ok) {
@@ -721,7 +752,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/api/keys/' + id + '/rotate', { method: 'POST', headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.logout();
+                this.logout('Session expired, please log in again');
                 return;
               }
               if (resp.ok) {
@@ -747,7 +778,7 @@ export function dashboardAssets(): string {
                 body: JSON.stringify({ name: newName }),
               });
               if (resp.status === 401) {
-                this.logout();
+                this.logout('Session expired, please log in again');
                 return;
               }
               if (resp.ok) {
@@ -793,7 +824,7 @@ export function dashboardAssets(): string {
               const { start, end } = computeTimeRange(this.tokenRange, this.tokenWeekOffset);
               const resp = await fetch('/api/token-usage?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.logout();
+                this.logout('Session expired, please log in again');
                 return;
               }
               if (resp.ok) this.tokenData = await resp.json();
@@ -1033,7 +1064,7 @@ export function dashboardAssets(): string {
               const { start, end } = computeTimeRange(this.latencyRange, this.latencyWeekOffset);
               const resp = await fetch('/api/latency?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.logout();
+                this.logout('Session expired, please log in again');
                 return;
               }
               if (resp.ok) this.latencyData = await resp.json();
@@ -1268,7 +1299,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/api/export', { headers: this.authHeaders() });
               if (resp.status === 401) {
-                this.logout();
+                this.logout('Session expired, please log in again');
                 return;
               }
               if (!resp.ok) {
@@ -1336,7 +1367,7 @@ export function dashboardAssets(): string {
                 body: JSON.stringify({ mode: this.importMode, data: this.importData }),
               });
               if (resp.status === 401) {
-                this.logout();
+                this.logout('Session expired, please log in again');
                 return;
               }
               const result = await resp.json();
@@ -1435,7 +1466,10 @@ export function dashboardAssets(): string {
             }
           },
 
-          logout() {
+          logout(reason) {
+            if (reason) {
+              showToast(reason, 'warning');
+            }
             localStorage.removeItem('authKey');
             localStorage.removeItem('isAdmin');
             localStorage.removeItem('isUser');
@@ -1444,7 +1478,7 @@ export function dashboardAssets(): string {
             localStorage.removeItem('login_key_id');
             localStorage.removeItem('login_key_name');
             localStorage.removeItem('login_key_hint');
-            window.location.href = '/';
+            setTimeout(() => { window.location.href = '/'; }, reason ? 1500 : 0);
           },
 
         };

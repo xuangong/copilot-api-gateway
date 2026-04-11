@@ -2,6 +2,7 @@ import { Elysia } from "elysia"
 import { cors } from "@elysiajs/cors"
 
 import type { Env, AppState } from "~/lib/state"
+import { HTTPError } from "~/lib/error"
 import type { AccountType } from "~/config/constants"
 import { KVStorage, STORAGE_KEYS } from "~/storage"
 import { initRepo, D1Repo, getRepo } from "~/repo"
@@ -286,6 +287,13 @@ function createApp(env: Env) {
     .onError(({ error, set }) => {
       const err = error instanceof Error ? error : new Error(String(error))
       const message = err.message
+
+      // HTTPError from upstream APIs — preserve the original status code
+      if (err instanceof HTTPError) {
+        set.status = err.response.status
+        return { error: message }
+      }
+
       // Set appropriate status code
       if (message === "Unauthorized") {
         set.status = 401

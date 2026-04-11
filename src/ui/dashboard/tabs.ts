@@ -259,7 +259,7 @@ export function renderUpstreamTab(): string {
               </div>
             </template>
             <template x-if="usageError">
-              <p class="text-sm text-themed-dim">Unable to load</p>
+              <p class="text-sm" style="color: #e67e22;">Token expired — reconnect GitHub</p>
             </template>
           </div>
 
@@ -284,7 +284,7 @@ export function renderUpstreamTab(): string {
               </div>
             </template>
             <template x-if="usageError">
-              <p class="text-sm text-themed-dim">Unable to load</p>
+              <p class="text-sm" style="color: #e67e22;">Token expired — reconnect GitHub</p>
             </template>
           </div>
 
@@ -309,7 +309,7 @@ export function renderUpstreamTab(): string {
               </div>
             </template>
             <template x-if="usageError">
-              <p class="text-sm text-themed-dim">Unable to load</p>
+              <p class="text-sm" style="color: #e67e22;">Token expired — reconnect GitHub</p>
             </template>
           </div>
         </div>
