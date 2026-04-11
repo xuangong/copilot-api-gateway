@@ -39,7 +39,7 @@ export function dashboardAssets(): string {
     function dashboardApp() {
     const isAdmin = localStorage.getItem('isAdmin') === '1';
     const isUser = localStorage.getItem('isUser') === '1';
-    const TABS = isAdmin ? ['upstream', 'users', 'keys', 'usage', 'latency', 'settings'] : (isUser ? ['upstream', 'keys', 'usage', 'latency'] : ['keys', 'usage', 'latency']);
+    const TABS = isAdmin ? ['upstream', 'users', 'keys', 'usage', 'latency', 'relays', 'settings'] : (isUser ? ['upstream', 'keys', 'usage', 'latency', 'relays'] : ['keys', 'usage', 'latency']);
     const defaultTab = isAdmin ? 'upstream' : (isUser ? 'upstream' : 'keys');
     const initTab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : defaultTab;
 

@@ -73,8 +73,8 @@ export function renderDashboardHeader(): string {
             Latency
           </button>
           <template x-if="isAdmin || isUser">
-            <button @click="switchTab('clients')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
-              :class="tab === 'clients' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
+            <button @click="switchTab('relays')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
+              :class="tab === 'relays' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
               Relays
             </button>
           </template>
@@ -1025,7 +1025,7 @@ export function renderSettingsTab(): string {
 export function renderClientsTab(): string {
   return `
     <template x-if="isAdmin || isUser">
-      <div x-show="tab === 'clients'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
+      <div x-show="tab === 'relays'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
         <div class="glass-card p-6 animate-in">
           <div class="flex items-center justify-between mb-4">
             <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Connected Relays</span>
