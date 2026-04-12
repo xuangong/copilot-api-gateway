@@ -995,7 +995,7 @@ export function dashboardAssets(): string {
                 seriesMap.set('total', 'Total');
               }
               const m = agg.get(bucket);
-              m.set(seriesKey, (m.get(seriesKey) || 0) + r.inputTokens + r.outputTokens);
+              m.set(seriesKey, (m.get(seriesKey) || 0) + r.inputTokens + r.outputTokens + (r.cacheReadTokens || 0) + (r.cacheCreationTokens || 0));
             }
 
             const seriesList = [...seriesMap.keys()];
