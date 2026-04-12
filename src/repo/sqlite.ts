@@ -3,6 +3,8 @@ import type {
   ApiKey,
   ApiKeyRepo,
   CacheRepo,
+  ClientPresence,
+  ClientPresenceRepo,
   GitHubAccount,
   GitHubRepo,
   InviteCode,
@@ -98,6 +100,16 @@ CREATE TABLE IF NOT EXISTS user_sessions (
   user_id TEXT NOT NULL,
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS client_presence (
+  client_id TEXT PRIMARY KEY,
+  client_name TEXT NOT NULL,
+  key_id TEXT,
+  key_name TEXT,
+  owner_id TEXT,
+  gateway_url TEXT,
+  last_seen_at TEXT NOT NULL
 );
 `
 
@@ -490,6 +502,55 @@ function migrateSchema(db: Database): void {
   }
 }
 
+class SqliteClientPresenceRepo implements ClientPresenceRepo {
+  constructor(private db: Database) {}
+
+  async upsert(p: ClientPresence): Promise<void> {
+    this.db.query(
+      `INSERT INTO client_presence (client_id, client_name, key_id, key_name, owner_id, gateway_url, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (client_id) DO UPDATE SET
+         client_name = excluded.client_name,
+         key_id = excluded.key_id,
+         key_name = excluded.key_name,
+         owner_id = excluded.owner_id,
+         gateway_url = excluded.gateway_url,
+         last_seen_at = excluded.last_seen_at`,
+    ).run(p.clientId, p.clientName, p.keyId ?? null, p.keyName ?? null, p.ownerId ?? null, p.gatewayUrl ?? null, p.lastSeenAt)
+  }
+
+  async list(): Promise<ClientPresence[]> {
+    return this.db.query<any, []>("SELECT client_id, client_name, key_id, key_name, owner_id, gateway_url, last_seen_at FROM client_presence ORDER BY last_seen_at DESC").all().map(toPresence)
+  }
+
+  async listByOwner(ownerId: string): Promise<ClientPresence[]> {
+    return this.db.query<any, [string]>("SELECT client_id, client_name, key_id, key_name, owner_id, gateway_url, last_seen_at FROM client_presence WHERE owner_id = ? ORDER BY last_seen_at DESC").all(ownerId).map(toPresence)
+  }
+
+  async listByKeyIds(keyIds: string[]): Promise<ClientPresence[]> {
+    if (keyIds.length === 0) return []
+    const placeholders = keyIds.map(() => "?").join(",")
+    return this.db.query<any, string[]>(`SELECT client_id, client_name, key_id, key_name, owner_id, gateway_url, last_seen_at FROM client_presence WHERE key_id IN (${placeholders}) ORDER BY last_seen_at DESC`).all(...keyIds).map(toPresence)
+  }
+
+  async pruneStale(olderThanMinutes: number): Promise<void> {
+    const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000).toISOString()
+    this.db.query("DELETE FROM client_presence WHERE last_seen_at < ?").run(cutoff)
+  }
+}
+
+function toPresence(row: any): ClientPresence {
+  return {
+    clientId: row.client_id,
+    clientName: row.client_name,
+    keyId: row.key_id ?? null,
+    keyName: row.key_name ?? null,
+    ownerId: row.owner_id ?? null,
+    gatewayUrl: row.gateway_url ?? null,
+    lastSeenAt: row.last_seen_at,
+  }
+}
+
 export class SqliteRepo implements Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -499,6 +560,7 @@ export class SqliteRepo implements Repo {
   users: UserRepo
   inviteCodes: InviteCodeRepo
   sessions: SessionRepo
+  presence: ClientPresenceRepo
 
   constructor(db: Database) {
     db.exec(INIT_SQL)
@@ -511,6 +573,7 @@ export class SqliteRepo implements Repo {
     this.users = new SqliteUserRepo(db)
     this.inviteCodes = new SqliteInviteCodeRepo(db)
     this.sessions = new SqliteSessionRepo(db)
+    this.presence = new SqliteClientPresenceRepo(db)
   }
 }
 

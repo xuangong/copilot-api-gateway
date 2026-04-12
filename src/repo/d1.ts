@@ -2,6 +2,8 @@ import type {
   ApiKey,
   ApiKeyRepo,
   CacheRepo,
+  ClientPresence,
+  ClientPresenceRepo,
   GitHubAccount,
   GitHubRepo,
   InviteCode,
@@ -546,6 +548,16 @@ class D1SessionRepo implements SessionRepo {
   }
 }
 
+// D1 stub for client presence — not used in Cloudflare Workers mode yet
+class D1ClientPresenceRepo implements ClientPresenceRepo {
+  constructor(private db: D1Database) {}
+  async upsert(_p: ClientPresence): Promise<void> {}
+  async list(): Promise<ClientPresence[]> { return [] }
+  async listByOwner(_ownerId: string): Promise<ClientPresence[]> { return [] }
+  async listByKeyIds(_keyIds: string[]): Promise<ClientPresence[]> { return [] }
+  async pruneStale(_olderThanMinutes: number): Promise<void> {}
+}
+
 export class D1Repo implements Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -555,6 +567,7 @@ export class D1Repo implements Repo {
   users: UserRepo
   inviteCodes: InviteCodeRepo
   sessions: SessionRepo
+  presence: ClientPresenceRepo
 
   constructor(db: D1Database) {
     this.apiKeys = new D1ApiKeyRepo(db)
@@ -565,5 +578,6 @@ export class D1Repo implements Repo {
     this.users = new D1UserRepo(db)
     this.inviteCodes = new D1InviteCodeRepo(db)
     this.sessions = new D1SessionRepo(db)
+    this.presence = new D1ClientPresenceRepo(db)
   }
 }

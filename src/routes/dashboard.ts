@@ -298,9 +298,9 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
     return { ok: true }
   })
 
-  // GET /api/clients - list clients with presence info
-  // Admin sees all, users see only clients using their own keys
-  .get("/clients", async (ctx) => {
+  // GET /api/relays - list relays with presence info
+  // Admin sees all, users see only relays using their own keys
+  .get("/relays", async (ctx) => {
     const { isAdmin, userId } = ctx as unknown as AuthCtx
     const repo = getRepo()
     const onlineThresholdMinutes = 3

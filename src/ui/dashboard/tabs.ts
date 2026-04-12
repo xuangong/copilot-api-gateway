@@ -1029,20 +1029,20 @@ export function renderClientsTab(): string {
         <div class="glass-card p-6 animate-in">
           <div class="flex items-center justify-between mb-4">
             <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Connected Relays</span>
-            <button @click="loadClients()" class="btn-ghost text-xs" :disabled="clientsLoading">
-              <svg :class="clientsLoading ? 'animate-spin' : ''" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button @click="loadRelays()" class="btn-ghost text-xs" :disabled="relaysLoading">
+              <svg :class="relaysLoading ? 'animate-spin' : ''" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
               </svg>
             </button>
           </div>
 
-          <div x-show="clientsLoading && clients.length === 0" class="text-center py-8 text-themed-dim text-sm">Loading...</div>
-          <div x-show="!clientsLoading && clients.length === 0" class="text-center py-8 text-themed-dim text-sm">
+          <div x-show="relaysLoading && relays.length === 0" class="text-center py-8 text-themed-dim text-sm">Loading...</div>
+          <div x-show="!relaysLoading && relays.length === 0" class="text-center py-8 text-themed-dim text-sm">
             No relays have sent heartbeats yet. LLM Relay will report here after its next health check.
           </div>
 
-          <div x-show="clients.length > 0" class="space-y-2">
-            <template x-for="c in clients" :key="c.clientId">
+          <div x-show="relays.length > 0" class="space-y-2">
+            <template x-for="c in relays" :key="c.clientId">
               <div class="flex items-center justify-between gap-3 p-4 rounded-lg bg-surface-800/50 border border-white/[0.04]">
                 <div class="flex items-center gap-3">
                   <div class="relative shrink-0">

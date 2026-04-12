@@ -298,8 +298,9 @@ export function dashboardAssets(): string {
       inviteCreating: false,
 
       // Relays tab
-      clients: [],
-      clientsLoading: false,
+      relays: [],
+      relaysLoading: false,
+      relaysRefreshInterval: null,
 
       get baseUrl() { return location.origin; },
 
@@ -413,12 +414,15 @@ export function dashboardAssets(): string {
                 this.$nextTick().then(() => { if (this.tab === 'latency') this.renderLatencyChart(); });
               }
             });
+          } else if (this.tab === 'relays' && (this.isAdmin || this.isUser)) {
+            this.loadRelays();
           }
 
           setInterval(() => {
             if (this.tab === 'upstream' && (this.isAdmin || this.isUser)) this.loadUsage();
             if (this.tab === 'usage') this.loadTokenUsage();
             if (this.tab === 'latency') this.loadLatencyData();
+            if (this.tab === 'relays' && (this.isAdmin || this.isUser)) this.loadRelays();
           }, 60000);
 
           setInterval(() => {
@@ -480,7 +484,7 @@ export function dashboardAssets(): string {
           } else if (t === 'keys') {
             await this.loadKeys();
           } else if (t === 'relays') {
-            await this.loadClients();
+            await this.loadRelays();
           }
         },
 
@@ -1453,19 +1457,19 @@ export function dashboardAssets(): string {
           },
 
           // === Relays ===
-          async loadClients() {
-            this.clientsLoading = true;
+          async loadRelays() {
+            this.relaysLoading = true;
             try {
-              const resp = await fetch('/api/clients', { headers: this.authHeaders() });
+              const resp = await fetch('/api/relays', { headers: this.authHeaders() });
               if (resp.status === 401) {
                 this.logout('Session expired, please log in again');
                 return;
               }
-              if (resp.ok) this.clients = await resp.json();
+              if (resp.ok) this.relays = await resp.json();
             } catch (e) {
-              console.error('loadClients:', e);
+              console.error('loadRelays:', e);
             } finally {
-              this.clientsLoading = false;
+              this.relaysLoading = false;
             }
           },
 

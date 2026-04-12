@@ -161,6 +161,24 @@ export interface SessionRepo {
   deleteExpired(): Promise<void>
 }
 
+export interface ClientPresence {
+  clientId: string
+  clientName: string
+  keyId: string | null
+  keyName: string | null
+  ownerId: string | null
+  gatewayUrl: string | null
+  lastSeenAt: string
+}
+
+export interface ClientPresenceRepo {
+  upsert(presence: ClientPresence): Promise<void>
+  list(): Promise<ClientPresence[]>
+  listByOwner(ownerId: string): Promise<ClientPresence[]>
+  listByKeyIds(keyIds: string[]): Promise<ClientPresence[]>
+  pruneStale(olderThanMinutes: number): Promise<void>
+}
+
 export interface Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -170,4 +188,5 @@ export interface Repo {
   users: UserRepo
   inviteCodes: InviteCodeRepo
   sessions: SessionRepo
+  presence: ClientPresenceRepo
 }
