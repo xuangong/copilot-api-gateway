@@ -6,6 +6,7 @@ import { describe, test, expect } from "bun:test"
 import {
   stripReservedKeywords,
   filterThinkingBlocks,
+  stripContextManagement,
   checkWhitespaceOverflow,
   fixApplyPatchTools,
   stripWebSearchTools,
@@ -176,6 +177,37 @@ describe("filterThinkingBlocks", () => {
     filterThinkingBlocks(payload)
 
     expect(payload.messages[0].content).toHaveLength(1)
+  })
+})
+
+describe("stripContextManagement", () => {
+  test("removes top-level context_management field", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-4",
+      messages: [{ role: "user", content: "Hello" }],
+      max_tokens: 100,
+      context_management: {
+        edits: [{ type: "clear_tool_uses_20250919" }],
+      },
+    }
+
+    const result = stripContextManagement(payload as unknown as Record<string, unknown>)
+
+    expect(result.stripped).toBe(true)
+    expect("context_management" in payload).toBe(false)
+  })
+
+  test("leaves payload unchanged when field is absent", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-4",
+      messages: [{ role: "user", content: "Hello" }],
+      max_tokens: 100,
+    }
+
+    const result = stripContextManagement(payload as unknown as Record<string, unknown>)
+
+    expect(result.stripped).toBe(false)
+    expect(payload.model).toBe("claude-sonnet-4")
   })
 })
 

@@ -6,6 +6,7 @@ export interface AnthropicMessagesPayload {
   system?: string | AnthropicTextBlock[]
   stream?: boolean
   tools?: AnthropicTool[]
+  context_management?: Record<string, unknown> | null
   thinking?: {
     type: "enabled" | "adaptive"
     budget_tokens?: number

@@ -12,6 +12,7 @@ import {
   stripReservedKeywords,
   filterThinkingBlocks,
   stripCacheControl,
+  stripContextManagement,
   type AnthropicMessagesPayload,
 } from "~/transforms"
 import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
@@ -53,6 +54,7 @@ export const messagesRoute = new Elysia()
     }
 
     // Apply compatibility transforms
+    stripContextManagement(payload as unknown as Record<string, unknown>)
     stripReservedKeywords(payload)
     filterThinkingBlocks(payload)
     stripCacheControl(payload as unknown as Record<string, unknown>)
@@ -154,6 +156,7 @@ export const messagesRoute = new Elysia()
     }
 
     // Apply compatibility transforms
+    stripContextManagement(payload as unknown as Record<string, unknown>)
     stripCacheControl(payload as unknown as Record<string, unknown>)
 
     // Repair tool result pairs

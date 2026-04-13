@@ -24,6 +24,12 @@ export { filterThinkingBlocks } from "./thinking-cleanup"
 // Cache control cleanup (prompt caching not supported by Copilot)
 export { stripCacheControl, type CacheControlStripResult } from "./cache-control"
 
+// Claude Code / Anthropic beta compatibility
+export {
+  stripContextManagement,
+  type ContextManagementStripResult,
+} from "./context-management"
+
 // Whitespace guard
 export {
   checkWhitespaceOverflow,
