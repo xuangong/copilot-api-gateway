@@ -5,6 +5,7 @@ import { callCopilotAPI } from "~/services/copilot"
 import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { detectClient } from "~/lib/client-detect"
+import { checkQuota } from "~/lib/quota"
 import {
   translateGeminiToOpenAI,
   translateOpenAIToGemini,
@@ -61,6 +62,14 @@ async function handleGenerateContent(ctx: RouteContext) {
   const { state, body, apiKeyId, colo, requestId, userAgent, params } = ctx
   const elapsed = startTimer()
   const client = detectClient(userAgent)
+
+  // Quota enforcement
+  if (apiKeyId) {
+    const quota = await checkQuota(apiKeyId)
+    if (!quota.allowed) {
+      return new Response(JSON.stringify({ error: { code: 429, message: quota.reason, status: "RESOURCE_EXHAUSTED" } }), { status: 429, headers: { "Content-Type": "application/json" } })
+    }
+  }
 
   const model = extractModelId(params.modelWithMethod)
   const openAIPayload = translateGeminiToOpenAI(body, model)
@@ -125,6 +134,14 @@ async function handleStreamGenerateContent(
   const { state, body, apiKeyId, colo, requestId, userAgent, params } = ctx
   const elapsed = startTimer()
   const client = detectClient(userAgent)
+
+  // Quota enforcement
+  if (apiKeyId) {
+    const quota = await checkQuota(apiKeyId)
+    if (!quota.allowed) {
+      return new Response(JSON.stringify({ error: { code: 429, message: quota.reason, status: "RESOURCE_EXHAUSTED" } }), { status: 429, headers: { "Content-Type": "application/json" } })
+    }
+  }
 
   const model = extractModelId(params.modelWithMethod)
   const openAIPayload = translateGeminiToOpenAI(body, model)

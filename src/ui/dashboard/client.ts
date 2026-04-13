@@ -297,6 +297,14 @@ export function dashboardAssets(): string {
       newInviteName: '',
       inviteCreating: false,
 
+      // Quota
+      quotaEditing: false,
+      quotaSaving: false,
+      quotaEditReq: null,
+      quotaEditToken: null,
+      quotaUsageData: [],     // today's usage records for selected key
+      selectedKeyQuota: { reqLimit: null, reqUsed: 0, reqPercent: 0, tokenLimit: null, tokenUsed: 0, tokenPercent: 0 },
+
       // Relays tab
       relays: [],
       relaysLoading: false,
@@ -422,6 +430,7 @@ export function dashboardAssets(): string {
             if (this.tab === 'upstream' && (this.isAdmin || this.isUser)) this.loadUsage();
             if (this.tab === 'usage') this.loadTokenUsage();
             if (this.tab === 'latency') this.loadLatencyData();
+            if (this.tab === 'keys' && this.selectedKeyId) this.loadQuotaUsage(this.selectedKeyId);
             if (this.tab === 'relays' && (this.isAdmin || this.isUser)) this.loadRelays();
           }, 60000);
 
@@ -441,6 +450,11 @@ export function dashboardAssets(): string {
             } else if (this.tab === 'latency' && this.latencyData.length) {
               this.$nextTick().then(() => this.renderLatencyChart());
             }
+          });
+
+          this.$watch('selectedKeyId', (val) => {
+            this.quotaEditing = false;
+            if (val && this.tab === 'keys') this.loadQuotaUsage(val);
           });
         },
 
@@ -483,6 +497,7 @@ export function dashboardAssets(): string {
             this.renderLatencyChart();
           } else if (t === 'keys') {
             await this.loadKeys();
+            if (this.selectedKeyId) this.loadQuotaUsage(this.selectedKeyId);
           } else if (t === 'relays') {
             await this.loadRelays();
           }
@@ -1453,6 +1468,86 @@ export function dashboardAssets(): string {
               console.error('loadAdminUsers:', e);
             } finally {
               this.adminUsersLoading = false;
+            }
+          },
+
+          // === Quota ===
+          async loadQuotaUsage(keyId) {
+            if (!keyId) {
+              this.selectedKeyQuota = { reqLimit: null, reqUsed: 0, reqPercent: 0, tokenLimit: null, tokenUsed: 0, tokenPercent: 0 };
+              return;
+            }
+            const key = this.keys.find(k => k.id === keyId);
+            const reqLimit = key?.quota_requests_per_day ?? null;
+            const tokenLimit = key?.quota_tokens_per_day ?? null;
+
+            // Fetch today's usage for this key
+            const now = new Date();
+            const todayStart = now.toISOString().slice(0, 10) + 'T00';
+            const tomorrowStart = new Date(now.getTime() + 86400000).toISOString().slice(0, 10) + 'T00';
+            try {
+              const resp = await fetch('/api/token-usage?start=' + encodeURIComponent(todayStart) + '&end=' + encodeURIComponent(tomorrowStart), { headers: this.authHeaders() });
+              if (resp.ok) {
+                const data = await resp.json();
+                // Filter by keyId
+                const keyData = data.filter(r => r.keyId === keyId);
+                let reqUsed = 0;
+                let weightedTokens = 0;
+                for (const r of keyData) {
+                  reqUsed += r.requests;
+                  weightedTokens += (r.cacheReadTokens || 0) * 0.1 + (r.inputTokens || 0) * 1.0 + (r.outputTokens || 0) * 5.0;
+                }
+                this.selectedKeyQuota = {
+                  reqLimit,
+                  reqUsed,
+                  reqPercent: reqLimit ? Math.round(reqUsed / reqLimit * 100) : 0,
+                  tokenLimit,
+                  tokenUsed: weightedTokens,
+                  tokenPercent: tokenLimit ? Math.round(weightedTokens / tokenLimit * 100) : 0,
+                };
+              }
+            } catch (e) {
+              console.error('loadQuotaUsage:', e);
+            }
+          },
+
+          startEditQuota() {
+            const key = this.keys.find(k => k.id === this.selectedKeyId);
+            this.quotaEditReq = key?.quota_requests_per_day ?? null;
+            this.quotaEditToken = key?.quota_tokens_per_day ?? null;
+            this.quotaEditing = true;
+          },
+
+          async saveQuota() {
+            if (!this.selectedKeyId) return;
+            this.quotaSaving = true;
+            try {
+              const reqVal = typeof this.quotaEditReq === 'number' && this.quotaEditReq > 0 ? this.quotaEditReq : null;
+              const tokenVal = typeof this.quotaEditToken === 'number' && this.quotaEditToken > 0 ? this.quotaEditToken : null;
+              const body = {
+                quota_requests_per_day: reqVal,
+                quota_tokens_per_day: tokenVal,
+              };
+              const resp = await fetch('/api/keys/' + this.selectedKeyId, {
+                method: 'PATCH',
+                headers: { ...this.authHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+              });
+              if (resp.status === 401) {
+                this.logout('Session expired, please log in again');
+                return;
+              }
+              if (resp.ok) {
+                await this.loadKeys();
+                this.quotaEditing = false;
+                await this.loadQuotaUsage(this.selectedKeyId);
+              } else {
+                alert((await resp.json()).error || 'Failed to update quota');
+              }
+            } catch (e) {
+              console.error('saveQuota:', e);
+            } finally {
+              this.quotaSaving = false;
             }
           },
 

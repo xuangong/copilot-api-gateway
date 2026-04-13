@@ -19,6 +19,7 @@ import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { createSSETransform } from "~/lib/sse-transform"
 import { detectClient } from "~/lib/client-detect"
+import { checkQuota } from "~/lib/quota"
 
 interface RouteContext {
   state: AppState
@@ -75,6 +76,14 @@ const handleResponses = async (ctx: unknown) => {
   const { state, body, apiKeyId, colo, requestId, userAgent } = ctx as unknown as RouteContext
   const elapsed = startTimer()
   const client = detectClient(userAgent)
+
+  // Quota enforcement
+  if (apiKeyId) {
+    const quota = await checkQuota(apiKeyId)
+    if (!quota.allowed) {
+      return new Response(JSON.stringify({ error: { type: "rate_limit_error", message: quota.reason } }), { status: 429, headers: { "Content-Type": "application/json" } })
+    }
+  }
 
   const payload: ResponsesPayload = { ...(body as ResponsesPayload) }
 

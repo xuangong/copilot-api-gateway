@@ -39,44 +39,46 @@ export interface D1Database {
 class D1ApiKeyRepo implements ApiKeyRepo {
   constructor(private db: D1Database) {}
 
+  private static readonly SELECT_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day"
+
   async list(): Promise<ApiKey[]> {
     const { results } = await this.db
-      .prepare("SELECT id, name, key, created_at, last_used_at, owner_id FROM api_keys ORDER BY created_at")
-      .all<{ id: string; name: string; key: string; created_at: string; last_used_at: string | null; owner_id: string | null }>()
+      .prepare(`SELECT ${D1ApiKeyRepo.SELECT_COLS} FROM api_keys ORDER BY created_at`)
+      .all<ApiKeyRow>()
     return results.map(toApiKey)
   }
 
   async listByOwner(ownerId: string): Promise<ApiKey[]> {
     const { results } = await this.db
-      .prepare("SELECT id, name, key, created_at, last_used_at, owner_id FROM api_keys WHERE owner_id = ? ORDER BY created_at")
+      .prepare(`SELECT ${D1ApiKeyRepo.SELECT_COLS} FROM api_keys WHERE owner_id = ? ORDER BY created_at`)
       .bind(ownerId)
-      .all<{ id: string; name: string; key: string; created_at: string; last_used_at: string | null; owner_id: string | null }>()
+      .all<ApiKeyRow>()
     return results.map(toApiKey)
   }
 
   async findByRawKey(rawKey: string): Promise<ApiKey | null> {
     const row = await this.db
-      .prepare("SELECT id, name, key, created_at, last_used_at, owner_id FROM api_keys WHERE key = ?")
+      .prepare(`SELECT ${D1ApiKeyRepo.SELECT_COLS} FROM api_keys WHERE key = ?`)
       .bind(rawKey)
-      .first<{ id: string; name: string; key: string; created_at: string; last_used_at: string | null; owner_id: string | null }>()
+      .first<ApiKeyRow>()
     return row ? toApiKey(row) : null
   }
 
   async getById(id: string): Promise<ApiKey | null> {
     const row = await this.db
-      .prepare("SELECT id, name, key, created_at, last_used_at, owner_id FROM api_keys WHERE id = ?")
+      .prepare(`SELECT ${D1ApiKeyRepo.SELECT_COLS} FROM api_keys WHERE id = ?`)
       .bind(id)
-      .first<{ id: string; name: string; key: string; created_at: string; last_used_at: string | null; owner_id: string | null }>()
+      .first<ApiKeyRow>()
     return row ? toApiKey(row) : null
   }
 
   async save(key: ApiKey): Promise<void> {
     await this.db
       .prepare(
-        `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id`,
+        `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day`,
       )
-      .bind(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null)
+      .bind(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null, key.quotaRequestsPerDay ?? null, key.quotaTokensPerDay ?? null)
       .run()
   }
 
@@ -90,7 +92,18 @@ class D1ApiKeyRepo implements ApiKeyRepo {
   }
 }
 
-function toApiKey(row: { id: string; name: string; key: string; created_at: string; last_used_at: string | null; owner_id: string | null }): ApiKey {
+interface ApiKeyRow {
+  id: string
+  name: string
+  key: string
+  created_at: string
+  last_used_at: string | null
+  owner_id: string | null
+  quota_requests_per_day: number | null
+  quota_tokens_per_day: number | null
+}
+
+function toApiKey(row: ApiKeyRow): ApiKey {
   return {
     id: row.id,
     name: row.name,
@@ -98,6 +111,8 @@ function toApiKey(row: { id: string; name: string; key: string; created_at: stri
     createdAt: row.created_at,
     lastUsedAt: row.last_used_at ?? undefined,
     ownerId: row.owner_id ?? undefined,
+    quotaRequestsPerDay: row.quota_requests_per_day ?? undefined,
+    quotaTokensPerDay: row.quota_tokens_per_day ?? undefined,
   }
 }
 

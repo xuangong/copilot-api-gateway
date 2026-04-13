@@ -17,6 +17,7 @@
   - 延迟监控 — 按模型筛选，Stream/Sync 分离，按 Colo 分布
   - 三大 CLI 配置指引（含推荐模型选择）
   - 数据导入导出
+- **Per-Key Quota** — 每个 API key 可设日级别配额（Requests/Day + Weighted Tokens/Day），超限返回 429；Dashboard 实时展示配额进度
 - **Prompt Caching** — 透传 Anthropic prompt cache 控制，dashboard 展示 Cache Read / Cache Creation / 缓存命中率
 - **兼容性修复** — 自动处理 Copilot API 的兼容性问题（billing header、工具类型、thinking 块、Gemini model mapping 等）
 - **双部署模式** — Cloudflare Workers（全球边缘 + Smart Placement）或 Docker 自托管
@@ -197,6 +198,34 @@ const response = await ai.models.generateContent({
 ```
 
 搜索引擎优先级：LangSearch → Tavily → Bing（免费，无需 API key）
+
+## Per-Key Quota
+
+每个 API key 支持设置日级别配额限制，默认不设配额 = 无限制。
+
+- **Requests/Day** — 每日请求次数上限（UTC 日）
+- **Weighted Tokens/Day** — 每日加权 Token 用量上限，计算公式：
+  ```
+  Weighted Tokens = (Cache Read × 10%) + (Input × 100%) + (Output × 500%)
+  ```
+
+通过 Dashboard Keys 标签页的 Quota 面板编辑，或通过 API：
+
+```bash
+# 设置配额
+curl -X PATCH https://your-gateway/api/keys/{id} \
+  -H "Authorization: Bearer YOUR_ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"quota_requests_per_day": 1000, "quota_tokens_per_day": 500000}'
+
+# 取消配额（设为 null = 无限制）
+curl -X PATCH https://your-gateway/api/keys/{id} \
+  -H "Authorization: Bearer YOUR_ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"quota_requests_per_day": null, "quota_tokens_per_day": null}'
+```
+
+超出配额时，API 返回 HTTP 429 和对应错误信息。
 
 ## 多用户系统
 

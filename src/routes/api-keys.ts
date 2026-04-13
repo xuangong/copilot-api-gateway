@@ -12,7 +12,7 @@ import {
 import { getRepo } from "~/repo"
 
 function keyToJson(k: ApiKey, ownerName?: string) {
-  return { id: k.id, name: k.name, key: k.key, created_at: k.createdAt, last_used_at: k.lastUsedAt ?? null, owner_id: k.ownerId ?? null, owner_name: ownerName ?? null }
+  return { id: k.id, name: k.name, key: k.key, created_at: k.createdAt, last_used_at: k.lastUsedAt ?? null, owner_id: k.ownerId ?? null, owner_name: ownerName ?? null, quota_requests_per_day: k.quotaRequestsPerDay ?? null, quota_tokens_per_day: k.quotaTokensPerDay ?? null }
 }
 
 interface AuthCtx {
@@ -99,28 +99,39 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     return keyToJson(key)
   })
 
-  // PATCH /api/keys/:id - rename an API key
+  // PATCH /api/keys/:id - rename an API key or update quota
   .patch("/:id", async (ctx) => {
     const { params, body } = ctx
     const authCtx = ctx as unknown as AuthCtx
     if (!(await checkOwnership(params.id, authCtx))) {
       return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { "Content-Type": "application/json" } })
     }
-    const { name } = body as { name: string }
-    if (!name || typeof name !== "string") {
-      return new Response(JSON.stringify({ error: "name is required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      })
-    }
-    const key = await renameApiKey(params.id, name)
-    if (!key) {
+    const { name, quota_requests_per_day, quota_tokens_per_day } = body as { name?: string; quota_requests_per_day?: number | null; quota_tokens_per_day?: number | null }
+    const existing = await getApiKeyById(params.id)
+    if (!existing) {
       return new Response(JSON.stringify({ error: "Key not found" }), {
         status: 404,
         headers: { "Content-Type": "application/json" },
       })
     }
-    return keyToJson(key)
+    const updated = { ...existing }
+    if (name !== undefined) {
+      if (!name || typeof name !== "string") {
+        return new Response(JSON.stringify({ error: "name must be a non-empty string" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      updated.name = name
+    }
+    if (quota_requests_per_day !== undefined) {
+      updated.quotaRequestsPerDay = quota_requests_per_day === null ? undefined : quota_requests_per_day
+    }
+    if (quota_tokens_per_day !== undefined) {
+      updated.quotaTokensPerDay = quota_tokens_per_day === null ? undefined : quota_tokens_per_day
+    }
+    await getRepo().apiKeys.save(updated)
+    return keyToJson(updated)
   })
 
   // POST /api/keys/:id/rotate - rotate an API key

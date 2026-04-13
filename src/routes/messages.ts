@@ -18,6 +18,7 @@ import {
 import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { detectClient } from "~/lib/client-detect"
+import { checkQuota } from "~/lib/quota"
 
 interface RouteContext {
   state: AppState
@@ -48,6 +49,14 @@ export const messagesRoute = new Elysia()
     const { state, body, apiKeyId, colo, requestId, userAgent } = ctx as unknown as RouteContext
     const elapsed = startTimer()
     const client = detectClient(userAgent)
+
+    // Quota enforcement
+    if (apiKeyId) {
+      const quota = await checkQuota(apiKeyId)
+      if (!quota.allowed) {
+        return new Response(JSON.stringify({ error: { type: "rate_limit_error", message: quota.reason } }), { status: 429, headers: { "Content-Type": "application/json" } })
+      }
+    }
 
     const payload: AnthropicMessagesPayload = {
       ...(body as AnthropicMessagesPayload),

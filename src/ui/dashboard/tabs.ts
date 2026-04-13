@@ -505,6 +505,111 @@ export function renderKeysTab(): string {
         </div>
       </div>
 
+      <!-- Quota Panel (shown when a key is selected) -->
+      <template x-if="selectedKeyId">
+        <div class="glass-card p-6 mb-6 animate-in delay-1">
+          <div class="flex items-center justify-between mb-4">
+            <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Daily Quota</span>
+            <div class="flex items-center gap-2">
+              <template x-if="!quotaEditing">
+                <button @click="startEditQuota()" class="btn-ghost text-xs" x-show="isAdmin || isUser">Edit</button>
+              </template>
+              <template x-if="quotaEditing">
+                <div class="flex items-center gap-2">
+                  <button @click="saveQuota()" class="btn-primary !text-xs !py-1 !px-3" :disabled="quotaSaving">
+                    <span x-show="!quotaSaving">Save</span>
+                    <span x-show="quotaSaving">Saving...</span>
+                  </button>
+                  <button @click="quotaEditing = false" class="btn-ghost text-xs">Cancel</button>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Edit form -->
+          <template x-if="quotaEditing">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label class="text-xs text-themed-dim block mb-1">Requests / Day</label>
+                <input type="number" x-model.number="quotaEditReq" min="0" placeholder="Unlimited"
+                  class="!text-xs !py-1.5 !px-3 w-full !rounded-lg" />
+                <p class="text-[10px] text-themed-dim mt-1">Leave empty = unlimited</p>
+              </div>
+              <div>
+                <label class="text-xs text-themed-dim block mb-1">Weighted Tokens / Day</label>
+                <input type="number" x-model.number="quotaEditToken" min="0" placeholder="Unlimited"
+                  class="!text-xs !py-1.5 !px-3 w-full !rounded-lg" />
+                <p class="text-[10px] text-themed-dim mt-1">Leave empty = unlimited</p>
+              </div>
+            </div>
+          </template>
+
+          <!-- Request Quota -->
+          <div class="mb-5">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs text-themed-secondary">Requests / Day</span>
+              <span class="text-xs font-mono" :class="selectedKeyQuota.reqLimit ? 'text-themed' : 'text-themed-dim'"
+                x-text="selectedKeyQuota.reqLimit ? (selectedKeyQuota.reqUsed + ' / ' + selectedKeyQuota.reqLimit) : 'Unlimited'"></span>
+            </div>
+            <template x-if="selectedKeyQuota.reqLimit">
+              <div>
+                <div class="progress-track">
+                  <div class="progress-fill"
+                    :class="selectedKeyQuota.reqPercent > 90 ? 'bg-accent-red' : selectedKeyQuota.reqPercent > 70 ? 'bg-gradient-to-r from-accent-amber to-accent-red' : 'bg-gradient-to-r from-accent-violet to-accent-teal'"
+                    :style="'width:' + Math.min(selectedKeyQuota.reqPercent, 100) + '%'"></div>
+                </div>
+                <p class="text-[10px] text-themed-dim mt-1">
+                  <span x-text="Math.max(0, selectedKeyQuota.reqLimit - selectedKeyQuota.reqUsed)"></span> remaining
+                  <span x-show="selectedKeyQuota.reqPercent >= 100" class="text-accent-red font-medium ml-1">QUOTA EXCEEDED</span>
+                </p>
+              </div>
+            </template>
+            <template x-if="!selectedKeyQuota.reqLimit">
+              <div class="progress-track">
+                <div class="progress-fill bg-surface-600" style="width: 100%"></div>
+              </div>
+            </template>
+          </div>
+
+          <!-- Token Quota -->
+          <div class="mb-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs text-themed-secondary">Weighted Tokens / Day</span>
+              <span class="text-xs font-mono" :class="selectedKeyQuota.tokenLimit ? 'text-themed' : 'text-themed-dim'"
+                x-text="selectedKeyQuota.tokenLimit ? (Math.round(selectedKeyQuota.tokenUsed).toLocaleString() + ' / ' + selectedKeyQuota.tokenLimit.toLocaleString()) : 'Unlimited'"></span>
+            </div>
+            <template x-if="selectedKeyQuota.tokenLimit">
+              <div>
+                <div class="progress-track">
+                  <div class="progress-fill"
+                    :class="selectedKeyQuota.tokenPercent > 90 ? 'bg-accent-red' : selectedKeyQuota.tokenPercent > 70 ? 'bg-gradient-to-r from-accent-amber to-accent-red' : 'bg-gradient-to-r from-accent-violet to-accent-teal'"
+                    :style="'width:' + Math.min(selectedKeyQuota.tokenPercent, 100) + '%'"></div>
+                </div>
+                <p class="text-[10px] text-themed-dim mt-1">
+                  <span x-text="Math.max(0, Math.round(selectedKeyQuota.tokenLimit - selectedKeyQuota.tokenUsed)).toLocaleString()"></span> remaining
+                  <span x-show="selectedKeyQuota.tokenPercent >= 100" class="text-accent-red font-medium ml-1">QUOTA EXCEEDED</span>
+                </p>
+              </div>
+            </template>
+            <template x-if="!selectedKeyQuota.tokenLimit">
+              <div class="progress-track">
+                <div class="progress-fill bg-surface-600" style="width: 100%"></div>
+              </div>
+            </template>
+          </div>
+
+          <!-- Formula -->
+          <div class="rounded-lg bg-surface-800/60 border border-white/[0.04] p-3">
+            <p class="text-[10px] text-themed-dim leading-relaxed">
+              <span class="text-themed-secondary font-medium">Token Quota Formula:</span>
+              <code class="text-accent-violet ml-1">Cache Read \u00d7 10%</code> +
+              <code class="text-accent-teal">Uncached Input \u00d7 100%</code> +
+              <code class="text-accent-amber">Output \u00d7 500%</code>
+            </p>
+          </div>
+        </div>
+      </template>
+
       <div class="glass-card p-6 animate-in delay-1">
         <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Configuration</span>
         <template x-if="selectedKeyId">

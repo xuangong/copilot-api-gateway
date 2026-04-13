@@ -5,6 +5,8 @@ export interface ApiKey {
   createdAt: string
   lastUsedAt?: string
   ownerId?: string
+  quotaRequestsPerDay?: number
+  quotaTokensPerDay?: number
 }
 
 export interface GitHubUser {

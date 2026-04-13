@@ -116,29 +116,31 @@ CREATE TABLE IF NOT EXISTS client_presence (
 class SqliteApiKeyRepo implements ApiKeyRepo {
   constructor(private db: Database) {}
 
+  private static readonly SELECT_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day"
+
   async list(): Promise<ApiKey[]> {
-    return this.db.query<any, []>("SELECT id, name, key, created_at, last_used_at, owner_id FROM api_keys ORDER BY created_at").all().map(toApiKey)
+    return this.db.query<any, []>(`SELECT ${SqliteApiKeyRepo.SELECT_COLS} FROM api_keys ORDER BY created_at`).all().map(toApiKey)
   }
 
   async listByOwner(ownerId: string): Promise<ApiKey[]> {
-    return this.db.query<any, [string]>("SELECT id, name, key, created_at, last_used_at, owner_id FROM api_keys WHERE owner_id = ? ORDER BY created_at").all(ownerId).map(toApiKey)
+    return this.db.query<any, [string]>(`SELECT ${SqliteApiKeyRepo.SELECT_COLS} FROM api_keys WHERE owner_id = ? ORDER BY created_at`).all(ownerId).map(toApiKey)
   }
 
   async findByRawKey(rawKey: string): Promise<ApiKey | null> {
-    const row = this.db.query<any, [string]>("SELECT id, name, key, created_at, last_used_at, owner_id FROM api_keys WHERE key = ?").get(rawKey)
+    const row = this.db.query<any, [string]>(`SELECT ${SqliteApiKeyRepo.SELECT_COLS} FROM api_keys WHERE key = ?`).get(rawKey)
     return row ? toApiKey(row) : null
   }
 
   async getById(id: string): Promise<ApiKey | null> {
-    const row = this.db.query<any, [string]>("SELECT id, name, key, created_at, last_used_at, owner_id FROM api_keys WHERE id = ?").get(id)
+    const row = this.db.query<any, [string]>(`SELECT ${SqliteApiKeyRepo.SELECT_COLS} FROM api_keys WHERE id = ?`).get(id)
     return row ? toApiKey(row) : null
   }
 
   async save(key: ApiKey): Promise<void> {
     this.db.query(
-      `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id) VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id`,
-    ).run(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null)
+      `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day`,
+    ).run(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null, key.quotaRequestsPerDay ?? null, key.quotaTokensPerDay ?? null)
   }
 
   async delete(id: string): Promise<boolean> {
@@ -152,7 +154,7 @@ class SqliteApiKeyRepo implements ApiKeyRepo {
 }
 
 function toApiKey(row: any): ApiKey {
-  return { id: row.id, name: row.name, key: row.key, createdAt: row.created_at, lastUsedAt: row.last_used_at ?? undefined, ownerId: row.owner_id ?? undefined }
+  return { id: row.id, name: row.name, key: row.key, createdAt: row.created_at, lastUsedAt: row.last_used_at ?? undefined, ownerId: row.owner_id ?? undefined, quotaRequestsPerDay: row.quota_requests_per_day ?? undefined, quotaTokensPerDay: row.quota_tokens_per_day ?? undefined }
 }
 
 class SqliteGitHubRepo implements GitHubRepo {
@@ -499,6 +501,13 @@ function migrateSchema(db: Database): void {
   }
   if (!hasColumn(db, "usage", "cache_creation_tokens")) {
     db.exec("ALTER TABLE usage ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0")
+  }
+  // Add quota columns to api_keys
+  if (!hasColumn(db, "api_keys", "quota_requests_per_day")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN quota_requests_per_day INTEGER")
+  }
+  if (!hasColumn(db, "api_keys", "quota_tokens_per_day")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN quota_tokens_per_day INTEGER")
   }
 }
 
