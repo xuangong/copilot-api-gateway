@@ -152,7 +152,7 @@ export function renderUsersTab(): string {
             <div class="flex items-start sm:items-center justify-between gap-3 p-4 rounded-lg bg-surface-800/50 border border-white/[0.04] flex-wrap">
               <div class="flex items-center gap-4">
                 <template x-if="u.githubAccounts && u.githubAccounts.length > 0">
-                  <img :src="u.githubAccounts[0].avatar_url || 'https://avatars.githubusercontent.com/u/' + u.githubAccounts[0].id + '?v=4'" @error="$el.src = 'https://avatars.githubusercontent.com/u/' + u.githubAccounts[0].id + '?v=4'; $el.onerror = null" class="w-8 h-8 rounded-full" />
+                  <img :src="u.githubAccounts[0].avatar_url || 'https://avatars.githubusercontent.com/u/' + u.githubAccounts[0].id + '?v=4'" @error.once="$el.style.display='none'; $el.nextElementSibling.style.display=''" class="w-8 h-8 rounded-full" /><div style="display:none" class="w-8 h-8 rounded-full bg-surface-700 flex items-center justify-center text-themed-dim text-xs" x-text="(u.githubAccounts[0].login || '?')[0].toUpperCase()"></div>
                 </template>
                 <template x-if="!u.githubAccounts || u.githubAccounts.length === 0">
                   <div class="w-8 h-8 rounded-full bg-surface-700 flex items-center justify-center text-themed-dim text-xs">?</div>
@@ -352,7 +352,7 @@ export function renderUpstreamTab(): string {
                     :class="isAdmin && acct.owner_id ? 'opacity-50 border border-white/[0.04]' : !acct.token_valid ? 'bg-accent-red/5 border border-accent-red/15' : acct.active ? 'bg-accent-violet/5 border border-accent-violet/15' : 'hover:bg-white/[0.03] cursor-pointer border border-transparent'">
                     <div class="flex items-center gap-3">
                       <div class="relative">
-                        <img :src="acct.avatar_url || 'https://avatars.githubusercontent.com/u/' + acct.id + '?v=4'" @error="$el.src = 'https://avatars.githubusercontent.com/u/' + acct.id + '?v=4'; $el.onerror = null" class="w-9 h-9 rounded-lg ring-1 ring-white/5" :class="(!acct.token_valid || (isAdmin && acct.owner_id)) ? 'opacity-50' : ''" />
+                        <img :src="acct.avatar_url || 'https://avatars.githubusercontent.com/u/' + acct.id + '?v=4'" @error.once="$el.style.display='none'; $el.nextElementSibling.style.display=''" class="w-9 h-9 rounded-lg ring-1 ring-white/5" :class="(!acct.token_valid || (isAdmin && acct.owner_id)) ? 'opacity-50' : ''" /><div style="display:none" class="w-9 h-9 rounded-lg ring-1 ring-white/5 bg-surface-700 flex items-center justify-center text-themed-dim text-sm" :class="(!acct.token_valid || (isAdmin && acct.owner_id)) ? 'opacity-50' : ''" x-text="(acct.login || '?')[0].toUpperCase()"></div>
                         <div x-show="!acct.token_valid" class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-accent-red ring-2 ring-surface-800"></div>
                         <div x-show="acct.token_valid && acct.active" class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-accent-teal ring-2 ring-surface-800"></div>
                       </div>
