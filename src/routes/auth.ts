@@ -378,7 +378,7 @@ export const authRoute = new Elysia({ prefix: "/auth" })
         id: a.user.id,
         login: a.user.login,
         name: a.user.name,
-        avatar_url: a.user.avatar_url,
+        avatar_url: a.user.avatar_url || `https://avatars.githubusercontent.com/u/${a.user.id}?v=4`,
         account_type: a.accountType,
         active: active?.user.id === a.user.id,
         token_valid: (() => { const r = healthChecks[i]; return r && r.status === "fulfilled" && r.value })(),
@@ -486,7 +486,7 @@ export const authRoute = new Elysia({ prefix: "/auth" })
         githubAccounts: accounts.map(a => ({
           id: a.user.id,
           login: a.user.login,
-          avatar_url: a.user.avatar_url,
+          avatar_url: a.user.avatar_url || `https://avatars.githubusercontent.com/u/${a.user.id}?v=4`,
           account_type: a.accountType,
         })),
         keyCount: keys.length,
