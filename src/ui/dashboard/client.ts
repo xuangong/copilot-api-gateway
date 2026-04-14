@@ -1604,7 +1604,7 @@ export function dashboardAssets(): string {
             try {
               const body = {
                 web_search_enabled: this.wsEditEnabled,
-                web_search_bing_enabled: this.wsEditBing,
+                web_search_bing_enabled: this.wsEditEnabled,
               };
               if (this.wsEditLangsearch) body.web_search_langsearch_key = this.wsEditLangsearch;
               if (this.wsEditTavily) body.web_search_tavily_key = this.wsEditTavily;

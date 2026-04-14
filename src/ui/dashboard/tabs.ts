@@ -639,10 +639,7 @@ export function renderKeysTab(): string {
                   <input type="checkbox" x-model="wsEditEnabled" class="accent-accent-violet" />
                   Enable Web Search
                 </label>
-                <label class="flex items-center gap-2 text-xs text-themed-secondary cursor-pointer">
-                  <input type="checkbox" x-model="wsEditBing" class="accent-accent-teal" />
-                  Bing Fallback
-                </label>
+                <span x-show="wsEditEnabled" class="text-xs text-themed-dim">(Bing fallback always active)</span>
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -686,8 +683,8 @@ export function renderKeysTab(): string {
                         x-text="wsConfig.langsearchKey ? 'LangSearch \u2713' : 'LangSearch'"></span>
                       <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.tavilyKey ? 'bg-accent-teal/20 text-accent-teal' : 'bg-surface-600 text-themed-dim'"
                         x-text="wsConfig.tavilyKey ? 'Tavily \u2713' : 'Tavily'"></span>
-                      <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.bingEnabled ? 'bg-accent-amber/20 text-accent-amber' : 'bg-surface-600 text-themed-dim'"
-                        x-text="wsConfig.bingEnabled ? 'Bing \u2713' : 'Bing'"></span>
+                      <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.enabled ? 'bg-accent-amber/20 text-accent-amber' : 'bg-surface-600 text-themed-dim'"
+                        x-text="wsConfig.enabled ? 'Bing \u2713' : 'Bing'"></span>
                     </div>
                   </div>
                   <!-- Today's usage -->
