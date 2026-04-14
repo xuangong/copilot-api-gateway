@@ -67,4 +67,6 @@ export interface WebSearchMeta {
   searchCount: number
   totalResults: number
   enginesUsed: string[]
+  successes: number
+  failures: number
 }

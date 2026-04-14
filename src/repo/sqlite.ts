@@ -18,6 +18,8 @@ import type {
   User,
   UserRepo,
   UserSession,
+  WebSearchUsageRecord,
+  WebSearchUsageRepo,
 } from "./types"
 
 const INIT_SQL = `
@@ -111,12 +113,21 @@ CREATE TABLE IF NOT EXISTS client_presence (
   gateway_url TEXT,
   last_seen_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS web_search_usage (
+  key_id TEXT NOT NULL,
+  hour TEXT NOT NULL,
+  searches INTEGER NOT NULL DEFAULT 0,
+  successes INTEGER NOT NULL DEFAULT 0,
+  failures INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (key_id, hour)
+);
 `
 
 class SqliteApiKeyRepo implements ApiKeyRepo {
   constructor(private db: Database) {}
 
-  private static readonly SELECT_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day"
+  private static readonly SELECT_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key"
 
   async list(): Promise<ApiKey[]> {
     return this.db.query<any, []>(`SELECT ${SqliteApiKeyRepo.SELECT_COLS} FROM api_keys ORDER BY created_at`).all().map(toApiKey)
@@ -138,9 +149,9 @@ class SqliteApiKeyRepo implements ApiKeyRepo {
 
   async save(key: ApiKey): Promise<void> {
     this.db.query(
-      `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day`,
-    ).run(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null, key.quotaRequestsPerDay ?? null, key.quotaTokensPerDay ?? null)
+      `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day, web_search_enabled = excluded.web_search_enabled, web_search_bing_enabled = excluded.web_search_bing_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key`,
+    ).run(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null, key.quotaRequestsPerDay ?? null, key.quotaTokensPerDay ?? null, key.webSearchEnabled ? 1 : 0, key.webSearchBingEnabled ? 1 : 0, key.webSearchLangsearchKey ?? null, key.webSearchTavilyKey ?? null)
   }
 
   async delete(id: string): Promise<boolean> {
@@ -154,7 +165,7 @@ class SqliteApiKeyRepo implements ApiKeyRepo {
 }
 
 function toApiKey(row: any): ApiKey {
-  return { id: row.id, name: row.name, key: row.key, createdAt: row.created_at, lastUsedAt: row.last_used_at ?? undefined, ownerId: row.owner_id ?? undefined, quotaRequestsPerDay: row.quota_requests_per_day ?? undefined, quotaTokensPerDay: row.quota_tokens_per_day ?? undefined }
+  return { id: row.id, name: row.name, key: row.key, createdAt: row.created_at, lastUsedAt: row.last_used_at ?? undefined, ownerId: row.owner_id ?? undefined, quotaRequestsPerDay: row.quota_requests_per_day ?? undefined, quotaTokensPerDay: row.quota_tokens_per_day ?? undefined, webSearchEnabled: row.web_search_enabled === 1, webSearchBingEnabled: row.web_search_bing_enabled === 1, webSearchLangsearchKey: row.web_search_langsearch_key ?? undefined, webSearchTavilyKey: row.web_search_tavily_key ?? undefined }
 }
 
 class SqliteGitHubRepo implements GitHubRepo {
@@ -409,7 +420,7 @@ class SqliteSessionRepo implements SessionRepo {
 }
 
 function hasColumn(db: Database, table: string, column: string): boolean {
-  const rows = db.query<{ name: string }, [string]>("SELECT name FROM pragma_table_info(?) WHERE name = ?").all(table, column)
+  const rows = db.query<{ name: string }, [string, string]>("SELECT name FROM pragma_table_info(?) WHERE name = ?").all(table, column)
   return rows.length > 0
 }
 
@@ -509,6 +520,19 @@ function migrateSchema(db: Database): void {
   if (!hasColumn(db, "api_keys", "quota_tokens_per_day")) {
     db.exec("ALTER TABLE api_keys ADD COLUMN quota_tokens_per_day INTEGER")
   }
+  // Add web search columns to api_keys
+  if (!hasColumn(db, "api_keys", "web_search_enabled")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN web_search_enabled INTEGER DEFAULT 0")
+  }
+  if (!hasColumn(db, "api_keys", "web_search_bing_enabled")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN web_search_bing_enabled INTEGER DEFAULT 0")
+  }
+  if (!hasColumn(db, "api_keys", "web_search_langsearch_key")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN web_search_langsearch_key TEXT")
+  }
+  if (!hasColumn(db, "api_keys", "web_search_tavily_key")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN web_search_tavily_key TEXT")
+  }
 }
 
 class SqliteClientPresenceRepo implements ClientPresenceRepo {
@@ -560,6 +584,41 @@ function toPresence(row: any): ClientPresence {
   }
 }
 
+class SqliteWebSearchUsageRepo implements WebSearchUsageRepo {
+  constructor(private db: Database) {}
+
+  async record(keyId: string, hour: string, success: boolean): Promise<void> {
+    if (success) {
+      this.db.query(
+        `INSERT INTO web_search_usage (key_id, hour, searches, successes, failures) VALUES (?, ?, 1, 1, 0)
+         ON CONFLICT (key_id, hour) DO UPDATE SET searches = searches + 1, successes = successes + 1`,
+      ).run(keyId, hour)
+    } else {
+      this.db.query(
+        `INSERT INTO web_search_usage (key_id, hour, searches, successes, failures) VALUES (?, ?, 1, 0, 1)
+         ON CONFLICT (key_id, hour) DO UPDATE SET searches = searches + 1, failures = failures + 1`,
+      ).run(keyId, hour)
+    }
+  }
+
+  async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<WebSearchUsageRecord[]> {
+    let rows: any[]
+    if (opts.keyIds && opts.keyIds.length > 0) {
+      const placeholders = opts.keyIds.map(() => "?").join(",")
+      rows = this.db.query(`SELECT key_id, hour, searches, successes, failures FROM web_search_usage WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`).all(...opts.keyIds, opts.start, opts.end)
+    } else if (opts.keyId) {
+      rows = this.db.query("SELECT key_id, hour, searches, successes, failures FROM web_search_usage WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour").all(opts.keyId, opts.start, opts.end)
+    } else {
+      rows = this.db.query("SELECT key_id, hour, searches, successes, failures FROM web_search_usage WHERE hour >= ? AND hour < ? ORDER BY hour").all(opts.start, opts.end)
+    }
+    return rows.map((r: any) => ({ keyId: r.key_id, hour: r.hour, searches: r.searches, successes: r.successes, failures: r.failures }))
+  }
+
+  async deleteAll(): Promise<void> {
+    this.db.query("DELETE FROM web_search_usage").run()
+  }
+}
+
 export class SqliteRepo implements Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -570,6 +629,7 @@ export class SqliteRepo implements Repo {
   inviteCodes: InviteCodeRepo
   sessions: SessionRepo
   presence: ClientPresenceRepo
+  webSearchUsage: WebSearchUsageRepo
 
   constructor(db: Database) {
     db.exec(INIT_SQL)
@@ -583,6 +643,7 @@ export class SqliteRepo implements Repo {
     this.inviteCodes = new SqliteInviteCodeRepo(db)
     this.sessions = new SqliteSessionRepo(db)
     this.presence = new SqliteClientPresenceRepo(db)
+    this.webSearchUsage = new SqliteWebSearchUsageRepo(db)
   }
 }
 

@@ -17,6 +17,8 @@ import type {
   User,
   UserRepo,
   UserSession,
+  WebSearchUsageRecord,
+  WebSearchUsageRepo,
 } from "./types"
 
 interface D1Result<T = Record<string, unknown>> {
@@ -39,7 +41,7 @@ export interface D1Database {
 class D1ApiKeyRepo implements ApiKeyRepo {
   constructor(private db: D1Database) {}
 
-  private static readonly SELECT_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day"
+  private static readonly SELECT_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key"
 
   async list(): Promise<ApiKey[]> {
     const { results } = await this.db
@@ -75,10 +77,10 @@ class D1ApiKeyRepo implements ApiKeyRepo {
   async save(key: ApiKey): Promise<void> {
     await this.db
       .prepare(
-        `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day`,
+        `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day, web_search_enabled = excluded.web_search_enabled, web_search_bing_enabled = excluded.web_search_bing_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key`,
       )
-      .bind(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null, key.quotaRequestsPerDay ?? null, key.quotaTokensPerDay ?? null)
+      .bind(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null, key.quotaRequestsPerDay ?? null, key.quotaTokensPerDay ?? null, key.webSearchEnabled ? 1 : 0, key.webSearchBingEnabled ? 1 : 0, key.webSearchLangsearchKey ?? null, key.webSearchTavilyKey ?? null)
       .run()
   }
 
@@ -101,6 +103,10 @@ interface ApiKeyRow {
   owner_id: string | null
   quota_requests_per_day: number | null
   quota_tokens_per_day: number | null
+  web_search_enabled: number | null
+  web_search_bing_enabled: number | null
+  web_search_langsearch_key: string | null
+  web_search_tavily_key: string | null
 }
 
 function toApiKey(row: ApiKeyRow): ApiKey {
@@ -113,6 +119,10 @@ function toApiKey(row: ApiKeyRow): ApiKey {
     ownerId: row.owner_id ?? undefined,
     quotaRequestsPerDay: row.quota_requests_per_day ?? undefined,
     quotaTokensPerDay: row.quota_tokens_per_day ?? undefined,
+    webSearchEnabled: row.web_search_enabled === 1,
+    webSearchBingEnabled: row.web_search_bing_enabled === 1,
+    webSearchLangsearchKey: row.web_search_langsearch_key ?? undefined,
+    webSearchTavilyKey: row.web_search_tavily_key ?? undefined,
   }
 }
 
@@ -573,6 +583,54 @@ class D1ClientPresenceRepo implements ClientPresenceRepo {
   async pruneStale(_olderThanMinutes: number): Promise<void> {}
 }
 
+class D1WebSearchUsageRepo implements WebSearchUsageRepo {
+  constructor(private db: D1Database) {}
+
+  async record(keyId: string, hour: string, success: boolean): Promise<void> {
+    if (success) {
+      await this.db
+        .prepare(
+          `INSERT INTO web_search_usage (key_id, hour, searches, successes, failures) VALUES (?, ?, 1, 1, 0)
+           ON CONFLICT (key_id, hour) DO UPDATE SET searches = searches + 1, successes = successes + 1`,
+        )
+        .bind(keyId, hour)
+        .run()
+    } else {
+      await this.db
+        .prepare(
+          `INSERT INTO web_search_usage (key_id, hour, searches, successes, failures) VALUES (?, ?, 1, 0, 1)
+           ON CONFLICT (key_id, hour) DO UPDATE SET searches = searches + 1, failures = failures + 1`,
+        )
+        .bind(keyId, hour)
+        .run()
+    }
+  }
+
+  async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<WebSearchUsageRecord[]> {
+    let sql: string
+    let binds: unknown[]
+
+    if (opts.keyIds && opts.keyIds.length > 0) {
+      const placeholders = opts.keyIds.map(() => "?").join(",")
+      sql = `SELECT key_id, hour, searches, successes, failures FROM web_search_usage WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`
+      binds = [...opts.keyIds, opts.start, opts.end]
+    } else if (opts.keyId) {
+      sql = "SELECT key_id, hour, searches, successes, failures FROM web_search_usage WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour"
+      binds = [opts.keyId, opts.start, opts.end]
+    } else {
+      sql = "SELECT key_id, hour, searches, successes, failures FROM web_search_usage WHERE hour >= ? AND hour < ? ORDER BY hour"
+      binds = [opts.start, opts.end]
+    }
+
+    const { results } = await this.db.prepare(sql).bind(...binds).all<{ key_id: string; hour: string; searches: number; successes: number; failures: number }>()
+    return results.map((r) => ({ keyId: r.key_id, hour: r.hour, searches: r.searches, successes: r.successes, failures: r.failures }))
+  }
+
+  async deleteAll(): Promise<void> {
+    await this.db.prepare("DELETE FROM web_search_usage").run()
+  }
+}
+
 export class D1Repo implements Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -583,6 +641,7 @@ export class D1Repo implements Repo {
   inviteCodes: InviteCodeRepo
   sessions: SessionRepo
   presence: ClientPresenceRepo
+  webSearchUsage: WebSearchUsageRepo
 
   constructor(db: D1Database) {
     this.apiKeys = new D1ApiKeyRepo(db)
@@ -594,5 +653,6 @@ export class D1Repo implements Repo {
     this.inviteCodes = new D1InviteCodeRepo(db)
     this.sessions = new D1SessionRepo(db)
     this.presence = new D1ClientPresenceRepo(db)
+    this.webSearchUsage = new D1WebSearchUsageRepo(db)
   }
 }

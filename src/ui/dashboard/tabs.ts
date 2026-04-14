@@ -610,6 +610,100 @@ export function renderKeysTab(): string {
         </div>
       </template>
 
+      <!-- Web Search Panel (shown when a key is selected) -->
+      <template x-if="selectedKeyId">
+        <div class="glass-card p-6 mb-6 animate-in delay-1">
+          <div class="flex items-center justify-between mb-4">
+            <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Web Search</span>
+            <div class="flex items-center gap-2">
+              <template x-if="!wsEditing">
+                <button @click="startEditWebSearch()" class="btn-ghost text-xs" x-show="isAdmin || isUser">Edit</button>
+              </template>
+              <template x-if="wsEditing">
+                <div class="flex items-center gap-2">
+                  <button @click="saveWebSearch()" class="btn-primary !text-xs !py-1 !px-3" :disabled="wsSaving">
+                    <span x-show="!wsSaving">Save</span>
+                    <span x-show="wsSaving">Saving...</span>
+                  </button>
+                  <button @click="wsEditing = false" class="btn-ghost text-xs">Cancel</button>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Edit form -->
+          <template x-if="wsEditing">
+            <div class="space-y-4 mb-4">
+              <div class="flex items-center gap-6">
+                <label class="flex items-center gap-2 text-xs text-themed-secondary cursor-pointer">
+                  <input type="checkbox" x-model="wsEditEnabled" class="accent-accent-violet" />
+                  Enable Web Search
+                </label>
+                <label class="flex items-center gap-2 text-xs text-themed-secondary cursor-pointer">
+                  <input type="checkbox" x-model="wsEditBing" class="accent-accent-teal" />
+                  Bing Fallback
+                </label>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="text-xs text-themed-dim block mb-1">LangSearch API Key</label>
+                  <input type="text" x-model="wsEditLangsearch" placeholder="Not set"
+                    class="!text-xs !py-1.5 !px-3 w-full !rounded-lg font-mono" />
+                </div>
+                <div>
+                  <label class="text-xs text-themed-dim block mb-1">Tavily API Key</label>
+                  <input type="text" x-model="wsEditTavily" placeholder="Not set"
+                    class="!text-xs !py-1.5 !px-3 w-full !rounded-lg font-mono" />
+                </div>
+              </div>
+              <!-- Copy from another key -->
+              <div class="flex items-center gap-2">
+                <select x-model="wsCopySourceId" class="!text-xs !py-1.5 !px-3 !rounded-lg flex-1">
+                  <option value="">Copy from another key...</option>
+                  <template x-for="k in keys.filter(k => k.id !== selectedKeyId && k.web_search_enabled)" :key="k.id">
+                    <option :value="k.id" x-text="k.name + (k.web_search_enabled ? ' (enabled)' : '')"></option>
+                  </template>
+                </select>
+                <button @click="copyWebSearchFrom()" class="btn-ghost text-xs" :disabled="!wsCopySourceId">Copy</button>
+              </div>
+            </div>
+          </template>
+
+          <!-- Display current settings -->
+          <template x-if="!wsEditing">
+            <div class="space-y-3">
+              <div class="flex items-center gap-4">
+                <span class="text-xs text-themed-secondary">Status:</span>
+                <span class="text-xs font-medium" :class="wsConfig.enabled ? 'text-accent-teal' : 'text-themed-dim'"
+                  x-text="wsConfig.enabled ? 'Enabled' : 'Disabled'"></span>
+              </div>
+              <template x-if="wsConfig.enabled">
+                <div class="space-y-2">
+                  <div class="flex items-center gap-4">
+                    <span class="text-xs text-themed-secondary">Engines:</span>
+                    <div class="flex items-center gap-2">
+                      <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.langsearchKey ? 'bg-accent-violet/20 text-accent-violet' : 'bg-surface-600 text-themed-dim'"
+                        x-text="wsConfig.langsearchKey ? 'LangSearch \u2713' : 'LangSearch'"></span>
+                      <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.tavilyKey ? 'bg-accent-teal/20 text-accent-teal' : 'bg-surface-600 text-themed-dim'"
+                        x-text="wsConfig.tavilyKey ? 'Tavily \u2713' : 'Tavily'"></span>
+                      <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.bingEnabled ? 'bg-accent-amber/20 text-accent-amber' : 'bg-surface-600 text-themed-dim'"
+                        x-text="wsConfig.bingEnabled ? 'Bing \u2713' : 'Bing'"></span>
+                    </div>
+                  </div>
+                  <!-- Today's usage -->
+                  <div class="flex items-center gap-4">
+                    <span class="text-xs text-themed-secondary">Today:</span>
+                    <span class="text-xs font-mono text-themed" x-text="wsUsage.searches + ' searches'"></span>
+                    <span class="text-[10px] text-accent-teal" x-text="wsUsage.successes + ' ok'"></span>
+                    <span class="text-[10px] text-accent-red" x-show="wsUsage.failures > 0" x-text="wsUsage.failures + ' failed'"></span>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </template>
+
       <div class="glass-card p-6 animate-in delay-1">
         <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Configuration</span>
         <template x-if="selectedKeyId">

@@ -19,6 +19,8 @@ const emptyMeta = (): WebSearchMeta => ({
   searchCount: 0,
   totalResults: 0,
   enginesUsed: [],
+  successes: 0,
+  failures: 0,
 })
 
 interface SearchExecutionResult {
@@ -149,6 +151,11 @@ async function executeAllSearches(
         engineManager,
       )
     meta.totalResults += resultCount
+    if (isError) {
+      meta.failures++
+    } else {
+      meta.successes++
+    }
     if (engineName !== "none" && !meta.enginesUsed.includes(engineName)) {
       meta.enginesUsed.push(engineName)
     }

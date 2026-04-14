@@ -19,6 +19,8 @@ import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { detectClient } from "~/lib/client-detect"
 import { checkQuota } from "~/lib/quota"
+import { getApiKeyById } from "~/lib/api-keys"
+import { getRepo } from "~/repo"
 
 interface RouteContext {
   state: AppState
@@ -79,13 +81,22 @@ export const messagesRoute = new Elysia()
     const messagesPayload = payload as unknown as MessagesPayload
 
     if (hasWebSearch(messagesPayload) && !payload.stream) {
+      // Load key-level web search config
+      const keyConfig = apiKeyId ? await getApiKeyById(apiKeyId) : null
+      if (!keyConfig?.webSearchEnabled) {
+        return new Response(JSON.stringify({ error: { type: "invalid_request_error", message: "Web search is not enabled for this API key. Configure it in the dashboard." } }), {
+          status: 400, headers: { "Content-Type": "application/json" },
+        })
+      }
+
       const upstreamTimer = startTimer()
       const { response, meta } = await interceptWebSearch(messagesPayload, {
         copilotToken: state.copilotToken,
         accountType: state.accountType,
         engineOptions: {
-          langsearchKey: state.langsearchKey,
-          tavilyKey: state.tavilyKey,
+          langsearchKey: keyConfig.webSearchLangsearchKey,
+          tavilyKey: keyConfig.webSearchTavilyKey,
+          bingEnabled: keyConfig.webSearchBingEnabled,
         },
       })
       const upstreamMs = upstreamTimer()
@@ -107,6 +118,17 @@ export const messagesRoute = new Elysia()
           outputTokens: usage.usage?.output_tokens,
           userAgent,
         }).catch(() => {})
+        // Record web search usage stats
+        if (meta.searchCount > 0) {
+          const hour = new Date().toISOString().slice(0, 13)
+          const repo = getRepo()
+          for (let i = 0; i < meta.successes; i++) {
+            repo.webSearchUsage.record(apiKeyId, hour, true).catch(() => {})
+          }
+          for (let i = 0; i < meta.failures; i++) {
+            repo.webSearchUsage.record(apiKeyId, hour, false).catch(() => {})
+          }
+        }
       }
       return wsResponse
     }

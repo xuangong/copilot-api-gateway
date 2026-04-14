@@ -305,6 +305,17 @@ export function dashboardAssets(): string {
       quotaUsageData: [],     // today's usage records for selected key
       selectedKeyQuota: { reqLimit: null, reqUsed: 0, reqPercent: 0, tokenLimit: null, tokenUsed: 0, tokenPercent: 0 },
 
+      // Web Search
+      wsEditing: false,
+      wsSaving: false,
+      wsEditEnabled: false,
+      wsEditBing: false,
+      wsEditLangsearch: '',
+      wsEditTavily: '',
+      wsCopySourceId: '',
+      wsConfig: { enabled: false, bingEnabled: false, langsearchKey: null, tavilyKey: null },
+      wsUsage: { searches: 0, successes: 0, failures: 0 },
+
       // Relays tab
       relays: [],
       relaysLoading: false,
@@ -454,7 +465,11 @@ export function dashboardAssets(): string {
 
           this.$watch('selectedKeyId', (val) => {
             this.quotaEditing = false;
-            if (val && this.tab === 'keys') this.loadQuotaUsage(val);
+            this.wsEditing = false;
+            if (val && this.tab === 'keys') {
+              this.loadQuotaUsage(val);
+              this.loadWebSearchConfig(val);
+            }
           });
         },
 
@@ -497,7 +512,10 @@ export function dashboardAssets(): string {
             this.renderLatencyChart();
           } else if (t === 'keys') {
             await this.loadKeys();
-            if (this.selectedKeyId) this.loadQuotaUsage(this.selectedKeyId);
+            if (this.selectedKeyId) {
+              this.loadQuotaUsage(this.selectedKeyId);
+              this.loadWebSearchConfig(this.selectedKeyId);
+            }
           } else if (t === 'relays') {
             await this.loadRelays();
           }
@@ -1548,6 +1566,85 @@ export function dashboardAssets(): string {
               console.error('saveQuota:', e);
             } finally {
               this.quotaSaving = false;
+            }
+          },
+
+          // === Web Search ===
+          loadWebSearchConfig(keyId) {
+            const key = this.keys.find(k => k.id === keyId);
+            this.wsConfig = {
+              enabled: key?.web_search_enabled ?? false,
+              bingEnabled: key?.web_search_bing_enabled ?? false,
+              langsearchKey: key?.web_search_langsearch_key ?? null,
+              tavilyKey: key?.web_search_tavily_key ?? null,
+            };
+            this.wsUsage = { searches: 0, successes: 0, failures: 0 };
+            // Load usage stats
+            fetch('/api/keys/' + keyId + '/web-search-usage', { headers: this.authHeaders() })
+              .then(r => r.ok ? r.json() : null)
+              .then(data => {
+                if (data) this.wsUsage = { searches: data.searches, successes: data.successes, failures: data.failures };
+              })
+              .catch(() => {});
+          },
+
+          startEditWebSearch() {
+            const key = this.keys.find(k => k.id === this.selectedKeyId);
+            this.wsEditEnabled = key?.web_search_enabled ?? false;
+            this.wsEditBing = key?.web_search_bing_enabled ?? false;
+            this.wsEditLangsearch = '';
+            this.wsEditTavily = '';
+            this.wsCopySourceId = '';
+            this.wsEditing = true;
+          },
+
+          async saveWebSearch() {
+            if (!this.selectedKeyId) return;
+            this.wsSaving = true;
+            try {
+              const body = {
+                web_search_enabled: this.wsEditEnabled,
+                web_search_bing_enabled: this.wsEditBing,
+              };
+              if (this.wsEditLangsearch) body.web_search_langsearch_key = this.wsEditLangsearch;
+              if (this.wsEditTavily) body.web_search_tavily_key = this.wsEditTavily;
+              const resp = await fetch('/api/keys/' + this.selectedKeyId, {
+                method: 'PATCH',
+                headers: { ...this.authHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+              });
+              if (resp.status === 401) { this.logout('Session expired, please log in again'); return; }
+              if (resp.ok) {
+                await this.loadKeys();
+                this.wsEditing = false;
+                this.loadWebSearchConfig(this.selectedKeyId);
+              } else {
+                alert((await resp.json()).error || 'Failed to update web search config');
+              }
+            } catch (e) {
+              console.error('saveWebSearch:', e);
+            } finally {
+              this.wsSaving = false;
+            }
+          },
+
+          async copyWebSearchFrom() {
+            if (!this.selectedKeyId || !this.wsCopySourceId) return;
+            try {
+              const resp = await fetch('/api/keys/' + this.selectedKeyId + '/copy-web-search-from/' + this.wsCopySourceId, {
+                method: 'POST',
+                headers: this.authHeaders(),
+              });
+              if (resp.status === 401) { this.logout('Session expired, please log in again'); return; }
+              if (resp.ok) {
+                await this.loadKeys();
+                this.wsEditing = false;
+                this.loadWebSearchConfig(this.selectedKeyId);
+              } else {
+                alert((await resp.json()).error || 'Failed to copy web search config');
+              }
+            } catch (e) {
+              console.error('copyWebSearchFrom:', e);
             }
           },
 

@@ -1,6 +1,6 @@
 import type { Repo } from "./types"
 
-export type { Repo, ApiKey, GitHubAccount, GitHubUser, UsageRecord, LatencyRecord, User, InviteCode, UserSession, ClientPresence } from "./types"
+export type { Repo, ApiKey, GitHubAccount, GitHubUser, UsageRecord, LatencyRecord, User, InviteCode, UserSession, ClientPresence, WebSearchUsageRecord } from "./types"
 export { D1Repo } from "./d1"
 
 let _repo: Repo | null = null

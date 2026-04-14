@@ -7,6 +7,10 @@ export interface ApiKey {
   ownerId?: string
   quotaRequestsPerDay?: number
   quotaTokensPerDay?: number
+  webSearchEnabled?: boolean
+  webSearchBingEnabled?: boolean
+  webSearchLangsearchKey?: string
+  webSearchTavilyKey?: string
 }
 
 export interface GitHubUser {
@@ -181,6 +185,20 @@ export interface ClientPresenceRepo {
   pruneStale(olderThanMinutes: number): Promise<void>
 }
 
+export interface WebSearchUsageRecord {
+  keyId: string
+  hour: string
+  searches: number
+  successes: number
+  failures: number
+}
+
+export interface WebSearchUsageRepo {
+  record(keyId: string, hour: string, success: boolean): Promise<void>
+  query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<WebSearchUsageRecord[]>
+  deleteAll(): Promise<void>
+}
+
 export interface Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -191,4 +209,5 @@ export interface Repo {
   inviteCodes: InviteCodeRepo
   sessions: SessionRepo
   presence: ClientPresenceRepo
+  webSearchUsage: WebSearchUsageRepo
 }

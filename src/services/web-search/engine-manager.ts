@@ -10,6 +10,7 @@ import {
 export interface EngineManagerOptions {
   langsearchKey?: string
   tavilyKey?: string
+  bingEnabled?: boolean
 }
 
 /**
@@ -29,8 +30,10 @@ export class EngineManager {
       this.engines.push(new TavilySearchEngine(options.tavilyKey))
     }
 
-    // Bing is always available (no API key required)
-    this.engines.push(new BingSearchEngine())
+    // Bing is only added when explicitly enabled
+    if (options.bingEnabled) {
+      this.engines.push(new BingSearchEngine())
+    }
 
     console.log(
       `[EngineManager] Initialized with engines: ${this.engines.map((e) => e.name).join(", ")}`,
