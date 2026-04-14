@@ -3,7 +3,7 @@ import { filterByDomain } from "./interface"
 import type { SearchResult } from "../types"
 
 const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
 
 /**
  * Bing search engine implementation using HTML parsing
@@ -38,7 +38,14 @@ export class BingSearchEngine implements SearchEngine {
         "User-Agent": USER_AGENT,
         "Accept-Language": "en-US,en;q=0.9",
         Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-User": "?1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Ch-Ua": '"Microsoft Edge";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
       },
     })
 
@@ -75,13 +82,26 @@ export class BingSearchEngine implements SearchEngine {
     return results
   }
 
+  private decodeHtmlEntities(text: string): string {
+    return text
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+  }
+
+  private stripHtmlTags(text: string): string {
+    return text.replace(/<[^>]+>/g, "")
+  }
+
   private extractResult(block: string): SearchResult | null {
     // Extract URL and title from h2 > a
-    const linkMatch = /<h2[^>]*>[\s\S]*?<a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/i.exec(block)
+    const linkMatch = /<h2[^>]*>[\s\S]*?<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i.exec(block)
     if (!linkMatch) return null
 
-    let url = linkMatch[1] || ""
-    const title = (linkMatch[2] || "").trim()
+    let url = this.decodeHtmlEntities(linkMatch[1] || "")
+    const title = this.stripHtmlTags(linkMatch[2] || "").trim()
 
     if (!url || !title) return null
 
@@ -94,9 +114,12 @@ export class BingSearchEngine implements SearchEngine {
 
     if (!url.startsWith("http")) return null
 
-    // Extract snippet from p tag
-    const snippetMatch = /<p[^>]*class="[^"]*b_lineclamp[^"]*"[^>]*>([^<]+)<\/p>/i.exec(block)
-    const snippet = snippetMatch?.[1]?.trim() || "No description available"
+    // Extract snippet from p tag (try b_lineclamp first, then b_caption p)
+    const snippetMatch =
+      /<p[^>]*class="[^"]*b_lineclamp[^"]*"[^>]*>([\s\S]*?)<\/p>/i.exec(block) ||
+      /<div[^>]*class="[^"]*b_caption[^"]*"[^>]*>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/i.exec(block)
+    const rawSnippet = (snippetMatch?.[1] || snippetMatch?.[2] || "").trim()
+    const snippet = this.stripHtmlTags(this.decodeHtmlEntities(rawSnippet)) || "No description available"
 
     return { title, url, snippet }
   }

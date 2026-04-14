@@ -16,6 +16,7 @@ export const copilotHeaders = (
   const headers: Record<string, string> = {
     Authorization: `Bearer ${copilotToken}`,
     "content-type": "application/json",
+    "accept-encoding": "identity", // Disable compression - Workers fetch doesn't auto-decompress for streaming
     "copilot-integration-id": "vscode-chat",
     "editor-plugin-version": EDITOR_PLUGIN_VERSION,
     "user-agent": USER_AGENT,
@@ -32,6 +33,7 @@ export const copilotHeaders = (
 
 export const githubHeaders = (githubToken: string) => ({
   ...standardHeaders(),
+  "accept-encoding": "identity", // Disable compression for Workers compatibility
   authorization: `token ${githubToken}`,
   "editor-plugin-version": EDITOR_PLUGIN_VERSION,
   "user-agent": USER_AGENT,
