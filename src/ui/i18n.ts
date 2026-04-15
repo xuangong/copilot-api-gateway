@@ -580,32 +580,37 @@ export function renderI18nScript(): string {
   };
 
   var stored = localStorage.getItem('lang');
-  var lang = (stored === 'en' || stored === 'zh') ? stored : (navigator.language && navigator.language.startsWith('zh') ? 'zh' : 'en');
-  window.__lang = lang;
-  document.documentElement.setAttribute('lang', lang === 'zh' ? 'zh-CN' : 'en');
+  var __i18n_lang = (stored === 'en' || stored === 'zh') ? stored : (navigator.language && navigator.language.startsWith('zh') ? 'zh' : 'en');
+  window.__lang = __i18n_lang;
+  window.__i18n = translations;
+  document.documentElement.setAttribute('lang', __i18n_lang === 'zh' ? 'zh-CN' : 'en');
+})();
 
-  window.t = function(key, vars) {
-    var s = (translations[lang] && translations[lang][key]) || (translations.en && translations.en[key]) || key;
-    if (vars) {
-      for (var k in vars) {
-        if (vars.hasOwnProperty(k)) {
-          s = s.replace('{' + k + '}', vars[k]);
-        }
+// Global function declarations (NOT inside IIFE) so Alpine.js expressions can resolve them
+function t(key, vars) {
+  var tr = window.__i18n;
+  var lang = window.__lang;
+  var s = (tr[lang] && tr[lang][key]) || (tr.en && tr.en[key]) || key;
+  if (vars) {
+    for (var k in vars) {
+      if (vars.hasOwnProperty(k)) {
+        s = s.replace('{' + k + '}', vars[k]);
       }
     }
-    return s;
-  };
+  }
+  return s;
+}
 
-  window.thtml = function(key, vars) {
-    return t(key, vars);
-  };
+function thtml(key, vars) {
+  return t(key, vars);
+}
 
-  window.toggleLang = function() {
-    var next = window.__lang === 'en' ? 'zh' : 'en';
-    localStorage.setItem('lang', next);
-    location.reload();
-  };
-})();
+function toggleLang() {
+  var next = window.__lang === 'en' ? 'zh' : 'en';
+  localStorage.setItem('lang', next);
+  window.__lang = next;
+  location.reload();
+}
 </script>`;
 }
 
