@@ -4,6 +4,7 @@ import { cors } from "@elysiajs/cors"
 import type { Env, AppState } from "~/lib/state"
 import { HTTPError } from "~/lib/error"
 import type { AccountType } from "~/config/constants"
+import { ADMIN_EMAILS } from "~/config/constants"
 import { KVStorage, STORAGE_KEYS } from "~/storage"
 import { initRepo, D1Repo, getRepo } from "~/repo"
 import { getGithubCredentials } from "~/lib/github"
@@ -14,7 +15,8 @@ import { responsesRoute } from "~/routes/responses"
 import { chatCompletionsRoute } from "~/routes/chat-completions"
 import { modelsRoute } from "~/routes/models"
 import { geminiRoute } from "~/routes/gemini"
-import { authRoute } from "~/routes/auth"
+import { authRoute, initOAuthKV } from "~/routes/auth"
+import { initResend } from "~/lib/email"
 import { apiKeysRoute } from "~/routes/api-keys"
 import { dashboardRoute } from "~/routes/dashboard"
 import { LoginPage } from "~/ui/login"
@@ -43,6 +45,11 @@ function extractKey(request: Request): string | null {
   if (auth?.toLowerCase().startsWith("bearer ")) {
     return auth.slice(7)
   }
+
+  // Check session cookie
+  const cookieHeader = request.headers.get("cookie") || ""
+  const match = cookieHeader.match(/(?:^|;\s*)session_token=([^\s;]+)/)
+  if (match && match[1]) return match[1]
 
   return null
 }
@@ -165,6 +172,44 @@ async function loadGlobalState(env: Env, storage: KVStorage): Promise<AppState> 
   }
 }
 
+/** Fallback: find a GitHub account via user's accessible keys (owned or assigned) */
+async function loadStateViaKeyOwner(userId: string, env: Env, storage: KVStorage): Promise<AppState> {
+  const repo = getRepo()
+  // Collect key owner IDs from owned keys and assigned keys
+  const [ownKeys, assignments] = await Promise.all([
+    repo.apiKeys.listByOwner(userId),
+    repo.keyAssignments.listByUser(userId),
+  ])
+  const ownerIds = new Set<string>()
+  for (const k of ownKeys) {
+    if (k.ownerId && k.ownerId !== userId) ownerIds.add(k.ownerId)
+  }
+  for (const a of assignments) {
+    const key = await repo.apiKeys.getById(a.keyId)
+    if (key?.ownerId && key.ownerId !== userId) ownerIds.add(key.ownerId)
+  }
+  // Try each key owner's GitHub connection
+  for (const oid of ownerIds) {
+    try {
+      return await loadUserState(oid, env, storage)
+    } catch { continue }
+  }
+  // Final fallback: global state
+  try {
+    return await loadGlobalState(env, storage)
+  } catch {
+    return {
+      githubToken: null as unknown as string,
+      copilotToken: null as unknown as string,
+      copilotTokenExpires: 0,
+      accountType: "individual" as AccountType,
+      tokenMiss: false,
+      langsearchKey: env.LANGSEARCH_API_KEY,
+      tavilyKey: env.TAVILY_API_KEY,
+    }
+  }
+}
+
 function createApp(env: Env) {
   const storage = new KVStorage(env.KV)
 
@@ -173,12 +218,20 @@ function createApp(env: Env) {
     initRepo(new D1Repo(env.DB))
   }
 
+  // Initialize OAuth state store with KV for CFW
+  initOAuthKV(env.KV)
+
+  // Initialize Resend email service
+  if (env.RESEND_API_KEY) {
+    initResend(env.RESEND_API_KEY)
+  }
+
   // Auth middleware function
   const authCheck = async (request: Request, path: string) => {
     const method = request.method
 
     // Public paths - no auth needed
-    if (PUBLIC_GET_PATHS.has(path) && method === "GET") {
+    if ((PUBLIC_GET_PATHS.has(path) || path.startsWith("/cdn/")) && method === "GET") {
       return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
     }
 
@@ -187,13 +240,18 @@ function createApp(env: Env) {
       return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
     }
 
-    // Auth routes before GitHub connected don't need a key
+    // Google OAuth routes - always allow without auth
+    if (path === "/auth/google" || path === "/auth/google/callback" || path === "/auth/validate-invite" || path.startsWith("/auth/email/")) {
+      return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
+    }
+
+    // Auth routes - try to identify user but don't block
     if (path.startsWith("/auth/")) {
       const key = extractKey(request)
       if (!key) {
         return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
       }
-      // With a key, check if it's valid
+      // Check ADMIN_KEY (legacy)
       const adminKey = env.ADMIN_KEY
       if (adminKey && key === adminKey) {
         return { authKey: key, isAdmin: true, isUser: false, apiKeyId: undefined, userId: undefined }
@@ -205,7 +263,8 @@ function createApp(env: Env) {
         if (session && new Date(session.expiresAt) > new Date()) {
           const user = await repo.users.getById(session.userId)
           if (user && !user.disabled) {
-            return { authKey: key, isAdmin: false, isUser: true, apiKeyId: undefined, userId: session.userId }
+            const isAdmin = !!(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))
+            return { authKey: key, isAdmin, isUser: true, apiKeyId: undefined, userId: session.userId }
           }
         }
         return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
@@ -214,12 +273,6 @@ function createApp(env: Env) {
       if (result) {
         return { authKey: key, isAdmin: false, isUser: !!result.ownerId, apiKeyId: result.id, userId: result.ownerId }
       }
-      // Check User Key on auth routes
-      const userByKey = await getRepo().users.findByKey(key)
-      if (userByKey && !userByKey.disabled) {
-        return { authKey: key, isAdmin: false, isUser: true, apiKeyId: undefined, userId: userByKey.id }
-      }
-      // Invalid key but on auth route - allow anyway (will be handled by route)
       return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
     }
 
@@ -228,10 +281,9 @@ function createApp(env: Env) {
       throw new Error("Unauthorized")
     }
 
-    // Check ADMIN_KEY - dashboard/management only
+    // Check ADMIN_KEY - dashboard/management only (legacy)
     const adminKey = env.ADMIN_KEY
     if (adminKey && key === adminKey) {
-      // Admin key can only access dashboard routes
       if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
         return { authKey: key, isAdmin: true, isUser: false, apiKeyId: undefined, userId: undefined }
       }
@@ -249,8 +301,12 @@ function createApp(env: Env) {
       if (!user) {
         throw new Error("User not found")
       }
+      if (user.disabled) {
+        throw new Error("User disabled")
+      }
+      const isAdmin = !!(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))
       if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
-        return { authKey: key, isAdmin: false, isUser: true, apiKeyId: undefined, userId: session.userId }
+        return { authKey: key, isAdmin, isUser: true, apiKeyId: undefined, userId: session.userId }
       }
       throw new Error("Session token is for dashboard only. Create an API key for API access.")
     }
@@ -267,15 +323,6 @@ function createApp(env: Env) {
         }
       }
       return { authKey: key, isAdmin: false, isUser: !!result.ownerId, apiKeyId: result.id, userId: result.ownerId }
-    }
-
-    // Check User Key - dashboard access only (same as session token)
-    if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
-      const repo = getRepo()
-      const userByKey = await repo.users.findByKey(key)
-      if (userByKey) {
-        return { authKey: key, isAdmin: false, isUser: true, apiKeyId: undefined, userId: userByKey.id }
-      }
     }
 
     throw new Error("Unauthorized")
@@ -320,6 +367,29 @@ function createApp(env: Env) {
     .get("/health", () => ({ status: "healthy" }))
     .head("/health", () => new Response(null, { status: 200 }))
     .get("/favicon.ico", () => new Response(null, { status: 204 }))
+    // CDN proxy — serve external JS/CSS through the worker itself to avoid GFW issues
+    .get("/cdn/:file", async ({ params }) => {
+      const CDN_MAP: Record<string, string> = {
+        "tailwind.js": "https://cdn.tailwindcss.com/3.4.17",
+        "alpine.js": "https://unpkg.com/alpinejs@3/dist/cdn.min.js",
+        "chart.js": "https://unpkg.com/chart.js@4/dist/chart.umd.min.js",
+        "prism.css": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-okaidia.min.css",
+        "prism.js": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js",
+        "prism-bash.js": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js",
+        "prism-toml.js": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-toml.min.js",
+      }
+      const url = CDN_MAP[params.file]
+      if (!url) return new Response("Not found", { status: 404 })
+      const resp = await fetch(url)
+      const contentType = params.file.endsWith(".css") ? "text/css" : "application/javascript"
+      return new Response(resp.body, {
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=604800, immutable",
+          "Access-Control-Allow-Origin": "*",
+        },
+      })
+    })
     // Derive env and auth context for all routes
     .derive(async ({ request, path }) => {
       const auth = await authCheck(request, path)
@@ -346,10 +416,19 @@ function createApp(env: Env) {
         path.startsWith("/v1beta/")
       ) {
         try {
-          // If the API key has an owner, load that user's state
+          // If the request has a userId (from API key owner or session), load that user's state
           let state: AppState
-          if (userId && apiKeyId) {
-            state = await loadUserState(userId, env, storage)
+          if (userId) {
+            try {
+              state = await loadUserState(userId, env, storage)
+            } catch {
+              // User has no GitHub connection — try key owners' GitHub (key → GitHub account)
+              if (path === "/api/models") {
+                state = await loadStateViaKeyOwner(userId, env, storage)
+              } else {
+                throw new Error("GitHub token not found. Use /auth/github to connect your account.")
+              }
+            }
           } else {
             state = await loadGlobalState(env, storage)
           }

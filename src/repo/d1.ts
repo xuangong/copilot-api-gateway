@@ -8,6 +8,8 @@ import type {
   GitHubRepo,
   InviteCode,
   InviteCodeRepo,
+  KeyAssignment,
+  KeyAssignmentRepo,
   LatencyRecord,
   LatencyRepo,
   Repo,
@@ -452,41 +454,52 @@ class D1UserRepo implements UserRepo {
 
   async create(user: User): Promise<void> {
     await this.db
-      .prepare("INSERT INTO users (id, name, created_at, disabled, last_login_at, user_key) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(user.id, user.name, user.createdAt, user.disabled ? 1 : 0, user.lastLoginAt ?? null, user.userKey ?? null)
+      .prepare("INSERT INTO users (id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(user.id, user.name, user.email ?? null, user.avatarUrl ?? null, user.createdAt, user.disabled ? 1 : 0, user.lastLoginAt ?? null, user.userKey ?? null, user.passwordHash ?? null)
       .run()
   }
 
   async getById(id: string): Promise<User | null> {
     const row = await this.db
-      .prepare("SELECT id, name, created_at, disabled, last_login_at, user_key FROM users WHERE id = ?")
+      .prepare("SELECT id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash FROM users WHERE id = ?")
       .bind(id)
-      .first<{ id: string; name: string; created_at: string; disabled: number; last_login_at: string | null; user_key: string | null }>()
+      .first<UserRow>()
     return row ? toUser(row) : null
   }
 
   async findByKey(userKey: string): Promise<User | null> {
     const row = await this.db
-      .prepare("SELECT id, name, created_at, disabled, last_login_at, user_key FROM users WHERE user_key = ?")
+      .prepare("SELECT id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash FROM users WHERE user_key = ?")
       .bind(userKey)
-      .first<{ id: string; name: string; created_at: string; disabled: number; last_login_at: string | null; user_key: string | null }>()
+      .first<UserRow>()
+    return row ? toUser(row) : null
+  }
+
+  async findByEmail(email: string): Promise<User | null> {
+    const row = await this.db
+      .prepare("SELECT id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash FROM users WHERE email = ?")
+      .bind(email)
+      .first<UserRow>()
     return row ? toUser(row) : null
   }
 
   async list(): Promise<User[]> {
     const { results } = await this.db
-      .prepare("SELECT id, name, created_at, disabled, last_login_at, user_key FROM users ORDER BY created_at")
-      .all<{ id: string; name: string; created_at: string; disabled: number; last_login_at: string | null; user_key: string | null }>()
+      .prepare("SELECT id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash FROM users ORDER BY created_at")
+      .all<UserRow>()
     return results.map(toUser)
   }
 
-  async update(id: string, fields: Partial<Pick<User, "name" | "disabled" | "lastLoginAt" | "userKey">>): Promise<void> {
+  async update(id: string, fields: Partial<Pick<User, "name" | "email" | "avatarUrl" | "disabled" | "lastLoginAt" | "userKey" | "passwordHash">>): Promise<void> {
     const sets: string[] = []
     const binds: unknown[] = []
     if (fields.name !== undefined) { sets.push("name = ?"); binds.push(fields.name) }
+    if (fields.email !== undefined) { sets.push("email = ?"); binds.push(fields.email) }
+    if (fields.avatarUrl !== undefined) { sets.push("avatar_url = ?"); binds.push(fields.avatarUrl) }
     if (fields.disabled !== undefined) { sets.push("disabled = ?"); binds.push(fields.disabled ? 1 : 0) }
     if (fields.lastLoginAt !== undefined) { sets.push("last_login_at = ?"); binds.push(fields.lastLoginAt) }
     if (fields.userKey !== undefined) { sets.push("user_key = ?"); binds.push(fields.userKey) }
+    if (fields.passwordHash !== undefined) { sets.push("password_hash = ?"); binds.push(fields.passwordHash) }
     if (sets.length === 0) return
     binds.push(id)
     await this.db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).bind(...binds).run()
@@ -497,8 +510,10 @@ class D1UserRepo implements UserRepo {
   }
 }
 
-function toUser(row: { id: string; name: string; created_at: string; disabled: number; last_login_at: string | null; user_key?: string | null }): User {
-  return { id: row.id, name: row.name, createdAt: row.created_at, disabled: row.disabled === 1, lastLoginAt: row.last_login_at ?? undefined, userKey: row.user_key ?? undefined }
+interface UserRow { id: string; name: string; email: string | null; avatar_url: string | null; created_at: string; disabled: number; last_login_at: string | null; user_key: string | null; password_hash: string | null }
+
+function toUser(row: UserRow): User {
+  return { id: row.id, name: row.name, email: row.email ?? undefined, avatarUrl: row.avatar_url ?? undefined, createdAt: row.created_at, disabled: row.disabled === 1, lastLoginAt: row.last_login_at ?? undefined, userKey: row.user_key ?? undefined, passwordHash: row.password_hash ?? undefined }
 }
 
 class D1InviteCodeRepo implements InviteCodeRepo {
@@ -506,23 +521,23 @@ class D1InviteCodeRepo implements InviteCodeRepo {
 
   async create(code: InviteCode): Promise<void> {
     await this.db
-      .prepare("INSERT INTO invite_codes (id, code, name, created_at, used_at, used_by) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(code.id, code.code, code.name, code.createdAt, code.usedAt ?? null, code.usedBy ?? null)
+      .prepare("INSERT INTO invite_codes (id, code, name, email, created_at, used_at, used_by) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .bind(code.id, code.code, code.name, code.email ?? null, code.createdAt, code.usedAt ?? null, code.usedBy ?? null)
       .run()
   }
 
   async findByCode(code: string): Promise<InviteCode | null> {
     const row = await this.db
-      .prepare("SELECT id, code, name, created_at, used_at, used_by FROM invite_codes WHERE code = ?")
+      .prepare("SELECT id, code, name, email, created_at, used_at, used_by FROM invite_codes WHERE code = ?")
       .bind(code)
-      .first<{ id: string; code: string; name: string; created_at: string; used_at: string | null; used_by: string | null }>()
+      .first<{ id: string; code: string; name: string; email: string | null; created_at: string; used_at: string | null; used_by: string | null }>()
     return row ? toInviteCode(row) : null
   }
 
   async list(): Promise<InviteCode[]> {
     const { results } = await this.db
-      .prepare("SELECT id, code, name, created_at, used_at, used_by FROM invite_codes ORDER BY created_at DESC")
-      .all<{ id: string; code: string; name: string; created_at: string; used_at: string | null; used_by: string | null }>()
+      .prepare("SELECT id, code, name, email, created_at, used_at, used_by FROM invite_codes ORDER BY created_at DESC")
+      .all<{ id: string; code: string; name: string; email: string | null; created_at: string; used_at: string | null; used_by: string | null }>()
     return results.map(toInviteCode)
   }
 
@@ -542,8 +557,8 @@ class D1InviteCodeRepo implements InviteCodeRepo {
   }
 }
 
-function toInviteCode(row: { id: string; code: string; name: string; created_at: string; used_at: string | null; used_by: string | null }): InviteCode {
-  return { id: row.id, code: row.code, name: row.name, createdAt: row.created_at, usedAt: row.used_at ?? undefined, usedBy: row.used_by ?? undefined }
+function toInviteCode(row: { id: string; code: string; name: string; email?: string | null; created_at: string; used_at: string | null; used_by: string | null }): InviteCode {
+  return { id: row.id, code: row.code, name: row.name, email: row.email ?? undefined, createdAt: row.created_at, usedAt: row.used_at ?? undefined, usedBy: row.used_by ?? undefined }
 }
 
 class D1SessionRepo implements SessionRepo {
@@ -631,6 +646,36 @@ class D1WebSearchUsageRepo implements WebSearchUsageRepo {
   }
 }
 
+class D1KeyAssignmentRepo implements KeyAssignmentRepo {
+  constructor(private db: D1Database) {}
+
+  async assign(keyId: string, userId: string, assignedBy: string): Promise<void> {
+    await this.db.prepare("INSERT OR REPLACE INTO key_assignments (key_id, user_id, assigned_by, assigned_at) VALUES (?, ?, ?, ?)").bind(keyId, userId, assignedBy, new Date().toISOString()).run()
+  }
+
+  async unassign(keyId: string, userId: string): Promise<void> {
+    await this.db.prepare("DELETE FROM key_assignments WHERE key_id = ? AND user_id = ?").bind(keyId, userId).run()
+  }
+
+  async listByUser(userId: string): Promise<KeyAssignment[]> {
+    const { results } = await this.db.prepare("SELECT key_id, user_id, assigned_by, assigned_at FROM key_assignments WHERE user_id = ?").bind(userId).all<{ key_id: string; user_id: string; assigned_by: string; assigned_at: string }>()
+    return results.map((r) => ({ keyId: r.key_id, userId: r.user_id, assignedBy: r.assigned_by, assignedAt: r.assigned_at }))
+  }
+
+  async listByKey(keyId: string): Promise<KeyAssignment[]> {
+    const { results } = await this.db.prepare("SELECT key_id, user_id, assigned_by, assigned_at FROM key_assignments WHERE key_id = ?").bind(keyId).all<{ key_id: string; user_id: string; assigned_by: string; assigned_at: string }>()
+    return results.map((r) => ({ keyId: r.key_id, userId: r.user_id, assignedBy: r.assigned_by, assignedAt: r.assigned_at }))
+  }
+
+  async deleteByKey(keyId: string): Promise<void> {
+    await this.db.prepare("DELETE FROM key_assignments WHERE key_id = ?").bind(keyId).run()
+  }
+
+  async deleteByUser(userId: string): Promise<void> {
+    await this.db.prepare("DELETE FROM key_assignments WHERE user_id = ?").bind(userId).run()
+  }
+}
+
 export class D1Repo implements Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -642,6 +687,7 @@ export class D1Repo implements Repo {
   sessions: SessionRepo
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo
+  keyAssignments: KeyAssignmentRepo
 
   constructor(db: D1Database) {
     this.apiKeys = new D1ApiKeyRepo(db)
@@ -654,5 +700,6 @@ export class D1Repo implements Repo {
     this.sessions = new D1SessionRepo(db)
     this.presence = new D1ClientPresenceRepo(db)
     this.webSearchUsage = new D1WebSearchUsageRepo(db)
+    this.keyAssignments = new D1KeyAssignmentRepo(db)
   }
 }

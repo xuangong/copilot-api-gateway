@@ -1,3 +1,6 @@
+// Admin emails - these users get admin access when logging in via Google OAuth
+export const ADMIN_EMAILS = ["zhangxian1124@gmail.com"]
+
 // GitHub OAuth
 export const GITHUB_BASE_URL = "https://github.com"
 export const GITHUB_API_BASE_URL = "https://api.github.com"
@@ -9,6 +12,9 @@ export const COPILOT_VERSION = "0.26.7"
 export const EDITOR_PLUGIN_VERSION = `copilot-chat/${COPILOT_VERSION}`
 export const USER_AGENT = `GitHubCopilotChat/${COPILOT_VERSION}`
 export const API_VERSION = "2025-04-01"
+
+// Resend email
+export const RESEND_FROM_EMAIL = "noreply@xianliao.de5.net"
 
 // Account types
 export type AccountType = "individual" | "business" | "enterprise"

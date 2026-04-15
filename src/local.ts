@@ -13,6 +13,7 @@ import { mkdir } from "node:fs/promises"
 
 import type { AppState } from "~/lib/state"
 import type { AccountType } from "~/config/constants"
+import { ADMIN_EMAILS } from "~/config/constants"
 import { FileStorage } from "~/storage/file"
 import { STORAGE_KEYS } from "~/storage/interface"
 import { initRepo, getRepo } from "~/repo"
@@ -27,6 +28,7 @@ import { chatCompletionsRoute } from "~/routes/chat-completions"
 import { modelsRoute } from "~/routes/models"
 import { geminiRoute } from "~/routes/gemini"
 import { authRoute } from "~/routes/auth"
+import { initResend } from "~/lib/email"
 import { apiKeysRoute } from "~/routes/api-keys"
 import { dashboardRoute } from "~/routes/dashboard"
 import { LoginPage } from "~/ui/login"
@@ -165,16 +167,22 @@ function logRequest(
 interface LocalEnv {
   ACCOUNT_TYPE?: string
   ADMIN_KEY: string
+  GOOGLE_CLIENT_ID?: string
+  GOOGLE_CLIENT_SECRET?: string
   LANGSEARCH_API_KEY?: string
   TAVILY_API_KEY?: string
+  RESEND_API_KEY?: string
   PORT?: string
 }
 
 const env: LocalEnv = {
   ACCOUNT_TYPE: process.env.ACCOUNT_TYPE,
   ADMIN_KEY: process.env.ADMIN_KEY || "xuangong123!",
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   LANGSEARCH_API_KEY: process.env.LANGSEARCH_API_KEY,
   TAVILY_API_KEY: process.env.TAVILY_API_KEY,
+  RESEND_API_KEY: process.env.RESEND_API_KEY,
   PORT: process.env.PORT,
 }
 
@@ -201,6 +209,11 @@ function extractKey(request: Request): string | null {
   if (auth?.toLowerCase().startsWith("bearer ")) {
     return auth.slice(7)
   }
+
+  // Check session cookie
+  const cookieHeader = request.headers.get("cookie") || ""
+  const match = cookieHeader.match(/(?:^|;\s*)session_token=([^\s;]+)/)
+  if (match && match[1]) return match[1]
 
   return null
 }
@@ -295,6 +308,11 @@ async function createApp() {
   const repo = new SqliteRepo(db)
   initRepo(repo)
 
+  // Initialize Resend email service
+  if (env.RESEND_API_KEY) {
+    initResend(env.RESEND_API_KEY)
+  }
+
   // Set up latency logging callback for local mode
   setLatencyLogCallback((requestId, model, info) => {
     setRequestLatency(requestId, {
@@ -314,7 +332,7 @@ async function createApp() {
     const method = request.method
 
     // Public paths - no auth needed
-    if (PUBLIC_GET_PATHS.has(path) && (method === "GET" || method === "HEAD")) {
+    if ((PUBLIC_GET_PATHS.has(path) || path.startsWith("/cdn/")) && (method === "GET" || method === "HEAD")) {
       return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
     }
 
@@ -323,13 +341,18 @@ async function createApp() {
       return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
     }
 
-    // Auth routes before GitHub connected don't need a key
+    // Google OAuth routes - always allow without auth
+    if (path === "/auth/google" || path === "/auth/google/callback" || path === "/auth/validate-invite" || path.startsWith("/auth/email/")) {
+      return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
+    }
+
+    // Auth routes - try to identify user but don't block
     if (path.startsWith("/auth/")) {
       const key = extractKey(request)
       if (!key) {
         return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
       }
-      // With a key, check if it's valid
+      // Check ADMIN_KEY (legacy)
       const adminKey = env.ADMIN_KEY
       if (adminKey && key === adminKey) {
         return { authKey: key, isAdmin: true, isUser: false, apiKeyId: undefined, userId: undefined }
@@ -340,8 +363,9 @@ async function createApp() {
         const session = await repo.sessions.findByToken(key)
         if (session && new Date(session.expiresAt) > new Date()) {
           const user = await repo.users.getById(session.userId)
-          if (user) {
-            return { authKey: key, isAdmin: false, isUser: true, apiKeyId: undefined, userId: session.userId }
+          if (user && !user.disabled) {
+            const isAdmin = !!(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))
+            return { authKey: key, isAdmin, isUser: true, apiKeyId: undefined, userId: session.userId }
           }
         }
         return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
@@ -350,12 +374,6 @@ async function createApp() {
       if (result) {
         return { authKey: key, isAdmin: false, isUser: !!result.ownerId, apiKeyId: result.id, userId: result.ownerId }
       }
-      // Check User Key on auth routes
-      const userByKey = await getRepo().users.findByKey(key)
-      if (userByKey) {
-        return { authKey: key, isAdmin: false, isUser: true, apiKeyId: undefined, userId: userByKey.id }
-      }
-      // Invalid key but on auth route - allow anyway (will be handled by route)
       return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
     }
 
@@ -364,10 +382,9 @@ async function createApp() {
       throw new Error("Unauthorized")
     }
 
-    // Check ADMIN_KEY - dashboard/management only
+    // Check ADMIN_KEY - dashboard/management only (legacy)
     const adminKey = env.ADMIN_KEY
     if (adminKey && key === adminKey) {
-      // Admin key can only access dashboard routes
       if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
         return { authKey: key, isAdmin: true, isUser: false, apiKeyId: undefined, userId: undefined }
       }
@@ -385,8 +402,12 @@ async function createApp() {
       if (!user) {
         throw new Error("User not found")
       }
+      if (user.disabled) {
+        throw new Error("User disabled")
+      }
+      const isAdmin = !!(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))
       if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
-        return { authKey: key, isAdmin: false, isUser: true, apiKeyId: undefined, userId: session.userId }
+        return { authKey: key, isAdmin, isUser: true, apiKeyId: undefined, userId: session.userId }
       }
       throw new Error("Session token is for dashboard only. Create an API key for API access.")
     }
@@ -403,14 +424,6 @@ async function createApp() {
         }
       }
       return { authKey: key, isAdmin: false, isUser: !!result.ownerId, apiKeyId: result.id, userId: result.ownerId }
-    }
-
-    // Check User Key - dashboard access only
-    if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
-      const userByKey = await getRepo().users.findByKey(key)
-      if (userByKey) {
-        return { authKey: key, isAdmin: false, isUser: true, apiKeyId: undefined, userId: userByKey.id }
-      }
     }
 
     throw new Error("Unauthorized")
@@ -466,6 +479,25 @@ async function createApp() {
     .get("/health", () => ({ status: "healthy", mode: "local" }))
     .head("/health", () => new Response(null, { status: 200 }))
     .get("/favicon.ico", () => new Response(null, { status: 204 }))
+    // CDN proxy — serve external JS/CSS through the server itself
+    .get("/cdn/:file", async ({ params }) => {
+      const CDN_MAP: Record<string, string> = {
+        "tailwind.js": "https://cdn.tailwindcss.com/3.4.17",
+        "alpine.js": "https://unpkg.com/alpinejs@3/dist/cdn.min.js",
+        "chart.js": "https://unpkg.com/chart.js@4/dist/chart.umd.min.js",
+        "prism.css": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-okaidia.min.css",
+        "prism.js": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js",
+        "prism-bash.js": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js",
+        "prism-toml.js": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-toml.min.js",
+      }
+      const url = CDN_MAP[params.file]
+      if (!url) return new Response("Not found", { status: 404 })
+      const resp = await fetch(url)
+      const contentType = params.file.endsWith(".css") ? "text/css" : "application/javascript"
+      return new Response(resp.body, {
+        headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=604800" },
+      })
+    })
     // Derive env and auth context for all routes
     .derive(async ({ request, path, requestId, userAgent }) => {
       const auth = await authCheck(request, path)

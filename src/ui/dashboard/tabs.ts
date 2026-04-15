@@ -35,18 +35,44 @@ export function renderDashboardHeader(): string {
           </div>
           <span class="font-semibold text-sm tracking-tight" style="color: var(--text-primary);">Copilot Gateway</span>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-3">
           <button onclick="toggleTheme(); if(window.dashboardApp && window.dashboardApp.onThemeChange) window.dashboardApp.onThemeChange();" class="theme-toggle" title="Toggle theme">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="5" />
               <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
             </svg>
           </button>
-          <button @click="logout()" class="btn-ghost text-xs">Logout</button>
+          <!-- User menu -->
+          <div class="relative" x-data="{ userMenuOpen: false }" @click.outside="userMenuOpen = false">
+            <button @click="userMenuOpen = !userMenuOpen" class="flex items-center gap-2 rounded-full hover:opacity-80 transition-opacity cursor-pointer bg-transparent border-0 p-0">
+              <img x-show="getUserAvatar()" :src="getUserAvatar()" class="w-8 h-8 rounded-full" referrerpolicy="no-referrer" @error="$el.style.display='none'; $el.nextElementSibling.style.display='flex'" />
+              <div x-show="!getUserAvatar()" class="w-8 h-8 rounded-full bg-accent-violet/20 flex items-center justify-center text-accent-violet text-xs font-medium" x-text="(localStorage.getItem('userEmail') || localStorage.getItem('userName') || '?')[0].toUpperCase()"></div>
+            </button>
+            <!-- Dropdown -->
+            <div x-show="userMenuOpen" x-transition class="absolute right-0 mt-2 w-56 rounded-lg shadow-lg border bg-surface-800 border-white/10 py-1 z-50" style="border-color: var(--border-color); background: var(--surface-800);">
+              <div class="px-4 py-2.5 border-b border-white/5" style="border-color: var(--border-color);">
+                <div class="text-sm font-medium text-themed" x-text="decodeURIComponent(getCookie('user_name') || localStorage.getItem('userName') || '')"></div>
+                <div class="text-xs text-themed-dim mt-0.5" x-text="localStorage.getItem('userEmail') || ''"></div>
+                <template x-if="isAdmin">
+                  <span class="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] bg-accent-violet/10 text-accent-violet uppercase font-medium">Admin</span>
+                </template>
+              </div>
+              <template x-if="isAdmin">
+                <button @click="switchTab('settings'); userMenuOpen = false" class="w-full text-left px-4 py-2 text-sm text-themed-dim hover:text-themed hover:bg-surface-700 transition-colors cursor-pointer bg-transparent border-0">
+                  <svg class="w-4 h-4 inline mr-2 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                  Settings
+                </button>
+              </template>
+              <button @click="logout()" class="w-full text-left px-4 py-2 text-sm text-accent-red/80 hover:text-accent-red hover:bg-surface-700 transition-colors cursor-pointer bg-transparent border-0">
+                <svg class="w-4 h-4 inline mr-2 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Sign out
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="max-w-6xl mx-auto px-4 sm:px-6 pb-3">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 pb-3" x-show="tab !== 'settings'">
         <nav class="flex gap-1 bg-surface-800 rounded-lg p-0.5 overflow-x-auto scrollbar-hide">
           <template x-if="isAdmin || isUser">
             <button @click="switchTab('upstream')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
@@ -76,12 +102,6 @@ export function renderDashboardHeader(): string {
             <button @click="switchTab('relays')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
               :class="tab === 'relays' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
               Relays
-            </button>
-          </template>
-          <template x-if="isAdmin">
-            <button @click="switchTab('settings')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
-              :class="tab === 'settings' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
-              Settings
             </button>
           </template>
         </nav>
@@ -151,12 +171,6 @@ export function renderUsersTab(): string {
           <template x-for="u in adminUsers" :key="u.id">
             <div class="flex items-start sm:items-center justify-between gap-3 p-4 rounded-lg bg-surface-800/50 border border-white/[0.04] flex-wrap">
               <div class="flex items-center gap-4">
-                <template x-if="u.githubAccounts && u.githubAccounts.length > 0">
-                  <img :src="u.githubAccounts[0].avatar_url || 'https://avatars.githubusercontent.com/u/' + u.githubAccounts[0].id + '?v=4'" @error.once="$el.style.display='none'; $el.nextElementSibling.style.display=''" class="w-8 h-8 rounded-full" /><div style="display:none" class="w-8 h-8 rounded-full bg-surface-700 flex items-center justify-center text-themed-dim text-xs" x-text="(u.githubAccounts[0].login || '?')[0].toUpperCase()"></div>
-                </template>
-                <template x-if="!u.githubAccounts || u.githubAccounts.length === 0">
-                  <div class="w-8 h-8 rounded-full bg-surface-700 flex items-center justify-center text-themed-dim text-xs">?</div>
-                </template>
                 <div>
                   <div class="flex items-center gap-2">
                     <span class="text-sm font-medium text-themed" x-text="u.name"></span>
@@ -165,15 +179,20 @@ export function renderUsersTab(): string {
                     </template>
                   </div>
                   <div class="flex items-center gap-3 mt-0.5">
+                    <template x-if="u.email">
+                      <span class="text-xs text-accent-violet" x-text="u.email"></span>
+                    </template>
                     <template x-for="gh in (u.githubAccounts || [])" :key="gh.id">
                       <span class="text-xs text-themed-dim" x-text="'@' + gh.login"></span>
                     </template>
-                    <span class="text-xs text-themed-dim" x-text="u.keyCount + ' key' + (u.keyCount !== 1 ? 's' : '')"></span>
+                    <span class="text-xs text-themed-dim" x-text="u.keyCount + ' own'"></span>
+                    <span x-show="u.sharedKeyCount > 0" class="text-xs text-accent-violet" x-text="u.sharedKeyCount + ' shared'"></span>
                     <span class="text-xs text-themed-dim" x-text="'Joined ' + timeAgo(u.createdAt)"></span>
                   </div>
                 </div>
               </div>
               <div class="flex items-center gap-2">
+                <template x-if="u.id !== userId"><button @click="openAssignModal(u.id, u.name)" class="btn-ghost text-xs">Assign Keys</button></template>
                 <button @click="toggleUser(u.id, u.disabled)" class="btn-ghost text-xs" x-text="u.disabled ? 'Enable' : 'Disable'"></button>
                 <button @click="deleteUser(u.id, u.name)" class="btn-ghost text-xs text-accent-red hover:bg-accent-red/10">Delete</button>
               </div>
@@ -181,6 +200,43 @@ export function renderUsersTab(): string {
           </template>
         </div>
       </div>
+
+      <!-- Assign Keys Modal -->
+      <template x-if="assignModalUserId">
+        <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-in" @click.self="closeAssignModal()">
+          <div style="background: var(--surface-900); border: 1px solid var(--glass-border); border-radius: 16px; box-shadow: var(--card-shadow), 0 24px 48px rgba(0,0,0,0.12);" class="p-5 max-w-sm w-full mx-4">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-themed text-sm font-semibold">Assign Keys to <span class="text-accent-violet" x-text="assignModalUserName"></span></h3>
+              <button @click="closeAssignModal()" class="text-themed-dim hover:text-themed transition-colors">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+
+            <div x-show="assignModalLoading" class="text-center py-6 text-themed-dim text-xs">Loading...</div>
+            <div x-show="!assignModalLoading && assignModalKeys.length === 0" class="text-center py-6 text-themed-dim text-xs">No keys available.</div>
+
+            <div x-show="!assignModalLoading && assignModalKeys.length > 0" class="max-h-64 overflow-y-auto" style="scrollbar-width: none;">
+              <template x-for="k in assignModalKeys" :key="k.id">
+                <div @click="toggleAssignment(k.id, k.assigned)"
+                  class="flex items-center gap-3 py-2.5 px-1 cursor-pointer select-none transition-colors duration-100 rounded-md"
+                  :class="k.assigned ? 'hover:bg-accent-violet/5' : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.03]'">
+                  <div class="w-[18px] h-[18px] rounded-full shrink-0 flex items-center justify-center transition-all duration-150"
+                    :class="k.assigned ? 'bg-accent-violet' : ''"
+                    :style="!k.assigned ? 'border: 2px solid var(--surface-600)' : ''">
+                    <svg x-show="k.assigned" class="w-2.5 h-2.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <span class="text-[13px]" :class="k.assigned ? 'text-themed font-medium' : 'text-themed-secondary'" x-text="k.name"></span>
+                </div>
+              </template>
+            </div>
+
+            <div x-show="!assignModalLoading && assignModalKeys.length > 0" class="mt-4 flex items-center justify-between">
+              <span class="text-[11px] text-themed-dim"><span class="text-accent-violet font-mono font-medium" x-text="assignModalKeys.filter(k => k.assigned).length"></span> / <span x-text="assignModalKeys.length"></span> assigned</span>
+              <button @click="closeAssignModal()" class="btn-primary !text-xs !py-1.5 !px-5 !rounded-lg">Done</button>
+            </div>
+          </div>
+        </div>
+      </template>
     </div>
   `
 }
@@ -259,7 +315,7 @@ export function renderUpstreamTab(): string {
               </div>
             </template>
             <template x-if="usageError">
-              <p class="text-sm" style="color: #e67e22;">Token expired — reconnect GitHub</p>
+              <p class="text-sm" style="color: #e67e22;">Connect GitHub to view</p>
             </template>
           </div>
 
@@ -284,7 +340,7 @@ export function renderUpstreamTab(): string {
               </div>
             </template>
             <template x-if="usageError">
-              <p class="text-sm" style="color: #e67e22;">Token expired — reconnect GitHub</p>
+              <p class="text-sm" style="color: #e67e22;">Connect GitHub to view</p>
             </template>
           </div>
 
@@ -309,7 +365,7 @@ export function renderUpstreamTab(): string {
               </div>
             </template>
             <template x-if="usageError">
-              <p class="text-sm" style="color: #e67e22;">Token expired — reconnect GitHub</p>
+              <p class="text-sm" style="color: #e67e22;">Connect GitHub to view</p>
             </template>
           </div>
         </div>
@@ -445,7 +501,7 @@ export function renderKeysTab(): string {
               <thead>
                 <tr class="border-b border-white/5">
                   <th class="text-left py-2 pr-4 pl-7 text-xs font-medium text-themed-dim uppercase tracking-widest">Name</th>
-                  <th x-show="isAdmin" class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest">Owner</th>
+                  <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest">Owner</th>
                   <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest">Key</th>
                   <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest hidden sm:table-cell">Created</th>
                   <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest hidden sm:table-cell">Last Used</th>
@@ -462,9 +518,15 @@ export function renderKeysTab(): string {
                         <span class="text-themed font-medium" x-text="k.name"></span>
                       </div>
                     </td>
-                    <td x-show="isAdmin" class="py-3 pr-4">
+                    <td class="py-3 pr-4">
                       <span x-show="k.owner_name" class="text-xs text-themed-secondary" x-text="k.owner_name"></span>
-                      <span x-show="!k.owner_name" class="text-xs text-themed-dim">—</span>
+                      <span x-show="!k.owner_name && k.is_owner !== false" class="text-xs text-themed-dim">&mdash;</span>
+                      <span x-show="k.is_owner === false" class="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-accent-violet/10 text-accent-violet">Shared</span>
+                      <template x-if="k.is_owner !== false && k.assignees && k.assignees.length > 0">
+                        <span class="ml-1 text-[10px] text-themed-dim cursor-default" :title="k.assignees.map(a => a.user_name || 'Unknown').join(', ')">
+                          <span class="px-1.5 py-0.5 rounded bg-accent-teal/10 text-accent-teal" x-text="'Shared: ' + k.assignees.length"></span>
+                        </span>
+                      </template>
                     </td>
                     <td class="py-3 pr-4">
                       <code class="text-xs font-mono text-themed-dim bg-surface-800 rounded px-2 py-1" x-text="truncateKey(k.key)"></code>
@@ -487,7 +549,7 @@ export function renderKeysTab(): string {
                             <polyline points="20 6 9 17 4 12" />
                           </svg>
                         </button>
-                        <template x-if="isAdmin || isUser">
+                        <template x-if="(isAdmin || isUser) && k.is_owner !== false">
                           <button @click.stop="deleteKeyById(k.id, k.name)" class="text-themed-dim hover:text-accent-red transition-colors p-1" :disabled="keyDeleting === k.id" title="Delete key">
                             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                               <polyline points="3 6 5 6 21 6" />
@@ -505,6 +567,21 @@ export function renderKeysTab(): string {
         </div>
       </div>
 
+      <!-- Shared Users Panel (shown for owned keys with assignees) -->
+      <template x-if="selectedKeyId && keys.find(k => k.id === selectedKeyId)?.is_owner !== false && keys.find(k => k.id === selectedKeyId)?.assignees?.length > 0">
+        <div class="glass-card p-6 mb-6 animate-in delay-1">
+          <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Shared With</span>
+          <div class="flex flex-wrap gap-2 mt-3">
+            <template x-for="a in keys.find(k => k.id === selectedKeyId)?.assignees || []" :key="a.user_id">
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-accent-violet/10 text-accent-violet border border-accent-violet/20">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <span x-text="a.user_name || 'Unknown'"></span>
+              </span>
+            </template>
+          </div>
+        </div>
+      </template>
+
       <!-- Quota Panel (shown when a key is selected) -->
       <template x-if="selectedKeyId">
         <div class="glass-card p-6 mb-6 animate-in delay-1">
@@ -512,7 +589,7 @@ export function renderKeysTab(): string {
             <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Daily Quota</span>
             <div class="flex items-center gap-2">
               <template x-if="!quotaEditing">
-                <button @click="startEditQuota()" class="btn-ghost text-xs" x-show="isAdmin || isUser">Edit</button>
+                <button @click="startEditQuota()" class="btn-ghost text-xs" x-show="(isAdmin || isUser) && keys.find(k => k.id === selectedKeyId)?.is_owner !== false">Edit</button>
               </template>
               <template x-if="quotaEditing">
                 <div class="flex items-center gap-2">
@@ -617,7 +694,7 @@ export function renderKeysTab(): string {
             <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Web Search</span>
             <div class="flex items-center gap-2">
               <template x-if="!wsEditing">
-                <button @click="startEditWebSearch()" class="btn-ghost text-xs" x-show="isAdmin || isUser">Edit</button>
+                <button @click="startEditWebSearch()" class="btn-ghost text-xs" x-show="(isAdmin || isUser) && keys.find(k => k.id === selectedKeyId)?.is_owner !== false">Edit</button>
               </template>
               <template x-if="wsEditing">
                 <div class="flex items-center gap-2">

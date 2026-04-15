@@ -19,6 +19,9 @@ export interface Env {
   GITHUB_TOKEN?: string
   ACCOUNT_TYPE?: string
   ADMIN_KEY?: string
+  GOOGLE_CLIENT_ID?: string
+  GOOGLE_CLIENT_SECRET?: string
   LANGSEARCH_API_KEY?: string
   TAVILY_API_KEY?: string
+  RESEND_API_KEY?: string
 }

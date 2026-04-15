@@ -10,11 +10,150 @@ import {
 } from "~/lib/github"
 import { validateApiKey } from "~/lib/api-keys"
 import { getRepo } from "~/repo"
-import { GITHUB_CLIENT_ID, createGithubHeaders } from "~/config/constants"
+import { GITHUB_CLIENT_ID, ADMIN_EMAILS, createGithubHeaders } from "~/config/constants"
+import { sendVerificationCode } from "~/lib/email"
+import { hashPassword, verifyPassword } from "~/lib/password"
 import type { Env } from "~/lib/state"
 
 const GITHUB_SCOPES = "read:user"
 const SESSION_TTL_DAYS = 30
+
+// Google OAuth state store (in-memory for local, KV for CFW)
+const oauthStateStore = new Map<string, { inviteCode?: string; createdAt: number }>()
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000 // 10 minutes
+
+// KV-backed state store for CFW (set by initOAuthKV)
+let oauthKV: KVNamespace | null = null
+export function initOAuthKV(kv: KVNamespace) { oauthKV = kv }
+
+function generateOAuthState(): string {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
+}
+
+function cleanupOAuthStates() {
+  const now = Date.now()
+  for (const [key, val] of oauthStateStore) {
+    if (now - val.createdAt > OAUTH_STATE_TTL_MS) {
+      oauthStateStore.delete(key)
+    }
+  }
+}
+
+async function saveOAuthState(state: string, data: { inviteCode?: string; createdAt: number }) {
+  if (oauthKV) {
+    await oauthKV.put(`oauth_state:${state}`, JSON.stringify(data), { expirationTtl: 600 })
+  } else {
+    cleanupOAuthStates()
+    oauthStateStore.set(state, data)
+  }
+}
+
+async function getOAuthState(state: string): Promise<{ inviteCode?: string; createdAt: number } | null> {
+  if (oauthKV) {
+    const val = await oauthKV.get(`oauth_state:${state}`)
+    if (val) {
+      await oauthKV.delete(`oauth_state:${state}`)
+      return JSON.parse(val)
+    }
+    return null
+  }
+  const data = oauthStateStore.get(state) ?? null
+  if (data) oauthStateStore.delete(state)
+  return data
+}
+
+// Email verification code store (for registration)
+const emailCodeStore = new Map<string, { code: string; inviteCode: string; name: string; password: string; createdAt: number }>()
+const EMAIL_CODE_TTL_MS = 10 * 60 * 1000 // 10 minutes
+
+async function saveEmailCode(email: string, data: { code: string; inviteCode: string; name: string; password: string }) {
+  const entry = { ...data, createdAt: Date.now() }
+  if (oauthKV) {
+    await oauthKV.put(`email_code:${email}`, JSON.stringify(entry), { expirationTtl: 600 })
+  } else {
+    // Cleanup expired entries
+    const now = Date.now()
+    for (const [k, v] of emailCodeStore) {
+      if (now - v.createdAt > EMAIL_CODE_TTL_MS) emailCodeStore.delete(k)
+    }
+    emailCodeStore.set(email, entry)
+  }
+}
+
+async function getEmailCode(email: string): Promise<{ code: string; inviteCode: string; name: string; password: string } | null> {
+  if (oauthKV) {
+    const val = await oauthKV.get(`email_code:${email}`)
+    if (val) {
+      await oauthKV.delete(`email_code:${email}`)
+      return JSON.parse(val)
+    }
+    return null
+  }
+  const data = emailCodeStore.get(email) ?? null
+  if (data) {
+    emailCodeStore.delete(email)
+    if (Date.now() - data.createdAt > EMAIL_CODE_TTL_MS) return null
+  }
+  return data
+}
+
+// Magic link token store (for login)
+const magicTokenStore = new Map<string, { email: string; createdAt: number }>()
+const MAGIC_TOKEN_TTL_MS = 10 * 60 * 1000 // 10 minutes
+
+async function saveMagicToken(token: string, email: string) {
+  if (oauthKV) {
+    await oauthKV.put(`magic_token:${token}`, JSON.stringify({ email, createdAt: Date.now() }), { expirationTtl: 600 })
+  } else {
+    const now = Date.now()
+    for (const [k, v] of magicTokenStore) {
+      if (now - v.createdAt > MAGIC_TOKEN_TTL_MS) magicTokenStore.delete(k)
+    }
+    magicTokenStore.set(token, { email, createdAt: Date.now() })
+  }
+}
+
+async function getMagicToken(token: string): Promise<string | null> {
+  if (oauthKV) {
+    const val = await oauthKV.get(`magic_token:${token}`)
+    if (val) {
+      await oauthKV.delete(`magic_token:${token}`)
+      const data = JSON.parse(val) as { email: string }
+      return data.email
+    }
+    return null
+  }
+  const data = magicTokenStore.get(token) ?? null
+  if (data) {
+    magicTokenStore.delete(token)
+    if (Date.now() - data.createdAt > MAGIC_TOKEN_TTL_MS) return null
+    return data.email
+  }
+  return null
+}
+
+function generateVerificationCode(): string {
+  const bytes = new Uint8Array(3)
+  crypto.getRandomValues(bytes)
+  return String(((bytes[0]! << 16) | (bytes[1]! << 8) | bytes[2]!) % 1000000).padStart(6, "0")
+}
+
+function generateMagicLinkToken(): string {
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
+}
+
+function errorPage(message: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Error</title><style>body{font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f5f5f5}
+.card{background:#fff;border-radius:12px;padding:2rem;max-width:400px;box-shadow:0 2px 8px rgba(0,0,0,.1);text-align:center}
+h2{color:#d32f2f;margin:0 0 1rem}p{color:#666;margin:0 0 1.5rem}
+a{display:inline-block;padding:.5rem 1.5rem;background:#1a73e8;color:#fff;border-radius:6px;text-decoration:none}</style></head>
+<body><div class="card"><h2>Error</h2><p>${message}</p><a href="/">Back to Login</a></div></body></html>`
+}
 
 async function detectAccountType(githubToken: string): Promise<string> {
   try {
@@ -53,37 +192,66 @@ interface AuthContext {
 }
 
 export const authRoute = new Elysia({ prefix: "/auth" })
-  // POST /auth/login - validate ADMIN_KEY, API key, invite code, or session token
+  // POST /auth/login - validate session (from cookie or body)
   .post("/login", async (ctx) => {
     const { body } = ctx
     const env = (ctx as unknown as AuthContext).env
-    const { key } = body as { key: string }
-    const adminKey = env?.ADMIN_KEY
+    const { key } = body as { key?: string }
 
-    // 1. Check ADMIN_KEY
-    if (adminKey && key === adminKey) {
+    // Try session token from body, or from cookie
+    let sessionToken = key
+    if (!sessionToken) {
+      const cookieHeader = ctx.request.headers.get("cookie") || ""
+      const match = cookieHeader.match(/(?:^|;\s*)session_token=([^\s;]+)/)
+      if (match) sessionToken = match[1]
+    }
+
+    if (!sessionToken) {
+      return new Response(JSON.stringify({ error: "No session" }), { status: 401, headers: { "Content-Type": "application/json" } })
+    }
+
+    // Check ADMIN_KEY (legacy, kept for backward compat during transition)
+    const adminKey = env?.ADMIN_KEY
+    if (adminKey && sessionToken === adminKey) {
       return { ok: true, isAdmin: true }
     }
 
-    // 2. Check session token
-    if (key.startsWith("ses_")) {
+    // Check session token
+    if (sessionToken.startsWith("ses_")) {
       const repo = getRepo()
-      const session = await repo.sessions.findByToken(key)
+      const session = await repo.sessions.findByToken(sessionToken)
       if (session && new Date(session.expiresAt) > new Date()) {
         const user = await repo.users.getById(session.userId)
         if (user) {
-          await repo.users.update(user.id, { lastLoginAt: new Date().toISOString() })
-          return { ok: true, isAdmin: false, isUser: true, userId: user.id, userName: user.name, sessionToken: key, disabled: user.disabled }
+          if (user.disabled) {
+            return new Response(JSON.stringify({ error: "Account disabled" }), { status: 403, headers: { "Content-Type": "application/json" } })
+          }
+          const isAdmin = !!(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))
+          const data = { ok: true, isAdmin, isUser: true, userId: user.id, userName: user.name, email: user.email, avatarUrl: user.avatarUrl, sessionToken, disabled: user.disabled }
+
+          // Set avatar/name cookies if missing (for sessions created before cookie feature)
+          const cookieHeader = ctx.request.headers.get("cookie") || ""
+          if (user.avatarUrl && !cookieHeader.includes("user_avatar=")) {
+            const url = new URL(ctx.request.url)
+            const isSecure = url.protocol === "https:"
+            const securePart = isSecure ? "; Secure" : ""
+            const flags = `Path=/; SameSite=Lax; Max-Age=${30 * 24 * 60 * 60}${securePart}`
+            const headers = new Headers({ "Content-Type": "application/json" })
+            headers.append("Set-Cookie", `user_avatar=${encodeURIComponent(user.avatarUrl)}; ${flags}`)
+            if (!cookieHeader.includes("user_name=")) {
+              headers.append("Set-Cookie", `user_name=${encodeURIComponent(user.name)}; ${flags}`)
+            }
+            return new Response(JSON.stringify(data), { headers })
+          }
+
+          return data
         }
       }
-      return new Response(JSON.stringify({ error: "Invalid or expired session" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      })
+      return new Response(JSON.stringify({ error: "Invalid or expired session" }), { status: 401, headers: { "Content-Type": "application/json" } })
     }
 
-    // 3. Check API key
-    const result = await validateApiKey(key)
+    // Check API key
+    const result = await validateApiKey(sessionToken)
     if (result) {
       return {
         ok: true,
@@ -92,120 +260,208 @@ export const authRoute = new Elysia({ prefix: "/auth" })
         userId: result.ownerId,
         keyId: result.id,
         keyName: result.name,
-        keyHint: key.slice(-4),
+        keyHint: sessionToken.slice(-4),
       }
     }
 
-    // 4. Check User Key (user's personal login key)
-    const repo = getRepo()
-    const userByKey = await repo.users.findByKey(key)
-    if (userByKey) {
-      const now = new Date()
-      const expiresAt = new Date(now.getTime() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)
-      const sessionToken = generateSessionToken()
-      await repo.sessions.create({
-        token: sessionToken,
-        userId: userByKey.id,
-        createdAt: now.toISOString(),
-        expiresAt: expiresAt.toISOString(),
-      })
-      await repo.users.update(userByKey.id, { lastLoginAt: now.toISOString() })
-      return {
-        ok: true,
-        isAdmin: false,
-        isUser: true,
-        userId: userByKey.id,
-        userName: userByKey.name,
-        sessionToken,
-        disabled: userByKey.disabled,
-      }
-    }
+    return new Response(JSON.stringify({ error: "Invalid session" }), { status: 401, headers: { "Content-Type": "application/json" } })
+  })
 
-    // 5. Check invite code (unused only → prompt to set User Key)
-    const invite = await repo.inviteCodes.findByCode(key)
-    if (invite && !invite.usedAt) {
-      return { ok: false, needSetKey: true, name: invite.name }
-    }
-
-    return new Response(JSON.stringify({ error: "Invalid key" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
+  // POST /auth/logout - clear session cookie
+  .post("/logout", () => {
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: {
+        "Content-Type": "application/json",
+        "Set-Cookie": "session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+      },
     })
   })
 
-  // POST /auth/register - register with invite code + set User Key
-  .post("/register", async (ctx) => {
+  // POST /auth/validate-invite - check if invite code is valid (for frontend)
+  .post("/validate-invite", async (ctx) => {
     const { body } = ctx
-    const { inviteCode, userKey } = body as { inviteCode: string; userKey: string }
+    const { code } = body as { code: string }
+    if (!code) {
+      return new Response(JSON.stringify({ error: "code is required" }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
+    const repo = getRepo()
+    const invite = await repo.inviteCodes.findByCode(code)
+    if (!invite || invite.usedAt) {
+      return { valid: false }
+    }
+    return { valid: true, name: invite.name }
+  })
 
-    if (!inviteCode || !userKey) {
-      return new Response(JSON.stringify({ error: "inviteCode and userKey are required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      })
+  // GET /auth/google - start Google OAuth flow
+  .get("/google", async (ctx) => {
+    const env = (ctx as unknown as AuthContext).env
+    const clientId = env?.GOOGLE_CLIENT_ID
+    if (!clientId) {
+      return new Response(JSON.stringify({ error: "Google OAuth not configured" }), { status: 500, headers: { "Content-Type": "application/json" } })
     }
 
-    if (userKey.length < 8) {
-      return new Response(JSON.stringify({ error: "User Key must be at least 8 characters" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      })
+    const url = new URL(ctx.request.url)
+    const inviteCode = url.searchParams.get("invite_code") || undefined
+
+    // Generate state and store invite code mapping (KV for CFW, Map for local)
+    const state = generateOAuthState()
+    await saveOAuthState(state, { inviteCode, createdAt: Date.now() })
+
+    // Build Google OAuth URL
+    const redirectUri = `${url.origin}/auth/google/callback`
+    const googleUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth")
+    googleUrl.searchParams.set("client_id", clientId)
+    googleUrl.searchParams.set("redirect_uri", redirectUri)
+    googleUrl.searchParams.set("response_type", "code")
+    googleUrl.searchParams.set("scope", "openid email profile")
+    googleUrl.searchParams.set("state", state)
+    googleUrl.searchParams.set("access_type", "online")
+    googleUrl.searchParams.set("prompt", "select_account")
+
+    return new Response(null, {
+      status: 302,
+      headers: { Location: googleUrl.toString() },
+    })
+  })
+
+  // GET /auth/google/callback - handle Google OAuth callback
+  .get("/google/callback", async (ctx) => {
+    const env = (ctx as unknown as AuthContext).env
+    const clientId = env?.GOOGLE_CLIENT_ID
+    const clientSecret = env?.GOOGLE_CLIENT_SECRET
+
+    if (!clientId || !clientSecret) {
+      return new Response(errorPage("Google OAuth not configured"), { status: 500, headers: { "Content-Type": "text/html; charset=utf-8" } })
     }
+
+    const url = new URL(ctx.request.url)
+    const code = url.searchParams.get("code")
+    const state = url.searchParams.get("state")
+    const error = url.searchParams.get("error")
+
+    if (error) {
+      return new Response(errorPage(`Google OAuth error: ${error}`), { status: 400, headers: { "Content-Type": "text/html; charset=utf-8" } })
+    }
+
+    if (!code || !state) {
+      return new Response(errorPage("Missing code or state parameter"), { status: 400, headers: { "Content-Type": "text/html; charset=utf-8" } })
+    }
+
+    // Verify state
+    const stateData = await getOAuthState(state)
+    if (!stateData) {
+      return new Response(errorPage("Invalid or expired OAuth state. Please try again."), { status: 400, headers: { "Content-Type": "text/html; charset=utf-8" } })
+    }
+
+    // Exchange code for token
+    const redirectUri = `${url.origin}/auth/google/callback`
+    const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
+    })
+
+    if (!tokenResp.ok) {
+      const text = await tokenResp.text()
+      return new Response(errorPage(`Failed to exchange code: ${text}`), { status: 502, headers: { "Content-Type": "text/html; charset=utf-8" } })
+    }
+
+    const tokenData = (await tokenResp.json()) as { access_token: string; id_token?: string }
+
+    // Fetch user info
+    const userInfoResp = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    })
+
+    if (!userInfoResp.ok) {
+      return new Response(errorPage("Failed to fetch Google user info"), { status: 502, headers: { "Content-Type": "text/html; charset=utf-8" } })
+    }
+
+    const googleUser = (await userInfoResp.json()) as { email: string; name: string; picture?: string }
+    const email = googleUser.email.toLowerCase()
+    const isAdminEmail = ADMIN_EMAILS.includes(email)
 
     const repo = getRepo()
 
-    // Validate invite code
-    const invite = await repo.inviteCodes.findByCode(inviteCode)
-    if (!invite || invite.usedAt) {
-      return new Response(JSON.stringify({ error: "Invalid or already used invite code" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      })
+    // Try to find existing user by email
+    let user = await repo.users.findByEmail(email)
+
+    if (user) {
+      // Existing user — check if disabled
+      if (user.disabled) {
+        return new Response(errorPage("Your account has been disabled. Contact admin."), { status: 403, headers: { "Content-Type": "text/html; charset=utf-8" } })
+      }
+      // Update last login and avatar
+      await repo.users.update(user.id, { lastLoginAt: new Date().toISOString(), avatarUrl: googleUser.picture || undefined })
+    } else if (isAdminEmail) {
+      // Admin email not yet registered — auto-create admin user
+      const userId = crypto.randomUUID()
+      user = {
+        id: userId,
+        name: googleUser.name || email,
+        email,
+        avatarUrl: googleUser.picture || undefined,
+        createdAt: new Date().toISOString(),
+        disabled: false,
+        lastLoginAt: new Date().toISOString(),
+      }
+      await repo.users.create(user)
+    } else if (stateData.inviteCode) {
+      // New user with invite code — verify and register
+      const invite = await repo.inviteCodes.findByCode(stateData.inviteCode)
+      if (!invite || invite.usedAt) {
+        return new Response(errorPage("Invalid or already used invite code. Please request a new one."), { status: 400, headers: { "Content-Type": "text/html; charset=utf-8" } })
+      }
+
+      const userId = crypto.randomUUID()
+      user = {
+        id: userId,
+        name: googleUser.name || invite.name,
+        email,
+        avatarUrl: googleUser.picture || undefined,
+        createdAt: new Date().toISOString(),
+        disabled: false,
+        lastLoginAt: new Date().toISOString(),
+      }
+      await repo.users.create(user)
+      await repo.inviteCodes.markUsed(invite.id, userId)
+    } else {
+      // New user without invite code — deny
+      return new Response(errorPage("You need an invite code to register. Please enter your invite code first, then sign in with Google."), { status: 403, headers: { "Content-Type": "text/html; charset=utf-8" } })
     }
 
-    // Check User Key uniqueness
-    const existing = await repo.users.findByKey(userKey)
-    if (existing) {
-      return new Response(JSON.stringify({ error: "This User Key is already taken, please choose another" }), {
-        status: 409,
-        headers: { "Content-Type": "application/json" },
-      })
-    }
-
-    // Create user with User Key
-    const userId = crypto.randomUUID()
+    // Create session
     const now = new Date()
     const expiresAt = new Date(now.getTime() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)
     const sessionToken = generateSessionToken()
-
-    await repo.users.create({
-      id: userId,
-      name: invite.name,
-      createdAt: now.toISOString(),
-      disabled: false,
-      lastLoginAt: now.toISOString(),
-      userKey,
-    })
-    await repo.inviteCodes.markUsed(invite.id, userId)
     await repo.sessions.create({
       token: sessionToken,
-      userId,
+      userId: user.id,
       createdAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
     })
 
-    return {
-      ok: true,
-      isAdmin: false,
-      isUser: true,
-      userId,
-      userName: invite.name,
-      sessionToken,
+    // Set cookie and redirect to dashboard
+    const isSecure = url.protocol === "https:"
+    const securePart = isSecure ? "; Secure" : ""
+    const sessionFlags = `Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_DAYS * 24 * 60 * 60}${securePart}`
+    const infoFlags = `Path=/; SameSite=Lax; Max-Age=${SESSION_TTL_DAYS * 24 * 60 * 60}${securePart}`
+    const headers = new Headers()
+    headers.set("Location", "/dashboard")
+    headers.append("Set-Cookie", `session_token=${sessionToken}; ${sessionFlags}`)
+    // Non-HttpOnly cookies for frontend display (avatar, name)
+    if (googleUser.picture) {
+      headers.append("Set-Cookie", `user_avatar=${encodeURIComponent(googleUser.picture)}; ${infoFlags}`)
     }
+    headers.append("Set-Cookie", `user_name=${encodeURIComponent(googleUser.name || email)}; ${infoFlags}`)
+    return new Response(null, { status: 302, headers })
   })
-
-  // POST /auth/logout - no-op
-  .post("/logout", () => ({ ok: true }))
 
   // GET /auth/github - start GitHub Device Flow
   .get("/github", async () => {
@@ -390,7 +646,7 @@ export const authRoute = new Elysia({ prefix: "/auth" })
   // DELETE /auth/github/:id - disconnect a specific GitHub account
   .delete("/github/:id", async (ctx) => {
     const { params } = ctx
-    const { userId } = ctx as unknown as AuthContext
+    const { isAdmin, userId } = ctx as unknown as AuthContext
     const ghUserId = Number(params.id)
     if (!ghUserId || isNaN(ghUserId)) {
       return new Response(JSON.stringify({ error: "Invalid user ID" }), {
@@ -398,7 +654,8 @@ export const authRoute = new Elysia({ prefix: "/auth" })
         headers: { "Content-Type": "application/json" },
       })
     }
-    await removeGithubAccount(ghUserId, userId)
+    // Admin can delete any account (pass undefined to skip owner filter)
+    await removeGithubAccount(ghUserId, isAdmin ? undefined : userId)
     return { ok: true }
   })
 
@@ -477,9 +734,10 @@ export const authRoute = new Elysia({ prefix: "/auth" })
 
     // Enrich with GitHub account info and key count
     const enriched = await Promise.all(users.map(async (u) => {
-      const [accounts, keys] = await Promise.all([
+      const [accounts, keys, assignments] = await Promise.all([
         repo.github.listAccountsByOwner(u.id),
         repo.apiKeys.listByOwner(u.id),
+        repo.keyAssignments.listByUser(u.id),
       ])
       return {
         ...u,
@@ -490,6 +748,7 @@ export const authRoute = new Elysia({ prefix: "/auth" })
           account_type: a.accountType,
         })),
         keyCount: keys.length,
+        sharedKeyCount: assignments.length,
       }
     }))
 
@@ -540,7 +799,223 @@ export const authRoute = new Elysia({ prefix: "/auth" })
       await repo.github.deleteAccount(a.user.id, userId)
     }
     await repo.github.clearActiveIdForUser(userId)
+    await repo.keyAssignments.deleteByUser(userId)
     await repo.users.delete(userId)
 
     return { ok: true }
+  })
+
+  // === Email registration & magic link login ===
+
+  // POST /auth/email/register - send verification code for email registration
+  .post("/email/register", async (ctx) => {
+    const { body } = ctx
+    const { email, invite_code, name, password } = body as { email?: string; invite_code?: string; name?: string; password?: string }
+    if (!email || !invite_code || !name || !password) {
+      return new Response(JSON.stringify({ error: "email, invite_code, name, and password are required" }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
+    if (password.length < 6) {
+      return new Response(JSON.stringify({ error: "Password must be at least 6 characters" }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
+    const normalizedEmail = email.toLowerCase().trim()
+
+    // Validate invite code
+    const repo = getRepo()
+    const invite = await repo.inviteCodes.findByCode(invite_code)
+    if (!invite || invite.usedAt) {
+      return new Response(JSON.stringify({ error: "Invalid or already used invite code" }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
+
+    // Check if email already registered
+    const existing = await repo.users.findByEmail(normalizedEmail)
+    if (existing) {
+      return new Response(JSON.stringify({ error: "Email already registered. Please sign in instead." }), { status: 409, headers: { "Content-Type": "application/json" } })
+    }
+
+    // Generate and send code
+    const code = generateVerificationCode()
+    await saveEmailCode(normalizedEmail, { code, inviteCode: invite_code, name, password })
+    const sent = await sendVerificationCode(normalizedEmail, code)
+    if (!sent) {
+      return new Response(JSON.stringify({ error: "Failed to send verification email. Please try again." }), { status: 500, headers: { "Content-Type": "application/json" } })
+    }
+
+    return { ok: true, message: "Verification code sent" }
+  })
+
+  // POST /auth/email/verify - verify code and create account
+  .post("/email/verify", async (ctx) => {
+    const { body } = ctx
+    const { email, code } = body as { email?: string; code?: string }
+    if (!email || !code) {
+      return new Response(JSON.stringify({ error: "email and code are required" }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
+    const normalizedEmail = email.toLowerCase().trim()
+
+    // Retrieve and validate code (one-time use)
+    const stored = await getEmailCode(normalizedEmail)
+    if (!stored || stored.code !== code) {
+      return new Response(JSON.stringify({ error: "Invalid or expired verification code" }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
+
+    const repo = getRepo()
+
+    // Double-check email not taken
+    const existing = await repo.users.findByEmail(normalizedEmail)
+    if (existing) {
+      return new Response(JSON.stringify({ error: "Email already registered" }), { status: 409, headers: { "Content-Type": "application/json" } })
+    }
+
+    // Verify invite again
+    const invite = await repo.inviteCodes.findByCode(stored.inviteCode)
+    if (!invite || invite.usedAt) {
+      return new Response(JSON.stringify({ error: "Invite code no longer valid" }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
+
+    // Create user
+    const userId = crypto.randomUUID()
+    const pwHash = await hashPassword(stored.password)
+    const user = {
+      id: userId,
+      name: stored.name,
+      email: normalizedEmail,
+      createdAt: new Date().toISOString(),
+      disabled: false,
+      lastLoginAt: new Date().toISOString(),
+      passwordHash: pwHash,
+    }
+    await repo.users.create(user)
+    await repo.inviteCodes.markUsed(invite.id, userId)
+
+    // Create session
+    const url = new URL(ctx.request.url)
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)
+    const sessionToken = generateSessionToken()
+    await repo.sessions.create({
+      token: sessionToken,
+      userId,
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    })
+
+    // Set cookies
+    const isSecure = url.protocol === "https:"
+    const securePart = isSecure ? "; Secure" : ""
+    const sessionFlags = `Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_DAYS * 24 * 60 * 60}${securePart}`
+    const infoFlags = `Path=/; SameSite=Lax; Max-Age=${SESSION_TTL_DAYS * 24 * 60 * 60}${securePart}`
+    const headers = new Headers({ "Content-Type": "application/json" })
+    headers.append("Set-Cookie", `session_token=${sessionToken}; ${sessionFlags}`)
+    headers.append("Set-Cookie", `user_name=${encodeURIComponent(stored.name)}; ${infoFlags}`)
+
+    return new Response(JSON.stringify({ ok: true, redirect: "/dashboard" }), { headers })
+  })
+
+  // POST /auth/email/login - email + password login
+  .post("/email/login", async (ctx) => {
+    const { body } = ctx
+    const { email, password } = body as { email?: string; password?: string }
+    if (!email || !password) {
+      return new Response(JSON.stringify({ error: "email and password are required" }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
+    const normalizedEmail = email.toLowerCase().trim()
+
+    const repo = getRepo()
+    const user = await repo.users.findByEmail(normalizedEmail)
+    if (!user) {
+      return new Response(JSON.stringify({ error: "No account found with this email. Please register first." }), { status: 404, headers: { "Content-Type": "application/json" } })
+    }
+    if (user.disabled) {
+      return new Response(JSON.stringify({ error: "Account disabled. Contact admin." }), { status: 403, headers: { "Content-Type": "application/json" } })
+    }
+    if (!user.passwordHash) {
+      return new Response(JSON.stringify({ error: "This account uses Google sign-in. Please use Google to log in." }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
+
+    const valid = await verifyPassword(password, user.passwordHash)
+    if (!valid) {
+      return new Response(JSON.stringify({ error: "Incorrect password" }), { status: 401, headers: { "Content-Type": "application/json" } })
+    }
+
+    // Update last login
+    await repo.users.update(user.id, { lastLoginAt: new Date().toISOString() })
+
+    // Create session
+    const url = new URL(ctx.request.url)
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)
+    const sessionToken = generateSessionToken()
+    await repo.sessions.create({
+      token: sessionToken,
+      userId: user.id,
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    })
+
+    // Set cookies
+    const isSecure = url.protocol === "https:"
+    const securePart = isSecure ? "; Secure" : ""
+    const sessionFlags = `Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_DAYS * 24 * 60 * 60}${securePart}`
+    const infoFlags = `Path=/; SameSite=Lax; Max-Age=${SESSION_TTL_DAYS * 24 * 60 * 60}${securePart}`
+    const headers = new Headers({ "Content-Type": "application/json" })
+    headers.append("Set-Cookie", `session_token=${sessionToken}; ${sessionFlags}`)
+    headers.append("Set-Cookie", `user_name=${encodeURIComponent(user.name)}; ${infoFlags}`)
+    if (user.avatarUrl) {
+      headers.append("Set-Cookie", `user_avatar=${encodeURIComponent(user.avatarUrl)}; ${infoFlags}`)
+    }
+
+    return new Response(JSON.stringify({ ok: true, redirect: "/dashboard" }), { headers })
+  })
+
+  // GET /auth/email/magic - handle magic link click
+  .get("/email/magic", async (ctx) => {
+    const url = new URL(ctx.request.url)
+    const token = url.searchParams.get("token")
+
+    if (!token) {
+      return new Response(errorPage("Missing token"), { status: 400, headers: { "Content-Type": "text/html; charset=utf-8" } })
+    }
+
+    const email = await getMagicToken(token)
+    if (!email) {
+      return new Response(errorPage("Invalid or expired magic link. Please request a new one."), { status: 400, headers: { "Content-Type": "text/html; charset=utf-8" } })
+    }
+
+    const repo = getRepo()
+    const user = await repo.users.findByEmail(email)
+    if (!user) {
+      return new Response(errorPage("User not found"), { status: 404, headers: { "Content-Type": "text/html; charset=utf-8" } })
+    }
+    if (user.disabled) {
+      return new Response(errorPage("Account disabled. Contact admin."), { status: 403, headers: { "Content-Type": "text/html; charset=utf-8" } })
+    }
+
+    // Update last login
+    await repo.users.update(user.id, { lastLoginAt: new Date().toISOString() })
+
+    // Create session
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)
+    const sessionToken = generateSessionToken()
+    await repo.sessions.create({
+      token: sessionToken,
+      userId: user.id,
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    })
+
+    // Set cookies and redirect
+    const isSecure = url.protocol === "https:"
+    const securePart = isSecure ? "; Secure" : ""
+    const sessionFlags = `Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_DAYS * 24 * 60 * 60}${securePart}`
+    const infoFlags = `Path=/; SameSite=Lax; Max-Age=${SESSION_TTL_DAYS * 24 * 60 * 60}${securePart}`
+    const headers = new Headers()
+    headers.set("Location", "/dashboard")
+    headers.append("Set-Cookie", `session_token=${sessionToken}; ${sessionFlags}`)
+    headers.append("Set-Cookie", `user_name=${encodeURIComponent(user.name)}; ${infoFlags}`)
+    if (user.avatarUrl) {
+      headers.append("Set-Cookie", `user_avatar=${encodeURIComponent(user.avatarUrl)}; ${infoFlags}`)
+    }
+
+    return new Response(null, { status: 302, headers })
   })

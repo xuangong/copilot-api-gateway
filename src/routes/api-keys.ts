@@ -17,8 +17,8 @@ function maskKey(key?: string): string | null {
   return key.slice(0, 4) + "****" + key.slice(-4)
 }
 
-function keyToJson(k: ApiKey, ownerName?: string) {
-  return { id: k.id, name: k.name, key: k.key, created_at: k.createdAt, last_used_at: k.lastUsedAt ?? null, owner_id: k.ownerId ?? null, owner_name: ownerName ?? null, quota_requests_per_day: k.quotaRequestsPerDay ?? null, quota_tokens_per_day: k.quotaTokensPerDay ?? null, web_search_enabled: k.webSearchEnabled ?? false, web_search_bing_enabled: k.webSearchBingEnabled ?? false, web_search_langsearch_key: maskKey(k.webSearchLangsearchKey), web_search_tavily_key: maskKey(k.webSearchTavilyKey) }
+function keyToJson(k: ApiKey, ownerName?: string, isOwner?: boolean) {
+  return { id: k.id, name: k.name, key: k.key, created_at: k.createdAt, last_used_at: k.lastUsedAt ?? null, owner_id: k.ownerId ?? null, owner_name: ownerName ?? null, is_owner: isOwner ?? true, quota_requests_per_day: k.quotaRequestsPerDay ?? null, quota_tokens_per_day: k.quotaTokensPerDay ?? null, web_search_enabled: k.webSearchEnabled ?? false, web_search_bing_enabled: k.webSearchBingEnabled ?? false, web_search_langsearch_key: maskKey(k.webSearchLangsearchKey), web_search_tavily_key: maskKey(k.webSearchTavilyKey) }
 }
 
 interface AuthCtx {
@@ -40,23 +40,85 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
   // Admin: all keys; User: only their own keys
   .get("/", async (ctx) => {
     const { isAdmin, isUser, apiKeyId, userId } = ctx as unknown as AuthCtx
+    const repo = getRepo()
 
     if (isAdmin) {
       const keys = await listApiKeys()
-      const repo = getRepo()
       const ownerIds = [...new Set(keys.map(k => k.ownerId).filter(Boolean))] as string[]
       const ownerMap = new Map<string, string>()
       await Promise.all(ownerIds.map(async (id) => {
         const user = await repo.users.getById(id)
         if (user) ownerMap.set(id, user.name)
       }))
-      return keys.map(k => keyToJson(k, k.ownerId ? ownerMap.get(k.ownerId) : undefined))
+      // Fetch assignees for all keys
+      const allAssignments = await Promise.all(keys.map(k => repo.keyAssignments.listByKey(k.id)))
+      const assigneeUserIds = new Set<string>()
+      for (const aList of allAssignments) {
+        for (const a of aList) assigneeUserIds.add(a.userId)
+      }
+      const assigneeNameMap = new Map<string, string>()
+      if (assigneeUserIds.size > 0) {
+        const assigneeUsers = await Promise.all([...assigneeUserIds].map(id => repo.users.getById(id)))
+        for (const u of assigneeUsers) {
+          if (u) assigneeNameMap.set(u.id, u.name)
+        }
+      }
+      return keys.map((k, i) => {
+        const json = keyToJson(k, k.ownerId ? ownerMap.get(k.ownerId) : undefined, true)
+        const assignees = allAssignments[i]!.map(a => ({
+          user_id: a.userId,
+          user_name: assigneeNameMap.get(a.userId) ?? null,
+        }))
+        return { ...json, assignees }
+      })
     }
 
-    // User: return their own keys
+    // User: own keys + assigned keys
     if (isUser && userId) {
-      const keys = await listApiKeysByOwner(userId)
-      return keys.map(k => keyToJson(k))
+      const [ownKeys, assignments] = await Promise.all([
+        listApiKeysByOwner(userId),
+        repo.keyAssignments.listByUser(userId),
+      ])
+
+      // For owned keys, fetch assignees
+      const ownKeyAssignments = await Promise.all(ownKeys.map(k => repo.keyAssignments.listByKey(k.id)))
+      const assigneeUserIds = new Set<string>()
+      for (const aList of ownKeyAssignments) {
+        for (const a of aList) assigneeUserIds.add(a.userId)
+      }
+      const assigneeNameMap = new Map<string, string>()
+      if (assigneeUserIds.size > 0) {
+        const assigneeUsers = await Promise.all([...assigneeUserIds].map(id => repo.users.getById(id)))
+        for (const u of assigneeUsers) {
+          if (u) assigneeNameMap.set(u.id, u.name)
+        }
+      }
+
+      const result = ownKeys.map((k, i) => {
+        const json = keyToJson(k, undefined, true)
+        const assignees = ownKeyAssignments[i]!.map(a => ({
+          user_id: a.userId,
+          user_name: assigneeNameMap.get(a.userId) ?? null,
+        }))
+        return { ...json, assignees }
+      })
+
+      if (assignments.length > 0) {
+        const assignedKeys = await Promise.all(assignments.map(a => getApiKeyById(a.keyId)))
+        const ownerIds = [...new Set(assignedKeys.filter(Boolean).map(k => k!.ownerId).filter(Boolean))] as string[]
+        const ownerMap = new Map<string, string>()
+        await Promise.all(ownerIds.map(async (id) => {
+          const user = await repo.users.getById(id)
+          if (user) ownerMap.set(id, user.name)
+        }))
+        for (const k of assignedKeys) {
+          if (k && !ownKeys.some(o => o.id === k.id)) {
+            result.push({ ...keyToJson(k, k.ownerId ? ownerMap.get(k.ownerId) : undefined, false), assignees: [] })
+          }
+        }
+      }
+
+      return result
     }
 
     // Legacy API key user (no owner): return only the caller's own key
@@ -183,6 +245,7 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
         headers: { "Content-Type": "application/json" },
       })
     }
+    await getRepo().keyAssignments.deleteByKey(params.id)
     return { ok: true }
   })
 
@@ -204,6 +267,67 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
       failures += r.failures
     }
     return { searches, successes, failures, records }
+  })
+
+  // POST /api/keys/:id/assign - assign key to a user (admin only)
+  .post("/:id/assign", async (ctx) => {
+    const { params, body } = ctx
+    const authCtx = ctx as unknown as AuthCtx
+    if (!authCtx.isAdmin) {
+      return new Response(JSON.stringify({ error: "Admin only" }), { status: 403, headers: { "Content-Type": "application/json" } })
+    }
+    const { user_id } = body as { user_id?: string }
+    if (!user_id) {
+      return new Response(JSON.stringify({ error: "user_id is required" }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
+    const key = await getApiKeyById(params.id)
+    if (!key) {
+      return new Response(JSON.stringify({ error: "Key not found" }), { status: 404, headers: { "Content-Type": "application/json" } })
+    }
+    const repo = getRepo()
+    const user = await repo.users.getById(user_id)
+    if (!user) {
+      return new Response(JSON.stringify({ error: "User not found" }), { status: 404, headers: { "Content-Type": "application/json" } })
+    }
+    await repo.keyAssignments.assign(params.id, user_id, authCtx.userId || "admin")
+    return { ok: true }
+  })
+
+  // DELETE /api/keys/:id/assign/:userId - unassign key from a user (admin only)
+  .delete("/:id/assign/:userId", async (ctx) => {
+    const { params } = ctx
+    const authCtx = ctx as unknown as AuthCtx
+    if (!authCtx.isAdmin) {
+      return new Response(JSON.stringify({ error: "Admin only" }), { status: 403, headers: { "Content-Type": "application/json" } })
+    }
+    await getRepo().keyAssignments.unassign(params.id, params.userId)
+    return { ok: true }
+  })
+
+  // GET /api/keys/:id/assignments - list assignments for a key (admin or key owner)
+  .get("/:id/assignments", async (ctx) => {
+    const { params } = ctx
+    const authCtx = ctx as unknown as AuthCtx
+    if (!authCtx.isAdmin) {
+      // Allow key owner to see assignments
+      if (!authCtx.userId) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { "Content-Type": "application/json" } })
+      }
+      const key = await getApiKeyById(params.id)
+      if (!key || key.ownerId !== authCtx.userId) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { "Content-Type": "application/json" } })
+      }
+    }
+    const repo = getRepo()
+    const assignments = await repo.keyAssignments.listByKey(params.id)
+    const users = await Promise.all(assignments.map(a => repo.users.getById(a.userId)))
+    return assignments.map((a, i) => ({
+      key_id: a.keyId,
+      user_id: a.userId,
+      user_name: users[i]?.name ?? null,
+      assigned_by: a.assignedBy,
+      assigned_at: a.assignedAt,
+    }))
   })
 
   // POST /api/keys/:id/copy-web-search-from/:sourceId - copy web search config from another key

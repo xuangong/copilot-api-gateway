@@ -8,13 +8,13 @@ export function Layout({ title, children }: { title: string; children: string })
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${title} — Copilot Gateway</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <link href="https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism-okaidia.min.css" rel="stylesheet" />
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/prism.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-bash.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-toml.min.js"></script>
+  <script src="/cdn/tailwind.js"></script>
+  <script defer src="/cdn/alpine.js"></script>
+  <script src="/cdn/chart.js"></script>
+  <link href="/cdn/prism.css" rel="stylesheet" />
+  <script src="/cdn/prism.js"></script>
+  <script src="/cdn/prism-bash.js"></script>
+  <script src="/cdn/prism-toml.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -232,7 +232,7 @@ export function Layout({ title, children }: { title: string; children: string })
     }
 
     /* Inputs */
-    input[type="text"], input[type="password"] {
+    input[type="text"], input[type="password"], input[type="email"] {
       background: var(--input-bg);
       border: 1px solid var(--input-border);
       border-radius: 10px;

@@ -9,6 +9,8 @@ import type {
   GitHubRepo,
   InviteCode,
   InviteCodeRepo,
+  KeyAssignment,
+  KeyAssignmentRepo,
   LatencyRecord,
   LatencyRepo,
   Repo,
@@ -333,31 +335,39 @@ class SqliteUserRepo implements UserRepo {
   constructor(private db: Database) {}
 
   async create(user: User): Promise<void> {
-    this.db.query("INSERT INTO users (id, name, created_at, disabled, last_login_at, user_key) VALUES (?, ?, ?, ?, ?, ?)").run(user.id, user.name, user.createdAt, user.disabled ? 1 : 0, user.lastLoginAt ?? null, user.userKey ?? null)
+    this.db.query("INSERT INTO users (id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(user.id, user.name, user.email ?? null, user.avatarUrl ?? null, user.createdAt, user.disabled ? 1 : 0, user.lastLoginAt ?? null, user.userKey ?? null, user.passwordHash ?? null)
   }
 
   async getById(id: string): Promise<User | null> {
-    const row = this.db.query<any, [string]>("SELECT id, name, created_at, disabled, last_login_at, user_key FROM users WHERE id = ?").get(id)
-    return row ? { id: row.id, name: row.name, createdAt: row.created_at, disabled: row.disabled === 1, lastLoginAt: row.last_login_at ?? undefined, userKey: row.user_key ?? undefined } : null
+    const row = this.db.query<any, [string]>("SELECT id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash FROM users WHERE id = ?").get(id)
+    return row ? { id: row.id, name: row.name, email: row.email ?? undefined, avatarUrl: row.avatar_url ?? undefined, createdAt: row.created_at, disabled: row.disabled === 1, lastLoginAt: row.last_login_at ?? undefined, userKey: row.user_key ?? undefined, passwordHash: row.password_hash ?? undefined } : null
   }
 
   async findByKey(userKey: string): Promise<User | null> {
-    const row = this.db.query<any, [string]>("SELECT id, name, created_at, disabled, last_login_at, user_key FROM users WHERE user_key = ?").get(userKey)
-    return row ? { id: row.id, name: row.name, createdAt: row.created_at, disabled: row.disabled === 1, lastLoginAt: row.last_login_at ?? undefined, userKey: row.user_key ?? undefined } : null
+    const row = this.db.query<any, [string]>("SELECT id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash FROM users WHERE user_key = ?").get(userKey)
+    return row ? { id: row.id, name: row.name, email: row.email ?? undefined, avatarUrl: row.avatar_url ?? undefined, createdAt: row.created_at, disabled: row.disabled === 1, lastLoginAt: row.last_login_at ?? undefined, userKey: row.user_key ?? undefined, passwordHash: row.password_hash ?? undefined } : null
+  }
+
+  async findByEmail(email: string): Promise<User | null> {
+    const row = this.db.query<any, [string]>("SELECT id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash FROM users WHERE email = ?").get(email)
+    return row ? { id: row.id, name: row.name, email: row.email ?? undefined, avatarUrl: row.avatar_url ?? undefined, createdAt: row.created_at, disabled: row.disabled === 1, lastLoginAt: row.last_login_at ?? undefined, userKey: row.user_key ?? undefined, passwordHash: row.password_hash ?? undefined } : null
   }
 
   async list(): Promise<User[]> {
-    return this.db.query<any, []>("SELECT id, name, created_at, disabled, last_login_at, user_key FROM users ORDER BY created_at").all()
-      .map((r: any) => ({ id: r.id, name: r.name, createdAt: r.created_at, disabled: r.disabled === 1, lastLoginAt: r.last_login_at ?? undefined, userKey: r.user_key ?? undefined }))
+    return this.db.query<any, []>("SELECT id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash FROM users ORDER BY created_at").all()
+      .map((r: any) => ({ id: r.id, name: r.name, email: r.email ?? undefined, avatarUrl: r.avatar_url ?? undefined, createdAt: r.created_at, disabled: r.disabled === 1, lastLoginAt: r.last_login_at ?? undefined, userKey: r.user_key ?? undefined, passwordHash: r.password_hash ?? undefined }))
   }
 
-  async update(id: string, fields: Partial<Pick<User, "name" | "disabled" | "lastLoginAt" | "userKey">>): Promise<void> {
+  async update(id: string, fields: Partial<Pick<User, "name" | "email" | "avatarUrl" | "disabled" | "lastLoginAt" | "userKey" | "passwordHash">>): Promise<void> {
     const sets: string[] = []
     const binds: any[] = []
     if (fields.name !== undefined) { sets.push("name = ?"); binds.push(fields.name) }
+    if (fields.email !== undefined) { sets.push("email = ?"); binds.push(fields.email) }
+    if (fields.avatarUrl !== undefined) { sets.push("avatar_url = ?"); binds.push(fields.avatarUrl) }
     if (fields.disabled !== undefined) { sets.push("disabled = ?"); binds.push(fields.disabled ? 1 : 0) }
     if (fields.lastLoginAt !== undefined) { sets.push("last_login_at = ?"); binds.push(fields.lastLoginAt) }
     if (fields.userKey !== undefined) { sets.push("user_key = ?"); binds.push(fields.userKey) }
+    if (fields.passwordHash !== undefined) { sets.push("password_hash = ?"); binds.push(fields.passwordHash) }
     if (sets.length === 0) return
     binds.push(id)
     this.db.query(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).run(...binds)
@@ -372,17 +382,17 @@ class SqliteInviteCodeRepo implements InviteCodeRepo {
   constructor(private db: Database) {}
 
   async create(code: InviteCode): Promise<void> {
-    this.db.query("INSERT INTO invite_codes (id, code, name, created_at, used_at, used_by) VALUES (?, ?, ?, ?, ?, ?)").run(code.id, code.code, code.name, code.createdAt, code.usedAt ?? null, code.usedBy ?? null)
+    this.db.query("INSERT INTO invite_codes (id, code, name, email, created_at, used_at, used_by) VALUES (?, ?, ?, ?, ?, ?, ?)").run(code.id, code.code, code.name, code.email ?? null, code.createdAt, code.usedAt ?? null, code.usedBy ?? null)
   }
 
   async findByCode(code: string): Promise<InviteCode | null> {
-    const row = this.db.query<any, [string]>("SELECT id, code, name, created_at, used_at, used_by FROM invite_codes WHERE code = ?").get(code)
-    return row ? { id: row.id, code: row.code, name: row.name, createdAt: row.created_at, usedAt: row.used_at ?? undefined, usedBy: row.used_by ?? undefined } : null
+    const row = this.db.query<any, [string]>("SELECT id, code, name, email, created_at, used_at, used_by FROM invite_codes WHERE code = ?").get(code)
+    return row ? { id: row.id, code: row.code, name: row.name, email: row.email ?? undefined, createdAt: row.created_at, usedAt: row.used_at ?? undefined, usedBy: row.used_by ?? undefined } : null
   }
 
   async list(): Promise<InviteCode[]> {
-    return this.db.query<any, []>("SELECT id, code, name, created_at, used_at, used_by FROM invite_codes ORDER BY created_at DESC").all()
-      .map((r: any) => ({ id: r.id, code: r.code, name: r.name, createdAt: r.created_at, usedAt: r.used_at ?? undefined, usedBy: r.used_by ?? undefined }))
+    return this.db.query<any, []>("SELECT id, code, name, email, created_at, used_at, used_by FROM invite_codes ORDER BY created_at DESC").all()
+      .map((r: any) => ({ id: r.id, code: r.code, name: r.name, email: r.email ?? undefined, createdAt: r.created_at, usedAt: r.used_at ?? undefined, usedBy: r.used_by ?? undefined }))
   }
 
   async markUsed(id: string, userId: string): Promise<void> {
@@ -533,6 +543,31 @@ function migrateSchema(db: Database): void {
   if (!hasColumn(db, "api_keys", "web_search_tavily_key")) {
     db.exec("ALTER TABLE api_keys ADD COLUMN web_search_tavily_key TEXT")
   }
+  // Add email to users
+  if (!hasColumn(db, "users", "email")) {
+    db.exec("ALTER TABLE users ADD COLUMN email TEXT")
+    db.exec("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+  }
+  // Add avatar_url to users
+  if (!hasColumn(db, "users", "avatar_url")) {
+    db.exec("ALTER TABLE users ADD COLUMN avatar_url TEXT")
+  }
+  // Add password_hash to users
+  if (!hasColumn(db, "users", "password_hash")) {
+    db.exec("ALTER TABLE users ADD COLUMN password_hash TEXT")
+  }
+  // Add email to invite_codes (record which email was used to register)
+  if (!hasColumn(db, "invite_codes", "email")) {
+    db.exec("ALTER TABLE invite_codes ADD COLUMN email TEXT")
+  }
+  // Key assignments table
+  db.exec(`CREATE TABLE IF NOT EXISTS key_assignments (
+    key_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    assigned_by TEXT NOT NULL,
+    assigned_at TEXT NOT NULL,
+    PRIMARY KEY (key_id, user_id)
+  )`)
 }
 
 class SqliteClientPresenceRepo implements ClientPresenceRepo {
@@ -619,6 +654,36 @@ class SqliteWebSearchUsageRepo implements WebSearchUsageRepo {
   }
 }
 
+class SqliteKeyAssignmentRepo implements KeyAssignmentRepo {
+  constructor(private db: Database) {}
+
+  async assign(keyId: string, userId: string, assignedBy: string): Promise<void> {
+    this.db.query("INSERT OR REPLACE INTO key_assignments (key_id, user_id, assigned_by, assigned_at) VALUES (?, ?, ?, ?)").run(keyId, userId, assignedBy, new Date().toISOString())
+  }
+
+  async unassign(keyId: string, userId: string): Promise<void> {
+    this.db.query("DELETE FROM key_assignments WHERE key_id = ? AND user_id = ?").run(keyId, userId)
+  }
+
+  async listByUser(userId: string): Promise<KeyAssignment[]> {
+    return this.db.query<any, [string]>("SELECT key_id, user_id, assigned_by, assigned_at FROM key_assignments WHERE user_id = ?").all(userId)
+      .map((r: any) => ({ keyId: r.key_id, userId: r.user_id, assignedBy: r.assigned_by, assignedAt: r.assigned_at }))
+  }
+
+  async listByKey(keyId: string): Promise<KeyAssignment[]> {
+    return this.db.query<any, [string]>("SELECT key_id, user_id, assigned_by, assigned_at FROM key_assignments WHERE key_id = ?").all(keyId)
+      .map((r: any) => ({ keyId: r.key_id, userId: r.user_id, assignedBy: r.assigned_by, assignedAt: r.assigned_at }))
+  }
+
+  async deleteByKey(keyId: string): Promise<void> {
+    this.db.query("DELETE FROM key_assignments WHERE key_id = ?").run(keyId)
+  }
+
+  async deleteByUser(userId: string): Promise<void> {
+    this.db.query("DELETE FROM key_assignments WHERE user_id = ?").run(userId)
+  }
+}
+
 export class SqliteRepo implements Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -630,6 +695,7 @@ export class SqliteRepo implements Repo {
   sessions: SessionRepo
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo
+  keyAssignments: KeyAssignmentRepo
 
   constructor(db: Database) {
     db.exec(INIT_SQL)
@@ -644,6 +710,7 @@ export class SqliteRepo implements Repo {
     this.sessions = new SqliteSessionRepo(db)
     this.presence = new SqliteClientPresenceRepo(db)
     this.webSearchUsage = new SqliteWebSearchUsageRepo(db)
+    this.keyAssignments = new SqliteKeyAssignmentRepo(db)
   }
 }
 

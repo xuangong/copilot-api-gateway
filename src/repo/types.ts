@@ -42,16 +42,20 @@ export interface UsageRecord {
 export interface User {
   id: string
   name: string
+  email?: string
+  avatarUrl?: string
   createdAt: string
   disabled: boolean
   lastLoginAt?: string
   userKey?: string
+  passwordHash?: string
 }
 
 export interface InviteCode {
   id: string
   code: string
   name: string
+  email?: string
   createdAt: string
   usedAt?: string
   usedBy?: string
@@ -146,8 +150,9 @@ export interface UserRepo {
   create(user: User): Promise<void>
   getById(id: string): Promise<User | null>
   findByKey(userKey: string): Promise<User | null>
+  findByEmail(email: string): Promise<User | null>
   list(): Promise<User[]>
-  update(id: string, fields: Partial<Pick<User, "name" | "disabled" | "lastLoginAt" | "userKey">>): Promise<void>
+  update(id: string, fields: Partial<Pick<User, "name" | "email" | "avatarUrl" | "disabled" | "lastLoginAt" | "userKey" | "passwordHash">>): Promise<void>
   delete(id: string): Promise<void>
 }
 
@@ -199,6 +204,22 @@ export interface WebSearchUsageRepo {
   deleteAll(): Promise<void>
 }
 
+export interface KeyAssignment {
+  keyId: string
+  userId: string
+  assignedBy: string
+  assignedAt: string
+}
+
+export interface KeyAssignmentRepo {
+  assign(keyId: string, userId: string, assignedBy: string): Promise<void>
+  unassign(keyId: string, userId: string): Promise<void>
+  listByUser(userId: string): Promise<KeyAssignment[]>
+  listByKey(keyId: string): Promise<KeyAssignment[]>
+  deleteByKey(keyId: string): Promise<void>
+  deleteByUser(userId: string): Promise<void>
+}
+
 export interface Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -210,4 +231,5 @@ export interface Repo {
   sessions: SessionRepo
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo
+  keyAssignments: KeyAssignmentRepo
 }

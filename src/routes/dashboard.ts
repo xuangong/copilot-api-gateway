@@ -22,10 +22,35 @@ interface ExportPayload {
   }
 }
 
-/** Get key IDs for the current user (for scoping usage/latency queries) */
+/** Get key IDs for the current user (owned + assigned, for scoping usage/latency queries) */
 async function getUserKeyIds(userId: string): Promise<string[]> {
-  const keys = await getRepo().apiKeys.listByOwner(userId)
-  return keys.map(k => k.id)
+  const repo = getRepo()
+  const [ownKeys, assignments] = await Promise.all([
+    repo.apiKeys.listByOwner(userId),
+    repo.keyAssignments.listByUser(userId),
+  ])
+  const ids = new Set(ownKeys.map(k => k.id))
+  for (const a of assignments) ids.add(a.keyId)
+  return [...ids]
+}
+
+/** Get all keys accessible to the current user (owned + assigned, for name resolution) */
+async function getUserKeys(userId: string): Promise<ApiKey[]> {
+  const repo = getRepo()
+  const [ownKeys, assignments] = await Promise.all([
+    repo.apiKeys.listByOwner(userId),
+    repo.keyAssignments.listByUser(userId),
+  ])
+  const keyMap = new Map(ownKeys.map(k => [k.id, k]))
+  if (assignments.length > 0) {
+    const assignedKeys = await Promise.all(
+      assignments.filter(a => !keyMap.has(a.keyId)).map(a => repo.apiKeys.getById(a.keyId))
+    )
+    for (const k of assignedKeys) {
+      if (k) keyMap.set(k.id, k)
+    }
+  }
+  return [...keyMap.values()]
 }
 
 export const dashboardRoute = new Elysia({ prefix: "/api" })
@@ -81,10 +106,10 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
       queryOpts = { keyId, start, end }
       keys = await repo.apiKeys.list()
     } else if (userId) {
-      const userKeyIds = await getUserKeyIds(userId)
-      if (userKeyIds.length === 0) return []
-      queryOpts = { keyIds: userKeyIds, start, end }
-      keys = await repo.apiKeys.listByOwner(userId)
+      const userKeys = await getUserKeys(userId)
+      if (userKeys.length === 0) return []
+      queryOpts = { keyIds: userKeys.map(k => k.id), start, end }
+      keys = userKeys
     } else {
       queryOpts = { keyId, start, end }
       keys = await repo.apiKeys.list()
@@ -143,10 +168,10 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
       queryOpts = { keyId, start, end }
       keys = await repo.apiKeys.list()
     } else if (userId) {
-      const userKeyIds = await getUserKeyIds(userId)
-      if (userKeyIds.length === 0) return []
-      queryOpts = { keyIds: userKeyIds, start, end }
-      keys = await repo.apiKeys.listByOwner(userId)
+      const userKeys = await getUserKeys(userId)
+      if (userKeys.length === 0) return []
+      queryOpts = { keyIds: userKeys.map(k => k.id), start, end }
+      keys = userKeys
     } else {
       queryOpts = { keyId, start, end }
       keys = await repo.apiKeys.list()

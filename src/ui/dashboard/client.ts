@@ -25,6 +25,15 @@ export function dashboardAssets(): string {
     <div class="toast-container" id="toastContainer"></div>
 
     <script>
+    function getCookie(name) {
+      const m = document.cookie.match('(?:^|;\\\\s*)' + name + '=([^;]*)');
+      return m ? decodeURIComponent(m[1]) : '';
+    }
+
+    function getUserAvatar() {
+      return getCookie('user_avatar') || localStorage.getItem('userAvatar') || '';
+    }
+
     function showToast(message, type) {
       type = type || 'error';
       const container = document.getElementById('toastContainer');
@@ -215,6 +224,7 @@ export function dashboardAssets(): string {
       authKey: '',
       isAdmin,
       isUser,
+      userId: localStorage.getItem('userId') || '',
       tab: initTab,
       meLoaded: false,
       githubAccounts: [],
@@ -401,13 +411,49 @@ export function dashboardAssets(): string {
 
         init() {
           if (this._initialized) return;
-          this.authKey = localStorage.getItem('authKey') || '';
-          if (!this.authKey) {
+
+          // Cookie-based auth: check session via /auth/login
+          this._initialized = true;
+          this.checkSession();
+        },
+
+        async checkSession() {
+          try {
+            const resp = await fetch('/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({}),
+              credentials: 'same-origin',
+            });
+            if (resp.status === 401) {
+              window.location.href = '/';
+              return;
+            }
+            const data = await resp.json();
+            if (!data.ok) {
+              window.location.href = '/';
+              return;
+            }
+            // Check if role changed since page load — if so, reload to recompute TABS
+            const prevAdmin = localStorage.getItem('isAdmin') === '1';
+            const prevUser = localStorage.getItem('isUser') === '1';
+            // Update local state from session data
+            this.isAdmin = !!data.isAdmin;
+            this.isUser = !!data.isUser;
+            localStorage.setItem('isAdmin', data.isAdmin ? '1' : '0');
+            localStorage.setItem('isUser', data.isUser ? '1' : '0');
+            if (data.userId) localStorage.setItem('userId', data.userId);
+            if (data.userName) localStorage.setItem('userName', data.userName);
+            if (data.email) localStorage.setItem('userEmail', data.email);
+            if (data.avatarUrl) localStorage.setItem('userAvatar', data.avatarUrl);
+            if (prevAdmin !== !!data.isAdmin || prevUser !== !!data.isUser) {
+              window.location.reload();
+              return;
+            }
+          } catch {
             window.location.href = '/';
             return;
           }
-
-          this._initialized = true;
 
           this.loadModels();
 
@@ -473,7 +519,7 @@ export function dashboardAssets(): string {
           });
         },
 
-        authHeaders() { return { 'x-api-key': this.authKey }; },
+        authHeaders() { return {}; },
 
         _switchId: 0,
 
@@ -524,7 +570,7 @@ export function dashboardAssets(): string {
         async loadModels(retries) {
           retries = retries || 0;
           try {
-            const resp = await fetch('/api/models', { headers: this.authHeaders() });
+            const resp = await fetch('/api/models', { credentials: 'same-origin' });
             if (!resp.ok) throw new Error('models fetch failed: ' + resp.status);
             const { data } = await resp.json();
 
@@ -558,7 +604,7 @@ export function dashboardAssets(): string {
 
           async loadMe() {
             try {
-              const resp = await fetch('/auth/me', { headers: this.authHeaders() });
+              const resp = await fetch('/auth/me', { credentials: 'same-origin' });
               if (resp.status === 401) {
                 this.logout('Session expired, please log in again');
                 return;
@@ -578,7 +624,7 @@ export function dashboardAssets(): string {
 
           async loadUsage() {
             try {
-              const resp = await fetch('/api/copilot-quota', { headers: this.authHeaders() });
+              const resp = await fetch('/api/copilot-quota', { credentials: 'same-origin' });
               if (resp.status === 401) {
                 // GitHub token expired, not auth issue — don't kick to login
                 this.usageError = true;
@@ -607,7 +653,7 @@ export function dashboardAssets(): string {
           async startGithubAuth() {
             this.deviceFlow.loading = true;
             try {
-              const resp = await fetch('/auth/github', { headers: this.authHeaders() });
+              const resp = await fetch('/auth/github', { credentials: 'same-origin' });
               if (resp.status === 401) {
                 this.logout('Session expired, please log in again');
                 return;
@@ -634,7 +680,7 @@ export function dashboardAssets(): string {
               try {
                 const resp = await fetch('/auth/github/poll', {
                   method: 'POST',
-                  headers: { ...this.authHeaders(), 'Content-Type': 'application/json' },
+                  headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
                   body: JSON.stringify({ device_code: this.deviceFlow.deviceCode }),
                 });
                 if (resp.status === 401) {
@@ -673,7 +719,7 @@ export function dashboardAssets(): string {
           async disconnectGithub(userId, login) {
             if (!confirm('Disconnect @' + login + '? The stored token will be deleted.')) return;
             try {
-              const resp = await fetch('/auth/github/' + userId, { method: 'DELETE', headers: this.authHeaders() });
+              const resp = await fetch('/auth/github/' + userId, { method: 'DELETE', credentials: 'same-origin' });
               if (resp.status === 401) {
                 this.logout('Session expired, please log in again');
                 return;
@@ -700,7 +746,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/auth/github/switch', {
                 method: 'POST',
-                headers: { ...this.authHeaders(), 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
                 body: JSON.stringify({ user_id: userId }),
               });
               if (resp.status === 401) {
@@ -721,7 +767,7 @@ export function dashboardAssets(): string {
           async loadKeys() {
             this.keysLoading = true;
             try {
-              const resp = await fetch('/api/keys', { headers: this.authHeaders() });
+              const resp = await fetch('/api/keys', { credentials: 'same-origin' });
               if (resp.status === 401) {
                 this.logout('Session expired, please log in again');
                 return;
@@ -746,7 +792,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/api/keys', {
                 method: 'POST',
-                headers: { ...this.authHeaders(), 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
                 body: JSON.stringify({ name }),
               });
               if (resp.status === 401) {
@@ -772,7 +818,7 @@ export function dashboardAssets(): string {
             if (!confirm('Delete key "' + name + '"? This cannot be undone.')) return;
             this.keyDeleting = id;
             try {
-              const resp = await fetch('/api/keys/' + id, { method: 'DELETE', headers: this.authHeaders() });
+              const resp = await fetch('/api/keys/' + id, { method: 'DELETE', credentials: 'same-origin' });
               if (resp.status === 401) {
                 this.logout('Session expired, please log in again');
                 return;
@@ -793,7 +839,7 @@ export function dashboardAssets(): string {
             if (!confirm('Rotate key "' + name + '"? The old key will stop working immediately.')) return;
             this.keyRotating = id;
             try {
-              const resp = await fetch('/api/keys/' + id + '/rotate', { method: 'POST', headers: this.authHeaders() });
+              const resp = await fetch('/api/keys/' + id + '/rotate', { method: 'POST', credentials: 'same-origin' });
               if (resp.status === 401) {
                 this.logout('Session expired, please log in again');
                 return;
@@ -817,7 +863,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/api/keys/' + id, {
                 method: 'PATCH',
-                headers: { ...this.authHeaders(), 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
                 body: JSON.stringify({ name: newName }),
               });
               if (resp.status === 401) {
@@ -865,7 +911,7 @@ export function dashboardAssets(): string {
             this.tokenLoading = true;
             try {
               const { start, end } = computeTimeRange(this.tokenRange, this.tokenWeekOffset);
-              const resp = await fetch('/api/token-usage?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { headers: this.authHeaders() });
+              const resp = await fetch('/api/token-usage?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { credentials: 'same-origin' });
               if (resp.status === 401) {
                 this.logout('Session expired, please log in again');
                 return;
@@ -1105,7 +1151,7 @@ export function dashboardAssets(): string {
             this.latencyLoading = true;
             try {
               const { start, end } = computeTimeRange(this.latencyRange, this.latencyWeekOffset);
-              const resp = await fetch('/api/latency?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { headers: this.authHeaders() });
+              const resp = await fetch('/api/latency?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { credentials: 'same-origin' });
               if (resp.status === 401) {
                 this.logout('Session expired, please log in again');
                 return;
@@ -1340,7 +1386,7 @@ export function dashboardAssets(): string {
           async exportData() {
             this.exportLoading = true;
             try {
-              const resp = await fetch('/api/export', { headers: this.authHeaders() });
+              const resp = await fetch('/api/export', { credentials: 'same-origin' });
               if (resp.status === 401) {
                 this.logout('Session expired, please log in again');
                 return;
@@ -1406,7 +1452,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/api/import', {
                 method: 'POST',
-                headers: { ...this.authHeaders(), 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
                 body: JSON.stringify({ mode: this.importMode, data: this.importData }),
               });
               if (resp.status === 401) {
@@ -1434,7 +1480,7 @@ export function dashboardAssets(): string {
           async loadInviteCodes() {
             this.inviteCodesLoading = true;
             try {
-              const resp = await fetch('/auth/admin/invite-codes', { headers: this.authHeaders() });
+              const resp = await fetch('/auth/admin/invite-codes', { credentials: 'same-origin' });
               if (resp.ok) this.inviteCodes = await resp.json();
             } catch (e) {
               console.error('loadInviteCodes:', e);
@@ -1450,7 +1496,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/auth/admin/invite-codes', {
                 method: 'POST',
-                headers: { ...this.authHeaders(), 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
                 body: JSON.stringify({ name }),
               });
               if (resp.ok) {
@@ -1469,7 +1515,7 @@ export function dashboardAssets(): string {
           async deleteInviteCode(id) {
             if (!confirm('Delete this invite code?')) return;
             try {
-              await fetch('/auth/admin/invite-codes/' + id, { method: 'DELETE', headers: this.authHeaders() });
+              await fetch('/auth/admin/invite-codes/' + id, { method: 'DELETE', credentials: 'same-origin' });
               await this.loadInviteCodes();
             } catch (e) {
               console.error('deleteInviteCode:', e);
@@ -1480,13 +1526,86 @@ export function dashboardAssets(): string {
           async loadAdminUsers() {
             this.adminUsersLoading = true;
             try {
-              const resp = await fetch('/auth/admin/users', { headers: this.authHeaders() });
+              const resp = await fetch('/auth/admin/users', { credentials: 'same-origin' });
               if (resp.ok) this.adminUsers = await resp.json();
             } catch (e) {
               console.error('loadAdminUsers:', e);
             } finally {
               this.adminUsersLoading = false;
             }
+          },
+
+          // === Key Assignments ===
+          assignModalUserId: null,
+          assignModalUserName: '',
+          assignModalKeys: [],       // [{id, name, assigned}]
+          assignModalLoading: false,
+
+          async openAssignModal(userId, userName) {
+            this.assignModalUserId = userId;
+            this.assignModalUserName = userName;
+            this.assignModalLoading = true;
+            this.assignModalKeys = [];
+            try {
+              // Load admin's own keys and the user's current assignments
+              const [keysResp, ...assignResps] = await Promise.all([
+                fetch('/api/keys', { credentials: 'same-origin' }),
+              ]);
+              if (!keysResp.ok) return;
+              const allKeys = await keysResp.json();
+              // Only show keys owned by the current admin, exclude keys owned by the target user
+              const ownKeys = allKeys.filter(k => k.is_owner !== false && k.owner_id !== userId);
+
+              // Load assignments for each key to check which are assigned to this user
+              const assignments = await Promise.all(ownKeys.map(async (k) => {
+                const resp = await fetch('/api/keys/' + k.id + '/assignments', { credentials: 'same-origin' });
+                if (!resp.ok) return [];
+                return resp.json();
+              }));
+
+              this.assignModalKeys = ownKeys.map((k, i) => ({
+                id: k.id,
+                name: k.name,
+                assigned: assignments[i].some(a => a.user_id === userId),
+              }));
+            } catch (e) {
+              console.error('openAssignModal:', e);
+            } finally {
+              this.assignModalLoading = false;
+            }
+          },
+
+          async toggleAssignment(keyId, assigned) {
+            try {
+              if (assigned) {
+                // Unassign
+                await fetch('/api/keys/' + keyId + '/assign/' + this.assignModalUserId, {
+                  method: 'DELETE', credentials: 'same-origin',
+                });
+              } else {
+                // Assign
+                await fetch('/api/keys/' + keyId + '/assign', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'same-origin',
+                  body: JSON.stringify({ user_id: this.assignModalUserId }),
+                });
+              }
+              // Update local state
+              const k = this.assignModalKeys.find(k => k.id === keyId);
+              if (k) k.assigned = !assigned;
+            } catch (e) {
+              console.error('toggleAssignment:', e);
+              showToast('Failed to update assignment', 'error');
+            }
+          },
+
+          closeAssignModal() {
+            this.assignModalUserId = null;
+            this.assignModalUserName = '';
+            this.assignModalKeys = [];
+            // Refresh user list to update assigned count
+            this.loadAdminUsers();
           },
 
           // === Quota ===
@@ -1504,7 +1623,7 @@ export function dashboardAssets(): string {
             const todayStart = now.toISOString().slice(0, 10) + 'T00';
             const tomorrowStart = new Date(now.getTime() + 86400000).toISOString().slice(0, 10) + 'T00';
             try {
-              const resp = await fetch('/api/token-usage?start=' + encodeURIComponent(todayStart) + '&end=' + encodeURIComponent(tomorrowStart), { headers: this.authHeaders() });
+              const resp = await fetch('/api/token-usage?start=' + encodeURIComponent(todayStart) + '&end=' + encodeURIComponent(tomorrowStart), { credentials: 'same-origin' });
               if (resp.ok) {
                 const data = await resp.json();
                 // Filter by keyId
@@ -1548,7 +1667,7 @@ export function dashboardAssets(): string {
               };
               const resp = await fetch('/api/keys/' + this.selectedKeyId, {
                 method: 'PATCH',
-                headers: { ...this.authHeaders(), 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
                 body: JSON.stringify(body),
               });
               if (resp.status === 401) {
@@ -1580,7 +1699,7 @@ export function dashboardAssets(): string {
             };
             this.wsUsage = { searches: 0, successes: 0, failures: 0 };
             // Load usage stats
-            fetch('/api/keys/' + keyId + '/web-search-usage', { headers: this.authHeaders() })
+            fetch('/api/keys/' + keyId + '/web-search-usage', { credentials: 'same-origin' })
               .then(r => r.ok ? r.json() : null)
               .then(data => {
                 if (data) this.wsUsage = { searches: data.searches, successes: data.successes, failures: data.failures };
@@ -1610,7 +1729,7 @@ export function dashboardAssets(): string {
               if (this.wsEditTavily) body.web_search_tavily_key = this.wsEditTavily;
               const resp = await fetch('/api/keys/' + this.selectedKeyId, {
                 method: 'PATCH',
-                headers: { ...this.authHeaders(), 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
                 body: JSON.stringify(body),
               });
               if (resp.status === 401) { this.logout('Session expired, please log in again'); return; }
@@ -1633,7 +1752,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/api/keys/' + this.selectedKeyId + '/copy-web-search-from/' + this.wsCopySourceId, {
                 method: 'POST',
-                headers: this.authHeaders(),
+                credentials: 'same-origin',
               });
               if (resp.status === 401) { this.logout('Session expired, please log in again'); return; }
               if (resp.ok) {
@@ -1652,7 +1771,7 @@ export function dashboardAssets(): string {
           async loadRelays() {
             this.relaysLoading = true;
             try {
-              const resp = await fetch('/api/relays', { headers: this.authHeaders() });
+              const resp = await fetch('/api/relays', { credentials: 'same-origin' });
               if (resp.status === 401) {
                 this.logout('Session expired, please log in again');
                 return;
@@ -1668,7 +1787,7 @@ export function dashboardAssets(): string {
           async toggleUser(id, disabled) {
             const action = disabled ? 'enable' : 'disable';
             try {
-              await fetch('/auth/admin/users/' + id + '/' + action, { method: 'POST', headers: this.authHeaders() });
+              await fetch('/auth/admin/users/' + id + '/' + action, { method: 'POST', credentials: 'same-origin' });
               await this.loadAdminUsers();
             } catch (e) {
               console.error('toggleUser:', e);
@@ -1678,7 +1797,7 @@ export function dashboardAssets(): string {
           async deleteUser(id, name) {
             if (!confirm('Delete user "' + name + '"? All their API keys, GitHub accounts, and sessions will be removed.')) return;
             try {
-              await fetch('/auth/admin/users/' + id, { method: 'DELETE', headers: this.authHeaders() });
+              await fetch('/auth/admin/users/' + id, { method: 'DELETE', credentials: 'same-origin' });
               await this.loadAdminUsers();
             } catch (e) {
               console.error('deleteUser:', e);
@@ -1689,14 +1808,22 @@ export function dashboardAssets(): string {
             if (reason) {
               showToast(reason, 'warning');
             }
-            localStorage.removeItem('authKey');
+            // Clear session cookie
+            document.cookie = 'session_token=; Path=/; Max-Age=0';
+            document.cookie = 'user_avatar=; Path=/; Max-Age=0';
+            document.cookie = 'user_name=; Path=/; Max-Age=0';
             localStorage.removeItem('isAdmin');
             localStorage.removeItem('isUser');
             localStorage.removeItem('userId');
             localStorage.removeItem('userName');
+            localStorage.removeItem('userEmail');
+            localStorage.removeItem('userAvatar');
+            // Also clean up legacy keys
+            localStorage.removeItem('authKey');
             localStorage.removeItem('login_key_id');
             localStorage.removeItem('login_key_name');
             localStorage.removeItem('login_key_hint');
+            fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
             setTimeout(() => { window.location.href = '/'; }, reason ? 1500 : 0);
           },
 
