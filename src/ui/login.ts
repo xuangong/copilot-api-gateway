@@ -6,6 +6,19 @@ export function LoginPage(): string {
     title: "Login",
     children: `
       <div class="min-h-screen flex items-center justify-center p-4">
+        <div class="fixed top-4 right-4 flex items-center gap-2 z-50">
+          <button onclick="toggleLang()" class="theme-toggle w-8 h-8">
+            <span class="text-xs font-semibold" id="__lang_btn"></span>
+          </button>
+          <button onclick="toggleTheme()" class="theme-toggle w-8 h-8">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="5"/>
+              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+            </svg>
+          </button>
+        </div>
+        <script>document.getElementById('__lang_btn').textContent = window.__lang === 'zh' ? 'EN' : '中';</script>
+
         <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-accent-violet/5 rounded-full blur-[120px] pointer-events-none"></div>
 
         <div class="w-full max-w-md" x-data="loginApp()">
@@ -24,7 +37,7 @@ export function LoginPage(): string {
                   <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
                   <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" opacity="0.75"/>
                 </svg>
-                <span class="text-sm">Signing in...</span>
+                <span class="text-sm" x-text="t('common.signingIn')"></span>
               </div>
             </div>
           </template>
@@ -42,8 +55,8 @@ export function LoginPage(): string {
                 <path d="M2 12l10 5 10-5"/>
               </svg>
             </div>
-            <h1 class="text-2xl font-semibold tracking-tight text-themed">Copilot Gateway</h1>
-            <p class="text-sm text-themed-dim mt-2 font-light">Sign in to continue</p>
+            <h1 class="text-2xl font-semibold tracking-tight text-themed" x-text="t('login.title')"></h1>
+            <p class="text-sm text-themed-dim mt-2 font-light" x-text="t('login.subtitle')"></p>
           </div>
 
           <div class="glass-card p-8 glow-primary animate-in delay-1">
@@ -55,12 +68,12 @@ export function LoginPage(): string {
                 <path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" opacity="0.8"/>
                 <path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" opacity="0.7"/>
               </svg>
-              Sign in with Google
+              <span x-text="t('login.googleSignIn')"></span>
             </a>
 
             <div class="flex items-center gap-3 my-5">
               <div class="flex-1 h-px" style="background: var(--glass-border)"></div>
-              <span class="text-xs text-themed-dim">or</span>
+              <span class="text-xs text-themed-dim" x-text="t('common.or')"></span>
               <div class="flex-1 h-px" style="background: var(--glass-border)"></div>
             </div>
 
@@ -69,19 +82,18 @@ export function LoginPage(): string {
                 <rect x="2" y="4" width="20" height="16" rx="2"/>
                 <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
               </svg>
-              Sign in with Email
+              <span x-text="t('login.emailSignIn')"></span>
             </button>
 
             <div class="mt-5 pt-5 border-t border-themed-border">
               <button @click="step='invite'" class="w-full text-center text-sm text-themed-dim hover:text-accent-violet transition-colors cursor-pointer bg-transparent border-0">
-                I have an invite code
+                <span x-text="t('login.inviteCodeLink')"></span>
               </button>
             </div>
           </div>
 
           <div class="text-center mt-6 animate-in delay-2">
-            <p class="text-xs text-themed-dim">
-              Powered by GitHub Copilot API
+            <p class="text-xs text-themed-dim" x-text="t('common.poweredBy')">
             </p>
           </div>
           </div>
@@ -98,18 +110,18 @@ export function LoginPage(): string {
                 <line x1="15" y1="12" x2="3" y2="12"/>
               </svg>
             </div>
-            <h1 class="text-2xl font-semibold tracking-tight text-themed">Enter Invite Code</h1>
-            <p class="text-sm text-themed-dim mt-2 font-light">New users need an invite code to register</p>
+            <h1 class="text-2xl font-semibold tracking-tight text-themed" x-text="t('login.inviteTitle')"></h1>
+            <p class="text-sm text-themed-dim mt-2 font-light" x-text="t('login.inviteSubtitle')"></p>
           </div>
 
           <div class="glass-card p-8 glow-primary animate-in delay-1">
             <form @submit.prevent="validateInvite()" class="space-y-5">
               <div>
-                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest">Invite Code</label>
+                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.inviteCode')"></label>
                 <input
                   type="text"
                   x-model="inviteCode"
-                  placeholder="Enter your invite code..."
+                  :placeholder="t('login.invitePlaceholder')"
                   autofocus
                   required
                   style="text-transform: uppercase; letter-spacing: 0.1em"
@@ -118,19 +130,19 @@ export function LoginPage(): string {
 
               <template x-if="inviteValid">
                 <div class="p-3 rounded-lg bg-accent-teal/10 border border-accent-teal/20 text-accent-teal text-sm">
-                  Welcome, <span x-text="inviteName" class="font-medium"></span>! Click below to sign in and activate your account.
+                  <span x-text="t('login.inviteWelcome')"></span><span x-text="inviteName" class="font-medium"></span><span x-text="t('login.inviteActivate')"></span>
                 </div>
               </template>
 
               <template x-if="!inviteValid">
                 <button type="submit" class="btn-primary w-full" :disabled="loading || !inviteCode.trim()" style="background: var(--accent-teal, #2dd4bf)">
-                  <span x-show="!loading">Verify Code</span>
+                  <span x-show="!loading" x-text="t('login.verifyCode')"></span>
                   <span x-show="loading" class="flex items-center justify-center gap-2">
                     <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
                       <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
                       <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" opacity="0.75"/>
                     </svg>
-                    Verifying...
+                    <span x-text="t('common.verifying')"></span>
                   </span>
                 </button>
               </template>
@@ -144,12 +156,12 @@ export function LoginPage(): string {
                     <path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" opacity="0.8"/>
                     <path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" opacity="0.7"/>
                   </svg>
-                  Sign in with Google to activate
+                  <span x-text="t('login.googleActivate')"></span>
                 </a>
 
                 <div class="flex items-center gap-3 my-4">
                   <div class="flex-1 h-px" style="background: var(--glass-border)"></div>
-                  <span class="text-xs text-themed-dim">or</span>
+                  <span class="text-xs text-themed-dim" x-text="t('common.or')"></span>
                   <div class="flex-1 h-px" style="background: var(--glass-border)"></div>
                 </div>
 
@@ -158,13 +170,13 @@ export function LoginPage(): string {
                     <rect x="2" y="4" width="20" height="16" rx="2"/>
                     <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
                   </svg>
-                  Register with Email
+                  <span x-text="t('login.emailRegister')"></span>
                 </button>
                 </div>
               </template>
 
               <button type="button" @click="step='login'; error=''; inviteValid=false; inviteCode=''" class="w-full text-center text-xs text-themed-dim hover:text-themed-secondary transition-colors cursor-pointer bg-transparent border-0">
-                Back to login
+                <span x-text="t('common.backToLogin')"></span>
               </button>
             </form>
 
@@ -185,28 +197,28 @@ export function LoginPage(): string {
                 <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
               </svg>
             </div>
-            <h1 class="text-2xl font-semibold tracking-tight text-themed">Sign in with Email</h1>
-            <p class="text-sm text-themed-dim mt-2 font-light">Enter your email and password</p>
+            <h1 class="text-2xl font-semibold tracking-tight text-themed" x-text="t('login.emailTitle')"></h1>
+            <p class="text-sm text-themed-dim mt-2 font-light" x-text="t('login.emailSubtitle')"></p>
           </div>
 
           <div class="glass-card p-8 glow-primary animate-in delay-1">
             <form @submit.prevent="emailLogin()" class="space-y-5">
               <div>
-                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest">Email</label>
-                <input type="email" x-model="loginEmail" placeholder="you@example.com" autofocus required />
+                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.email')"></label>
+                <input type="email" x-model="loginEmail" :placeholder="t('login.emailPlaceholder')" autofocus required />
               </div>
               <div>
-                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest">Password</label>
-                <input type="password" x-model="loginPassword" placeholder="Enter your password" required />
+                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.password')"></label>
+                <input type="password" x-model="loginPassword" :placeholder="t('login.passwordPlaceholder')" required />
               </div>
               <button type="submit" class="btn-primary w-full" :disabled="loading || !loginEmail.trim() || !loginPassword">
-                <span x-show="!loading">Sign In</span>
+                <span x-show="!loading" x-text="t('login.signIn')"></span>
                 <span x-show="loading" class="flex items-center justify-center gap-2">
                   <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
                     <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" opacity="0.75"/>
                   </svg>
-                  Signing in...
+                  <span x-text="t('common.signingIn')"></span>
                 </span>
               </button>
             </form>
@@ -216,7 +228,7 @@ export function LoginPage(): string {
             </div>
 
             <button type="button" @click="step='login'; error=''; loginEmail=''; loginPassword=''" class="w-full text-center text-xs text-themed-dim hover:text-themed-secondary transition-colors cursor-pointer bg-transparent border-0 mt-5">
-              Back to login
+              <span x-text="t('common.backToLogin')"></span>
             </button>
           </div>
           </div>
@@ -232,33 +244,33 @@ export function LoginPage(): string {
                 <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
               </svg>
             </div>
-            <h1 class="text-2xl font-semibold tracking-tight text-themed">Register with Email</h1>
-            <p class="text-sm text-themed-dim mt-2 font-light">Create your account with a verification code</p>
+            <h1 class="text-2xl font-semibold tracking-tight text-themed" x-text="t('login.registerTitle')"></h1>
+            <p class="text-sm text-themed-dim mt-2 font-light" x-text="t('login.registerSubtitle')"></p>
           </div>
 
           <div class="glass-card p-8 glow-primary animate-in delay-1">
             <template x-if="!codeSent">
             <form @submit.prevent="sendRegisterCode()" class="space-y-5">
               <div>
-                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest">Name</label>
+                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.name')"></label>
                 <input type="text" :value="regName" disabled style="opacity: 0.7; cursor: not-allowed" />
               </div>
               <div>
-                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest">Email</label>
-                <input type="email" x-model="regEmail" placeholder="you@example.com" autofocus required />
+                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.email')"></label>
+                <input type="email" x-model="regEmail" :placeholder="t('login.emailPlaceholder')" autofocus required />
               </div>
               <div>
-                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest">Password</label>
-                <input type="password" x-model="regPassword" placeholder="At least 6 characters" minlength="6" required />
+                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.password')"></label>
+                <input type="password" x-model="regPassword" :placeholder="t('login.passwordHint')" minlength="6" required />
               </div>
               <button type="submit" class="btn-primary w-full" :disabled="loading || !regEmail.trim() || !regName.trim() || regPassword.length < 6" style="background: var(--accent-teal, #2dd4bf)">
-                <span x-show="!loading">Send Verification Code</span>
+                <span x-show="!loading" x-text="t('login.sendCode')"></span>
                 <span x-show="loading" class="flex items-center justify-center gap-2">
                   <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
                     <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" opacity="0.75"/>
                   </svg>
-                  Sending...
+                  <span x-text="t('common.sending')"></span>
                 </span>
               </button>
             </form>
@@ -267,22 +279,22 @@ export function LoginPage(): string {
             <template x-if="codeSent">
             <form @submit.prevent="verifyRegisterCode()" class="space-y-5">
               <div class="p-3 rounded-lg bg-accent-teal/10 border border-accent-teal/20 text-sm text-themed-secondary">
-                Code sent to <span class="font-medium" x-text="regEmail"></span>
+                <span x-text="t('login.codeSentTo')"></span><span class="font-medium" x-text="regEmail"></span>
               </div>
               <div>
-                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest">Verification Code</label>
+                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.verificationCode')"></label>
                 <input type="text" x-model="regCode" placeholder="000000" maxlength="6" required
                   style="text-align: center; letter-spacing: 0.3em; font-size: 1.25rem; font-weight: 600"
                   @input="regCode = regCode.replace(/[^0-9]/g, '')" />
               </div>
               <button type="submit" class="btn-primary w-full" :disabled="loading || regCode.length !== 6" style="background: var(--accent-teal, #2dd4bf)">
-                <span x-show="!loading">Create Account</span>
+                <span x-show="!loading" x-text="t('login.createAccount')"></span>
                 <span x-show="loading" class="flex items-center justify-center gap-2">
                   <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
                     <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" opacity="0.75"/>
                   </svg>
-                  Creating...
+                  <span x-text="t('common.creating')"></span>
                 </span>
               </button>
             </form>
@@ -293,7 +305,7 @@ export function LoginPage(): string {
             </div>
 
             <button type="button" @click="step='invite'; error=''; codeSent=false; regCode=''" class="w-full text-center text-xs text-themed-dim hover:text-themed-secondary transition-colors cursor-pointer bg-transparent border-0 mt-5">
-              Back
+              <span x-text="t('common.back')"></span>
             </button>
           </div>
           </div>
@@ -366,10 +378,10 @@ export function LoginPage(): string {
                   this.inviteValid = true;
                   this.inviteName = data.name;
                 } else {
-                  this.error = 'Invalid or already used invite code';
+                  this.error = t('login.invalidInvite');
                 }
               } catch {
-                this.error = 'Connection error';
+                this.error = t('common.connectionError');
               } finally {
                 this.loading = false;
               }
@@ -389,10 +401,10 @@ export function LoginPage(): string {
                 if (data.ok) {
                   window.location.href = data.redirect || '/dashboard';
                 } else {
-                  this.error = data.error || 'Login failed';
+                  this.error = data.error || t('login.loginFailed');
                 }
               } catch {
-                this.error = 'Connection error';
+                this.error = t('common.connectionError');
               } finally {
                 this.loading = false;
               }
@@ -416,10 +428,10 @@ export function LoginPage(): string {
                 if (data.ok) {
                   this.codeSent = true;
                 } else {
-                  this.error = data.error || 'Failed to send code';
+                  this.error = data.error || t('login.failedSendCode');
                 }
               } catch {
-                this.error = 'Connection error';
+                this.error = t('common.connectionError');
               } finally {
                 this.loading = false;
               }
@@ -441,10 +453,10 @@ export function LoginPage(): string {
                 if (data.ok) {
                   window.location.href = data.redirect || '/dashboard';
                 } else {
-                  this.error = data.error || 'Verification failed';
+                  this.error = data.error || t('login.verificationFailed');
                 }
               } catch {
-                this.error = 'Connection error';
+                this.error = t('common.connectionError');
               } finally {
                 this.loading = false;
               }

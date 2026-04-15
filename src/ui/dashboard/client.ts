@@ -143,8 +143,8 @@ export function dashboardAssets(): string {
       const sunday = new Date(monday);
       sunday.setDate(monday.getDate() + 6);
       const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      if (weekOffset === 0) return 'This Week (' + fmt(monday) + ' \\u2013 ' + fmt(sunday) + ')';
-      if (weekOffset === -1) return 'Last Week (' + fmt(monday) + ' \\u2013 ' + fmt(sunday) + ')';
+      if (weekOffset === 0) return t('dash.thisWeek') + ' (' + fmt(monday) + ' \\u2013 ' + fmt(sunday) + ')';
+      if (weekOffset === -1) return t('dash.lastWeek') + ' (' + fmt(monday) + ' \\u2013 ' + fmt(sunday) + ')';
       return fmt(monday) + ' \\u2013 ' + fmt(sunday);
     }
 
@@ -350,13 +350,13 @@ export function dashboardAssets(): string {
         const date = new Date(dateStr);
         const diff = this.now - date;
         const seconds = Math.floor(diff / 1000);
-        if (seconds < 60) return 'just now';
+        if (seconds < 60) return t('dash.timeJustNow');
         const minutes = Math.floor(seconds / 60);
-        if (minutes < 60) return minutes + (minutes === 1 ? ' minute ago' : ' minutes ago');
+        if (minutes < 60) return t(minutes === 1 ? 'dash.timeMinuteAgo' : 'dash.timeMinutesAgo', { n: minutes });
         const hours = Math.floor(minutes / 60);
-        if (hours < 24) return hours + (hours === 1 ? ' hour ago' : ' hours ago');
+        if (hours < 24) return t(hours === 1 ? 'dash.timeHourAgo' : 'dash.timeHoursAgo', { n: hours });
         const days = Math.floor(hours / 24);
-        if (days <= 30) return days + (days === 1 ? ' day ago' : ' days ago');
+        if (days <= 30) return t(days === 1 ? 'dash.timeDayAgo' : 'dash.timeDaysAgo', { n: days });
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       },
 
@@ -606,7 +606,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/auth/me', { credentials: 'same-origin' });
               if (resp.status === 401) {
-                this.logout('Session expired, please log in again');
+                this.logout(t('dash.sessionExpired'));
                 return;
               }
               if (!resp.ok) {
@@ -628,7 +628,7 @@ export function dashboardAssets(): string {
               if (resp.status === 401) {
                 // GitHub token expired, not auth issue — don't kick to login
                 this.usageError = true;
-                showToast('Copilot token expired. Try reconnecting your GitHub account.', 'warning');
+                showToast(t('dash.copilotTokenExpired'), 'warning');
                 return;
               }
               if (resp.ok) {
@@ -655,7 +655,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/auth/github', { credentials: 'same-origin' });
               if (resp.status === 401) {
-                this.logout('Session expired, please log in again');
+                this.logout(t('dash.sessionExpired'));
                 return;
               }
               const d = await resp.json();
@@ -684,7 +684,7 @@ export function dashboardAssets(): string {
                   body: JSON.stringify({ device_code: this.deviceFlow.deviceCode }),
                 });
                 if (resp.status === 401) {
-                  this.logout('Session expired, please log in again');
+                  this.logout(t('dash.sessionExpired'));
                   return;
                 }
                 const d = await resp.json();
@@ -698,7 +698,7 @@ export function dashboardAssets(): string {
                   this.pollDeviceFlow((d.interval || interval) + 1);
                 } else if (d.status === 'error') {
                   this.cancelDeviceFlow();
-                  alert('Authorization failed: ' + d.error);
+                  alert(t('dash.authFailed', { error: d.error }));
                 }
               } catch (e) {
                 console.error('poll:', e);
@@ -717,11 +717,11 @@ export function dashboardAssets(): string {
           },
 
           async disconnectGithub(userId, login) {
-            if (!confirm('Disconnect @' + login + '? The stored token will be deleted.')) return;
+            if (!confirm(t('dash.confirmDisconnectGithub', { login }))) return;
             try {
               const resp = await fetch('/auth/github/' + userId, { method: 'DELETE', credentials: 'same-origin' });
               if (resp.status === 401) {
-                this.logout('Session expired, please log in again');
+                this.logout(t('dash.sessionExpired'));
                 return;
               }
               if (resp.ok) {
@@ -735,7 +735,7 @@ export function dashboardAssets(): string {
                   await this.loadUsage();
                 }
               } else {
-                alert('Failed to disconnect GitHub account');
+                alert(t('dash.failedDisconnectGithub'));
               }
             } catch (e) {
               console.error('disconnectGithub:', e);
@@ -750,14 +750,14 @@ export function dashboardAssets(): string {
                 body: JSON.stringify({ user_id: userId }),
               });
               if (resp.status === 401) {
-                this.logout('Session expired, please log in again');
+                this.logout(t('dash.sessionExpired'));
                 return;
               }
               if (resp.ok) {
                 await this.loadMe();
                 await this.loadUsage();
               } else {
-                alert('Failed to switch account');
+                alert(t('dash.failedSwitchAccount'));
               }
             } catch (e) {
               console.error('switchGithubAccount:', e);
@@ -769,7 +769,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/api/keys', { credentials: 'same-origin' });
               if (resp.status === 401) {
-                this.logout('Session expired, please log in again');
+                this.logout(t('dash.sessionExpired'));
                 return;
               }
               if (resp.ok) {
@@ -796,7 +796,7 @@ export function dashboardAssets(): string {
                 body: JSON.stringify({ name }),
               });
               if (resp.status === 401) {
-                this.logout('Session expired, please log in again');
+                this.logout(t('dash.sessionExpired'));
                 return;
               }
               if (resp.ok) {
@@ -805,7 +805,7 @@ export function dashboardAssets(): string {
                 this.newKeyName = '';
                 await this.loadKeys();
               } else {
-                alert((await resp.json()).error || 'Failed to create key');
+                alert((await resp.json()).error || t('dash.failedCreateKey'));
               }
             } catch (e) {
               console.error('createKey:', e);
@@ -815,18 +815,18 @@ export function dashboardAssets(): string {
           },
 
           async deleteKeyById(id, name) {
-            if (!confirm('Delete key "' + name + '"? This cannot be undone.')) return;
+            if (!confirm(t('dash.confirmDeleteKeyNamed', { name }))) return;
             this.keyDeleting = id;
             try {
               const resp = await fetch('/api/keys/' + id, { method: 'DELETE', credentials: 'same-origin' });
               if (resp.status === 401) {
-                this.logout('Session expired, please log in again');
+                this.logout(t('dash.sessionExpired'));
                 return;
               }
               if (resp.ok) {
                 await this.loadKeys();
               } else {
-                alert((await resp.json()).error || 'Failed to delete key');
+                alert((await resp.json()).error || t('dash.failedDeleteKey'));
               }
             } catch (e) {
               console.error('deleteKey:', e);
@@ -836,19 +836,19 @@ export function dashboardAssets(): string {
           },
 
           async rotateKeyById(id, name) {
-            if (!confirm('Rotate key "' + name + '"? The old key will stop working immediately.')) return;
+            if (!confirm(t('dash.confirmRotateKey', { name }))) return;
             this.keyRotating = id;
             try {
               const resp = await fetch('/api/keys/' + id + '/rotate', { method: 'POST', credentials: 'same-origin' });
               if (resp.status === 401) {
-                this.logout('Session expired, please log in again');
+                this.logout(t('dash.sessionExpired'));
                 return;
               }
               if (resp.ok) {
                 this.selectedKeyId = id;
                 await this.loadKeys();
               } else {
-                alert((await resp.json()).error || 'Failed to rotate key');
+                alert((await resp.json()).error || t('dash.failedRotateKey'));
               }
             } catch (e) {
               console.error('rotateKey:', e);
@@ -858,7 +858,7 @@ export function dashboardAssets(): string {
           },
 
           async renameKeyById(id, currentName) {
-            const newName = prompt('Rename key:', currentName);
+            const newName = prompt(t('dash.renameKey'), currentName);
             if (!newName || newName === currentName) return;
             try {
               const resp = await fetch('/api/keys/' + id, {
@@ -867,13 +867,13 @@ export function dashboardAssets(): string {
                 body: JSON.stringify({ name: newName }),
               });
               if (resp.status === 401) {
-                this.logout('Session expired, please log in again');
+                this.logout(t('dash.sessionExpired'));
                 return;
               }
               if (resp.ok) {
                 await this.loadKeys();
               } else {
-                alert((await resp.json()).error || 'Failed to rename key');
+                alert((await resp.json()).error || t('dash.failedRenameKey'));
               }
             } catch (e) {
               console.error('renameKey:', e);
@@ -913,7 +913,7 @@ export function dashboardAssets(): string {
               const { start, end } = computeTimeRange(this.tokenRange, this.tokenWeekOffset);
               const resp = await fetch('/api/token-usage?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { credentials: 'same-origin' });
               if (resp.status === 401) {
-                this.logout('Session expired, please log in again');
+                this.logout(t('dash.sessionExpired'));
                 return;
               }
               if (resp.ok) this.tokenData = await resp.json();
@@ -1153,7 +1153,7 @@ export function dashboardAssets(): string {
               const { start, end } = computeTimeRange(this.latencyRange, this.latencyWeekOffset);
               const resp = await fetch('/api/latency?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { credentials: 'same-origin' });
               if (resp.status === 401) {
-                this.logout('Session expired, please log in again');
+                this.logout(t('dash.sessionExpired'));
                 return;
               }
               if (resp.ok) this.latencyData = await resp.json();
@@ -1388,11 +1388,11 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/api/export', { credentials: 'same-origin' });
               if (resp.status === 401) {
-                this.logout('Session expired, please log in again');
+                this.logout(t('dash.sessionExpired'));
                 return;
               }
               if (!resp.ok) {
-                alert('Export failed: ' + (await resp.json()).error);
+                alert(t('dash.exportFailedWithError', { error: (await resp.json()).error }));
                 return;
               }
               const data = await resp.json();
@@ -1405,7 +1405,7 @@ export function dashboardAssets(): string {
               URL.revokeObjectURL(url);
             } catch (e) {
               console.error('exportData:', e);
-              alert('Export failed');
+              alert(t('dash.exportFailed'));
             } finally {
               this.exportLoading = false;
             }
@@ -1423,7 +1423,7 @@ export function dashboardAssets(): string {
               try {
                 const json = JSON.parse(e.target.result);
                 if (!json.data) {
-                  alert('Invalid export file: missing data field');
+                  alert(t('dash.invalidExportFile'));
                   this.importFile = null;
                   return;
                 }
@@ -1436,7 +1436,7 @@ export function dashboardAssets(): string {
                   usage: Array.isArray(json.data.usage) ? json.data.usage.length : 0,
                 };
               } catch {
-                alert('Invalid JSON file');
+                alert(t('dash.invalidJsonFile'));
                 this.importFile = null;
               }
             };
@@ -1446,7 +1446,7 @@ export function dashboardAssets(): string {
           async doImport() {
             if (!this.importData) return;
             if (this.importMode === 'replace') {
-              if (!confirm('This will DELETE ALL existing data and replace it with the imported file. Are you sure?')) return;
+              if (!confirm(t('dash.confirmReplaceImport'))) return;
             }
             this.importLoading = true;
             try {
@@ -1456,21 +1456,21 @@ export function dashboardAssets(): string {
                 body: JSON.stringify({ mode: this.importMode, data: this.importData }),
               });
               if (resp.status === 401) {
-                this.logout('Session expired, please log in again');
+                this.logout(t('dash.sessionExpired'));
                 return;
               }
               const result = await resp.json();
               if (resp.ok) {
-                alert('Import complete: ' + result.imported.apiKeys + ' keys, ' + result.imported.githubAccounts + ' accounts, ' + result.imported.usage + ' usage records');
+                alert(t('dash.importComplete', { keys: result.imported.apiKeys, accounts: result.imported.githubAccounts, usage: result.imported.usage }));
                 this.importFile = null;
                 this.importData = null;
                 this.importPreview = { ready: false, exportedAt: null, apiKeys: 0, githubAccounts: 0, usage: 0 };
               } else {
-                alert('Import failed: ' + (result.error || 'Unknown error'));
+                alert(t('dash.importFailedWithError', { error: result.error || 'Unknown error' }));
               }
             } catch (e) {
               console.error('doImport:', e);
-              alert('Import failed');
+              alert(t('dash.importFailed'));
             } finally {
               this.importLoading = false;
             }
@@ -1503,7 +1503,7 @@ export function dashboardAssets(): string {
                 this.newInviteName = '';
                 await this.loadInviteCodes();
               } else {
-                alert((await resp.json()).error || 'Failed');
+                alert((await resp.json()).error || t('dash.failedGeneric'));
               }
             } catch (e) {
               console.error('createInviteCode:', e);
@@ -1513,7 +1513,7 @@ export function dashboardAssets(): string {
           },
 
           async deleteInviteCode(id) {
-            if (!confirm('Delete this invite code?')) return;
+            if (!confirm(t('dash.confirmDeleteInvite'))) return;
             try {
               await fetch('/auth/admin/invite-codes/' + id, { method: 'DELETE', credentials: 'same-origin' });
               await this.loadInviteCodes();
@@ -1596,7 +1596,7 @@ export function dashboardAssets(): string {
               if (k) k.assigned = !assigned;
             } catch (e) {
               console.error('toggleAssignment:', e);
-              showToast('Failed to update assignment', 'error');
+              showToast(t('dash.failedUpdateAssignment'), 'error');
             }
           },
 
@@ -1671,7 +1671,7 @@ export function dashboardAssets(): string {
                 body: JSON.stringify(body),
               });
               if (resp.status === 401) {
-                this.logout('Session expired, please log in again');
+                this.logout(t('dash.sessionExpired'));
                 return;
               }
               if (resp.ok) {
@@ -1679,7 +1679,7 @@ export function dashboardAssets(): string {
                 this.quotaEditing = false;
                 await this.loadQuotaUsage(this.selectedKeyId);
               } else {
-                alert((await resp.json()).error || 'Failed to update quota');
+                alert((await resp.json()).error || t('dash.failedUpdateQuota'));
               }
             } catch (e) {
               console.error('saveQuota:', e);
@@ -1732,13 +1732,13 @@ export function dashboardAssets(): string {
                 headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
                 body: JSON.stringify(body),
               });
-              if (resp.status === 401) { this.logout('Session expired, please log in again'); return; }
+              if (resp.status === 401) { this.logout(t('dash.sessionExpired')); return; }
               if (resp.ok) {
                 await this.loadKeys();
                 this.wsEditing = false;
                 this.loadWebSearchConfig(this.selectedKeyId);
               } else {
-                alert((await resp.json()).error || 'Failed to update web search config');
+                alert((await resp.json()).error || t('dash.failedUpdateWebSearch'));
               }
             } catch (e) {
               console.error('saveWebSearch:', e);
@@ -1754,13 +1754,13 @@ export function dashboardAssets(): string {
                 method: 'POST',
                 credentials: 'same-origin',
               });
-              if (resp.status === 401) { this.logout('Session expired, please log in again'); return; }
+              if (resp.status === 401) { this.logout(t('dash.sessionExpired')); return; }
               if (resp.ok) {
                 await this.loadKeys();
                 this.wsEditing = false;
                 this.loadWebSearchConfig(this.selectedKeyId);
               } else {
-                alert((await resp.json()).error || 'Failed to copy web search config');
+                alert((await resp.json()).error || t('dash.failedCopyWebSearch'));
               }
             } catch (e) {
               console.error('copyWebSearchFrom:', e);
@@ -1773,7 +1773,7 @@ export function dashboardAssets(): string {
             try {
               const resp = await fetch('/api/relays', { credentials: 'same-origin' });
               if (resp.status === 401) {
-                this.logout('Session expired, please log in again');
+                this.logout(t('dash.sessionExpired'));
                 return;
               }
               if (resp.ok) this.relays = await resp.json();
@@ -1795,7 +1795,7 @@ export function dashboardAssets(): string {
           },
 
           async deleteUser(id, name) {
-            if (!confirm('Delete user "' + name + '"? All their API keys, GitHub accounts, and sessions will be removed.')) return;
+            if (!confirm(t('dash.confirmDeleteUser', { name }))) return;
             try {
               await fetch('/auth/admin/users/' + id, { method: 'DELETE', credentials: 'same-origin' });
               await this.loadAdminUsers();

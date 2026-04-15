@@ -33,9 +33,10 @@ export function renderDashboardHeader(): string {
               <path d="M2 12l10 5 10-5" />
             </svg>
           </div>
-          <span class="font-semibold text-sm tracking-tight" style="color: var(--text-primary);">Copilot Gateway</span>
+          <span class="font-semibold text-sm tracking-tight" style="color: var(--text-primary);" x-text="t('dash.title')"></span>
         </div>
         <div class="flex items-center gap-3">
+          <button onclick="toggleLang()" class="theme-toggle"><span class="text-xs font-semibold" id="__lang_btn"></span></button><script>document.getElementById('__lang_btn').textContent = window.__lang === 'zh' ? 'EN' : '中';</script>
           <button onclick="toggleTheme(); if(window.dashboardApp && window.dashboardApp.onThemeChange) window.dashboardApp.onThemeChange();" class="theme-toggle" title="Toggle theme">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="5" />
@@ -60,12 +61,12 @@ export function renderDashboardHeader(): string {
               <template x-if="isAdmin">
                 <button @click="switchTab('settings'); userMenuOpen = false" class="w-full text-left px-4 py-2 text-sm text-themed-dim hover:text-themed hover:bg-surface-700 transition-colors cursor-pointer bg-transparent border-0">
                   <svg class="w-4 h-4 inline mr-2 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                  Settings
+                  <span x-text="t('dash.settings')"></span>
                 </button>
               </template>
               <button @click="logout()" class="w-full text-left px-4 py-2 text-sm text-accent-red/80 hover:text-accent-red hover:bg-surface-700 transition-colors cursor-pointer bg-transparent border-0">
                 <svg class="w-4 h-4 inline mr-2 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                Sign out
+                <span x-text="t('dash.signOut')"></span>
               </button>
             </div>
           </div>
@@ -76,32 +77,32 @@ export function renderDashboardHeader(): string {
         <nav class="flex gap-1 bg-surface-800 rounded-lg p-0.5 overflow-x-auto scrollbar-hide">
           <template x-if="isAdmin || isUser">
             <button @click="switchTab('upstream')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
-              :class="tab === 'upstream' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
-              Upstream
+              :class="tab === 'upstream' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'"
+              x-text="t('dash.upstream')">
             </button>
           </template>
           <template x-if="isAdmin">
             <button @click="switchTab('users')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
-              :class="tab === 'users' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
-              Users
+              :class="tab === 'users' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'"
+              x-text="t('dash.users')">
             </button>
           </template>
           <button @click="switchTab('keys')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
-            :class="tab === 'keys' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
-            API Keys
+            :class="tab === 'keys' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'"
+            x-text="t('dash.apiKeys')">
           </button>
           <button @click="switchTab('usage')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
-            :class="tab === 'usage' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
-            Usage
+            :class="tab === 'usage' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'"
+            x-text="t('dash.usage')">
           </button>
           <button @click="switchTab('latency')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
-            :class="tab === 'latency' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
-            Latency
+            :class="tab === 'latency' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'"
+            x-text="t('dash.latency')">
           </button>
           <template x-if="isAdmin || isUser">
             <button @click="switchTab('relays')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
-              :class="tab === 'relays' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">
-              Relays
+              :class="tab === 'relays' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'"
+              x-text="t('dash.relays')">
             </button>
           </template>
         </nav>
@@ -115,17 +116,17 @@ export function renderUsersTab(): string {
     <div x-show="tab === 'users'" x-cloak>
       <!-- Invite Codes -->
       <div class="glass-card p-6 mb-6">
-        <h2 class="text-lg font-semibold text-themed mb-4">Invite Codes</h2>
+        <h2 class="text-lg font-semibold text-themed mb-4" x-text="t('dash.inviteCodes')"></h2>
         <div class="flex flex-col sm:flex-row gap-3 mb-4">
-          <input type="text" x-model="newInviteName" placeholder="User name for invite..." class="flex-1" @keydown.enter="createInviteCode()" />
+          <input type="text" x-model="newInviteName" :placeholder="t('dash.invitePlaceholder')" class="flex-1" @keydown.enter="createInviteCode()" />
           <button @click="createInviteCode()" class="btn-primary text-sm" :disabled="inviteCreating || !newInviteName.trim()">
-            <span x-show="!inviteCreating">Create Invite</span>
-            <span x-show="inviteCreating">Creating...</span>
+            <span x-show="!inviteCreating" x-text="t('dash.createInvite')"></span>
+            <span x-show="inviteCreating" x-text="t('common.creating')"></span>
           </button>
         </div>
 
-        <div x-show="inviteCodesLoading" class="text-center py-4 text-themed-dim text-sm">Loading...</div>
-        <div x-show="!inviteCodesLoading && inviteCodes.length === 0" class="text-center py-4 text-themed-dim text-sm">No invite codes yet</div>
+        <div x-show="inviteCodesLoading" class="text-center py-4 text-themed-dim text-sm" x-text="t('common.loading')"></div>
+        <div x-show="!inviteCodesLoading && inviteCodes.length === 0" class="text-center py-4 text-themed-dim text-sm" x-text="t('dash.noInvites')"></div>
 
         <div x-show="!inviteCodesLoading && inviteCodes.length > 0" class="space-y-2">
           <template x-for="inv in inviteCodes" :key="inv.id">
@@ -136,7 +137,7 @@ export function renderUsersTab(): string {
                   <span class="px-2 py-0.5 rounded text-xs font-mono bg-accent-violet/10 text-accent-violet cursor-pointer" @click="copySnippet(inv.code, 'inv-' + inv.id)" x-text="inv.code"></span>
                 </template>
                 <template x-if="inv.usedAt">
-                  <span class="px-2 py-0.5 rounded text-xs bg-accent-teal/10 text-accent-teal">Used</span>
+                  <span class="px-2 py-0.5 rounded text-xs bg-accent-teal/10 text-accent-teal" x-text="t('dash.used')"></span>
                 </template>
               </div>
               <div class="flex items-center gap-3">
@@ -163,9 +164,9 @@ export function renderUsersTab(): string {
 
       <!-- Users List -->
       <div class="glass-card p-6">
-        <h2 class="text-lg font-semibold text-themed mb-4">Users</h2>
-        <div x-show="adminUsersLoading" class="text-center py-4 text-themed-dim text-sm">Loading...</div>
-        <div x-show="!adminUsersLoading && adminUsers.length === 0" class="text-center py-8 text-themed-dim text-sm">No users yet. Create an invite code above.</div>
+        <h2 class="text-lg font-semibold text-themed mb-4" x-text="t('dash.usersList')"></h2>
+        <div x-show="adminUsersLoading" class="text-center py-4 text-themed-dim text-sm" x-text="t('common.loading')"></div>
+        <div x-show="!adminUsersLoading && adminUsers.length === 0" class="text-center py-8 text-themed-dim text-sm" x-text="t('dash.noUsers')"></div>
 
         <div x-show="!adminUsersLoading && adminUsers.length > 0" class="space-y-2">
           <template x-for="u in adminUsers" :key="u.id">
@@ -175,7 +176,7 @@ export function renderUsersTab(): string {
                   <div class="flex items-center gap-2">
                     <span class="text-sm font-medium text-themed" x-text="u.name"></span>
                     <template x-if="u.disabled">
-                      <span class="px-1.5 py-0.5 rounded text-[10px] bg-accent-red/10 text-accent-red uppercase">Disabled</span>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] bg-accent-red/10 text-accent-red uppercase" x-text="t('dash.disabled')"></span>
                     </template>
                   </div>
                   <div class="flex items-center gap-3 mt-0.5">
@@ -192,9 +193,9 @@ export function renderUsersTab(): string {
                 </div>
               </div>
               <div class="flex items-center gap-2">
-                <template x-if="u.id !== userId"><button @click="openAssignModal(u.id, u.name)" class="btn-ghost text-xs">Assign Keys</button></template>
-                <button @click="toggleUser(u.id, u.disabled)" class="btn-ghost text-xs" x-text="u.disabled ? 'Enable' : 'Disable'"></button>
-                <button @click="deleteUser(u.id, u.name)" class="btn-ghost text-xs text-accent-red hover:bg-accent-red/10">Delete</button>
+                <template x-if="u.id !== userId"><button @click="openAssignModal(u.id, u.name)" class="btn-ghost text-xs" x-text="t('dash.assignKeys')"></button></template>
+                <button @click="toggleUser(u.id, u.disabled)" class="btn-ghost text-xs" x-text="u.disabled ? t('dash.enable') : t('dash.disable')"></button>
+                <button @click="deleteUser(u.id, u.name)" class="btn-ghost text-xs text-accent-red hover:bg-accent-red/10" x-text="t('dash.delete')"></button>
               </div>
             </div>
           </template>
@@ -206,14 +207,14 @@ export function renderUsersTab(): string {
         <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-in" @click.self="closeAssignModal()">
           <div style="background: var(--surface-900); border: 1px solid var(--glass-border); border-radius: 16px; box-shadow: var(--card-shadow), 0 24px 48px rgba(0,0,0,0.12);" class="p-5 max-w-sm w-full mx-4">
             <div class="flex items-center justify-between mb-4">
-              <h3 class="text-themed text-sm font-semibold">Assign Keys to <span class="text-accent-violet" x-text="assignModalUserName"></span></h3>
+              <h3 class="text-themed text-sm font-semibold" x-text="t('dash.assignKeysTo') + assignModalUserName"></h3>
               <button @click="closeAssignModal()" class="text-themed-dim hover:text-themed transition-colors">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
 
-            <div x-show="assignModalLoading" class="text-center py-6 text-themed-dim text-xs">Loading...</div>
-            <div x-show="!assignModalLoading && assignModalKeys.length === 0" class="text-center py-6 text-themed-dim text-xs">No keys available.</div>
+            <div x-show="assignModalLoading" class="text-center py-6 text-themed-dim text-xs" x-text="t('common.loading')"></div>
+            <div x-show="!assignModalLoading && assignModalKeys.length === 0" class="text-center py-6 text-themed-dim text-xs" x-text="t('dash.noKeysAvailable')"></div>
 
             <div x-show="!assignModalLoading && assignModalKeys.length > 0" class="max-h-64 overflow-y-auto" style="scrollbar-width: none;">
               <template x-for="k in assignModalKeys" :key="k.id">
@@ -232,7 +233,7 @@ export function renderUsersTab(): string {
 
             <div x-show="!assignModalLoading && assignModalKeys.length > 0" class="mt-4 flex items-center justify-between">
               <span class="text-[11px] text-themed-dim"><span class="text-accent-violet font-mono font-medium" x-text="assignModalKeys.filter(k => k.assigned).length"></span> / <span x-text="assignModalKeys.length"></span> assigned</span>
-              <button @click="closeAssignModal()" class="btn-primary !text-xs !py-1.5 !px-5 !rounded-lg">Done</button>
+              <button @click="closeAssignModal()" class="btn-primary !text-xs !py-1.5 !px-5 !rounded-lg" x-text="t('dash.done')"></button>
             </div>
           </div>
         </div>
@@ -248,11 +249,11 @@ export function renderUpstreamTab(): string {
         <template x-if="meLoaded && githubAccounts.length === 0">
           <div class="glass-card p-6 mb-8 glow-border animate-in flex items-center justify-between">
             <div>
-              <h3 class="text-themed font-medium mb-1">Connect GitHub Account</h3>
-              <p class="text-sm text-themed-secondary">Link your GitHub account to use Copilot API with your own token.</p>
+              <h3 class="text-themed font-medium mb-1" x-text="t('dash.connectGithub')"></h3>
+              <p class="text-sm text-themed-secondary" x-text="t('dash.connectGithubDesc')"></p>
             </div>
             <button @click="startGithubAuth()" class="btn-primary" :disabled="deviceFlow.loading">
-              <span x-show="!deviceFlow.loading">Connect GitHub</span>
+              <span x-show="!deviceFlow.loading" x-text="t('dash.connectGithubBtn')"></span>
               <span x-show="deviceFlow.loading" class="flex items-center gap-2">
                 <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
                   <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
@@ -267,15 +268,15 @@ export function renderUpstreamTab(): string {
         <template x-if="deviceFlow.userCode">
           <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in">
             <div class="glass-card p-8 max-w-md w-full mx-4 glow-primary">
-              <h3 class="text-themed text-lg font-semibold mb-2">GitHub Authorization</h3>
-              <p class="text-themed-secondary text-sm mb-6">Enter this code on GitHub to authorize:</p>
+              <h3 class="text-themed text-lg font-semibold mb-2" x-text="t('dash.githubAuth')"></h3>
+              <p class="text-themed-secondary text-sm mb-6" x-text="t('dash.githubAuthDesc')"></p>
               <div class="bg-surface-900 rounded-xl p-6 text-center mb-6 glow-border">
                 <code class="text-3xl font-mono font-bold text-accent-violet tracking-[0.3em]" x-text="deviceFlow.userCode"></code>
               </div>
               <p class="text-themed-dim text-xs text-center mb-2">
                 Visit <a :href="deviceFlow.verificationUri" class="text-accent-violet hover:underline" x-text="deviceFlow.verificationUri" target="_blank"></a>
               </p>
-              <a :href="deviceFlow.verificationUri" target="_blank" class="btn-primary w-full block text-center mb-4" @click="navigator.clipboard.writeText(deviceFlow.userCode)">Open GitHub</a>
+              <a :href="deviceFlow.verificationUri" target="_blank" class="btn-primary w-full block text-center mb-4" @click="navigator.clipboard.writeText(deviceFlow.userCode)" x-text="t('dash.openGithub')"></a>
               <div class="flex items-center justify-center gap-2 text-sm text-themed-dim">
                 <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
                   <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
@@ -283,7 +284,7 @@ export function renderUpstreamTab(): string {
                 </svg>
                 Waiting for authorization...
               </div>
-              <button @click="cancelDeviceFlow()" class="btn-ghost w-full mt-4">Cancel</button>
+              <button @click="cancelDeviceFlow()" class="btn-ghost w-full mt-4" x-text="t('dash.cancel')"></button>
             </div>
           </div>
         </template>
@@ -291,7 +292,7 @@ export function renderUpstreamTab(): string {
         <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
           <div class="glass-card p-6 hover-lift animate-in delay-1">
             <div class="flex items-center justify-between mb-4">
-              <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Premium Requests</span>
+              <span class="text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.premiumRequests')"></span>
               <div class="w-2 h-2 rounded-full status-pulse" :class="usageData ? (usagePercent > 90 ? 'bg-accent-red' : usagePercent > 70 ? 'bg-accent-amber' : 'bg-accent-teal') : 'bg-gray-600'"></div>
             </div>
             <template x-if="usageData">
@@ -315,13 +316,13 @@ export function renderUpstreamTab(): string {
               </div>
             </template>
             <template x-if="usageError">
-              <p class="text-sm" style="color: #e67e22;">Connect GitHub to view</p>
+              <p class="text-sm" style="color: #e67e22;" x-text="t('dash.connectGithubToView')"></p>
             </template>
           </div>
 
           <div class="glass-card p-6 hover-lift animate-in delay-2">
             <div class="flex items-center justify-between mb-4">
-              <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Chat Quota</span>
+              <span class="text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.chatQuota')"></span>
             </div>
             <template x-if="usageData">
               <div>
@@ -330,7 +331,7 @@ export function renderUpstreamTab(): string {
                   <span class="text-xs text-themed-dim" x-show="!usageData.quota_snapshots.chat.unlimited">remaining</span>
                   <span class="text-xs text-accent-teal" x-show="usageData.quota_snapshots.chat.unlimited">unlimited</span>
                 </div>
-                <p class="text-xs text-themed-dim">Plan: <span class="text-themed-secondary" x-text="usageData.copilot_plan"></span></p>
+                <p class="text-xs text-themed-dim"><span x-text="t('dash.plan')"></span><span class="text-themed-secondary" x-text="usageData.copilot_plan"></span></p>
               </div>
             </template>
             <template x-if="!usageData && !usageError">
@@ -340,13 +341,13 @@ export function renderUpstreamTab(): string {
               </div>
             </template>
             <template x-if="usageError">
-              <p class="text-sm" style="color: #e67e22;">Connect GitHub to view</p>
+              <p class="text-sm" style="color: #e67e22;" x-text="t('dash.connectGithubToView')"></p>
             </template>
           </div>
 
           <div class="glass-card p-6 hover-lift animate-in delay-3">
             <div class="flex items-center justify-between mb-4">
-              <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Completions</span>
+              <span class="text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.completions')"></span>
             </div>
             <template x-if="usageData">
               <div>
@@ -355,7 +356,7 @@ export function renderUpstreamTab(): string {
                   <span class="text-xs text-themed-dim" x-show="!usageData.quota_snapshots.completions.unlimited">remaining</span>
                   <span class="text-xs text-accent-teal" x-show="usageData.quota_snapshots.completions.unlimited">unlimited</span>
                 </div>
-                <p class="text-xs text-themed-dim">Code completions</p>
+                <p class="text-xs text-themed-dim" x-text="t('dash.codeCompletions')"></p>
               </div>
             </template>
             <template x-if="!usageData && !usageError">
@@ -365,7 +366,7 @@ export function renderUpstreamTab(): string {
               </div>
             </template>
             <template x-if="usageError">
-              <p class="text-sm" style="color: #e67e22;">Connect GitHub to view</p>
+              <p class="text-sm" style="color: #e67e22;" x-text="t('dash.connectGithubToView')"></p>
             </template>
           </div>
         </div>
@@ -373,7 +374,7 @@ export function renderUpstreamTab(): string {
         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div class="glass-card p-6 animate-in delay-4">
             <div class="flex items-center justify-between mb-4">
-              <h3 class="text-xs font-medium text-themed-dim uppercase tracking-widest">GitHub Accounts</h3>
+              <h3 class="text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.githubAccounts')"></h3>
               <template x-if="meLoaded && githubAccounts.length > 0">
                 <button @click="startGithubAuth()" class="btn-ghost text-xs" :disabled="deviceFlow.loading">
                   <span x-show="!deviceFlow.loading">+ Add</span>
@@ -399,7 +400,7 @@ export function renderUpstreamTab(): string {
               </div>
             </template>
             <template x-if="meLoaded && githubAccounts.length === 0">
-              <p class="text-sm text-themed-dim">No GitHub accounts connected</p>
+              <p class="text-sm text-themed-dim" x-text="t('dash.noGithubAccounts')"></p>
             </template>
             <template x-if="meLoaded && githubAccounts.length > 0">
               <div class="space-y-1">
@@ -423,8 +424,8 @@ export function renderUpstreamTab(): string {
                       </div>
                     </div>
                     <div class="flex items-center gap-2">
-                      <span x-show="!acct.token_valid" class="text-[10px] font-medium text-accent-red uppercase tracking-widest">Token Expired</span>
-                      <span x-show="acct.token_valid && acct.active" class="text-[10px] font-medium text-accent-teal uppercase tracking-widest">Active</span>
+                      <span x-show="!acct.token_valid" class="text-[10px] font-medium text-accent-red uppercase tracking-widest" x-text="t('dash.tokenExpired')"></span>
+                      <span x-show="acct.token_valid && acct.active" class="text-[10px] font-medium text-accent-teal uppercase tracking-widest" x-text="t('dash.active')"></span>
                       <button x-show="!(isAdmin && acct.owner_id)" @click.stop="disconnectGithub(acct.id, acct.login)" class="text-themed-dim hover:text-accent-red transition-colors p-1" title="Disconnect">
                         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <line x1="18" y1="6" x2="6" y2="18" />
@@ -470,7 +471,7 @@ export function renderKeysTab(): string {
     <div x-show="tab === 'keys'">
       <div class="glass-card p-6 mb-6 animate-in">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">API Keys</span>
+          <span class="text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.apiKeys')"></span>
           <div x-show="isAdmin || isUser" class="flex items-center gap-2">
             <input type="text" x-model="newKeyName" placeholder="Name" class="!text-xs !py-1.5 !px-3 !w-full sm:!w-32 !rounded-lg" @keydown.enter="createNewKey()" />
             <button @click="createNewKey()" class="btn-primary !text-xs !py-1.5 !px-3 !rounded-lg whitespace-nowrap" :disabled="!newKeyName.trim() || keyCreating">
@@ -488,7 +489,7 @@ export function renderKeysTab(): string {
 
         <div class="overflow-x-auto">
           <template x-if="keys.length === 0 && !keysLoading">
-            <p class="text-sm text-themed-dim py-4 text-center">No API keys yet. Create one above.</p>
+            <p class="text-sm text-themed-dim py-4 text-center" x-text="t('dash.noApiKeys')"></p>
           </template>
           <template x-if="keysLoading && keys.length === 0">
             <div class="space-y-3 py-2">
@@ -500,12 +501,12 @@ export function renderKeysTab(): string {
             <table class="w-full text-sm whitespace-nowrap">
               <thead>
                 <tr class="border-b border-white/5">
-                  <th class="text-left py-2 pr-4 pl-7 text-xs font-medium text-themed-dim uppercase tracking-widest">Name</th>
-                  <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest">Owner</th>
-                  <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest">Key</th>
-                  <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest hidden sm:table-cell">Created</th>
-                  <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest hidden sm:table-cell">Last Used</th>
-                  <th x-show="isAdmin || isUser" class="text-right py-2 pr-2 text-xs font-medium text-themed-dim uppercase tracking-widest">Actions</th>
+                  <th class="text-left py-2 pr-4 pl-7 text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.name')"></th>
+                  <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.owner')"></th>
+                  <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.key')"></th>
+                  <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest hidden sm:table-cell" x-text="t('dash.created')"></th>
+                  <th class="text-left py-2 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest hidden sm:table-cell" x-text="t('dash.lastUsed')"></th>
+                  <th x-show="isAdmin || isUser" class="text-right py-2 pr-2 text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.actions')"></th>
                 </tr>
               </thead>
               <tbody>
@@ -521,7 +522,7 @@ export function renderKeysTab(): string {
                     <td class="py-3 pr-4">
                       <span x-show="k.owner_name" class="text-xs text-themed-secondary" x-text="k.owner_name"></span>
                       <span x-show="!k.owner_name && k.is_owner !== false" class="text-xs text-themed-dim">&mdash;</span>
-                      <span x-show="k.is_owner === false" class="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-accent-violet/10 text-accent-violet">Shared</span>
+                      <span x-show="k.is_owner === false" class="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-accent-violet/10 text-accent-violet" x-text="t('dash.shared')"></span>
                       <template x-if="k.is_owner !== false && k.assignees && k.assignees.length > 0">
                         <span class="ml-1 text-[10px] text-themed-dim cursor-default" :title="k.assignees.map(a => a.user_name || 'Unknown').join(', ')">
                           <span class="px-1.5 py-0.5 rounded bg-accent-teal/10 text-accent-teal" x-text="'Shared: ' + k.assignees.length"></span>
@@ -536,7 +537,7 @@ export function renderKeysTab(): string {
                     </td>
                     <td class="py-3 pr-4 hidden sm:table-cell">
                       <span x-show="k.last_used_at" class="text-themed-dim text-xs cursor-default" :title="fullDateTime(k.last_used_at)" x-text="timeAgo(k.last_used_at)"></span>
-                      <span x-show="!k.last_used_at" class="text-themed-dim text-xs">Never</span>
+                      <span x-show="!k.last_used_at" class="text-themed-dim text-xs" x-text="t('dash.never')"></span>
                     </td>
                     <td class="py-3 pr-2 text-right">
                       <div class="flex items-center justify-end gap-1">
@@ -570,7 +571,7 @@ export function renderKeysTab(): string {
       <!-- Shared Users Panel (shown for owned keys with assignees) -->
       <template x-if="selectedKeyId && keys.find(k => k.id === selectedKeyId)?.is_owner !== false && keys.find(k => k.id === selectedKeyId)?.assignees?.length > 0">
         <div class="glass-card p-6 mb-6 animate-in delay-1">
-          <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Shared With</span>
+          <span class="text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.sharedWith')"></span>
           <div class="flex flex-wrap gap-2 mt-3">
             <template x-for="a in keys.find(k => k.id === selectedKeyId)?.assignees || []" :key="a.user_id">
               <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-accent-violet/10 text-accent-violet border border-accent-violet/20">
@@ -586,18 +587,18 @@ export function renderKeysTab(): string {
       <template x-if="selectedKeyId">
         <div class="glass-card p-6 mb-6 animate-in delay-1">
           <div class="flex items-center justify-between mb-4">
-            <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Daily Quota</span>
+            <span class="text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.dailyQuota')"></span>
             <div class="flex items-center gap-2">
               <template x-if="!quotaEditing">
-                <button @click="startEditQuota()" class="btn-ghost text-xs" x-show="(isAdmin || isUser) && keys.find(k => k.id === selectedKeyId)?.is_owner !== false">Edit</button>
+                <button @click="startEditQuota()" class="btn-ghost text-xs" x-show="(isAdmin || isUser) && keys.find(k => k.id === selectedKeyId)?.is_owner !== false" x-text="t('dash.edit')"></button>
               </template>
               <template x-if="quotaEditing">
                 <div class="flex items-center gap-2">
                   <button @click="saveQuota()" class="btn-primary !text-xs !py-1 !px-3" :disabled="quotaSaving">
-                    <span x-show="!quotaSaving">Save</span>
-                    <span x-show="quotaSaving">Saving...</span>
+                    <span x-show="!quotaSaving" x-text="t('dash.save')"></span>
+                    <span x-show="quotaSaving" x-text="t('dash.saving')"></span>
                   </button>
-                  <button @click="quotaEditing = false" class="btn-ghost text-xs">Cancel</button>
+                  <button @click="quotaEditing = false" class="btn-ghost text-xs" x-text="t('dash.cancel')"></button>
                 </div>
               </template>
             </div>
@@ -607,16 +608,16 @@ export function renderKeysTab(): string {
           <template x-if="quotaEditing">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div>
-                <label class="text-xs text-themed-dim block mb-1">Requests / Day</label>
+                <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.requestsPerDay')"></label>
                 <input type="number" x-model.number="quotaEditReq" min="0" placeholder="Unlimited"
                   class="!text-xs !py-1.5 !px-3 w-full !rounded-lg" />
-                <p class="text-[10px] text-themed-dim mt-1">Leave empty = unlimited</p>
+                <p class="text-[10px] text-themed-dim mt-1" x-text="t('dash.leaveEmptyUnlimited')"></p>
               </div>
               <div>
-                <label class="text-xs text-themed-dim block mb-1">Weighted Tokens / Day</label>
+                <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.weightedTokensPerDay')"></label>
                 <input type="number" x-model.number="quotaEditToken" min="0" placeholder="Unlimited"
                   class="!text-xs !py-1.5 !px-3 w-full !rounded-lg" />
-                <p class="text-[10px] text-themed-dim mt-1">Leave empty = unlimited</p>
+                <p class="text-[10px] text-themed-dim mt-1" x-text="t('dash.leaveEmptyUnlimited')"></p>
               </div>
             </div>
           </template>
@@ -624,7 +625,7 @@ export function renderKeysTab(): string {
           <!-- Request Quota -->
           <div class="mb-5">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-xs text-themed-secondary">Requests / Day</span>
+              <span class="text-xs text-themed-secondary" x-text="t('dash.requestsPerDay')"></span>
               <span class="text-xs font-mono" :class="selectedKeyQuota.reqLimit ? 'text-themed' : 'text-themed-dim'"
                 x-text="selectedKeyQuota.reqLimit ? (selectedKeyQuota.reqUsed + ' / ' + selectedKeyQuota.reqLimit) : 'Unlimited'"></span>
             </div>
@@ -651,7 +652,7 @@ export function renderKeysTab(): string {
           <!-- Token Quota -->
           <div class="mb-4">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-xs text-themed-secondary">Weighted Tokens / Day</span>
+              <span class="text-xs text-themed-secondary" x-text="t('dash.weightedTokensPerDay')"></span>
               <span class="text-xs font-mono" :class="selectedKeyQuota.tokenLimit ? 'text-themed' : 'text-themed-dim'"
                 x-text="selectedKeyQuota.tokenLimit ? (Math.round(selectedKeyQuota.tokenUsed).toLocaleString() + ' / ' + selectedKeyQuota.tokenLimit.toLocaleString()) : 'Unlimited'"></span>
             </div>
@@ -678,7 +679,7 @@ export function renderKeysTab(): string {
           <!-- Formula -->
           <div class="rounded-lg bg-surface-800/60 border border-white/[0.04] p-3">
             <p class="text-[10px] text-themed-dim leading-relaxed">
-              <span class="text-themed-secondary font-medium">Token Quota Formula:</span>
+              <span class="text-themed-secondary font-medium" x-text="t('dash.tokenQuotaFormula')"></span>
               <code class="text-accent-violet ml-1">Cache Read \u00d7 10%</code> +
               <code class="text-accent-teal">Uncached Input \u00d7 100%</code> +
               <code class="text-accent-amber">Output \u00d7 500%</code>
@@ -691,18 +692,18 @@ export function renderKeysTab(): string {
       <template x-if="selectedKeyId">
         <div class="glass-card p-6 mb-6 animate-in delay-1">
           <div class="flex items-center justify-between mb-4">
-            <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Web Search</span>
+            <span class="text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.webSearch')"></span>
             <div class="flex items-center gap-2">
               <template x-if="!wsEditing">
-                <button @click="startEditWebSearch()" class="btn-ghost text-xs" x-show="(isAdmin || isUser) && keys.find(k => k.id === selectedKeyId)?.is_owner !== false">Edit</button>
+                <button @click="startEditWebSearch()" class="btn-ghost text-xs" x-show="(isAdmin || isUser) && keys.find(k => k.id === selectedKeyId)?.is_owner !== false" x-text="t('dash.edit')"></button>
               </template>
               <template x-if="wsEditing">
                 <div class="flex items-center gap-2">
                   <button @click="saveWebSearch()" class="btn-primary !text-xs !py-1 !px-3" :disabled="wsSaving">
-                    <span x-show="!wsSaving">Save</span>
-                    <span x-show="wsSaving">Saving...</span>
+                    <span x-show="!wsSaving" x-text="t('dash.save')"></span>
+                    <span x-show="wsSaving" x-text="t('dash.saving')"></span>
                   </button>
-                  <button @click="wsEditing = false" class="btn-ghost text-xs">Cancel</button>
+                  <button @click="wsEditing = false" class="btn-ghost text-xs" x-text="t('dash.cancel')"></button>
                 </div>
               </template>
             </div>
@@ -720,12 +721,12 @@ export function renderKeysTab(): string {
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label class="text-xs text-themed-dim block mb-1">LangSearch API Key</label>
+                  <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.langSearchKey')"></label>
                   <input type="text" x-model="wsEditLangsearch" placeholder="Not set"
                     class="!text-xs !py-1.5 !px-3 w-full !rounded-lg font-mono" />
                 </div>
                 <div>
-                  <label class="text-xs text-themed-dim block mb-1">Tavily API Key</label>
+                  <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.tavilyKey')"></label>
                   <input type="text" x-model="wsEditTavily" placeholder="Not set"
                     class="!text-xs !py-1.5 !px-3 w-full !rounded-lg font-mono" />
                 </div>
@@ -733,12 +734,12 @@ export function renderKeysTab(): string {
               <!-- Copy from another key -->
               <div class="flex items-center gap-2">
                 <select x-model="wsCopySourceId" class="!text-xs !py-1.5 !px-3 !rounded-lg flex-1">
-                  <option value="">Copy from another key...</option>
+                  <option value="" x-text="t('dash.copyFromKey')"></option>
                   <template x-for="k in keys.filter(k => k.id !== selectedKeyId && k.web_search_enabled)" :key="k.id">
                     <option :value="k.id" x-text="k.name + (k.web_search_enabled ? ' (enabled)' : '')"></option>
                   </template>
                 </select>
-                <button @click="copyWebSearchFrom()" class="btn-ghost text-xs" :disabled="!wsCopySourceId">Copy</button>
+                <button @click="copyWebSearchFrom()" class="btn-ghost text-xs" :disabled="!wsCopySourceId" x-text="t('dash.copy')"></button>
               </div>
             </div>
           </template>
@@ -747,14 +748,14 @@ export function renderKeysTab(): string {
           <template x-if="!wsEditing">
             <div class="space-y-3">
               <div class="flex items-center gap-4">
-                <span class="text-xs text-themed-secondary">Status:</span>
+                <span class="text-xs text-themed-secondary" x-text="t('dash.status')"></span>
                 <span class="text-xs font-medium" :class="wsConfig.enabled ? 'text-accent-teal' : 'text-themed-dim'"
                   x-text="wsConfig.enabled ? 'Enabled' : 'Disabled'"></span>
               </div>
               <template x-if="wsConfig.enabled">
                 <div class="space-y-2">
                   <div class="flex items-center gap-4">
-                    <span class="text-xs text-themed-secondary">Engines:</span>
+                    <span class="text-xs text-themed-secondary" x-text="t('dash.engines')"></span>
                     <div class="flex items-center gap-2">
                       <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.langsearchKey ? 'bg-accent-violet/20 text-accent-violet' : 'bg-surface-600 text-themed-dim'"
                         x-text="wsConfig.langsearchKey ? 'LangSearch \u2713' : 'LangSearch'"></span>
@@ -766,7 +767,7 @@ export function renderKeysTab(): string {
                   </div>
                   <!-- Today's usage -->
                   <div class="flex items-center gap-4">
-                    <span class="text-xs text-themed-secondary">Today:</span>
+                    <span class="text-xs text-themed-secondary" x-text="t('dash.today')"></span>
                     <span class="text-xs font-mono text-themed" x-text="wsUsage.searches + ' searches'"></span>
                     <span class="text-[10px] text-accent-teal" x-text="wsUsage.successes + ' ok'"></span>
                     <span class="text-[10px] text-accent-red" x-show="wsUsage.failures > 0" x-text="wsUsage.failures + ' failed'"></span>
@@ -779,7 +780,7 @@ export function renderKeysTab(): string {
       </template>
 
       <div class="glass-card p-6 animate-in delay-1">
-        <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Configuration</span>
+        <span class="text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.configuration')"></span>
         <template x-if="selectedKeyId">
           <p class="text-xs text-accent-violet mt-2 flex items-center gap-1.5">
             <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -795,18 +796,18 @@ export function renderKeysTab(): string {
           <div class="mt-4">
             <div class="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5 mb-5">
               <button @click="configTab='claude'" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                :class="configTab === 'claude' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">Claude Code</button>
+                :class="configTab === 'claude' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.claudeCode')"></button>
               <button @click="configTab='codex'" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                :class="configTab === 'codex' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">Codex</button>
+                :class="configTab === 'codex' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.codex')"></button>
               <button @click="configTab='gemini'" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                :class="configTab === 'gemini' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">Gemini CLI</button>
+                :class="configTab === 'gemini' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.geminiCli')"></button>
             </div>
 
             <!-- Claude Code -->
             <div x-show="configTab === 'claude'" x-transition>
               <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
                 <div class="flex items-center gap-2">
-                  <label class="text-xs text-themed-dim">Model:</label>
+                  <label class="text-xs text-themed-dim" x-text="t('dash.model')"></label>
                   <select x-model="claudeModel" class="text-xs font-mono bg-surface-800 text-themed-secondary border border-white/10 rounded-lg px-2 py-1.5 outline-none focus:border-accent-violet/50 cursor-pointer">
                     <template x-for="m in claudeModelsBig" :key="m">
                       <option :value="m" x-text="m"></option>
@@ -822,7 +823,7 @@ export function renderKeysTab(): string {
             <div x-show="configTab === 'codex'" x-transition>
               <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
                 <div class="flex items-center gap-2">
-                  <label class="text-xs text-themed-dim">Model:</label>
+                  <label class="text-xs text-themed-dim" x-text="t('dash.model')"></label>
                   <select x-model="codexModel" class="text-xs font-mono bg-surface-800 text-themed-secondary border border-white/10 rounded-lg px-2 py-1.5 outline-none focus:border-accent-violet/50 cursor-pointer">
                     <template x-for="m in codexModels" :key="m">
                       <option :value="m" x-text="m"></option>
@@ -842,7 +843,7 @@ export function renderKeysTab(): string {
             <div x-show="configTab === 'gemini'" x-transition>
               <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
                 <div class="flex items-center gap-2">
-                  <label class="text-xs text-themed-dim">Model:</label>
+                  <label class="text-xs text-themed-dim" x-text="t('dash.model')"></label>
                   <select x-model="geminiModel" class="text-xs font-mono bg-surface-800 text-themed-secondary border border-white/10 rounded-lg px-2 py-1.5 outline-none focus:border-accent-violet/50 cursor-pointer">
                     <template x-for="m in geminiModels" :key="m">
                       <option :value="m" x-text="m"></option>
@@ -877,25 +878,25 @@ export function renderUsageTab(): string {
             </div>
             <div class="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5">
               <button @click="switchTokenRange('today')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                :class="tokenRange === 'today' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">Today</button>
+                :class="tokenRange === 'today' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.today')"></button>
               <button @click="switchTokenRange('week')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                :class="tokenRange === 'week' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">Week</button>
+                :class="tokenRange === 'week' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.week')"></button>
               <button @click="switchTokenRange('7d')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                :class="tokenRange === '7d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">7 Days</button>
+                :class="tokenRange === '7d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.sevenDays')"></button>
               <button @click="switchTokenRange('30d')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                :class="tokenRange === '30d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">30 Days</button>
+                :class="tokenRange === '30d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.thirtyDays')"></button>
             </div>
           </div>
 
           <!-- Week navigator -->
           <div x-show="tokenRange === 'week'" class="flex items-center gap-3 ml-1">
-            <button @click="shiftWeek(-1)" class="p-1 rounded hover:bg-surface-600 text-themed-dim hover:text-themed transition-all" title="Previous week">
+            <button @click="shiftWeek(-1)" class="p-1 rounded hover:bg-surface-600 text-themed-dim hover:text-themed transition-all" :title="t('dash.previousWeek')">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
             </button>
             <span class="text-xs text-themed-secondary font-medium min-w-[180px] text-center" x-text="weekLabel()"></span>
             <button @click="shiftWeek(1)" :disabled="tokenWeekOffset >= 0"
               class="p-1 rounded transition-all"
-              :class="tokenWeekOffset >= 0 ? 'text-themed-dim/30 cursor-not-allowed' : 'hover:bg-surface-600 text-themed-dim hover:text-themed'" title="Next week">
+              :class="tokenWeekOffset >= 0 ? 'text-themed-dim/30 cursor-not-allowed' : 'hover:bg-surface-600 text-themed-dim hover:text-themed'" :title="t('dash.nextWeek')">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
             </button>
           </div>
@@ -904,10 +905,10 @@ export function renderUsageTab(): string {
           <div class="flex flex-wrap items-center gap-3">
             <template x-if="isAdmin && tokenAvailableUsers.length > 0">
               <div class="flex items-center gap-2 w-full sm:w-auto">
-                <label class="text-[11px] text-themed-dim uppercase tracking-wide shrink-0 w-12 sm:w-auto">User</label>
+                <label class="text-[11px] text-themed-dim uppercase tracking-wide shrink-0 w-12 sm:w-auto" x-text="t('dash.user')"></label>
                 <select x-model="tokenFilterUser" @change="switchTokenFilter()"
                   class="bg-surface-800 border border-white/10 text-themed-secondary text-xs rounded-md px-2.5 py-1.5 focus:border-accent-violet/50 focus:outline-none min-w-0 sm:min-w-[120px] flex-1 sm:flex-none">
-                  <option value="">All Users</option>
+                  <option value="" x-text="t('dash.allUsers')"></option>
                   <template x-for="u in tokenAvailableUsers" :key="u.id">
                     <option :value="u.id" x-text="u.name"></option>
                   </template>
@@ -915,30 +916,30 @@ export function renderUsageTab(): string {
               </div>
             </template>
             <div class="flex items-center gap-2 w-full sm:w-auto">
-              <label class="text-[11px] text-themed-dim uppercase tracking-wide shrink-0 w-12 sm:w-auto">Key</label>
+              <label class="text-[11px] text-themed-dim uppercase tracking-wide shrink-0 w-12 sm:w-auto" x-text="t('dash.key')"></label>
               <select x-model="tokenFilterKey" @change="switchTokenFilter()"
                 class="bg-surface-800 border border-white/10 text-themed-secondary text-xs rounded-md px-2.5 py-1.5 focus:border-accent-violet/50 focus:outline-none min-w-0 sm:min-w-[120px] flex-1 sm:flex-none">
-                <option value="">All Keys</option>
+                <option value="" x-text="t('dash.allKeys')"></option>
                 <template x-for="k in tokenAvailableKeys" :key="k.id">
                   <option :value="k.id" x-text="k.name"></option>
                 </template>
               </select>
             </div>
             <div class="flex items-center gap-2 w-full sm:w-auto">
-              <label class="text-[11px] text-themed-dim uppercase tracking-wide shrink-0 w-12 sm:w-auto">Client</label>
+              <label class="text-[11px] text-themed-dim uppercase tracking-wide shrink-0 w-12 sm:w-auto" x-text="t('dash.client')"></label>
               <select x-model="tokenFilterClient" @change="switchTokenFilter()"
                 class="bg-surface-800 border border-white/10 text-themed-secondary text-xs rounded-md px-2.5 py-1.5 focus:border-accent-violet/50 focus:outline-none min-w-0 sm:min-w-[120px] flex-1 sm:flex-none">
-                <option value="">All Clients</option>
+                <option value="" x-text="t('dash.allClients')"></option>
                 <template x-for="c in tokenAvailableClients" :key="c">
                   <option :value="c" x-text="c"></option>
                 </template>
               </select>
             </div>
             <div class="flex items-center gap-2 w-full sm:w-auto">
-              <label class="text-[11px] text-themed-dim uppercase tracking-wide shrink-0 w-12 sm:w-auto">Model</label>
+              <label class="text-[11px] text-themed-dim uppercase tracking-wide shrink-0 w-12 sm:w-auto" x-text="t('dash.model')"></label>
               <select x-model="tokenFilterModel" @change="switchTokenFilter()"
                 class="bg-surface-800 border border-white/10 text-themed-secondary text-xs rounded-md px-2.5 py-1.5 focus:border-accent-violet/50 focus:outline-none min-w-0 sm:min-w-[120px] flex-1 sm:flex-none">
-                <option value="">All Models</option>
+                <option value="" x-text="t('dash.allModels')"></option>
                 <template x-for="m in tokenAvailableModels" :key="m">
                   <option :value="m" x-text="m"></option>
                 </template>
@@ -946,7 +947,7 @@ export function renderUsageTab(): string {
             </div>
             <button @click="tokenFilterKey = ''; tokenFilterClient = ''; tokenFilterModel = ''; tokenFilterUser = ''; switchTokenFilter()"
               x-show="tokenFilterKey || tokenFilterClient || tokenFilterModel || tokenFilterUser"
-              class="text-[11px] text-themed-dim hover:text-themed-secondary transition-colors px-2 py-1">Clear filters</button>
+              class="text-[11px] text-themed-dim hover:text-themed-secondary transition-colors px-2 py-1" x-text="t('dash.clearFilters')"></button>
           </div>
 
           <!-- Filter hint -->
@@ -978,7 +979,7 @@ export function renderUsageTab(): string {
                   <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
                   <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" opacity="0.75"/>
                 </svg>
-                <span class="text-xs text-themed-dim">Loading usage data\u2026</span>
+                <span class="text-xs text-themed-dim" x-text="t('dash.loadingUsage')"></span>
               </div>
             </div>
           </template>
@@ -987,47 +988,47 @@ export function renderUsageTab(): string {
 
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-6 pt-5 border-t border-white/5">
           <div class="text-center">
-            <p class="text-xs text-themed-dim mb-1">Requests</p>
+            <p class="text-xs text-themed-dim mb-1" x-text="t('dash.requests')"></p>
             <p class="text-lg font-bold font-mono text-themed" x-text="tokenSummary.requests.toLocaleString()"></p>
           </div>
           <div class="text-center">
-            <p class="text-xs text-themed-dim mb-1">Total Input</p>
+            <p class="text-xs text-themed-dim mb-1" x-text="t('dash.totalInput')"></p>
             <p class="text-lg font-bold font-mono text-themed" x-text="(tokenSummary.input + tokenSummary.cacheRead + tokenSummary.cacheCreation).toLocaleString()"></p>
           </div>
           <div class="text-center">
-            <p class="text-xs text-themed-dim mb-1">Cache Read</p>
+            <p class="text-xs text-themed-dim mb-1" x-text="t('dash.cacheRead')"></p>
             <p class="text-lg font-bold font-mono text-green-400" x-text="tokenSummary.cacheRead.toLocaleString()"></p>
             <p class="text-[10px] text-themed-dim mt-0.5"
               x-text="(() => { const total = tokenSummary.input + tokenSummary.cacheRead + tokenSummary.cacheCreation; return total > 0 ? (tokenSummary.cacheRead / total * 100).toFixed(1) + '% hit' : ''; })()"></p>
           </div>
           <div class="text-center">
-            <p class="text-xs text-themed-dim mb-1">Uncached Input</p>
+            <p class="text-xs text-themed-dim mb-1" x-text="t('dash.uncachedInput')"></p>
             <p class="text-lg font-bold font-mono text-themed" x-text="tokenSummary.input.toLocaleString()"></p>
           </div>
           <div class="text-center">
-            <p class="text-xs text-themed-dim mb-1">Output Tokens</p>
+            <p class="text-xs text-themed-dim mb-1" x-text="t('dash.outputTokens')"></p>
             <p class="text-lg font-bold font-mono text-themed" x-text="tokenSummary.output.toLocaleString()"></p>
           </div>
         </div>
       </div>
 
-      ${renderDistributionPanel('tokenByModel', 'By Model', 'label')}
-      ${renderDistributionPanel('tokenByUser', 'By User', 'label')}
-      ${renderDistributionPanel('tokenByKey', 'By Key', 'label')}
-      ${renderDistributionPanel('tokenByClient', 'By Client', 'label')}
+      ${renderDistributionPanel('tokenByModel', 'dash.byModel', 'label')}
+      ${renderDistributionPanel('tokenByUser', 'dash.byUser', 'label')}
+      ${renderDistributionPanel('tokenByKey', 'dash.byKey', 'label')}
+      ${renderDistributionPanel('tokenByClient', 'dash.byClient', 'label')}
     </div>
   `
 }
 
-function renderDistributionPanel(dataVar: string, title: string, labelField: string): string {
+function renderDistributionPanel(dataVar: string, titleKey: string, labelField: string): string {
   return `
       <div class="glass-card p-6 mt-5 animate-in delay-1" x-show="${dataVar}.length > 0">
-        <span class="text-xs font-medium text-themed-dim uppercase tracking-widest mb-4 block">${title}</span>
+        <span class="text-xs font-medium text-themed-dim uppercase tracking-widest mb-4 block" x-text="t('${titleKey}')"></span>
 
         <!-- Stacked horizontal bars -->
         <div class="space-y-3 mb-6" @mouseleave="hoveredDist = null">
           <div>
-            <p class="text-[11px] text-themed-dim mb-1.5">Requests</p>
+            <p class="text-[11px] text-themed-dim mb-1.5" x-text="t('dash.requests')"></p>
             <div class="flex h-[14px] gap-[2px] rounded-full overflow-hidden">
               <template x-for="(m, i) in ${dataVar}" :key="'${dataVar}-req-'+m.${labelField}">
                 <div class="h-full transition-all duration-200 cursor-pointer"
@@ -1040,7 +1041,7 @@ function renderDistributionPanel(dataVar: string, title: string, labelField: str
             </div>
           </div>
           <div>
-            <p class="text-[11px] text-themed-dim mb-1.5">Input</p>
+            <p class="text-[11px] text-themed-dim mb-1.5" x-text="t('dash.input')"></p>
             <div class="flex h-[14px] gap-[2px] rounded-full overflow-hidden">
               <template x-for="(m, i) in ${dataVar}" :key="'${dataVar}-in-'+m.${labelField}">
                 <div class="h-full transition-all duration-200 cursor-pointer"
@@ -1053,7 +1054,7 @@ function renderDistributionPanel(dataVar: string, title: string, labelField: str
             </div>
           </div>
           <div>
-            <p class="text-[11px] text-themed-dim mb-1.5">Output</p>
+            <p class="text-[11px] text-themed-dim mb-1.5" x-text="t('dash.output')"></p>
             <div class="flex h-[14px] gap-[2px] rounded-full overflow-hidden">
               <template x-for="(m, i) in ${dataVar}" :key="'${dataVar}-out-'+m.${labelField}">
                 <div class="h-full transition-all duration-200 cursor-pointer"
@@ -1088,10 +1089,10 @@ function renderDistributionPanel(dataVar: string, title: string, labelField: str
           <table class="w-full text-sm whitespace-nowrap">
             <thead>
               <tr class="border-b" style="border-color: var(--border-color)">
-                <th class="text-left py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest">${title.replace('By ', '')}</th>
-                <th class="text-right py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest">Requests</th>
-                <th class="text-right py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest">Input</th>
-                <th class="text-right py-2.5 text-[11px] font-medium text-themed-dim uppercase tracking-widest">Output</th>
+                <th class="text-left py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('${titleKey}')"></th>
+                <th class="text-right py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.requests')"></th>
+                <th class="text-right py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.input')"></th>
+                <th class="text-right py-2.5 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.output')"></th>
               </tr>
             </thead>
             <tbody>
@@ -1124,7 +1125,7 @@ export function renderLatencyTab(): string {
         <div class="flex flex-col gap-4 mb-6">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div class="flex items-center gap-3">
-              <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Latency</span>
+              <span class="text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.latency')"></span>
               <template x-if="latencyLoading">
                 <svg class="animate-spin h-3.5 w-3.5 text-themed-dim" viewBox="0 0 24 24">
                   <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
@@ -1135,18 +1136,18 @@ export function renderLatencyTab(): string {
             <div class="flex items-center gap-3 flex-wrap">
               <div class="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5">
                 <button @click="switchLatencyRange('today')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                  :class="latencyRange === 'today' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">Today</button>
+                  :class="latencyRange === 'today' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.today')"></button>
                 <button @click="switchLatencyRange('week')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                  :class="latencyRange === 'week' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">Week</button>
+                  :class="latencyRange === 'week' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.week')"></button>
                 <button @click="switchLatencyRange('7d')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                  :class="latencyRange === '7d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">7 Days</button>
+                  :class="latencyRange === '7d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.sevenDays')"></button>
                 <button @click="switchLatencyRange('30d')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                  :class="latencyRange === '30d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">30 Days</button>
+                  :class="latencyRange === '30d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.thirtyDays')"></button>
               </div>
               <template x-if="latencyModels.length > 0">
                 <select @change="switchLatencyModel($event.target.value)" x-model="latencyModel"
                   class="text-xs font-mono bg-surface-800 text-themed-secondary border border-white/10 rounded-lg px-2 py-1.5 outline-none focus:border-accent-violet/50 cursor-pointer">
-                  <option value="">All Models</option>
+                  <option value="" x-text="t('dash.allModels')"></option>
                   <template x-for="m in latencyModels" :key="m">
                     <option :value="m" x-text="m"></option>
                   </template>
@@ -1157,13 +1158,13 @@ export function renderLatencyTab(): string {
 
           <!-- Week navigator -->
           <div x-show="latencyRange === 'week'" class="flex items-center gap-3 ml-1">
-            <button @click="shiftLatencyWeek(-1)" class="p-1 rounded hover:bg-surface-600 text-themed-dim hover:text-themed transition-all" title="Previous week">
+            <button @click="shiftLatencyWeek(-1)" class="p-1 rounded hover:bg-surface-600 text-themed-dim hover:text-themed transition-all" :title="t('dash.previousWeek')">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
             </button>
             <span class="text-xs text-themed-secondary font-medium min-w-[180px] text-center" x-text="latencyWeekLabel()"></span>
             <button @click="shiftLatencyWeek(1)" :disabled="latencyWeekOffset >= 0"
               class="p-1 rounded transition-all"
-              :class="latencyWeekOffset >= 0 ? 'text-themed-dim/30 cursor-not-allowed' : 'hover:bg-surface-600 text-themed-dim hover:text-themed'" title="Next week">
+              :class="latencyWeekOffset >= 0 ? 'text-themed-dim/30 cursor-not-allowed' : 'hover:bg-surface-600 text-themed-dim hover:text-themed'" :title="t('dash.nextWeek')">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
             </button>
           </div>
@@ -1177,7 +1178,7 @@ export function renderLatencyTab(): string {
                   <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
                   <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" opacity="0.75"/>
                 </svg>
-                <span class="text-xs text-themed-dim">Loading latency data\u2026</span>
+                <span class="text-xs text-themed-dim" x-text="t('dash.loadingLatency')"></span>
               </div>
             </div>
           </template>
@@ -1186,15 +1187,15 @@ export function renderLatencyTab(): string {
 
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-5 border-t border-white/5">
           <div class="text-center">
-            <p class="text-xs text-themed-dim mb-1">Avg Total</p>
+            <p class="text-xs text-themed-dim mb-1" x-text="t('dash.avgTotal')"></p>
             <p class="text-lg font-bold font-mono text-themed" x-text="latencySummary.avgTotal + ' ms'"></p>
           </div>
           <div class="text-center">
-            <p class="text-xs text-themed-dim mb-1">Avg Upstream</p>
+            <p class="text-xs text-themed-dim mb-1" x-text="t('dash.avgUpstream')"></p>
             <p class="text-lg font-bold font-mono text-themed" x-text="latencySummary.avgUpstream + ' ms'"></p>
           </div>
           <div class="text-center">
-            <p class="text-xs text-themed-dim mb-1">Avg TTFB</p>
+            <p class="text-xs text-themed-dim mb-1" x-text="t('dash.avgTtfb')"></p>
             <p class="text-lg font-bold font-mono text-themed" x-text="latencySummary.avgTtfb + ' ms'"></p>
           </div>
           <div class="text-center">
@@ -1301,7 +1302,7 @@ export function renderClientsTab(): string {
       <div x-show="tab === 'relays'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
         <div class="glass-card p-6 animate-in">
           <div class="flex items-center justify-between mb-4">
-            <span class="text-xs font-medium text-themed-dim uppercase tracking-widest">Connected Relays</span>
+            <span class="text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.relayClients')"></span>
             <button @click="loadRelays()" class="btn-ghost text-xs" :disabled="relaysLoading">
               <svg :class="relaysLoading ? 'animate-spin' : ''" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
@@ -1309,10 +1310,8 @@ export function renderClientsTab(): string {
             </button>
           </div>
 
-          <div x-show="relaysLoading && relays.length === 0" class="text-center py-8 text-themed-dim text-sm">Loading...</div>
-          <div x-show="!relaysLoading && relays.length === 0" class="text-center py-8 text-themed-dim text-sm">
-            No relays have sent heartbeats yet. LLM Relay will report here after its next health check.
-          </div>
+          <div x-show="relaysLoading && relays.length === 0" class="text-center py-8 text-themed-dim text-sm" x-text="t('common.loading')"></div>
+          <div x-show="!relaysLoading && relays.length === 0" class="text-center py-8 text-themed-dim text-sm" x-text="t('dash.noRelays')"></div>
 
           <div x-show="relays.length > 0" class="space-y-2">
             <template x-for="c in relays" :key="c.clientId">
@@ -1331,13 +1330,13 @@ export function renderClientsTab(): string {
                     <div class="flex items-center gap-2">
                       <span class="text-sm font-medium text-themed" x-text="c.clientName"></span>
                       <template x-if="c.isActive">
-                        <span class="text-[10px] font-medium text-accent-teal uppercase tracking-widest">Active</span>
+                        <span class="text-[10px] font-medium text-accent-teal uppercase tracking-widest" x-text="t('dash.active')"></span>
                       </template>
                       <template x-if="!c.isActive && c.isOnline">
-                        <span class="text-[10px] font-medium text-accent-violet uppercase tracking-widest">Online</span>
+                        <span class="text-[10px] font-medium text-accent-violet uppercase tracking-widest" x-text="t('dash.online')"></span>
                       </template>
                       <template x-if="!c.isOnline">
-                        <span class="text-[10px] font-medium text-themed-dim uppercase tracking-widest">Offline</span>
+                        <span class="text-[10px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.offline')"></span>
                       </template>
                     </div>
                     <div class="flex items-center gap-3 mt-0.5">

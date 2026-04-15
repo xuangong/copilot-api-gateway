@@ -6,6 +6,18 @@ export function DevicePage(): string {
     title: "Device Login",
     children: `
       <div class="min-h-screen flex items-center justify-center p-4">
+        <div class="fixed top-4 right-4 flex items-center gap-2 z-50">
+          <button onclick="toggleLang()" class="theme-toggle w-8 h-8">
+            <span class="text-xs font-semibold" id="__lang_btn"></span>
+          </button>
+          <button onclick="toggleTheme()" class="theme-toggle w-8 h-8">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="5"/>
+              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+            </svg>
+          </button>
+        </div>
+        <script>document.getElementById('__lang_btn').textContent = window.__lang === 'zh' ? 'EN' : '中';</script>
         <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-accent-violet/5 rounded-full blur-[120px] pointer-events-none"></div>
 
         <div class="w-full max-w-md" x-data="deviceApp()">
@@ -24,7 +36,7 @@ export function DevicePage(): string {
                   <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
                   <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" opacity="0.75"/>
                 </svg>
-                <span class="text-sm">Checking session...</span>
+                <span class="text-sm" x-text="t('device.checking')"></span>
               </div>
             </div>
           </template>
@@ -39,9 +51,9 @@ export function DevicePage(): string {
                   <path d="M2 12l10 5 10-5"/>
                 </svg>
               </div>
-              <h1 class="text-2xl font-semibold tracking-tight text-themed mb-2">Device Login</h1>
-              <p class="text-sm text-themed-dim mb-6">You need to sign in first before authorizing a device.</p>
-              <a href="/" class="btn-primary inline-block no-underline" style="text-decoration:none">Sign In</a>
+              <h1 class="text-2xl font-semibold tracking-tight text-themed mb-2" x-text="t('device.notLoggedIn')"></h1>
+              <p class="text-sm text-themed-dim mb-6" x-text="t('device.notLoggedInHint')"></p>
+              <a href="/" class="btn-primary inline-block no-underline" style="text-decoration:none" x-text="t('device.signIn')"></a>
             </div>
           </template>
 
@@ -55,13 +67,13 @@ export function DevicePage(): string {
                     <line x1="12" y1="18" x2="12" y2="18"/>
                   </svg>
                 </div>
-                <h1 class="text-2xl font-semibold tracking-tight text-themed">Authorize Device</h1>
-                <p class="text-sm text-themed-dim mt-2 font-light">Enter the code shown on your application</p>
+                <h1 class="text-2xl font-semibold tracking-tight text-themed" x-text="t('device.authorizeTitle')"></h1>
+                <p class="text-sm text-themed-dim mt-2 font-light" x-text="t('device.authorizeSubtitle')"></p>
               </div>
 
               <div class="glass-card p-8 glow-primary animate-in delay-1">
                 <form @submit.prevent="verify()">
-                  <label class="block text-xs font-medium text-themed-secondary uppercase tracking-wider mb-3">Device Code</label>
+                  <label class="block text-xs font-medium text-themed-secondary uppercase tracking-wider mb-3" x-text="t('device.codeLabel')"></label>
                   <input
                     type="text"
                     x-model="userCode"
@@ -82,20 +94,20 @@ export function DevicePage(): string {
                     class="btn-primary w-full mt-6"
                     :disabled="loading || userCode.length < 9"
                   >
-                    <span x-show="!loading">Authorize</span>
+                    <span x-show="!loading" x-text="t('device.authorize')"></span>
                     <span x-show="loading" class="flex items-center justify-center gap-2">
                       <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
                         <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" opacity="0.25"/>
                         <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" opacity="0.75"/>
                       </svg>
-                      Verifying...
+                      <span x-text="t('common.verifying')"></span>
                     </span>
                   </button>
                 </form>
               </div>
 
               <p class="text-center text-xs text-themed-dim mt-4 animate-in delay-2">
-                Signed in as <span class="text-themed-secondary" x-text="userName"></span>
+                <span x-text="t('device.signedInAs') + userName"></span>
               </p>
             </div>
           </template>
@@ -108,8 +120,8 @@ export function DevicePage(): string {
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
               </div>
-              <h1 class="text-2xl font-semibold tracking-tight text-themed mb-2">Device Authorized</h1>
-              <p class="text-sm text-themed-dim">You can close this page and return to your application.</p>
+              <h1 class="text-2xl font-semibold tracking-tight text-themed mb-2" x-text="t('device.successTitle')"></h1>
+              <p class="text-sm text-themed-dim" x-text="t('device.successHint')"></p>
             </div>
           </template>
         </div>
@@ -179,10 +191,10 @@ export function DevicePage(): string {
                 if (resp.ok && data.ok) {
                   this.verified = true
                 } else {
-                  this.error = data.error || 'Verification failed'
+                  this.error = data.error || t('device.verificationFailed')
                 }
               } catch (e) {
-                this.error = 'Network error'
+                this.error = t('device.networkError')
               }
               this.loading = false
             },

@@ -1,5 +1,6 @@
 // Base HTML layout - Midnight Aurora / Clean White dual-theme
 // Tailwind CDN + Alpine.js + Outfit + IBM Plex Mono fonts
+import { renderI18nScript } from "./i18n"
 
 export function Layout({ title, children }: { title: string; children: string }): string {
   return `<!DOCTYPE html>
@@ -41,6 +42,7 @@ export function Layout({ title, children }: { title: string; children: string })
       return document.documentElement.getAttribute('data-theme') === 'dark';
     }
   </script>
+  ${renderI18nScript()}
   <script>
     tailwind.config = {
       theme: {
