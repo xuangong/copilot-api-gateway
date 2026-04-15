@@ -220,6 +220,24 @@ export interface KeyAssignmentRepo {
   deleteByUser(userId: string): Promise<void>
 }
 
+export interface DeviceCode {
+  deviceCode: string
+  userCode: string
+  expiresAt: string
+  userId?: string
+  sessionToken?: string
+  createdAt: string
+}
+
+export interface DeviceCodeRepo {
+  create(code: DeviceCode): Promise<void>
+  findByDeviceCode(deviceCode: string): Promise<DeviceCode | null>
+  findByUserCode(userCode: string): Promise<DeviceCode | null>
+  verify(deviceCode: string, userId: string, sessionToken: string): Promise<void>
+  deleteExpired(): Promise<void>
+  delete(deviceCode: string): Promise<void>
+}
+
 export interface Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -232,4 +250,5 @@ export interface Repo {
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo
   keyAssignments: KeyAssignmentRepo
+  deviceCodes: DeviceCodeRepo
 }

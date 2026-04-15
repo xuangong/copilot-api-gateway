@@ -4,6 +4,8 @@ import type {
   CacheRepo,
   ClientPresence,
   ClientPresenceRepo,
+  DeviceCode,
+  DeviceCodeRepo,
   GitHubAccount,
   GitHubRepo,
   InviteCode,
@@ -676,6 +678,68 @@ class D1KeyAssignmentRepo implements KeyAssignmentRepo {
   }
 }
 
+class D1DeviceCodeRepo implements DeviceCodeRepo {
+  constructor(private db: D1Database) {}
+
+  async create(code: DeviceCode): Promise<void> {
+    await this.db
+      .prepare("INSERT INTO device_codes (device_code, user_code, expires_at, user_id, session_token, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(code.deviceCode, code.userCode, code.expiresAt, code.userId ?? null, code.sessionToken ?? null, code.createdAt)
+      .run()
+  }
+
+  async findByDeviceCode(deviceCode: string): Promise<DeviceCode | null> {
+    const row = await this.db
+      .prepare("SELECT device_code, user_code, expires_at, user_id, session_token, created_at FROM device_codes WHERE device_code = ?")
+      .bind(deviceCode)
+      .first<DeviceCodeRow>()
+    return row ? toDeviceCode(row) : null
+  }
+
+  async findByUserCode(userCode: string): Promise<DeviceCode | null> {
+    const row = await this.db
+      .prepare("SELECT device_code, user_code, expires_at, user_id, session_token, created_at FROM device_codes WHERE user_code = ?")
+      .bind(userCode)
+      .first<DeviceCodeRow>()
+    return row ? toDeviceCode(row) : null
+  }
+
+  async verify(deviceCode: string, userId: string, sessionToken: string): Promise<void> {
+    await this.db
+      .prepare("UPDATE device_codes SET user_id = ?, session_token = ? WHERE device_code = ?")
+      .bind(userId, sessionToken, deviceCode)
+      .run()
+  }
+
+  async deleteExpired(): Promise<void> {
+    await this.db.prepare("DELETE FROM device_codes WHERE expires_at < ?").bind(new Date().toISOString()).run()
+  }
+
+  async delete(deviceCode: string): Promise<void> {
+    await this.db.prepare("DELETE FROM device_codes WHERE device_code = ?").bind(deviceCode).run()
+  }
+}
+
+interface DeviceCodeRow {
+  device_code: string
+  user_code: string
+  expires_at: string
+  user_id: string | null
+  session_token: string | null
+  created_at: string
+}
+
+function toDeviceCode(row: DeviceCodeRow): DeviceCode {
+  return {
+    deviceCode: row.device_code,
+    userCode: row.user_code,
+    expiresAt: row.expires_at,
+    userId: row.user_id ?? undefined,
+    sessionToken: row.session_token ?? undefined,
+    createdAt: row.created_at,
+  }
+}
+
 export class D1Repo implements Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -688,6 +752,7 @@ export class D1Repo implements Repo {
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo
   keyAssignments: KeyAssignmentRepo
+  deviceCodes: DeviceCodeRepo
 
   constructor(db: D1Database) {
     this.apiKeys = new D1ApiKeyRepo(db)
@@ -701,5 +766,6 @@ export class D1Repo implements Repo {
     this.presence = new D1ClientPresenceRepo(db)
     this.webSearchUsage = new D1WebSearchUsageRepo(db)
     this.keyAssignments = new D1KeyAssignmentRepo(db)
+    this.deviceCodes = new D1DeviceCodeRepo(db)
   }
 }

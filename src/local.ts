@@ -32,6 +32,8 @@ import { initResend } from "~/lib/email"
 import { apiKeysRoute } from "~/routes/api-keys"
 import { dashboardRoute } from "~/routes/dashboard"
 import { LoginPage } from "~/ui/login"
+import { DevicePage } from "~/ui/device"
+import { GuidePage } from "~/ui/guide"
 import { DashboardPage } from "~/ui/dashboard"
 
 // Data directory for local storage
@@ -187,7 +189,7 @@ const env: LocalEnv = {
 }
 
 // Public paths that don't require authentication
-const PUBLIC_GET_PATHS = new Set(["/", "/dashboard", "/favicon.ico", "/health"])
+const PUBLIC_GET_PATHS = new Set(["/", "/dashboard", "/device/login", "/guide", "/favicon.ico", "/health"])
 const AUTH_VALIDATE_PATHS = new Set(["/auth/login"])
 
 // Dashboard routes - ADMIN_KEY can access these
@@ -476,6 +478,8 @@ async function createApp() {
     .head("/", () => new Response(null, { status: 200 }))
     .get("/dashboard", () => new Response(DashboardPage(), { headers: { "Content-Type": "text/html; charset=utf-8" } }))
     .head("/dashboard", () => new Response(null, { status: 200 }))
+    .get("/device/login", () => new Response(DevicePage(), { headers: { "Content-Type": "text/html; charset=utf-8" } }))
+    .get("/guide", () => new Response(GuidePage(), { headers: { "Content-Type": "text/html; charset=utf-8" } }))
     .get("/health", () => ({ status: "healthy", mode: "local" }))
     .head("/health", () => new Response(null, { status: 200 }))
     .get("/favicon.ico", () => new Response(null, { status: 204 }))

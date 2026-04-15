@@ -5,6 +5,8 @@ import type {
   CacheRepo,
   ClientPresence,
   ClientPresenceRepo,
+  DeviceCode,
+  DeviceCodeRepo,
   GitHubAccount,
   GitHubRepo,
   InviteCode,
@@ -568,6 +570,15 @@ function migrateSchema(db: Database): void {
     assigned_at TEXT NOT NULL,
     PRIMARY KEY (key_id, user_id)
   )`)
+  // Device codes table
+  db.exec(`CREATE TABLE IF NOT EXISTS device_codes (
+    device_code TEXT PRIMARY KEY,
+    user_code TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    user_id TEXT,
+    session_token TEXT,
+    created_at TEXT NOT NULL
+  )`)
 }
 
 class SqliteClientPresenceRepo implements ClientPresenceRepo {
@@ -684,6 +695,48 @@ class SqliteKeyAssignmentRepo implements KeyAssignmentRepo {
   }
 }
 
+class SqliteDeviceCodeRepo implements DeviceCodeRepo {
+  constructor(private db: Database) {}
+
+  async create(code: DeviceCode): Promise<void> {
+    this.db.query("INSERT INTO device_codes (device_code, user_code, expires_at, user_id, session_token, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(code.deviceCode, code.userCode, code.expiresAt, code.userId ?? null, code.sessionToken ?? null, code.createdAt)
+  }
+
+  async findByDeviceCode(deviceCode: string): Promise<DeviceCode | null> {
+    const row = this.db.query<any, [string]>("SELECT device_code, user_code, expires_at, user_id, session_token, created_at FROM device_codes WHERE device_code = ?").get(deviceCode)
+    return row ? toDeviceCodeSqlite(row) : null
+  }
+
+  async findByUserCode(userCode: string): Promise<DeviceCode | null> {
+    const row = this.db.query<any, [string]>("SELECT device_code, user_code, expires_at, user_id, session_token, created_at FROM device_codes WHERE user_code = ?").get(userCode)
+    return row ? toDeviceCodeSqlite(row) : null
+  }
+
+  async verify(deviceCode: string, userId: string, sessionToken: string): Promise<void> {
+    this.db.query("UPDATE device_codes SET user_id = ?, session_token = ? WHERE device_code = ?").run(userId, sessionToken, deviceCode)
+  }
+
+  async deleteExpired(): Promise<void> {
+    this.db.query("DELETE FROM device_codes WHERE expires_at < ?").run(new Date().toISOString())
+  }
+
+  async delete(deviceCode: string): Promise<void> {
+    this.db.query("DELETE FROM device_codes WHERE device_code = ?").run(deviceCode)
+  }
+}
+
+function toDeviceCodeSqlite(row: any): DeviceCode {
+  return {
+    deviceCode: row.device_code,
+    userCode: row.user_code,
+    expiresAt: row.expires_at,
+    userId: row.user_id ?? undefined,
+    sessionToken: row.session_token ?? undefined,
+    createdAt: row.created_at,
+  }
+}
+
 export class SqliteRepo implements Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -696,6 +749,7 @@ export class SqliteRepo implements Repo {
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo
   keyAssignments: KeyAssignmentRepo
+  deviceCodes: DeviceCodeRepo
 
   constructor(db: Database) {
     db.exec(INIT_SQL)
@@ -711,6 +765,7 @@ export class SqliteRepo implements Repo {
     this.presence = new SqliteClientPresenceRepo(db)
     this.webSearchUsage = new SqliteWebSearchUsageRepo(db)
     this.keyAssignments = new SqliteKeyAssignmentRepo(db)
+    this.deviceCodes = new SqliteDeviceCodeRepo(db)
   }
 }
 
