@@ -356,9 +356,22 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
       }
     }
 
+    // For admin: enrich owner info with readable names
+    const ownerNameMap = new Map<string, string>()
+    if (isAdmin) {
+      const ownerIds = [...new Set(clients.map((c) => c.ownerId).filter(Boolean) as string[])]
+      if (ownerIds.length > 0) {
+        const users = await Promise.all(ownerIds.map((id) => repo.users.getById(id)))
+        for (const u of users) {
+          if (u) ownerNameMap.set(u.id, u.name)
+        }
+      }
+    }
+
     return clients.map((c) => ({
       ...c,
       isOnline: now - new Date(c.lastSeenAt).getTime() < onlineThresholdMinutes * 60 * 1000,
       isActive: c.keyId ? activeKeyIds.has(c.keyId) : false,
+      ownerName: c.ownerId ? (ownerNameMap.get(c.ownerId) ?? null) : null,
     }))
   })

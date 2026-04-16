@@ -1349,7 +1349,7 @@ export function renderClientsTab(): string {
                         </span>
                       </template>
                       <template x-if="isAdmin && c.ownerId">
-                        <span class="text-xs text-themed-dim" x-text="'owner: ' + (c.ownerId || '—')"></span>
+                        <span class="text-xs text-themed-dim" x-text="'owner: ' + (c.ownerName || c.ownerId.slice(0, 8))"></span>
                       </template>
                       <template x-if="c.gatewayUrl">
                         <span class="text-xs text-themed-dim font-mono truncate max-w-[160px]" :title="c.gatewayUrl" x-text="c.gatewayUrl.replace(/https?:\\/\\//, '')"></span>
