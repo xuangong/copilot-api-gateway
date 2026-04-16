@@ -33,9 +33,11 @@ function extractUsageFromStreamEvent(parsed: any, add: (input: number, output: n
     const u = parsed.message.usage
     add(u.input_tokens, 0, u.cache_read_input_tokens ?? 0, u.cache_creation_input_tokens ?? 0)
   }
-  // Anthropic message_delta: { usage: { output_tokens } }
+  // Anthropic message_delta: { usage: { output_tokens, cache_read_input_tokens?, cache_creation_input_tokens? } }
+  // Newer Anthropic API versions also include cache tokens in message_delta
   if (parsed.type === "message_delta" && parsed.usage?.output_tokens != null) {
-    add(0, parsed.usage.output_tokens, 0, 0)
+    const u = parsed.usage
+    add(0, u.output_tokens, u.cache_read_input_tokens ?? 0, u.cache_creation_input_tokens ?? 0)
   }
   // Responses response.completed: { response: { usage: { input_tokens, output_tokens } } }
   if (parsed.type === "response.completed" && parsed.response?.usage) {
