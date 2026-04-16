@@ -590,14 +590,95 @@ class D1SessionRepo implements SessionRepo {
   }
 }
 
-// D1 stub for client presence — not used in Cloudflare Workers mode yet
+// D1 implementation for client presence (LLM Relay heartbeats, etc.)
 class D1ClientPresenceRepo implements ClientPresenceRepo {
   constructor(private db: D1Database) {}
-  async upsert(_p: ClientPresence): Promise<void> {}
-  async list(): Promise<ClientPresence[]> { return [] }
-  async listByOwner(_ownerId: string): Promise<ClientPresence[]> { return [] }
-  async listByKeyIds(_keyIds: string[]): Promise<ClientPresence[]> { return [] }
-  async pruneStale(_olderThanMinutes: number): Promise<void> {}
+
+  async upsert(p: ClientPresence): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO client_presence (client_id, client_name, key_id, key_name, owner_id, gateway_url, last_seen_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (client_id) DO UPDATE SET
+           client_name = excluded.client_name,
+           key_id = excluded.key_id,
+           key_name = excluded.key_name,
+           owner_id = excluded.owner_id,
+           gateway_url = excluded.gateway_url,
+           last_seen_at = excluded.last_seen_at`,
+      )
+      .bind(
+        p.clientId,
+        p.clientName,
+        p.keyId ?? null,
+        p.keyName ?? null,
+        p.ownerId ?? null,
+        p.gatewayUrl ?? null,
+        p.lastSeenAt,
+      )
+      .run()
+  }
+
+  async list(): Promise<ClientPresence[]> {
+    const { results } = await this.db
+      .prepare(
+        "SELECT client_id, client_name, key_id, key_name, owner_id, gateway_url, last_seen_at FROM client_presence ORDER BY last_seen_at DESC",
+      )
+      .all<PresenceRow>()
+    return (results ?? []).map(toPresence)
+  }
+
+  async listByOwner(ownerId: string): Promise<ClientPresence[]> {
+    const { results } = await this.db
+      .prepare(
+        "SELECT client_id, client_name, key_id, key_name, owner_id, gateway_url, last_seen_at FROM client_presence WHERE owner_id = ? ORDER BY last_seen_at DESC",
+      )
+      .bind(ownerId)
+      .all<PresenceRow>()
+    return (results ?? []).map(toPresence)
+  }
+
+  async listByKeyIds(keyIds: string[]): Promise<ClientPresence[]> {
+    if (keyIds.length === 0) return []
+    const placeholders = keyIds.map(() => "?").join(",")
+    const { results } = await this.db
+      .prepare(
+        `SELECT client_id, client_name, key_id, key_name, owner_id, gateway_url, last_seen_at FROM client_presence WHERE key_id IN (${placeholders}) ORDER BY last_seen_at DESC`,
+      )
+      .bind(...keyIds)
+      .all<PresenceRow>()
+    return (results ?? []).map(toPresence)
+  }
+
+  async pruneStale(olderThanMinutes: number): Promise<void> {
+    const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000).toISOString()
+    await this.db
+      .prepare("DELETE FROM client_presence WHERE last_seen_at < ?")
+      .bind(cutoff)
+      .run()
+  }
+}
+
+interface PresenceRow {
+  client_id: string
+  client_name: string
+  key_id: string | null
+  key_name: string | null
+  owner_id: string | null
+  gateway_url: string | null
+  last_seen_at: string
+}
+
+function toPresence(row: PresenceRow): ClientPresence {
+  return {
+    clientId: row.client_id,
+    clientName: row.client_name,
+    keyId: row.key_id ?? null,
+    keyName: row.key_name ?? null,
+    ownerId: row.owner_id ?? null,
+    gatewayUrl: row.gateway_url ?? null,
+    lastSeenAt: row.last_seen_at,
+  }
 }
 
 class D1WebSearchUsageRepo implements WebSearchUsageRepo {
