@@ -29,6 +29,7 @@ import { modelsRoute } from "~/routes/models"
 import { geminiRoute } from "~/routes/gemini"
 import { authRoute } from "~/routes/auth"
 import { initResend } from "~/lib/email"
+import { hashPassword } from "~/lib/password"
 import { apiKeysRoute } from "~/routes/api-keys"
 import { dashboardRoute } from "~/routes/dashboard"
 import { LoginPage } from "~/ui/login"
@@ -310,6 +311,23 @@ async function createApp() {
   const repo = new SqliteRepo(db)
   initRepo(repo)
 
+  // Seed test admin user for local mode
+  const TEST_EMAIL = "test@local.dev"
+  const existingUser = await repo.users.findByEmail(TEST_EMAIL)
+  if (!existingUser) {
+    const userId = crypto.randomUUID()
+    const passwordHash = await hashPassword(env.ADMIN_KEY)
+    await repo.users.create({
+      id: userId,
+      name: "Local Admin",
+      email: TEST_EMAIL,
+      createdAt: new Date().toISOString(),
+      disabled: false,
+      passwordHash,
+    })
+    console.log(`👤 Created test admin user: ${TEST_EMAIL}`)
+  }
+
   // Initialize Resend email service
   if (env.RESEND_API_KEY) {
     initResend(env.RESEND_API_KEY)
@@ -577,5 +595,5 @@ createApp().then((app) => {
   console.log(`📁 Data directory: ${DATA_DIR}`)
   console.log(`📦 Database: ${DB_FILE}`)
   console.log(`💾 KV Storage: ${KV_FILE}`)
-  console.log(`🔑 Admin key: ${env.ADMIN_KEY}`)
+  console.log(`👤 Admin login: test@local.dev / ${env.ADMIN_KEY}`)
 })

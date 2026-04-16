@@ -11,6 +11,9 @@ export interface AnthropicMessagesPayload {
     type: "enabled" | "adaptive"
     budget_tokens?: number
   }
+  output_config?: {
+    effort?: "low" | "medium" | "high"
+  }
 }
 
 export interface AnthropicMessage {

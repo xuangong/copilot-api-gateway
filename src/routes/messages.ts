@@ -11,6 +11,7 @@ import {
 import {
   stripReservedKeywords,
   filterThinkingBlocks,
+  adaptThinkingForModel,
   stripCacheControl,
   stripContextManagement,
   type AnthropicMessagesPayload,
@@ -68,6 +69,7 @@ export const messagesRoute = new Elysia()
     stripContextManagement(payload as unknown as Record<string, unknown>)
     stripReservedKeywords(payload)
     filterThinkingBlocks(payload)
+    adaptThinkingForModel(payload)
     stripCacheControl(payload as unknown as Record<string, unknown>)
 
     // Repair tool result pairs

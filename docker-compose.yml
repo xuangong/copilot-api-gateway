@@ -9,6 +9,9 @@ services:
       - ADMIN_KEY=${ADMIN_KEY:-xuangong123!}
       - LANGSEARCH_API_KEY=${LANGSEARCH_API_KEY:-}
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - HTTP_PROXY=http://host.docker.internal:7890
+      - HTTPS_PROXY=http://host.docker.internal:7890
+      - NO_PROXY=localhost,127.0.0.1
     volumes:
       # Persist data between restarts
       - ./data:/app/.data

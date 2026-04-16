@@ -19,7 +19,7 @@ export { stripReservedKeywords } from "./billing-header"
 export { fixApplyPatchTools, stripWebSearchTools } from "./tool-type"
 
 // Thinking cleanup
-export { filterThinkingBlocks } from "./thinking-cleanup"
+export { filterThinkingBlocks, adaptThinkingForModel } from "./thinking-cleanup"
 
 // Cache control cleanup (prompt caching not supported by Copilot)
 export { stripCacheControl, type CacheControlStripResult } from "./cache-control"
