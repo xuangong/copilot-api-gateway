@@ -26,6 +26,16 @@ const OAUTH_STATE_TTL_MS = 10 * 60 * 1000 // 10 minutes
 let oauthKV: KVNamespace | null = null
 export function initOAuthKV(kv: KVNamespace) { oauthKV = kv }
 
+// Resolve the public-facing origin when the server sits behind a TLS-terminating
+// proxy (Cloudflare, Nginx). Google requires an exact string match against the
+// registered redirect_uri, so we must reflect the scheme/host the browser used.
+function publicOrigin(req: Request, fallback: URL): string {
+  const h = req.headers
+  const proto = h.get("x-forwarded-proto")?.split(",")[0]?.trim() || fallback.protocol.replace(":", "")
+  const host = h.get("x-forwarded-host")?.split(",")[0]?.trim() || h.get("host") || fallback.host
+  return `${proto}://${host}`
+}
+
 function generateOAuthState(): string {
   const bytes = new Uint8Array(16)
   crypto.getRandomValues(bytes)
@@ -307,8 +317,9 @@ export const authRoute = new Elysia({ prefix: "/auth" })
     const state = generateOAuthState()
     await saveOAuthState(state, { inviteCode, createdAt: Date.now() })
 
-    // Build Google OAuth URL
-    const redirectUri = `${url.origin}/auth/google/callback`
+    // Build Google OAuth URL — honor X-Forwarded-Proto/Host when behind a
+    // TLS-terminating proxy (CF, Nginx), otherwise url.origin is http://...
+    const redirectUri = `${publicOrigin(ctx.request, url)}/auth/google/callback`
     const googleUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth")
     googleUrl.searchParams.set("client_id", clientId)
     googleUrl.searchParams.set("redirect_uri", redirectUri)
@@ -354,7 +365,7 @@ export const authRoute = new Elysia({ prefix: "/auth" })
     }
 
     // Exchange code for token
-    const redirectUri = `${url.origin}/auth/google/callback`
+    const redirectUri = `${publicOrigin(ctx.request, url)}/auth/google/callback`
     const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
