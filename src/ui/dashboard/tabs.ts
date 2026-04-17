@@ -1316,7 +1316,7 @@ export function renderClientsTab(): string {
           <div x-show="relays.length > 0" class="space-y-2">
             <template x-for="c in relays" :key="c.clientId">
               <div class="flex items-center justify-between gap-3 p-4 rounded-lg bg-surface-800/50 border border-white/[0.04]">
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-3 min-w-0 flex-1">
                   <div class="relative shrink-0">
                     <div class="w-8 h-8 rounded-lg bg-surface-700 flex items-center justify-center">
                       <svg class="w-4 h-4 text-themed-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1326,39 +1326,39 @@ export function renderClientsTab(): string {
                     <div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-surface-800"
                       :class="c.isActive ? 'bg-accent-teal status-pulse' : c.isOnline ? 'bg-accent-violet' : 'bg-surface-600'"></div>
                   </div>
-                  <div>
-                    <div class="flex items-center gap-2">
-                      <span class="text-sm font-medium text-themed" x-text="c.clientName"></span>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class="text-sm font-medium text-themed truncate" x-text="c.clientName"></span>
                       <template x-if="c.isActive">
-                        <span class="text-[10px] font-medium text-accent-teal uppercase tracking-widest" x-text="t('dash.active')"></span>
+                        <span class="shrink-0 text-[10px] font-medium text-accent-teal uppercase tracking-widest" x-text="t('dash.active')"></span>
                       </template>
                       <template x-if="!c.isActive && c.isOnline">
-                        <span class="text-[10px] font-medium text-accent-violet uppercase tracking-widest" x-text="t('dash.online')"></span>
+                        <span class="shrink-0 text-[10px] font-medium text-accent-violet uppercase tracking-widest" x-text="t('dash.online')"></span>
                       </template>
                       <template x-if="!c.isOnline">
-                        <span class="text-[10px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.offline')"></span>
+                        <span class="shrink-0 text-[10px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.offline')"></span>
                       </template>
                     </div>
-                    <div class="flex items-center gap-3 mt-0.5">
+                    <div class="flex items-center gap-x-3 gap-y-1 mt-0.5 flex-wrap min-w-0">
                       <template x-if="c.keyName">
-                        <span class="text-xs text-themed-dim flex items-center gap-1">
+                        <span class="text-xs text-themed-dim flex items-center gap-1 min-w-0">
                           <svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
                           </svg>
-                          <span x-text="c.keyName"></span>
+                          <span class="truncate" x-text="c.keyName"></span>
                         </span>
                       </template>
                       <template x-if="isAdmin && c.ownerId">
-                        <span class="text-xs text-themed-dim" x-text="'owner: ' + (c.ownerName || c.ownerId.slice(0, 8))"></span>
+                        <span class="text-xs text-themed-dim truncate" x-text="'owner: ' + (c.ownerName || c.ownerId.slice(0, 8))"></span>
                       </template>
                       <template x-if="c.gatewayUrl">
-                        <span class="text-xs text-themed-dim font-mono truncate max-w-[160px]" :title="c.gatewayUrl" x-text="c.gatewayUrl.replace(/https?:\\/\\//, '')"></span>
+                        <span class="text-xs text-themed-dim font-mono truncate max-w-full sm:max-w-[160px]" :title="c.gatewayUrl" x-text="c.gatewayUrl.replace(/https?:\\/\\//, '')"></span>
                       </template>
                     </div>
                   </div>
                 </div>
                 <div class="text-right shrink-0">
-                  <span class="text-xs text-themed-dim" :title="c.lastSeenAt" x-text="timeAgo(c.lastSeenAt)"></span>
+                  <span class="text-xs text-themed-dim whitespace-nowrap" :title="c.lastSeenAt" x-text="timeAgo(c.lastSeenAt)"></span>
                 </div>
               </div>
             </template>
