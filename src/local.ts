@@ -227,13 +227,13 @@ let memCopilotToken: string | null = null
 let memCopilotExpires = 0
 let memCachedAt = 0
 
-async function loadState(storage: FileStorage): Promise<AppState> {
+async function loadState(storage: FileStorage, ownerId?: string): Promise<AppState> {
   // Get GitHub token from database (via /auth/github device flow)
   let githubToken: string | null = null
   let accountType: AccountType = "individual"
 
   try {
-    const creds = await getGithubCredentials()
+    const creds = await getGithubCredentials(ownerId)
     githubToken = creds.token
     accountType = creds.accountType as AccountType
   } catch {
@@ -311,14 +311,14 @@ async function createApp() {
   const repo = new SqliteRepo(db)
   initRepo(repo)
 
-  // Seed test admin user for local mode
+  // Seed test admin user for local mode (fixed ID so ADMIN_KEY auth can reference it without DB lookup)
   const TEST_EMAIL = "test@local.dev"
+  const TEST_ADMIN_USER_ID = "00000000-0000-0000-0000-000000000001"
   const existingUser = await repo.users.findByEmail(TEST_EMAIL)
   if (!existingUser) {
-    const userId = crypto.randomUUID()
     const passwordHash = await hashPassword(env.ADMIN_KEY)
     await repo.users.create({
-      id: userId,
+      id: TEST_ADMIN_USER_ID,
       name: "Local Admin",
       email: TEST_EMAIL,
       createdAt: new Date().toISOString(),
@@ -375,7 +375,7 @@ async function createApp() {
       // Check ADMIN_KEY (legacy)
       const adminKey = env.ADMIN_KEY
       if (adminKey && key === adminKey) {
-        return { authKey: key, isAdmin: true, isUser: false, apiKeyId: undefined, userId: undefined }
+        return { authKey: key, isAdmin: true, isUser: true, apiKeyId: undefined, userId: TEST_ADMIN_USER_ID }
       }
       // Check session token
       if (key.startsWith("ses_")) {
@@ -406,7 +406,7 @@ async function createApp() {
     const adminKey = env.ADMIN_KEY
     if (adminKey && key === adminKey) {
       if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
-        return { authKey: key, isAdmin: true, isUser: false, apiKeyId: undefined, userId: undefined }
+        return { authKey: key, isAdmin: true, isUser: true, apiKeyId: undefined, userId: TEST_ADMIN_USER_ID }
       }
       throw new Error("This key is for dashboard only. Create an API key for API access.")
     }
@@ -501,7 +501,7 @@ async function createApp() {
     .get("/health", () => ({ status: "healthy", mode: "local" }))
     .head("/health", () => new Response(null, { status: 200 }))
     .get("/favicon.ico", () => new Response(null, { status: 204 }))
-    // CDN proxy — serve external JS/CSS through the server itself
+    // CDN proxy — serve bundled assets first, fall back to external URLs
     .get("/cdn/:file", async ({ params }) => {
       const CDN_MAP: Record<string, string> = {
         "tailwind.js": "https://cdn.tailwindcss.com/3.4.17",
@@ -514,11 +514,15 @@ async function createApp() {
       }
       const url = CDN_MAP[params.file]
       if (!url) return new Response("Not found", { status: 404 })
-      const resp = await fetch(url)
       const contentType = params.file.endsWith(".css") ? "text/css" : "application/javascript"
-      return new Response(resp.body, {
-        headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=604800" },
-      })
+      const headers = { "Content-Type": contentType, "Cache-Control": "public, max-age=604800" }
+      // Try bundled asset first (available in Docker where external network may be blocked)
+      const localFile = Bun.file(`${import.meta.dir}/assets/cdn/${params.file}`)
+      if (await localFile.exists()) {
+        return new Response(localFile.stream(), { headers })
+      }
+      const resp = await fetch(url)
+      return new Response(resp.body, { headers })
     })
     // Derive env and auth context for all routes
     .derive(async ({ request, path, requestId, userAgent }) => {
@@ -540,7 +544,7 @@ async function createApp() {
     .use(apiKeysRoute)
     .use(dashboardRoute)
     // API routes with Copilot token - only load state for API paths
-    .derive(async ({ path }) => {
+    .derive(async ({ path, userId }) => {
       // Local mode: colo is always "local"
       const colo = "local"
 
@@ -555,7 +559,7 @@ async function createApp() {
         path.startsWith("/v1beta/")
       ) {
         try {
-          const state = await loadState(storage)
+          const state = await loadState(storage, userId)
           return { storage, state, colo }
         } catch {
           // Allow /api/models to work without GitHub connection

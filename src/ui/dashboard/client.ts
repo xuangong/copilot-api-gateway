@@ -693,6 +693,7 @@ export function dashboardAssets(): string {
                   await this.loadMe();
                   this.githubConnected = this.githubAccounts.length > 0;
                   await this.loadUsage();
+                  await this.loadModels();
                 } else if (d.status === 'slow_down') {
                   clearInterval(this.deviceFlow.pollTimer);
                   this.pollDeviceFlow((d.interval || interval) + 1);

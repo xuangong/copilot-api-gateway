@@ -16,6 +16,10 @@ RUN bun install --frozen-lockfile --production
 COPY src ./src
 COPY tsconfig.json ./
 
+# Download CDN assets at build time so the container works without internet access
+COPY scripts ./scripts
+RUN mkdir -p src/assets/cdn && bun run scripts/download-cdn.ts
+
 # Create data directory
 RUN mkdir -p .data
 

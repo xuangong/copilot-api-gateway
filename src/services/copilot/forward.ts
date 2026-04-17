@@ -33,6 +33,17 @@ export async function callCopilotAPI({
     throw new Error("Model is required and must be a string")
   }
 
+  // Normalize Claude model IDs: Anthropic SDK uses dashes (claude-opus-4-6-1m)
+  // but Copilot API uses dots (claude-opus-4.6-1m). Convert version separators.
+  if (typeof payload.model === "string" && payload.model.startsWith("claude-")) {
+    // Match patterns like claude-opus-4-6-1m or claude-sonnet-4-5
+    // Version numbers use dashes in SDK but dots in Copilot
+    payload.model = payload.model.replace(
+      /^(claude-(?:opus|sonnet|haiku)-)((\d)-(\d)(-1m)?)$/,
+      (_match, prefix, _ver, major, minor, suffix = "") => `${prefix}${major}.${minor}${suffix}`,
+    )
+  }
+
   const baseUrl = getCopilotBaseUrl(accountType)
   const isStreaming = payload.stream === true
   const requestId = crypto.randomUUID().slice(0, 8)
