@@ -22,6 +22,7 @@ import { detectClient } from "~/lib/client-detect"
 import { checkQuota } from "~/lib/quota"
 import { getApiKeyById } from "~/lib/api-keys"
 import { getRepo } from "~/repo"
+import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 
 interface RouteContext {
   state: AppState
@@ -92,7 +93,7 @@ export const messagesRoute = new Elysia()
       }
 
       const upstreamTimer = startTimer()
-      const { response, meta } = await interceptWebSearch(messagesPayload, {
+      const upstreamPromise = interceptWebSearch(messagesPayload, {
         copilotToken: state.copilotToken,
         accountType: state.accountType,
         engineOptions: {
@@ -101,54 +102,69 @@ export const messagesRoute = new Elysia()
           bingEnabled: keyConfig.webSearchBingEnabled,
         },
       })
-      const upstreamMs = upstreamTimer()
 
+      const recordSideEffects = async (
+        result: { response: unknown; meta: WebSearchMeta },
+      ) => {
+        const { response, meta } = result
+        const upstreamMs = upstreamTimer()
+        if (apiKeyId) {
+          await trackNonStreamingUsage(response, apiKeyId, payload.model, client)
+          const usage = response as { usage?: { input_tokens?: number; output_tokens?: number } }
+          recordLatency(apiKeyId, payload.model, colo, {
+            totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
+          }, requestId, {
+            stream: false,
+            inputTokens: usage.usage?.input_tokens,
+            outputTokens: usage.usage?.output_tokens,
+            userAgent,
+          }).catch(() => {})
+          if (meta.searchCount > 0) {
+            const hour = new Date().toISOString().slice(0, 13)
+            const repo = getRepo()
+            for (let i = 0; i < meta.successes; i++) {
+              repo.webSearchUsage.record(apiKeyId, hour, true).catch(() => {})
+            }
+            for (let i = 0; i < meta.failures; i++) {
+              repo.webSearchUsage.record(apiKeyId, hour, false).catch(() => {})
+            }
+          }
+        }
+      }
+
+      const raced = await raceWithHeartbeat(upstreamPromise, {
+        serialize: (v) => JSON.stringify(v.response),
+        onResolve: recordSideEffects,
+      })
+
+      if (raced.kind === "stream") {
+        // Headers (incl. X-Web-Search-*) are locked once streaming starts;
+        // we omit them on the slow path. Caller can still inspect response body.
+        return raced.response
+      }
+
+      const { response, meta } = raced.value
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       }
       addWebSearchHeaders(headers, meta)
-
       const wsResponse = new Response(JSON.stringify(response), { headers })
-      if (apiKeyId) {
-        await trackNonStreamingUsage(response, apiKeyId, payload.model, client)
-        const usage = response as { usage?: { input_tokens?: number; output_tokens?: number } }
-        recordLatency(apiKeyId, payload.model, colo, {
-          totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
-        }, requestId, {
-          stream: false,
-          inputTokens: usage.usage?.input_tokens,
-          outputTokens: usage.usage?.output_tokens,
-          userAgent,
-        }).catch(() => {})
-        // Record web search usage stats
-        if (meta.searchCount > 0) {
-          const hour = new Date().toISOString().slice(0, 13)
-          const repo = getRepo()
-          for (let i = 0; i < meta.successes; i++) {
-            repo.webSearchUsage.record(apiKeyId, hour, true).catch(() => {})
-          }
-          for (let i = 0; i < meta.failures; i++) {
-            repo.webSearchUsage.record(apiKeyId, hour, false).catch(() => {})
-          }
-        }
-      }
+      await recordSideEffects(raced.value)
       return wsResponse
     }
 
     const upstreamTimer = startTimer()
-    // Use timeout only for non-streaming requests
     const isStreaming = payload.stream === true
-    const response = await callCopilotAPI({
-      endpoint: "/v1/messages",
-      payload: payload as unknown as Record<string, unknown>,
-      operationName: "create message",
-      copilotToken: state.copilotToken,
-      accountType: state.accountType,
-      timeout: isStreaming ? undefined : SYNC_REQUEST_TIMEOUT_MS,
-    })
-    const upstreamMs = upstreamTimer()
 
     if (isStreaming) {
+      const response = await callCopilotAPI({
+        endpoint: "/v1/messages",
+        payload: payload as unknown as Record<string, unknown>,
+        operationName: "create message",
+        copilotToken: state.copilotToken,
+        accountType: state.accountType,
+      })
+      const upstreamMs = upstreamTimer()
       const streamResponse = new Response(response.body, {
         headers: {
           "Content-Type": "text/event-stream",
@@ -164,21 +180,44 @@ export const messagesRoute = new Elysia()
       return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, payload.model, client) : streamResponse
     }
 
-    const json = await response.json() as { usage?: { input_tokens?: number; output_tokens?: number } }
-    const jsonResponse = new Response(JSON.stringify(json), {
-      headers: { "Content-Type": "application/json" },
-    })
-    if (apiKeyId) {
-      await trackNonStreamingUsage(json, apiKeyId, payload.model, client)
+    // Non-streaming: wrap the full upstream chain in a heartbeat race so the
+    // client connection survives Cloudflare edge's ~60s idle timeout.
+    type SyncJson = { usage?: { input_tokens?: number; output_tokens?: number } }
+    let upstreamMs = 0
+    const syncPromise: Promise<SyncJson> = (async () => {
+      const response = await callCopilotAPI({
+        endpoint: "/v1/messages",
+        payload: payload as unknown as Record<string, unknown>,
+        operationName: "create message",
+        copilotToken: state.copilotToken,
+        accountType: state.accountType,
+        timeout: SYNC_REQUEST_TIMEOUT_MS,
+      })
+      upstreamMs = upstreamTimer()
+      return (await response.json()) as SyncJson
+    })()
+
+    const recordSync = async (j: SyncJson) => {
+      if (!apiKeyId) return
+      await trackNonStreamingUsage(j, apiKeyId, payload.model, client)
       recordLatency(apiKeyId, payload.model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
       }, requestId, {
         stream: false,
-        inputTokens: json.usage?.input_tokens,
-        outputTokens: json.usage?.output_tokens,
+        inputTokens: j.usage?.input_tokens,
+        outputTokens: j.usage?.output_tokens,
         userAgent,
       }).catch((e) => console.error('[latency] record error:', e))
     }
+
+    const raced = await raceWithHeartbeat(syncPromise, { onResolve: recordSync })
+    if (raced.kind === "stream") return raced.response
+
+    const j = raced.value
+    const jsonResponse = new Response(JSON.stringify(j), {
+      headers: { "Content-Type": "application/json" },
+    })
+    await recordSync(j)
     return jsonResponse
   })
   .post("/v1/messages/count_tokens", async (ctx) => {

@@ -20,6 +20,7 @@ import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { createSSETransform } from "~/lib/sse-transform"
 import { detectClient } from "~/lib/client-detect"
 import { checkQuota } from "~/lib/quota"
+import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 
 interface RouteContext {
   state: AppState
@@ -100,16 +101,16 @@ const handleResponses = async (ctx: unknown) => {
   if (!useChatFallback) {
     // ── Direct passthrough to /v1/responses ──
     const upstreamTimer = startTimer()
-    const response = await callCopilotAPI({
-      endpoint: "/v1/responses",
-      payload: payload as unknown as Record<string, unknown>,
-      operationName: "responses",
-      copilotToken: state.copilotToken,
-      accountType: state.accountType,
-    })
-    const upstreamMs = upstreamTimer()
 
     if (payload.stream === true) {
+      const response = await callCopilotAPI({
+        endpoint: "/v1/responses",
+        payload: payload as unknown as Record<string, unknown>,
+        operationName: "responses",
+        copilotToken: state.copilotToken,
+        accountType: state.accountType,
+      })
+      const upstreamMs = upstreamTimer()
       const streamResponse = new Response(response.body, {
         headers: {
           "Content-Type": "text/event-stream",
@@ -125,18 +126,38 @@ const handleResponses = async (ctx: unknown) => {
       return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, model, client) : streamResponse
     }
 
-    const json = await response.json() as { usage?: { input_tokens?: number; output_tokens?: number } }
-    if (apiKeyId) {
-      await trackNonStreamingUsage(json, apiKeyId, model, client)
+    type RespJson = { usage?: { input_tokens?: number; output_tokens?: number } }
+    let upstreamMs = 0
+    const syncPromise: Promise<RespJson> = (async () => {
+      const response = await callCopilotAPI({
+        endpoint: "/v1/responses",
+        payload: payload as unknown as Record<string, unknown>,
+        operationName: "responses",
+        copilotToken: state.copilotToken,
+        accountType: state.accountType,
+      })
+      upstreamMs = upstreamTimer()
+      return (await response.json()) as RespJson
+    })()
+
+    const recordSync = async (j: RespJson) => {
+      if (!apiKeyId) return
+      await trackNonStreamingUsage(j, apiKeyId, model, client)
       recordLatency(apiKeyId, model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
       }, requestId, {
         stream: false,
-        inputTokens: json.usage?.input_tokens,
-        outputTokens: json.usage?.output_tokens,
+        inputTokens: j.usage?.input_tokens,
+        outputTokens: j.usage?.output_tokens,
       }).catch(() => {})
     }
-    return new Response(JSON.stringify(json), {
+
+    const raced = await raceWithHeartbeat(syncPromise, { onResolve: recordSync })
+    if (raced.kind === "stream") return raced.response
+
+    const j = raced.value
+    await recordSync(j)
+    return new Response(JSON.stringify(j), {
       headers: { "Content-Type": "application/json" },
     })
   }
@@ -181,19 +202,22 @@ const handleResponses = async (ctx: unknown) => {
   chatPayload.stream = false
 
   const upstreamTimer = startTimer()
-  const response = await callCopilotAPI({
-    endpoint: "/chat/completions",
-    payload: chatPayload as unknown as Record<string, unknown>,
-    operationName: "responses (via chat)",
-    copilotToken: state.copilotToken,
-    accountType: state.accountType,
-  })
-  const upstreamMs = upstreamTimer()
+  let upstreamMs = 0
+  const syncPromise: Promise<ReturnType<typeof translateChatCompletionsToResponses>> = (async () => {
+    const response = await callCopilotAPI({
+      endpoint: "/chat/completions",
+      payload: chatPayload as unknown as Record<string, unknown>,
+      operationName: "responses (via chat)",
+      copilotToken: state.copilotToken,
+      accountType: state.accountType,
+    })
+    upstreamMs = upstreamTimer()
+    const chatResponse = (await response.json()) as ChatCompletionResponse
+    return translateChatCompletionsToResponses(chatResponse, model, payload)
+  })()
 
-  const chatResponse = await response.json() as ChatCompletionResponse
-  const responsesResult = translateChatCompletionsToResponses(chatResponse, model, payload)
-
-  if (apiKeyId) {
+  const recordSync = async (responsesResult: ReturnType<typeof translateChatCompletionsToResponses>) => {
+    if (!apiKeyId) return
     await trackNonStreamingUsage(
       { usage: { input_tokens: responsesResult.usage.input_tokens, output_tokens: responsesResult.usage.output_tokens } },
       apiKeyId,
@@ -209,6 +233,11 @@ const handleResponses = async (ctx: unknown) => {
     }).catch(() => {})
   }
 
+  const raced = await raceWithHeartbeat(syncPromise, { onResolve: recordSync })
+  if (raced.kind === "stream") return raced.response
+
+  const responsesResult = raced.value
+  await recordSync(responsesResult)
   return new Response(JSON.stringify(responsesResult), {
     headers: { "Content-Type": "application/json" },
   })

@@ -16,6 +16,7 @@ import {
 } from "~/services/gemini/format-conversion"
 import type { GeminiGenerateContentRequest } from "~/services/gemini/types"
 import { createSSETransform } from "~/lib/sse-transform"
+import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 
 interface RouteContext {
   state: AppState
@@ -79,24 +80,27 @@ async function handleGenerateContent(ctx: RouteContext) {
   const cleanPayload = JSON.parse(JSON.stringify(openAIPayload)) as Record<string, unknown>
 
   const upstreamTimer = startTimer()
-  const response = await callCopilotAPI({
-    endpoint: "/chat/completions",
-    payload: cleanPayload,
-    operationName: "gemini generate content",
-    copilotToken: state.copilotToken,
-    accountType: state.accountType,
-  })
-  const upstreamMs = upstreamTimer()
+  let upstreamMs = 0
+  const syncPromise: Promise<{ chat: ChatCompletionResponse; gemini: ReturnType<typeof translateOpenAIToGemini> }> = (async () => {
+    const response = await callCopilotAPI({
+      endpoint: "/chat/completions",
+      payload: cleanPayload,
+      operationName: "gemini generate content",
+      copilotToken: state.copilotToken,
+      accountType: state.accountType,
+    })
+    upstreamMs = upstreamTimer()
+    const json = (await response.json()) as ChatCompletionResponse
+    return { chat: json, gemini: translateOpenAIToGemini(json, model) }
+  })()
 
-  const json = (await response.json()) as ChatCompletionResponse
-  const geminiResponse = translateOpenAIToGemini(json, model)
-
-  if (apiKeyId) {
+  const recordSync = async (result: { chat: ChatCompletionResponse }) => {
+    if (!apiKeyId) return
     await trackNonStreamingUsage(
       {
         usage: {
-          input_tokens: json.usage?.prompt_tokens,
-          output_tokens: json.usage?.completion_tokens,
+          input_tokens: result.chat.usage?.prompt_tokens,
+          output_tokens: result.chat.usage?.completion_tokens,
         },
       },
       apiKeyId,
@@ -116,13 +120,20 @@ async function handleGenerateContent(ctx: RouteContext) {
       requestId,
       {
         stream: false,
-        inputTokens: json.usage?.prompt_tokens,
-        outputTokens: json.usage?.completion_tokens,
+        inputTokens: result.chat.usage?.prompt_tokens,
+        outputTokens: result.chat.usage?.completion_tokens,
       },
     ).catch(() => {})
   }
 
-  return new Response(JSON.stringify(geminiResponse), {
+  const raced = await raceWithHeartbeat(syncPromise, {
+    serialize: (v) => JSON.stringify(v.gemini),
+    onResolve: recordSync,
+  })
+  if (raced.kind === "stream") return raced.response
+
+  await recordSync(raced.value)
+  return new Response(JSON.stringify(raced.value.gemini), {
     headers: { "Content-Type": "application/json" },
   })
 }
