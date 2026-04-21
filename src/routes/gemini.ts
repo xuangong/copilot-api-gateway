@@ -97,12 +97,7 @@ async function handleGenerateContent(ctx: RouteContext) {
   const recordSync = async (result: { chat: ChatCompletionResponse }) => {
     if (!apiKeyId) return
     await trackNonStreamingUsage(
-      {
-        usage: {
-          input_tokens: result.chat.usage?.prompt_tokens,
-          output_tokens: result.chat.usage?.completion_tokens,
-        },
-      },
+      result.chat,
       apiKeyId,
       model,
       client,

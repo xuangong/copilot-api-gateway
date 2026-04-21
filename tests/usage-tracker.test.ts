@@ -259,6 +259,47 @@ describe("consumeStreamForUsage — works on tee'd upstream branch", () => {
   })
 })
 
+describe("trackNonStreamingUsage — raw ChatCompletionResponse shape (regression: routes must not re-wrap)", () => {
+  test("full ChatCompletionResponse with prompt_tokens_details.cached_tokens yields non-zero cacheRead", async () => {
+    const captured: Captured[] = []
+    setRepoForTest(makeMockRepo(captured) as unknown as Repo)
+
+    // This is the exact shape that ChatCompletionResponse produces upstream.
+    // responses.ts and gemini.ts previously re-wrapped this into
+    // { usage: { input_tokens, output_tokens } }, losing cached_tokens.
+    const chatResponse = {
+      id: "chatcmpl-abc123",
+      object: "chat.completion",
+      created: 1700000000,
+      model: "gpt-4o",
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", content: "Hello!" },
+          finish_reason: "stop",
+        },
+      ],
+      usage: {
+        prompt_tokens: 1000,
+        completion_tokens: 50,
+        total_tokens: 1050,
+        prompt_tokens_details: { cached_tokens: 800 },
+        completion_tokens_details: { reasoning_tokens: 0 },
+      },
+    }
+
+    await trackNonStreamingUsage(chatResponse, "k-regression", "gpt-4o")
+
+    expect(captured.length).toBe(1)
+    expect(captured[0]).toMatchObject({
+      inputTokens: 200,        // 1000 - 800
+      outputTokens: 50,
+      cacheReadTokens: 800,
+      cacheCreationTokens: 0,
+    })
+  })
+})
+
 describe("trackStreamingUsage — multi-byte UTF-8 spanning chunk boundary", () => {
   test("UTF-8 字符被切成两半时，仍能正确解析后续 usage 末帧", async () => {
     const captured: Captured[] = []
