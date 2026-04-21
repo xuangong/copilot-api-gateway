@@ -115,13 +115,14 @@ export function trackStreamingUsage(
   if (!body) return response
 
   const latest: UsageInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
+  const decoder = new TextDecoder("utf-8")
   let buffer = ""
 
   const transform = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
       controller.enqueue(chunk)
 
-      buffer += new TextDecoder().decode(chunk)
+      buffer += decoder.decode(chunk, { stream: true })
       const lines = buffer.split("\n")
       buffer = lines.pop() ?? ""
 
@@ -137,6 +138,7 @@ export function trackStreamingUsage(
       }
     },
     async flush() {
+      buffer += decoder.decode()
       if (buffer.startsWith("data: ")) {
         const data = buffer.slice(6).trim()
         if (data && data !== "[DONE]") {

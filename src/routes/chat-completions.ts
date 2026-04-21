@@ -17,6 +17,7 @@ interface ChatCompletionsPayload {
   model: string
   messages: ChatMessage[]
   stream?: boolean
+  stream_options?: { include_usage?: boolean; [key: string]: unknown }
   max_tokens?: number
   temperature?: number
   top_p?: number
@@ -32,6 +33,50 @@ interface RouteContext {
 }
 
 type ChatJson = { usage?: { prompt_tokens?: number; completion_tokens?: number } }
+
+function stripInjectedUsageChunk(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+  const decoder = new TextDecoder("utf-8")
+  const encoder = new TextEncoder()
+  let buffer = ""
+
+  return stream.pipeThrough(new TransformStream({
+    transform(chunk, controller) {
+      buffer += decoder.decode(chunk, { stream: true })
+      const lines = buffer.split("\n")
+      buffer = lines.pop() ?? ""
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) {
+          controller.enqueue(encoder.encode(line + "\n"))
+          continue
+        }
+        const data = line.slice(6).trim()
+        if (!data || data === "[DONE]") {
+          controller.enqueue(encoder.encode(line + "\n"))
+          continue
+        }
+        try {
+          const parsed = JSON.parse(data) as {
+            choices?: unknown[]
+            usage?: unknown
+          }
+          // Drop usage-only chunk we injected (choices empty + usage present)
+          const isUsageOnly =
+            (!parsed.choices || parsed.choices.length === 0) && parsed.usage != null
+          if (!isUsageOnly) {
+            controller.enqueue(encoder.encode(line + "\n"))
+          }
+        } catch {
+          controller.enqueue(encoder.encode(line + "\n"))
+        }
+      }
+    },
+    flush(controller) {
+      if (buffer.length > 0) {
+        controller.enqueue(encoder.encode(buffer))
+      }
+    },
+  }))
+}
 
 async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
   const { state, body, apiKeyId, colo, requestId, userAgent } = ctx
@@ -49,6 +94,12 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
   const upstreamTimer = startTimer()
 
   if (payload.stream === true) {
+    const clientWantsUsage = Boolean(payload.stream_options?.include_usage)
+    ;(payload as Record<string, unknown>).stream_options = {
+      ...(payload.stream_options ?? {}),
+      include_usage: true,
+    }
+
     const response = await callCopilotAPI({
       endpoint: "/chat/completions",
       payload: payload as unknown as Record<string, unknown>,
@@ -69,7 +120,18 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
       }, requestId, { stream: true }).catch(() => {})
     }
-    return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, payload.model, client) : streamResponse
+    const tracked = apiKeyId
+      ? trackStreamingUsage(streamResponse, apiKeyId, payload.model, client)
+      : streamResponse
+
+    if (clientWantsUsage) {
+      return tracked
+    }
+
+    return new Response(stripInjectedUsageChunk(tracked.body!), {
+      status: tracked.status,
+      headers: tracked.headers,
+    })
   }
 
   let upstreamMs = 0

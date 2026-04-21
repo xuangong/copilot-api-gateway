@@ -2,6 +2,7 @@ import { describe, test, expect, afterEach } from "bun:test"
 import { trackNonStreamingUsage, trackStreamingUsage, consumeStreamForUsage } from "../src/middleware/usage"
 import { setRepoForTest } from "../src/repo"
 import type { Repo } from "../src/repo"
+import { anthropicStream, openaiChatStream, responsesStream } from "./fixtures/sse"
 
 interface Captured {
   keyId: string
@@ -71,16 +72,10 @@ describe("trackStreamingUsage — Anthropic cumulative semantics", () => {
     const captured: Captured[] = []
     setRepoForTest(makeMockRepo(captured) as unknown as Repo)
 
-    const upstream = new Response(sse([
-      { type: "message_start", message: { usage: {
-        input_tokens: 100, cache_read_input_tokens: 50, cache_creation_input_tokens: 10,
-      } } },
-      { type: "message_delta", usage: { output_tokens: 5 } },
-      { type: "message_delta", usage: { output_tokens: 12 } },
-      { type: "message_delta", usage: { output_tokens: 27 } },
-      { type: "message_delta", usage: { output_tokens: 42 } },
-      { type: "message_stop" },
-    ]))
+    const upstream = new Response(anthropicStream({
+      inputTokens: 100, cacheReadTokens: 50, cacheCreationTokens: 10,
+      outputDeltas: [5, 12, 27, 42],
+    }))
 
     const wrapped = trackStreamingUsage(upstream, "key-1", "claude-sonnet-4")
     await drain(wrapped)
@@ -101,11 +96,11 @@ describe("trackStreamingUsage — OpenAI chat-completions末帧 usage", () => {
     const captured: Captured[] = []
     setRepoForTest(makeMockRepo(captured) as unknown as Repo)
 
-    const upstream = new Response(sse([
-      { choices: [{ delta: { content: "Hi" } }] },
-      { choices: [{ delta: { content: "!" } }] },
-      { choices: [], usage: { prompt_tokens: 30, completion_tokens: 8, total_tokens: 38 } },
-    ]))
+    const upstream = new Response(openaiChatStream({
+      contentChunks: ["Hi", "!"],
+      promptTokens: 30,
+      completionTokens: 8,
+    }))
 
     await drain(trackStreamingUsage(upstream, "k1", "gpt-4o-mini"))
     expect(captured.length).toBe(1)
@@ -118,11 +113,11 @@ describe("trackStreamingUsage — Responses response.completed", () => {
     const captured: Captured[] = []
     setRepoForTest(makeMockRepo(captured) as unknown as Repo)
 
-    const upstream = new Response(sse([
-      { type: "response.created" },
-      { type: "response.output_text.delta", delta: "Hello" },
-      { type: "response.completed", response: { usage: { input_tokens: 200, output_tokens: 50 } } },
-    ]))
+    const upstream = new Response(responsesStream({
+      textDeltas: ["Hello"],
+      inputTokens: 200,
+      outputTokens: 50,
+    }))
 
     await drain(trackStreamingUsage(upstream, "k1", "gpt-5"))
     expect(captured.length).toBe(1)
@@ -261,5 +256,41 @@ describe("consumeStreamForUsage — works on tee'd upstream branch", () => {
 
     expect(captured.length).toBe(1)
     expect(captured[0]).toMatchObject({ inputTokens: 11, outputTokens: 22, model: "gemini-2.0-flash" })
+  })
+})
+
+describe("trackStreamingUsage — multi-byte UTF-8 spanning chunk boundary", () => {
+  test("UTF-8 字符被切成两半时，仍能正确解析后续 usage 末帧", async () => {
+    const captured: Captured[] = []
+    setRepoForTest(makeMockRepo(captured) as never)
+
+    // Construct a payload where "你好世界" may span a chunk boundary
+    const payload = JSON.stringify({
+      choices: [{ delta: { content: "你好世界" } }],
+    })
+    const usagePayload = JSON.stringify({
+      choices: [],
+      usage: { prompt_tokens: 50, completion_tokens: 4 },
+    })
+    const enc = new TextEncoder()
+    const fullA = enc.encode(`data: ${payload}\n\n`)
+    const fullB = enc.encode(`data: ${usagePayload}\n\n`)
+    // Deliberately cut in the middle of fullA (may land in a multi-byte char)
+    const cut = Math.floor(fullA.length / 2)
+    const part1 = fullA.slice(0, cut)
+    const part2 = fullA.slice(cut)
+
+    const upstream = new Response(new ReadableStream({
+      start(c) {
+        c.enqueue(part1)
+        c.enqueue(part2)
+        c.enqueue(fullB)
+        c.close()
+      },
+    }))
+
+    await drain(trackStreamingUsage(upstream, "k1", "gpt-4o-mini"))
+    expect(captured.length).toBe(1)
+    expect(captured[0]).toMatchObject({ inputTokens: 50, outputTokens: 4 })
   })
 })
