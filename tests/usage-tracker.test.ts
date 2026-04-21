@@ -300,6 +300,49 @@ describe("trackNonStreamingUsage — raw ChatCompletionResponse shape (regressio
   })
 })
 
+describe("trackStreamingUsage — SSE ping heartbeat frames are ignored", () => {
+  test("injected 'event: ping\\ndata: {}\\n\\n' frames do not corrupt usage extraction", async () => {
+    const captured: Captured[] = []
+    setRepoForTest(makeMockRepo(captured) as unknown as Repo)
+
+    // Mirror what createIdleHeartbeatStream emits: real SSE data frames
+    // interleaved with Anthropic's official ping keepalive frames.
+    const enc = new TextEncoder()
+    const messageStart = enc.encode(
+      `data: ${JSON.stringify({ type: "message_start", message: { usage: { input_tokens: 80, cache_read_input_tokens: 20, cache_creation_input_tokens: 5, output_tokens: 0 } } })}\n\n`,
+    )
+    const ping = enc.encode("event: ping\ndata: {}\n\n")
+    const messageDelta = enc.encode(
+      `data: ${JSON.stringify({ type: "message_delta", usage: { output_tokens: 35 } })}\n\n`,
+    )
+
+    const upstream = new Response(new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(messageStart)
+        c.enqueue(ping)          // heartbeat injected between real frames
+        c.enqueue(messageDelta)
+        c.enqueue(ping)          // heartbeat injected after last real frame
+        c.close()
+      },
+    }))
+
+    await drain(trackStreamingUsage(upstream, "k-ping", "claude-sonnet-4"))
+
+    // The tracker only processes lines starting with "data: ", so the
+    // "event: ping" line is silently skipped and "data: {}" produces a
+    // no-op JSON parse (no recognised usage fields). Token counts must
+    // exactly match the real message_start / message_delta frames.
+    expect(captured.length).toBe(1)
+    expect(captured[0]).toMatchObject({
+      keyId: "k-ping",
+      inputTokens: 80,
+      outputTokens: 35,
+      cacheReadTokens: 20,
+      cacheCreationTokens: 5,
+    })
+  })
+})
+
 describe("trackStreamingUsage — multi-byte UTF-8 spanning chunk boundary", () => {
   test("UTF-8 字符被切成两半时，仍能正确解析后续 usage 末帧", async () => {
     const captured: Captured[] = []
