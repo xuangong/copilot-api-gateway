@@ -113,3 +113,47 @@ test("downstream cancel cancels upstream reader", async () => {
   await new Promise((r) => setTimeout(r, 10))
   expect(cancelled).toBe("client gone")
 })
+
+test("does NOT inject heartbeat mid-frame (preserves SSE/JSON integrity)", async () => {
+  // Simulate upstream emitting a single SSE event split across two chunks
+  // with a long idle gap between them. The first chunk lacks a frame
+  // terminator ("\n\n"), so injecting a heartbeat would corrupt the JSON.
+  const upstream = new ReadableStream<Uint8Array>({
+    async start(c) {
+      // half of "data: {\"text\": \"hello world\"}\n\n"
+      c.enqueue(enc.encode("data: {\"text\": \"he"))
+      // long idle gap (multiple intervals); heartbeat MUST be suppressed
+      await new Promise((r) => setTimeout(r, 250))
+      c.enqueue(enc.encode("llo world\"}\n\n"))
+      c.close()
+    },
+  })
+  const out = createIdleHeartbeatStream(upstream, {
+    intervalMs: 50,
+    heartbeat: enc.encode(": ping\n\n"),
+  })
+  const text = await collect(out)
+  // Frame must reassemble cleanly with no ping spliced inside the JSON.
+  expect(text).toBe("data: {\"text\": \"hello world\"}\n\n")
+  expect(text).not.toContain(": ping")
+})
+
+test("resumes heartbeats after a complete frame is delivered", async () => {
+  const upstream = new ReadableStream<Uint8Array>({
+    async start(c) {
+      // Complete frame ends with "\n\n" → boundary, heartbeat allowed during gap.
+      c.enqueue(enc.encode("data: a\n\n"))
+      await new Promise((r) => setTimeout(r, 250))
+      c.enqueue(enc.encode("data: b\n\n"))
+      c.close()
+    },
+  })
+  const out = createIdleHeartbeatStream(upstream, {
+    intervalMs: 50,
+    heartbeat: enc.encode(": ping\n\n"),
+  })
+  const text = await collect(out)
+  expect(text).toContain(": ping")
+  expect(text.indexOf(": ping")).toBeGreaterThan(text.indexOf("data: a"))
+  expect(text.indexOf(": ping")).toBeLessThan(text.indexOf("data: b"))
+})
