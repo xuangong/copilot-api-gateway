@@ -16,13 +16,24 @@ export function wrapOpenAIHeartbeat(
     : null
 }
 
-/** Wrap an Anthropic /v1/messages upstream body with idle protocol-ping frames. */
+/** Wrap an Anthropic /v1/messages upstream body with idle protocol-ping frames.
+ *
+ * Also strips the trailing `data: [DONE]\n\n` frame that Copilot upstream
+ * appends (OpenAI convention). Anthropic SDKs try to JSON.parse the data
+ * payload of every `data:` frame and choke on the literal `[DONE]`, dropping
+ * the entire message and leaving clients (e.g. Claude Code) in an "Idle"
+ * state with no visible reply. The Anthropic protocol terminates with
+ * `event: message_stop`, not `[DONE]`, so this frame is purely noise. */
 export function wrapAnthropicHeartbeat(
   body: ReadableStream<Uint8Array> | null,
 ): ReadableStream<Uint8Array> | null {
-  return body
-    ? createIdleHeartbeatStream(body, { intervalMs: SSE_HEARTBEAT_MS, heartbeat: ANTHROPIC_PING, tag: "anthropic" })
-    : null
+  if (!body) return null
+  const heartbeated = createIdleHeartbeatStream(body, {
+    intervalMs: SSE_HEARTBEAT_MS,
+    heartbeat: ANTHROPIC_PING,
+    tag: "anthropic",
+  })
+  return heartbeated.pipeThrough(stripAnthropicDoneFrameTransform())
 }
 
 export interface IdleHeartbeatOptions {
@@ -182,6 +193,40 @@ export function createIdleHeartbeatStream(
     },
     async cancel(reason) {
       try { await reader.cancel(reason) } catch { /* ignore */ }
+    },
+  })
+}
+
+/**
+ * Strip the trailing `data: [DONE]\n\n` frame (and CRLF variant) emitted by
+ * Copilot upstream on Anthropic-format streams. This frame is OpenAI's
+ * terminator convention; the Anthropic protocol terminates with
+ * `event: message_stop`. Anthropic SDKs JSON.parse every `data:` payload,
+ * so the literal `[DONE]` triggers SyntaxError and the SDK silently drops
+ * the message — clients see "Idle" with no reply.
+ *
+ * Operates on whole-frame boundaries because the upstream wrapper guarantees
+ * downstream chunks always end at a frame edge. We still scan within each
+ * chunk in case multiple complete frames arrive together.
+ */
+function stripAnthropicDoneFrameTransform(): TransformStream<Uint8Array, Uint8Array> {
+  const decoder = new TextDecoder("utf-8")
+  const encoder = new TextEncoder()
+  // Match a complete `data: [DONE]` SSE frame, optional CR before LF, with
+  // its terminating blank line. Allows the trailing terminator to be either
+  // \n\n or \r\n\r\n.
+  const DONE_FRAME = /data:\s*\[DONE\]\s*\r?\n\r?\n/g
+  return new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      const text = decoder.decode(chunk, { stream: false })
+      if (!text.includes("[DONE]")) {
+        controller.enqueue(chunk)
+        return
+      }
+      const filtered = text.replace(DONE_FRAME, "")
+      if (filtered.length > 0) {
+        controller.enqueue(encoder.encode(filtered))
+      }
     },
   })
 }
