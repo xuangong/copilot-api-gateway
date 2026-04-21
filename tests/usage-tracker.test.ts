@@ -191,6 +191,7 @@ describe("extractUsage — Responses input_tokens_details.cached_tokens", () => 
       "gpt-5",
     )
 
+    expect(captured.length).toBe(1)
     expect(captured[0]).toMatchObject({
       inputTokens: 300,        // 800 - 500
       outputTokens: 120,
@@ -213,6 +214,7 @@ describe("applyStreamEvent — cached_tokens in stream end frame", () => {
     ]))
     await drain(trackStreamingUsage(upstream, "k1", "gpt-4o-mini"))
 
+    expect(captured.length).toBe(1)
     expect(captured[0]).toMatchObject({
       inputTokens: 200, outputTokens: 10, cacheReadTokens: 300,
     })
@@ -230,6 +232,7 @@ describe("applyStreamEvent — cached_tokens in stream end frame", () => {
     ]))
     await drain(trackStreamingUsage(upstream, "k1", "gpt-5"))
 
+    expect(captured.length).toBe(1)
     expect(captured[0]).toMatchObject({
       inputTokens: 250, outputTokens: 40, cacheReadTokens: 450,
     })

@@ -12,7 +12,7 @@ interface UsageInfo {
 function extractUsageFromJson(json: any): UsageInfo | null {
   // Anthropic Messages — gated on cache_read_input_tokens presence to disambiguate
   // from /v1/responses which also uses input_tokens
-  if (json?.usage?.input_tokens != null && json?.usage?.cache_read_input_tokens !== undefined) {
+  if (json?.usage?.input_tokens != null && (json?.usage?.cache_read_input_tokens !== undefined || json?.usage?.cache_creation_input_tokens !== undefined)) {
     return {
       input: json.usage.input_tokens,
       output: json.usage.output_tokens ?? 0,
@@ -65,12 +65,14 @@ function applyStreamEvent(parsed: any, latest: UsageInfo): void {
     latest.input = Math.max(0, (u.input_tokens ?? 0) - cached)
     latest.output = u.output_tokens ?? 0
     latest.cacheRead = cached
+    latest.cacheCreation = 0
   // OpenAI Chat Completions chunk with usage — terminal end-frame, overwrite
   } else if (parsed.usage?.prompt_tokens != null) {
     const cached = parsed.usage.prompt_tokens_details?.cached_tokens ?? 0
     latest.input = Math.max(0, parsed.usage.prompt_tokens - cached)
     latest.output = parsed.usage.completion_tokens ?? 0
     latest.cacheRead = cached
+    latest.cacheCreation = 0
   }
 }
 
