@@ -1,0 +1,57 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Local data & secrets
+.env
+.env.*
+!.env.example
+data/
+.data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Dependencies (will be installed in image)
+node_modules/
+
+# Build artifacts
+dist/
+build/
+.wrangler/
+
+# Tests & dev-only
+tests/
+test/
+coverage/
+*.test.ts
+*.spec.ts
+
+# Docs
+docs/
+*.md
+!README.md
+
+# Editor / OS
+.vscode/
+.idea/
+.claude/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# CI / deployment configs not needed at runtime
+.github/
+docker-compose.yml
+docker-compose.*.yml
+Dockerfile
+.dockerignore
+wrangler.toml
+migrations/
