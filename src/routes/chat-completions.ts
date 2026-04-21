@@ -7,6 +7,7 @@ import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { detectClient } from "~/lib/client-detect"
 import { checkQuota } from "~/lib/quota"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
+import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 
 interface ChatMessage {
   role: "system" | "user" | "assistant"
@@ -108,7 +109,11 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
       accountType: state.accountType,
     })
     const upstreamMs = upstreamTimer()
-    const streamResponse = new Response(response.body, {
+    // Inject SSE comment heartbeats during long thinking gaps so CF edge
+    // doesn't close the idle connection. ":" prefix = SSE comment line,
+    // ignored by every spec-compliant SSE parser including the OpenAI SDK.
+    const heartbeated = wrapOpenAIHeartbeat(response.body)
+    const streamResponse = new Response(heartbeated, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",

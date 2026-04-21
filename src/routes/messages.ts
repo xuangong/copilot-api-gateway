@@ -23,6 +23,7 @@ import { checkQuota } from "~/lib/quota"
 import { getApiKeyById } from "~/lib/api-keys"
 import { getRepo } from "~/repo"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
+import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
 
 interface RouteContext {
   state: AppState
@@ -165,7 +166,12 @@ export const messagesRoute = new Elysia()
         accountType: state.accountType,
       })
       const upstreamMs = upstreamTimer()
-      const streamResponse = new Response(response.body, {
+      // Wrap upstream body in an idle-heartbeat stream so Cloudflare edge
+      // does not close the client connection while the model is thinking.
+      // Anthropic's official "event: ping" frame is the protocol-noop here —
+      // SDKs already filter it out as a keepalive.
+      const heartbeated = wrapAnthropicHeartbeat(response.body)
+      const streamResponse = new Response(heartbeated, {
         headers: {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
