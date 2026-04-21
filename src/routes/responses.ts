@@ -21,6 +21,7 @@ import { createSSETransform } from "~/lib/sse-transform"
 import { detectClient } from "~/lib/client-detect"
 import { checkQuota } from "~/lib/quota"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
+import { createIdleHeartbeatStream } from "~/lib/sse-heartbeat"
 
 interface RouteContext {
   state: AppState
@@ -111,7 +112,16 @@ const handleResponses = async (ctx: unknown) => {
         accountType: state.accountType,
       })
       const upstreamMs = upstreamTimer()
-      const streamResponse = new Response(response.body, {
+      // Inject SSE comment heartbeats during long thinking gaps so CF edge
+      // doesn't close the idle connection. ":" prefix = SSE comment line,
+      // ignored by every spec-compliant SSE parser including the OpenAI SDK.
+      const heartbeated = response.body
+        ? createIdleHeartbeatStream(response.body, {
+            intervalMs: 15_000,
+            heartbeat: new TextEncoder().encode(": keepalive\n\n"),
+          })
+        : null
+      const streamResponse = new Response(heartbeated, {
         headers: {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
@@ -186,10 +196,20 @@ const handleResponses = async (ctx: unknown) => {
       }, requestId, { stream: true }).catch(() => {})
     }
 
+    // Heartbeat BEFORE tee so both branches share the keepalive stream.
+    // SSE comment ":" lines are ignored by createSSETransform's parser
+    // (it filters on "data: " prefix), so usage extraction is unaffected.
+    const heartbeated = response.body
+      ? createIdleHeartbeatStream(response.body, {
+          intervalMs: 15_000,
+          heartbeat: new TextEncoder().encode(": keepalive\n\n"),
+        })
+      : null
+
     let usageBranch: ReadableStream<Uint8Array> | null = null
     let transformBranch: ReadableStream<Uint8Array> | null = null
-    if (response.body) {
-      const [a, b] = response.body.tee()
+    if (heartbeated) {
+      const [a, b] = heartbeated.tee()
       usageBranch = a
       transformBranch = b
     }

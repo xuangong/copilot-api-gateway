@@ -343,6 +343,50 @@ describe("trackStreamingUsage — SSE ping heartbeat frames are ignored", () => 
   })
 })
 
+describe("trackStreamingUsage — OpenAI SSE comment keepalive frames are ignored", () => {
+  test("injected ': keepalive\\n\\n' SSE comment lines do not corrupt usage extraction", async () => {
+    const captured: Captured[] = []
+    setRepoForTest(makeMockRepo(captured) as unknown as Repo)
+
+    // Hand-craft a stream interleaving real OpenAI chat chunks with
+    // ": keepalive\n\n" SSE comment heartbeats (Plan C injection).
+    // SSE comment lines start with ":" and are spec-defined no-ops;
+    // the usage tracker only processes "data: " prefix lines.
+    const enc = new TextEncoder()
+    const contentChunk = enc.encode(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "Hello" } }] })}\n\n`,
+    )
+    const keepalive = enc.encode(": keepalive\n\n")
+    const usageFrame = enc.encode(
+      `data: ${JSON.stringify({
+        choices: [],
+        usage: { prompt_tokens: 42, completion_tokens: 17 },
+      })}\n\n`,
+    )
+    const done = enc.encode("data: [DONE]\n\n")
+
+    const upstream = new Response(new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(contentChunk)
+        c.enqueue(keepalive)          // heartbeat between content and usage
+        c.enqueue(usageFrame)
+        c.enqueue(keepalive)          // heartbeat after usage frame
+        c.enqueue(done)
+        c.close()
+      },
+    }))
+
+    await drain(trackStreamingUsage(upstream, "k-openai-keepalive", "gpt-4o"))
+
+    expect(captured.length).toBe(1)
+    expect(captured[0]).toMatchObject({
+      keyId: "k-openai-keepalive",
+      inputTokens: 42,
+      outputTokens: 17,
+    })
+  })
+})
+
 describe("trackStreamingUsage — multi-byte UTF-8 spanning chunk boundary", () => {
   test("UTF-8 字符被切成两半时，仍能正确解析后续 usage 末帧", async () => {
     const captured: Captured[] = []
