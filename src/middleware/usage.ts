@@ -10,8 +10,9 @@ interface UsageInfo {
 
 // deno-lint-ignore no-explicit-any
 function extractUsageFromJson(json: any): UsageInfo | null {
-  // Anthropic Messages: { usage: { input_tokens, output_tokens } }
-  if (json?.usage?.input_tokens != null) {
+  // Anthropic Messages — gated on cache_read_input_tokens presence to disambiguate
+  // from /v1/responses which also uses input_tokens
+  if (json?.usage?.input_tokens != null && json?.usage?.cache_read_input_tokens !== undefined) {
     return {
       input: json.usage.input_tokens,
       output: json.usage.output_tokens ?? 0,
@@ -19,9 +20,25 @@ function extractUsageFromJson(json: any): UsageInfo | null {
       cacheCreation: json.usage.cache_creation_input_tokens ?? 0,
     }
   }
+  // Responses /v1/responses
+  if (json?.usage?.input_tokens != null) {
+    const cached = json.usage.input_tokens_details?.cached_tokens ?? 0
+    return {
+      input: Math.max(0, json.usage.input_tokens - cached),
+      output: json.usage.output_tokens ?? 0,
+      cacheRead: cached,
+      cacheCreation: 0,
+    }
+  }
   // OpenAI Chat Completions: { usage: { prompt_tokens, completion_tokens } }
   if (json?.usage?.prompt_tokens != null) {
-    return { input: json.usage.prompt_tokens, output: json.usage.completion_tokens ?? 0, cacheRead: 0, cacheCreation: 0 }
+    const cached = json.usage.prompt_tokens_details?.cached_tokens ?? 0
+    return {
+      input: Math.max(0, json.usage.prompt_tokens - cached),
+      output: json.usage.completion_tokens ?? 0,
+      cacheRead: cached,
+      cacheCreation: 0,
+    }
   }
   return null
 }
@@ -44,12 +61,16 @@ function applyStreamEvent(parsed: any, latest: UsageInfo): void {
   // Responses response.completed: terminal frame — overwrite with final values
   } else if (parsed.type === "response.completed" && parsed.response?.usage) {
     const u = parsed.response.usage
-    latest.input = u.input_tokens ?? 0
+    const cached = u.input_tokens_details?.cached_tokens ?? 0
+    latest.input = Math.max(0, (u.input_tokens ?? 0) - cached)
     latest.output = u.output_tokens ?? 0
+    latest.cacheRead = cached
   // OpenAI Chat Completions chunk with usage — terminal end-frame, overwrite
   } else if (parsed.usage?.prompt_tokens != null) {
-    latest.input = parsed.usage.prompt_tokens
+    const cached = parsed.usage.prompt_tokens_details?.cached_tokens ?? 0
+    latest.input = Math.max(0, parsed.usage.prompt_tokens - cached)
     latest.output = parsed.usage.completion_tokens ?? 0
+    latest.cacheRead = cached
   }
 }
 
