@@ -17,7 +17,7 @@ import {
 import type { GeminiGenerateContentRequest } from "~/services/gemini/types"
 import { createSSETransform } from "~/lib/sse-transform"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
-import { createIdleHeartbeatStream } from "~/lib/sse-heartbeat"
+import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 
 interface RouteContext {
   state: AppState
@@ -210,12 +210,7 @@ async function handleStreamGenerateContent(
   // JSON.parse on the client. Long alt=json streams should switch to
   // ?alt=sse to benefit from keepalive.
   const upstreamBody = response.body
-  const heartbeated = upstreamBody && useSSE
-    ? createIdleHeartbeatStream(upstreamBody, {
-        intervalMs: 15_000,
-        heartbeat: encoder.encode(": keepalive\n\n"),
-      })
-    : upstreamBody
+  const heartbeated = useSSE ? wrapOpenAIHeartbeat(upstreamBody) : upstreamBody
 
   let usageBranch: ReadableStream<Uint8Array> | null = null
   let transformBranch: ReadableStream<Uint8Array> | null = null

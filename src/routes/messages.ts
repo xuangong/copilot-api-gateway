@@ -23,7 +23,7 @@ import { checkQuota } from "~/lib/quota"
 import { getApiKeyById } from "~/lib/api-keys"
 import { getRepo } from "~/repo"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
-import { createIdleHeartbeatStream } from "~/lib/sse-heartbeat"
+import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
 
 interface RouteContext {
   state: AppState
@@ -170,12 +170,7 @@ export const messagesRoute = new Elysia()
       // does not close the client connection while the model is thinking.
       // Anthropic's official "event: ping" frame is the protocol-noop here —
       // SDKs already filter it out as a keepalive.
-      const heartbeated = response.body
-        ? createIdleHeartbeatStream(response.body, {
-            intervalMs: 15_000,
-            heartbeat: new TextEncoder().encode("event: ping\ndata: {}\n\n"),
-          })
-        : null
+      const heartbeated = wrapAnthropicHeartbeat(response.body)
       const streamResponse = new Response(heartbeated, {
         headers: {
           "Content-Type": "text/event-stream",

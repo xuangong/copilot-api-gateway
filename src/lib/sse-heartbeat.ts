@@ -1,4 +1,30 @@
 // src/lib/sse-heartbeat.ts
+
+/** Default idle interval (ms) before injecting a keepalive byte sequence.
+ * Tuned to fire well before Cloudflare edge's ~60s idle close. */
+export const SSE_HEARTBEAT_MS = 15_000
+
+const OPENAI_KEEPALIVE = new TextEncoder().encode(": keepalive\n\n")
+const ANTHROPIC_PING = new TextEncoder().encode("event: ping\ndata: {}\n\n")
+
+/** Wrap an OpenAI/Responses/Gemini-SSE upstream body with idle keepalive comments. */
+export function wrapOpenAIHeartbeat(
+  body: ReadableStream<Uint8Array> | null,
+): ReadableStream<Uint8Array> | null {
+  return body
+    ? createIdleHeartbeatStream(body, { intervalMs: SSE_HEARTBEAT_MS, heartbeat: OPENAI_KEEPALIVE })
+    : null
+}
+
+/** Wrap an Anthropic /v1/messages upstream body with idle protocol-ping frames. */
+export function wrapAnthropicHeartbeat(
+  body: ReadableStream<Uint8Array> | null,
+): ReadableStream<Uint8Array> | null {
+  return body
+    ? createIdleHeartbeatStream(body, { intervalMs: SSE_HEARTBEAT_MS, heartbeat: ANTHROPIC_PING })
+    : null
+}
+
 export interface IdleHeartbeatOptions {
   /** ms of idle time before injecting a heartbeat byte sequence */
   intervalMs: number
