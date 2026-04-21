@@ -1,6 +1,7 @@
 import { describe, test, expect, afterEach } from "bun:test"
 import { trackStreamingUsage } from "../src/middleware/usage"
 import { setRepoForTest } from "../src/repo"
+import type { Repo } from "../src/repo"
 
 interface Captured {
   keyId: string
@@ -35,7 +36,10 @@ function makeMockRepo(captured: Captured[]) {
         })
       },
     },
-    apiKeys: { touchLastUsed: async () => {} },
+    apiKeys: {
+      getById: async (_id: string) => null,
+      save: async () => {},
+    },
   }
 }
 
@@ -65,7 +69,7 @@ afterEach(() => {
 describe("trackStreamingUsage — Anthropic cumulative semantics", () => {
   test("message_delta usage overwrites, does not accumulate", async () => {
     const captured: Captured[] = []
-    setRepoForTest(makeMockRepo(captured) as never)
+    setRepoForTest(makeMockRepo(captured) as unknown as Repo)
 
     const upstream = new Response(sse([
       { type: "message_start", message: { usage: {
@@ -95,7 +99,7 @@ describe("trackStreamingUsage — Anthropic cumulative semantics", () => {
 describe("trackStreamingUsage — OpenAI chat-completions末帧 usage", () => {
   test("末帧 usage 作为终值持久化", async () => {
     const captured: Captured[] = []
-    setRepoForTest(makeMockRepo(captured) as never)
+    setRepoForTest(makeMockRepo(captured) as unknown as Repo)
 
     const upstream = new Response(sse([
       { choices: [{ delta: { content: "Hi" } }] },
@@ -112,7 +116,7 @@ describe("trackStreamingUsage — OpenAI chat-completions末帧 usage", () => {
 describe("trackStreamingUsage — Responses response.completed", () => {
   test("response.completed.usage 覆盖累计", async () => {
     const captured: Captured[] = []
-    setRepoForTest(makeMockRepo(captured) as never)
+    setRepoForTest(makeMockRepo(captured) as unknown as Repo)
 
     const upstream = new Response(sse([
       { type: "response.created" },

@@ -34,23 +34,20 @@ function applyStreamEvent(parsed: any, latest: UsageInfo): void {
     latest.input = u.input_tokens
     latest.cacheRead = u.cache_read_input_tokens ?? 0
     latest.cacheCreation = u.cache_creation_input_tokens ?? 0
-  }
   // Anthropic message_delta: each event carries the CUMULATIVE output_tokens so far (overwrite, not add)
   // Newer Anthropic API versions also include cache tokens in message_delta
-  if (parsed.type === "message_delta" && parsed.usage?.output_tokens != null) {
+  } else if (parsed.type === "message_delta" && parsed.usage?.output_tokens != null) {
     const u = parsed.usage
     latest.output = u.output_tokens
     if (u.cache_read_input_tokens != null) latest.cacheRead = u.cache_read_input_tokens
     if (u.cache_creation_input_tokens != null) latest.cacheCreation = u.cache_creation_input_tokens
-  }
   // Responses response.completed: terminal frame — overwrite with final values
-  if (parsed.type === "response.completed" && parsed.response?.usage) {
+  } else if (parsed.type === "response.completed" && parsed.response?.usage) {
     const u = parsed.response.usage
     latest.input = u.input_tokens ?? 0
     latest.output = u.output_tokens ?? 0
-  }
   // OpenAI Chat Completions chunk with usage — terminal end-frame, overwrite
-  if (parsed.usage?.prompt_tokens != null) {
+  } else if (parsed.usage?.prompt_tokens != null) {
     latest.input = parsed.usage.prompt_tokens
     latest.output = parsed.usage.completion_tokens ?? 0
   }
