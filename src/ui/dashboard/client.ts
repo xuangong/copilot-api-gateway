@@ -154,15 +154,32 @@ export function dashboardAssets(): string {
       for (const r of data) {
         const k = keyFn(r);
         const existing = m.get(k);
+        const cr = r.cacheReadTokens || 0;
+        const cc = r.cacheCreationTokens || 0;
         if (existing) {
           existing.requests += r.requests;
           existing.input += r.inputTokens;
           existing.output += r.outputTokens;
+          existing.cacheRead += cr;
+          existing.cacheCreation += cc;
         } else {
-          m.set(k, { label: labelFn(r, k), requests: r.requests, input: r.inputTokens, output: r.outputTokens });
+          m.set(k, {
+            label: labelFn(r, k),
+            requests: r.requests,
+            input: r.inputTokens,
+            output: r.outputTokens,
+            cacheRead: cr,
+            cacheCreation: cc,
+          });
         }
       }
-      return [...m.values()].sort((a, b) => (b.input + b.output) - (a.input + a.output));
+      // Sort by full total (incl. cache) so distribution row order matches the
+      // headline card, which also sums all four buckets.
+      return [...m.values()].sort((a, b) => {
+        const totA = a.input + a.output + a.cacheRead + a.cacheCreation;
+        const totB = b.input + b.output + b.cacheRead + b.cacheCreation;
+        return totB - totA;
+      });
     }
 
     function chartBaseOptions(labelCallback) {

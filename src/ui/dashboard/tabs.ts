@@ -987,7 +987,7 @@ export function renderUsageTab(): string {
         </div>
 
         <p class="text-[10px] text-themed-dim mb-2" x-text="t('dash.utcNote')"></p>
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-6 pt-5 border-t border-white/5">
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4 mt-6 pt-5 border-t border-white/5">
           <div class="text-center">
             <p class="text-xs text-themed-dim mb-1" x-text="t('dash.requests')"></p>
             <p class="text-lg font-bold font-mono text-themed" x-text="tokenSummary.requests.toLocaleString()"></p>
@@ -995,6 +995,7 @@ export function renderUsageTab(): string {
           <div class="text-center">
             <p class="text-xs text-themed-dim mb-1" x-text="t('dash.totalInput')"></p>
             <p class="text-lg font-bold font-mono text-themed" x-text="(tokenSummary.input + tokenSummary.cacheRead + tokenSummary.cacheCreation).toLocaleString()"></p>
+            <p class="text-[10px] text-themed-dim mt-0.5" x-text="t('dash.totalInputNote')"></p>
           </div>
           <div class="text-center">
             <p class="text-xs text-themed-dim mb-1" x-text="t('dash.cacheRead')"></p>
@@ -1003,12 +1004,21 @@ export function renderUsageTab(): string {
               x-text="(() => { const total = tokenSummary.input + tokenSummary.cacheRead + tokenSummary.cacheCreation; return total > 0 ? (tokenSummary.cacheRead / total * 100).toFixed(1) + '% hit' : ''; })()"></p>
           </div>
           <div class="text-center">
+            <p class="text-xs text-themed-dim mb-1" x-text="t('dash.cacheCreation')"></p>
+            <p class="text-lg font-bold font-mono text-themed" x-text="tokenSummary.cacheCreation.toLocaleString()"></p>
+          </div>
+          <div class="text-center">
             <p class="text-xs text-themed-dim mb-1" x-text="t('dash.uncachedInput')"></p>
             <p class="text-lg font-bold font-mono text-themed" x-text="tokenSummary.input.toLocaleString()"></p>
           </div>
           <div class="text-center">
             <p class="text-xs text-themed-dim mb-1" x-text="t('dash.outputTokens')"></p>
             <p class="text-lg font-bold font-mono text-themed" x-text="tokenSummary.output.toLocaleString()"></p>
+          </div>
+          <div class="text-center">
+            <p class="text-xs text-themed-dim mb-1" x-text="t('dash.totalTokens')"></p>
+            <p class="text-lg font-bold font-mono text-themed"
+               x-text="(tokenSummary.input + tokenSummary.output + tokenSummary.cacheRead + tokenSummary.cacheCreation).toLocaleString()"></p>
           </div>
         </div>
       </div>
@@ -1093,7 +1103,10 @@ function renderDistributionPanel(dataVar: string, titleKey: string, labelField: 
                 <th class="text-left py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('${titleKey}')"></th>
                 <th class="text-right py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.requests')"></th>
                 <th class="text-right py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.input')"></th>
-                <th class="text-right py-2.5 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.output')"></th>
+                <th class="text-right py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.output')"></th>
+                <th class="text-right py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.cacheRead')"></th>
+                <th class="text-right py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.cacheCreation')"></th>
+                <th class="text-right py-2.5 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.totalTokens')"></th>
               </tr>
             </thead>
             <tbody>
@@ -1109,7 +1122,10 @@ function renderDistributionPanel(dataVar: string, titleKey: string, labelField: 
                   </td>
                   <td class="py-2.5 pr-4 text-right text-themed-secondary font-mono text-xs" x-text="m.requests.toLocaleString()"></td>
                   <td class="py-2.5 pr-4 text-right text-themed-secondary font-mono text-xs" x-text="m.input.toLocaleString()"></td>
-                  <td class="py-2.5 text-right text-themed-secondary font-mono text-xs" x-text="m.output.toLocaleString()"></td>
+                  <td class="py-2.5 pr-4 text-right text-themed-secondary font-mono text-xs" x-text="m.output.toLocaleString()"></td>
+                  <td class="py-2.5 pr-4 text-right text-themed-secondary font-mono text-xs" x-text="m.cacheRead.toLocaleString()"></td>
+                  <td class="py-2.5 pr-4 text-right text-themed-secondary font-mono text-xs" x-text="m.cacheCreation.toLocaleString()"></td>
+                  <td class="py-2.5 text-right text-themed-secondary font-mono text-xs" x-text="(m.input + m.output + m.cacheRead + m.cacheCreation).toLocaleString()"></td>
                 </tr>
               </template>
             </tbody>
