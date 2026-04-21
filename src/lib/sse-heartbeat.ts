@@ -39,6 +39,27 @@ export function createIdleHeartbeatStream(
 ): ReadableStream<Uint8Array> {
   const reader = upstream.getReader()
 
+  // Track whether we are at an SSE frame boundary. Heartbeats may ONLY be
+  // injected at boundaries — injecting mid-frame splits a chunked SSE event
+  // (e.g. a partial JSON `data:` line) and the client gets unparseable input
+  // like a bare \n inside a JSON string literal ("Bad control character").
+  // Boundary == last emitted bytes ended with "\n\n" (or nothing emitted yet).
+  let atBoundary = true
+
+  const endsWithFrameBoundary = (buf: Uint8Array): boolean => {
+    const n = buf.length
+    if (n >= 2 && buf[n - 1] === 0x0a && buf[n - 2] === 0x0a) return true
+    // Tolerate CRLF too: "\r\n\r\n"
+    if (
+      n >= 4 &&
+      buf[n - 1] === 0x0a &&
+      buf[n - 2] === 0x0d &&
+      buf[n - 3] === 0x0a &&
+      buf[n - 4] === 0x0d
+    ) return true
+    return false
+  }
+
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
@@ -54,7 +75,10 @@ export function createIdleHeartbeatStream(
           if (timer) clearTimeout(timer)
 
           if (winner === "timeout") {
-            controller.enqueue(opts.heartbeat)
+            // Only safe to inject when upstream sits at a clean frame edge.
+            // Otherwise we'd splice noop bytes into the middle of a partially
+            // delivered SSE event and corrupt the client's JSON parse.
+            if (atBoundary) controller.enqueue(opts.heartbeat)
             continue
           }
           const { done, value } = winner.read
@@ -62,7 +86,10 @@ export function createIdleHeartbeatStream(
             controller.close()
             return
           }
-          if (value) controller.enqueue(value)
+          if (value) {
+            controller.enqueue(value)
+            atBoundary = endsWithFrameBoundary(value)
+          }
           // Advance to the next read only after the current one resolved
           readP = reader.read().then((r) => ({ read: r as ReadableStreamReadResult<Uint8Array> }))
         }
