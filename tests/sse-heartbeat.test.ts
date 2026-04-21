@@ -255,3 +255,45 @@ test("wrapOpenAIHeartbeat retains [DONE] frame (OpenAI clients require it)", asy
   const text = await collect(out)
   expect(text).toContain("data: [DONE]\n\n")
 })
+
+test("wrapAnthropicHeartbeat synthesizes graceful close on mid-stream upstream error", async () => {
+  // Upstream emits message_start, opens content blocks, then errors before
+  // sending message_stop (simulates Copilot/CF ~120s connection drop).
+  const upstream = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(enc.encode("event: message_start\ndata: {\"type\":\"message_start\"}\n\n"))
+      c.enqueue(enc.encode("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n"))
+      c.enqueue(enc.encode("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n"))
+      setTimeout(() => c.error(new Error("Network connection lost.")), 20)
+    },
+  })
+  const out = wrapAnthropicHeartbeat(upstream)!
+  const text = await collect(out)
+  // Already-streamed text must remain.
+  expect(text).toContain("\"text\":\"hello\"")
+  // Synthetic close frames must be appended.
+  expect(text).toContain("event: content_block_stop")
+  expect(text).toContain("\"index\":0")
+  expect(text).toContain("event: message_delta")
+  expect(text).toContain("\"stop_reason\":\"end_turn\"")
+  expect(text).toContain("event: message_stop")
+  // Stream must end cleanly (no error reaches the consumer).
+})
+
+test("wrapAnthropicHeartbeat does NOT synthesize close if message_stop already arrived", async () => {
+  // Already-complete stream that errors AFTER message_stop should just close.
+  const upstream = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(enc.encode("event: message_start\ndata: {\"type\":\"message_start\"}\n\n"))
+      c.enqueue(enc.encode("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+      setTimeout(() => c.error(new Error("Network connection lost.")), 20)
+    },
+  })
+  const out = wrapAnthropicHeartbeat(upstream)!
+  const text = await collect(out)
+  // Exactly one message_stop, not two.
+  const stops = text.match(/event: message_stop/g) ?? []
+  expect(stops.length).toBe(1)
+  // No synthetic message_delta should be appended after a real message_stop.
+  expect(text).not.toContain("event: message_delta")
+})

@@ -28,7 +28,8 @@ export function wrapAnthropicHeartbeat(
   body: ReadableStream<Uint8Array> | null,
 ): ReadableStream<Uint8Array> | null {
   if (!body) return null
-  const heartbeated = createIdleHeartbeatStream(body, {
+  const recovered = recoverAnthropicMidStreamError(body)
+  const heartbeated = createIdleHeartbeatStream(recovered, {
     intervalMs: SSE_HEARTBEAT_MS,
     heartbeat: ANTHROPIC_PING,
     tag: "anthropic",
@@ -227,6 +228,149 @@ function stripAnthropicDoneFrameTransform(): TransformStream<Uint8Array, Uint8Ar
       if (filtered.length > 0) {
         controller.enqueue(encoder.encode(filtered))
       }
+    },
+  })
+}
+
+/**
+ * Wrap an Anthropic upstream so that if it errors mid-stream we emit a
+ * synthetic graceful close instead of propagating the error to the SDK.
+ *
+ * Why this exists (CFW-specific, unavoidable):
+ *   We run on Cloudflare Workers (serverless). CF enforces a hard ~120s cap
+ *   on outgoing `fetch()` connections — long-thinking Copilot streams that
+ *   exceed this limit are cut by the platform with "Network connection lost.",
+ *   regardless of what the worker or upstream does. There is no way to
+ *   extend the limit; mid-stream cuts on long replies are a fact of life.
+ *
+ * What goes wrong without this wrapper:
+ *   The Anthropic SDK marks the entire response as failed on any stream
+ *   error, discarding all already-rendered text. Clients (Claude Code) show
+ *   "Idle" with no visible reply, even though most of the answer was
+ *   delivered. The user sees nothing.
+ *
+ * Fix:
+ *   On error, append `content_block_stop` (for any open block) +
+ *   `message_delta { stop_reason: "end_turn" }` + `message_stop`. The SDK
+ *   sees a complete protocol → finalizes the partial response → user keeps
+ *   what they already received.
+ *
+ * Safety when upstream finishes cleanly:
+ *   No-op. We only synthesize on caught error. If `done` is reached normally,
+ *   we just close. We also skip synthesis when we've already seen a real
+ *   `message_stop` (e.g. error fires post-terminator) or never saw
+ *   `message_start` (no partial content worth preserving). So this is safe
+ *   to apply unconditionally to every Anthropic stream.
+ *
+ * Tracks open content blocks via regex scan of `content_block_start` /
+ * `content_block_stop` event markers in the byte stream.
+ */
+function recoverAnthropicMidStreamError(
+  upstream: ReadableStream<Uint8Array>,
+): ReadableStream<Uint8Array> {
+  const reader = upstream.getReader()
+  const encoder = new TextEncoder()
+  const decoder = new TextDecoder("utf-8", { fatal: false })
+  // Indices of content blocks we've seen `content_block_start` for and
+  // not yet seen `content_block_stop` for.
+  const openBlocks = new Set<number>()
+  // Have we seen `message_start`? If not, the synthetic close is meaningless.
+  let sawMessageStart = false
+  // Have we already seen `message_stop`? If yes, no synthetic close needed.
+  let sawMessageStop = false
+
+  const scanFrames = (chunkText: string): void => {
+    // Crude but sufficient: regex-scan for the event markers. Frames are
+    // already at boundaries thanks to upstream chunking.
+    if (chunkText.includes("event: message_start")) sawMessageStart = true
+    if (chunkText.includes("event: message_stop")) sawMessageStop = true
+    // content_block_start frames carry an "index" field in their data JSON.
+    const startRe = /event: content_block_start\s*\ndata: ([^\n]+)/g
+    let m: RegExpExecArray | null
+    while ((m = startRe.exec(chunkText)) !== null) {
+      try {
+        const data = JSON.parse(m[1] ?? "") as { index?: number }
+        if (typeof data.index === "number") openBlocks.add(data.index)
+      } catch { /* ignore malformed */ }
+    }
+    const stopRe = /event: content_block_stop\s*\ndata: ([^\n]+)/g
+    while ((m = stopRe.exec(chunkText)) !== null) {
+      try {
+        const data = JSON.parse(m[1] ?? "") as { index?: number }
+        if (typeof data.index === "number") openBlocks.delete(data.index)
+      } catch { /* ignore malformed */ }
+    }
+  }
+
+  const synthesizeClose = (): Uint8Array => {
+    const parts: Array<string> = []
+    // Close any open content blocks first.
+    for (const idx of openBlocks) {
+      parts.push(
+        `event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: idx })}\n\n`,
+      )
+    }
+    // Synthetic message_delta with stop_reason so SDK can finalize.
+    parts.push(
+      `event: message_delta\ndata: ${JSON.stringify({
+        type: "message_delta",
+        delta: { stop_reason: "end_turn", stop_sequence: null },
+        usage: { output_tokens: 0 },
+      })}\n\n`,
+    )
+    // Terminal message_stop event.
+    parts.push(
+      `event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}\n\n`,
+    )
+    return encoder.encode(parts.join(""))
+  }
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) {
+            controller.close()
+            return
+          }
+          if (value && value.length > 0) {
+            try {
+              scanFrames(decoder.decode(value, { stream: true }))
+            } catch { /* best-effort scan */ }
+            controller.enqueue(value)
+          }
+        }
+      } catch (err) {
+        // Upstream errored mid-stream. If we'd already seen message_stop or
+        // never saw message_start (no useful partial content), just close.
+        if (sawMessageStop || !sawMessageStart) {
+          try {
+            console.log(JSON.stringify({
+              evt: "anthropic_recover_skip",
+              reason: sawMessageStop ? "after_stop" : "before_start",
+              err: err instanceof Error ? err.message : String(err),
+            }))
+          } catch { /* best-effort */ }
+          controller.close()
+          return
+        }
+        // Synthesize graceful close so SDK keeps already-streamed content.
+        try {
+          console.log(JSON.stringify({
+            evt: "anthropic_recover_synth",
+            openBlocks: openBlocks.size,
+            err: err instanceof Error ? err.message : String(err),
+          }))
+        } catch { /* best-effort */ }
+        try {
+          controller.enqueue(synthesizeClose())
+        } catch { /* downstream may already be gone */ }
+        controller.close()
+      }
+    },
+    async cancel(reason) {
+      try { await reader.cancel(reason) } catch { /* ignore */ }
     },
   })
 }
