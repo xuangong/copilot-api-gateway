@@ -335,6 +335,16 @@ bun run test:integration:openai       # OpenAI SDK
 bun run test:integration:gemini       # Gemini SDK
 ```
 
+### Gemini long-running streams
+
+`/v1beta/models/<model>:streamGenerateContent` 支持两种流格式：
+
+- `?alt=sse`（推荐）：标准 SSE，网关会在 idle > 15s 时注入 `: keepalive` 心
+  跳，避免 Cloudflare 边缘在 ~60s 后关闭空闲连接。Gemini CLI 默认走这条。
+- `alt=json`（默认）：JSON 数组流。**不支持心跳** —— 协议没有合法 noop 字节，
+  插任何东西都会导致客户端 `JSON.parse` 失败。如果你的请求会触发长 thinking 或
+  长工具推理，请显式带上 `?alt=sse`。
+
 ## License
 
 MIT

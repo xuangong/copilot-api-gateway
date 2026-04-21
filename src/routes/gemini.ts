@@ -17,6 +17,7 @@ import {
 import type { GeminiGenerateContentRequest } from "~/services/gemini/types"
 import { createSSETransform } from "~/lib/sse-transform"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
+import { createIdleHeartbeatStream } from "~/lib/sse-heartbeat"
 
 interface RouteContext {
   state: AppState
@@ -204,10 +205,22 @@ async function handleStreamGenerateContent(
     return null
   })
 
+  // Heartbeat: only safe to inject on the SSE path. The alt=json path
+  // returns a JSON array stream where any injected bytes would break
+  // JSON.parse on the client. Long alt=json streams should switch to
+  // ?alt=sse to benefit from keepalive.
+  const upstreamBody = response.body
+  const heartbeated = upstreamBody && useSSE
+    ? createIdleHeartbeatStream(upstreamBody, {
+        intervalMs: 15_000,
+        heartbeat: encoder.encode(": keepalive\n\n"),
+      })
+    : upstreamBody
+
   let usageBranch: ReadableStream<Uint8Array> | null = null
   let transformBranch: ReadableStream<Uint8Array> | null = null
-  if (response.body) {
-    const [a, b] = response.body.tee()
+  if (heartbeated) {
+    const [a, b] = heartbeated.tee()
     usageBranch = a
     transformBranch = b
   }

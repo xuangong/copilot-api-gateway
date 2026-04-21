@@ -387,6 +387,55 @@ describe("trackStreamingUsage — OpenAI SSE comment keepalive frames are ignore
   })
 })
 
+describe("consumeStreamForUsage — Gemini alt=sse ': keepalive' comment lines are ignored", () => {
+  test("injected ': keepalive\\n\\n' SSE comment lines do not corrupt Gemini usage extraction", async () => {
+    const captured: Captured[] = []
+    setRepoForTest(makeMockRepo(captured) as unknown as Repo)
+
+    // Hand-craft a Gemini alt=sse stream interleaved with ": keepalive\n\n"
+    // SSE comment heartbeats (Plan D injection). The upstream is in OpenAI
+    // chat-completions SSE format (what Copilot returns), which consumeStreamForUsage
+    // reads directly. SSE comment lines start with ":" and are spec-defined no-ops;
+    // the usage tracker only processes "data: " prefix lines.
+    const enc = new TextEncoder()
+    const contentChunk = enc.encode(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "x" } }] })}\n\n`,
+    )
+    const keepalive = enc.encode(": keepalive\n\n")
+    const usageFrame = enc.encode(
+      `data: ${JSON.stringify({
+        choices: [],
+        usage: { prompt_tokens: 55, completion_tokens: 13 },
+      })}\n\n`,
+    )
+    const done = enc.encode("data: [DONE]\n\n")
+
+    const upstream = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(contentChunk)
+        c.enqueue(keepalive)          // heartbeat between content and usage
+        c.enqueue(usageFrame)
+        c.enqueue(keepalive)          // heartbeat after usage frame
+        c.enqueue(done)
+        c.close()
+      },
+    })
+
+    consumeStreamForUsage(upstream, "k-gemini-keepalive", "gemini-3-flash-preview", "gemini-cli")
+
+    // give microtasks a chance to flush
+    await new Promise((r) => setTimeout(r, 20))
+
+    expect(captured.length).toBe(1)
+    expect(captured[0]).toMatchObject({
+      keyId: "k-gemini-keepalive",
+      model: "gemini-3-flash-preview",
+      inputTokens: 55,
+      outputTokens: 13,
+    })
+  })
+})
+
 describe("trackStreamingUsage — multi-byte UTF-8 spanning chunk boundary", () => {
   test("UTF-8 字符被切成两半时，仍能正确解析后续 usage 末帧", async () => {
     const captured: Captured[] = []
