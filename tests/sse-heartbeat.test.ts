@@ -1,6 +1,6 @@
 // tests/sse-heartbeat.test.ts
 import { test, expect } from "bun:test"
-import { createIdleHeartbeatStream } from "~/lib/sse-heartbeat"
+import { createIdleHeartbeatStream, wrapAnthropicHeartbeat, wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 
 const enc = new TextEncoder()
 const dec = new TextDecoder()
@@ -208,4 +208,50 @@ test("resumes heartbeats after a complete frame is delivered", async () => {
   expect(text).toContain(": ping")
   expect(text.indexOf(": ping")).toBeGreaterThan(text.indexOf("data: a"))
   expect(text.indexOf(": ping")).toBeLessThan(text.indexOf("data: b"))
+})
+
+test("wrapAnthropicHeartbeat strips trailing OpenAI-style [DONE] frame", async () => {
+  // Copilot upstream emits Anthropic protocol frames, then appends a stray
+  // OpenAI-style `data: [DONE]\n\n` that the Anthropic SDK chokes on.
+  const upstream = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(enc.encode("event: message_start\ndata: {\"type\":\"message_start\"}\n\n"))
+      c.enqueue(enc.encode("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+      c.enqueue(enc.encode("data: [DONE]\n\n"))
+      c.close()
+    },
+  })
+  const out = wrapAnthropicHeartbeat(upstream)!
+  const text = await collect(out)
+  expect(text).toContain("event: message_stop")
+  expect(text).not.toContain("[DONE]")
+})
+
+test("wrapAnthropicHeartbeat preserves non-[DONE] data frames containing similar text", async () => {
+  // A `data:` frame whose payload happens to mention "DONE" must not be
+  // stripped — only the exact `data: [DONE]` terminator frame.
+  const upstream = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(enc.encode("event: content_block_delta\ndata: {\"delta\":{\"text\":\"DONE\"}}\n\n"))
+      c.enqueue(enc.encode("data: [DONE]\n\n"))
+      c.close()
+    },
+  })
+  const out = wrapAnthropicHeartbeat(upstream)!
+  const text = await collect(out)
+  expect(text).toContain("\"text\":\"DONE\"")
+  expect(text).not.toContain("data: [DONE]")
+})
+
+test("wrapOpenAIHeartbeat retains [DONE] frame (OpenAI clients require it)", async () => {
+  const upstream = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(enc.encode("data: {\"choices\":[]}\n\n"))
+      c.enqueue(enc.encode("data: [DONE]\n\n"))
+      c.close()
+    },
+  })
+  const out = wrapOpenAIHeartbeat(upstream)!
+  const text = await collect(out)
+  expect(text).toContain("data: [DONE]\n\n")
 })
