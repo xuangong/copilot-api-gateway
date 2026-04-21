@@ -230,6 +230,7 @@ export function renderI18nScript(): string {
       "dash.timeDaysAgo": "{n} days ago",
       "dash.thisWeek": "This Week",
       "dash.lastWeek": "Last Week",
+      "dash.utcNote": "Times shown in UTC",
       "dash.failedGeneric": "Failed",
 
       // Guide page
@@ -516,6 +517,7 @@ export function renderI18nScript(): string {
       "dash.timeDaysAgo": "{n} 天前",
       "dash.thisWeek": "本周",
       "dash.lastWeek": "上周",
+      "dash.utcNote": "时间以 UTC 显示",
       "dash.failedGeneric": "失败",
 
       // Guide page

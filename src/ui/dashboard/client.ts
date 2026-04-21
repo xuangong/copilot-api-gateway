@@ -102,27 +102,26 @@ export function dashboardAssets(): string {
       const now = new Date();
       let start, end;
       if (range === 'week') {
-        const ref = new Date(now);
-        ref.setDate(ref.getDate() + weekOffset * 7);
-        const day = ref.getDay();
-        const monday = new Date(ref);
-        monday.setDate(ref.getDate() - ((day + 6) % 7));
-        monday.setHours(0, 0, 0, 0);
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 7);
-        sunday.setHours(0, 0, 0, 0);
-        start = monday;
-        end = sunday;
+        // Use UTC day boundaries so week windows match the quota counter
+        const refMs = now.getTime() + weekOffset * 7 * 86400000;
+        const ref = new Date(refMs);
+        const dayUTC = ref.getUTCDay(); // 0 = Sunday
+        const mondayMs = refMs - ((dayUTC + 6) % 7) * 86400000;
+        start = new Date(Date.UTC(
+          new Date(mondayMs).getUTCFullYear(),
+          new Date(mondayMs).getUTCMonth(),
+          new Date(mondayMs).getUTCDate()
+        ));
+        end = new Date(start.getTime() + 7 * 86400000);
       } else {
-        start = new Date(now);
+        // UTC midnight for today / rolling windows
+        const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
         if (range === 'today') {
-          start.setHours(0, 0, 0, 0);
+          start = new Date(todayUTC);
         } else if (range === '7d') {
-          start.setDate(start.getDate() - 6);
-          start.setHours(0, 0, 0, 0);
+          start = new Date(todayUTC - 6 * 86400000);
         } else {
-          start.setDate(start.getDate() - 29);
-          start.setHours(0, 0, 0, 0);
+          start = new Date(todayUTC - 29 * 86400000);
         }
         end = new Date(now.getTime() + 3600000);
       }
@@ -134,18 +133,20 @@ export function dashboardAssets(): string {
 
     function formatWeekLabel(weekOffset) {
       const now = new Date();
-      const ref = new Date(now);
-      ref.setDate(ref.getDate() + weekOffset * 7);
-      const day = ref.getDay();
-      const monday = new Date(ref);
-      monday.setDate(ref.getDate() - ((day + 6) % 7));
-      monday.setHours(0, 0, 0, 0);
-      const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 6);
-      const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      if (weekOffset === 0) return t('dash.thisWeek') + ' (' + fmt(monday) + ' \\u2013 ' + fmt(sunday) + ')';
-      if (weekOffset === -1) return t('dash.lastWeek') + ' (' + fmt(monday) + ' \\u2013 ' + fmt(sunday) + ')';
-      return fmt(monday) + ' \\u2013 ' + fmt(sunday);
+      const refMs = now.getTime() + weekOffset * 7 * 86400000;
+      const ref = new Date(refMs);
+      const dayUTC = ref.getUTCDay(); // 0 = Sunday
+      const mondayMs = refMs - ((dayUTC + 6) % 7) * 86400000;
+      const monday = new Date(Date.UTC(
+        new Date(mondayMs).getUTCFullYear(),
+        new Date(mondayMs).getUTCMonth(),
+        new Date(mondayMs).getUTCDate()
+      ));
+      const sunday = new Date(monday.getTime() + 6 * 86400000);
+      const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+      if (weekOffset === 0) return t('dash.thisWeek') + ' (' + fmt(monday) + ' \u2013 ' + fmt(sunday) + ')';
+      if (weekOffset === -1) return t('dash.lastWeek') + ' (' + fmt(monday) + ' \u2013 ' + fmt(sunday) + ')';
+      return fmt(monday) + ' \u2013 ' + fmt(sunday);
     }
 
     function buildDistribution(data, keyFn, labelFn) {

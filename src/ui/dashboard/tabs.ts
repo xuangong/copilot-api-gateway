@@ -986,6 +986,7 @@ export function renderUsageTab(): string {
           <canvas id="tokenChart"></canvas>
         </div>
 
+        <p class="text-[10px] text-themed-dim mb-2" x-text="t('dash.utcNote')"></p>
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-6 pt-5 border-t border-white/5">
           <div class="text-center">
             <p class="text-xs text-themed-dim mb-1" x-text="t('dash.requests')"></p>

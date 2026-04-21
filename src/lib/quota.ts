@@ -30,7 +30,11 @@ export async function checkQuota(apiKeyId: string): Promise<QuotaResult> {
   const hasTokenQuota = key.quotaTokensPerDay != null
   if (!hasReqQuota && !hasTokenQuota) return { allowed: true }
 
-  // Query today's usage (UTC day boundaries)
+  // Query today's usage (UTC day boundaries).
+  // IMPORTANT: The usage table is partitioned by UTC hour (the `hour` column is
+  // an ISO-8601 string like "2024-01-15T08"). Both this quota check and the
+  // dashboard's computeTimeRange must use UTC midnight as the day boundary so
+  // that the numbers agree. Never use local-timezone midnight here.
   const now = new Date()
   const todayStart = now.toISOString().slice(0, 10) + "T00"
   const tomorrowStart = new Date(now.getTime() + 86400000).toISOString().slice(0, 10) + "T00"
