@@ -987,7 +987,7 @@ export function renderUsageTab(): string {
         </div>
 
         <p class="text-[10px] text-themed-dim mb-2" x-text="t('dash.utcNote')"></p>
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4 mt-6 pt-5 border-t border-white/5">
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4 mt-6 pt-5 border-t border-white/5">
           <div class="text-center">
             <p class="text-xs text-themed-dim mb-1" x-text="t('dash.requests')"></p>
             <p class="text-lg font-bold font-mono text-themed" x-text="tokenSummary.requests.toLocaleString()"></p>
