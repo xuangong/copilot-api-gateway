@@ -27,26 +27,32 @@ function extractUsageFromJson(json: any): UsageInfo | null {
 }
 
 // deno-lint-ignore no-explicit-any
-function extractUsageFromStreamEvent(parsed: any, add: (input: number, output: number, cacheRead: number, cacheCreation: number) => void): void {
-  // Anthropic message_start: { message: { usage: { input_tokens, cache_read_input_tokens, cache_creation_input_tokens } } }
+function applyStreamEvent(parsed: any, latest: UsageInfo): void {
+  // Anthropic message_start: sets cumulative input + cache tokens
   if (parsed.type === "message_start" && parsed.message?.usage?.input_tokens != null) {
     const u = parsed.message.usage
-    add(u.input_tokens, 0, u.cache_read_input_tokens ?? 0, u.cache_creation_input_tokens ?? 0)
+    latest.input = u.input_tokens
+    latest.cacheRead = u.cache_read_input_tokens ?? 0
+    latest.cacheCreation = u.cache_creation_input_tokens ?? 0
   }
-  // Anthropic message_delta: { usage: { output_tokens, cache_read_input_tokens?, cache_creation_input_tokens? } }
+  // Anthropic message_delta: each event carries the CUMULATIVE output_tokens so far (overwrite, not add)
   // Newer Anthropic API versions also include cache tokens in message_delta
   if (parsed.type === "message_delta" && parsed.usage?.output_tokens != null) {
     const u = parsed.usage
-    add(0, u.output_tokens, u.cache_read_input_tokens ?? 0, u.cache_creation_input_tokens ?? 0)
+    latest.output = u.output_tokens
+    if (u.cache_read_input_tokens != null) latest.cacheRead = u.cache_read_input_tokens
+    if (u.cache_creation_input_tokens != null) latest.cacheCreation = u.cache_creation_input_tokens
   }
-  // Responses response.completed: { response: { usage: { input_tokens, output_tokens } } }
+  // Responses response.completed: terminal frame — overwrite with final values
   if (parsed.type === "response.completed" && parsed.response?.usage) {
     const u = parsed.response.usage
-    add(u.input_tokens ?? 0, u.output_tokens ?? 0, 0, 0)
+    latest.input = u.input_tokens ?? 0
+    latest.output = u.output_tokens ?? 0
   }
-  // OpenAI Chat Completions chunk with usage
+  // OpenAI Chat Completions chunk with usage — terminal end-frame, overwrite
   if (parsed.usage?.prompt_tokens != null) {
-    add(parsed.usage.prompt_tokens, parsed.usage.completion_tokens ?? 0, 0, 0)
+    latest.input = parsed.usage.prompt_tokens
+    latest.output = parsed.usage.completion_tokens ?? 0
   }
 }
 
@@ -88,10 +94,7 @@ export function trackStreamingUsage(
   const body = response.body
   if (!body) return response
 
-  let inputTokens = 0
-  let outputTokens = 0
-  let cacheReadTokens = 0
-  let cacheCreationTokens = 0
+  const latest: UsageInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
   let buffer = ""
 
   const transform = new TransformStream<Uint8Array, Uint8Array>({
@@ -109,12 +112,7 @@ export function trackStreamingUsage(
 
         try {
           const parsed = JSON.parse(data)
-          extractUsageFromStreamEvent(parsed, (i, o, cr, cc) => {
-            inputTokens += i
-            outputTokens += o
-            cacheReadTokens += cr
-            cacheCreationTokens += cc
-          })
+          applyStreamEvent(parsed, latest)
         } catch { /* ignore non-JSON lines */ }
       }
     },
@@ -124,18 +122,13 @@ export function trackStreamingUsage(
         if (data && data !== "[DONE]") {
           try {
             const parsed = JSON.parse(data)
-            extractUsageFromStreamEvent(parsed, (i, o, cr, cc) => {
-              inputTokens += i
-              outputTokens += o
-              cacheReadTokens += cr
-              cacheCreationTokens += cc
-            })
+            applyStreamEvent(parsed, latest)
           } catch { /* ignore */ }
         }
       }
 
-      if (inputTokens > 0 || outputTokens > 0) {
-        await persistUsage(keyId, model, inputTokens, outputTokens, client, cacheReadTokens, cacheCreationTokens).catch(() => {})
+      if (latest.input > 0 || latest.output > 0) {
+        await persistUsage(keyId, model, latest.input, latest.output, client, latest.cacheRead, latest.cacheCreation).catch(() => {})
       }
     },
   })
