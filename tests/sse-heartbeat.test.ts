@@ -116,13 +116,16 @@ test("downstream cancel cancels upstream reader", async () => {
 
 test("does NOT inject heartbeat mid-frame (preserves SSE/JSON integrity)", async () => {
   // Simulate upstream emitting a single SSE event split across two chunks
-  // with a long idle gap between them. The first chunk lacks a frame
-  // terminator ("\n\n"), so injecting a heartbeat would corrupt the JSON.
+  // with a long idle gap between them. The partial first chunk MUST be
+  // held back until the terminator arrives — otherwise injecting a heartbeat
+  // between the halves would splice "\n" into a JSON string literal and
+  // produce "Bad control character" errors on the client.
   const upstream = new ReadableStream<Uint8Array>({
     async start(c) {
       // half of "data: {\"text\": \"hello world\"}\n\n"
       c.enqueue(enc.encode("data: {\"text\": \"he"))
-      // long idle gap (multiple intervals); heartbeat MUST be suppressed
+      // long idle gap (multiple intervals); heartbeats may fire, but they
+      // must appear as standalone frames OUTSIDE the held partial frame.
       await new Promise((r) => setTimeout(r, 250))
       c.enqueue(enc.encode("llo world\"}\n\n"))
       c.close()
@@ -133,9 +136,58 @@ test("does NOT inject heartbeat mid-frame (preserves SSE/JSON integrity)", async
     heartbeat: enc.encode(": ping\n\n"),
   })
   const text = await collect(out)
-  // Frame must reassemble cleanly with no ping spliced inside the JSON.
-  expect(text).toBe("data: {\"text\": \"hello world\"}\n\n")
-  expect(text).not.toContain(": ping")
+  // The original data frame must reassemble contiguously, with no ping
+  // bytes spliced inside it.
+  expect(text).toContain("data: {\"text\": \"hello world\"}\n\n")
+  // The "he" half must not appear without the rest of the frame already
+  // glued onto it.
+  const heIdx = text.indexOf("data: {\"text\": \"he")
+  expect(heIdx).toBeGreaterThanOrEqual(0)
+  // The next 31 chars after "data: " must be the full JSON + terminator,
+  // not interrupted by ": ping".
+  const frameStart = heIdx
+  const frameEnd = text.indexOf("\n\n", frameStart) + 2
+  const frame = text.slice(frameStart, frameEnd)
+  expect(frame).toBe("data: {\"text\": \"hello world\"}\n\n")
+  expect(frame).not.toContain(": ping")
+})
+
+test("holds a multi-chunk frame, then emits it once terminator arrives", async () => {
+  // Three chunks, none of which by themselves end at a frame boundary
+  // until the last one. Wrapper must NOT emit anything until "\n\n" arrives.
+  const upstream = new ReadableStream<Uint8Array>({
+    async start(c) {
+      c.enqueue(enc.encode("data: {\"a\":"))
+      await new Promise((r) => setTimeout(r, 30))
+      c.enqueue(enc.encode("1,\"b\":"))
+      await new Promise((r) => setTimeout(r, 30))
+      c.enqueue(enc.encode("2}\n\n"))
+      c.close()
+    },
+  })
+  const out = createIdleHeartbeatStream(upstream, {
+    intervalMs: 1_000, // long enough that no heartbeat fires here
+    heartbeat: enc.encode(": ping\n\n"),
+  })
+  expect(await collect(out)).toBe("data: {\"a\":1,\"b\":2}\n\n")
+})
+
+test("emits multiple complete frames in one chunk together", async () => {
+  // Single upstream chunk carrying two complete frames + a partial third.
+  // Wrapper should emit the two complete frames immediately and hold the partial.
+  const upstream = new ReadableStream<Uint8Array>({
+    async start(c) {
+      c.enqueue(enc.encode("data: a\n\ndata: b\n\ndata: par"))
+      await new Promise((r) => setTimeout(r, 30))
+      c.enqueue(enc.encode("tial\n\n"))
+      c.close()
+    },
+  })
+  const out = createIdleHeartbeatStream(upstream, {
+    intervalMs: 1_000,
+    heartbeat: enc.encode(": ping\n\n"),
+  })
+  expect(await collect(out)).toBe("data: a\n\ndata: b\n\ndata: partial\n\n")
 })
 
 test("resumes heartbeats after a complete frame is delivered", async () => {

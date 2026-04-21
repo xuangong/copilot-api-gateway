@@ -33,38 +33,63 @@ export interface IdleHeartbeatOptions {
   heartbeat: Uint8Array
 }
 
+/**
+ * Wrap an SSE upstream so heartbeats can be injected during idle gaps without
+ * ever splicing into the middle of a frame.
+ *
+ * Strategy: buffer upstream bytes and only emit downstream up to (and including)
+ * a complete-frame boundary ("\n\n" or "\r\n\r\n"). Heartbeats are emitted only
+ * between complete frames — never between two halves of one upstream chunk that
+ * happens to span the network. Any upstream chunk that ends mid-frame stays in
+ * the internal buffer until its terminator arrives.
+ *
+ * This makes the previous "Bad control character in JSON" class of bugs
+ * structurally impossible: downstream always sees whole SSE frames.
+ */
 export function createIdleHeartbeatStream(
   upstream: ReadableStream<Uint8Array>,
   opts: IdleHeartbeatOptions,
 ): ReadableStream<Uint8Array> {
   const reader = upstream.getReader()
 
-  // Track whether we are at an SSE frame boundary. Heartbeats may ONLY be
-  // injected at boundaries — injecting mid-frame splits a chunked SSE event
-  // (e.g. a partial JSON `data:` line) and the client gets unparseable input
-  // like a bare \n inside a JSON string literal ("Bad control character").
-  // Boundary == last emitted bytes ended with "\n\n" (or nothing emitted yet).
-  let atBoundary = true
+  // Pending bytes from upstream that haven't yet reached a frame terminator.
+  // Held back from downstream so we never emit a partial frame.
+  let pending = new Uint8Array(0)
 
-  const endsWithFrameBoundary = (buf: Uint8Array): boolean => {
-    const n = buf.length
-    if (n >= 2 && buf[n - 1] === 0x0a && buf[n - 2] === 0x0a) return true
-    // Tolerate CRLF too: "\r\n\r\n"
-    if (
-      n >= 4 &&
-      buf[n - 1] === 0x0a &&
-      buf[n - 2] === 0x0d &&
-      buf[n - 3] === 0x0a &&
-      buf[n - 4] === 0x0d
-    ) return true
-    return false
+  const concat = (a: Uint8Array, b: Uint8Array): Uint8Array => {
+    const out = new Uint8Array(a.length + b.length)
+    out.set(a, 0)
+    out.set(b, a.length)
+    return out
+  }
+
+  /** Index just past the last frame terminator in `buf` (i.e. length of the
+   * "complete-frames prefix"), or 0 if buf has no terminator at all. */
+  const lastFrameEnd = (buf: Uint8Array): number => {
+    let end = 0
+    for (let i = 1; i < buf.length; i++) {
+      // "\n\n"
+      if (buf[i] === 0x0a && buf[i - 1] === 0x0a) {
+        end = i + 1
+      } else if (
+        // "\r\n\r\n"
+        i >= 3 &&
+        buf[i] === 0x0a &&
+        buf[i - 1] === 0x0d &&
+        buf[i - 2] === 0x0a &&
+        buf[i - 3] === 0x0d
+      ) {
+        end = i + 1
+      }
+    }
+    return end
   }
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        // Keep the same pending readP across timeout loops so we don't
-        // create multiple concurrent reads that would orphan chunks.
+        // Keep the same pending readP across timer loops so we never start
+        // two concurrent reads that would orphan a chunk.
         let readP = reader.read().then((r) => ({ read: r as ReadableStreamReadResult<Uint8Array> }))
         for (;;) {
           let timer: ReturnType<typeof setTimeout> | undefined
@@ -75,22 +100,32 @@ export function createIdleHeartbeatStream(
           if (timer) clearTimeout(timer)
 
           if (winner === "timeout") {
-            // Only safe to inject when upstream sits at a clean frame edge.
-            // Otherwise we'd splice noop bytes into the middle of a partially
-            // delivered SSE event and corrupt the client's JSON parse.
-            if (atBoundary) controller.enqueue(opts.heartbeat)
+            // Safe at any time: pending is held back until a frame terminator,
+            // so the downstream byte stream is always at a frame edge here.
+            controller.enqueue(opts.heartbeat)
             continue
           }
           const { done, value } = winner.read
           if (done) {
+            // Flush any remaining bytes (best-effort: protocol-illegal partial
+            // frame is still better than silently dropping the model's output).
+            if (pending.length > 0) {
+              controller.enqueue(pending)
+              pending = new Uint8Array(0)
+            }
             controller.close()
             return
           }
-          if (value) {
-            controller.enqueue(value)
-            atBoundary = endsWithFrameBoundary(value)
+          if (value && value.length > 0) {
+            pending = pending.length === 0 ? value : concat(pending, value)
+            const cut = lastFrameEnd(pending)
+            if (cut > 0) {
+              controller.enqueue(pending.subarray(0, cut))
+              pending = pending.subarray(cut)
+            }
+            // If cut === 0, the whole chunk is mid-frame; hold it.
           }
-          // Advance to the next read only after the current one resolved
+          // Advance read only after the prior one resolved.
           readP = reader.read().then((r) => ({ read: r as ReadableStreamReadResult<Uint8Array> }))
         }
       } catch (err) {
