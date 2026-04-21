@@ -158,3 +158,52 @@ export function trackStreamingUsage(
     headers: response.headers,
   })
 }
+
+/**
+ * Consume a raw upstream SSE ReadableStream purely for usage extraction,
+ * without producing a Response. Use this on a `tee()`'d branch when the
+ * downstream body is being transformed and would otherwise swallow usage frames.
+ */
+export function consumeStreamForUsage(
+  upstreamBody: ReadableStream<Uint8Array>,
+  keyId: string,
+  model: string,
+  client?: string,
+): void {
+  const latest: UsageInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
+  const decoder = new TextDecoder("utf-8")
+  let buffer = ""
+
+  const reader = upstreamBody.getReader()
+  ;(async () => {
+    try {
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop() ?? ""
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue
+          const data = line.slice(6).trim()
+          if (!data || data === "[DONE]") continue
+          try { applyStreamEvent(JSON.parse(data), latest) } catch { /* ignore */ }
+        }
+      }
+      // flush remaining buffer
+      buffer += decoder.decode()
+      if (buffer.startsWith("data: ")) {
+        const data = buffer.slice(6).trim()
+        if (data && data !== "[DONE]") {
+          try { applyStreamEvent(JSON.parse(data), latest) } catch { /* ignore */ }
+        }
+      }
+      if (latest.input > 0 || latest.output > 0) {
+        await persistUsage(
+          keyId, model, latest.input, latest.output, client,
+          latest.cacheRead, latest.cacheCreation,
+        ).catch(() => {})
+      }
+    } catch { /* best-effort */ }
+  })()
+}

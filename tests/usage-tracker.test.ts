@@ -1,5 +1,5 @@
 import { describe, test, expect, afterEach } from "bun:test"
-import { trackNonStreamingUsage, trackStreamingUsage } from "../src/middleware/usage"
+import { trackNonStreamingUsage, trackStreamingUsage, consumeStreamForUsage } from "../src/middleware/usage"
 import { setRepoForTest } from "../src/repo"
 import type { Repo } from "../src/repo"
 
@@ -236,5 +236,30 @@ describe("applyStreamEvent — cached_tokens in stream end frame", () => {
     expect(captured[0]).toMatchObject({
       inputTokens: 250, outputTokens: 40, cacheReadTokens: 450,
     })
+  })
+})
+
+describe("consumeStreamForUsage — works on tee'd upstream branch", () => {
+  test("captures end-frame usage even when other branch is transformed", async () => {
+    const captured: Captured[] = []
+    setRepoForTest(makeMockRepo(captured) as unknown as Repo)
+
+    const upstream = sse([
+      { choices: [{ delta: { content: "hi" } }] },
+      { choices: [], usage: { prompt_tokens: 11, completion_tokens: 22, total_tokens: 33 } },
+    ])
+
+    const [a, b] = upstream.tee()
+    consumeStreamForUsage(a, "k1", "gemini-2.0-flash", "vscode")
+
+    // Drain the other branch (simulating downstream transform consumer)
+    const reader = b.getReader()
+    while (true) { const { done } = await reader.read(); if (done) break }
+
+    // give microtasks a chance
+    await new Promise((r) => setTimeout(r, 20))
+
+    expect(captured.length).toBe(1)
+    expect(captured[0]).toMatchObject({ inputTokens: 11, outputTokens: 22, model: "gemini-2.0-flash" })
   })
 })

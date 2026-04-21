@@ -2,7 +2,7 @@ import { Elysia } from "elysia"
 
 import type { AppState } from "~/lib/state"
 import { callCopilotAPI } from "~/services/copilot"
-import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
+import { trackNonStreamingUsage, consumeStreamForUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { detectClient } from "~/lib/client-detect"
 import { checkQuota } from "~/lib/quota"
@@ -157,6 +157,7 @@ async function handleStreamGenerateContent(
   const model = extractModelId(params.modelWithMethod)
   const openAIPayload = translateGeminiToOpenAI(body, model)
   openAIPayload.stream = true
+  ;(openAIPayload as Record<string, unknown>).stream_options = { include_usage: true }
 
   // Strip undefined/null values to avoid sending them
   const cleanPayload = JSON.parse(JSON.stringify(openAIPayload)) as Record<string, unknown>
@@ -208,9 +209,18 @@ async function handleStreamGenerateContent(
     return null
   })
 
-  const transformedBody = response.body?.pipeThrough(transformStream)
-
-  const streamResponse = new Response(transformedBody, {
+  let usageBranch: ReadableStream<Uint8Array> | null = null
+  let transformBranch: ReadableStream<Uint8Array> | null = null
+  if (response.body) {
+    const [a, b] = response.body.tee()
+    usageBranch = a
+    transformBranch = b
+  }
+  if (apiKeyId && usageBranch) {
+    consumeStreamForUsage(usageBranch, apiKeyId, model, client)
+  }
+  const transformedBody = transformBranch?.pipeThrough(transformStream)
+  return new Response(transformedBody, {
     headers: useSSE
       ? {
           "Content-Type": "text/event-stream",
@@ -222,10 +232,6 @@ async function handleStreamGenerateContent(
           "Transfer-Encoding": "chunked",
         },
   })
-
-  return apiKeyId
-    ? trackStreamingUsage(streamResponse, apiKeyId, model, client)
-    : streamResponse
 }
 
 export const geminiRoute = new Elysia().post(

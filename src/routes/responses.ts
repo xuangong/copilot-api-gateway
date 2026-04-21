@@ -15,7 +15,7 @@ import {
   type ChatCompletionResponse,
   type ChatCompletionChunk,
 } from "~/services/responses"
-import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
+import { trackNonStreamingUsage, trackStreamingUsage, consumeStreamForUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { createSSETransform } from "~/lib/sse-transform"
 import { detectClient } from "~/lib/client-detect"
@@ -168,6 +168,7 @@ const handleResponses = async (ctx: unknown) => {
 
   if (payload.stream === true) {
     chatPayload.stream = true
+    ;(chatPayload as Record<string, unknown>).stream_options = { include_usage: true }
 
     const upstreamTimer = startTimer()
     const response = await callCopilotAPI({
@@ -185,17 +186,24 @@ const handleResponses = async (ctx: unknown) => {
       }, requestId, { stream: true }).catch(() => {})
     }
 
-    const transformedBody = response.body?.pipeThrough(buildStreamTransform(payload, model))
-
-    const streamResponse = new Response(transformedBody, {
+    let usageBranch: ReadableStream<Uint8Array> | null = null
+    let transformBranch: ReadableStream<Uint8Array> | null = null
+    if (response.body) {
+      const [a, b] = response.body.tee()
+      usageBranch = a
+      transformBranch = b
+    }
+    if (apiKeyId && usageBranch) {
+      consumeStreamForUsage(usageBranch, apiKeyId, model, client)
+    }
+    const transformedBody = transformBranch?.pipeThrough(buildStreamTransform(payload, model))
+    return new Response(transformedBody, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
       },
     })
-
-    return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, model, client) : streamResponse
   }
 
   // Non-streaming fallback
