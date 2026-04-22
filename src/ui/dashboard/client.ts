@@ -256,6 +256,9 @@ export function dashboardAssets(): string {
       now: Date.now(),
       newKeyName: '',
       selectedKeyId: null,
+      shareEmail: '',
+      shareError: '',
+      sharing: false,
       keyCreating: false,
       keyDeleting: null,
       keyRotating: null,
@@ -801,6 +804,56 @@ export function dashboardAssets(): string {
               console.error('loadKeys:', e);
             } finally {
               this.keysLoading = false;
+            }
+          },
+
+          async shareKey() {
+            this.shareError = '';
+            const email = (this.shareEmail || '').trim();
+            if (!email || !email.includes('@')) {
+              this.shareError = this.t('dash.shareErrInvalidEmail');
+              return;
+            }
+            if (!this.selectedKeyId) return;
+            this.sharing = true;
+            try {
+              const resp = await fetch('/api/keys/' + encodeURIComponent(this.selectedKeyId) + '/assign', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email }),
+              });
+              if (resp.ok) {
+                this.shareEmail = '';
+                this.toast && this.toast(this.t('dash.shareToast') + ': ' + email);
+                await this.loadKeys();
+                return;
+              }
+              if (resp.status === 404) this.shareError = this.t('dash.shareErrNoUser');
+              else if (resp.status === 400) this.shareError = this.t('dash.shareErrSelf');
+              else if (resp.status === 409) this.shareError = this.t('dash.shareErrDuplicate');
+              else if (resp.status === 403) this.shareError = this.t('dash.shareErrForbidden');
+              else this.shareError = this.t('dash.shareErrGeneric');
+            } catch (_e) {
+              this.shareError = this.t('dash.shareErrGeneric');
+            } finally {
+              this.sharing = false;
+            }
+          },
+
+          async unshareKey(userId) {
+            if (!this.selectedKeyId || !userId) return;
+            try {
+              const resp = await fetch('/api/keys/' + encodeURIComponent(this.selectedKeyId) + '/assign/' + encodeURIComponent(userId), {
+                method: 'DELETE',
+                credentials: 'same-origin',
+              });
+              if (resp.ok) {
+                this.toast && this.toast(this.t('dash.unshareToast'));
+                await this.loadKeys();
+              }
+            } catch (_e) {
+              /* ignore */
             }
           },
 
