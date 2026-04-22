@@ -237,7 +237,7 @@ export const authRoute = new Elysia({ prefix: "/auth" })
             return new Response(JSON.stringify({ error: "Account disabled" }), { status: 403, headers: { "Content-Type": "application/json" } })
           }
           const isAdmin = !!(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))
-          const data = { ok: true, isAdmin, isUser: true, userId: user.id, userName: user.name, email: user.email, avatarUrl: user.avatarUrl, sessionToken, disabled: user.disabled }
+          const data = { ok: true, isAdmin, isUser: true, userId: user.id, userName: user.name, email: user.email, avatarUrl: user.avatarUrl, sessionToken, disabled: user.disabled, hasPassword: !!user.passwordHash }
 
           // Set avatar/name cookies if missing (for sessions created before cookie feature)
           const cookieHeader = ctx.request.headers.get("cookie") || ""
