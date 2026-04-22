@@ -256,6 +256,9 @@ export function dashboardAssets(): string {
       now: Date.now(),
       newKeyName: '',
       selectedKeyId: null,
+      shareEmail: '',
+      shareError: '',
+      sharing: false,
       keyCreating: false,
       keyDeleting: null,
       keyRotating: null,
@@ -348,6 +351,15 @@ export function dashboardAssets(): string {
       relays: [],
       relaysLoading: false,
       relaysRefreshInterval: null,
+
+      // Change-password modal
+      hasPassword: false,
+      changePasswordOpen: false,
+      cpOldPassword: '',
+      cpNewPassword: '',
+      cpConfirmPassword: '',
+      cpError: '',
+      cpSubmitting: false,
 
       get baseUrl() { return location.origin; },
 
@@ -458,6 +470,7 @@ export function dashboardAssets(): string {
             // Update local state from session data
             this.isAdmin = !!data.isAdmin;
             this.isUser = !!data.isUser;
+            this.hasPassword = !!data.hasPassword;
             localStorage.setItem('isAdmin', data.isAdmin ? '1' : '0');
             localStorage.setItem('isUser', data.isUser ? '1' : '0');
             if (data.userId) localStorage.setItem('userId', data.userId);
@@ -783,6 +796,69 @@ export function dashboardAssets(): string {
             }
           },
 
+          openChangePasswordModal() {
+            this.cpOldPassword = '';
+            this.cpNewPassword = '';
+            this.cpConfirmPassword = '';
+            this.cpError = '';
+            this.changePasswordOpen = true;
+          },
+
+          closeChangePasswordModal() {
+            this.changePasswordOpen = false;
+          },
+
+          async submitChangePassword() {
+            this.cpError = '';
+            if (!this.cpOldPassword || !this.cpNewPassword || !this.cpConfirmPassword) {
+              this.cpError = this.t('dash.changePasswordErrEmpty');
+              return;
+            }
+            if (this.cpNewPassword.length < 6) {
+              this.cpError = this.t('dash.passwordMinLength');
+              return;
+            }
+            if (this.cpNewPassword !== this.cpConfirmPassword) {
+              this.cpError = this.t('dash.passwordMismatch');
+              return;
+            }
+            this.cpSubmitting = true;
+            try {
+              const resp = await fetch('/auth/email/change-password', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  old_password: this.cpOldPassword,
+                  new_password: this.cpNewPassword,
+                }),
+              });
+              if (resp.ok) {
+                this.changePasswordOpen = false;
+                this.toast && this.toast(this.t('dash.passwordChangedToast'));
+                return;
+              }
+              let serverError = '';
+              try { const data = await resp.json(); serverError = (data && data.error) || ''; } catch (_e) {}
+              const lower = serverError.toLowerCase();
+              if (resp.status === 401 && lower.includes('incorrect')) {
+                this.cpError = this.t('dash.passwordIncorrect');
+              } else if (resp.status === 400 && lower.includes('oauth')) {
+                this.cpError = this.t('dash.changePasswordErrOAuth');
+              } else if (resp.status === 400 && lower.includes('different')) {
+                this.cpError = this.t('dash.passwordSameAsOld');
+              } else if (resp.status === 400 && lower.includes('6 characters')) {
+                this.cpError = this.t('dash.passwordMinLength');
+              } else {
+                this.cpError = this.t('dash.changePasswordErrGeneric');
+              }
+            } catch (_e) {
+              this.cpError = this.t('dash.changePasswordErrGeneric');
+            } finally {
+              this.cpSubmitting = false;
+            }
+          },
+
           async loadKeys() {
             this.keysLoading = true;
             try {
@@ -801,6 +877,58 @@ export function dashboardAssets(): string {
               console.error('loadKeys:', e);
             } finally {
               this.keysLoading = false;
+            }
+          },
+
+          async shareKey() {
+            this.shareError = '';
+            const email = (this.shareEmail || '').trim();
+            if (!email || !email.includes('@')) {
+              this.shareError = this.t('dash.shareErrInvalidEmail');
+              return;
+            }
+            if (!this.selectedKeyId) return;
+            this.sharing = true;
+            try {
+              const resp = await fetch('/api/keys/' + encodeURIComponent(this.selectedKeyId) + '/assign', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email }),
+              });
+              if (resp.ok) {
+                this.shareEmail = '';
+                this.toast && this.toast(this.t('dash.shareToast') + ': ' + email);
+                await this.loadKeys();
+                return;
+              }
+              if (resp.status === 404) this.shareError = this.t('dash.shareErrNoUser');
+              else if (resp.status === 400) this.shareError = this.t('dash.shareErrSelf');
+              else if (resp.status === 409) this.shareError = this.t('dash.shareErrDuplicate');
+              else if (resp.status === 403) this.shareError = this.t('dash.shareErrForbidden');
+              else this.shareError = this.t('dash.shareErrGeneric');
+            } catch (_e) {
+              this.shareError = this.t('dash.shareErrGeneric');
+            } finally {
+              this.sharing = false;
+            }
+          },
+
+          async unshareKey(userId) {
+            if (!this.selectedKeyId || !userId) return;
+            try {
+              const resp = await fetch('/api/keys/' + encodeURIComponent(this.selectedKeyId) + '/assign/' + encodeURIComponent(userId), {
+                method: 'DELETE',
+                credentials: 'same-origin',
+              });
+              if (resp.ok) {
+                this.toast && this.toast(this.t('dash.unshareToast'));
+                await this.loadKeys();
+              } else {
+                this.toast && this.toast(this.t('dash.unshareErrGeneric'));
+              }
+            } catch (_e) {
+              this.toast && this.toast(this.t('dash.unshareErrGeneric'));
             }
           },
 
