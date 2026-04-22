@@ -352,6 +352,15 @@ export function dashboardAssets(): string {
       relaysLoading: false,
       relaysRefreshInterval: null,
 
+      // Change-password modal
+      hasPassword: false,
+      changePasswordOpen: false,
+      cpOldPassword: '',
+      cpNewPassword: '',
+      cpConfirmPassword: '',
+      cpError: '',
+      cpSubmitting: false,
+
       get baseUrl() { return location.origin; },
 
       get activeKey() {
@@ -461,6 +470,7 @@ export function dashboardAssets(): string {
             // Update local state from session data
             this.isAdmin = !!data.isAdmin;
             this.isUser = !!data.isUser;
+            this.hasPassword = !!data.hasPassword;
             localStorage.setItem('isAdmin', data.isAdmin ? '1' : '0');
             localStorage.setItem('isUser', data.isUser ? '1' : '0');
             if (data.userId) localStorage.setItem('userId', data.userId);
@@ -783,6 +793,69 @@ export function dashboardAssets(): string {
               }
             } catch (e) {
               console.error('switchGithubAccount:', e);
+            }
+          },
+
+          openChangePasswordModal() {
+            this.cpOldPassword = '';
+            this.cpNewPassword = '';
+            this.cpConfirmPassword = '';
+            this.cpError = '';
+            this.changePasswordOpen = true;
+          },
+
+          closeChangePasswordModal() {
+            this.changePasswordOpen = false;
+          },
+
+          async submitChangePassword() {
+            this.cpError = '';
+            if (!this.cpOldPassword || !this.cpNewPassword || !this.cpConfirmPassword) {
+              this.cpError = this.t('dash.changePasswordErrEmpty');
+              return;
+            }
+            if (this.cpNewPassword.length < 6) {
+              this.cpError = this.t('dash.passwordMinLength');
+              return;
+            }
+            if (this.cpNewPassword !== this.cpConfirmPassword) {
+              this.cpError = this.t('dash.passwordMismatch');
+              return;
+            }
+            this.cpSubmitting = true;
+            try {
+              const resp = await fetch('/auth/email/change-password', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  old_password: this.cpOldPassword,
+                  new_password: this.cpNewPassword,
+                }),
+              });
+              if (resp.ok) {
+                this.changePasswordOpen = false;
+                this.toast && this.toast(this.t('dash.passwordChangedToast'));
+                return;
+              }
+              let serverError = '';
+              try { const data = await resp.json(); serverError = (data && data.error) || ''; } catch (_e) {}
+              const lower = serverError.toLowerCase();
+              if (resp.status === 401 && lower.includes('incorrect')) {
+                this.cpError = this.t('dash.passwordIncorrect');
+              } else if (resp.status === 400 && lower.includes('oauth')) {
+                this.cpError = this.t('dash.changePasswordErrOAuth');
+              } else if (resp.status === 400 && lower.includes('different')) {
+                this.cpError = this.t('dash.passwordSameAsOld');
+              } else if (resp.status === 400 && lower.includes('6 characters')) {
+                this.cpError = this.t('dash.passwordMinLength');
+              } else {
+                this.cpError = this.t('dash.changePasswordErrGeneric');
+              }
+            } catch (_e) {
+              this.cpError = this.t('dash.changePasswordErrGeneric');
+            } finally {
+              this.cpSubmitting = false;
             }
           },
 
