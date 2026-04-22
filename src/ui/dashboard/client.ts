@@ -924,9 +924,11 @@ export function dashboardAssets(): string {
               if (resp.ok) {
                 this.toast && this.toast(this.t('dash.unshareToast'));
                 await this.loadKeys();
+              } else {
+                this.toast && this.toast(this.t('dash.unshareErrGeneric'));
               }
             } catch (_e) {
-              /* ignore */
+              this.toast && this.toast(this.t('dash.unshareErrGeneric'));
             }
           },
 

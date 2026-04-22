@@ -612,6 +612,17 @@ export function renderKeysTab(): string {
         </div>
       </template>
 
+      <!-- Shared-by Owner Panel (shown for keys shared with current user) -->
+      <template x-if="selectedKeyId && keys.find(k => k.id === selectedKeyId)?.is_owner === false">
+        <div class="glass-card p-6 mb-6 animate-in delay-1">
+          <span class="text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.sharedByOwner')"></span>
+          <div class="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-accent-violet/10 text-accent-violet border border-accent-violet/20">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span x-text="keys.find(k => k.id === selectedKeyId)?.owner_name || 'Unknown'"></span>
+          </div>
+        </div>
+      </template>
+
       <!-- Quota Panel (shown when a key is selected) -->
       <template x-if="selectedKeyId">
         <div class="glass-card p-6 mb-6 animate-in delay-1">
