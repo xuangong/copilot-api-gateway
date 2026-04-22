@@ -132,6 +132,8 @@ test("stranger cannot share key → 403", async () => {
   const strangerAuth: AuthCtx = { isUser: true, userId: "u-stranger" }
   const res = await callAs(strangerAuth, "POST", `/api/keys/${keyId}/assign`, { email: "friend@example.com" })
   expect(res.status).toBe(403)
+  const data = await res.json()
+  expect(data.error).toBe("Forbidden")
 })
 
 // 6. admin assigns by user_id → 200 (regression of existing behavior)
@@ -175,11 +177,14 @@ test("owner unshares → 200 and assignment removed", async () => {
 test("stranger cannot unshare key → 403", async () => {
   // First have admin create an assignment
   const adminAuth: AuthCtx = { isAdmin: true, userId: "admin" }
-  await callAs(adminAuth, "POST", `/api/keys/${keyId}/assign`, { user_id: "u-friend" })
+  const setupRes = await callAs(adminAuth, "POST", `/api/keys/${keyId}/assign`, { user_id: "u-friend" })
+  expect(setupRes.status).toBe(200)
 
   const strangerAuth: AuthCtx = { isUser: true, userId: "u-stranger" }
   const res = await callAs(strangerAuth, "DELETE", `/api/keys/${keyId}/assign/u-friend`)
   expect(res.status).toBe(403)
+  const data = await res.json()
+  expect(data.error).toBe("Forbidden")
 })
 
 // 10. owner unshare for non-existent assignment → 200 (idempotent)
