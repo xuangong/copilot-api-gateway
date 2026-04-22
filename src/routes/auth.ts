@@ -998,9 +998,7 @@ export const authRoute = new Elysia({ prefix: "/auth" })
     }
 
     // 2. validate body
-    const bodyRaw = (ctx.body ?? {}) as Record<string, unknown>
-    const old_password = (bodyRaw.old_password ?? bodyRaw.oldPassword) as string | undefined
-    const new_password = (bodyRaw.new_password ?? bodyRaw.newPassword) as string | undefined
+    const { old_password, new_password } = (ctx.body ?? {}) as { old_password?: string; new_password?: string }
     if (!old_password || !new_password) {
       return new Response(JSON.stringify({ error: "old_password and new_password are required" }), { status: 400, headers: { "Content-Type": "application/json" } })
     }

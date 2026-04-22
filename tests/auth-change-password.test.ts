@@ -84,7 +84,7 @@ test("happy path: change password → 200; new password works; old password reje
   const token = await seedSession(userId)
 
   // Change password
-  const res = await app.handle(makeRequest(token, { oldPassword: oldPw, newPassword: newPw }))
+  const res = await app.handle(makeRequest(token, { old_password: oldPw, new_password: newPw }))
   expect(res.status).toBe(200)
 
   // Login with new password should succeed
@@ -116,7 +116,7 @@ test("wrong old password → 401 with Incorrect password", async () => {
   await seedUserWithPassword(userId, email, "correctpw")
   const token = await seedSession(userId)
 
-  const res = await app.handle(makeRequest(token, { oldPassword: "wrongpw", newPassword: "newpw123" }))
+  const res = await app.handle(makeRequest(token, { old_password: "wrongpw", new_password: "newpw123" }))
   expect(res.status).toBe(401)
   const data = await res.json()
   expect(data.error).toBe("Incorrect password")
@@ -130,7 +130,7 @@ test("new password too short (5 chars) → 400 with '6 characters'", async () =>
   await seedUserWithPassword(userId, email, "oldpw123")
   const token = await seedSession(userId)
 
-  const res = await app.handle(makeRequest(token, { oldPassword: "oldpw123", newPassword: "short" }))
+  const res = await app.handle(makeRequest(token, { old_password: "oldpw123", new_password: "short" }))
   expect(res.status).toBe(400)
   const data = await res.json()
   expect(JSON.stringify(data)).toContain("6 characters")
@@ -144,7 +144,7 @@ test("OAuth user with no passwordHash → 400 containing 'OAuth'", async () => {
   await seedUserWithPassword(userId, email, null)
   const token = await seedSession(userId)
 
-  const res = await app.handle(makeRequest(token, { oldPassword: "anything", newPassword: "newpw123" }))
+  const res = await app.handle(makeRequest(token, { old_password: "anything", new_password: "newpw123" }))
   expect(res.status).toBe(400)
   const data = await res.json()
   expect(JSON.stringify(data)).toContain("OAuth")
@@ -159,7 +159,7 @@ test("new password same as old → 400 containing 'different'", async () => {
   await seedUserWithPassword(userId, email, pw)
   const token = await seedSession(userId)
 
-  const res = await app.handle(makeRequest(token, { oldPassword: pw, newPassword: pw }))
+  const res = await app.handle(makeRequest(token, { old_password: pw, new_password: pw }))
   expect(res.status).toBe(400)
   const data = await res.json()
   expect(JSON.stringify(data)).toContain("different")
@@ -173,14 +173,14 @@ test("missing required field → 400", async () => {
   await seedUserWithPassword(userId, email, "oldpw123")
   const token = await seedSession(userId)
 
-  // Missing newPassword
-  const res = await app.handle(makeRequest(token, { oldPassword: "oldpw123" }))
+  // Missing new_password
+  const res = await app.handle(makeRequest(token, { old_password: "oldpw123" }))
   expect(res.status).toBe(400)
 })
 
 // Test 7: no session cookie → 401 with "Unauthorized"
 test("no session cookie → 401 with Unauthorized", async () => {
-  const res = await app.handle(makeRequest(null, { oldPassword: "oldpw123", newPassword: "newpw456" }))
+  const res = await app.handle(makeRequest(null, { old_password: "oldpw123", new_password: "newpw456" }))
   expect(res.status).toBe(401)
   const data = await res.json()
   expect(data.error).toBe("Unauthorized")
