@@ -313,12 +313,17 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     return { ok: true }
   })
 
-  // DELETE /api/keys/:id/assign/:userId - unassign key from a user (admin only)
+  // DELETE /api/keys/:id/assign/:userId - unassign key from a user (admin or key owner)
   .delete("/:id/assign/:userId", async (ctx) => {
     const { params } = ctx
     const authCtx = ctx as unknown as AuthCtx
-    if (!authCtx.isAdmin) {
-      return new Response(JSON.stringify({ error: "Admin only" }), { status: 403, headers: { "Content-Type": "application/json" } })
+    const key = await getApiKeyById(params.id)
+    if (!key) {
+      return new Response(JSON.stringify({ error: "Key not found" }), { status: 404, headers: { "Content-Type": "application/json" } })
+    }
+    const isOwner = !!authCtx.userId && key.ownerId === authCtx.userId
+    if (!authCtx.isAdmin && !isOwner) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { "Content-Type": "application/json" } })
     }
     await getRepo().keyAssignments.unassign(params.id, params.userId)
     return { ok: true }
