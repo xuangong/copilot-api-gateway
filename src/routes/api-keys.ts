@@ -269,27 +269,47 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     return { searches, successes, failures, records }
   })
 
-  // POST /api/keys/:id/assign - assign key to a user (admin only)
+  // POST /api/keys/:id/assign - assign key to a user (admin or key owner)
+  // Body: { user_id?: string, email?: string }  (exactly one required)
   .post("/:id/assign", async (ctx) => {
     const { params, body } = ctx
     const authCtx = ctx as unknown as AuthCtx
-    if (!authCtx.isAdmin) {
-      return new Response(JSON.stringify({ error: "Admin only" }), { status: 403, headers: { "Content-Type": "application/json" } })
-    }
-    const { user_id } = body as { user_id?: string }
-    if (!user_id) {
-      return new Response(JSON.stringify({ error: "user_id is required" }), { status: 400, headers: { "Content-Type": "application/json" } })
-    }
     const key = await getApiKeyById(params.id)
     if (!key) {
       return new Response(JSON.stringify({ error: "Key not found" }), { status: 404, headers: { "Content-Type": "application/json" } })
     }
+    const isOwner = !!authCtx.userId && key.ownerId === authCtx.userId
+    if (!authCtx.isAdmin && !isOwner) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { "Content-Type": "application/json" } })
+    }
+    const { user_id, email } = (body ?? {}) as { user_id?: string; email?: string }
+    if (!user_id && !email) {
+      return new Response(JSON.stringify({ error: "user_id or email is required" }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
     const repo = getRepo()
-    const user = await repo.users.getById(user_id)
-    if (!user) {
+    let targetUser = null as Awaited<ReturnType<typeof repo.users.getById>>
+    if (user_id) {
+      targetUser = await repo.users.getById(user_id)
+      if (!targetUser) {
+        return new Response(JSON.stringify({ error: "User not found" }), { status: 404, headers: { "Content-Type": "application/json" } })
+      }
+    } else if (email) {
+      targetUser = await repo.users.findByEmail(email.trim().toLowerCase())
+      if (!targetUser) {
+        return new Response(JSON.stringify({ error: "No user with that email" }), { status: 404, headers: { "Content-Type": "application/json" } })
+      }
+    }
+    if (!targetUser) {
       return new Response(JSON.stringify({ error: "User not found" }), { status: 404, headers: { "Content-Type": "application/json" } })
     }
-    await repo.keyAssignments.assign(params.id, user_id, authCtx.userId || "admin")
+    if (targetUser.id === key.ownerId) {
+      return new Response(JSON.stringify({ error: "Cannot share key with yourself" }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
+    const existing = await repo.keyAssignments.listByKey(params.id)
+    if (existing.some(a => a.userId === targetUser!.id)) {
+      return new Response(JSON.stringify({ error: "Already shared with this user" }), { status: 409, headers: { "Content-Type": "application/json" } })
+    }
+    await repo.keyAssignments.assign(params.id, targetUser.id, authCtx.userId || "admin")
     return { ok: true }
   })
 
