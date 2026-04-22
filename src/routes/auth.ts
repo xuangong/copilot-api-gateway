@@ -978,6 +978,56 @@ export const authRoute = new Elysia({ prefix: "/auth" })
     return new Response(JSON.stringify({ ok: true, redirect: "/dashboard" }), { headers })
   })
 
+  // POST /auth/email/change-password - change password for email-auth users
+  .post("/email/change-password", async (ctx) => {
+    // 1. resolve session: read session_token from cookie or body
+    const cookieHeader = ctx.request.headers.get("cookie") || ""
+    const match = cookieHeader.match(/(?:^|;\s*)session_token=([^\s;]+)/)
+    const sessionToken = match?.[1]
+    if (!sessionToken || !sessionToken.startsWith("ses_")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } })
+    }
+    const repo = getRepo()
+    const session = await repo.sessions.findByToken(sessionToken)
+    if (!session || new Date(session.expiresAt) <= new Date()) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } })
+    }
+    const user = await repo.users.getById(session.userId)
+    if (!user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } })
+    }
+
+    // 2. validate body
+    const bodyRaw = (ctx.body ?? {}) as Record<string, unknown>
+    const old_password = (bodyRaw.old_password ?? bodyRaw.oldPassword) as string | undefined
+    const new_password = (bodyRaw.new_password ?? bodyRaw.newPassword) as string | undefined
+    if (!old_password || !new_password) {
+      return new Response(JSON.stringify({ error: "old_password and new_password are required" }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
+    if (new_password.length < 6) {
+      return new Response(JSON.stringify({ error: "Password must be at least 6 characters" }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
+    if (!user.passwordHash) {
+      return new Response(JSON.stringify({ error: "This account uses OAuth sign-in" }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
+
+    // 3. verify old password
+    const valid = await verifyPassword(old_password, user.passwordHash)
+    if (!valid) {
+      return new Response(JSON.stringify({ error: "Incorrect password" }), { status: 401, headers: { "Content-Type": "application/json" } })
+    }
+
+    // 4. reject same password
+    if (old_password === new_password) {
+      return new Response(JSON.stringify({ error: "New password must be different" }), { status: 400, headers: { "Content-Type": "application/json" } })
+    }
+
+    // 5. update
+    const newHash = await hashPassword(new_password)
+    await repo.users.update(user.id, { passwordHash: newHash })
+    return { ok: true }
+  })
+
   // GET /auth/email/magic - handle magic link click
   .get("/email/magic", async (ctx) => {
     const url = new URL(ctx.request.url)
