@@ -64,6 +64,13 @@ export function renderDashboardHeader(): string {
                   <span x-text="t('dash.settings')"></span>
                 </button>
               </template>
+              <button
+                type="button"
+                x-show="hasPassword"
+                @click="openChangePasswordModal(); userMenuOpen = false"
+                class="w-full text-left px-4 py-2 text-sm text-themed-dim hover:text-themed hover:bg-surface-700 transition-colors cursor-pointer bg-transparent border-0"
+                x-text="t('dash.changePassword')"
+              ></button>
               <button @click="logout()" class="w-full text-left px-4 py-2 text-sm text-accent-red/80 hover:text-accent-red hover:bg-surface-700 transition-colors cursor-pointer bg-transparent border-0">
                 <svg class="w-4 h-4 inline mr-2 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 <span x-text="t('dash.signOut')"></span>
@@ -1411,5 +1418,38 @@ export function renderClientsTab(): string {
         </div>
       </div>
     </template>
+
+    <!-- Change Password Modal -->
+    <div
+      x-show="changePasswordOpen"
+      x-transition.opacity
+      class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+      @click.self="closeChangePasswordModal()"
+      @keydown.escape.window="closeChangePasswordModal()"
+      style="display: none;"
+    >
+      <div class="glass-card p-6 w-full max-w-sm" @click.stop>
+        <h3 class="text-base font-semibold mb-4" x-text="t('dash.changePasswordTitle')"></h3>
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.oldPassword')"></label>
+            <input type="password" x-model="cpOldPassword" @input="cpError = ''" class="!text-xs !py-1.5 !px-3 w-full !rounded-lg" :disabled="cpSubmitting" />
+          </div>
+          <div>
+            <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.newPassword')"></label>
+            <input type="password" x-model="cpNewPassword" @input="cpError = ''" class="!text-xs !py-1.5 !px-3 w-full !rounded-lg" :disabled="cpSubmitting" />
+          </div>
+          <div>
+            <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.confirmNewPassword')"></label>
+            <input type="password" x-model="cpConfirmPassword" @input="cpError = ''" @keydown.enter.prevent="submitChangePassword()" class="!text-xs !py-1.5 !px-3 w-full !rounded-lg" :disabled="cpSubmitting" />
+          </div>
+          <p x-show="cpError" x-text="cpError" class="text-xs text-red-400"></p>
+        </div>
+        <div class="flex justify-end gap-2 mt-5">
+          <button type="button" @click="closeChangePasswordModal()" class="btn-ghost text-xs" :disabled="cpSubmitting" x-text="t('dash.cancel')"></button>
+          <button type="button" @click="submitChangePassword()" class="btn-primary !text-xs !py-1.5 !px-3" :disabled="cpSubmitting || !cpOldPassword || !cpNewPassword || !cpConfirmPassword" x-text="t('dash.changePasswordSubmit')"></button>
+        </div>
+      </div>
+    </div>
   `
 }
