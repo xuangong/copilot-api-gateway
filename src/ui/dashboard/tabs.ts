@@ -568,8 +568,8 @@ export function renderKeysTab(): string {
         </div>
       </div>
 
-      <!-- Shared Users Panel (shown for owned keys with assignees) -->
-      <template x-if="selectedKeyId && keys.find(k => k.id === selectedKeyId)?.is_owner !== false && keys.find(k => k.id === selectedKeyId)?.assignees?.length > 0">
+      <!-- Shared Users Panel (shown for owned keys) -->
+      <template x-if="selectedKeyId && keys.find(k => k.id === selectedKeyId)?.is_owner !== false">
         <div class="glass-card p-6 mb-6 animate-in delay-1">
           <span class="text-xs font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.sharedWith')"></span>
           <div class="flex flex-wrap gap-2 mt-3">
@@ -577,9 +577,31 @@ export function renderKeysTab(): string {
               <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-accent-violet/10 text-accent-violet border border-accent-violet/20">
                 <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 <span x-text="a.user_name || 'Unknown'"></span>
+                <button type="button" @click="unshareKey(a.user_id)" class="ml-1 -mr-0.5 hover:text-red-400 transition-colors" :title="t('dash.unshare')">
+                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
               </span>
             </template>
           </div>
+          <div class="mt-4 flex items-center gap-2">
+            <input
+              type="email"
+              x-model="shareEmail"
+              @input="shareError = ''"
+              @keydown.enter.prevent="shareKey()"
+              :placeholder="t('dash.shareEmailPlaceholder')"
+              class="!text-xs !py-1.5 !px-3 flex-1 !rounded-lg"
+              :disabled="sharing"
+            />
+            <button
+              type="button"
+              @click="shareKey()"
+              class="btn-primary !text-xs !py-1.5 !px-3"
+              :disabled="sharing || !shareEmail"
+              x-text="t('dash.share')"
+            ></button>
+          </div>
+          <p x-show="shareError" x-text="shareError" class="mt-2 text-xs text-red-400"></p>
         </div>
       </template>
 
