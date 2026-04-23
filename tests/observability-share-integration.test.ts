@@ -1,4 +1,4 @@
-import { test, expect, beforeEach, describe } from "bun:test"
+import { test, expect, beforeEach, afterAll, describe } from "bun:test"
 import { Elysia } from "elysia"
 import { Database } from "bun:sqlite"
 import { SqliteRepo } from "../src/repo/sqlite"
@@ -9,10 +9,16 @@ import { dashboardRoute } from "../src/routes/dashboard"
 import { sharedKeyRef } from "../src/lib/redact-shared-view"
 
 const SECRET = "dev-server-secret-change-me"
+const PRIOR_SECRET = process.env.SERVER_SECRET
 
 let app: Elysia
 let repo: SqliteRepo
 let aliceKeyId: string
+
+afterAll(() => {
+  if (PRIOR_SECRET === undefined) delete process.env.SERVER_SECRET
+  else process.env.SERVER_SECRET = PRIOR_SECRET
+})
 
 beforeEach(async () => {
   process.env.SERVER_SECRET = SECRET
