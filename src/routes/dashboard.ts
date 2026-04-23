@@ -81,6 +81,50 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
     }
   })
 
+  // GET /api/admin/copilot-quota/:githubUserId - admin: fetch Copilot quota for a specific GitHub account
+  .get("/admin/copilot-quota/:githubUserId", async (ctx) => {
+    const { isAdmin } = ctx as unknown as AuthCtx
+    if (!isAdmin) {
+      return new Response(JSON.stringify({ error: "Admin only" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    const targetId = String((ctx.params as { githubUserId: string }).githubUserId)
+    const repo = getRepo()
+    const accounts = await repo.github.listAccounts()
+    const account = accounts.find(a => String(a.user.id) === targetId)
+    if (!account) {
+      return new Response(JSON.stringify({ error: "GitHub account not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    try {
+      const resp = await fetch("https://api.github.com/copilot_internal/user", {
+        headers: createGithubHeaders(account.token),
+      })
+
+      if (!resp.ok) {
+        const text = await resp.text()
+        return new Response(JSON.stringify({ error: `GitHub API error: ${resp.status} ${text}` }), {
+          status: resp.status,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+
+      return resp.json()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      return new Response(JSON.stringify({ error: msg }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+  })
+
   // GET /api/token-usage - query per-key token usage records
   .get("/token-usage", async (ctx) => {
     const { query } = ctx

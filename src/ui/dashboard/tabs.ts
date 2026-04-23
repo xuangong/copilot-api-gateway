@@ -191,7 +191,15 @@ export function renderUsersTab(): string {
                       <span class="text-xs text-accent-violet" x-text="u.email"></span>
                     </template>
                     <template x-for="gh in (u.githubAccounts || [])" :key="gh.id">
-                      <span class="text-xs text-themed-dim" x-text="'@' + gh.login"></span>
+                      <span class="inline-flex items-center gap-1">
+                        <span class="text-xs text-themed-dim" x-text="'@' + gh.login"></span>
+                        <span
+                          class="text-[10px] px-1.5 py-0.5 rounded"
+                          :class="githubQuotas[gh.id]?.error ? 'bg-accent-red/10 text-accent-red' : 'bg-accent-violet/10 text-accent-violet'"
+                          :title="githubQuotas[gh.id]?.error || t('dash.copilotQuota')"
+                          x-text="formatQuotaChip(githubQuotas[gh.id])"
+                        ></span>
+                      </span>
                     </template>
                     <span class="text-xs text-themed-dim" x-text="u.keyCount + ' own'"></span>
                     <span x-show="u.sharedKeyCount > 0" class="text-xs text-accent-violet" x-text="u.sharedKeyCount + ' shared'"></span>
