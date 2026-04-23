@@ -234,29 +234,29 @@ function createApp(env: Env) {
 
     // Public paths - no auth needed
     if ((PUBLIC_GET_PATHS.has(path) || path.startsWith("/cdn/")) && method === "GET") {
-      return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
+      return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined, authKind: 'public' as const }
     }
 
     // Auth validation path - no auth needed
     if (AUTH_VALIDATE_PATHS.has(path) && method === "POST") {
-      return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
+      return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined, authKind: 'public' as const }
     }
 
     // Google OAuth routes - always allow without auth
     if (path === "/auth/google" || path === "/auth/google/callback" || path === "/auth/validate-invite" || path.startsWith("/auth/email/")) {
-      return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
+      return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined, authKind: 'public' as const }
     }
 
     // Auth routes - try to identify user but don't block
     if (path.startsWith("/auth/")) {
       const key = extractKey(request)
       if (!key) {
-        return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
+        return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined, authKind: 'public' as const }
       }
       // Check ADMIN_KEY (legacy)
       const adminKey = env.ADMIN_KEY
       if (adminKey && key === adminKey) {
-        return { authKey: key, isAdmin: true, isUser: false, apiKeyId: undefined, userId: undefined }
+        return { authKey: key, isAdmin: true, isUser: false, apiKeyId: undefined, userId: undefined, authKind: 'admin' as const }
       }
       // Check session token
       if (key.startsWith("ses_")) {
@@ -266,16 +266,16 @@ function createApp(env: Env) {
           const user = await repo.users.getById(session.userId)
           if (user && !user.disabled) {
             const isAdmin = !!(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))
-            return { authKey: key, isAdmin, isUser: true, apiKeyId: undefined, userId: session.userId }
+            return { authKey: key, isAdmin, isUser: true, apiKeyId: undefined, userId: session.userId, authKind: 'session' as const }
           }
         }
-        return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
+        return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined, authKind: 'public' as const }
       }
       const result = await validateApiKey(key)
       if (result) {
-        return { authKey: key, isAdmin: false, isUser: !!result.ownerId, apiKeyId: result.id, userId: result.ownerId }
+        return { authKey: key, isAdmin: false, isUser: !!result.ownerId, apiKeyId: result.id, userId: result.ownerId, authKind: 'apiKey' as const }
       }
-      return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined }
+      return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined, authKind: 'public' as const }
     }
 
     const key = extractKey(request)
@@ -287,7 +287,7 @@ function createApp(env: Env) {
     const adminKey = env.ADMIN_KEY
     if (adminKey && key === adminKey) {
       if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
-        return { authKey: key, isAdmin: true, isUser: false, apiKeyId: undefined, userId: undefined }
+        return { authKey: key, isAdmin: true, isUser: false, apiKeyId: undefined, userId: undefined, authKind: 'admin' as const }
       }
       throw new Error("This key is for dashboard only. Create an API key for API access.")
     }
@@ -308,7 +308,7 @@ function createApp(env: Env) {
       }
       const isAdmin = !!(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))
       if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
-        return { authKey: key, isAdmin, isUser: true, apiKeyId: undefined, userId: session.userId }
+        return { authKey: key, isAdmin, isUser: true, apiKeyId: undefined, userId: session.userId, authKind: 'session' as const }
       }
       throw new Error("Session token is for dashboard only. Create an API key for API access.")
     }
@@ -324,7 +324,7 @@ function createApp(env: Env) {
           throw new Error("User disabled")
         }
       }
-      return { authKey: key, isAdmin: false, isUser: !!result.ownerId, apiKeyId: result.id, userId: result.ownerId }
+      return { authKey: key, isAdmin: false, isUser: !!result.ownerId, apiKeyId: result.id, userId: result.ownerId, authKind: 'apiKey' as const }
     }
 
     throw new Error("Unauthorized")
