@@ -102,26 +102,25 @@ export function dashboardAssets(): string {
       const now = new Date();
       let start, end;
       if (range === 'week') {
-        // Use UTC day boundaries so week windows match the quota counter
-        const refMs = now.getTime() + weekOffset * 7 * 86400000;
-        const ref = new Date(refMs);
-        const dayUTC = ref.getUTCDay(); // 0 = Sunday
-        const mondayMs = refMs - ((dayUTC + 6) % 7) * 86400000;
-        start = new Date(Date.UTC(
-          new Date(mondayMs).getUTCFullYear(),
-          new Date(mondayMs).getUTCMonth(),
-          new Date(mondayMs).getUTCDate()
-        ));
-        end = new Date(start.getTime() + 7 * 86400000);
+        // Local week (Mon..Sun) so the time axis matches local time
+        const ref = new Date(now);
+        ref.setDate(ref.getDate() + weekOffset * 7);
+        const day = ref.getDay(); // 0 = Sunday
+        const monday = new Date(ref);
+        monday.setDate(ref.getDate() - ((day + 6) % 7));
+        monday.setHours(0, 0, 0, 0);
+        start = monday;
+        end = new Date(monday.getTime() + 7 * 86400000);
       } else {
-        // UTC midnight for today / rolling windows
-        const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+        // Local midnight for today / rolling windows
+        const todayLocal = new Date(now);
+        todayLocal.setHours(0, 0, 0, 0);
         if (range === 'today') {
-          start = new Date(todayUTC);
+          start = todayLocal;
         } else if (range === '7d') {
-          start = new Date(todayUTC - 6 * 86400000);
+          start = new Date(todayLocal.getTime() - 6 * 86400000);
         } else {
-          start = new Date(todayUTC - 29 * 86400000);
+          start = new Date(todayLocal.getTime() - 29 * 86400000);
         }
         end = new Date(now.getTime() + 3600000);
       }
@@ -133,17 +132,14 @@ export function dashboardAssets(): string {
 
     function formatWeekLabel(weekOffset) {
       const now = new Date();
-      const refMs = now.getTime() + weekOffset * 7 * 86400000;
-      const ref = new Date(refMs);
-      const dayUTC = ref.getUTCDay(); // 0 = Sunday
-      const mondayMs = refMs - ((dayUTC + 6) % 7) * 86400000;
-      const monday = new Date(Date.UTC(
-        new Date(mondayMs).getUTCFullYear(),
-        new Date(mondayMs).getUTCMonth(),
-        new Date(mondayMs).getUTCDate()
-      ));
+      const ref = new Date(now);
+      ref.setDate(ref.getDate() + weekOffset * 7);
+      const day = ref.getDay(); // 0 = Sunday
+      const monday = new Date(ref);
+      monday.setDate(ref.getDate() - ((day + 6) % 7));
+      monday.setHours(0, 0, 0, 0);
       const sunday = new Date(monday.getTime() + 6 * 86400000);
-      const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+      const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       if (weekOffset === 0) return t('dash.thisWeek') + ' (' + fmt(monday) + ' \u2013 ' + fmt(sunday) + ')';
       if (weekOffset === -1) return t('dash.lastWeek') + ' (' + fmt(monday) + ' \u2013 ' + fmt(sunday) + ')';
       return fmt(monday) + ' \u2013 ' + fmt(sunday);
@@ -1208,16 +1204,6 @@ export function dashboardAssets(): string {
             return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
           },
 
-          utcHourKey(d) {
-            const p = (n) => String(n).padStart(2, '0');
-            return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate()) + 'T' + p(d.getUTCHours());
-          },
-
-          utcDateKey(d) {
-            const p = (n) => String(n).padStart(2, '0');
-            return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate());
-          },
-
           async fetchTokenData() {
             this.tokenLoading = true;
             try {
@@ -1320,31 +1306,35 @@ export function dashboardAssets(): string {
               this.tokenByUser = [];
             }
 
-            // Build time-series chart (UTC, to match the "Times shown in UTC" label)
+            // Build time-series chart (local time, matches the time-zone label below the chart)
             const bucketMap = new Map();
             const now = new Date();
             if (this.tokenRange === 'today') {
-              const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
               for (let h = 0; h < 24; h++) {
-                const d = new Date(todayUTC + h * 3600000);
-                bucketMap.set(this.utcHourKey(d), String(h).padStart(2, '0') + ':00 \\u2013 ' + String((h + 1) % 24).padStart(2, '0') + ':00');
+                const d = new Date(now);
+                d.setHours(h, 0, 0, 0);
+                bucketMap.set(this.localHourKey(d), String(h).padStart(2, '0') + ':00 \\u2013 ' + String((h + 1) % 24).padStart(2, '0') + ':00');
               }
             } else if (this.tokenRange === 'week') {
-              const refMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + this.tokenWeekOffset * 7 * 86400000;
-              const ref = new Date(refMs);
-              const dayUTC = ref.getUTCDay();
-              const mondayMs = refMs - ((dayUTC + 6) % 7) * 86400000;
+              const ref = new Date(now);
+              ref.setDate(ref.getDate() + this.tokenWeekOffset * 7);
+              const day = ref.getDay();
+              const monday = new Date(ref);
+              monday.setDate(ref.getDate() - ((day + 6) % 7));
+              monday.setHours(0, 0, 0, 0);
               const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
               for (let i = 0; i < 7; i++) {
-                const d = new Date(mondayMs + i * 86400000);
-                bucketMap.set(this.utcDateKey(d), weekdays[i] + ' ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }));
+                const d = new Date(monday);
+                d.setDate(monday.getDate() + i);
+                bucketMap.set(this.localDateKey(d), weekdays[i] + ' ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
               }
             } else {
               const days = this.tokenRange === '7d' ? 7 : 30;
-              const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
               for (let i = days - 1; i >= 0; i--) {
-                const d = new Date(todayUTC - i * 86400000);
-                bucketMap.set(this.utcDateKey(d), d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }));
+                const d = new Date(now);
+                d.setDate(d.getDate() - i);
+                d.setHours(0, 0, 0, 0);
+                bucketMap.set(this.localDateKey(d), d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
               }
             }
 
@@ -1366,7 +1356,7 @@ export function dashboardAssets(): string {
             for (const [key] of bucketMap) { agg.set(key, new Map()); cacheAgg.set(key, 0); }
             for (const r of data) {
               const utc = new Date(r.hour + ':00:00Z');
-              const bucket = isDaily ? this.utcDateKey(utc) : this.utcHourKey(utc);
+              const bucket = isDaily ? this.localDateKey(utc) : this.localHourKey(utc);
               if (!agg.has(bucket)) continue;
               let seriesKey;
               if (groupBy === 'user') {
@@ -1598,31 +1588,35 @@ export function dashboardAssets(): string {
               }))
               .sort((a, b) => b.requests - a.requests);
 
-            // Build time buckets (UTC, to match the "Times shown in UTC" label)
+            // Build time buckets (local time, matches the time-zone label below the chart)
             const bucketMap = new Map();
             const now = new Date();
             if (this.latencyRange === 'today') {
-              const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
               for (let h = 0; h < 24; h++) {
-                const d = new Date(todayUTC + h * 3600000);
-                bucketMap.set(this.utcHourKey(d), String(h).padStart(2, '0') + ':00');
+                const d = new Date(now);
+                d.setHours(h, 0, 0, 0);
+                bucketMap.set(this.localHourKey(d), String(h).padStart(2, '0') + ':00');
               }
             } else if (this.latencyRange === 'week') {
-              const refMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + this.latencyWeekOffset * 7 * 86400000;
-              const ref = new Date(refMs);
-              const dayUTC = ref.getUTCDay();
-              const mondayMs = refMs - ((dayUTC + 6) % 7) * 86400000;
+              const ref = new Date(now);
+              ref.setDate(ref.getDate() + this.latencyWeekOffset * 7);
+              const day = ref.getDay();
+              const monday = new Date(ref);
+              monday.setDate(ref.getDate() - ((day + 6) % 7));
+              monday.setHours(0, 0, 0, 0);
               const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
               for (let i = 0; i < 7; i++) {
-                const d = new Date(mondayMs + i * 86400000);
-                bucketMap.set(this.utcDateKey(d), weekdays[i] + ' ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }));
+                const d = new Date(monday);
+                d.setDate(monday.getDate() + i);
+                bucketMap.set(this.localDateKey(d), weekdays[i] + ' ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
               }
             } else {
               const days = this.latencyRange === '7d' ? 7 : 30;
-              const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
               for (let i = days - 1; i >= 0; i--) {
-                const d = new Date(todayUTC - i * 86400000);
-                bucketMap.set(this.utcDateKey(d), d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }));
+                const d = new Date(now);
+                d.setDate(d.getDate() - i);
+                d.setHours(0, 0, 0, 0);
+                bucketMap.set(this.localDateKey(d), d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
               }
             }
 
@@ -1637,7 +1631,7 @@ export function dashboardAssets(): string {
             }
             for (const r of data) {
               const utc = new Date(r.hour + ':00:00Z');
-              const bucket = isDaily ? this.utcDateKey(utc) : this.utcHourKey(utc);
+              const bucket = isDaily ? this.localDateKey(utc) : this.localHourKey(utc);
               if (!aggStream.has(bucket)) continue;
               if (r.stream) {
                 reqsStream.set(bucket, reqsStream.get(bucket) + r.requests);
