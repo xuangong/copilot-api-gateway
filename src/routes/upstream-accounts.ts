@@ -83,7 +83,7 @@ export const upstreamAccountsRoute = new Elysia()
           avatar_url: a.user.avatar_url || `https://avatars.githubusercontent.com/u/${a.user.id}?v=4`,
           active: activeId === a.user.id,
           token_valid: tokenValid,
-          owner_id: adminGlobalView ? a.ownerId : undefined,
+          owner_id: adminGlobalView && a.ownerId !== target ? a.ownerId : undefined,
           quota,
         }
       }),
