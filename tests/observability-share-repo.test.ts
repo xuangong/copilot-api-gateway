@@ -76,4 +76,16 @@ describe("ObservabilityShareRepo (sqlite)", () => {
     expect(new Date(s.grantedAt).toString()).not.toBe("Invalid Date")
     expect(s.grantedBy).toBe("owner-1")
   })
+
+  test("cascade: deleteByOwner + deleteByViewer together remove all references to a user", async () => {
+    await repo.observabilityShares.share("u-1", "u-2", "u-1")
+    await repo.observabilityShares.share("u-1", "u-3", "u-1")
+    await repo.observabilityShares.share("u-3", "u-1", "u-3")
+    await repo.observabilityShares.deleteByOwner("u-1")
+    await repo.observabilityShares.deleteByViewer("u-1")
+    expect(await repo.observabilityShares.listByOwner("u-1")).toHaveLength(0)
+    expect(await repo.observabilityShares.listByViewer("u-1")).toHaveLength(0)
+    // u-3's other relationships untouched
+    expect(await repo.observabilityShares.listByOwner("u-3")).toHaveLength(0)
+  })
 })

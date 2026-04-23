@@ -811,6 +811,8 @@ export const authRoute = new Elysia({ prefix: "/auth" })
     }
     await repo.github.clearActiveIdForUser(userId)
     await repo.keyAssignments.deleteByUser(userId)
+    await repo.observabilityShares.deleteByOwner(userId)
+    await repo.observabilityShares.deleteByViewer(userId)
     await repo.users.delete(userId)
 
     return { ok: true }
