@@ -14,6 +14,8 @@ import type {
   KeyAssignmentRepo,
   LatencyRecord,
   LatencyRepo,
+  ObservabilityShare,
+  ObservabilityShareRepo,
   Repo,
   SessionRepo,
   UsageRecord,
@@ -759,6 +761,51 @@ class D1KeyAssignmentRepo implements KeyAssignmentRepo {
   }
 }
 
+class D1ObservabilityShareRepo implements ObservabilityShareRepo {
+  constructor(private db: D1Database) {}
+
+  async share(ownerId: string, viewerId: string, grantedBy: string): Promise<void> {
+    await this.db.prepare(
+      "INSERT OR REPLACE INTO observability_shares (owner_id, viewer_id, granted_by, granted_at) VALUES (?, ?, ?, ?)"
+    ).bind(ownerId, viewerId, grantedBy, new Date().toISOString()).run()
+  }
+
+  async unshare(ownerId: string, viewerId: string): Promise<void> {
+    await this.db.prepare(
+      "DELETE FROM observability_shares WHERE owner_id = ? AND viewer_id = ?"
+    ).bind(ownerId, viewerId).run()
+  }
+
+  async listByOwner(ownerId: string): Promise<ObservabilityShare[]> {
+    const { results } = await this.db.prepare(
+      "SELECT owner_id, viewer_id, granted_by, granted_at FROM observability_shares WHERE owner_id = ?"
+    ).bind(ownerId).all<{ owner_id: string; viewer_id: string; granted_by: string; granted_at: string }>()
+    return results.map(r => ({ ownerId: r.owner_id, viewerId: r.viewer_id, grantedBy: r.granted_by, grantedAt: r.granted_at }))
+  }
+
+  async listByViewer(viewerId: string): Promise<ObservabilityShare[]> {
+    const { results } = await this.db.prepare(
+      "SELECT owner_id, viewer_id, granted_by, granted_at FROM observability_shares WHERE viewer_id = ?"
+    ).bind(viewerId).all<{ owner_id: string; viewer_id: string; granted_by: string; granted_at: string }>()
+    return results.map(r => ({ ownerId: r.owner_id, viewerId: r.viewer_id, grantedBy: r.granted_by, grantedAt: r.granted_at }))
+  }
+
+  async isGranted(ownerId: string, viewerId: string): Promise<boolean> {
+    const row = await this.db.prepare(
+      "SELECT 1 AS one FROM observability_shares WHERE owner_id = ? AND viewer_id = ? LIMIT 1"
+    ).bind(ownerId, viewerId).first<{ one: number }>()
+    return !!row
+  }
+
+  async deleteByOwner(ownerId: string): Promise<void> {
+    await this.db.prepare("DELETE FROM observability_shares WHERE owner_id = ?").bind(ownerId).run()
+  }
+
+  async deleteByViewer(viewerId: string): Promise<void> {
+    await this.db.prepare("DELETE FROM observability_shares WHERE viewer_id = ?").bind(viewerId).run()
+  }
+}
+
 class D1DeviceCodeRepo implements DeviceCodeRepo {
   constructor(private db: D1Database) {}
 
@@ -833,6 +880,7 @@ export class D1Repo implements Repo {
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo
   keyAssignments: KeyAssignmentRepo
+  observabilityShares: ObservabilityShareRepo
   deviceCodes: DeviceCodeRepo
 
   constructor(db: D1Database) {
@@ -847,6 +895,7 @@ export class D1Repo implements Repo {
     this.presence = new D1ClientPresenceRepo(db)
     this.webSearchUsage = new D1WebSearchUsageRepo(db)
     this.keyAssignments = new D1KeyAssignmentRepo(db)
+    this.observabilityShares = new D1ObservabilityShareRepo(db)
     this.deviceCodes = new D1DeviceCodeRepo(db)
   }
 }
