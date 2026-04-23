@@ -7,6 +7,7 @@ import { createApiKey } from "../src/lib/api-keys"
 import { resolveViewContext } from "../src/middleware/view-context"
 import { dashboardRoute } from "../src/routes/dashboard"
 import { sharedKeyRef } from "../src/lib/redact-shared-view"
+import { upstreamAccountsRoute } from "../src/routes/upstream-accounts"
 
 const SECRET = "dev-server-secret-change-me"
 const PRIOR_SECRET = process.env.SERVER_SECRET
@@ -113,5 +114,70 @@ describe("/api/relays shared mode", () => {
     expect(body[0].hostname).toBeUndefined()
     expect(body[0].gatewayUrl).toBeUndefined()
     expect(body[0].keyId).toBeUndefined()
+  })
+})
+
+describe("/api/upstream-accounts", () => {
+  // Stub global fetch to avoid hitting api.github.com during tests.
+  const originalFetch = globalThis.fetch
+  beforeEach(() => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      if (url.includes("api.github.com/copilot_internal/user")) {
+        return new Response(JSON.stringify({ quota_snapshot: { remaining: 100 } }), { status: 200, headers: { "Content-Type": "application/json" } })
+      }
+      if (url.includes("api.github.com/user")) {
+        return new Response(JSON.stringify({ id: 12345, login: "alicegh" }), { status: 200, headers: { "Content-Type": "application/json" } })
+      }
+      return new Response("not stubbed", { status: 404 })
+    }) as typeof fetch
+  })
+  afterAll(() => { globalThis.fetch = originalFetch })
+
+  test("self-mode returns full owner-visible accounts (real id, no oauth tokens)", async () => {
+    // GitHubAccount shape uses `token`/`accountType`/`user`/`ownerId` in this codebase.
+    // Plan's snippet referenced access_token/refresh_token/scopes — those don't exist
+    // in our schema; we test the actual fields we expose.
+    await repo.github.saveAccount(12345, {
+      token: "ghp_xxx",
+      accountType: "individual",
+      user: { id: 12345, login: "alicegh", name: "Alice GH", avatar_url: "https://x/a.png" },
+      ownerId: "alice",
+    })
+    const local = new Elysia()
+      .derive(({ request }) => JSON.parse(request.headers.get("x-test-auth") || "{}"))
+      .use(resolveViewContext)
+      .use(upstreamAccountsRoute)
+    const r = await local.handle(new Request("http://localhost/api/upstream-accounts", {
+      headers: { "x-test-auth": JSON.stringify({ userId: "alice", authKind: "session" }) },
+    }))
+    const body = await r.json()
+    expect(body[0].login).toBe("alicegh")
+    expect(body[0].access_token).toBeUndefined()  // self mode also strips OAuth tokens from JSON response
+  })
+
+  test("shared-mode returns surrogate id, strips OAuth tokens", async () => {
+    await repo.github.saveAccount(12345, {
+      token: "ghp_xxx",
+      accountType: "individual",
+      user: { id: 12345, login: "alicegh", name: "Alice GH", avatar_url: "https://x/a.png" },
+      ownerId: "alice",
+    })
+    await repo.observabilityShares.share("alice", "bob", "alice")
+    const local = new Elysia()
+      .derive(({ request }) => JSON.parse(request.headers.get("x-test-auth") || "{}"))
+      .use(resolveViewContext)
+      .use(upstreamAccountsRoute)
+    const r = await local.handle(new Request("http://localhost/api/upstream-accounts?as_user=alice", {
+      headers: { "x-test-auth": JSON.stringify({ userId: "bob", authKind: "session" }) },
+    }))
+    expect(r.status).toBe(200)
+    const body = await r.json()
+    expect(body[0].id).toMatch(/^[A-Za-z0-9_-]{16}$/)
+    expect(body[0].id).not.toBe("12345")
+    expect(body[0].login).toBe("alicegh")
+    expect(body[0].access_token).toBeUndefined()
+    expect(body[0].refresh_token).toBeUndefined()
+    expect(body[0].scopes).toBeUndefined()
   })
 })
