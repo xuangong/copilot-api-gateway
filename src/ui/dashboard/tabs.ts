@@ -924,15 +924,23 @@ export function renderUsageTab(): string {
                 </svg>
               </template>
             </div>
-            <div class="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5">
-              <button @click="switchTokenRange('today')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                :class="tokenRange === 'today' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.today')"></button>
-              <button @click="switchTokenRange('week')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                :class="tokenRange === 'week' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.week')"></button>
-              <button @click="switchTokenRange('7d')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                :class="tokenRange === '7d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.sevenDays')"></button>
-              <button @click="switchTokenRange('30d')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                :class="tokenRange === '30d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.thirtyDays')"></button>
+            <div class="flex items-center gap-2 flex-wrap">
+              <div class="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5">
+                <button @click="switchTokenMetric('tokens')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                  :class="tokenMetric === 'tokens' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.metricTokens')"></button>
+                <button @click="switchTokenMetric('requests')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                  :class="tokenMetric === 'requests' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.metricRequests')"></button>
+              </div>
+              <div class="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5">
+                <button @click="switchTokenRange('today')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                  :class="tokenRange === 'today' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.today')"></button>
+                <button @click="switchTokenRange('week')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                  :class="tokenRange === 'week' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.week')"></button>
+                <button @click="switchTokenRange('7d')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                  :class="tokenRange === '7d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.sevenDays')"></button>
+                <button @click="switchTokenRange('30d')" class="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                  :class="tokenRange === '30d' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'" x-text="t('dash.thirtyDays')"></button>
+              </div>
             </div>
           </div>
 

@@ -275,6 +275,7 @@ export function dashboardAssets(): string {
       configTab: 'claude',
       tokenRange: 'today',
       tokenWeekOffset: 0,
+      tokenMetric: 'tokens',    // 'tokens' | 'requests'
       tokenData: [],
       tokenChart: null,
       tokenLoading: false,
@@ -1204,7 +1205,8 @@ export function dashboardAssets(): string {
 
             const seriesMap = new Map();
             const agg = new Map();
-            for (const [key] of bucketMap) agg.set(key, new Map());
+            const cacheAgg = new Map();
+            for (const [key] of bucketMap) { agg.set(key, new Map()); cacheAgg.set(key, 0); }
             for (const r of data) {
               const utc = new Date(r.hour + ':00:00Z');
               const bucket = isDaily ? this.localDateKey(utc) : this.localHourKey(utc);
@@ -1227,14 +1229,20 @@ export function dashboardAssets(): string {
                 seriesMap.set('total', 'Total');
               }
               const m = agg.get(bucket);
-              m.set(seriesKey, (m.get(seriesKey) || 0) + r.inputTokens + r.outputTokens + (r.cacheReadTokens || 0) + (r.cacheCreationTokens || 0));
+              const cache = (r.cacheReadTokens || 0) + (r.cacheCreationTokens || 0);
+              const value = this.tokenMetric === 'requests'
+                ? r.requests
+                : (r.inputTokens + r.outputTokens + cache);
+              m.set(seriesKey, (m.get(seriesKey) || 0) + value);
+              if (this.tokenMetric === 'tokens') cacheAgg.set(bucket, cacheAgg.get(bucket) + cache);
             }
 
             const seriesList = [...seriesMap.keys()];
             const labels = [...bucketMap.values()];
             const bucketKeys = [...bucketMap.keys()];
 
-            const base = chartBaseOptions((ctx) => ' ' + ctx.dataset.label + '  ' + ctx.parsed.y.toLocaleString() + ' tokens');
+            const unitLabel = this.tokenMetric === 'requests' ? ' req' : ' tokens';
+            const base = chartBaseOptions((ctx) => ' ' + ctx.dataset.label + '  ' + ctx.parsed.y.toLocaleString() + unitLabel);
 
             const datasets = seriesList.map((sk, i) => {
               const c = palette[i % palette.length];
@@ -1256,10 +1264,36 @@ export function dashboardAssets(): string {
               };
             });
 
+            // Add a separate Cache line on top when showing tokens, so cache share is visible
+            if (this.tokenMetric === 'tokens') {
+              const cacheData = bucketKeys.map((k) => cacheAgg.get(k) || 0);
+              if (cacheData.some((v) => v > 0)) {
+                const cacheColor = '#a78bfa'; // violet, distinct from palette
+                datasets.push({
+                  label: 'Cache',
+                  data: cacheData,
+                  borderColor: cacheColor,
+                  backgroundColor: 'transparent',
+                  borderWidth: 1.5,
+                  borderDash: [4, 4],
+                  pointRadius: 0,
+                  pointHoverRadius: 4,
+                  pointHoverBorderWidth: 2,
+                  pointHoverBackgroundColor: base.ptBg,
+                  pointHoverBorderColor: cacheColor,
+                  tension: 0.4,
+                  fill: false,
+                  borderCapStyle: 'round',
+                  borderJoinStyle: 'round',
+                });
+              }
+            }
+
             if (this.tab !== 'usage') return;
 
             const opts = base.options;
             opts.scales.y.ticks.callback = (v) => v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(0) + 'K' : v;
+            opts.scales.y.beginAtZero = true;
 
             try {
             this.tokenChart = new Chart(canvas, {
@@ -1287,6 +1321,11 @@ export function dashboardAssets(): string {
           },
 
           switchTokenFilter() {
+            this.$nextTick().then(() => this.renderTokenChart());
+          },
+
+          switchTokenMetric(metric) {
+            this.tokenMetric = metric;
             this.$nextTick().then(() => this.renderTokenChart());
           },
 
