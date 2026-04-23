@@ -47,7 +47,7 @@ export const resolveViewContext = new Elysia({ name: "resolve-view-context" })
     return {
       effectiveUserId: asUser,
       isViewingShared: true,
-      ownerId: asUser as string | undefined,
+      ownerId: asUser,
       viewContextDenied: false,
     }
   })
