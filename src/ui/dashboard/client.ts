@@ -784,7 +784,17 @@ export function dashboardAssets(): string {
               }
               const data = await resp.json();
               this.githubConnected = data.github_connected;
-              this.githubAccounts = data.accounts || [];
+              // Accounts list moved to /api/upstream-accounts (honors as_user)
+              if (this.githubConnected) {
+                try {
+                  const acctResp = await this.observabilityFetch('/api/upstream-accounts', { credentials: 'same-origin' });
+                  this.githubAccounts = acctResp.ok ? (await acctResp.json()) : [];
+                } catch {
+                  this.githubAccounts = [];
+                }
+              } else {
+                this.githubAccounts = [];
+              }
               this.meLoaded = true;
               // Spec §3.5 — if signed out / identity lost, drop viewAs
               if (!this.userId && this.viewAs) {
