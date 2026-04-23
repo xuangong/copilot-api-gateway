@@ -10,6 +10,7 @@ import { createGithubHeaders } from "~/config/constants"
 
 interface ViewCtx {
   userId?: string
+  isAdmin?: boolean
   authKind?: 'public' | 'admin' | 'session' | 'apiKey'
   effectiveUserId?: string
   isViewingShared?: boolean
@@ -45,7 +46,7 @@ async function checkTokenValid(token: string): Promise<boolean> {
 
 export const upstreamAccountsRoute = new Elysia()
   .get("/api/upstream-accounts", async (ctx) => {
-    const { effectiveUserId, isViewingShared, ownerId, userId, authKind } = ctx as unknown as ViewCtx
+    const { effectiveUserId, isViewingShared, ownerId, userId, isAdmin } = ctx as unknown as ViewCtx
     const target = effectiveUserId ?? userId
     if (!target) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -57,8 +58,10 @@ export const upstreamAccountsRoute = new Elysia()
     const repo = getRepo()
     // Admin in self-view sees ALL accounts (cross-user) — matches the behavior
     // of the legacy /auth/me path. In viewAs mode admin is constrained to the
-    // owner's accounts (closed allowlist).
-    const adminGlobalView = authKind === 'admin' && !isViewingShared
+    // owner's accounts (closed allowlist). Use isAdmin (role) rather than
+    // authKind ('admin' only matches ADMIN_KEY header auth, not dashboard
+    // session-logged admins).
+    const adminGlobalView = isAdmin === true && !isViewingShared
     const accounts = adminGlobalView
       ? await repo.github.listAccounts()
       : await repo.github.listAccountsByOwner(target)
