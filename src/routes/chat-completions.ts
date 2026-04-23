@@ -96,7 +96,7 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
 
   if (payload.stream === true) {
     const clientWantsUsage = Boolean(payload.stream_options?.include_usage)
-    ;(payload as Record<string, unknown>).stream_options = {
+    payload.stream_options = {
       ...(payload.stream_options ?? {}),
       include_usage: true,
     }

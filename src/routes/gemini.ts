@@ -153,7 +153,7 @@ async function handleStreamGenerateContent(
   const model = extractModelId(params.modelWithMethod)
   const openAIPayload = translateGeminiToOpenAI(body, model)
   openAIPayload.stream = true
-  ;(openAIPayload as Record<string, unknown>).stream_options = { include_usage: true }
+  openAIPayload.stream_options = { include_usage: true }
 
   // Strip undefined/null values to avoid sending them
   const cleanPayload = JSON.parse(JSON.stringify(openAIPayload)) as Record<string, unknown>

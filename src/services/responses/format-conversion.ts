@@ -20,6 +20,7 @@ export interface ChatCompletionsPayload {
   model: string
   messages: Message[]
   stream?: boolean
+  stream_options?: { include_usage?: boolean }
   max_tokens?: number
   temperature?: number
   top_p?: number

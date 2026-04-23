@@ -68,7 +68,7 @@ export function createIdleHeartbeatStream(
 
   // Pending bytes from upstream that haven't yet reached a frame terminator.
   // Held back from downstream so we never emit a partial frame.
-  let pending = new Uint8Array(0)
+  let pending: Uint8Array<ArrayBufferLike> = new Uint8Array(0)
 
   const concat = (a: Uint8Array, b: Uint8Array): Uint8Array => {
     const out = new Uint8Array(a.length + b.length)
@@ -106,7 +106,7 @@ export function createIdleHeartbeatStream(
       // terminator and what the last event type was. Logged only on close
       // (no per-chunk logging) and capped to 1024 bytes total.
       const TAIL_CAP = 1024
-      let tail = new Uint8Array(0)
+      let tail: Uint8Array<ArrayBufferLike> = new Uint8Array(0)
       const recordTail = (chunk: Uint8Array): void => {
         const merged = tail.length === 0 ? chunk : concat(tail, chunk)
         tail = merged.length <= TAIL_CAP

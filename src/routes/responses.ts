@@ -173,7 +173,7 @@ const handleResponses = async (ctx: unknown) => {
 
   if (payload.stream === true) {
     chatPayload.stream = true
-    ;(chatPayload as Record<string, unknown>).stream_options = { include_usage: true }
+    chatPayload.stream_options = { include_usage: true }
 
     const upstreamTimer = startTimer()
     const response = await callCopilotAPI({

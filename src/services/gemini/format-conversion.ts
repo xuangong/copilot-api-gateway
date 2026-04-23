@@ -22,6 +22,7 @@ export interface ChatCompletionsPayload {
   tool_choice?: "auto" | "required" | "none" | { type: "function"; function: { name: string } }
   n?: number
   stream?: boolean
+  stream_options?: { include_usage?: boolean }
   response_format?: { type: "json_object" | "text" }
 }
 
