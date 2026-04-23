@@ -178,20 +178,20 @@ export function renderUsersTab(): string {
         <div x-show="!adminUsersLoading && adminUsers.length > 0" class="space-y-2">
           <template x-for="u in adminUsers" :key="u.id">
             <div class="flex items-start sm:items-center justify-between gap-3 p-4 rounded-lg bg-surface-800/50 border border-white/[0.04] flex-wrap">
-              <div class="flex items-center gap-4">
-                <div>
-                  <div class="flex items-center gap-2">
+              <div class="flex items-center gap-4 min-w-0 flex-1">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2 flex-wrap">
                     <span class="text-sm font-medium text-themed" x-text="u.name"></span>
                     <template x-if="u.disabled">
                       <span class="px-1.5 py-0.5 rounded text-[10px] bg-accent-red/10 text-accent-red uppercase" x-text="t('dash.disabled')"></span>
                     </template>
                   </div>
-                  <div class="flex items-center gap-3 mt-0.5">
+                  <div class="flex items-center gap-3 mt-0.5 overflow-x-auto whitespace-nowrap -mx-1 px-1 [scrollbar-width:thin]">
                     <template x-if="u.email">
-                      <span class="text-xs text-accent-violet" x-text="u.email"></span>
+                      <span class="text-xs text-accent-violet shrink-0" x-text="u.email"></span>
                     </template>
                     <template x-for="gh in (u.githubAccounts || [])" :key="gh.id">
-                      <span class="inline-flex items-center gap-1">
+                      <span class="inline-flex items-center gap-1 shrink-0">
                         <span class="text-xs text-themed-dim" x-text="'@' + gh.login"></span>
                         <span
                           class="text-[10px] px-1.5 py-0.5 rounded"
@@ -201,13 +201,13 @@ export function renderUsersTab(): string {
                         ></span>
                       </span>
                     </template>
-                    <span class="text-xs text-themed-dim" x-text="u.keyCount + ' own'"></span>
-                    <span x-show="u.sharedKeyCount > 0" class="text-xs text-accent-violet" x-text="u.sharedKeyCount + ' shared'"></span>
-                    <span class="text-xs text-themed-dim" x-text="'Joined ' + timeAgo(u.createdAt)"></span>
+                    <span class="text-xs text-themed-dim shrink-0" x-text="u.keyCount + ' own'"></span>
+                    <span x-show="u.sharedKeyCount > 0" class="text-xs text-accent-violet shrink-0" x-text="u.sharedKeyCount + ' shared'"></span>
+                    <span class="text-xs text-themed-dim shrink-0" x-text="'Joined ' + timeAgo(u.createdAt)"></span>
                   </div>
                 </div>
               </div>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 shrink-0 flex-wrap">
                 <template x-if="u.id !== userId"><button @click="openAssignModal(u.id, u.name)" class="btn-ghost text-xs" x-text="t('dash.assignKeys')"></button></template>
                 <button @click="toggleUser(u.id, u.disabled)" class="btn-ghost text-xs" x-text="u.disabled ? t('dash.enable') : t('dash.disable')"></button>
                 <button @click="deleteUser(u.id, u.name)" class="btn-ghost text-xs text-accent-red hover:bg-accent-red/10" x-text="t('dash.delete')"></button>
