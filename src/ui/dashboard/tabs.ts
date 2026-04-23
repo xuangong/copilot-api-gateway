@@ -43,6 +43,17 @@ export function renderDashboardHeader(): string {
               <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
             </svg>
           </button>
+          <!-- Shared Observability: viewer dropdown (spec §3.2) -->
+          <div x-show="sharedToMe.length > 0" class="hidden sm:flex items-center mr-3">
+            <select class="text-xs sm:text-sm rounded-md bg-surface-700 text-themed border border-themed-border px-2 py-1"
+                    @change="switchViewAs($event.target.value || null)">
+              <option :value="''" :selected="!viewAs" x-text="t('dash.viewAsSelf')"></option>
+              <template x-for="s in sharedToMe" :key="s.ownerId">
+                <option :value="s.ownerId" :selected="viewAs === s.ownerId"
+                        x-text="t('dash.viewAsOwner', { name: s.ownerName || s.ownerEmail })"></option>
+              </template>
+            </select>
+          </div>
           <!-- User menu -->
           <div class="relative" x-data="{ userMenuOpen: false }" @click.outside="userMenuOpen = false">
             <button @click="userMenuOpen = !userMenuOpen" class="flex items-center gap-2 rounded-full hover:opacity-80 transition-opacity cursor-pointer bg-transparent border-0 p-0">
@@ -64,6 +75,11 @@ export function renderDashboardHeader(): string {
                   <span x-text="t('dash.settings')"></span>
                 </button>
               </template>
+              <button @click="loadSharedByMe(); mySharingOpen = true; userMenuOpen = false"
+                      x-show="isUser"
+                      class="w-full text-left px-4 py-2 text-sm text-themed-dim hover:text-themed hover:bg-surface-700 transition-colors cursor-pointer bg-transparent border-0">
+                <span x-text="t('dash.mySharingMenu')"></span>
+              </button>
               <button
                 type="button"
                 x-show="hasPassword"
@@ -80,6 +96,11 @@ export function renderDashboardHeader(): string {
         </div>
       </div>
 
+      <!-- Shared Observability: read-only banner (spec §3.2) -->
+      <div x-show="viewAs" class="bg-amber-500/10 border-b border-amber-500/30 text-xs sm:text-sm text-amber-300 px-4 py-2"
+           x-text="t('dash.viewingSharedBanner', { email: (sharedToMe.find(s => s.ownerId === viewAs) || {}).ownerEmail || '' })">
+      </div>
+
       <div class="max-w-6xl mx-auto px-4 sm:px-6 pb-3" x-show="tab !== 'settings'">
         <nav class="flex gap-1 bg-surface-800 rounded-lg p-0.5 overflow-x-auto scrollbar-hide">
           <template x-if="isAdmin || isUser">
@@ -94,10 +115,12 @@ export function renderDashboardHeader(): string {
               x-text="t('dash.users')">
             </button>
           </template>
-          <button @click="switchTab('keys')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
-            :class="tab === 'keys' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'"
-            x-text="t('dash.apiKeys')">
-          </button>
+          <template x-if="!viewAs">
+            <button @click="switchTab('keys')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
+              :class="tab === 'keys' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'"
+              x-text="t('dash.apiKeys')">
+            </button>
+          </template>
           <button @click="switchTab('usage')" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
             :class="tab === 'usage' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'"
             x-text="t('dash.usage')">
@@ -420,7 +443,7 @@ export function renderUpstreamTab(): string {
             <template x-if="meLoaded && githubAccounts.length > 0">
               <div class="space-y-1">
                 <template x-for="acct in githubAccounts" :key="acct.id">
-                  <div @click="!acct.active && acct.token_valid && !(isAdmin && acct.owner_id) && switchGithubAccount(acct.id)" class="flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors"
+                  <div @click="if (viewAs) return; !acct.active && acct.token_valid && !(isAdmin && acct.owner_id) && switchGithubAccount(acct.id)" class="flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors"
                     :class="isAdmin && acct.owner_id ? 'opacity-50 border border-white/[0.04]' : !acct.token_valid ? 'bg-accent-red/5 border border-accent-red/15' : acct.active ? 'bg-accent-violet/5 border border-accent-violet/15' : 'hover:bg-white/[0.03] cursor-pointer border border-transparent'">
                     <div class="flex items-center gap-3">
                       <div class="relative">
@@ -441,7 +464,7 @@ export function renderUpstreamTab(): string {
                     <div class="flex items-center gap-2">
                       <span x-show="!acct.token_valid" class="text-[10px] font-medium text-accent-red uppercase tracking-widest" x-text="t('dash.tokenExpired')"></span>
                       <span x-show="acct.token_valid && acct.active" class="text-[10px] font-medium text-accent-teal uppercase tracking-widest" x-text="t('dash.active')"></span>
-                      <button x-show="!(isAdmin && acct.owner_id)" @click.stop="disconnectGithub(acct.id, acct.login)" class="text-themed-dim hover:text-accent-red transition-colors p-1" title="Disconnect">
+                      <button x-show="!(isAdmin && acct.owner_id) && !viewAs" @click.stop="disconnectGithub(acct.id, acct.login)" class="text-themed-dim hover:text-accent-red transition-colors p-1" title="Disconnect">
                         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <line x1="18" y1="6" x2="6" y2="18" />
                           <line x1="6" y1="6" x2="18" y2="18" />
@@ -1401,7 +1424,7 @@ export function renderClientsTab(): string {
                   </div>
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2 min-w-0">
-                      <span class="text-sm font-medium text-themed truncate" x-text="c.clientName"></span>
+                      <span class="text-sm font-medium text-themed truncate" x-text="c.clientName || c.clientLabel"></span>
                       <template x-if="c.isActive">
                         <span class="shrink-0 text-[10px] font-medium text-accent-teal uppercase tracking-widest" x-text="t('dash.active')"></span>
                       </template>
@@ -1424,7 +1447,7 @@ export function renderClientsTab(): string {
                       <template x-if="isAdmin && c.ownerId">
                         <span class="text-xs text-themed-dim truncate" x-text="'owner: ' + (c.ownerName || c.ownerId.slice(0, 8))"></span>
                       </template>
-                      <template x-if="c.gatewayUrl">
+                      <template x-if="c.gatewayUrl && !viewAs">
                         <span class="text-xs text-themed-dim font-mono truncate max-w-full sm:max-w-[160px]" :title="c.gatewayUrl" x-text="c.gatewayUrl.replace(/https?:\\/\\//, '')"></span>
                       </template>
                     </div>
@@ -1475,6 +1498,46 @@ export function renderClientsTab(): string {
         <div class="flex justify-end gap-2 mt-5">
           <button type="button" @click="closeChangePasswordModal()" class="btn-ghost text-xs" :disabled="cpSubmitting" x-text="t('dash.cancel')"></button>
           <button type="button" @click="submitChangePassword()" class="btn-primary !text-xs !py-1.5 !px-3" :disabled="cpSubmitting || !cpOldPassword || !cpNewPassword || !cpConfirmPassword" x-text="t('dash.changePasswordSubmit')"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shared Observability: My Sharing modal (spec §3.3) -->
+    <div x-show="mySharingOpen" x-transition.opacity
+         class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+         @click.self="mySharingOpen = false"
+         @keydown.escape.window="mySharingOpen = false"
+         style="display: none;">
+      <div class="glass-card p-5 w-[480px] max-w-[95vw]" @click.stop>
+        <div class="flex items-start justify-between mb-3">
+          <div>
+            <h3 class="text-themed text-base font-semibold" x-text="t('dash.sharedObsTitle')"></h3>
+            <p class="text-themed-dim text-xs mt-1" x-text="t('dash.sharedObsDesc')"></p>
+          </div>
+          <button @click="mySharingOpen = false" class="text-themed-dim hover:text-themed text-xl leading-none bg-transparent border-0 cursor-pointer">&times;</button>
+        </div>
+
+        <div class="flex gap-2 mb-2">
+          <input type="email" x-model="mySharingEmail" :placeholder="t('dash.sharedObsAddPlaceholder')"
+                 class="flex-1 !text-xs !py-1.5 !px-3 !rounded-lg" @keydown.enter="addMySharing()" />
+          <button class="btn-primary !text-xs !py-1.5 !px-4" @click="addMySharing()" x-text="t('dash.sharedObsShare')"></button>
+        </div>
+        <div x-show="mySharingError" class="text-xs text-accent-red mb-2" x-text="mySharingError"></div>
+
+        <div class="border-t border-themed-border pt-3 mt-2 max-h-[300px] overflow-y-auto">
+          <div x-show="sharedByMe.length === 0" class="text-themed-dim text-xs text-center py-4"
+               x-text="t('dash.sharedObsEmpty')"></div>
+          <template x-for="g in sharedByMe" :key="g.viewerId">
+            <div class="flex items-center justify-between py-2 border-b border-themed-border/40 last:border-0">
+              <div class="min-w-0 flex-1">
+                <div class="text-sm text-themed truncate" x-text="g.viewerName || g.viewerEmail"></div>
+                <div class="text-[11px] text-themed-dim truncate" x-text="g.viewerEmail"></div>
+                <div class="text-[10px] text-themed-dim" x-text="t('dash.sharedObsGrantedAt', { date: g.grantedAt })"></div>
+              </div>
+              <button class="btn-ghost !text-xs text-accent-red hover:bg-accent-red/10"
+                      @click="revokeMySharing(g.viewerId)" x-text="t('dash.sharedObsRevoke')"></button>
+            </div>
+          </template>
         </div>
       </div>
     </div>

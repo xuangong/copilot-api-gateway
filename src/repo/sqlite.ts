@@ -15,6 +15,8 @@ import type {
   KeyAssignmentRepo,
   LatencyRecord,
   LatencyRepo,
+  ObservabilityShare,
+  ObservabilityShareRepo,
   Repo,
   SessionRepo,
   UsageRecord,
@@ -570,6 +572,15 @@ function migrateSchema(db: Database): void {
     assigned_at TEXT NOT NULL,
     PRIMARY KEY (key_id, user_id)
   )`)
+  // Observability shares table
+  db.exec(`CREATE TABLE IF NOT EXISTS observability_shares (
+    owner_id TEXT NOT NULL,
+    viewer_id TEXT NOT NULL,
+    granted_by TEXT NOT NULL,
+    granted_at TEXT NOT NULL,
+    PRIMARY KEY (owner_id, viewer_id)
+  )`)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_observability_shares_viewer ON observability_shares(viewer_id)`)
   // Device codes table
   db.exec(`CREATE TABLE IF NOT EXISTS device_codes (
     device_code TEXT PRIMARY KEY,
@@ -695,6 +706,51 @@ class SqliteKeyAssignmentRepo implements KeyAssignmentRepo {
   }
 }
 
+class SqliteObservabilityShareRepo implements ObservabilityShareRepo {
+  constructor(private db: Database) {}
+
+  async share(ownerId: string, viewerId: string, grantedBy: string): Promise<void> {
+    this.db.query(
+      "INSERT OR REPLACE INTO observability_shares (owner_id, viewer_id, granted_by, granted_at) VALUES (?, ?, ?, ?)"
+    ).run(ownerId, viewerId, grantedBy, new Date().toISOString())
+  }
+
+  async unshare(ownerId: string, viewerId: string): Promise<void> {
+    this.db.query("DELETE FROM observability_shares WHERE owner_id = ? AND viewer_id = ?").run(ownerId, viewerId)
+  }
+
+  async listByOwner(ownerId: string): Promise<ObservabilityShare[]> {
+    return this.db.query<any, [string]>(
+      "SELECT owner_id, viewer_id, granted_by, granted_at FROM observability_shares WHERE owner_id = ?"
+    ).all(ownerId).map((r: any) => ({
+      ownerId: r.owner_id, viewerId: r.viewer_id, grantedBy: r.granted_by, grantedAt: r.granted_at,
+    }))
+  }
+
+  async listByViewer(viewerId: string): Promise<ObservabilityShare[]> {
+    return this.db.query<any, [string]>(
+      "SELECT owner_id, viewer_id, granted_by, granted_at FROM observability_shares WHERE viewer_id = ?"
+    ).all(viewerId).map((r: any) => ({
+      ownerId: r.owner_id, viewerId: r.viewer_id, grantedBy: r.granted_by, grantedAt: r.granted_at,
+    }))
+  }
+
+  async isGranted(ownerId: string, viewerId: string): Promise<boolean> {
+    const row = this.db.query<any, [string, string]>(
+      "SELECT 1 FROM observability_shares WHERE owner_id = ? AND viewer_id = ? LIMIT 1"
+    ).get(ownerId, viewerId)
+    return !!row
+  }
+
+  async deleteByOwner(ownerId: string): Promise<void> {
+    this.db.query("DELETE FROM observability_shares WHERE owner_id = ?").run(ownerId)
+  }
+
+  async deleteByViewer(viewerId: string): Promise<void> {
+    this.db.query("DELETE FROM observability_shares WHERE viewer_id = ?").run(viewerId)
+  }
+}
+
 class SqliteDeviceCodeRepo implements DeviceCodeRepo {
   constructor(private db: Database) {}
 
@@ -750,6 +806,7 @@ export class SqliteRepo implements Repo {
   webSearchUsage: WebSearchUsageRepo
   keyAssignments: KeyAssignmentRepo
   deviceCodes: DeviceCodeRepo
+  observabilityShares: ObservabilityShareRepo
 
   constructor(db: Database) {
     db.exec(INIT_SQL)
@@ -766,6 +823,7 @@ export class SqliteRepo implements Repo {
     this.webSearchUsage = new SqliteWebSearchUsageRepo(db)
     this.keyAssignments = new SqliteKeyAssignmentRepo(db)
     this.deviceCodes = new SqliteDeviceCodeRepo(db)
+    this.observabilityShares = new SqliteObservabilityShareRepo(db)
   }
 }
 

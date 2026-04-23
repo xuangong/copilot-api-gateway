@@ -3,12 +3,17 @@ import { Elysia } from "elysia"
 import { getRepo, type ApiKey, type GitHubAccount, type UsageRecord, type LatencyRecord } from "~/repo"
 import { getGithubCredentials } from "~/lib/github"
 import { createGithubHeaders } from "~/config/constants"
+import { redactForSharedView, getServerSecret } from "~/lib/redact-shared-view"
+import { getOwnedKeyIdsForScope } from "~/middleware/view-context"
 
 interface AuthCtx {
   isAdmin?: boolean
   isUser?: boolean
   userId?: string
   apiKeyId?: string
+  effectiveUserId?: string
+  isViewingShared?: boolean
+  ownerId?: string
 }
 
 interface ExportPayload {
@@ -56,9 +61,10 @@ async function getUserKeys(userId: string): Promise<ApiKey[]> {
 export const dashboardRoute = new Elysia({ prefix: "/api" })
   // GET /api/copilot-quota - fetch Copilot usage/quota info from GitHub API
   .get("/copilot-quota", async (ctx) => {
-    const { userId } = ctx as unknown as AuthCtx
+    const { userId, effectiveUserId } = ctx as unknown as AuthCtx
+    const target = effectiveUserId ?? userId
     try {
-      const { token: githubToken } = await getGithubCredentials(userId)
+      const { token: githubToken } = await getGithubCredentials(target)
       const resp = await fetch("https://api.github.com/copilot_internal/user", {
         headers: createGithubHeaders(githubToken),
       })
@@ -128,7 +134,7 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
   // GET /api/token-usage - query per-key token usage records
   .get("/token-usage", async (ctx) => {
     const { query } = ctx
-    const { isAdmin, userId } = ctx as unknown as AuthCtx
+    const { isAdmin, userId, isViewingShared, ownerId } = ctx as unknown as AuthCtx
     const keyId = query.key_id || undefined
     const start = query.start ?? ""
     const end = query.end ?? ""
@@ -149,6 +155,23 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
     if (isAdmin) {
       queryOpts = { keyId, start, end }
       keys = await repo.apiKeys.list()
+    } else if (isViewingShared && ownerId) {
+      // Shared view: owner's owned-only keys; redact keyIds via HMAC surrogates
+      const ids = await getOwnedKeyIdsForScope(ownerId)
+      if (ids.length === 0) return []
+      const ownedKeys = await repo.apiKeys.listByOwner(ownerId)
+      const records = await repo.usage.query({ keyIds: ids, start, end })
+      const nameMap = new Map(ownedKeys.map((k) => [k.id, k.name]))
+      const enriched = records.map((r) => ({
+        ...r,
+        keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),
+      }))
+      return redactForSharedView({
+        kind: "tokenUsage",
+        payload: enriched,
+        ownerId,
+        secret: getServerSecret(process.env),
+      })
     } else if (userId) {
       const userKeys = await getUserKeys(userId)
       if (userKeys.length === 0) return []
@@ -191,7 +214,7 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
   // GET /api/latency - query per-key latency records
   .get("/latency", async (ctx) => {
     const { query } = ctx
-    const { isAdmin, userId } = ctx as unknown as AuthCtx
+    const { isAdmin, userId, isViewingShared, ownerId } = ctx as unknown as AuthCtx
     const keyId = query.key_id || undefined
     const start = query.start ?? ""
     const end = query.end ?? ""
@@ -211,6 +234,22 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
     if (isAdmin) {
       queryOpts = { keyId, start, end }
       keys = await repo.apiKeys.list()
+    } else if (isViewingShared && ownerId) {
+      const ids = await getOwnedKeyIdsForScope(ownerId)
+      if (ids.length === 0) return []
+      const ownedKeys = await repo.apiKeys.listByOwner(ownerId)
+      const records = await repo.latency.query({ keyIds: ids, start, end })
+      const nameMap = new Map(ownedKeys.map((k) => [k.id, k.name]))
+      const enriched = records.map((r) => ({
+        ...r,
+        keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),
+      }))
+      return redactForSharedView({
+        kind: "latency",
+        payload: enriched,
+        ownerId,
+        secret: getServerSecret(process.env),
+      })
     } else if (userId) {
       const userKeys = await getUserKeys(userId)
       if (userKeys.length === 0) return []
@@ -370,13 +409,17 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
   // GET /api/relays - list relays with presence info
   // Admin sees all, users see only relays using their own keys
   .get("/relays", async (ctx) => {
-    const { isAdmin, userId } = ctx as unknown as AuthCtx
+    const { isAdmin, userId, isViewingShared, ownerId } = ctx as unknown as AuthCtx
     const repo = getRepo()
     const onlineThresholdMinutes = 3
 
     let clients
     if (isAdmin) {
       clients = await repo.presence.list()
+    } else if (isViewingShared && ownerId) {
+      const ids = await getOwnedKeyIdsForScope(ownerId)
+      if (ids.length === 0) return []
+      clients = await repo.presence.listByKeyIds(ids)
     } else if (userId) {
       const userKeyIds = await getUserKeyIds(userId)
       clients = await repo.presence.listByKeyIds(userKeyIds)
@@ -412,10 +455,21 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
       }
     }
 
-    return clients.map((c) => ({
+    const enriched = clients.map((c) => ({
       ...c,
       isOnline: now - new Date(c.lastSeenAt).getTime() < onlineThresholdMinutes * 60 * 1000,
       isActive: c.keyId ? activeKeyIds.has(c.keyId) : false,
       ownerName: c.ownerId ? (ownerNameMap.get(c.ownerId) ?? null) : null,
     }))
+
+    if (isViewingShared && ownerId) {
+      return redactForSharedView({
+        kind: "relays",
+        payload: enriched,
+        ownerId,
+        secret: getServerSecret(process.env),
+      })
+    }
+
+    return enriched
   })

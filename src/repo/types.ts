@@ -220,6 +220,23 @@ export interface KeyAssignmentRepo {
   deleteByUser(userId: string): Promise<void>
 }
 
+export interface ObservabilityShare {
+  ownerId: string
+  viewerId: string
+  grantedBy: string
+  grantedAt: string
+}
+
+export interface ObservabilityShareRepo {
+  share(ownerId: string, viewerId: string, grantedBy: string): Promise<void>
+  unshare(ownerId: string, viewerId: string): Promise<void>
+  listByOwner(ownerId: string): Promise<ObservabilityShare[]>
+  listByViewer(viewerId: string): Promise<ObservabilityShare[]>
+  isGranted(ownerId: string, viewerId: string): Promise<boolean>
+  deleteByOwner(ownerId: string): Promise<void>
+  deleteByViewer(viewerId: string): Promise<void>
+}
+
 export interface DeviceCode {
   deviceCode: string
   userCode: string
@@ -250,5 +267,6 @@ export interface Repo {
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo
   keyAssignments: KeyAssignmentRepo
+  observabilityShares: ObservabilityShareRepo
   deviceCodes: DeviceCodeRepo
 }

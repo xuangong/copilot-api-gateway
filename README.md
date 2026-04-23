@@ -9,6 +9,7 @@
 - **三大 CLI 直连** — Claude Code、OpenAI Codex CLI、Google Gemini CLI 开箱即用
 - **多 SDK 兼容** — 同时支持 Anthropic Messages API、OpenAI Chat Completions / Responses API、Google Gemini API
 - **多用户隔离** — Admin 通过邀请码邀请用户，每个用户独立绑定自己的 GitHub Copilot 账号，API key 和用量数据完全隔离
+- **共享可观测性** — 用户可向他人授予只读访问权限，对方仅能查看用量/延迟/中继/上游账号面板，所有密钥被脱敏，内部 ID 替换为 HMAC 替身
 - **Web Search** — 内置 Web 搜索工具，支持 LangSearch / Tavily / Bing 三引擎自动降级
 - **Dashboard** — 双主题管理面板（Midnight Aurora 暗色 / Clean White 亮色），支持：
   - GitHub 账号管理（Admin 可查看所有用户的 GitHub 账号）

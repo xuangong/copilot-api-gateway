@@ -244,6 +244,13 @@ export function dashboardAssets(): string {
       isUser,
       userId: localStorage.getItem('userId') || '',
       tab: initTab,
+      // — Shared Observability (spec §3.1) —
+      viewAs: null,            // null = self; else ownerId being viewed
+      sharedToMe: [],          // [{ ownerId, ownerEmail, ownerName }]
+      sharedByMe: [],          // [{ viewerId, viewerEmail, viewerName, grantedAt }]
+      mySharingOpen: false,    // controls "My Sharing" modal visibility
+      mySharingEmail: '',      // email input in modal
+      mySharingError: '',      // error string under input
       meLoaded: false,
       githubAccounts: [],
       githubConnected: false,
@@ -450,6 +457,111 @@ export function dashboardAssets(): string {
           this.checkSession();
         },
 
+        // Spec §3.1 — observability paths only. NEVER use this for writes,
+        // /auth/me, /api/keys, or /api/observability-shares. Helper choice
+        // is the security boundary; there is no central allowlist guard.
+        async observabilityFetch(path, opts = {}) {
+          const url = new URL(path, location.origin)
+          if (this.viewAs) url.searchParams.set('as_user', this.viewAs)
+          const r = await fetch(url, opts)
+          if (this.viewAs && r.status === 403) {
+            await this.fallBackToSelfFromShared('forbidden')
+          }
+          return r
+        },
+
+        // Spec §3.1.2 — context switch.
+        async switchViewAs(ownerId) {
+          this.viewAs = ownerId || null
+          if (this.viewAs) {
+            localStorage.setItem('viewAs', this.viewAs)
+            this.keys = []                    // drop stale owner key state
+            if (this.tab === 'keys') {
+              this.tab = 'usage'
+              location.hash = 'usage'
+            }
+          } else {
+            localStorage.removeItem('viewAs')
+            await this.loadKeys()             // restore self keys exactly once
+          }
+          await this.refreshAll()
+        },
+
+        // Spec §3.5 — auto-fall-back when grant has been revoked mid-session.
+        async fallBackToSelfFromShared(reason) {
+          this.viewAs = null
+          localStorage.removeItem('viewAs')
+          if (typeof showToast === 'function') {
+            showToast(t('dash.sharedObsRevokedToast') || 'Access revoked', 'warning')
+          }
+          await this.loadKeys()
+          await this.refreshAll()
+        },
+
+        // Spec §3.1.1 — load grants where current user is the viewer.
+        async loadSharedToMe() {
+          try {
+            const r = await fetch('/api/observability-shares/granted-to-me', { credentials: 'same-origin' })
+            if (!r.ok) { this.sharedToMe = []; return }
+            this.sharedToMe = await r.json()
+          } catch (e) {
+            console.error('loadSharedToMe:', e)
+            this.sharedToMe = []
+          }
+        },
+
+        // Spec §3.3 — load grants where current user is the owner.
+        async loadSharedByMe() {
+          try {
+            const r = await fetch('/api/observability-shares/granted-by-me', { credentials: 'same-origin' })
+            if (!r.ok) { this.sharedByMe = []; return }
+            this.sharedByMe = await r.json()
+          } catch (e) {
+            console.error('loadSharedByMe:', e)
+            this.sharedByMe = []
+          }
+        },
+
+        // Modal helpers — share-management writes use plain fetch, never observabilityFetch.
+        async addMySharing() {
+          this.mySharingError = ''
+          const email = (this.mySharingEmail || '').trim().toLowerCase()
+          if (!email) { this.mySharingError = t('dash.sharedObsAddPlaceholder'); return }
+          try {
+            const r = await fetch('/api/observability-shares', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({ viewerEmail: email }),
+            })
+            if (r.status === 404) { this.mySharingError = t('dash.sharedObsNotFound') || 'No user with that email'; return }
+            if (r.status === 400) { this.mySharingError = t('dash.sharedObsCannotSelf') || 'Cannot share with yourself'; return }
+            if (!r.ok)            { this.mySharingError = 'Failed: ' + r.status; return }
+            this.mySharingEmail = ''
+            await this.loadSharedByMe()
+          } catch (e) { this.mySharingError = String(e) }
+        },
+
+        async revokeMySharing(viewerId) {
+          try {
+            const r = await fetch('/api/observability-shares/' + encodeURIComponent(viewerId), { method: 'DELETE', credentials: 'same-origin' })
+            if (!r.ok) return
+            await this.loadSharedByMe()
+          } catch (e) { console.error('revokeMySharing:', e) }
+        },
+
+        async refreshAll() {
+          // Re-trigger every observability panel that the current tab owns.
+          // Implementations of these methods are existing; we only re-call them
+          // — they will route through observabilityFetch where applicable.
+          try { await this.loadUsage?.() } catch {}
+          try { await this.loadTokenUsage?.() } catch {}
+          try { await this.loadLatencyData?.() } catch {}
+          try { await this.loadRelays?.() } catch {}
+          try { await this.loadUpstreamAccounts?.() } catch {}
+        },
+
+
         async checkSession() {
           try {
             const resp = await fetch('/auth/login', {
@@ -491,6 +603,22 @@ export function dashboardAssets(): string {
 
           this.loadModels();
 
+          // Spec §3.1.1 — view-as boot sequence
+          await this.loadSharedToMe();
+          const stored = localStorage.getItem('viewAs');
+          if (stored && this.sharedToMe.some(s => s.ownerId === stored)) {
+            this.viewAs = stored;
+          } else {
+            this.viewAs = null;
+            if (stored) localStorage.removeItem('viewAs');
+          }
+          if (this.viewAs && this.tab === 'keys') {
+            this.tab = 'usage';
+            location.hash = 'usage';
+          }
+          // Spec §3.3 — owner-side share list (used by My Sharing modal)
+          await this.loadSharedByMe();
+
           if ((this.tab === 'upstream') && (this.isAdmin || this.isUser)) {
             this.loadMe();
             this.loadUsage();
@@ -531,6 +659,12 @@ export function dashboardAssets(): string {
 
           window.addEventListener('hashchange', () => {
             const h = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : defaultTab;
+            // Spec §3.5 — Keys tab is forbidden in shared mode
+            if (this.viewAs && h === 'keys') {
+              this.tab = 'usage';
+              location.hash = 'usage';
+              return;
+            }
             if (this.tab !== h) this.switchTab(h);
           });
 
@@ -558,6 +692,8 @@ export function dashboardAssets(): string {
         _switchId: 0,
 
         async switchTab(t) {
+          // Spec §3.5 — switchTab('keys') is a no-op while viewing another user
+          if (this.viewAs && t === 'keys') return;
           const switchId = ++this._switchId;
 
           if (t !== 'usage' && this.tokenChart) {
@@ -650,6 +786,11 @@ export function dashboardAssets(): string {
               this.githubConnected = data.github_connected;
               this.githubAccounts = data.accounts || [];
               this.meLoaded = true;
+              // Spec §3.5 — if signed out / identity lost, drop viewAs
+              if (!this.userId && this.viewAs) {
+                this.viewAs = null;
+                localStorage.removeItem('viewAs');
+              }
             } catch (e) {
               console.error('loadMe:', e);
               // Don't set meLoaded = true on failure, so switchTab can retry
@@ -658,7 +799,7 @@ export function dashboardAssets(): string {
 
           async loadUsage() {
             try {
-              const resp = await fetch('/api/copilot-quota', { credentials: 'same-origin' });
+              const resp = await this.observabilityFetch('/api/copilot-quota', { credentials: 'same-origin' });
               if (resp.status === 401) {
                 // GitHub token expired, not auth issue — don't kick to login
                 this.usageError = true;
@@ -1061,7 +1202,7 @@ export function dashboardAssets(): string {
             this.tokenLoading = true;
             try {
               const { start, end } = computeTimeRange(this.tokenRange, this.tokenWeekOffset);
-              const resp = await fetch('/api/token-usage?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { credentials: 'same-origin' });
+              const resp = await this.observabilityFetch('/api/token-usage?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { credentials: 'same-origin' });
               if (resp.status === 401) {
                 this.logout(t('dash.sessionExpired'));
                 return;
@@ -1339,7 +1480,7 @@ export function dashboardAssets(): string {
             this.latencyLoading = true;
             try {
               const { start, end } = computeTimeRange(this.latencyRange, this.latencyWeekOffset);
-              const resp = await fetch('/api/latency?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { credentials: 'same-origin' });
+              const resp = await this.observabilityFetch('/api/latency?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end), { credentials: 'same-origin' });
               if (resp.status === 401) {
                 this.logout(t('dash.sessionExpired'));
                 return;
@@ -2009,7 +2150,7 @@ export function dashboardAssets(): string {
           async loadRelays() {
             this.relaysLoading = true;
             try {
-              const resp = await fetch('/api/relays', { credentials: 'same-origin' });
+              const resp = await this.observabilityFetch('/api/relays', { credentials: 'same-origin' });
               if (resp.status === 401) {
                 this.logout(t('dash.sessionExpired'));
                 return;

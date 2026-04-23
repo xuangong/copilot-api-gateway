@@ -5,7 +5,6 @@ import {
   addGithubAccount,
   removeGithubAccount,
   setActiveGithubAccount,
-  getActiveGithubAccount,
   type GitHubUser,
 } from "~/lib/github"
 import { validateApiKey } from "~/lib/api-keys"
@@ -572,85 +571,30 @@ export const authRoute = new Elysia({ prefix: "/auth" })
     })
   })
 
-  // GET /auth/me - get GitHub accounts for the current user
+  // GET /auth/me - identity-only. Always uses the caller's session userId
+  // (does NOT honor `?as_user=...`). The upstream-accounts list now lives at
+  // /api/upstream-accounts.
   .get("/me", async (ctx) => {
     const { isAdmin, userId } = ctx as unknown as AuthContext
 
-    // Get accounts scoped to the user (or all for admin)
-    const accounts = isAdmin
-      ? await listGithubAccounts()
-      : userId
-        ? await listGithubAccountsForUser(userId)
-        : []
-
-    const active = await getActiveGithubAccount(userId)
-
-    // If we have an active account but no user info cached, try to fetch it
-    if (active && !active.user.login) {
-      try {
-        const userResp = await fetch("https://api.github.com/user", {
-          headers: {
-            authorization: `token ${active.token}`,
-            accept: "application/json",
-            "user-agent": "copilot-api-gateway",
-          },
-        })
-        if (userResp.ok) {
-          const user = (await userResp.json()) as GitHubUser
-          await addGithubAccount(active.token, user, active.accountType, userId)
-        }
-      } catch {
-        // Ignore
-      }
-    }
-
-    // For admin: build owner name lookup for accounts that belong to users
-    let ownerNameMap: Map<string, string> | null = null
+    // Cheap connectivity check: do any GitHub accounts exist for this caller?
+    // Avoids the per-account fanout (token validity + Copilot quota) that the
+    // old /auth/me did synchronously on every dashboard load.
+    let githubConnected = false
     if (isAdmin) {
-      const ownerIds = new Set(accounts.map((a) => a.ownerId).filter((id): id is string => !!id))
-      if (ownerIds.size > 0) {
-        const repo = getRepo()
-        const entries = await Promise.all(
-          [...ownerIds].map(async (id) => {
-            const user = await repo.users.getById(id)
-            return [id, user?.name ?? id] as const
-          }),
-        )
-        ownerNameMap = new Map(entries)
-      }
+      const all = await listGithubAccounts()
+      githubConnected = all.length > 0
+    } else if (userId) {
+      const own = await listGithubAccountsForUser(userId)
+      githubConnected = own.length > 0
     }
-
-    // Check token validity for each account in parallel
-    const healthChecks = await Promise.allSettled(
-      accounts.map(async (a) => {
-        try {
-          const resp = await fetch("https://api.github.com/user", {
-            headers: {
-              authorization: `token ${a.token}`,
-              accept: "application/json",
-              "user-agent": "copilot-api-gateway",
-            },
-          })
-          return resp.ok
-        } catch {
-          return false
-        }
-      }),
-    )
 
     return {
       authenticated: true,
-      github_connected: accounts.length > 0,
-      accounts: accounts.map((a, i) => ({
-        id: a.user.id,
-        login: a.user.login,
-        name: a.user.name,
-        avatar_url: a.user.avatar_url || `https://avatars.githubusercontent.com/u/${a.user.id}?v=4`,
-        account_type: a.accountType,
-        active: active?.user.id === a.user.id,
-        token_valid: (() => { const r = healthChecks[i]; return r && r.status === "fulfilled" && r.value })(),
-        ...(isAdmin ? { owner_id: a.ownerId || null, owner_name: (a.ownerId && ownerNameMap?.get(a.ownerId)) || null } : {}),
-      })),
+      github_connected: githubConnected,
+      // Accounts list moved to /api/upstream-accounts so it can honor
+      // observability-sharing (effectiveUserId) without leaking OAuth tokens.
+      accounts: [],
     }
   })
 
@@ -811,6 +755,8 @@ export const authRoute = new Elysia({ prefix: "/auth" })
     }
     await repo.github.clearActiveIdForUser(userId)
     await repo.keyAssignments.deleteByUser(userId)
+    await repo.observabilityShares.deleteByOwner(userId)
+    await repo.observabilityShares.deleteByViewer(userId)
     await repo.users.delete(userId)
 
     return { ok: true }
