@@ -19,6 +19,7 @@ import { authRoute, initOAuthKV } from "~/routes/auth"
 import { initResend } from "~/lib/email"
 import { apiKeysRoute } from "~/routes/api-keys"
 import { dashboardRoute } from "~/routes/dashboard"
+import { resolveViewContext } from "~/middleware/view-context"
 import { LoginPage } from "~/ui/login"
 import { DevicePage } from "~/ui/device"
 import { DashboardPage } from "~/ui/dashboard"
@@ -403,6 +404,7 @@ function createApp(env: Env) {
     // Auth routes (don't need Copilot token)
     .use(authRoute)
     .use(apiKeysRoute)
+    .use(resolveViewContext)
     .use(dashboardRoute)
     // API routes with Copilot token - only load state for API paths
     .derive(async ({ path, request, apiKeyId, userId }) => {
