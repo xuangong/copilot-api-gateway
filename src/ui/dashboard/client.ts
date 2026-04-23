@@ -323,6 +323,8 @@ export function dashboardAssets(): string {
       // User management (admin)
       adminUsers: [],
       adminUsersLoading: false,
+      githubQuotas: {},
+      githubQuotaInflight: 0,
       inviteCodes: [],
       inviteCodesLoading: false,
       newInviteName: '',
@@ -1674,12 +1676,62 @@ export function dashboardAssets(): string {
             this.adminUsersLoading = true;
             try {
               const resp = await fetch('/auth/admin/users', { credentials: 'same-origin' });
-              if (resp.ok) this.adminUsers = await resp.json();
+              if (resp.ok) {
+                this.adminUsers = await resp.json();
+                // Reset previous quota cache when re-loading user list
+                this.githubQuotas = {};
+                const ghIds = [];
+                for (const u of this.adminUsers) {
+                  for (const gh of (u.githubAccounts || [])) {
+                    if (gh && gh.id != null) ghIds.push(gh.id);
+                  }
+                }
+                ghIds.forEach(id => { this.loadGithubQuota(id); });
+              }
             } catch (e) {
               console.error('loadAdminUsers:', e);
             } finally {
               this.adminUsersLoading = false;
             }
+          },
+
+          async loadGithubQuota(id) {
+            if (id == null) return;
+            this.githubQuotas[id] = { loading: true, error: '', data: null };
+            this.githubQuotaInflight += 1;
+            try {
+              const resp = await fetch('/api/admin/copilot-quota/' + encodeURIComponent(id), {
+                credentials: 'same-origin',
+              });
+              if (resp.ok) {
+                const data = await resp.json();
+                this.githubQuotas[id] = { loading: false, error: '', data };
+              } else {
+                let errText = '';
+                try { const j = await resp.json(); errText = j?.error || ''; } catch (_e) {}
+                this.githubQuotas[id] = { loading: false, error: errText || ('HTTP ' + resp.status), data: null };
+              }
+            } catch (_e) {
+              this.githubQuotas[id] = { loading: false, error: this.t('dash.quotaLoadFailed'), data: null };
+            } finally {
+              this.githubQuotaInflight -= 1;
+            }
+          },
+
+          formatQuotaChip(q) {
+            if (!q) return '…';
+            if (q.loading) return '…';
+            if (q.error) return '!';
+            const snaps = q.data && q.data.quota_snapshots;
+            if (!snaps) return '—';
+            const snap = snaps.premium_interactions
+              || snaps.chat
+              || snaps.completions
+              || (Object.values(snaps).find(s => s && (s.unlimited || typeof s.entitlement === 'number')));
+            if (!snap) return '—';
+            if (snap.unlimited) return '∞';
+            const used = (snap.entitlement || 0) - (snap.remaining || 0);
+            return used + '/' + snap.entitlement;
           },
 
           // === Key Assignments ===
