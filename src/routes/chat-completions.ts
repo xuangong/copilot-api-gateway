@@ -8,6 +8,15 @@ import { detectClient } from "~/lib/client-detect"
 import { checkQuota } from "~/lib/quota"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
+import {
+  hasOpenAIWebSearch,
+  interceptOpenAIChat,
+  type OpenAIChatPayload,
+  loadWebSearchConfig,
+  addWebSearchHeaders,
+  recordWebSearchUsage,
+  replayChatCompletionAsSSE,
+} from "~/services/web-search"
 
 interface ChatMessage {
   role: "system" | "user" | "assistant"
@@ -22,6 +31,7 @@ interface ChatCompletionsPayload {
   max_tokens?: number
   temperature?: number
   top_p?: number
+  tools?: unknown[]
 }
 
 interface RouteContext {
@@ -93,6 +103,62 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
 
   const payload = body as ChatCompletionsPayload
   const upstreamTimer = startTimer()
+
+  // ── Web-search interception ───────────────────────────────────────────
+  // If client sent a web_search-style tool, run the multi-turn intercept
+  // loop synchronously and either return JSON or replay as a single-chunk
+  // SSE for streaming clients. Anthropic-equivalent flow lives in messages.ts.
+  if (hasOpenAIWebSearch(payload as unknown as OpenAIChatPayload)) {
+    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken)
+    if (!cfg.enabled) return cfg.errorResponse!
+
+    const wantsStream = payload.stream === true
+    const { response, meta } = await interceptOpenAIChat(
+      payload as unknown as OpenAIChatPayload,
+      {
+        copilotToken: state.copilotToken,
+        accountType: state.accountType,
+        engineOptions: cfg.engineOptions!,
+      },
+    )
+    const upstreamMs = upstreamTimer()
+
+    const recordSide = async () => {
+      if (apiKeyId) {
+        await trackNonStreamingUsage(response, apiKeyId, payload.model, client)
+        const usage = response.usage
+        recordLatency(apiKeyId, payload.model, colo, {
+          totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
+        }, requestId, {
+          stream: wantsStream,
+          inputTokens: usage?.prompt_tokens,
+          outputTokens: usage?.completion_tokens,
+          userAgent,
+        }).catch(() => {})
+        recordWebSearchUsage(apiKeyId, meta)
+      }
+    }
+
+    if (wantsStream) {
+      const sseBody = replayChatCompletionAsSSE(response)
+      const heartbeated = wrapOpenAIHeartbeat(sseBody)
+      const headers: Record<string, string> = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      }
+      addWebSearchHeaders(headers, meta)
+      const streamResponse = new Response(heartbeated, { headers })
+      await recordSide()
+      return streamResponse
+    }
+
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    addWebSearchHeaders(headers, meta)
+    const jsonResponse = new Response(JSON.stringify(response), { headers })
+    await recordSide()
+    return jsonResponse
+  }
 
   if (payload.stream === true) {
     const clientWantsUsage = Boolean(payload.stream_options?.include_usage)

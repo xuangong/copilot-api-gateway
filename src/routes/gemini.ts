@@ -18,6 +18,14 @@ import type { GeminiGenerateContentRequest } from "~/services/gemini/types"
 import { createSSETransform } from "~/lib/sse-transform"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
+import {
+  hasGeminiWebSearch,
+  interceptGeminiViaChat,
+  loadWebSearchConfig,
+  addWebSearchHeaders,
+  recordWebSearchUsage,
+  synthChatCompletionChunks,
+} from "~/services/web-search"
 
 interface RouteContext {
   state: AppState
@@ -74,6 +82,44 @@ async function handleGenerateContent(ctx: RouteContext) {
   }
 
   const model = extractModelId(params.modelWithMethod)
+
+  // ── Web-search interception ──
+  if (hasGeminiWebSearch(body)) {
+    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken)
+    if (!cfg.enabled) {
+      return new Response(
+        JSON.stringify({ error: { code: 400, message: "Web search is not enabled for this API key.", status: "FAILED_PRECONDITION" } }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      )
+    }
+    const upstreamTimer = startTimer()
+    const { chatResponse, geminiResponse, meta } = await interceptGeminiViaChat(
+      body,
+      model,
+      {
+        copilotToken: state.copilotToken,
+        accountType: state.accountType,
+        engineOptions: cfg.engineOptions!,
+      },
+    )
+    const upstreamMs = upstreamTimer()
+    if (apiKeyId) {
+      await trackNonStreamingUsage(chatResponse, apiKeyId, model, client)
+      recordLatency(apiKeyId, model, colo, {
+        totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
+      }, requestId, {
+        stream: false,
+        inputTokens: chatResponse.usage?.prompt_tokens,
+        outputTokens: chatResponse.usage?.completion_tokens,
+        userAgent,
+      }).catch(() => {})
+      recordWebSearchUsage(apiKeyId, meta)
+    }
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    addWebSearchHeaders(headers, meta)
+    return new Response(JSON.stringify(geminiResponse), { headers })
+  }
+
   const openAIPayload = translateGeminiToOpenAI(body, model)
   openAIPayload.stream = false
 
@@ -151,6 +197,65 @@ async function handleStreamGenerateContent(
   }
 
   const model = extractModelId(params.modelWithMethod)
+
+  // ── Web-search interception (synthesized single chunk into stream pipeline) ──
+  if (hasGeminiWebSearch(body)) {
+    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken)
+    if (!cfg.enabled) {
+      return new Response(
+        JSON.stringify({ error: { code: 400, message: "Web search is not enabled for this API key.", status: "FAILED_PRECONDITION" } }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      )
+    }
+    const upstreamTimer = startTimer()
+    const { chatResponse, meta } = await interceptGeminiViaChat(
+      body,
+      model,
+      {
+        copilotToken: state.copilotToken,
+        accountType: state.accountType,
+        engineOptions: cfg.engineOptions!,
+      },
+    )
+    const upstreamMs = upstreamTimer()
+    if (apiKeyId) {
+      await trackNonStreamingUsage(chatResponse, apiKeyId, model, client)
+      recordLatency(apiKeyId, model, colo, {
+        totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
+      }, requestId, {
+        stream: true,
+        inputTokens: chatResponse.usage?.prompt_tokens,
+        outputTokens: chatResponse.usage?.completion_tokens,
+        userAgent,
+      }).catch(() => {})
+      recordWebSearchUsage(apiKeyId, meta)
+    }
+
+    const synthesized = synthChatCompletionChunks(chatResponse)
+    const streamState = createStreamState(model)
+    const encoder = new TextEncoder()
+    const transformStream = createSSETransform((data) => {
+      try {
+        const openAIChunk = JSON.parse(data) as ChatCompletionChunk
+        const geminiChunk = translateChunkToGemini(openAIChunk, streamState)
+        if (geminiChunk) {
+          if (useSSE) return encoder.encode(`data: ${JSON.stringify(geminiChunk)}\n\n`)
+          return encoder.encode(JSON.stringify(geminiChunk) + "\n")
+        }
+      } catch {
+        // Skip
+      }
+      return null
+    })
+    const heartbeated = useSSE ? wrapOpenAIHeartbeat(synthesized) : synthesized
+    const transformedBody = heartbeated?.pipeThrough(transformStream)
+    const headers: Record<string, string> = useSSE
+      ? { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" }
+      : { "Content-Type": "application/json", "Transfer-Encoding": "chunked" }
+    addWebSearchHeaders(headers, meta)
+    return new Response(transformedBody, { headers })
+  }
+
   const openAIPayload = translateGeminiToOpenAI(body, model)
   openAIPayload.stream = true
   openAIPayload.stream_options = { include_usage: true }

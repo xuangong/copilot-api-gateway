@@ -5,8 +5,10 @@ import { callCopilotAPI, repairToolResultPairs } from "~/services/copilot"
 import {
   interceptWebSearch,
   hasWebSearch,
+  replayResponseAsSSE,
   type WebSearchMeta,
   type MessagesPayload,
+  type ApiResponse,
 } from "~/services/web-search"
 import {
   stripReservedKeywords,
@@ -94,7 +96,7 @@ export const messagesRoute = new Elysia()
     // Cast to MessagesPayload for web search interception
     const messagesPayload = payload as unknown as MessagesPayload
 
-    if (hasWebSearch(messagesPayload) && !payload.stream) {
+    if (hasWebSearch(messagesPayload)) {
       // Load key-level web search config
       const keyConfig = apiKeyId ? await getApiKeyById(apiKeyId) : null
       if (!keyConfig?.webSearchEnabled) {
@@ -103,14 +105,23 @@ export const messagesRoute = new Elysia()
         })
       }
 
+      const wantsStream = payload.stream === true
+      // Always run the intercept loop in non-streaming mode upstream:
+      // we need the full assistant response in hand to (a) execute the
+      // tool calls and (b) replay it back to a streaming client.
+      const interceptPayload: MessagesPayload = { ...messagesPayload, stream: false }
+
       const upstreamTimer = startTimer()
-      const upstreamPromise = interceptWebSearch(messagesPayload, {
+      const upstreamPromise = interceptWebSearch(interceptPayload, {
         copilotToken: state.copilotToken,
         accountType: state.accountType,
         engineOptions: {
           langsearchKey: keyConfig.webSearchLangsearchKey,
           tavilyKey: keyConfig.webSearchTavilyKey,
           bingEnabled: keyConfig.webSearchBingEnabled,
+          githubToken: state.githubToken,
+          copilotEnabled: keyConfig.webSearchCopilotEnabled,
+          copilotPriority: keyConfig.webSearchCopilotPriority,
         },
       })
 
@@ -125,7 +136,7 @@ export const messagesRoute = new Elysia()
           recordLatency(apiKeyId, payload.model, colo, {
             totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
           }, requestId, {
-            stream: false,
+            stream: wantsStream,
             inputTokens: usage.usage?.input_tokens,
             outputTokens: usage.usage?.output_tokens,
             userAgent,
@@ -141,6 +152,23 @@ export const messagesRoute = new Elysia()
             }
           }
         }
+      }
+
+      // Streaming client: skip the JSON heartbeat race (client expects SSE
+      // frames immediately); wrap the response replay in the SSE heartbeat.
+      if (wantsStream) {
+        const { response, meta } = await upstreamPromise
+        const sseBody = replayResponseAsSSE(response as ApiResponse)
+        const heartbeated = wrapAnthropicHeartbeat(sseBody)
+        const headers: Record<string, string> = {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        }
+        addWebSearchHeaders(headers, meta)
+        const streamResponse = new Response(heartbeated, { headers })
+        await recordSideEffects({ response, meta })
+        return streamResponse
       }
 
       const raced = await raceWithHeartbeat(upstreamPromise, {
