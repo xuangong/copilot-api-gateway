@@ -439,7 +439,10 @@ export function dashboardAssets(): string {
         geminiSnippet() {
           const lines = [
             'export GEMINI_API_KEY=' + this.activeKey,
+            '# DEPRECATED: GEMINI_API_BASE_URL was renamed to GOOGLE_GEMINI_BASE_URL in gemini-cli v0.13.0+',
+            '# ref: https://github.com/google-gemini/gemini-cli/blob/3bc56d0ef55050c29d8479eeb81b4e273b8101c8/docs/changelogs/preview.md',
             'export GEMINI_API_BASE_URL=' + this.baseUrl,
+            'export GOOGLE_GEMINI_BASE_URL=' + this.baseUrl,
             'export GEMINI_MODEL=' + this.geminiModel,
           ];
           return lines.join('\\n');
