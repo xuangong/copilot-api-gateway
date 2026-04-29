@@ -18,7 +18,7 @@ function maskKey(key?: string): string | null {
 }
 
 function keyToJson(k: ApiKey, ownerName?: string, isOwner?: boolean) {
-  return { id: k.id, name: k.name, key: k.key, created_at: k.createdAt, last_used_at: k.lastUsedAt ?? null, owner_id: k.ownerId ?? null, owner_name: ownerName ?? null, is_owner: isOwner ?? true, quota_requests_per_day: k.quotaRequestsPerDay ?? null, quota_tokens_per_day: k.quotaTokensPerDay ?? null, web_search_enabled: k.webSearchEnabled ?? false, web_search_bing_enabled: k.webSearchBingEnabled ?? false, web_search_langsearch_key: maskKey(k.webSearchLangsearchKey), web_search_tavily_key: maskKey(k.webSearchTavilyKey) }
+  return { id: k.id, name: k.name, key: k.key, created_at: k.createdAt, last_used_at: k.lastUsedAt ?? null, owner_id: k.ownerId ?? null, owner_name: ownerName ?? null, is_owner: isOwner ?? true, quota_requests_per_day: k.quotaRequestsPerDay ?? null, quota_tokens_per_day: k.quotaTokensPerDay ?? null, web_search_enabled: k.webSearchEnabled ?? false, web_search_bing_enabled: k.webSearchBingEnabled ?? false, web_search_langsearch_key: maskKey(k.webSearchLangsearchKey), web_search_tavily_key: maskKey(k.webSearchTavilyKey), web_search_copilot_enabled: k.webSearchCopilotEnabled ?? false, web_search_copilot_priority: k.webSearchCopilotPriority ?? false }
 }
 
 interface AuthCtx {
@@ -174,7 +174,7 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     if (!(await checkOwnership(params.id, authCtx))) {
       return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { "Content-Type": "application/json" } })
     }
-    const { name, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key } = body as { name?: string; quota_requests_per_day?: number | null; quota_tokens_per_day?: number | null; web_search_enabled?: boolean; web_search_bing_enabled?: boolean; web_search_langsearch_key?: string | null; web_search_tavily_key?: string | null }
+    const { name, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_copilot_enabled, web_search_copilot_priority } = body as { name?: string; quota_requests_per_day?: number | null; quota_tokens_per_day?: number | null; web_search_enabled?: boolean; web_search_bing_enabled?: boolean; web_search_langsearch_key?: string | null; web_search_tavily_key?: string | null; web_search_copilot_enabled?: boolean; web_search_copilot_priority?: boolean }
     const existing = await getApiKeyById(params.id)
     if (!existing) {
       return new Response(JSON.stringify({ error: "Key not found" }), {
@@ -209,6 +209,12 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     }
     if (web_search_tavily_key !== undefined) {
       updated.webSearchTavilyKey = web_search_tavily_key === null ? undefined : web_search_tavily_key
+    }
+    if (web_search_copilot_enabled !== undefined) {
+      updated.webSearchCopilotEnabled = web_search_copilot_enabled
+    }
+    if (web_search_copilot_priority !== undefined) {
+      updated.webSearchCopilotPriority = web_search_copilot_priority
     }
     await getRepo().apiKeys.save(updated)
     return keyToJson(updated)
@@ -376,6 +382,8 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
       webSearchBingEnabled: source.webSearchBingEnabled,
       webSearchLangsearchKey: source.webSearchLangsearchKey,
       webSearchTavilyKey: source.webSearchTavilyKey,
+      webSearchCopilotEnabled: source.webSearchCopilotEnabled,
+      webSearchCopilotPriority: source.webSearchCopilotPriority,
     }
     await getRepo().apiKeys.save(updated)
     return keyToJson(updated)

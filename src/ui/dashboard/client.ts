@@ -347,10 +347,12 @@ export function dashboardAssets(): string {
       wsSaving: false,
       wsEditEnabled: false,
       wsEditBing: false,
+      wsEditCopilot: false,
+      wsEditCopilotPriority: false,
       wsEditLangsearch: '',
       wsEditTavily: '',
       wsCopySourceId: '',
-      wsConfig: { enabled: false, bingEnabled: false, langsearchKey: null, tavilyKey: null },
+      wsConfig: { enabled: false, bingEnabled: false, copilotEnabled: false, copilotPriority: false, langsearchKey: null, tavilyKey: null },
       wsUsage: { searches: 0, successes: 0, failures: 0 },
 
       // Relays tab
@@ -2082,6 +2084,8 @@ export function dashboardAssets(): string {
             this.wsConfig = {
               enabled: key?.web_search_enabled ?? false,
               bingEnabled: key?.web_search_bing_enabled ?? false,
+              copilotEnabled: key?.web_search_copilot_enabled ?? false,
+              copilotPriority: key?.web_search_copilot_priority ?? false,
               langsearchKey: key?.web_search_langsearch_key ?? null,
               tavilyKey: key?.web_search_tavily_key ?? null,
             };
@@ -2099,6 +2103,8 @@ export function dashboardAssets(): string {
             const key = this.keys.find(k => k.id === this.selectedKeyId);
             this.wsEditEnabled = key?.web_search_enabled ?? false;
             this.wsEditBing = key?.web_search_bing_enabled ?? false;
+            this.wsEditCopilot = key?.web_search_copilot_enabled ?? false;
+            this.wsEditCopilotPriority = key?.web_search_copilot_priority ?? false;
             this.wsEditLangsearch = '';
             this.wsEditTavily = '';
             this.wsCopySourceId = '';
@@ -2112,6 +2118,8 @@ export function dashboardAssets(): string {
               const body = {
                 web_search_enabled: this.wsEditEnabled,
                 web_search_bing_enabled: this.wsEditEnabled,
+                web_search_copilot_enabled: this.wsEditCopilot,
+                web_search_copilot_priority: this.wsEditCopilotPriority,
               };
               if (this.wsEditLangsearch) body.web_search_langsearch_key = this.wsEditLangsearch;
               if (this.wsEditTavily) body.web_search_tavily_key = this.wsEditTavily;

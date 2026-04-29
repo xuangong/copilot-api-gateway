@@ -786,12 +786,20 @@ export function renderKeysTab(): string {
           <!-- Edit form -->
           <template x-if="wsEditing">
             <div class="space-y-4 mb-4">
-              <div class="flex items-center gap-6">
+              <div class="flex items-center gap-6 flex-wrap">
                 <label class="flex items-center gap-2 text-xs text-themed-secondary cursor-pointer">
                   <input type="checkbox" x-model="wsEditEnabled" class="accent-accent-violet" />
                   Enable Web Search
                 </label>
                 <span x-show="wsEditEnabled" class="text-xs text-themed-dim">(Bing fallback always active)</span>
+                <label class="flex items-center gap-2 text-xs text-themed-secondary cursor-pointer" x-show="wsEditEnabled">
+                  <input type="checkbox" x-model="wsEditCopilot" class="accent-accent-violet" />
+                  Use GitHub Copilot Search
+                </label>
+                <label class="flex items-center gap-2 text-xs text-themed-secondary cursor-pointer" x-show="wsEditEnabled && wsEditCopilot">
+                  <input type="checkbox" x-model="wsEditCopilotPriority" class="accent-accent-violet" />
+                  Prefer Copilot over other engines
+                </label>
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -837,6 +845,8 @@ export function renderKeysTab(): string {
                         x-text="wsConfig.tavilyKey ? 'Tavily \u2713' : 'Tavily'"></span>
                       <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.enabled ? 'bg-accent-amber/20 text-accent-amber' : 'bg-surface-600 text-themed-dim'"
                         x-text="wsConfig.enabled ? 'Bing \u2713' : 'Bing'"></span>
+                      <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.copilotEnabled ? 'bg-accent-teal/20 text-accent-teal' : 'bg-surface-600 text-themed-dim'"
+                        x-text="wsConfig.copilotEnabled ? (wsConfig.copilotPriority ? 'Copilot \u2605' : 'Copilot \u2713') : 'Copilot'"></span>
                     </div>
                   </div>
                   <!-- Today's usage -->
