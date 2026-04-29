@@ -32,6 +32,9 @@ import { initResend } from "~/lib/email"
 import { hashPassword } from "~/lib/password"
 import { apiKeysRoute } from "~/routes/api-keys"
 import { dashboardRoute } from "~/routes/dashboard"
+import { upstreamAccountsRoute } from "~/routes/upstream-accounts"
+import { observabilitySharesRoute } from "~/routes/observability-shares"
+import { resolveViewContext } from "~/middleware/view-context"
 import { LoginPage } from "~/ui/login"
 import { DevicePage } from "~/ui/device"
 import { GuidePage } from "~/ui/guide"
@@ -542,7 +545,10 @@ async function createApp() {
     // Auth routes (don't need Copilot token)
     .use(authRoute)
     .use(apiKeysRoute)
+    .use(resolveViewContext)
     .use(dashboardRoute)
+    .use(upstreamAccountsRoute)
+    .use(observabilitySharesRoute)
     // API routes with Copilot token - only load state for API paths
     .derive(async ({ path, userId }) => {
       // Local mode: colo is always "local"
