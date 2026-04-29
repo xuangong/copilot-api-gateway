@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS web_search_usage (
 class SqliteApiKeyRepo implements ApiKeyRepo {
   constructor(private db: Database) {}
 
-  private static readonly SELECT_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key"
+  private static readonly SELECT_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_copilot_enabled, web_search_copilot_priority"
 
   async list(): Promise<ApiKey[]> {
     return this.db.query<any, []>(`SELECT ${SqliteApiKeyRepo.SELECT_COLS} FROM api_keys ORDER BY created_at`).all().map(toApiKey)
@@ -155,9 +155,9 @@ class SqliteApiKeyRepo implements ApiKeyRepo {
 
   async save(key: ApiKey): Promise<void> {
     this.db.query(
-      `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day, web_search_enabled = excluded.web_search_enabled, web_search_bing_enabled = excluded.web_search_bing_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key`,
-    ).run(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null, key.quotaRequestsPerDay ?? null, key.quotaTokensPerDay ?? null, key.webSearchEnabled ? 1 : 0, key.webSearchBingEnabled ? 1 : 0, key.webSearchLangsearchKey ?? null, key.webSearchTavilyKey ?? null)
+      `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_copilot_enabled, web_search_copilot_priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day, web_search_enabled = excluded.web_search_enabled, web_search_bing_enabled = excluded.web_search_bing_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key, web_search_copilot_enabled = excluded.web_search_copilot_enabled, web_search_copilot_priority = excluded.web_search_copilot_priority`,
+    ).run(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null, key.quotaRequestsPerDay ?? null, key.quotaTokensPerDay ?? null, key.webSearchEnabled ? 1 : 0, key.webSearchBingEnabled ? 1 : 0, key.webSearchLangsearchKey ?? null, key.webSearchTavilyKey ?? null, key.webSearchCopilotEnabled ? 1 : 0, key.webSearchCopilotPriority ? 1 : 0)
   }
 
   async delete(id: string): Promise<boolean> {
@@ -171,7 +171,7 @@ class SqliteApiKeyRepo implements ApiKeyRepo {
 }
 
 function toApiKey(row: any): ApiKey {
-  return { id: row.id, name: row.name, key: row.key, createdAt: row.created_at, lastUsedAt: row.last_used_at ?? undefined, ownerId: row.owner_id ?? undefined, quotaRequestsPerDay: row.quota_requests_per_day ?? undefined, quotaTokensPerDay: row.quota_tokens_per_day ?? undefined, webSearchEnabled: row.web_search_enabled === 1, webSearchBingEnabled: row.web_search_bing_enabled === 1, webSearchLangsearchKey: row.web_search_langsearch_key ?? undefined, webSearchTavilyKey: row.web_search_tavily_key ?? undefined }
+  return { id: row.id, name: row.name, key: row.key, createdAt: row.created_at, lastUsedAt: row.last_used_at ?? undefined, ownerId: row.owner_id ?? undefined, quotaRequestsPerDay: row.quota_requests_per_day ?? undefined, quotaTokensPerDay: row.quota_tokens_per_day ?? undefined, webSearchEnabled: row.web_search_enabled === 1, webSearchBingEnabled: row.web_search_bing_enabled === 1, webSearchLangsearchKey: row.web_search_langsearch_key ?? undefined, webSearchTavilyKey: row.web_search_tavily_key ?? undefined, webSearchCopilotEnabled: row.web_search_copilot_enabled === 1, webSearchCopilotPriority: row.web_search_copilot_priority === 1 }
 }
 
 class SqliteGitHubRepo implements GitHubRepo {
@@ -546,6 +546,12 @@ function migrateSchema(db: Database): void {
   }
   if (!hasColumn(db, "api_keys", "web_search_tavily_key")) {
     db.exec("ALTER TABLE api_keys ADD COLUMN web_search_tavily_key TEXT")
+  }
+  if (!hasColumn(db, "api_keys", "web_search_copilot_enabled")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN web_search_copilot_enabled INTEGER DEFAULT 0")
+  }
+  if (!hasColumn(db, "api_keys", "web_search_copilot_priority")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN web_search_copilot_priority INTEGER DEFAULT 0")
   }
   // Add email to users
   if (!hasColumn(db, "users", "email")) {

@@ -47,7 +47,7 @@ export interface D1Database {
 class D1ApiKeyRepo implements ApiKeyRepo {
   constructor(private db: D1Database) {}
 
-  private static readonly SELECT_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key"
+  private static readonly SELECT_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_copilot_enabled, web_search_copilot_priority"
 
   async list(): Promise<ApiKey[]> {
     const { results } = await this.db
@@ -83,10 +83,10 @@ class D1ApiKeyRepo implements ApiKeyRepo {
   async save(key: ApiKey): Promise<void> {
     await this.db
       .prepare(
-        `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day, web_search_enabled = excluded.web_search_enabled, web_search_bing_enabled = excluded.web_search_bing_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key`,
+        `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_copilot_enabled, web_search_copilot_priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day, web_search_enabled = excluded.web_search_enabled, web_search_bing_enabled = excluded.web_search_bing_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key, web_search_copilot_enabled = excluded.web_search_copilot_enabled, web_search_copilot_priority = excluded.web_search_copilot_priority`,
       )
-      .bind(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null, key.quotaRequestsPerDay ?? null, key.quotaTokensPerDay ?? null, key.webSearchEnabled ? 1 : 0, key.webSearchBingEnabled ? 1 : 0, key.webSearchLangsearchKey ?? null, key.webSearchTavilyKey ?? null)
+      .bind(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null, key.quotaRequestsPerDay ?? null, key.quotaTokensPerDay ?? null, key.webSearchEnabled ? 1 : 0, key.webSearchBingEnabled ? 1 : 0, key.webSearchLangsearchKey ?? null, key.webSearchTavilyKey ?? null, key.webSearchCopilotEnabled ? 1 : 0, key.webSearchCopilotPriority ? 1 : 0)
       .run()
   }
 
@@ -113,6 +113,8 @@ interface ApiKeyRow {
   web_search_bing_enabled: number | null
   web_search_langsearch_key: string | null
   web_search_tavily_key: string | null
+  web_search_copilot_enabled: number | null
+  web_search_copilot_priority: number | null
 }
 
 function toApiKey(row: ApiKeyRow): ApiKey {
@@ -129,6 +131,8 @@ function toApiKey(row: ApiKeyRow): ApiKey {
     webSearchBingEnabled: row.web_search_bing_enabled === 1,
     webSearchLangsearchKey: row.web_search_langsearch_key ?? undefined,
     webSearchTavilyKey: row.web_search_tavily_key ?? undefined,
+    webSearchCopilotEnabled: row.web_search_copilot_enabled === 1,
+    webSearchCopilotPriority: row.web_search_copilot_priority === 1,
   }
 }
 

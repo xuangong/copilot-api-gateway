@@ -11,6 +11,8 @@ export interface ApiKey {
   webSearchBingEnabled?: boolean
   webSearchLangsearchKey?: string
   webSearchTavilyKey?: string
+  webSearchCopilotEnabled?: boolean
+  webSearchCopilotPriority?: boolean
 }
 
 export interface GitHubUser {
