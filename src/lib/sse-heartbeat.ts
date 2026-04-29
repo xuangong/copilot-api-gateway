@@ -12,7 +12,7 @@ export function wrapOpenAIHeartbeat(
   body: ReadableStream<Uint8Array> | null,
 ): ReadableStream<Uint8Array> | null {
   return body
-    ? createIdleHeartbeatStream(body, { intervalMs: SSE_HEARTBEAT_MS, heartbeat: OPENAI_KEEPALIVE, tag: "openai" })
+    ? createIdleHeartbeatStream(body, { intervalMs: SSE_HEARTBEAT_MS, heartbeat: OPENAI_KEEPALIVE })
     : null
 }
 
@@ -32,7 +32,6 @@ export function wrapAnthropicHeartbeat(
   const heartbeated = createIdleHeartbeatStream(recovered, {
     intervalMs: SSE_HEARTBEAT_MS,
     heartbeat: ANTHROPIC_PING,
-    tag: "anthropic",
   })
   return heartbeated.pipeThrough(stripAnthropicDoneFrameTransform())
 }
@@ -43,8 +42,6 @@ export interface IdleHeartbeatOptions {
   /** bytes to inject on each idle tick — must be a no-op for the protocol
    * (e.g. SSE comment ": keepalive\n\n", or Anthropic "event: ping\ndata: {}\n\n") */
   heartbeat: Uint8Array
-  /** optional label for end-of-stream diagnostics in CFW logs */
-  tag?: string
 }
 
 /**
@@ -101,22 +98,6 @@ export function createIdleHeartbeatStream(
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
-      // Diagnostic: ring buffer of last ~1KB of upstream bytes so we can
-      // see, on stream close, whether upstream actually sent a final frame
-      // terminator and what the last event type was. Logged only on close
-      // (no per-chunk logging) and capped to 1024 bytes total.
-      const TAIL_CAP = 1024
-      let tail: Uint8Array<ArrayBufferLike> = new Uint8Array(0)
-      const recordTail = (chunk: Uint8Array): void => {
-        const merged = tail.length === 0 ? chunk : concat(tail, chunk)
-        tail = merged.length <= TAIL_CAP
-          ? merged
-          : merged.subarray(merged.length - TAIL_CAP)
-      }
-      let totalBytes = 0
-      let chunkCount = 0
-      const startedAt = Date.now()
-
       try {
         // Keep the same pending readP across timer loops so we never start
         // two concurrent reads that would orphan a chunk.
@@ -143,28 +124,10 @@ export function createIdleHeartbeatStream(
               controller.enqueue(pending)
               pending = new Uint8Array(0)
             }
-            // End-of-stream diagnostic: log last 1KB of upstream so we can
-            // tell whether upstream sent a proper terminating frame or
-            // truncated mid-event. Tag + bytes + chunk count + duration.
-            try {
-              const tailStr = new TextDecoder("utf-8", { fatal: false }).decode(tail)
-              console.log(JSON.stringify({
-                evt: "sse_heartbeat_eos",
-                tag: opts.tag ?? "unknown",
-                bytes: totalBytes,
-                chunks: chunkCount,
-                durMs: Date.now() - startedAt,
-                tailLen: tail.length,
-                tail: tailStr,
-              }))
-            } catch { /* best-effort */ }
             controller.close()
             return
           }
           if (value && value.length > 0) {
-            chunkCount += 1
-            totalBytes += value.length
-            recordTail(value)
             pending = pending.length === 0 ? value : concat(pending, value)
             const cut = lastFrameEnd(pending)
             if (cut > 0) {
@@ -177,18 +140,6 @@ export function createIdleHeartbeatStream(
           readP = reader.read().then((r) => ({ read: r as ReadableStreamReadResult<Uint8Array> }))
         }
       } catch (err) {
-        try {
-          const tailStr = new TextDecoder("utf-8", { fatal: false }).decode(tail)
-          console.log(JSON.stringify({
-            evt: "sse_heartbeat_err",
-            tag: opts.tag ?? "unknown",
-            bytes: totalBytes,
-            chunks: chunkCount,
-            durMs: Date.now() - startedAt,
-            tail: tailStr,
-            err: err instanceof Error ? err.message : String(err),
-          }))
-        } catch { /* best-effort */ }
         controller.error(err)
       }
     },
