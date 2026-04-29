@@ -2,6 +2,7 @@ import type { SearchResult } from "./types"
 import type { SearchEngine, SearchOptions } from "./engines"
 import {
   BingSearchEngine,
+  CopilotSearchEngine,
   LangSearchEngine,
   TavilySearchEngine,
   QuotaExceededError,
@@ -11,33 +12,47 @@ export interface EngineManagerOptions {
   langsearchKey?: string
   tavilyKey?: string
   bingEnabled?: boolean
+  /** GitHub OAuth/PAT token used by Copilot MCP web_search (NOT the short-lived copilot session token). */
+  githubToken?: string
+  copilotEnabled?: boolean
+  copilotPriority?: boolean
 }
 
 /**
- * Manages search engines with priority-based fallback
- * Priority: LangSearch -> Tavily -> Bing
+ * Manages search engines with priority-based fallback.
+ *
+ * Default priority: LangSearch -> Tavily -> Bing -> Copilot (when enabled).
+ * When `copilotPriority` is true, Copilot is the only engine used and there
+ * is no fallback — failures bubble up as empty results.
  */
 export class EngineManager {
   private engines: SearchEngine[] = []
 
   constructor(options: EngineManagerOptions) {
-    // Initialize engines based on available API keys
-    if (options.langsearchKey) {
-      this.engines.push(new LangSearchEngine(options.langsearchKey))
-    }
+    const copilotAvailable = !!(options.copilotEnabled && options.githubToken)
 
-    if (options.tavilyKey) {
-      this.engines.push(new TavilySearchEngine(options.tavilyKey))
-    }
+    if (copilotAvailable && options.copilotPriority) {
+      // Copilot-only mode: no fallback to other providers
+      this.engines.push(new CopilotSearchEngine(options.githubToken!))
+    } else {
+      if (options.langsearchKey) {
+        this.engines.push(new LangSearchEngine(options.langsearchKey))
+      }
 
-    // Bing is only added when explicitly enabled
-    if (options.bingEnabled) {
-      this.engines.push(new BingSearchEngine())
-    }
+      if (options.tavilyKey) {
+        this.engines.push(new TavilySearchEngine(options.tavilyKey))
+      }
 
-    console.log(
-      `[EngineManager] Initialized with engines: ${this.engines.map((e) => e.name).join(", ")}`,
-    )
+      // Bing is only added when explicitly enabled
+      if (options.bingEnabled) {
+        this.engines.push(new BingSearchEngine())
+      }
+
+      // Copilot as last-resort fallback when not given priority
+      if (copilotAvailable) {
+        this.engines.push(new CopilotSearchEngine(options.githubToken!))
+      }
+    }
   }
 
   /**
