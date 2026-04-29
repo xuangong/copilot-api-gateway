@@ -11,6 +11,7 @@ interface CallCopilotAPIOptions {
   accountType: AccountType
   requireModel?: boolean
   timeout?: number // Request timeout in milliseconds
+  extraHeaders?: Record<string, string>
 }
 
 /**
@@ -24,6 +25,7 @@ export async function callCopilotAPI({
   accountType,
   requireModel = true,
   timeout,
+  extraHeaders,
 }: CallCopilotAPIOptions): Promise<Response> {
   if (!copilotToken) {
     throw new Error("Copilot token not found")
@@ -57,7 +59,7 @@ export async function callCopilotAPI({
   try {
     response = await fetchWithRetry(`${baseUrl}${endpoint}`, {
       method: "POST",
-      headers: copilotHeaders(copilotToken),
+      headers: { ...copilotHeaders(copilotToken), ...(extraHeaders ?? {}) },
       body: JSON.stringify(payload),
       timeout,
     })

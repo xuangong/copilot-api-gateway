@@ -49,11 +49,21 @@ function addWebSearchHeaders(
 // Timeout for non-streaming requests (5 minutes)
 const SYNC_REQUEST_TIMEOUT_MS = 5 * 60 * 1000
 
+// Forward client-supplied anthropic-beta header so upstream sees opt-ins
+// (e.g. computer-use, extended-thinking, prompt-caching variants).
+function extractAnthropicBetaHeader(ctx: unknown): Record<string, string> {
+  const reqHeaders = (ctx as { request: Request }).request.headers
+  const v = reqHeaders.get("anthropic-beta") ?? reqHeaders.get("Anthropic-Beta")
+  return v ? { "anthropic-beta": v } : {}
+}
+
 export const messagesRoute = new Elysia()
   .post("/v1/messages", async (ctx) => {
     const { state, body, apiKeyId, colo, requestId, userAgent } = ctx as unknown as RouteContext
     const elapsed = startTimer()
     const client = detectClient(userAgent)
+
+    const passthroughHeaders = extractAnthropicBetaHeader(ctx)
 
     // Quota enforcement
     if (apiKeyId) {
@@ -164,6 +174,7 @@ export const messagesRoute = new Elysia()
         operationName: "create message",
         copilotToken: state.copilotToken,
         accountType: state.accountType,
+        extraHeaders: passthroughHeaders,
       })
       const upstreamMs = upstreamTimer()
       // Wrap upstream body in an idle-heartbeat stream so Cloudflare edge
@@ -198,6 +209,7 @@ export const messagesRoute = new Elysia()
         copilotToken: state.copilotToken,
         accountType: state.accountType,
         timeout: SYNC_REQUEST_TIMEOUT_MS,
+        extraHeaders: passthroughHeaders,
       })
       upstreamMs = upstreamTimer()
       return (await response.json()) as SyncJson
@@ -251,6 +263,7 @@ export const messagesRoute = new Elysia()
       copilotToken: state.copilotToken,
       accountType: state.accountType,
       requireModel: false,
+      extraHeaders: extractAnthropicBetaHeader(ctx),
     })
 
     return response.json()

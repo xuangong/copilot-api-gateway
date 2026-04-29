@@ -268,7 +268,12 @@ export function translateResponsesToChatCompletions(
 
   // Reasoning effort — only for models that support it, and not when tools are present
   // (Copilot backend rejects reasoning_effort + tools on /v1/chat/completions)
-  if (payload.reasoning?.effort && !result.tools) {
+  // Also skip for models the Copilot backend rejects outright (e.g. claude-haiku-4.5).
+  if (
+    payload.reasoning?.effort
+    && !result.tools
+    && !modelRejectsReasoningEffort(result.model)
+  ) {
     result.reasoning_effort = payload.reasoning.effort
   }
 
@@ -811,4 +816,10 @@ function buildBaseResponse(
 
 function generateId(): string {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 24)
+}
+
+// Models the upstream Copilot backend rejects when reasoning_effort is set.
+function modelRejectsReasoningEffort(model: string): boolean {
+  // Claude Haiku 4.5 (and dated variants like claude-haiku-4-5-20251001)
+  return /claude-haiku-4[-.]5/i.test(model)
 }
