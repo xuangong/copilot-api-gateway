@@ -797,7 +797,7 @@ export function renderKeysTab(): string {
                   <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.langSearchKey')"></label>
                   <template x-if="wsEditLangsearchRef">
                     <div class="flex items-center gap-2">
-                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.langsearchRef && wsConfig.langsearchRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.langsearchRef && wsConfig.langsearchRef.name ? wsConfig.langsearchRef.name : wsEditLangsearchRef)"></span>
+                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.langsearchRef && wsConfig.langsearchRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.langsearchRef && wsConfig.langsearchRef.name ? wsConfig.langsearchRef.name : borrowName(wsEditLangsearchRef))"></span>
                       <button type="button" @click="wsEditLangsearchRef = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsUnlink')"></button>
                     </div>
                   </template>
@@ -819,7 +819,7 @@ export function renderKeysTab(): string {
                   <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.tavilyKey')"></label>
                   <template x-if="wsEditTavilyRef">
                     <div class="flex items-center gap-2">
-                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.tavilyRef && wsConfig.tavilyRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.tavilyRef && wsConfig.tavilyRef.name ? wsConfig.tavilyRef.name : wsEditTavilyRef)"></span>
+                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.tavilyRef && wsConfig.tavilyRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.tavilyRef && wsConfig.tavilyRef.name ? wsConfig.tavilyRef.name : borrowName(wsEditTavilyRef))"></span>
                       <button type="button" @click="wsEditTavilyRef = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsUnlink')"></button>
                     </div>
                   </template>
@@ -841,7 +841,7 @@ export function renderKeysTab(): string {
                   <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.msGroundingKey')"></label>
                   <template x-if="wsEditMsGroundingRef">
                     <div class="flex items-center gap-2">
-                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.msGroundingRef && wsConfig.msGroundingRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.msGroundingRef && wsConfig.msGroundingRef.name ? wsConfig.msGroundingRef.name : wsEditMsGroundingRef)"></span>
+                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.msGroundingRef && wsConfig.msGroundingRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.msGroundingRef && wsConfig.msGroundingRef.name ? wsConfig.msGroundingRef.name : borrowName(wsEditMsGroundingRef))"></span>
                       <button type="button" @click="wsEditMsGroundingRef = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsUnlink')"></button>
                     </div>
                   </template>

@@ -2199,6 +2199,12 @@ export function dashboardAssets(): string {
             this.wsEditPriority = ['msGrounding', 'langsearch', 'tavily', 'bing', 'copilot'];
           },
 
+          borrowName(id) {
+            if (!id) return '';
+            const k = this.keys.find(k => k.id === id);
+            return k && k.name ? k.name : id;
+          },
+
           get borrowCandidatesLangsearch() {
             return this.keys.filter(k => k.web_search_langsearch_key && k.id !== this.selectedKeyId);
           },
