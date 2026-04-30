@@ -940,16 +940,13 @@ export function renderKeysTab(): string {
                         { id: 'copilot', label: 'Copilot', ref: null, key: null, builtin: true }
                       ]" :key="slot.id">
                         <span class="text-[10px] px-2 py-0.5 rounded inline-flex items-center gap-1"
-                          :class="slot.ref ? (slot.ref.broken ? 'bg-accent-red/15 text-accent-red' : 'bg-accent-violet/15 text-accent-violet') : (slot.key ? 'bg-accent-teal/15 text-accent-teal' : (slot.builtin ? 'bg-accent-blue/15 text-accent-blue' : 'bg-surface-700 text-themed-dim'))">
+                          :class="slot.ref ? (slot.ref.broken ? 'bg-accent-red/15 text-accent-red' : 'bg-accent-violet/15 text-accent-violet') : (slot.key ? 'bg-accent-teal/15 text-accent-teal' : (slot.builtin ? 'bg-surface-700 text-themed-secondary' : 'bg-surface-700 text-themed-dim'))">
                           <span class="font-medium" x-text="slot.label"></span>
                           <template x-if="slot.ref">
                             <span class="font-mono opacity-80" x-text="slot.ref.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (slot.ref.name || slot.ref.id)"></span>
                           </template>
                           <template x-if="!slot.ref && slot.key">
                             <span class="font-mono opacity-80" x-text="slot.key"></span>
-                          </template>
-                          <template x-if="!slot.ref && !slot.key && slot.builtin">
-                            <span class="opacity-70" x-text="t('dash.wsBuiltin')"></span>
                           </template>
                           <template x-if="!slot.ref && !slot.key && !slot.builtin">
                             <span class="opacity-60">—</span>
