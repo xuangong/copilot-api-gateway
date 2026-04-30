@@ -932,13 +932,16 @@ export function renderKeysTab(): string {
                   <div class="flex items-start gap-3">
                     <span class="text-xs text-themed-secondary shrink-0 mt-0.5" x-text="t('dash.engines')"></span>
                     <div class="flex flex-wrap gap-1.5">
-                      <template x-for="slot in [
-                        { id: 'langsearch', label: 'LangSearch', ref: wsConfig.langsearchRef, key: wsConfig.langsearchKey, builtin: false },
-                        { id: 'tavily', label: 'Tavily', ref: wsConfig.tavilyRef, key: wsConfig.tavilyKey, builtin: false },
-                        { id: 'msGrounding', label: 'MS Grounding', ref: wsConfig.msGroundingRef, key: wsConfig.msGroundingKey, builtin: false },
-                        { id: 'bing', label: 'Bing', ref: null, key: null, builtin: true },
-                        { id: 'copilot', label: 'Copilot', ref: null, key: null, builtin: true }
-                      ]" :key="slot.id">
+                      <template x-for="slot in (() => {
+                        const all = {
+                          langsearch: { id: 'langsearch', label: 'LangSearch', ref: wsConfig.langsearchRef, key: wsConfig.langsearchKey, builtin: false },
+                          tavily: { id: 'tavily', label: 'Tavily', ref: wsConfig.tavilyRef, key: wsConfig.tavilyKey, builtin: false },
+                          msGrounding: { id: 'msGrounding', label: 'MS Grounding', ref: wsConfig.msGroundingRef, key: wsConfig.msGroundingKey, builtin: false },
+                          bing: { id: 'bing', label: 'Bing', ref: null, key: null, builtin: true },
+                          copilot: { id: 'copilot', label: 'Copilot', ref: null, key: null, builtin: true }
+                        };
+                        return (wsConfig.priority || []).map(id => all[id]).filter(Boolean);
+                      })()" :key="slot.id">
                         <span class="text-[10px] px-2 py-0.5 rounded inline-flex items-center gap-1"
                           :class="slot.ref ? (slot.ref.broken ? 'bg-accent-red/15 text-accent-red' : 'bg-accent-violet/15 text-accent-violet') : (slot.key ? 'bg-accent-teal/15 text-accent-teal' : (slot.builtin ? 'bg-surface-700 text-themed-secondary' : 'bg-surface-700 text-themed-dim'))">
                           <span class="font-medium" x-text="slot.label"></span>

@@ -358,7 +358,7 @@ export function dashboardAssets(): string {
       wsEditMsGroundingRef: '',
       wsCopySourceId: '',
       borrowPickerEngine: '',
-      wsConfig: { enabled: false, langsearchKey: null, tavilyKey: null, msGroundingKey: null, langsearchRef: null, tavilyRef: null, msGroundingRef: null },
+      wsConfig: { enabled: false, langsearchKey: null, tavilyKey: null, msGroundingKey: null, langsearchRef: null, tavilyRef: null, msGroundingRef: null, priority: [] },
       wsUsage: { searches: 0, successes: 0, failures: 0, engines: [], range: '1d' },
       wsUsageRange: '1d',
 
@@ -2088,6 +2088,10 @@ export function dashboardAssets(): string {
           // === Web Search ===
           loadWebSearchConfig(keyId) {
             const key = this.keys.find(k => k.id === keyId);
+            const ENGINE_IDS = ['msGrounding', 'langsearch', 'tavily', 'bing', 'copilot'];
+            const stored = Array.isArray(key?.web_search_priority) ? key.web_search_priority.filter(e => ENGINE_IDS.includes(e)) : [];
+            const missing = ENGINE_IDS.filter(e => !stored.includes(e));
+            const effectivePriority = stored.length ? [...stored, ...missing] : [...ENGINE_IDS];
             this.wsConfig = {
               enabled: key?.web_search_enabled ?? false,
               langsearchKey: key?.web_search_langsearch_key ?? null,
@@ -2096,6 +2100,7 @@ export function dashboardAssets(): string {
               langsearchRef: key?.web_search_langsearch_ref ?? null,
               tavilyRef: key?.web_search_tavily_ref ?? null,
               msGroundingRef: key?.web_search_ms_grounding_ref ?? null,
+              priority: effectivePriority,
             };
             this.wsUsage = { searches: 0, successes: 0, failures: 0, engines: [], range: this.wsUsageRange };
             // Load usage stats
