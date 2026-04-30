@@ -350,6 +350,9 @@ export function dashboardAssets(): string {
       wsEditLangsearch: '',
       wsEditTavily: '',
       wsEditMsGrounding: '',
+      wsEditLangsearchReplacing: false,
+      wsEditTavilyReplacing: false,
+      wsEditMsGroundingReplacing: false,
       wsEditLangsearchRef: '',
       wsEditTavilyRef: '',
       wsEditMsGroundingRef: '',
@@ -2119,6 +2122,9 @@ export function dashboardAssets(): string {
             this.wsEditLangsearch = '';
             this.wsEditTavily = '';
             this.wsEditMsGrounding = '';
+            this.wsEditLangsearchReplacing = false;
+            this.wsEditTavilyReplacing = false;
+            this.wsEditMsGroundingReplacing = false;
             this.wsEditLangsearchRef = key?.web_search_langsearch_ref?.id ?? '';
             this.wsEditTavilyRef = key?.web_search_tavily_ref?.id ?? '';
             this.wsEditMsGroundingRef = key?.web_search_ms_grounding_ref?.id ?? '';
@@ -2143,16 +2149,22 @@ export function dashboardAssets(): string {
                 body.web_search_langsearch_ref = this.wsEditLangsearchRef;
               } else if (this.wsEditLangsearch.trim()) {
                 body.web_search_langsearch_key = this.wsEditLangsearch.trim();
+              } else if (this.wsEditLangsearchReplacing) {
+                body.web_search_langsearch_key = null;
               }
               if (this.wsEditTavilyRef) {
                 body.web_search_tavily_ref = this.wsEditTavilyRef;
               } else if (this.wsEditTavily.trim()) {
                 body.web_search_tavily_key = this.wsEditTavily.trim();
+              } else if (this.wsEditTavilyReplacing) {
+                body.web_search_tavily_key = null;
               }
               if (this.wsEditMsGroundingRef) {
                 body.web_search_ms_grounding_ref = this.wsEditMsGroundingRef;
               } else if (this.wsEditMsGrounding.trim()) {
                 body.web_search_ms_grounding_key = this.wsEditMsGrounding.trim();
+              } else if (this.wsEditMsGroundingReplacing) {
+                body.web_search_ms_grounding_key = null;
               }
               const resp = await fetch('/api/keys/' + this.selectedKeyId, {
                 method: 'PATCH',

@@ -801,15 +801,15 @@ export function renderKeysTab(): string {
                       <button type="button" @click="wsEditLangsearchRef = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsUnlink')"></button>
                     </div>
                   </template>
-                  <template x-if="!wsEditLangsearchRef && wsConfig.langsearchKey && !wsEditLangsearch">
+                  <template x-if="!wsEditLangsearchRef && wsConfig.langsearchKey && !wsEditLangsearchReplacing">
                     <div class="flex items-center gap-2">
                       <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.langsearchKey"></span>
-                      <button type="button" @click="wsEditLangsearch = ' '" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsReplace')"></button>
+                      <button type="button" @click="wsEditLangsearchReplacing = true; wsEditLangsearch = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsReplace')"></button>
                     </div>
                   </template>
-                  <template x-if="!wsEditLangsearchRef && (!wsConfig.langsearchKey || wsEditLangsearch)">
+                  <template x-if="!wsEditLangsearchRef && (!wsConfig.langsearchKey || wsEditLangsearchReplacing)">
                     <div class="flex items-center gap-2">
-                      <input type="text" x-model="wsEditLangsearch" placeholder="Not set"
+                      <input type="text" x-model="wsEditLangsearch" :placeholder="wsEditLangsearchReplacing ? t('dash.wsBlankToClear') : 'Not set'"
                         class="!text-xs !py-1.5 !px-3 flex-1 !rounded-lg font-mono" />
                       <button type="button" @click="openBorrowPicker('langsearch')" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsBorrowFrom')"></button>
                     </div>
@@ -823,15 +823,15 @@ export function renderKeysTab(): string {
                       <button type="button" @click="wsEditTavilyRef = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsUnlink')"></button>
                     </div>
                   </template>
-                  <template x-if="!wsEditTavilyRef && wsConfig.tavilyKey && !wsEditTavily">
+                  <template x-if="!wsEditTavilyRef && wsConfig.tavilyKey && !wsEditTavilyReplacing">
                     <div class="flex items-center gap-2">
                       <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.tavilyKey"></span>
-                      <button type="button" @click="wsEditTavily = ' '" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsReplace')"></button>
+                      <button type="button" @click="wsEditTavilyReplacing = true; wsEditTavily = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsReplace')"></button>
                     </div>
                   </template>
-                  <template x-if="!wsEditTavilyRef && (!wsConfig.tavilyKey || wsEditTavily)">
+                  <template x-if="!wsEditTavilyRef && (!wsConfig.tavilyKey || wsEditTavilyReplacing)">
                     <div class="flex items-center gap-2">
-                      <input type="text" x-model="wsEditTavily" placeholder="Not set"
+                      <input type="text" x-model="wsEditTavily" :placeholder="wsEditTavilyReplacing ? t('dash.wsBlankToClear') : 'Not set'"
                         class="!text-xs !py-1.5 !px-3 flex-1 !rounded-lg font-mono" />
                       <button type="button" @click="openBorrowPicker('tavily')" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsBorrowFrom')"></button>
                     </div>
@@ -845,15 +845,15 @@ export function renderKeysTab(): string {
                       <button type="button" @click="wsEditMsGroundingRef = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsUnlink')"></button>
                     </div>
                   </template>
-                  <template x-if="!wsEditMsGroundingRef && wsConfig.msGroundingKey && !wsEditMsGrounding">
+                  <template x-if="!wsEditMsGroundingRef && wsConfig.msGroundingKey && !wsEditMsGroundingReplacing">
                     <div class="flex items-center gap-2">
                       <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.msGroundingKey"></span>
-                      <button type="button" @click="wsEditMsGrounding = ' '" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsReplace')"></button>
+                      <button type="button" @click="wsEditMsGroundingReplacing = true; wsEditMsGrounding = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsReplace')"></button>
                     </div>
                   </template>
-                  <template x-if="!wsEditMsGroundingRef && (!wsConfig.msGroundingKey || wsEditMsGrounding)">
+                  <template x-if="!wsEditMsGroundingRef && (!wsConfig.msGroundingKey || wsEditMsGroundingReplacing)">
                     <div class="flex items-center gap-2">
-                      <input type="text" x-model="wsEditMsGrounding" placeholder="Not set"
+                      <input type="text" x-model="wsEditMsGrounding" :placeholder="wsEditMsGroundingReplacing ? t('dash.wsBlankToClear') : 'Not set'"
                         class="!text-xs !py-1.5 !px-3 flex-1 !rounded-lg font-mono" />
                       <button type="button" @click="openBorrowPicker('msGrounding')" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsBorrowFrom')"></button>
                     </div>
