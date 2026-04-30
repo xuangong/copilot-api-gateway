@@ -2156,6 +2156,8 @@ export function dashboardAssets(): string {
                 body.web_search_langsearch_key = this.wsEditLangsearch.trim();
               } else if (this.wsEditLangsearchReplacing) {
                 body.web_search_langsearch_key = null;
+              } else if (this.wsConfig.langsearchRef) {
+                body.web_search_langsearch_ref = null;
               }
               if (this.wsEditTavilyRef) {
                 body.web_search_tavily_ref = this.wsEditTavilyRef;
@@ -2163,6 +2165,8 @@ export function dashboardAssets(): string {
                 body.web_search_tavily_key = this.wsEditTavily.trim();
               } else if (this.wsEditTavilyReplacing) {
                 body.web_search_tavily_key = null;
+              } else if (this.wsConfig.tavilyRef) {
+                body.web_search_tavily_ref = null;
               }
               if (this.wsEditMsGroundingRef) {
                 body.web_search_ms_grounding_ref = this.wsEditMsGroundingRef;
@@ -2170,6 +2174,8 @@ export function dashboardAssets(): string {
                 body.web_search_ms_grounding_key = this.wsEditMsGrounding.trim();
               } else if (this.wsEditMsGroundingReplacing) {
                 body.web_search_ms_grounding_key = null;
+              } else if (this.wsConfig.msGroundingRef) {
+                body.web_search_ms_grounding_ref = null;
               }
               const resp = await fetch('/api/keys/' + this.selectedKeyId, {
                 method: 'PATCH',
