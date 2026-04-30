@@ -419,20 +419,22 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
       failures += r.failures
     }
     const engineRecords = await getRepo().webSearchEngineUsage.query({ keyId: params.id, start: todayStart, end: tomorrowStart })
-    const engineMap = new Map<string, { engineId: string; attempts: number; successes: number; failures: number; emptyResults: number; totalResults: number; totalDurationMs: number }>()
+    const engineMap = new Map<string, { engineId: string; attempts: number; successes: number; failures: number; emptyResults: number; totalResults: number; successDurationMs: number; failureDurationMs: number }>()
     for (const r of engineRecords) {
-      const cur = engineMap.get(r.engineId) ?? { engineId: r.engineId, attempts: 0, successes: 0, failures: 0, emptyResults: 0, totalResults: 0, totalDurationMs: 0 }
+      const cur = engineMap.get(r.engineId) ?? { engineId: r.engineId, attempts: 0, successes: 0, failures: 0, emptyResults: 0, totalResults: 0, successDurationMs: 0, failureDurationMs: 0 }
       cur.attempts += r.attempts
       cur.successes += r.successes
       cur.failures += r.failures
       cur.emptyResults += r.emptyResults
       cur.totalResults += r.totalResults
-      cur.totalDurationMs += r.totalDurationMs
+      cur.successDurationMs += r.successDurationMs
+      cur.failureDurationMs += r.failureDurationMs
       engineMap.set(r.engineId, cur)
     }
     const engines = Array.from(engineMap.values()).map((e) => ({
       ...e,
-      avgDurationMs: Math.round(e.totalDurationMs / Math.max(e.attempts, 1)),
+      avgSuccessMs: Math.round(e.successDurationMs / Math.max(e.successes, 1)),
+      avgFailureMs: Math.round(e.failureDurationMs / Math.max(e.failures, 1)),
     }))
     return { searches, successes, failures, records, engines }
   })

@@ -222,7 +222,8 @@ export interface WebSearchEngineUsageRecord {
   failures: number
   emptyResults: number
   totalResults: number
-  totalDurationMs: number
+  successDurationMs: number
+  failureDurationMs: number
 }
 
 export interface WebSearchEngineUsageRepo {

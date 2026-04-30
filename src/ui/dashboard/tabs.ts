@@ -992,7 +992,8 @@ export function renderKeysTab(): string {
                           <span class="text-accent-amber" x-show="eng.emptyResults > 0"
                             x-text="'(' + eng.emptyResults + ' empty ' + Math.round(eng.emptyResults * 100 / Math.max(eng.successes, 1)) + '%)'"></span>
                           <span class="text-accent-red" x-show="eng.failures > 0" x-text="eng.failures + ' fail'"></span>
-                          <span class="text-themed-dim" x-text="'avg ' + eng.avgDurationMs + 'ms'"></span>
+                          <span class="text-themed-dim" x-show="eng.successes > 0" x-text="'ok avg ' + eng.avgSuccessMs + 'ms'"></span>
+                          <span class="text-themed-dim" x-show="eng.failures > 0" x-text="'fail avg ' + eng.avgFailureMs + 'ms'"></span>
                         </div>
                       </template>
                     </div>

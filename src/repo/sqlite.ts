@@ -140,7 +140,8 @@ CREATE TABLE IF NOT EXISTS web_search_engine_usage (
   failures INTEGER NOT NULL DEFAULT 0,
   empty_results INTEGER NOT NULL DEFAULT 0,
   total_results INTEGER NOT NULL DEFAULT 0,
-  total_duration_ms INTEGER NOT NULL DEFAULT 0,
+  success_duration_ms INTEGER NOT NULL DEFAULT 0,
+  failure_duration_ms INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (key_id, engine_id, hour)
 );
 `
@@ -634,6 +635,23 @@ function migrateSchema(db: Database): void {
     session_token TEXT,
     created_at TEXT NOT NULL
   )`)
+  // Split web_search_engine_usage total_duration_ms into success/failure columns
+  if (!hasColumn(db, "web_search_engine_usage", "success_duration_ms")) {
+    db.exec("DROP TABLE IF EXISTS web_search_engine_usage")
+    db.exec(`CREATE TABLE web_search_engine_usage (
+      key_id TEXT NOT NULL,
+      engine_id TEXT NOT NULL,
+      hour TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      successes INTEGER NOT NULL DEFAULT 0,
+      failures INTEGER NOT NULL DEFAULT 0,
+      empty_results INTEGER NOT NULL DEFAULT 0,
+      total_results INTEGER NOT NULL DEFAULT 0,
+      success_duration_ms INTEGER NOT NULL DEFAULT 0,
+      failure_duration_ms INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (key_id, engine_id, hour)
+    )`)
+  }
 }
 
 class SqliteClientPresenceRepo implements ClientPresenceRepo {
@@ -727,25 +745,28 @@ class SqliteWebSearchEngineUsageRepo implements WebSearchEngineUsageRepo {
     const successInc = attempt.ok ? 1 : 0
     const failureInc = attempt.ok ? 0 : 1
     const emptyInc = attempt.ok && attempt.resultCount === 0 ? 1 : 0
+    const successDur = attempt.ok ? attempt.durationMs : 0
+    const failureDur = attempt.ok ? 0 : attempt.durationMs
     this.db.query(
-      `INSERT INTO web_search_engine_usage (key_id, engine_id, hour, attempts, successes, failures, empty_results, total_results, total_duration_ms)
-       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)
+      `INSERT INTO web_search_engine_usage (key_id, engine_id, hour, attempts, successes, failures, empty_results, total_results, success_duration_ms, failure_duration_ms)
+       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (key_id, engine_id, hour) DO UPDATE SET
          attempts = attempts + 1,
          successes = successes + ?,
          failures = failures + ?,
          empty_results = empty_results + ?,
          total_results = total_results + ?,
-         total_duration_ms = total_duration_ms + ?`,
+         success_duration_ms = success_duration_ms + ?,
+         failure_duration_ms = failure_duration_ms + ?`,
     ).run(
       keyId, engineId, hour,
-      successInc, failureInc, emptyInc, attempt.resultCount, attempt.durationMs,
-      successInc, failureInc, emptyInc, attempt.resultCount, attempt.durationMs,
+      successInc, failureInc, emptyInc, attempt.resultCount, successDur, failureDur,
+      successInc, failureInc, emptyInc, attempt.resultCount, successDur, failureDur,
     )
   }
 
   async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<WebSearchEngineUsageRecord[]> {
-    const cols = "key_id, engine_id, hour, attempts, successes, failures, empty_results, total_results, total_duration_ms"
+    const cols = "key_id, engine_id, hour, attempts, successes, failures, empty_results, total_results, success_duration_ms, failure_duration_ms"
     let rows: any[]
     if (opts.keyIds && opts.keyIds.length > 0) {
       const placeholders = opts.keyIds.map(() => "?").join(",")
@@ -758,7 +779,8 @@ class SqliteWebSearchEngineUsageRepo implements WebSearchEngineUsageRepo {
     return rows.map((r: any) => ({
       keyId: r.key_id, engineId: r.engine_id, hour: r.hour,
       attempts: r.attempts, successes: r.successes, failures: r.failures,
-      emptyResults: r.empty_results, totalResults: r.total_results, totalDurationMs: r.total_duration_ms,
+      emptyResults: r.empty_results, totalResults: r.total_results,
+      successDurationMs: r.success_duration_ms, failureDurationMs: r.failure_duration_ms,
     }))
   }
 
