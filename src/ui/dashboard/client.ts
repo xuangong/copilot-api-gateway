@@ -351,8 +351,12 @@ export function dashboardAssets(): string {
       wsEditCopilotPriority: false,
       wsEditLangsearch: '',
       wsEditTavily: '',
+      wsEditMsGrounding: '',
+      wsEditLangsearchRef: '',
+      wsEditTavilyRef: '',
+      wsEditMsGroundingRef: '',
       wsCopySourceId: '',
-      wsConfig: { enabled: false, bingEnabled: false, copilotEnabled: false, copilotPriority: false, langsearchKey: null, tavilyKey: null },
+      wsConfig: { enabled: false, bingEnabled: false, copilotEnabled: false, copilotPriority: false, langsearchKey: null, tavilyKey: null, msGroundingKey: null, langsearchRef: null, tavilyRef: null, msGroundingRef: null },
       wsUsage: { searches: 0, successes: 0, failures: 0 },
 
       // Relays tab
@@ -2088,6 +2092,10 @@ export function dashboardAssets(): string {
               copilotPriority: key?.web_search_copilot_priority ?? false,
               langsearchKey: key?.web_search_langsearch_key ?? null,
               tavilyKey: key?.web_search_tavily_key ?? null,
+              msGroundingKey: key?.web_search_ms_grounding_key ?? null,
+              langsearchRef: key?.web_search_langsearch_ref ?? null,
+              tavilyRef: key?.web_search_tavily_ref ?? null,
+              msGroundingRef: key?.web_search_ms_grounding_ref ?? null,
             };
             this.wsUsage = { searches: 0, successes: 0, failures: 0 };
             // Load usage stats
@@ -2107,6 +2115,10 @@ export function dashboardAssets(): string {
             this.wsEditCopilotPriority = key?.web_search_copilot_priority ?? false;
             this.wsEditLangsearch = '';
             this.wsEditTavily = '';
+            this.wsEditMsGrounding = '';
+            this.wsEditLangsearchRef = key?.web_search_langsearch_ref?.id ?? '';
+            this.wsEditTavilyRef = key?.web_search_tavily_ref?.id ?? '';
+            this.wsEditMsGroundingRef = key?.web_search_ms_grounding_ref?.id ?? '';
             this.wsCopySourceId = '';
             this.wsEditing = true;
           },
@@ -2121,8 +2133,21 @@ export function dashboardAssets(): string {
                 web_search_copilot_enabled: this.wsEditCopilot,
                 web_search_copilot_priority: this.wsEditCopilotPriority,
               };
-              if (this.wsEditLangsearch) body.web_search_langsearch_key = this.wsEditLangsearch;
-              if (this.wsEditTavily) body.web_search_tavily_key = this.wsEditTavily;
+              if (this.wsEditLangsearchRef) {
+                body.web_search_langsearch_ref = this.wsEditLangsearchRef;
+              } else if (this.wsEditLangsearch) {
+                body.web_search_langsearch_key = this.wsEditLangsearch;
+              }
+              if (this.wsEditTavilyRef) {
+                body.web_search_tavily_ref = this.wsEditTavilyRef;
+              } else if (this.wsEditTavily) {
+                body.web_search_tavily_key = this.wsEditTavily;
+              }
+              if (this.wsEditMsGroundingRef) {
+                body.web_search_ms_grounding_ref = this.wsEditMsGroundingRef;
+              } else if (this.wsEditMsGrounding) {
+                body.web_search_ms_grounding_key = this.wsEditMsGrounding;
+              }
               const resp = await fetch('/api/keys/' + this.selectedKeyId, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
@@ -2160,6 +2185,39 @@ export function dashboardAssets(): string {
               }
             } catch (e) {
               console.error('copyWebSearchFrom:', e);
+            }
+          },
+
+          get borrowCandidatesLangsearch() {
+            return this.keys.filter(k => k.web_search_langsearch_key && k.id !== this.selectedKeyId);
+          },
+          get borrowCandidatesTavily() {
+            return this.keys.filter(k => k.web_search_tavily_key && k.id !== this.selectedKeyId);
+          },
+          get borrowCandidatesMsGrounding() {
+            return this.keys.filter(k => k.web_search_ms_grounding_key && k.id !== this.selectedKeyId);
+          },
+
+          async unlinkBorrow(engine) {
+            if (!this.selectedKeyId) return;
+            const fieldMap = { langsearch: 'web_search_langsearch_ref', tavily: 'web_search_tavily_ref', msGrounding: 'web_search_ms_grounding_ref' };
+            const field = fieldMap[engine];
+            if (!field) return;
+            try {
+              const resp = await fetch('/api/keys/' + this.selectedKeyId, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+                body: JSON.stringify({ [field]: null }),
+              });
+              if (resp.status === 401) { this.logout(t('dash.sessionExpired')); return; }
+              if (resp.ok) {
+                await this.loadKeys();
+                this.loadWebSearchConfig(this.selectedKeyId);
+              } else {
+                alert((await resp.json()).error || t('dash.failedUpdateWebSearch'));
+              }
+            } catch (e) {
+              console.error('unlinkBorrow:', e);
             }
           },
 
