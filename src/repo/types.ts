@@ -16,6 +16,12 @@ export interface ApiKey {
   webSearchMsGroundingKey?: string
   /** Ordered list of engine ids to try, e.g. ["msGrounding","langsearch","tavily","bing","copilot"]. Empty/undefined falls back to legacy resolution. */
   webSearchPriority?: string[]
+  /** When set, resolves to source api_key.id's webSearchLangsearchKey at request time. Mutually exclusive with webSearchLangsearchKey. */
+  webSearchLangsearchRef?: string
+  /** Same as above for Tavily. */
+  webSearchTavilyRef?: string
+  /** Same as above for Microsoft Grounding. */
+  webSearchMsGroundingRef?: string
 }
 
 export interface GitHubUser {
