@@ -69,4 +69,10 @@ export interface WebSearchMeta {
   enginesUsed: string[]
   successes: number
   failures: number
+  engineAttempts: Array<{
+    engineId: string
+    ok: boolean
+    resultCount: number
+    durationMs: number
+  }>
 }

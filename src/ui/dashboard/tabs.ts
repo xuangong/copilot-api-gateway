@@ -791,28 +791,97 @@ export function renderKeysTab(): string {
                   <input type="checkbox" x-model="wsEditEnabled" class="accent-accent-violet" />
                   Enable Web Search
                 </label>
-                <span x-show="wsEditEnabled" class="text-xs text-themed-dim">(Bing fallback always active)</span>
-                <label class="flex items-center gap-2 text-xs text-themed-secondary cursor-pointer" x-show="wsEditEnabled">
-                  <input type="checkbox" x-model="wsEditCopilot" class="accent-accent-violet" />
-                  Use GitHub Copilot Search
-                </label>
-                <label class="flex items-center gap-2 text-xs text-themed-secondary cursor-pointer" x-show="wsEditEnabled && wsEditCopilot">
-                  <input type="checkbox" x-model="wsEditCopilotPriority" class="accent-accent-violet" />
-                  Prefer Copilot over other engines
-                </label>
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.langSearchKey')"></label>
-                  <input type="text" x-model="wsEditLangsearch" placeholder="Not set"
-                    class="!text-xs !py-1.5 !px-3 w-full !rounded-lg font-mono" />
+                  <template x-if="wsEditLangsearchRef">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.langsearchRef && wsConfig.langsearchRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.langsearchRef && wsConfig.langsearchRef.name ? wsConfig.langsearchRef.name : borrowName(wsEditLangsearchRef))"></span>
+                      <button type="button" @click="wsEditLangsearchRef = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsUnlink')"></button>
+                    </div>
+                  </template>
+                  <template x-if="!wsEditLangsearchRef && wsConfig.langsearchKey && !wsEditLangsearchReplacing">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.langsearchKey"></span>
+                      <button type="button" @click="wsEditLangsearchReplacing = true; wsEditLangsearch = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsReplace')"></button>
+                    </div>
+                  </template>
+                  <template x-if="!wsEditLangsearchRef && (!wsConfig.langsearchKey || wsEditLangsearchReplacing)">
+                    <div class="flex items-center gap-2">
+                      <input type="text" x-model="wsEditLangsearch" :placeholder="wsEditLangsearchReplacing ? t('dash.wsBlankToClear') : 'Not set'"
+                        class="!text-xs !py-1.5 !px-3 flex-1 !rounded-lg font-mono" />
+                      <button type="button" @click="openBorrowPicker('langsearch')" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsBorrowFrom')"></button>
+                    </div>
+                  </template>
                 </div>
                 <div>
                   <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.tavilyKey')"></label>
-                  <input type="text" x-model="wsEditTavily" placeholder="Not set"
-                    class="!text-xs !py-1.5 !px-3 w-full !rounded-lg font-mono" />
+                  <template x-if="wsEditTavilyRef">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.tavilyRef && wsConfig.tavilyRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.tavilyRef && wsConfig.tavilyRef.name ? wsConfig.tavilyRef.name : borrowName(wsEditTavilyRef))"></span>
+                      <button type="button" @click="wsEditTavilyRef = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsUnlink')"></button>
+                    </div>
+                  </template>
+                  <template x-if="!wsEditTavilyRef && wsConfig.tavilyKey && !wsEditTavilyReplacing">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.tavilyKey"></span>
+                      <button type="button" @click="wsEditTavilyReplacing = true; wsEditTavily = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsReplace')"></button>
+                    </div>
+                  </template>
+                  <template x-if="!wsEditTavilyRef && (!wsConfig.tavilyKey || wsEditTavilyReplacing)">
+                    <div class="flex items-center gap-2">
+                      <input type="text" x-model="wsEditTavily" :placeholder="wsEditTavilyReplacing ? t('dash.wsBlankToClear') : 'Not set'"
+                        class="!text-xs !py-1.5 !px-3 flex-1 !rounded-lg font-mono" />
+                      <button type="button" @click="openBorrowPicker('tavily')" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsBorrowFrom')"></button>
+                    </div>
+                  </template>
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.msGroundingKey')"></label>
+                  <template x-if="wsEditMsGroundingRef">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.msGroundingRef && wsConfig.msGroundingRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.msGroundingRef && wsConfig.msGroundingRef.name ? wsConfig.msGroundingRef.name : borrowName(wsEditMsGroundingRef))"></span>
+                      <button type="button" @click="wsEditMsGroundingRef = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsUnlink')"></button>
+                    </div>
+                  </template>
+                  <template x-if="!wsEditMsGroundingRef && wsConfig.msGroundingKey && !wsEditMsGroundingReplacing">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.msGroundingKey"></span>
+                      <button type="button" @click="wsEditMsGroundingReplacing = true; wsEditMsGrounding = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsReplace')"></button>
+                    </div>
+                  </template>
+                  <template x-if="!wsEditMsGroundingRef && (!wsConfig.msGroundingKey || wsEditMsGroundingReplacing)">
+                    <div class="flex items-center gap-2">
+                      <input type="text" x-model="wsEditMsGrounding" :placeholder="wsEditMsGroundingReplacing ? t('dash.wsBlankToClear') : 'Not set'"
+                        class="!text-xs !py-1.5 !px-3 flex-1 !rounded-lg font-mono" />
+                      <button type="button" @click="openBorrowPicker('msGrounding')" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsBorrowFrom')"></button>
+                    </div>
+                  </template>
                 </div>
               </div>
+              <!-- Admin-only: per-key engine priority -->
+              <template x-if="isAdmin">
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between">
+                    <label class="text-xs text-themed-dim" x-text="t('dash.wsPriority')"></label>
+                    <button type="button" @click="resetWsPriority()" class="btn-ghost text-[10px]" x-text="t('dash.wsPriorityReset')"></button>
+                  </div>
+                  <p class="text-[10px] text-themed-dim" x-text="t('dash.wsPriorityHint')"></p>
+                  <div class="space-y-1">
+                    <template x-for="(eng, idx) in wsEditPriority" :key="eng">
+                      <div class="flex items-center gap-2 px-2 py-1 rounded bg-surface-700/50">
+                        <span class="text-[10px] text-themed-dim w-4" x-text="(idx + 1) + '.'"></span>
+                        <span class="text-xs font-mono text-themed flex-1" x-text="eng"></span>
+                        <button type="button" @click="moveWsPriority(idx, -1)" :disabled="idx === 0"
+                          class="btn-ghost text-xs px-1.5 py-0.5 disabled:opacity-30" title="Up">&#9650;</button>
+                        <button type="button" @click="moveWsPriority(idx, 1)" :disabled="idx === wsEditPriority.length - 1"
+                          class="btn-ghost text-xs px-1.5 py-0.5 disabled:opacity-30" title="Down">&#9660;</button>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </template>
               <!-- Copy from another key -->
               <div class="flex items-center gap-2">
                 <select x-model="wsCopySourceId" class="!text-xs !py-1.5 !px-3 !rounded-lg flex-1">
@@ -822,6 +891,30 @@ export function renderKeysTab(): string {
                   </template>
                 </select>
                 <button @click="copyWebSearchFrom()" class="btn-ghost text-xs" :disabled="!wsCopySourceId" x-text="t('dash.copy')"></button>
+              </div>
+            </div>
+          </template>
+
+          <!-- Borrow picker modal -->
+          <template x-if="borrowPickerEngine">
+            <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" @click.self="borrowPickerEngine = ''">
+              <div class="glass-card rounded-xl p-6 w-full max-w-sm space-y-4">
+                <h3 class="text-sm font-semibold text-themed" x-text="t('dash.wsBorrowPickerTitle')"></h3>
+                <div class="space-y-2 max-h-64 overflow-y-auto">
+                  <template x-if="currentBorrowCandidates().length === 0">
+                    <p class="text-xs text-themed-dim">No available keys.</p>
+                  </template>
+                  <template x-for="cand in currentBorrowCandidates()" :key="cand.id">
+                    <button type="button" @click="confirmBorrow(cand.id)"
+                      class="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 transition-colors">
+                      <span class="text-xs font-medium text-themed block" x-text="cand.name || cand.id"></span>
+                      <span class="text-[10px] text-themed-dim" x-text="cand.owner_name || cand.owner_id || ''"></span>
+                    </button>
+                  </template>
+                </div>
+                <div class="flex justify-end">
+                  <button type="button" @click="borrowPickerEngine = ''" class="btn-ghost text-xs" x-text="t('dash.cancel')"></button>
+                </div>
               </div>
             </div>
           </template>
@@ -836,26 +929,66 @@ export function renderKeysTab(): string {
               </div>
               <template x-if="wsConfig.enabled">
                 <div class="space-y-2">
-                  <div class="flex items-center gap-4">
-                    <span class="text-xs text-themed-secondary" x-text="t('dash.engines')"></span>
-                    <div class="flex items-center gap-2">
-                      <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.langsearchKey ? 'bg-accent-violet/20 text-accent-violet' : 'bg-surface-600 text-themed-dim'"
-                        x-text="wsConfig.langsearchKey ? 'LangSearch \u2713' : 'LangSearch'"></span>
-                      <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.tavilyKey ? 'bg-accent-teal/20 text-accent-teal' : 'bg-surface-600 text-themed-dim'"
-                        x-text="wsConfig.tavilyKey ? 'Tavily \u2713' : 'Tavily'"></span>
-                      <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.enabled ? 'bg-accent-amber/20 text-accent-amber' : 'bg-surface-600 text-themed-dim'"
-                        x-text="wsConfig.enabled ? 'Bing \u2713' : 'Bing'"></span>
-                      <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.copilotEnabled ? 'bg-accent-teal/20 text-accent-teal' : 'bg-surface-600 text-themed-dim'"
-                        x-text="wsConfig.copilotEnabled ? (wsConfig.copilotPriority ? 'Copilot \u2605' : 'Copilot \u2713') : 'Copilot'"></span>
+                  <div class="flex items-start gap-3">
+                    <span class="text-xs text-themed-secondary shrink-0 mt-0.5" x-text="t('dash.engines')"></span>
+                    <div class="flex flex-wrap gap-1.5">
+                      <template x-for="slot in (() => {
+                        const all = {
+                          langsearch: { id: 'langsearch', label: 'LangSearch', ref: wsConfig.langsearchRef, key: wsConfig.langsearchKey, builtin: false },
+                          tavily: { id: 'tavily', label: 'Tavily', ref: wsConfig.tavilyRef, key: wsConfig.tavilyKey, builtin: false },
+                          msGrounding: { id: 'msGrounding', label: 'MS Grounding', ref: wsConfig.msGroundingRef, key: wsConfig.msGroundingKey, builtin: false },
+                          bing: { id: 'bing', label: 'Bing', ref: null, key: null, builtin: true },
+                          copilot: { id: 'copilot', label: 'Copilot', ref: null, key: null, builtin: true }
+                        };
+                        return (wsConfig.priority || []).map(id => all[id]).filter(Boolean);
+                      })()" :key="slot.id">
+                        <span class="text-[10px] px-2 py-0.5 rounded inline-flex items-center gap-1"
+                          :class="slot.ref ? (slot.ref.broken ? 'bg-accent-red/15 text-accent-red' : 'bg-accent-violet/15 text-accent-violet') : (slot.key ? 'bg-accent-teal/15 text-accent-teal' : (slot.builtin ? 'bg-surface-700 text-themed-secondary' : 'bg-surface-700 text-themed-dim'))">
+                          <span class="font-medium" x-text="slot.label"></span>
+                          <template x-if="slot.ref">
+                            <span class="font-mono opacity-80" x-text="slot.ref.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (slot.ref.name || slot.ref.id)"></span>
+                          </template>
+                          <template x-if="!slot.ref && slot.key">
+                            <span class="font-mono opacity-80" x-text="slot.key"></span>
+                          </template>
+                          <template x-if="!slot.ref && !slot.key && slot.builtin">
+                            <span class="opacity-70" x-text="t('dash.wsBuiltin')"></span>
+                          </template>
+                          <template x-if="!slot.ref && !slot.key && !slot.builtin">
+                            <span class="opacity-60">—</span>
+                          </template>
+                        </span>
+                      </template>
                     </div>
                   </div>
-                  <!-- Today's usage -->
-                  <div class="flex items-center gap-4">
-                    <span class="text-xs text-themed-secondary" x-text="t('dash.today')"></span>
+                  <!-- Usage stats with range selector -->
+                  <div class="flex items-center gap-3 flex-wrap">
+                    <div class="inline-flex items-center gap-0.5 bg-surface-800 rounded-md p-0.5">
+                      <template x-for="r in ['1d','7d','30d']" :key="r">
+                        <button @click="setWsUsageRange(r)" class="px-2 py-0.5 rounded text-[10px] font-medium transition-all"
+                          :class="wsUsageRange === r ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'"
+                          x-text="r"></button>
+                      </template>
+                    </div>
                     <span class="text-xs font-mono text-themed" x-text="wsUsage.searches + ' searches'"></span>
                     <span class="text-[10px] text-accent-teal" x-text="wsUsage.successes + ' ok'"></span>
                     <span class="text-[10px] text-accent-red" x-show="wsUsage.failures > 0" x-text="wsUsage.failures + ' failed'"></span>
                   </div>
+                  <template x-if="wsUsage.engines && wsUsage.engines.length > 0">
+                    <div class="space-y-1.5 mt-1">
+                      <template x-for="eng in wsUsage.engines" :key="eng.engineId">
+                        <div class="flex items-center gap-1.5 flex-wrap text-[10px]">
+                          <span class="font-mono text-themed-secondary w-20 shrink-0" x-text="eng.engineId"></span>
+                          <span class="px-1.5 py-0.5 rounded bg-accent-teal/15 text-accent-teal" x-text="eng.successes + ' ok'"></span>
+                          <span class="px-1.5 py-0.5 rounded bg-accent-amber/15 text-accent-amber" x-show="eng.emptyResults > 0"
+                            x-text="eng.emptyResults + ' empty · ' + Math.round(eng.emptyResults * 100 / Math.max(eng.successes, 1)) + '%'"></span>
+                          <span class="px-1.5 py-0.5 rounded bg-accent-red/15 text-accent-red" x-show="eng.failures > 0" x-text="eng.failures + ' fail'"></span>
+                          <span class="px-1.5 py-0.5 rounded bg-surface-700 text-themed-dim" x-show="eng.successes > 0" x-text="'ok ~' + eng.avgSuccessMs + 'ms'"></span>
+                          <span class="px-1.5 py-0.5 rounded bg-surface-700 text-themed-dim" x-show="eng.failures > 0" x-text="'fail ~' + eng.avgFailureMs + 'ms'"></span>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
                 </div>
               </template>
             </div>

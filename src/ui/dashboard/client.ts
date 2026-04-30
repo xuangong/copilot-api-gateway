@@ -346,14 +346,21 @@ export function dashboardAssets(): string {
       wsEditing: false,
       wsSaving: false,
       wsEditEnabled: false,
-      wsEditBing: false,
-      wsEditCopilot: false,
-      wsEditCopilotPriority: false,
+      wsEditPriority: ['msGrounding', 'langsearch', 'tavily', 'bing', 'copilot'],
       wsEditLangsearch: '',
       wsEditTavily: '',
+      wsEditMsGrounding: '',
+      wsEditLangsearchReplacing: false,
+      wsEditTavilyReplacing: false,
+      wsEditMsGroundingReplacing: false,
+      wsEditLangsearchRef: '',
+      wsEditTavilyRef: '',
+      wsEditMsGroundingRef: '',
       wsCopySourceId: '',
-      wsConfig: { enabled: false, bingEnabled: false, copilotEnabled: false, copilotPriority: false, langsearchKey: null, tavilyKey: null },
-      wsUsage: { searches: 0, successes: 0, failures: 0 },
+      borrowPickerEngine: '',
+      wsConfig: { enabled: false, langsearchKey: null, tavilyKey: null, msGroundingKey: null, langsearchRef: null, tavilyRef: null, msGroundingRef: null, priority: [] },
+      wsUsage: { searches: 0, successes: 0, failures: 0, engines: [], range: '1d' },
+      wsUsageRange: '1d',
 
       // Relays tab
       relays: [],
@@ -2081,32 +2088,51 @@ export function dashboardAssets(): string {
           // === Web Search ===
           loadWebSearchConfig(keyId) {
             const key = this.keys.find(k => k.id === keyId);
+            const ENGINE_IDS = ['msGrounding', 'langsearch', 'tavily', 'bing', 'copilot'];
+            const stored = Array.isArray(key?.web_search_priority) ? key.web_search_priority.filter(e => ENGINE_IDS.includes(e)) : [];
+            const missing = ENGINE_IDS.filter(e => !stored.includes(e));
+            const effectivePriority = stored.length ? [...stored, ...missing] : [...ENGINE_IDS];
             this.wsConfig = {
               enabled: key?.web_search_enabled ?? false,
-              bingEnabled: key?.web_search_bing_enabled ?? false,
-              copilotEnabled: key?.web_search_copilot_enabled ?? false,
-              copilotPriority: key?.web_search_copilot_priority ?? false,
               langsearchKey: key?.web_search_langsearch_key ?? null,
               tavilyKey: key?.web_search_tavily_key ?? null,
+              msGroundingKey: key?.web_search_ms_grounding_key ?? null,
+              langsearchRef: key?.web_search_langsearch_ref ?? null,
+              tavilyRef: key?.web_search_tavily_ref ?? null,
+              msGroundingRef: key?.web_search_ms_grounding_ref ?? null,
+              priority: effectivePriority,
             };
-            this.wsUsage = { searches: 0, successes: 0, failures: 0 };
+            this.wsUsage = { searches: 0, successes: 0, failures: 0, engines: [], range: this.wsUsageRange };
             // Load usage stats
-            fetch('/api/keys/' + keyId + '/web-search-usage', { credentials: 'same-origin' })
+            fetch('/api/keys/' + keyId + '/web-search-usage?range=' + this.wsUsageRange, { credentials: 'same-origin' })
               .then(r => r.ok ? r.json() : null)
               .then(data => {
-                if (data) this.wsUsage = { searches: data.searches, successes: data.successes, failures: data.failures };
+                if (data) this.wsUsage = { searches: data.searches, successes: data.successes, failures: data.failures, engines: data.engines || [], range: data.range || this.wsUsageRange };
               })
               .catch(() => {});
+          },
+
+          setWsUsageRange(range) {
+            this.wsUsageRange = range;
+            if (this.selectedKeyId) this.loadWebSearchConfig(this.selectedKeyId);
           },
 
           startEditWebSearch() {
             const key = this.keys.find(k => k.id === this.selectedKeyId);
             this.wsEditEnabled = key?.web_search_enabled ?? false;
-            this.wsEditBing = key?.web_search_bing_enabled ?? false;
-            this.wsEditCopilot = key?.web_search_copilot_enabled ?? false;
-            this.wsEditCopilotPriority = key?.web_search_copilot_priority ?? false;
+            const ENGINE_IDS = ['msGrounding', 'langsearch', 'tavily', 'bing', 'copilot'];
+            const stored = Array.isArray(key?.web_search_priority) ? key.web_search_priority.filter(e => ENGINE_IDS.includes(e)) : [];
+            const missing = ENGINE_IDS.filter(e => !stored.includes(e));
+            this.wsEditPriority = stored.length ? [...stored, ...missing] : [...ENGINE_IDS];
             this.wsEditLangsearch = '';
             this.wsEditTavily = '';
+            this.wsEditMsGrounding = '';
+            this.wsEditLangsearchReplacing = false;
+            this.wsEditTavilyReplacing = false;
+            this.wsEditMsGroundingReplacing = false;
+            this.wsEditLangsearchRef = key?.web_search_langsearch_ref?.id ?? '';
+            this.wsEditTavilyRef = key?.web_search_tavily_ref?.id ?? '';
+            this.wsEditMsGroundingRef = key?.web_search_ms_grounding_ref?.id ?? '';
             this.wsCopySourceId = '';
             this.wsEditing = true;
           },
@@ -2117,12 +2143,34 @@ export function dashboardAssets(): string {
             try {
               const body = {
                 web_search_enabled: this.wsEditEnabled,
-                web_search_bing_enabled: this.wsEditEnabled,
-                web_search_copilot_enabled: this.wsEditCopilot,
-                web_search_copilot_priority: this.wsEditCopilotPriority,
               };
-              if (this.wsEditLangsearch) body.web_search_langsearch_key = this.wsEditLangsearch;
-              if (this.wsEditTavily) body.web_search_tavily_key = this.wsEditTavily;
+              if (this.isAdmin) {
+                const DEFAULT_ORDER = ['msGrounding', 'langsearch', 'tavily', 'bing', 'copilot'];
+                const isDefault = this.wsEditPriority.length === 5
+                  && this.wsEditPriority.every((e, i) => e === DEFAULT_ORDER[i]);
+                body.web_search_priority = isDefault ? null : this.wsEditPriority;
+              }
+              if (this.wsEditLangsearchRef) {
+                body.web_search_langsearch_ref = this.wsEditLangsearchRef;
+              } else if (this.wsEditLangsearch.trim()) {
+                body.web_search_langsearch_key = this.wsEditLangsearch.trim();
+              } else if (this.wsEditLangsearchReplacing) {
+                body.web_search_langsearch_key = null;
+              }
+              if (this.wsEditTavilyRef) {
+                body.web_search_tavily_ref = this.wsEditTavilyRef;
+              } else if (this.wsEditTavily.trim()) {
+                body.web_search_tavily_key = this.wsEditTavily.trim();
+              } else if (this.wsEditTavilyReplacing) {
+                body.web_search_tavily_key = null;
+              }
+              if (this.wsEditMsGroundingRef) {
+                body.web_search_ms_grounding_ref = this.wsEditMsGroundingRef;
+              } else if (this.wsEditMsGrounding.trim()) {
+                body.web_search_ms_grounding_key = this.wsEditMsGrounding.trim();
+              } else if (this.wsEditMsGroundingReplacing) {
+                body.web_search_ms_grounding_key = null;
+              }
               const resp = await fetch('/api/keys/' + this.selectedKeyId, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
@@ -2161,6 +2209,72 @@ export function dashboardAssets(): string {
             } catch (e) {
               console.error('copyWebSearchFrom:', e);
             }
+          },
+
+          moveWsPriority(idx, delta) {
+            const j = idx + delta;
+            if (j < 0 || j >= this.wsEditPriority.length) return;
+            const arr = [...this.wsEditPriority];
+            [arr[idx], arr[j]] = [arr[j], arr[idx]];
+            this.wsEditPriority = arr;
+          },
+          resetWsPriority() {
+            this.wsEditPriority = ['msGrounding', 'langsearch', 'tavily', 'bing', 'copilot'];
+          },
+
+          borrowName(id) {
+            if (!id) return '';
+            const k = this.keys.find(k => k.id === id);
+            return k && k.name ? k.name : id;
+          },
+
+          get borrowCandidatesLangsearch() {
+            return this.keys.filter(k => k.web_search_langsearch_key && k.id !== this.selectedKeyId);
+          },
+          get borrowCandidatesTavily() {
+            return this.keys.filter(k => k.web_search_tavily_key && k.id !== this.selectedKeyId);
+          },
+          get borrowCandidatesMsGrounding() {
+            return this.keys.filter(k => k.web_search_ms_grounding_key && k.id !== this.selectedKeyId);
+          },
+
+          async unlinkBorrow(engine) {
+            if (!this.selectedKeyId) return;
+            const fieldMap = { langsearch: 'web_search_langsearch_ref', tavily: 'web_search_tavily_ref', msGrounding: 'web_search_ms_grounding_ref' };
+            const field = fieldMap[engine];
+            if (!field) return;
+            try {
+              const resp = await fetch('/api/keys/' + this.selectedKeyId, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+                body: JSON.stringify({ [field]: null }),
+              });
+              if (resp.status === 401) { this.logout(t('dash.sessionExpired')); return; }
+              if (resp.ok) {
+                await this.loadKeys();
+                this.loadWebSearchConfig(this.selectedKeyId);
+              } else {
+                alert((await resp.json()).error || t('dash.failedUpdateWebSearch'));
+              }
+            } catch (e) {
+              console.error('unlinkBorrow:', e);
+            }
+          },
+
+          openBorrowPicker(engine) {
+            this.borrowPickerEngine = engine;
+          },
+          currentBorrowCandidates() {
+            if (this.borrowPickerEngine === 'langsearch') return this.borrowCandidatesLangsearch;
+            if (this.borrowPickerEngine === 'tavily') return this.borrowCandidatesTavily;
+            if (this.borrowPickerEngine === 'msGrounding') return this.borrowCandidatesMsGrounding;
+            return [];
+          },
+          confirmBorrow(id) {
+            if (this.borrowPickerEngine === 'langsearch') this.wsEditLangsearchRef = id;
+            else if (this.borrowPickerEngine === 'tavily') this.wsEditTavilyRef = id;
+            else if (this.borrowPickerEngine === 'msGrounding') this.wsEditMsGroundingRef = id;
+            this.borrowPickerEngine = '';
           },
 
           // === Relays ===

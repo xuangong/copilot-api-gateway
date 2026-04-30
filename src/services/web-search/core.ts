@@ -2,6 +2,7 @@ import { getApiKeyById } from "~/lib/api-keys"
 import { getRepo } from "~/repo"
 
 import { EngineManager, type EngineManagerOptions } from "./engine-manager"
+import { resolveWebSearchKeys } from "./resolver"
 import { formatSearchResults } from "./formatter"
 import type { WebSearchMeta, WebSearchTool } from "./types"
 
@@ -13,6 +14,7 @@ export const emptyMeta = (): WebSearchMeta => ({
   enginesUsed: [],
   successes: 0,
   failures: 0,
+  engineAttempts: [],
 })
 
 export interface SearchExecutionResult {
@@ -39,7 +41,8 @@ export async function executeWebSearch(
   }
 
   try {
-    const { results, engineName } = await engineManager.search(query, searchOptions)
+    const { results, engineName, attempts } = await engineManager.search(query, searchOptions)
+    for (const a of attempts) meta.engineAttempts.push(a)
     const resultCount = results.length
     meta.totalResults += resultCount
     meta.successes++
@@ -78,7 +81,7 @@ export interface WebSearchConfigResult {
 export async function loadWebSearchConfig(
   apiKeyId: string | undefined,
   githubToken: string,
-  msGroundingKey?: string,
+  envMsGroundingKey?: string,
 ): Promise<WebSearchConfigResult> {
   const keyConfig = apiKeyId ? await getApiKeyById(apiKeyId) : null
   if (!keyConfig?.webSearchEnabled) {
@@ -97,16 +100,16 @@ export async function loadWebSearchConfig(
     }
   }
 
+  const resolved = await resolveWebSearchKeys(keyConfig, envMsGroundingKey)
+
   return {
     enabled: true,
     engineOptions: {
-      langsearchKey: keyConfig.webSearchLangsearchKey,
-      tavilyKey: keyConfig.webSearchTavilyKey,
-      bingEnabled: keyConfig.webSearchBingEnabled,
+      langsearchKey: resolved.langsearchKey,
+      tavilyKey: resolved.tavilyKey,
       githubToken,
-      copilotEnabled: keyConfig.webSearchCopilotEnabled,
-      copilotPriority: keyConfig.webSearchCopilotPriority,
-      msGroundingKey,
+      msGroundingKey: resolved.msGroundingKey,
+      priority: keyConfig.webSearchPriority,
     },
   }
 }
@@ -138,5 +141,12 @@ export function recordWebSearchUsage(
   }
   for (let i = 0; i < meta.failures; i++) {
     repo.webSearchUsage.record(apiKeyId, hour, false).catch(() => {})
+  }
+  for (const a of meta.engineAttempts) {
+    repo.webSearchEngineUsage.record(apiKeyId, a.engineId, hour, {
+      ok: a.ok,
+      resultCount: a.resultCount,
+      durationMs: a.durationMs,
+    }).catch(() => {})
   }
 }

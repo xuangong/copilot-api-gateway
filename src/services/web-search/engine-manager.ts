@@ -1,5 +1,5 @@
 import type { SearchResult } from "./types"
-import type { SearchEngine, SearchOptions } from "./engines"
+import type { SearchEngine, SearchOptions, EngineId } from "./engines"
 import {
   BingSearchEngine,
   CopilotSearchEngine,
@@ -10,7 +10,7 @@ import {
 } from "./engines"
 
 /** Canonical engine ids used in priority lists. */
-export type EngineId = "msGrounding" | "langsearch" | "tavily" | "bing" | "copilot"
+export type { EngineId }
 
 export const ENGINE_IDS: readonly EngineId[] = [
   "msGrounding",
@@ -20,14 +20,18 @@ export const ENGINE_IDS: readonly EngineId[] = [
   "copilot",
 ] as const
 
+export interface EngineAttempt {
+  engineId: EngineId
+  ok: boolean
+  resultCount: number
+  durationMs: number
+}
+
 export interface EngineManagerOptions {
   langsearchKey?: string
   tavilyKey?: string
-  bingEnabled?: boolean
   /** GitHub OAuth/PAT token used by Copilot MCP web_search (NOT the short-lived copilot session token). */
   githubToken?: string
-  copilotEnabled?: boolean
-  copilotPriority?: boolean
   /** Microsoft Grounding (api.microsoft.ai) key. */
   msGroundingKey?: string
   /**
@@ -37,8 +41,7 @@ export interface EngineManagerOptions {
    * ids and unconfigured engines are silently skipped.
    *
    * If undefined/empty, falls back to the legacy chain:
-   *   msGrounding (if key) -> copilotPriority exclusive (if set)
-   *                        -> langsearch -> tavily -> bing -> copilot.
+   *   msGrounding (if key) -> langsearch -> tavily -> bing -> copilot.
    */
   priority?: string[]
 }
@@ -73,23 +76,11 @@ export class EngineManager {
       return
     }
 
-    const copilotAvailable = !!(options.copilotEnabled && options.githubToken)
-    if (copilotAvailable && options.copilotPriority) {
-      this.engines.push(new CopilotSearchEngine(options.githubToken!))
-      return
-    }
-
     if (options.langsearchKey) {
       this.engines.push(new LangSearchEngine(options.langsearchKey))
     }
     if (options.tavilyKey) {
       this.engines.push(new TavilySearchEngine(options.tavilyKey))
-    }
-    if (options.bingEnabled) {
-      this.engines.push(new BingSearchEngine())
-    }
-    if (copilotAvailable) {
-      this.engines.push(new CopilotSearchEngine(options.githubToken!))
     }
   }
 
@@ -102,26 +93,45 @@ export class EngineManager {
       case "tavily":
         return opts.tavilyKey ? new TavilySearchEngine(opts.tavilyKey) : null
       case "bing":
-        // Bing has no key. Treat presence in the priority list as opt-in,
-        // ignoring the legacy `bingEnabled` flag.
+        // Bing has no key. Treat presence in the priority list as opt-in.
         return new BingSearchEngine()
       case "copilot":
-        return opts.copilotEnabled && opts.githubToken
+        return opts.githubToken
           ? new CopilotSearchEngine(opts.githubToken)
           : null
     }
   }
 
-  /** Search with automatic fallback to the next engine on failure. */
+  /**
+   * Search with automatic fallback. Falls through to the next engine when
+   * the current one throws OR returns 0 results — empty results carry no
+   * useful information for the caller, so they're treated as a soft failure
+   * for the purpose of advancing the chain. The empty attempt is still
+   * recorded with ok=true (it didn't throw); the chain only advances.
+   */
   async search(
     query: string,
     options?: SearchOptions,
-  ): Promise<{ results: SearchResult[]; engineName: string }> {
+  ): Promise<{ results: SearchResult[]; engineName: string; attempts: EngineAttempt[] }> {
+    const attempts: EngineAttempt[] = []
+    let lastEmpty: { results: SearchResult[]; engineName: string } | null = null
     for (const engine of this.engines) {
+      const start = performance.now()
       try {
         const results = await engine.search(query, options)
-        return { results, engineName: engine.name }
+        const durationMs = Math.round(performance.now() - start)
+        attempts.push({ engineId: engine.id, ok: true, resultCount: results.length, durationMs })
+        if (results.length === 0) {
+          lastEmpty = { results, engineName: engine.name }
+          console.warn(
+            `[EngineManager] ${engine.name} returned 0 results, trying next engine`,
+          )
+          continue
+        }
+        return { results, engineName: engine.name, attempts }
       } catch (error) {
+        const durationMs = Math.round(performance.now() - start)
+        attempts.push({ engineId: engine.id, ok: false, resultCount: 0, durationMs })
         if (error instanceof QuotaExceededError) {
           console.warn(
             `[EngineManager] ${engine.name} quota exceeded, trying next engine`,
@@ -133,7 +143,11 @@ export class EngineManager {
         }
       }
     }
+    if (lastEmpty) {
+      console.warn("[EngineManager] All engines returned 0 results")
+      return { results: lastEmpty.results, engineName: lastEmpty.engineName, attempts }
+    }
     console.error("[EngineManager] All search engines failed")
-    return { results: [], engineName: "none" }
+    return { results: [], engineName: "none", attempts }
   }
 }

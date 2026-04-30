@@ -53,6 +53,7 @@ const passageToSnippet = (content: unknown): string => {
  * upstream `retryAfter` is intentionally ignored.
  */
 export class MicrosoftGroundingEngine implements SearchEngine {
+  readonly id = "msGrounding" as const
   readonly name = "MicrosoftGrounding"
 
   constructor(private readonly apiKey: string) {}

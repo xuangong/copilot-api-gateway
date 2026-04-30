@@ -17,7 +17,6 @@ export async function createApiKey(name: string, ownerId?: string): Promise<ApiK
     createdAt: new Date().toISOString(),
     ownerId,
     webSearchEnabled: true,
-    webSearchCopilotEnabled: true,
   }
   await getRepo().apiKeys.save(key)
   return key

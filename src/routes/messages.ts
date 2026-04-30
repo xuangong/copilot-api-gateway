@@ -23,6 +23,7 @@ import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { detectClient } from "~/lib/client-detect"
 import { checkQuota } from "~/lib/quota"
 import { getApiKeyById } from "~/lib/api-keys"
+import { resolveWebSearchKeys } from "~/services/web-search/resolver"
 import { getRepo } from "~/repo"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
@@ -111,18 +112,18 @@ export const messagesRoute = new Elysia()
       // tool calls and (b) replay it back to a streaming client.
       const interceptPayload: MessagesPayload = { ...messagesPayload, stream: false }
 
+      const resolvedKeys = await resolveWebSearchKeys(keyConfig, state.msGroundingKey)
+
       const upstreamTimer = startTimer()
       const upstreamPromise = interceptWebSearch(interceptPayload, {
         copilotToken: state.copilotToken,
         accountType: state.accountType,
         engineOptions: {
-          langsearchKey: keyConfig.webSearchLangsearchKey,
-          tavilyKey: keyConfig.webSearchTavilyKey,
-          bingEnabled: keyConfig.webSearchBingEnabled,
+          langsearchKey: resolvedKeys.langsearchKey,
+          tavilyKey: resolvedKeys.tavilyKey,
           githubToken: state.githubToken,
-          copilotEnabled: keyConfig.webSearchCopilotEnabled,
-          copilotPriority: keyConfig.webSearchCopilotPriority,
-          msGroundingKey: state.msGroundingKey,
+          msGroundingKey: resolvedKeys.msGroundingKey,
+          priority: keyConfig.webSearchPriority,
         },
       })
 
@@ -150,6 +151,13 @@ export const messagesRoute = new Elysia()
             }
             for (let i = 0; i < meta.failures; i++) {
               repo.webSearchUsage.record(apiKeyId, hour, false).catch(() => {})
+            }
+            for (const a of meta.engineAttempts) {
+              repo.webSearchEngineUsage.record(apiKeyId, a.engineId, hour, {
+                ok: a.ok,
+                resultCount: a.resultCount,
+                durationMs: a.durationMs,
+              }).catch(() => {})
             }
           }
         }

@@ -26,6 +26,8 @@ import type {
   UserSession,
   WebSearchUsageRecord,
   WebSearchUsageRepo,
+  WebSearchEngineUsageRecord,
+  WebSearchEngineUsageRepo,
 } from "./types"
 
 const INIT_SQL = `
@@ -128,12 +130,26 @@ CREATE TABLE IF NOT EXISTS web_search_usage (
   failures INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (key_id, hour)
 );
+
+CREATE TABLE IF NOT EXISTS web_search_engine_usage (
+  key_id TEXT NOT NULL,
+  engine_id TEXT NOT NULL,
+  hour TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  successes INTEGER NOT NULL DEFAULT 0,
+  failures INTEGER NOT NULL DEFAULT 0,
+  empty_results INTEGER NOT NULL DEFAULT 0,
+  total_results INTEGER NOT NULL DEFAULT 0,
+  success_duration_ms INTEGER NOT NULL DEFAULT 0,
+  failure_duration_ms INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (key_id, engine_id, hour)
+);
 `
 
 class SqliteApiKeyRepo implements ApiKeyRepo {
   constructor(private db: Database) {}
 
-  private static readonly SELECT_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_copilot_enabled, web_search_copilot_priority, web_search_ms_grounding_key, web_search_priority"
+  private static readonly SELECT_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref"
 
   async list(): Promise<ApiKey[]> {
     return this.db.query<any, []>(`SELECT ${SqliteApiKeyRepo.SELECT_COLS} FROM api_keys ORDER BY created_at`).all().map(toApiKey)
@@ -155,9 +171,9 @@ class SqliteApiKeyRepo implements ApiKeyRepo {
 
   async save(key: ApiKey): Promise<void> {
     this.db.query(
-      `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_copilot_enabled, web_search_copilot_priority, web_search_ms_grounding_key, web_search_priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day, web_search_enabled = excluded.web_search_enabled, web_search_bing_enabled = excluded.web_search_bing_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key, web_search_copilot_enabled = excluded.web_search_copilot_enabled, web_search_copilot_priority = excluded.web_search_copilot_priority, web_search_ms_grounding_key = excluded.web_search_ms_grounding_key, web_search_priority = excluded.web_search_priority`,
-    ).run(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null, key.quotaRequestsPerDay ?? null, key.quotaTokensPerDay ?? null, key.webSearchEnabled ? 1 : 0, key.webSearchBingEnabled ? 1 : 0, key.webSearchLangsearchKey ?? null, key.webSearchTavilyKey ?? null, key.webSearchCopilotEnabled ? 1 : 0, key.webSearchCopilotPriority ? 1 : 0, key.webSearchMsGroundingKey ?? null, key.webSearchPriority ? JSON.stringify(key.webSearchPriority) : null)
+      `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day, web_search_enabled = excluded.web_search_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key, web_search_ms_grounding_key = excluded.web_search_ms_grounding_key, web_search_priority = excluded.web_search_priority, web_search_langsearch_ref = excluded.web_search_langsearch_ref, web_search_tavily_ref = excluded.web_search_tavily_ref, web_search_ms_grounding_ref = excluded.web_search_ms_grounding_ref`,
+    ).run(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null, key.quotaRequestsPerDay ?? null, key.quotaTokensPerDay ?? null, key.webSearchEnabled ? 1 : 0, key.webSearchLangsearchKey ?? null, key.webSearchTavilyKey ?? null, key.webSearchMsGroundingKey ?? null, key.webSearchPriority ? JSON.stringify(key.webSearchPriority) : null, key.webSearchLangsearchRef ?? null, key.webSearchTavilyRef ?? null, key.webSearchMsGroundingRef ?? null)
   }
 
   async delete(id: string): Promise<boolean> {
@@ -178,7 +194,7 @@ function toApiKey(row: any): ApiKey {
       if (Array.isArray(parsed)) priority = parsed.filter((v: unknown) => typeof v === "string")
     } catch {}
   }
-  return { id: row.id, name: row.name, key: row.key, createdAt: row.created_at, lastUsedAt: row.last_used_at ?? undefined, ownerId: row.owner_id ?? undefined, quotaRequestsPerDay: row.quota_requests_per_day ?? undefined, quotaTokensPerDay: row.quota_tokens_per_day ?? undefined, webSearchEnabled: row.web_search_enabled === 1, webSearchBingEnabled: row.web_search_bing_enabled === 1, webSearchLangsearchKey: row.web_search_langsearch_key ?? undefined, webSearchTavilyKey: row.web_search_tavily_key ?? undefined, webSearchCopilotEnabled: row.web_search_copilot_enabled === 1, webSearchCopilotPriority: row.web_search_copilot_priority === 1, webSearchMsGroundingKey: row.web_search_ms_grounding_key ?? undefined, webSearchPriority: priority }
+  return { id: row.id, name: row.name, key: row.key, createdAt: row.created_at, lastUsedAt: row.last_used_at ?? undefined, ownerId: row.owner_id ?? undefined, quotaRequestsPerDay: row.quota_requests_per_day ?? undefined, quotaTokensPerDay: row.quota_tokens_per_day ?? undefined, webSearchEnabled: row.web_search_enabled === 1, webSearchLangsearchKey: row.web_search_langsearch_key ?? undefined, webSearchTavilyKey: row.web_search_tavily_key ?? undefined, webSearchMsGroundingKey: row.web_search_ms_grounding_key ?? undefined, webSearchPriority: priority, webSearchLangsearchRef: row.web_search_langsearch_ref ?? undefined, webSearchTavilyRef: row.web_search_tavily_ref ?? undefined, webSearchMsGroundingRef: row.web_search_ms_grounding_ref ?? undefined }
 }
 
 class SqliteGitHubRepo implements GitHubRepo {
@@ -560,6 +576,22 @@ function migrateSchema(db: Database): void {
   if (!hasColumn(db, "api_keys", "web_search_copilot_priority")) {
     db.exec("ALTER TABLE api_keys ADD COLUMN web_search_copilot_priority INTEGER DEFAULT 0")
   }
+  if (!hasColumn(db, "api_keys", "web_search_langsearch_ref")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN web_search_langsearch_ref TEXT")
+  }
+  if (!hasColumn(db, "api_keys", "web_search_tavily_ref")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN web_search_tavily_ref TEXT")
+  }
+  if (!hasColumn(db, "api_keys", "web_search_ms_grounding_ref")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN web_search_ms_grounding_ref TEXT")
+  }
+  // Add ms_grounding key literal and priority array (migration 0020)
+  if (!hasColumn(db, "api_keys", "web_search_ms_grounding_key")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN web_search_ms_grounding_key TEXT")
+  }
+  if (!hasColumn(db, "api_keys", "web_search_priority")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN web_search_priority TEXT")
+  }
   // Add email to users
   if (!hasColumn(db, "users", "email")) {
     db.exec("ALTER TABLE users ADD COLUMN email TEXT")
@@ -603,6 +635,23 @@ function migrateSchema(db: Database): void {
     session_token TEXT,
     created_at TEXT NOT NULL
   )`)
+  // Split web_search_engine_usage total_duration_ms into success/failure columns
+  if (!hasColumn(db, "web_search_engine_usage", "success_duration_ms")) {
+    db.exec("DROP TABLE IF EXISTS web_search_engine_usage")
+    db.exec(`CREATE TABLE web_search_engine_usage (
+      key_id TEXT NOT NULL,
+      engine_id TEXT NOT NULL,
+      hour TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      successes INTEGER NOT NULL DEFAULT 0,
+      failures INTEGER NOT NULL DEFAULT 0,
+      empty_results INTEGER NOT NULL DEFAULT 0,
+      total_results INTEGER NOT NULL DEFAULT 0,
+      success_duration_ms INTEGER NOT NULL DEFAULT 0,
+      failure_duration_ms INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (key_id, engine_id, hour)
+    )`)
+  }
 }
 
 class SqliteClientPresenceRepo implements ClientPresenceRepo {
@@ -686,6 +735,57 @@ class SqliteWebSearchUsageRepo implements WebSearchUsageRepo {
 
   async deleteAll(): Promise<void> {
     this.db.query("DELETE FROM web_search_usage").run()
+  }
+}
+
+class SqliteWebSearchEngineUsageRepo implements WebSearchEngineUsageRepo {
+  constructor(private db: Database) {}
+
+  async record(keyId: string, engineId: string, hour: string, attempt: { ok: boolean; resultCount: number; durationMs: number }): Promise<void> {
+    const successInc = attempt.ok ? 1 : 0
+    const failureInc = attempt.ok ? 0 : 1
+    const emptyInc = attempt.ok && attempt.resultCount === 0 ? 1 : 0
+    const successDur = attempt.ok ? attempt.durationMs : 0
+    const failureDur = attempt.ok ? 0 : attempt.durationMs
+    this.db.query(
+      `INSERT INTO web_search_engine_usage (key_id, engine_id, hour, attempts, successes, failures, empty_results, total_results, success_duration_ms, failure_duration_ms)
+       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (key_id, engine_id, hour) DO UPDATE SET
+         attempts = attempts + 1,
+         successes = successes + ?,
+         failures = failures + ?,
+         empty_results = empty_results + ?,
+         total_results = total_results + ?,
+         success_duration_ms = success_duration_ms + ?,
+         failure_duration_ms = failure_duration_ms + ?`,
+    ).run(
+      keyId, engineId, hour,
+      successInc, failureInc, emptyInc, attempt.resultCount, successDur, failureDur,
+      successInc, failureInc, emptyInc, attempt.resultCount, successDur, failureDur,
+    )
+  }
+
+  async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<WebSearchEngineUsageRecord[]> {
+    const cols = "key_id, engine_id, hour, attempts, successes, failures, empty_results, total_results, success_duration_ms, failure_duration_ms"
+    let rows: any[]
+    if (opts.keyIds && opts.keyIds.length > 0) {
+      const placeholders = opts.keyIds.map(() => "?").join(",")
+      rows = this.db.query(`SELECT ${cols} FROM web_search_engine_usage WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`).all(...opts.keyIds, opts.start, opts.end)
+    } else if (opts.keyId) {
+      rows = this.db.query(`SELECT ${cols} FROM web_search_engine_usage WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour`).all(opts.keyId, opts.start, opts.end)
+    } else {
+      rows = this.db.query(`SELECT ${cols} FROM web_search_engine_usage WHERE hour >= ? AND hour < ? ORDER BY hour`).all(opts.start, opts.end)
+    }
+    return rows.map((r: any) => ({
+      keyId: r.key_id, engineId: r.engine_id, hour: r.hour,
+      attempts: r.attempts, successes: r.successes, failures: r.failures,
+      emptyResults: r.empty_results, totalResults: r.total_results,
+      successDurationMs: r.success_duration_ms, failureDurationMs: r.failure_duration_ms,
+    }))
+  }
+
+  async deleteAll(): Promise<void> {
+    this.db.query("DELETE FROM web_search_engine_usage").run()
   }
 }
 
@@ -817,6 +917,7 @@ export class SqliteRepo implements Repo {
   sessions: SessionRepo
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo
+  webSearchEngineUsage: WebSearchEngineUsageRepo
   keyAssignments: KeyAssignmentRepo
   deviceCodes: DeviceCodeRepo
   observabilityShares: ObservabilityShareRepo
@@ -834,6 +935,7 @@ export class SqliteRepo implements Repo {
     this.sessions = new SqliteSessionRepo(db)
     this.presence = new SqliteClientPresenceRepo(db)
     this.webSearchUsage = new SqliteWebSearchUsageRepo(db)
+    this.webSearchEngineUsage = new SqliteWebSearchEngineUsageRepo(db)
     this.keyAssignments = new SqliteKeyAssignmentRepo(db)
     this.deviceCodes = new SqliteDeviceCodeRepo(db)
     this.observabilityShares = new SqliteObservabilityShareRepo(db)

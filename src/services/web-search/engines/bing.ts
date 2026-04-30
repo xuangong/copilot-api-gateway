@@ -10,6 +10,7 @@ const USER_AGENT =
  * Works in Cloudflare Workers (no cheerio, uses regex parsing)
  */
 export class BingSearchEngine implements SearchEngine {
+  readonly id = "bing" as const
   readonly name = "Bing"
 
   private readonly baseUrl = "https://www.bing.com/search"

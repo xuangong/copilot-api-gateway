@@ -8,14 +8,18 @@ export interface ApiKey {
   quotaRequestsPerDay?: number
   quotaTokensPerDay?: number
   webSearchEnabled?: boolean
-  webSearchBingEnabled?: boolean
   webSearchLangsearchKey?: string
   webSearchTavilyKey?: string
-  webSearchCopilotEnabled?: boolean
-  webSearchCopilotPriority?: boolean
+
   webSearchMsGroundingKey?: string
   /** Ordered list of engine ids to try, e.g. ["msGrounding","langsearch","tavily","bing","copilot"]. Empty/undefined falls back to legacy resolution. */
   webSearchPriority?: string[]
+  /** When set, resolves to source api_key.id's webSearchLangsearchKey at request time. Mutually exclusive with webSearchLangsearchKey. */
+  webSearchLangsearchRef?: string
+  /** Same as above for Tavily. */
+  webSearchTavilyRef?: string
+  /** Same as above for Microsoft Grounding. */
+  webSearchMsGroundingRef?: string
 }
 
 export interface GitHubUser {
@@ -209,6 +213,25 @@ export interface WebSearchUsageRepo {
   deleteAll(): Promise<void>
 }
 
+export interface WebSearchEngineUsageRecord {
+  keyId: string
+  engineId: string
+  hour: string
+  attempts: number
+  successes: number
+  failures: number
+  emptyResults: number
+  totalResults: number
+  successDurationMs: number
+  failureDurationMs: number
+}
+
+export interface WebSearchEngineUsageRepo {
+  record(keyId: string, engineId: string, hour: string, attempt: { ok: boolean; resultCount: number; durationMs: number }): Promise<void>
+  query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<WebSearchEngineUsageRecord[]>
+  deleteAll(): Promise<void>
+}
+
 export interface KeyAssignment {
   keyId: string
   userId: string
@@ -271,6 +294,7 @@ export interface Repo {
   sessions: SessionRepo
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo
+  webSearchEngineUsage: WebSearchEngineUsageRepo
   keyAssignments: KeyAssignmentRepo
   observabilityShares: ObservabilityShareRepo
   deviceCodes: DeviceCodeRepo

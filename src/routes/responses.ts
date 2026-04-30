@@ -68,6 +68,7 @@ function countNativeWebSearchFromOutput(
     enginesUsed: [],
     successes: 0,
     failures: 0,
+    engineAttempts: [],
   }
   if (!Array.isArray(output)) return meta
   for (const item of output) {
@@ -99,6 +100,7 @@ async function countNativeWebSearchFromSSE(
     enginesUsed: [],
     successes: 0,
     failures: 0,
+    engineAttempts: [],
   }
   const reader = stream.getReader()
   const decoder = new TextDecoder("utf-8")

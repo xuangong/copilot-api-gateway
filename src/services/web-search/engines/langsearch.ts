@@ -24,6 +24,7 @@ const SEARCH_TIMEOUT_MS = 30_000
  * Requires API key from environment variable
  */
 export class LangSearchEngine implements SearchEngine {
+  readonly id = "langsearch" as const
   readonly name = "LangSearch"
 
   constructor(private readonly apiKey: string) {}

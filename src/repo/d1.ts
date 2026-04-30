@@ -25,6 +25,8 @@ import type {
   UserSession,
   WebSearchUsageRecord,
   WebSearchUsageRepo,
+  WebSearchEngineUsageRecord,
+  WebSearchEngineUsageRepo,
 } from "./types"
 
 interface D1Result<T = Record<string, unknown>> {
@@ -47,7 +49,7 @@ export interface D1Database {
 class D1ApiKeyRepo implements ApiKeyRepo {
   constructor(private db: D1Database) {}
 
-  private static readonly SELECT_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_copilot_enabled, web_search_copilot_priority, web_search_ms_grounding_key, web_search_priority"
+  private static readonly SELECT_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref"
 
   async list(): Promise<ApiKey[]> {
     const { results } = await this.db
@@ -83,10 +85,10 @@ class D1ApiKeyRepo implements ApiKeyRepo {
   async save(key: ApiKey): Promise<void> {
     await this.db
       .prepare(
-        `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_copilot_enabled, web_search_copilot_priority, web_search_ms_grounding_key, web_search_priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day, web_search_enabled = excluded.web_search_enabled, web_search_bing_enabled = excluded.web_search_bing_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key, web_search_copilot_enabled = excluded.web_search_copilot_enabled, web_search_copilot_priority = excluded.web_search_copilot_priority, web_search_ms_grounding_key = excluded.web_search_ms_grounding_key, web_search_priority = excluded.web_search_priority`,
+        `INSERT INTO api_keys (id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day, web_search_enabled = excluded.web_search_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key, web_search_ms_grounding_key = excluded.web_search_ms_grounding_key, web_search_priority = excluded.web_search_priority, web_search_langsearch_ref = excluded.web_search_langsearch_ref, web_search_tavily_ref = excluded.web_search_tavily_ref, web_search_ms_grounding_ref = excluded.web_search_ms_grounding_ref`,
       )
-      .bind(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null, key.quotaRequestsPerDay ?? null, key.quotaTokensPerDay ?? null, key.webSearchEnabled ? 1 : 0, key.webSearchBingEnabled ? 1 : 0, key.webSearchLangsearchKey ?? null, key.webSearchTavilyKey ?? null, key.webSearchCopilotEnabled ? 1 : 0, key.webSearchCopilotPriority ? 1 : 0, key.webSearchMsGroundingKey ?? null, key.webSearchPriority ? JSON.stringify(key.webSearchPriority) : null)
+      .bind(key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null, key.quotaRequestsPerDay ?? null, key.quotaTokensPerDay ?? null, key.webSearchEnabled ? 1 : 0, key.webSearchLangsearchKey ?? null, key.webSearchTavilyKey ?? null, key.webSearchMsGroundingKey ?? null, key.webSearchPriority ? JSON.stringify(key.webSearchPriority) : null, key.webSearchLangsearchRef ?? null, key.webSearchTavilyRef ?? null, key.webSearchMsGroundingRef ?? null)
       .run()
   }
 
@@ -110,13 +112,13 @@ interface ApiKeyRow {
   quota_requests_per_day: number | null
   quota_tokens_per_day: number | null
   web_search_enabled: number | null
-  web_search_bing_enabled: number | null
   web_search_langsearch_key: string | null
   web_search_tavily_key: string | null
-  web_search_copilot_enabled: number | null
-  web_search_copilot_priority: number | null
   web_search_ms_grounding_key: string | null
   web_search_priority: string | null
+  web_search_langsearch_ref?: string | null
+  web_search_tavily_ref?: string | null
+  web_search_ms_grounding_ref?: string | null
 }
 
 function toApiKey(row: ApiKeyRow): ApiKey {
@@ -137,13 +139,13 @@ function toApiKey(row: ApiKeyRow): ApiKey {
     quotaRequestsPerDay: row.quota_requests_per_day ?? undefined,
     quotaTokensPerDay: row.quota_tokens_per_day ?? undefined,
     webSearchEnabled: row.web_search_enabled === 1,
-    webSearchBingEnabled: row.web_search_bing_enabled === 1,
     webSearchLangsearchKey: row.web_search_langsearch_key ?? undefined,
     webSearchTavilyKey: row.web_search_tavily_key ?? undefined,
-    webSearchCopilotEnabled: row.web_search_copilot_enabled === 1,
-    webSearchCopilotPriority: row.web_search_copilot_priority === 1,
     webSearchMsGroundingKey: row.web_search_ms_grounding_key ?? undefined,
     webSearchPriority: priority,
+    webSearchLangsearchRef: row.web_search_langsearch_ref ?? undefined,
+    webSearchTavilyRef: row.web_search_tavily_ref ?? undefined,
+    webSearchMsGroundingRef: row.web_search_ms_grounding_ref ?? undefined,
   }
 }
 
@@ -746,6 +748,65 @@ class D1WebSearchUsageRepo implements WebSearchUsageRepo {
   }
 }
 
+class D1WebSearchEngineUsageRepo implements WebSearchEngineUsageRepo {
+  constructor(private db: D1Database) {}
+
+  async record(keyId: string, engineId: string, hour: string, attempt: { ok: boolean; resultCount: number; durationMs: number }): Promise<void> {
+    const successInc = attempt.ok ? 1 : 0
+    const failureInc = attempt.ok ? 0 : 1
+    const emptyInc = attempt.ok && attempt.resultCount === 0 ? 1 : 0
+    const successDur = attempt.ok ? attempt.durationMs : 0
+    const failureDur = attempt.ok ? 0 : attempt.durationMs
+    await this.db
+      .prepare(
+        `INSERT INTO web_search_engine_usage (key_id, engine_id, hour, attempts, successes, failures, empty_results, total_results, success_duration_ms, failure_duration_ms)
+         VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (key_id, engine_id, hour) DO UPDATE SET
+           attempts = attempts + 1,
+           successes = successes + ?,
+           failures = failures + ?,
+           empty_results = empty_results + ?,
+           total_results = total_results + ?,
+           success_duration_ms = success_duration_ms + ?,
+           failure_duration_ms = failure_duration_ms + ?`,
+      )
+      .bind(
+        keyId, engineId, hour,
+        successInc, failureInc, emptyInc, attempt.resultCount, successDur, failureDur,
+        successInc, failureInc, emptyInc, attempt.resultCount, successDur, failureDur,
+      )
+      .run()
+  }
+
+  async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<WebSearchEngineUsageRecord[]> {
+    const cols = "key_id, engine_id, hour, attempts, successes, failures, empty_results, total_results, success_duration_ms, failure_duration_ms"
+    let sql: string
+    let binds: unknown[]
+    if (opts.keyIds && opts.keyIds.length > 0) {
+      const placeholders = opts.keyIds.map(() => "?").join(",")
+      sql = `SELECT ${cols} FROM web_search_engine_usage WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`
+      binds = [...opts.keyIds, opts.start, opts.end]
+    } else if (opts.keyId) {
+      sql = `SELECT ${cols} FROM web_search_engine_usage WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour`
+      binds = [opts.keyId, opts.start, opts.end]
+    } else {
+      sql = `SELECT ${cols} FROM web_search_engine_usage WHERE hour >= ? AND hour < ? ORDER BY hour`
+      binds = [opts.start, opts.end]
+    }
+    const { results } = await this.db.prepare(sql).bind(...binds).all<{ key_id: string; engine_id: string; hour: string; attempts: number; successes: number; failures: number; empty_results: number; total_results: number; success_duration_ms: number; failure_duration_ms: number }>()
+    return results.map((r) => ({
+      keyId: r.key_id, engineId: r.engine_id, hour: r.hour,
+      attempts: r.attempts, successes: r.successes, failures: r.failures,
+      emptyResults: r.empty_results, totalResults: r.total_results,
+      successDurationMs: r.success_duration_ms, failureDurationMs: r.failure_duration_ms,
+    }))
+  }
+
+  async deleteAll(): Promise<void> {
+    await this.db.prepare("DELETE FROM web_search_engine_usage").run()
+  }
+}
+
 class D1KeyAssignmentRepo implements KeyAssignmentRepo {
   constructor(private db: D1Database) {}
 
@@ -894,6 +955,7 @@ export class D1Repo implements Repo {
   sessions: SessionRepo
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo
+  webSearchEngineUsage: WebSearchEngineUsageRepo
   keyAssignments: KeyAssignmentRepo
   observabilityShares: ObservabilityShareRepo
   deviceCodes: DeviceCodeRepo
@@ -909,6 +971,7 @@ export class D1Repo implements Repo {
     this.sessions = new D1SessionRepo(db)
     this.presence = new D1ClientPresenceRepo(db)
     this.webSearchUsage = new D1WebSearchUsageRepo(db)
+    this.webSearchEngineUsage = new D1WebSearchEngineUsageRepo(db)
     this.keyAssignments = new D1KeyAssignmentRepo(db)
     this.observabilityShares = new D1ObservabilityShareRepo(db)
     this.deviceCodes = new D1DeviceCodeRepo(db)

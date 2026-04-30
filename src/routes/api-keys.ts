@@ -17,8 +17,60 @@ function maskKey(key?: string): string | null {
   return key.slice(0, 4) + "****" + key.slice(-4)
 }
 
-function keyToJson(k: ApiKey, ownerName?: string, isOwner?: boolean) {
-  return { id: k.id, name: k.name, key: k.key, created_at: k.createdAt, last_used_at: k.lastUsedAt ?? null, owner_id: k.ownerId ?? null, owner_name: ownerName ?? null, is_owner: isOwner ?? true, quota_requests_per_day: k.quotaRequestsPerDay ?? null, quota_tokens_per_day: k.quotaTokensPerDay ?? null, web_search_enabled: k.webSearchEnabled ?? false, web_search_bing_enabled: k.webSearchBingEnabled ?? false, web_search_langsearch_key: maskKey(k.webSearchLangsearchKey), web_search_tavily_key: maskKey(k.webSearchTavilyKey), web_search_copilot_enabled: k.webSearchCopilotEnabled ?? false, web_search_copilot_priority: k.webSearchCopilotPriority ?? false }
+interface RefDescriptor {
+  id: string
+  name: string | null
+  owner_id: string | null
+  broken: true | undefined
+}
+
+/**
+ * Build the GET-shape ref descriptor for a borrowed engine key. If the
+ * source still exists, returns { id, name, owner_id }. If not, returns
+ * { id, name: null, owner_id: null, broken: true }. Caller passes the
+ * pre-loaded source map to avoid N+1 lookups.
+ */
+function refDescriptor(refId: string, sourceMap: Map<string, ApiKey>): RefDescriptor {
+  const src = sourceMap.get(refId)
+  if (!src) return { id: refId, name: null, owner_id: null, broken: true }
+  return { id: refId, name: src.name, owner_id: src.ownerId ?? null, broken: undefined }
+}
+
+/**
+ * Load the source map for a given API key's web search references.
+ * Fetches all referenced engine keys (langsearch, tavily, ms-grounding) in parallel.
+ */
+async function loadSourceMapForKey(k: ApiKey): Promise<Map<string, ApiKey>> {
+  const map = new Map<string, ApiKey>()
+  for (const refId of [k.webSearchLangsearchRef, k.webSearchTavilyRef, k.webSearchMsGroundingRef]) {
+    if (refId) {
+      const s = await getApiKeyById(refId)
+      if (s) map.set(refId, s)
+    }
+  }
+  return map
+}
+
+function keyToJson(k: ApiKey, ownerName?: string, isOwner?: boolean, sourceMap?: Map<string, ApiKey>) {
+  const map = sourceMap ?? new Map<string, ApiKey>()
+  const langsearchRef = k.webSearchLangsearchRef ? refDescriptor(k.webSearchLangsearchRef, map) : null
+  const tavilyRef = k.webSearchTavilyRef ? refDescriptor(k.webSearchTavilyRef, map) : null
+  const msGroundingRef = k.webSearchMsGroundingRef ? refDescriptor(k.webSearchMsGroundingRef, map) : null
+  return {
+    id: k.id, name: k.name, key: k.key, created_at: k.createdAt,
+    last_used_at: k.lastUsedAt ?? null, owner_id: k.ownerId ?? null,
+    owner_name: ownerName ?? null, is_owner: isOwner ?? true,
+    quota_requests_per_day: k.quotaRequestsPerDay ?? null,
+    quota_tokens_per_day: k.quotaTokensPerDay ?? null,
+    web_search_enabled: k.webSearchEnabled ?? false,
+    web_search_langsearch_key: langsearchRef ? null : maskKey(k.webSearchLangsearchKey),
+    web_search_langsearch_ref: langsearchRef,
+    web_search_tavily_key: tavilyRef ? null : maskKey(k.webSearchTavilyKey),
+    web_search_tavily_ref: tavilyRef,
+    web_search_ms_grounding_key: msGroundingRef ? null : maskKey(k.webSearchMsGroundingKey),
+    web_search_ms_grounding_ref: msGroundingRef,
+    web_search_priority: k.webSearchPriority ?? null,
+  }
 }
 
 interface AuthCtx {
@@ -33,6 +85,20 @@ async function checkOwnership(keyId: string, ctx: AuthCtx): Promise<boolean> {
   if (!ctx.userId) return false
   const key = await getApiKeyById(keyId)
   return key?.ownerId === ctx.userId
+}
+
+/**
+ * Same visibility rules as GET /api/keys: same owner OR key-assignment OR
+ * observability share. Admin always passes.
+ */
+async function checkRefVisible(refSourceId: string, ctx: AuthCtx): Promise<{ ok: boolean; reason?: string; status: number }> {
+  const src = await getApiKeyById(refSourceId)
+  if (!src) return { ok: false, reason: "Source key not found", status: 404 }
+  if (ctx.isAdmin) return { ok: true, status: 200 }
+  if (!ctx.userId) return { ok: false, reason: "Forbidden", status: 403 }
+  const { isKeyVisibleTo } = await import("~/services/web-search/resolver")
+  const visible = await isKeyVisibleTo(src, ctx.userId)
+  return visible ? { ok: true, status: 200 } : { ok: false, reason: "Source key not visible", status: 400 }
 }
 
 export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
@@ -63,8 +129,19 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
           if (u) assigneeNameMap.set(u.id, u.name)
         }
       }
+      const refIds = new Set<string>()
+      for (const k of keys) {
+        if (k.webSearchLangsearchRef) refIds.add(k.webSearchLangsearchRef)
+        if (k.webSearchTavilyRef) refIds.add(k.webSearchTavilyRef)
+        if (k.webSearchMsGroundingRef) refIds.add(k.webSearchMsGroundingRef)
+      }
+      const sourceMap = new Map<string, ApiKey>()
+      await Promise.all([...refIds].map(async (id) => {
+        const src = await getApiKeyById(id)
+        if (src) sourceMap.set(id, src)
+      }))
       return keys.map((k, i) => {
-        const json = keyToJson(k, k.ownerId ? ownerMap.get(k.ownerId) : undefined, true)
+        const json = keyToJson(k, k.ownerId ? ownerMap.get(k.ownerId) : undefined, true, sourceMap)
         const assignees = allAssignments[i]!.map(a => ({
           user_id: a.userId,
           user_name: assigneeNameMap.get(a.userId) ?? null,
@@ -94,8 +171,20 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
         }
       }
 
+      const ownRefIds = new Set<string>()
+      for (const k of ownKeys) {
+        if (k.webSearchLangsearchRef) ownRefIds.add(k.webSearchLangsearchRef)
+        if (k.webSearchTavilyRef) ownRefIds.add(k.webSearchTavilyRef)
+        if (k.webSearchMsGroundingRef) ownRefIds.add(k.webSearchMsGroundingRef)
+      }
+      const ownSourceMap = new Map<string, ApiKey>()
+      await Promise.all([...ownRefIds].map(async (id) => {
+        const src = await getApiKeyById(id)
+        if (src) ownSourceMap.set(id, src)
+      }))
+
       const result = ownKeys.map((k, i) => {
-        const json = keyToJson(k, undefined, true)
+        const json = keyToJson(k, undefined, true, ownSourceMap)
         const assignees = ownKeyAssignments[i]!.map(a => ({
           user_id: a.userId,
           user_name: assigneeNameMap.get(a.userId) ?? null,
@@ -111,9 +200,21 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
           const user = await repo.users.getById(id)
           if (user) ownerMap.set(id, user.name)
         }))
+        const assignedRefIds = new Set<string>()
+        for (const k of assignedKeys) {
+          if (!k) continue
+          if (k.webSearchLangsearchRef) assignedRefIds.add(k.webSearchLangsearchRef)
+          if (k.webSearchTavilyRef) assignedRefIds.add(k.webSearchTavilyRef)
+          if (k.webSearchMsGroundingRef) assignedRefIds.add(k.webSearchMsGroundingRef)
+        }
+        const assignedSourceMap = new Map<string, ApiKey>()
+        await Promise.all([...assignedRefIds].map(async (id) => {
+          const src = await getApiKeyById(id)
+          if (src) assignedSourceMap.set(id, src)
+        }))
         for (const k of assignedKeys) {
           if (k && !ownKeys.some(o => o.id === k.id)) {
-            result.push({ ...keyToJson(k, k.ownerId ? ownerMap.get(k.ownerId) : undefined, false), assignees: [] })
+            result.push({ ...keyToJson(k, k.ownerId ? ownerMap.get(k.ownerId) : undefined, false, assignedSourceMap), assignees: [] })
           }
         }
       }
@@ -124,7 +225,9 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     // Legacy API key user (no owner): return only the caller's own key
     if (apiKeyId) {
       const key = await getApiKeyById(apiKeyId)
-      return key ? [keyToJson(key)] : []
+      if (!key) return []
+      const sourceMap = await loadSourceMapForKey(key)
+      return [keyToJson(key, undefined, true, sourceMap)]
     }
 
     return []
@@ -144,7 +247,7 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     }
     const ownerId = isUser && userId ? userId : undefined
     const key = await createApiKey(name, ownerId)
-    return keyToJson(key)
+    return keyToJson(key, undefined, true, new Map())
   })
 
   // GET /api/keys/:id - get a specific API key
@@ -164,7 +267,8 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
         headers: { "Content-Type": "application/json" },
       })
     }
-    return keyToJson(key)
+    const sourceMap = await loadSourceMapForKey(key)
+    return keyToJson(key, undefined, true, sourceMap)
   })
 
   // PATCH /api/keys/:id - rename an API key or update quota
@@ -174,7 +278,25 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     if (!(await checkOwnership(params.id, authCtx))) {
       return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { "Content-Type": "application/json" } })
     }
-    const { name, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_copilot_enabled, web_search_copilot_priority } = body as { name?: string; quota_requests_per_day?: number | null; quota_tokens_per_day?: number | null; web_search_enabled?: boolean; web_search_bing_enabled?: boolean; web_search_langsearch_key?: string | null; web_search_tavily_key?: string | null; web_search_copilot_enabled?: boolean; web_search_copilot_priority?: boolean }
+    const {
+      name, quota_requests_per_day, quota_tokens_per_day,
+      web_search_enabled,
+      web_search_langsearch_key, web_search_tavily_key,
+      web_search_ms_grounding_key, web_search_priority,
+      web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref,
+    } = body as {
+      name?: string;
+      quota_requests_per_day?: number | null;
+      quota_tokens_per_day?: number | null;
+      web_search_enabled?: boolean;
+      web_search_langsearch_key?: string | null;
+      web_search_tavily_key?: string | null;
+      web_search_ms_grounding_key?: string | null;
+      web_search_priority?: string[] | null;
+      web_search_langsearch_ref?: string | null;
+      web_search_tavily_ref?: string | null;
+      web_search_ms_grounding_ref?: string | null;
+    }
     const existing = await getApiKeyById(params.id)
     if (!existing) {
       return new Response(JSON.stringify({ error: "Key not found" }), {
@@ -201,23 +323,46 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     if (web_search_enabled !== undefined) {
       updated.webSearchEnabled = web_search_enabled
     }
-    if (web_search_bing_enabled !== undefined) {
-      updated.webSearchBingEnabled = web_search_bing_enabled
+
+    // XOR enforcement: literal vs ref for each of the three secret engines.
+    const pairs: Array<[string, unknown, unknown, keyof ApiKey, keyof ApiKey]> = [
+      ["langsearch", web_search_langsearch_key, web_search_langsearch_ref, "webSearchLangsearchKey", "webSearchLangsearchRef"],
+      ["tavily", web_search_tavily_key, web_search_tavily_ref, "webSearchTavilyKey", "webSearchTavilyRef"],
+      ["ms_grounding", web_search_ms_grounding_key, web_search_ms_grounding_ref, "webSearchMsGroundingKey", "webSearchMsGroundingRef"],
+    ]
+    for (const [engineLabel, literalVal, refVal, literalField, refField] of pairs) {
+      const literalProvided = literalVal !== undefined && literalVal !== null && literalVal !== ""
+      const refProvided = refVal !== undefined && refVal !== null && refVal !== ""
+      if (literalProvided && refProvided) {
+        return new Response(JSON.stringify({ error: `Cannot set both web_search_${engineLabel}_key and web_search_${engineLabel}_ref` }), { status: 400, headers: { "Content-Type": "application/json" } })
+      }
+      if (refProvided) {
+        const check = await checkRefVisible(refVal as string, authCtx)
+        if (!check.ok) {
+          return new Response(JSON.stringify({ error: check.reason }), { status: check.status, headers: { "Content-Type": "application/json" } })
+        }
+        ;(updated as any)[refField] = refVal
+        ;(updated as any)[literalField] = undefined
+      } else if (refVal === null) {
+        ;(updated as any)[refField] = undefined
+      }
+      if (literalProvided) {
+        ;(updated as any)[literalField] = literalVal
+        ;(updated as any)[refField] = undefined
+      } else if (literalVal === null) {
+        ;(updated as any)[literalField] = undefined
+      }
     }
-    if (web_search_langsearch_key !== undefined) {
-      updated.webSearchLangsearchKey = web_search_langsearch_key === null ? undefined : web_search_langsearch_key
+
+    if (web_search_priority !== undefined) {
+      updated.webSearchPriority = web_search_priority === null ? undefined : web_search_priority
     }
-    if (web_search_tavily_key !== undefined) {
-      updated.webSearchTavilyKey = web_search_tavily_key === null ? undefined : web_search_tavily_key
-    }
-    if (web_search_copilot_enabled !== undefined) {
-      updated.webSearchCopilotEnabled = web_search_copilot_enabled
-    }
-    if (web_search_copilot_priority !== undefined) {
-      updated.webSearchCopilotPriority = web_search_copilot_priority
-    }
+
     await getRepo().apiKeys.save(updated)
-    return keyToJson(updated)
+    const { invalidateResolverCache } = await import("~/services/web-search/resolver")
+    invalidateResolverCache(updated.id)
+    const sourceMap = await loadSourceMapForKey(updated)
+    return keyToJson(updated, undefined, true, sourceMap)
   })
 
   // POST /api/keys/:id/rotate - rotate an API key
@@ -234,7 +379,8 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
         headers: { "Content-Type": "application/json" },
       })
     }
-    return keyToJson(key)
+    const sourceMap = await loadSourceMapForKey(key)
+    return keyToJson(key, undefined, true, sourceMap)
   })
 
   // DELETE /api/keys/:id - delete an API key
@@ -256,15 +402,19 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
   })
 
   // GET /api/keys/:id/web-search-usage - get web search usage for a key
+  // Query: ?range=1d|7d|30d (default 1d)
   .get("/:id/web-search-usage", async (ctx) => {
-    const { params } = ctx
+    const { params, query } = ctx
     const authCtx = ctx as unknown as AuthCtx
     if (!(await checkOwnership(params.id, authCtx))) {
       return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { "Content-Type": "application/json" } })
     }
+    const rangeRaw = (query as Record<string, string | undefined>)?.range ?? "1d"
+    const days = rangeRaw === "30d" ? 30 : rangeRaw === "7d" ? 7 : 1
     const now = new Date()
-    const todayStart = now.toISOString().slice(0, 10) + "T00"
     const tomorrowStart = new Date(now.getTime() + 86400000).toISOString().slice(0, 10) + "T00"
+    const startDate = new Date(now.getTime() - (days - 1) * 86400000)
+    const todayStart = startDate.toISOString().slice(0, 10) + "T00"
     const records = await getRepo().webSearchUsage.query({ keyId: params.id, start: todayStart, end: tomorrowStart })
     let searches = 0, successes = 0, failures = 0
     for (const r of records) {
@@ -272,7 +422,25 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
       successes += r.successes
       failures += r.failures
     }
-    return { searches, successes, failures, records }
+    const engineRecords = await getRepo().webSearchEngineUsage.query({ keyId: params.id, start: todayStart, end: tomorrowStart })
+    const engineMap = new Map<string, { engineId: string; attempts: number; successes: number; failures: number; emptyResults: number; totalResults: number; successDurationMs: number; failureDurationMs: number }>()
+    for (const r of engineRecords) {
+      const cur = engineMap.get(r.engineId) ?? { engineId: r.engineId, attempts: 0, successes: 0, failures: 0, emptyResults: 0, totalResults: 0, successDurationMs: 0, failureDurationMs: 0 }
+      cur.attempts += r.attempts
+      cur.successes += r.successes
+      cur.failures += r.failures
+      cur.emptyResults += r.emptyResults
+      cur.totalResults += r.totalResults
+      cur.successDurationMs += r.successDurationMs
+      cur.failureDurationMs += r.failureDurationMs
+      engineMap.set(r.engineId, cur)
+    }
+    const engines = Array.from(engineMap.values()).map((e) => ({
+      ...e,
+      avgSuccessMs: Math.round(e.successDurationMs / Math.max(e.successes, 1)),
+      avgFailureMs: Math.round(e.failureDurationMs / Math.max(e.failures, 1)),
+    }))
+    return { range: `${days}d`, days, searches, successes, failures, records, engines }
   })
 
   // POST /api/keys/:id/assign - assign key to a user (admin or key owner)
@@ -379,12 +547,17 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     const updated = {
       ...target,
       webSearchEnabled: source.webSearchEnabled,
-      webSearchBingEnabled: source.webSearchBingEnabled,
-      webSearchLangsearchKey: source.webSearchLangsearchKey,
-      webSearchTavilyKey: source.webSearchTavilyKey,
-      webSearchCopilotEnabled: source.webSearchCopilotEnabled,
-      webSearchCopilotPriority: source.webSearchCopilotPriority,
+      webSearchPriority: source.webSearchPriority,
+      webSearchLangsearchKey: undefined,
+      webSearchLangsearchRef: source.webSearchLangsearchKey ? source.id : undefined,
+      webSearchTavilyKey: undefined,
+      webSearchTavilyRef: source.webSearchTavilyKey ? source.id : undefined,
+      webSearchMsGroundingKey: undefined,
+      webSearchMsGroundingRef: source.webSearchMsGroundingKey ? source.id : undefined,
     }
     await getRepo().apiKeys.save(updated)
-    return keyToJson(updated)
+    const { invalidateResolverCache } = await import("~/services/web-search/resolver")
+    invalidateResolverCache(updated.id)
+    const sourceMap = await loadSourceMapForKey(updated)
+    return keyToJson(updated, undefined, true, sourceMap)
   })

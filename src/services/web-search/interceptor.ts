@@ -21,6 +21,7 @@ const emptyMeta = (): WebSearchMeta => ({
   enginesUsed: [],
   successes: 0,
   failures: 0,
+  engineAttempts: [],
 })
 
 interface SearchExecutionResult {
@@ -149,6 +150,7 @@ async function executeAllSearches(
         searchCount,
         maxUses,
         engineManager,
+        meta,
       )
     meta.totalResults += resultCount
     if (isError) {
@@ -202,6 +204,7 @@ const handleSearchExecution = async (
   searchCount: number,
   maxUses: number,
   engineManager: EngineManager,
+  meta: WebSearchMeta,
 ): Promise<SearchExecutionResult> => {
   if (searchCount > maxUses) {
     console.warn(`[Web Search] Max uses (${maxUses}) exceeded`)
@@ -222,10 +225,11 @@ const handleSearchExecution = async (
   }
 
   try {
-    const { results, engineName } = await engineManager.search(
+    const { results, engineName, attempts } = await engineManager.search(
       query,
       searchOptions,
     )
+    for (const a of attempts) meta.engineAttempts.push(a)
 
     return {
       content: formatSearchResults(results),
