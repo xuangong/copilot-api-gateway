@@ -989,10 +989,10 @@ export function renderKeysTab(): string {
                         <div class="flex items-center gap-2 text-[10px]">
                           <span class="font-mono text-themed-secondary w-20" x-text="eng.engineId"></span>
                           <span class="text-accent-teal" x-text="eng.successes + ' ok'"></span>
-                          <span class="text-themed-dim" x-show="eng.emptyResults > 0" x-text="'(' + eng.emptyResults + ' empty)'"></span>
+                          <span class="text-accent-amber" x-show="eng.emptyResults > 0"
+                            x-text="'(' + eng.emptyResults + ' empty ' + Math.round(eng.emptyResults * 100 / Math.max(eng.successes, 1)) + '%)'"></span>
                           <span class="text-accent-red" x-show="eng.failures > 0" x-text="eng.failures + ' fail'"></span>
                           <span class="text-themed-dim" x-text="'avg ' + eng.avgDurationMs + 'ms'"></span>
-                          <span class="text-themed-dim" x-text="eng.totalResults + ' results'"></span>
                         </div>
                       </template>
                     </div>
