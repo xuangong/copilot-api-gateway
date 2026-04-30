@@ -100,11 +100,22 @@ export async function resolveWebSearchKeys(
     return pickFromSource(source) // ignores source's own ref → no transitive
   }
 
-  const [langsearchKey, tavilyKey, msFromRef] = await Promise.all([
+  // Promise.allSettled so a transient DB error on one ref does not throw away
+  // literals from the other engines — honors the "silently degrade to undefined"
+  // contract documented above.
+  const settled = await Promise.allSettled([
     resolveOne(keyConfig.webSearchLangsearchKey, keyConfig.webSearchLangsearchRef, s => s.webSearchLangsearchKey),
     resolveOne(keyConfig.webSearchTavilyKey, keyConfig.webSearchTavilyRef, s => s.webSearchTavilyKey),
     resolveOne(keyConfig.webSearchMsGroundingKey, keyConfig.webSearchMsGroundingRef, s => s.webSearchMsGroundingKey),
   ])
+  const pick = (r: PromiseSettledResult<string | undefined>): string | undefined => {
+    if (r.status === "fulfilled") return r.value
+    console.warn("[web-search] resolver leg rejected:", r.reason)
+    return undefined
+  }
+  const [langsearchKey, tavilyKey, msFromRef] = settled.map(pick) as [
+    string | undefined, string | undefined, string | undefined,
+  ]
 
   const value: ResolvedWebSearchKeys = {
     langsearchKey,
