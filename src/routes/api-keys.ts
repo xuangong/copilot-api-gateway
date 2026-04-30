@@ -90,6 +90,20 @@ async function checkOwnership(keyId: string, ctx: AuthCtx): Promise<boolean> {
   return key?.ownerId === ctx.userId
 }
 
+/**
+ * Same visibility rules as GET /api/keys: same owner OR key-assignment OR
+ * observability share. Admin always passes.
+ */
+async function checkRefVisible(refSourceId: string, ctx: AuthCtx): Promise<{ ok: boolean; reason?: string; status: number }> {
+  const src = await getApiKeyById(refSourceId)
+  if (!src) return { ok: false, reason: "Source key not found", status: 404 }
+  if (ctx.isAdmin) return { ok: true, status: 200 }
+  if (!ctx.userId) return { ok: false, reason: "Forbidden", status: 403 }
+  const { isKeyVisibleTo } = await import("~/services/web-search/resolver")
+  const visible = await isKeyVisibleTo(src, ctx.userId)
+  return visible ? { ok: true, status: 200 } : { ok: false, reason: "Source key not visible", status: 400 }
+}
+
 export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
   // GET /api/keys - list API keys
   // Admin: all keys; User: only their own keys
@@ -267,7 +281,29 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     if (!(await checkOwnership(params.id, authCtx))) {
       return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { "Content-Type": "application/json" } })
     }
-    const { name, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_bing_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_copilot_enabled, web_search_copilot_priority } = body as { name?: string; quota_requests_per_day?: number | null; quota_tokens_per_day?: number | null; web_search_enabled?: boolean; web_search_bing_enabled?: boolean; web_search_langsearch_key?: string | null; web_search_tavily_key?: string | null; web_search_copilot_enabled?: boolean; web_search_copilot_priority?: boolean }
+    const {
+      name, quota_requests_per_day, quota_tokens_per_day,
+      web_search_enabled, web_search_bing_enabled,
+      web_search_langsearch_key, web_search_tavily_key,
+      web_search_copilot_enabled, web_search_copilot_priority,
+      web_search_ms_grounding_key, web_search_priority,
+      web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref,
+    } = body as {
+      name?: string;
+      quota_requests_per_day?: number | null;
+      quota_tokens_per_day?: number | null;
+      web_search_enabled?: boolean;
+      web_search_bing_enabled?: boolean;
+      web_search_langsearch_key?: string | null;
+      web_search_tavily_key?: string | null;
+      web_search_copilot_enabled?: boolean;
+      web_search_copilot_priority?: boolean;
+      web_search_ms_grounding_key?: string | null;
+      web_search_priority?: string[] | null;
+      web_search_langsearch_ref?: string | null;
+      web_search_tavily_ref?: string | null;
+      web_search_ms_grounding_ref?: string | null;
+    }
     const existing = await getApiKeyById(params.id)
     if (!existing) {
       return new Response(JSON.stringify({ error: "Key not found" }), {
@@ -297,19 +333,50 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     if (web_search_bing_enabled !== undefined) {
       updated.webSearchBingEnabled = web_search_bing_enabled
     }
-    if (web_search_langsearch_key !== undefined) {
-      updated.webSearchLangsearchKey = web_search_langsearch_key === null ? undefined : web_search_langsearch_key
-    }
-    if (web_search_tavily_key !== undefined) {
-      updated.webSearchTavilyKey = web_search_tavily_key === null ? undefined : web_search_tavily_key
-    }
     if (web_search_copilot_enabled !== undefined) {
       updated.webSearchCopilotEnabled = web_search_copilot_enabled
     }
     if (web_search_copilot_priority !== undefined) {
       updated.webSearchCopilotPriority = web_search_copilot_priority
     }
+
+    // XOR enforcement: literal vs ref for each of the three secret engines.
+    const pairs: Array<[string, unknown, unknown, keyof ApiKey, keyof ApiKey]> = [
+      ["langsearch", web_search_langsearch_key, web_search_langsearch_ref, "webSearchLangsearchKey", "webSearchLangsearchRef"],
+      ["tavily", web_search_tavily_key, web_search_tavily_ref, "webSearchTavilyKey", "webSearchTavilyRef"],
+      ["ms_grounding", web_search_ms_grounding_key, web_search_ms_grounding_ref, "webSearchMsGroundingKey", "webSearchMsGroundingRef"],
+    ]
+    for (const [engineLabel, literalVal, refVal, literalField, refField] of pairs) {
+      const literalProvided = literalVal !== undefined && literalVal !== null && literalVal !== ""
+      const refProvided = refVal !== undefined && refVal !== null && refVal !== ""
+      if (literalProvided && refProvided) {
+        return new Response(JSON.stringify({ error: `Cannot set both web_search_${engineLabel}_key and web_search_${engineLabel}_ref` }), { status: 400, headers: { "Content-Type": "application/json" } })
+      }
+      if (refProvided) {
+        const check = await checkRefVisible(refVal as string, authCtx)
+        if (!check.ok) {
+          return new Response(JSON.stringify({ error: check.reason }), { status: check.status, headers: { "Content-Type": "application/json" } })
+        }
+        ;(updated as any)[refField] = refVal
+        ;(updated as any)[literalField] = undefined
+      } else if (refVal === null) {
+        ;(updated as any)[refField] = undefined
+      }
+      if (literalProvided) {
+        ;(updated as any)[literalField] = literalVal
+        ;(updated as any)[refField] = undefined
+      } else if (literalVal === null) {
+        ;(updated as any)[literalField] = undefined
+      }
+    }
+
+    if (web_search_priority !== undefined) {
+      updated.webSearchPriority = web_search_priority === null ? undefined : web_search_priority
+    }
+
     await getRepo().apiKeys.save(updated)
+    const { invalidateResolverCache } = await import("~/services/web-search/resolver")
+    invalidateResolverCache(updated.id)
     const sourceMap = await loadSourceMapForKey(updated)
     return keyToJson(updated, undefined, true, sourceMap)
   })
