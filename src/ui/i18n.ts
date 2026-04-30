@@ -512,7 +512,7 @@ export function renderI18nScript(): string {
       "dash.wsBorrowedFrom": "链接自",
       "dash.wsBorrowedUnavailable": "链接（不可用）",
       "dash.wsBuiltin": "内置",
-      "dash.wsUnlink": "解除借用",
+      "dash.wsUnlink": "解除链接",
       "dash.wsReplace": "替换",
       "dash.wsBorrowPickerTitle": "选择要链接的 Key",
       "dash.wsPriority": "引擎优先级（管理员）",
