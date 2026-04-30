@@ -12,7 +12,7 @@ export interface ApiKey {
   webSearchLangsearchKey?: string
   webSearchTavilyKey?: string
   webSearchCopilotEnabled?: boolean
-  webSearchCopilotPriority?: boolean
+
   webSearchMsGroundingKey?: string
   /** Ordered list of engine ids to try, e.g. ["msGrounding","langsearch","tavily","bing","copilot"]. Empty/undefined falls back to legacy resolution. */
   webSearchPriority?: string[]

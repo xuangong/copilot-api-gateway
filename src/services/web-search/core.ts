@@ -108,7 +108,6 @@ export async function loadWebSearchConfig(
       bingEnabled: keyConfig.webSearchBingEnabled,
       githubToken,
       copilotEnabled: keyConfig.webSearchCopilotEnabled,
-      copilotPriority: keyConfig.webSearchCopilotPriority,
       msGroundingKey: resolved.msGroundingKey,
       priority: keyConfig.webSearchPriority,
     },

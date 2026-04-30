@@ -71,7 +71,6 @@ function keyToJson(k: ApiKey, ownerName?: string, isOwner?: boolean, sourceMap?:
     web_search_ms_grounding_key: msGroundingRef ? null : maskKey(k.webSearchMsGroundingKey),
     web_search_ms_grounding_ref: msGroundingRef,
     web_search_copilot_enabled: k.webSearchCopilotEnabled ?? false,
-    web_search_copilot_priority: k.webSearchCopilotPriority ?? false,
     web_search_priority: k.webSearchPriority ?? null,
   }
 }
@@ -285,7 +284,7 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
       name, quota_requests_per_day, quota_tokens_per_day,
       web_search_enabled, web_search_bing_enabled,
       web_search_langsearch_key, web_search_tavily_key,
-      web_search_copilot_enabled, web_search_copilot_priority,
+      web_search_copilot_enabled,
       web_search_ms_grounding_key, web_search_priority,
       web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref,
     } = body as {
@@ -297,7 +296,6 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
       web_search_langsearch_key?: string | null;
       web_search_tavily_key?: string | null;
       web_search_copilot_enabled?: boolean;
-      web_search_copilot_priority?: boolean;
       web_search_ms_grounding_key?: string | null;
       web_search_priority?: string[] | null;
       web_search_langsearch_ref?: string | null;
@@ -335,9 +333,6 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     }
     if (web_search_copilot_enabled !== undefined) {
       updated.webSearchCopilotEnabled = web_search_copilot_enabled
-    }
-    if (web_search_copilot_priority !== undefined) {
-      updated.webSearchCopilotPriority = web_search_copilot_priority
     }
 
     // XOR enforcement: literal vs ref for each of the three secret engines.
@@ -543,7 +538,6 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
       webSearchEnabled: source.webSearchEnabled,
       webSearchBingEnabled: source.webSearchBingEnabled,
       webSearchCopilotEnabled: source.webSearchCopilotEnabled,
-      webSearchCopilotPriority: source.webSearchCopilotPriority,
       webSearchPriority: source.webSearchPriority,
       webSearchLangsearchKey: undefined,
       webSearchLangsearchRef: source.webSearchLangsearchKey ? source.id : undefined,

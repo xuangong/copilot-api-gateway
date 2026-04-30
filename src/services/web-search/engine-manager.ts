@@ -27,7 +27,6 @@ export interface EngineManagerOptions {
   /** GitHub OAuth/PAT token used by Copilot MCP web_search (NOT the short-lived copilot session token). */
   githubToken?: string
   copilotEnabled?: boolean
-  copilotPriority?: boolean
   /** Microsoft Grounding (api.microsoft.ai) key. */
   msGroundingKey?: string
   /**
@@ -37,8 +36,7 @@ export interface EngineManagerOptions {
    * ids and unconfigured engines are silently skipped.
    *
    * If undefined/empty, falls back to the legacy chain:
-   *   msGrounding (if key) -> copilotPriority exclusive (if set)
-   *                        -> langsearch -> tavily -> bing -> copilot.
+   *   msGrounding (if key) -> langsearch -> tavily -> bing -> copilot.
    */
   priority?: string[]
 }
@@ -74,10 +72,6 @@ export class EngineManager {
     }
 
     const copilotAvailable = !!(options.copilotEnabled && options.githubToken)
-    if (copilotAvailable && options.copilotPriority) {
-      this.engines.push(new CopilotSearchEngine(options.githubToken!))
-      return
-    }
 
     if (options.langsearchKey) {
       this.engines.push(new LangSearchEngine(options.langsearchKey))

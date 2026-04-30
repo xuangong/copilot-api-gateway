@@ -796,10 +796,6 @@ export function renderKeysTab(): string {
                   <input type="checkbox" x-model="wsEditCopilot" class="accent-accent-violet" />
                   Use GitHub Copilot Search
                 </label>
-                <label class="flex items-center gap-2 text-xs text-themed-secondary cursor-pointer" x-show="wsEditEnabled && wsEditCopilot">
-                  <input type="checkbox" x-model="wsEditCopilotPriority" class="accent-accent-violet" />
-                  Prefer Copilot over other engines
-                </label>
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -851,6 +847,28 @@ export function renderKeysTab(): string {
                   </template>
                 </div>
               </div>
+              <!-- Admin-only: per-key engine priority -->
+              <template x-if="isAdmin">
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between">
+                    <label class="text-xs text-themed-dim" x-text="t('dash.wsPriority')"></label>
+                    <button type="button" @click="resetWsPriority()" class="btn-ghost text-[10px]" x-text="t('dash.wsPriorityReset')"></button>
+                  </div>
+                  <p class="text-[10px] text-themed-dim" x-text="t('dash.wsPriorityHint')"></p>
+                  <div class="space-y-1">
+                    <template x-for="(eng, idx) in wsEditPriority" :key="eng">
+                      <div class="flex items-center gap-2 px-2 py-1 rounded bg-surface-700/50">
+                        <span class="text-[10px] text-themed-dim w-4" x-text="(idx + 1) + '.'"></span>
+                        <span class="text-xs font-mono text-themed flex-1" x-text="eng"></span>
+                        <button type="button" @click="moveWsPriority(idx, -1)" :disabled="idx === 0"
+                          class="btn-ghost text-xs px-1.5 py-0.5 disabled:opacity-30" title="Up">&#9650;</button>
+                        <button type="button" @click="moveWsPriority(idx, 1)" :disabled="idx === wsEditPriority.length - 1"
+                          class="btn-ghost text-xs px-1.5 py-0.5 disabled:opacity-30" title="Down">&#9660;</button>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </template>
               <!-- Copy from another key -->
               <div class="flex items-center gap-2">
                 <select x-model="wsCopySourceId" class="!text-xs !py-1.5 !px-3 !rounded-lg flex-1">
@@ -908,7 +926,7 @@ export function renderKeysTab(): string {
                       <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.enabled ? 'bg-accent-amber/20 text-accent-amber' : 'bg-surface-600 text-themed-dim'"
                         x-text="wsConfig.enabled ? 'Bing \u2713' : 'Bing'"></span>
                       <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.copilotEnabled ? 'bg-accent-teal/20 text-accent-teal' : 'bg-surface-600 text-themed-dim'"
-                        x-text="wsConfig.copilotEnabled ? (wsConfig.copilotPriority ? 'Copilot \u2605' : 'Copilot \u2713') : 'Copilot'"></span>
+                        x-text="wsConfig.copilotEnabled ? 'Copilot \u2713' : 'Copilot'"></span>
                     </div>
                   </div>
                   <!-- Today's usage -->

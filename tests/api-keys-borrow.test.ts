@@ -145,7 +145,6 @@ describe("POST /api/keys/:id/copy-web-search-from/:sourceId", () => {
       ...(await getRepo().apiKeys.getById(sourceId))!,
       webSearchPriority: ["msGrounding", "langsearch"],
       webSearchBingEnabled: true,
-      webSearchCopilotPriority: true,
     })
     const targetId = await createKey("u1", { langsearch: "old-target-literal" })
     const res = await app.handle(
@@ -160,7 +159,6 @@ describe("POST /api/keys/:id/copy-web-search-from/:sourceId", () => {
     expect(stored?.webSearchTavilyRef).toBe(sourceId)
     expect(stored?.webSearchMsGroundingRef).toBeUndefined()
     expect(stored?.webSearchBingEnabled).toBe(true)
-    expect(stored?.webSearchCopilotPriority).toBe(true)
     expect(stored?.webSearchPriority).toEqual(["msGrounding", "langsearch"])
   })
 })

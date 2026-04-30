@@ -348,7 +348,7 @@ export function dashboardAssets(): string {
       wsEditEnabled: false,
       wsEditBing: false,
       wsEditCopilot: false,
-      wsEditCopilotPriority: false,
+      wsEditPriority: ['msGrounding', 'langsearch', 'tavily', 'bing', 'copilot'],
       wsEditLangsearch: '',
       wsEditTavily: '',
       wsEditMsGrounding: '',
@@ -357,7 +357,7 @@ export function dashboardAssets(): string {
       wsEditMsGroundingRef: '',
       wsCopySourceId: '',
       borrowPickerEngine: '',
-      wsConfig: { enabled: false, bingEnabled: false, copilotEnabled: false, copilotPriority: false, langsearchKey: null, tavilyKey: null, msGroundingKey: null, langsearchRef: null, tavilyRef: null, msGroundingRef: null },
+      wsConfig: { enabled: false, bingEnabled: false, copilotEnabled: false, langsearchKey: null, tavilyKey: null, msGroundingKey: null, langsearchRef: null, tavilyRef: null, msGroundingRef: null },
       wsUsage: { searches: 0, successes: 0, failures: 0 },
 
       // Relays tab
@@ -2090,7 +2090,6 @@ export function dashboardAssets(): string {
               enabled: key?.web_search_enabled ?? false,
               bingEnabled: key?.web_search_bing_enabled ?? false,
               copilotEnabled: key?.web_search_copilot_enabled ?? false,
-              copilotPriority: key?.web_search_copilot_priority ?? false,
               langsearchKey: key?.web_search_langsearch_key ?? null,
               tavilyKey: key?.web_search_tavily_key ?? null,
               msGroundingKey: key?.web_search_ms_grounding_key ?? null,
@@ -2113,7 +2112,10 @@ export function dashboardAssets(): string {
             this.wsEditEnabled = key?.web_search_enabled ?? false;
             this.wsEditBing = key?.web_search_bing_enabled ?? false;
             this.wsEditCopilot = key?.web_search_copilot_enabled ?? false;
-            this.wsEditCopilotPriority = key?.web_search_copilot_priority ?? false;
+            const ENGINE_IDS = ['msGrounding', 'langsearch', 'tavily', 'bing', 'copilot'];
+            const stored = Array.isArray(key?.web_search_priority) ? key.web_search_priority.filter(e => ENGINE_IDS.includes(e)) : [];
+            const missing = ENGINE_IDS.filter(e => !stored.includes(e));
+            this.wsEditPriority = stored.length ? [...stored, ...missing] : [...ENGINE_IDS];
             this.wsEditLangsearch = '';
             this.wsEditTavily = '';
             this.wsEditMsGrounding = '';
@@ -2132,8 +2134,13 @@ export function dashboardAssets(): string {
                 web_search_enabled: this.wsEditEnabled,
                 web_search_bing_enabled: this.wsEditEnabled,
                 web_search_copilot_enabled: this.wsEditCopilot,
-                web_search_copilot_priority: this.wsEditCopilotPriority,
               };
+              if (this.isAdmin) {
+                const DEFAULT_ORDER = ['msGrounding', 'langsearch', 'tavily', 'bing', 'copilot'];
+                const isDefault = this.wsEditPriority.length === 5
+                  && this.wsEditPriority.every((e, i) => e === DEFAULT_ORDER[i]);
+                body.web_search_priority = isDefault ? null : this.wsEditPriority;
+              }
               if (this.wsEditLangsearchRef) {
                 body.web_search_langsearch_ref = this.wsEditLangsearchRef;
               } else if (this.wsEditLangsearch) {
@@ -2187,6 +2194,17 @@ export function dashboardAssets(): string {
             } catch (e) {
               console.error('copyWebSearchFrom:', e);
             }
+          },
+
+          moveWsPriority(idx, delta) {
+            const j = idx + delta;
+            if (j < 0 || j >= this.wsEditPriority.length) return;
+            const arr = [...this.wsEditPriority];
+            [arr[idx], arr[j]] = [arr[j], arr[idx]];
+            this.wsEditPriority = arr;
+          },
+          resetWsPriority() {
+            this.wsEditPriority = ['msGrounding', 'langsearch', 'tavily', 'bing', 'copilot'];
           },
 
           get borrowCandidatesLangsearch() {
