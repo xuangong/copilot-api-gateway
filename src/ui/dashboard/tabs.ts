@@ -948,6 +948,9 @@ export function renderKeysTab(): string {
                           <template x-if="!slot.ref && slot.key">
                             <span class="font-mono opacity-80" x-text="slot.key"></span>
                           </template>
+                          <template x-if="!slot.ref && !slot.key && slot.builtin">
+                            <span class="opacity-70" x-text="t('dash.wsBuiltin')"></span>
+                          </template>
                           <template x-if="!slot.ref && !slot.key && !slot.builtin">
                             <span class="opacity-60">—</span>
                           </template>
