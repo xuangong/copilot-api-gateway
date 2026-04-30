@@ -18,6 +18,7 @@ const SNIPPET_WINDOW = 240
  * `text/event-stream` and carries a single JSON-RPC frame in `data:` lines.
  */
 export class CopilotSearchEngine implements SearchEngine {
+  readonly id = "copilot" as const
   readonly name = "Copilot"
 
   constructor(private readonly githubToken: string) {}

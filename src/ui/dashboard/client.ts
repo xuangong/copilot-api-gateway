@@ -356,7 +356,7 @@ export function dashboardAssets(): string {
       wsCopySourceId: '',
       borrowPickerEngine: '',
       wsConfig: { enabled: false, langsearchKey: null, tavilyKey: null, msGroundingKey: null, langsearchRef: null, tavilyRef: null, msGroundingRef: null },
-      wsUsage: { searches: 0, successes: 0, failures: 0 },
+      wsUsage: { searches: 0, successes: 0, failures: 0, engines: [] },
 
       // Relays tab
       relays: [],
@@ -2093,12 +2093,12 @@ export function dashboardAssets(): string {
               tavilyRef: key?.web_search_tavily_ref ?? null,
               msGroundingRef: key?.web_search_ms_grounding_ref ?? null,
             };
-            this.wsUsage = { searches: 0, successes: 0, failures: 0 };
+            this.wsUsage = { searches: 0, successes: 0, failures: 0, engines: [] };
             // Load usage stats
             fetch('/api/keys/' + keyId + '/web-search-usage', { credentials: 'same-origin' })
               .then(r => r.ok ? r.json() : null)
               .then(data => {
-                if (data) this.wsUsage = { searches: data.searches, successes: data.successes, failures: data.failures };
+                if (data) this.wsUsage = { searches: data.searches, successes: data.successes, failures: data.failures, engines: data.engines || [] };
               })
               .catch(() => {});
           },

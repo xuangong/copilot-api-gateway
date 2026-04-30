@@ -1,5 +1,5 @@
 import type { SearchResult } from "./types"
-import type { SearchEngine, SearchOptions } from "./engines"
+import type { SearchEngine, SearchOptions, EngineId } from "./engines"
 import {
   BingSearchEngine,
   CopilotSearchEngine,
@@ -10,7 +10,7 @@ import {
 } from "./engines"
 
 /** Canonical engine ids used in priority lists. */
-export type EngineId = "msGrounding" | "langsearch" | "tavily" | "bing" | "copilot"
+export type { EngineId }
 
 export const ENGINE_IDS: readonly EngineId[] = [
   "msGrounding",
@@ -19,6 +19,13 @@ export const ENGINE_IDS: readonly EngineId[] = [
   "bing",
   "copilot",
 ] as const
+
+export interface EngineAttempt {
+  engineId: EngineId
+  ok: boolean
+  resultCount: number
+  durationMs: number
+}
 
 export interface EngineManagerOptions {
   langsearchKey?: string
@@ -99,12 +106,18 @@ export class EngineManager {
   async search(
     query: string,
     options?: SearchOptions,
-  ): Promise<{ results: SearchResult[]; engineName: string }> {
+  ): Promise<{ results: SearchResult[]; engineName: string; attempts: EngineAttempt[] }> {
+    const attempts: EngineAttempt[] = []
     for (const engine of this.engines) {
+      const start = performance.now()
       try {
         const results = await engine.search(query, options)
-        return { results, engineName: engine.name }
+        const durationMs = Math.round(performance.now() - start)
+        attempts.push({ engineId: engine.id, ok: true, resultCount: results.length, durationMs })
+        return { results, engineName: engine.name, attempts }
       } catch (error) {
+        const durationMs = Math.round(performance.now() - start)
+        attempts.push({ engineId: engine.id, ok: false, resultCount: 0, durationMs })
         if (error instanceof QuotaExceededError) {
           console.warn(
             `[EngineManager] ${engine.name} quota exceeded, trying next engine`,
@@ -117,6 +130,6 @@ export class EngineManager {
       }
     }
     console.error("[EngineManager] All search engines failed")
-    return { results: [], engineName: "none" }
+    return { results: [], engineName: "none", attempts }
   }
 }

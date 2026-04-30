@@ -25,6 +25,8 @@ import type {
   UserSession,
   WebSearchUsageRecord,
   WebSearchUsageRepo,
+  WebSearchEngineUsageRecord,
+  WebSearchEngineUsageRepo,
 } from "./types"
 
 interface D1Result<T = Record<string, unknown>> {
@@ -746,6 +748,61 @@ class D1WebSearchUsageRepo implements WebSearchUsageRepo {
   }
 }
 
+class D1WebSearchEngineUsageRepo implements WebSearchEngineUsageRepo {
+  constructor(private db: D1Database) {}
+
+  async record(keyId: string, engineId: string, hour: string, attempt: { ok: boolean; resultCount: number; durationMs: number }): Promise<void> {
+    const successInc = attempt.ok ? 1 : 0
+    const failureInc = attempt.ok ? 0 : 1
+    const emptyInc = attempt.ok && attempt.resultCount === 0 ? 1 : 0
+    await this.db
+      .prepare(
+        `INSERT INTO web_search_engine_usage (key_id, engine_id, hour, attempts, successes, failures, empty_results, total_results, total_duration_ms)
+         VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)
+         ON CONFLICT (key_id, engine_id, hour) DO UPDATE SET
+           attempts = attempts + 1,
+           successes = successes + ?,
+           failures = failures + ?,
+           empty_results = empty_results + ?,
+           total_results = total_results + ?,
+           total_duration_ms = total_duration_ms + ?`,
+      )
+      .bind(
+        keyId, engineId, hour,
+        successInc, failureInc, emptyInc, attempt.resultCount, attempt.durationMs,
+        successInc, failureInc, emptyInc, attempt.resultCount, attempt.durationMs,
+      )
+      .run()
+  }
+
+  async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<WebSearchEngineUsageRecord[]> {
+    const cols = "key_id, engine_id, hour, attempts, successes, failures, empty_results, total_results, total_duration_ms"
+    let sql: string
+    let binds: unknown[]
+    if (opts.keyIds && opts.keyIds.length > 0) {
+      const placeholders = opts.keyIds.map(() => "?").join(",")
+      sql = `SELECT ${cols} FROM web_search_engine_usage WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`
+      binds = [...opts.keyIds, opts.start, opts.end]
+    } else if (opts.keyId) {
+      sql = `SELECT ${cols} FROM web_search_engine_usage WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour`
+      binds = [opts.keyId, opts.start, opts.end]
+    } else {
+      sql = `SELECT ${cols} FROM web_search_engine_usage WHERE hour >= ? AND hour < ? ORDER BY hour`
+      binds = [opts.start, opts.end]
+    }
+    const { results } = await this.db.prepare(sql).bind(...binds).all<{ key_id: string; engine_id: string; hour: string; attempts: number; successes: number; failures: number; empty_results: number; total_results: number; total_duration_ms: number }>()
+    return results.map((r) => ({
+      keyId: r.key_id, engineId: r.engine_id, hour: r.hour,
+      attempts: r.attempts, successes: r.successes, failures: r.failures,
+      emptyResults: r.empty_results, totalResults: r.total_results, totalDurationMs: r.total_duration_ms,
+    }))
+  }
+
+  async deleteAll(): Promise<void> {
+    await this.db.prepare("DELETE FROM web_search_engine_usage").run()
+  }
+}
+
 class D1KeyAssignmentRepo implements KeyAssignmentRepo {
   constructor(private db: D1Database) {}
 
@@ -894,6 +951,7 @@ export class D1Repo implements Repo {
   sessions: SessionRepo
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo
+  webSearchEngineUsage: WebSearchEngineUsageRepo
   keyAssignments: KeyAssignmentRepo
   observabilityShares: ObservabilityShareRepo
   deviceCodes: DeviceCodeRepo
@@ -909,6 +967,7 @@ export class D1Repo implements Repo {
     this.sessions = new D1SessionRepo(db)
     this.presence = new D1ClientPresenceRepo(db)
     this.webSearchUsage = new D1WebSearchUsageRepo(db)
+    this.webSearchEngineUsage = new D1WebSearchEngineUsageRepo(db)
     this.keyAssignments = new D1KeyAssignmentRepo(db)
     this.observabilityShares = new D1ObservabilityShareRepo(db)
     this.deviceCodes = new D1DeviceCodeRepo(db)

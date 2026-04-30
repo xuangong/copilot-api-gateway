@@ -26,6 +26,8 @@ import type {
   UserSession,
   WebSearchUsageRecord,
   WebSearchUsageRepo,
+  WebSearchEngineUsageRecord,
+  WebSearchEngineUsageRepo,
 } from "./types"
 
 const INIT_SQL = `
@@ -127,6 +129,19 @@ CREATE TABLE IF NOT EXISTS web_search_usage (
   successes INTEGER NOT NULL DEFAULT 0,
   failures INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (key_id, hour)
+);
+
+CREATE TABLE IF NOT EXISTS web_search_engine_usage (
+  key_id TEXT NOT NULL,
+  engine_id TEXT NOT NULL,
+  hour TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  successes INTEGER NOT NULL DEFAULT 0,
+  failures INTEGER NOT NULL DEFAULT 0,
+  empty_results INTEGER NOT NULL DEFAULT 0,
+  total_results INTEGER NOT NULL DEFAULT 0,
+  total_duration_ms INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (key_id, engine_id, hour)
 );
 `
 
@@ -705,6 +720,53 @@ class SqliteWebSearchUsageRepo implements WebSearchUsageRepo {
   }
 }
 
+class SqliteWebSearchEngineUsageRepo implements WebSearchEngineUsageRepo {
+  constructor(private db: Database) {}
+
+  async record(keyId: string, engineId: string, hour: string, attempt: { ok: boolean; resultCount: number; durationMs: number }): Promise<void> {
+    const successInc = attempt.ok ? 1 : 0
+    const failureInc = attempt.ok ? 0 : 1
+    const emptyInc = attempt.ok && attempt.resultCount === 0 ? 1 : 0
+    this.db.query(
+      `INSERT INTO web_search_engine_usage (key_id, engine_id, hour, attempts, successes, failures, empty_results, total_results, total_duration_ms)
+       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)
+       ON CONFLICT (key_id, engine_id, hour) DO UPDATE SET
+         attempts = attempts + 1,
+         successes = successes + ?,
+         failures = failures + ?,
+         empty_results = empty_results + ?,
+         total_results = total_results + ?,
+         total_duration_ms = total_duration_ms + ?`,
+    ).run(
+      keyId, engineId, hour,
+      successInc, failureInc, emptyInc, attempt.resultCount, attempt.durationMs,
+      successInc, failureInc, emptyInc, attempt.resultCount, attempt.durationMs,
+    )
+  }
+
+  async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<WebSearchEngineUsageRecord[]> {
+    const cols = "key_id, engine_id, hour, attempts, successes, failures, empty_results, total_results, total_duration_ms"
+    let rows: any[]
+    if (opts.keyIds && opts.keyIds.length > 0) {
+      const placeholders = opts.keyIds.map(() => "?").join(",")
+      rows = this.db.query(`SELECT ${cols} FROM web_search_engine_usage WHERE key_id IN (${placeholders}) AND hour >= ? AND hour < ? ORDER BY hour`).all(...opts.keyIds, opts.start, opts.end)
+    } else if (opts.keyId) {
+      rows = this.db.query(`SELECT ${cols} FROM web_search_engine_usage WHERE key_id = ? AND hour >= ? AND hour < ? ORDER BY hour`).all(opts.keyId, opts.start, opts.end)
+    } else {
+      rows = this.db.query(`SELECT ${cols} FROM web_search_engine_usage WHERE hour >= ? AND hour < ? ORDER BY hour`).all(opts.start, opts.end)
+    }
+    return rows.map((r: any) => ({
+      keyId: r.key_id, engineId: r.engine_id, hour: r.hour,
+      attempts: r.attempts, successes: r.successes, failures: r.failures,
+      emptyResults: r.empty_results, totalResults: r.total_results, totalDurationMs: r.total_duration_ms,
+    }))
+  }
+
+  async deleteAll(): Promise<void> {
+    this.db.query("DELETE FROM web_search_engine_usage").run()
+  }
+}
+
 class SqliteKeyAssignmentRepo implements KeyAssignmentRepo {
   constructor(private db: Database) {}
 
@@ -833,6 +895,7 @@ export class SqliteRepo implements Repo {
   sessions: SessionRepo
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo
+  webSearchEngineUsage: WebSearchEngineUsageRepo
   keyAssignments: KeyAssignmentRepo
   deviceCodes: DeviceCodeRepo
   observabilityShares: ObservabilityShareRepo
@@ -850,6 +913,7 @@ export class SqliteRepo implements Repo {
     this.sessions = new SqliteSessionRepo(db)
     this.presence = new SqliteClientPresenceRepo(db)
     this.webSearchUsage = new SqliteWebSearchUsageRepo(db)
+    this.webSearchEngineUsage = new SqliteWebSearchEngineUsageRepo(db)
     this.keyAssignments = new SqliteKeyAssignmentRepo(db)
     this.deviceCodes = new SqliteDeviceCodeRepo(db)
     this.observabilityShares = new SqliteObservabilityShareRepo(db)

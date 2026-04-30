@@ -152,6 +152,13 @@ export const messagesRoute = new Elysia()
             for (let i = 0; i < meta.failures; i++) {
               repo.webSearchUsage.record(apiKeyId, hour, false).catch(() => {})
             }
+            for (const a of meta.engineAttempts) {
+              repo.webSearchEngineUsage.record(apiKeyId, a.engineId, hour, {
+                ok: a.ok,
+                resultCount: a.resultCount,
+                durationMs: a.durationMs,
+              }).catch(() => {})
+            }
           }
         }
       }

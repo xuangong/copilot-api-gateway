@@ -213,6 +213,24 @@ export interface WebSearchUsageRepo {
   deleteAll(): Promise<void>
 }
 
+export interface WebSearchEngineUsageRecord {
+  keyId: string
+  engineId: string
+  hour: string
+  attempts: number
+  successes: number
+  failures: number
+  emptyResults: number
+  totalResults: number
+  totalDurationMs: number
+}
+
+export interface WebSearchEngineUsageRepo {
+  record(keyId: string, engineId: string, hour: string, attempt: { ok: boolean; resultCount: number; durationMs: number }): Promise<void>
+  query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<WebSearchEngineUsageRecord[]>
+  deleteAll(): Promise<void>
+}
+
 export interface KeyAssignment {
   keyId: string
   userId: string
@@ -275,6 +293,7 @@ export interface Repo {
   sessions: SessionRepo
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo
+  webSearchEngineUsage: WebSearchEngineUsageRepo
   keyAssignments: KeyAssignmentRepo
   observabilityShares: ObservabilityShareRepo
   deviceCodes: DeviceCodeRepo

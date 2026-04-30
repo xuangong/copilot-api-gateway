@@ -1,11 +1,14 @@
 import type { SearchResult } from "../types"
 
+export type EngineId = "msGrounding" | "langsearch" | "tavily" | "bing" | "copilot"
+
 export interface SearchOptions {
   allowedDomains?: string[]
   blockedDomains?: string[]
 }
 
 export interface SearchEngine {
+  readonly id: EngineId
   readonly name: string
   search(query: string, options?: SearchOptions): Promise<SearchResult[]>
 }

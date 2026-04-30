@@ -418,7 +418,23 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
       successes += r.successes
       failures += r.failures
     }
-    return { searches, successes, failures, records }
+    const engineRecords = await getRepo().webSearchEngineUsage.query({ keyId: params.id, start: todayStart, end: tomorrowStart })
+    const engineMap = new Map<string, { engineId: string; attempts: number; successes: number; failures: number; emptyResults: number; totalResults: number; totalDurationMs: number }>()
+    for (const r of engineRecords) {
+      const cur = engineMap.get(r.engineId) ?? { engineId: r.engineId, attempts: 0, successes: 0, failures: 0, emptyResults: 0, totalResults: 0, totalDurationMs: 0 }
+      cur.attempts += r.attempts
+      cur.successes += r.successes
+      cur.failures += r.failures
+      cur.emptyResults += r.emptyResults
+      cur.totalResults += r.totalResults
+      cur.totalDurationMs += r.totalDurationMs
+      engineMap.set(r.engineId, cur)
+    }
+    const engines = Array.from(engineMap.values()).map((e) => ({
+      ...e,
+      avgDurationMs: Math.round(e.totalDurationMs / Math.max(e.attempts, 1)),
+    }))
+    return { searches, successes, failures, records, engines }
   })
 
   // POST /api/keys/:id/assign - assign key to a user (admin or key owner)

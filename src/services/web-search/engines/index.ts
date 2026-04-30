@@ -1,4 +1,4 @@
-export type { SearchEngine, SearchOptions } from "./interface"
+export type { SearchEngine, SearchOptions, EngineId } from "./interface"
 export { filterByDomain, QuotaExceededError } from "./interface"
 
 export { BingSearchEngine } from "./bing"

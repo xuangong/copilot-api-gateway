@@ -14,6 +14,7 @@ export const emptyMeta = (): WebSearchMeta => ({
   enginesUsed: [],
   successes: 0,
   failures: 0,
+  engineAttempts: [],
 })
 
 export interface SearchExecutionResult {
@@ -40,7 +41,8 @@ export async function executeWebSearch(
   }
 
   try {
-    const { results, engineName } = await engineManager.search(query, searchOptions)
+    const { results, engineName, attempts } = await engineManager.search(query, searchOptions)
+    for (const a of attempts) meta.engineAttempts.push(a)
     const resultCount = results.length
     meta.totalResults += resultCount
     meta.successes++
@@ -139,5 +141,12 @@ export function recordWebSearchUsage(
   }
   for (let i = 0; i < meta.failures; i++) {
     repo.webSearchUsage.record(apiKeyId, hour, false).catch(() => {})
+  }
+  for (const a of meta.engineAttempts) {
+    repo.webSearchEngineUsage.record(apiKeyId, a.engineId, hour, {
+      ok: a.ok,
+      resultCount: a.resultCount,
+      durationMs: a.durationMs,
+    }).catch(() => {})
   }
 }

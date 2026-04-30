@@ -17,6 +17,7 @@ const SEARCH_TIMEOUT_MS = 30_000
  * Requires API key from environment variable
  */
 export class TavilySearchEngine implements SearchEngine {
+  readonly id = "tavily" as const
   readonly name = "Tavily"
 
   constructor(private readonly apiKey: string) {}
