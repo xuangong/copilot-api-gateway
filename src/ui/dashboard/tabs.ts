@@ -984,16 +984,16 @@ export function renderKeysTab(): string {
                     <span class="text-[10px] text-accent-red" x-show="wsUsage.failures > 0" x-text="wsUsage.failures + ' failed'"></span>
                   </div>
                   <template x-if="wsUsage.engines && wsUsage.engines.length > 0">
-                    <div class="space-y-1 mt-1">
+                    <div class="space-y-1.5 mt-1">
                       <template x-for="eng in wsUsage.engines" :key="eng.engineId">
-                        <div class="flex items-center gap-2 text-[10px]">
-                          <span class="font-mono text-themed-secondary w-20" x-text="eng.engineId"></span>
-                          <span class="text-accent-teal" x-text="eng.successes + ' ok'"></span>
-                          <span class="text-accent-amber" x-show="eng.emptyResults > 0"
-                            x-text="'(' + eng.emptyResults + ' empty ' + Math.round(eng.emptyResults * 100 / Math.max(eng.successes, 1)) + '%)'"></span>
-                          <span class="text-accent-red" x-show="eng.failures > 0" x-text="eng.failures + ' fail'"></span>
-                          <span class="text-themed-dim" x-show="eng.successes > 0" x-text="'ok avg ' + eng.avgSuccessMs + 'ms'"></span>
-                          <span class="text-themed-dim" x-show="eng.failures > 0" x-text="'fail avg ' + eng.avgFailureMs + 'ms'"></span>
+                        <div class="flex items-center gap-1.5 flex-wrap text-[10px]">
+                          <span class="font-mono text-themed-secondary w-20 shrink-0" x-text="eng.engineId"></span>
+                          <span class="px-1.5 py-0.5 rounded bg-accent-teal/15 text-accent-teal" x-text="eng.successes + ' ok'"></span>
+                          <span class="px-1.5 py-0.5 rounded bg-accent-amber/15 text-accent-amber" x-show="eng.emptyResults > 0"
+                            x-text="eng.emptyResults + ' empty · ' + Math.round(eng.emptyResults * 100 / Math.max(eng.successes, 1)) + '%'"></span>
+                          <span class="px-1.5 py-0.5 rounded bg-accent-red/15 text-accent-red" x-show="eng.failures > 0" x-text="eng.failures + ' fail'"></span>
+                          <span class="px-1.5 py-0.5 rounded bg-surface-700 text-themed-dim" x-show="eng.successes > 0" x-text="'ok ~' + eng.avgSuccessMs + 'ms'"></span>
+                          <span class="px-1.5 py-0.5 rounded bg-surface-700 text-themed-dim" x-show="eng.failures > 0" x-text="'fail ~' + eng.avgFailureMs + 'ms'"></span>
                         </div>
                       </template>
                     </div>
