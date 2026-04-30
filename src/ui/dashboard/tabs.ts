@@ -801,7 +801,13 @@ export function renderKeysTab(): string {
                       <button type="button" @click="wsEditLangsearchRef = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsUnlink')"></button>
                     </div>
                   </template>
-                  <template x-if="!wsEditLangsearchRef">
+                  <template x-if="!wsEditLangsearchRef && wsConfig.langsearchKey && !wsEditLangsearch">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.langsearchKey"></span>
+                      <button type="button" @click="wsEditLangsearch = ' '" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsReplace')"></button>
+                    </div>
+                  </template>
+                  <template x-if="!wsEditLangsearchRef && (!wsConfig.langsearchKey || wsEditLangsearch)">
                     <div class="flex items-center gap-2">
                       <input type="text" x-model="wsEditLangsearch" placeholder="Not set"
                         class="!text-xs !py-1.5 !px-3 flex-1 !rounded-lg font-mono" />
@@ -817,7 +823,13 @@ export function renderKeysTab(): string {
                       <button type="button" @click="wsEditTavilyRef = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsUnlink')"></button>
                     </div>
                   </template>
-                  <template x-if="!wsEditTavilyRef">
+                  <template x-if="!wsEditTavilyRef && wsConfig.tavilyKey && !wsEditTavily">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.tavilyKey"></span>
+                      <button type="button" @click="wsEditTavily = ' '" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsReplace')"></button>
+                    </div>
+                  </template>
+                  <template x-if="!wsEditTavilyRef && (!wsConfig.tavilyKey || wsEditTavily)">
                     <div class="flex items-center gap-2">
                       <input type="text" x-model="wsEditTavily" placeholder="Not set"
                         class="!text-xs !py-1.5 !px-3 flex-1 !rounded-lg font-mono" />
@@ -833,7 +845,13 @@ export function renderKeysTab(): string {
                       <button type="button" @click="wsEditMsGroundingRef = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsUnlink')"></button>
                     </div>
                   </template>
-                  <template x-if="!wsEditMsGroundingRef">
+                  <template x-if="!wsEditMsGroundingRef && wsConfig.msGroundingKey && !wsEditMsGrounding">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.msGroundingKey"></span>
+                      <button type="button" @click="wsEditMsGrounding = ' '" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsReplace')"></button>
+                    </div>
+                  </template>
+                  <template x-if="!wsEditMsGroundingRef && (!wsConfig.msGroundingKey || wsEditMsGrounding)">
                     <div class="flex items-center gap-2">
                       <input type="text" x-model="wsEditMsGrounding" placeholder="Not set"
                         class="!text-xs !py-1.5 !px-3 flex-1 !rounded-lg font-mono" />
@@ -919,6 +937,44 @@ export function renderKeysTab(): string {
                       <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.tavilyKey ? 'bg-accent-teal/20 text-accent-teal' : 'bg-surface-600 text-themed-dim'"
                         x-text="wsConfig.tavilyKey ? 'Tavily \u2713' : 'Tavily'"></span>
                     </div>
+                  </div>
+                  <div class="space-y-1">
+                    <template x-if="wsConfig.langsearchRef">
+                      <div class="flex items-center gap-2 text-xs">
+                        <span class="text-themed-dim w-24">LangSearch</span>
+                        <span class="font-mono text-themed-secondary truncate" x-text="wsConfig.langsearchRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.langsearchRef.name || wsConfig.langsearchRef.id)"></span>
+                      </div>
+                    </template>
+                    <template x-if="!wsConfig.langsearchRef && wsConfig.langsearchKey">
+                      <div class="flex items-center gap-2 text-xs">
+                        <span class="text-themed-dim w-24">LangSearch</span>
+                        <span class="font-mono text-themed-secondary truncate" x-text="wsConfig.langsearchKey"></span>
+                      </div>
+                    </template>
+                    <template x-if="wsConfig.tavilyRef">
+                      <div class="flex items-center gap-2 text-xs">
+                        <span class="text-themed-dim w-24">Tavily</span>
+                        <span class="font-mono text-themed-secondary truncate" x-text="wsConfig.tavilyRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.tavilyRef.name || wsConfig.tavilyRef.id)"></span>
+                      </div>
+                    </template>
+                    <template x-if="!wsConfig.tavilyRef && wsConfig.tavilyKey">
+                      <div class="flex items-center gap-2 text-xs">
+                        <span class="text-themed-dim w-24">Tavily</span>
+                        <span class="font-mono text-themed-secondary truncate" x-text="wsConfig.tavilyKey"></span>
+                      </div>
+                    </template>
+                    <template x-if="wsConfig.msGroundingRef">
+                      <div class="flex items-center gap-2 text-xs">
+                        <span class="text-themed-dim w-24">MS Grounding</span>
+                        <span class="font-mono text-themed-secondary truncate" x-text="wsConfig.msGroundingRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.msGroundingRef.name || wsConfig.msGroundingRef.id)"></span>
+                      </div>
+                    </template>
+                    <template x-if="!wsConfig.msGroundingRef && wsConfig.msGroundingKey">
+                      <div class="flex items-center gap-2 text-xs">
+                        <span class="text-themed-dim w-24">MS Grounding</span>
+                        <span class="font-mono text-themed-secondary truncate" x-text="wsConfig.msGroundingKey"></span>
+                      </div>
+                    </template>
                   </div>
                   <!-- Today's usage -->
                   <div class="flex items-center gap-4">

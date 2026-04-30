@@ -2135,18 +2135,18 @@ export function dashboardAssets(): string {
               }
               if (this.wsEditLangsearchRef) {
                 body.web_search_langsearch_ref = this.wsEditLangsearchRef;
-              } else if (this.wsEditLangsearch) {
-                body.web_search_langsearch_key = this.wsEditLangsearch;
+              } else if (this.wsEditLangsearch.trim()) {
+                body.web_search_langsearch_key = this.wsEditLangsearch.trim();
               }
               if (this.wsEditTavilyRef) {
                 body.web_search_tavily_ref = this.wsEditTavilyRef;
-              } else if (this.wsEditTavily) {
-                body.web_search_tavily_key = this.wsEditTavily;
+              } else if (this.wsEditTavily.trim()) {
+                body.web_search_tavily_key = this.wsEditTavily.trim();
               }
               if (this.wsEditMsGroundingRef) {
                 body.web_search_ms_grounding_ref = this.wsEditMsGroundingRef;
-              } else if (this.wsEditMsGrounding) {
-                body.web_search_ms_grounding_key = this.wsEditMsGrounding;
+              } else if (this.wsEditMsGrounding.trim()) {
+                body.web_search_ms_grounding_key = this.wsEditMsGrounding.trim();
               }
               const resp = await fetch('/api/keys/' + this.selectedKeyId, {
                 method: 'PATCH',
