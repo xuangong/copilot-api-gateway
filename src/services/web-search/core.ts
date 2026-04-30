@@ -78,6 +78,7 @@ export interface WebSearchConfigResult {
 export async function loadWebSearchConfig(
   apiKeyId: string | undefined,
   githubToken: string,
+  msGroundingKey?: string,
 ): Promise<WebSearchConfigResult> {
   const keyConfig = apiKeyId ? await getApiKeyById(apiKeyId) : null
   if (!keyConfig?.webSearchEnabled) {
@@ -105,6 +106,7 @@ export async function loadWebSearchConfig(
       githubToken,
       copilotEnabled: keyConfig.webSearchCopilotEnabled,
       copilotPriority: keyConfig.webSearchCopilotPriority,
+      msGroundingKey,
     },
   }
 }

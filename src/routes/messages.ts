@@ -122,6 +122,7 @@ export const messagesRoute = new Elysia()
           githubToken: state.githubToken,
           copilotEnabled: keyConfig.webSearchCopilotEnabled,
           copilotPriority: keyConfig.webSearchCopilotPriority,
+          msGroundingKey: state.msGroundingKey,
         },
       })
 

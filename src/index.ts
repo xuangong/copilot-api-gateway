@@ -119,6 +119,7 @@ async function loadUserState(userId: string, env: Env, storage: KVStorage): Prom
     tokenMiss,
     langsearchKey: env.LANGSEARCH_API_KEY,
     tavilyKey: env.TAVILY_API_KEY,
+    msGroundingKey: env.MS_GROUNDING_API_KEY,
   }
 }
 
@@ -174,6 +175,7 @@ async function loadGlobalState(env: Env, storage: KVStorage): Promise<AppState> 
     tokenMiss,
     langsearchKey: env.LANGSEARCH_API_KEY,
     tavilyKey: env.TAVILY_API_KEY,
+    msGroundingKey: env.MS_GROUNDING_API_KEY,
   }
 }
 
@@ -211,6 +213,7 @@ async function loadStateViaKeyOwner(userId: string, env: Env, storage: KVStorage
       tokenMiss: false,
       langsearchKey: env.LANGSEARCH_API_KEY,
       tavilyKey: env.TAVILY_API_KEY,
+      msGroundingKey: env.MS_GROUNDING_API_KEY,
     }
   }
 }

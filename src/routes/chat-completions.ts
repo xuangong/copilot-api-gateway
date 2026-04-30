@@ -109,7 +109,7 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
   // loop synchronously and either return JSON or replay as a single-chunk
   // SSE for streaming clients. Anthropic-equivalent flow lives in messages.ts.
   if (hasOpenAIWebSearch(payload as unknown as OpenAIChatPayload)) {
-    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken)
+    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken, state.msGroundingKey)
     if (!cfg.enabled) return cfg.errorResponse!
 
     const wantsStream = payload.stream === true

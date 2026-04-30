@@ -177,6 +177,7 @@ interface LocalEnv {
   GOOGLE_CLIENT_SECRET?: string
   LANGSEARCH_API_KEY?: string
   TAVILY_API_KEY?: string
+  MS_GROUNDING_API_KEY?: string
   RESEND_API_KEY?: string
   PORT?: string
 }
@@ -188,6 +189,7 @@ const env: LocalEnv = {
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   LANGSEARCH_API_KEY: process.env.LANGSEARCH_API_KEY,
   TAVILY_API_KEY: process.env.TAVILY_API_KEY,
+  MS_GROUNDING_API_KEY: process.env.MS_GROUNDING_API_KEY,
   RESEND_API_KEY: process.env.RESEND_API_KEY,
   PORT: process.env.PORT,
 }
@@ -298,6 +300,7 @@ async function loadState(storage: FileStorage, ownerId?: string): Promise<AppSta
     tokenMiss,
     langsearchKey: env.LANGSEARCH_API_KEY,
     tavilyKey: env.TAVILY_API_KEY,
+    msGroundingKey: env.MS_GROUNDING_API_KEY,
   }
 }
 

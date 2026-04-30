@@ -11,6 +11,7 @@ export interface AppState {
   // Search engine API keys
   langsearchKey?: string
   tavilyKey?: string
+  msGroundingKey?: string
 }
 
 export interface Env {
@@ -23,5 +24,6 @@ export interface Env {
   GOOGLE_CLIENT_SECRET?: string
   LANGSEARCH_API_KEY?: string
   TAVILY_API_KEY?: string
+  MS_GROUNDING_API_KEY?: string
   RESEND_API_KEY?: string
 }

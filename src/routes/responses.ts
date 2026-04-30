@@ -203,7 +203,7 @@ const handleResponses = async (ctx: unknown) => {
   //    web_search/web_search_preview, returning web_search_call items
   //    with grounded text. We pass through and only meter the result.
   if (wantsWebSearch && useChatFallback) {
-    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken)
+    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken, state.msGroundingKey)
     if (!cfg.enabled) return cfg.errorResponse!
 
     const upstreamTimer = startTimer()
@@ -268,7 +268,7 @@ const handleResponses = async (ctx: unknown) => {
   // intercept path would have returned.
   let directWebSearchEnabled = false
   if (wantsWebSearch && !useChatFallback) {
-    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken)
+    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken, state.msGroundingKey)
     if (!cfg.enabled) return cfg.errorResponse!
     directWebSearchEnabled = true
   }

@@ -85,7 +85,7 @@ async function handleGenerateContent(ctx: RouteContext) {
 
   // ── Web-search interception ──
   if (hasGeminiWebSearch(body)) {
-    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken)
+    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken, state.msGroundingKey)
     if (!cfg.enabled) {
       return new Response(
         JSON.stringify({ error: { code: 400, message: "Web search is not enabled for this API key.", status: "FAILED_PRECONDITION" } }),
@@ -200,7 +200,7 @@ async function handleStreamGenerateContent(
 
   // ── Web-search interception (synthesized single chunk into stream pipeline) ──
   if (hasGeminiWebSearch(body)) {
-    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken)
+    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken, state.msGroundingKey)
     if (!cfg.enabled) {
       return new Response(
         JSON.stringify({ error: { code: 400, message: "Web search is not enabled for this API key.", status: "FAILED_PRECONDITION" } }),
