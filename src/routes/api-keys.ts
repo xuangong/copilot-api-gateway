@@ -402,15 +402,19 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
   })
 
   // GET /api/keys/:id/web-search-usage - get web search usage for a key
+  // Query: ?range=1d|7d|30d (default 1d)
   .get("/:id/web-search-usage", async (ctx) => {
-    const { params } = ctx
+    const { params, query } = ctx
     const authCtx = ctx as unknown as AuthCtx
     if (!(await checkOwnership(params.id, authCtx))) {
       return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { "Content-Type": "application/json" } })
     }
+    const rangeRaw = (query as Record<string, string | undefined>)?.range ?? "1d"
+    const days = rangeRaw === "30d" ? 30 : rangeRaw === "7d" ? 7 : 1
     const now = new Date()
-    const todayStart = now.toISOString().slice(0, 10) + "T00"
     const tomorrowStart = new Date(now.getTime() + 86400000).toISOString().slice(0, 10) + "T00"
+    const startDate = new Date(now.getTime() - (days - 1) * 86400000)
+    const todayStart = startDate.toISOString().slice(0, 10) + "T00"
     const records = await getRepo().webSearchUsage.query({ keyId: params.id, start: todayStart, end: tomorrowStart })
     let searches = 0, successes = 0, failures = 0
     for (const r of records) {
@@ -436,7 +440,7 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
       avgSuccessMs: Math.round(e.successDurationMs / Math.max(e.successes, 1)),
       avgFailureMs: Math.round(e.failureDurationMs / Math.max(e.failures, 1)),
     }))
-    return { searches, successes, failures, records, engines }
+    return { range: `${days}d`, days, searches, successes, failures, records, engines }
   })
 
   // POST /api/keys/:id/assign - assign key to a user (admin or key owner)

@@ -933,12 +933,14 @@ export function renderKeysTab(): string {
                     <span class="text-xs text-themed-secondary shrink-0 mt-0.5" x-text="t('dash.engines')"></span>
                     <div class="flex flex-wrap gap-1.5">
                       <template x-for="slot in [
-                        { id: 'langsearch', label: 'LangSearch', ref: wsConfig.langsearchRef, key: wsConfig.langsearchKey },
-                        { id: 'tavily', label: 'Tavily', ref: wsConfig.tavilyRef, key: wsConfig.tavilyKey },
-                        { id: 'msGrounding', label: 'MS Grounding', ref: wsConfig.msGroundingRef, key: wsConfig.msGroundingKey }
+                        { id: 'langsearch', label: 'LangSearch', ref: wsConfig.langsearchRef, key: wsConfig.langsearchKey, builtin: false },
+                        { id: 'tavily', label: 'Tavily', ref: wsConfig.tavilyRef, key: wsConfig.tavilyKey, builtin: false },
+                        { id: 'msGrounding', label: 'MS Grounding', ref: wsConfig.msGroundingRef, key: wsConfig.msGroundingKey, builtin: false },
+                        { id: 'bing', label: 'Bing', ref: null, key: null, builtin: true },
+                        { id: 'copilot', label: 'Copilot', ref: null, key: null, builtin: true }
                       ]" :key="slot.id">
                         <span class="text-[10px] px-2 py-0.5 rounded inline-flex items-center gap-1"
-                          :class="slot.ref ? (slot.ref.broken ? 'bg-accent-red/15 text-accent-red' : 'bg-accent-violet/15 text-accent-violet') : (slot.key ? 'bg-accent-teal/15 text-accent-teal' : 'bg-surface-700 text-themed-dim')">
+                          :class="slot.ref ? (slot.ref.broken ? 'bg-accent-red/15 text-accent-red' : 'bg-accent-violet/15 text-accent-violet') : (slot.key ? 'bg-accent-teal/15 text-accent-teal' : (slot.builtin ? 'bg-accent-blue/15 text-accent-blue' : 'bg-surface-700 text-themed-dim'))">
                           <span class="font-medium" x-text="slot.label"></span>
                           <template x-if="slot.ref">
                             <span class="font-mono opacity-80" x-text="slot.ref.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (slot.ref.name || slot.ref.id)"></span>
@@ -946,16 +948,25 @@ export function renderKeysTab(): string {
                           <template x-if="!slot.ref && slot.key">
                             <span class="font-mono opacity-80" x-text="slot.key"></span>
                           </template>
-                          <template x-if="!slot.ref && !slot.key">
+                          <template x-if="!slot.ref && !slot.key && slot.builtin">
+                            <span class="opacity-70" x-text="t('dash.wsBuiltin')"></span>
+                          </template>
+                          <template x-if="!slot.ref && !slot.key && !slot.builtin">
                             <span class="opacity-60">—</span>
                           </template>
                         </span>
                       </template>
                     </div>
                   </div>
-                  <!-- Today's usage -->
-                  <div class="flex items-center gap-4">
-                    <span class="text-xs text-themed-secondary" x-text="t('dash.today')"></span>
+                  <!-- Usage stats with range selector -->
+                  <div class="flex items-center gap-3 flex-wrap">
+                    <div class="inline-flex items-center gap-0.5 bg-surface-800 rounded-md p-0.5">
+                      <template x-for="r in ['1d','7d','30d']" :key="r">
+                        <button @click="setWsUsageRange(r)" class="px-2 py-0.5 rounded text-[10px] font-medium transition-all"
+                          :class="wsUsageRange === r ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'"
+                          x-text="r"></button>
+                      </template>
+                    </div>
                     <span class="text-xs font-mono text-themed" x-text="wsUsage.searches + ' searches'"></span>
                     <span class="text-[10px] text-accent-teal" x-text="wsUsage.successes + ' ok'"></span>
                     <span class="text-[10px] text-accent-red" x-show="wsUsage.failures > 0" x-text="wsUsage.failures + ' failed'"></span>

@@ -356,7 +356,8 @@ export function dashboardAssets(): string {
       wsCopySourceId: '',
       borrowPickerEngine: '',
       wsConfig: { enabled: false, langsearchKey: null, tavilyKey: null, msGroundingKey: null, langsearchRef: null, tavilyRef: null, msGroundingRef: null },
-      wsUsage: { searches: 0, successes: 0, failures: 0, engines: [] },
+      wsUsage: { searches: 0, successes: 0, failures: 0, engines: [], range: '1d' },
+      wsUsageRange: '1d',
 
       // Relays tab
       relays: [],
@@ -2093,14 +2094,19 @@ export function dashboardAssets(): string {
               tavilyRef: key?.web_search_tavily_ref ?? null,
               msGroundingRef: key?.web_search_ms_grounding_ref ?? null,
             };
-            this.wsUsage = { searches: 0, successes: 0, failures: 0, engines: [] };
+            this.wsUsage = { searches: 0, successes: 0, failures: 0, engines: [], range: this.wsUsageRange };
             // Load usage stats
-            fetch('/api/keys/' + keyId + '/web-search-usage', { credentials: 'same-origin' })
+            fetch('/api/keys/' + keyId + '/web-search-usage?range=' + this.wsUsageRange, { credentials: 'same-origin' })
               .then(r => r.ok ? r.json() : null)
               .then(data => {
-                if (data) this.wsUsage = { searches: data.searches, successes: data.successes, failures: data.failures, engines: data.engines || [] };
+                if (data) this.wsUsage = { searches: data.searches, successes: data.successes, failures: data.failures, engines: data.engines || [], range: data.range || this.wsUsageRange };
               })
               .catch(() => {});
+          },
+
+          setWsUsageRange(range) {
+            this.wsUsageRange = range;
+            if (this.selectedKeyId) this.loadWebSearchConfig(this.selectedKeyId);
           },
 
           startEditWebSearch() {
