@@ -569,6 +569,13 @@ function migrateSchema(db: Database): void {
   if (!hasColumn(db, "api_keys", "web_search_ms_grounding_ref")) {
     db.exec("ALTER TABLE api_keys ADD COLUMN web_search_ms_grounding_ref TEXT")
   }
+  // Add ms_grounding key literal and priority array (migration 0020)
+  if (!hasColumn(db, "api_keys", "web_search_ms_grounding_key")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN web_search_ms_grounding_key TEXT")
+  }
+  if (!hasColumn(db, "api_keys", "web_search_priority")) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN web_search_priority TEXT")
+  }
   // Add email to users
   if (!hasColumn(db, "users", "email")) {
     db.exec("ALTER TABLE users ADD COLUMN email TEXT")
