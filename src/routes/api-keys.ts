@@ -542,12 +542,19 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
       ...target,
       webSearchEnabled: source.webSearchEnabled,
       webSearchBingEnabled: source.webSearchBingEnabled,
-      webSearchLangsearchKey: source.webSearchLangsearchKey,
-      webSearchTavilyKey: source.webSearchTavilyKey,
       webSearchCopilotEnabled: source.webSearchCopilotEnabled,
       webSearchCopilotPriority: source.webSearchCopilotPriority,
+      webSearchPriority: source.webSearchPriority,
+      webSearchLangsearchKey: undefined,
+      webSearchLangsearchRef: source.webSearchLangsearchKey ? source.id : undefined,
+      webSearchTavilyKey: undefined,
+      webSearchTavilyRef: source.webSearchTavilyKey ? source.id : undefined,
+      webSearchMsGroundingKey: undefined,
+      webSearchMsGroundingRef: source.webSearchMsGroundingKey ? source.id : undefined,
     }
     await getRepo().apiKeys.save(updated)
+    const { invalidateResolverCache } = await import("~/services/web-search/resolver")
+    invalidateResolverCache(updated.id)
     const sourceMap = await loadSourceMapForKey(updated)
     return keyToJson(updated, undefined, true, sourceMap)
   })
