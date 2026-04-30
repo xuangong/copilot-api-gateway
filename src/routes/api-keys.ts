@@ -63,14 +63,12 @@ function keyToJson(k: ApiKey, ownerName?: string, isOwner?: boolean, sourceMap?:
     quota_requests_per_day: k.quotaRequestsPerDay ?? null,
     quota_tokens_per_day: k.quotaTokensPerDay ?? null,
     web_search_enabled: k.webSearchEnabled ?? false,
-    web_search_bing_enabled: k.webSearchBingEnabled ?? false,
     web_search_langsearch_key: langsearchRef ? null : maskKey(k.webSearchLangsearchKey),
     web_search_langsearch_ref: langsearchRef,
     web_search_tavily_key: tavilyRef ? null : maskKey(k.webSearchTavilyKey),
     web_search_tavily_ref: tavilyRef,
     web_search_ms_grounding_key: msGroundingRef ? null : maskKey(k.webSearchMsGroundingKey),
     web_search_ms_grounding_ref: msGroundingRef,
-    web_search_copilot_enabled: k.webSearchCopilotEnabled ?? false,
     web_search_priority: k.webSearchPriority ?? null,
   }
 }
@@ -282,9 +280,8 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     }
     const {
       name, quota_requests_per_day, quota_tokens_per_day,
-      web_search_enabled, web_search_bing_enabled,
+      web_search_enabled,
       web_search_langsearch_key, web_search_tavily_key,
-      web_search_copilot_enabled,
       web_search_ms_grounding_key, web_search_priority,
       web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref,
     } = body as {
@@ -292,10 +289,8 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
       quota_requests_per_day?: number | null;
       quota_tokens_per_day?: number | null;
       web_search_enabled?: boolean;
-      web_search_bing_enabled?: boolean;
       web_search_langsearch_key?: string | null;
       web_search_tavily_key?: string | null;
-      web_search_copilot_enabled?: boolean;
       web_search_ms_grounding_key?: string | null;
       web_search_priority?: string[] | null;
       web_search_langsearch_ref?: string | null;
@@ -327,12 +322,6 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     }
     if (web_search_enabled !== undefined) {
       updated.webSearchEnabled = web_search_enabled
-    }
-    if (web_search_bing_enabled !== undefined) {
-      updated.webSearchBingEnabled = web_search_bing_enabled
-    }
-    if (web_search_copilot_enabled !== undefined) {
-      updated.webSearchCopilotEnabled = web_search_copilot_enabled
     }
 
     // XOR enforcement: literal vs ref for each of the three secret engines.
@@ -536,8 +525,6 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     const updated = {
       ...target,
       webSearchEnabled: source.webSearchEnabled,
-      webSearchBingEnabled: source.webSearchBingEnabled,
-      webSearchCopilotEnabled: source.webSearchCopilotEnabled,
       webSearchPriority: source.webSearchPriority,
       webSearchLangsearchKey: undefined,
       webSearchLangsearchRef: source.webSearchLangsearchKey ? source.id : undefined,

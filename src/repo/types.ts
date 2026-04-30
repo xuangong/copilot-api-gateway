@@ -8,10 +8,8 @@ export interface ApiKey {
   quotaRequestsPerDay?: number
   quotaTokensPerDay?: number
   webSearchEnabled?: boolean
-  webSearchBingEnabled?: boolean
   webSearchLangsearchKey?: string
   webSearchTavilyKey?: string
-  webSearchCopilotEnabled?: boolean
 
   webSearchMsGroundingKey?: string
   /** Ordered list of engine ids to try, e.g. ["msGrounding","langsearch","tavily","bing","copilot"]. Empty/undefined falls back to legacy resolution. */

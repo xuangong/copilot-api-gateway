@@ -121,9 +121,7 @@ export const messagesRoute = new Elysia()
         engineOptions: {
           langsearchKey: resolvedKeys.langsearchKey,
           tavilyKey: resolvedKeys.tavilyKey,
-          bingEnabled: keyConfig.webSearchBingEnabled,
           githubToken: state.githubToken,
-          copilotEnabled: keyConfig.webSearchCopilotEnabled,
           msGroundingKey: resolvedKeys.msGroundingKey,
           priority: keyConfig.webSearchPriority,
         },

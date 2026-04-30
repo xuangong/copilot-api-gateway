@@ -105,9 +105,7 @@ export async function loadWebSearchConfig(
     engineOptions: {
       langsearchKey: resolved.langsearchKey,
       tavilyKey: resolved.tavilyKey,
-      bingEnabled: keyConfig.webSearchBingEnabled,
       githubToken,
-      copilotEnabled: keyConfig.webSearchCopilotEnabled,
       msGroundingKey: resolved.msGroundingKey,
       priority: keyConfig.webSearchPriority,
     },

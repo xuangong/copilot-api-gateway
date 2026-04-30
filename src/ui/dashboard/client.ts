@@ -346,8 +346,6 @@ export function dashboardAssets(): string {
       wsEditing: false,
       wsSaving: false,
       wsEditEnabled: false,
-      wsEditBing: false,
-      wsEditCopilot: false,
       wsEditPriority: ['msGrounding', 'langsearch', 'tavily', 'bing', 'copilot'],
       wsEditLangsearch: '',
       wsEditTavily: '',
@@ -357,7 +355,7 @@ export function dashboardAssets(): string {
       wsEditMsGroundingRef: '',
       wsCopySourceId: '',
       borrowPickerEngine: '',
-      wsConfig: { enabled: false, bingEnabled: false, copilotEnabled: false, langsearchKey: null, tavilyKey: null, msGroundingKey: null, langsearchRef: null, tavilyRef: null, msGroundingRef: null },
+      wsConfig: { enabled: false, langsearchKey: null, tavilyKey: null, msGroundingKey: null, langsearchRef: null, tavilyRef: null, msGroundingRef: null },
       wsUsage: { searches: 0, successes: 0, failures: 0 },
 
       // Relays tab
@@ -2088,8 +2086,6 @@ export function dashboardAssets(): string {
             const key = this.keys.find(k => k.id === keyId);
             this.wsConfig = {
               enabled: key?.web_search_enabled ?? false,
-              bingEnabled: key?.web_search_bing_enabled ?? false,
-              copilotEnabled: key?.web_search_copilot_enabled ?? false,
               langsearchKey: key?.web_search_langsearch_key ?? null,
               tavilyKey: key?.web_search_tavily_key ?? null,
               msGroundingKey: key?.web_search_ms_grounding_key ?? null,
@@ -2110,8 +2106,6 @@ export function dashboardAssets(): string {
           startEditWebSearch() {
             const key = this.keys.find(k => k.id === this.selectedKeyId);
             this.wsEditEnabled = key?.web_search_enabled ?? false;
-            this.wsEditBing = key?.web_search_bing_enabled ?? false;
-            this.wsEditCopilot = key?.web_search_copilot_enabled ?? false;
             const ENGINE_IDS = ['msGrounding', 'langsearch', 'tavily', 'bing', 'copilot'];
             const stored = Array.isArray(key?.web_search_priority) ? key.web_search_priority.filter(e => ENGINE_IDS.includes(e)) : [];
             const missing = ENGINE_IDS.filter(e => !stored.includes(e));
@@ -2132,8 +2126,6 @@ export function dashboardAssets(): string {
             try {
               const body = {
                 web_search_enabled: this.wsEditEnabled,
-                web_search_bing_enabled: this.wsEditEnabled,
-                web_search_copilot_enabled: this.wsEditCopilot,
               };
               if (this.isAdmin) {
                 const DEFAULT_ORDER = ['msGrounding', 'langsearch', 'tavily', 'bing', 'copilot'];
