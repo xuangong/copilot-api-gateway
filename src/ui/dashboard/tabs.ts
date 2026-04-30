@@ -804,13 +804,51 @@ export function renderKeysTab(): string {
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.langSearchKey')"></label>
-                  <input type="text" x-model="wsEditLangsearch" placeholder="Not set"
-                    class="!text-xs !py-1.5 !px-3 w-full !rounded-lg font-mono" />
+                  <template x-if="wsEditLangsearchRef">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.langsearchRef && wsConfig.langsearchRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.langsearchRef && wsConfig.langsearchRef.name ? wsConfig.langsearchRef.name : wsEditLangsearchRef)"></span>
+                      <button type="button" @click="wsEditLangsearchRef = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsUnlink')"></button>
+                    </div>
+                  </template>
+                  <template x-if="!wsEditLangsearchRef">
+                    <div class="flex items-center gap-2">
+                      <input type="text" x-model="wsEditLangsearch" placeholder="Not set"
+                        class="!text-xs !py-1.5 !px-3 flex-1 !rounded-lg font-mono" />
+                      <button type="button" @click="openBorrowPicker('langsearch')" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsBorrowFrom')"></button>
+                    </div>
+                  </template>
                 </div>
                 <div>
                   <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.tavilyKey')"></label>
-                  <input type="text" x-model="wsEditTavily" placeholder="Not set"
-                    class="!text-xs !py-1.5 !px-3 w-full !rounded-lg font-mono" />
+                  <template x-if="wsEditTavilyRef">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.tavilyRef && wsConfig.tavilyRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.tavilyRef && wsConfig.tavilyRef.name ? wsConfig.tavilyRef.name : wsEditTavilyRef)"></span>
+                      <button type="button" @click="wsEditTavilyRef = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsUnlink')"></button>
+                    </div>
+                  </template>
+                  <template x-if="!wsEditTavilyRef">
+                    <div class="flex items-center gap-2">
+                      <input type="text" x-model="wsEditTavily" placeholder="Not set"
+                        class="!text-xs !py-1.5 !px-3 flex-1 !rounded-lg font-mono" />
+                      <button type="button" @click="openBorrowPicker('tavily')" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsBorrowFrom')"></button>
+                    </div>
+                  </template>
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="text-xs text-themed-dim block mb-1" x-text="t('dash.msGroundingKey')"></label>
+                  <template x-if="wsEditMsGroundingRef">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-mono text-themed-secondary truncate" x-text="wsConfig.msGroundingRef && wsConfig.msGroundingRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.msGroundingRef && wsConfig.msGroundingRef.name ? wsConfig.msGroundingRef.name : wsEditMsGroundingRef)"></span>
+                      <button type="button" @click="wsEditMsGroundingRef = ''" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsUnlink')"></button>
+                    </div>
+                  </template>
+                  <template x-if="!wsEditMsGroundingRef">
+                    <div class="flex items-center gap-2">
+                      <input type="text" x-model="wsEditMsGrounding" placeholder="Not set"
+                        class="!text-xs !py-1.5 !px-3 flex-1 !rounded-lg font-mono" />
+                      <button type="button" @click="openBorrowPicker('msGrounding')" class="btn-ghost text-xs shrink-0" x-text="t('dash.wsBorrowFrom')"></button>
+                    </div>
+                  </template>
                 </div>
               </div>
               <!-- Copy from another key -->
@@ -822,6 +860,30 @@ export function renderKeysTab(): string {
                   </template>
                 </select>
                 <button @click="copyWebSearchFrom()" class="btn-ghost text-xs" :disabled="!wsCopySourceId" x-text="t('dash.copy')"></button>
+              </div>
+            </div>
+          </template>
+
+          <!-- Borrow picker modal -->
+          <template x-if="borrowPickerEngine">
+            <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" @click.self="borrowPickerEngine = ''">
+              <div class="glass-card rounded-xl p-6 w-full max-w-sm space-y-4">
+                <h3 class="text-sm font-semibold text-themed" x-text="t('dash.wsBorrowPickerTitle')"></h3>
+                <div class="space-y-2 max-h-64 overflow-y-auto">
+                  <template x-if="currentBorrowCandidates().length === 0">
+                    <p class="text-xs text-themed-dim">No available keys.</p>
+                  </template>
+                  <template x-for="cand in currentBorrowCandidates()" :key="cand.id">
+                    <button type="button" @click="confirmBorrow(cand.id)"
+                      class="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 transition-colors">
+                      <span class="text-xs font-medium text-themed block" x-text="cand.name || cand.id"></span>
+                      <span class="text-[10px] text-themed-dim" x-text="cand.owner_name || cand.owner_id || ''"></span>
+                    </button>
+                  </template>
+                </div>
+                <div class="flex justify-end">
+                  <button type="button" @click="borrowPickerEngine = ''" class="btn-ghost text-xs" x-text="t('dash.cancel')"></button>
+                </div>
               </div>
             </div>
           </template>

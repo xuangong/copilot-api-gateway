@@ -356,6 +356,7 @@ export function dashboardAssets(): string {
       wsEditTavilyRef: '',
       wsEditMsGroundingRef: '',
       wsCopySourceId: '',
+      borrowPickerEngine: '',
       wsConfig: { enabled: false, bingEnabled: false, copilotEnabled: false, copilotPriority: false, langsearchKey: null, tavilyKey: null, msGroundingKey: null, langsearchRef: null, tavilyRef: null, msGroundingRef: null },
       wsUsage: { searches: 0, successes: 0, failures: 0 },
 
@@ -2219,6 +2220,22 @@ export function dashboardAssets(): string {
             } catch (e) {
               console.error('unlinkBorrow:', e);
             }
+          },
+
+          openBorrowPicker(engine) {
+            this.borrowPickerEngine = engine;
+          },
+          currentBorrowCandidates() {
+            if (this.borrowPickerEngine === 'langsearch') return this.borrowCandidatesLangsearch;
+            if (this.borrowPickerEngine === 'tavily') return this.borrowCandidatesTavily;
+            if (this.borrowPickerEngine === 'msGrounding') return this.borrowCandidatesMsGrounding;
+            return [];
+          },
+          confirmBorrow(id) {
+            if (this.borrowPickerEngine === 'langsearch') this.wsEditLangsearchRef = id;
+            else if (this.borrowPickerEngine === 'tavily') this.wsEditTavilyRef = id;
+            else if (this.borrowPickerEngine === 'msGrounding') this.wsEditMsGroundingRef = id;
+            this.borrowPickerEngine = '';
           },
 
           // === Relays ===
