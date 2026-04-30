@@ -929,52 +929,29 @@ export function renderKeysTab(): string {
               </div>
               <template x-if="wsConfig.enabled">
                 <div class="space-y-2">
-                  <div class="flex items-center gap-4">
-                    <span class="text-xs text-themed-secondary" x-text="t('dash.engines')"></span>
-                    <div class="flex items-center gap-2">
-                      <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.langsearchKey ? 'bg-accent-violet/20 text-accent-violet' : 'bg-surface-600 text-themed-dim'"
-                        x-text="wsConfig.langsearchKey ? 'LangSearch \u2713' : 'LangSearch'"></span>
-                      <span class="text-[10px] px-1.5 py-0.5 rounded" :class="wsConfig.tavilyKey ? 'bg-accent-teal/20 text-accent-teal' : 'bg-surface-600 text-themed-dim'"
-                        x-text="wsConfig.tavilyKey ? 'Tavily \u2713' : 'Tavily'"></span>
+                  <div class="flex items-start gap-3">
+                    <span class="text-xs text-themed-secondary shrink-0 mt-0.5" x-text="t('dash.engines')"></span>
+                    <div class="flex flex-wrap gap-1.5">
+                      <template x-for="slot in [
+                        { id: 'langsearch', label: 'LangSearch', ref: wsConfig.langsearchRef, key: wsConfig.langsearchKey },
+                        { id: 'tavily', label: 'Tavily', ref: wsConfig.tavilyRef, key: wsConfig.tavilyKey },
+                        { id: 'msGrounding', label: 'MS Grounding', ref: wsConfig.msGroundingRef, key: wsConfig.msGroundingKey }
+                      ]" :key="slot.id">
+                        <span class="text-[10px] px-2 py-0.5 rounded inline-flex items-center gap-1"
+                          :class="slot.ref ? (slot.ref.broken ? 'bg-accent-red/15 text-accent-red' : 'bg-accent-violet/15 text-accent-violet') : (slot.key ? 'bg-accent-teal/15 text-accent-teal' : 'bg-surface-700 text-themed-dim')">
+                          <span class="font-medium" x-text="slot.label"></span>
+                          <template x-if="slot.ref">
+                            <span class="font-mono opacity-80" x-text="slot.ref.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (slot.ref.name || slot.ref.id)"></span>
+                          </template>
+                          <template x-if="!slot.ref && slot.key">
+                            <span class="font-mono opacity-80" x-text="slot.key"></span>
+                          </template>
+                          <template x-if="!slot.ref && !slot.key">
+                            <span class="opacity-60">—</span>
+                          </template>
+                        </span>
+                      </template>
                     </div>
-                  </div>
-                  <div class="space-y-1">
-                    <template x-if="wsConfig.langsearchRef">
-                      <div class="flex items-center gap-2 text-xs">
-                        <span class="text-themed-dim w-24">LangSearch</span>
-                        <span class="font-mono text-themed-secondary truncate" x-text="wsConfig.langsearchRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.langsearchRef.name || wsConfig.langsearchRef.id)"></span>
-                      </div>
-                    </template>
-                    <template x-if="!wsConfig.langsearchRef && wsConfig.langsearchKey">
-                      <div class="flex items-center gap-2 text-xs">
-                        <span class="text-themed-dim w-24">LangSearch</span>
-                        <span class="font-mono text-themed-secondary truncate" x-text="wsConfig.langsearchKey"></span>
-                      </div>
-                    </template>
-                    <template x-if="wsConfig.tavilyRef">
-                      <div class="flex items-center gap-2 text-xs">
-                        <span class="text-themed-dim w-24">Tavily</span>
-                        <span class="font-mono text-themed-secondary truncate" x-text="wsConfig.tavilyRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.tavilyRef.name || wsConfig.tavilyRef.id)"></span>
-                      </div>
-                    </template>
-                    <template x-if="!wsConfig.tavilyRef && wsConfig.tavilyKey">
-                      <div class="flex items-center gap-2 text-xs">
-                        <span class="text-themed-dim w-24">Tavily</span>
-                        <span class="font-mono text-themed-secondary truncate" x-text="wsConfig.tavilyKey"></span>
-                      </div>
-                    </template>
-                    <template x-if="wsConfig.msGroundingRef">
-                      <div class="flex items-center gap-2 text-xs">
-                        <span class="text-themed-dim w-24">MS Grounding</span>
-                        <span class="font-mono text-themed-secondary truncate" x-text="wsConfig.msGroundingRef.broken ? '\u2197 ' + t('dash.wsBorrowedUnavailable') : '\u2197 ' + (wsConfig.msGroundingRef.name || wsConfig.msGroundingRef.id)"></span>
-                      </div>
-                    </template>
-                    <template x-if="!wsConfig.msGroundingRef && wsConfig.msGroundingKey">
-                      <div class="flex items-center gap-2 text-xs">
-                        <span class="text-themed-dim w-24">MS Grounding</span>
-                        <span class="font-mono text-themed-secondary truncate" x-text="wsConfig.msGroundingKey"></span>
-                      </div>
-                    </template>
                   </div>
                   <!-- Today's usage -->
                   <div class="flex items-center gap-4">

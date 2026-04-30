@@ -102,18 +102,32 @@ export class EngineManager {
     }
   }
 
-  /** Search with automatic fallback to the next engine on failure. */
+  /**
+   * Search with automatic fallback. Falls through to the next engine when
+   * the current one throws OR returns 0 results — empty results carry no
+   * useful information for the caller, so they're treated as a soft failure
+   * for the purpose of advancing the chain. The empty attempt is still
+   * recorded with ok=true (it didn't throw); the chain only advances.
+   */
   async search(
     query: string,
     options?: SearchOptions,
   ): Promise<{ results: SearchResult[]; engineName: string; attempts: EngineAttempt[] }> {
     const attempts: EngineAttempt[] = []
+    let lastEmpty: { results: SearchResult[]; engineName: string } | null = null
     for (const engine of this.engines) {
       const start = performance.now()
       try {
         const results = await engine.search(query, options)
         const durationMs = Math.round(performance.now() - start)
         attempts.push({ engineId: engine.id, ok: true, resultCount: results.length, durationMs })
+        if (results.length === 0) {
+          lastEmpty = { results, engineName: engine.name }
+          console.warn(
+            `[EngineManager] ${engine.name} returned 0 results, trying next engine`,
+          )
+          continue
+        }
         return { results, engineName: engine.name, attempts }
       } catch (error) {
         const durationMs = Math.round(performance.now() - start)
@@ -128,6 +142,10 @@ export class EngineManager {
           )
         }
       }
+    }
+    if (lastEmpty) {
+      console.warn("[EngineManager] All engines returned 0 results")
+      return { results: lastEmpty.results, engineName: lastEmpty.engineName, attempts }
     }
     console.error("[EngineManager] All search engines failed")
     return { results: [], engineName: "none", attempts }
