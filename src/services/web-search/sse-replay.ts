@@ -14,7 +14,15 @@ import type { ApiResponse, MessageContent } from "./types"
  *   message_delta       (with stop_reason + usage)
  *   message_stop
  */
-export function replayResponseAsSSE(response: ApiResponse): ReadableStream<Uint8Array> {
+export interface ReplayOptions {
+  /** Skip emitting `message_start` (caller already sent a synthetic one). */
+  skipMessageStart?: boolean
+}
+
+export function replayResponseAsSSE(
+  response: ApiResponse,
+  opts: ReplayOptions = {},
+): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder()
 
   function frame(eventName: string, data: unknown): Uint8Array {
@@ -24,21 +32,23 @@ export function replayResponseAsSSE(response: ApiResponse): ReadableStream<Uint8
   return new ReadableStream<Uint8Array>({
     start(controller) {
       // 1. message_start with empty content
-      controller.enqueue(
-        frame("message_start", {
-          type: "message_start",
-          message: {
-            id: response.id,
-            type: response.type ?? "message",
-            role: response.role ?? "assistant",
-            model: response.model,
-            content: [],
-            stop_reason: null,
-            stop_sequence: null,
-            usage: response.usage ?? { input_tokens: 0, output_tokens: 0 },
-          },
-        }),
-      )
+      if (!opts.skipMessageStart) {
+        controller.enqueue(
+          frame("message_start", {
+            type: "message_start",
+            message: {
+              id: response.id,
+              type: response.type ?? "message",
+              role: response.role ?? "assistant",
+              model: response.model,
+              content: [],
+              stop_reason: null,
+              stop_sequence: null,
+              usage: response.usage ?? { input_tokens: 0, output_tokens: 0 },
+            },
+          }),
+        )
+      }
 
       // 2. for each content block: start, single delta, stop
       const blocks = Array.isArray(response.content) ? response.content : []

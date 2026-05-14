@@ -293,12 +293,24 @@ export async function interceptWebSearch(
     MAX_USES_HARD_LIMIT,
   )
   const messages = [...(payload.messages || [])]
+  const loopStart = Date.now()
+  let iter = 0
 
   while (true) {
+    iter++
+    const iterStart = Date.now()
     const response = await createMessages(
       { ...modifiedPayload, messages },
       options,
     )
+    const upstreamMs = Date.now() - iterStart
+    // Only log slow iterations or beyond the first round (interesting cases)
+    if (iter > 1 || upstreamMs > 10000) {
+      console.log(JSON.stringify({
+        evt: "ws_iter", iter, upstreamMs,
+        stop_reason: (response as { stop_reason?: string }).stop_reason,
+      }))
+    }
 
     const { webSearchToolUses, hasOtherTools } = classifyToolUses(
       response.content || [],
@@ -343,10 +355,23 @@ export async function interceptWebSearch(
     })
 
     if (searchCount >= maxUses) {
+      console.log(JSON.stringify({
+        evt: "ws_max_uses_final_call",
+        iter,
+        searchCount,
+        maxUses,
+        elapsedMs: Date.now() - loopStart,
+      }))
+      const finalStart = Date.now()
       const finalResponse = await createMessages(
         { ...modifiedPayload, messages },
         options,
       )
+      console.log(JSON.stringify({
+        evt: "ws_final_done",
+        finalUpstreamMs: Date.now() - finalStart,
+        totalLoopMs: Date.now() - loopStart,
+      }))
       return { response: finalResponse, meta }
     }
   }

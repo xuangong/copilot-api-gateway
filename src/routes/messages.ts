@@ -68,6 +68,37 @@ export const messagesRoute = new Elysia()
 
     const passthroughHeaders = extractAnthropicBetaHeader(ctx)
 
+    // [diag] Lightweight entry log: only flag office clients (which are the
+    // ones suffering first-byte timeouts). Standard CC requests get nothing.
+    const ua = userAgent ?? ""
+    const isOffice = /Office|PowerPoint|PPT|Word|Excel|Outlook|claude-powerpoint|claude-word|claude-excel/i.test(ua)
+    try {
+      if (isOffice) {
+        const b = body as AnthropicMessagesPayload
+        const tools = Array.isArray((b as unknown as { tools?: unknown[] }).tools)
+          ? (b as unknown as { tools: unknown[] }).tools as unknown[]
+          : []
+        console.log(JSON.stringify({
+          evt: "msg_in",
+          rid: requestId,
+          model: b.model,
+          stream: b.stream === true,
+          msgs: Array.isArray(b.messages) ? b.messages.length : 0,
+          toolCount: tools.length,
+          max_tokens: (b as { max_tokens?: number }).max_tokens,
+          ua: ua.slice(0, 60),
+        }))
+        const sig = (ctx as { request: Request }).request.signal
+        if (sig) {
+          sig.addEventListener("abort", () => {
+            console.log(JSON.stringify({
+              evt: "client_abort", rid: requestId, elapsedMs: elapsed(),
+            }))
+          })
+        }
+      }
+    } catch { /* best-effort */ }
+
     // Quota enforcement
     if (apiKeyId) {
       const quota = await checkQuota(apiKeyId)
@@ -163,20 +194,90 @@ export const messagesRoute = new Elysia()
         }
       }
 
-      // Streaming client: skip the JSON heartbeat race (client expects SSE
-      // frames immediately); wrap the response replay in the SSE heartbeat.
+      // Streaming client: must emit bytes immediately to avoid client-side
+      // first-byte timeouts (e.g. PowerPoint Claude plugin closes after ~14s
+      // of silence). Open the SSE response with an immediate ping frame and
+      // periodic pings while web_search loop runs upstream; once it resolves,
+      // append the replayed message frames and close.
       if (wantsStream) {
-        const { response, meta } = await upstreamPromise
-        const sseBody = replayResponseAsSSE(response as ApiResponse)
-        const heartbeated = wrapAnthropicHeartbeat(sseBody)
+        const encoder = new TextEncoder()
+        const PING = encoder.encode("event: ping\ndata: {}\n\n")
+        const PING_INTERVAL_MS = 5000
+        // Synthesize a message_start so the client (e.g. PowerPoint plugin)
+        // sees a real protocol event immediately and stops its first-byte
+        // timeout. The replay later skips its own message_start to avoid
+        // a duplicate.
+        const synthMessageId = `msg_synth_${Date.now().toString(36)}`
+        const synthStart = encoder.encode(
+          `event: message_start\ndata: ${JSON.stringify({
+            type: "message_start",
+            message: {
+              id: synthMessageId,
+              type: "message",
+              role: "assistant",
+              model: payload.model,
+              content: [],
+              stop_reason: null,
+              stop_sequence: null,
+              usage: { input_tokens: 0, output_tokens: 0 },
+            },
+          })}\n\n`,
+        )
         const headers: Record<string, string> = {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
           Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
         }
-        addWebSearchHeaders(headers, meta)
-        const streamResponse = new Response(heartbeated, { headers })
-        await recordSideEffects({ response, meta })
+        const stream = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            // Immediate: real protocol event so client treats stream as live
+            try { controller.enqueue(synthStart) } catch { /* ignore */ }
+            let closed = false
+            const ping = setInterval(() => {
+              if (closed) return
+              try { controller.enqueue(PING) } catch { /* ignore */ }
+            }, PING_INTERVAL_MS)
+            const stopPing = () => { closed = true; clearInterval(ping) }
+
+            try {
+              const { response, meta } = await upstreamPromise
+              console.log(JSON.stringify({
+                evt: "ws_stream_replay_start",
+                rid: requestId,
+                searchCount: meta.searchCount,
+              }))
+              const sseBody = replayResponseAsSSE(response as ApiResponse, {
+                skipMessageStart: true,
+              })
+              const wrapped = wrapAnthropicHeartbeat(sseBody)
+              const reader = wrapped!.getReader()
+              for (;;) {
+                const { done, value } = await reader.read()
+                if (done) break
+                if (value && value.length > 0) {
+                  try { controller.enqueue(value) } catch { /* downstream gone */ break }
+                }
+              }
+              stopPing()
+              try { controller.close() } catch { /* ignore */ }
+            } catch (err) {
+              stopPing()
+              console.error("[ws-stream] upstream error", err)
+              try {
+                const msg = err instanceof Error ? err.message : String(err)
+                const errFrame =
+                  `event: error\ndata: ${JSON.stringify({ type: "error", error: { type: "api_error", message: msg } })}\n\n`
+                controller.enqueue(encoder.encode(errFrame))
+              } catch { /* ignore */ }
+              try { controller.close() } catch { /* ignore */ }
+            }
+          },
+        })
+        const streamResponse = new Response(stream, { headers })
+        upstreamPromise
+          .then((v) => recordSideEffects(v))
+          .catch(() => { /* logged above */ })
         return streamResponse
       }
 
