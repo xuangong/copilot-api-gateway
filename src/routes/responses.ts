@@ -267,9 +267,6 @@ const handleResponses = async (ctx: unknown) => {
   const notFound = statefulContinuationNotFoundResponse(payload)
   if (notFound) return notFound
 
-  // Apply compatibility transforms
-  fixApplyPatchTools(payload)
-
   const model = payload.model
   const useChatFallback = shouldUseChatFallback(model)
   const wantsWebSearch = hasResponsesWebSearch(payload)
@@ -469,6 +466,12 @@ const handleResponses = async (ctx: unknown) => {
       payload.input = items
     }
   }
+
+  // Chat-fallback only: rewrite codex's Freeform `custom` apply_patch tool
+  // into a JSON function tool. The native /v1/responses passthrough above
+  // leaves `custom` intact because gpt-5.x understands it and codex needs
+  // `custom_tool_call` events back to parse the raw patch text.
+  fixApplyPatchTools(payload)
 
   const chatPayload = translateResponsesToChatCompletions(payload, model)
 
