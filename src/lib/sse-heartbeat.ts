@@ -1,7 +1,10 @@
 // src/lib/sse-heartbeat.ts
 
 /** Default idle interval (ms) before injecting a keepalive byte sequence.
- * Tuned to fire well before Cloudflare edge's ~60s idle close. */
+ * Tuned to fire well before the ~60s first-byte/read-idle window that
+ * tends to bite us along the path (client SDK read timeout, intermediate
+ * proxies, etc.). The exact culprit varies; the cure — never go 60s
+ * without writing a byte — is what matters. */
 export const SSE_HEARTBEAT_MS = 15_000
 
 const OPENAI_KEEPALIVE = new TextEncoder().encode(": keepalive\n\n")

@@ -175,9 +175,11 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
       accountType: state.accountType,
     })
     const upstreamMs = upstreamTimer()
-    // Inject SSE comment heartbeats during long thinking gaps so CF edge
-    // doesn't close the idle connection. ":" prefix = SSE comment line,
-    // ignored by every spec-compliant SSE parser including the OpenAI SDK.
+    // Inject SSE comment heartbeats during long thinking gaps so the
+    // downstream connection never goes 60s without a byte (which would
+    // trip client SDK read-timeouts or intermediate proxies). ":" prefix
+    // = SSE comment line, ignored by every spec-compliant SSE parser
+    // including the OpenAI SDK.
     const heartbeated = wrapOpenAIHeartbeat(response.body)
     const streamResponse = new Response(heartbeated, {
       headers: {

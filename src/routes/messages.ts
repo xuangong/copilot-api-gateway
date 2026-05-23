@@ -16,6 +16,7 @@ import {
   adaptThinkingForModel,
   stripCacheControl,
   stripContextManagement,
+  promoteThinkingDisplayForStreaming,
   type AnthropicMessagesPayload,
 } from "~/transforms"
 import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
@@ -27,6 +28,7 @@ import { resolveWebSearchKeys } from "~/services/web-search/resolver"
 import { getRepo } from "~/repo"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
+import { omitThinkingFromAnthropicSse } from "~/lib/anthropic-sse-thinking-strip"
 
 interface RouteContext {
   state: AppState
@@ -52,12 +54,22 @@ function addWebSearchHeaders(
 // Timeout for non-streaming requests (5 minutes)
 const SYNC_REQUEST_TIMEOUT_MS = 5 * 60 * 1000
 
-// Forward client-supplied anthropic-beta header so upstream sees opt-ins
-// (e.g. computer-use, extended-thinking, prompt-caching variants).
-function extractAnthropicBetaHeader(ctx: unknown): Record<string, string> {
+// Forward client-supplied anthropic-beta and anthropic-version headers so
+// upstream sees opt-ins (e.g. computer-use, extended-thinking, prompt-caching
+// variants) and the negotiated API version.
+function extractAnthropicPassthroughHeaders(
+  ctx: unknown,
+): Record<string, string> {
   const reqHeaders = (ctx as { request: Request }).request.headers
-  const v = reqHeaders.get("anthropic-beta") ?? reqHeaders.get("Anthropic-Beta")
-  return v ? { "anthropic-beta": v } : {}
+  const out: Record<string, string> = {}
+  const beta =
+    reqHeaders.get("anthropic-beta") ?? reqHeaders.get("Anthropic-Beta")
+  if (beta) out["anthropic-beta"] = beta
+  const version =
+    reqHeaders.get("anthropic-version") ??
+    reqHeaders.get("Anthropic-Version")
+  if (version) out["anthropic-version"] = version
+  return out
 }
 
 export const messagesRoute = new Elysia()
@@ -66,7 +78,7 @@ export const messagesRoute = new Elysia()
     const elapsed = startTimer()
     const client = detectClient(userAgent)
 
-    const passthroughHeaders = extractAnthropicBetaHeader(ctx)
+    const passthroughHeaders = extractAnthropicPassthroughHeaders(ctx)
 
     // [diag] Lightweight entry log: only flag office clients (which are the
     // ones suffering first-byte timeouts). Standard CC requests get nothing.
@@ -117,6 +129,12 @@ export const messagesRoute = new Elysia()
     filterThinkingBlocks(payload)
     adaptThinkingForModel(payload)
     stripCacheControl(payload as unknown as Record<string, unknown>)
+
+    // Promote thinking.display omitted → summarized for streaming requests on
+    // Claude 4.5/4.6 so the upstream stream gets continuous thinking_delta
+    // events. We strip those deltas back out below to honor the client's
+    // original "omitted" intent. No-op for non-streaming and other models.
+    const thinkingPromotion = promoteThinkingDisplayForStreaming(payload)
 
     // Repair tool result pairs
     if (Array.isArray(payload.messages)) {
@@ -315,11 +333,19 @@ export const messagesRoute = new Elysia()
         extraHeaders: passthroughHeaders,
       })
       const upstreamMs = upstreamTimer()
-      // Wrap upstream body in an idle-heartbeat stream so Cloudflare edge
-      // does not close the client connection while the model is thinking.
+      // Wrap upstream body in an idle-heartbeat stream so we never go 60s
+      // without writing a byte downstream — that boundary is where client
+      // SDK read-timeouts and intermediate proxies start cutting us off.
       // Anthropic's official "event: ping" frame is the protocol-noop here —
       // SDKs already filter it out as a keepalive.
-      const heartbeated = wrapAnthropicHeartbeat(response.body)
+      let heartbeated = wrapAnthropicHeartbeat(response.body)
+      // If we promoted thinking.display to "summarized" upstream, strip the
+      // resulting thinking_delta events here so the client sees the omitted
+      // semantics it actually asked for (final signature is preserved).
+      // Runs AFTER the heartbeat wrapper, which guarantees frame-aligned chunks.
+      if (thinkingPromotion.promoted && heartbeated) {
+        heartbeated = heartbeated.pipeThrough(omitThinkingFromAnthropicSse())
+      }
       const streamResponse = new Response(heartbeated, {
         headers: {
           "Content-Type": "text/event-stream",
@@ -336,7 +362,9 @@ export const messagesRoute = new Elysia()
     }
 
     // Non-streaming: wrap the full upstream chain in a heartbeat race so the
-    // client connection survives Cloudflare edge's ~60s idle timeout.
+    // client connection survives the ~60s first-byte read timeouts that
+    // various clients / intermediate proxies enforce while waiting on the
+    // initial JSON body. See src/lib/heartbeat-json.ts for the caveats.
     type SyncJson = { usage?: { input_tokens?: number; output_tokens?: number } }
     let upstreamMs = 0
     const syncPromise: Promise<SyncJson> = (async () => {
@@ -401,7 +429,7 @@ export const messagesRoute = new Elysia()
       copilotToken: state.copilotToken,
       accountType: state.accountType,
       requireModel: false,
-      extraHeaders: extractAnthropicBetaHeader(ctx),
+      extraHeaders: extractAnthropicPassthroughHeaders(ctx),
     })
 
     return response.json()

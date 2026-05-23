@@ -21,6 +21,13 @@ export { fixApplyPatchTools, stripWebSearchTools } from "./tool-type"
 // Thinking cleanup
 export { filterThinkingBlocks, adaptThinkingForModel } from "./thinking-cleanup"
 
+// Promote thinking.display for streaming to avoid silent gaps tripping
+// ~60s client-side read timeouts. Pair with the SSE stripper below.
+export {
+  promoteThinkingDisplayForStreaming,
+  type PromoteThinkingDisplayResult,
+} from "./promote-thinking-display"
+
 // Cache control cleanup (prompt caching not supported by Copilot)
 export { stripCacheControl, type CacheControlStripResult } from "./cache-control"
 

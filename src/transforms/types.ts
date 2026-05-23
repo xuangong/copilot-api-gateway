@@ -10,6 +10,17 @@ export interface AnthropicMessagesPayload {
   thinking?: {
     type: "enabled" | "adaptive"
     budget_tokens?: number
+    /**
+     * Anthropic Messages thinking-display preference.
+     * - "omitted"    : do not stream thinking deltas; only emit a final signature
+     * - "summarized" : stream token-level thinking_delta events continuously
+     * - "full"       : stream full thinking content
+     *
+     * Note: "omitted" causes long silent gaps which can trip the ~60s
+     * client-side read-timeout window. See
+     * src/transforms/promote-thinking-display.ts for the workaround.
+     */
+    display?: "omitted" | "summarized" | "full"
   }
   output_config?: {
     effort?: "low" | "medium" | "high"

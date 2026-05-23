@@ -1,9 +1,36 @@
 /**
- * Wrap a sync upstream JSON request so it survives Cloudflare edge's
- * idle-connection timeout (~60s).
+ * Wrap a sync (non-streaming) upstream JSON request so it survives the
+ * various ~60s first-byte / read-idle timeouts that exist along the path
+ * `client → (any intermediate proxies) → CF Worker → upstream Copilot API`.
+ *
+ * What this actually defends against (revised):
+ *   - Client SDK / HTTP-library `read timeout` while waiting on the first
+ *     response byte (typical default in fetch / axios / many Copilot SDKs
+ *     is around 60s and applies until the first byte arrives).
+ *   - Corporate/ISP/intermediate proxies that drop connections after N
+ *     seconds without any bytes in flight.
+ *
+ * What this does NOT meaningfully defend against:
+ *   - Cloudflare's documented HTTP 524 (~100s origin timeout) — that
+ *     applies to CF → origin, not to Workers (we ARE the worker).
+ *   - The Worker → upstream subrequest being killed by the Workers
+ *     runtime for idleness — Workers does not have a published 60s
+ *     cap on a single awaited subrequest; long awaits are fine.
+ *
+ * Earlier revisions of this file blamed "Cloudflare edge ~60s idle
+ * timeout" specifically. That attribution was speculative; the real
+ * mechanism that gets us out of trouble is simply *starting to flush
+ * bytes*. Once any byte is on the wire, almost every read-timeout in
+ * the chain stops firing, regardless of which one would have triggered.
+ *
+ * Applicability: this helper is ONLY for non-streaming JSON paths.
+ * Streaming SSE paths have their own keepalive in sse-heartbeat.ts —
+ * do NOT layer this on top of an SSE response (the space bytes would
+ * land mid-event and break frame parsing).
  *
  * Strategy:
- *   1. Race the upstream Promise against `raceMs` (default 50s).
+ *   1. Race the upstream Promise against `raceMs` (default 50s — well
+ *      below the typical 60s client read timeout).
  *   2. If upstream resolves in time → behave exactly like before:
  *      caller receives the resolved value and builds its own Response.
  *   3. If upstream is still pending → emit a 200 streaming Response with
