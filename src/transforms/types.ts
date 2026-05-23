@@ -109,6 +109,7 @@ export interface ResponsesPayload {
   truncation?: string
   store?: boolean
   metadata?: Record<string, string> | null
+  previous_response_id?: string | null
   reasoning?: {
     effort: "low" | "medium" | "high"
     summary?: "detailed" | "auto"
@@ -119,6 +120,7 @@ export type ResponseInputItem =
   | ResponseInputMessage
   | ResponseFunctionCallItem
   | ResponseFunctionCallOutputItem
+  | ResponseItemReference
 
 export interface ResponseInputMessage {
   type: "message"
@@ -138,6 +140,11 @@ export interface ResponseFunctionCallOutputItem {
   type: "function_call_output"
   call_id: string
   output: string
+}
+
+export interface ResponseItemReference {
+  type: "item_reference"
+  id: string
 }
 
 export interface ResponseContentBlock {

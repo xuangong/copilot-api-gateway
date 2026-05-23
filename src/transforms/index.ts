@@ -10,6 +10,7 @@ export type {
   AnthropicTool,
   ResponsesPayload,
   ResponseTool,
+  ResponseItemReference,
 } from "./types"
 
 // Billing header transform
@@ -17,6 +18,10 @@ export { stripReservedKeywords } from "./billing-header"
 
 // Tool type transforms
 export { fixApplyPatchTools, stripWebSearchTools } from "./tool-type"
+
+// Responses → chat-completions payload compactor (codex 413 mitigation)
+export { compactResponsesInputForChatFallback } from "./compact-responses-input"
+export type { CompactStats } from "./compact-responses-input"
 
 // Thinking cleanup
 export { filterThinkingBlocks, adaptThinkingForModel } from "./thinking-cleanup"

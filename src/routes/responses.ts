@@ -5,7 +5,9 @@ import { callCopilotAPI } from "~/services/copilot"
 import {
   fixApplyPatchTools,
   stripWebSearchTools,
+  compactResponsesInputForChatFallback,
   type ResponsesPayload,
+  type ResponseItemReference,
 } from "~/transforms"
 import {
   translateResponsesToChatCompletions,
@@ -52,6 +54,73 @@ function shouldUseChatFallback(model: string): boolean {
   if (model.startsWith("gpt-5")) return false
   // Everything else — chat fallback
   return true
+}
+
+// Codex emits its auto-review traffic with this synthetic model id. Rewrite
+// to a real gpt-5.x slug so the request takes the native /v1/responses
+// passthrough — the chat-completions fallback inflates long codex histories
+// (many function_call_output items) past the Copilot backend's body limit
+// and trips 413. Lowering reasoning effort keeps cost predictable for the
+// implicit upgrade. References:
+//   https://github.com/openai/codex/blob/.../endpoint/responses.rs
+const CODEX_AUTO_REVIEW_ALIAS = "codex-auto-review"
+const CODEX_AUTO_REVIEW_TARGET = "gpt-5.4"
+
+function rewriteCodexAutoReviewAlias(payload: ResponsesPayload): ResponsesPayload {
+  if (payload.model !== CODEX_AUTO_REVIEW_ALIAS) return payload
+  return {
+    ...payload,
+    model: CODEX_AUTO_REVIEW_TARGET,
+    reasoning: { ...(payload.reasoning ?? { effort: "low" }), effort: "low" },
+  }
+}
+
+// The gateway is stateless: it never stores prior responses, so a client that
+// sends previous_response_id or item_reference is referring to history we
+// don't have. Return OpenAI's verbatim "not found" envelopes — codex,
+// cline, openai-agents-python etc. key their auto-fallback on these exact
+// shapes (status / code / param) and will retry with the full input inlined.
+function isItemReferenceInput(item: unknown): item is ResponseItemReference {
+  return (
+    typeof item === "object"
+    && item !== null
+    && (item as { type?: unknown }).type === "item_reference"
+  )
+}
+
+function statefulContinuationNotFoundResponse(
+  payload: ResponsesPayload,
+): Response | undefined {
+  if (payload.previous_response_id != null) {
+    return new Response(
+      JSON.stringify({
+        error: {
+          message: `Previous response with id '${payload.previous_response_id}' not found.`,
+          type: "invalid_request_error",
+          param: "previous_response_id",
+          code: "previous_response_not_found",
+        },
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    )
+  }
+  if (Array.isArray(payload.input)) {
+    const itemRef = payload.input.find(isItemReferenceInput)
+    if (itemRef) {
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: `Item with id '${itemRef.id}' not found.`,
+            type: "invalid_request_error",
+            param: "input",
+            code: null,
+          },
+        }),
+        { status: 404, headers: { "Content-Type": "application/json" } },
+      )
+    }
+  }
+  return undefined
 }
 
 /**
@@ -188,7 +257,15 @@ const handleResponses = async (ctx: unknown) => {
     }
   }
 
-  const payload: ResponsesPayload = { ...(body as ResponsesPayload) }
+  const payload: ResponsesPayload = rewriteCodexAutoReviewAlias({
+    ...(body as ResponsesPayload),
+  })
+
+  // Stateless gateway: refuse server-side history references with the same
+  // 400/404 codex/cline/openai-agents-python use to trigger their full-input
+  // retry path, instead of silently sending broken refs upstream.
+  const notFound = statefulContinuationNotFoundResponse(payload)
+  if (notFound) return notFound
 
   // Apply compatibility transforms
   fixApplyPatchTools(payload)
@@ -367,6 +444,31 @@ const handleResponses = async (ctx: unknown) => {
   }
 
   // ── Chat Completions fallback with format conversion ──
+
+  // Compact oversized function_call_output history before translating, to
+  // keep the resulting chat-completions body under Copilot's hard limit.
+  // The /v1/chat/completions backend trips a 413 around the low-MB range —
+  // 1.5 MB byte budget keeps us comfortably below that after the Responses→
+  // Chat translation overhead. Only the oldest tool outputs get redacted;
+  // the most recent function_call_output and all `message` items are kept
+  // verbatim so the active turn stays intact.
+  if (Array.isArray(payload.input)) {
+    const { items, stats } = compactResponsesInputForChatFallback(
+      payload.input,
+      1_500_000,
+    )
+    if (stats.truncated > 0) {
+      console.log(JSON.stringify({
+        evt: "responses_input_compacted",
+        rid: requestId,
+        model,
+        truncated: stats.truncated,
+        bytesDropped: stats.bytesDropped,
+        totalItems: stats.totalItems,
+      }))
+      payload.input = items
+    }
+  }
 
   const chatPayload = translateResponsesToChatCompletions(payload, model)
 
