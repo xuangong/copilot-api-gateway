@@ -1,17 +1,16 @@
 /**
- * Config import/export v2.
+ * Config import/export bundle.
  *
- * v2 of the config-bundle format. Versioned at the top level so old/new
- * dashboards can refuse-or-migrate cleanly. v1 (the legacy ad-hoc JSON
- * dump) is unversioned; we treat any payload without a `version` field as
- * v1 and reject it explicitly from the v2 importer.
+ * Versioned at the top level (`version: 1`) so future format changes can
+ * refuse-or-migrate cleanly. The legacy unversioned ad-hoc dump is gone;
+ * we reject any payload without a `version` field explicitly.
  *
  * The bundle contains:
- *   - api_keys[]      — user-facing keys with quotas and web-search wiring
- *   - github_accounts[] — Copilot upstream accounts (token redactable)
- *   - flag_overrides  — global flag overrides (per provider kind, optional)
+ *   - apiKeys[]        — user-facing keys with quotas and web-search wiring
+ *   - githubAccounts[] — Copilot upstream accounts (token redactable)
+ *   - flagOverrides    — per-provider-kind flag overrides (optional)
  *
- * Sensitive fields (api_keys[].key, github_accounts[].token, web-search
+ * Sensitive fields (apiKeys[].key, githubAccounts[].token, web-search
  * keys) may be redacted on export by passing `redactSecrets: true`. The
  * importer treats `"__REDACTED__"` sentinels as "leave existing value
  * alone" so a redacted export can still be used to restore non-secret
@@ -20,25 +19,23 @@
  * Not part of this module:
  *   - persistence (this only handles the in-memory shape)
  *   - merge strategy (caller decides upsert-by-id vs replace-all)
- *
- * Format aimed at being human-diffable: keys sorted, 2-space indent.
  */
 
 import type { ApiKey, GitHubAccount } from "~/repo/types"
 
-export const CONFIG_BUNDLE_VERSION = 2 as const
+export const CONFIG_BUNDLE_VERSION = 1 as const
 
 export const REDACTED = "__REDACTED__"
 
 /** Per-provider flag override layer; mirrors FlagOverrides used at runtime. */
-export type FlagOverridesV2 = Record<string, boolean>
+export type FlagOverrides = Record<string, boolean>
 
-export interface ConfigBundleV2 {
-  version: 2
+export interface ConfigBundle {
+  version: 1
   exportedAt: string
   apiKeys: ApiKey[]
   githubAccounts: GitHubAccount[]
-  flagOverrides?: Partial<Record<"copilot" | "custom" | "azure", FlagOverridesV2>>
+  flagOverrides?: Partial<Record<"copilot" | "custom" | "azure", FlagOverrides>>
 }
 
 export interface ExportOptions {
@@ -50,7 +47,7 @@ export interface ExportOptions {
 interface BundleInput {
   apiKeys: readonly ApiKey[]
   githubAccounts: readonly GitHubAccount[]
-  flagOverrides?: ConfigBundleV2["flagOverrides"]
+  flagOverrides?: ConfigBundle["flagOverrides"]
 }
 
 const SECRET_API_KEY_FIELDS: ReadonlyArray<keyof ApiKey> = [
@@ -73,15 +70,15 @@ function redactGithubAccount(a: GitHubAccount): GitHubAccount {
 }
 
 /**
- * Serialize the in-memory config into a v2 bundle. Stable key order; no
+ * Serialize the in-memory config into a bundle. Stable key order; no
  * mutation of input arrays.
  */
-export function exportConfigV2(input: BundleInput, options: ExportOptions = {}): ConfigBundleV2 {
+export function exportConfig(input: BundleInput, options: ExportOptions = {}): ConfigBundle {
   const apiKeys = options.redactSecrets ? input.apiKeys.map(redactApiKey) : [...input.apiKeys]
   const githubAccounts = options.redactSecrets
     ? input.githubAccounts.map(redactGithubAccount)
     : [...input.githubAccounts]
-  const bundle: ConfigBundleV2 = {
+  const bundle: ConfigBundle = {
     version: CONFIG_BUNDLE_VERSION,
     exportedAt: options.now ?? new Date().toISOString(),
     apiKeys,
@@ -91,10 +88,10 @@ export function exportConfigV2(input: BundleInput, options: ExportOptions = {}):
   return bundle
 }
 
-/** Validation outcome for a v2 import. */
+/** Validation outcome for an import. */
 export interface ImportResult {
-  bundle: ConfigBundleV2
-  /** Number of api_keys/github_accounts entries that arrived redacted. */
+  bundle: ConfigBundle
+  /** Number of apiKeys/githubAccounts entries that arrived redacted. */
   redactedCount: number
 }
 
@@ -106,11 +103,11 @@ class ImportError extends Error {
 }
 
 /**
- * Parse and validate a v2 bundle. Throws `ImportError` if version is not 2
+ * Parse and validate a bundle. Throws `ImportError` if version is not 1
  * or if shape is malformed. Does NOT merge with the live state — caller
  * decides how to apply.
  */
-export function parseConfigBundleV2(payload: unknown): ImportResult {
+export function parseConfigBundle(payload: unknown): ImportResult {
   if (typeof payload !== "object" || payload === null) {
     throw new ImportError("Config bundle must be an object")
   }
@@ -119,8 +116,8 @@ export function parseConfigBundleV2(payload: unknown): ImportResult {
   if (version !== CONFIG_BUNDLE_VERSION) {
     throw new ImportError(
       version === undefined
-        ? "Missing `version` field — looks like a v1 bundle, which is not accepted"
-        : `Unsupported config bundle version: ${String(version)} (expected 2)`,
+        ? "Missing `version` field — payload is not a config bundle"
+        : `Unsupported config bundle version: ${String(version)} (expected ${CONFIG_BUNDLE_VERSION})`,
     )
   }
   const apiKeys = obj.apiKeys
@@ -142,15 +139,15 @@ export function parseConfigBundleV2(payload: unknown): ImportResult {
   }
 
   const flagOverrides = obj.flagOverrides
-  let normalized: ConfigBundleV2["flagOverrides"]
+  let normalized: ConfigBundle["flagOverrides"]
   if (flagOverrides !== undefined) {
     if (typeof flagOverrides !== "object" || flagOverrides === null || Array.isArray(flagOverrides)) {
       throw new ImportError("`flagOverrides` must be a record keyed by provider kind")
     }
-    normalized = flagOverrides as ConfigBundleV2["flagOverrides"]
+    normalized = flagOverrides as ConfigBundle["flagOverrides"]
   }
 
-  const bundle: ConfigBundleV2 = {
+  const bundle: ConfigBundle = {
     version: CONFIG_BUNDLE_VERSION,
     exportedAt: typeof obj.exportedAt === "string" ? obj.exportedAt : "",
     apiKeys: apiKeys as ApiKey[],
@@ -167,9 +164,9 @@ export function parseConfigBundleV2(payload: unknown): ImportResult {
  * with redacted secret fields swapped back to live values.
  */
 export function unredactWithLive(
-  incoming: ConfigBundleV2,
+  incoming: ConfigBundle,
   live: { apiKeys: readonly ApiKey[]; githubAccounts: readonly GitHubAccount[] },
-): ConfigBundleV2 {
+): ConfigBundle {
   const liveKeysById = new Map(live.apiKeys.map((k) => [k.id, k]))
   const liveAccountsById = new Map(live.githubAccounts.map((a) => [a.user.id, a]))
   const apiKeys = incoming.apiKeys.map((k) => {

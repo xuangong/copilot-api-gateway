@@ -1769,18 +1769,18 @@ export function dashboardAssets(): string {
             reader.onload = (e) => {
               try {
                 const json = JSON.parse(e.target.result);
-                if (!json.data) {
+                if (json.version !== 1 || !Array.isArray(json.apiKeys) || !Array.isArray(json.githubAccounts)) {
                   alert(t('dash.invalidExportFile'));
                   this.importFile = null;
                   return;
                 }
-                this.importData = json.data;
+                this.importData = json;
                 this.importPreview = {
                   ready: true,
                   exportedAt: json.exportedAt || null,
-                  apiKeys: Array.isArray(json.data.apiKeys) ? json.data.apiKeys.length : 0,
-                  githubAccounts: Array.isArray(json.data.githubAccounts) ? json.data.githubAccounts.length : 0,
-                  usage: Array.isArray(json.data.usage) ? json.data.usage.length : 0,
+                  apiKeys: json.apiKeys.length,
+                  githubAccounts: json.githubAccounts.length,
+                  usage: 0,
                 };
               } catch {
                 alert(t('dash.invalidJsonFile'));
@@ -1800,7 +1800,7 @@ export function dashboardAssets(): string {
               const resp = await fetch('/api/import', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
-                body: JSON.stringify({ mode: this.importMode, data: this.importData }),
+                body: JSON.stringify({ mode: this.importMode, bundle: this.importData }),
               });
               if (resp.status === 401) {
                 this.logout(t('dash.sessionExpired'));
@@ -1808,7 +1808,7 @@ export function dashboardAssets(): string {
               }
               const result = await resp.json();
               if (resp.ok) {
-                alert(t('dash.importComplete', { keys: result.imported.apiKeys, accounts: result.imported.githubAccounts, usage: result.imported.usage }));
+                alert(t('dash.importComplete', { keys: result.imported.apiKeys, accounts: result.imported.githubAccounts, usage: 0 }));
                 this.importFile = null;
                 this.importData = null;
                 this.importPreview = { ready: false, exportedAt: null, apiKeys: 0, githubAccounts: 0, usage: 0 };

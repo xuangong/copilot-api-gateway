@@ -2,8 +2,8 @@ import { test, expect, describe } from "bun:test"
 import {
   CONFIG_BUNDLE_VERSION,
   REDACTED,
-  exportConfigV2,
-  parseConfigBundleV2,
+  exportConfig,
+  parseConfigBundle,
   unredactWithLive,
 } from "~/config/import-export"
 import type { ApiKey, GitHubAccount } from "~/repo/types"
@@ -25,9 +25,9 @@ const sampleAccount: GitHubAccount = {
   user: { id: 42, login: "octocat", name: "Octo", avatar_url: "https://x" },
 }
 
-describe("exportConfigV2", () => {
+describe("exportConfig", () => {
   test("round-trip without redaction preserves secrets", () => {
-    const bundle = exportConfigV2(
+    const bundle = exportConfig(
       { apiKeys: [sampleKey], githubAccounts: [sampleAccount] },
       { now: "2026-05-25T00:00:00Z" },
     )
@@ -39,7 +39,7 @@ describe("exportConfigV2", () => {
   })
 
   test("redactSecrets masks api_key secrets and github token", () => {
-    const bundle = exportConfigV2(
+    const bundle = exportConfig(
       { apiKeys: [sampleKey], githubAccounts: [sampleAccount] },
       { redactSecrets: true, now: "2026-05-25T00:00:00Z" },
     )
@@ -48,19 +48,18 @@ describe("exportConfigV2", () => {
     expect(bundle.apiKeys[0].webSearchTavilyKey).toBe(REDACTED)
     expect(bundle.apiKeys[0].webSearchMsGroundingKey).toBe(REDACTED)
     expect(bundle.githubAccounts[0].token).toBe(REDACTED)
-    // non-secret fields untouched
     expect(bundle.apiKeys[0].name).toBe("primary")
     expect(bundle.apiKeys[0].webSearchEnabled).toBe(true)
   })
 
   test("does not mutate input arrays", () => {
     const keys = [sampleKey]
-    exportConfigV2({ apiKeys: keys, githubAccounts: [sampleAccount] }, { redactSecrets: true })
+    exportConfig({ apiKeys: keys, githubAccounts: [sampleAccount] }, { redactSecrets: true })
     expect(keys[0].key).toBe("sk-live-abc")
   })
 
   test("flagOverrides round-trip", () => {
-    const bundle = exportConfigV2({
+    const bundle = exportConfig({
       apiKeys: [],
       githubAccounts: [],
       flagOverrides: { copilot: { foo: true }, azure: { bar: false } },
@@ -70,40 +69,40 @@ describe("exportConfigV2", () => {
   })
 })
 
-describe("parseConfigBundleV2", () => {
-  test("rejects v1 (missing version)", () => {
-    expect(() => parseConfigBundleV2({ apiKeys: [], githubAccounts: [] })).toThrow(/v1 bundle/)
+describe("parseConfigBundle", () => {
+  test("rejects payload without version", () => {
+    expect(() => parseConfigBundle({ apiKeys: [], githubAccounts: [] })).toThrow(/Missing `version`/)
   })
 
   test("rejects mismatched version", () => {
-    expect(() => parseConfigBundleV2({ version: 3, apiKeys: [], githubAccounts: [] })).toThrow(
+    expect(() => parseConfigBundle({ version: 99, apiKeys: [], githubAccounts: [] })).toThrow(
       /Unsupported config bundle version/,
     )
   })
 
   test("rejects non-array apiKeys", () => {
-    expect(() => parseConfigBundleV2({ version: 2, apiKeys: {}, githubAccounts: [] })).toThrow(
+    expect(() => parseConfigBundle({ version: 1, apiKeys: {}, githubAccounts: [] })).toThrow(
       /`apiKeys` must be an array/,
     )
   })
 
   test("rejects non-array githubAccounts", () => {
-    expect(() => parseConfigBundleV2({ version: 2, apiKeys: [], githubAccounts: "x" })).toThrow(
+    expect(() => parseConfigBundle({ version: 1, apiKeys: [], githubAccounts: "x" })).toThrow(
       /`githubAccounts` must be an array/,
     )
   })
 
   test("rejects entries without id", () => {
     expect(() =>
-      parseConfigBundleV2({ version: 2, apiKeys: [{ name: "x" }], githubAccounts: [] }),
+      parseConfigBundle({ version: 1, apiKeys: [{ name: "x" }], githubAccounts: [] }),
     ).toThrow(/missing id/)
   })
 
   test("counts redacted entries", () => {
     const redactedKey: ApiKey = { ...sampleKey, key: REDACTED }
     const redactedAcct: GitHubAccount = { ...sampleAccount, token: REDACTED }
-    const { redactedCount } = parseConfigBundleV2({
-      version: 2,
+    const { redactedCount } = parseConfigBundle({
+      version: 1,
       exportedAt: "now",
       apiKeys: [redactedKey],
       githubAccounts: [redactedAcct],
@@ -111,23 +110,23 @@ describe("parseConfigBundleV2", () => {
     expect(redactedCount).toBe(2)
   })
 
-  test("accepts a clean v2 bundle", () => {
-    const exported = exportConfigV2({ apiKeys: [sampleKey], githubAccounts: [sampleAccount] })
-    const { bundle, redactedCount } = parseConfigBundleV2(JSON.parse(JSON.stringify(exported)))
-    expect(bundle.version).toBe(2)
+  test("accepts a clean bundle round-trip", () => {
+    const exported = exportConfig({ apiKeys: [sampleKey], githubAccounts: [sampleAccount] })
+    const { bundle, redactedCount } = parseConfigBundle(JSON.parse(JSON.stringify(exported)))
+    expect(bundle.version).toBe(CONFIG_BUNDLE_VERSION)
     expect(redactedCount).toBe(0)
   })
 
   test("rejects malformed flagOverrides", () => {
     expect(() =>
-      parseConfigBundleV2({ version: 2, apiKeys: [], githubAccounts: [], flagOverrides: [] }),
+      parseConfigBundle({ version: 1, apiKeys: [], githubAccounts: [], flagOverrides: [] }),
     ).toThrow(/flagOverrides/)
   })
 })
 
 describe("unredactWithLive", () => {
   test("restores REDACTED secrets from live state matched by id", () => {
-    const exported = exportConfigV2(
+    const exported = exportConfig(
       { apiKeys: [sampleKey], githubAccounts: [sampleAccount] },
       { redactSecrets: true },
     )
@@ -141,7 +140,7 @@ describe("unredactWithLive", () => {
   })
 
   test("keeps REDACTED when no live counterpart exists", () => {
-    const exported = exportConfigV2(
+    const exported = exportConfig(
       { apiKeys: [sampleKey], githubAccounts: [sampleAccount] },
       { redactSecrets: true },
     )
@@ -151,12 +150,11 @@ describe("unredactWithLive", () => {
   })
 
   test("non-redacted values pass through unchanged", () => {
-    const exported = exportConfigV2({ apiKeys: [sampleKey], githubAccounts: [sampleAccount] })
+    const exported = exportConfig({ apiKeys: [sampleKey], githubAccounts: [sampleAccount] })
     const merged = unredactWithLive(exported, {
       apiKeys: [{ ...sampleKey, key: "different" }],
       githubAccounts: [{ ...sampleAccount, token: "different" }],
     })
-    // Incoming was not redacted; should keep incoming values, not live ones.
     expect(merged.apiKeys[0].key).toBe("sk-live-abc")
     expect(merged.githubAccounts[0].token).toBe("gho_live")
   })
