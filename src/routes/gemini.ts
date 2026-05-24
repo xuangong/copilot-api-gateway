@@ -1,7 +1,7 @@
 import { Elysia } from "elysia"
 
 import type { AppState } from "~/lib/state"
-import { callCopilotAPI } from "~/services/copilot"
+import { createCopilotProvider } from "~/providers/registry"
 import { trackNonStreamingUsage, consumeStreamForUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { detectClient } from "~/lib/client-detect"
@@ -129,13 +129,10 @@ async function handleGenerateContent(ctx: RouteContext) {
   const upstreamTimer = startTimer()
   let upstreamMs = 0
   const syncPromise: Promise<{ chat: ChatCompletionResponse; gemini: ReturnType<typeof translateOpenAIToGemini> }> = (async () => {
-    const response = await callCopilotAPI({
-      endpoint: "/chat/completions",
-      payload: cleanPayload,
-      operationName: "gemini generate content",
-      copilotToken: state.copilotToken,
-      accountType: state.accountType,
-    })
+    const response = await createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType }).callChatCompletions(
+      cleanPayload,
+      { operationName: "gemini generate content" },
+    )
     upstreamMs = upstreamTimer()
     const json = (await response.json()) as ChatCompletionResponse
     return { chat: json, gemini: translateOpenAIToGemini(json, model) }
@@ -264,13 +261,10 @@ async function handleStreamGenerateContent(
   const cleanPayload = JSON.parse(JSON.stringify(openAIPayload)) as Record<string, unknown>
 
   const upstreamTimer = startTimer()
-  const response = await callCopilotAPI({
-    endpoint: "/chat/completions",
-    payload: cleanPayload,
-    operationName: "gemini stream generate content",
-    copilotToken: state.copilotToken,
-    accountType: state.accountType,
-  })
+  const response = await createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType }).callChatCompletions(
+    cleanPayload,
+    { operationName: "gemini stream generate content" },
+  )
   const upstreamMs = upstreamTimer()
 
   if (apiKeyId) {

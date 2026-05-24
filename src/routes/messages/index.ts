@@ -2,7 +2,8 @@ import { Elysia } from "elysia"
 
 import { startTimer } from "~/lib/latency-tracker"
 import { checkQuota } from "~/lib/quota"
-import { callCopilotAPI, repairToolResultPairs } from "~/services/copilot"
+import { createCopilotProvider } from "~/providers/registry"
+import { repairToolResultPairs } from "~/services/copilot"
 import type { MessagesPayload } from "~/services/web-search"
 import {
   adaptThinkingForModel,
@@ -83,15 +84,14 @@ export const messagesRoute = new Elysia()
       payload.messages = repairToolResultPairs(payload.messages) as typeof payload.messages
     }
 
-    const response = await callCopilotAPI({
-      endpoint: "/v1/messages/count_tokens",
-      payload: payload as unknown as Record<string, unknown>,
-      operationName: "count tokens",
-      copilotToken: state.copilotToken,
-      accountType: state.accountType,
-      requireModel: false,
-      extraHeaders: extractAnthropicPassthroughHeaders(ctx),
-    })
+    const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
+    const response = await provider.callMessagesCountTokens(
+      payload as unknown as Record<string, unknown>,
+      {
+        operationName: "count tokens",
+        extraHeaders: extractAnthropicPassthroughHeaders(ctx),
+      },
+    )
 
     return response.json()
   })

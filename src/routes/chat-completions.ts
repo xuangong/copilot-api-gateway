@@ -1,7 +1,7 @@
 import { Elysia } from "elysia"
 
 import type { AppState } from "~/lib/state"
-import { callCopilotAPI } from "~/services/copilot"
+import { createCopilotProvider } from "~/providers/registry"
 import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { detectClient } from "~/lib/client-detect"
@@ -103,6 +103,7 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
 
   const payload = body as ChatCompletionsPayload
   const upstreamTimer = startTimer()
+  const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
 
   // ── Web-search interception ───────────────────────────────────────────
   // If client sent a web_search-style tool, run the multi-turn intercept
@@ -167,13 +168,10 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
       include_usage: true,
     }
 
-    const response = await callCopilotAPI({
-      endpoint: "/chat/completions",
-      payload: payload as unknown as Record<string, unknown>,
-      operationName: "chat completions",
-      copilotToken: state.copilotToken,
-      accountType: state.accountType,
-    })
+    const response = await provider.callChatCompletions(
+      payload as unknown as Record<string, unknown>,
+      { operationName: "chat completions" },
+    )
     const upstreamMs = upstreamTimer()
     // Inject SSE comment heartbeats during long thinking gaps so the
     // downstream connection never goes 60s without a byte (which would
@@ -209,13 +207,10 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
 
   let upstreamMs = 0
   const syncPromise: Promise<ChatJson> = (async () => {
-    const response = await callCopilotAPI({
-      endpoint: "/chat/completions",
-      payload: payload as unknown as Record<string, unknown>,
-      operationName: "chat completions",
-      copilotToken: state.copilotToken,
-      accountType: state.accountType,
-    })
+    const response = await provider.callChatCompletions(
+      payload as unknown as Record<string, unknown>,
+      { operationName: "chat completions" },
+    )
     upstreamMs = upstreamTimer()
     return (await response.json()) as ChatJson
   })()

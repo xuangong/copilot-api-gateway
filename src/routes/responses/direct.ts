@@ -3,7 +3,7 @@ import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
-import { callCopilotAPI } from "~/services/copilot"
+import { createCopilotProvider } from "~/providers/registry"
 import {
   addWebSearchHeaders,
   recordWebSearchUsage,
@@ -36,13 +36,11 @@ export async function handleDirectStreaming(
   const model = payload.model
 
   const upstreamTimer = startTimer()
-  const response = await callCopilotAPI({
-    endpoint: "/v1/responses",
-    payload: payload as unknown as Record<string, unknown>,
-    operationName: "responses",
-    copilotToken: state.copilotToken,
-    accountType: state.accountType,
-  })
+  const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
+  const response = await provider.callResponses(
+    payload as unknown as Record<string, unknown>,
+    { operationName: "responses" },
+  )
   const upstreamMs = upstreamTimer()
 
   // Inject SSE comment heartbeats during long thinking gaps so the downstream
@@ -94,15 +92,13 @@ export async function handleDirectNonStreaming(
   const model = payload.model
 
   const upstreamTimer = startTimer()
+  const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
   let upstreamMs = 0
   const syncPromise: Promise<RespJson> = (async () => {
-    const response = await callCopilotAPI({
-      endpoint: "/v1/responses",
-      payload: payload as unknown as Record<string, unknown>,
-      operationName: "responses",
-      copilotToken: state.copilotToken,
-      accountType: state.accountType,
-    })
+    const response = await provider.callResponses(
+      payload as unknown as Record<string, unknown>,
+      { operationName: "responses" },
+    )
     upstreamMs = upstreamTimer()
     return (await response.json()) as RespJson
   })()

@@ -1,5 +1,5 @@
 import type { AccountType } from "~/config/constants"
-import { callCopilotAPI } from "~/services/copilot"
+import { createCopilotProvider } from "~/providers/registry"
 
 import { EngineManager, type EngineManagerOptions } from "./engine-manager"
 import { formatSearchResults } from "./formatter"
@@ -66,13 +66,10 @@ async function createMessages(
   payload: MessagesPayload,
   options: CallOptions,
 ): Promise<ApiResponse> {
-  const response = await callCopilotAPI({
-    endpoint: "/v1/messages",
-    payload: payload as unknown as Record<string, unknown>,
-    operationName: "create message",
-    copilotToken: options.copilotToken,
-    accountType: options.accountType,
-  })
+  const response = await createCopilotProvider({ copilotToken: options.copilotToken, accountType: options.accountType }).callMessages(
+    payload as unknown as Record<string, unknown>,
+    { operationName: "create message" },
+  )
   return response.json() as Promise<ApiResponse>
 }
 
@@ -81,13 +78,10 @@ async function createMessagesStream(
   payload: MessagesPayload,
   options: CallOptions,
 ): Promise<ReadableStream<Uint8Array>> {
-  const response = await callCopilotAPI({
-    endpoint: "/v1/messages",
-    payload: { ...payload, stream: true } as unknown as Record<string, unknown>,
-    operationName: "create message stream",
-    copilotToken: options.copilotToken,
-    accountType: options.accountType,
-  })
+  const response = await createCopilotProvider({ copilotToken: options.copilotToken, accountType: options.accountType }).callMessages(
+    { ...payload, stream: true } as unknown as Record<string, unknown>,
+    { operationName: "create message stream" },
+  )
   return response.body!
 }
 

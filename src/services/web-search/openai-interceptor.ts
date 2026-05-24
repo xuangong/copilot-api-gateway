@@ -1,5 +1,5 @@
 import type { AccountType } from "~/config/constants"
-import { callCopilotAPI } from "~/services/copilot"
+import { createCopilotProvider } from "~/providers/registry"
 
 import {
   MAX_USES_HARD_LIMIT,
@@ -171,14 +171,10 @@ async function callChat(
   payload: OpenAIChatPayload,
   options: InterceptOpenAIOptions,
 ): Promise<OpenAIChatResponse> {
-  const response = await callCopilotAPI({
-    endpoint: options.endpoint ?? "/chat/completions",
-    payload: { ...payload, stream: false } as unknown as Record<string, unknown>,
-    operationName: "chat completions (web_search intercept)",
-    copilotToken: options.copilotToken,
-    accountType: options.accountType,
-    extraHeaders: options.extraHeaders,
-  })
+  const response = await createCopilotProvider({ copilotToken: options.copilotToken, accountType: options.accountType }).callChatCompletions(
+    { ...payload, stream: false } as unknown as Record<string, unknown>,
+    { operationName: "chat completions (web_search intercept)", extraHeaders: options.extraHeaders },
+  )
   return (await response.json()) as OpenAIChatResponse
 }
 

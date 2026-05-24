@@ -3,7 +3,7 @@ import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
 import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
-import { callCopilotAPI } from "~/services/copilot"
+import { createCopilotProvider } from "~/providers/registry"
 import { omitThinkingFromAnthropicSse } from "~/lib/anthropic-sse-thinking-strip"
 import type { AnthropicMessagesPayload } from "~/transforms"
 
@@ -30,16 +30,13 @@ export async function handleDirectMessages(
   const client = detectClient(userAgent)
   const upstreamTimer = startTimer()
   const isStreaming = payload.stream === true
+  const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
 
   if (isStreaming) {
-    const response = await callCopilotAPI({
-      endpoint: "/v1/messages",
-      payload: payload as unknown as Record<string, unknown>,
-      operationName: "create message",
-      copilotToken: state.copilotToken,
-      accountType: state.accountType,
-      extraHeaders: passthroughHeaders,
-    })
+    const response = await provider.callMessages(
+      payload as unknown as Record<string, unknown>,
+      { operationName: "create message", extraHeaders: passthroughHeaders },
+    )
     const upstreamMs = upstreamTimer()
 
     // Wrap upstream body in idle-heartbeat stream so we never go 60s without
@@ -74,15 +71,14 @@ export async function handleDirectMessages(
   type SyncJson = { usage?: { input_tokens?: number; output_tokens?: number } }
   let upstreamMs = 0
   const syncPromise: Promise<SyncJson> = (async () => {
-    const response = await callCopilotAPI({
-      endpoint: "/v1/messages",
-      payload: payload as unknown as Record<string, unknown>,
-      operationName: "create message",
-      copilotToken: state.copilotToken,
-      accountType: state.accountType,
-      timeout: SYNC_REQUEST_TIMEOUT_MS,
-      extraHeaders: passthroughHeaders,
-    })
+    const response = await provider.callMessages(
+      payload as unknown as Record<string, unknown>,
+      {
+        operationName: "create message",
+        timeout: SYNC_REQUEST_TIMEOUT_MS,
+        extraHeaders: passthroughHeaders,
+      },
+    )
     upstreamMs = upstreamTimer()
     return (await response.json()) as SyncJson
   })()

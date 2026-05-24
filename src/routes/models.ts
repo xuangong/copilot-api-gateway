@@ -1,7 +1,7 @@
 import { Elysia } from "elysia"
 
 import type { AppState } from "~/lib/state"
-import { getModels } from "~/services/copilot"
+import { createCopilotProvider } from "~/providers/registry"
 
 interface RouteContext {
   state: AppState | null
@@ -15,19 +15,19 @@ export const modelsRoute = new Elysia()
       // Return empty models list when not connected
       return { object: "list", data: [] }
     }
-    return getModels(state.copilotToken, state.accountType)
+    return createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType }).getModels()
   })
   .get("/models", async (ctx) => {
     const { state } = ctx as unknown as RouteContext
     if (!state?.copilotToken) {
       throw new Error("GitHub token not found. Use /auth/github to connect your account.")
     }
-    return getModels(state.copilotToken, state.accountType)
+    return createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType }).getModels()
   })
   .get("/v1/models", async (ctx) => {
     const { state } = ctx as unknown as RouteContext
     if (!state?.copilotToken) {
       throw new Error("GitHub token not found. Use /auth/github to connect your account.")
     }
-    return getModels(state.copilotToken, state.accountType)
+    return createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType }).getModels()
   })

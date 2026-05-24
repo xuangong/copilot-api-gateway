@@ -3,7 +3,7 @@ import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
-import { callCopilotAPI } from "~/services/copilot"
+import { createCopilotProvider } from "~/providers/registry"
 import {
   createStreamState as _createStreamState,
   translateChatCompletionsToResponses,
@@ -55,19 +55,17 @@ export async function handleChatFallback(
   fixApplyPatchTools(payload)
 
   const chatPayload = translateResponsesToChatCompletions(payload, model)
+  const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
 
   if (payload.stream === true) {
     chatPayload.stream = true
     chatPayload.stream_options = { include_usage: true }
 
     const upstreamTimer = startTimer()
-    const response = await callCopilotAPI({
-      endpoint: "/chat/completions",
-      payload: chatPayload as unknown as Record<string, unknown>,
-      operationName: "responses (via chat)",
-      copilotToken: state.copilotToken,
-      accountType: state.accountType,
-    })
+    const response = await provider.callChatCompletions(
+      chatPayload as unknown as Record<string, unknown>,
+      { operationName: "responses (via chat)" },
+    )
     const upstreamMs = upstreamTimer()
 
     if (apiKeyId) {
@@ -109,13 +107,10 @@ export async function handleChatFallback(
     responsesResult: ReturnType<typeof translateChatCompletionsToResponses>
     chatResponse: ChatCompletionResponse
   }> = (async () => {
-    const response = await callCopilotAPI({
-      endpoint: "/chat/completions",
-      payload: chatPayload as unknown as Record<string, unknown>,
-      operationName: "responses (via chat)",
-      copilotToken: state.copilotToken,
-      accountType: state.accountType,
-    })
+    const response = await provider.callChatCompletions(
+      chatPayload as unknown as Record<string, unknown>,
+      { operationName: "responses (via chat)" },
+    )
     upstreamMs = upstreamTimer()
     const chatResponse = (await response.json()) as ChatCompletionResponse
     return {
