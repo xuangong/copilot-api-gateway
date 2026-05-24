@@ -1,5 +1,6 @@
 import type { AccountType } from "~/config/constants"
 
+import { AzureProvider, type AzureProviderConfig } from "./azure/provider"
 import { CopilotProvider } from "./copilot/provider"
 import { CustomProvider, type CustomProviderConfig } from "./custom/provider"
 import type { ModelProvider, UpstreamKind } from "./types"
@@ -7,6 +8,7 @@ import type { ModelProvider, UpstreamKind } from "./types"
 export type { ModelProvider, ProviderCallOptions, UpstreamKind } from "./types"
 export { CopilotProvider } from "./copilot/provider"
 export { CustomProvider, type CustomProviderConfig } from "./custom/provider"
+export { AzureProvider, type AzureProviderConfig } from "./azure/provider"
 
 export interface CreateProviderOptions {
   copilotToken: string
@@ -26,6 +28,10 @@ export function createCopilotProvider(opts: CreateProviderOptions): ModelProvide
 
 export function createCustomProvider(cfg: CustomProviderConfig): ModelProvider {
   return new CustomProvider(cfg)
+}
+
+export function createAzureProvider(cfg: AzureProviderConfig): ModelProvider {
+  return new AzureProvider(cfg)
 }
 
 /**
