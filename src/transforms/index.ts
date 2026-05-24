@@ -56,3 +56,13 @@ export {
   createChatStreamFixer,
   type StreamIdTracker,
 } from "./streaming-id-fix"
+
+// Request-side pipelines (composes the per-mutation helpers above in the
+// canonical order each route needs).
+export {
+  runAnthropicMessagesPipeline,
+  runAnthropicCountTokensPipeline,
+  runResponsesChatFallbackPipeline,
+  type AnthropicMessagesPipelineFlags,
+  type ResponsesChatFallbackPipelineFlags,
+} from "./pipeline"

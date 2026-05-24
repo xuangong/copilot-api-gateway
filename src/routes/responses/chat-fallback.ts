@@ -12,7 +12,7 @@ import {
 } from "~/services/responses"
 import {
   compactResponsesInputForChatFallback,
-  fixApplyPatchTools,
+  runResponsesChatFallbackPipeline,
   type ResponsesPayload,
 } from "~/transforms"
 
@@ -52,7 +52,7 @@ export async function handleChatFallback(
     }
   }
 
-  fixApplyPatchTools(payload)
+  runResponsesChatFallbackPipeline(payload)
 
   const chatPayload = translateResponsesToChatCompletions(payload, model)
   const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })

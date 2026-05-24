@@ -3,15 +3,10 @@ import { Elysia } from "elysia"
 import { startTimer } from "~/lib/latency-tracker"
 import { checkQuota } from "~/lib/quota"
 import { createCopilotProvider } from "~/providers/registry"
-import { repairToolResultPairs } from "~/services/copilot"
 import type { MessagesPayload } from "~/services/web-search"
 import {
-  adaptThinkingForModel,
-  filterThinkingBlocks,
-  promoteThinkingDisplayForStreaming,
-  stripCacheControl,
-  stripContextManagement,
-  stripReservedKeywords,
+  runAnthropicCountTokensPipeline,
+  runAnthropicMessagesPipeline,
   type AnthropicMessagesPayload,
 } from "~/transforms"
 
@@ -43,22 +38,7 @@ export const messagesRoute = new Elysia()
     }
 
     const payload: AnthropicMessagesPayload = { ...(body as AnthropicMessagesPayload) }
-
-    stripContextManagement(payload as unknown as Record<string, unknown>)
-    stripReservedKeywords(payload)
-    filterThinkingBlocks(payload)
-    adaptThinkingForModel(payload)
-    stripCacheControl(payload as unknown as Record<string, unknown>)
-
-    // Promote thinking.display omitted → summarized for streaming on
-    // Claude 4.5/4.6 so the upstream stream gets continuous thinking_delta
-    // events. We strip those deltas back out in the direct handler to honor
-    // the client's original "omitted" intent.
-    const thinkingPromotion = promoteThinkingDisplayForStreaming(payload)
-
-    if (Array.isArray(payload.messages)) {
-      payload.messages = repairToolResultPairs(payload.messages) as typeof payload.messages
-    }
+    const flags = runAnthropicMessagesPipeline(payload)
 
     const messagesPayload = payload as unknown as MessagesPayload
     if (hasWebSearch(messagesPayload)) {
@@ -69,7 +49,7 @@ export const messagesRoute = new Elysia()
       routeCtx,
       payload,
       passthroughHeaders,
-      thinkingPromotion.promoted,
+      flags.thinkingPromotion.promoted,
       elapsed,
     )
   })
@@ -77,12 +57,7 @@ export const messagesRoute = new Elysia()
     const { state, body } = ctx as unknown as RouteContext
     const payload: AnthropicMessagesPayload = { ...(body as AnthropicMessagesPayload) }
 
-    stripContextManagement(payload as unknown as Record<string, unknown>)
-    stripCacheControl(payload as unknown as Record<string, unknown>)
-
-    if (Array.isArray(payload.messages)) {
-      payload.messages = repairToolResultPairs(payload.messages) as typeof payload.messages
-    }
+    runAnthropicCountTokensPipeline(payload)
 
     const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
     const response = await provider.callMessagesCountTokens(
