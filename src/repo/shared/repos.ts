@@ -16,6 +16,11 @@ import type {
   LatencyRepo,
   ObservabilityShare,
   ObservabilityShareRepo,
+  PerformanceBucketRecord,
+  PerformanceMetricScope,
+  PerformanceRecordInput,
+  PerformanceRepo,
+  PerformanceSummaryRecord,
   Repo,
   SessionRepo,
   UsageRecord,
@@ -28,6 +33,7 @@ import type {
   WebSearchUsageRecord,
   WebSearchUsageRepo,
 } from "../types"
+import { latencyBucketForMs } from "~/lib/performance-histogram"
 import type { SqlExecutor } from "./executor"
 
 const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref"
@@ -43,6 +49,8 @@ const WS_ENGINE_COLS = "key_id, engine_id, hour, attempts, successes, failures, 
 const KEY_ASSIGN_COLS = "key_id, user_id, assigned_by, assigned_at"
 const SHARE_COLS = "owner_id, viewer_id, granted_by, granted_at"
 const DEVICE_COLS = "device_code, user_code, expires_at, user_id, session_token, created_at"
+const PERF_SUMMARY_COLS = "hour, metric_scope, key_id, model, source_api, target_api, stream, runtime_location, requests, errors, total_ms_sum"
+const PERF_BUCKET_COLS = "hour, metric_scope, key_id, model, source_api, target_api, stream, runtime_location, lower_ms, upper_ms, count"
 
 function toApiKey(row: any): ApiKey {
   let priority: string[] | undefined
@@ -656,6 +664,91 @@ class SharedDeviceCodeRepo implements DeviceCodeRepo {
   }
 }
 
+function toPerformanceSummaryRecord(r: any): PerformanceSummaryRecord {
+  return {
+    hour: r.hour,
+    metricScope: r.metric_scope,
+    keyId: r.key_id,
+    model: r.model,
+    sourceApi: r.source_api,
+    targetApi: r.target_api,
+    stream: r.stream === 1,
+    runtimeLocation: r.runtime_location,
+    requests: r.requests,
+    errors: r.errors,
+    totalMsSum: r.total_ms_sum,
+  }
+}
+
+function toPerformanceBucketRecord(r: any): PerformanceBucketRecord {
+  return {
+    hour: r.hour,
+    metricScope: r.metric_scope,
+    keyId: r.key_id,
+    model: r.model,
+    sourceApi: r.source_api,
+    targetApi: r.target_api,
+    stream: r.stream === 1,
+    runtimeLocation: r.runtime_location,
+    lowerMs: r.lower_ms,
+    upperMs: r.upper_ms,
+    count: r.count,
+  }
+}
+
+class SharedPerformanceRepo implements PerformanceRepo {
+  constructor(private x: SqlExecutor) {}
+
+  async record(entry: PerformanceRecordInput): Promise<void> {
+    const streamInt = entry.stream ? 1 : 0
+    const errorInt = entry.isError ? 1 : 0
+    const durationMs = Math.max(0, Math.round(entry.durationMs))
+    await this.x.run(
+      `INSERT INTO performance_summary (${PERF_SUMMARY_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+       ON CONFLICT (hour, metric_scope, key_id, model, source_api, target_api, stream, runtime_location)
+       DO UPDATE SET requests = requests + 1, errors = errors + excluded.errors, total_ms_sum = total_ms_sum + excluded.total_ms_sum`,
+      [
+        entry.hour, entry.metricScope, entry.keyId, entry.model,
+        entry.sourceApi, entry.targetApi, streamInt, entry.runtimeLocation,
+        errorInt, durationMs,
+      ],
+    )
+
+    const { lowerMs, upperMs } = latencyBucketForMs(durationMs)
+    await this.x.run(
+      `INSERT INTO performance_latency_buckets (${PERF_BUCKET_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+       ON CONFLICT (hour, metric_scope, key_id, model, source_api, target_api, stream, runtime_location, lower_ms, upper_ms)
+       DO UPDATE SET count = count + 1`,
+      [
+        entry.hour, entry.metricScope, entry.keyId, entry.model,
+        entry.sourceApi, entry.targetApi, streamInt, entry.runtimeLocation,
+        lowerMs, upperMs,
+      ],
+    )
+  }
+
+  async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string; metricScope?: PerformanceMetricScope }): Promise<{ summary: PerformanceSummaryRecord[]; buckets: PerformanceBucketRecord[] }> {
+    const summary = await this.queryTable("performance_summary", PERF_SUMMARY_COLS, opts)
+    const buckets = await this.queryTable("performance_latency_buckets", PERF_BUCKET_COLS, opts)
+    return {
+      summary: summary.map(toPerformanceSummaryRecord),
+      buckets: buckets.map(toPerformanceBucketRecord),
+    }
+  }
+
+  private async queryTable(table: string, cols: string, opts: { keyId?: string; keyIds?: string[]; start: string; end: string; metricScope?: PerformanceMetricScope }): Promise<any[]> {
+    const { sql, binds } = buildKeyIdRangeQuery(table, cols, opts)
+    if (!opts.metricScope) return this.x.all(sql, binds)
+    const scopedSql = sql.replace("ORDER BY hour", "AND metric_scope = ? ORDER BY hour")
+    return this.x.all(scopedSql, [...binds, opts.metricScope])
+  }
+
+  async deleteAll(): Promise<void> {
+    await this.x.run("DELETE FROM performance_summary", [])
+    await this.x.run("DELETE FROM performance_latency_buckets", [])
+  }
+}
+
 export function buildSharedRepo(x: SqlExecutor): Repo {
   return {
     apiKeys: new SharedApiKeyRepo(x),
@@ -663,6 +756,7 @@ export function buildSharedRepo(x: SqlExecutor): Repo {
     usage: new SharedUsageRepo(x),
     cache: new SharedCacheRepo(x),
     latency: new SharedLatencyRepo(x),
+    performance: new SharedPerformanceRepo(x),
     users: new SharedUserRepo(x),
     inviteCodes: new SharedInviteCodeRepo(x),
     sessions: new SharedSessionRepo(x),

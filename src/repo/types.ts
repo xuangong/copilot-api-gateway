@@ -155,6 +155,63 @@ export interface LatencyRepo {
   deleteAll(): Promise<void>
 }
 
+export type PerformanceMetricScope = "request_total" | "upstream_success"
+export type PerformanceSourceApi = "messages" | "responses" | "chat-completions" | "gemini" | "embeddings"
+export type PerformanceTargetApi = "messages" | "responses" | "chat-completions" | "embeddings"
+
+export interface PerformanceSummaryRecord {
+  hour: string
+  metricScope: PerformanceMetricScope
+  keyId: string
+  model: string
+  sourceApi: PerformanceSourceApi
+  targetApi: PerformanceTargetApi
+  stream: boolean
+  runtimeLocation: string
+  requests: number
+  errors: number
+  totalMsSum: number
+}
+
+export interface PerformanceBucketRecord {
+  hour: string
+  metricScope: PerformanceMetricScope
+  keyId: string
+  model: string
+  sourceApi: PerformanceSourceApi
+  targetApi: PerformanceTargetApi
+  stream: boolean
+  runtimeLocation: string
+  lowerMs: number
+  upperMs: number
+  count: number
+}
+
+export interface PerformanceRecordInput {
+  hour: string
+  metricScope: PerformanceMetricScope
+  keyId: string
+  model: string
+  sourceApi: PerformanceSourceApi
+  targetApi: PerformanceTargetApi
+  stream: boolean
+  runtimeLocation: string
+  durationMs: number
+  isError: boolean
+}
+
+export interface PerformanceRepo {
+  record(entry: PerformanceRecordInput): Promise<void>
+  query(opts: {
+    keyId?: string
+    keyIds?: string[]
+    start: string
+    end: string
+    metricScope?: PerformanceMetricScope
+  }): Promise<{ summary: PerformanceSummaryRecord[]; buckets: PerformanceBucketRecord[] }>
+  deleteAll(): Promise<void>
+}
+
 export interface UserRepo {
   create(user: User): Promise<void>
   getById(id: string): Promise<User | null>
@@ -289,6 +346,7 @@ export interface Repo {
   usage: UsageRepo
   cache: CacheRepo
   latency: LatencyRepo
+  performance: PerformanceRepo
   users: UserRepo
   inviteCodes: InviteCodeRepo
   sessions: SessionRepo

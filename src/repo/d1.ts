@@ -48,6 +48,7 @@ export class D1Repo implements Repo {
   usage: Repo["usage"]
   cache: Repo["cache"]
   latency: Repo["latency"]
+  performance: Repo["performance"]
   users: Repo["users"]
   inviteCodes: Repo["inviteCodes"]
   sessions: Repo["sessions"]
@@ -65,6 +66,7 @@ export class D1Repo implements Repo {
     this.usage = shared.usage
     this.cache = shared.cache
     this.latency = shared.latency
+    this.performance = shared.performance
     this.users = shared.users
     this.inviteCodes = shared.inviteCodes
     this.sessions = shared.sessions

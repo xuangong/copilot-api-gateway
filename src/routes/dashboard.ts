@@ -1,9 +1,10 @@
 // Dashboard API routes - copilot-quota, token-usage, latency, export, import
 import { Elysia } from "elysia"
 import { getRepo, type ApiKey, type UsageRecord, type LatencyRecord } from "~/repo"
+import type { PerformanceMetricScope } from "~/repo/types"
 import { getGithubCredentials } from "~/lib/github"
 import { createGithubHeaders } from "~/config/constants"
-import { redactForSharedView, getServerSecret } from "~/lib/redact-shared-view"
+import { redactForSharedView, getServerSecret, sharedKeyRef } from "~/lib/redact-shared-view"
 import { getOwnedKeyIdsForScope } from "~/middleware/view-context"
 import {
   exportConfig,
@@ -260,6 +261,60 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
       ...r,
       keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),
     }))
+  })
+
+  // GET /api/performance - aggregated latency telemetry (summary + histogram buckets)
+  .get("/performance", async (ctx) => {
+    const { query } = ctx
+    const { isAdmin, userId, isViewingShared, ownerId } = ctx as unknown as AuthCtx
+    const keyId = query.key_id || undefined
+    const start = query.start ?? ""
+    const end = query.end ?? ""
+    const metricScopeRaw = query.metric_scope ?? "request_total"
+    const metricScope: PerformanceMetricScope = metricScopeRaw === "upstream_success" ? "upstream_success" : "request_total"
+
+    if (!start || !end) {
+      return new Response(
+        JSON.stringify({ error: "start and end query parameters are required (e.g. 2026-03-09T00)" }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      )
+    }
+
+    const repo = getRepo()
+
+    let queryOpts: { keyId?: string; keyIds?: string[]; start: string; end: string; metricScope: PerformanceMetricScope }
+    let keys: ApiKey[]
+
+    if (isAdmin) {
+      queryOpts = { keyId, start, end, metricScope }
+      keys = await repo.apiKeys.list()
+    } else if (isViewingShared && ownerId) {
+      const ids = await getOwnedKeyIdsForScope(ownerId)
+      if (ids.length === 0) return { summary: [], buckets: [] }
+      const ownedKeys = await repo.apiKeys.listByOwner(ownerId)
+      const result = await repo.performance.query({ keyIds: ids, start, end, metricScope })
+      const nameMap = new Map(ownedKeys.map((k) => [k.id, k.name]))
+      const secret = getServerSecret(process.env)
+      return {
+        summary: result.summary.map((r) => ({ ...r, keyId: sharedKeyRef(ownerId, r.keyId, secret), keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8) })),
+        buckets: result.buckets.map((r) => ({ ...r, keyId: sharedKeyRef(ownerId, r.keyId, secret), keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8) })),
+      }
+    } else if (userId) {
+      const userKeys = await getUserKeys(userId)
+      if (userKeys.length === 0) return { summary: [], buckets: [] }
+      queryOpts = { keyIds: userKeys.map(k => k.id), start, end, metricScope }
+      keys = userKeys
+    } else {
+      queryOpts = { keyId, start, end, metricScope }
+      keys = await repo.apiKeys.list()
+    }
+
+    const result = await repo.performance.query(queryOpts)
+    const nameMap = new Map(keys.map((k) => [k.id, k.name]))
+    return {
+      summary: result.summary.map((r) => ({ ...r, keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8) })),
+      buckets: result.buckets.map((r) => ({ ...r, keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8) })),
+    }
   })
 
   // GET /api/export - dump config as a bundle (admin only)

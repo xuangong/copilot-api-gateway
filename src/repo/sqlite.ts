@@ -118,6 +118,40 @@ CREATE TABLE IF NOT EXISTS web_search_engine_usage (
   failure_duration_ms INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (key_id, engine_id, hour)
 );
+
+CREATE TABLE IF NOT EXISTS performance_summary (
+  hour TEXT NOT NULL,
+  metric_scope TEXT NOT NULL,
+  key_id TEXT NOT NULL,
+  model TEXT NOT NULL,
+  source_api TEXT NOT NULL,
+  target_api TEXT NOT NULL,
+  stream INTEGER NOT NULL,
+  runtime_location TEXT NOT NULL DEFAULT 'unknown',
+  requests INTEGER NOT NULL DEFAULT 0,
+  errors INTEGER NOT NULL DEFAULT 0,
+  total_ms_sum INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (hour, metric_scope, key_id, model, source_api, target_api, stream, runtime_location)
+);
+
+CREATE INDEX IF NOT EXISTS idx_performance_summary_hour ON performance_summary (hour);
+
+CREATE TABLE IF NOT EXISTS performance_latency_buckets (
+  hour TEXT NOT NULL,
+  metric_scope TEXT NOT NULL,
+  key_id TEXT NOT NULL,
+  model TEXT NOT NULL,
+  source_api TEXT NOT NULL,
+  target_api TEXT NOT NULL,
+  stream INTEGER NOT NULL,
+  runtime_location TEXT NOT NULL DEFAULT 'unknown',
+  lower_ms INTEGER NOT NULL,
+  upper_ms INTEGER NOT NULL,
+  count INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (hour, metric_scope, key_id, model, source_api, target_api, stream, runtime_location, lower_ms, upper_ms)
+);
+
+CREATE INDEX IF NOT EXISTS idx_performance_latency_buckets_hour ON performance_latency_buckets (hour);
 `
 
 function hasColumn(db: Database, table: string, column: string): boolean {
@@ -322,6 +356,7 @@ export class SqliteRepo implements Repo {
   usage: Repo["usage"]
   cache: Repo["cache"]
   latency: Repo["latency"]
+  performance: Repo["performance"]
   users: Repo["users"]
   inviteCodes: Repo["inviteCodes"]
   sessions: Repo["sessions"]
@@ -341,6 +376,7 @@ export class SqliteRepo implements Repo {
     this.usage = shared.usage
     this.cache = shared.cache
     this.latency = shared.latency
+    this.performance = shared.performance
     this.users = shared.users
     this.inviteCodes = shared.inviteCodes
     this.sessions = shared.sessions
