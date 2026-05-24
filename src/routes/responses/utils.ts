@@ -1,5 +1,6 @@
 import type { AppState } from "~/lib/state"
 import { createSSETransform } from "~/lib/sse-transform"
+import { createFrameBuffer } from "~/lib/sse/parser"
 import {
   createStreamState,
   translateChunkToResponsesEvents,
@@ -143,40 +144,37 @@ export async function countNativeWebSearchFromSSE(
     engineAttempts: [],
   }
   const reader = stream.getReader()
-  const decoder = new TextDecoder("utf-8")
-  let buffer = ""
+  const frameBuffer = createFrameBuffer()
+  const processFrame = (frame: { data?: string }) => {
+    if (!frame.data || frame.data === "[DONE]") return
+    try {
+      const evt = JSON.parse(frame.data) as {
+        type?: string
+        item?: { type?: string; status?: string }
+      }
+      if (
+        evt.type === "response.output_item.done" &&
+        evt.item?.type === "web_search_call"
+      ) {
+        meta.searchCount++
+        if (evt.item.status === "completed") {
+          meta.successes++
+        } else {
+          meta.failures++
+        }
+      }
+    } catch {
+      // Skip malformed JSON
+    }
+  }
   try {
     for (;;) {
       const { done, value } = await reader.read()
       if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split("\n")
-      buffer = lines.pop() ?? ""
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue
-        const data = line.slice(6).trim()
-        if (!data || data === "[DONE]") continue
-        try {
-          const evt = JSON.parse(data) as {
-            type?: string
-            item?: { type?: string; status?: string }
-          }
-          if (
-            evt.type === "response.output_item.done" &&
-            evt.item?.type === "web_search_call"
-          ) {
-            meta.searchCount++
-            if (evt.item.status === "completed") {
-              meta.successes++
-            } else {
-              meta.failures++
-            }
-          }
-        } catch {
-          // Skip malformed JSON
-        }
-      }
+      for (const frame of frameBuffer.push(value)) processFrame(frame)
     }
+    const tail = frameBuffer.flush()
+    if (tail) processFrame(tail)
   } finally {
     reader.releaseLock()
   }

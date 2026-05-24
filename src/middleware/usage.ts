@@ -1,5 +1,6 @@
 import { recordUsage } from "~/lib/usage-tracker"
 import { touchApiKeyLastUsed } from "~/lib/api-keys"
+import { createFrameBuffer, parseDataJSON } from "~/lib/sse/parser"
 
 interface UsageInfo {
   input: number
@@ -115,38 +116,23 @@ export function trackStreamingUsage(
   if (!body) return response
 
   const latest: UsageInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
-  const decoder = new TextDecoder("utf-8")
-  let buffer = ""
+  const frameBuffer = createFrameBuffer()
 
   const transform = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
       controller.enqueue(chunk)
 
-      buffer += decoder.decode(chunk, { stream: true })
-      const lines = buffer.split("\n")
-      buffer = lines.pop() ?? ""
-
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue
-        const data = line.slice(6).trim()
-        if (!data || data === "[DONE]") continue
-
-        try {
-          const parsed = JSON.parse(data)
-          applyStreamEvent(parsed, latest)
-        } catch { /* ignore non-JSON lines */ }
+      for (const frame of frameBuffer.push(chunk)) {
+        if (frame.data === "[DONE]") continue
+        const parsed = parseDataJSON<any>(frame)
+        if (parsed) applyStreamEvent(parsed, latest)
       }
     },
     async flush() {
-      buffer += decoder.decode()
-      if (buffer.startsWith("data: ")) {
-        const data = buffer.slice(6).trim()
-        if (data && data !== "[DONE]") {
-          try {
-            const parsed = JSON.parse(data)
-            applyStreamEvent(parsed, latest)
-          } catch { /* ignore */ }
-        }
+      const tail = frameBuffer.flush()
+      if (tail && tail.data && tail.data !== "[DONE]") {
+        const parsed = parseDataJSON<any>(tail)
+        if (parsed) applyStreamEvent(parsed, latest)
       }
 
       if (latest.input > 0 || latest.output > 0) {
@@ -173,8 +159,7 @@ export function consumeStreamForUsage(
   client?: string,
 ): void {
   const latest: UsageInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
-  const decoder = new TextDecoder("utf-8")
-  let buffer = ""
+  const frameBuffer = createFrameBuffer()
 
   const reader = upstreamBody.getReader()
   ;(async () => {
@@ -182,23 +167,16 @@ export function consumeStreamForUsage(
       while (true) {
         const { value, done } = await reader.read()
         if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split("\n")
-        buffer = lines.pop() ?? ""
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue
-          const data = line.slice(6).trim()
-          if (!data || data === "[DONE]") continue
-          try { applyStreamEvent(JSON.parse(data), latest) } catch { /* ignore */ }
+        for (const frame of frameBuffer.push(value)) {
+          if (frame.data === "[DONE]") continue
+          const parsed = parseDataJSON<any>(frame)
+          if (parsed) applyStreamEvent(parsed, latest)
         }
       }
-      // flush remaining buffer
-      buffer += decoder.decode()
-      if (buffer.startsWith("data: ")) {
-        const data = buffer.slice(6).trim()
-        if (data && data !== "[DONE]") {
-          try { applyStreamEvent(JSON.parse(data), latest) } catch { /* ignore */ }
-        }
+      const tail = frameBuffer.flush()
+      if (tail && tail.data && tail.data !== "[DONE]") {
+        const parsed = parseDataJSON<any>(tail)
+        if (parsed) applyStreamEvent(parsed, latest)
       }
       if (latest.input > 0 || latest.output > 0) {
         await persistUsage(

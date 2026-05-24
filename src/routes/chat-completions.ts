@@ -8,6 +8,7 @@ import { detectClient } from "~/lib/client-detect"
 import { checkQuota } from "~/lib/quota"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
+import { createFrameBuffer } from "~/lib/sse/parser"
 import {
   hasOpenAIWebSearch,
   interceptOpenAIChat,
@@ -46,45 +47,34 @@ interface RouteContext {
 type ChatJson = { usage?: { prompt_tokens?: number; completion_tokens?: number } }
 
 function stripInjectedUsageChunk(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
-  const decoder = new TextDecoder("utf-8")
   const encoder = new TextEncoder()
-  let buffer = ""
+  const frameBuffer = createFrameBuffer()
+
+  const processFrame = (frame: { raw: string; data?: string }, controller: TransformStreamDefaultController<Uint8Array>) => {
+    if (!frame.data || frame.data === "[DONE]") {
+      controller.enqueue(encoder.encode(frame.raw))
+      return
+    }
+    try {
+      const parsed = JSON.parse(frame.data) as {
+        choices?: unknown[]
+        usage?: unknown
+      }
+      const isUsageOnly =
+        (!parsed.choices || parsed.choices.length === 0) && parsed.usage != null
+      if (!isUsageOnly) controller.enqueue(encoder.encode(frame.raw))
+    } catch {
+      controller.enqueue(encoder.encode(frame.raw))
+    }
+  }
 
   return stream.pipeThrough(new TransformStream({
     transform(chunk, controller) {
-      buffer += decoder.decode(chunk, { stream: true })
-      const lines = buffer.split("\n")
-      buffer = lines.pop() ?? ""
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) {
-          controller.enqueue(encoder.encode(line + "\n"))
-          continue
-        }
-        const data = line.slice(6).trim()
-        if (!data || data === "[DONE]") {
-          controller.enqueue(encoder.encode(line + "\n"))
-          continue
-        }
-        try {
-          const parsed = JSON.parse(data) as {
-            choices?: unknown[]
-            usage?: unknown
-          }
-          // Drop usage-only chunk we injected (choices empty + usage present)
-          const isUsageOnly =
-            (!parsed.choices || parsed.choices.length === 0) && parsed.usage != null
-          if (!isUsageOnly) {
-            controller.enqueue(encoder.encode(line + "\n"))
-          }
-        } catch {
-          controller.enqueue(encoder.encode(line + "\n"))
-        }
-      }
+      for (const frame of frameBuffer.push(chunk)) processFrame(frame, controller)
     },
     flush(controller) {
-      if (buffer.length > 0) {
-        controller.enqueue(encoder.encode(buffer))
-      }
+      const tail = frameBuffer.flush()
+      if (tail) processFrame(tail, controller)
     },
   }))
 }

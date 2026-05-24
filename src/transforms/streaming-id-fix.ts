@@ -2,6 +2,8 @@
  * Fix Copilot API inconsistency: item IDs may differ between
  * response.output_item.added and response.output_item.done events.
  */
+import { createFrameBuffer } from "~/lib/sse/parser"
+
 export interface StreamIdTracker {
   outputItemIds: Map<number, string>
 }
@@ -82,24 +84,40 @@ export function createChatStreamFixer(): TransformStream<
   Uint8Array,
   Uint8Array
 > {
-  const decoder = new TextDecoder()
   const encoder = new TextEncoder()
-  let buffer = ""
+  const frameBuffer = createFrameBuffer()
 
   return new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
-      buffer += decoder.decode(chunk, { stream: true })
-      const lines = buffer.split("\n")
-      buffer = lines.pop()! // keep incomplete last line
-
-      for (const line of lines) {
-        controller.enqueue(encoder.encode(fixChatStreamLine(line) + "\n"))
+      for (const frame of frameBuffer.push(chunk)) {
+        controller.enqueue(encoder.encode(fixChatFrame(frame)))
       }
     },
     flush(controller) {
-      if (buffer) {
-        controller.enqueue(encoder.encode(fixChatStreamLine(buffer) + "\n"))
+      const tail = frameBuffer.flush()
+      if (tail) {
+        controller.enqueue(encoder.encode(fixChatFrame(tail)))
       }
     },
   })
+}
+
+function fixChatFrame(frame: { raw: string; data?: string }): string {
+  if (!frame.data || frame.data === "[DONE]") return frame.raw
+  try {
+    const data = JSON.parse(frame.data) as {
+      choices?: Array<{ index: number }>
+    }
+    const choices = data.choices
+    if (Array.isArray(choices)) {
+      for (const c of choices) {
+        c.index = 0
+      }
+      // Re-serialize preserving terminator from raw
+      const tail = frame.raw.endsWith("\r\n\r\n") ? "\r\n\r\n"
+        : frame.raw.endsWith("\n\n") ? "\n\n" : "\n"
+      return "data: " + JSON.stringify(data) + tail
+    }
+  } catch { /* pass through */ }
+  return frame.raw
 }
