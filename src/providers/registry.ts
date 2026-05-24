@@ -1,10 +1,12 @@
 import type { AccountType } from "~/config/constants"
 
 import { CopilotProvider } from "./copilot/provider"
+import { CustomProvider, type CustomProviderConfig } from "./custom/provider"
 import type { ModelProvider, UpstreamKind } from "./types"
 
 export type { ModelProvider, ProviderCallOptions, UpstreamKind } from "./types"
 export { CopilotProvider } from "./copilot/provider"
+export { CustomProvider, type CustomProviderConfig } from "./custom/provider"
 
 export interface CreateProviderOptions {
   copilotToken: string
@@ -22,12 +24,16 @@ export function createCopilotProvider(opts: CreateProviderOptions): ModelProvide
   })
 }
 
+export function createCustomProvider(cfg: CustomProviderConfig): ModelProvider {
+  return new CustomProvider(cfg)
+}
+
 /**
- * Future hook for selecting a provider by upstream kind. For now copilot is
- * the only registered kind; passing anything else throws so callers fail loudly
- * when a new kind is added without a corresponding factory.
+ * Dispatch table for provider kinds. Copilot uses CreateProviderOptions;
+ * custom requires its own config and must be created via createCustomProvider
+ * directly (the registry-by-kind path remains copilot-only for now).
  */
 export function getProvider(kind: UpstreamKind, opts: CreateProviderOptions): ModelProvider {
   if (kind === "copilot") return createCopilotProvider(opts)
-  throw new Error(`Provider kind not yet supported: ${kind}`)
+  throw new Error(`Provider kind not constructible from CreateProviderOptions: ${kind}`)
 }
