@@ -1,0 +1,153 @@
+import { detectClient } from "~/lib/client-detect"
+import { raceWithHeartbeat } from "~/lib/heartbeat-json"
+import { recordLatency, startTimer } from "~/lib/latency-tracker"
+import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
+import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
+import { callCopilotAPI } from "~/services/copilot"
+import {
+  createStreamState as _createStreamState,
+  translateChatCompletionsToResponses,
+  translateResponsesToChatCompletions,
+  type ChatCompletionResponse,
+} from "~/services/responses"
+import {
+  compactResponsesInputForChatFallback,
+  fixApplyPatchTools,
+  type ResponsesPayload,
+} from "~/transforms"
+
+import { buildStreamTransform, type RouteContext } from "./utils"
+
+/**
+ * Chat Completions fallback path: convert Responses→Chat upstream, then map
+ * the result back. Handles streaming + non-streaming. Also applies two
+ * mitigations specific to this path:
+ *   1. Compact oversized function_call_output history to stay under Copilot's
+ *      body cap (avoids 413 on long codex sessions).
+ *   2. Rewrite codex's Freeform `custom` apply_patch tool into a JSON
+ *      function tool (chat-completions doesn't grok `custom`). Native
+ *      passthrough leaves `custom` intact.
+ */
+export async function handleChatFallback(
+  ctx: RouteContext,
+  payload: ResponsesPayload,
+  elapsed: () => number,
+): Promise<Response> {
+  const { state, apiKeyId, colo, requestId } = ctx
+  const client = detectClient(ctx.userAgent)
+  const model = payload.model
+
+  if (Array.isArray(payload.input)) {
+    const { items, stats } = compactResponsesInputForChatFallback(payload.input, 1_500_000)
+    if (stats.truncated > 0) {
+      console.log(JSON.stringify({
+        evt: "responses_input_compacted",
+        rid: requestId,
+        model,
+        truncated: stats.truncated,
+        bytesDropped: stats.bytesDropped,
+        totalItems: stats.totalItems,
+      }))
+      payload.input = items
+    }
+  }
+
+  fixApplyPatchTools(payload)
+
+  const chatPayload = translateResponsesToChatCompletions(payload, model)
+
+  if (payload.stream === true) {
+    chatPayload.stream = true
+    chatPayload.stream_options = { include_usage: true }
+
+    const upstreamTimer = startTimer()
+    const response = await callCopilotAPI({
+      endpoint: "/chat/completions",
+      payload: chatPayload as unknown as Record<string, unknown>,
+      operationName: "responses (via chat)",
+      copilotToken: state.copilotToken,
+      accountType: state.accountType,
+    })
+    const upstreamMs = upstreamTimer()
+
+    if (apiKeyId) {
+      recordLatency(apiKeyId, model, colo, {
+        totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
+      }, requestId, { stream: true }).catch(() => {})
+    }
+
+    // Heartbeat BEFORE tee so both branches share the keepalive stream.
+    // SSE comment ":" lines are ignored by createSSETransform's parser
+    // (it filters on "data: " prefix), so usage extraction is unaffected.
+    const heartbeated = wrapOpenAIHeartbeat(response.body)
+
+    let usageBranch: ReadableStream<Uint8Array> | null = null
+    let transformBranch: ReadableStream<Uint8Array> | null = null
+    if (heartbeated) {
+      const [a, b] = heartbeated.tee()
+      usageBranch = a
+      transformBranch = b
+    }
+    if (apiKeyId && usageBranch) {
+      consumeStreamForUsage(usageBranch, apiKeyId, model, client)
+    }
+    const transformedBody = transformBranch?.pipeThrough(buildStreamTransform(payload, model))
+    return new Response(transformedBody, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    })
+  }
+
+  chatPayload.stream = false
+
+  const upstreamTimer = startTimer()
+  let upstreamMs = 0
+  const syncPromise: Promise<{
+    responsesResult: ReturnType<typeof translateChatCompletionsToResponses>
+    chatResponse: ChatCompletionResponse
+  }> = (async () => {
+    const response = await callCopilotAPI({
+      endpoint: "/chat/completions",
+      payload: chatPayload as unknown as Record<string, unknown>,
+      operationName: "responses (via chat)",
+      copilotToken: state.copilotToken,
+      accountType: state.accountType,
+    })
+    upstreamMs = upstreamTimer()
+    const chatResponse = (await response.json()) as ChatCompletionResponse
+    return {
+      responsesResult: translateChatCompletionsToResponses(chatResponse, model, payload),
+      chatResponse,
+    }
+  })()
+
+  const recordSync = async ({
+    responsesResult,
+    chatResponse,
+  }: {
+    responsesResult: ReturnType<typeof translateChatCompletionsToResponses>
+    chatResponse: ChatCompletionResponse
+  }) => {
+    if (!apiKeyId) return
+    await trackNonStreamingUsage(chatResponse, apiKeyId, model, client)
+    recordLatency(apiKeyId, model, colo, {
+      totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
+    }, requestId, {
+      stream: false,
+      inputTokens: responsesResult.usage.input_tokens,
+      outputTokens: responsesResult.usage.output_tokens,
+    }).catch(() => {})
+  }
+
+  const raced = await raceWithHeartbeat(syncPromise, { onResolve: recordSync })
+  if (raced.kind === "stream") return raced.response
+
+  const { responsesResult } = raced.value
+  await recordSync(raced.value)
+  return new Response(JSON.stringify(responsesResult), {
+    headers: { "Content-Type": "application/json" },
+  })
+}
