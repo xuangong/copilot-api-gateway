@@ -22,6 +22,7 @@ import { apiKeysRoute } from "~/routes/api-keys"
 import { dashboardRoute } from "~/routes/dashboard"
 import { upstreamAccountsRoute } from "~/routes/upstream-accounts"
 import { observabilitySharesRoute } from "~/routes/observability-shares"
+import { controlPlaneRoute } from "~/routes/control-plane"
 import { resolveViewContext } from "~/middleware/view-context"
 import { LoginPage } from "~/ui/login"
 import { DevicePage } from "~/ui/device"
@@ -414,6 +415,7 @@ function createApp(env: Env) {
     .use(dashboardRoute)
     .use(upstreamAccountsRoute)
     .use(observabilitySharesRoute)
+    .use(controlPlaneRoute)
     // API routes with Copilot token - only load state for API paths
     .derive(async ({ path, request, apiKeyId, userId }) => {
       // Extract CF data center from request (Cloudflare Workers)

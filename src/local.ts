@@ -35,6 +35,7 @@ import { apiKeysRoute } from "~/routes/api-keys"
 import { dashboardRoute } from "~/routes/dashboard"
 import { upstreamAccountsRoute } from "~/routes/upstream-accounts"
 import { observabilitySharesRoute } from "~/routes/observability-shares"
+import { controlPlaneRoute } from "~/routes/control-plane"
 import { resolveViewContext } from "~/middleware/view-context"
 import { LoginPage } from "~/ui/login"
 import { DevicePage } from "~/ui/device"
@@ -553,6 +554,7 @@ async function createApp() {
     .use(dashboardRoute)
     .use(upstreamAccountsRoute)
     .use(observabilitySharesRoute)
+    .use(controlPlaneRoute)
     // API routes with Copilot token - only load state for API paths
     .derive(async ({ path, userId }) => {
       // Local mode: colo is always "local"
