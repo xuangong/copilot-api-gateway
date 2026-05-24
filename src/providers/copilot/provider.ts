@@ -42,6 +42,10 @@ export class CopilotProvider implements ModelProvider {
     return this.call("/v1/messages/count_tokens", payload, opts, "count tokens", { requireModel: false })
   }
 
+  callEmbeddings(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
+    return this.call("/embeddings", payload, opts, "create embeddings")
+  }
+
   private call(
     endpoint: string,
     payload: Record<string, unknown>,

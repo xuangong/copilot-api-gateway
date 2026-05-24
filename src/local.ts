@@ -26,6 +26,7 @@ import { messagesRoute } from "~/routes/messages"
 import { responsesRoute } from "~/routes/responses"
 import { chatCompletionsRoute } from "~/routes/chat-completions"
 import { modelsRoute } from "~/routes/models"
+import { embeddingsRoute } from "~/routes/embeddings"
 import { geminiRoute } from "~/routes/gemini"
 import { authRoute } from "~/routes/auth"
 import { initResend } from "~/lib/email"
@@ -596,6 +597,7 @@ async function createApp() {
     .use(chatCompletionsRoute)
     .use(messagesRoute)
     .use(responsesRoute)
+    .use(embeddingsRoute)
     .use(geminiRoute)
 }
 

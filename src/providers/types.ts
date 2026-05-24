@@ -19,4 +19,5 @@ export interface ModelProvider {
   callResponses(payload: Record<string, unknown>, opts?: ProviderCallOptions): Promise<Response>
   callMessages(payload: Record<string, unknown>, opts?: ProviderCallOptions): Promise<Response>
   callMessagesCountTokens(payload: Record<string, unknown>, opts?: ProviderCallOptions): Promise<Response>
+  callEmbeddings(payload: Record<string, unknown>, opts?: ProviderCallOptions): Promise<Response>
 }
