@@ -11,167 +11,72 @@
  *   client's request by removing the thinking text after it has done its
  *   job of keeping bytes flowing on the wire.
  *
- * What "omitted" semantically expects per Anthropic docs:
- *   - No `thinking_delta` text events.
- *   - The block envelope (start/stop) MAY still be present.
- *   - A final `signature_delta` (cryptographic proof of thinking) IS
- *     present. We must preserve it for clients that verify signatures.
- *
- * Frame-boundary safety:
- *   This transform must only run AFTER createIdleHeartbeatStream (which
- *   guarantees whole-frame chunk boundaries) and BEFORE any heartbeat
- *   injection that might splice between thinking-block frames. The
- *   recommended wiring is:
- *
- *     upstream.body
- *       → wrapAnthropicHeartbeat   // pings + DONE-strip + recovery
- *       → omitThinkingFromAnthropicSse  // this transform
- *
- *   wrapAnthropicHeartbeat already enforces frame-aligned downstream
- *   chunks, so this transform can decode them as text safely.
+ * Recommended wiring:
+ *   upstream.body
+ *     → wrapAnthropicHeartbeat
+ *     → omitThinkingFromAnthropicSse  (this transform)
  */
 
-const decoder = new TextDecoder("utf-8", { fatal: false })
+import { createFrameBuffer, parseDataJSON } from "./sse/parser"
+
 const encoder = new TextEncoder()
 
-interface ParsedFrame {
-  event?: string
-  dataRaw?: string
-  full: string  // includes terminating blank line
-}
-
-/**
- * Parse an SSE chunk that is guaranteed to be aligned on whole frames
- * (the upstream heartbeat wrapper enforces this). Returns the list of
- * frames in order. A "frame" here is whatever text precedes a `\n\n`
- * or `\r\n\r\n` blank-line terminator.
- *
- * Tolerates concatenated frames in a single chunk and preserves the
- * original terminator bytes so re-serialized output is byte-identical
- * (minus the dropped frames).
- */
-function parseFrames(text: string): ParsedFrame[] {
-  const frames: ParsedFrame[] = []
-  // Split keeping the terminators attached to the preceding frame.
-  // We do this by scanning for terminators manually.
-  let i = 0
-  while (i < text.length) {
-    // Find next terminator from i.
-    let termIdx = -1
-    let termLen = 0
-    for (let j = i; j < text.length - 1; j++) {
-      if (text[j] === "\n" && text[j + 1] === "\n") {
-        termIdx = j
-        termLen = 2
-        break
-      }
-      if (
-        j + 3 < text.length &&
-        text[j] === "\r" &&
-        text[j + 1] === "\n" &&
-        text[j + 2] === "\r" &&
-        text[j + 3] === "\n"
-      ) {
-        termIdx = j
-        termLen = 4
-        break
-      }
-    }
-    if (termIdx === -1) {
-      // No terminator — should not happen given frame-aligned input, but
-      // include the trailing text as a frame without a terminator so we
-      // don't silently drop bytes.
-      frames.push({ full: text.slice(i) })
-      break
-    }
-    const frameText = text.slice(i, termIdx + termLen)
-    const inner = text.slice(i, termIdx)
-    const parsed: ParsedFrame = { full: frameText }
-    for (const line of inner.split(/\r?\n/)) {
-      if (line.startsWith("event:")) parsed.event = line.slice(6).trim()
-      else if (line.startsWith("data:")) parsed.dataRaw = (parsed.dataRaw ?? "") + line.slice(5).trimStart()
-    }
-    frames.push(parsed)
-    i = termIdx + termLen
-  }
-  return frames
-}
-
-/**
- * Build the transform stream.
- *
- * State machine:
- *   - On `content_block_start` with `content_block.type === "thinking"`,
- *     remember the block index as a "thinking" block.
- *   - On `content_block_delta` for a thinking-block index:
- *       - If `delta.type === "thinking_delta"` → drop the entire frame.
- *       - If `delta.type === "signature_delta"` → preserve (signature is
- *         the proof the client needs even under omitted display).
- *       - Anything else → preserve (defensive).
- *   - On `content_block_stop` for a thinking-block index, forget it.
- *   - Any frame we don't understand → preserve unchanged.
- */
 export function omitThinkingFromAnthropicSse(): TransformStream<Uint8Array, Uint8Array> {
   const thinkingBlockIndices = new Set<number>()
+  const buf = createFrameBuffer()
 
   return new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
-      const text = decoder.decode(chunk, { stream: false })
-      const frames = parseFrames(text)
+      const frames = buf.push(chunk)
       const out: string[] = []
 
       for (const frame of frames) {
-        if (!frame.event || !frame.dataRaw) {
-          out.push(frame.full)
-          continue
-        }
-
-        let data: unknown
-        try {
-          data = JSON.parse(frame.dataRaw)
-        } catch {
-          out.push(frame.full)
+        if (!frame.event || !frame.data) {
+          out.push(frame.raw)
           continue
         }
 
         if (frame.event === "content_block_start") {
-          const d = data as { index?: number; content_block?: { type?: string } }
-          if (typeof d.index === "number" && d.content_block?.type === "thinking") {
+          const d = parseDataJSON<{ index?: number; content_block?: { type?: string } }>(frame)
+          if (d && typeof d.index === "number" && d.content_block?.type === "thinking") {
             thinkingBlockIndices.add(d.index)
           }
-          out.push(frame.full)
+          out.push(frame.raw)
           continue
         }
 
         if (frame.event === "content_block_delta") {
-          const d = data as { index?: number; delta?: { type?: string } }
-          if (typeof d.index === "number" && thinkingBlockIndices.has(d.index)) {
+          const d = parseDataJSON<{ index?: number; delta?: { type?: string } }>(frame)
+          if (d && typeof d.index === "number" && thinkingBlockIndices.has(d.index)) {
             if (d.delta?.type === "thinking_delta") {
               // Drop the text delta — this is the whole point.
               continue
             }
-            // signature_delta and anything else → preserve.
           }
-          out.push(frame.full)
+          out.push(frame.raw)
           continue
         }
 
         if (frame.event === "content_block_stop") {
-          const d = data as { index?: number }
-          if (typeof d.index === "number") {
+          const d = parseDataJSON<{ index?: number }>(frame)
+          if (d && typeof d.index === "number") {
             thinkingBlockIndices.delete(d.index)
           }
-          out.push(frame.full)
+          out.push(frame.raw)
           continue
         }
 
-        out.push(frame.full)
+        out.push(frame.raw)
       }
 
       const joined = out.join("")
       if (joined.length > 0) {
         controller.enqueue(encoder.encode(joined))
       }
+    },
+    flush(controller) {
+      const tail = buf.flush()
+      if (tail) controller.enqueue(encoder.encode(tail.raw))
     },
   })
 }
