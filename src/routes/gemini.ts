@@ -26,6 +26,12 @@ import {
   recordWebSearchUsage,
   synthChatCompletionChunks,
 } from "~/services/web-search"
+import {
+  normalizeCountTokensRequest,
+  translateGeminiCountTokensToAnthropic,
+  totalTokensFromUpstream,
+  type GeminiCountTokensRequest,
+} from "~/services/gemini/count-tokens"
 
 interface RouteContext {
   state: AppState
@@ -173,6 +179,50 @@ async function handleGenerateContent(ctx: RouteContext) {
 
   await recordSync(raced.value)
   return new Response(JSON.stringify(raced.value.gemini), {
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
+function isCountTokensRequest(modelWithMethod: string): boolean {
+  return (
+    modelWithMethod.includes(":countTokens") ||
+    modelWithMethod.endsWith("/countTokens")
+  )
+}
+
+async function handleCountTokens(ctx: RouteContext) {
+  const { state, body, params } = ctx
+  const model = extractModelId(params.modelWithMethod)
+  const normalized = normalizeCountTokensRequest(body as unknown as GeminiCountTokensRequest)
+  const payload = translateGeminiCountTokensToAnthropic(normalized, model)
+
+  const provider = createCopilotProvider({
+    copilotToken: state.copilotToken,
+    accountType: state.accountType,
+  })
+  const response = await provider.callMessagesCountTokens(
+    payload as unknown as Record<string, unknown>,
+    { operationName: "gemini count tokens" },
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    return new Response(
+      JSON.stringify({ error: { code: response.status, message: text || "Upstream count tokens failed", status: "INTERNAL" } }),
+      { status: response.status, headers: { "Content-Type": "application/json" } },
+    )
+  }
+
+  const parsed = (await response.json()) as unknown
+  const totalTokens = totalTokensFromUpstream(parsed)
+  if (totalTokens === null) {
+    return new Response(
+      JSON.stringify({ error: { code: 502, message: "Invalid upstream count tokens response", status: "INTERNAL" } }),
+      { status: 502, headers: { "Content-Type": "application/json" } },
+    )
+  }
+
+  return new Response(JSON.stringify({ totalTokens }), {
     headers: { "Content-Type": "application/json" },
   })
 }
@@ -344,6 +394,10 @@ export const geminiRoute = new Elysia().post(
 
     if (isGenerateContentRequest(modelWithMethod)) {
       return handleGenerateContent(routeCtx)
+    }
+
+    if (isCountTokensRequest(modelWithMethod)) {
+      return handleCountTokens(routeCtx)
     }
 
     if (isStreamGenerateContentRequest(modelWithMethod)) {
