@@ -1,6 +1,7 @@
 import type { ModelsResponse } from "~/services/copilot/models"
 
-export type UpstreamKind = "copilot" | "azure" | "custom"
+export type { UpstreamKind } from "~/protocols/common"
+import type { UpstreamKind } from "~/protocols/common"
 
 export interface ProviderCallOptions {
   signal?: AbortSignal
