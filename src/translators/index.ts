@@ -18,3 +18,5 @@
 
 export * as responsesViaChat from "./responses-via-chat"
 export * as geminiViaChat from "./gemini-via-chat"
+export * as messagesViaResponses from "./messages-via-responses/request"
+export * as chatCompletionsViaMessages from "./chat-completions-via-messages/request"
