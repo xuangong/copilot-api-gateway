@@ -118,6 +118,8 @@ async function handleGenerateContent(ctx: RouteContext) {
         inputTokens: chatResponse.usage?.prompt_tokens,
         outputTokens: chatResponse.usage?.completion_tokens,
         userAgent,
+        sourceApi: "gemini",
+        targetApi: "chat-completions",
       }).catch(() => {})
       recordWebSearchUsage(apiKeyId, meta)
     }
@@ -167,6 +169,8 @@ async function handleGenerateContent(ctx: RouteContext) {
         stream: false,
         inputTokens: result.chat.usage?.prompt_tokens,
         outputTokens: result.chat.usage?.completion_tokens,
+        sourceApi: "gemini",
+        targetApi: "chat-completions",
       },
     ).catch(() => {})
   }
@@ -274,6 +278,8 @@ async function handleStreamGenerateContent(
         inputTokens: chatResponse.usage?.prompt_tokens,
         outputTokens: chatResponse.usage?.completion_tokens,
         userAgent,
+        sourceApi: "gemini",
+        targetApi: "chat-completions",
       }).catch(() => {})
       recordWebSearchUsage(apiKeyId, meta)
     }
@@ -329,7 +335,7 @@ async function handleStreamGenerateContent(
         tokenMiss: state.tokenMiss,
       },
       requestId,
-      { stream: true },
+      { stream: true, sourceApi: "gemini", targetApi: "chat-completions" },
     ).catch(() => {})
   }
 

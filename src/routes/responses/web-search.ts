@@ -48,6 +48,8 @@ export async function handleWebSearchIntercepted(
       inputTokens: responsesResult.usage.input_tokens,
       outputTokens: responsesResult.usage.output_tokens,
       userAgent,
+      sourceApi: "responses",
+      targetApi: "chat-completions",
     }).catch(() => {})
     recordWebSearchUsage(apiKeyId, meta)
   }

@@ -61,6 +61,8 @@ async function handleEmbeddings(ctx: RouteContext): Promise<Response> {
       stream: false,
       inputTokens: json.usage?.prompt_tokens,
       outputTokens: 0,
+      sourceApi: "embeddings",
+      targetApi: "embeddings",
     }).catch(() => {})
   }
 

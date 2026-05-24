@@ -16,6 +16,9 @@ export type {
 // Billing header transform
 export { stripReservedKeywords } from "./billing-header"
 
+// Service tier strip (Copilot rejects service_tier)
+export { stripServiceTier, type ServiceTierStripResult } from "./service-tier-strip"
+
 // Tool type transforms
 export { fixApplyPatchTools, stripWebSearchTools } from "./tool-type"
 
@@ -56,6 +59,12 @@ export {
   createChatStreamFixer,
   type StreamIdTracker,
 } from "./streaming-id-fix"
+
+// Composed Responses-SSE interceptor: item-id sync + whitespace abort.
+export { createResponsesInterceptorStream } from "./responses-sse-interceptor"
+
+// Chat-Completions whitespace abort for tool argument deltas.
+export { createChatWhitespaceAbortStream } from "./chat-whitespace-abort"
 
 // Request-side pipelines (composes the per-mutation helpers above in the
 // canonical order each route needs).

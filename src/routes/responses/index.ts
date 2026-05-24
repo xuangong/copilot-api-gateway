@@ -6,7 +6,7 @@ import {
   hasResponsesWebSearch,
   loadWebSearchConfig,
 } from "~/services/web-search"
-import { stripWebSearchTools, type ResponsesPayload } from "~/transforms"
+import { stripServiceTier, stripWebSearchTools, type ResponsesPayload } from "~/transforms"
 
 import { handleChatFallback } from "./chat-fallback"
 import { handleDirectNonStreaming, handleDirectStreaming } from "./direct"
@@ -36,6 +36,7 @@ const handleResponses = async (ctx: unknown) => {
   const payload: ResponsesPayload = rewriteCodexAutoReviewAlias({
     ...(body as ResponsesPayload),
   })
+  stripServiceTier(payload as unknown as Record<string, unknown>)
 
   // Stateless gateway: refuse server-side history references with the same
   // 400/404 codex/cline/openai-agents-python use to trigger their full-input

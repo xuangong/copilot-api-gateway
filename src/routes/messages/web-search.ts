@@ -82,6 +82,8 @@ export async function handleWebSearch(
       inputTokens: usage.usage?.input_tokens,
       outputTokens: usage.usage?.output_tokens,
       userAgent,
+      sourceApi: "messages",
+      targetApi: "messages",
     }).catch(() => {})
 
     if (meta.searchCount > 0) {

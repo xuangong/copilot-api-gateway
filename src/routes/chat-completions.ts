@@ -9,6 +9,7 @@ import { checkQuota } from "~/lib/quota"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import { createFrameBuffer } from "~/lib/sse/parser"
+import { createChatWhitespaceAbortStream } from "~/transforms"
 import {
   hasOpenAIWebSearch,
   interceptOpenAIChat,
@@ -125,6 +126,8 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
           inputTokens: usage?.prompt_tokens,
           outputTokens: usage?.completion_tokens,
           userAgent,
+          sourceApi: "chat-completions",
+          targetApi: "chat-completions",
         }).catch(() => {})
         recordWebSearchUsage(apiKeyId, meta)
       }
@@ -169,7 +172,11 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
     // = SSE comment line, ignored by every spec-compliant SSE parser
     // including the OpenAI SDK.
     const heartbeated = wrapOpenAIHeartbeat(response.body)
-    const streamResponse = new Response(heartbeated, {
+    // Abort streams that degenerate into whitespace-only tool argument deltas.
+    const guarded = heartbeated
+      ? heartbeated.pipeThrough(createChatWhitespaceAbortStream())
+      : null
+    const streamResponse = new Response(guarded, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -179,7 +186,7 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
     if (apiKeyId) {
       recordLatency(apiKeyId, payload.model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
-      }, requestId, { stream: true }).catch(() => {})
+      }, requestId, { stream: true, sourceApi: "chat-completions", targetApi: "chat-completions" }).catch(() => {})
     }
     const tracked = apiKeyId
       ? trackStreamingUsage(streamResponse, apiKeyId, payload.model, client)
@@ -214,6 +221,8 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
       stream: false,
       inputTokens: j.usage?.prompt_tokens,
       outputTokens: j.usage?.completion_tokens,
+      sourceApi: "chat-completions",
+      targetApi: "chat-completions",
     }).catch(() => {})
   }
 

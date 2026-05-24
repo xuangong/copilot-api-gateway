@@ -71,7 +71,7 @@ export async function handleChatFallback(
     if (apiKeyId) {
       recordLatency(apiKeyId, model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
-      }, requestId, { stream: true }).catch(() => {})
+      }, requestId, { stream: true, sourceApi: "responses", targetApi: "chat-completions" }).catch(() => {})
     }
 
     // Heartbeat BEFORE tee so both branches share the keepalive stream.
@@ -134,6 +134,8 @@ export async function handleChatFallback(
       stream: false,
       inputTokens: responsesResult.usage.input_tokens,
       outputTokens: responsesResult.usage.output_tokens,
+      sourceApi: "responses",
+      targetApi: "chat-completions",
     }).catch(() => {})
   }
 

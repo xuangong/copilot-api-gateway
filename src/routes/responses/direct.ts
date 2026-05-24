@@ -4,11 +4,12 @@ import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
 import { createCopilotProvider } from "~/providers/registry"
+import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
 import {
   addWebSearchHeaders,
   recordWebSearchUsage,
 } from "~/services/web-search"
-import type { ResponsesPayload } from "~/transforms"
+import { createResponsesInterceptorStream, type ResponsesPayload } from "~/transforms"
 
 import {
   countNativeWebSearchFromOutput,
@@ -37,9 +38,9 @@ export async function handleDirectStreaming(
 
   const upstreamTimer = startTimer()
   const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
-  const response = await provider.callResponses(
+  const response = await withConnectionMismatchRetry(
     payload as unknown as Record<string, unknown>,
-    { operationName: "responses" },
+    (p) => provider.callResponses(p as Record<string, unknown>, { operationName: "responses" }),
   )
   const upstreamMs = upstreamTimer()
 
@@ -47,6 +48,12 @@ export async function handleDirectStreaming(
   // connection never goes 60s without a byte (which would trip client SDK
   // read-timeouts or intermediate proxies).
   const heartbeated = wrapOpenAIHeartbeat(response.body)
+  // After whole-frame boundaries are guaranteed by the heartbeat wrapper,
+  // run the Responses SSE interceptor chain: synchronize output-item IDs and
+  // abort on tool-arg whitespace overflow.
+  const intercepted = heartbeated
+    ? heartbeated.pipeThrough(createResponsesInterceptorStream())
+    : null
   const directHeaders: Record<string, string> = {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
@@ -57,9 +64,9 @@ export async function handleDirectStreaming(
   // web_search_call items as they appear in response.output_item.done events.
   // Headers are sent before the body in HTTP/1.1 so the count can't be added
   // retroactively — instead emit telemetry async.
-  let bodyToReturn = heartbeated
-  if (directWebSearchEnabled && heartbeated) {
-    const [tap, forward] = heartbeated.tee()
+  let bodyToReturn = intercepted
+  if (directWebSearchEnabled && intercepted) {
+    const [tap, forward] = intercepted.tee()
     bodyToReturn = forward
     countNativeWebSearchFromSSE(tap)
       .then((meta) => recordWebSearchUsage(apiKeyId, meta))
@@ -71,7 +78,7 @@ export async function handleDirectStreaming(
   if (apiKeyId) {
     recordLatency(apiKeyId, model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
-    }, requestId, { stream: true }).catch(() => {})
+    }, requestId, { stream: true, sourceApi: "responses", targetApi: "responses" }).catch(() => {})
   }
   return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, model, client) : streamResponse
 }
@@ -95,9 +102,9 @@ export async function handleDirectNonStreaming(
   const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
   let upstreamMs = 0
   const syncPromise: Promise<RespJson> = (async () => {
-    const response = await provider.callResponses(
+    const response = await withConnectionMismatchRetry(
       payload as unknown as Record<string, unknown>,
-      { operationName: "responses" },
+      (p) => provider.callResponses(p as Record<string, unknown>, { operationName: "responses" }),
     )
     upstreamMs = upstreamTimer()
     return (await response.json()) as RespJson
@@ -112,6 +119,8 @@ export async function handleDirectNonStreaming(
       stream: false,
       inputTokens: j.usage?.input_tokens,
       outputTokens: j.usage?.output_tokens,
+      sourceApi: "responses",
+      targetApi: "responses",
     }).catch(() => {})
   }
 
