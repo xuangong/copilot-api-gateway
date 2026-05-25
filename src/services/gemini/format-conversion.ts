@@ -7,6 +7,7 @@ import type {
   GeminiStreamState,
   GeminiFinishReason,
   GeminiCandidate,
+  GeminiThinkingConfig,
 } from "./types"
 
 // OpenAI Chat Completions types (subset needed for conversion)
@@ -24,6 +25,7 @@ export interface ChatCompletionsPayload {
   stream?: boolean
   stream_options?: { include_usage?: boolean }
   response_format?: { type: "json_object" | "text" }
+  reasoning_effort?: "low" | "medium" | "high"
 }
 
 export interface Message {
@@ -168,8 +170,35 @@ export function translateGeminiToOpenAI(
   if (request.generationConfig?.responseMimeType === "application/json") {
     result.response_format = { type: "json_object" }
   }
+  const effort = request.generationConfig?.thinkingConfig
+    ? mapGeminiThinkingToEffort(request.generationConfig.thinkingConfig)
+    : undefined
+  if (effort) {
+    result.reasoning_effort = effort
+  }
 
   return result
+}
+
+/**
+ * Map Gemini thinkingConfig to OpenAI-style reasoning_effort.
+ * thinkingLevel (Gemini 3+) takes precedence over thinkingBudget.
+ * Budget ranges loosely follow Gemini 2.5 docs: 0 disables, -1 dynamic.
+ */
+function mapGeminiThinkingToEffort(
+  cfg: GeminiThinkingConfig,
+): "low" | "medium" | "high" | undefined {
+  if (cfg.thinkingLevel) {
+    if (cfg.thinkingLevel === "minimal") return "low"
+    return cfg.thinkingLevel
+  }
+  const budget = cfg.thinkingBudget
+  if (budget == null) return undefined
+  if (budget === 0) return undefined
+  if (budget < 0) return "medium"
+  if (budget <= 2048) return "low"
+  if (budget <= 8192) return "medium"
+  return "high"
 }
 
 function convertContentToMessages(

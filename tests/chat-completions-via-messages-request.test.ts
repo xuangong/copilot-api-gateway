@@ -141,4 +141,35 @@ describe("translateChatCompletionsToMessages", () => {
     )
     expect(out.max_tokens).toBe(12345)
   })
+
+  test("reasoning_effort maps to thinking with budget_tokens", () => {
+    const low = translateChatCompletionsToMessages({
+      model: "m",
+      messages: [{ role: "user", content: "x" }],
+      reasoning_effort: "low",
+    })
+    expect(low.thinking).toEqual({ type: "enabled", budget_tokens: 1024 })
+
+    const med = translateChatCompletionsToMessages({
+      model: "m",
+      messages: [{ role: "user", content: "x" }],
+      reasoning_effort: "medium",
+    })
+    expect(med.thinking).toEqual({ type: "enabled", budget_tokens: 4096 })
+
+    const high = translateChatCompletionsToMessages({
+      model: "m",
+      messages: [{ role: "user", content: "x" }],
+      reasoning_effort: "high",
+    })
+    expect(high.thinking).toEqual({ type: "enabled", budget_tokens: 16384 })
+  })
+
+  test("no reasoning_effort means no thinking block", () => {
+    const out = translateChatCompletionsToMessages({
+      model: "m",
+      messages: [{ role: "user", content: "x" }],
+    })
+    expect(out.thinking).toBeUndefined()
+  })
 })

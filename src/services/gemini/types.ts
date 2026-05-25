@@ -57,6 +57,19 @@ interface GeminiGenerationConfig {
   candidateCount?: number
   responseMimeType?: string
   responseSchema?: Record<string, unknown>
+  thinkingConfig?: GeminiThinkingConfig
+}
+
+export interface GeminiThinkingConfig {
+  /**
+   * Token budget for reasoning. 0 disables thinking (when supported);
+   * -1 lets the model decide; positive values request that many tokens.
+   */
+  thinkingBudget?: number
+  /** When true, response parts include `{thought: true}` summaries. */
+  includeThoughts?: boolean
+  /** Gemini 3+ alternative to thinkingBudget. */
+  thinkingLevel?: "minimal" | "low" | "medium" | "high"
 }
 
 interface GeminiTool {

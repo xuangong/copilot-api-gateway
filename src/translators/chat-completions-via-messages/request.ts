@@ -163,6 +163,13 @@ const CHAT_TOOL_CHOICE: Record<
   none: { type: "none" },
 }
 
+/** Map OpenAI-style reasoning_effort to Anthropic thinking budget tokens. */
+const EFFORT_TO_BUDGET: Record<"low" | "medium" | "high", number> = {
+  low: 1024,
+  medium: 4096,
+  high: 16384,
+}
+
 function translateToolChoice(
   choice: ChatCompletionsPayload["tool_choice"],
 ): { type: "auto" | "any" | "tool" | "none"; name?: string } | undefined {
@@ -203,6 +210,9 @@ export function translateChatCompletionsToMessages(
   const max_tokens =
     payload.max_tokens ?? options.fallbackMaxOutputTokens ?? MESSAGES_FALLBACK_MAX_TOKENS
   const toolChoice = translateToolChoice(payload.tool_choice)
+  const thinking = payload.reasoning_effort
+    ? { type: "enabled" as const, budget_tokens: EFFORT_TO_BUDGET[payload.reasoning_effort] }
+    : undefined
 
   return {
     model: payload.model,
@@ -217,5 +227,6 @@ export function translateChatCompletionsToMessages(
     stream: payload.stream ?? true,
     ...(payload.tools?.length ? { tools: translateTools(payload.tools) } : {}),
     ...(toolChoice ? { tool_choice: toolChoice } : {}),
+    ...(thinking ? { thinking } : {}),
   }
 }

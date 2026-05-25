@@ -44,3 +44,52 @@ describe("translateGeminiToResponses", () => {
     expect(out.max_output_tokens).toBeGreaterThan(0)
   })
 })
+
+describe("Gemini thinkingConfig propagation", () => {
+  test("thinkingBudget>0 → Messages thinking.budget_tokens", () => {
+    const req: GeminiGenerateContentRequest = {
+      contents: [{ role: "user", parts: [{ text: "x" }] }],
+      generationConfig: { thinkingConfig: { thinkingBudget: 4096 } },
+    }
+    const out = translateGeminiToMessages(req, "gemini-2.5-pro")
+    expect(out.thinking).toEqual({ type: "enabled", budget_tokens: 4096 })
+  })
+
+  test("thinkingLevel=minimal → Messages thinking budget=1024", () => {
+    const req: GeminiGenerateContentRequest = {
+      contents: [{ role: "user", parts: [{ text: "x" }] }],
+      generationConfig: { thinkingConfig: { thinkingLevel: "minimal" } },
+    }
+    const out = translateGeminiToMessages(req, "gemini-3-pro")
+    expect(out.thinking).toEqual({ type: "enabled", budget_tokens: 1024 })
+  })
+
+  test("thinkingBudget=0 → no thinking block", () => {
+    const req: GeminiGenerateContentRequest = {
+      contents: [{ role: "user", parts: [{ text: "x" }] }],
+      generationConfig: { thinkingConfig: { thinkingBudget: 0 } },
+    }
+    const out = translateGeminiToMessages(req, "gemini-2.5-pro")
+    expect(out.thinking).toBeUndefined()
+  })
+
+  test("thinkingBudget=-1 (dynamic) → Messages thinking medium budget", () => {
+    const req: GeminiGenerateContentRequest = {
+      contents: [{ role: "user", parts: [{ text: "x" }] }],
+      generationConfig: { thinkingConfig: { thinkingBudget: -1 } },
+    }
+    const out = translateGeminiToMessages(req, "gemini-2.5-pro")
+    expect(out.thinking?.budget_tokens).toBe(4096)
+  })
+
+  test("thinkingConfig → Responses reasoning.effort", () => {
+    const req: GeminiGenerateContentRequest = {
+      contents: [{ role: "user", parts: [{ text: "x" }] }],
+      generationConfig: { thinkingConfig: { thinkingBudget: 10000 } },
+    }
+    const out = translateGeminiToResponses(req, "gpt-5-mini") as {
+      reasoning?: { effort: string }
+    }
+    expect(out.reasoning?.effort).toBe("high")
+  })
+})
