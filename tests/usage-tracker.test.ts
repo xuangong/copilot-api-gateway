@@ -106,6 +106,21 @@ describe("trackStreamingUsage — OpenAI chat-completions末帧 usage", () => {
     expect(captured.length).toBe(1)
     expect(captured[0]).toMatchObject({ inputTokens: 30, outputTokens: 8 })
   })
+
+  test("uses upstream stream model instead of fallback request model", async () => {
+    const captured: Captured[] = []
+    setRepoForTest(makeMockRepo(captured) as unknown as Repo)
+
+    const upstream = new Response(sse([
+      { id: "chatcmpl_1", model: "gpt-5.5", choices: [{ delta: { role: "assistant" } }] },
+      { choices: [], usage: { prompt_tokens: 20, completion_tokens: 5 } },
+    ]))
+
+    await drain(trackStreamingUsage(upstream, "k1", "claude-code-sdk"))
+
+    expect(captured.length).toBe(1)
+    expect(captured[0]).toMatchObject({ model: "gpt-5.5", inputTokens: 20, outputTokens: 5 })
+  })
 })
 
 describe("trackStreamingUsage — Responses response.completed", () => {
@@ -210,6 +225,32 @@ describe("extractUsage — Responses input_tokens_details.cached_tokens", () => 
       cacheReadTokens: 500,
     })
   })
+
+  test("non-streaming: uses response model instead of fallback request model", async () => {
+    const captured: Captured[] = []
+    setRepoForTest(makeMockRepo(captured) as unknown as Repo)
+
+    await trackNonStreamingUsage(
+      {
+        model: "gpt-5.5",
+        usage: {
+          input_tokens: 80,
+          output_tokens: 11,
+          input_tokens_details: { cached_tokens: 48 },
+        },
+      },
+      "k1",
+      "claude-code-sdk",
+    )
+
+    expect(captured.length).toBe(1)
+    expect(captured[0]).toMatchObject({
+      model: "gpt-5.5",
+      inputTokens: 32,
+      outputTokens: 11,
+      cacheReadTokens: 48,
+    })
+  })
 })
 
 describe("applyStreamEvent — cached_tokens in stream end frame", () => {
@@ -310,6 +351,23 @@ describe("consumeStreamForUsage — works on tee'd upstream branch", () => {
 
     expect(captured.length).toBe(1)
     expect(captured[0]).toMatchObject({ inputTokens: 11, outputTokens: 22, model: "gemini-2.0-flash" })
+  })
+
+  test("uses upstream stream model instead of fallback request model", async () => {
+    const captured: Captured[] = []
+    setRepoForTest(makeMockRepo(captured) as unknown as Repo)
+
+    const upstream = sse([
+      { type: "response.created", response: { id: "resp_1", model: "gpt-5.5" } },
+      { type: "response.completed", response: { usage: { input_tokens: 90, output_tokens: 12 } } },
+    ])
+
+    consumeStreamForUsage(upstream, "k1", "claude-code-sdk", "llm-relay")
+
+    await new Promise((r) => setTimeout(r, 20))
+
+    expect(captured.length).toBe(1)
+    expect(captured[0]).toMatchObject({ model: "gpt-5.5", inputTokens: 90, outputTokens: 12 })
   })
 })
 
