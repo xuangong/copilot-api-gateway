@@ -61,10 +61,10 @@ export async function handleDirectMessages(
     if (apiKeyId) {
       recordLatency(apiKeyId, payload.model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
-      }, requestId, { stream: true, sourceApi: "messages", targetApi: "messages" }).catch((e) => console.error('[latency] record error:', e))
+      }, requestId, { stream: true, sourceApi: "messages", targetApi: "messages", upstream: state.upstream }).catch((e) => console.error('[latency] record error:', e))
     }
     return apiKeyId
-      ? trackStreamingUsage(streamResponse, apiKeyId, payload.model, client)
+      ? trackStreamingUsage(streamResponse, apiKeyId, payload.model, client, state.upstream)
       : streamResponse
   }
 
@@ -85,7 +85,7 @@ export async function handleDirectMessages(
 
   const recordSync = async (j: SyncJson) => {
     if (!apiKeyId) return
-    await trackNonStreamingUsage(j, apiKeyId, payload.model, client)
+    await trackNonStreamingUsage(j, apiKeyId, payload.model, client, state.upstream)
     recordLatency(apiKeyId, payload.model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
     }, requestId, {
@@ -95,6 +95,7 @@ export async function handleDirectMessages(
       userAgent,
       sourceApi: "messages",
       targetApi: "messages",
+      upstream: state.upstream,
     }).catch((e) => console.error('[latency] record error:', e))
   }
 

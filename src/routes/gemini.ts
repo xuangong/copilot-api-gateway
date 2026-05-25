@@ -8,14 +8,14 @@ import { detectClient } from "~/lib/client-detect"
 import { checkQuota } from "~/lib/quota"
 import {
   translateGeminiToOpenAI,
-  translateOpenAIToGemini,
-  translateChunkToGemini,
-  createStreamState,
   type ChatCompletionResponse,
-  type ChatCompletionChunk,
 } from "~/services/gemini/format-conversion"
-import type { GeminiGenerateContentRequest } from "~/services/gemini/types"
-import { createSSETransform } from "~/lib/sse-transform"
+import {
+  createChatToGeminiJSONStream,
+  createChatToGeminiSSEStream,
+  translateChatCompletionsToGeminiResponse,
+} from "~/translators/gemini-via-chat"
+import type { GeminiGenerateContentRequest, GeminiGenerateContentResponse } from "~/services/gemini/types"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import {
@@ -32,6 +32,8 @@ import {
   totalTokensFromUpstream,
   type GeminiCountTokensRequest,
 } from "~/services/gemini/count-tokens"
+import { handleGeminiViaMessages } from "./gemini-messages-fallback"
+import { handleGeminiViaResponses } from "./gemini-responses-fallback"
 
 interface RouteContext {
   state: AppState
@@ -89,6 +91,14 @@ async function handleGenerateContent(ctx: RouteContext) {
 
   const model = extractModelId(params.modelWithMethod)
 
+  // Route by upstream protocol of the resolved model id, mirroring chat-completions.ts.
+  if (model.startsWith("claude-")) {
+    return handleGeminiViaMessages(ctx, model, { kind: "sync" }, elapsed)
+  }
+  if (model.startsWith("gpt-5")) {
+    return handleGeminiViaResponses(ctx, model, { kind: "sync" }, elapsed)
+  }
+
   // ── Web-search interception ──
   if (hasGeminiWebSearch(body)) {
     const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken, state.msGroundingKey)
@@ -110,7 +120,7 @@ async function handleGenerateContent(ctx: RouteContext) {
     )
     const upstreamMs = upstreamTimer()
     if (apiKeyId) {
-      await trackNonStreamingUsage(chatResponse, apiKeyId, model, client)
+      await trackNonStreamingUsage(chatResponse, apiKeyId, model, client, state.upstream)
       recordLatency(apiKeyId, model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
       }, requestId, {
@@ -120,6 +130,7 @@ async function handleGenerateContent(ctx: RouteContext) {
         userAgent,
         sourceApi: "gemini",
         targetApi: "chat-completions",
+        upstream: state.upstream,
       }).catch(() => {})
       recordWebSearchUsage(apiKeyId, meta)
     }
@@ -136,14 +147,14 @@ async function handleGenerateContent(ctx: RouteContext) {
 
   const upstreamTimer = startTimer()
   let upstreamMs = 0
-  const syncPromise: Promise<{ chat: ChatCompletionResponse; gemini: ReturnType<typeof translateOpenAIToGemini> }> = (async () => {
+  const syncPromise: Promise<{ chat: ChatCompletionResponse; gemini: GeminiGenerateContentResponse }> = (async () => {
     const response = await createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType }).callChatCompletions(
       cleanPayload,
       { operationName: "gemini generate content" },
     )
     upstreamMs = upstreamTimer()
     const json = (await response.json()) as ChatCompletionResponse
-    return { chat: json, gemini: translateOpenAIToGemini(json, model) }
+    return { chat: json, gemini: translateChatCompletionsToGeminiResponse(json, model) }
   })()
 
   const recordSync = async (result: { chat: ChatCompletionResponse }) => {
@@ -153,6 +164,7 @@ async function handleGenerateContent(ctx: RouteContext) {
       apiKeyId,
       model,
       client,
+      state.upstream,
     )
     recordLatency(
       apiKeyId,
@@ -171,6 +183,7 @@ async function handleGenerateContent(ctx: RouteContext) {
         outputTokens: result.chat.usage?.completion_tokens,
         sourceApi: "gemini",
         targetApi: "chat-completions",
+        upstream: state.upstream,
       },
     ).catch(() => {})
   }
@@ -249,6 +262,13 @@ async function handleStreamGenerateContent(
 
   const model = extractModelId(params.modelWithMethod)
 
+  if (model.startsWith("claude-")) {
+    return handleGeminiViaMessages(ctx, model, { kind: "stream", useSSE }, elapsed)
+  }
+  if (model.startsWith("gpt-5")) {
+    return handleGeminiViaResponses(ctx, model, { kind: "stream", useSSE }, elapsed)
+  }
+
   // ── Web-search interception (synthesized single chunk into stream pipeline) ──
   if (hasGeminiWebSearch(body)) {
     const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken, state.msGroundingKey)
@@ -270,7 +290,7 @@ async function handleStreamGenerateContent(
     )
     const upstreamMs = upstreamTimer()
     if (apiKeyId) {
-      await trackNonStreamingUsage(chatResponse, apiKeyId, model, client)
+      await trackNonStreamingUsage(chatResponse, apiKeyId, model, client, state.upstream)
       recordLatency(apiKeyId, model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
       }, requestId, {
@@ -280,26 +300,15 @@ async function handleStreamGenerateContent(
         userAgent,
         sourceApi: "gemini",
         targetApi: "chat-completions",
+        upstream: state.upstream,
       }).catch(() => {})
       recordWebSearchUsage(apiKeyId, meta)
     }
 
     const synthesized = synthChatCompletionChunks(chatResponse)
-    const streamState = createStreamState(model)
-    const encoder = new TextEncoder()
-    const transformStream = createSSETransform((data) => {
-      try {
-        const openAIChunk = JSON.parse(data) as ChatCompletionChunk
-        const geminiChunk = translateChunkToGemini(openAIChunk, streamState)
-        if (geminiChunk) {
-          if (useSSE) return encoder.encode(`data: ${JSON.stringify(geminiChunk)}\n\n`)
-          return encoder.encode(JSON.stringify(geminiChunk) + "\n")
-        }
-      } catch {
-        // Skip
-      }
-      return null
-    })
+    const transformStream = useSSE
+      ? createChatToGeminiSSEStream()
+      : createChatToGeminiJSONStream()
     const heartbeated = useSSE ? wrapOpenAIHeartbeat(synthesized) : synthesized
     const transformedBody = heartbeated?.pipeThrough(transformStream)
     const headers: Record<string, string> = useSSE
@@ -335,30 +344,13 @@ async function handleStreamGenerateContent(
         tokenMiss: state.tokenMiss,
       },
       requestId,
-      { stream: true, sourceApi: "gemini", targetApi: "chat-completions" },
+      { stream: true, sourceApi: "gemini", targetApi: "chat-completions", upstream: state.upstream },
     ).catch(() => {})
   }
 
-  const streamState = createStreamState(model)
-  const encoder = new TextEncoder()
-
-  const transformStream = createSSETransform((data) => {
-    try {
-      const openAIChunk = JSON.parse(data) as ChatCompletionChunk
-      const geminiChunk = translateChunkToGemini(openAIChunk, streamState)
-
-      if (geminiChunk) {
-        if (useSSE) {
-          return encoder.encode(`data: ${JSON.stringify(geminiChunk)}\n\n`)
-        } else {
-          return encoder.encode(JSON.stringify(geminiChunk) + "\n")
-        }
-      }
-    } catch {
-      // Skip invalid JSON chunks
-    }
-    return null
-  })
+  const transformStream = useSSE
+    ? createChatToGeminiSSEStream()
+    : createChatToGeminiJSONStream()
 
   // Heartbeat: only safe to inject on the SSE path. The alt=json path
   // returns a JSON array stream where any injected bytes would break
@@ -375,7 +367,7 @@ async function handleStreamGenerateContent(
     transformBranch = b
   }
   if (apiKeyId && usageBranch) {
-    consumeStreamForUsage(usageBranch, apiKeyId, model, client)
+    consumeStreamForUsage(usageBranch, apiKeyId, model, client, state.upstream)
   }
   const transformedBody = transformBranch?.pipeThrough(transformStream)
   return new Response(transformedBody, {

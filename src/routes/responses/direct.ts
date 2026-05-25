@@ -78,9 +78,9 @@ export async function handleDirectStreaming(
   if (apiKeyId) {
     recordLatency(apiKeyId, model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
-    }, requestId, { stream: true, sourceApi: "responses", targetApi: "responses" }).catch(() => {})
+    }, requestId, { stream: true, sourceApi: "responses", targetApi: "responses", upstream: state.upstream }).catch(() => {})
   }
-  return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, model, client) : streamResponse
+  return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, model, client, state.upstream) : streamResponse
 }
 
 /**
@@ -112,7 +112,7 @@ export async function handleDirectNonStreaming(
 
   const recordSync = async (j: RespJson) => {
     if (!apiKeyId) return
-    await trackNonStreamingUsage(j, apiKeyId, model, client)
+    await trackNonStreamingUsage(j, apiKeyId, model, client, state.upstream)
     recordLatency(apiKeyId, model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
     }, requestId, {
@@ -121,6 +121,7 @@ export async function handleDirectNonStreaming(
       outputTokens: j.usage?.output_tokens,
       sourceApi: "responses",
       targetApi: "responses",
+      upstream: state.upstream,
     }).catch(() => {})
   }
 

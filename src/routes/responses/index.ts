@@ -10,6 +10,7 @@ import { stripServiceTier, stripWebSearchTools, type ResponsesPayload } from "~/
 
 import { handleChatFallback } from "./chat-fallback"
 import { handleDirectNonStreaming, handleDirectStreaming } from "./direct"
+import { handleResponsesViaMessages } from "./messages-fallback"
 import {
   rewriteCodexAutoReviewAlias,
   shouldUseChatFallback,
@@ -43,6 +44,11 @@ const handleResponses = async (ctx: unknown) => {
   // retry path, instead of silently sending broken refs upstream.
   const notFound = statefulContinuationNotFoundResponse(payload)
   if (notFound) return notFound
+
+  // claude-* 模型走 Messages 上游,需要 Responses ↔ Messages 双向翻译
+  if (payload.model.startsWith("claude-")) {
+    return handleResponsesViaMessages(routeCtx, payload, elapsed)
+  }
 
   const useChatFallback = shouldUseChatFallback(payload.model)
   const wantsWebSearch = hasResponsesWebSearch(payload)

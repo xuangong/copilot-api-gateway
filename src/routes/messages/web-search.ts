@@ -73,7 +73,7 @@ export async function handleWebSearch(
     const { response, meta } = result
     const upstreamMs = upstreamTimer()
     if (!apiKeyId) return
-    await trackNonStreamingUsage(response, apiKeyId, payload.model, client)
+    await trackNonStreamingUsage(response, apiKeyId, payload.model, client, state.upstream)
     const usage = response as { usage?: { input_tokens?: number; output_tokens?: number } }
     recordLatency(apiKeyId, payload.model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
@@ -84,6 +84,7 @@ export async function handleWebSearch(
       userAgent,
       sourceApi: "messages",
       targetApi: "messages",
+      upstream: state.upstream,
     }).catch(() => {})
 
     if (meta.searchCount > 0) {

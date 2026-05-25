@@ -10,7 +10,9 @@ import {
   type AnthropicMessagesPayload,
 } from "~/transforms"
 
+import { handleMessagesViaChatCompletions } from "./chat-completions-fallback"
 import { handleDirectMessages } from "./direct"
+import { handleMessagesViaResponses } from "./responses-fallback"
 import {
   extractAnthropicPassthroughHeaders,
   logOfficeClientEntry,
@@ -43,6 +45,17 @@ export const messagesRoute = new Elysia()
     const messagesPayload = payload as unknown as MessagesPayload
     if (hasWebSearch(messagesPayload)) {
       return handleWebSearch(routeCtx, payload, messagesPayload, elapsed)
+    }
+
+    // gpt-5.x only serves /v1/responses upstream — translate Messages↔Responses.
+    if (payload.model.startsWith("gpt-5")) {
+      return handleMessagesViaResponses(routeCtx, payload, elapsed)
+    }
+
+    // Other gpt-* models only serve /v1/chat/completions — translate
+    // Messages↔Chat Completions on both legs.
+    if (payload.model.startsWith("gpt-")) {
+      return handleMessagesViaChatCompletions(routeCtx, payload, elapsed)
     }
 
     return handleDirectMessages(

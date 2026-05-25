@@ -20,6 +20,10 @@ import {
   replayChatCompletionAsSSE,
 } from "~/services/web-search"
 
+import { handleChatCompletionsViaMessages } from "./chat-completions-messages-fallback"
+import { handleChatCompletionsViaResponses } from "./chat-completions-responses-fallback"
+import type { ChatCompletionsPayload as TranslatorChatPayload } from "~/services/gemini/format-conversion"
+
 interface ChatMessage {
   role: "system" | "user" | "assistant"
   content: string
@@ -96,6 +100,24 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
   const upstreamTimer = startTimer()
   const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
 
+  // claude-* 模型走 Messages 上游,需要 Chat ↔ Messages 双向翻译
+  if (payload.model.startsWith("claude-")) {
+    return handleChatCompletionsViaMessages(
+      ctx as unknown as Parameters<typeof handleChatCompletionsViaMessages>[0],
+      payload as unknown as TranslatorChatPayload,
+      elapsed,
+    )
+  }
+
+  // gpt-5.x 只在 /v1/responses 上游;Chat ↔ Responses 双向翻译
+  if (payload.model.startsWith("gpt-5")) {
+    return handleChatCompletionsViaResponses(
+      ctx as unknown as Parameters<typeof handleChatCompletionsViaResponses>[0],
+      payload as unknown as Parameters<typeof handleChatCompletionsViaResponses>[1],
+      elapsed,
+    )
+  }
+
   // ── Web-search interception ───────────────────────────────────────────
   // If client sent a web_search-style tool, run the multi-turn intercept
   // loop synchronously and either return JSON or replay as a single-chunk
@@ -117,7 +139,7 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
 
     const recordSide = async () => {
       if (apiKeyId) {
-        await trackNonStreamingUsage(response, apiKeyId, payload.model, client)
+        await trackNonStreamingUsage(response, apiKeyId, payload.model, client, state.upstream)
         const usage = response.usage
         recordLatency(apiKeyId, payload.model, colo, {
           totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
@@ -128,6 +150,7 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
           userAgent,
           sourceApi: "chat-completions",
           targetApi: "chat-completions",
+          upstream: state.upstream,
         }).catch(() => {})
         recordWebSearchUsage(apiKeyId, meta)
       }
@@ -186,10 +209,10 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
     if (apiKeyId) {
       recordLatency(apiKeyId, payload.model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
-      }, requestId, { stream: true, sourceApi: "chat-completions", targetApi: "chat-completions" }).catch(() => {})
+      }, requestId, { stream: true, sourceApi: "chat-completions", targetApi: "chat-completions", upstream: state.upstream }).catch(() => {})
     }
     const tracked = apiKeyId
-      ? trackStreamingUsage(streamResponse, apiKeyId, payload.model, client)
+      ? trackStreamingUsage(streamResponse, apiKeyId, payload.model, client, state.upstream)
       : streamResponse
 
     if (clientWantsUsage) {
@@ -214,7 +237,7 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
 
   const recordSync = async (j: ChatJson) => {
     if (!apiKeyId) return
-    await trackNonStreamingUsage(j, apiKeyId, payload.model, client)
+    await trackNonStreamingUsage(j, apiKeyId, payload.model, client, state.upstream)
     recordLatency(apiKeyId, payload.model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
     }, requestId, {
@@ -223,6 +246,7 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
       outputTokens: j.usage?.completion_tokens,
       sourceApi: "chat-completions",
       targetApi: "chat-completions",
+      upstream: state.upstream,
     }).catch(() => {})
   }
 

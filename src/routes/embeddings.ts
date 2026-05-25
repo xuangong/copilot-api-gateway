@@ -54,7 +54,7 @@ async function handleEmbeddings(ctx: RouteContext): Promise<Response> {
   const json = (await response.json()) as EmbeddingsJson
 
   if (apiKeyId) {
-    await trackNonStreamingUsage(json, apiKeyId, body.model, client)
+    await trackNonStreamingUsage(json, apiKeyId, body.model, client, state.upstream)
     recordLatency(apiKeyId, body.model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
     }, requestId, {
@@ -63,6 +63,7 @@ async function handleEmbeddings(ctx: RouteContext): Promise<Response> {
       outputTokens: 0,
       sourceApi: "embeddings",
       targetApi: "embeddings",
+      upstream: state.upstream,
     }).catch(() => {})
   }
 

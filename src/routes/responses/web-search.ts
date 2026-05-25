@@ -40,7 +40,7 @@ export async function handleWebSearchIntercepted(
 
   const recordSide = async () => {
     if (!apiKeyId) return
-    await trackNonStreamingUsage(chatResponse, apiKeyId, model, client)
+    await trackNonStreamingUsage(chatResponse, apiKeyId, model, client, state.upstream)
     recordLatency(apiKeyId, model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
     }, requestId, {
@@ -50,6 +50,7 @@ export async function handleWebSearchIntercepted(
       userAgent,
       sourceApi: "responses",
       targetApi: "chat-completions",
+      upstream: state.upstream,
     }).catch(() => {})
     recordWebSearchUsage(apiKeyId, meta)
   }

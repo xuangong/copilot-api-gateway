@@ -71,7 +71,7 @@ export async function handleChatFallback(
     if (apiKeyId) {
       recordLatency(apiKeyId, model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
-      }, requestId, { stream: true, sourceApi: "responses", targetApi: "chat-completions" }).catch(() => {})
+      }, requestId, { stream: true, sourceApi: "responses", targetApi: "chat-completions", upstream: state.upstream }).catch(() => {})
     }
 
     // Heartbeat BEFORE tee so both branches share the keepalive stream.
@@ -87,7 +87,7 @@ export async function handleChatFallback(
       transformBranch = b
     }
     if (apiKeyId && usageBranch) {
-      consumeStreamForUsage(usageBranch, apiKeyId, model, client)
+      consumeStreamForUsage(usageBranch, apiKeyId, model, client, state.upstream)
     }
     const transformedBody = transformBranch?.pipeThrough(buildStreamTransform(payload, model))
     return new Response(transformedBody, {
@@ -127,7 +127,7 @@ export async function handleChatFallback(
     chatResponse: ChatCompletionResponse
   }) => {
     if (!apiKeyId) return
-    await trackNonStreamingUsage(chatResponse, apiKeyId, model, client)
+    await trackNonStreamingUsage(chatResponse, apiKeyId, model, client, state.upstream)
     recordLatency(apiKeyId, model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
     }, requestId, {
@@ -136,6 +136,7 @@ export async function handleChatFallback(
       outputTokens: responsesResult.usage.output_tokens,
       sourceApi: "responses",
       targetApi: "chat-completions",
+      upstream: state.upstream,
     }).catch(() => {})
   }
 
