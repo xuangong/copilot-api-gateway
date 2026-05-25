@@ -496,9 +496,49 @@ export function renderUpstreamTab(): string {
                 <span class="text-themed-secondary">/v1/responses</span>
               </div>
               <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded bg-accent-teal/10 text-accent-teal text-[10px] font-bold">POST</span>
+                <span class="text-themed-secondary">/v1beta/models/{model}:generateContent</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded bg-accent-teal/10 text-accent-teal text-[10px] font-bold">POST</span>
+                <span class="text-themed-secondary">/v1beta/models/{model}:streamGenerateContent</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded bg-accent-teal/10 text-accent-teal text-[10px] font-bold">POST</span>
+                <span class="text-themed-secondary">/v1beta/models/{model}:countTokens</span>
+              </div>
+              <div class="flex items-center gap-2">
                 <span class="px-2 py-0.5 rounded bg-accent-violet/10 text-accent-violet text-[10px] font-bold">GET</span>
                 <span class="text-themed-secondary">/v1/models</span>
               </div>
+            </div>
+
+            <h3 class="text-xs font-medium text-themed-dim uppercase tracking-widest mt-6 mb-3">Routing Matrix</h3>
+            <p class="text-[11px] text-themed-dim mb-3">Requests are dispatched to the upstream protocol that natively serves the selected model. Translators bridge any mismatch transparently.</p>
+            <div class="overflow-x-auto">
+              <table class="w-full text-[11px] font-mono">
+                <thead>
+                  <tr class="text-themed-dim border-b border-white/10">
+                    <th class="text-left py-1.5 pr-3 font-medium">Client API</th>
+                    <th class="text-left py-1.5 pr-3 font-medium">Model prefix</th>
+                    <th class="text-left py-1.5 font-medium">Upstream API</th>
+                  </tr>
+                </thead>
+                <tbody class="text-themed-secondary">
+                  <tr class="border-b border-white/5"><td class="py-1.5 pr-3">/v1/chat/completions</td><td class="py-1.5 pr-3">claude-*</td><td class="py-1.5">/v1/messages</td></tr>
+                  <tr class="border-b border-white/5"><td class="py-1.5 pr-3">/v1/chat/completions</td><td class="py-1.5 pr-3">gpt-5*</td><td class="py-1.5">/v1/responses</td></tr>
+                  <tr class="border-b border-white/5"><td class="py-1.5 pr-3">/v1/chat/completions</td><td class="py-1.5 pr-3">other</td><td class="py-1.5">/v1/chat/completions</td></tr>
+                  <tr class="border-b border-white/5"><td class="py-1.5 pr-3">/v1/messages</td><td class="py-1.5 pr-3">claude-*</td><td class="py-1.5">/v1/messages</td></tr>
+                  <tr class="border-b border-white/5"><td class="py-1.5 pr-3">/v1/messages</td><td class="py-1.5 pr-3">gpt-5*</td><td class="py-1.5">/v1/responses</td></tr>
+                  <tr class="border-b border-white/5"><td class="py-1.5 pr-3">/v1/messages</td><td class="py-1.5 pr-3">other gpt-*</td><td class="py-1.5">/v1/chat/completions</td></tr>
+                  <tr class="border-b border-white/5"><td class="py-1.5 pr-3">/v1/responses</td><td class="py-1.5 pr-3">claude-*</td><td class="py-1.5">/v1/messages</td></tr>
+                  <tr class="border-b border-white/5"><td class="py-1.5 pr-3">/v1/responses</td><td class="py-1.5 pr-3">gpt-5*</td><td class="py-1.5">/v1/responses</td></tr>
+                  <tr class="border-b border-white/5"><td class="py-1.5 pr-3">/v1/responses</td><td class="py-1.5 pr-3">other</td><td class="py-1.5">/v1/chat/completions</td></tr>
+                  <tr class="border-b border-white/5"><td class="py-1.5 pr-3">/v1beta (Gemini)</td><td class="py-1.5 pr-3">claude-*</td><td class="py-1.5">/v1/messages</td></tr>
+                  <tr class="border-b border-white/5"><td class="py-1.5 pr-3">/v1beta (Gemini)</td><td class="py-1.5 pr-3">gpt-5*</td><td class="py-1.5">/v1/responses</td></tr>
+                  <tr><td class="py-1.5 pr-3">/v1beta (Gemini)</td><td class="py-1.5 pr-3">gemini-*</td><td class="py-1.5">/v1/chat/completions</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -1212,7 +1252,7 @@ export function renderUsageTab(): string {
         </div>
 
         <p class="text-[10px] text-themed-dim mb-2" x-text="t('dash.utcNote')"></p>
-        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4 mt-6 pt-5 border-t border-white/5">
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 mt-6 pt-5 border-t border-white/5">
           <div class="text-center">
             <p class="text-xs text-themed-dim mb-1" x-text="t('dash.requests')"></p>
             <p class="text-lg font-bold font-mono text-themed" x-text="tokenSummary.requests.toLocaleString()"></p>
@@ -1244,6 +1284,11 @@ export function renderUsageTab(): string {
             <p class="text-xs text-themed-dim mb-1" x-text="t('dash.totalTokens')"></p>
             <p class="text-lg font-bold font-mono text-themed"
                x-text="(tokenSummary.input + tokenSummary.output + tokenSummary.cacheRead + tokenSummary.cacheCreation).toLocaleString()"></p>
+          </div>
+          <div class="text-center">
+            <p class="text-xs text-themed-dim mb-1" x-text="t('dash.cost')"></p>
+            <p class="text-lg font-bold font-mono text-themed"
+               x-text="(tokenSummary.costUSD || 0) > 0 ? '$' + (tokenSummary.costUSD).toFixed(4) : '—'"></p>
           </div>
         </div>
       </div>
@@ -1331,7 +1376,8 @@ function renderDistributionPanel(dataVar: string, titleKey: string, labelField: 
                 <th class="text-right py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.output')"></th>
                 <th class="text-right py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.cacheRead')"></th>
                 <th class="text-right py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.cacheCreation')"></th>
-                <th class="text-right py-2.5 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.totalTokens')"></th>
+                <th class="text-right py-2.5 pr-4 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.totalTokens')"></th>
+                <th class="text-right py-2.5 text-[11px] font-medium text-themed-dim uppercase tracking-widest" x-text="t('dash.cost')"></th>
               </tr>
             </thead>
             <tbody>
@@ -1350,7 +1396,8 @@ function renderDistributionPanel(dataVar: string, titleKey: string, labelField: 
                   <td class="py-2.5 pr-4 text-right text-themed-secondary font-mono text-xs" x-text="m.output.toLocaleString()"></td>
                   <td class="py-2.5 pr-4 text-right text-themed-secondary font-mono text-xs" x-text="m.cacheRead.toLocaleString()"></td>
                   <td class="py-2.5 pr-4 text-right text-themed-secondary font-mono text-xs" x-text="m.cacheCreation.toLocaleString()"></td>
-                  <td class="py-2.5 text-right text-themed-secondary font-mono text-xs" x-text="(m.input + m.output + m.cacheRead + m.cacheCreation).toLocaleString()"></td>
+                  <td class="py-2.5 pr-4 text-right text-themed-secondary font-mono text-xs" x-text="(m.input + m.output + m.cacheRead + m.cacheCreation).toLocaleString()"></td>
+                  <td class="py-2.5 text-right text-themed-secondary font-mono text-xs" x-text="(m.costUSD || 0) > 0 ? '$' + m.costUSD.toFixed(4) : '—'"></td>
                 </tr>
               </template>
             </tbody>

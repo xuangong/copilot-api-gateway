@@ -6,6 +6,7 @@ import { getGithubCredentials } from "~/lib/github"
 import { createGithubHeaders } from "~/config/constants"
 import { redactForSharedView, getServerSecret, sharedKeyRef } from "~/lib/redact-shared-view"
 import { getOwnedKeyIdsForScope } from "~/middleware/view-context"
+import { costForUsage, type CostBreakdown } from "~/pricing"
 import {
   exportConfig,
   parseConfigBundle,
@@ -20,6 +21,31 @@ interface AuthCtx {
   effectiveUserId?: string
   isViewingShared?: boolean
   ownerId?: string
+}
+
+/**
+ * Resolve cost for a usage record. Prefer the frozen snapshot written at
+ * record time; fall back to live pricing tables for legacy rows (pre-0025).
+ */
+function resolveRecordCost(r: UsageRecord): CostBreakdown | null {
+  if (r.costJson) {
+    try {
+      return JSON.parse(r.costJson) as CostBreakdown
+    } catch {
+      // fall through to live recompute
+    }
+  }
+  return costForUsage({
+    model: r.model,
+    inputTokens: r.inputTokens,
+    outputTokens: r.outputTokens,
+    cacheReadTokens: r.cacheReadTokens,
+    cacheCreationTokens: r.cacheCreationTokens,
+  })
+}
+
+function enrichUsage<T extends UsageRecord>(r: T): T & { cost: CostBreakdown | null } {
+  return { ...r, cost: resolveRecordCost(r) }
 }
 
 /** Get key IDs for the current user (owned + assigned, for scoping usage/latency queries) */
@@ -158,7 +184,7 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
       const records = await repo.usage.query({ keyIds: ids, start, end })
       const nameMap = new Map(ownedKeys.map((k) => [k.id, k.name]))
       const enriched = records.map((r) => ({
-        ...r,
+        ...enrichUsage(r),
         keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),
       }))
       return redactForSharedView({
@@ -192,7 +218,7 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
       return records.map((r) => {
         const ownerId = ownerIdMap.get(r.keyId)
         return {
-          ...r,
+          ...enrichUsage(r),
           keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),
           ownerId: ownerId ?? '',
           ownerName: ownerId ? (userNameMap.get(ownerId) ?? '') : '',
@@ -201,7 +227,7 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
     }
 
     return records.map((r) => ({
-      ...r,
+      ...enrichUsage(r),
       keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),
     }))
   })

@@ -152,12 +152,14 @@ export function dashboardAssets(): string {
         const existing = m.get(k);
         const cr = r.cacheReadTokens || 0;
         const cc = r.cacheCreationTokens || 0;
+        const cost = r.cost && typeof r.cost.totalUSD === 'number' ? r.cost.totalUSD : 0;
         if (existing) {
           existing.requests += r.requests;
           existing.input += r.inputTokens;
           existing.output += r.outputTokens;
           existing.cacheRead += cr;
           existing.cacheCreation += cc;
+          existing.costUSD += cost;
         } else {
           m.set(k, {
             label: labelFn(r, k),
@@ -166,6 +168,7 @@ export function dashboardAssets(): string {
             output: r.outputTokens,
             cacheRead: cr,
             cacheCreation: cc,
+            costUSD: cost,
           });
         }
       }
@@ -282,7 +285,7 @@ export function dashboardAssets(): string {
       tokenData: [],
       tokenChart: null,
       tokenLoading: false,
-      tokenSummary: { requests: 0, input: 0, output: 0, cacheRead: 0, cacheCreation: 0 },
+      tokenSummary: { requests: 0, input: 0, output: 0, cacheRead: 0, cacheCreation: 0, costUSD: 0 },
       tokenByModel: [],
       hoveredModel: null,
 
@@ -1290,14 +1293,16 @@ export function dashboardAssets(): string {
             let totalOut = 0;
             let totalCacheRead = 0;
             let totalCacheCreation = 0;
+            let totalCost = 0;
             for (const r of data) {
               totalReqs += r.requests;
               totalIn += r.inputTokens;
               totalOut += r.outputTokens;
               totalCacheRead += r.cacheReadTokens || 0;
               totalCacheCreation += r.cacheCreationTokens || 0;
+              if (r.cost && typeof r.cost.totalUSD === 'number') totalCost += r.cost.totalUSD;
             }
-            this.tokenSummary = { requests: totalReqs, input: totalIn, output: totalOut, cacheRead: totalCacheRead, cacheCreation: totalCacheCreation };
+            this.tokenSummary = { requests: totalReqs, input: totalIn, output: totalOut, cacheRead: totalCacheRead, cacheCreation: totalCacheCreation, costUSD: totalCost };
 
             // Build distributions for each unfiltered dimension
             this.tokenByModel = !this.tokenFilterModel
