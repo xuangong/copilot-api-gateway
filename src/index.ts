@@ -75,7 +75,7 @@ let memCopilotExpires = 0
 let memCachedAt = 0
 
 async function loadUserState(userId: string, env: Env, storage: KVStorage): Promise<AppState> {
-  const { token: githubToken, accountType: acctType } = await getGithubCredentials(userId)
+  const { token: githubToken, accountType: acctType, userId: ghUserId } = await getGithubCredentials(userId)
   const accountType = acctType as AccountType
 
   const tokenKey = `copilot_token:${userId}`
@@ -119,6 +119,7 @@ async function loadUserState(userId: string, env: Env, storage: KVStorage): Prom
     copilotTokenExpires,
     accountType,
     tokenMiss,
+    upstream: `copilot:${ghUserId}`,
     langsearchKey: env.LANGSEARCH_API_KEY,
     tavilyKey: env.TAVILY_API_KEY,
     msGroundingKey: env.MS_GROUNDING_API_KEY,
@@ -128,11 +129,13 @@ async function loadUserState(userId: string, env: Env, storage: KVStorage): Prom
 async function loadGlobalState(env: Env, storage: KVStorage): Promise<AppState> {
   let githubToken: string | null = null
   let accountType: AccountType = "individual"
+  let upstream: string | null = null
 
   try {
     const creds = await getGithubCredentials()
     githubToken = creds.token
     accountType = creds.accountType as AccountType
+    upstream = `copilot:${creds.userId}`
   } catch {
     githubToken = env.GITHUB_TOKEN || (await storage.get(STORAGE_KEYS.GITHUB_TOKEN))
     accountType = (env.ACCOUNT_TYPE as AccountType) || "individual"
@@ -175,6 +178,7 @@ async function loadGlobalState(env: Env, storage: KVStorage): Promise<AppState> 
     copilotTokenExpires,
     accountType,
     tokenMiss,
+    upstream,
     langsearchKey: env.LANGSEARCH_API_KEY,
     tavilyKey: env.TAVILY_API_KEY,
     msGroundingKey: env.MS_GROUNDING_API_KEY,

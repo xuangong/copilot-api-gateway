@@ -7,6 +7,8 @@ export interface AppState {
   copilotTokenExpires: number
   accountType: AccountType
   tokenMiss: boolean
+  /** Provider-prefixed upstream id, e.g. "copilot:<user_id>". Used for usage/perf attribution. */
+  upstream?: string | null
 
   // Search engine API keys
   langsearchKey?: string

@@ -23,6 +23,7 @@ export interface LatencyLogInfo extends LatencyTimings {
   sourceApi?: PerformanceSourceApi
   targetApi?: PerformanceTargetApi
   isError?: boolean
+  upstream?: string | null
 }
 
 // Optional callback for local logging (set by local.ts)
@@ -64,7 +65,7 @@ export function recordLatency(
     const stream = logInfo?.stream ?? false
     const isError = logInfo?.isError ?? false
     const durationMs = timings.totalMs
-    const base = { hour, keyId, model, sourceApi, targetApi, stream, runtimeLocation: colo }
+    const base = { hour, keyId, model, upstream: logInfo?.upstream ?? null, sourceApi, targetApi, stream, runtimeLocation: colo }
     const perfTotal = repo.performance.record({
       ...base,
       metricScope: "request_total",

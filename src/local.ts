@@ -238,11 +238,13 @@ async function loadState(storage: FileStorage, ownerId?: string): Promise<AppSta
   // Get GitHub token from database (via /auth/github device flow)
   let githubToken: string | null = null
   let accountType: AccountType = "individual"
+  let upstream: string | null = null
 
   try {
     const creds = await getGithubCredentials(ownerId)
     githubToken = creds.token
     accountType = creds.accountType as AccountType
+    upstream = `copilot:${creds.userId}`
   } catch {
     // Fall back to file storage cache
     githubToken = await storage.get(STORAGE_KEYS.GITHUB_TOKEN)
@@ -300,6 +302,7 @@ async function loadState(storage: FileStorage, ownerId?: string): Promise<AppSta
     copilotTokenExpires,
     accountType,
     tokenMiss,
+    upstream,
     langsearchKey: env.LANGSEARCH_API_KEY,
     tavilyKey: env.TAVILY_API_KEY,
     msGroundingKey: env.MS_GROUNDING_API_KEY,
