@@ -29,7 +29,7 @@ describe("stripReservedKeywords", () => {
 
     stripReservedKeywords(payload)
 
-    expect(payload.system).toBe("You are an assistant.  test")
+    expect(payload.system).toBe("You are an assistant.")
   })
 
   test("removes keyword from array system prompt", () => {
@@ -46,9 +46,38 @@ describe("stripReservedKeywords", () => {
     stripReservedKeywords(payload)
 
     expect(payload.system).toEqual([
-      { type: "text", text: "Part 1 " },
+      { type: "text", text: "Part 1" },
       { type: "text", text: "Part 2" },
     ])
+  })
+
+  test("drops system string that becomes empty after stripping", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-4",
+      messages: [{ role: "user", content: "Hello" }],
+      max_tokens: 100,
+      system: "x-anthropic-billing-header cch=abcdef;",
+    }
+
+    stripReservedKeywords(payload)
+
+    expect(payload.system).toBeUndefined()
+  })
+
+  test("drops empty blocks from system array and removes system when all empty", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-4",
+      messages: [{ role: "user", content: "Hello" }],
+      max_tokens: 100,
+      system: [
+        { type: "text", text: "x-anthropic-billing-header" },
+        { type: "text", text: "cch=abcdef;" },
+      ],
+    }
+
+    stripReservedKeywords(payload)
+
+    expect(payload.system).toBeUndefined()
   })
 
   test("removes keyword from message content string", () => {
@@ -62,7 +91,7 @@ describe("stripReservedKeywords", () => {
 
     stripReservedKeywords(payload)
 
-    expect(payload.messages[0].content).toBe("Hello  world")
+    expect(payload.messages[0].content).toBe("Hello ")
   })
 
   test("removes keyword from message content blocks", () => {
@@ -94,6 +123,31 @@ describe("stripReservedKeywords", () => {
 
     expect(payload.system).toBe("Normal system prompt")
     expect(payload.messages[0].content).toBe("Hello world")
+  })
+
+  test("removes Claude Code billing line with rotating cch hash", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-4",
+      messages: [{ role: "user", content: "Hello" }],
+      max_tokens: 100,
+      system: "Real prompt.\nx-anthropic-billing-header cch=e60a3;\nMore prompt.",
+    }
+
+    stripReservedKeywords(payload)
+
+    expect(payload.system).toBe("Real prompt.\n\nMore prompt.")
+  })
+
+  test("removes orphan cch hash without the header keyword", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-4",
+      messages: [{ role: "user", content: "Trace cch=a2a86; here" }],
+      max_tokens: 100,
+    }
+
+    stripReservedKeywords(payload)
+
+    expect(payload.messages[0].content).toBe("Trace  here")
   })
 })
 
