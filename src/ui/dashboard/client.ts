@@ -482,7 +482,13 @@ export function dashboardAssets(): string {
           if (headerParts.length > 0) {
             env.ANTHROPIC_CUSTOM_HEADERS = headerParts.join('\\n');
           }
-          return JSON.stringify({ env }, null, 2);
+          // effortLevel: use the explicit effort from the composite id, or
+          // fall back to "medium" when the model has no effort label (e.g. claude-opus-4.7-1m).
+          // This overrides Claude Code's built-in default of "high" for 4.7+ models.
+          const snippet = { env };
+          const effortLevel = big.effort || (big.baseId.startsWith('claude-') ? 'medium' : undefined);
+          if (effortLevel) snippet.effortLevel = effortLevel;
+          return JSON.stringify(snippet, null, 2);
         },
 
         codexSnippet() {
