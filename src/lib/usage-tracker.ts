@@ -1,10 +1,15 @@
 import { getRepo } from "~/repo"
-import { costForUsage } from "~/pricing"
 
 function currentHour(): string {
   return new Date().toISOString().slice(0, 13) // "2026-03-09T15"
 }
 
+// Cost is recomputed at read-time from accumulated tokens (see dashboard
+// resolveRecordCost). We intentionally stop persisting per-request cost
+// snapshots because the row uses ON CONFLICT accumulation for tokens but
+// the legacy cost_json column was overwritten on each upsert — leaving the
+// stored cost reflecting only the last request while tokens reflected the
+// sum, which diverged badly under heavy traffic.
 export function recordUsage(
   keyId: string,
   model: string,
@@ -15,9 +20,7 @@ export function recordUsage(
   cacheCreationTokens?: number,
   upstream?: string | null,
 ): Promise<void> {
-  const cost = costForUsage({ model, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens })
-  const costJson = cost ? JSON.stringify(cost) : null
-  return getRepo().usage.record(keyId, model, currentHour(), 1, inputTokens, outputTokens, client, cacheReadTokens, cacheCreationTokens, upstream ?? null, costJson)
+  return getRepo().usage.record(keyId, model, currentHour(), 1, inputTokens, outputTokens, client, cacheReadTokens, cacheCreationTokens, upstream ?? null, null)
 }
 
 export function queryUsage(opts: { keyId?: string; start: string; end: string }) {

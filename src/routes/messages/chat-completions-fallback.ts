@@ -2,7 +2,7 @@ import { detectClient } from "~/lib/client-detect"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
-import { trackNonStreamingUsage } from "~/middleware/usage"
+import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
 import { createCopilotProvider } from "~/providers/registry"
 import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
 import {
@@ -58,7 +58,10 @@ export async function handleMessagesViaChatCompletions(
     )
     const upstreamMs = upstreamTimer()
 
-    const translated = upstream.body?.pipeThrough(createChatCompletionsToMessagesStream(model))
+    const usageTracked = apiKeyId
+      ? trackStreamingUsage(upstream, apiKeyId, model, client, state.upstream)
+      : upstream
+    const translated = usageTracked.body?.pipeThrough(createChatCompletionsToMessagesStream(model))
     const heartbeated = wrapAnthropicHeartbeat(translated ?? null)
 
     if (apiKeyId) {

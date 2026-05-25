@@ -45,39 +45,40 @@ function extractUsageFromJson(json: any): UsageInfo | null {
 }
 
 // deno-lint-ignore no-explicit-any
-function applyStreamEvent(parsed: any, latest: UsageInfo): void {
-  // Anthropic message_start: sets cumulative input + cache tokens.
-  // Guard cache fields with != null so a message_start that omits them (e.g.
-  // synthetic placeholder frames or older upstream variants) does not clobber
-  // values that arrive later in message_delta.
+function applyStreamEvent(parsed: any, latest: UsageInfo): boolean {
+  // Returns true when the event is a terminal usage frame (Responses
+  // response.completed / response.incomplete, or OpenAI chat-completions
+  // end-frame). Anthropic message_delta is cumulative — not terminal here,
+  // because more deltas can still follow.
   if (parsed.type === "message_start" && parsed.message?.usage?.input_tokens != null) {
     const u = parsed.message.usage
     latest.input = u.input_tokens
     if (u.cache_read_input_tokens != null) latest.cacheRead = u.cache_read_input_tokens
     if (u.cache_creation_input_tokens != null) latest.cacheCreation = u.cache_creation_input_tokens
-  // Anthropic message_delta: each event carries the CUMULATIVE output_tokens so far (overwrite, not add)
-  // Newer Anthropic API versions also include cache tokens in message_delta
+    return false
   } else if (parsed.type === "message_delta" && parsed.usage?.output_tokens != null) {
     const u = parsed.usage
     latest.output = u.output_tokens
     if (u.cache_read_input_tokens != null) latest.cacheRead = u.cache_read_input_tokens
     if (u.cache_creation_input_tokens != null) latest.cacheCreation = u.cache_creation_input_tokens
-  // Responses response.completed: terminal frame — overwrite with final values
-  } else if (parsed.type === "response.completed" && parsed.response?.usage) {
+    return false
+  } else if ((parsed.type === "response.completed" || parsed.type === "response.incomplete") && parsed.response?.usage) {
     const u = parsed.response.usage
     const cached = u.input_tokens_details?.cached_tokens ?? 0
     latest.input = Math.max(0, (u.input_tokens ?? 0) - cached)
     latest.output = u.output_tokens ?? 0
     latest.cacheRead = cached
     latest.cacheCreation = 0
-  // OpenAI Chat Completions chunk with usage — terminal end-frame, overwrite
+    return true
   } else if (parsed.usage?.prompt_tokens != null) {
     const cached = parsed.usage.prompt_tokens_details?.cached_tokens ?? 0
     latest.input = Math.max(0, parsed.usage.prompt_tokens - cached)
     latest.output = parsed.usage.completion_tokens ?? 0
     latest.cacheRead = cached
     latest.cacheCreation = 0
+    return true
   }
+  return false
 }
 
 async function persistUsage(keyId: string, model: string, inputTokens: number, outputTokens: number, client?: string, cacheReadTokens?: number, cacheCreationTokens?: number, upstream?: string | null): Promise<void> {
@@ -122,6 +123,13 @@ export function trackStreamingUsage(
 
   const latest: UsageInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
   const frameBuffer = createFrameBuffer()
+  let persisted = false
+  const persistOnce = () => {
+    if (persisted) return
+    if (latest.input <= 0 && latest.output <= 0) return
+    persisted = true
+    persistUsage(keyId, model, latest.input, latest.output, client, latest.cacheRead, latest.cacheCreation, upstream).catch(() => {})
+  }
 
   const transform = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
@@ -130,7 +138,11 @@ export function trackStreamingUsage(
       for (const frame of frameBuffer.push(chunk)) {
         if (frame.data === "[DONE]") continue
         const parsed = parseDataJSON<any>(frame)
-        if (parsed) applyStreamEvent(parsed, latest)
+        if (parsed && applyStreamEvent(parsed, latest)) {
+          // Terminal usage frame seen — persist immediately so that a
+          // downstream cancel before flush() does not lose the write.
+          persistOnce()
+        }
       }
     },
     async flush() {
@@ -139,10 +151,7 @@ export function trackStreamingUsage(
         const parsed = parseDataJSON<any>(tail)
         if (parsed) applyStreamEvent(parsed, latest)
       }
-
-      if (latest.input > 0 || latest.output > 0) {
-        await persistUsage(keyId, model, latest.input, latest.output, client, latest.cacheRead, latest.cacheCreation, upstream).catch(() => {})
-      }
+      persistOnce()
     },
   })
 
@@ -166,6 +175,16 @@ export function consumeStreamForUsage(
 ): void {
   const latest: UsageInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
   const frameBuffer = createFrameBuffer()
+  let persisted = false
+  const persistOnce = () => {
+    if (persisted) return
+    if (latest.input <= 0 && latest.output <= 0) return
+    persisted = true
+    persistUsage(
+      keyId, model, latest.input, latest.output, client,
+      latest.cacheRead, latest.cacheCreation, upstream,
+    ).catch(() => {})
+  }
 
   const reader = upstreamBody.getReader()
   ;(async () => {
@@ -176,7 +195,9 @@ export function consumeStreamForUsage(
         for (const frame of frameBuffer.push(value)) {
           if (frame.data === "[DONE]") continue
           const parsed = parseDataJSON<any>(frame)
-          if (parsed) applyStreamEvent(parsed, latest)
+          if (parsed && applyStreamEvent(parsed, latest)) {
+            persistOnce()
+          }
         }
       }
       const tail = frameBuffer.flush()
@@ -184,12 +205,7 @@ export function consumeStreamForUsage(
         const parsed = parseDataJSON<any>(tail)
         if (parsed) applyStreamEvent(parsed, latest)
       }
-      if (latest.input > 0 || latest.output > 0) {
-        await persistUsage(
-          keyId, model, latest.input, latest.output, client,
-          latest.cacheRead, latest.cacheCreation, upstream,
-        ).catch(() => {})
-      }
+      persistOnce()
     } catch { /* best-effort */ }
   })()
 }

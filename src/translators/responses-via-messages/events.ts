@@ -564,6 +564,12 @@ function handleMessageDelta(
 ): ResponsesEvent[] {
   if (ev.delta.stop_reason !== undefined) state.stopReason = ev.delta.stop_reason
   if (ev.usage?.output_tokens != null) state.outputTokens = ev.usage.output_tokens
+  // Anthropic surfaces the authoritative cache totals on message_delta in
+  // newer API versions — absorb so response.completed reports them.
+  if (ev.usage?.cache_read_input_tokens != null)
+    state.cacheReadInputTokens = ev.usage.cache_read_input_tokens
+  if (ev.usage?.cache_creation_input_tokens != null)
+    state.cacheCreationInputTokens = ev.usage.cache_creation_input_tokens
   return []
 }
 

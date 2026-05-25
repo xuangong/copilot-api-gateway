@@ -123,6 +123,23 @@ describe("trackStreamingUsage — Responses response.completed", () => {
     expect(captured.length).toBe(1)
     expect(captured[0]).toMatchObject({ inputTokens: 200, outputTokens: 50 })
   })
+
+  test("response.incomplete.usage 也会持久化", async () => {
+    const captured: Captured[] = []
+    setRepoForTest(makeMockRepo(captured) as unknown as Repo)
+
+    const upstream = new Response(sse([
+      { type: "response.incomplete", response: { usage: {
+        input_tokens: 120,
+        output_tokens: 30,
+        input_tokens_details: { cached_tokens: 80 },
+      } } },
+    ]))
+
+    await drain(trackStreamingUsage(upstream, "k1", "gpt-5"))
+    expect(captured.length).toBe(1)
+    expect(captured[0]).toMatchObject({ inputTokens: 40, outputTokens: 30, cacheReadTokens: 80 })
+  })
 })
 
 describe("extractUsage — OpenAI cached_tokens", () => {
@@ -230,6 +247,43 @@ describe("applyStreamEvent — cached_tokens in stream end frame", () => {
     expect(captured.length).toBe(1)
     expect(captured[0]).toMatchObject({
       inputTokens: 250, outputTokens: 40, cacheReadTokens: 450,
+    })
+  })
+
+  test("终端 usage 帧到达后客户端立即取消，仍然持久化", async () => {
+    // Regression: if a downstream reader cancels after the terminal
+    // response.completed frame is forwarded, the TransformStream's flush()
+    // never fires — usage must still be persisted as soon as the terminal
+    // event is observed, not deferred to flush().
+    const captured: Captured[] = []
+    setRepoForTest(makeMockRepo(captured) as unknown as Repo)
+
+    const enc = new TextEncoder()
+    const upstream = new Response(new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(enc.encode(
+          `data: ${JSON.stringify({
+            type: "response.completed",
+            response: { usage: {
+              input_tokens: 50, output_tokens: 7,
+              input_tokens_details: { cached_tokens: 30 },
+            } },
+          })}\n\n`,
+        ))
+        // Intentionally leave the stream open — simulate upstream that
+        // hasn't sent [DONE] yet when downstream cancels.
+      },
+    }))
+
+    const wrapped = trackStreamingUsage(upstream, "k1", "gpt-5")
+    const reader = wrapped.body!.getReader()
+    await reader.read()        // consume the terminal frame
+    await reader.cancel()      // cancel before flush()
+    await new Promise((r) => setTimeout(r, 20))
+
+    expect(captured.length).toBe(1)
+    expect(captured[0]).toMatchObject({
+      inputTokens: 20, outputTokens: 7, cacheReadTokens: 30,
     })
   })
 })
@@ -340,6 +394,38 @@ describe("trackStreamingUsage — SSE ping heartbeat frames are ignored", () => 
       cacheReadTokens: 20,
       cacheCreationTokens: 5,
     })
+  })
+})
+
+describe("trackStreamingUsage — persistence is best-effort after stream close", () => {
+  test("does not wait for slow repo writes before closing downstream body", async () => {
+    let release!: () => void
+    const persisted = new Promise<void>((resolve) => { release = resolve })
+    setRepoForTest({
+      usage: {
+        record: async () => {
+          await persisted
+        },
+      },
+      apiKeys: {
+        getById: async () => null,
+        save: async () => {},
+      },
+    } as unknown as Repo)
+
+    const upstream = new Response(sse([
+      { choices: [], usage: { prompt_tokens: 42, completion_tokens: 17 } },
+    ]))
+    const response = trackStreamingUsage(upstream, "k1", "gpt-4o-mini")
+    const closed = drain(response).then(() => true)
+
+    const result = await Promise.race([
+      closed,
+      new Promise((resolve) => setTimeout(() => resolve(false), 20)),
+    ])
+    release()
+
+    expect(result).toBe(true)
   })
 })
 
@@ -469,5 +555,35 @@ describe("trackStreamingUsage — multi-byte UTF-8 spanning chunk boundary", () 
     await drain(trackStreamingUsage(upstream, "k1", "gpt-4o-mini"))
     expect(captured.length).toBe(1)
     expect(captured[0]).toMatchObject({ inputTokens: 50, outputTokens: 4 })
+  })
+})
+
+describe("trackStreamingUsage — synthetic / early message_start must not clobber cache", () => {
+  test("zero-usage message_start followed by message_delta with cache fields keeps cache", async () => {
+    // Mirrors the web-search synthetic frame case: gateway emits a placeholder
+    // message_start with usage={input:0,output:0} (no cache fields), then
+    // replays real upstream frames whose message_delta carries the authoritative
+    // cache_read_input_tokens. The tracker must not clobber cache with 0.
+    const captured: Captured[] = []
+    setRepoForTest(makeMockRepo(captured) as unknown as Repo)
+
+    const upstream = new Response(sse([
+      { type: "message_start", message: { usage: { input_tokens: 0, output_tokens: 0 } } },
+      { type: "message_delta", usage: {
+        output_tokens: 77,
+        cache_read_input_tokens: 1234,
+        cache_creation_input_tokens: 56,
+      } },
+    ]))
+
+    await drain(trackStreamingUsage(upstream, "k-synth", "claude-opus-4.7"))
+
+    expect(captured.length).toBe(1)
+    expect(captured[0]).toMatchObject({
+      inputTokens: 0,
+      outputTokens: 77,
+      cacheReadTokens: 1234,
+      cacheCreationTokens: 56,
+    })
   })
 })

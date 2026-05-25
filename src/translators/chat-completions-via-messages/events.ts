@@ -290,6 +290,18 @@ export function translateMessagesEventToChatCompletionsChunks(
     case "content_block_stop":
       return []
     case "message_delta": {
+      // Anthropic may surface the authoritative cache_read_input_tokens on
+      // message_delta (not message_start). Pick it up so the terminal usage
+      // chunk we emit downstream carries the correct cached_tokens.
+      if (ev.usage?.cache_read_input_tokens != null) {
+        const newCached = ev.usage.cache_read_input_tokens
+        const newCreation = ev.usage.cache_creation_input_tokens ?? 0
+        state.promptTokens =
+          (ev.usage.input_tokens ?? state.promptTokens - state.cachedPromptTokens) +
+          newCached +
+          newCreation
+        state.cachedPromptTokens = newCached
+      }
       const finishReason = mapStopReason(ev.delta.stop_reason ?? null)
       const finishChunk = makeChunk(state, {}, finishReason)
       return ev.usage

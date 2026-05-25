@@ -2,7 +2,7 @@ import { detectClient } from "~/lib/client-detect"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
-import { trackNonStreamingUsage } from "~/middleware/usage"
+import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { createCopilotProvider } from "~/providers/registry"
 import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
 import {
@@ -51,9 +51,14 @@ export async function handleMessagesViaResponses(
     )
     const upstreamMs = upstreamTimer()
 
-    // Pipe: upstream Responses bytes → translator (already frame-aware) →
-    // Anthropic heartbeat wrapper for client-side keepalive.
-    const translated = upstream.body?.pipeThrough(createResponsesToMessagesStream())
+    let translateBody = upstream.body
+    if (apiKeyId && translateBody) {
+      const [usageBranch, responseBranch] = translateBody.tee()
+      consumeStreamForUsage(usageBranch, apiKeyId, model, client, state.upstream)
+      translateBody = responseBranch
+    }
+
+    const translated = translateBody?.pipeThrough(createResponsesToMessagesStream())
     const heartbeated = wrapAnthropicHeartbeat(translated ?? null)
 
     if (apiKeyId) {
@@ -67,11 +72,6 @@ export async function handleMessagesViaResponses(
       }).catch(() => {})
     }
 
-    // Streaming usage extraction lives in middleware/usage and is wired
-    // for native Anthropic SSE — since we produced the SSE ourselves above
-    // and already know it terminates with message_delta + usage, defer
-    // exact accounting to non-stream sync (which still goes through
-    // trackNonStreamingUsage). For now, just stream.
     return new Response(heartbeated, {
       headers: {
         "Content-Type": "text/event-stream",

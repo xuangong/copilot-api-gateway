@@ -336,6 +336,34 @@ describe("createChatCompletionsToMessagesStream", () => {
     expect(got).toContain("event: message_stop")
   })
 
+  test("cache_read_input_tokens surfaces on message_delta when usage arrives in tail chunk", async () => {
+    // Chat Completions surfaces usage (incl. prompt_tokens_details.cached_tokens)
+    // only in the terminal chunk. Because message_start is emitted lazily on
+    // the first delta — before usage is known — cache must ride on
+    // message_delta, not message_start, or downstream usage tracking sees 0.
+    const frame = (data: object) => `data: ${JSON.stringify(data)}\n\n`
+    const input =
+      frame({ id: "c-cache", model: "gpt-5.5", choices: [{ delta: { role: "assistant" } }] }) +
+      frame({ choices: [{ delta: { content: "ok" } }] }) +
+      frame({
+        choices: [{ delta: {}, finish_reason: "stop" }],
+        usage: {
+          prompt_tokens: 1000,
+          completion_tokens: 12,
+          prompt_tokens_details: { cached_tokens: 700 },
+        },
+      }) +
+      "data: [DONE]\n\n"
+
+    const got = await pipe(input)
+    // Parse the message_delta frame and assert cache_read_input_tokens present.
+    const deltaMatch = got.match(/event: message_delta\ndata: (.+)\n\n/)
+    expect(deltaMatch).not.toBeNull()
+    const delta = JSON.parse(deltaMatch![1])
+    expect(delta.usage.cache_read_input_tokens).toBe(700)
+    expect(delta.usage.output_tokens).toBe(12)
+  })
+
   test("truncated stream synthesizes message_stop", async () => {
     const input = `data: ${JSON.stringify({ id: "x", model: "gpt-4", choices: [{ delta: { content: "hi" } }] })}\n\n`
     const got = await pipe(input)
