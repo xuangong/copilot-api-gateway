@@ -2,25 +2,27 @@ import { getCopilotBaseUrl, type AccountType } from "~/config/constants"
 import { copilotHeaders } from "~/config/headers"
 import { HTTPError } from "~/lib/error"
 
+import { mergeClaudeVariants } from "./variants"
+
 export interface ModelsResponse {
   data: Array<Model>
   object: string
 }
 
-interface ModelLimits {
+export interface ModelLimits {
   max_context_window_tokens?: number
   max_output_tokens?: number
   max_prompt_tokens?: number
   max_inputs?: number
 }
 
-interface ModelSupports {
+export interface ModelSupports {
   tool_calls?: boolean
   parallel_tool_calls?: boolean
   dimensions?: boolean
 }
 
-interface ModelCapabilities {
+export interface ModelCapabilities {
   family: string
   limits: ModelLimits
   object: string
@@ -29,7 +31,7 @@ interface ModelCapabilities {
   type: string
 }
 
-interface Model {
+export interface Model {
   capabilities: ModelCapabilities
   id: string
   model_picker_enabled: boolean
@@ -42,9 +44,15 @@ interface Model {
     state: string
     terms: string
   }
+  /**
+   * For merged Claude entries: the (context, effort) combinations supported by
+   * the underlying raw variants. Clients use this to drive a single composite
+   * model picker (effort + 1M) that maps back to one of these tuples.
+   */
+  available_combinations?: Array<{ context1m: boolean; effort?: string }>
 }
 
-export async function getModels(
+export async function getRawModels(
   copilotToken: string,
   accountType: AccountType,
 ): Promise<ModelsResponse> {
@@ -56,4 +64,12 @@ export async function getModels(
   if (!response.ok) throw new HTTPError("Failed to get models", response)
 
   return (await response.json()) as ModelsResponse
+}
+
+export async function getModels(
+  copilotToken: string,
+  accountType: AccountType,
+): Promise<ModelsResponse> {
+  const raw = await getRawModels(copilotToken, accountType)
+  return mergeClaudeVariants(raw)
 }

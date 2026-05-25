@@ -30,6 +30,10 @@ export function addWebSearchHeaders(
  * Forward client-supplied anthropic-beta and anthropic-version headers so
  * upstream sees opt-ins (computer-use, extended-thinking, prompt-caching
  * variants) and the negotiated API version.
+ *
+ * Beta filtering (allowlist) happens inside CopilotProvider so every endpoint
+ * benefits — including chat-completions / responses / count_tokens — without
+ * each route having to know about it.
  */
 export function extractAnthropicPassthroughHeaders(
   ctx: unknown,
