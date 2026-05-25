@@ -16,6 +16,7 @@ export function Layout({ title, children }: { title: string; children: string })
   <script src="/cdn/prism.js"></script>
   <script src="/cdn/prism-bash.js"></script>
   <script src="/cdn/prism-toml.js"></script>
+  <script src="/cdn/prism-json.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />

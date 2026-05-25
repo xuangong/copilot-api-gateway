@@ -79,6 +79,27 @@ export function dashboardAssets(): string {
       return am !== bm ? am - bm : b.localeCompare(a);
     }
 
+    // Decompose composite Claude ids like 'claude-opus-4.7-xhigh-1m' into
+    // {baseId, effort, context1m}. Mirrors parseCompositeModelId on the server
+    // so the snippet generator emits ANTHROPIC_MODEL + headers separately
+    // (Claude Code can only set base model + custom headers).
+    function decomposeClaudeId(id) {
+      if (!id || !id.startsWith('claude-')) return { baseId: id || '', context1m: false };
+      let rest = id;
+      let effort;
+      let context1m = false;
+      const EFFORTS = new Set(['high', 'xhigh']);
+      for (let i = 0; i < 2; i++) {
+        const dash = rest.lastIndexOf('-');
+        if (dash < 0) break;
+        const suffix = rest.slice(dash + 1);
+        if (suffix === '1m' && !context1m) { context1m = true; rest = rest.slice(0, dash); }
+        else if (EFFORTS.has(suffix) && !effort) { effort = suffix; rest = rest.slice(0, dash); }
+        else break;
+      }
+      return { baseId: rest, effort, context1m };
+    }
+
     // Refined cool palettes — clean, readable, not muddy; slightly muted from Apple system colors
     const PALETTE_LIGHT = ['#4E6CF5','#2CA87A','#D88A2E','#8058C8','#C85878','#1E98A0','#9B60B8','#2E9080','#5078C0','#5A9850'];
     const PALETTE_DARK  = ['#7B90FF','#50D48A','#F0B050','#A880F0','#F07898','#50C5D0','#C098E0','#58CCB0','#7098E0','#90C880'];
@@ -279,6 +300,7 @@ export function dashboardAssets(): string {
       geminiModels: [],
       geminiModel: '',
       configTab: 'claude',
+      claudeFormat: 'shell',
       tokenRange: 'today',
       tokenWeekOffset: 0,
       tokenMetric: 'tokens',    // 'tokens' | 'requests'
@@ -417,13 +439,50 @@ export function dashboardAssets(): string {
         },
 
         claudeCodeSnippet() {
+          const big = decomposeClaudeId(this.claudeModel);
+          const small = decomposeClaudeId(this.claudeSmallModel);
           const lines = [
             'export ANTHROPIC_BASE_URL=' + this.baseUrl,
             'export ANTHROPIC_AUTH_TOKEN=' + this.activeKey,
-            'export ANTHROPIC_MODEL=' + this.claudeModel,
-            'export ANTHROPIC_SMALL_FAST_MODEL=' + this.claudeSmallModel,
+            'export ANTHROPIC_MODEL=' + big.baseId,
+            'export ANTHROPIC_SMALL_FAST_MODEL=' + small.baseId,
           ];
+          // Pick the bigger model's modifiers as the session-wide effort/context.
+          // (Small fast model rarely needs xhigh / 1M; Claude Code reuses the
+          // same headers for both calls.)
+          const headerParts = [];
+          if (big.context1m) headerParts.push('anthropic-beta: context-1m-2025-08-07');
+          if (big.effort) headerParts.push('x-copilot-reasoning-effort: ' + big.effort);
+          if (headerParts.length > 0) {
+            // Bash $'...' (ANSI-C quoting) interprets \\n as a real newline;
+            // plain "..." would leave a literal backslash-n in the value and
+            // Claude Code would parse it as part of the header name.
+            lines.push("export ANTHROPIC_CUSTOM_HEADERS=$'" + headerParts.join('\\n') + "'");
+          }
           return lines.join('\\n');
+        },
+
+        // settings.json equivalent of claudeCodeSnippet — same vars, JSON form.
+        // JSON requires a literal \\n inside the header string (JSON.stringify
+        // turns a real newline into \\n automatically); the bash form needs
+        // ANSI-C $'...' to do the opposite. Surfacing both removes the
+        // shell-vs-JSON escaping trap.
+        claudeCodeSettingsSnippet() {
+          const big = decomposeClaudeId(this.claudeModel);
+          const small = decomposeClaudeId(this.claudeSmallModel);
+          const env = {
+            ANTHROPIC_BASE_URL: this.baseUrl,
+            ANTHROPIC_AUTH_TOKEN: this.activeKey,
+            ANTHROPIC_MODEL: big.baseId,
+            ANTHROPIC_SMALL_FAST_MODEL: small.baseId,
+          };
+          const headerParts = [];
+          if (big.context1m) headerParts.push('anthropic-beta: context-1m-2025-08-07');
+          if (big.effort) headerParts.push('x-copilot-reasoning-effort: ' + big.effort);
+          if (headerParts.length > 0) {
+            env.ANTHROPIC_CUSTOM_HEADERS = headerParts.join('\\n');
+          }
+          return JSON.stringify({ env }, null, 2);
         },
 
         codexSnippet() {
@@ -755,9 +814,20 @@ export function dashboardAssets(): string {
             if (!resp.ok) throw new Error('models fetch failed: ' + resp.status);
             const { data } = await resp.json();
 
-            const claudeAll = data
-              .filter((m) => m.id.startsWith('claude-') && m.supported_endpoints?.includes('/v1/messages'))
-              .map((m) => m.id);
+            const claudeBase = data
+              .filter((m) => m.id.startsWith('claude-') && m.supported_endpoints?.includes('/v1/messages'));
+            const claudeAll = [];
+            for (const m of claudeBase) {
+              const combos = Array.isArray(m.available_combinations) && m.available_combinations.length > 0
+                ? m.available_combinations
+                : [{ context1m: false, effort: undefined }];
+              for (const c of combos) {
+                let id = m.id;
+                if (c.effort === 'high' || c.effort === 'xhigh') id += '-' + c.effort;
+                if (c.context1m) id += '-1m';
+                claudeAll.push(id);
+              }
+            }
             this.claudeModelsBig = [...claudeAll].sort(sortClaudeBig);
             this.claudeModelsSmall = [...claudeAll].sort(sortClaudeSmall);
             this.claudeModel = this.claudeModelsBig[0] || '';

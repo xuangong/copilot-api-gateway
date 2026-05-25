@@ -1072,8 +1072,20 @@ export function renderKeysTab(): string {
                   </select>
                 </div>
               </div>
-              <p class="text-[11px] text-themed-dim mb-2">Add to <code class="text-themed-dim">~/.bashrc</code> or <code class="text-themed-dim">~/.zshrc</code></p>
-              ${codeBlock("bash", "claudeCode", "claudeCodeSnippet", "claude")}
+              <div class="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5 mb-3 w-fit">
+                <button @click="claudeFormat='shell'" class="px-3 py-1 rounded-md text-[11px] font-medium transition-all"
+                  :class="claudeFormat === 'shell' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">Shell (~/.zshrc)</button>
+                <button @click="claudeFormat='settings'" class="px-3 py-1 rounded-md text-[11px] font-medium transition-all"
+                  :class="claudeFormat === 'settings' ? 'bg-surface-600 text-themed' : 'text-themed-dim hover:text-themed-secondary'">settings.json</button>
+              </div>
+              <div x-show="claudeFormat === 'shell'" x-transition>
+                <p class="text-[11px] text-themed-dim mb-2">Add to <code class="text-themed-dim">~/.bashrc</code> or <code class="text-themed-dim">~/.zshrc</code></p>
+                ${codeBlock("bash", "claudeCode", "claudeCodeSnippet", "claude")}
+              </div>
+              <div x-show="claudeFormat === 'settings'" x-transition>
+                <p class="text-[11px] text-themed-dim mb-2">Merge into <code class="text-themed-dim">~/.claude/settings.json</code></p>
+                ${codeBlock("json", "claudeSettings", "claudeCodeSettingsSnippet", "claude-settings")}
+              </div>
             </div>
 
             <!-- Codex -->

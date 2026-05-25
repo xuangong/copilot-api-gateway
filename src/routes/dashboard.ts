@@ -23,18 +23,11 @@ interface AuthCtx {
   ownerId?: string
 }
 
-/**
- * Resolve cost for a usage record. Prefer the frozen snapshot written at
- * record time; fall back to live pricing tables for legacy rows (pre-0025).
- */
+// Cost is always recomputed from accumulated tokens. The legacy cost_json
+// column is ignored because the upsert path used to overwrite it per-request
+// while tokens accumulated, causing displayed cost to diverge from displayed
+// tokens by orders of magnitude under heavy traffic.
 function resolveRecordCost(r: UsageRecord): CostBreakdown | null {
-  if (r.costJson) {
-    try {
-      return JSON.parse(r.costJson) as CostBreakdown
-    } catch {
-      // fall through to live recompute
-    }
-  }
   return costForUsage({
     model: r.model,
     inputTokens: r.inputTokens,

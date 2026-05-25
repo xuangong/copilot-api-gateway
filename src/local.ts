@@ -522,6 +522,7 @@ async function createApp() {
         "prism.js": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js",
         "prism-bash.js": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js",
         "prism-toml.js": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-toml.min.js",
+        "prism-json.js": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js",
       }
       const url = CDN_MAP[params.file]
       if (!url) return new Response("Not found", { status: 404 })
