@@ -42,11 +42,6 @@ export const messagesRoute = new Elysia()
     const payload: AnthropicMessagesPayload = { ...(body as AnthropicMessagesPayload) }
     const flags = runAnthropicMessagesPipeline(payload, routeCtx.state.enabledFlags ?? new Set())
 
-    const messagesPayload = payload as unknown as MessagesPayload
-    if (hasWebSearch(messagesPayload)) {
-      return handleWebSearch(routeCtx, payload, messagesPayload, elapsed)
-    }
-
     // gpt-5.x only serves /v1/responses upstream — translate Messages↔Responses.
     if (payload.model.startsWith("gpt-5")) {
       return handleMessagesViaResponses(routeCtx, payload, elapsed)
@@ -56,6 +51,13 @@ export const messagesRoute = new Elysia()
     // Messages↔Chat Completions on both legs.
     if (payload.model.startsWith("gpt-")) {
       return handleMessagesViaChatCompletions(routeCtx, payload, elapsed)
+    }
+
+    // Anthropic web_search intercept — only for native Anthropic models (claude-*
+    // and any non-GPT model). GPT models use their own web search path above.
+    const messagesPayload = payload as unknown as MessagesPayload
+    if (hasWebSearch(messagesPayload)) {
+      return handleWebSearch(routeCtx, payload, messagesPayload, elapsed)
     }
 
     return handleDirectMessages(
