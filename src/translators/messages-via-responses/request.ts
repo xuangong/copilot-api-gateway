@@ -64,9 +64,11 @@ function toolResultOutput(content: AnthropicToolResultBlock["content"]): string 
 }
 
 function functionCall(block: AnthropicToolUseBlock): ResponseInputItem {
+  // Match copilot-gateway: only `call_id` is set on the request side. Upstream
+  // /responses rejects ids that don't start with `fc_`, and the caller's
+  // tool_use id (`call_…` / `toolu_…`) is only valid for matching `call_id`.
   return {
     type: "function_call",
-    id: block.id,
     call_id: block.id,
     name: block.name,
     arguments: JSON.stringify(block.input),

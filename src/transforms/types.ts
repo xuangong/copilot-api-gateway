@@ -130,7 +130,6 @@ export interface ResponseInputMessage {
 
 export interface ResponseFunctionCallItem {
   type: "function_call"
-  id: string
   call_id: string
   name: string
   arguments: string

@@ -118,7 +118,6 @@ export function translateChatCompletionsToResponsesRequest(
         for (const tc of message.tool_calls) {
           input.push({
             type: "function_call",
-            id: tc.id,
             call_id: tc.id,
             name: tc.function.name,
             arguments: tc.function.arguments,

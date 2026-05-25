@@ -46,7 +46,6 @@ describe("chat-completions-via-responses request", () => {
       { type: "message", role: "user", content: "search" },
       {
         type: "function_call",
-        id: "call_1",
         call_id: "call_1",
         name: "lookup",
         arguments: '{"q":"x"}',
