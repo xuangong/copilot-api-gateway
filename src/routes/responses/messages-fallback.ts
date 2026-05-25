@@ -2,7 +2,7 @@ import { detectClient } from "~/lib/client-detect"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
-import { trackNonStreamingUsage } from "~/middleware/usage"
+import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { createCopilotProvider } from "~/providers/registry"
 import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
 import {
@@ -45,7 +45,13 @@ export async function handleResponsesViaMessages(
     )
     const upstreamMs = upstreamTimer()
 
-    const translated = upstream.body?.pipeThrough(createMessagesToResponsesStream(model))
+    let translateBody = upstream.body
+    if (apiKeyId && translateBody) {
+      const [usageBranch, responseBranch] = translateBody.tee()
+      consumeStreamForUsage(usageBranch, apiKeyId, model, client, state.upstream)
+      translateBody = responseBranch
+    }
+    const translated = translateBody?.pipeThrough(createMessagesToResponsesStream(model))
     const heartbeated = wrapOpenAIHeartbeat(translated ?? null)
 
     if (apiKeyId) {

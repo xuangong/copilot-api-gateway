@@ -2,7 +2,7 @@ import { detectClient } from "~/lib/client-detect"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
-import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
+import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { createCopilotProvider } from "~/providers/registry"
 import { omitThinkingFromAnthropicSse } from "~/lib/anthropic-sse-thinking-strip"
 import type { AnthropicMessagesPayload } from "~/transforms"
@@ -43,7 +43,13 @@ export async function handleDirectMessages(
     // writing a byte — that's where client SDK read-timeouts and intermediate
     // proxies start cutting us off. Anthropic's "event: ping" is the
     // protocol-noop here; SDKs already filter it out as keepalive.
-    let heartbeated = wrapAnthropicHeartbeat(response.body)
+    let responseBody = response.body
+    if (apiKeyId && responseBody) {
+      const [usageBranch, forwardBranch] = responseBody.tee()
+      consumeStreamForUsage(usageBranch, apiKeyId, payload.model, client, state.upstream)
+      responseBody = forwardBranch
+    }
+    let heartbeated = wrapAnthropicHeartbeat(responseBody)
     // If we promoted thinking.display to "summarized" upstream, strip the
     // resulting thinking_delta events so the client sees the omitted
     // semantics it asked for (final signature preserved). Runs AFTER the
@@ -63,9 +69,7 @@ export async function handleDirectMessages(
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
       }, requestId, { stream: true, sourceApi: "messages", targetApi: "messages", upstream: state.upstream }).catch((e) => console.error('[latency] record error:', e))
     }
-    return apiKeyId
-      ? trackStreamingUsage(streamResponse, apiKeyId, payload.model, client, state.upstream)
-      : streamResponse
+    return streamResponse
   }
 
   type SyncJson = { usage?: { input_tokens?: number; output_tokens?: number } }

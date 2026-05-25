@@ -2,7 +2,7 @@ import { Elysia } from "elysia"
 
 import type { AppState } from "~/lib/state"
 import { createCopilotProvider } from "~/providers/registry"
-import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
+import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { detectClient } from "~/lib/client-detect"
 import { checkQuota } from "~/lib/quota"
@@ -84,7 +84,7 @@ function stripInjectedUsageChunk(stream: ReadableStream<Uint8Array>): ReadableSt
   }))
 }
 
-async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
+export async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
   const { state, body, apiKeyId, colo, requestId, userAgent } = ctx
   const elapsed = startTimer()
   const client = detectClient(userAgent)
@@ -198,7 +198,13 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
     // trip client SDK read-timeouts or intermediate proxies). ":" prefix
     // = SSE comment line, ignored by every spec-compliant SSE parser
     // including the OpenAI SDK.
-    const heartbeated = wrapOpenAIHeartbeat(response.body)
+    let responseBody = response.body
+    if (apiKeyId && responseBody) {
+      const [usageBranch, forwardBranch] = responseBody.tee()
+      consumeStreamForUsage(usageBranch, apiKeyId, payload.model, client, state.upstream)
+      responseBody = forwardBranch
+    }
+    const heartbeated = wrapOpenAIHeartbeat(responseBody)
     // Abort streams that degenerate into whitespace-only tool argument deltas.
     const guarded = heartbeated
       ? heartbeated.pipeThrough(createChatWhitespaceAbortStream())
@@ -215,17 +221,13 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
       }, requestId, { stream: true, sourceApi: "chat-completions", targetApi: "chat-completions", upstream: state.upstream }).catch(() => {})
     }
-    const tracked = apiKeyId
-      ? trackStreamingUsage(streamResponse, apiKeyId, payload.model, client, state.upstream)
-      : streamResponse
-
     if (clientWantsUsage) {
-      return tracked
+      return streamResponse
     }
 
-    return new Response(stripInjectedUsageChunk(tracked.body!), {
-      status: tracked.status,
-      headers: tracked.headers,
+    return new Response(stripInjectedUsageChunk(streamResponse.body!), {
+      status: streamResponse.status,
+      headers: streamResponse.headers,
     })
   }
 

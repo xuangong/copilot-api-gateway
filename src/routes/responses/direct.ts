@@ -2,7 +2,7 @@ import { detectClient } from "~/lib/client-detect"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
-import { trackNonStreamingUsage, trackStreamingUsage } from "~/middleware/usage"
+import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { createCopilotProvider } from "~/providers/registry"
 import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
 import {
@@ -47,7 +47,13 @@ export async function handleDirectStreaming(
   // Inject SSE comment heartbeats during long thinking gaps so the downstream
   // connection never goes 60s without a byte (which would trip client SDK
   // read-timeouts or intermediate proxies).
-  const heartbeated = wrapOpenAIHeartbeat(response.body)
+  let responseBody = response.body
+  if (apiKeyId && responseBody) {
+    const [usageBranch, forwardBranch] = responseBody.tee()
+    consumeStreamForUsage(usageBranch, apiKeyId, model, client, state.upstream)
+    responseBody = forwardBranch
+  }
+  const heartbeated = wrapOpenAIHeartbeat(responseBody)
   // After whole-frame boundaries are guaranteed by the heartbeat wrapper,
   // run the Responses SSE interceptor chain: synchronize output-item IDs and
   // abort on tool-arg whitespace overflow.
@@ -80,7 +86,7 @@ export async function handleDirectStreaming(
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
     }, requestId, { stream: true, sourceApi: "responses", targetApi: "responses", upstream: state.upstream }).catch(() => {})
   }
-  return apiKeyId ? trackStreamingUsage(streamResponse, apiKeyId, model, client, state.upstream) : streamResponse
+  return streamResponse
 }
 
 /**

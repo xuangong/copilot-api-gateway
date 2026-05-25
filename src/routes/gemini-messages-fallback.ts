@@ -13,7 +13,7 @@ import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import type { AppState } from "~/lib/state"
-import { trackNonStreamingUsage } from "~/middleware/usage"
+import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { createCopilotProvider } from "~/providers/registry"
 import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
 import type {
@@ -71,8 +71,14 @@ export async function handleGeminiViaMessages(
     const heartbeated = mode.useSSE
       ? wrapOpenAIHeartbeat(upstream.body)
       : upstream.body
-    if (heartbeated) {
-      heartbeated.pipeTo(pipe.writable).catch(() => {})
+    let pipeBody = heartbeated
+    if (apiKeyId && pipeBody) {
+      const [usageBranch, responseBranch] = pipeBody.tee()
+      consumeStreamForUsage(usageBranch, apiKeyId, model, client, state.upstream)
+      pipeBody = responseBranch
+    }
+    if (pipeBody) {
+      pipeBody.pipeTo(pipe.writable).catch(() => {})
     }
 
     if (apiKeyId) {

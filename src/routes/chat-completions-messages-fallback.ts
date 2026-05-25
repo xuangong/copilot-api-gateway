@@ -9,7 +9,7 @@ import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import type { AppState } from "~/lib/state"
-import { trackNonStreamingUsage } from "~/middleware/usage"
+import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { createCopilotProvider } from "~/providers/registry"
 import type { ChatCompletionsPayload } from "~/services/gemini/format-conversion"
 import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
@@ -57,7 +57,13 @@ export async function handleChatCompletionsViaMessages(
     )
     const upstreamMs = upstreamTimer()
 
-    const translated = upstream.body?.pipeThrough(
+    let translateBody = upstream.body
+    if (apiKeyId && translateBody) {
+      const [usageBranch, responseBranch] = translateBody.tee()
+      consumeStreamForUsage(usageBranch, apiKeyId, model, client, state.upstream)
+      translateBody = responseBranch
+    }
+    const translated = translateBody?.pipeThrough(
       createMessagesToChatCompletionsStream(model),
     )
     const heartbeated = wrapOpenAIHeartbeat(translated ?? null)
