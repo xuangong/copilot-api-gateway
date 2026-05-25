@@ -18,7 +18,10 @@
 
 export * as responsesViaChat from "./responses-via-chat"
 export * as geminiViaChat from "./gemini-via-chat"
-export * as messagesViaResponses from "./messages-via-responses/request"
-export * as chatCompletionsViaMessages from "./chat-completions-via-messages/request"
+export * as messagesViaResponses from "./messages-via-responses"
+export * as responsesViaMessages from "./responses-via-messages"
+export * as chatCompletionsViaMessages from "./chat-completions-via-messages"
+export * as messagesViaChatCompletions from "./messages-via-chat-completions"
+export * as chatCompletionsViaResponses from "./chat-completions-via-responses"
 export * as geminiViaMessages from "./gemini-via-messages/request"
 export * as geminiViaResponses from "./gemini-via-responses/request"
