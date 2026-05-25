@@ -10,7 +10,11 @@ import {
   translateMessagesToResponses,
   translateResponsesToMessagesResponse,
 } from "~/translators/messages-via-responses"
-import type { AnthropicMessagesPayload } from "~/transforms"
+import {
+  disableResponsesReasoningOnForcedToolChoice,
+  type AnthropicMessagesPayload,
+  type ResponsesPayload,
+} from "~/transforms"
 
 import type { RouteContext } from "./utils"
 
@@ -31,6 +35,10 @@ export async function handleMessagesViaResponses(
   const isStreaming = payload.stream !== false
 
   const responsesPayload = translateMessagesToResponses(payload)
+  disableResponsesReasoningOnForcedToolChoice(
+    responsesPayload as unknown as ResponsesPayload,
+    state.enabledFlags ?? new Set(),
+  )
   responsesPayload.stream = isStreaming
 
   const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })

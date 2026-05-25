@@ -10,7 +10,10 @@ import {
   translateMessagesToChatCompletions,
   translateChatCompletionsToMessagesResponse,
 } from "~/translators/messages-via-chat-completions"
-import type { AnthropicMessagesPayload } from "~/transforms"
+import {
+  disableChatCompletionsReasoningOnForcedToolChoice,
+  type AnthropicMessagesPayload,
+} from "~/transforms"
 
 import type { RouteContext } from "./utils"
 
@@ -31,6 +34,10 @@ export async function handleMessagesViaChatCompletions(
   const isStreaming = payload.stream !== false
 
   const chatPayload = translateMessagesToChatCompletions(payload)
+  disableChatCompletionsReasoningOnForcedToolChoice(
+    chatPayload as Parameters<typeof disableChatCompletionsReasoningOnForcedToolChoice>[0],
+    state.enabledFlags ?? new Set(),
+  )
   chatPayload.stream = isStreaming
   if (isStreaming) {
     chatPayload.stream_options = {

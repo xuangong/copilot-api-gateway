@@ -19,6 +19,7 @@ import { repairToolResultPairs } from "~/services/copilot"
 import { stripReservedKeywords } from "./billing-header"
 import { stripCacheControl } from "./cache-control"
 import { stripContextManagement } from "./context-management"
+import { disableMessagesReasoningOnForcedToolChoice } from "./disable-reasoning-on-forced-tool-choice"
 import {
   promoteThinkingDisplayForStreaming,
   type PromoteThinkingDisplayResult,
@@ -38,9 +39,11 @@ export interface AnthropicMessagesPipelineFlags {
  */
 export function runAnthropicMessagesPipeline(
   payload: AnthropicMessagesPayload,
+  enabledFlags: ReadonlySet<string> = new Set(),
 ): AnthropicMessagesPipelineFlags {
   stripContextManagement(payload as unknown as Record<string, unknown>)
   stripReservedKeywords(payload)
+  disableMessagesReasoningOnForcedToolChoice(payload, enabledFlags)
   filterThinkingBlocks(payload)
   adaptThinkingForModel(payload)
   stripCacheControl(payload as unknown as Record<string, unknown>)

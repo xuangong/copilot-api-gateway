@@ -9,7 +9,7 @@ import { checkQuota } from "~/lib/quota"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import { createFrameBuffer } from "~/lib/sse/parser"
-import { createChatWhitespaceAbortStream } from "~/transforms"
+import { createChatWhitespaceAbortStream, disableChatCompletionsReasoningOnForcedToolChoice } from "~/transforms"
 import {
   hasOpenAIWebSearch,
   interceptOpenAIChat,
@@ -97,6 +97,10 @@ async function handleChatCompletions(ctx: RouteContext): Promise<Response> {
   }
 
   const payload = body as ChatCompletionsPayload
+  disableChatCompletionsReasoningOnForcedToolChoice(
+    payload as Parameters<typeof disableChatCompletionsReasoningOnForcedToolChoice>[0],
+    state.enabledFlags ?? new Set(),
+  )
   const upstreamTimer = startTimer()
   const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
 

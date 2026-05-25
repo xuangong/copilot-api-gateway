@@ -6,7 +6,7 @@ import {
   hasResponsesWebSearch,
   loadWebSearchConfig,
 } from "~/services/web-search"
-import { stripServiceTier, stripWebSearchTools, type ResponsesPayload } from "~/transforms"
+import { disableResponsesReasoningOnForcedToolChoice, stripServiceTier, stripWebSearchTools, type ResponsesPayload } from "~/transforms"
 
 import { handleChatFallback } from "./chat-fallback"
 import { handleDirectNonStreaming, handleDirectStreaming } from "./direct"
@@ -38,6 +38,7 @@ const handleResponses = async (ctx: unknown) => {
     ...(body as ResponsesPayload),
   })
   stripServiceTier(payload as unknown as Record<string, unknown>)
+  disableResponsesReasoningOnForcedToolChoice(payload, state.enabledFlags ?? new Set())
 
   // Stateless gateway: refuse server-side history references with the same
   // 400/404 codex/cline/openai-agents-python use to trigger their full-input

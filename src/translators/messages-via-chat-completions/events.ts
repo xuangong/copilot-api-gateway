@@ -87,7 +87,7 @@ export type AnthropicStreamEvent =
   | {
       type: "message_delta"
       delta: { stop_reason: string | null; stop_sequence: null }
-      usage: { output_tokens: number }
+      usage: { output_tokens: number; cache_read_input_tokens?: number }
     }
   | { type: "message_stop" }
   | { type: "ping" }
@@ -352,7 +352,12 @@ export function translateChatCompletionsChunkToMessagesEvents(
     out.push({
       type: "message_delta",
       delta: { stop_reason: mapFinishReason(choice.finish_reason), stop_sequence: null },
-      usage: { output_tokens: state.outputTokens },
+      usage: {
+        output_tokens: state.outputTokens,
+        ...(state.cachedInputTokens > 0
+          ? { cache_read_input_tokens: state.cachedInputTokens }
+          : {}),
+      },
     })
     out.push({ type: "message_stop" })
     state.terminated = true
@@ -396,7 +401,12 @@ export function createChatCompletionsToMessagesStream(
         serializeAnthropicEvent({
           type: "message_delta",
           delta: { stop_reason: "end_turn", stop_sequence: null },
-          usage: { output_tokens: state.outputTokens },
+          usage: {
+            output_tokens: state.outputTokens,
+            ...(state.cachedInputTokens > 0
+              ? { cache_read_input_tokens: state.cachedInputTokens }
+              : {}),
+          },
         }),
       ),
     )

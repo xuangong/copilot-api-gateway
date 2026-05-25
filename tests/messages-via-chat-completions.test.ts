@@ -103,6 +103,42 @@ describe("translateMessagesToChatCompletions (request)", () => {
     expect(out.tools?.[0].function.name).toBe("search")
     expect(out.tool_choice).toEqual({ type: "function", function: { name: "search" } })
   })
+
+  test("output_config.effort wins over thinking.budget_tokens", () => {
+    const payload = {
+      model: "gpt-5",
+      max_tokens: 100,
+      messages: [{ role: "user", content: "hi" }],
+      output_config: { effort: "low" },
+      thinking: { type: "enabled", budget_tokens: 10000 },
+    } as unknown as AnthropicMessagesPayload
+    const out = translateMessagesToChatCompletions(payload)
+    expect(out.reasoning_effort).toBe("low")
+  })
+
+  test("thinking.budget_tokens buckets into reasoning_effort", () => {
+    const make = (budget: number) =>
+      ({
+        model: "gpt-5",
+        max_tokens: 100,
+        messages: [{ role: "user", content: "hi" }],
+        thinking: { type: "enabled", budget_tokens: budget },
+      }) as unknown as AnthropicMessagesPayload
+    expect(translateMessagesToChatCompletions(make(1024)).reasoning_effort).toBe("low")
+    expect(translateMessagesToChatCompletions(make(4096)).reasoning_effort).toBe("medium")
+    expect(translateMessagesToChatCompletions(make(16000)).reasoning_effort).toBe("high")
+  })
+
+  test("thinking.budget_tokens=0 → no reasoning_effort", () => {
+    const payload = {
+      model: "gpt-5",
+      max_tokens: 100,
+      messages: [{ role: "user", content: "hi" }],
+      thinking: { type: "enabled", budget_tokens: 0 },
+    } as unknown as AnthropicMessagesPayload
+    const out = translateMessagesToChatCompletions(payload)
+    expect(out.reasoning_effort).toBeUndefined()
+  })
 })
 
 describe("translateChatCompletionsChunkToMessagesEvents", () => {

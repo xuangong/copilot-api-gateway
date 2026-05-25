@@ -9,6 +9,8 @@ export interface AppState {
   tokenMiss: boolean
   /** Provider-prefixed upstream id, e.g. "copilot:<user_id>". Used for usage/perf attribution. */
   upstream?: string | null
+  /** Effective per-upstream flag set (provider defaults + per-account overrides). */
+  enabledFlags?: ReadonlySet<string>
 
   // Search engine API keys
   langsearchKey?: string

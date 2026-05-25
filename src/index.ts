@@ -9,6 +9,7 @@ import { KVStorage, STORAGE_KEYS } from "~/storage"
 import { initRepo, D1Repo, getRepo } from "~/repo"
 import { getGithubCredentials } from "~/lib/github"
 import { getCopilotToken } from "~/services/github"
+import { defaultsForUpstream, resolveEffectiveFlags } from "~/flags"
 import { validateApiKey } from "~/lib/api-keys"
 import { messagesRoute } from "~/routes/messages"
 import { responsesRoute } from "~/routes/responses"
@@ -75,8 +76,9 @@ let memCopilotExpires = 0
 let memCachedAt = 0
 
 async function loadUserState(userId: string, env: Env, storage: KVStorage): Promise<AppState> {
-  const { token: githubToken, accountType: acctType, userId: ghUserId } = await getGithubCredentials(userId)
+  const { token: githubToken, accountType: acctType, userId: ghUserId, flagOverrides } = await getGithubCredentials(userId)
   const accountType = acctType as AccountType
+  const enabledFlags = resolveEffectiveFlags(defaultsForUpstream("copilot"), [flagOverrides])
 
   const tokenKey = `copilot_token:${userId}`
   const expiresKey = `copilot_token_expires:${userId}`
@@ -120,6 +122,7 @@ async function loadUserState(userId: string, env: Env, storage: KVStorage): Prom
     accountType,
     tokenMiss,
     upstream: `copilot:${ghUserId}`,
+    enabledFlags,
     langsearchKey: env.LANGSEARCH_API_KEY,
     tavilyKey: env.TAVILY_API_KEY,
     msGroundingKey: env.MS_GROUNDING_API_KEY,
@@ -130,12 +133,14 @@ async function loadGlobalState(env: Env, storage: KVStorage): Promise<AppState> 
   let githubToken: string | null = null
   let accountType: AccountType = "individual"
   let upstream: string | null = null
+  let flagOverrides: Record<string, boolean> | undefined
 
   try {
     const creds = await getGithubCredentials()
     githubToken = creds.token
     accountType = creds.accountType as AccountType
     upstream = `copilot:${creds.userId}`
+    flagOverrides = creds.flagOverrides
   } catch {
     githubToken = env.GITHUB_TOKEN || (await storage.get(STORAGE_KEYS.GITHUB_TOKEN))
     accountType = (env.ACCOUNT_TYPE as AccountType) || "individual"
@@ -179,6 +184,7 @@ async function loadGlobalState(env: Env, storage: KVStorage): Promise<AppState> 
     accountType,
     tokenMiss,
     upstream,
+    enabledFlags: resolveEffectiveFlags(defaultsForUpstream("copilot"), [flagOverrides]),
     langsearchKey: env.LANGSEARCH_API_KEY,
     tavilyKey: env.TAVILY_API_KEY,
     msGroundingKey: env.MS_GROUNDING_API_KEY,

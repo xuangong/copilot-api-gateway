@@ -183,7 +183,10 @@ export function translateGeminiToOpenAI(
 /**
  * Map Gemini thinkingConfig to OpenAI-style reasoning_effort.
  * thinkingLevel (Gemini 3+) takes precedence over thinkingBudget.
- * Budget ranges loosely follow Gemini 2.5 docs: 0 disables, -1 dynamic.
+ * Budget semantics follow Gemini 2.5 docs:
+ *   0  → off (omit reasoning_effort → downstream does not enable thinking)
+ *  -1  → dynamic (omit reasoning_effort → upstream decides depth)
+ *  >0  → fixed budget, bucket into low/medium/high
  */
 function mapGeminiThinkingToEffort(
   cfg: GeminiThinkingConfig,
@@ -194,8 +197,7 @@ function mapGeminiThinkingToEffort(
   }
   const budget = cfg.thinkingBudget
   if (budget == null) return undefined
-  if (budget === 0) return undefined
-  if (budget < 0) return "medium"
+  if (budget <= 0) return undefined
   if (budget <= 2048) return "low"
   if (budget <= 8192) return "medium"
   return "high"

@@ -46,12 +46,15 @@ function extractUsageFromJson(json: any): UsageInfo | null {
 
 // deno-lint-ignore no-explicit-any
 function applyStreamEvent(parsed: any, latest: UsageInfo): void {
-  // Anthropic message_start: sets cumulative input + cache tokens
+  // Anthropic message_start: sets cumulative input + cache tokens.
+  // Guard cache fields with != null so a message_start that omits them (e.g.
+  // synthetic placeholder frames or older upstream variants) does not clobber
+  // values that arrive later in message_delta.
   if (parsed.type === "message_start" && parsed.message?.usage?.input_tokens != null) {
     const u = parsed.message.usage
     latest.input = u.input_tokens
-    latest.cacheRead = u.cache_read_input_tokens ?? 0
-    latest.cacheCreation = u.cache_creation_input_tokens ?? 0
+    if (u.cache_read_input_tokens != null) latest.cacheRead = u.cache_read_input_tokens
+    if (u.cache_creation_input_tokens != null) latest.cacheCreation = u.cache_creation_input_tokens
   // Anthropic message_delta: each event carries the CUMULATIVE output_tokens so far (overwrite, not add)
   // Newer Anthropic API versions also include cache tokens in message_delta
   } else if (parsed.type === "message_delta" && parsed.usage?.output_tokens != null) {

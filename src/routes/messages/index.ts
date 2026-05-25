@@ -40,7 +40,7 @@ export const messagesRoute = new Elysia()
     }
 
     const payload: AnthropicMessagesPayload = { ...(body as AnthropicMessagesPayload) }
-    const flags = runAnthropicMessagesPipeline(payload)
+    const flags = runAnthropicMessagesPipeline(payload, routeCtx.state.enabledFlags ?? new Set())
 
     const messagesPayload = payload as unknown as MessagesPayload
     if (hasWebSearch(messagesPayload)) {

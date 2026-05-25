@@ -73,13 +73,13 @@ describe("Gemini thinkingConfig propagation", () => {
     expect(out.thinking).toBeUndefined()
   })
 
-  test("thinkingBudget=-1 (dynamic) → Messages thinking medium budget", () => {
+  test("thinkingBudget=-1 (dynamic) → no thinking block (defer to upstream)", () => {
     const req: GeminiGenerateContentRequest = {
       contents: [{ role: "user", parts: [{ text: "x" }] }],
       generationConfig: { thinkingConfig: { thinkingBudget: -1 } },
     }
     const out = translateGeminiToMessages(req, "gemini-2.5-pro")
-    expect(out.thinking?.budget_tokens).toBe(4096)
+    expect(out.thinking).toBeUndefined()
   })
 
   test("thinkingConfig → Responses reasoning.effort", () => {

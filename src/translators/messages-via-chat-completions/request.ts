@@ -242,16 +242,26 @@ interface ExtendedAnthropicPayload extends AnthropicMessagesPayload {
   tool_choice?: AnthropicToolChoice
 }
 
+function translateEffort(
+  payload: AnthropicMessagesPayload,
+): "low" | "medium" | "high" | undefined {
+  if (payload.output_config?.effort) return payload.output_config.effort
+  const budget = payload.thinking?.budget_tokens
+  if (budget != null && budget > 0) {
+    if (budget <= 2048) return "low"
+    if (budget <= 8192) return "medium"
+    return "high"
+  }
+  return undefined
+}
+
 export function translateMessagesToChatCompletions(
   payload: AnthropicMessagesPayload,
 ): ChatCompletionsPayload {
   const extended = payload as ExtendedAnthropicPayload
   const tools = translateTools(payload.tools)
 
-  let reasoning_effort: "low" | "medium" | "high" | undefined
-  if (payload.output_config?.effort) {
-    reasoning_effort = payload.output_config.effort
-  }
+  const reasoning_effort = translateEffort(payload)
 
   const result: ChatCompletionsPayload = {
     model: payload.model,

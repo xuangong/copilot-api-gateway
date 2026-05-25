@@ -39,6 +39,13 @@ export {
 // Cache control cleanup (prompt caching not supported by Copilot)
 export { stripCacheControl, type CacheControlStripResult } from "./cache-control"
 
+// Disable reasoning when caller forces a specific tool (opt-in workaround).
+export {
+  disableMessagesReasoningOnForcedToolChoice,
+  disableResponsesReasoningOnForcedToolChoice,
+  disableChatCompletionsReasoningOnForcedToolChoice,
+} from "./disable-reasoning-on-forced-tool-choice"
+
 // Claude Code / Anthropic beta compatibility
 export {
   stripContextManagement,
