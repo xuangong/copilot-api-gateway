@@ -40,6 +40,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .data/
 data/
 
+# Local docker-compose overrides (host-specific paths)
+docker-compose.override.yml
+*.bak
+
 # Wrangler local state
 .wrangler/
 
