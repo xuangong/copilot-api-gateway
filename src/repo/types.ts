@@ -34,6 +34,11 @@ export interface GitHubAccount {
   accountType: string
   user: GitHubUser
   ownerId?: string
+  enabled?: boolean
+  sortOrder?: number
+  /** JSON object {flagId: bool} — per-upstream feature gate overrides. */
+  flagOverrides?: Record<string, boolean>
+  updatedAt?: string
 }
 
 export interface UsageRecord {
@@ -41,11 +46,15 @@ export interface UsageRecord {
   model: string
   hour: string
   client: string
+  /** Provider-prefixed upstream id, e.g. "copilot:<user_id>"; null for pre-0025 rows. */
+  upstream: string | null
   requests: number
   inputTokens: number
   outputTokens: number
   cacheReadTokens: number
   cacheCreationTokens: number
+  /** Frozen pricing snapshot (JSON string) captured at write time. */
+  costJson: string | null
 }
 
 export interface User {
@@ -113,6 +122,8 @@ export interface UsageRepo {
     client?: string,
     cacheReadTokens?: number,
     cacheCreationTokens?: number,
+    upstream?: string | null,
+    costJson?: string | null,
   ): Promise<void>
   query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<UsageRecord[]>
   listAll(): Promise<UsageRecord[]>
@@ -164,6 +175,7 @@ export interface PerformanceSummaryRecord {
   metricScope: PerformanceMetricScope
   keyId: string
   model: string
+  upstream: string | null
   sourceApi: PerformanceSourceApi
   targetApi: PerformanceTargetApi
   stream: boolean
@@ -178,6 +190,7 @@ export interface PerformanceBucketRecord {
   metricScope: PerformanceMetricScope
   keyId: string
   model: string
+  upstream: string | null
   sourceApi: PerformanceSourceApi
   targetApi: PerformanceTargetApi
   stream: boolean
@@ -192,6 +205,7 @@ export interface PerformanceRecordInput {
   metricScope: PerformanceMetricScope
   keyId: string
   model: string
+  upstream?: string | null
   sourceApi: PerformanceSourceApi
   targetApi: PerformanceTargetApi
   stream: boolean

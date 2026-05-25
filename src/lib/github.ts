@@ -5,6 +5,7 @@ export type { GitHubAccount, GitHubUser }
 interface GithubCredentials {
   token: string
   accountType: string
+  userId: number
 }
 
 // === Global (admin / legacy) ===
@@ -68,7 +69,7 @@ export async function getActiveGithubAccount(ownerId?: string): Promise<GitHubAc
 export async function getGithubCredentials(ownerId?: string): Promise<GithubCredentials> {
   const account = await getActiveGithubAccount(ownerId)
   if (!account) throw new Error("No GitHub account connected. Use /auth/github to connect.")
-  return { token: account.token, accountType: account.accountType }
+  return { token: account.token, accountType: account.accountType, userId: account.user.id }
 }
 
 // === Per-user ===

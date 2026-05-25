@@ -77,9 +77,9 @@ function applyStreamEvent(parsed: any, latest: UsageInfo): void {
   }
 }
 
-async function persistUsage(keyId: string, model: string, inputTokens: number, outputTokens: number, client?: string, cacheReadTokens?: number, cacheCreationTokens?: number): Promise<void> {
+async function persistUsage(keyId: string, model: string, inputTokens: number, outputTokens: number, client?: string, cacheReadTokens?: number, cacheCreationTokens?: number, upstream?: string | null): Promise<void> {
   await Promise.all([
-    recordUsage(keyId, model, inputTokens, outputTokens, client, cacheReadTokens, cacheCreationTokens),
+    recordUsage(keyId, model, inputTokens, outputTokens, client, cacheReadTokens, cacheCreationTokens, upstream),
     touchApiKeyLastUsed(keyId),
   ])
 }
@@ -94,10 +94,11 @@ export async function trackNonStreamingUsage(
   keyId: string,
   model: string,
   client?: string,
+  upstream?: string | null,
 ): Promise<void> {
   const usage = extractUsageFromJson(json)
   if (usage) {
-    await persistUsage(keyId, model, usage.input, usage.output, client, usage.cacheRead, usage.cacheCreation)
+    await persistUsage(keyId, model, usage.input, usage.output, client, usage.cacheRead, usage.cacheCreation, upstream)
   }
 }
 
@@ -111,6 +112,7 @@ export function trackStreamingUsage(
   keyId: string,
   model: string,
   client?: string,
+  upstream?: string | null,
 ): Response {
   const body = response.body
   if (!body) return response
@@ -136,7 +138,7 @@ export function trackStreamingUsage(
       }
 
       if (latest.input > 0 || latest.output > 0) {
-        await persistUsage(keyId, model, latest.input, latest.output, client, latest.cacheRead, latest.cacheCreation).catch(() => {})
+        await persistUsage(keyId, model, latest.input, latest.output, client, latest.cacheRead, latest.cacheCreation, upstream).catch(() => {})
       }
     },
   })
@@ -157,6 +159,7 @@ export function consumeStreamForUsage(
   keyId: string,
   model: string,
   client?: string,
+  upstream?: string | null,
 ): void {
   const latest: UsageInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
   const frameBuffer = createFrameBuffer()
@@ -181,7 +184,7 @@ export function consumeStreamForUsage(
       if (latest.input > 0 || latest.output > 0) {
         await persistUsage(
           keyId, model, latest.input, latest.output, client,
-          latest.cacheRead, latest.cacheCreation,
+          latest.cacheRead, latest.cacheCreation, upstream,
         ).catch(() => {})
       }
     } catch { /* best-effort */ }

@@ -37,8 +37,8 @@ import { latencyBucketForMs } from "~/lib/performance-histogram"
 import type { SqlExecutor } from "./executor"
 
 const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref"
-const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id"
-const USAGE_COLS = "key_id, model, hour, client, requests, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens"
+const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at"
+const USAGE_COLS = "key_id, model, upstream, hour, client, requests, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_json"
 const LATENCY_COLS = "key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss"
 const USER_COLS = "id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash"
 const INVITE_COLS = "id, code, name, email, created_at, used_at, used_by"
@@ -49,8 +49,8 @@ const WS_ENGINE_COLS = "key_id, engine_id, hour, attempts, successes, failures, 
 const KEY_ASSIGN_COLS = "key_id, user_id, assigned_by, assigned_at"
 const SHARE_COLS = "owner_id, viewer_id, granted_by, granted_at"
 const DEVICE_COLS = "device_code, user_code, expires_at, user_id, session_token, created_at"
-const PERF_SUMMARY_COLS = "hour, metric_scope, key_id, model, source_api, target_api, stream, runtime_location, requests, errors, total_ms_sum"
-const PERF_BUCKET_COLS = "hour, metric_scope, key_id, model, source_api, target_api, stream, runtime_location, lower_ms, upper_ms, count"
+const PERF_SUMMARY_COLS = "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, requests, errors, total_ms_sum"
+const PERF_BUCKET_COLS = "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, lower_ms, upper_ms, count"
 
 function toApiKey(row: any): ApiKey {
   let priority: string[] | undefined
@@ -81,11 +81,27 @@ function toApiKey(row: any): ApiKey {
 }
 
 function toGitHubAccount(row: any): GitHubAccount {
+  let flagOverrides: Record<string, boolean> | undefined
+  if (typeof row.flag_overrides === "string" && row.flag_overrides.length > 0) {
+    try {
+      const parsed = JSON.parse(row.flag_overrides)
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        flagOverrides = {}
+        for (const [k, v] of Object.entries(parsed)) {
+          if (typeof v === "boolean") flagOverrides[k] = v
+        }
+      }
+    } catch {}
+  }
   return {
     token: row.token,
     accountType: row.account_type,
     ownerId: row.owner_id ?? undefined,
     user: { id: row.user_id, login: row.login, name: row.name, avatar_url: row.avatar_url },
+    enabled: row.enabled === undefined ? undefined : row.enabled === 1,
+    sortOrder: row.sort_order ?? undefined,
+    flagOverrides,
+    updatedAt: row.updated_at ?? undefined,
   }
 }
 
@@ -95,11 +111,13 @@ function toUsageRecord(r: any): UsageRecord {
     model: r.model,
     hour: r.hour,
     client: r.client || "",
+    upstream: r.upstream ?? null,
     requests: r.requests,
     inputTokens: r.input_tokens,
     outputTokens: r.output_tokens,
     cacheReadTokens: r.cache_read_tokens ?? 0,
     cacheCreationTokens: r.cache_creation_tokens ?? 0,
+    costJson: r.cost_json ?? null,
   }
 }
 
@@ -252,10 +270,18 @@ class SharedGitHubRepo implements GitHubRepo {
   }
 
   async saveAccount(userId: number, account: GitHubAccount): Promise<void> {
+    const flagOverridesJson = account.flagOverrides ? JSON.stringify(account.flagOverrides) : "{}"
+    const updatedAt = account.updatedAt ?? new Date().toISOString()
     await this.x.run(
-      `INSERT INTO github_accounts (${GITHUB_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (user_id, owner_id) DO UPDATE SET token = excluded.token, account_type = excluded.account_type, login = excluded.login, name = excluded.name, avatar_url = excluded.avatar_url`,
-      [userId, account.token, account.accountType, account.user.login, account.user.name, account.user.avatar_url, account.ownerId ?? ""],
+      `INSERT INTO github_accounts (${GITHUB_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (user_id, owner_id) DO UPDATE SET token = excluded.token, account_type = excluded.account_type, login = excluded.login, name = excluded.name, avatar_url = excluded.avatar_url, enabled = excluded.enabled, sort_order = excluded.sort_order, flag_overrides = excluded.flag_overrides, updated_at = excluded.updated_at`,
+      [
+        userId, account.token, account.accountType, account.user.login, account.user.name, account.user.avatar_url, account.ownerId ?? "",
+        account.enabled === false ? 0 : 1,
+        account.sortOrder ?? 0,
+        flagOverridesJson,
+        updatedAt,
+      ],
     )
   }
 
@@ -302,11 +328,11 @@ class SharedGitHubRepo implements GitHubRepo {
 class SharedUsageRepo implements UsageRepo {
   constructor(private x: SqlExecutor) {}
 
-  async record(keyId: string, model: string, hour: string, requests: number, inputTokens: number, outputTokens: number, client?: string, cacheReadTokens?: number, cacheCreationTokens?: number): Promise<void> {
+  async record(keyId: string, model: string, hour: string, requests: number, inputTokens: number, outputTokens: number, client?: string, cacheReadTokens?: number, cacheCreationTokens?: number, upstream?: string | null, costJson?: string | null): Promise<void> {
     await this.x.run(
-      `INSERT INTO usage (${USAGE_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (key_id, model, hour, client) DO UPDATE SET requests = requests + excluded.requests, input_tokens = input_tokens + excluded.input_tokens, output_tokens = output_tokens + excluded.output_tokens, cache_read_tokens = cache_read_tokens + excluded.cache_read_tokens, cache_creation_tokens = cache_creation_tokens + excluded.cache_creation_tokens`,
-      [keyId, model, hour, client || "", requests, inputTokens, outputTokens, cacheReadTokens ?? 0, cacheCreationTokens ?? 0],
+      `INSERT INTO usage (${USAGE_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (key_id, model, COALESCE(upstream, ''), hour, client) DO UPDATE SET requests = requests + excluded.requests, input_tokens = input_tokens + excluded.input_tokens, output_tokens = output_tokens + excluded.output_tokens, cache_read_tokens = cache_read_tokens + excluded.cache_read_tokens, cache_creation_tokens = cache_creation_tokens + excluded.cache_creation_tokens, cost_json = COALESCE(excluded.cost_json, cost_json)`,
+      [keyId, model, upstream ?? null, hour, client || "", requests, inputTokens, outputTokens, cacheReadTokens ?? 0, cacheCreationTokens ?? 0, costJson ?? null],
     )
   }
 
@@ -321,9 +347,9 @@ class SharedUsageRepo implements UsageRepo {
 
   async set(record: UsageRecord): Promise<void> {
     await this.x.run(
-      `INSERT INTO usage (${USAGE_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (key_id, model, hour, client) DO UPDATE SET requests = excluded.requests, input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens, cache_read_tokens = excluded.cache_read_tokens, cache_creation_tokens = excluded.cache_creation_tokens`,
-      [record.keyId, record.model, record.hour, record.client || "", record.requests, record.inputTokens, record.outputTokens, record.cacheReadTokens ?? 0, record.cacheCreationTokens ?? 0],
+      `INSERT INTO usage (${USAGE_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (key_id, model, COALESCE(upstream, ''), hour, client) DO UPDATE SET requests = excluded.requests, input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens, cache_read_tokens = excluded.cache_read_tokens, cache_creation_tokens = excluded.cache_creation_tokens, cost_json = excluded.cost_json`,
+      [record.keyId, record.model, record.upstream ?? null, record.hour, record.client || "", record.requests, record.inputTokens, record.outputTokens, record.cacheReadTokens ?? 0, record.cacheCreationTokens ?? 0, record.costJson ?? null],
     )
   }
 
@@ -670,6 +696,7 @@ function toPerformanceSummaryRecord(r: any): PerformanceSummaryRecord {
     metricScope: r.metric_scope,
     keyId: r.key_id,
     model: r.model,
+    upstream: r.upstream ?? null,
     sourceApi: r.source_api,
     targetApi: r.target_api,
     stream: r.stream === 1,
@@ -686,6 +713,7 @@ function toPerformanceBucketRecord(r: any): PerformanceBucketRecord {
     metricScope: r.metric_scope,
     keyId: r.key_id,
     model: r.model,
+    upstream: r.upstream ?? null,
     sourceApi: r.source_api,
     targetApi: r.target_api,
     stream: r.stream === 1,
@@ -703,12 +731,13 @@ class SharedPerformanceRepo implements PerformanceRepo {
     const streamInt = entry.stream ? 1 : 0
     const errorInt = entry.isError ? 1 : 0
     const durationMs = Math.max(0, Math.round(entry.durationMs))
+    const upstream = entry.upstream ?? null
     await this.x.run(
-      `INSERT INTO performance_summary (${PERF_SUMMARY_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-       ON CONFLICT (hour, metric_scope, key_id, model, source_api, target_api, stream, runtime_location)
+      `INSERT INTO performance_summary (${PERF_SUMMARY_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+       ON CONFLICT (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location)
        DO UPDATE SET requests = requests + 1, errors = errors + excluded.errors, total_ms_sum = total_ms_sum + excluded.total_ms_sum`,
       [
-        entry.hour, entry.metricScope, entry.keyId, entry.model,
+        entry.hour, entry.metricScope, entry.keyId, entry.model, upstream,
         entry.sourceApi, entry.targetApi, streamInt, entry.runtimeLocation,
         errorInt, durationMs,
       ],
@@ -716,11 +745,11 @@ class SharedPerformanceRepo implements PerformanceRepo {
 
     const { lowerMs, upperMs } = latencyBucketForMs(durationMs)
     await this.x.run(
-      `INSERT INTO performance_latency_buckets (${PERF_BUCKET_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-       ON CONFLICT (hour, metric_scope, key_id, model, source_api, target_api, stream, runtime_location, lower_ms, upper_ms)
+      `INSERT INTO performance_latency_buckets (${PERF_BUCKET_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+       ON CONFLICT (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, lower_ms, upper_ms)
        DO UPDATE SET count = count + 1`,
       [
-        entry.hour, entry.metricScope, entry.keyId, entry.model,
+        entry.hour, entry.metricScope, entry.keyId, entry.model, upstream,
         entry.sourceApi, entry.targetApi, streamInt, entry.runtimeLocation,
         lowerMs, upperMs,
       ],

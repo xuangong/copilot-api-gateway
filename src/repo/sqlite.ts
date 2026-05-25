@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS github_accounts (
   name TEXT,
   avatar_url TEXT,
   owner_id TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  flag_overrides TEXT NOT NULL DEFAULT '{}',
+  updated_at TEXT,
   PRIMARY KEY (user_id, owner_id)
 );
 
@@ -33,6 +37,7 @@ CREATE TABLE IF NOT EXISTS config (
 CREATE TABLE IF NOT EXISTS usage (
   key_id TEXT NOT NULL,
   model TEXT NOT NULL,
+  upstream TEXT,
   hour TEXT NOT NULL,
   client TEXT NOT NULL DEFAULT '',
   requests INTEGER NOT NULL DEFAULT 0,
@@ -40,7 +45,7 @@ CREATE TABLE IF NOT EXISTS usage (
   output_tokens INTEGER NOT NULL DEFAULT 0,
   cache_read_tokens INTEGER NOT NULL DEFAULT 0,
   cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (key_id, model, hour, client)
+  cost_json TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_usage_hour ON usage (hour);
@@ -124,14 +129,14 @@ CREATE TABLE IF NOT EXISTS performance_summary (
   metric_scope TEXT NOT NULL,
   key_id TEXT NOT NULL,
   model TEXT NOT NULL,
+  upstream TEXT,
   source_api TEXT NOT NULL,
   target_api TEXT NOT NULL,
   stream INTEGER NOT NULL,
   runtime_location TEXT NOT NULL DEFAULT 'unknown',
   requests INTEGER NOT NULL DEFAULT 0,
   errors INTEGER NOT NULL DEFAULT 0,
-  total_ms_sum INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (hour, metric_scope, key_id, model, source_api, target_api, stream, runtime_location)
+  total_ms_sum INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_performance_summary_hour ON performance_summary (hour);
@@ -141,14 +146,14 @@ CREATE TABLE IF NOT EXISTS performance_latency_buckets (
   metric_scope TEXT NOT NULL,
   key_id TEXT NOT NULL,
   model TEXT NOT NULL,
+  upstream TEXT,
   source_api TEXT NOT NULL,
   target_api TEXT NOT NULL,
   stream INTEGER NOT NULL,
   runtime_location TEXT NOT NULL DEFAULT 'unknown',
   lower_ms INTEGER NOT NULL,
   upper_ms INTEGER NOT NULL,
-  count INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (hour, metric_scope, key_id, model, source_api, target_api, stream, runtime_location, lower_ms, upper_ms)
+  count INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_performance_latency_buckets_hour ON performance_latency_buckets (hour);
@@ -331,6 +336,105 @@ function migrateSchema(db: Database): void {
       PRIMARY KEY (key_id, engine_id, hour)
     )`)
   }
+  // 0024: upstream fields on github_accounts
+  if (!hasColumn(db, "github_accounts", "enabled")) {
+    db.exec("ALTER TABLE github_accounts ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1")
+  }
+  if (!hasColumn(db, "github_accounts", "sort_order")) {
+    db.exec("ALTER TABLE github_accounts ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
+  }
+  if (!hasColumn(db, "github_accounts", "flag_overrides")) {
+    db.exec("ALTER TABLE github_accounts ADD COLUMN flag_overrides TEXT NOT NULL DEFAULT '{}'")
+  }
+  if (!hasColumn(db, "github_accounts", "updated_at")) {
+    db.exec("ALTER TABLE github_accounts ADD COLUMN updated_at TEXT")
+  }
+  // 0025: upstream identity + cost snapshot on usage/perf tables. Rebuild
+  // each table when the column is missing so the unique index includes the
+  // new identity dimension.
+  if (!hasColumn(db, "usage", "upstream")) {
+    db.exec(`
+      CREATE TABLE usage_new (
+        key_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        upstream TEXT,
+        hour TEXT NOT NULL,
+        client TEXT NOT NULL DEFAULT '',
+        requests INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_json TEXT
+      );
+      INSERT INTO usage_new (key_id, model, upstream, hour, client, requests, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_json)
+        SELECT key_id, model, NULL, hour, client, requests, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, NULL FROM usage;
+      DROP TABLE usage;
+      ALTER TABLE usage_new RENAME TO usage;
+      CREATE UNIQUE INDEX idx_usage_identity ON usage (key_id, model, COALESCE(upstream, ''), hour, client);
+      CREATE INDEX IF NOT EXISTS idx_usage_hour ON usage (hour);
+    `)
+  }
+  if (!hasColumn(db, "performance_summary", "upstream")) {
+    db.exec(`
+      CREATE TABLE performance_summary_new (
+        hour TEXT NOT NULL,
+        metric_scope TEXT NOT NULL,
+        key_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        upstream TEXT,
+        source_api TEXT NOT NULL,
+        target_api TEXT NOT NULL,
+        stream INTEGER NOT NULL,
+        runtime_location TEXT NOT NULL DEFAULT 'unknown',
+        requests INTEGER NOT NULL DEFAULT 0,
+        errors INTEGER NOT NULL DEFAULT 0,
+        total_ms_sum INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO performance_summary_new (hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, requests, errors, total_ms_sum)
+        SELECT hour, metric_scope, key_id, model, NULL, source_api, target_api, stream, runtime_location, requests, errors, total_ms_sum FROM performance_summary;
+      DROP TABLE performance_summary;
+      ALTER TABLE performance_summary_new RENAME TO performance_summary;
+      CREATE UNIQUE INDEX idx_performance_summary_identity ON performance_summary (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location);
+      CREATE INDEX IF NOT EXISTS idx_performance_summary_hour ON performance_summary (hour);
+    `)
+  }
+  if (!hasColumn(db, "performance_latency_buckets", "upstream")) {
+    db.exec(`
+      CREATE TABLE performance_latency_buckets_new (
+        hour TEXT NOT NULL,
+        metric_scope TEXT NOT NULL,
+        key_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        upstream TEXT,
+        source_api TEXT NOT NULL,
+        target_api TEXT NOT NULL,
+        stream INTEGER NOT NULL,
+        runtime_location TEXT NOT NULL DEFAULT 'unknown',
+        lower_ms INTEGER NOT NULL,
+        upper_ms INTEGER NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO performance_latency_buckets_new (hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, lower_ms, upper_ms, count)
+        SELECT hour, metric_scope, key_id, model, NULL, source_api, target_api, stream, runtime_location, lower_ms, upper_ms, count FROM performance_latency_buckets;
+      DROP TABLE performance_latency_buckets;
+      ALTER TABLE performance_latency_buckets_new RENAME TO performance_latency_buckets;
+      CREATE UNIQUE INDEX idx_performance_latency_buckets_identity ON performance_latency_buckets (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, lower_ms, upper_ms);
+      CREATE INDEX IF NOT EXISTS idx_performance_latency_buckets_hour ON performance_latency_buckets (hour);
+    `)
+  }
+  // Fresh-DB safety net: INIT_SQL can't create these unique indexes because
+  // pre-0025 schemas don't yet have the `upstream` column when CREATE TABLE
+  // IF NOT EXISTS is a no-op against an older table. The migration branches
+  // above handle old DBs; for new DBs we add the indexes here.
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_identity
+      ON usage (key_id, model, COALESCE(upstream, ''), hour, client);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_performance_summary_identity
+      ON performance_summary (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_performance_latency_buckets_identity
+      ON performance_latency_buckets (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, lower_ms, upper_ms);
+  `)
 }
 
 class SqliteExecutor implements SqlExecutor {
