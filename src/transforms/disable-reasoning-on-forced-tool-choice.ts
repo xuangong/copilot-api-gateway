@@ -23,7 +23,7 @@ interface ChatCompletionsLikePayload {
     | string
     | { type: string; function?: { name?: string } }
     | null
-  reasoning_effort?: "low" | "medium" | "high" | null
+  reasoning_effort?: "low" | "medium" | "high" | "xhigh" | null
   thinking?: { type: "disabled" } | unknown
   enable_thinking?: boolean
 }

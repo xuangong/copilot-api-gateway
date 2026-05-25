@@ -119,8 +119,8 @@ export class CopilotProvider implements ModelProvider {
     }
 
     const payloadEffort = extractEffort(payload, kind)
-    // Priority: composite-id suffix > header > payload native field.
-    const effectiveEffort = compositeEffort ?? headerEffort ?? payloadEffort
+    // Priority: composite-id suffix > payload native field > header.
+    const effectiveEffort = compositeEffort ?? payloadEffort ?? headerEffort
     if (effectiveEffort && effectiveEffort !== payloadEffort) {
       injectEffort(payload, kind, effectiveEffort)
     }

@@ -23,7 +23,7 @@ export interface AnthropicMessagesPayload {
     display?: "omitted" | "summarized" | "full"
   }
   output_config?: {
-    effort?: "low" | "medium" | "high"
+    effort?: "low" | "medium" | "high" | "xhigh"
   }
 }
 
@@ -111,7 +111,7 @@ export interface ResponsesPayload {
   metadata?: Record<string, string> | null
   previous_response_id?: string | null
   reasoning?: {
-    effort: "low" | "medium" | "high"
+    effort: "low" | "medium" | "high" | "xhigh"
     summary?: "detailed" | "auto"
   }
 }

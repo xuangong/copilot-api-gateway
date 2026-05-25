@@ -164,10 +164,11 @@ const CHAT_TOOL_CHOICE: Record<
 }
 
 /** Map OpenAI-style reasoning_effort to Anthropic thinking budget tokens. */
-const EFFORT_TO_BUDGET: Record<"low" | "medium" | "high", number> = {
+const EFFORT_TO_BUDGET: Record<"low" | "medium" | "high" | "xhigh", number> = {
   low: 1024,
   medium: 4096,
   high: 16384,
+  xhigh: 32768,
 }
 
 function translateToolChoice(

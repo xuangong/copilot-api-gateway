@@ -83,6 +83,15 @@ describe("Responses → Messages request translator", () => {
     } as any)
     expect(target.output_config).toEqual({ effort: "high" })
   })
+
+  test("reasoning xhigh effort → output_config.effort", () => {
+    const { target } = translateResponsesToMessages({
+      model: "claude-x",
+      input: "go",
+      reasoning: { effort: "xhigh" },
+    } as any)
+    expect(target.output_config).toEqual({ effort: "xhigh" })
+  })
 })
 
 describe("Anthropic Messages → Responses event translator", () => {

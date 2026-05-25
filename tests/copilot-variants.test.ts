@@ -244,6 +244,11 @@ describe("parseCompositeModelId", () => {
     })
   })
   test("with effort suffix", () => {
+    expect(parseCompositeModelId("claude-opus-4.7-high")).toEqual({
+      baseId: "claude-opus-4.7",
+      effort: "high",
+      context1m: false,
+    })
     expect(parseCompositeModelId("claude-opus-4.7-xhigh")).toEqual({
       baseId: "claude-opus-4.7",
       effort: "xhigh",

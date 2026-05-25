@@ -163,6 +163,13 @@ describe("translateChatCompletionsToMessages", () => {
       reasoning_effort: "high",
     })
     expect(high.thinking).toEqual({ type: "enabled", budget_tokens: 16384 })
+
+    const xhigh = translateChatCompletionsToMessages({
+      model: "m",
+      messages: [{ role: "user", content: "x" }],
+      reasoning_effort: "xhigh",
+    } as ChatCompletionsPayload)
+    expect(xhigh.thinking).toEqual({ type: "enabled", budget_tokens: 32768 })
   })
 
   test("no reasoning_effort means no thinking block", () => {

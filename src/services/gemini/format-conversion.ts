@@ -25,7 +25,7 @@ export interface ChatCompletionsPayload {
   stream?: boolean
   stream_options?: { include_usage?: boolean }
   response_format?: { type: "json_object" | "text" }
-  reasoning_effort?: "low" | "medium" | "high"
+  reasoning_effort?: "low" | "medium" | "high" | "xhigh"
 }
 
 export interface Message {

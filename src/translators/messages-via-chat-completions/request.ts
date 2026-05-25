@@ -244,7 +244,7 @@ interface ExtendedAnthropicPayload extends AnthropicMessagesPayload {
 
 function translateEffort(
   payload: AnthropicMessagesPayload,
-): "low" | "medium" | "high" | undefined {
+): "low" | "medium" | "high" | "xhigh" | undefined {
   if (payload.output_config?.effort) return payload.output_config.effort
   const budget = payload.thinking?.budget_tokens
   if (budget != null && budget > 0) {

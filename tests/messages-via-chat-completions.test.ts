@@ -116,6 +116,17 @@ describe("translateMessagesToChatCompletions (request)", () => {
     expect(out.reasoning_effort).toBe("low")
   })
 
+  test("output_config.effort preserves xhigh", () => {
+    const payload = {
+      model: "gpt-5",
+      max_tokens: 100,
+      messages: [{ role: "user", content: "hi" }],
+      output_config: { effort: "xhigh" },
+    } as unknown as AnthropicMessagesPayload
+    const out = translateMessagesToChatCompletions(payload)
+    expect(out.reasoning_effort).toBe("xhigh")
+  })
+
   test("thinking.budget_tokens buckets into reasoning_effort", () => {
     const make = (budget: number) =>
       ({

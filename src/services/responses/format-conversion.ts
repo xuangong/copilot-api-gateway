@@ -27,7 +27,7 @@ export interface ChatCompletionsPayload {
   tools?: Tool[]
   tool_choice?: string | { type: string; function?: { name: string } }
   parallel_tool_calls?: boolean
-  reasoning_effort?: "low" | "medium" | "high"
+  reasoning_effort?: "low" | "medium" | "high" | "xhigh"
 }
 
 interface Message {

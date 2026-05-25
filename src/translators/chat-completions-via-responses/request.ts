@@ -75,7 +75,7 @@ function translateChatToolChoice(
 
 interface ExtendedChatPayload extends ChatCompletionsPayload {
   parallel_tool_calls?: boolean
-  reasoning_effort?: "low" | "medium" | "high"
+  reasoning_effort?: "low" | "medium" | "high" | "xhigh"
 }
 
 export function translateChatCompletionsToResponsesRequest(
