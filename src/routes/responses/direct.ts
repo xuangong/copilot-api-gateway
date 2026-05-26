@@ -5,6 +5,7 @@ import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { createCopilotProvider } from "~/providers/registry"
 import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
+import { withCyberPolicyRetry } from "~/services/copilot/cyber-policy-retry"
 import {
   addWebSearchHeaders,
   recordWebSearchUsage,
@@ -38,9 +39,12 @@ export async function handleDirectStreaming(
 
   const upstreamTimer = startTimer()
   const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
-  const response = await withConnectionMismatchRetry(
-    payload as unknown as Record<string, unknown>,
-    (p) => provider.callResponses(p as Record<string, unknown>, { operationName: "responses" }),
+  const response = await withCyberPolicyRetry(
+    state.enabledFlags ?? new Set(),
+    () => withConnectionMismatchRetry(
+      payload as unknown as Record<string, unknown>,
+      (p) => provider.callResponses(p as Record<string, unknown>, { operationName: "responses" }),
+    ),
   )
   const upstreamMs = upstreamTimer()
 
@@ -108,9 +112,12 @@ export async function handleDirectNonStreaming(
   const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
   let upstreamMs = 0
   const syncPromise: Promise<RespJson> = (async () => {
-    const response = await withConnectionMismatchRetry(
-      payload as unknown as Record<string, unknown>,
-      (p) => provider.callResponses(p as Record<string, unknown>, { operationName: "responses" }),
+    const response = await withCyberPolicyRetry(
+      state.enabledFlags ?? new Set(),
+      () => withConnectionMismatchRetry(
+        payload as unknown as Record<string, unknown>,
+        (p) => provider.callResponses(p as Record<string, unknown>, { operationName: "responses" }),
+      ),
     )
     upstreamMs = upstreamTimer()
     return (await response.json()) as RespJson

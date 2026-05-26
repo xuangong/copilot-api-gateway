@@ -47,6 +47,14 @@ export function runAnthropicMessagesPipeline(
   filterThinkingBlocks(payload)
   adaptThinkingForModel(payload)
   stripCacheControl(payload as unknown as Record<string, unknown>)
+  // Copilot rejects tools.N.custom.eager_input_streaming with
+  // "Extra inputs are not permitted". Strip before forwarding.
+  if (Array.isArray(payload.tools)) {
+    payload.tools = payload.tools.map((tool) => {
+      const { eager_input_streaming: _, ...rest } = tool as typeof tool & { eager_input_streaming?: unknown }
+      return rest
+    })
+  }
   const thinkingPromotion = promoteThinkingDisplayForStreaming(payload)
   if (Array.isArray(payload.messages)) {
     payload.messages = repairToolResultPairs(payload.messages) as typeof payload.messages
