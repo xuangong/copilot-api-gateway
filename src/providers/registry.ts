@@ -3,7 +3,7 @@ import { defaultsForUpstream, resolveEffectiveFlags } from "~/flags"
 import { getRepo } from "~/repo"
 import type { UpstreamRecord } from "~/repo"
 import type { ModelEndpoint } from "~/protocols/common"
-import { getCopilotToken } from "~/services/github"
+import { getCachedCopilotToken } from "~/services/github/copilot-token-cache"
 import type { ModelsResponse } from "~/services/copilot/models"
 
 import type { ProviderBinding } from "./binding"
@@ -60,8 +60,13 @@ export async function createProviderFromUpstream(upstream: UpstreamRecord, copil
   const config = upstream.config
   if (typeof config.githubToken === "string" && config.githubToken) {
     const accountType = typeof config.accountType === "string" ? config.accountType as AccountType : "individual"
-    const token = await getCopilotToken(config.githubToken)
-    return createCopilotProvider({ copilotToken: token.token, accountType })
+    // Cache the GitHub→Copilot token exchange across requests. Without this,
+    // every binding-resolved request paid one extra ~200-500ms GitHub round
+    // trip — the legacy state-driven path had its own cache that the
+    // unified upstream path bypassed.
+    const cacheRepo = (() => { try { return getRepo().cache } catch { return undefined } })()
+    const copilotToken = await getCachedCopilotToken(config.githubToken, accountType, cacheRepo)
+    return createCopilotProvider({ copilotToken, accountType })
   }
   return copilot ? createCopilotProvider(copilot) : null
 }

@@ -1,5 +1,5 @@
 import { detectClient } from "~/lib/client-detect"
-import { resolveBinding } from "~/lib/binding-resolver"
+import { resolveBinding, effectiveFlags } from "~/lib/binding-resolver"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
@@ -48,7 +48,7 @@ export async function handleDirectStreaming(
   const provider = binding.provider
   const upstreamId = binding.upstream
   const response = await withCyberPolicyRetry(
-    state.enabledFlags ?? new Set(),
+    effectiveFlags(state, binding),
     () => withConnectionMismatchRetry(
       payload as unknown as Record<string, unknown>,
       (p) => provider.callResponses(p as Record<string, unknown>, { operationName: "responses" }),
@@ -129,7 +129,7 @@ export async function handleDirectNonStreaming(
   let upstreamMs = 0
   const syncPromise: Promise<RespJson> = (async () => {
     const response = await withCyberPolicyRetry(
-      state.enabledFlags ?? new Set(),
+      effectiveFlags(state, binding),
       () => withConnectionMismatchRetry(
         payload as unknown as Record<string, unknown>,
         (p) => provider.callResponses(p as Record<string, unknown>, { operationName: "responses" }),

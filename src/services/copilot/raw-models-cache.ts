@@ -37,3 +37,12 @@ export async function getCachedRawModels(
   cache.set(key, { fetchedAt: now, data })
   return data
 }
+
+/**
+ * Drop every cached model list. Called after admin CRUD on upstreams so the
+ * next request rediscovers any newly-enabled/disabled model offerings instead
+ * of waiting for the per-entry TTL.
+ */
+export function clearRawModelsCache(): void {
+  cache.clear()
+}

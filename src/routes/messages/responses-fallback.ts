@@ -1,5 +1,5 @@
 import { detectClient } from "~/lib/client-detect"
-import { resolveBinding } from "~/lib/binding-resolver"
+import { resolveBinding, effectiveFlags } from "~/lib/binding-resolver"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
@@ -35,10 +35,6 @@ export async function handleMessagesViaResponses(
   const isStreaming = payload.stream !== false
 
   const responsesPayload = translateMessagesToResponses(payload)
-  disableResponsesReasoningOnForcedToolChoice(
-    responsesPayload as unknown as ResponsesPayload,
-    state.enabledFlags ?? new Set(),
-  )
   responsesPayload.stream = isStreaming
 
   const binding = await resolveBinding(state, ctx.userId, model, "responses")
@@ -50,6 +46,10 @@ export async function handleMessagesViaResponses(
   }
   const provider = binding.provider
   const upstreamId = binding.upstream
+  disableResponsesReasoningOnForcedToolChoice(
+    responsesPayload as unknown as ResponsesPayload,
+    effectiveFlags(state, binding),
+  )
   const upstreamTimer = startTimer()
 
   if (isStreaming) {

@@ -17,6 +17,8 @@ import { getRepo } from "~/repo"
 import type { UpstreamRecord } from "~/repo"
 import { AzureProvider, type AzureProviderConfig } from "~/providers/azure/provider"
 import { CustomProvider, type CustomProviderConfig } from "~/providers/custom/provider"
+import { clearRawModelsCache } from "~/services/copilot/raw-models-cache"
+import { invalidateCopilotToken } from "~/services/github/copilot-token-cache"
 
 interface AuthCtx {
   isAdmin?: boolean
@@ -163,6 +165,32 @@ function serializeUpstream(upstream: UpstreamRecord): Omit<UpstreamRecord, "conf
   return { ...upstream, config: redactConfig(upstream.config) as Record<string, unknown> }
 }
 
+/**
+ * Drop caches that may now be serving stale state. Called after every CRUD
+ * on /api/upstreams so the next request rediscovers the new config instead
+ * of waiting out the per-cache TTL.
+ *
+ * - clearRawModelsCache(): the per-Copilot-token model list snapshot.
+ * - invalidateCopilotToken(github,account): the exchanged session token —
+ *   only needed when the GitHub credential or accountType themselves
+ *   changed, since otherwise the existing session is still valid.
+ */
+async function invalidateUpstreamCaches(
+  before: UpstreamRecord | null,
+  after: UpstreamRecord | null,
+): Promise<void> {
+  clearRawModelsCache()
+  const repo = (() => { try { return getRepo().cache } catch { return undefined } })()
+  for (const u of [before, after]) {
+    if (!u || u.provider !== "copilot") continue
+    const cfg = u.config
+    const tok = typeof cfg.githubToken === "string" ? cfg.githubToken : undefined
+    if (!tok) continue
+    const acct = (typeof cfg.accountType === "string" ? cfg.accountType : "individual") as "individual" | "business" | "enterprise"
+    await invalidateCopilotToken(tok, acct, repo)
+  }
+}
+
 async function probeUpstream(upstream: UpstreamRecord): Promise<{ ok: boolean; error?: string }> {
   if (upstream.provider === "custom") return probeCustom(upstream.config as unknown as CustomProviderConfig)
   if (upstream.provider === "azure") return probeAzure(upstream.config as unknown as AzureProviderConfig)
@@ -263,6 +291,7 @@ export const controlPlaneRoute = new Elysia()
         updatedAt: now,
       }
       await getRepo().upstreams.save(upstream)
+      await invalidateUpstreamCaches(null, upstream)
       return new Response(JSON.stringify({ upstream: serializeUpstream(upstream) }), {
         status: 201,
         headers: { "Content-Type": "application/json" },
@@ -292,6 +321,7 @@ export const controlPlaneRoute = new Elysia()
       }
       if (!next.name) return jsonError("name required")
       await getRepo().upstreams.save(next)
+      await invalidateUpstreamCaches(existing, next)
       return { upstream: serializeUpstream(next) }
     } catch (err) {
       return jsonError(err instanceof Error ? err.message : String(err))
@@ -300,8 +330,10 @@ export const controlPlaneRoute = new Elysia()
   .delete("/api/upstreams/:id", async (ctx) => {
     const denied = adminGuard(ctx)
     if (denied) return denied
+    const existing = await getRepo().upstreams.getById(ctx.params.id)
     const ok = await getRepo().upstreams.delete(ctx.params.id)
     if (!ok) return jsonError("upstream not found", 404)
+    await invalidateUpstreamCaches(existing, null)
     return { ok: true }
   })
   .post("/api/upstreams/:id/test", async (ctx) => {

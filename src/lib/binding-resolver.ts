@@ -29,3 +29,16 @@ export async function resolveBinding(
   const candidates = bindingsForEndpoint(bindings, endpoint)
   return candidates.find((b) => b.model.id === model) ?? null
 }
+
+/**
+ * Pick the flag set that should govern transform / retry behavior for this
+ * request. Prefer the binding's resolved set (defaults + per-upstream
+ * overrides) when present, fall back to the request's state-level set for
+ * the legacy single-Copilot path.
+ */
+export function effectiveFlags(
+  state: AppState | null | undefined,
+  binding: ProviderBinding | null | undefined,
+): ReadonlySet<string> {
+  return binding?.enabledFlags ?? state?.enabledFlags ?? new Set<string>()
+}

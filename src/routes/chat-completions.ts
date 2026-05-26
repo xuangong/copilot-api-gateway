@@ -1,6 +1,6 @@
 import { Elysia } from "elysia"
 
-import { resolveBinding } from "~/lib/binding-resolver"
+import { resolveBinding, effectiveFlags } from "~/lib/binding-resolver"
 import type { AppState } from "~/lib/state"
 import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
@@ -98,10 +98,6 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
   }
 
   const payload = body as ChatCompletionsPayload
-  disableChatCompletionsReasoningOnForcedToolChoice(
-    payload as Parameters<typeof disableChatCompletionsReasoningOnForcedToolChoice>[0],
-    state.enabledFlags ?? new Set(),
-  )
   const upstreamTimer = startTimer()
 
   // claude-* 模型走 Messages 上游,需要 Chat ↔ Messages 双向翻译
@@ -134,6 +130,13 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
   }
   const provider = binding.provider
   const upstreamId = binding.upstream
+  // Per-upstream flag overrides take precedence over the account-level
+  // default — admins can disable retries/strips for a specific provider
+  // without touching every request's state.
+  disableChatCompletionsReasoningOnForcedToolChoice(
+    payload as Parameters<typeof disableChatCompletionsReasoningOnForcedToolChoice>[0],
+    effectiveFlags(state, binding),
+  )
 
   // ── Web-search interception ───────────────────────────────────────────
   // If client sent a web_search-style tool, run the multi-turn intercept

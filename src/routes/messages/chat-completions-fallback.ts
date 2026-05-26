@@ -1,5 +1,5 @@
 import { detectClient } from "~/lib/client-detect"
-import { resolveBinding } from "~/lib/binding-resolver"
+import { resolveBinding, effectiveFlags } from "~/lib/binding-resolver"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
@@ -34,10 +34,6 @@ export async function handleMessagesViaChatCompletions(
   const isStreaming = payload.stream !== false
 
   const chatPayload = translateMessagesToChatCompletions(payload)
-  disableChatCompletionsReasoningOnForcedToolChoice(
-    chatPayload as Parameters<typeof disableChatCompletionsReasoningOnForcedToolChoice>[0],
-    state.enabledFlags ?? new Set(),
-  )
   chatPayload.stream = isStreaming
   if (isStreaming) {
     chatPayload.stream_options = {
@@ -55,6 +51,10 @@ export async function handleMessagesViaChatCompletions(
   }
   const provider = binding.provider
   const upstreamId = binding.upstream
+  disableChatCompletionsReasoningOnForcedToolChoice(
+    chatPayload as Parameters<typeof disableChatCompletionsReasoningOnForcedToolChoice>[0],
+    effectiveFlags(state, binding),
+  )
   const upstreamTimer = startTimer()
 
   if (isStreaming) {

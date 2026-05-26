@@ -38,6 +38,12 @@ const handleResponses = async (ctx: unknown) => {
     ...(body as ResponsesPayload),
   })
   stripServiceTier(payload as unknown as Record<string, unknown>)
+  // Pre-dispatch transform — runs before binding resolution because the
+  // result feeds into the claude/gpt-5 routing decision below. Per-upstream
+  // flag overrides therefore can't influence this step; only state-level
+  // (account-default) flags apply. The post-dispatch fallback / direct
+  // handlers re-resolve effective flags via the binding for their own
+  // pipelines.
   disableResponsesReasoningOnForcedToolChoice(payload, state.enabledFlags ?? new Set())
 
   // Stateless gateway: refuse server-side history references with the same
