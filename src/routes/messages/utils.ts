@@ -9,6 +9,7 @@ export interface RouteContext {
   colo: string
   requestId?: string
   userAgent?: string
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void }
   request: Request
 }
 

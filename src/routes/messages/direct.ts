@@ -45,8 +45,15 @@ export async function handleDirectMessages(
     // protocol-noop here; SDKs already filter it out as keepalive.
     let responseBody = response.body
     if (apiKeyId && responseBody) {
+      // tee() so usage extraction reads its own copy without competing with
+      // the heartbeat-wrapped forward branch. waitUntil keeps the usage
+      // consumer alive after the Response is returned — on CFW any bare
+      // background promise the runtime doesn't observe is killed when the
+      // isolate winds down, which is what silently lost streaming usage
+      // before this fix.
       const [usageBranch, forwardBranch] = responseBody.tee()
-      consumeStreamForUsage(usageBranch, apiKeyId, payload.model, client, state.upstream)
+      const usagePromise = consumeStreamForUsage(usageBranch, apiKeyId, payload.model, client, state.upstream)
+      ctx.executionCtx?.waitUntil(usagePromise)
       responseBody = forwardBranch
     }
     let heartbeated = wrapAnthropicHeartbeat(responseBody)

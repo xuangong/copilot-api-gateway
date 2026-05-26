@@ -417,7 +417,8 @@ function createApp(env: Env) {
     .derive(async ({ request, path }) => {
       const auth = await authCheck(request, path)
       const userAgent = request.headers.get("user-agent") || ""
-      return { env, ...auth, userAgent }
+      const executionCtx = (request as Request & { cfExecutionCtx?: ExecutionContext }).cfExecutionCtx
+      return { env, executionCtx, ...auth, userAgent }
     })
     // Auth routes (don't need Copilot token)
     .use(authRoute)
@@ -486,9 +487,10 @@ export default {
   async fetch(
     request: Request,
     env: Env,
-    _ctx: ExecutionContext,
+    ctx: ExecutionContext,
   ): Promise<Response> {
     cachedApp ??= createApp(env)
+    ;(request as Request & { cfExecutionCtx?: ExecutionContext }).cfExecutionCtx = ctx
     return cachedApp.handle(request)
   },
 }

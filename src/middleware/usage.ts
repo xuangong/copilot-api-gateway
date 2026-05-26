@@ -140,11 +140,20 @@ export function trackStreamingUsage(
   const latest: UsageRecordInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
   const frameBuffer = createFrameBuffer()
   let persisted = false
+  // Hold the D1 write promise so the outer async fn can await it before
+  // resolving. On Cloudflare Workers, only promises observed by waitUntil
+  // (transitively, via the promise this function returns) are guaranteed
+  // to run to completion after the Response has been returned to the
+  // client. A bare `persistUsage(...).catch(() => {})` is fire-and-forget:
+  // the outer promise resolves at `consume-end`, waitUntil considers the
+  // job done, and the in-flight D1 write gets killed mid-flight — which
+  // is exactly why CFW silently dropped streaming usage while SSH did not.
+  let persistPromise: Promise<void> | null = null
   const persistOnce = () => {
     if (persisted) return
     if (latest.input <= 0 && latest.output <= 0) return
     persisted = true
-    persistUsage(keyId, latest.model ?? model, latest.input, latest.output, client, latest.cacheRead, latest.cacheCreation, upstream).catch(() => {})
+    persistPromise = persistUsage(keyId, latest.model ?? model, latest.input, latest.output, client, latest.cacheRead, latest.cacheCreation, upstream).catch(() => {})
   }
 
   const transform = new TransformStream<Uint8Array, Uint8Array>({
@@ -168,6 +177,8 @@ export function trackStreamingUsage(
         if (parsed) applyStreamEvent(parsed, latest)
       }
       persistOnce()
+      // Required on CFW — see note on `persistPromise` above.
+      if (persistPromise) await persistPromise
     },
   })
 
@@ -188,22 +199,29 @@ export function consumeStreamForUsage(
   model: string,
   client?: string,
   upstream?: string | null,
-): void {
+): Promise<void> {
   const latest: UsageRecordInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
   const frameBuffer = createFrameBuffer()
   let persisted = false
+  // See `trackStreamingUsage` above — same CFW waitUntil hazard. The
+  // promise returned by this function is what direct.ts hands to
+  // `ctx.executionCtx.waitUntil(...)`. If we don't await the D1 write
+  // here, the outer fn resolves as soon as the upstream reader hits EOF,
+  // waitUntil treats us as done, and the persistUsage write is silently
+  // truncated when the isolate is torn down.
+  let persistPromise: Promise<void> | null = null
   const persistOnce = () => {
     if (persisted) return
     if (latest.input <= 0 && latest.output <= 0) return
     persisted = true
-    persistUsage(
+    persistPromise = persistUsage(
       keyId, latest.model ?? model, latest.input, latest.output, client,
       latest.cacheRead, latest.cacheCreation, upstream,
     ).catch(() => {})
   }
 
   const reader = upstreamBody.getReader()
-  ;(async () => {
+  return (async () => {
     try {
       while (true) {
         const { value, done } = await reader.read()
@@ -222,6 +240,8 @@ export function consumeStreamForUsage(
         if (parsed) applyStreamEvent(parsed, latest)
       }
       persistOnce()
+      // Critical on CFW — see note on `persistPromise` above.
+      if (persistPromise) await persistPromise
     } catch { /* best-effort */ }
   })()
 }
