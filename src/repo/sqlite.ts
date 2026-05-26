@@ -184,6 +184,59 @@ function copilotUpstreamId(ownerId: string, userId: number): string {
   return `up_copilot_${ownerId || "global"}_${userId}`.replace(/[^a-zA-Z0-9_-]/g, "_")
 }
 
+/**
+ * Rewrite legacy `upstream='copilot:<github_user_id>'` rows on usage,
+ * performance_summary, performance_latency_buckets to the new upstream
+ * registry id. Idempotent: a second run finds no matching rows.
+ *
+ * Mirrors migrations/0027_rewrite_legacy_upstream_ids.sql. Lives here too so
+ * boot-time SQLite (the bun-only docker / dev path) self-heals without a
+ * separate migration runner.
+ */
+function rewriteLegacyUpstreamIds(db: Database): void {
+  for (const table of ["usage", "performance_summary", "performance_latency_buckets"]) {
+    const hasRows = db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM ${table} WHERE upstream LIKE 'copilot:%'`).get()
+    if (!hasRows || hasRows.n === 0) continue
+    const cols = table === "usage"
+      ? "key_id, model, upstream, hour, client, requests, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_json"
+      : table === "performance_summary"
+        ? "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, requests, errors, total_ms_sum"
+        : "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, lower_ms, upper_ms, count"
+    const conflictKey = table === "usage"
+      ? "(key_id, model, COALESCE(upstream, ''), hour, client)"
+      : table === "performance_summary"
+        ? "(hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location)"
+        : "(hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, lower_ms, upper_ms)"
+    const setClause = table === "usage"
+      ? `requests = ${table}.requests + excluded.requests,
+         input_tokens = ${table}.input_tokens + excluded.input_tokens,
+         output_tokens = ${table}.output_tokens + excluded.output_tokens,
+         cache_read_tokens = ${table}.cache_read_tokens + excluded.cache_read_tokens,
+         cache_creation_tokens = ${table}.cache_creation_tokens + excluded.cache_creation_tokens`
+      : table === "performance_summary"
+        ? `requests = ${table}.requests + excluded.requests,
+           errors = ${table}.errors + excluded.errors,
+           total_ms_sum = ${table}.total_ms_sum + excluded.total_ms_sum`
+        : `count = ${table}.count + excluded.count`
+    const selectExprs = table === "usage"
+      ? "t.key_id, t.model, MAPPED, t.hour, t.client, t.requests, t.input_tokens, t.output_tokens, t.cache_read_tokens, t.cache_creation_tokens, t.cost_json"
+      : table === "performance_summary"
+        ? "t.hour, t.metric_scope, t.key_id, t.model, MAPPED, t.source_api, t.target_api, t.stream, t.runtime_location, t.requests, t.errors, t.total_ms_sum"
+        : "t.hour, t.metric_scope, t.key_id, t.model, MAPPED, t.source_api, t.target_api, t.stream, t.runtime_location, t.lower_ms, t.upper_ms, t.count"
+    const mapped = `(SELECT up.id FROM upstreams up WHERE up.provider='copilot' AND json_extract(up.config_json, '$.user.id') = CAST(substr(t.upstream, 9) AS INTEGER) LIMIT 1)`
+    db.exec(`
+      INSERT INTO ${table} (${cols})
+      SELECT ${selectExprs.replace("MAPPED", mapped)}
+      FROM ${table} t
+      WHERE t.upstream LIKE 'copilot:%'
+        AND EXISTS (SELECT 1 FROM upstreams up WHERE up.provider='copilot' AND json_extract(up.config_json, '$.user.id') = CAST(substr(t.upstream, 9) AS INTEGER))
+      ON CONFLICT ${conflictKey} DO UPDATE SET ${setClause};
+      DELETE FROM ${table} WHERE upstream LIKE 'copilot:%'
+        AND EXISTS (SELECT 1 FROM upstreams up WHERE up.provider='copilot' AND json_extract(up.config_json, '$.user.id') = CAST(substr(${table}.upstream, 9) AS INTEGER));
+    `)
+  }
+}
+
 function ensureUpstreams(db: Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS upstreams (
@@ -519,6 +572,7 @@ function migrateSchema(db: Database): void {
       ON performance_latency_buckets (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, lower_ms, upper_ms);
   `)
   ensureUpstreams(db)
+  rewriteLegacyUpstreamIds(db)
 }
 
 class SqliteExecutor implements SqlExecutor {

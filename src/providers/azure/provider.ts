@@ -18,7 +18,8 @@ import { fetchWithRetry } from "~/lib/fetch-retry"
 import type { ModelEndpoint } from "~/protocols/common"
 import type { ModelsResponse } from "~/services/copilot/models"
 
-import type { ModelProvider, ProviderCallOptions } from "../types"
+import type { ModelProvider, ProbeResult, ProviderCallOptions } from "../types"
+import { probeViaModels } from "../probe"
 
 export interface AzureProviderConfig {
   /** Stable upstream name (e.g. `azure-eastus2`). */
@@ -80,6 +81,28 @@ export class AzureProvider implements ModelProvider {
       object: "list",
       data: [{ id: this.deployment, object: "model", created: 0, owned_by: "azure" }],
     } as unknown as ModelsResponse
+  }
+
+  /**
+   * Azure has no /v1/models surface, so probe by listing the resource's
+   * deployments via the management-style REST endpoint. A 200 means the
+   * api-key is valid AND the configured deployment name appears in the
+   * response, which is what an admin actually wants to verify before
+   * trusting this upstream.
+   */
+  async probe(): Promise<ProbeResult> {
+    return probeViaModels(async () => {
+      const url = `${this.endpoint}/openai/deployments?api-version=${encodeURIComponent(this.apiVersion)}`
+      const res = await fetch(url, { headers: this.headers() })
+      if (!res.ok) {
+        const body = await res.text().catch(() => "")
+        const err = new Error(`Azure deployments list failed: ${res.status} ${body.slice(0, 500)}`) as Error & { status?: number }
+        err.status = res.status
+        throw err
+      }
+      const json = (await res.json()) as { data?: Array<{ id?: string }> }
+      return { data: json.data ?? [] }
+    })
   }
 
   callChatCompletions(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {

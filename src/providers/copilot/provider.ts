@@ -10,7 +10,8 @@ import {
   resolveCopilotRawModel,
 } from "~/services/copilot/variants"
 
-import type { ModelProvider, ProviderCallOptions } from "../types"
+import type { ModelProvider, ProbeResult, ProviderCallOptions } from "../types"
+import { probeViaModels } from "../probe"
 
 export interface CopilotProviderConfig {
   copilotToken: string
@@ -34,6 +35,10 @@ export class CopilotProvider implements ModelProvider {
 
   getModels(): Promise<ModelsResponse> {
     return getModels(this.copilotToken, this.accountType)
+  }
+
+  probe(): Promise<ProbeResult> {
+    return probeViaModels(() => this.getModels())
   }
 
   callChatCompletions(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {

@@ -100,8 +100,13 @@ describe("POST /api/upstream-probe", () => {
     expect(body.error).toContain("401")
   })
 
-  test("azure probe accepts 4xx (non-auth) as proof of connectivity", async () => {
-    globalThis.fetch = mock(async () => new Response("bad", { status: 400 })) as typeof fetch
+  test("azure probe lists deployments via management endpoint on success", async () => {
+    globalThis.fetch = mock(async () =>
+      new Response(JSON.stringify({ data: [{ id: "gpt-4o" }, { id: "gpt-4o-mini" }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ) as typeof fetch
     const res = await app.handle(
       req("/api/upstream-probe", {
         admin: true,
@@ -112,7 +117,7 @@ describe("POST /api/upstream-probe", () => {
             name: "az",
             endpoint: "https://x.openai.azure.com",
             apiKey: "k",
-            deployment: "d",
+            deployment: "gpt-4o",
             apiVersion: "2024-08-01-preview",
             endpoints: ["chat_completions"],
           },
@@ -121,6 +126,7 @@ describe("POST /api/upstream-probe", () => {
     )
     const body = await res.json()
     expect(body.ok).toBe(true)
+    expect(body.modelCount).toBe(2)
   })
 
   test("unknown kind returns 400", async () => {
@@ -182,7 +188,7 @@ describe("/api/upstreams CRUD", () => {
 
     const testRes = await app.handle(req(`/api/upstreams/${created.upstream.id}/test`, { admin: true, method: "POST" }))
     expect(testRes.status).toBe(200)
-    expect(await testRes.json()).toEqual({ ok: true })
+    expect(await testRes.json()).toMatchObject({ ok: true, modelCount: 0, models: [] })
 
     const del = await app.handle(req(`/api/upstreams/${created.upstream.id}`, { admin: true, method: "DELETE" }))
     expect(del.status).toBe(200)

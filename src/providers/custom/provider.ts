@@ -14,7 +14,8 @@ import { fetchWithRetry } from "~/lib/fetch-retry"
 import type { ModelEndpoint } from "~/protocols/common"
 import type { ModelsResponse } from "~/services/copilot/models"
 
-import type { ModelProvider, ProviderCallOptions } from "../types"
+import type { ModelProvider, ProbeResult, ProviderCallOptions } from "../types"
+import { probeViaModels } from "../probe"
 
 export interface CustomProviderConfig {
   /** Stable identifier (e.g. `deepseek-prod`). Surfaces in logs/metrics. */
@@ -72,6 +73,10 @@ export class CustomProvider implements ModelProvider {
       )
     }
     return (await res.json()) as ModelsResponse
+  }
+
+  probe(): Promise<ProbeResult> {
+    return probeViaModels(() => this.getModels())
   }
 
   callChatCompletions(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {

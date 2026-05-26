@@ -17,6 +17,8 @@ import { getRepo } from "~/repo"
 import type { UpstreamRecord } from "~/repo"
 import { AzureProvider, type AzureProviderConfig } from "~/providers/azure/provider"
 import { CustomProvider, type CustomProviderConfig } from "~/providers/custom/provider"
+import { createProviderFromUpstream } from "~/providers/registry"
+import type { ProbeResult } from "~/providers/types"
 import { clearRawModelsCache } from "~/services/copilot/raw-models-cache"
 import { invalidateCopilotToken } from "~/services/github/copilot-token-cache"
 
@@ -191,44 +193,18 @@ async function invalidateUpstreamCaches(
   }
 }
 
-async function probeUpstream(upstream: UpstreamRecord): Promise<{ ok: boolean; error?: string }> {
-  if (upstream.provider === "custom") return probeCustom(upstream.config as unknown as CustomProviderConfig)
-  if (upstream.provider === "azure") return probeAzure(upstream.config as unknown as AzureProviderConfig)
-  return { ok: false, error: "Copilot probe uses /api/copilot-quota — not handled here" }
+async function probeUpstream(upstream: UpstreamRecord): Promise<ProbeResult> {
+  const provider = await createProviderFromUpstream(upstream)
+  if (!provider) return { ok: false, error: `unable to construct ${upstream.provider} provider for upstream ${upstream.id}` }
+  return provider.probe()
 }
 
-async function probeCustom(cfg: CustomProviderConfig): Promise<{ ok: boolean; error?: string }> {
-  const provider = new CustomProvider(cfg)
-  try {
-    await provider.getModels()
-    return { ok: true }
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
-  }
+async function probeCustom(cfg: CustomProviderConfig): Promise<ProbeResult> {
+  return new CustomProvider(cfg).probe()
 }
 
-async function probeAzure(cfg: AzureProviderConfig): Promise<{ ok: boolean; error?: string }> {
-  const provider = new AzureProvider(cfg)
-  // Azure deployments don't expose a stable model-listing endpoint; the
-  // provider returns a synthetic single-entry list. To make the probe
-  // meaningful we hit the first declared endpoint with an empty body and
-  // accept any non-network error response (the upstream's complaint about
-  // the payload still proves connectivity + auth).
-  const endpoint = provider.endpoints[0]
-  if (!endpoint) return { ok: false, error: "no endpoints declared" }
-  try {
-    if (endpoint === "chat_completions") await provider.callChatCompletions({ messages: [] })
-    else if (endpoint === "responses") await provider.callResponses({ input: [] })
-    else if (endpoint === "messages") await provider.callMessages({ messages: [] })
-    else if (endpoint === "embeddings") await provider.callEmbeddings({ input: "" })
-    else await provider.callMessagesCountTokens({ messages: [] })
-    return { ok: true }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    // 4xx from upstream proves connectivity; only network/auth errors are failures.
-    if (/\b(4\d\d)\b/.test(msg) && !/401|403/.test(msg)) return { ok: true }
-    return { ok: false, error: msg }
-  }
+async function probeAzure(cfg: AzureProviderConfig): Promise<ProbeResult> {
+  return new AzureProvider(cfg).probe()
 }
 
 export const controlPlaneRoute = new Elysia()
