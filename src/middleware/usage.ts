@@ -1,7 +1,7 @@
 import { recordUsage } from "~/lib/usage-tracker"
 import { touchApiKeyLastUsed } from "~/lib/api-keys"
 import { createFrameBuffer, parseDataJSON } from "~/lib/sse/parser"
-import { normalizeAnthropicVersion } from "~/services/copilot/variants"
+import { copilotPublicModelId, normalizeAnthropicVersion } from "~/services/copilot/variants"
 
 interface UsageInfo {
   input: number
@@ -33,19 +33,28 @@ function normalizeUsageModelId(id: string | undefined): string | undefined {
 /**
  * Pick the most specific model id for usage records.
  *
- * The caller-supplied `model` is `payload.model` AFTER provider-side variant
- * rewrite — it's the raw Copilot id we actually called upstream with
- * (e.g. `claude-opus-4.7-1m-internal`). Upstream JSON echoes back a less
- * specific form (the base id without the variant suffix), which would
- * silently collapse 1M / xhigh / etc. usage into the base model row. Prefer
- * the caller value; fall back to the JSON only when the caller didn't pass
- * one.
+ * Upstream JSON is the primary source — it reflects the model the server
+ * actually served (e.g. fallback routes pass a placeholder caller `model`
+ * like `claude-code-sdk` while upstream returns `gpt-5.5`).
+ *
+ * Caller wins only when both refer to the same logical Copilot model AND
+ * the caller carries a strictly more specific variant suffix than the JSON
+ * (e.g. caller `claude-opus-4.7-1m-internal` vs JSON `claude-opus-4.7`).
+ * Anthropic Messages echoes back a `-internal`-stripped form by protocol,
+ * which would otherwise silently collapse 1M / xhigh / etc. usage into the
+ * base model row.
  */
 function pickUsageModelId(
   fromJson: string | undefined,
   fromCaller: string,
 ): string {
-  return normalizeUsageModelId(fromCaller) ?? fromJson ?? fromCaller
+  const normalizedCaller = normalizeUsageModelId(fromCaller)
+  if (!fromJson) return normalizedCaller ?? fromCaller
+  if (!normalizedCaller) return fromJson
+  if (normalizedCaller === fromJson) return fromJson
+  const sameBase = copilotPublicModelId(normalizedCaller) === copilotPublicModelId(fromJson)
+  if (sameBase && normalizedCaller.length > fromJson.length) return normalizedCaller
+  return fromJson
 }
 
 // deno-lint-ignore no-explicit-any
@@ -176,20 +185,16 @@ export function trackStreamingUsage(
   const latest: UsageRecordInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
   const frameBuffer = createFrameBuffer()
   let persisted = false
-  // Hold the D1 write promise so the outer async fn can await it before
-  // resolving. On Cloudflare Workers, only promises observed by waitUntil
-  // (transitively, via the promise this function returns) are guaranteed
-  // to run to completion after the Response has been returned to the
-  // client. A bare `persistUsage(...).catch(() => {})` is fire-and-forget:
-  // the outer promise resolves at `consume-end`, waitUntil considers the
-  // job done, and the in-flight D1 write gets killed mid-flight — which
-  // is exactly why CFW silently dropped streaming usage while SSH did not.
-  let persistPromise: Promise<void> | null = null
+  // Fire-and-forget on purpose: this TransformStream sits inline on the
+  // downstream response, so awaiting persistUsage in flush() would stall
+  // the client until D1 acks. Callers that need a guaranteed write on CFW
+  // should use `consumeStreamForUsage` on a tee'd branch and pass the
+  // returned promise to `waitUntil`.
   const persistOnce = () => {
     if (persisted) return
     if (latest.input <= 0 && latest.output <= 0) return
     persisted = true
-    persistPromise = persistUsage(keyId, pickUsageModelId(latest.model, model), latest.input, latest.output, client, latest.cacheRead, latest.cacheCreation, upstream).catch(() => {})
+    persistUsage(keyId, pickUsageModelId(latest.model, model), latest.input, latest.output, client, latest.cacheRead, latest.cacheCreation, upstream).catch(() => {})
   }
 
   const transform = new TransformStream<Uint8Array, Uint8Array>({
@@ -206,15 +211,13 @@ export function trackStreamingUsage(
         }
       }
     },
-    async flush() {
+    flush() {
       const tail = frameBuffer.flush()
       if (tail && tail.data && tail.data !== "[DONE]") {
         const parsed = parseDataJSON<any>(tail)
         if (parsed) applyStreamEvent(parsed, latest)
       }
       persistOnce()
-      // Required on CFW — see note on `persistPromise` above.
-      if (persistPromise) await persistPromise
     },
   })
 
