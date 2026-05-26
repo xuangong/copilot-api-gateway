@@ -8,12 +8,12 @@
  */
 
 import { detectClient } from "~/lib/client-detect"
+import { resolveBinding } from "~/lib/binding-resolver"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import type { AppState } from "~/lib/state"
 import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
-import { createCopilotProvider } from "~/providers/registry"
 import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
 import type {
   GeminiGenerateContentRequest,
@@ -33,6 +33,7 @@ interface RouteContext {
   colo: string
   requestId?: string
   userAgent?: string
+  userId?: string
 }
 
 export async function handleGeminiViaResponses(
@@ -48,10 +49,15 @@ export async function handleGeminiViaResponses(
   const target = translateGeminiToResponses(body, model)
   target.stream = isStreaming
 
-  const provider = createCopilotProvider({
-    copilotToken: state.copilotToken,
-    accountType: state.accountType,
-  })
+  const binding = await resolveBinding(state, ctx.userId, model, "responses")
+  if (!binding) {
+    return new Response(
+      JSON.stringify({ error: { message: `No responses upstream available for model: ${model}`, status: "NOT_FOUND" } }),
+      { status: 404, headers: { "Content-Type": "application/json" } },
+    )
+  }
+  const provider = binding.provider
+  const upstreamId = binding.upstream
   const upstreamTimer = startTimer()
 
   if (mode.kind === "stream") {
@@ -73,7 +79,7 @@ export async function handleGeminiViaResponses(
     let pipeBody = heartbeated
     if (apiKeyId && pipeBody) {
       const [usageBranch, responseBranch] = pipeBody.tee()
-      consumeStreamForUsage(usageBranch, apiKeyId, model, client, state.upstream)
+      consumeStreamForUsage(usageBranch, apiKeyId, model, client, upstreamId)
       pipeBody = responseBranch
     }
     if (pipeBody) {
@@ -87,7 +93,7 @@ export async function handleGeminiViaResponses(
         stream: true,
         sourceApi: "gemini",
         targetApi: "responses",
-        upstream: state.upstream,
+        upstream: upstreamId,
       }).catch(() => {})
     }
 
@@ -122,7 +128,7 @@ export async function handleGeminiViaResponses(
 
   const recordSync = async (v: { respJson: Parameters<typeof translateResponsesToGeminiResponse>[0]; gemini: GeminiGenerateContentResponse }) => {
     if (!apiKeyId) return
-    await trackNonStreamingUsage(v.respJson as unknown as Record<string, unknown>, apiKeyId, model, client, state.upstream)
+    await trackNonStreamingUsage(v.respJson as unknown as Record<string, unknown>, apiKeyId, model, client, upstreamId)
     recordLatency(apiKeyId, model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
     }, requestId, {
@@ -131,7 +137,7 @@ export async function handleGeminiViaResponses(
       outputTokens: v.gemini.usageMetadata?.candidatesTokenCount,
       sourceApi: "gemini",
       targetApi: "responses",
-      upstream: state.upstream,
+      upstream: upstreamId,
     }).catch(() => {})
   }
 

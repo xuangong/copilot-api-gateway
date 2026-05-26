@@ -1,9 +1,9 @@
 import { detectClient } from "~/lib/client-detect"
+import { resolveBinding } from "~/lib/binding-resolver"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
-import { createCopilotProvider } from "~/providers/registry"
 import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
 import { withCyberPolicyRetry } from "~/services/copilot/cyber-policy-retry"
 import {
@@ -38,7 +38,15 @@ export async function handleDirectStreaming(
   const model = payload.model
 
   const upstreamTimer = startTimer()
-  const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
+  const binding = await resolveBinding(state, ctx.userId, model, "responses")
+  if (!binding) {
+    return new Response(
+      JSON.stringify({ error: { type: "invalid_request_error", message: `No responses upstream available for model: ${model}` } }),
+      { status: 404, headers: { "Content-Type": "application/json" } },
+    )
+  }
+  const provider = binding.provider
+  const upstreamId = binding.upstream
   const response = await withCyberPolicyRetry(
     state.enabledFlags ?? new Set(),
     () => withConnectionMismatchRetry(
@@ -54,7 +62,7 @@ export async function handleDirectStreaming(
   let responseBody = response.body
   if (apiKeyId && responseBody) {
     const [usageBranch, forwardBranch] = responseBody.tee()
-    consumeStreamForUsage(usageBranch, apiKeyId, model, client, state.upstream)
+    consumeStreamForUsage(usageBranch, apiKeyId, model, client, upstreamId)
     responseBody = forwardBranch
   }
   const heartbeated = wrapOpenAIHeartbeat(responseBody)
@@ -88,7 +96,7 @@ export async function handleDirectStreaming(
   if (apiKeyId) {
     recordLatency(apiKeyId, model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
-    }, requestId, { stream: true, sourceApi: "responses", targetApi: "responses", upstream: state.upstream }).catch(() => {})
+    }, requestId, { stream: true, sourceApi: "responses", targetApi: "responses", upstream: upstreamId }).catch(() => {})
   }
   return streamResponse
 }
@@ -109,7 +117,15 @@ export async function handleDirectNonStreaming(
   const model = payload.model
 
   const upstreamTimer = startTimer()
-  const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
+  const binding = await resolveBinding(state, ctx.userId, model, "responses")
+  if (!binding) {
+    return new Response(
+      JSON.stringify({ error: { type: "invalid_request_error", message: `No responses upstream available for model: ${model}` } }),
+      { status: 404, headers: { "Content-Type": "application/json" } },
+    )
+  }
+  const provider = binding.provider
+  const upstreamId = binding.upstream
   let upstreamMs = 0
   const syncPromise: Promise<RespJson> = (async () => {
     const response = await withCyberPolicyRetry(
@@ -125,7 +141,7 @@ export async function handleDirectNonStreaming(
 
   const recordSync = async (j: RespJson) => {
     if (!apiKeyId) return
-    await trackNonStreamingUsage(j, apiKeyId, model, client, state.upstream)
+    await trackNonStreamingUsage(j, apiKeyId, model, client, upstreamId)
     recordLatency(apiKeyId, model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
     }, requestId, {
@@ -134,7 +150,7 @@ export async function handleDirectNonStreaming(
       outputTokens: j.usage?.output_tokens,
       sourceApi: "responses",
       targetApi: "responses",
-      upstream: state.upstream,
+      upstream: upstreamId,
     }).catch(() => {})
   }
 

@@ -1,8 +1,7 @@
 import { Elysia } from "elysia"
 
+import { resolveBinding } from "~/lib/binding-resolver"
 import type { AppState } from "~/lib/state"
-import { listProviderBindings } from "~/providers/registry"
-import { bindingsForEndpoint } from "~/providers/binding"
 import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { detectClient } from "~/lib/client-detect"
@@ -126,12 +125,7 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
   // Resolve binding for non-fallback path. Falls back to the request's
   // single-account Copilot context when no managed upstream serves the
   // requested model, keeping pre-registry deployments working.
-  const bindings = await listProviderBindings({
-    ownerId: ctx.userId,
-    copilot: state.copilotToken ? { copilotToken: state.copilotToken, accountType: state.accountType } : undefined,
-  })
-  const chatBindings = bindingsForEndpoint(bindings, "chat_completions")
-  const binding = chatBindings.find((candidate) => candidate.model.id === payload.model)
+  const binding = await resolveBinding(state, ctx.userId, payload.model, "chat_completions")
   if (!binding) {
     return new Response(
       JSON.stringify({ error: { type: "invalid_request_error", message: `No chat-completions upstream available for model: ${payload.model}` } }),

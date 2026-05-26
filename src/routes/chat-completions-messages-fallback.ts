@@ -5,12 +5,12 @@
  */
 
 import { detectClient } from "~/lib/client-detect"
+import { resolveBinding } from "~/lib/binding-resolver"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import type { AppState } from "~/lib/state"
 import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
-import { createCopilotProvider } from "~/providers/registry"
 import type { ChatCompletionsPayload } from "~/services/gemini/format-conversion"
 import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
 import {
@@ -26,6 +26,7 @@ interface RouteContext {
   colo: string
   requestId?: string
   userAgent?: string
+  userId?: string
 }
 
 export async function handleChatCompletionsViaMessages(
@@ -41,10 +42,15 @@ export async function handleChatCompletionsViaMessages(
   const target = translateChatCompletionsToMessages(payload)
   target.stream = isStreaming
 
-  const provider = createCopilotProvider({
-    copilotToken: state.copilotToken,
-    accountType: state.accountType,
-  })
+  const binding = await resolveBinding(state, ctx.userId, model, "messages")
+  if (!binding) {
+    return new Response(
+      JSON.stringify({ error: { type: "invalid_request_error", message: `No messages upstream available for model: ${model}` } }),
+      { status: 404, headers: { "Content-Type": "application/json" } },
+    )
+  }
+  const provider = binding.provider
+  const upstreamId = binding.upstream
   const upstreamTimer = startTimer()
 
   if (isStreaming) {
@@ -60,7 +66,7 @@ export async function handleChatCompletionsViaMessages(
     let translateBody = upstream.body
     if (apiKeyId && translateBody) {
       const [usageBranch, responseBranch] = translateBody.tee()
-      consumeStreamForUsage(usageBranch, apiKeyId, model, client, state.upstream)
+      consumeStreamForUsage(usageBranch, apiKeyId, model, client, upstreamId)
       translateBody = responseBranch
     }
     const translated = translateBody?.pipeThrough(
@@ -84,7 +90,7 @@ export async function handleChatCompletionsViaMessages(
           stream: true,
           sourceApi: "chat-completions",
           targetApi: "messages",
-          upstream: state.upstream,
+          upstream: upstreamId,
         },
       ).catch(() => {})
     }
@@ -125,7 +131,7 @@ export async function handleChatCompletionsViaMessages(
     chatJson: ReturnType<typeof translateMessagesToChatCompletionsResponse>
   }) => {
     if (!apiKeyId) return
-    await trackNonStreamingUsage(messagesJson, apiKeyId, model, client, state.upstream)
+    await trackNonStreamingUsage(messagesJson, apiKeyId, model, client, upstreamId)
     recordLatency(
       apiKeyId,
       model,
@@ -143,7 +149,7 @@ export async function handleChatCompletionsViaMessages(
         outputTokens: chatJson.usage.completion_tokens,
         sourceApi: "chat-completions",
         targetApi: "messages",
-        upstream: state.upstream,
+        upstream: upstreamId,
       },
     ).catch(() => {})
   }

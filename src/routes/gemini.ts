@@ -1,7 +1,7 @@
 import { Elysia } from "elysia"
 
+import { resolveBinding } from "~/lib/binding-resolver"
 import type { AppState } from "~/lib/state"
-import { createCopilotProvider } from "~/providers/registry"
 import { trackNonStreamingUsage, consumeStreamForUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { detectClient } from "~/lib/client-detect"
@@ -42,6 +42,7 @@ interface RouteContext {
   colo: string
   requestId?: string
   userAgent?: string
+  userId?: string
   params: { modelWithMethod: string }
 }
 
@@ -146,9 +147,18 @@ async function handleGenerateContent(ctx: RouteContext) {
   const cleanPayload = JSON.parse(JSON.stringify(openAIPayload)) as Record<string, unknown>
 
   const upstreamTimer = startTimer()
+  const binding = await resolveBinding(state, ctx.userId, model, "chat_completions")
+  if (!binding) {
+    return new Response(
+      JSON.stringify({ error: { code: 404, message: `No chat-completions upstream available for model: ${model}`, status: "NOT_FOUND" } }),
+      { status: 404, headers: { "Content-Type": "application/json" } },
+    )
+  }
+  const provider = binding.provider
+  const upstreamId = binding.upstream
   let upstreamMs = 0
   const syncPromise: Promise<{ chat: ChatCompletionResponse; gemini: GeminiGenerateContentResponse }> = (async () => {
-    const response = await createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType }).callChatCompletions(
+    const response = await provider.callChatCompletions(
       cleanPayload,
       { operationName: "gemini generate content" },
     )
@@ -164,7 +174,7 @@ async function handleGenerateContent(ctx: RouteContext) {
       apiKeyId,
       model,
       client,
-      state.upstream,
+      upstreamId,
     )
     recordLatency(
       apiKeyId,
@@ -183,7 +193,7 @@ async function handleGenerateContent(ctx: RouteContext) {
         outputTokens: result.chat.usage?.completion_tokens,
         sourceApi: "gemini",
         targetApi: "chat-completions",
-        upstream: state.upstream,
+        upstream: upstreamId,
       },
     ).catch(() => {})
   }
@@ -213,11 +223,14 @@ async function handleCountTokens(ctx: RouteContext) {
   const normalized = normalizeCountTokensRequest(body as unknown as GeminiCountTokensRequest)
   const payload = translateGeminiCountTokensToAnthropic(normalized, model)
 
-  const provider = createCopilotProvider({
-    copilotToken: state.copilotToken,
-    accountType: state.accountType,
-  })
-  const response = await provider.callMessagesCountTokens(
+  const binding = await resolveBinding(state, ctx.userId, model, "messages_count_tokens")
+  if (!binding) {
+    return new Response(
+      JSON.stringify({ error: { code: 404, message: `No messages_count_tokens upstream available for model: ${model}`, status: "NOT_FOUND" } }),
+      { status: 404, headers: { "Content-Type": "application/json" } },
+    )
+  }
+  const response = await binding.provider.callMessagesCountTokens(
     payload as unknown as Record<string, unknown>,
     { operationName: "gemini count tokens" },
   )
@@ -326,7 +339,15 @@ async function handleStreamGenerateContent(
   const cleanPayload = JSON.parse(JSON.stringify(openAIPayload)) as Record<string, unknown>
 
   const upstreamTimer = startTimer()
-  const response = await createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType }).callChatCompletions(
+  const binding = await resolveBinding(state, ctx.userId, model, "chat_completions")
+  if (!binding) {
+    return new Response(
+      JSON.stringify({ error: { code: 404, message: `No chat-completions upstream available for model: ${model}`, status: "NOT_FOUND" } }),
+      { status: 404, headers: { "Content-Type": "application/json" } },
+    )
+  }
+  const upstreamId = binding.upstream
+  const response = await binding.provider.callChatCompletions(
     cleanPayload,
     { operationName: "gemini stream generate content" },
   )
@@ -344,7 +365,7 @@ async function handleStreamGenerateContent(
         tokenMiss: state.tokenMiss,
       },
       requestId,
-      { stream: true, sourceApi: "gemini", targetApi: "chat-completions", upstream: state.upstream },
+      { stream: true, sourceApi: "gemini", targetApi: "chat-completions", upstream: upstreamId },
     ).catch(() => {})
   }
 
@@ -367,7 +388,7 @@ async function handleStreamGenerateContent(
     transformBranch = b
   }
   if (apiKeyId && usageBranch) {
-    consumeStreamForUsage(usageBranch, apiKeyId, model, client, state.upstream)
+    consumeStreamForUsage(usageBranch, apiKeyId, model, client, upstreamId)
   }
   const transformedBody = transformBranch?.pipeThrough(transformStream)
   return new Response(transformedBody, {

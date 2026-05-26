@@ -1,9 +1,9 @@
 import { detectClient } from "~/lib/client-detect"
+import { resolveBinding } from "~/lib/binding-resolver"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
-import { createCopilotProvider } from "~/providers/registry"
 import {
   createStreamState as _createStreamState,
   translateChatCompletionsToResponses,
@@ -55,7 +55,15 @@ export async function handleChatFallback(
   runResponsesChatFallbackPipeline(payload)
 
   const chatPayload = translateResponsesToChatCompletions(payload, model)
-  const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
+  const binding = await resolveBinding(state, ctx.userId, model, "chat_completions")
+  if (!binding) {
+    return new Response(
+      JSON.stringify({ error: { type: "invalid_request_error", message: `No chat-completions upstream available for model: ${model}` } }),
+      { status: 404, headers: { "Content-Type": "application/json" } },
+    )
+  }
+  const provider = binding.provider
+  const upstreamId = binding.upstream
 
   if (payload.stream === true) {
     chatPayload.stream = true
@@ -71,7 +79,7 @@ export async function handleChatFallback(
     if (apiKeyId) {
       recordLatency(apiKeyId, model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
-      }, requestId, { stream: true, sourceApi: "responses", targetApi: "chat-completions", upstream: state.upstream }).catch(() => {})
+      }, requestId, { stream: true, sourceApi: "responses", targetApi: "chat-completions", upstream: upstreamId }).catch(() => {})
     }
 
     // Heartbeat BEFORE tee so both branches share the keepalive stream.
@@ -87,7 +95,7 @@ export async function handleChatFallback(
       transformBranch = b
     }
     if (apiKeyId && usageBranch) {
-      consumeStreamForUsage(usageBranch, apiKeyId, model, client, state.upstream)
+      consumeStreamForUsage(usageBranch, apiKeyId, model, client, upstreamId)
     }
     const transformedBody = transformBranch?.pipeThrough(buildStreamTransform(payload, model))
     return new Response(transformedBody, {
@@ -127,7 +135,7 @@ export async function handleChatFallback(
     chatResponse: ChatCompletionResponse
   }) => {
     if (!apiKeyId) return
-    await trackNonStreamingUsage(chatResponse, apiKeyId, model, client, state.upstream)
+    await trackNonStreamingUsage(chatResponse, apiKeyId, model, client, upstreamId)
     recordLatency(apiKeyId, model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
     }, requestId, {
@@ -136,7 +144,7 @@ export async function handleChatFallback(
       outputTokens: responsesResult.usage.output_tokens,
       sourceApi: "responses",
       targetApi: "chat-completions",
-      upstream: state.upstream,
+      upstream: upstreamId,
     }).catch(() => {})
   }
 

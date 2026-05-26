@@ -1,8 +1,8 @@
 import { Elysia } from "elysia"
 
+import { resolveBinding } from "~/lib/binding-resolver"
 import { startTimer } from "~/lib/latency-tracker"
 import { checkQuota } from "~/lib/quota"
-import { createCopilotProvider } from "~/providers/registry"
 import type { MessagesPayload } from "~/services/web-search"
 import {
   runAnthropicCountTokensPipeline,
@@ -69,13 +69,19 @@ export const messagesRoute = new Elysia()
     )
   })
   .post("/v1/messages/count_tokens", async (ctx) => {
-    const { state, body } = ctx as unknown as RouteContext
+    const { state, body, userId } = ctx as unknown as RouteContext
     const payload: AnthropicMessagesPayload = { ...(body as AnthropicMessagesPayload) }
 
     runAnthropicCountTokensPipeline(payload)
 
-    const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
-    const response = await provider.callMessagesCountTokens(
+    const binding = await resolveBinding(state, userId, payload.model, "messages_count_tokens")
+    if (!binding) {
+      return new Response(
+        JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: `No messages_count_tokens upstream available for model: ${payload.model}` } }),
+        { status: 404, headers: { "Content-Type": "application/json" } },
+      )
+    }
+    const response = await binding.provider.callMessagesCountTokens(
       payload as unknown as Record<string, unknown>,
       {
         operationName: "count tokens",

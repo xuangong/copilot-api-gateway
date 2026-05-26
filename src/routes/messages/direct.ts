@@ -1,9 +1,9 @@
 import { detectClient } from "~/lib/client-detect"
+import { resolveBinding } from "~/lib/binding-resolver"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
 import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
-import { createCopilotProvider } from "~/providers/registry"
 import { omitThinkingFromAnthropicSse } from "~/lib/anthropic-sse-thinking-strip"
 import type { AnthropicMessagesPayload } from "~/transforms"
 
@@ -30,7 +30,15 @@ export async function handleDirectMessages(
   const client = detectClient(userAgent)
   const upstreamTimer = startTimer()
   const isStreaming = payload.stream === true
-  const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
+  const binding = await resolveBinding(state, ctx.userId, payload.model, "messages")
+  if (!binding) {
+    return new Response(
+      JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: `No messages upstream available for model: ${payload.model}` } }),
+      { status: 404, headers: { "Content-Type": "application/json" } },
+    )
+  }
+  const provider = binding.provider
+  const upstreamId = binding.upstream
 
   if (isStreaming) {
     const response = await provider.callMessages(
@@ -52,7 +60,7 @@ export async function handleDirectMessages(
       // isolate winds down, which is what silently lost streaming usage
       // before this fix.
       const [usageBranch, forwardBranch] = responseBody.tee()
-      const usagePromise = consumeStreamForUsage(usageBranch, apiKeyId, payload.model, client, state.upstream)
+      const usagePromise = consumeStreamForUsage(usageBranch, apiKeyId, payload.model, client, upstreamId)
       ctx.executionCtx?.waitUntil(usagePromise)
       responseBody = forwardBranch
     }
@@ -74,7 +82,7 @@ export async function handleDirectMessages(
     if (apiKeyId) {
       recordLatency(apiKeyId, payload.model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
-      }, requestId, { stream: true, sourceApi: "messages", targetApi: "messages", upstream: state.upstream }).catch((e) => console.error('[latency] record error:', e))
+      }, requestId, { stream: true, sourceApi: "messages", targetApi: "messages", upstream: upstreamId }).catch((e) => console.error('[latency] record error:', e))
     }
     return streamResponse
   }
@@ -96,7 +104,7 @@ export async function handleDirectMessages(
 
   const recordSync = async (j: SyncJson) => {
     if (!apiKeyId) return
-    await trackNonStreamingUsage(j, apiKeyId, payload.model, client, state.upstream)
+    await trackNonStreamingUsage(j, apiKeyId, payload.model, client, upstreamId)
     recordLatency(apiKeyId, payload.model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
     }, requestId, {
@@ -106,7 +114,7 @@ export async function handleDirectMessages(
       userAgent,
       sourceApi: "messages",
       targetApi: "messages",
-      upstream: state.upstream,
+      upstream: upstreamId,
     }).catch((e) => console.error('[latency] record error:', e))
   }
 
