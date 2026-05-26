@@ -1,7 +1,8 @@
 import { Elysia } from "elysia"
 
 import type { AppState } from "~/lib/state"
-import { createCopilotProvider } from "~/providers/registry"
+import { listProviderBindings } from "~/providers/registry"
+import { bindingsForEndpoint } from "~/providers/binding"
 import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { detectClient } from "~/lib/client-detect"
@@ -47,6 +48,7 @@ interface RouteContext {
   colo: string
   requestId?: string
   userAgent?: string
+  userId?: string
 }
 
 type ChatJson = { usage?: { prompt_tokens?: number; completion_tokens?: number } }
@@ -102,7 +104,6 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
     state.enabledFlags ?? new Set(),
   )
   const upstreamTimer = startTimer()
-  const provider = createCopilotProvider({ copilotToken: state.copilotToken, accountType: state.accountType })
 
   // claude-* 模型走 Messages 上游,需要 Chat ↔ Messages 双向翻译
   if (payload.model.startsWith("claude-")) {
@@ -121,6 +122,24 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
       elapsed,
     )
   }
+
+  // Resolve binding for non-fallback path. Falls back to the request's
+  // single-account Copilot context when no managed upstream serves the
+  // requested model, keeping pre-registry deployments working.
+  const bindings = await listProviderBindings({
+    ownerId: ctx.userId,
+    copilot: state.copilotToken ? { copilotToken: state.copilotToken, accountType: state.accountType } : undefined,
+  })
+  const chatBindings = bindingsForEndpoint(bindings, "chat_completions")
+  const binding = chatBindings.find((candidate) => candidate.model.id === payload.model)
+  if (!binding) {
+    return new Response(
+      JSON.stringify({ error: { type: "invalid_request_error", message: `No chat-completions upstream available for model: ${payload.model}` } }),
+      { status: 404, headers: { "Content-Type": "application/json" } },
+    )
+  }
+  const provider = binding.provider
+  const upstreamId = binding.upstream
 
   // ── Web-search interception ───────────────────────────────────────────
   // If client sent a web_search-style tool, run the multi-turn intercept
@@ -143,7 +162,7 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
 
     const recordSide = async () => {
       if (apiKeyId) {
-        await trackNonStreamingUsage(response, apiKeyId, payload.model, client, state.upstream)
+        await trackNonStreamingUsage(response, apiKeyId, payload.model, client, upstreamId)
         const usage = response.usage
         recordLatency(apiKeyId, payload.model, colo, {
           totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
@@ -154,7 +173,7 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
           userAgent,
           sourceApi: "chat-completions",
           targetApi: "chat-completions",
-          upstream: state.upstream,
+          upstream: upstreamId,
         }).catch(() => {})
         recordWebSearchUsage(apiKeyId, meta)
       }
@@ -201,7 +220,7 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
     let responseBody = response.body
     if (apiKeyId && responseBody) {
       const [usageBranch, forwardBranch] = responseBody.tee()
-      consumeStreamForUsage(usageBranch, apiKeyId, payload.model, client, state.upstream)
+      consumeStreamForUsage(usageBranch, apiKeyId, payload.model, client, upstreamId)
       responseBody = forwardBranch
     }
     const heartbeated = wrapOpenAIHeartbeat(responseBody)
@@ -219,7 +238,7 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
     if (apiKeyId) {
       recordLatency(apiKeyId, payload.model, colo, {
         totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
-      }, requestId, { stream: true, sourceApi: "chat-completions", targetApi: "chat-completions", upstream: state.upstream }).catch(() => {})
+      }, requestId, { stream: true, sourceApi: "chat-completions", targetApi: "chat-completions", upstream: upstreamId }).catch(() => {})
     }
     if (clientWantsUsage) {
       return streamResponse
@@ -243,7 +262,7 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
 
   const recordSync = async (j: ChatJson) => {
     if (!apiKeyId) return
-    await trackNonStreamingUsage(j, apiKeyId, payload.model, client, state.upstream)
+    await trackNonStreamingUsage(j, apiKeyId, payload.model, client, upstreamId)
     recordLatency(apiKeyId, payload.model, colo, {
       totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
     }, requestId, {
@@ -252,7 +271,7 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
       outputTokens: j.usage?.completion_tokens,
       sourceApi: "chat-completions",
       targetApi: "chat-completions",
-      upstream: state.upstream,
+      upstream: upstreamId,
     }).catch(() => {})
   }
 
