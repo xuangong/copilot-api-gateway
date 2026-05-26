@@ -1,6 +1,7 @@
 import { recordUsage } from "~/lib/usage-tracker"
 import { touchApiKeyLastUsed } from "~/lib/api-keys"
 import { createFrameBuffer, parseDataJSON } from "~/lib/sse/parser"
+import { normalizeAnthropicVersion } from "~/services/copilot/variants"
 
 interface UsageInfo {
   input: number
@@ -13,10 +14,45 @@ interface UsageRecordInfo extends UsageInfo {
   model?: string
 }
 
+/**
+ * Normalize a model id to the raw Copilot form so usage rows aggregate
+ * correctly. Only transform: Anthropic dash version → Copilot dot version
+ * (`claude-opus-4-7` → `claude-opus-4.7`). Anthropic SDK clients send the
+ * dash form in payload.model, while upstream JSON echoes back the dot form;
+ * without this, a single logical model splits across two usage rows.
+ *
+ * Everything else (effort/context/-internal suffixes) is preserved verbatim
+ * — Copilot's raw id grammar (name[-effort][-context][-internal]) is itself
+ * meaningful and matches what /v1/models exposes.
+ */
+function normalizeUsageModelId(id: string | undefined): string | undefined {
+  if (!id) return id
+  return normalizeAnthropicVersion(id)
+}
+
+/**
+ * Pick the most specific model id for usage records.
+ *
+ * The caller-supplied `model` is `payload.model` AFTER provider-side variant
+ * rewrite — it's the raw Copilot id we actually called upstream with
+ * (e.g. `claude-opus-4.7-1m-internal`). Upstream JSON echoes back a less
+ * specific form (the base id without the variant suffix), which would
+ * silently collapse 1M / xhigh / etc. usage into the base model row. Prefer
+ * the caller value; fall back to the JSON only when the caller didn't pass
+ * one.
+ */
+function pickUsageModelId(
+  fromJson: string | undefined,
+  fromCaller: string,
+): string {
+  return normalizeUsageModelId(fromCaller) ?? fromJson ?? fromCaller
+}
+
 // deno-lint-ignore no-explicit-any
 function modelFromJson(json: any): string | undefined {
   const model = json?.model ?? json?.message?.model ?? json?.response?.model
-  return typeof model === "string" && model.length > 0 ? model : undefined
+  const raw = typeof model === "string" && model.length > 0 ? model : undefined
+  return normalizeUsageModelId(raw)
 }
 
 // deno-lint-ignore no-explicit-any
@@ -118,7 +154,7 @@ export async function trackNonStreamingUsage(
 ): Promise<void> {
   const usage = extractUsageFromJson(json)
   if (usage) {
-    await persistUsage(keyId, usage.model ?? model, usage.input, usage.output, client, usage.cacheRead, usage.cacheCreation, upstream)
+    await persistUsage(keyId, pickUsageModelId(usage.model, model), usage.input, usage.output, client, usage.cacheRead, usage.cacheCreation, upstream)
   }
 }
 
@@ -153,7 +189,7 @@ export function trackStreamingUsage(
     if (persisted) return
     if (latest.input <= 0 && latest.output <= 0) return
     persisted = true
-    persistPromise = persistUsage(keyId, latest.model ?? model, latest.input, latest.output, client, latest.cacheRead, latest.cacheCreation, upstream).catch(() => {})
+    persistPromise = persistUsage(keyId, pickUsageModelId(latest.model, model), latest.input, latest.output, client, latest.cacheRead, latest.cacheCreation, upstream).catch(() => {})
   }
 
   const transform = new TransformStream<Uint8Array, Uint8Array>({
@@ -215,7 +251,7 @@ export function consumeStreamForUsage(
     if (latest.input <= 0 && latest.output <= 0) return
     persisted = true
     persistPromise = persistUsage(
-      keyId, latest.model ?? model, latest.input, latest.output, client,
+      keyId, pickUsageModelId(latest.model, model), latest.input, latest.output, client,
       latest.cacheRead, latest.cacheCreation, upstream,
     ).catch(() => {})
   }

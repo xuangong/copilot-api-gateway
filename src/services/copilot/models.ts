@@ -59,33 +59,10 @@ export async function getRawModels(
   return (await response.json()) as ModelsResponse
 }
 
-const CLAUDE_DATE_SUFFIX = /-\d{8}$/
-const CLAUDE_1M_INTERNAL = /-1m-internal$/
-
-/** Map a Copilot raw model id to the public-facing id we expose.
- *
- * -1m-internal → -1m: "internal" is Copilot's private variant label. We
- * rename it so parseCompositeModelId can recognise the -1m suffix and set
- * context1m=true, which resolveCopilotRawModel then uses to find the raw
- * variant in the cache. Without the rename the round-trip breaks.
- */
-function publicModelId(id: string): string {
-  if (!id.startsWith("claude-")) return id
-  return id.replace(CLAUDE_DATE_SUFFIX, "").replace(CLAUDE_1M_INTERNAL, "-1m")
-}
-
 export async function getModels(
   copilotToken: string,
   accountType: AccountType,
 ): Promise<ModelsResponse> {
-  const raw = await getRawModels(copilotToken, accountType)
-  return {
-    object: raw.object,
-    data: raw.data.map((m) => {
-      const id = publicModelId(m.id)
-      if (id === m.id) return m
-      return { ...m, id, version: id }
-    }),
-  }
+  return getRawModels(copilotToken, accountType)
 }
 

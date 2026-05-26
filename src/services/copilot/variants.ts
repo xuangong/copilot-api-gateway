@@ -32,6 +32,21 @@ const ALLOWED_ANTHROPIC_BETAS = new Set<string>([
 
 const isClaudeModel = (id: string): boolean => id.startsWith("claude-")
 
+/**
+ * Anthropic's official API uses dash-separated versions (`claude-opus-4-7`)
+ * while Copilot's raw model ids use dots (`claude-opus-4.7`). Clients pointed
+ * at the official model id would otherwise miss every Copilot variant lookup.
+ * Rewrite the trailing `-N-N` (and optional patch) into `-N.N` so downstream
+ * id matching and variant resolution all key off the Copilot form.
+ */
+const ANTHROPIC_DASH_VERSION = /^(claude-[a-z]+)-(\d+)-(\d+)(-.*)?$/
+export function normalizeAnthropicVersion(id: string): string {
+  if (!isClaudeModel(id)) return id
+  const m = ANTHROPIC_DASH_VERSION.exec(id)
+  if (!m) return id
+  return `${m[1]}-${m[2]}.${m[3]}${m[4] ?? ""}`
+}
+
 /** Strip date and variant suffixes so siblings collapse onto one id. */
 export function copilotPublicModelId(id: string): string {
   if (!isClaudeModel(id)) return id
@@ -226,7 +241,7 @@ const EFFORT_SUFFIXES = new Set(["high", "xhigh"])
 export function parseCompositeModelId(id: string): ParsedCompositeModelId {
   if (!isClaudeModel(id)) return { baseId: id }
 
-  let rest = id
+  let rest = normalizeAnthropicVersion(id)
   let effort: string | undefined
   let context1m = false
 
@@ -367,7 +382,7 @@ export function resolveCopilotRawModel(
 ): string {
   if (!isClaudeModel(modelId)) return modelId
 
-  const normalized = copilotPublicModelId(modelId)
+  const normalized = copilotPublicModelId(normalizeAnthropicVersion(modelId))
   const exact = models.data.find((m) => m.id === normalized)
   const baseId = STANDARD_CLAUDE_BASE_ID.test(normalized) ? normalized : undefined
 
