@@ -53,7 +53,7 @@ export async function handleGeminiViaResponses(
   const binding = await resolveBinding(state, ctx.userId, model, "responses", upstreamPin)
   if (!binding) {
     return new Response(
-      JSON.stringify({ error: { message: `No responses upstream available for model: ${model}`, status: "NOT_FOUND" } }),
+      JSON.stringify({ error: { message: `No responses upstream available for model: ${model}. Run GET /v1/models for available ids.`, status: "NOT_FOUND" } }),
       { status: 404, headers: { "Content-Type": "application/json" } },
     )
   }

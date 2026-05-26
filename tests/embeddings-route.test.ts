@@ -144,7 +144,7 @@ describe("embeddings upstream routing", () => {
     }))
 
     expect(res.status).toBe(404)
-    expect(await res.json()).toMatchObject({ error: { message: "No embeddings upstream available for model: different-model" } })
+    expect(await res.json()).toMatchObject({ error: { message: "No embeddings upstream available for model: different-model. Run GET /v1/models for available ids." } })
   })
 
   test("returns 404 when no embeddings upstream is available", async () => {

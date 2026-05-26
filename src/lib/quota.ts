@@ -15,6 +15,19 @@ export function computeWeightedTokens(
 export interface QuotaResult {
   allowed: boolean
   reason?: string
+  /**
+   * Seconds until the next UTC day rollover. Included on quota-denied
+   * results so callers can emit a Retry-After header — client SDKs that
+   * honor it (OpenAI / Anthropic / Claude Code) will sleep until the
+   * quota actually resets instead of the default 5-10 min generic
+   * backoff they apply to bare 429s.
+   */
+  retryAfterSeconds?: number
+}
+
+function secondsUntilNextUtcDay(now: Date): number {
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0))
+  return Math.max(1, Math.ceil((next.getTime() - now.getTime()) / 1000))
 }
 
 /**
@@ -48,11 +61,12 @@ export async function checkQuota(apiKeyId: string): Promise<QuotaResult> {
     totalWeightedTokens += computeWeightedTokens(r.cacheReadTokens, r.inputTokens, r.outputTokens)
   }
 
+  const retryAfterSeconds = secondsUntilNextUtcDay(now)
   if (hasReqQuota && totalRequests >= key.quotaRequestsPerDay!) {
-    return { allowed: false, reason: `Daily request quota exceeded (${totalRequests}/${key.quotaRequestsPerDay})` }
+    return { allowed: false, reason: `Daily request quota exceeded (${totalRequests}/${key.quotaRequestsPerDay}). Resets at next UTC midnight.`, retryAfterSeconds }
   }
   if (hasTokenQuota && totalWeightedTokens >= key.quotaTokensPerDay!) {
-    return { allowed: false, reason: `Daily token quota exceeded (${Math.round(totalWeightedTokens)}/${key.quotaTokensPerDay})` }
+    return { allowed: false, reason: `Daily token quota exceeded (${Math.round(totalWeightedTokens)}/${key.quotaTokensPerDay}). Resets at next UTC midnight.`, retryAfterSeconds }
   }
 
   return { allowed: true }

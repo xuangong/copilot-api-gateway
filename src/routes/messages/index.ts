@@ -32,9 +32,11 @@ export const messagesRoute = new Elysia()
     if (apiKeyId) {
       const quota = await checkQuota(apiKeyId)
       if (!quota.allowed) {
+        const headers: Record<string, string> = { "Content-Type": "application/json" }
+        if (quota.retryAfterSeconds) headers["Retry-After"] = String(quota.retryAfterSeconds)
         return new Response(
           JSON.stringify({ error: { type: "rate_limit_error", message: quota.reason } }),
-          { status: 429, headers: { "Content-Type": "application/json" } },
+          { status: 429, headers },
         )
       }
     }
@@ -81,7 +83,7 @@ export const messagesRoute = new Elysia()
     const binding = await resolveBinding(state, userId, payload.model, "messages_count_tokens", pinFromPayload(payload as unknown as Record<string, unknown>))
     if (!binding) {
       return new Response(
-        JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: `No messages_count_tokens upstream available for model: ${payload.model}` } }),
+        JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: `No messages_count_tokens upstream available for model: ${payload.model}. Run GET /v1/models for available ids.` } }),
         { status: 404, headers: { "Content-Type": "application/json" } },
       )
     }

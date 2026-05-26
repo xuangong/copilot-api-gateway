@@ -54,7 +54,7 @@ export async function handleGeminiViaMessages(
   const binding = await resolveBinding(state, ctx.userId, model, "messages", upstreamPin)
   if (!binding) {
     return new Response(
-      JSON.stringify({ error: { message: `No messages upstream available for model: ${model}`, status: "NOT_FOUND" } }),
+      JSON.stringify({ error: { message: `No messages upstream available for model: ${model}. Run GET /v1/models for available ids.`, status: "NOT_FOUND" } }),
       { status: 404, headers: { "Content-Type": "application/json" } },
     )
   }

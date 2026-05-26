@@ -37,9 +37,11 @@ async function handleEmbeddings(ctx: RouteContext): Promise<Response> {
   if (apiKeyId) {
     const quota = await checkQuota(apiKeyId)
     if (!quota.allowed) {
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (quota.retryAfterSeconds) headers["Retry-After"] = String(quota.retryAfterSeconds)
       return new Response(
         JSON.stringify({ error: { type: "rate_limit_error", message: quota.reason } }),
-        { status: 429, headers: { "Content-Type": "application/json" } },
+        { status: 429, headers },
       )
     }
   }
@@ -48,7 +50,7 @@ async function handleEmbeddings(ctx: RouteContext): Promise<Response> {
   const binding = await resolveBinding(state, ctx.userId, body.model, "embeddings")
   if (!binding) {
     return new Response(
-      JSON.stringify({ error: { type: "invalid_request_error", message: `No embeddings upstream available for model: ${body.model}` } }),
+      JSON.stringify({ error: { type: "invalid_request_error", message: `No embeddings upstream available for model: ${body.model}. Run GET /v1/models for available ids.` } }),
       { status: 404, headers: { "Content-Type": "application/json" } },
     )
   }

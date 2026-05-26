@@ -48,7 +48,7 @@ export function dashboardAssets(): string {
     function dashboardApp() {
     const isAdmin = localStorage.getItem('isAdmin') === '1';
     const isUser = localStorage.getItem('isUser') === '1';
-    const TABS = isAdmin ? ['upstream', 'users', 'keys', 'usage', 'latency', 'relays', 'settings'] : (isUser ? ['upstream', 'keys', 'usage', 'latency', 'relays'] : ['keys', 'usage', 'latency']);
+    const TABS = isAdmin ? ['upstream', 'users', 'keys', 'usage', 'latency', 'relays', 'settings'] : (isUser ? ['upstream', 'keys', 'usage', 'latency', 'relays', 'settings'] : ['keys', 'usage', 'latency', 'settings']);
     const defaultTab = isAdmin ? 'upstream' : (isUser ? 'upstream' : 'keys');
     const initTab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : defaultTab;
 
@@ -299,6 +299,11 @@ export function dashboardAssets(): string {
       keyRotating: null,
       copied: false,
       modelsLoaded: false,
+      // After createNewKey, holds the plaintext key + base URL until the
+      // admin/user closes the "How to use" modal. The plain key is only
+      // visible in this window — the table thereafter shows the truncated
+      // hash. Cleared on modal close.
+      justCreatedKey: null,
       // All models grouped by upstream id, populated alongside the Copilot
       // model picker state. Settings tab renders one section per upstream
       // with copy-to-clipboard for each model id (or the up_X/model
@@ -1503,6 +1508,16 @@ export function dashboardAssets(): string {
                 const created = await resp.json();
                 this.selectedKeyId = created.id;
                 this.newKeyName = '';
+                // Surface the plaintext key once in a "how to use" modal so
+                // the user knows what to put in Authorization headers and
+                // sees a curl example. Key value is only available in this
+                // window — the table view truncates it thereafter.
+                this.justCreatedKey = {
+                  id: created.id,
+                  name: created.name || name,
+                  key: created.key,
+                  baseUrl: location.origin,
+                };
                 await this.loadKeys();
               } else {
                 alert((await resp.json()).error || t('dash.failedCreateKey'));

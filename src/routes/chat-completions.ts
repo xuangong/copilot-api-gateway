@@ -93,7 +93,9 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
   if (apiKeyId) {
     const quota = await checkQuota(apiKeyId)
     if (!quota.allowed) {
-      return new Response(JSON.stringify({ error: { type: "rate_limit_error", message: quota.reason } }), { status: 429, headers: { "Content-Type": "application/json" } })
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (quota.retryAfterSeconds) headers["Retry-After"] = String(quota.retryAfterSeconds)
+      return new Response(JSON.stringify({ error: { type: "rate_limit_error", message: quota.reason } }), { status: 429, headers })
     }
   }
 
@@ -128,7 +130,7 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
   const binding = await resolveBinding(state, ctx.userId, payload.model, "chat_completions", pinFromPayload(payload as unknown as Record<string, unknown>))
   if (!binding) {
     return new Response(
-      JSON.stringify({ error: { type: "invalid_request_error", message: `No chat-completions upstream available for model: ${payload.model}` } }),
+      JSON.stringify({ error: { type: "invalid_request_error", message: `No chat-completions upstream available for model: ${payload.model}. Run GET /v1/models for available ids.` } }),
       { status: 404, headers: { "Content-Type": "application/json" } },
     )
   }

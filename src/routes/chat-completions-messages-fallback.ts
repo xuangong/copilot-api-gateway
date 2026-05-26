@@ -45,7 +45,7 @@ export async function handleChatCompletionsViaMessages(
   const binding = await resolveBinding(state, ctx.userId, model, "messages", pinFromPayload(payload as unknown as Record<string, unknown>))
   if (!binding) {
     return new Response(
-      JSON.stringify({ error: { type: "invalid_request_error", message: `No messages upstream available for model: ${model}` } }),
+      JSON.stringify({ error: { type: "invalid_request_error", message: `No messages upstream available for model: ${model}. Run GET /v1/models for available ids.` } }),
       { status: 404, headers: { "Content-Type": "application/json" } },
     )
   }

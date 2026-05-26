@@ -40,7 +40,7 @@ export async function handleMessagesViaResponses(
   const binding = await resolveBinding(state, ctx.userId, model, "responses", pinFromPayload(payload as unknown as Record<string, unknown>))
   if (!binding) {
     return new Response(
-      JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: `No responses upstream available for model: ${model}` } }),
+      JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: `No responses upstream available for model: ${model}. Run GET /v1/models for available ids.` } }),
       { status: 404, headers: { "Content-Type": "application/json" } },
     )
   }

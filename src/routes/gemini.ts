@@ -151,7 +151,7 @@ async function handleGenerateContent(ctx: RouteContext) {
   const binding = await resolveBinding(state, ctx.userId, model, "chat_completions", upstreamPin)
   if (!binding) {
     return new Response(
-      JSON.stringify({ error: { code: 404, message: `No chat-completions upstream available for model: ${model}`, status: "NOT_FOUND" } }),
+      JSON.stringify({ error: { code: 404, message: `No chat-completions upstream available for model: ${model}. Run GET /v1/models for available ids.`, status: "NOT_FOUND" } }),
       { status: 404, headers: { "Content-Type": "application/json" } },
     )
   }
@@ -228,7 +228,7 @@ async function handleCountTokens(ctx: RouteContext) {
   const binding = await resolveBinding(state, ctx.userId, model, "messages_count_tokens", upstreamPin)
   if (!binding) {
     return new Response(
-      JSON.stringify({ error: { code: 404, message: `No messages_count_tokens upstream available for model: ${model}`, status: "NOT_FOUND" } }),
+      JSON.stringify({ error: { code: 404, message: `No messages_count_tokens upstream available for model: ${model}. Run GET /v1/models for available ids.`, status: "NOT_FOUND" } }),
       { status: 404, headers: { "Content-Type": "application/json" } },
     )
   }
@@ -345,7 +345,7 @@ async function handleStreamGenerateContent(
   const binding = await resolveBinding(state, ctx.userId, model, "chat_completions", upstreamPin)
   if (!binding) {
     return new Response(
-      JSON.stringify({ error: { code: 404, message: `No chat-completions upstream available for model: ${model}`, status: "NOT_FOUND" } }),
+      JSON.stringify({ error: { code: 404, message: `No chat-completions upstream available for model: ${model}. Run GET /v1/models for available ids.`, status: "NOT_FOUND" } }),
       { status: 404, headers: { "Content-Type": "application/json" } },
     )
   }

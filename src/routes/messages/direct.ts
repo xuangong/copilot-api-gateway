@@ -33,7 +33,7 @@ export async function handleDirectMessages(
   const binding = await resolveBinding(state, ctx.userId, payload.model, "messages", pinFromPayload(payload as unknown as Record<string, unknown>))
   if (!binding) {
     return new Response(
-      JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: `No messages upstream available for model: ${payload.model}` } }),
+      JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: `No messages upstream available for model: ${payload.model}. Run GET /v1/models for available ids.` } }),
       { status: 404, headers: { "Content-Type": "application/json" } },
     )
   }

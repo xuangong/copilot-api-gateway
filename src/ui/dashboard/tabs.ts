@@ -1322,8 +1322,66 @@ export function renderKeysTab(): string {
               ${codeBlock("bash", "geminiEnv", "geminiSnippet", "gemini-env")}
             </div>
           </div>
+
+          <!-- Other models (custom / azure / etc.) — surfaces every model
+               id served by a non-Copilot upstream so users can copy them
+               into their own client. Hidden when nothing's registered to
+               avoid empty noise. -->
+          <template x-if="allModelsByUpstream && allModelsByUpstream.filter(g => g.provider !== 'copilot').some(g => g.models.length > 0)">
+            <div class="mt-6 pt-6 border-t border-white/10">
+              <h4 class="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">Other available models</h4>
+              <p class="text-[11px] text-themed-dim mb-3">From Custom / Azure upstreams. Click to copy the model id. Shift-click for the pinned form <code>upstreamId/model</code> (forces this specific upstream when several serve the same id).</p>
+              <template x-for="grp in allModelsByUpstream.filter(g => g.provider !== 'copilot' && g.models.length > 0)" :key="grp.upstream">
+                <div class="mb-3">
+                  <div class="text-[11px] text-themed-dim mb-1">
+                    <span class="font-mono" x-text="grp.upstream"></span>
+                    <span class="ml-1 px-1.5 py-0.5 rounded text-[10px]" :class="grp.provider === 'azure' ? 'bg-blue-900/40 text-blue-300' : 'bg-purple-900/40 text-purple-300'" x-text="grp.provider"></span>
+                  </div>
+                  <div class="flex flex-wrap gap-1">
+                    <template x-for="m in grp.models" :key="m.id">
+                      <button @click="copyModelId(m.id)"
+                              @click.shift.stop="copyModelId(grp.upstream + '/' + m.id)"
+                              :title="'click: copy ' + m.id + '\\nshift-click: copy pinned ' + grp.upstream + '/' + m.id"
+                              class="px-2 py-0.5 bg-surface-600 hover:bg-surface-500 rounded text-themed font-mono text-xs">
+                        <span x-text="m.id"></span>
+                      </button>
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
         </template>
       </div>
+
+      <!-- "Just created a key" modal (U12) — shown once after createNewKey
+           so users see the plaintext key (only visible window) and a curl
+           snippet they can paste into a terminal to validate. -->
+      <template x-if="justCreatedKey">
+        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" @click.self="justCreatedKey = null">
+          <div class="glass-card p-4 sm:p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto glow-primary">
+            <h3 class="text-themed font-semibold mb-2">Key created — copy it now</h3>
+            <p class="text-xs text-themed-dim mb-4">This is the only time the full key is shown. Store it somewhere safe.</p>
+
+            <div class="bg-surface-900 rounded-lg p-3 mb-4 font-mono text-xs flex items-center justify-between gap-2">
+              <span class="text-themed truncate" x-text="justCreatedKey.key"></span>
+              <button @click="copyModelId(justCreatedKey.key)" class="btn-ghost text-xs px-2 py-1 shrink-0">Copy</button>
+            </div>
+
+            <h4 class="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">Quick test (curl)</h4>
+            <div class="bg-surface-900 rounded-lg p-3 mb-4 font-mono text-[11px] overflow-x-auto">
+              <pre class="text-themed-secondary whitespace-pre" x-text="'curl ' + justCreatedKey.baseUrl + '/v1/chat/completions \\\\\\n  -H \"Authorization: Bearer ' + justCreatedKey.key + '\" \\\\\\n  -H \"Content-Type: application/json\" \\\\\\n  -d \\'{\"model\":\"gpt-4o-mini\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}\\''"></pre>
+            </div>
+
+            <p class="text-xs text-themed-dim mb-4">Next: pick a model id from the Settings tab → choose your client (Claude Code / Codex / Gemini) for environment variable snippets.</p>
+
+            <div class="flex justify-end gap-2">
+              <button @click="copyModelId('Authorization: Bearer ' + justCreatedKey.key)" class="btn-ghost text-sm">Copy header</button>
+              <button @click="justCreatedKey = null" class="btn-primary text-sm">Done</button>
+            </div>
+          </div>
+        </div>
+      </template>
     </div>
   `
 }
@@ -1767,7 +1825,7 @@ export function renderLatencyTab(): string {
 
 export function renderSettingsTab(): string {
   return `
-    <template x-if="isAdmin">
+    <template x-if="isAdmin || isUser || (!isAdmin && !isUser)">
       <div x-show="tab === 'settings'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
         <div class="glass-card p-6 mb-6 animate-in">
           <h3 class="text-themed font-semibold mb-1">Export Data</h3>

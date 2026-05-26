@@ -28,9 +28,11 @@ const handleResponses = async (ctx: unknown) => {
   if (apiKeyId) {
     const quota = await checkQuota(apiKeyId)
     if (!quota.allowed) {
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (quota.retryAfterSeconds) headers["Retry-After"] = String(quota.retryAfterSeconds)
       return new Response(
         JSON.stringify({ error: { type: "rate_limit_error", message: quota.reason } }),
-        { status: 429, headers: { "Content-Type": "application/json" } },
+        { status: 429, headers },
       )
     }
   }
