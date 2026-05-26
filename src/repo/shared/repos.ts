@@ -8,6 +8,8 @@ import type {
   DeviceCodeRepo,
   GitHubAccount,
   GitHubRepo,
+  UpstreamRecord,
+  UpstreamRepo,
   InviteCode,
   InviteCodeRepo,
   KeyAssignment,
@@ -38,6 +40,7 @@ import type { SqlExecutor } from "./executor"
 
 const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref"
 const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at"
+const UPSTREAM_COLS = "id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, created_at, updated_at"
 const USAGE_COLS = "key_id, model, upstream, hour, client, requests, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_json"
 const LATENCY_COLS = "key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss"
 const USER_COLS = "id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash"
@@ -102,6 +105,46 @@ function toGitHubAccount(row: any): GitHubAccount {
     sortOrder: row.sort_order ?? undefined,
     flagOverrides,
     updatedAt: row.updated_at ?? undefined,
+  }
+}
+
+function parseBooleanRecord(raw: unknown): Record<string, boolean> {
+  if (typeof raw !== "string" || raw.length === 0) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {}
+    const out: Record<string, boolean> = {}
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === "boolean") out[k] = v
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+function parseObject(raw: unknown): Record<string, unknown> {
+  if (typeof raw !== "string" || raw.length === 0) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}
+  } catch {
+    return {}
+  }
+}
+
+function toUpstreamRecord(row: any): UpstreamRecord {
+  return {
+    id: row.id,
+    ownerId: row.owner_id || undefined,
+    provider: row.provider,
+    name: row.name,
+    enabled: row.enabled === 1,
+    sortOrder: row.sort_order ?? 0,
+    config: parseObject(row.config_json),
+    flagOverrides: parseBooleanRecord(row.flag_overrides),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }
 }
 
@@ -322,6 +365,55 @@ class SharedGitHubRepo implements GitHubRepo {
 
   async clearActiveIdForUser(ownerId: string): Promise<void> {
     await this.x.run("DELETE FROM config WHERE key = ?", [`active_github_account:${ownerId}`])
+  }
+}
+
+class SharedUpstreamRepo implements UpstreamRepo {
+  constructor(private x: SqlExecutor) {}
+
+  async list(opts: { ownerId?: string; includeDisabled?: boolean } = {}): Promise<UpstreamRecord[]> {
+    const where: string[] = []
+    const binds: unknown[] = []
+    if (opts.ownerId !== undefined) {
+      where.push("owner_id = ?")
+      binds.push(opts.ownerId)
+    }
+    if (!opts.includeDisabled) where.push("enabled = 1")
+    const sql = `SELECT ${UPSTREAM_COLS} FROM upstreams${where.length ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY sort_order ASC, created_at ASC, id ASC`
+    return (await this.x.all(sql, binds)).map(toUpstreamRecord)
+  }
+
+  async getById(id: string): Promise<UpstreamRecord | null> {
+    const row = await this.x.first(`SELECT ${UPSTREAM_COLS} FROM upstreams WHERE id = ?`, [id])
+    return row ? toUpstreamRecord(row) : null
+  }
+
+  async save(upstream: UpstreamRecord): Promise<void> {
+    await this.x.run(
+      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET owner_id = excluded.owner_id, provider = excluded.provider, name = excluded.name, enabled = excluded.enabled, sort_order = excluded.sort_order, config_json = excluded.config_json, flag_overrides = excluded.flag_overrides, updated_at = excluded.updated_at`,
+      [
+        upstream.id,
+        upstream.ownerId ?? "",
+        upstream.provider,
+        upstream.name,
+        upstream.enabled ? 1 : 0,
+        upstream.sortOrder,
+        JSON.stringify(upstream.config ?? {}),
+        JSON.stringify(upstream.flagOverrides ?? {}),
+        upstream.createdAt,
+        upstream.updatedAt,
+      ],
+    )
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const r = await this.x.run("DELETE FROM upstreams WHERE id = ?", [id])
+    return r.changes > 0
+  }
+
+  async deleteAll(): Promise<void> {
+    await this.x.run("DELETE FROM upstreams", [])
   }
 }
 
@@ -782,6 +874,7 @@ export function buildSharedRepo(x: SqlExecutor): Repo {
   return {
     apiKeys: new SharedApiKeyRepo(x),
     github: new SharedGitHubRepo(x),
+    upstreams: new SharedUpstreamRepo(x),
     usage: new SharedUsageRepo(x),
     cache: new SharedCacheRepo(x),
     latency: new SharedLatencyRepo(x),

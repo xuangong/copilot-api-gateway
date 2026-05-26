@@ -462,9 +462,18 @@ function createApp(env: Env) {
           }
           return { storage, state, colo }
         } catch {
-          // Allow /api/models to work without GitHub connection
-          if (path === "/api/models") {
-            return { storage, state: null as AppState | null, colo }
+          // Allow upstream-managed routes to work without GitHub connection
+          if (path === "/api/models" || path.startsWith("/embeddings") || path.startsWith("/v1/embeddings")) {
+            return { storage, state: {
+              githubToken: "",
+              copilotToken: "",
+              copilotTokenExpires: 0,
+              accountType: "individual",
+              tokenMiss: false,
+              langsearchKey: env.LANGSEARCH_API_KEY,
+              tavilyKey: env.TAVILY_API_KEY,
+              msGroundingKey: env.MS_GROUNDING_API_KEY,
+            } as AppState, colo }
           }
           throw new Error("GitHub token not found. Use /auth/github to connect your account.")
         }

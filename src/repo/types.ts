@@ -1,3 +1,5 @@
+import type { UpstreamKind } from "~/protocols/common"
+
 export interface ApiKey {
   id: string
   name: string
@@ -39,6 +41,19 @@ export interface GitHubAccount {
   /** JSON object {flagId: bool} — per-upstream feature gate overrides. */
   flagOverrides?: Record<string, boolean>
   updatedAt?: string
+}
+
+export interface UpstreamRecord {
+  id: string
+  ownerId?: string
+  provider: UpstreamKind
+  name: string
+  enabled: boolean
+  sortOrder: number
+  config: Record<string, unknown>
+  flagOverrides: Record<string, boolean>
+  createdAt: string
+  updatedAt: string
 }
 
 export interface UsageRecord {
@@ -109,6 +124,14 @@ export interface GitHubRepo {
   getActiveIdForUser(ownerId: string): Promise<number | null>
   setActiveIdForUser(ownerId: string, userId: number): Promise<void>
   clearActiveIdForUser(ownerId: string): Promise<void>
+}
+
+export interface UpstreamRepo {
+  list(opts?: { ownerId?: string; includeDisabled?: boolean }): Promise<UpstreamRecord[]>
+  getById(id: string): Promise<UpstreamRecord | null>
+  save(upstream: UpstreamRecord): Promise<void>
+  delete(id: string): Promise<boolean>
+  deleteAll(): Promise<void>
 }
 
 export interface UsageRepo {
@@ -357,6 +380,7 @@ export interface DeviceCodeRepo {
 export interface Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
+  upstreams: UpstreamRepo
   usage: UsageRepo
   cache: CacheRepo
   latency: LatencyRepo

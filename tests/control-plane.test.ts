@@ -1,5 +1,8 @@
-import { test, expect, describe, afterEach, mock } from "bun:test"
+import { test, expect, describe, afterEach, beforeEach, mock } from "bun:test"
+import { Database } from "bun:sqlite"
 import { Elysia } from "elysia"
+import { setRepoForTest } from "~/repo"
+import { SqliteRepo } from "~/repo/sqlite"
 import { controlPlaneRoute } from "~/routes/control-plane"
 
 function req(path: string, opts: { admin?: boolean; body?: unknown; method?: string } = {}) {
@@ -15,6 +18,17 @@ function req(path: string, opts: { admin?: boolean; body?: unknown; method?: str
 const app = new Elysia()
   .derive(({ request }) => ({ isAdmin: request.headers.get("x-admin") === "1" }))
   .use(controlPlaneRoute)
+
+const originalFetch = globalThis.fetch
+
+beforeEach(() => {
+  setRepoForTest(new SqliteRepo(new Database(":memory:")))
+})
+
+afterEach(() => {
+  globalThis.fetch = originalFetch
+  setRepoForTest(null)
+})
 
 describe("GET /api/upstream-flags", () => {
   test("403 without admin", async () => {
@@ -39,11 +53,6 @@ describe("GET /api/upstream-flags", () => {
 })
 
 describe("POST /api/upstream-probe", () => {
-  const originalFetch = globalThis.fetch
-  afterEach(() => {
-    globalThis.fetch = originalFetch
-  })
-
   test("403 without admin", async () => {
     const res = await app.handle(
       req("/api/upstream-probe", { method: "POST", body: { kind: "custom", config: {} } }),
@@ -123,5 +132,88 @@ describe("POST /api/upstream-probe", () => {
       }),
     )
     expect(res.status).toBe(400)
+  })
+})
+
+describe("/api/upstreams CRUD", () => {
+  test("403 without admin", async () => {
+    const res = await app.handle(req("/api/upstreams"))
+    expect(res.status).toBe(403)
+  })
+
+  test("creates, lists, updates, tests, and deletes a custom upstream", async () => {
+    globalThis.fetch = mock(async () =>
+      new Response(JSON.stringify({ data: [] }), { status: 200, headers: { "Content-Type": "application/json" } }),
+    ) as typeof fetch
+
+    const create = await app.handle(req("/api/upstreams", {
+      admin: true,
+      method: "POST",
+      body: {
+        ownerId: "owner-1",
+        provider: "custom",
+        name: "DeepSeek",
+        enabled: true,
+        sortOrder: 3,
+        config: { name: "deepseek", baseUrl: "https://api.example.com/v1/", apiKey: "k", endpoints: ["chat_completions"] },
+        flagOverrides: { "retry-cyber-policy": true },
+      },
+    }))
+    expect(create.status).toBe(201)
+    const created = await create.json() as { upstream: { id: string; config: Record<string, unknown> } }
+    expect(created.upstream.id).toStartWith("up_custom_deepseek_")
+    expect(created.upstream.config.apiKey).toBe("***")
+
+    const list = await app.handle(req("/api/upstreams?ownerId=owner-1&includeDisabled=1", { admin: true }))
+    expect(list.status).toBe(200)
+    const listed = await list.json() as { upstreams: Array<{ id: string; config: Record<string, unknown> }> }
+    expect(listed.upstreams).toHaveLength(1)
+    expect(listed.upstreams[0].config.baseUrl).toBe("https://api.example.com/v1")
+    expect(listed.upstreams[0].config.apiKey).toBe("***")
+
+    const patch = await app.handle(req(`/api/upstreams/${created.upstream.id}`, {
+      admin: true,
+      method: "PATCH",
+      body: { name: "DeepSeek Backup", enabled: false, sortOrder: 9 },
+    }))
+    expect(patch.status).toBe(200)
+    const patched = await patch.json() as { upstream: { name: string; enabled: boolean; sortOrder: number } }
+    expect(patched.upstream).toMatchObject({ name: "DeepSeek Backup", enabled: false, sortOrder: 9 })
+
+    const testRes = await app.handle(req(`/api/upstreams/${created.upstream.id}/test`, { admin: true, method: "POST" }))
+    expect(testRes.status).toBe(200)
+    expect(await testRes.json()).toEqual({ ok: true })
+
+    const del = await app.handle(req(`/api/upstreams/${created.upstream.id}`, { admin: true, method: "DELETE" }))
+    expect(del.status).toBe(200)
+    const afterDelete = await app.handle(req("/api/upstreams?ownerId=owner-1&includeDisabled=1", { admin: true }))
+    expect((await afterDelete.json() as { upstreams: unknown[] }).upstreams).toHaveLength(0)
+  })
+
+  test("rejects provider changes and unknown flag overrides", async () => {
+    const create = await app.handle(req("/api/upstreams", {
+      admin: true,
+      method: "POST",
+      body: {
+        provider: "custom",
+        name: "Custom",
+        config: { name: "custom", baseUrl: "https://api.example.com/v1", apiKey: "k" },
+      },
+    }))
+    const created = await create.json() as { upstream: { id: string } }
+
+    const providerChange = await app.handle(req(`/api/upstreams/${created.upstream.id}`, {
+      admin: true,
+      method: "PATCH",
+      body: { provider: "azure" },
+    }))
+    expect(providerChange.status).toBe(400)
+
+    const badFlag = await app.handle(req(`/api/upstreams/${created.upstream.id}`, {
+      admin: true,
+      method: "PATCH",
+      body: { flagOverrides: { nope: true } },
+    }))
+    expect(badFlag.status).toBe(400)
   })
 })

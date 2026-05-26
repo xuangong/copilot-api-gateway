@@ -15,6 +15,7 @@
 
 import type { ModelEndpoint, ModelPricing, UpstreamKind } from "~/protocols/common"
 import type { ModelProvider } from "~/providers/types"
+import type { Model } from "~/services/copilot/models"
 
 /**
  * Per-binding model metadata. The neutral shape that source/target
@@ -34,6 +35,7 @@ export interface BindingModel {
   }
   /** USD-per-million-tokens pricing snapshot. */
   cost?: ModelPricing
+  raw?: Model
 }
 
 export interface ProviderBinding {

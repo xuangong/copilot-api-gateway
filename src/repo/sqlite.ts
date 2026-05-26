@@ -34,6 +34,22 @@ CREATE TABLE IF NOT EXISTS config (
   value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS upstreams (
+  id TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL DEFAULT '',
+  provider TEXT NOT NULL,
+  name TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  config_json TEXT NOT NULL DEFAULT '{}',
+  flag_overrides TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_upstreams_owner_sort ON upstreams (owner_id, sort_order, created_at);
+CREATE INDEX IF NOT EXISTS idx_upstreams_provider_enabled_sort ON upstreams (provider, enabled, sort_order, created_at);
+
 CREATE TABLE IF NOT EXISTS usage (
   key_id TEXT NOT NULL,
   model TEXT NOT NULL,
@@ -162,6 +178,73 @@ CREATE INDEX IF NOT EXISTS idx_performance_latency_buckets_hour ON performance_l
 function hasColumn(db: Database, table: string, column: string): boolean {
   const rows = db.query<{ name: string }, [string, string]>("SELECT name FROM pragma_table_info(?) WHERE name = ?").all(table, column)
   return rows.length > 0
+}
+
+function copilotUpstreamId(ownerId: string, userId: number): string {
+  return `up_copilot_${ownerId || "global"}_${userId}`.replace(/[^a-zA-Z0-9_-]/g, "_")
+}
+
+function ensureUpstreams(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS upstreams (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL DEFAULT '',
+      provider TEXT NOT NULL,
+      name TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      config_json TEXT NOT NULL DEFAULT '{}',
+      flag_overrides TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_upstreams_owner_sort ON upstreams (owner_id, sort_order, created_at);
+    CREATE INDEX IF NOT EXISTS idx_upstreams_provider_enabled_sort ON upstreams (provider, enabled, sort_order, created_at);
+  `)
+
+  const accounts = db.query<{
+    user_id: number
+    token: string
+    account_type: string
+    login: string
+    name: string | null
+    avatar_url: string | null
+    owner_id: string | null
+    enabled: number | null
+    sort_order: number | null
+    flag_overrides: string | null
+    updated_at: string | null
+  }, []>("SELECT user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at FROM github_accounts").all()
+  const now = new Date().toISOString()
+  const insert = db.query(`
+    INSERT OR IGNORE INTO upstreams (id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, created_at, updated_at)
+    VALUES (?, ?, 'copilot', ?, ?, ?, ?, ?, ?, ?)
+  `)
+  for (const account of accounts) {
+    const ownerId = account.owner_id ?? ""
+    const id = copilotUpstreamId(ownerId, account.user_id)
+    const config = JSON.stringify({
+      githubToken: account.token,
+      accountType: account.account_type,
+      user: {
+        id: account.user_id,
+        login: account.login,
+        name: account.name,
+        avatar_url: account.avatar_url,
+      },
+    })
+    insert.run(
+      id,
+      ownerId,
+      account.login || `Copilot ${account.user_id}`,
+      account.enabled === 0 ? 0 : 1,
+      account.sort_order ?? 0,
+      config,
+      account.flag_overrides ?? "{}",
+      account.updated_at ?? now,
+      account.updated_at ?? now,
+    )
+  }
 }
 
 function migrateSchema(db: Database): void {
@@ -435,6 +518,7 @@ function migrateSchema(db: Database): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_performance_latency_buckets_identity
       ON performance_latency_buckets (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, lower_ms, upper_ms);
   `)
+  ensureUpstreams(db)
 }
 
 class SqliteExecutor implements SqlExecutor {
@@ -457,6 +541,7 @@ class SqliteExecutor implements SqlExecutor {
 export class SqliteRepo implements Repo {
   apiKeys: Repo["apiKeys"]
   github: Repo["github"]
+  upstreams: Repo["upstreams"]
   usage: Repo["usage"]
   cache: Repo["cache"]
   latency: Repo["latency"]
@@ -477,6 +562,7 @@ export class SqliteRepo implements Repo {
     const shared = buildSharedRepo(new SqliteExecutor(db))
     this.apiKeys = shared.apiKeys
     this.github = shared.github
+    this.upstreams = shared.upstreams
     this.usage = shared.usage
     this.cache = shared.cache
     this.latency = shared.latency

@@ -45,6 +45,7 @@ class D1Executor implements SqlExecutor {
 export class D1Repo implements Repo {
   apiKeys: Repo["apiKeys"]
   github: Repo["github"]
+  upstreams: Repo["upstreams"]
   usage: Repo["usage"]
   cache: Repo["cache"]
   latency: Repo["latency"]
@@ -63,6 +64,7 @@ export class D1Repo implements Repo {
     const shared = buildSharedRepo(new D1Executor(db))
     this.apiKeys = shared.apiKeys
     this.github = shared.github
+    this.upstreams = shared.upstreams
     this.usage = shared.usage
     this.cache = shared.cache
     this.latency = shared.latency
