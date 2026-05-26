@@ -545,15 +545,15 @@ export function renderUpstreamTab(): string {
 
         <!-- Managed Upstreams (admin-only): Custom / Azure CRUD -->
         <template x-if="isAdmin">
-          <div class="glass-card p-6 mb-8 animate-in">
-            <div class="flex items-center justify-between mb-4">
+          <div class="glass-card p-4 sm:p-6 mb-8 animate-in">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
               <div>
                 <h3 class="text-themed font-medium">Managed Upstreams</h3>
                 <p class="text-xs text-themed-dim mt-1">Custom OpenAI-compatible / Azure backends. Copilot GitHub accounts are managed above.</p>
               </div>
-              <div class="flex gap-2">
-                <button @click="openManagedUpstreamForm('custom')" class="btn-primary text-sm">+ Add Custom</button>
-                <button @click="openManagedUpstreamForm('azure')" class="btn-ghost text-sm">+ Add Azure</button>
+              <div class="flex flex-wrap gap-2">
+                <button @click="openUpstreamForm('custom')" class="btn-primary text-sm">+ Add Custom</button>
+                <button @click="openUpstreamForm('azure')" class="btn-ghost text-sm">+ Add Azure</button>
                 <button @click="loadManagedUpstreams()" class="btn-ghost text-sm" :disabled="managedUpstreamsLoading">↻</button>
               </div>
             </div>
@@ -567,27 +567,30 @@ export function renderUpstreamTab(): string {
             </template>
 
             <div class="space-y-2" x-show="!managedUpstreamsLoading && managedUpstreams.length > 0">
-              <template x-for="u in managedUpstreams" :key="u.id">
-                <div class="bg-surface-900 rounded-lg p-4 border border-surface-600">
-                  <div class="flex items-center justify-between flex-wrap gap-2">
+              <template x-for="(u, idx) in managedUpstreams" :key="u.id">
+                <div class="bg-surface-900 rounded-lg p-3 sm:p-4 border border-surface-600">
+                  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div class="flex items-center gap-3 min-w-0 flex-1">
-                      <span class="text-xs font-mono uppercase px-2 py-1 rounded" :class="u.provider === 'azure' ? 'bg-blue-900/40 text-blue-300' : 'bg-purple-900/40 text-purple-300'" x-text="u.provider"></span>
-                      <div class="min-w-0">
+                      <span class="text-xs font-mono uppercase px-2 py-1 rounded shrink-0" :class="u.provider === 'azure' ? 'bg-blue-900/40 text-blue-300' : 'bg-purple-900/40 text-purple-300'" x-text="u.provider"></span>
+                      <div class="min-w-0 flex-1">
                         <div class="font-medium text-themed truncate" x-text="u.name"></div>
                         <div class="text-xs text-themed-dim font-mono truncate" x-text="u.id"></div>
                       </div>
                     </div>
-                    <div class="flex items-center gap-2">
-                      <label class="flex items-center gap-1 text-xs text-themed-dim cursor-pointer">
+                    <div class="flex items-center gap-1 flex-wrap shrink-0">
+                      <button @click="reorderUpstream(u.id, 'up')" class="btn-ghost text-xs px-2 py-1" :disabled="idx === 0 || managedUpstreamsBusy[u.id]" title="Move up">↑</button>
+                      <button @click="reorderUpstream(u.id, 'down')" class="btn-ghost text-xs px-2 py-1" :disabled="idx === managedUpstreams.length - 1 || managedUpstreamsBusy[u.id]" title="Move down">↓</button>
+                      <label class="flex items-center gap-1 text-xs text-themed-dim cursor-pointer ml-1">
                         <input type="checkbox" :checked="u.enabled" @change="toggleManagedUpstreamEnabled(u)">
-                        <span x-text="u.enabled ? 'enabled' : 'disabled'"></span>
+                        <span x-text="u.enabled ? 'on' : 'off'"></span>
                       </label>
+                      <button @click="editUpstream(u)" class="btn-ghost text-xs px-2 py-1" :disabled="managedUpstreamsBusy[u.id]">Edit</button>
                       <button @click="probeManagedUpstream(u.id)" class="btn-ghost text-xs px-2 py-1" :disabled="managedUpstreamsBusy[u.id]">Test</button>
                       <button @click="deleteManagedUpstream(u.id, u.name)" class="text-accent-red hover:text-red-300 text-xs px-2 py-1" :disabled="managedUpstreamsBusy[u.id]">Delete</button>
                     </div>
                   </div>
                   <template x-if="managedUpstreamsProbeResults[u.id]">
-                    <div class="mt-3 text-xs p-2 rounded" :class="managedUpstreamsProbeResults[u.id].ok ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'">
+                    <div class="mt-3 text-xs p-2 rounded break-words" :class="managedUpstreamsProbeResults[u.id].ok ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'">
                       <template x-if="managedUpstreamsProbeResults[u.id].ok">
                         <span>✓ <span x-text="managedUpstreamsProbeResults[u.id].modelCount || 0"></span> models · <span x-text="(managedUpstreamsProbeResults[u.id].models || []).slice(0, 3).join(', ')"></span><span x-show="(managedUpstreamsProbeResults[u.id].models || []).length > 3">, …</span></span>
                       </template>
@@ -600,52 +603,86 @@ export function renderUpstreamTab(): string {
               </template>
             </div>
 
-            <!-- Add modal -->
-            <template x-if="managedUpstreamsForm.open">
-              <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" @click.self="closeManagedUpstreamForm()">
-                <div class="glass-card p-6 max-w-md w-full mx-4">
-                  <h3 class="text-themed font-semibold mb-4">Add <span class="capitalize" x-text="managedUpstreamsForm.provider"></span> Upstream</h3>
+            <!-- Add / Edit modal (shared form) -->
+            <template x-if="upstreamForm.open">
+              <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" @click.self="closeUpstreamForm()">
+                <div class="glass-card p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+                  <h3 class="text-themed font-semibold mb-4">
+                    <span x-text="upstreamForm.editingId ? 'Edit' : 'Add'"></span>
+                    <span class="capitalize" x-text="upstreamForm.provider"></span>
+                    Upstream
+                  </h3>
                   <div class="space-y-3">
                     <label class="block">
                       <span class="text-xs text-themed-dim">Name</span>
-                      <input x-model="managedUpstreamsForm.name" type="text" placeholder="e.g. DeepSeek prod" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                      <input x-model="upstreamForm.name" type="text" placeholder="e.g. DeepSeek prod" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
                     </label>
-                    <template x-if="managedUpstreamsForm.provider === 'custom'">
+                    <template x-if="upstreamForm.provider === 'custom'">
                       <div class="space-y-3">
                         <label class="block">
                           <span class="text-xs text-themed-dim">Base URL</span>
-                          <input x-model="managedUpstreamsForm.baseUrl" type="text" placeholder="https://api.deepseek.com/v1" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                          <input x-model="upstreamForm.baseUrl" type="text" placeholder="https://api.deepseek.com/v1" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
                         </label>
                         <label class="block">
                           <span class="text-xs text-themed-dim">API Key</span>
-                          <input x-model="managedUpstreamsForm.apiKey" type="password" placeholder="sk-..." class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                          <input x-model="upstreamForm.apiKey" type="password" :placeholder="upstreamForm.editingId ? 'leave blank to keep current' : 'sk-...'" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
                         </label>
                       </div>
                     </template>
-                    <template x-if="managedUpstreamsForm.provider === 'azure'">
+                    <template x-if="upstreamForm.provider === 'azure'">
                       <div class="space-y-3">
                         <label class="block">
                           <span class="text-xs text-themed-dim">Endpoint</span>
-                          <input x-model="managedUpstreamsForm.endpoint" type="text" placeholder="https://x.openai.azure.com" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                          <input x-model="upstreamForm.endpoint" type="text" placeholder="https://x.openai.azure.com" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
                         </label>
                         <label class="block">
                           <span class="text-xs text-themed-dim">API Key</span>
-                          <input x-model="managedUpstreamsForm.azureApiKey" type="password" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                          <input x-model="upstreamForm.azureApiKey" type="password" :placeholder="upstreamForm.editingId ? 'leave blank to keep current' : ''" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
                         </label>
                         <label class="block">
                           <span class="text-xs text-themed-dim">Deployment</span>
-                          <input x-model="managedUpstreamsForm.deployment" type="text" placeholder="gpt-4o" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                          <input x-model="upstreamForm.deployment" type="text" placeholder="gpt-4o" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
                         </label>
                         <label class="block">
                           <span class="text-xs text-themed-dim">API Version</span>
-                          <input x-model="managedUpstreamsForm.apiVersion" type="text" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                          <input x-model="upstreamForm.apiVersion" type="text" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
                         </label>
+                      </div>
+                    </template>
+
+                    <!-- Feature flag overrides (three-state: inherit / on / off) -->
+                    <template x-if="upstreamFlagCatalog && upstreamFlagCatalog.catalog">
+                      <div class="border-t border-surface-600 pt-3 mt-4">
+                        <h4 class="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">Feature flags</h4>
+                        <p class="text-xs text-themed-dim mb-3">Override per-upstream. Inherit = use provider default.</p>
+                        <div class="space-y-3">
+                          <template x-for="flag in upstreamFlagCatalog.catalog" :key="flag.id">
+                            <div class="text-xs">
+                              <div class="text-themed font-medium" x-text="flag.label"></div>
+                              <div class="text-themed-dim mb-1" x-text="flag.description"></div>
+                              <div class="flex gap-3">
+                                <label class="flex items-center gap-1 cursor-pointer">
+                                  <input type="radio" :name="'flag-' + flag.id" :checked="flagOverrideState(flag.id) === 'inherit'" @change="setFlagOverride(flag.id, null)">
+                                  <span class="text-themed-dim">Inherit (<span x-text="isFlagDefault(flag.id, upstreamForm.provider) ? 'on' : 'off'"></span>)</span>
+                                </label>
+                                <label class="flex items-center gap-1 cursor-pointer">
+                                  <input type="radio" :name="'flag-' + flag.id" :checked="flagOverrideState(flag.id) === 'on'" @change="setFlagOverride(flag.id, true)">
+                                  <span class="text-accent-teal">On</span>
+                                </label>
+                                <label class="flex items-center gap-1 cursor-pointer">
+                                  <input type="radio" :name="'flag-' + flag.id" :checked="flagOverrideState(flag.id) === 'off'" @change="setFlagOverride(flag.id, false)">
+                                  <span class="text-accent-red">Off</span>
+                                </label>
+                              </div>
+                            </div>
+                          </template>
+                        </div>
                       </div>
                     </template>
                   </div>
                   <div class="flex justify-end gap-2 mt-6">
-                    <button @click="closeManagedUpstreamForm()" class="btn-ghost text-sm">Cancel</button>
-                    <button @click="submitManagedUpstream()" class="btn-primary text-sm">Create</button>
+                    <button @click="closeUpstreamForm()" class="btn-ghost text-sm">Cancel</button>
+                    <button @click="submitUpstreamForm()" class="btn-primary text-sm" x-text="upstreamForm.editingId ? 'Save' : 'Create'"></button>
                   </div>
                 </div>
               </div>

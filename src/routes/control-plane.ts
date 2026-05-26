@@ -286,13 +286,28 @@ export const controlPlaneRoute = new Elysia()
     try {
       const body = (ctx.body ?? {}) as UpstreamBody
       if (body.provider !== undefined && body.provider !== existing.provider) return jsonError("provider cannot be changed")
+      // For config PATCH, shallow-merge the supplied keys onto the existing
+      // config and then run the strict normalizer. This lets the UI send
+      // partial updates (e.g. just `{ name: ... }`) without having to repeat
+      // baseUrl / apiKey / deployment. A literal '***' value means "keep
+      // current" — the UI uses this sentinel when the admin left the
+      // password field blank, since /api/upstreams/* redacts secrets.
+      let mergedConfig: Record<string, unknown> | undefined
+      if (body.config !== undefined) {
+        const incoming = body.config as Record<string, unknown>
+        mergedConfig = { ...existing.config }
+        for (const [k, v] of Object.entries(incoming)) {
+          if (v === "***") continue
+          mergedConfig[k] = v
+        }
+      }
       const next: UpstreamRecord = {
         ...existing,
         ownerId: body.ownerId !== undefined ? body.ownerId : existing.ownerId,
         name: typeof body.name === "string" ? body.name.trim() : existing.name,
         enabled: typeof body.enabled === "boolean" ? body.enabled : existing.enabled,
         sortOrder: Number.isFinite(body.sortOrder) ? Number(body.sortOrder) : existing.sortOrder,
-        config: body.config !== undefined ? normalizeConfig(existing.provider, body.config) : existing.config,
+        config: mergedConfig !== undefined ? normalizeConfig(existing.provider, mergedConfig) : existing.config,
         flagOverrides: body.flagOverrides !== undefined ? normalizeFlagOverrides(body.flagOverrides) : existing.flagOverrides,
         updatedAt: new Date().toISOString(),
       }

@@ -281,7 +281,9 @@ export function dashboardAssets(): string {
       // Managed upstreams (admin-only) — Custom / Azure entries from /api/upstreams
       managedUpstreams: [],
       managedUpstreamsLoading: false,
-      managedUpstreamsForm: { open: false, provider: 'custom', name: '', baseUrl: '', apiKey: '', endpoint: '', azureApiKey: '', deployment: '', apiVersion: '2024-08-01-preview' },
+      // upstreamForm is shared by add + edit. editingId !== null means edit mode.
+      upstreamForm: { open: false, editingId: null, provider: 'custom', name: '', baseUrl: '', apiKey: '', endpoint: '', azureApiKey: '', deployment: '', apiVersion: '2024-08-01-preview', flagOverrides: {} },
+      upstreamFlagCatalog: null,  // { catalog: [...], defaults: { copilot: [...], azure: [...], custom: [...] } }
       managedUpstreamsProbeResults: {},
       managedUpstreamsBusy: {},
       keys: [],
@@ -941,7 +943,11 @@ export function dashboardAssets(): string {
                 return;
               }
               const data = await resp.json();
-              this.managedUpstreams = (data.upstreams || []).filter(u => u.provider !== 'copilot');
+              // Sort by sortOrder asc, then createdAt asc — UI shows the same order
+              // the request planner walks at dispatch time.
+              this.managedUpstreams = (data.upstreams || [])
+                .filter(u => u.provider !== 'copilot')
+                .sort((a, b) => (a.sortOrder - b.sortOrder) || a.createdAt.localeCompare(b.createdAt));
             } catch (e) {
               console.error('loadManagedUpstreams:', e);
               this.managedUpstreams = [];
@@ -949,40 +955,109 @@ export function dashboardAssets(): string {
               this.managedUpstreamsLoading = false;
             }
           },
-          openManagedUpstreamForm(provider) {
-            this.managedUpstreamsForm = { open: true, provider: provider || 'custom', name: '', baseUrl: '', apiKey: '', endpoint: '', azureApiKey: '', deployment: '', apiVersion: '2024-08-01-preview' };
-          },
-          closeManagedUpstreamForm() {
-            this.managedUpstreamsForm.open = false;
-          },
-          async submitManagedUpstream() {
-            const f = this.managedUpstreamsForm;
-            if (!f.name.trim()) { alert('Name required'); return; }
-            let config;
-            if (f.provider === 'custom') {
-              if (!f.baseUrl.trim() || !f.apiKey.trim()) { alert('baseUrl and apiKey required'); return; }
-              config = { name: f.name.trim(), baseUrl: f.baseUrl.trim(), apiKey: f.apiKey.trim() };
-            } else if (f.provider === 'azure') {
-              if (!f.endpoint.trim() || !f.azureApiKey.trim() || !f.deployment.trim()) { alert('endpoint, apiKey, deployment required'); return; }
-              config = { name: f.name.trim(), endpoint: f.endpoint.trim(), apiKey: f.azureApiKey.trim(), deployment: f.deployment.trim(), apiVersion: f.apiVersion.trim() || '2024-08-01-preview' };
-            }
+          async loadUpstreamFlagCatalog() {
+            if (this.upstreamFlagCatalog) return;
             try {
-              const resp = await fetch('/api/upstreams', {
-                method: 'POST', credentials: 'same-origin',
+              const resp = await fetch('/api/upstream-flags', { credentials: 'same-origin' });
+              if (resp.ok) this.upstreamFlagCatalog = await resp.json();
+            } catch (e) { console.error('loadUpstreamFlagCatalog:', e); }
+          },
+          openUpstreamForm(provider) {
+            this.upstreamForm = { open: true, editingId: null, provider: provider || 'custom', name: '', baseUrl: '', apiKey: '', endpoint: '', azureApiKey: '', deployment: '', apiVersion: '2024-08-01-preview', flagOverrides: {} };
+            this.loadUpstreamFlagCatalog();
+          },
+          editUpstream(u) {
+            // Populate the form from an existing record. apiKey/azureApiKey
+            // stay empty because /api/upstreams redacts secrets in responses;
+            // the submit handler treats empty as "keep current".
+            this.upstreamForm = {
+              open: true,
+              editingId: u.id,
+              provider: u.provider,
+              name: u.name,
+              baseUrl: u.provider === 'custom' ? (u.config.baseUrl || '') : '',
+              apiKey: '',
+              endpoint: u.provider === 'azure' ? (u.config.endpoint || '') : '',
+              azureApiKey: '',
+              deployment: u.provider === 'azure' ? (u.config.deployment || '') : '',
+              apiVersion: u.provider === 'azure' ? (u.config.apiVersion || '2024-08-01-preview') : '2024-08-01-preview',
+              flagOverrides: { ...(u.flagOverrides || {}) },
+            };
+            this.loadUpstreamFlagCatalog();
+          },
+          closeUpstreamForm() {
+            this.upstreamForm.open = false;
+            this.upstreamForm.editingId = null;
+          },
+          // Three-state radio helper: undefined = inherit, true = on, false = off.
+          // Used by the flag UI section. State key is the flagId string.
+          setFlagOverride(flagId, value) {
+            if (value === null) delete this.upstreamForm.flagOverrides[flagId];
+            else this.upstreamForm.flagOverrides[flagId] = value;
+          },
+          flagOverrideState(flagId) {
+            const v = this.upstreamForm.flagOverrides[flagId];
+            return v === undefined ? 'inherit' : (v ? 'on' : 'off');
+          },
+          isFlagDefault(flagId, provider) {
+            if (!this.upstreamFlagCatalog) return false;
+            return (this.upstreamFlagCatalog.defaults?.[provider] || []).includes(flagId);
+          },
+          async submitUpstreamForm() {
+            const f = this.upstreamForm;
+            const editing = !!f.editingId;
+            if (!f.name.trim()) { alert('Name required'); return; }
+
+            // Build config payload — on edit, omit secret fields the user
+            // left blank so PATCH keeps the existing value.
+            let config = null;
+            if (!editing) {
+              if (f.provider === 'custom') {
+                if (!f.baseUrl.trim() || !f.apiKey.trim()) { alert('baseUrl and apiKey required'); return; }
+                config = { name: f.name.trim(), baseUrl: f.baseUrl.trim(), apiKey: f.apiKey.trim() };
+              } else if (f.provider === 'azure') {
+                if (!f.endpoint.trim() || !f.azureApiKey.trim() || !f.deployment.trim()) { alert('endpoint, apiKey, deployment required'); return; }
+                config = { name: f.name.trim(), endpoint: f.endpoint.trim(), apiKey: f.azureApiKey.trim(), deployment: f.deployment.trim(), apiVersion: f.apiVersion.trim() || '2024-08-01-preview' };
+              }
+            } else {
+              // For edit: send only the fields the admin actually changed.
+              // The server merges them onto the existing config and treats
+              // any '***' value as "keep current" (since GET redacts secrets).
+              // Sending an empty config object is fine — it's a no-op merge.
+              config = { name: f.name.trim() };
+              if (f.provider === 'custom') {
+                if (f.baseUrl.trim()) config.baseUrl = f.baseUrl.trim();
+                if (f.apiKey.trim()) config.apiKey = f.apiKey.trim();
+              } else if (f.provider === 'azure') {
+                if (f.endpoint.trim()) config.endpoint = f.endpoint.trim();
+                if (f.azureApiKey.trim()) config.apiKey = f.azureApiKey.trim();
+                if (f.deployment.trim()) config.deployment = f.deployment.trim();
+                if (f.apiVersion.trim()) config.apiVersion = f.apiVersion.trim();
+              }
+            }
+
+            const url = editing ? '/api/upstreams/' + encodeURIComponent(f.editingId) : '/api/upstreams';
+            const method = editing ? 'PATCH' : 'POST';
+            const body = editing
+              ? { name: f.name.trim(), config, flagOverrides: f.flagOverrides }
+              : { provider: f.provider, name: f.name.trim(), config, flagOverrides: f.flagOverrides };
+            try {
+              const resp = await fetch(url, {
+                method, credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ provider: f.provider, name: f.name.trim(), config }),
+                body: JSON.stringify(body),
               });
-              const body = await resp.json();
-              if (!resp.ok) { alert('Create failed: ' + (body.error || resp.status)); return; }
-              this.closeManagedUpstreamForm();
+              const respBody = await resp.json();
+              if (!resp.ok) { alert((editing ? 'Update' : 'Create') + ' failed: ' + (respBody.error || resp.status)); return; }
+              this.closeUpstreamForm();
               await this.loadManagedUpstreams();
             } catch (e) {
-              alert('Create failed: ' + e.message);
+              alert((editing ? 'Update' : 'Create') + ' failed: ' + e.message);
             }
           },
           async deleteManagedUpstream(id, name) {
             if (!confirm('Delete upstream "' + name + '"? Existing usage rows stay attributed.')) return;
-            this.$set ? this.$set(this.managedUpstreamsBusy, id, true) : (this.managedUpstreamsBusy[id] = true);
+            this.managedUpstreamsBusy[id] = true;
             try {
               const resp = await fetch('/api/upstreams/' + encodeURIComponent(id), { method: 'DELETE', credentials: 'same-origin' });
               if (!resp.ok) { const b = await resp.json().catch(() => ({})); alert('Delete failed: ' + (b.error || resp.status)); return; }
@@ -1001,6 +1076,35 @@ export function dashboardAssets(): string {
               if (!resp.ok) { const b = await resp.json().catch(() => ({})); alert('Update failed: ' + (b.error || resp.status)); return; }
               await this.loadManagedUpstreams();
             } catch (e) { alert('Update failed: ' + e.message); }
+          },
+          async reorderUpstream(id, direction) {
+            // direction: 'up' | 'down'. Compute a new sortOrder strictly between
+            // the current row and the neighbor on the requested side so we
+            // never have to rewrite siblings — INSERT 0.5 between 1 and 2.
+            const list = this.managedUpstreams;
+            const idx = list.findIndex(u => u.id === id);
+            if (idx === -1) return;
+            let newSort;
+            if (direction === 'up') {
+              if (idx === 0) return;
+              const above = list[idx - 1];
+              const aboveAbove = idx >= 2 ? list[idx - 2] : null;
+              newSort = aboveAbove ? (above.sortOrder + aboveAbove.sortOrder) / 2 : above.sortOrder - 1;
+            } else {
+              if (idx === list.length - 1) return;
+              const below = list[idx + 1];
+              const belowBelow = idx + 2 < list.length ? list[idx + 2] : null;
+              newSort = belowBelow ? (below.sortOrder + belowBelow.sortOrder) / 2 : below.sortOrder + 1;
+            }
+            try {
+              const resp = await fetch('/api/upstreams/' + encodeURIComponent(id), {
+                method: 'PATCH', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sortOrder: newSort }),
+              });
+              if (!resp.ok) { const b = await resp.json().catch(() => ({})); alert('Reorder failed: ' + (b.error || resp.status)); return; }
+              await this.loadManagedUpstreams();
+            } catch (e) { alert('Reorder failed: ' + e.message); }
           },
           async probeManagedUpstream(id) {
             this.managedUpstreamsBusy[id] = true;
