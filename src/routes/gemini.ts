@@ -1,6 +1,6 @@
 import { Elysia } from "elysia"
 
-import { resolveBinding } from "~/lib/binding-resolver"
+import { resolveBinding, parseModelRouting } from "~/lib/binding-resolver"
 import type { AppState } from "~/lib/state"
 import { trackNonStreamingUsage, consumeStreamForUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
@@ -90,14 +90,15 @@ async function handleGenerateContent(ctx: RouteContext) {
     }
   }
 
-  const model = extractModelId(params.modelWithMethod)
+  const rawModel = extractModelId(params.modelWithMethod)
+  const { upstreamPin, bareModel: model } = parseModelRouting(rawModel)
 
-  // Route by upstream protocol of the resolved model id, mirroring chat-completions.ts.
+  // Route by upstream protocol of the bare model id (pin doesn't affect protocol shape).
   if (model.startsWith("claude-")) {
-    return handleGeminiViaMessages(ctx, model, { kind: "sync" }, elapsed)
+    return handleGeminiViaMessages(ctx, model, { kind: "sync" }, elapsed, upstreamPin)
   }
   if (model.startsWith("gpt-5")) {
-    return handleGeminiViaResponses(ctx, model, { kind: "sync" }, elapsed)
+    return handleGeminiViaResponses(ctx, model, { kind: "sync" }, elapsed, upstreamPin)
   }
 
   // ── Web-search interception ──
@@ -147,7 +148,7 @@ async function handleGenerateContent(ctx: RouteContext) {
   const cleanPayload = JSON.parse(JSON.stringify(openAIPayload)) as Record<string, unknown>
 
   const upstreamTimer = startTimer()
-  const binding = await resolveBinding(state, ctx.userId, model, "chat_completions")
+  const binding = await resolveBinding(state, ctx.userId, model, "chat_completions", upstreamPin)
   if (!binding) {
     return new Response(
       JSON.stringify({ error: { code: 404, message: `No chat-completions upstream available for model: ${model}`, status: "NOT_FOUND" } }),
@@ -219,11 +220,12 @@ function isCountTokensRequest(modelWithMethod: string): boolean {
 
 async function handleCountTokens(ctx: RouteContext) {
   const { state, body, params } = ctx
-  const model = extractModelId(params.modelWithMethod)
+  const rawModel = extractModelId(params.modelWithMethod)
+  const { upstreamPin, bareModel: model } = parseModelRouting(rawModel)
   const normalized = normalizeCountTokensRequest(body as unknown as GeminiCountTokensRequest)
   const payload = translateGeminiCountTokensToAnthropic(normalized, model)
 
-  const binding = await resolveBinding(state, ctx.userId, model, "messages_count_tokens")
+  const binding = await resolveBinding(state, ctx.userId, model, "messages_count_tokens", upstreamPin)
   if (!binding) {
     return new Response(
       JSON.stringify({ error: { code: 404, message: `No messages_count_tokens upstream available for model: ${model}`, status: "NOT_FOUND" } }),
@@ -273,13 +275,14 @@ async function handleStreamGenerateContent(
     }
   }
 
-  const model = extractModelId(params.modelWithMethod)
+  const rawModel = extractModelId(params.modelWithMethod)
+  const { upstreamPin, bareModel: model } = parseModelRouting(rawModel)
 
   if (model.startsWith("claude-")) {
-    return handleGeminiViaMessages(ctx, model, { kind: "stream", useSSE }, elapsed)
+    return handleGeminiViaMessages(ctx, model, { kind: "stream", useSSE }, elapsed, upstreamPin)
   }
   if (model.startsWith("gpt-5")) {
-    return handleGeminiViaResponses(ctx, model, { kind: "stream", useSSE }, elapsed)
+    return handleGeminiViaResponses(ctx, model, { kind: "stream", useSSE }, elapsed, upstreamPin)
   }
 
   // ── Web-search interception (synthesized single chunk into stream pipeline) ──
@@ -339,7 +342,7 @@ async function handleStreamGenerateContent(
   const cleanPayload = JSON.parse(JSON.stringify(openAIPayload)) as Record<string, unknown>
 
   const upstreamTimer = startTimer()
-  const binding = await resolveBinding(state, ctx.userId, model, "chat_completions")
+  const binding = await resolveBinding(state, ctx.userId, model, "chat_completions", upstreamPin)
   if (!binding) {
     return new Response(
       JSON.stringify({ error: { code: 404, message: `No chat-completions upstream available for model: ${model}`, status: "NOT_FOUND" } }),

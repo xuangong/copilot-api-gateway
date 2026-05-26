@@ -1,5 +1,6 @@
 import { Elysia } from "elysia"
 
+import { stripUpstreamPin } from "~/lib/binding-resolver"
 import { startTimer } from "~/lib/latency-tracker"
 import { checkQuota } from "~/lib/quota"
 import {
@@ -38,6 +39,9 @@ const handleResponses = async (ctx: unknown) => {
     ...(body as ResponsesPayload),
   })
   stripServiceTier(payload as unknown as Record<string, unknown>)
+  // Strip optional `up_X/model` pin (G1). Pin is parked on
+  // payload.__upstreamPin and consumed by downstream resolveBinding.
+  stripUpstreamPin(payload as unknown as Record<string, unknown>)
   // Pre-dispatch transform — runs before binding resolution because the
   // result feeds into the claude/gpt-5 routing decision below. Per-upstream
   // flag overrides therefore can't influence this step; only state-level

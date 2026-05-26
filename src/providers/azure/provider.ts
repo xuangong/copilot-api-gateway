@@ -28,7 +28,7 @@ export interface AzureProviderConfig {
   endpoint: string
   /** Azure API key sent as `api-key` header. */
   apiKey: string
-  /** Deployment name used in URL path. */
+  /** Default deployment used when payload.model doesn't map. */
   deployment: string
   /** `api-version` query string value. Required for OpenAI-shape endpoints. */
   apiVersion: string
@@ -39,6 +39,13 @@ export interface AzureProviderConfig {
   endpoints: readonly ModelEndpoint[]
   /** Extra headers merged on every request. */
   defaultHeaders?: Record<string, string>
+  /**
+   * Optional list of additional deployments served by this Azure resource
+   * (G6). When `payload.model` matches a deployment's `model` (alias) or
+   * `name` (Azure-side deployment id), requests go to that deployment
+   * instead of the default. Lets one Azure upstream serve many models.
+   */
+  deployments?: ReadonlyArray<{ name: string; model: string }>
 }
 
 const OPENAI_PATHS: Partial<Record<ModelEndpoint, string>> = {
@@ -61,6 +68,7 @@ export class AzureProvider implements ModelProvider {
   private readonly deployment: string
   private readonly apiVersion: string
   private readonly defaultHeaders: Record<string, string>
+  private readonly extraDeployments: ReadonlyArray<{ name: string; model: string }>
 
   constructor(cfg: AzureProviderConfig) {
     if (!cfg.apiKey) throw new Error("Azure provider requires an apiKey")
@@ -74,13 +82,20 @@ export class AzureProvider implements ModelProvider {
     this.apiVersion = cfg.apiVersion
     this.endpoints = cfg.endpoints
     this.defaultHeaders = cfg.defaultHeaders ?? {}
+    this.extraDeployments = cfg.deployments ?? []
   }
 
   async getModels(): Promise<ModelsResponse> {
-    return {
-      object: "list",
-      data: [{ id: this.deployment, object: "model", created: 0, owned_by: "azure" }],
-    } as unknown as ModelsResponse
+    // List the default deployment plus any additional deployments as
+    // separate models so binding selection by model id works (G6).
+    const seen = new Set<string>()
+    const out: Array<{ id: string; object: string; created: number; owned_by: string }> = []
+    for (const m of [this.deployment, ...this.extraDeployments.map((d) => d.model)]) {
+      if (!m || seen.has(m)) continue
+      seen.add(m)
+      out.push({ id: m, object: "model", created: 0, owned_by: "azure" })
+    }
+    return { object: "list", data: out } as unknown as ModelsResponse
   }
 
   /**
@@ -121,10 +136,25 @@ export class AzureProvider implements ModelProvider {
     return this.post("embeddings", payload, opts, "create embeddings")
   }
 
-  private buildUrl(endpoint: ModelEndpoint): string {
+  /**
+   * Map the request's payload.model to the Azure deployment name to use.
+   * Falls back to the configured default deployment when no mapping
+   * matches — preserves the pre-G6 single-deployment behavior.
+   */
+  private resolveDeployment(payload: Record<string, unknown>): string {
+    const model = typeof payload.model === "string" ? payload.model : undefined
+    if (!model) return this.deployment
+    for (const d of this.extraDeployments) {
+      if (d.model === model || d.name === model) return d.name
+    }
+    if (model === this.deployment) return this.deployment
+    return this.deployment
+  }
+
+  private buildUrl(endpoint: ModelEndpoint, deployment: string): string {
     const openai = OPENAI_PATHS[endpoint]
     if (openai) {
-      return `${this.endpoint}/openai/deployments/${this.deployment}${openai}?api-version=${encodeURIComponent(this.apiVersion)}`
+      return `${this.endpoint}/openai/deployments/${deployment}${openai}?api-version=${encodeURIComponent(this.apiVersion)}`
     }
     const anthropic = ANTHROPIC_PATHS[endpoint]
     if (anthropic) {
@@ -151,7 +181,8 @@ export class AzureProvider implements ModelProvider {
     if (!this.endpoints.includes(endpoint)) {
       throw new Error(`Azure deployment ${this.name} does not serve endpoint: ${endpoint}`)
     }
-    const url = this.buildUrl(endpoint)
+    const deployment = this.resolveDeployment(payload)
+    const url = this.buildUrl(endpoint, deployment)
     const headers = this.headers(opts.extraHeaders ?? {})
     const operationName = opts.operationName ?? defaultOpName
     let response: Response

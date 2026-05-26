@@ -1,6 +1,6 @@
 import { Elysia } from "elysia"
 
-import { resolveBinding, effectiveFlags } from "~/lib/binding-resolver"
+import { resolveBinding, effectiveFlags, stripUpstreamPin, pinFromPayload } from "~/lib/binding-resolver"
 import type { AppState } from "~/lib/state"
 import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
@@ -98,6 +98,10 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
   }
 
   const payload = body as ChatCompletionsPayload
+  // If the client used the `up_X/model` pin syntax to force a specific
+  // upstream (G1), strip it now so the rest of the pipeline sees the
+  // bare model id everywhere — including the fallback handlers.
+  stripUpstreamPin(payload as unknown as Record<string, unknown>)
   const upstreamTimer = startTimer()
 
   // claude-* 模型走 Messages 上游,需要 Chat ↔ Messages 双向翻译
@@ -121,7 +125,7 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
   // Resolve binding for non-fallback path. Falls back to the request's
   // single-account Copilot context when no managed upstream serves the
   // requested model, keeping pre-registry deployments working.
-  const binding = await resolveBinding(state, ctx.userId, payload.model, "chat_completions")
+  const binding = await resolveBinding(state, ctx.userId, payload.model, "chat_completions", pinFromPayload(payload as unknown as Record<string, unknown>))
   if (!binding) {
     return new Response(
       JSON.stringify({ error: { type: "invalid_request_error", message: `No chat-completions upstream available for model: ${payload.model}` } }),

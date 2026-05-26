@@ -5,7 +5,7 @@
  */
 
 import { detectClient } from "~/lib/client-detect"
-import { resolveBinding } from "~/lib/binding-resolver"
+import { resolveBinding, pinFromPayload } from "~/lib/binding-resolver"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
@@ -42,7 +42,7 @@ export async function handleChatCompletionsViaMessages(
   const target = translateChatCompletionsToMessages(payload)
   target.stream = isStreaming
 
-  const binding = await resolveBinding(state, ctx.userId, model, "messages")
+  const binding = await resolveBinding(state, ctx.userId, model, "messages", pinFromPayload(payload as unknown as Record<string, unknown>))
   if (!binding) {
     return new Response(
       JSON.stringify({ error: { type: "invalid_request_error", message: `No messages upstream available for model: ${model}` } }),

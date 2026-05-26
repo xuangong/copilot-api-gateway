@@ -1,5 +1,5 @@
 import { detectClient } from "~/lib/client-detect"
-import { resolveBinding } from "~/lib/binding-resolver"
+import { resolveBinding, pinFromPayload } from "~/lib/binding-resolver"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
@@ -30,7 +30,7 @@ export async function handleDirectMessages(
   const client = detectClient(userAgent)
   const upstreamTimer = startTimer()
   const isStreaming = payload.stream === true
-  const binding = await resolveBinding(state, ctx.userId, payload.model, "messages")
+  const binding = await resolveBinding(state, ctx.userId, payload.model, "messages", pinFromPayload(payload as unknown as Record<string, unknown>))
   if (!binding) {
     return new Response(
       JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: `No messages upstream available for model: ${payload.model}` } }),

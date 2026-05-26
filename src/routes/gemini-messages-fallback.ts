@@ -42,6 +42,7 @@ export async function handleGeminiViaMessages(
   model: string,
   mode: { kind: "sync" } | { kind: "stream"; useSSE: boolean },
   elapsed: () => number,
+  upstreamPin?: string,
 ): Promise<Response> {
   const { state, body, apiKeyId, colo, requestId, userAgent } = ctx
   const client = detectClient(userAgent)
@@ -50,7 +51,7 @@ export async function handleGeminiViaMessages(
   const target = translateGeminiToMessages(body, model)
   target.stream = isStreaming
 
-  const binding = await resolveBinding(state, ctx.userId, model, "messages")
+  const binding = await resolveBinding(state, ctx.userId, model, "messages", upstreamPin)
   if (!binding) {
     return new Response(
       JSON.stringify({ error: { message: `No messages upstream available for model: ${model}`, status: "NOT_FOUND" } }),

@@ -640,13 +640,41 @@ export function renderUpstreamTab(): string {
                           <input x-model="upstreamForm.azureApiKey" type="password" :placeholder="upstreamForm.editingId ? 'leave blank to keep current' : ''" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
                         </label>
                         <label class="block">
-                          <span class="text-xs text-themed-dim">Deployment</span>
+                          <span class="text-xs text-themed-dim">Default Deployment</span>
                           <input x-model="upstreamForm.deployment" type="text" placeholder="gpt-4o" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
                         </label>
                         <label class="block">
                           <span class="text-xs text-themed-dim">API Version</span>
                           <input x-model="upstreamForm.apiVersion" type="text" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
                         </label>
+                        <label class="block">
+                          <span class="text-xs text-themed-dim">Additional Deployments (one per line, <code>name = model</code>)</span>
+                          <textarea x-model="upstreamForm.azureDeployments" rows="3" placeholder="gpt-4o = gpt-4o&#10;text-embed = text-embedding-3-small" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-xs font-mono"></textarea>
+                          <span class="text-xs text-themed-dim block mt-1">Leave blank to use only the Default Deployment above.</span>
+                        </label>
+                      </div>
+                    </template>
+
+                    <!-- Served endpoints (G3) — admin opt-in per protocol -->
+                    <div class="border-t border-surface-600 pt-3 mt-3">
+                      <h4 class="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">Served endpoints</h4>
+                      <p class="text-xs text-themed-dim mb-2">Which protocol(s) this upstream natively serves. Requests for unchecked endpoints will route to a different upstream.</p>
+                      <div class="flex flex-wrap gap-3 text-xs">
+                        <template x-for="ep in ['chat_completions','responses','messages','messages_count_tokens','embeddings']" :key="ep">
+                          <label class="flex items-center gap-1 cursor-pointer">
+                            <input type="checkbox" :checked="upstreamForm.endpoints.includes(ep)" @change="upstreamForm.endpoints = upstreamForm.endpoints.includes(ep) ? upstreamForm.endpoints.filter(x => x !== ep) : [...upstreamForm.endpoints, ep]">
+                            <span x-text="ep"></span>
+                          </label>
+                        </template>
+                      </div>
+                    </div>
+
+                    <!-- Manual model list (G2) — bypass live /v1/models probe -->
+                    <template x-if="upstreamForm.provider === 'custom'">
+                      <div class="border-t border-surface-600 pt-3 mt-3">
+                        <h4 class="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">Manual model list (optional)</h4>
+                        <p class="text-xs text-themed-dim mb-2">One id per line, optional <code># label</code>. If non-empty, the upstream's <code>/v1/models</code> probe is skipped and these entries are exposed verbatim.</p>
+                        <textarea x-model="upstreamForm.modelsText" rows="4" placeholder="deepseek-chat&#10;deepseek-coder # DeepSeek Coder" class="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-xs font-mono"></textarea>
                       </div>
                     </template>
 

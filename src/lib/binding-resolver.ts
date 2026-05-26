@@ -4,30 +4,76 @@ import { listProviderBindings } from "~/providers/registry"
 import type { ModelEndpoint } from "~/protocols/common"
 
 /**
+ * Parse the optional `<upstreamId>/<modelId>` syntax callers can use to
+ * pin a request to a specific upstream when the same model id exists on
+ * more than one. Returns the resolved upstream pin (if any) plus the
+ * naked model id that should be forwarded upstream.
+ *
+ * Heuristic: only treat the prefix as an upstream pin when it actually
+ * looks like one (`up_*`). Real model ids never start with `up_`, but
+ * may legitimately contain slashes (e.g. `accounts/msft/routers/...`).
+ */
+export interface ModelRoutingHint {
+  upstreamPin?: string
+  bareModel: string
+}
+
+export function parseModelRouting(model: string): ModelRoutingHint {
+  const slash = model.indexOf("/")
+  if (slash <= 0) return { bareModel: model }
+  const prefix = model.slice(0, slash)
+  if (!prefix.startsWith("up_")) return { bareModel: model }
+  return { upstreamPin: prefix, bareModel: model.slice(slash + 1) }
+}
+
+/**
  * Resolve the (provider, upstream-id) pair for a request.
  *
  * Walks the visible upstream registry (global + owner-scoped), filters to
- * those that natively serve `endpoint`, and picks the first binding whose
- * model id matches `model`. Falls back to the request's single-Copilot
- * context when no managed upstream serves the model, keeping pre-registry
- * deployments working.
+ * those that natively serve `endpoint`, and picks a binding by:
  *
- * Returns `null` when nothing matches — caller is responsible for emitting
- * the appropriate 404 in the right protocol shape (Anthropic / OpenAI /
- * Gemini differ).
+ *   1. If the model id is prefixed `up_<id>/<model>`, require that
+ *      binding's upstream id matches.
+ *   2. Otherwise pick the first matching binding in sort order — the
+ *      single-binding case is unambiguous, and the multi-binding case
+ *      with no pin lets admins control routing via sortOrder.
+ *
+ * Falls back to the request's single-Copilot context when no managed
+ * upstream serves the model, keeping pre-registry deployments working.
+ *
+ * Returns `null` when nothing matches — caller is responsible for
+ * emitting the appropriate 404 in the right protocol shape.
  */
 export async function resolveBinding(
   state: AppState | null,
   ownerId: string | undefined,
   model: string,
   endpoint: ModelEndpoint,
+  pin?: string,
 ): Promise<ProviderBinding | null> {
   const copilot = state?.copilotToken
     ? { copilotToken: state.copilotToken, accountType: state.accountType }
     : undefined
+  // Pin priority: caller arg > in-band `up_X/model` syntax.
+  const parsed = parseModelRouting(model)
+  const upstreamPin = pin ?? parsed.upstreamPin
+  const bareModel = parsed.bareModel
   const bindings = await listProviderBindings({ ownerId, copilot })
   const candidates = bindingsForEndpoint(bindings, endpoint)
-  return candidates.find((b) => b.model.id === model) ?? null
+  if (upstreamPin) {
+    return candidates.find((b) => b.upstream === upstreamPin && b.model.id === bareModel) ?? null
+  }
+  return candidates.find((b) => b.model.id === bareModel) ?? null
+}
+
+/**
+ * Helper for routes that have already called stripUpstreamPin on a
+ * payload and want to resolve a binding honoring the parked
+ * `__upstreamPin` value.
+ */
+export function pinFromPayload(payload: { __upstreamPin?: unknown } | Record<string, unknown>): string | undefined {
+  const v = (payload as { __upstreamPin?: unknown }).__upstreamPin
+  return typeof v === "string" ? v : undefined
 }
 
 /**
@@ -41,4 +87,37 @@ export function effectiveFlags(
   binding: ProviderBinding | null | undefined,
 ): ReadonlySet<string> {
   return binding?.enabledFlags ?? state?.enabledFlags ?? new Set<string>()
+}
+
+/**
+ * If the caller used the `up_X/model` pinning syntax, rewrite the
+ * payload's `model` field to the bare model id (so downstream sees the
+ * upstream-native name) and stash the pin on `__upstreamPin` so a later
+ * resolveBinding picks the right candidate. Idempotent.
+ */
+export function stripUpstreamPin(payload: { model?: unknown } | Record<string, unknown>): void {
+  const m = (payload as { model?: unknown }).model
+  if (typeof m !== "string") return
+  const { upstreamPin, bareModel } = parseModelRouting(m)
+  if (upstreamPin) (payload as Record<string, unknown>).__upstreamPin = upstreamPin
+  if (bareModel !== m) (payload as { model?: string }).model = bareModel
+}
+
+/**
+ * One-shot helper for routes: parse the pin, resolve a binding, and
+ * mutate the payload's model field to the bare id. Returns
+ * { binding, model } where `model` is the bare id callers should use
+ * for usage tracking / latency keys / downstream calls.
+ */
+export async function resolveBindingForRequest<P extends { model?: unknown }>(
+  state: AppState | null,
+  ownerId: string | undefined,
+  payload: P,
+  endpoint: ModelEndpoint,
+): Promise<{ binding: ProviderBinding | null; model: string }> {
+  const rawModel = typeof payload.model === "string" ? payload.model : ""
+  const { bareModel } = parseModelRouting(rawModel)
+  const binding = await resolveBinding(state, ownerId, rawModel, endpoint)
+  if (rawModel !== bareModel) (payload as { model?: string }).model = bareModel
+  return { binding, model: bareModel }
 }

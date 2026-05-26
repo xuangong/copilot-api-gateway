@@ -1,6 +1,6 @@
 import { Elysia } from "elysia"
 
-import { resolveBinding } from "~/lib/binding-resolver"
+import { resolveBinding, stripUpstreamPin, pinFromPayload } from "~/lib/binding-resolver"
 import { startTimer } from "~/lib/latency-tracker"
 import { checkQuota } from "~/lib/quota"
 import type { MessagesPayload } from "~/services/web-search"
@@ -40,6 +40,9 @@ export const messagesRoute = new Elysia()
     }
 
     const payload: AnthropicMessagesPayload = { ...(body as AnthropicMessagesPayload) }
+    // Strip optional `up_X/model` pin before any branching — the pin is
+    // parked on payload.__upstreamPin and read by downstream resolveBinding.
+    stripUpstreamPin(payload as unknown as Record<string, unknown>)
     const flags = runAnthropicMessagesPipeline(payload, routeCtx.state.enabledFlags ?? new Set())
 
     // gpt-5.x only serves /v1/responses upstream — translate Messages↔Responses.
@@ -74,7 +77,8 @@ export const messagesRoute = new Elysia()
 
     runAnthropicCountTokensPipeline(payload)
 
-    const binding = await resolveBinding(state, userId, payload.model, "messages_count_tokens")
+    stripUpstreamPin(payload as unknown as Record<string, unknown>)
+    const binding = await resolveBinding(state, userId, payload.model, "messages_count_tokens", pinFromPayload(payload as unknown as Record<string, unknown>))
     if (!binding) {
       return new Response(
         JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: `No messages_count_tokens upstream available for model: ${payload.model}` } }),

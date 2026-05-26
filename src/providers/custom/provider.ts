@@ -36,6 +36,15 @@ export interface CustomProviderConfig {
    * Optional models endpoint override. Defaults to `${baseUrl}/models`.
    */
   modelsEndpoint?: string
+  /**
+   * Manual model list (G2). When provided, the live `/v1/models` probe is
+   * bypassed and this list is exposed verbatim. Useful when:
+   *   - upstream doesn't implement /v1/models
+   *   - upstream returns hundreds of models and you want a curated subset
+   *   - you want to expose alias model ids the upstream doesn't know
+   * Pass each entry as either a bare id string or { id, name?, ownedBy? }.
+   */
+  models?: ReadonlyArray<string | { id: string; name?: string; ownedBy?: string }>
 }
 
 const DEFAULT_ENDPOINTS: readonly ModelEndpoint[] = ["chat_completions", "embeddings"]
@@ -48,6 +57,7 @@ export class CustomProvider implements ModelProvider {
   private readonly apiKey: string
   private readonly defaultHeaders: Record<string, string>
   private readonly modelsEndpoint: string
+  private readonly manualModels?: ReadonlyArray<{ id: string; name?: string; ownedBy?: string }>
 
   constructor(cfg: CustomProviderConfig) {
     if (!cfg.apiKey) throw new Error("Custom provider requires an apiKey")
@@ -58,9 +68,29 @@ export class CustomProvider implements ModelProvider {
     this.defaultHeaders = cfg.defaultHeaders ?? {}
     this.endpoints = cfg.endpoints ?? DEFAULT_ENDPOINTS
     this.modelsEndpoint = cfg.modelsEndpoint ?? `${this.baseUrl}/models`
+    this.manualModels = cfg.models?.map((m) =>
+      typeof m === "string" ? { id: m } : { id: m.id, name: m.name, ownedBy: m.ownedBy },
+    )
   }
 
   async getModels(): Promise<ModelsResponse> {
+    // G2: manual list bypasses /v1/models entirely. Useful for upstreams
+    // that don't implement /v1/models or that return too many entries.
+    if (this.manualModels && this.manualModels.length > 0) {
+      return {
+        object: "list",
+        data: this.manualModels.map((m) => ({
+          id: m.id,
+          object: "model",
+          name: m.name ?? m.id,
+          vendor: m.ownedBy ?? this.name,
+          version: m.id,
+          model_picker_enabled: true,
+          preview: false,
+          capabilities: { family: "custom", limits: {}, object: "model_capabilities", supports: {}, tokenizer: "unknown", type: "text" },
+        })),
+      } as unknown as ModelsResponse
+    }
     const res = await fetchWithRetry(this.modelsEndpoint, {
       method: "GET",
       headers: this.authHeaders(),

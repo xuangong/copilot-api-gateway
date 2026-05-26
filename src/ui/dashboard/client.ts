@@ -282,7 +282,7 @@ export function dashboardAssets(): string {
       managedUpstreams: [],
       managedUpstreamsLoading: false,
       // upstreamForm is shared by add + edit. editingId !== null means edit mode.
-      upstreamForm: { open: false, editingId: null, provider: 'custom', name: '', baseUrl: '', apiKey: '', endpoint: '', azureApiKey: '', deployment: '', apiVersion: '2024-08-01-preview', flagOverrides: {} },
+      upstreamForm: { open: false, editingId: null, provider: 'custom', name: '', baseUrl: '', apiKey: '', endpoint: '', azureApiKey: '', deployment: '', apiVersion: '2024-08-01-preview', flagOverrides: {}, endpoints: ['chat_completions','embeddings'], modelsText: '', azureDeployments: '' },
       upstreamFlagCatalog: null,  // { catalog: [...], defaults: { copilot: [...], azure: [...], custom: [...] } }
       managedUpstreamsProbeResults: {},
       managedUpstreamsBusy: {},
@@ -963,25 +963,37 @@ export function dashboardAssets(): string {
             } catch (e) { console.error('loadUpstreamFlagCatalog:', e); }
           },
           openUpstreamForm(provider) {
-            this.upstreamForm = { open: true, editingId: null, provider: provider || 'custom', name: '', baseUrl: '', apiKey: '', endpoint: '', azureApiKey: '', deployment: '', apiVersion: '2024-08-01-preview', flagOverrides: {} };
+            this.upstreamForm = { open: true, editingId: null, provider: provider || 'custom', name: '', baseUrl: '', apiKey: '', endpoint: '', azureApiKey: '', deployment: '', apiVersion: '2024-08-01-preview', flagOverrides: {}, endpoints: provider === 'azure' ? ['chat_completions'] : ['chat_completions','embeddings'], modelsText: '', azureDeployments: '' };
             this.loadUpstreamFlagCatalog();
           },
           editUpstream(u) {
             // Populate the form from an existing record. apiKey/azureApiKey
             // stay empty because /api/upstreams redacts secrets in responses;
             // the submit handler treats empty as "keep current".
+            const cfg = u.config || {};
+            // Manual models (custom) → one per line, optional '# label'.
+            // Azure deployments → one per line, 'name = model'.
+            const modelsText = (Array.isArray(cfg.models) ? cfg.models : [])
+              .map((m) => typeof m === 'string' ? m : (m.id + (m.name ? ' # ' + m.name : '')))
+              .join('\n');
+            const azureDepsText = (Array.isArray(cfg.deployments) ? cfg.deployments : [])
+              .map((d) => d.name + (d.model ? ' = ' + d.model : ''))
+              .join('\n');
             this.upstreamForm = {
               open: true,
               editingId: u.id,
               provider: u.provider,
               name: u.name,
-              baseUrl: u.provider === 'custom' ? (u.config.baseUrl || '') : '',
+              baseUrl: u.provider === 'custom' ? (cfg.baseUrl || '') : '',
               apiKey: '',
-              endpoint: u.provider === 'azure' ? (u.config.endpoint || '') : '',
+              endpoint: u.provider === 'azure' ? (cfg.endpoint || '') : '',
               azureApiKey: '',
-              deployment: u.provider === 'azure' ? (u.config.deployment || '') : '',
-              apiVersion: u.provider === 'azure' ? (u.config.apiVersion || '2024-08-01-preview') : '2024-08-01-preview',
+              deployment: u.provider === 'azure' ? (cfg.deployment || '') : '',
+              apiVersion: u.provider === 'azure' ? (cfg.apiVersion || '2024-08-01-preview') : '2024-08-01-preview',
               flagOverrides: { ...(u.flagOverrides || {}) },
+              endpoints: Array.isArray(cfg.endpoints) ? [...cfg.endpoints] : (u.provider === 'custom' ? ['chat_completions','embeddings'] : ['chat_completions']),
+              modelsText,
+              azureDeployments: azureDepsText,
             };
             this.loadUpstreamFlagCatalog();
           },
@@ -1008,16 +1020,39 @@ export function dashboardAssets(): string {
             const editing = !!f.editingId;
             if (!f.name.trim()) { alert('Name required'); return; }
 
+            // Parse the textarea-style manual model list. Empty list means
+            // "fall through to the upstream /v1/models probe".
+            const parseModelsText = (txt) => {
+              if (!txt || !txt.trim()) return undefined;
+              return txt.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(line => {
+                const hashAt = line.indexOf('#');
+                if (hashAt === -1) return line;
+                return { id: line.slice(0, hashAt).trim(), name: line.slice(hashAt + 1).trim() };
+              });
+            };
+            const parseAzureDeployments = (txt) => {
+              if (!txt || !txt.trim()) return undefined;
+              return txt.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(line => {
+                const eqAt = line.indexOf('=');
+                if (eqAt === -1) return { name: line, model: line };
+                return { name: line.slice(0, eqAt).trim(), model: line.slice(eqAt + 1).trim() };
+              });
+            };
+
             // Build config payload — on edit, omit secret fields the user
             // left blank so PATCH keeps the existing value.
             let config = null;
             if (!editing) {
               if (f.provider === 'custom') {
                 if (!f.baseUrl.trim() || !f.apiKey.trim()) { alert('baseUrl and apiKey required'); return; }
-                config = { name: f.name.trim(), baseUrl: f.baseUrl.trim(), apiKey: f.apiKey.trim() };
+                config = { name: f.name.trim(), baseUrl: f.baseUrl.trim(), apiKey: f.apiKey.trim(), endpoints: f.endpoints };
+                const models = parseModelsText(f.modelsText);
+                if (models) config.models = models;
               } else if (f.provider === 'azure') {
                 if (!f.endpoint.trim() || !f.azureApiKey.trim() || !f.deployment.trim()) { alert('endpoint, apiKey, deployment required'); return; }
-                config = { name: f.name.trim(), endpoint: f.endpoint.trim(), apiKey: f.azureApiKey.trim(), deployment: f.deployment.trim(), apiVersion: f.apiVersion.trim() || '2024-08-01-preview' };
+                config = { name: f.name.trim(), endpoint: f.endpoint.trim(), apiKey: f.azureApiKey.trim(), deployment: f.deployment.trim(), apiVersion: f.apiVersion.trim() || '2024-08-01-preview', endpoints: f.endpoints };
+                const deps = parseAzureDeployments(f.azureDeployments);
+                if (deps) config.deployments = deps;
               }
             } else {
               // For edit: send only the fields the admin actually changed.
@@ -1028,11 +1063,17 @@ export function dashboardAssets(): string {
               if (f.provider === 'custom') {
                 if (f.baseUrl.trim()) config.baseUrl = f.baseUrl.trim();
                 if (f.apiKey.trim()) config.apiKey = f.apiKey.trim();
+                if (Array.isArray(f.endpoints)) config.endpoints = f.endpoints;
+                const models = parseModelsText(f.modelsText);
+                config.models = models ?? [];   // [] explicitly clears
               } else if (f.provider === 'azure') {
                 if (f.endpoint.trim()) config.endpoint = f.endpoint.trim();
                 if (f.azureApiKey.trim()) config.apiKey = f.azureApiKey.trim();
                 if (f.deployment.trim()) config.deployment = f.deployment.trim();
                 if (f.apiVersion.trim()) config.apiVersion = f.apiVersion.trim();
+                if (Array.isArray(f.endpoints)) config.endpoints = f.endpoints;
+                const deps = parseAzureDeployments(f.azureDeployments);
+                config.deployments = deps ?? [];
               }
             }
 

@@ -1,5 +1,5 @@
 import { detectClient } from "~/lib/client-detect"
-import { resolveBinding, effectiveFlags } from "~/lib/binding-resolver"
+import { resolveBinding, effectiveFlags, pinFromPayload } from "~/lib/binding-resolver"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
@@ -42,7 +42,7 @@ export async function handleMessagesViaChatCompletions(
     }
   }
 
-  const binding = await resolveBinding(state, ctx.userId, model, "chat_completions")
+  const binding = await resolveBinding(state, ctx.userId, model, "chat_completions", pinFromPayload(payload as unknown as Record<string, unknown>))
   if (!binding) {
     return new Response(
       JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: `No chat-completions upstream available for model: ${model}` } }),

@@ -107,7 +107,35 @@ function normalizeCustomConfig(config: Record<string, unknown>): CustomProviderC
     endpoints: parseEndpoints(config.endpoints, ["chat_completions", "embeddings"]),
     modelsEndpoint: typeof config.modelsEndpoint === "string" && config.modelsEndpoint.trim() ? config.modelsEndpoint.trim() : undefined,
     defaultHeaders: normalizeStringRecord(config.defaultHeaders, "defaultHeaders"),
+    models: parseManualModels(config.models),
   }
+}
+
+function parseManualModels(value: unknown): CustomProviderConfig["models"] {
+  if (value === undefined || value === null) return undefined
+  if (!Array.isArray(value)) throw new Error("models must be an array of strings or { id, name?, ownedBy? }")
+  const out: Array<{ id: string; name?: string; ownedBy?: string }> = []
+  for (const entry of value) {
+    if (typeof entry === "string") {
+      const id = entry.trim()
+      if (!id) throw new Error("models[] entry must be a non-empty string")
+      out.push({ id })
+      continue
+    }
+    if (entry && typeof entry === "object" && typeof (entry as { id?: unknown }).id === "string") {
+      const e = entry as { id: string; name?: unknown; ownedBy?: unknown }
+      const id = e.id.trim()
+      if (!id) throw new Error("models[].id must be a non-empty string")
+      out.push({
+        id,
+        name: typeof e.name === "string" ? e.name : undefined,
+        ownedBy: typeof e.ownedBy === "string" ? e.ownedBy : undefined,
+      })
+      continue
+    }
+    throw new Error("models[] entry must be a string or { id, name?, ownedBy? } object")
+  }
+  return out.length > 0 ? out : undefined
 }
 
 function normalizeAzureConfig(config: Record<string, unknown>): AzureProviderConfig {
@@ -124,7 +152,22 @@ function normalizeAzureConfig(config: Record<string, unknown>): AzureProviderCon
     apiVersion: config.apiVersion.trim(),
     endpoints: parseEndpoints(config.endpoints, ["chat_completions"]),
     defaultHeaders: normalizeStringRecord(config.defaultHeaders, "defaultHeaders"),
+    deployments: parseAzureDeployments(config.deployments),
   }
+}
+
+function parseAzureDeployments(value: unknown): AzureProviderConfig["deployments"] {
+  if (value === undefined || value === null) return undefined
+  if (!Array.isArray(value)) throw new Error("deployments must be an array of { name, model }")
+  const out: Array<{ name: string; model: string }> = []
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") throw new Error("deployments[] entry must be an object")
+    const e = entry as { name?: unknown; model?: unknown }
+    if (typeof e.name !== "string" || !e.name.trim()) throw new Error("deployments[].name required")
+    if (typeof e.model !== "string" || !e.model.trim()) throw new Error("deployments[].model required")
+    out.push({ name: e.name.trim(), model: e.model.trim() })
+  }
+  return out.length > 0 ? out : undefined
 }
 
 function normalizeCopilotConfig(config: Record<string, unknown>): Record<string, unknown> {
