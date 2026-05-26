@@ -25,6 +25,8 @@ export interface ProbeResult {
   models?: string[]
   /** First 1000 chars of the error body / exception message on failure. */
   error?: string
+  /** One-line "what to check next" suggestion (only populated on failure). */
+  hint?: string
 }
 
 export interface ModelProvider {

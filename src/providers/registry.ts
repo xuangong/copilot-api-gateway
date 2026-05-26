@@ -189,8 +189,15 @@ export async function listUpstreamModels(opts: ListUpstreamModelsOptions = {}): 
   for (const binding of bindings) {
     if (seen.has(binding.model.id)) continue
     seen.add(binding.model.id)
+    // Attach provenance so dashboard / clients can show which upstream
+    // ended up serving each model id. Non-standard fields; OpenAI/Anthropic
+    // SDKs ignore them.
+    const provenance = {
+      _upstream: binding.upstream,
+      _provider: binding.kind,
+    }
     if (binding.model.raw) {
-      data.push(binding.model.raw)
+      data.push({ ...binding.model.raw, ...provenance })
     } else {
       data.push({
         id: binding.model.id,
@@ -212,6 +219,7 @@ export async function listUpstreamModels(opts: ListUpstreamModelsOptions = {}): 
           tokenizer: "unknown",
           type: "text",
         },
+        ...provenance,
       })
     }
   }

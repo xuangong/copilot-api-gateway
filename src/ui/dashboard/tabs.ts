@@ -585,7 +585,7 @@ export function renderUpstreamTab(): string {
                         <span x-text="u.enabled ? 'on' : 'off'"></span>
                       </label>
                       <button @click="editUpstream(u)" class="btn-ghost text-xs px-2 py-1" :disabled="managedUpstreamsBusy[u.id]">Edit</button>
-                      <button @click="probeManagedUpstream(u.id)" class="btn-ghost text-xs px-2 py-1" :disabled="managedUpstreamsBusy[u.id]">Test</button>
+                      <button @click="probeManagedUpstream(u.id)" class="btn-ghost text-xs px-2 py-1" :disabled="managedUpstreamsBusy[u.id]" x-text="managedUpstreamsBusy[u.id] ? 'Testing…' : 'Test'"></button>
                       <button @click="deleteManagedUpstream(u.id, u.name)" class="text-accent-red hover:text-red-300 text-xs px-2 py-1" :disabled="managedUpstreamsBusy[u.id]">Delete</button>
                     </div>
                   </div>
@@ -595,8 +595,30 @@ export function renderUpstreamTab(): string {
                         <span>✓ <span x-text="managedUpstreamsProbeResults[u.id].modelCount || 0"></span> models · <span x-text="(managedUpstreamsProbeResults[u.id].models || []).slice(0, 3).join(', ')"></span><span x-show="(managedUpstreamsProbeResults[u.id].models || []).length > 3">, …</span></span>
                       </template>
                       <template x-if="!managedUpstreamsProbeResults[u.id].ok">
-                        <span>✗ <span x-text="managedUpstreamsProbeResults[u.id].error || 'probe failed'"></span></span>
+                        <div>
+                          <div>✗ <span x-text="managedUpstreamsProbeResults[u.id].error || 'probe failed'"></span></div>
+                          <div x-show="managedUpstreamsProbeResults[u.id].hint" class="mt-1 text-yellow-300">💡 <span x-text="managedUpstreamsProbeResults[u.id].hint"></span></div>
+                        </div>
                       </template>
+                    </div>
+                  </template>
+                  <!-- Models served by this upstream (G7 / #1): click to copy
+                       the bare id OR the upstream-pinned id for clients that
+                       need disambiguation. Sourced from the cached /v1/models
+                       grouped by _upstream. -->
+                  <template x-if="u.enabled && (allModelsByUpstream.find(g => g.upstream === u.id)?.models?.length || 0) > 0">
+                    <div class="mt-2 text-xs">
+                      <div class="text-themed-dim mb-1">Models served — click to copy:</div>
+                      <div class="flex flex-wrap gap-1">
+                        <template x-for="m in (allModelsByUpstream.find(g => g.upstream === u.id)?.models || [])" :key="m.id">
+                          <button @click="copyModelId(m.id)"
+                                  @click.shift.stop="copyModelId(u.id + '/' + m.id)"
+                                  :title="'click: copy ' + m.id + '\\nshift-click: copy pinned ' + u.id + '/' + m.id"
+                                  class="px-2 py-0.5 bg-surface-600 hover:bg-surface-500 rounded text-themed font-mono">
+                            <span x-text="m.id"></span>
+                          </button>
+                        </template>
+                      </div>
                     </div>
                   </template>
                 </div>
@@ -621,7 +643,7 @@ export function renderUpstreamTab(): string {
                       <div class="space-y-3">
                         <label class="block">
                           <span class="text-xs text-themed-dim">Base URL</span>
-                          <input x-model="upstreamForm.baseUrl" type="text" placeholder="https://api.deepseek.com/v1" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                          <input x-model="upstreamForm.baseUrl" @blur="upstreamForm.baseUrl = upstreamForm.baseUrl.trim().replace(/\/+$/, '')" type="text" placeholder="https://api.deepseek.com/v1" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
                         </label>
                         <label class="block">
                           <span class="text-xs text-themed-dim">API Key</span>
@@ -633,7 +655,7 @@ export function renderUpstreamTab(): string {
                       <div class="space-y-3">
                         <label class="block">
                           <span class="text-xs text-themed-dim">Endpoint</span>
-                          <input x-model="upstreamForm.endpoint" type="text" placeholder="https://x.openai.azure.com" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                          <input x-model="upstreamForm.endpoint" @blur="upstreamForm.endpoint = upstreamForm.endpoint.trim().replace(/\/+$/, '')" type="text" placeholder="https://x.openai.azure.com" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
                         </label>
                         <label class="block">
                           <span class="text-xs text-themed-dim">API Key</span>
@@ -649,8 +671,9 @@ export function renderUpstreamTab(): string {
                         </label>
                         <label class="block">
                           <span class="text-xs text-themed-dim">Additional Deployments (one per line, <code>name = model</code>)</span>
-                          <textarea x-model="upstreamForm.azureDeployments" rows="3" placeholder="gpt-4o = gpt-4o&#10;text-embed = text-embedding-3-small" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-xs font-mono"></textarea>
-                          <span class="text-xs text-themed-dim block mt-1">Leave blank to use only the Default Deployment above.</span>
+                          <textarea x-model="upstreamForm.azureDeployments" @input="validateAzureDeployments()" rows="3" placeholder="gpt-4o = gpt-4o&#10;text-embed = text-embedding-3-small" class="w-full mt-1 px-3 py-2 bg-surface-900 border rounded text-themed text-xs font-mono" :class="upstreamForm.azureDeploymentsError ? 'border-accent-red' : 'border-surface-600'"></textarea>
+                          <span x-show="upstreamForm.azureDeploymentsError" class="text-xs text-accent-red block mt-1" x-text="upstreamForm.azureDeploymentsError"></span>
+                          <span x-show="!upstreamForm.azureDeploymentsError" class="text-xs text-themed-dim block mt-1">Leave blank to use only the Default Deployment above.</span>
                         </label>
                       </div>
                     </template>

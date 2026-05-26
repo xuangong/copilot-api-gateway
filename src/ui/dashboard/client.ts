@@ -299,6 +299,11 @@ export function dashboardAssets(): string {
       keyRotating: null,
       copied: false,
       modelsLoaded: false,
+      // All models grouped by upstream id, populated alongside the Copilot
+      // model picker state. Settings tab renders one section per upstream
+      // with copy-to-clipboard for each model id (or the up_X/model
+      // pinning form when needed).
+      allModelsByUpstream: [],
       claudeModelsBig: [],
       claudeModelsSmall: [],
       claudeModel: '',
@@ -822,7 +827,17 @@ export function dashboardAssets(): string {
           }
         },
 
-        async loadModels(retries) {
+          // Copy any string + flash a toast so admins know the click took.
+          // Used by the "models per upstream" copy buttons in settings tab.
+          async copyModelId(text) {
+            try {
+              await navigator.clipboard.writeText(text);
+              if (typeof showToast === 'function') showToast('Copied: ' + text, 'success');
+            } catch (e) {
+              alert('Copy failed: ' + e.message);
+            }
+          },
+          async loadModels(retries) {
           retries = retries || 0;
           try {
             const resp = await fetch('/api/models', { credentials: 'same-origin' });
@@ -858,6 +873,17 @@ export function dashboardAssets(): string {
               .filter((m) => m.id.startsWith('gemini-'))
               .map((m) => m.id);
             this.geminiModel = this.geminiModels[0] || '';
+
+            // Group every advertised model by its serving upstream so
+            // settings tab can render "models per upstream" with copy
+            // buttons. _upstream is attached by listUpstreamModels.
+            const byUp = new Map();
+            for (const m of data) {
+              const up = m._upstream || '(legacy / unmanaged)';
+              if (!byUp.has(up)) byUp.set(up, { upstream: up, provider: m._provider || '?', models: [] });
+              byUp.get(up).models.push({ id: m.id, name: m.name || m.id });
+            }
+            this.allModelsByUpstream = [...byUp.values()].sort((a, b) => a.upstream.localeCompare(b.upstream));
 
             this.modelsLoaded = true;
           } catch (e) {
@@ -943,11 +969,17 @@ export function dashboardAssets(): string {
                 return;
               }
               const data = await resp.json();
-              // Sort by sortOrder asc, then createdAt asc — UI shows the same order
-              // the request planner walks at dispatch time.
+              // Sort enabled first, then by sortOrder asc, then createdAt
+               // asc. Matches the request planner's effective walk order
+               // (disabled entries are filtered out before dispatch) and
+               // keeps reorder ↑↓ buttons intuitive — moving items only
+               // shuffles within the enabled or disabled group.
               this.managedUpstreams = (data.upstreams || [])
                 .filter(u => u.provider !== 'copilot')
-                .sort((a, b) => (a.sortOrder - b.sortOrder) || a.createdAt.localeCompare(b.createdAt));
+                .sort((a, b) => {
+                  if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+                  return (a.sortOrder - b.sortOrder) || a.createdAt.localeCompare(b.createdAt);
+                });
             } catch (e) {
               console.error('loadManagedUpstreams:', e);
               this.managedUpstreams = [];
@@ -962,11 +994,37 @@ export function dashboardAssets(): string {
               if (resp.ok) this.upstreamFlagCatalog = await resp.json();
             } catch (e) { console.error('loadUpstreamFlagCatalog:', e); }
           },
-          openUpstreamForm(provider) {
-            this.upstreamForm = { open: true, editingId: null, provider: provider || 'custom', name: '', baseUrl: '', apiKey: '', endpoint: '', azureApiKey: '', deployment: '', apiVersion: '2024-08-01-preview', flagOverrides: {}, endpoints: provider === 'azure' ? ['chat_completions'] : ['chat_completions','embeddings'], modelsText: '', azureDeployments: '' };
-            this.loadUpstreamFlagCatalog();
+          // Live-validate Azure 'name = model' textarea so the admin sees the
+          // problem inline instead of being bounced by a server-side alert.
+          validateAzureDeployments() {
+            const txt = this.upstreamForm.azureDeployments || '';
+            const lines = txt.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+            for (const line of lines) {
+              const eqAt = line.indexOf('=');
+              if (eqAt === -1) {
+                this.upstreamForm.azureDeploymentsError = 'Each line must be "name = model"';
+                return false;
+              }
+              const name = line.slice(0, eqAt).trim();
+              const model = line.slice(eqAt + 1).trim();
+              if (!name || !model) {
+                this.upstreamForm.azureDeploymentsError = 'Both name and model must be non-empty (line: "' + line + '")';
+                return false;
+              }
+            }
+            this.upstreamForm.azureDeploymentsError = '';
+            return true;
           },
-          editUpstream(u) {
+          async openUpstreamForm(provider) {
+            // Load the flag catalog first so the "Feature flags" section of
+            // the modal is populated immediately. Otherwise admins open the
+            // modal mid-fetch and either see the section blank (and assume
+            // there are no flags) or watch it pop in jarringly.
+            await this.loadUpstreamFlagCatalog();
+            this.upstreamForm = { open: true, editingId: null, provider: provider || 'custom', name: '', baseUrl: '', apiKey: '', endpoint: '', azureApiKey: '', deployment: '', apiVersion: '2024-08-01-preview', flagOverrides: {}, endpoints: provider === 'azure' ? ['chat_completions'] : ['chat_completions','embeddings'], modelsText: '', azureDeployments: '', azureDeploymentsError: '' };
+          },
+          async editUpstream(u) {
+            await this.loadUpstreamFlagCatalog();
             // Populate the form from an existing record. apiKey/azureApiKey
             // stay empty because /api/upstreams redacts secrets in responses;
             // the submit handler treats empty as "keep current".
@@ -994,8 +1052,8 @@ export function dashboardAssets(): string {
               endpoints: Array.isArray(cfg.endpoints) ? [...cfg.endpoints] : (u.provider === 'custom' ? ['chat_completions','embeddings'] : ['chat_completions']),
               modelsText,
               azureDeployments: azureDepsText,
+              azureDeploymentsError: '',
             };
-            this.loadUpstreamFlagCatalog();
           },
           closeUpstreamForm() {
             this.upstreamForm.open = false;
@@ -1019,6 +1077,7 @@ export function dashboardAssets(): string {
             const f = this.upstreamForm;
             const editing = !!f.editingId;
             if (!f.name.trim()) { alert('Name required'); return; }
+            if (f.provider === 'azure' && !this.validateAzureDeployments()) return;
 
             // Parse the textarea-style manual model list. Empty list means
             // "fall through to the upstream /v1/models probe".
@@ -1092,6 +1151,11 @@ export function dashboardAssets(): string {
               if (!resp.ok) { alert((editing ? 'Update' : 'Create') + ' failed: ' + (respBody.error || resp.status)); return; }
               this.closeUpstreamForm();
               await this.loadManagedUpstreams();
+              // Settings tab / model snippets read from this. Refresh so
+              // newly registered (or edited manual-models) entries appear
+              // immediately without a page reload.
+              this.modelsLoaded = false;
+              this.loadModels();
             } catch (e) {
               alert((editing ? 'Update' : 'Create') + ' failed: ' + e.message);
             }
@@ -1103,6 +1167,8 @@ export function dashboardAssets(): string {
               const resp = await fetch('/api/upstreams/' + encodeURIComponent(id), { method: 'DELETE', credentials: 'same-origin' });
               if (!resp.ok) { const b = await resp.json().catch(() => ({})); alert('Delete failed: ' + (b.error || resp.status)); return; }
               await this.loadManagedUpstreams();
+              this.modelsLoaded = false;
+              this.loadModels();
             } finally {
               delete this.managedUpstreamsBusy[id];
             }
@@ -1116,6 +1182,8 @@ export function dashboardAssets(): string {
               });
               if (!resp.ok) { const b = await resp.json().catch(() => ({})); alert('Update failed: ' + (b.error || resp.status)); return; }
               await this.loadManagedUpstreams();
+              this.modelsLoaded = false;
+              this.loadModels();
             } catch (e) { alert('Update failed: ' + e.message); }
           },
           async reorderUpstream(id, direction) {
