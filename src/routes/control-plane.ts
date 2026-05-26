@@ -17,7 +17,7 @@ import { getRepo } from "~/repo"
 import type { UpstreamRecord } from "~/repo"
 import { AzureProvider, type AzureProviderConfig } from "~/providers/azure/provider"
 import { CustomProvider, type CustomProviderConfig } from "~/providers/custom/provider"
-import { createProviderFromUpstream } from "~/providers/registry"
+import { createProviderFromUpstream, invalidateUpstreamListCache } from "~/providers/registry"
 import type { ProbeResult } from "~/providers/types"
 import { clearRawModelsCache } from "~/services/copilot/raw-models-cache"
 import { invalidateCopilotToken } from "~/services/github/copilot-token-cache"
@@ -181,6 +181,7 @@ async function invalidateUpstreamCaches(
   before: UpstreamRecord | null,
   after: UpstreamRecord | null,
 ): Promise<void> {
+  invalidateUpstreamListCache()
   clearRawModelsCache()
   const repo = (() => { try { return getRepo().cache } catch { return undefined } })()
   for (const u of [before, after]) {

@@ -39,10 +39,22 @@ export async function getCachedRawModels(
 }
 
 /**
- * Drop every cached model list. Called after admin CRUD on upstreams so the
- * next request rediscovers any newly-enabled/disabled model offerings instead
- * of waiting for the per-entry TTL.
+ * Drop every cached model list. Called when bulk invalidation is needed
+ * (e.g. multi-upstream config sync). For single-upstream edits prefer
+ * invalidateRawModelsForToken(token, accountType).
  */
 export function clearRawModelsCache(): void {
   cache.clear()
+}
+
+/**
+ * Targeted invalidation for a single Copilot session token. Mirrors the
+ * key shape used by getCachedRawModels so admin edits that swap a single
+ * upstream's token don't blow away unrelated entries.
+ */
+export function invalidateRawModelsForToken(
+  copilotToken: string,
+  accountType: AccountType,
+): void {
+  cache.delete(`${accountType}:${hashToken(copilotToken)}`)
 }

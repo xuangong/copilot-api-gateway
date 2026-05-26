@@ -91,16 +91,39 @@ function sortUpstreams(upstreams: UpstreamRecord[]): UpstreamRecord[] {
   )
 }
 
+/**
+ * Small per-process cache of the visible upstream list. Each request used
+ * to incur 1–2 D1 queries even when nothing changed; with this cache the
+ * fast-path is a Map lookup. TTL is intentionally short (15s) so config
+ * edits propagate quickly even when control-plane invalidate is skipped.
+ * Keyed by ownerId (empty string == global-only view).
+ */
+const UPSTREAM_LIST_TTL_MS = 15_000
+const upstreamListCache = new Map<string, { fetchedAt: number; data: UpstreamRecord[] }>()
+
+export function invalidateUpstreamListCache(): void {
+  upstreamListCache.clear()
+}
+
 async function listVisibleUpstreams(ownerId?: string): Promise<UpstreamRecord[]> {
+  const cacheKey = ownerId ?? "__global__"
+  const now = Date.now()
+  const hit = upstreamListCache.get(cacheKey)
+  if (hit && now - hit.fetchedAt < UPSTREAM_LIST_TTL_MS) return hit.data
+
+  let data: UpstreamRecord[]
   if (ownerId !== undefined) {
     const [globalUpstreams, ownerUpstreams] = await Promise.all([
       getRepo().upstreams.list({ ownerId: "" }),
       getRepo().upstreams.list({ ownerId }),
     ])
     const byId = new Map([...globalUpstreams, ...ownerUpstreams].map((upstream) => [upstream.id, upstream]))
-    return sortUpstreams([...byId.values()])
+    data = sortUpstreams([...byId.values()])
+  } else {
+    data = await getRepo().upstreams.list({ ownerId: "" })
   }
-  return getRepo().upstreams.list({ ownerId: "" })
+  upstreamListCache.set(cacheKey, { fetchedAt: now, data })
+  return data
 }
 
 export async function listProviderBindings(opts: ListUpstreamModelsOptions = {}): Promise<ProviderBinding[]> {

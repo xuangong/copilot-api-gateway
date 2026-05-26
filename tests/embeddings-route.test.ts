@@ -5,6 +5,7 @@ import { Elysia } from "elysia"
 import type { AppState } from "~/lib/state"
 import { getRepo, setRepoForTest } from "~/repo"
 import { SqliteRepo } from "~/repo/sqlite"
+import { invalidateUpstreamListCache } from "~/providers/registry"
 import { embeddingsRoute } from "~/routes/embeddings"
 
 const originalFetch = globalThis.fetch
@@ -26,11 +27,13 @@ function app(userId?: string, routeState: AppState = state) {
 
 beforeEach(() => {
   setRepoForTest(new SqliteRepo(new Database(":memory:")))
+  invalidateUpstreamListCache()
 })
 
 afterEach(() => {
   globalThis.fetch = originalFetch
   setRepoForTest(null)
+  invalidateUpstreamListCache()
 })
 
 describe("embeddings upstream routing", () => {

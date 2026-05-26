@@ -5,7 +5,7 @@ import { Elysia } from "elysia"
 import type { AppState } from "~/lib/state"
 import { getRepo, setRepoForTest } from "~/repo"
 import { SqliteRepo } from "~/repo/sqlite"
-import { listProviderBindings } from "~/providers/registry"
+import { listProviderBindings, invalidateUpstreamListCache } from "~/providers/registry"
 import { modelsRoute } from "~/routes/models"
 
 const originalFetch = globalThis.fetch
@@ -27,11 +27,13 @@ function app(state: AppState | null = null, userId?: string) {
 
 beforeEach(() => {
   setRepoForTest(new SqliteRepo(new Database(":memory:")))
+  invalidateUpstreamListCache()
 })
 
 afterEach(() => {
   globalThis.fetch = originalFetch
   setRepoForTest(null)
+  invalidateUpstreamListCache()
 })
 
 describe("models route upstream aggregation", () => {

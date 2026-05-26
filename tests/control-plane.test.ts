@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite"
 import { Elysia } from "elysia"
 import { setRepoForTest } from "~/repo"
 import { SqliteRepo } from "~/repo/sqlite"
+import { invalidateUpstreamListCache } from "~/providers/registry"
 import { controlPlaneRoute } from "~/routes/control-plane"
 
 function req(path: string, opts: { admin?: boolean; body?: unknown; method?: string } = {}) {
@@ -23,11 +24,13 @@ const originalFetch = globalThis.fetch
 
 beforeEach(() => {
   setRepoForTest(new SqliteRepo(new Database(":memory:")))
+  invalidateUpstreamListCache()
 })
 
 afterEach(() => {
   globalThis.fetch = originalFetch
   setRepoForTest(null)
+  invalidateUpstreamListCache()
 })
 
 describe("GET /api/upstream-flags", () => {

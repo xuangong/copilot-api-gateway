@@ -278,6 +278,12 @@ export function dashboardAssets(): string {
       usageError: false,
       usagePercent: 0,
       deviceFlow: { loading: false, userCode: null, verificationUri: null, deviceCode: null, pollTimer: null },
+      // Managed upstreams (admin-only) — Custom / Azure entries from /api/upstreams
+      managedUpstreams: [],
+      managedUpstreamsLoading: false,
+      managedUpstreamsForm: { open: false, provider: 'custom', name: '', baseUrl: '', apiKey: '', endpoint: '', azureApiKey: '', deployment: '', apiVersion: '2024-08-01-preview' },
+      managedUpstreamsProbeResults: {},
+      managedUpstreamsBusy: {},
       keys: [],
       keysLoading: false,
       now: Date.now(),
@@ -785,6 +791,7 @@ export function dashboardAssets(): string {
           if (t === 'upstream' && (this.isAdmin || this.isUser)) {
             if (!this.meLoaded) this.loadMe();
             this.loadUsage();
+            if (this.isAdmin) this.loadManagedUpstreams();
           } else if (t === 'users' && this.isAdmin) {
             this.loadInviteCodes();
             this.loadAdminUsers();
@@ -917,6 +924,98 @@ export function dashboardAssets(): string {
               this.usageError = true;
             }
           },
+
+          // ── Managed Upstreams (admin) ───────────────────────────────
+          // Lists Custom / Azure entries from /api/upstreams. Copilot
+          // entries are listed via /api/upstream-accounts (the existing
+          // GitHub accounts block); this UI surfaces only the
+          // non-Copilot ones so admins can register / probe / remove
+          // them without touching the legacy section.
+          async loadManagedUpstreams() {
+            if (!this.isAdmin) return;
+            this.managedUpstreamsLoading = true;
+            try {
+              const resp = await fetch('/api/upstreams?includeDisabled=1', { credentials: 'same-origin' });
+              if (!resp.ok) {
+                this.managedUpstreams = [];
+                return;
+              }
+              const data = await resp.json();
+              this.managedUpstreams = (data.upstreams || []).filter(u => u.provider !== 'copilot');
+            } catch (e) {
+              console.error('loadManagedUpstreams:', e);
+              this.managedUpstreams = [];
+            } finally {
+              this.managedUpstreamsLoading = false;
+            }
+          },
+          openManagedUpstreamForm(provider) {
+            this.managedUpstreamsForm = { open: true, provider: provider || 'custom', name: '', baseUrl: '', apiKey: '', endpoint: '', azureApiKey: '', deployment: '', apiVersion: '2024-08-01-preview' };
+          },
+          closeManagedUpstreamForm() {
+            this.managedUpstreamsForm.open = false;
+          },
+          async submitManagedUpstream() {
+            const f = this.managedUpstreamsForm;
+            if (!f.name.trim()) { alert('Name required'); return; }
+            let config;
+            if (f.provider === 'custom') {
+              if (!f.baseUrl.trim() || !f.apiKey.trim()) { alert('baseUrl and apiKey required'); return; }
+              config = { name: f.name.trim(), baseUrl: f.baseUrl.trim(), apiKey: f.apiKey.trim() };
+            } else if (f.provider === 'azure') {
+              if (!f.endpoint.trim() || !f.azureApiKey.trim() || !f.deployment.trim()) { alert('endpoint, apiKey, deployment required'); return; }
+              config = { name: f.name.trim(), endpoint: f.endpoint.trim(), apiKey: f.azureApiKey.trim(), deployment: f.deployment.trim(), apiVersion: f.apiVersion.trim() || '2024-08-01-preview' };
+            }
+            try {
+              const resp = await fetch('/api/upstreams', {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider: f.provider, name: f.name.trim(), config }),
+              });
+              const body = await resp.json();
+              if (!resp.ok) { alert('Create failed: ' + (body.error || resp.status)); return; }
+              this.closeManagedUpstreamForm();
+              await this.loadManagedUpstreams();
+            } catch (e) {
+              alert('Create failed: ' + e.message);
+            }
+          },
+          async deleteManagedUpstream(id, name) {
+            if (!confirm('Delete upstream "' + name + '"? Existing usage rows stay attributed.')) return;
+            this.$set ? this.$set(this.managedUpstreamsBusy, id, true) : (this.managedUpstreamsBusy[id] = true);
+            try {
+              const resp = await fetch('/api/upstreams/' + encodeURIComponent(id), { method: 'DELETE', credentials: 'same-origin' });
+              if (!resp.ok) { const b = await resp.json().catch(() => ({})); alert('Delete failed: ' + (b.error || resp.status)); return; }
+              await this.loadManagedUpstreams();
+            } finally {
+              delete this.managedUpstreamsBusy[id];
+            }
+          },
+          async toggleManagedUpstreamEnabled(u) {
+            try {
+              const resp = await fetch('/api/upstreams/' + encodeURIComponent(u.id), {
+                method: 'PATCH', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: !u.enabled }),
+              });
+              if (!resp.ok) { const b = await resp.json().catch(() => ({})); alert('Update failed: ' + (b.error || resp.status)); return; }
+              await this.loadManagedUpstreams();
+            } catch (e) { alert('Update failed: ' + e.message); }
+          },
+          async probeManagedUpstream(id) {
+            this.managedUpstreamsBusy[id] = true;
+            try {
+              const resp = await fetch('/api/upstreams/' + encodeURIComponent(id) + '/test', { method: 'POST', credentials: 'same-origin' });
+              const body = await resp.json();
+              this.managedUpstreamsProbeResults[id] = body;
+            } catch (e) {
+              this.managedUpstreamsProbeResults[id] = { ok: false, error: String(e) };
+            } finally {
+              delete this.managedUpstreamsBusy[id];
+            }
+          },
+
+          async loadUsage_DELETED_PLACEHOLDER() {},
 
           formatDate(s) {
             return s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';

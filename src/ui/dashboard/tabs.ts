@@ -542,6 +542,116 @@ export function renderUpstreamTab(): string {
             </div>
           </div>
         </div>
+
+        <!-- Managed Upstreams (admin-only): Custom / Azure CRUD -->
+        <template x-if="isAdmin">
+          <div class="glass-card p-6 mb-8 animate-in">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="text-themed font-medium">Managed Upstreams</h3>
+                <p class="text-xs text-themed-dim mt-1">Custom OpenAI-compatible / Azure backends. Copilot GitHub accounts are managed above.</p>
+              </div>
+              <div class="flex gap-2">
+                <button @click="openManagedUpstreamForm('custom')" class="btn-primary text-sm">+ Add Custom</button>
+                <button @click="openManagedUpstreamForm('azure')" class="btn-ghost text-sm">+ Add Azure</button>
+                <button @click="loadManagedUpstreams()" class="btn-ghost text-sm" :disabled="managedUpstreamsLoading">↻</button>
+              </div>
+            </div>
+
+            <template x-if="managedUpstreamsLoading">
+              <p class="text-sm text-themed-dim">Loading...</p>
+            </template>
+
+            <template x-if="!managedUpstreamsLoading && managedUpstreams.length === 0">
+              <p class="text-sm text-themed-dim italic">No managed upstreams registered.</p>
+            </template>
+
+            <div class="space-y-2" x-show="!managedUpstreamsLoading && managedUpstreams.length > 0">
+              <template x-for="u in managedUpstreams" :key="u.id">
+                <div class="bg-surface-900 rounded-lg p-4 border border-surface-600">
+                  <div class="flex items-center justify-between flex-wrap gap-2">
+                    <div class="flex items-center gap-3 min-w-0 flex-1">
+                      <span class="text-xs font-mono uppercase px-2 py-1 rounded" :class="u.provider === 'azure' ? 'bg-blue-900/40 text-blue-300' : 'bg-purple-900/40 text-purple-300'" x-text="u.provider"></span>
+                      <div class="min-w-0">
+                        <div class="font-medium text-themed truncate" x-text="u.name"></div>
+                        <div class="text-xs text-themed-dim font-mono truncate" x-text="u.id"></div>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <label class="flex items-center gap-1 text-xs text-themed-dim cursor-pointer">
+                        <input type="checkbox" :checked="u.enabled" @change="toggleManagedUpstreamEnabled(u)">
+                        <span x-text="u.enabled ? 'enabled' : 'disabled'"></span>
+                      </label>
+                      <button @click="probeManagedUpstream(u.id)" class="btn-ghost text-xs px-2 py-1" :disabled="managedUpstreamsBusy[u.id]">Test</button>
+                      <button @click="deleteManagedUpstream(u.id, u.name)" class="text-accent-red hover:text-red-300 text-xs px-2 py-1" :disabled="managedUpstreamsBusy[u.id]">Delete</button>
+                    </div>
+                  </div>
+                  <template x-if="managedUpstreamsProbeResults[u.id]">
+                    <div class="mt-3 text-xs p-2 rounded" :class="managedUpstreamsProbeResults[u.id].ok ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'">
+                      <template x-if="managedUpstreamsProbeResults[u.id].ok">
+                        <span>✓ <span x-text="managedUpstreamsProbeResults[u.id].modelCount || 0"></span> models · <span x-text="(managedUpstreamsProbeResults[u.id].models || []).slice(0, 3).join(', ')"></span><span x-show="(managedUpstreamsProbeResults[u.id].models || []).length > 3">, …</span></span>
+                      </template>
+                      <template x-if="!managedUpstreamsProbeResults[u.id].ok">
+                        <span>✗ <span x-text="managedUpstreamsProbeResults[u.id].error || 'probe failed'"></span></span>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+
+            <!-- Add modal -->
+            <template x-if="managedUpstreamsForm.open">
+              <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" @click.self="closeManagedUpstreamForm()">
+                <div class="glass-card p-6 max-w-md w-full mx-4">
+                  <h3 class="text-themed font-semibold mb-4">Add <span class="capitalize" x-text="managedUpstreamsForm.provider"></span> Upstream</h3>
+                  <div class="space-y-3">
+                    <label class="block">
+                      <span class="text-xs text-themed-dim">Name</span>
+                      <input x-model="managedUpstreamsForm.name" type="text" placeholder="e.g. DeepSeek prod" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                    </label>
+                    <template x-if="managedUpstreamsForm.provider === 'custom'">
+                      <div class="space-y-3">
+                        <label class="block">
+                          <span class="text-xs text-themed-dim">Base URL</span>
+                          <input x-model="managedUpstreamsForm.baseUrl" type="text" placeholder="https://api.deepseek.com/v1" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                        </label>
+                        <label class="block">
+                          <span class="text-xs text-themed-dim">API Key</span>
+                          <input x-model="managedUpstreamsForm.apiKey" type="password" placeholder="sk-..." class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                        </label>
+                      </div>
+                    </template>
+                    <template x-if="managedUpstreamsForm.provider === 'azure'">
+                      <div class="space-y-3">
+                        <label class="block">
+                          <span class="text-xs text-themed-dim">Endpoint</span>
+                          <input x-model="managedUpstreamsForm.endpoint" type="text" placeholder="https://x.openai.azure.com" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                        </label>
+                        <label class="block">
+                          <span class="text-xs text-themed-dim">API Key</span>
+                          <input x-model="managedUpstreamsForm.azureApiKey" type="password" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                        </label>
+                        <label class="block">
+                          <span class="text-xs text-themed-dim">Deployment</span>
+                          <input x-model="managedUpstreamsForm.deployment" type="text" placeholder="gpt-4o" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                        </label>
+                        <label class="block">
+                          <span class="text-xs text-themed-dim">API Version</span>
+                          <input x-model="managedUpstreamsForm.apiVersion" type="text" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                        </label>
+                      </div>
+                    </template>
+                  </div>
+                  <div class="flex justify-end gap-2 mt-6">
+                    <button @click="closeManagedUpstreamForm()" class="btn-ghost text-sm">Cancel</button>
+                    <button @click="submitManagedUpstream()" class="btn-primary text-sm">Create</button>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
       </div>
     </template>
   `
