@@ -625,120 +625,128 @@ export function renderUpstreamTab(): string {
               </template>
             </div>
 
-            <!-- Add / Edit modal (shared form) -->
-            <template x-if="upstreamForm.open">
-              <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" @click.self="closeUpstreamForm()">
-                <div class="glass-card p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-                  <h3 class="text-themed font-semibold mb-4">
-                    <span x-text="upstreamForm.editingId ? 'Edit' : 'Add'"></span>
-                    <span class="capitalize" x-text="upstreamForm.provider"></span>
-                    Upstream
-                  </h3>
-                  <div class="space-y-3">
-                    <label class="block">
-                      <span class="text-xs text-themed-dim">Name</span>
-                      <input x-model="upstreamForm.name" type="text" placeholder="e.g. DeepSeek prod" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
-                    </label>
-                    <template x-if="upstreamForm.provider === 'custom'">
-                      <div class="space-y-3">
-                        <label class="block">
-                          <span class="text-xs text-themed-dim">Base URL</span>
-                          <input x-model="upstreamForm.baseUrl" @blur="upstreamForm.baseUrl = upstreamForm.baseUrl.trim().replace(/\/+$/, '')" type="text" placeholder="https://api.deepseek.com/v1" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
-                        </label>
-                        <label class="block">
-                          <span class="text-xs text-themed-dim">API Key</span>
-                          <input x-model="upstreamForm.apiKey" type="password" :placeholder="upstreamForm.editingId ? 'leave blank to keep current' : 'sk-...'" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
-                        </label>
-                      </div>
-                    </template>
-                    <template x-if="upstreamForm.provider === 'azure'">
-                      <div class="space-y-3">
-                        <label class="block">
-                          <span class="text-xs text-themed-dim">Endpoint</span>
-                          <input x-model="upstreamForm.endpoint" @blur="upstreamForm.endpoint = upstreamForm.endpoint.trim().replace(/\/+$/, '')" type="text" placeholder="https://x.openai.azure.com" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
-                        </label>
-                        <label class="block">
-                          <span class="text-xs text-themed-dim">API Key</span>
-                          <input x-model="upstreamForm.azureApiKey" type="password" :placeholder="upstreamForm.editingId ? 'leave blank to keep current' : ''" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
-                        </label>
-                        <label class="block">
-                          <span class="text-xs text-themed-dim">Default Deployment</span>
-                          <input x-model="upstreamForm.deployment" type="text" placeholder="gpt-4o" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
-                        </label>
-                        <label class="block">
-                          <span class="text-xs text-themed-dim">API Version</span>
-                          <input x-model="upstreamForm.apiVersion" type="text" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
-                        </label>
-                        <label class="block">
-                          <span class="text-xs text-themed-dim">Additional Deployments (one per line, <code>name = model</code>)</span>
-                          <textarea x-model="upstreamForm.azureDeployments" @input="validateAzureDeployments()" rows="3" placeholder="gpt-4o = gpt-4o&#10;text-embed = text-embedding-3-small" class="w-full mt-1 px-3 py-2 bg-surface-900 border rounded text-themed text-xs font-mono" :class="upstreamForm.azureDeploymentsError ? 'border-accent-red' : 'border-surface-600'"></textarea>
-                          <span x-show="upstreamForm.azureDeploymentsError" class="text-xs text-accent-red block mt-1" x-text="upstreamForm.azureDeploymentsError"></span>
-                          <span x-show="!upstreamForm.azureDeploymentsError" class="text-xs text-themed-dim block mt-1">Leave blank to use only the Default Deployment above.</span>
-                        </label>
-                      </div>
-                    </template>
+            <!-- (Add / Edit modal lives outside the glass-card below — see
+                 "Add / Edit modal" sibling — otherwise the card's stacking
+                 context clips the fixed positioning and the backdrop only
+                 dims the inside of the card.) -->
+          </div>
 
-                    <!-- Served endpoints (G3) — admin opt-in per protocol -->
+          <!-- Add / Edit modal (shared form). Hoisted out of the
+               glass-card above because the card's backdrop-filter creates
+               a stacking context that traps position:fixed, leaving the
+               modal visually attached to (and only dimming) the card. -->
+          <template x-if="upstreamForm.open">
+            <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4" @click.self="closeUpstreamForm()">
+              <div class="glass-card p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+                <h3 class="text-themed font-semibold mb-4">
+                  <span x-text="upstreamForm.editingId ? 'Edit' : 'Add'"></span>
+                  <span class="capitalize" x-text="upstreamForm.provider"></span>
+                  Upstream
+                </h3>
+                <div class="space-y-3">
+                  <label class="block">
+                    <span class="text-xs text-themed-dim">Name</span>
+                    <input x-model="upstreamForm.name" type="text" placeholder="e.g. DeepSeek prod" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                  </label>
+                  <template x-if="upstreamForm.provider === 'custom'">
+                    <div class="space-y-3">
+                      <label class="block">
+                        <span class="text-xs text-themed-dim">Base URL</span>
+                        <input x-model="upstreamForm.baseUrl" @blur="upstreamForm.baseUrl = upstreamForm.baseUrl.trim().replace(/\\/+$/, '')" type="text" placeholder="https://api.deepseek.com/v1" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                      </label>
+                      <label class="block">
+                        <span class="text-xs text-themed-dim">API Key</span>
+                        <input x-model="upstreamForm.apiKey" type="password" :placeholder="upstreamForm.editingId ? 'leave blank to keep current' : 'sk-...'" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                      </label>
+                    </div>
+                  </template>
+                  <template x-if="upstreamForm.provider === 'azure'">
+                    <div class="space-y-3">
+                      <label class="block">
+                        <span class="text-xs text-themed-dim">Endpoint</span>
+                        <input x-model="upstreamForm.endpoint" @blur="upstreamForm.endpoint = upstreamForm.endpoint.trim().replace(/\\/+$/, '')" type="text" placeholder="https://x.openai.azure.com" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                      </label>
+                      <label class="block">
+                        <span class="text-xs text-themed-dim">API Key</span>
+                        <input x-model="upstreamForm.azureApiKey" type="password" :placeholder="upstreamForm.editingId ? 'leave blank to keep current' : ''" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                      </label>
+                      <label class="block">
+                        <span class="text-xs text-themed-dim">Default Deployment</span>
+                        <input x-model="upstreamForm.deployment" type="text" placeholder="gpt-4o" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                      </label>
+                      <label class="block">
+                        <span class="text-xs text-themed-dim">API Version</span>
+                        <input x-model="upstreamForm.apiVersion" type="text" class="w-full mt-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-sm">
+                      </label>
+                      <label class="block">
+                        <span class="text-xs text-themed-dim">Additional Deployments (one per line, <code>name = model</code>)</span>
+                        <textarea x-model="upstreamForm.azureDeployments" @input="validateAzureDeployments()" rows="3" placeholder="gpt-4o = gpt-4o&#10;text-embed = text-embedding-3-small" class="w-full mt-1 px-3 py-2 bg-surface-900 border rounded text-themed text-xs font-mono" :class="upstreamForm.azureDeploymentsError ? 'border-accent-red' : 'border-surface-600'"></textarea>
+                        <span x-show="upstreamForm.azureDeploymentsError" class="text-xs text-accent-red block mt-1" x-text="upstreamForm.azureDeploymentsError"></span>
+                        <span x-show="!upstreamForm.azureDeploymentsError" class="text-xs text-themed-dim block mt-1">Leave blank to use only the Default Deployment above.</span>
+                      </label>
+                    </div>
+                  </template>
+
+                  <!-- Served endpoints (G3) — admin opt-in per protocol -->
+                  <div class="border-t border-surface-600 pt-3 mt-3">
+                    <h4 class="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">Served endpoints</h4>
+                    <p class="text-xs text-themed-dim mb-2">Which protocol(s) this upstream natively serves. Requests for unchecked endpoints will route to a different upstream.</p>
+                    <div class="flex flex-wrap gap-3 text-xs">
+                      <template x-for="ep in ['chat_completions','responses','messages','messages_count_tokens','embeddings']" :key="ep">
+                        <label class="flex items-center gap-1 cursor-pointer">
+                          <input type="checkbox" :checked="upstreamForm.endpoints.includes(ep)" @change="upstreamForm.endpoints = upstreamForm.endpoints.includes(ep) ? upstreamForm.endpoints.filter(x => x !== ep) : [...upstreamForm.endpoints, ep]">
+                          <span x-text="ep"></span>
+                        </label>
+                      </template>
+                    </div>
+                  </div>
+
+                  <!-- Manual model list (G2) — bypass live /v1/models probe -->
+                  <template x-if="upstreamForm.provider === 'custom'">
                     <div class="border-t border-surface-600 pt-3 mt-3">
-                      <h4 class="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">Served endpoints</h4>
-                      <p class="text-xs text-themed-dim mb-2">Which protocol(s) this upstream natively serves. Requests for unchecked endpoints will route to a different upstream.</p>
-                      <div class="flex flex-wrap gap-3 text-xs">
-                        <template x-for="ep in ['chat_completions','responses','messages','messages_count_tokens','embeddings']" :key="ep">
-                          <label class="flex items-center gap-1 cursor-pointer">
-                            <input type="checkbox" :checked="upstreamForm.endpoints.includes(ep)" @change="upstreamForm.endpoints = upstreamForm.endpoints.includes(ep) ? upstreamForm.endpoints.filter(x => x !== ep) : [...upstreamForm.endpoints, ep]">
-                            <span x-text="ep"></span>
-                          </label>
+                      <h4 class="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">Manual model list (optional)</h4>
+                      <p class="text-xs text-themed-dim mb-2">One id per line, optional <code># label</code>. If non-empty, the upstream's <code>/v1/models</code> probe is skipped and these entries are exposed verbatim.</p>
+                      <textarea x-model="upstreamForm.modelsText" rows="4" placeholder="deepseek-chat&#10;deepseek-coder # DeepSeek Coder" class="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-xs font-mono"></textarea>
+                    </div>
+                  </template>
+
+                  <!-- Feature flag overrides (three-state: inherit / on / off) -->
+                  <template x-if="upstreamFlagCatalog && upstreamFlagCatalog.catalog">
+                    <div class="border-t border-surface-600 pt-3 mt-4">
+                      <h4 class="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">Feature flags</h4>
+                      <p class="text-xs text-themed-dim mb-3">Override per-upstream. Inherit = use provider default.</p>
+                      <div class="space-y-3">
+                        <template x-for="flag in upstreamFlagCatalog.catalog" :key="flag.id">
+                          <div class="text-xs">
+                            <div class="text-themed font-medium" x-text="flag.label"></div>
+                            <div class="text-themed-dim mb-1" x-text="flag.description"></div>
+                            <div class="flex gap-3">
+                              <label class="flex items-center gap-1 cursor-pointer">
+                                <input type="radio" :name="'flag-' + flag.id" :checked="flagOverrideState(flag.id) === 'inherit'" @change="setFlagOverride(flag.id, null)">
+                                <span class="text-themed-dim">Inherit (<span x-text="isFlagDefault(flag.id, upstreamForm.provider) ? 'on' : 'off'"></span>)</span>
+                              </label>
+                              <label class="flex items-center gap-1 cursor-pointer">
+                                <input type="radio" :name="'flag-' + flag.id" :checked="flagOverrideState(flag.id) === 'on'" @change="setFlagOverride(flag.id, true)">
+                                <span class="text-accent-teal">On</span>
+                              </label>
+                              <label class="flex items-center gap-1 cursor-pointer">
+                                <input type="radio" :name="'flag-' + flag.id" :checked="flagOverrideState(flag.id) === 'off'" @change="setFlagOverride(flag.id, false)">
+                                <span class="text-accent-red">Off</span>
+                              </label>
+                            </div>
+                          </div>
                         </template>
                       </div>
                     </div>
-
-                    <!-- Manual model list (G2) — bypass live /v1/models probe -->
-                    <template x-if="upstreamForm.provider === 'custom'">
-                      <div class="border-t border-surface-600 pt-3 mt-3">
-                        <h4 class="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">Manual model list (optional)</h4>
-                        <p class="text-xs text-themed-dim mb-2">One id per line, optional <code># label</code>. If non-empty, the upstream's <code>/v1/models</code> probe is skipped and these entries are exposed verbatim.</p>
-                        <textarea x-model="upstreamForm.modelsText" rows="4" placeholder="deepseek-chat&#10;deepseek-coder # DeepSeek Coder" class="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded text-themed text-xs font-mono"></textarea>
-                      </div>
-                    </template>
-
-                    <!-- Feature flag overrides (three-state: inherit / on / off) -->
-                    <template x-if="upstreamFlagCatalog && upstreamFlagCatalog.catalog">
-                      <div class="border-t border-surface-600 pt-3 mt-4">
-                        <h4 class="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">Feature flags</h4>
-                        <p class="text-xs text-themed-dim mb-3">Override per-upstream. Inherit = use provider default.</p>
-                        <div class="space-y-3">
-                          <template x-for="flag in upstreamFlagCatalog.catalog" :key="flag.id">
-                            <div class="text-xs">
-                              <div class="text-themed font-medium" x-text="flag.label"></div>
-                              <div class="text-themed-dim mb-1" x-text="flag.description"></div>
-                              <div class="flex gap-3">
-                                <label class="flex items-center gap-1 cursor-pointer">
-                                  <input type="radio" :name="'flag-' + flag.id" :checked="flagOverrideState(flag.id) === 'inherit'" @change="setFlagOverride(flag.id, null)">
-                                  <span class="text-themed-dim">Inherit (<span x-text="isFlagDefault(flag.id, upstreamForm.provider) ? 'on' : 'off'"></span>)</span>
-                                </label>
-                                <label class="flex items-center gap-1 cursor-pointer">
-                                  <input type="radio" :name="'flag-' + flag.id" :checked="flagOverrideState(flag.id) === 'on'" @change="setFlagOverride(flag.id, true)">
-                                  <span class="text-accent-teal">On</span>
-                                </label>
-                                <label class="flex items-center gap-1 cursor-pointer">
-                                  <input type="radio" :name="'flag-' + flag.id" :checked="flagOverrideState(flag.id) === 'off'" @change="setFlagOverride(flag.id, false)">
-                                  <span class="text-accent-red">Off</span>
-                                </label>
-                              </div>
-                            </div>
-                          </template>
-                        </div>
-                      </div>
-                    </template>
-                  </div>
-                  <div class="flex justify-end gap-2 mt-6">
-                    <button @click="closeUpstreamForm()" class="btn-ghost text-sm">Cancel</button>
-                    <button @click="submitUpstreamForm()" class="btn-primary text-sm" x-text="upstreamForm.editingId ? 'Save' : 'Create'"></button>
-                  </div>
+                  </template>
+                </div>
+                <div class="flex justify-end gap-2 mt-6">
+                  <button @click="closeUpstreamForm()" class="btn-ghost text-sm">Cancel</button>
+                  <button @click="submitUpstreamForm()" class="btn-primary text-sm" x-text="upstreamForm.editingId ? 'Save' : 'Create'"></button>
                 </div>
               </div>
-            </template>
-          </div>
+            </div>
+          </template>
         </template>
       </div>
     </template>
@@ -1358,7 +1366,7 @@ export function renderKeysTab(): string {
            so users see the plaintext key (only visible window) and a curl
            snippet they can paste into a terminal to validate. -->
       <template x-if="justCreatedKey">
-        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" @click.self="justCreatedKey = null">
+        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4" @click.self="justCreatedKey = null">
           <div class="glass-card p-4 sm:p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto glow-primary">
             <h3 class="text-themed font-semibold mb-2">Key created — copy it now</h3>
             <p class="text-xs text-themed-dim mb-4">This is the only time the full key is shown. Store it somewhere safe.</p>
