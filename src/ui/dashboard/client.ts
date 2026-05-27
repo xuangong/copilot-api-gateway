@@ -1003,7 +1003,7 @@ export function dashboardAssets(): string {
           // problem inline instead of being bounced by a server-side alert.
           validateAzureDeployments() {
             const txt = this.upstreamForm.azureDeployments || '';
-            const lines = txt.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+            const lines = txt.split(/[\\r\\n]+/).map(s => s.trim()).filter(Boolean);
             for (const line of lines) {
               const eqAt = line.indexOf('=');
               if (eqAt === -1) {
@@ -1038,10 +1038,10 @@ export function dashboardAssets(): string {
             // Azure deployments → one per line, 'name = model'.
             const modelsText = (Array.isArray(cfg.models) ? cfg.models : [])
               .map((m) => typeof m === 'string' ? m : (m.id + (m.name ? ' # ' + m.name : '')))
-              .join('\n');
+              .join('\\n');
             const azureDepsText = (Array.isArray(cfg.deployments) ? cfg.deployments : [])
               .map((d) => d.name + (d.model ? ' = ' + d.model : ''))
-              .join('\n');
+              .join('\\n');
             this.upstreamForm = {
               open: true,
               editingId: u.id,
@@ -1088,7 +1088,7 @@ export function dashboardAssets(): string {
             // "fall through to the upstream /v1/models probe".
             const parseModelsText = (txt) => {
               if (!txt || !txt.trim()) return undefined;
-              return txt.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(line => {
+              return txt.split(/[\\r\\n]+/).map(s => s.trim()).filter(Boolean).map(line => {
                 const hashAt = line.indexOf('#');
                 if (hashAt === -1) return line;
                 return { id: line.slice(0, hashAt).trim(), name: line.slice(hashAt + 1).trim() };
@@ -1096,7 +1096,7 @@ export function dashboardAssets(): string {
             };
             const parseAzureDeployments = (txt) => {
               if (!txt || !txt.trim()) return undefined;
-              return txt.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(line => {
+              return txt.split(/[\\r\\n]+/).map(s => s.trim()).filter(Boolean).map(line => {
                 const eqAt = line.indexOf('=');
                 if (eqAt === -1) return { name: line, model: line };
                 return { name: line.slice(0, eqAt).trim(), model: line.slice(eqAt + 1).trim() };
