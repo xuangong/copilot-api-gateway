@@ -2,6 +2,7 @@ import type { AppState } from "~/lib/state"
 import { bindingsForEndpoint, type ProviderBinding } from "~/providers/binding"
 import { listProviderBindings } from "~/providers/registry"
 import type { ModelEndpoint } from "~/protocols/common"
+import { parseCompositeModelId } from "~/services/copilot/variants"
 
 /**
  * Parse the optional `<upstreamId>/<modelId>` syntax callers can use to
@@ -60,10 +61,27 @@ export async function resolveBinding(
   const bareModel = parsed.bareModel
   const bindings = await listProviderBindings({ ownerId, copilot })
   const candidates = bindingsForEndpoint(bindings, endpoint)
-  if (upstreamPin) {
-    return candidates.find((b) => b.upstream === upstreamPin && b.model.id === bareModel) ?? null
+  const matches = (b: ProviderBinding, id: string) => b.model.id === id && (!upstreamPin || b.upstream === upstreamPin)
+
+  // 1) Direct literal match — covers the common case and exact ids
+  //    like `claude-opus-4.7-1m-internal` that /v1/models advertises.
+  const direct = candidates.find((b) => matches(b, bareModel))
+  if (direct) return direct
+
+  // 2) Composite id fallback: claude clients can request shorthand
+  //    `claude-opus-4.7-1m` / `claude-opus-4.7-xhigh` etc. The bare
+  //    model id is the family base (`claude-opus-4.7`); the upstream
+  //    serves the variant under a -internal suffix that the provider
+  //    rewrites at call time. Falling back here lets binding selection
+  //    succeed on the shorthand without forcing the caller to know the
+  //    full internal id.
+  const composite = parseCompositeModelId(bareModel)
+  if (composite.baseId && composite.baseId !== bareModel) {
+    const base = candidates.find((b) => matches(b, composite.baseId))
+    if (base) return base
   }
-  return candidates.find((b) => b.model.id === bareModel) ?? null
+
+  return null
 }
 
 /**
