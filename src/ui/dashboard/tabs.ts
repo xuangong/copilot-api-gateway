@@ -635,9 +635,8 @@ export function renderUpstreamTab(): string {
                glass-card above because the card's backdrop-filter creates
                a stacking context that traps position:fixed, leaving the
                modal visually attached to (and only dimming) the card. -->
-          <template x-if="upstreamForm.open">
-            <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4" @click.self="closeUpstreamForm()">
-              <div class="glass-card p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div x-show="upstreamForm.open" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4" @click.self="closeUpstreamForm()">
+            <div class="glass-card p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
                 <h3 class="text-themed font-semibold mb-4">
                   <span x-text="upstreamForm.editingId ? 'Edit' : 'Add'"></span>
                   <span class="capitalize" x-text="upstreamForm.provider"></span>
@@ -746,7 +745,6 @@ export function renderUpstreamTab(): string {
                 </div>
               </div>
             </div>
-          </template>
         </template>
       </div>
     </template>
