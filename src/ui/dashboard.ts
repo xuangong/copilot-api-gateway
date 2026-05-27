@@ -6,6 +6,7 @@ import {
   renderKeysTab,
   renderLatencyTab,
   renderSettingsTab,
+  renderUpstreamModal,
   renderUpstreamTab,
   renderUsageTab,
   renderUsersTab,
@@ -31,6 +32,8 @@ export function DashboardPage(): string {
         <main class="max-w-6xl mx-auto px-4 sm:px-6 py-8">
           ${renderUpstreamTab()} ${renderUsersTab()} ${renderKeysTab()} ${renderUsageTab()} ${renderLatencyTab()} ${renderClientsTab()} ${renderSettingsTab()}
         </main>
+
+        ${renderUpstreamModal()}
       </div>
 
       ${dashboardAssets()}
