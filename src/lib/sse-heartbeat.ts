@@ -285,6 +285,21 @@ function recoverAnthropicMidStreamError(
         for (;;) {
           const { done, value } = await reader.read()
           if (done) {
+            // Clean EOF, but if the upstream cut the TCP connection without
+            // emitting `message_stop` (Copilot/Vertex silently dropping a
+            // long-thinking stream), the Anthropic SDK on the other side
+            // treats the response as truncated and discards partial content.
+            // Synthesize a graceful close in that case — same recovery path
+            // as the error branch below.
+            if (sawMessageStart && !sawMessageStop) {
+              try {
+                console.log(JSON.stringify({
+                  evt: "anthropic_recover_eof",
+                  openBlocks: openBlocks.size,
+                }))
+              } catch { /* best-effort */ }
+              try { controller.enqueue(synthesizeClose()) } catch {}
+            }
             controller.close()
             return
           }
