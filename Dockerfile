@@ -19,7 +19,7 @@ RUN mkdir -p src/assets/cdn && bun run scripts/download-cdn.ts
 
 # Copy source code
 COPY src ./src
-COPY tsconfig.json ./
+COPY tsconfig.json tailwind.config.ts ./
 
 # Build dashboard bundle (dist/ is gitignored, must be produced here)
 RUN bun run build:ui
