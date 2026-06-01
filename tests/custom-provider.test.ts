@@ -67,7 +67,7 @@ describe("CustomProvider request shape", () => {
       apiKey: "k",
       defaultHeaders: { "X-Trace": "abc" },
     })
-    await p.callEmbeddings({ input: "hi" })
+    await p.fetch("embeddings", { method: "POST", body: JSON.stringify({ input: "hi" }) })
     const headers = captured!.init.headers as Record<string, string>
     expect(headers["X-Trace"]).toBe("abc")
     expect(headers.Authorization).toBe("Bearer k")
