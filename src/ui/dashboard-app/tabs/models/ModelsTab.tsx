@@ -147,7 +147,7 @@ export function ModelsTab() {
   )
 
   return (
-    <div className="flex flex-col h-[calc(100vh-208px)] min-h-[480px]">
+    <div className="flex flex-col flex-1 min-h-[480px]">
       {/* Top bar */}
       <div className="flex items-center gap-3 px-3 py-2 border-b border-themed flex-wrap">
         {isMobile && (

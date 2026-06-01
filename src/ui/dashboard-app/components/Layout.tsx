@@ -11,7 +11,7 @@ export function Layout({ tabs, currentTab, onTabChange, children }: Props & { ch
   const { session } = useAuth()
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen flex flex-col">
       <header
         className="border-b border-white/5 sticky top-0 z-50 backdrop-blur-md"
         style={{ background: "color-mix(in srgb, var(--surface-900) 80%, transparent)", borderColor: "var(--border-color)" }}
@@ -77,7 +77,7 @@ export function Layout({ tabs, currentTab, onTabChange, children }: Props & { ch
           </nav>
         </div>
       </header>
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6">{children}</main>
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 w-full flex-1 min-h-0 flex flex-col">{children}</main>
     </div>
   )
 }
