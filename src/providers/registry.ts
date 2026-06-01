@@ -144,7 +144,9 @@ export async function listProviderBindings(opts: ListUpstreamModelsOptions = {})
         ? upstream.config.endpoints as ModelEndpoint[]
         : DEFAULT_ENDPOINTS[upstream.provider]
       const enabledFlags = resolveEffectiveFlags(defaultsForUpstream(upstream.provider), [upstream.flagOverrides])
+      const disabled = new Set(upstream.disabledPublicModelIds)
       for (const model of models.data ?? []) {
+        if (disabled.has(model.id)) continue
         bindings.push({
           upstream: upstream.id,
           kind: upstream.provider,
