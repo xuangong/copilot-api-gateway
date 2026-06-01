@@ -329,6 +329,11 @@ export const controlPlaneRoute = new Elysia()
     try {
       const body = (ctx.body ?? {}) as UpstreamBody
       if (body.provider !== undefined && body.provider !== existing.provider) return jsonError("provider cannot be changed")
+      // Copilot upstreams are token-managed via device flow; only allow the
+      // admin to tweak name / enabled / sortOrder / flagOverrides here.
+      if (existing.provider === "copilot" && body.config !== undefined) {
+        return jsonError("config of copilot upstreams is managed by device-flow auth")
+      }
       // For config PATCH, shallow-merge the supplied keys onto the existing
       // config and then run the strict normalizer. This lets the UI send
       // partial updates (e.g. just `{ name: ... }`) without having to repeat
@@ -366,6 +371,16 @@ export const controlPlaneRoute = new Elysia()
     const denied = adminGuard(ctx)
     if (denied) return denied
     const existing = await getRepo().upstreams.getById(ctx.params.id)
+    // For copilot upstreams, cascade-delete the github_accounts row so the
+    // legacy token store doesn't keep a now-orphan account around.
+    if (existing?.provider === "copilot") {
+      const userId = (existing.config as { user?: { id?: number } } | undefined)?.user?.id
+      if (typeof userId === "number") {
+        try {
+          await getRepo().github.deleteAccount(userId, existing.ownerId ?? "")
+        } catch {}
+      }
+    }
     const ok = await getRepo().upstreams.delete(ctx.params.id)
     if (!ok) return jsonError("upstream not found", 404)
     await invalidateUpstreamCaches(existing, null)

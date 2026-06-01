@@ -1,0 +1,246 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== Theme CSS Variables (ported from src/ui/layout.ts) ===== */
+:root,
+[data-theme="light"] {
+  --surface-900: #ffffff;
+  --surface-800: #f4f4f5;
+  --surface-700: #e4e4e7;
+  --surface-600: #d4d4d8;
+  --surface-500: #a1a1aa;
+  --text-primary: #09090b;
+  --text-secondary: #52525b;
+  --text-dim: #a1a1aa;
+  --border-color: rgba(0, 0, 0, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-bg2: rgba(244, 244, 245, 0.9);
+  --glass-border: rgba(0, 0, 0, 0.06);
+  --glow-color: rgba(139, 92, 246, 0.08);
+  --glow-border: rgba(139, 92, 246, 0.15);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 16px rgba(0, 0, 0, 0.04);
+  --input-bg: rgba(0, 0, 0, 0.03);
+  --input-border: rgba(0, 0, 0, 0.12);
+  --noise-opacity: 0.015;
+}
+
+[data-theme="dark"] {
+  --surface-900: #08090d;
+  --surface-800: #0f1117;
+  --surface-700: #161922;
+  --surface-600: #1e2230;
+  --surface-500: #282d3e;
+  --text-primary: #e4e4e7;
+  --text-secondary: #a1a1aa;
+  --text-dim: #71717a;
+  --border-color: rgba(255, 255, 255, 0.07);
+  --glass-bg: linear-gradient(135deg, rgba(22, 25, 34, 0.8), rgba(15, 17, 23, 0.95));
+  --glass-bg2: rgba(15, 17, 23, 0.9);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glow-color: rgba(139, 92, 246, 0.12);
+  --glow-border: rgba(139, 92, 246, 0.2);
+  --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 8px 32px rgba(0, 0, 0, 0.2);
+  --input-bg: rgba(255, 255, 255, 0.04);
+  --input-border: rgba(255, 255, 255, 0.1);
+  --noise-opacity: 0.025;
+}
+
+body {
+  background: var(--surface-900);
+  color: var(--text-primary);
+  font-family: "Outfit", system-ui, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  opacity: var(--noise-opacity);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  box-shadow: var(--card-shadow);
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glow-primary {
+  box-shadow: 0 0 20px var(--glow-color), 0 0 60px rgba(139, 92, 246, 0.05);
+}
+
+.glow-border {
+  border: 1px solid var(--glow-border);
+}
+
+@keyframes fadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-in {
+  animation: fadeSlideUp 0.5s ease-out forwards;
+  opacity: 0;
+}
+
+.delay-1 { animation-delay: 0.1s; }
+.delay-2 { animation-delay: 0.2s; }
+.delay-3 { animation-delay: 0.3s; }
+.delay-4 { animation-delay: 0.4s; }
+.delay-5 { animation-delay: 0.5s; }
+
+.hover-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+/* Inputs */
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+input[type="url"],
+textarea,
+select {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  color: var(--text-primary);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 14px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+  width: 100%;
+}
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: rgba(139, 92, 246, 0.5);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+select option {
+  background: var(--surface-800);
+  color: var(--text-primary);
+}
+
+/* Buttons */
+.btn-primary {
+  background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+  color: #ffffff;
+  font-weight: 600;
+  padding: 12px 24px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: "Outfit", system-ui, sans-serif;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+.btn-primary:hover {
+  filter: brightness(1.15);
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-ghost {
+  background: var(--input-bg);
+  color: var(--text-secondary);
+  font-weight: 500;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: 1px solid var(--input-border);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: "Outfit", system-ui, sans-serif;
+  font-size: 13px;
+}
+.btn-ghost:hover {
+  background: var(--surface-700);
+  border-color: var(--glow-border);
+}
+.btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.theme-toggle {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  padding: 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.theme-toggle:hover {
+  color: #8b5cf6;
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.text-themed { color: var(--text-primary); }
+.text-themed-secondary { color: var(--text-secondary); }
+.text-themed-dim { color: var(--text-dim); }
+.border-themed { border-color: var(--border-color); }
+
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+
+/* ===== Code blocks (ported from legacy layout.ts) ===== */
+.code-block {
+  border: 1px solid var(--border-color);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  line-height: 1.6;
+}
+[data-theme="dark"] .code-block {
+  background: #0f1117;
+  color: #e4e4e7;
+}
+[data-theme="light"] .code-block {
+  background: #f4f4f5;
+  color: #1a1a1a;
+}
+.code-block code {
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+.code-block-btn {
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.code-block-btn:hover {
+  color: #8b5cf6;
+  background: var(--input-bg);
+  border-color: var(--input-border);
+}

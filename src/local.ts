@@ -40,7 +40,7 @@ import { resolveViewContext } from "~/middleware/view-context"
 import { LoginPage } from "~/ui/login"
 import { DevicePage } from "~/ui/device"
 import { GuidePage } from "~/ui/guide"
-import { DashboardPage } from "~/ui/dashboard"
+import { DashboardPage } from "~/ui/dashboard-app/page"
 
 // Data directory for local storage
 const DATA_DIR = ".data"
@@ -197,7 +197,7 @@ const env: LocalEnv = {
 }
 
 // Public paths that don't require authentication
-const PUBLIC_GET_PATHS = new Set(["/", "/dashboard", "/device/login", "/guide", "/favicon.ico", "/health"])
+const PUBLIC_GET_PATHS = new Set(["/", "/dashboard", "/dashboard-next", "/device/login", "/guide", "/favicon.ico", "/health"])
 const AUTH_VALIDATE_PATHS = new Set(["/auth/login"])
 
 // Dashboard routes - ADMIN_KEY can access these

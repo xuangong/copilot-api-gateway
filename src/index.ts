@@ -27,11 +27,11 @@ import { controlPlaneRoute } from "~/routes/control-plane"
 import { resolveViewContext } from "~/middleware/view-context"
 import { LoginPage } from "~/ui/login"
 import { DevicePage } from "~/ui/device"
-import { DashboardPage } from "~/ui/dashboard"
+import { DashboardPage } from "~/ui/dashboard-app/page"
 import { GuidePage } from "~/ui/guide"
 
 // Public paths that don't require authentication
-const PUBLIC_GET_PATHS = new Set(["/", "/dashboard", "/device/login", "/guide", "/favicon.ico", "/health"])
+const PUBLIC_GET_PATHS = new Set(["/", "/dashboard", "/dashboard-next", "/device/login", "/guide", "/favicon.ico", "/health"])
 const AUTH_VALIDATE_PATHS = new Set(["/auth/login"])
 
 // Dashboard routes - ADMIN_KEY and session tokens can access these
