@@ -59,6 +59,10 @@ const colors = {
   blue: "\x1b[34m",
 }
 
+// Hard-coded local-dev credentials. Local mode only — never used in CFW build.
+const LOCAL_DEV_PASSWORD = "local-dev-admin"
+const LOCAL_DEV_SERVER_SECRET = "local-dev-server-secret"
+
 // Status code color
 function statusColor(status: number): string {
   if (status >= 500) return colors.red
@@ -184,9 +188,13 @@ interface LocalEnv {
   PORT?: string
 }
 
+if (!process.env.SERVER_SECRET) {
+  process.env.SERVER_SECRET = LOCAL_DEV_SERVER_SECRET
+  console.log("⚠️  SERVER_SECRET unset; using local dev default (dev only)")
+}
+
 const env: LocalEnv = {
   ACCOUNT_TYPE: process.env.ACCOUNT_TYPE,
-  ADMIN_KEY: process.env.ADMIN_KEY || "xuangong123!",
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   LANGSEARCH_API_KEY: process.env.LANGSEARCH_API_KEY,
@@ -340,7 +348,7 @@ async function createApp() {
   const TEST_ADMIN_USER_ID = "00000000-0000-0000-0000-000000000001"
   const existingUser = await repo.users.findByEmail(TEST_EMAIL)
   if (!existingUser) {
-    const passwordHash = await hashPassword(env.ADMIN_KEY)
+    const passwordHash = await hashPassword(LOCAL_DEV_PASSWORD)
     await repo.users.create({
       id: TEST_ADMIN_USER_ID,
       name: "Local Admin",
@@ -629,5 +637,5 @@ createApp().then((app) => {
   console.log(`📁 Data directory: ${DATA_DIR}`)
   console.log(`📦 Database: ${DB_FILE}`)
   console.log(`💾 KV Storage: ${KV_FILE}`)
-  console.log(`👤 Admin login: test@local.dev / ${env.ADMIN_KEY}`)
+  console.log(`🔑 Local admin login: test@local.dev / ${LOCAL_DEV_PASSWORD} (dev only)`)
 })
