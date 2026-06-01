@@ -34,12 +34,6 @@ export const ALL_ENDPOINT_KEYS = [
   "embeddings",
 ] as const satisfies readonly EndpointKey[]
 
-/**
- * @deprecated Use `EndpointKey` instead. This alias exists for migration only
- * and will be removed after all consumers are updated.
- */
-export type ModelEndpoint = EndpointKey
-
 /** Single per-model pricing record (USD per million tokens). */
 export interface ModelPricing {
   input: number
