@@ -95,9 +95,6 @@ export class CopilotProvider implements ModelProvider {
     })
   }
 
-  callResponses(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.fetch("responses", { method: "POST", body: JSON.stringify(payload) }, opts)
-  }
   callMessages(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
     return this.fetch("messages", { method: "POST", body: JSON.stringify(payload) }, opts)
   }

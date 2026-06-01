@@ -123,9 +123,6 @@ export class CustomProvider implements ModelProvider {
     return this.send(path, init, opts, `call ${endpoint}`)
   }
 
-  callResponses(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.fetch("responses", { method: "POST", body: JSON.stringify(payload) }, opts)
-  }
   callMessages(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
     return this.fetch("messages", { method: "POST", body: JSON.stringify(payload) }, opts)
   }
