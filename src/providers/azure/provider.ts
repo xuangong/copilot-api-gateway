@@ -15,8 +15,7 @@
 
 import { HTTPError } from "~/lib/error"
 import { fetchWithRetry } from "~/lib/fetch-retry"
-import type { ModelEndpoint } from "~/protocols/common"
-import { type EndpointKey } from "~/protocols/common"
+import type { EndpointKey } from "~/protocols/common"
 import type { ModelsResponse } from "~/services/copilot/models"
 
 import type { ModelProvider, ProbeResult, ProviderCallOptions, ProviderFetchOptions } from "../types"
@@ -37,7 +36,7 @@ export interface AzureProviderConfig {
    * Which endpoints this deployment serves. Mix-and-match OpenAI vs Anthropic
    * shapes per deployment.
    */
-  endpoints: readonly ModelEndpoint[]
+  endpoints: readonly EndpointKey[]
   /** Extra headers merged on every request. */
   defaultHeaders?: Record<string, string>
   /**
@@ -49,13 +48,13 @@ export interface AzureProviderConfig {
   deployments?: ReadonlyArray<{ name: string; model: string }>
 }
 
-const OPENAI_PATHS: Partial<Record<ModelEndpoint, string>> = {
+const OPENAI_PATHS: Partial<Record<EndpointKey, string>> = {
   chat_completions: "/chat/completions",
   responses: "/responses",
   embeddings: "/embeddings",
 }
 
-const ANTHROPIC_PATHS: Partial<Record<ModelEndpoint, string>> = {
+const ANTHROPIC_PATHS: Partial<Record<EndpointKey, string>> = {
   messages: "/v1/messages",
   messages_count_tokens: "/v1/messages/count_tokens",
 }
@@ -143,7 +142,7 @@ export class AzureProvider implements ModelProvider {
     return this.deployment
   }
 
-  private buildUrl(endpoint: ModelEndpoint, deployment: string): string {
+  private buildUrl(endpoint: EndpointKey, deployment: string): string {
     const openai = OPENAI_PATHS[endpoint]
     if (openai) {
       return `${this.endpoint}/openai/deployments/${deployment}${openai}?api-version=${encodeURIComponent(this.apiVersion)}`

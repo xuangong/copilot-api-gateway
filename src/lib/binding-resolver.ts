@@ -1,7 +1,7 @@
 import type { AppState } from "~/lib/state"
 import { bindingsForEndpoint, type ProviderBinding } from "~/providers/binding"
 import { listProviderBindings } from "~/providers/registry"
-import type { ModelEndpoint } from "~/protocols/common"
+import type { EndpointKey } from "~/protocols/common"
 import { parseCompositeModelId } from "~/services/copilot/variants"
 
 /**
@@ -49,7 +49,7 @@ export async function resolveBinding(
   state: AppState | null,
   ownerId: string | undefined,
   model: string,
-  endpoint: ModelEndpoint,
+  endpoint: EndpointKey,
   pin?: string,
 ): Promise<ProviderBinding | null> {
   const copilot = state?.copilotToken
@@ -131,7 +131,7 @@ export async function resolveBindingForRequest<P extends { model?: unknown }>(
   state: AppState | null,
   ownerId: string | undefined,
   payload: P,
-  endpoint: ModelEndpoint,
+  endpoint: EndpointKey,
 ): Promise<{ binding: ProviderBinding | null; model: string }> {
   const rawModel = typeof payload.model === "string" ? payload.model : ""
   const { bareModel } = parseModelRouting(rawModel)

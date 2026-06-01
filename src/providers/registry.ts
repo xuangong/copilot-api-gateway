@@ -2,7 +2,7 @@ import type { AccountType } from "~/config/constants"
 import { defaultsForUpstream, resolveEffectiveFlags } from "~/flags"
 import { getRepo } from "~/repo"
 import type { UpstreamRecord } from "~/repo"
-import type { ModelEndpoint } from "~/protocols/common"
+import type { EndpointKey } from "~/protocols/common"
 import { getCachedCopilotToken } from "~/services/github/copilot-token-cache"
 import type { ModelsResponse } from "~/services/copilot/models"
 
@@ -28,7 +28,7 @@ export interface ListUpstreamModelsOptions {
   copilot?: CreateProviderOptions
 }
 
-const DEFAULT_ENDPOINTS: Record<UpstreamKind, readonly ModelEndpoint[]> = {
+const DEFAULT_ENDPOINTS: Record<UpstreamKind, readonly EndpointKey[]> = {
   copilot: ["chat_completions", "responses", "messages", "messages_count_tokens", "embeddings"],
   custom: ["chat_completions", "embeddings"],
   azure: ["chat_completions"],
@@ -141,7 +141,7 @@ export async function listProviderBindings(opts: ListUpstreamModelsOptions = {})
       if (!provider) continue
       const models = await provider.getModels()
       const endpoints = Array.isArray(upstream.config.endpoints)
-        ? upstream.config.endpoints as ModelEndpoint[]
+        ? upstream.config.endpoints as EndpointKey[]
         : DEFAULT_ENDPOINTS[upstream.provider]
       const enabledFlags = resolveEffectiveFlags(defaultsForUpstream(upstream.provider), [upstream.flagOverrides])
       const disabled = new Set(upstream.disabledPublicModelIds)

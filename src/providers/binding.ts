@@ -13,7 +13,7 @@
  * persisted.
  */
 
-import type { ModelEndpoint, ModelPricing, UpstreamKind } from "~/protocols/common"
+import type { EndpointKey, ModelPricing, UpstreamKind } from "~/protocols/common"
 import type { ModelProvider } from "~/providers/types"
 import type { Model } from "~/services/copilot/models"
 
@@ -46,7 +46,7 @@ export interface ProviderBinding {
   /** The model as known to this upstream. */
   model: BindingModel
   /** Endpoints the upstream natively serves for this model. */
-  upstreamEndpoints: readonly ModelEndpoint[]
+  upstreamEndpoints: readonly EndpointKey[]
   /** Effective flag set after defaults + overrides resolution. */
   enabledFlags: ReadonlySet<string>
   /** Concrete provider that executes the call. */
@@ -58,7 +58,7 @@ export interface ProviderBinding {
  */
 export function bindingServesEndpoint(
   binding: ProviderBinding,
-  endpoint: ModelEndpoint,
+  endpoint: EndpointKey,
 ): boolean {
   return binding.upstreamEndpoints.includes(endpoint)
 }
@@ -68,7 +68,7 @@ export function bindingServesEndpoint(
  */
 export function bindingsForEndpoint(
   bindings: readonly ProviderBinding[],
-  endpoint: ModelEndpoint,
+  endpoint: EndpointKey,
 ): ProviderBinding[] {
   return bindings.filter((b) => bindingServesEndpoint(b, endpoint))
 }

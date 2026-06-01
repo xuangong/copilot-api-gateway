@@ -11,7 +11,7 @@
 
 import { HTTPError } from "~/lib/error"
 import { fetchWithRetry } from "~/lib/fetch-retry"
-import { type EndpointKey, type ModelEndpoint } from "~/protocols/common"
+import { type EndpointKey } from "~/protocols/common"
 import type { ModelsResponse } from "~/services/copilot/models"
 
 import type { ModelProvider, ProbeResult, ProviderCallOptions, ProviderFetchOptions } from "../types"
@@ -31,7 +31,7 @@ export interface CustomProviderConfig {
    * to decide whether translation is needed. Default: chat_completions
    * + embeddings.
    */
-  endpoints?: readonly ModelEndpoint[]
+  endpoints?: readonly EndpointKey[]
   /**
    * Optional models endpoint override. Defaults to `${baseUrl}/models`.
    */
@@ -47,7 +47,7 @@ export interface CustomProviderConfig {
   models?: ReadonlyArray<string | { id: string; name?: string; ownedBy?: string }>
 }
 
-const DEFAULT_ENDPOINTS: readonly ModelEndpoint[] = ["chat_completions", "embeddings"]
+const DEFAULT_ENDPOINTS: readonly EndpointKey[] = ["chat_completions", "embeddings"]
 
 const CUSTOM_PATHS: Record<EndpointKey, string> = {
   chat_completions: "/chat/completions",

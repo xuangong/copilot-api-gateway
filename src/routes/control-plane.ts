@@ -12,7 +12,7 @@
 import { Elysia } from "elysia"
 
 import { getFlagCatalog, defaultsForUpstream } from "~/flags"
-import type { UpstreamKind, ModelEndpoint } from "~/protocols/common"
+import type { UpstreamKind, EndpointKey } from "~/protocols/common"
 import { getRepo } from "~/repo"
 import type { UpstreamRecord } from "~/repo"
 import { AzureProvider, type AzureProviderConfig } from "~/providers/azure/provider"
@@ -44,7 +44,7 @@ interface UpstreamBody {
   disabledPublicModelIds?: unknown
 }
 
-const ENDPOINTS = new Set<ModelEndpoint>(["chat_completions", "responses", "messages", "messages_count_tokens", "embeddings"])
+const ENDPOINTS = new Set<EndpointKey>(["chat_completions", "responses", "messages", "messages_count_tokens", "embeddings"])
 
 function adminGuard(ctx: unknown): Response | null {
   const { isAdmin } = ctx as AuthCtx
@@ -69,12 +69,12 @@ function upstreamId(provider: UpstreamKind, name: string): string {
   return `up_${provider}_${sanitizeIdPart(name)}_${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`
 }
 
-function parseEndpoints(value: unknown, fallback: readonly ModelEndpoint[]): ModelEndpoint[] {
+function parseEndpoints(value: unknown, fallback: readonly EndpointKey[]): EndpointKey[] {
   if (value === undefined) return [...fallback]
   if (!Array.isArray(value)) throw new Error("endpoints must be an array")
   const endpoints = value.map((v) => {
-    if (typeof v !== "string" || !ENDPOINTS.has(v as ModelEndpoint)) throw new Error(`unknown endpoint: ${String(v)}`)
-    return v as ModelEndpoint
+    if (typeof v !== "string" || !ENDPOINTS.has(v as EndpointKey)) throw new Error(`unknown endpoint: ${String(v)}`)
+    return v as EndpointKey
   })
   return [...new Set(endpoints)]
 }
