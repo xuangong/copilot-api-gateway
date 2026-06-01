@@ -3,9 +3,10 @@ import { useT } from "../../state/i18n"
 import { fileToDataUrl, ImageTooLargeError } from "./image"
 import { parseOpenAIStream, type StreamUsage } from "./streams/openai"
 import { parseAnthropicStream } from "./streams/anthropic"
+import { parseGeminiStream } from "./streams/gemini"
 import { renderMarkdown } from "./markdown"
 
-type Protocol = "openai" | "anthropic"
+type Protocol = "openai" | "anthropic" | "gemini"
 type Role = "user" | "assistant"
 
 interface Message {
@@ -132,8 +133,10 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, onRevertModel }: Prop
       try {
         if (protocol === "openai") {
           await sendOpenAI(nextHistory, ctrl.signal)
-        } else {
+        } else if (protocol === "anthropic") {
           await sendAnthropic(nextHistory, ctrl.signal)
+        } else {
+          await sendGemini(nextHistory, ctrl.signal)
         }
         finalizeLast()
       } catch (err) {
@@ -278,6 +281,51 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, onRevertModel }: Prop
     }
   }
 
+  async function sendGemini(history: Message[], signal: AbortSignal) {
+    const contents: Array<Record<string, unknown>> = []
+    for (const m of history) {
+      const role = m.role === "assistant" ? "model" : "user"
+      const parts: Array<Record<string, unknown>> = []
+      if (m.text) parts.push({ text: m.text })
+      if (m.imageUrl) {
+        // Gemini wants base64 inline data. We only have data URLs reliably;
+        // a remote URL is passed through as text since the backend will reject
+        // raw url refs.
+        if (m.imageUrl.startsWith("data:")) {
+          const comma = m.imageUrl.indexOf(",")
+          const meta = m.imageUrl.slice(5, comma) // e.g. image/png;base64
+          const mime = meta.split(";")[0] || "image/png"
+          const data = m.imageUrl.slice(comma + 1)
+          parts.push({ inlineData: { mimeType: mime, data } })
+        } else {
+          parts.push({ text: `[image] ${m.imageUrl}` })
+        }
+      }
+      contents.push({ role, parts })
+    }
+    const body: Record<string, unknown> = { contents }
+    if (systemPrompt.trim()) {
+      body.systemInstruction = { parts: [{ text: systemPrompt }] }
+    }
+    const resp = await fetch(
+      `/v1beta/models/${encodeURIComponent(modelId)}:streamGenerateContent?alt=sse`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify(body),
+        signal,
+      },
+    )
+    if (!resp.ok || !resp.body) {
+      const errText = await resp.text().catch(() => "")
+      throw new Error(errText || `HTTP ${resp.status}`)
+    }
+    for await (const ch of parseGeminiStream(resp.body)) {
+      if (ch.type === "delta") appendAssistant(ch.text)
+      else setLastUsage(ch.usage)
+    }
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
@@ -300,7 +348,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, onRevertModel }: Prop
       <div className="pg-topbar">
         <span className="text-themed-dim">{t("dash.playground.protocol")}:</span>
         <div className="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5">
-          {(["openai", "anthropic"] as const).map((p) => (
+          {(["openai", "anthropic", "gemini"] as const).map((p) => (
             <button
               key={p}
               onClick={() => setProtocol(p)}
@@ -310,7 +358,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, onRevertModel }: Prop
                   : "text-themed-dim hover:text-themed-secondary"
               }`}
             >
-              {p === "openai" ? "OpenAI" : "Anthropic"}
+              {p === "openai" ? "OpenAI" : p === "anthropic" ? "Anthropic" : "Gemini"}
             </button>
           ))}
         </div>
