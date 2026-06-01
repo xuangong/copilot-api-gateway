@@ -25,10 +25,6 @@ mock.module("~/providers/registry", () => ({
       }
       return upstreamResponse
     },
-    callResponses: async () => {
-      if (!upstreamResponse) throw new Error("missing upstream response")
-      return upstreamResponse
-    },
   }),
 }))
 
