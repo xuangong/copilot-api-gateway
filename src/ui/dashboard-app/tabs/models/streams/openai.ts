@@ -34,6 +34,25 @@ export async function* parseOpenAIStream(
         if (typeof delta === "string" && delta.length) yield delta
       }
     }
+    const tail = buf.replace(/\r$/, "")
+    if (tail.startsWith("data:")) {
+      const payload = tail.slice(5).trim()
+      if (payload && payload !== "[DONE]") {
+        try {
+          const json = JSON.parse(payload) as {
+            error?: { message?: string }
+            choices?: Array<{ delta?: { content?: string } }>
+          }
+          if (json.error) {
+            throw new Error(json.error.message ?? "OpenAI stream error")
+          }
+          const delta = json.choices?.[0]?.delta?.content
+          if (typeof delta === "string" && delta.length) yield delta
+        } catch (e) {
+          if (e instanceof Error && e.message.includes("OpenAI stream error")) throw e
+        }
+      }
+    }
   } finally {
     reader.releaseLock()
   }
