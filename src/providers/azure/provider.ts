@@ -52,6 +52,8 @@ const OPENAI_PATHS: Partial<Record<EndpointKey, string>> = {
   chat_completions: "/chat/completions",
   responses: "/responses",
   embeddings: "/embeddings",
+  images_generations: "/images/generations",
+  images_edits: "/images/edits",
 }
 
 const ANTHROPIC_PATHS: Partial<Record<EndpointKey, string>> = {
