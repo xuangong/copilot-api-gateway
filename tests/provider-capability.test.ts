@@ -50,3 +50,17 @@ test("CustomProvider honors explicit endpoints config", () => {
   })
   expect([...p.supportedEndpoints].sort()).toEqual(["chat_completions", "messages", "responses"])
 })
+
+import { AzureProvider } from "~/providers/azure/provider"
+
+test("AzureProvider mirrors its endpoints config to supportedEndpoints", () => {
+  const p = new AzureProvider({
+    name: "az",
+    endpoint: "https://r.openai.azure.com",
+    apiKey: "k",
+    deployment: "gpt-4o",
+    apiVersion: "2024-02-15-preview",
+    endpoints: ["chat_completions", "embeddings"],
+  })
+  expect([...p.supportedEndpoints].sort()).toEqual(["chat_completions", "embeddings"])
+})

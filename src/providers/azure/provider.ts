@@ -16,9 +16,10 @@
 import { HTTPError } from "~/lib/error"
 import { fetchWithRetry } from "~/lib/fetch-retry"
 import type { ModelEndpoint } from "~/protocols/common"
+import { type EndpointKey } from "~/protocols/common"
 import type { ModelsResponse } from "~/services/copilot/models"
 
-import type { ModelProvider, ProbeResult, ProviderCallOptions } from "../types"
+import type { ModelProvider, ProbeResult, ProviderCallOptions, ProviderFetchOptions } from "../types"
 import { probeViaModels } from "../probe"
 
 export interface AzureProviderConfig {
@@ -62,7 +63,7 @@ const ANTHROPIC_PATHS: Partial<Record<ModelEndpoint, string>> = {
 export class AzureProvider implements ModelProvider {
   readonly kind = "azure" as const
   readonly name: string
-  readonly endpoints: readonly ModelEndpoint[]
+  readonly supportedEndpoints: readonly EndpointKey[]
   private readonly endpoint: string
   private readonly apiKey: string
   private readonly deployment: string
@@ -80,7 +81,7 @@ export class AzureProvider implements ModelProvider {
     this.apiKey = cfg.apiKey
     this.deployment = cfg.deployment
     this.apiVersion = cfg.apiVersion
-    this.endpoints = cfg.endpoints
+    this.supportedEndpoints = cfg.endpoints
     this.defaultHeaders = cfg.defaultHeaders ?? {}
     this.extraDeployments = cfg.deployments ?? []
   }
@@ -121,19 +122,26 @@ export class AzureProvider implements ModelProvider {
   }
 
   callChatCompletions(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.post("chat_completions", payload, opts, "call Chat Completions")
+    return this.fetch("chat_completions", { method: "POST", body: JSON.stringify(payload) }, opts)
   }
   callResponses(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.post("responses", payload, opts, "call Responses")
+    return this.fetch("responses", { method: "POST", body: JSON.stringify(payload) }, opts)
   }
   callMessages(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.post("messages", payload, opts, "call Messages")
+    return this.fetch("messages", { method: "POST", body: JSON.stringify(payload) }, opts)
   }
   callMessagesCountTokens(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.post("messages_count_tokens", payload, opts, "count tokens")
+    return this.fetch("messages_count_tokens", { method: "POST", body: JSON.stringify(payload) }, opts)
   }
   callEmbeddings(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.post("embeddings", payload, opts, "create embeddings")
+    return this.fetch("embeddings", { method: "POST", body: JSON.stringify(payload) }, opts)
+  }
+
+  async fetch(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
+    if (!this.supportedEndpoints.includes(endpoint)) {
+      throw new Error(`Azure deployment ${this.name} does not serve endpoint: ${endpoint}`)
+    }
+    return this.send(endpoint, init, opts, `call ${endpoint}`)
   }
 
   /**
@@ -172,25 +180,26 @@ export class AzureProvider implements ModelProvider {
     }
   }
 
-  private async post(
-    endpoint: ModelEndpoint,
-    payload: Record<string, unknown>,
-    opts: ProviderCallOptions,
+  private async send(
+    endpoint: EndpointKey,
+    init: RequestInit,
+    opts: ProviderFetchOptions,
     defaultOpName: string,
   ): Promise<Response> {
-    if (!this.endpoints.includes(endpoint)) {
-      throw new Error(`Azure deployment ${this.name} does not serve endpoint: ${endpoint}`)
-    }
+    const payload = parseJsonBody(init.body)
     const deployment = this.resolveDeployment(payload)
     const url = this.buildUrl(endpoint, deployment)
     const headers = this.headers(opts.extraHeaders ?? {})
+    if (init.headers) {
+      new Headers(init.headers).forEach((v, k) => { headers[k] = v })
+    }
     const operationName = opts.operationName ?? defaultOpName
     let response: Response
     try {
       response = await fetchWithRetry(url, {
-        method: "POST",
+        method: init.method ?? "POST",
         headers,
-        body: JSON.stringify(payload),
+        body: init.body,
         timeout: opts.timeout,
       })
     } catch (err) {
@@ -217,4 +226,11 @@ export class AzureProvider implements ModelProvider {
 
 function truncate(s: string): string {
   return s.length > 200 ? s.slice(0, 200) + "...(truncated)" : s
+}
+
+function parseJsonBody(body: BodyInit | null | undefined): Record<string, unknown> {
+  if (typeof body !== "string") {
+    throw new Error("AzureProvider.fetch: body must be a JSON string")
+  }
+  return JSON.parse(body) as Record<string, unknown>
 }

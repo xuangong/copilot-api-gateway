@@ -26,7 +26,7 @@ describe("AzureProvider constructor", () => {
   test("kind=azure and endpoints copied", () => {
     const p = new AzureProvider(base)
     expect(p.kind).toBe("azure")
-    expect(p.endpoints).toEqual(["chat_completions"])
+    expect(p.supportedEndpoints).toEqual(["chat_completions"])
   })
 })
 
