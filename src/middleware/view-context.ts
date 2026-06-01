@@ -13,7 +13,7 @@ import { getRepo } from "~/repo"
 export const resolveViewContext = new Elysia({ name: "resolve-view-context" })
   .derive(async (ctx) => {
     const { query } = ctx
-    const auth = ctx as unknown as { userId?: string; authKind?: 'public' | 'admin' | 'session' | 'apiKey' }
+    const auth = ctx as unknown as { userId?: string; authKind?: 'public' | 'session' | 'apiKey' }
     const asUser = (query as Record<string, string | undefined>).as_user
 
     const callerId = auth.userId

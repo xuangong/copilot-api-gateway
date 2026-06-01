@@ -11,7 +11,7 @@ import { createGithubHeaders } from "~/config/constants"
 interface ViewCtx {
   userId?: string
   isAdmin?: boolean
-  authKind?: 'public' | 'admin' | 'session' | 'apiKey'
+  authKind?: 'public' | 'session' | 'apiKey'
   effectiveUserId?: string
   isViewingShared?: boolean
   ownerId?: string
