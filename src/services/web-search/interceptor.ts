@@ -66,8 +66,12 @@ async function createMessages(
   payload: MessagesPayload,
   options: CallOptions,
 ): Promise<ApiResponse> {
-  const response = await createCopilotProvider({ copilotToken: options.copilotToken, accountType: options.accountType }).callMessages(
-    payload as unknown as Record<string, unknown>,
+  const response = await createCopilotProvider({
+    copilotToken: options.copilotToken,
+    accountType: options.accountType,
+  }).fetch(
+    "messages",
+    { method: "POST", body: JSON.stringify(payload) },
     { operationName: "create message" },
   )
   return response.json() as Promise<ApiResponse>
@@ -78,8 +82,12 @@ async function createMessagesStream(
   payload: MessagesPayload,
   options: CallOptions,
 ): Promise<ReadableStream<Uint8Array>> {
-  const response = await createCopilotProvider({ copilotToken: options.copilotToken, accountType: options.accountType }).callMessages(
-    { ...payload, stream: true } as unknown as Record<string, unknown>,
+  const response = await createCopilotProvider({
+    copilotToken: options.copilotToken,
+    accountType: options.accountType,
+  }).fetch(
+    "messages",
+    { method: "POST", body: JSON.stringify({ ...payload, stream: true }) },
     { operationName: "create message stream" },
   )
   return response.body!
