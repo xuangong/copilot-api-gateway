@@ -156,13 +156,19 @@ export class AzureProvider implements ModelProvider {
     throw new Error(`Azure provider does not support endpoint: ${endpoint}`)
   }
 
-  private headers(extra: Record<string, string> = {}): Record<string, string> {
-    return {
+  private headers(
+    extra: Record<string, string> = {},
+    opts: { includeJsonContentType?: boolean } = {},
+  ): Record<string, string> {
+    const base: Record<string, string> = {
       "api-key": this.apiKey,
-      "Content-Type": "application/json",
       ...this.defaultHeaders,
       ...extra,
     }
+    if (opts.includeJsonContentType !== false) {
+      base["Content-Type"] = "application/json"
+    }
+    return base
   }
 
   private async send(
@@ -171,10 +177,15 @@ export class AzureProvider implements ModelProvider {
     opts: ProviderFetchOptions,
     defaultOpName: string,
   ): Promise<Response> {
-    const payload = parseJsonBody(init.body)
+    const bodyIsFormData = init.body instanceof FormData
+    // For FormData bodies (images/edits), parse model from FormData for deployment routing.
+    // For JSON bodies, use the standard parseJsonBody helper.
+    const payload = bodyIsFormData
+      ? parseFormDataPayload(init.body as FormData)
+      : parseJsonBody(init.body)
     const deployment = this.resolveDeployment(payload)
     const url = this.buildUrl(endpoint, deployment)
-    const headers = this.headers(opts.extraHeaders ?? {})
+    const headers = this.headers(opts.extraHeaders ?? {}, { includeJsonContentType: !bodyIsFormData })
     if (init.headers) {
       new Headers(init.headers).forEach((v, k) => { headers[k] = v })
     }
@@ -218,4 +229,10 @@ function parseJsonBody(body: BodyInit | null | undefined): Record<string, unknow
     throw new Error("AzureProvider.fetch: body must be a JSON string")
   }
   return JSON.parse(body) as Record<string, unknown>
+}
+
+/** Extract routing-relevant fields (model) from a multipart FormData body. */
+function parseFormDataPayload(form: FormData): Record<string, unknown> {
+  const model = form.get("model")
+  return typeof model === "string" ? { model } : {}
 }

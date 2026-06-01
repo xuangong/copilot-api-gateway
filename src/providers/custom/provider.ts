@@ -125,13 +125,19 @@ export class CustomProvider implements ModelProvider {
     return this.send(path, init, opts, `call ${endpoint}`)
   }
 
-  private authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-    return {
+  private authHeaders(
+    extra: Record<string, string> = {},
+    opts: { includeJsonContentType?: boolean } = {},
+  ): Record<string, string> {
+    const base: Record<string, string> = {
       "Authorization": `Bearer ${this.apiKey}`,
-      "Content-Type": "application/json",
       ...this.defaultHeaders,
       ...extra,
     }
+    if (opts.includeJsonContentType !== false) {
+      base["Content-Type"] = "application/json"
+    }
+    return base
   }
 
   private async send(
@@ -141,7 +147,10 @@ export class CustomProvider implements ModelProvider {
     defaultOpName: string,
   ): Promise<Response> {
     const url = `${this.baseUrl}${path}`
-    const headers = this.authHeaders(headersInitToRecord(init.headers))
+    const bodyIsFormData = init.body instanceof FormData
+    const headers = this.authHeaders(headersInitToRecord(init.headers), {
+      includeJsonContentType: !bodyIsFormData,
+    })
     Object.assign(headers, opts.extraHeaders ?? {})
     const operationName = opts.operationName ?? defaultOpName
     let response: Response
