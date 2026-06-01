@@ -54,7 +54,10 @@ describe("AzureProvider request shape", () => {
       apiVersion: "2024-08-01-preview",
       endpoints: ["chat_completions"],
     })
-    await p.callChatCompletions({ messages: [] })
+    await p.fetch(
+      "chat_completions",
+      { method: "POST", body: JSON.stringify({ messages: [] }) },
+    )
     expect(captured!.url).toBe(
       "https://acc.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview",
     )

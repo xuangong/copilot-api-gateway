@@ -92,11 +92,14 @@ describe("CopilotProvider Claude variant resolution", () => {
   })
 
   test("chat completions payload effort selects the matching raw model", async () => {
-    await provider().callChatCompletions({
-      model: "claude-opus-4.7",
-      messages: [{ role: "user", content: "hi" }],
-      reasoning_effort: "xhigh",
-    })
+    await provider().fetch(
+      "chat_completions",
+      { method: "POST", body: JSON.stringify({
+        model: "claude-opus-4.7",
+        messages: [{ role: "user", content: "hi" }],
+        reasoning_effort: "xhigh",
+      }) },
+    )
 
     expect(calls[0]?.payload.model).toBe("claude-opus-4.7-1m-internal")
     expect(calls[0]?.payload.reasoning_effort).toBe("xhigh")
@@ -146,12 +149,13 @@ describe("CopilotProvider Claude variant resolution", () => {
   })
 
   test("non-Claude model ignores Copilot Claude variant hints", async () => {
-    await provider().callChatCompletions(
-      {
+    await provider().fetch(
+      "chat_completions",
+      { method: "POST", body: JSON.stringify({
         model: "gpt-5.5",
         messages: [{ role: "user", content: "hi" }],
         reasoning_effort: "xhigh",
-      },
+      }) },
       { extraHeaders: { "anthropic-beta": "context-1m-2025-08-07" } },
     )
 

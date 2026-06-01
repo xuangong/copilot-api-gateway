@@ -42,13 +42,16 @@ describe("CustomProvider request shape", () => {
     globalThis.fetch = originalFetch
   })
 
-  test("callChatCompletions sends bearer auth and POST body", async () => {
+  test("fetch('chat_completions') sends bearer auth and POST body", async () => {
     const p = new CustomProvider({
       name: "deepseek",
       baseUrl: "https://api.deepseek.com/v1/",
       apiKey: "sk-123",
     })
-    await p.callChatCompletions({ model: "x", messages: [] })
+    await p.fetch(
+      "chat_completions",
+      { method: "POST", body: JSON.stringify({ model: "x", messages: [] }) },
+    )
     expect(captured).not.toBeNull()
     expect(captured!.url).toBe("https://api.deepseek.com/v1/chat/completions")
     expect(captured!.init.method).toBe("POST")
