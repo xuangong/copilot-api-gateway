@@ -53,7 +53,14 @@ export function redactForSharedView(input: RedactInput): any[] {
   }
 }
 
-/** Read SERVER_SECRET from env or fall back to a deterministic dev value. */
+/**
+ * Read SERVER_SECRET from env. In CFW the variable must be set explicitly;
+ * local mode programmatically defaults it before this is ever called
+ * (see src/local.ts LOCAL_DEV_SERVER_SECRET fallback).
+ */
 export function getServerSecret(env: Record<string, string | undefined>): string {
-  return env.SERVER_SECRET || env.ADMIN_KEY || "dev-server-secret-change-me"
+  if (!env.SERVER_SECRET) {
+    throw new Error("SERVER_SECRET must be set")
+  }
+  return env.SERVER_SECRET
 }
