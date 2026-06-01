@@ -1,5 +1,10 @@
-import { test, expect, describe } from "bun:test"
+import { test, expect, describe, beforeAll, afterAll } from "bun:test"
+import { Elysia } from "elysia"
+import { Database } from "bun:sqlite"
 import { getServerSecret } from "~/lib/redact-shared-view"
+import { SqliteRepo } from "~/repo/sqlite"
+import { setRepoForTest } from "~/repo"
+import { sessionsRoute } from "~/routes/auth/sessions"
 
 describe("getServerSecret", () => {
   test("returns SERVER_SECRET when set", () => {
@@ -16,16 +21,20 @@ describe("getServerSecret", () => {
   })
 })
 
-import { Elysia } from "elysia"
-import { Database } from "bun:sqlite"
-import { SqliteRepo } from "~/repo/sqlite"
-import { setRepoForTest } from "~/repo"
-import { sessionsRoute } from "~/routes/auth/sessions"
-
 describe("POST /auth/login (sessions route)", () => {
+  let db: Database
+
+  beforeAll(() => {
+    db = new Database(":memory:")
+    setRepoForTest(new SqliteRepo(db))
+  })
+
+  afterAll(() => {
+    setRepoForTest(null)
+    db.close()
+  })
+
   test("rejects an arbitrary non-session string", async () => {
-    const db = new Database(":memory:")
-    setRepoForTest(new SqliteRepo(db) as any)
     const app = new Elysia({ aot: false })
       .derive(() => ({ env: { ADMIN_KEY: "would-have-passed-before" } }))
       .use(sessionsRoute)
