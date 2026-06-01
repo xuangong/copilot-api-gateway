@@ -178,7 +178,6 @@ function logRequest(
 // Environment from process.env (Bun auto-loads .env)
 interface LocalEnv {
   ACCOUNT_TYPE?: string
-  ADMIN_KEY?: string
   GOOGLE_CLIENT_ID?: string
   GOOGLE_CLIENT_SECRET?: string
   LANGSEARCH_API_KEY?: string
@@ -208,7 +207,7 @@ const env: LocalEnv = {
 const PUBLIC_GET_PATHS = new Set(["/", "/dashboard", "/dashboard-next", "/device/login", "/guide", "/favicon.ico", "/health"])
 const AUTH_VALIDATE_PATHS = new Set(["/auth/login"])
 
-// Dashboard routes - ADMIN_KEY can access these
+// Dashboard routes - session tokens can access these
 const DASHBOARD_PREFIXES = ["/api/", "/auth/"]
 
 function extractKey(request: Request): string | null {
@@ -343,7 +342,7 @@ async function createApp() {
   const repo = new SqliteRepo(db)
   initRepo(repo)
 
-  // Seed test admin user for local mode (fixed ID so ADMIN_KEY auth can reference it without DB lookup)
+  // Seed test admin user for local mode (fixed ID for stable local dev sessions)
   const TEST_EMAIL = "test@local.dev"
   const TEST_ADMIN_USER_ID = "00000000-0000-0000-0000-000000000001"
   const existingUser = await repo.users.findByEmail(TEST_EMAIL)

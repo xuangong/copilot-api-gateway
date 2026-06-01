@@ -4,13 +4,12 @@ import { validateApiKey } from "~/lib/api-keys"
 import { getRepo } from "~/repo"
 import { ADMIN_EMAILS } from "~/config/constants"
 
-import { type AuthContext, SESSION_TTL_DAYS } from "./utils"
+import { SESSION_TTL_DAYS } from "./utils"
 
 export const sessionsRoute = new Elysia()
   // POST /auth/login - validate session (from cookie or body)
   .post("/login", async (ctx) => {
     const { body } = ctx
-    const env = (ctx as unknown as AuthContext).env
     const { key } = body as { key?: string }
 
     let sessionToken = key

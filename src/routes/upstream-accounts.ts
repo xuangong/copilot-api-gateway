@@ -58,9 +58,7 @@ export const upstreamAccountsRoute = new Elysia()
     const repo = getRepo()
     // Admin in self-view sees ALL accounts (cross-user) — matches the behavior
     // of the legacy /auth/me path. In viewAs mode admin is constrained to the
-    // owner's accounts (closed allowlist). Use isAdmin (role) rather than
-    // authKind ('admin' only matches ADMIN_KEY header auth, not dashboard
-    // session-logged admins).
+    // owner's accounts (closed allowlist).
     const adminGlobalView = isAdmin === true && !isViewingShared
     const accounts = adminGlobalView
       ? await repo.github.listAccounts()

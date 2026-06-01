@@ -34,7 +34,7 @@ import { GuidePage } from "~/ui/guide"
 const PUBLIC_GET_PATHS = new Set(["/", "/dashboard", "/dashboard-next", "/device/login", "/guide", "/favicon.ico", "/health"])
 const AUTH_VALIDATE_PATHS = new Set(["/auth/login"])
 
-// Dashboard routes - ADMIN_KEY and session tokens can access these
+// Dashboard routes - session tokens can access these
 const DASHBOARD_PREFIXES = ["/api/", "/auth/"]
 
 function extractKey(request: Request): string | null {
