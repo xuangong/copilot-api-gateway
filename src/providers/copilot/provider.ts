@@ -29,6 +29,10 @@ const COPILOT_PATHS: Record<EndpointKey, string> = {
   messages: "/v1/messages",
   messages_count_tokens: "/v1/messages/count_tokens",
   embeddings: "/embeddings",
+  // Copilot does not serve image endpoints — intentionally excluded from
+  // supportedEndpoints. These paths will never be reached at runtime.
+  images_generations: "/images/generations",
+  images_edits: "/images/edits",
 }
 
 const COPILOT_SUPPORTED: readonly EndpointKey[] = [
@@ -39,13 +43,15 @@ const COPILOT_SUPPORTED: readonly EndpointKey[] = [
   "embeddings",
 ]
 
-/** Maps each endpoint to the variant-filtering kind. embeddings = null (no filtering). */
+/** Maps each endpoint to the variant-filtering kind. embeddings/images = null (no filtering). */
 const VARIANT_KIND: Record<EndpointKey, EndpointKind | null> = {
   chat_completions: "chat_completions",
   responses: "responses",
   messages: "messages",
   messages_count_tokens: "messages",
   embeddings: null,
+  images_generations: null,
+  images_edits: null,
 }
 
 export class CopilotProvider implements ModelProvider {

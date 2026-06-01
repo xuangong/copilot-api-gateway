@@ -55,6 +55,8 @@ const CUSTOM_PATHS: Record<EndpointKey, string> = {
   messages: "/messages",
   messages_count_tokens: "/messages/count_tokens",
   embeddings: "/embeddings",
+  images_generations: "/images/generations",
+  images_edits: "/images/edits",
 }
 
 export class CustomProvider implements ModelProvider {
