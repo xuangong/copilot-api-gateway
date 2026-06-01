@@ -44,7 +44,15 @@ interface UpstreamBody {
   disabledPublicModelIds?: unknown
 }
 
-const ENDPOINTS = new Set<EndpointKey>(["chat_completions", "responses", "messages", "messages_count_tokens", "embeddings"])
+const ENDPOINTS = new Set<EndpointKey>([
+  "chat_completions",
+  "responses",
+  "messages",
+  "messages_count_tokens",
+  "embeddings",
+  "images_generations",
+  "images_edits",
+])
 
 function adminGuard(ctx: unknown): Response | null {
   const { isAdmin } = ctx as AuthCtx
