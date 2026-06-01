@@ -9,12 +9,36 @@ export type { SSEFrame, FrameBuffer } from "~/lib/sse/parser"
 
 export type UpstreamKind = "copilot" | "custom" | "azure"
 
-export type ModelEndpoint =
+/**
+ * Set of API surfaces an upstream can serve. Each key maps to a concrete
+ * provider-specific path inside the provider implementation.
+ *
+ * Adding a new endpoint:
+ *   1. Add the literal to this union AND to ALL_ENDPOINT_KEYS below.
+ *   2. Add the path mapping inside each provider's fetch() dispatch.
+ *   3. Add the key to that provider's supportedEndpoints if it serves it.
+ */
+export type EndpointKey =
   | "chat_completions"
   | "responses"
   | "messages"
   | "messages_count_tokens"
   | "embeddings"
+
+/** Runtime list of all valid EndpointKey values. Useful for iteration/validation. */
+export const ALL_ENDPOINT_KEYS = [
+  "chat_completions",
+  "responses",
+  "messages",
+  "messages_count_tokens",
+  "embeddings",
+] as const satisfies readonly EndpointKey[]
+
+/**
+ * @deprecated Use `EndpointKey` instead. This alias exists for migration only
+ * and will be removed after all consumers are updated.
+ */
+export type ModelEndpoint = EndpointKey
 
 /** Single per-model pricing record (USD per million tokens). */
 export interface ModelPricing {
