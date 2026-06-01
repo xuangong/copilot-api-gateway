@@ -16,6 +16,7 @@ import { responsesRoute } from "~/routes/responses"
 import { chatCompletionsRoute } from "~/routes/chat-completions"
 import { modelsRoute } from "~/routes/models"
 import { embeddingsRoute } from "~/routes/embeddings"
+import { imagesRoute } from "~/routes/images"
 import { geminiRoute } from "~/routes/gemini"
 import { authRoute, initOAuthKV } from "~/routes/auth"
 import { initResend } from "~/lib/email"
@@ -427,6 +428,7 @@ function createApp(env: Env) {
         path.startsWith("/models") ||
         path === "/api/models" ||
         path.startsWith("/embeddings") ||
+        path.startsWith("/images") ||
         path.startsWith("/v1beta/")
       ) {
         try {
@@ -471,6 +473,7 @@ function createApp(env: Env) {
     .use(messagesRoute)
     .use(responsesRoute)
     .use(embeddingsRoute)
+    .use(imagesRoute)
     .use(geminiRoute)
 }
 
