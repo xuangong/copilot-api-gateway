@@ -24,6 +24,8 @@ export type EndpointKey =
   | "messages"
   | "messages_count_tokens"
   | "embeddings"
+  | "images_generations"
+  | "images_edits"
 
 /** Runtime list of all valid EndpointKey values. Useful for iteration/validation. */
 export const ALL_ENDPOINT_KEYS = [
@@ -32,6 +34,8 @@ export const ALL_ENDPOINT_KEYS = [
   "messages",
   "messages_count_tokens",
   "embeddings",
+  "images_generations",
+  "images_edits",
 ] as const satisfies readonly EndpointKey[]
 
 /** Single per-model pricing record (USD per million tokens). */
