@@ -59,6 +59,7 @@ export interface UpstreamPatch {
   enabled?: boolean
   sortOrder?: number
   flagOverrides?: Record<string, boolean>
+  disabledPublicModelIds?: string[]
   config?: Record<string, unknown>
 }
 export function patchUpstream(id: string, body: UpstreamPatch): Promise<UpstreamRecord> {
@@ -70,6 +71,7 @@ export interface CreateUpstreamBody {
   name: string
   config: Record<string, unknown>
   flagOverrides?: Record<string, boolean>
+  disabledPublicModelIds?: string[]
 }
 export function createUpstream(body: CreateUpstreamBody): Promise<UpstreamRecord> {
   return api<UpstreamRecord>("/api/upstreams", { method: "POST", body })
@@ -106,3 +108,12 @@ export interface DeviceFlowPoll {
 export function pollGithubDeviceFlow(deviceCode: string): Promise<DeviceFlowPoll> {
   return api<DeviceFlowPoll>("/auth/github/poll", { method: "POST", body: { device_code: deviceCode } })
 }
+
+export interface UpstreamCatalog {
+  models: { id: string; name: string }[]
+  disabledPublicModelIds: string[]
+}
+export function getUpstreamCatalog(id: string): Promise<UpstreamCatalog> {
+  return api<UpstreamCatalog>(`/api/upstreams/${encodeURIComponent(id)}/models`)
+}
+

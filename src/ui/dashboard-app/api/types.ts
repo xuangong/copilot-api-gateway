@@ -34,6 +34,7 @@ export interface UpstreamRecord {
     azureDeployments?: string
   }
   flagOverrides?: Record<string, boolean>
+  disabledPublicModelIds: string[]
   createdAt: string
   updatedAt: string
 }
