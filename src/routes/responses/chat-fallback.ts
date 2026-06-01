@@ -70,8 +70,9 @@ export async function handleChatFallback(
     chatPayload.stream_options = { include_usage: true }
 
     const upstreamTimer = startTimer()
-    const response = await provider.callChatCompletions(
-      chatPayload as unknown as Record<string, unknown>,
+    const response = await provider.fetch(
+      "chat_completions",
+      { method: "POST", body: JSON.stringify(chatPayload) },
       { operationName: "responses (via chat)" },
     )
     const upstreamMs = upstreamTimer()
@@ -115,8 +116,9 @@ export async function handleChatFallback(
     responsesResult: ReturnType<typeof translateChatCompletionsToResponses>
     chatResponse: ChatCompletionResponse
   }> = (async () => {
-    const response = await provider.callChatCompletions(
-      chatPayload as unknown as Record<string, unknown>,
+    const response = await provider.fetch(
+      "chat_completions",
+      { method: "POST", body: JSON.stringify(chatPayload) },
       { operationName: "responses (via chat)" },
     )
     upstreamMs = upstreamTimer()
