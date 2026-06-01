@@ -9,8 +9,6 @@ const stubProvider = {
   getModels: () => Promise.resolve({ object: "list", data: [] }),
   probe: () => Promise.resolve({ ok: true }),
   fetch: () => Promise.resolve(new Response()),
-  callMessages: () => Promise.resolve(new Response()),
-  callMessagesCountTokens: () => Promise.resolve(new Response()),
   callEmbeddings: () => Promise.resolve(new Response()),
 }
 
