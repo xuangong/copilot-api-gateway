@@ -40,7 +40,7 @@ import type { SqlExecutor } from "./executor"
 
 const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref"
 const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at"
-const UPSTREAM_COLS = "id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, created_at, updated_at"
+const UPSTREAM_COLS = "id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, created_at, updated_at"
 const USAGE_COLS = "key_id, model, upstream, hour, client, requests, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_json"
 const LATENCY_COLS = "key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss"
 const USER_COLS = "id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash"
@@ -133,6 +133,26 @@ function parseObject(raw: unknown): Record<string, unknown> {
   }
 }
 
+function parseStringArray(raw: unknown): string[] {
+  if (typeof raw !== "string" || !raw.trim()) return []
+  try {
+    const v = JSON.parse(raw)
+    if (!Array.isArray(v)) return []
+    const out: string[] = []
+    const seen = new Set<string>()
+    for (const item of v) {
+      if (typeof item !== "string") continue
+      const trimmed = item.trim()
+      if (!trimmed || seen.has(trimmed)) continue
+      seen.add(trimmed)
+      out.push(trimmed)
+    }
+    return out
+  } catch {
+    return []
+  }
+}
+
 function toUpstreamRecord(row: any): UpstreamRecord {
   return {
     id: row.id,
@@ -143,6 +163,7 @@ function toUpstreamRecord(row: any): UpstreamRecord {
     sortOrder: row.sort_order ?? 0,
     config: parseObject(row.config_json),
     flagOverrides: parseBooleanRecord(row.flag_overrides),
+    disabledPublicModelIds: parseStringArray(row.disabled_public_model_ids),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -390,8 +411,8 @@ class SharedUpstreamRepo implements UpstreamRepo {
 
   async save(upstream: UpstreamRecord): Promise<void> {
     await this.x.run(
-      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET owner_id = excluded.owner_id, provider = excluded.provider, name = excluded.name, enabled = excluded.enabled, sort_order = excluded.sort_order, config_json = excluded.config_json, flag_overrides = excluded.flag_overrides, updated_at = excluded.updated_at`,
+      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET owner_id = excluded.owner_id, provider = excluded.provider, name = excluded.name, enabled = excluded.enabled, sort_order = excluded.sort_order, config_json = excluded.config_json, flag_overrides = excluded.flag_overrides, disabled_public_model_ids = excluded.disabled_public_model_ids, updated_at = excluded.updated_at`,
       [
         upstream.id,
         upstream.ownerId ?? "",
@@ -401,6 +422,7 @@ class SharedUpstreamRepo implements UpstreamRepo {
         upstream.sortOrder,
         JSON.stringify(upstream.config ?? {}),
         JSON.stringify(upstream.flagOverrides ?? {}),
+        JSON.stringify(upstream.disabledPublicModelIds ?? []),
         upstream.createdAt,
         upstream.updatedAt,
       ],

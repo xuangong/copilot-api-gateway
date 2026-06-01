@@ -41,6 +41,7 @@ interface UpstreamBody {
   sortOrder?: number
   config?: Record<string, unknown>
   flagOverrides?: Record<string, unknown>
+  disabledPublicModelIds?: unknown
 }
 
 const ENDPOINTS = new Set<ModelEndpoint>(["chat_completions", "responses", "messages", "messages_count_tokens", "embeddings"])
@@ -76,6 +77,21 @@ function parseEndpoints(value: unknown, fallback: readonly ModelEndpoint[]): Mod
     return v as ModelEndpoint
   })
   return [...new Set(endpoints)]
+}
+
+function normalizeDisabledPublicModelIds(value: unknown): string[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) throw new Error("disabledPublicModelIds must be an array of strings")
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const item of value) {
+    if (typeof item !== "string") throw new Error("disabledPublicModelIds entries must be strings")
+    const trimmed = item.trim()
+    if (!trimmed || seen.has(trimmed)) continue
+    seen.add(trimmed)
+    out.push(trimmed)
+  }
+  return out
 }
 
 function normalizeFlagOverrides(value: unknown): Record<string, boolean> {
@@ -307,6 +323,7 @@ export const controlPlaneRoute = new Elysia()
         sortOrder: Number.isFinite(body.sortOrder) ? Number(body.sortOrder) : 0,
         config: normalizeConfig(provider, body.config),
         flagOverrides: normalizeFlagOverrides(body.flagOverrides),
+        disabledPublicModelIds: normalizeDisabledPublicModelIds(body.disabledPublicModelIds),
         createdAt: now,
         updatedAt: now,
       }
@@ -329,6 +346,11 @@ export const controlPlaneRoute = new Elysia()
     try {
       const body = (ctx.body ?? {}) as UpstreamBody
       if (body.provider !== undefined && body.provider !== existing.provider) return jsonError("provider cannot be changed")
+      // Copilot upstreams are token-managed via device flow; only allow the
+      // admin to tweak name / enabled / sortOrder / flagOverrides here.
+      if (existing.provider === "copilot" && body.config !== undefined) {
+        return jsonError("config of copilot upstreams is managed by device-flow auth")
+      }
       // For config PATCH, shallow-merge the supplied keys onto the existing
       // config and then run the strict normalizer. This lets the UI send
       // partial updates (e.g. just `{ name: ... }`) without having to repeat
@@ -352,6 +374,10 @@ export const controlPlaneRoute = new Elysia()
         sortOrder: Number.isFinite(body.sortOrder) ? Number(body.sortOrder) : existing.sortOrder,
         config: mergedConfig !== undefined ? normalizeConfig(existing.provider, mergedConfig) : existing.config,
         flagOverrides: body.flagOverrides !== undefined ? normalizeFlagOverrides(body.flagOverrides) : existing.flagOverrides,
+        disabledPublicModelIds:
+          body.disabledPublicModelIds === undefined
+            ? existing.disabledPublicModelIds
+            : normalizeDisabledPublicModelIds(body.disabledPublicModelIds),
         updatedAt: new Date().toISOString(),
       }
       if (!next.name) return jsonError("name required")
@@ -366,6 +392,16 @@ export const controlPlaneRoute = new Elysia()
     const denied = adminGuard(ctx)
     if (denied) return denied
     const existing = await getRepo().upstreams.getById(ctx.params.id)
+    // For copilot upstreams, cascade-delete the github_accounts row so the
+    // legacy token store doesn't keep a now-orphan account around.
+    if (existing?.provider === "copilot") {
+      const userId = (existing.config as { user?: { id?: number } } | undefined)?.user?.id
+      if (typeof userId === "number") {
+        try {
+          await getRepo().github.deleteAccount(userId, existing.ownerId ?? "")
+        } catch {}
+      }
+    }
     const ok = await getRepo().upstreams.delete(ctx.params.id)
     if (!ok) return jsonError("upstream not found", 404)
     await invalidateUpstreamCaches(existing, null)
@@ -377,4 +413,19 @@ export const controlPlaneRoute = new Elysia()
     const upstream = await getRepo().upstreams.getById(ctx.params.id)
     if (!upstream) return jsonError("upstream not found", 404)
     return probeUpstream(upstream)
+  })
+  .get("/api/upstreams/:id/models", async (ctx) => {
+    const denied = adminGuard(ctx)
+    if (denied) return denied
+    const upstream = await getRepo().upstreams.getById(ctx.params.id)
+    if (!upstream) return jsonError("upstream not found", 404)
+    const provider = await createProviderFromUpstream(upstream)
+    if (!provider) return jsonError(`unable to construct ${upstream.provider} provider for upstream ${upstream.id}`, 502)
+    try {
+      const models = await provider.getModels()
+      const list = (models.data ?? []).map((m) => ({ id: m.id, name: m.name ?? m.id }))
+      return { models: list, disabledPublicModelIds: upstream.disabledPublicModelIds }
+    } catch (err) {
+      return jsonError(`failed to list models: ${err instanceof Error ? err.message : String(err)}`, 502)
+    }
   })

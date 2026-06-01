@@ -27,14 +27,14 @@ import { controlPlaneRoute } from "~/routes/control-plane"
 import { resolveViewContext } from "~/middleware/view-context"
 import { LoginPage } from "~/ui/login"
 import { DevicePage } from "~/ui/device"
-import { DashboardPage } from "~/ui/dashboard"
+import { DashboardPage } from "~/ui/dashboard-app/page"
 import { GuidePage } from "~/ui/guide"
 
 // Public paths that don't require authentication
-const PUBLIC_GET_PATHS = new Set(["/", "/dashboard", "/device/login", "/guide", "/favicon.ico", "/health"])
+const PUBLIC_GET_PATHS = new Set(["/", "/dashboard", "/dashboard-next", "/device/login", "/guide", "/favicon.ico", "/health"])
 const AUTH_VALIDATE_PATHS = new Set(["/auth/login"])
 
-// Dashboard routes - ADMIN_KEY and session tokens can access these
+// Dashboard routes - session tokens can access these
 const DASHBOARD_PREFIXES = ["/api/", "/auth/"]
 
 function extractKey(request: Request): string | null {
@@ -271,11 +271,6 @@ function createApp(env: Env) {
       if (!key) {
         return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined, authKind: 'public' as const }
       }
-      // Check ADMIN_KEY (legacy)
-      const adminKey = env.ADMIN_KEY
-      if (adminKey && key === adminKey) {
-        return { authKey: key, isAdmin: true, isUser: false, apiKeyId: undefined, userId: undefined, authKind: 'admin' as const }
-      }
       // Check session token
       if (key.startsWith("ses_")) {
         const repo = getRepo()
@@ -299,15 +294,6 @@ function createApp(env: Env) {
     const key = extractKey(request)
     if (!key) {
       throw new Error("Unauthorized")
-    }
-
-    // Check ADMIN_KEY - dashboard/management only (legacy)
-    const adminKey = env.ADMIN_KEY
-    if (adminKey && key === adminKey) {
-      if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
-        return { authKey: key, isAdmin: true, isUser: false, apiKeyId: undefined, userId: undefined, authKind: 'admin' as const }
-      }
-      throw new Error("This key is for dashboard only. Create an API key for API access.")
     }
 
     // Check session token - dashboard only

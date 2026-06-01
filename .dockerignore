@@ -19,6 +19,7 @@ node_modules/
 
 # Build artifacts
 dist/
+!src/ui/dashboard-app/dist/
 build/
 .wrangler/
 

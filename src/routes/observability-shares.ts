@@ -3,7 +3,7 @@ import { getRepo } from "~/repo"
 
 interface AuthCtx {
   userId?: string
-  authKind?: 'public' | 'admin' | 'session' | 'apiKey'
+  authKind?: 'public' | 'session' | 'apiKey'
 }
 
 function unauthorized() {

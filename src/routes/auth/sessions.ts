@@ -4,13 +4,12 @@ import { validateApiKey } from "~/lib/api-keys"
 import { getRepo } from "~/repo"
 import { ADMIN_EMAILS } from "~/config/constants"
 
-import { type AuthContext, SESSION_TTL_DAYS } from "./utils"
+import { SESSION_TTL_DAYS } from "./utils"
 
 export const sessionsRoute = new Elysia()
   // POST /auth/login - validate session (from cookie or body)
   .post("/login", async (ctx) => {
     const { body } = ctx
-    const env = (ctx as unknown as AuthContext).env
     const { key } = body as { key?: string }
 
     let sessionToken = key
@@ -22,12 +21,6 @@ export const sessionsRoute = new Elysia()
 
     if (!sessionToken) {
       return new Response(JSON.stringify({ error: "No session" }), { status: 401, headers: { "Content-Type": "application/json" } })
-    }
-
-    // Check ADMIN_KEY (legacy, kept for backward compat during transition)
-    const adminKey = env?.ADMIN_KEY
-    if (adminKey && sessionToken === adminKey) {
-      return { ok: true, isAdmin: true }
     }
 
     if (sessionToken.startsWith("ses_")) {

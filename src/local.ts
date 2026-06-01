@@ -40,7 +40,7 @@ import { resolveViewContext } from "~/middleware/view-context"
 import { LoginPage } from "~/ui/login"
 import { DevicePage } from "~/ui/device"
 import { GuidePage } from "~/ui/guide"
-import { DashboardPage } from "~/ui/dashboard"
+import { DashboardPage } from "~/ui/dashboard-app/page"
 
 // Data directory for local storage
 const DATA_DIR = ".data"
@@ -58,6 +58,10 @@ const colors = {
   magenta: "\x1b[35m",
   blue: "\x1b[34m",
 }
+
+// Hard-coded local-dev credentials. Local mode only — never used in CFW build.
+const LOCAL_DEV_PASSWORD = "local-dev-admin"
+const LOCAL_DEV_SERVER_SECRET = "local-dev-server-secret"
 
 // Status code color
 function statusColor(status: number): string {
@@ -174,7 +178,6 @@ function logRequest(
 // Environment from process.env (Bun auto-loads .env)
 interface LocalEnv {
   ACCOUNT_TYPE?: string
-  ADMIN_KEY: string
   GOOGLE_CLIENT_ID?: string
   GOOGLE_CLIENT_SECRET?: string
   LANGSEARCH_API_KEY?: string
@@ -184,9 +187,13 @@ interface LocalEnv {
   PORT?: string
 }
 
+if (!process.env.SERVER_SECRET) {
+  process.env.SERVER_SECRET = LOCAL_DEV_SERVER_SECRET
+  console.log("⚠️  SERVER_SECRET unset; using local dev default (dev only)")
+}
+
 const env: LocalEnv = {
   ACCOUNT_TYPE: process.env.ACCOUNT_TYPE,
-  ADMIN_KEY: process.env.ADMIN_KEY || "xuangong123!",
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   LANGSEARCH_API_KEY: process.env.LANGSEARCH_API_KEY,
@@ -197,10 +204,10 @@ const env: LocalEnv = {
 }
 
 // Public paths that don't require authentication
-const PUBLIC_GET_PATHS = new Set(["/", "/dashboard", "/device/login", "/guide", "/favicon.ico", "/health"])
+const PUBLIC_GET_PATHS = new Set(["/", "/dashboard", "/dashboard-next", "/device/login", "/guide", "/favicon.ico", "/health"])
 const AUTH_VALIDATE_PATHS = new Set(["/auth/login"])
 
-// Dashboard routes - ADMIN_KEY can access these
+// Dashboard routes - session tokens can access these
 const DASHBOARD_PREFIXES = ["/api/", "/auth/"]
 
 function extractKey(request: Request): string | null {
@@ -335,12 +342,12 @@ async function createApp() {
   const repo = new SqliteRepo(db)
   initRepo(repo)
 
-  // Seed test admin user for local mode (fixed ID so ADMIN_KEY auth can reference it without DB lookup)
+  // Seed test admin user for local mode (fixed ID for stable local dev sessions)
   const TEST_EMAIL = "test@local.dev"
   const TEST_ADMIN_USER_ID = "00000000-0000-0000-0000-000000000001"
   const existingUser = await repo.users.findByEmail(TEST_EMAIL)
   if (!existingUser) {
-    const passwordHash = await hashPassword(env.ADMIN_KEY)
+    const passwordHash = await hashPassword(LOCAL_DEV_PASSWORD)
     await repo.users.create({
       id: TEST_ADMIN_USER_ID,
       name: "Local Admin",
@@ -396,11 +403,6 @@ async function createApp() {
       if (!key) {
         return { authKey: "", isAdmin: false, isUser: false, apiKeyId: undefined, userId: undefined, authKind: 'public' as const }
       }
-      // Check ADMIN_KEY (legacy)
-      const adminKey = env.ADMIN_KEY
-      if (adminKey && key === adminKey) {
-        return { authKey: key, isAdmin: true, isUser: true, apiKeyId: undefined, userId: TEST_ADMIN_USER_ID, authKind: 'admin' as const }
-      }
       // Check session token
       if (key.startsWith("ses_")) {
         const repo = getRepo()
@@ -424,15 +426,6 @@ async function createApp() {
     const key = extractKey(request)
     if (!key) {
       throw new Error("Unauthorized")
-    }
-
-    // Check ADMIN_KEY - dashboard/management only (legacy)
-    const adminKey = env.ADMIN_KEY
-    if (adminKey && key === adminKey) {
-      if (DASHBOARD_PREFIXES.some((p) => path.startsWith(p))) {
-        return { authKey: key, isAdmin: true, isUser: true, apiKeyId: undefined, userId: TEST_ADMIN_USER_ID, authKind: 'admin' as const }
-      }
-      throw new Error("This key is for dashboard only. Create an API key for API access.")
     }
 
     // Check session token - dashboard only
@@ -629,5 +622,5 @@ createApp().then((app) => {
   console.log(`📁 Data directory: ${DATA_DIR}`)
   console.log(`📦 Database: ${DB_FILE}`)
   console.log(`💾 KV Storage: ${KV_FILE}`)
-  console.log(`👤 Admin login: test@local.dev / ${env.ADMIN_KEY}`)
+  console.log(`🔑 Local admin login: test@local.dev / ${LOCAL_DEV_PASSWORD} (dev only)`)
 })

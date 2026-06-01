@@ -1,4 +1,4 @@
-import { getRepo, type GitHubAccount, type GitHubUser } from "~/repo"
+import { getRepo, type GitHubAccount, type GitHubUser, type UpstreamRecord } from "~/repo"
 
 export type { GitHubAccount, GitHubUser }
 
@@ -7,6 +7,49 @@ interface GithubCredentials {
   accountType: string
   userId: number
   flagOverrides?: Record<string, boolean>
+}
+
+// Mirror a copilot GitHub account into the `upstreams` registry so it shows
+// up alongside Custom/Azure in the unified dashboard. Boot-time
+// `ensureUpstreams()` does the same backfill from existing rows; this
+// keeps the two stores in sync after runtime device-flow auth so the new
+// account appears immediately without a server restart.
+export function copilotUpstreamRowId(ownerId: string, userId: number): string {
+  return `up_copilot_${ownerId || "global"}_${userId}`.replace(/[^a-zA-Z0-9_-]/g, "_")
+}
+
+async function mirrorCopilotUpstream(
+  token: string,
+  user: GitHubUser,
+  accountType: string,
+  ownerId: string,
+): Promise<void> {
+  const id = copilotUpstreamRowId(ownerId, user.id)
+  const existing = await getRepo().upstreams.getById(id)
+  const now = new Date().toISOString()
+  const record: UpstreamRecord = {
+    id,
+    ownerId,
+    provider: "copilot",
+    name: existing?.name ?? user.login ?? `Copilot ${user.id}`,
+    enabled: existing?.enabled ?? true,
+    sortOrder: existing?.sortOrder ?? 0,
+    // Keep flag overrides on update; rebuild config with the fresh token.
+    config: {
+      githubToken: token,
+      accountType,
+      user: { id: user.id, login: user.login, name: user.name, avatar_url: user.avatar_url },
+    },
+    flagOverrides: existing?.flagOverrides ?? {},
+    disabledPublicModelIds: existing?.disabledPublicModelIds ?? [],
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  }
+  await getRepo().upstreams.save(record)
+  // Dynamic import to avoid a registry → repo → lib/github cycle that
+  // breaks test ESM evaluation order.
+  const { invalidateUpstreamListCache } = await import("~/providers/registry")
+  invalidateUpstreamListCache()
 }
 
 // === Global (admin / legacy) ===
@@ -28,11 +71,17 @@ export async function addGithubAccount(
   } else {
     await repo.setActiveId(user.id)
   }
+  await mirrorCopilotUpstream(token, user, accountType, ownerId ?? "")
 }
 
 export async function removeGithubAccount(userId: number, ownerId?: string): Promise<void> {
   const repo = getRepo().github
   await repo.deleteAccount(userId, ownerId ?? "")
+  // Cascade-delete the mirrored upstream row so the unified list doesn't
+  // show stale entries with a now-invalid token.
+  await getRepo().upstreams.delete(copilotUpstreamRowId(ownerId ?? "", userId))
+  const { invalidateUpstreamListCache } = await import("~/providers/registry")
+  invalidateUpstreamListCache()
   if (ownerId) {
     const activeId = await repo.getActiveIdForUser(ownerId)
     if (activeId === userId) {

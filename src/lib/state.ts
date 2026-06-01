@@ -23,7 +23,6 @@ export interface Env {
   DB?: D1Database
   GITHUB_TOKEN?: string
   ACCOUNT_TYPE?: string
-  ADMIN_KEY?: string
   GOOGLE_CLIENT_ID?: string
   GOOGLE_CLIENT_SECRET?: string
   LANGSEARCH_API_KEY?: string
