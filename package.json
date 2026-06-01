@@ -26,6 +26,7 @@
     "@cloudflare/workers-types": "^4.20260329.1",
     "@google/genai": "^1.47.0",
     "@types/bun": "latest",
+    "@types/dompurify": "^3.2.0",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "openai": "^6.27.0",
@@ -35,7 +36,10 @@
   },
   "dependencies": {
     "@elysiajs/cors": "^1.4.1",
+    "dompurify": "^3.4.7",
     "elysia": "^1.4.28",
+    "highlight.js": "^11.11.1",
+    "marked": "^18.0.4",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   }

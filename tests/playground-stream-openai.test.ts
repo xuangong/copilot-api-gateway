@@ -15,6 +15,16 @@ function streamOf(chunks: string[]): ReadableStream<Uint8Array> {
   })
 }
 
+async function collect(body: ReadableStream<Uint8Array>) {
+  const deltas: string[] = []
+  let usage: { input_tokens: number; output_tokens: number } | null = null
+  for await (const ch of parseOpenAIStream(body)) {
+    if (ch.type === "delta") deltas.push(ch.text)
+    else usage = ch.usage
+  }
+  return { text: deltas.join(""), usage }
+}
+
 describe("parseOpenAIStream", () => {
   test("emits text deltas from data: lines and stops on [DONE]", async () => {
     const fixture = [
@@ -23,9 +33,7 @@ describe("parseOpenAIStream", () => {
       `data: {"choices":[{"delta":{"content":"!"}}]}\n\n`,
       `data: [DONE]\n\n`,
     ]
-    const deltas: string[] = []
-    for await (const d of parseOpenAIStream(streamOf(fixture))) deltas.push(d)
-    expect(deltas.join("")).toBe("Hello!")
+    expect((await collect(streamOf(fixture))).text).toBe("Hello!")
   })
 
   test("skips malformed JSON lines silently", async () => {
@@ -34,16 +42,12 @@ describe("parseOpenAIStream", () => {
       `data: {"choices":[{"delta":{"content":"ok"}}]}\n\n`,
       `data: [DONE]\n\n`,
     ]
-    const deltas: string[] = []
-    for await (const d of parseOpenAIStream(streamOf(fixture))) deltas.push(d)
-    expect(deltas.join("")).toBe("ok")
+    expect((await collect(streamOf(fixture))).text).toBe("ok")
   })
 
   test("error payload throws", async () => {
     const fixture = [`data: {"error":{"message":"boom"}}\n\n`]
-    await expect(async () => {
-      for await (const _ of parseOpenAIStream(streamOf(fixture))) { void _ }
-    }).toThrow("boom")
+    await expect(collect(streamOf(fixture))).rejects.toThrow("boom")
   })
 
   test("reassembles data: line split across chunks", async () => {
@@ -52,27 +56,21 @@ describe("parseOpenAIStream", () => {
       `tent":"split"}}]}\n\n`,
       `data: [DONE]\n\n`,
     ]
-    const deltas: string[] = []
-    for await (const d of parseOpenAIStream(streamOf(fixture))) deltas.push(d)
-    expect(deltas.join("")).toBe("split")
+    expect((await collect(streamOf(fixture))).text).toBe("split")
   })
 
   test("handles multi-byte UTF-8 split across chunks", async () => {
     const enc = new TextEncoder()
     const full = enc.encode(`data: {"choices":[{"delta":{"content":"中文"}}]}\n\ndata: [DONE]\n\n`)
     const mid = 30
-    const a = full.slice(0, mid)
-    const b = full.slice(mid)
     const stream = new ReadableStream<Uint8Array>({
       start(c) {
-        c.enqueue(a)
-        c.enqueue(b)
+        c.enqueue(full.slice(0, mid))
+        c.enqueue(full.slice(mid))
         c.close()
       },
     })
-    const deltas: string[] = []
-    for await (const d of parseOpenAIStream(stream)) deltas.push(d)
-    expect(deltas.join("")).toBe("中文")
+    expect((await collect(stream)).text).toBe("中文")
   })
 
   test("handles CRLF line endings", async () => {
@@ -80,9 +78,7 @@ describe("parseOpenAIStream", () => {
       `data: {"choices":[{"delta":{"content":"crlf"}}]}\r\n\r\n`,
       `data: [DONE]\r\n\r\n`,
     ]
-    const deltas: string[] = []
-    for await (const d of parseOpenAIStream(streamOf(fixture))) deltas.push(d)
-    expect(deltas.join("")).toBe("crlf")
+    expect((await collect(streamOf(fixture))).text).toBe("crlf")
   })
 
   test("flushes trailing data: line without final newline", async () => {
@@ -90,8 +86,17 @@ describe("parseOpenAIStream", () => {
       `data: {"choices":[{"delta":{"content":"a"}}]}\n\n`,
       `data: {"choices":[{"delta":{"content":"b"}}]}`,
     ]
-    const deltas: string[] = []
-    for await (const d of parseOpenAIStream(streamOf(fixture))) deltas.push(d)
-    expect(deltas.join("")).toBe("ab")
+    expect((await collect(streamOf(fixture))).text).toBe("ab")
+  })
+
+  test("emits usage chunk when present", async () => {
+    const fixture = [
+      `data: {"choices":[{"delta":{"content":"hi"}}]}\n\n`,
+      `data: {"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":34}}\n\n`,
+      `data: [DONE]\n\n`,
+    ]
+    const { text, usage } = await collect(streamOf(fixture))
+    expect(text).toBe("hi")
+    expect(usage).toEqual({ input_tokens: 12, output_tokens: 34 })
   })
 })

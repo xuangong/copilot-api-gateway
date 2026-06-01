@@ -1,6 +1,15 @@
+export interface StreamUsage {
+  input_tokens: number
+  output_tokens: number
+}
+
+export type StreamChunk =
+  | { type: "delta"; text: string }
+  | { type: "usage"; usage: StreamUsage }
+
 export async function* parseOpenAIStream(
   body: ReadableStream<Uint8Array>,
-): AsyncGenerator<string, void, void> {
+): AsyncGenerator<StreamChunk, void, void> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
   let buf = ""
@@ -13,47 +22,46 @@ export async function* parseOpenAIStream(
       while ((nl = buf.indexOf("\n")) !== -1) {
         const raw = buf.slice(0, nl).replace(/\r$/, "")
         buf = buf.slice(nl + 1)
-        if (!raw.startsWith("data:")) continue
-        const payload = raw.slice(5).trim()
-        if (!payload) continue
-        if (payload === "[DONE]") return
-        let json: unknown
-        try {
-          json = JSON.parse(payload)
-        } catch {
-          continue
-        }
-        const obj = json as {
-          error?: { message?: string }
-          choices?: Array<{ delta?: { content?: string } }>
-        }
-        if (obj.error) {
-          throw new Error(obj.error.message ?? "OpenAI stream error")
-        }
-        const delta = obj.choices?.[0]?.delta?.content
-        if (typeof delta === "string" && delta.length) yield delta
+        const chunk = parseLine(raw)
+        if (chunk === "DONE") return
+        if (chunk) yield chunk
       }
     }
     const tail = buf.replace(/\r$/, "")
-    if (tail.startsWith("data:")) {
-      const payload = tail.slice(5).trim()
-      if (payload && payload !== "[DONE]") {
-        try {
-          const json = JSON.parse(payload) as {
-            error?: { message?: string }
-            choices?: Array<{ delta?: { content?: string } }>
-          }
-          if (json.error) {
-            throw new Error(json.error.message ?? "OpenAI stream error")
-          }
-          const delta = json.choices?.[0]?.delta?.content
-          if (typeof delta === "string" && delta.length) yield delta
-        } catch (e) {
-          if (e instanceof Error && e.message.includes("OpenAI stream error")) throw e
-        }
-      }
-    }
+    const chunk = parseLine(tail)
+    if (chunk && chunk !== "DONE") yield chunk
   } finally {
     reader.releaseLock()
   }
+}
+
+function parseLine(raw: string): StreamChunk | "DONE" | null {
+  if (!raw.startsWith("data:")) return null
+  const payload = raw.slice(5).trim()
+  if (!payload) return null
+  if (payload === "[DONE]") return "DONE"
+  let json: unknown
+  try {
+    json = JSON.parse(payload)
+  } catch {
+    return null
+  }
+  const obj = json as {
+    error?: { message?: string }
+    choices?: Array<{ delta?: { content?: string } }>
+    usage?: { prompt_tokens?: number; completion_tokens?: number }
+  }
+  if (obj.error) throw new Error(obj.error.message ?? "OpenAI stream error")
+  if (obj.usage && (obj.usage.prompt_tokens != null || obj.usage.completion_tokens != null)) {
+    return {
+      type: "usage",
+      usage: {
+        input_tokens: obj.usage.prompt_tokens ?? 0,
+        output_tokens: obj.usage.completion_tokens ?? 0,
+      },
+    }
+  }
+  const delta = obj.choices?.[0]?.delta?.content
+  if (typeof delta === "string" && delta.length) return { type: "delta", text: delta }
+  return null
 }

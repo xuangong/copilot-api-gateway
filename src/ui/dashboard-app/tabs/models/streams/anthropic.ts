@@ -1,10 +1,16 @@
+import type { StreamChunk, StreamUsage } from "./openai"
+
+export type { StreamChunk, StreamUsage }
+
 export async function* parseAnthropicStream(
   body: ReadableStream<Uint8Array>,
-): AsyncGenerator<string, void, void> {
+): AsyncGenerator<StreamChunk, void, void> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
   let buf = ""
   let currentEvent = ""
+  let inputTokens = 0
+  let outputTokens = 0
   try {
     while (true) {
       const { value, done } = await reader.read()
@@ -35,11 +41,22 @@ export async function* parseAnthropicStream(
           type?: string
           delta?: { type?: string; text?: string }
           error?: { message?: string }
+          message?: { usage?: { input_tokens?: number; output_tokens?: number } }
+          usage?: { input_tokens?: number; output_tokens?: number }
         }
         if (currentEvent === "error" || obj.type === "error") {
           throw new Error(obj.error?.message ?? "Anthropic stream error")
         }
+        // message_start carries initial input_tokens; message_delta carries final output_tokens
+        const startUsage = obj.message?.usage
+        if (startUsage?.input_tokens != null) inputTokens = startUsage.input_tokens
+        if (startUsage?.output_tokens != null) outputTokens = startUsage.output_tokens
+        if (obj.usage?.input_tokens != null) inputTokens = obj.usage.input_tokens
+        if (obj.usage?.output_tokens != null) outputTokens = obj.usage.output_tokens
         if (currentEvent === "message_stop" || obj.type === "message_stop") {
+          if (inputTokens || outputTokens) {
+            yield { type: "usage", usage: { input_tokens: inputTokens, output_tokens: outputTokens } }
+          }
           return
         }
         if (
@@ -47,9 +64,12 @@ export async function* parseAnthropicStream(
           obj.delta?.type === "text_delta" &&
           typeof obj.delta.text === "string"
         ) {
-          yield obj.delta.text
+          yield { type: "delta", text: obj.delta.text }
         }
       }
+    }
+    if (inputTokens || outputTokens) {
+      yield { type: "usage", usage: { input_tokens: inputTokens, output_tokens: outputTokens } }
     }
   } finally {
     reader.releaseLock()

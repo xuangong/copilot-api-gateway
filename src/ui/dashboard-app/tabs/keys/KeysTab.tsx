@@ -46,7 +46,7 @@ export function KeysTab() {
                   }
                 }}
                 placeholder={t("dash.keyNamePlaceholder")}
-                className="flex-1 sm:flex-none sm:w-40 mt-1 text-sm min-w-0"
+                className="flex-1 sm:flex-none sm:!w-40 mt-1 text-sm min-w-0"
               />
               <button
                 type="button"

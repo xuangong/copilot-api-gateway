@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useT } from "../../state/i18n"
 import { fileToDataUrl, ImageTooLargeError } from "./image"
-import { parseOpenAIStream } from "./streams/openai"
+import { parseOpenAIStream, type StreamUsage } from "./streams/openai"
 import { parseAnthropicStream } from "./streams/anthropic"
+import { renderMarkdown } from "./markdown"
 
 type Protocol = "openai" | "anthropic"
 type Role = "user" | "assistant"
@@ -11,15 +12,18 @@ interface Message {
   role: Role
   text: string
   imageUrl?: string
+  usage?: StreamUsage
+  durationMs?: number
 }
 
 interface Props {
   modelId: string
   apiKey: string
   systemPrompt: string
+  onRevertModel?: (id: string) => void
 }
 
-export function ChatPanel({ modelId, apiKey, systemPrompt }: Props) {
+export function ChatPanel({ modelId, apiKey, systemPrompt, onRevertModel }: Props) {
   const t = useT()
   const [protocol, setProtocol] = useState<Protocol>("openai")
   const [messages, setMessages] = useState<Message[]>([])
@@ -28,14 +32,44 @@ export function ChatPanel({ modelId, apiKey, systemPrompt }: Props) {
   const [imageDataUrl, setImageDataUrl] = useState("")
   const [imageError, setImageError] = useState("")
   const [streaming, setStreaming] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const lastUserRef = useRef<Message | null>(null)
+  const startedAtRef = useRef<number>(0)
+  const lastDepsRef = useRef<{ modelId: string; protocol: Protocol }>({ modelId, protocol })
 
-  // Auto-clear chat when model or protocol changes (spec B7).
+  // Track model+protocol changes; if there are messages, surface inline confirm bar
+  // rather than wiping silently.
+  const [pendingDeps, setPendingDeps] = useState<{ modelId: string; protocol: Protocol } | null>(null)
   useEffect(() => {
+    const prev = lastDepsRef.current
+    if (prev.modelId === modelId && prev.protocol === protocol) return
+    if (messages.length === 0) {
+      lastDepsRef.current = { modelId, protocol }
+      abortRef.current?.abort()
+      setError(null)
+      return
+    }
+    setPendingDeps({ modelId, protocol })
+  }, [modelId, protocol, messages.length])
+
+  function confirmSwitch() {
     abortRef.current?.abort()
     setMessages([])
-  }, [modelId, protocol])
+    setError(null)
+    lastDepsRef.current = { modelId, protocol }
+    setPendingDeps(null)
+  }
+  function cancelSwitch() {
+    // Roll back parent's selection to the last accepted model so the topbar
+    // and model list reflect that the switch was cancelled.
+    const prev = lastDepsRef.current
+    if (prev.modelId !== modelId) onRevertModel?.(prev.modelId)
+    if (prev.protocol !== protocol) setProtocol(prev.protocol)
+    setPendingDeps(null)
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
@@ -62,42 +96,90 @@ export function ChatPanel({ modelId, apiKey, systemPrompt }: Props) {
     }
   }
 
+  function removeImage() {
+    setImageDataUrl("")
+    setImageUrl("")
+    setImageError("")
+  }
+
   function clear() {
     abortRef.current?.abort()
     setMessages([])
+    setError(null)
   }
 
-  async function send() {
-    const text = input.trim()
-    const img = imageDataUrl || imageUrl.trim()
-    if (!text && !img) return
-    const userMsg: Message = { role: "user", text, imageUrl: img || undefined }
-    const nextHistory = [...messages, userMsg]
-    setMessages([...nextHistory, { role: "assistant", text: "" }])
-    setInput("")
-    setImageUrl("")
-    setImageDataUrl("")
-    setImageError("")
-    setStreaming(true)
+  const send = useCallback(
+    async (overrideInput?: { text: string; image?: string }) => {
+      const text = (overrideInput?.text ?? input).trim()
+      const img = overrideInput?.image ?? (imageDataUrl || imageUrl.trim())
+      if (!text && !img) return
+      const userMsg: Message = { role: "user", text, imageUrl: img || undefined }
+      lastUserRef.current = userMsg
+      const nextHistory = [...messages, userMsg]
+      setMessages([...nextHistory, { role: "assistant", text: "" }])
+      if (overrideInput === undefined) {
+        setInput("")
+        setImageUrl("")
+        setImageDataUrl("")
+      }
+      setImageError("")
+      setError(null)
+      setStreaming(true)
+      startedAtRef.current = performance.now()
 
-    const ctrl = new AbortController()
-    abortRef.current = ctrl
-    try {
-      if (protocol === "openai") {
-        await sendOpenAI(nextHistory, ctrl.signal)
-      } else {
-        await sendAnthropic(nextHistory, ctrl.signal)
+      const ctrl = new AbortController()
+      abortRef.current = ctrl
+      try {
+        if (protocol === "openai") {
+          await sendOpenAI(nextHistory, ctrl.signal)
+        } else {
+          await sendAnthropic(nextHistory, ctrl.signal)
+        }
+        finalizeLast()
+      } catch (err) {
+        if ((err as Error).name === "AbortError") {
+          finalizeLast()
+        } else {
+          // Pop the empty assistant bubble; show error in dedicated banner
+          setMessages((prev) => {
+            const last = prev[prev.length - 1]
+            if (last && last.role === "assistant" && !last.text) return prev.slice(0, -1)
+            return prev
+          })
+          setError((err as Error).message)
+        }
+      } finally {
+        setStreaming(false)
+        abortRef.current = null
       }
-    } catch (err) {
-      if ((err as Error).name === "AbortError") {
-        // user-cancelled; bubble nothing
-      } else {
-        appendAssistant(`\n\n[Error] ${(err as Error).message}`)
-      }
-    } finally {
-      setStreaming(false)
-      abortRef.current = null
-    }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [input, imageDataUrl, imageUrl, messages, protocol, modelId, apiKey, systemPrompt],
+  )
+
+  function retry() {
+    const last = lastUserRef.current
+    if (!last) return
+    // Drop the last user message we're about to re-send (we re-add it inside send())
+    setMessages((prev) => {
+      let cut = prev.length
+      while (cut > 0 && prev[cut - 1]!.role !== "user") cut--
+      if (cut > 0) cut--
+      return prev.slice(0, cut)
+    })
+    setError(null)
+    // Defer to next tick so messages state is committed
+    setTimeout(() => send({ text: last.text, image: last.imageUrl }), 0)
+  }
+
+  function finalizeLast() {
+    const ms = Math.round(performance.now() - startedAtRef.current)
+    setMessages((prev) => {
+      const last = prev[prev.length - 1]
+      if (!last || last.role !== "assistant") return prev
+      const updated: Message = { ...last, durationMs: ms }
+      return [...prev.slice(0, -1), updated]
+    })
   }
 
   function appendAssistant(chunk: string) {
@@ -107,6 +189,14 @@ export function ChatPanel({ modelId, apiKey, systemPrompt }: Props) {
       if (!last || last.role !== "assistant") return prev
       const updated: Message = { ...last, text: last.text + chunk }
       return [...prev.slice(0, -1), updated]
+    })
+  }
+
+  function setLastUsage(usage: StreamUsage) {
+    setMessages((prev) => {
+      const last = prev[prev.length - 1]
+      if (!last || last.role !== "assistant") return prev
+      return [...prev.slice(0, -1), { ...last, usage }]
     })
   }
 
@@ -131,15 +221,21 @@ export function ChatPanel({ modelId, apiKey, systemPrompt }: Props) {
     const resp = await fetch("/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": apiKey },
-      body: JSON.stringify({ model: modelId, messages: oaiMessages, stream: true }),
+      body: JSON.stringify({
+        model: modelId,
+        messages: oaiMessages,
+        stream: true,
+        stream_options: { include_usage: true },
+      }),
       signal,
     })
     if (!resp.ok || !resp.body) {
       const errText = await resp.text().catch(() => "")
       throw new Error(errText || `HTTP ${resp.status}`)
     }
-    for await (const delta of parseOpenAIStream(resp.body)) {
-      appendAssistant(delta)
+    for await (const ch of parseOpenAIStream(resp.body)) {
+      if (ch.type === "delta") appendAssistant(ch.text)
+      else setLastUsage(ch.usage)
     }
   }
 
@@ -176,97 +272,201 @@ export function ChatPanel({ modelId, apiKey, systemPrompt }: Props) {
       const errText = await resp.text().catch(() => "")
       throw new Error(errText || `HTTP ${resp.status}`)
     }
-    for await (const delta of parseAnthropicStream(resp.body)) {
-      appendAssistant(delta)
+    for await (const ch of parseAnthropicStream(resp.body)) {
+      if (ch.type === "delta") appendAssistant(ch.text)
+      else setLastUsage(ch.usage)
+    }
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault()
+      if (!streaming) void send()
+    }
+  }
+
+  async function onCopy(idx: number, text: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedIdx(idx)
+      setTimeout(() => setCopiedIdx((cur) => (cur === idx ? null : cur)), 1200)
+    } catch {
+      /* clipboard denied, ignore */
     }
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-themed">
-        <span className="text-xs text-themed-dim">{t("dash.playground.protocol")}:</span>
-        <label className="text-xs flex items-center gap-1">
-          <input
-            type="radio"
-            name="protocol"
-            checked={protocol === "openai"}
-            onChange={() => setProtocol("openai")}
-          />{" "}
-          OpenAI
-        </label>
-        <label className="text-xs flex items-center gap-1">
-          <input
-            type="radio"
-            name="protocol"
-            checked={protocol === "anthropic"}
-            onChange={() => setProtocol("anthropic")}
-          />{" "}
-          Anthropic
-        </label>
-        <div className="ml-auto flex items-center gap-2">
+    <div className="flex flex-col h-full min-h-0 pg-chat-surface">
+      <div className="pg-topbar">
+        <span className="text-themed-dim">{t("dash.playground.protocol")}:</span>
+        <div className="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5">
+          {(["openai", "anthropic"] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() => setProtocol(p)}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                protocol === p
+                  ? "bg-surface-600 text-themed"
+                  : "text-themed-dim hover:text-themed-secondary"
+              }`}
+            >
+              {p === "openai" ? "OpenAI" : "Anthropic"}
+            </button>
+          ))}
+        </div>
+        {streaming && (
+          <span className="text-themed-dim flex items-center gap-2 ml-2">
+            <span className="pg-dots"><span/><span/><span/></span>
+            {t("dash.playground.generating")}
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-1">
           {streaming && (
-            <button onClick={() => abortRef.current?.abort()} className="text-xs px-2 py-1 border border-themed rounded">
+            <button
+              onClick={() => abortRef.current?.abort()}
+              className="px-3 py-1 rounded-md text-xs font-medium bg-surface-800 text-themed-secondary hover:text-themed transition-all"
+            >
               {t("dash.playground.stop")}
             </button>
           )}
-          <button onClick={clear} className="text-xs px-2 py-1 border border-themed rounded">
+          <button
+            onClick={clear}
+            className="px-3 py-1 rounded-md text-xs font-medium bg-surface-800 text-themed-secondary hover:text-themed transition-all"
+          >
             {t("dash.playground.clear")}
           </button>
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto px-3 py-3 space-y-3">
-        {messages.map((m, i) => (
-          <div key={i} className={m.role === "user" ? "text-right" : "text-left"}>
-            <div
-              className={
-                "inline-block max-w-[80%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm " +
-                (m.role === "user" ? "bg-accent-cyan/20" : "bg-themed-soft")
-              }
-            >
-              {m.text || (streaming && i === messages.length - 1 ? "…" : "")}
-              {m.imageUrl && (
-                <img src={m.imageUrl} alt="" className="mt-2 max-h-48 rounded" />
-              )}
+      {pendingDeps && (
+        <div className="pg-confirm">
+          <span>{t("dash.playground.switchWarn")}</span>
+          <button className="btn-primary !py-1 !px-3 !text-xs" onClick={confirmSwitch}>{t("dash.playground.confirm")}</button>
+          <button className="btn-ghost !py-1 !px-3 !text-xs" onClick={cancelSwitch}>{t("dash.playground.cancel")}</button>
+        </div>
+      )}
+
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto">
+        {messages.length === 0 && !error ? (
+          <div className="pg-empty">
+            <div className="pg-empty-title">{t("dash.playground.emptyHint")}</div>
+            <div className="pg-empty-model">{modelId}</div>
+            <div className="pg-empty-suggestions">
+              <button className="pg-suggestion" onClick={() => setInput("Explain how SSE streaming works in 3 sentences.")}>
+                💡 Explain how SSE streaming works
+              </button>
+              <button className="pg-suggestion" onClick={() => setInput("Write a TypeScript function that debounces an async call.")}>
+                ⚡ Write a debounce function in TS
+              </button>
+              <button className="pg-suggestion" onClick={() => setInput("Hi! Introduce yourself in one sentence.")}>
+                👋 Say hi
+              </button>
             </div>
           </div>
-        ))}
+        ) : (
+          <div className="pg-thread">
+            {messages.map((m, i) => {
+              const isAssistant = m.role === "assistant"
+              const isLast = i === messages.length - 1
+              const showDots = isAssistant && streaming && isLast && !m.text
+              return (
+                <div key={i} className={"pg-row " + (m.role === "user" ? "pg-row-user" : "")}>
+                  {isAssistant && <div className="pg-avatar">AI</div>}
+                  <div className={"pg-bubble " + (m.role === "user" ? "pg-bubble-user" : "pg-bubble-assistant")}>
+                    {isAssistant && m.text && (
+                      <button
+                        className="pg-copy"
+                        onClick={() => onCopy(i, m.text)}
+                        title={t("dash.playground.copy")}
+                      >
+                        {copiedIdx === i ? t("dash.playground.copied") : t("dash.playground.copy")}
+                      </button>
+                    )}
+                    {showDots ? (
+                      <span className="pg-dots text-themed-dim"><span/><span/><span/></span>
+                    ) : isAssistant ? (
+                      <div className="md-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
+                    ) : (
+                      <div className="whitespace-pre-wrap">{m.text}</div>
+                    )}
+                    {m.imageUrl && (
+                      <img src={m.imageUrl} alt="" className="mt-2 max-h-48 rounded-lg" />
+                    )}
+                    {isAssistant && (m.usage || m.durationMs != null) && (
+                      <div className="pg-bubble-meta">
+                        {t("dash.playground.usage", {
+                          tin: m.usage?.input_tokens ?? "—",
+                          tout: m.usage?.output_tokens ?? "—",
+                          ms: m.durationMs ?? "—",
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
-      <div className="border-t border-themed p-3 space-y-2">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={t("dash.playground.messagePlaceholder")}
-          className="w-full text-sm border border-themed rounded px-2 py-1 min-h-[60px] bg-transparent"
-          disabled={streaming}
-        />
-        <div className="flex items-center gap-2 text-xs">
-          <input
-            type="url"
-            value={imageUrl}
-            onChange={(e) => {
-              setImageUrl(e.target.value)
-              if (e.target.value) setImageDataUrl("")
-            }}
-            placeholder={t("dash.playground.imageUrl")}
-            className="flex-1 border border-themed rounded px-2 py-1 bg-transparent"
-            disabled={streaming}
-          />
-          <label className="px-2 py-1 border border-themed rounded cursor-pointer">
-            {t("dash.playground.imageFile")}
-            <input type="file" accept="image/*" className="hidden" onChange={onPickFile} disabled={streaming} />
-          </label>
-          <button
-            onClick={send}
-            disabled={streaming}
-            className="px-3 py-1 bg-accent-cyan text-black rounded disabled:opacity-50"
-          >
-            {t("dash.playground.send")}
-          </button>
+      {error && (
+        <div className="pg-error">
+          <span>⚠ {error}</span>
+          <button className="btn-ghost !py-1 !px-3 !text-xs ml-auto" onClick={retry}>{t("dash.playground.retry")}</button>
         </div>
-        {imageError && <div className="text-xs text-accent-red">{imageError}</div>}
-        {imageDataUrl && <div className="text-xs text-themed-dim">📎 Image attached (base64)</div>}
+      )}
+
+      <div className="pg-composer-wrap">
+        <div className="pg-composer">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={t("dash.playground.messagePlaceholder")}
+            disabled={streaming}
+            rows={1}
+          />
+          {imageUrl && !imageDataUrl && (
+            <div className="pg-url-row">
+              <input
+                type="url"
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                placeholder={t("dash.playground.imageUrl")}
+                disabled={streaming}
+              />
+            </div>
+          )}
+          <div className="pg-composer-actions">
+            <label className="pg-icon-btn" title={t("dash.playground.imageFile")}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8L9.4 17.36a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              <input type="file" accept="image/*" className="hidden" onChange={onPickFile} disabled={streaming} />
+            </label>
+            <button
+              className="pg-icon-btn"
+              onClick={() => setImageUrl(imageUrl ? "" : " ")}
+              title={t("dash.playground.imageUrl")}
+              disabled={streaming || !!imageDataUrl}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+            </button>
+            {imageDataUrl && (
+              <span className="pg-thumb">
+                <img src={imageDataUrl} alt="" />
+                <button onClick={removeImage} title={t("dash.playground.removeImage")} disabled={streaming}>✕</button>
+              </span>
+            )}
+            <button
+              onClick={() => void send()}
+              disabled={streaming || (!input.trim() && !imageDataUrl && !imageUrl.trim())}
+              className="pg-send-btn"
+              title={t("dash.playground.send")}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+            </button>
+          </div>
+        </div>
+        {imageError && <div className="text-xs text-accent-red mt-2 text-center">{imageError}</div>}
       </div>
     </div>
   )

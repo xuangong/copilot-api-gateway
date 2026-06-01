@@ -8,6 +8,13 @@ export interface PlaygroundModel {
   vendor?: string
   _upstream: string
   _provider: string
+  capabilities?: {
+    limits?: {
+      max_context_window_tokens?: number
+      max_prompt_tokens?: number
+      max_output_tokens?: number
+    }
+  }
   [extra: string]: unknown
 }
 

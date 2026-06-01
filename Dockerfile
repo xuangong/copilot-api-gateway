@@ -9,8 +9,8 @@ ENV NODE_ENV=production
 # Copy package files
 COPY package.json bun.lock ./
 
-# Install dependencies
-RUN bun install --frozen-lockfile --production
+# Install dependencies (include dev — needed for build:ui)
+RUN bun install --frozen-lockfile
 
 # Download CDN assets at build time so the container works without internet
 # access. Done BEFORE copying src so this layer is reused across src changes.
@@ -20,6 +20,9 @@ RUN mkdir -p src/assets/cdn && bun run scripts/download-cdn.ts
 # Copy source code
 COPY src ./src
 COPY tsconfig.json ./
+
+# Build dashboard bundle (dist/ is gitignored, must be produced here)
+RUN bun run build:ui
 
 # Create data directory
 RUN mkdir -p .data
