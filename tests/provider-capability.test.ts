@@ -24,10 +24,9 @@ test("CopilotProvider declares its supportedEndpoints", () => {
   ])
 })
 
-test("CopilotProvider.fetch and callChatCompletions are both functions with correct shape", () => {
+test("CopilotProvider.fetch is a function with correct shape", () => {
   const p = new CopilotProvider({ copilotToken: "tok", accountType: "individual" })
   expect(typeof p.fetch).toBe("function")
-  expect(typeof p.callChatCompletions).toBe("function")
 })
 
 import { CustomProvider } from "~/providers/custom/provider"
