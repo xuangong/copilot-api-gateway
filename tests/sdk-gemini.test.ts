@@ -17,12 +17,13 @@ import { describe, test, expect, beforeAll } from "bun:test"
 import { GoogleGenAI } from "@google/genai"
 
 const BASE_URL = process.env.TEST_API_BASE_URL || "http://localhost:41414"
+const API_KEY = process.env.TEST_API_KEY || "test-key"
 const TEST_TIMEOUT = 30_000
 
 // Reusable client factory
 function createClient() {
   return new GoogleGenAI({
-    apiKey: "test-key",
+    apiKey: API_KEY,
     httpOptions: {
       baseUrl: BASE_URL,
     },
@@ -38,7 +39,7 @@ describe("Gemini API - generateContent", () => {
 
   test("minimal params", async () => {
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: [
         {
           role: "user",
@@ -58,7 +59,7 @@ describe("Gemini API - generateContent", () => {
   test("with system instruction", async () => {
     // Reference: client_test.ts - system instructions test
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: [
         {
           role: "user",
@@ -83,7 +84,7 @@ describe("Gemini API - generateContent", () => {
   test("with generation config - maxOutputTokens", async () => {
     // Reference: client_test.ts - token budget tests
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: [
         {
           role: "user",
@@ -102,7 +103,7 @@ describe("Gemini API - generateContent", () => {
 
   test("with temperature and topP", async () => {
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: [
         {
           role: "user",
@@ -122,7 +123,7 @@ describe("Gemini API - generateContent", () => {
   test("multi-turn conversation", async () => {
     // Reference: chats_test.ts - conversation history
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: [
         {
           role: "user",
@@ -146,7 +147,7 @@ describe("Gemini API - generateContent", () => {
   test("response includes usage metadata", async () => {
     // Reference: client_test.ts - token counting
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: [
         {
           role: "user",
@@ -166,7 +167,7 @@ describe("Gemini API - generateContent", () => {
 
   test("response includes model version", async () => {
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: [
         {
           role: "user",
@@ -181,7 +182,7 @@ describe("Gemini API - generateContent", () => {
 
   test("finish reason STOP on complete response", async () => {
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: [
         {
           role: "user",
@@ -207,7 +208,7 @@ describe("Gemini API - generateContentStream", () => {
   test("streams content chunks", async () => {
     // Reference: client_test.ts - streaming tests
     const stream = await client.models.generateContentStream({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: [
         {
           role: "user",
@@ -239,7 +240,7 @@ describe("Gemini API - generateContentStream", () => {
   test("streaming with system instruction", async () => {
     // Reference: client_test.ts - streaming with system instructions
     const stream = await client.models.generateContentStream({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: [
         {
           role: "user",
@@ -265,7 +266,7 @@ describe("Gemini API - generateContentStream", () => {
 
   test("streaming with generation config", async () => {
     const stream = await client.models.generateContentStream({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: [
         {
           role: "user",
@@ -288,7 +289,7 @@ describe("Gemini API - generateContentStream", () => {
 
   test("final chunk has finish reason", async () => {
     const stream = await client.models.generateContentStream({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: [
         {
           role: "user",
@@ -319,7 +320,7 @@ describe("Gemini API - Function Calling", () => {
   test("with function declaration", async () => {
     // Reference: client_test.ts - function calling tests
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: [
         {
           role: "user",
@@ -358,7 +359,7 @@ describe("Gemini API - Function Calling", () => {
 
   test("with tool config - AUTO mode", async () => {
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: [
         {
           role: "user",
@@ -394,7 +395,7 @@ describe("Gemini API - Function Calling", () => {
   test("function response in conversation", async () => {
     // Simulate a function call response flow
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: [
         {
           role: "user",
@@ -455,7 +456,7 @@ describe("Gemini API - Simple String Input", () => {
 
     // The SDK allows simple string input
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro",
       contents: "Say hello",
     })
 
