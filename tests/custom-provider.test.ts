@@ -12,7 +12,7 @@ describe("CustomProvider constructor", () => {
   })
   test("defaults to chat_completions + embeddings endpoints", () => {
     const p = new CustomProvider({ name: "x", baseUrl: "https://x", apiKey: "k" })
-    expect(p.endpoints).toEqual(["chat_completions", "embeddings"])
+    expect(p.supportedEndpoints).toEqual(["chat_completions", "embeddings"])
     expect(p.kind).toBe("custom")
     expect(p.name).toBe("x")
   })
@@ -23,7 +23,7 @@ describe("CustomProvider constructor", () => {
       apiKey: "k",
       endpoints: ["chat_completions", "responses"],
     })
-    expect(p.endpoints).toEqual(["chat_completions", "responses"])
+    expect(p.supportedEndpoints).toEqual(["chat_completions", "responses"])
   })
 })
 
