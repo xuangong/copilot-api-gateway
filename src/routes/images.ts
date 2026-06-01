@@ -16,9 +16,16 @@ interface GenerationsPayload {
   user?: string
 }
 
+/**
+ * Elysia parses multipart/form-data into a plain object where fields are
+ * strings and file parts are Blobs (or File). The "original" filename is
+ * available on File instances. We reconstruct a FormData for forwarding.
+ */
+type MultipartBody = Record<string, string | Blob | File | undefined>
+
 interface ImagesRouteContext {
   state: AppState
-  body: GenerationsPayload | unknown
+  body: GenerationsPayload | MultipartBody | unknown
   request: Request
   apiKeyId?: string
   colo: string
@@ -91,7 +98,7 @@ async function handleGenerations(ctx: ImagesRouteContext): Promise<Response> {
 }
 
 async function handleEdits(ctx: ImagesRouteContext): Promise<Response> {
-  const { state, request, apiKeyId, colo, requestId } = ctx
+  const { state, body, request, apiKeyId, colo, requestId } = ctx
   const elapsed = startTimer()
 
   if (apiKeyId) {
@@ -106,7 +113,7 @@ async function handleEdits(ctx: ImagesRouteContext): Promise<Response> {
     }
   }
 
-  // Re-read multipart so we can extract `model` without consuming the original body twice.
+  // Check content-type. Elysia will have already parsed the body if content-type is multipart.
   const contentType = request.headers.get("content-type") ?? ""
   if (!contentType.toLowerCase().startsWith("multipart/form-data")) {
     return new Response(
@@ -115,21 +122,17 @@ async function handleEdits(ctx: ImagesRouteContext): Promise<Response> {
     )
   }
 
-  // Bun's Request supports formData() and we can rebuild a fresh body for the upstream call.
-  // formData() consumes the body, so we reconstruct a FormData when forwarding.
-  let form: FormData
-  try {
-    form = await request.formData()
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
+  // Elysia parses multipart into a plain object { field: string | Blob | File }.
+  // We use that parsed object to extract `model` and then reconstruct a FormData for upstream.
+  const parsed = body as MultipartBody
+  if (!parsed || typeof parsed !== "object") {
     return new Response(
-      JSON.stringify({ error: { type: "invalid_request_error", message: `failed to parse multipart: ${msg}` } }),
+      JSON.stringify({ error: { type: "invalid_request_error", message: "failed to parse multipart body" } }),
       { status: 400, headers: { "Content-Type": "application/json" } },
     )
   }
 
-  const modelField = form.get("model")
-  const model = typeof modelField === "string" ? modelField : null
+  const model = typeof parsed.model === "string" ? parsed.model : null
   if (!model) {
     return new Response(
       JSON.stringify({ error: { type: "invalid_request_error", message: "model field is required in multipart body" } }),
@@ -145,6 +148,21 @@ async function handleEdits(ctx: ImagesRouteContext): Promise<Response> {
       }),
       { status: 404, headers: { "Content-Type": "application/json" } },
     )
+  }
+
+  // Reconstruct FormData from the parsed object so files (Blobs) are forwarded verbatim.
+  // Bun's fetch() will generate the correct multipart boundary when body is FormData.
+  const form = new FormData()
+  for (const [key, value] of Object.entries(parsed)) {
+    if (value === undefined) continue
+    if (value instanceof File) {
+      form.append(key, value, value.name)
+    } else if (value instanceof Blob) {
+      // Elysia may give us Blob without a name; use the field name as filename fallback.
+      form.append(key, value, key)
+    } else {
+      form.append(key, String(value))
+    }
   }
 
   // Forward the FormData verbatim. fetch() will set Content-Type with the correct boundary.
