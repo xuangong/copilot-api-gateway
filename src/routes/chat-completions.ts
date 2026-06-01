@@ -210,8 +210,9 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
       include_usage: true,
     }
 
-    const response = await provider.callChatCompletions(
-      payload as unknown as Record<string, unknown>,
+    const response = await provider.fetch(
+      "chat_completions",
+      { method: "POST", body: JSON.stringify(payload) },
       { operationName: "chat completions" },
     )
     const upstreamMs = upstreamTimer()
@@ -255,8 +256,9 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
 
   let upstreamMs = 0
   const syncPromise: Promise<ChatJson> = (async () => {
-    const response = await provider.callChatCompletions(
-      payload as unknown as Record<string, unknown>,
+    const response = await provider.fetch(
+      "chat_completions",
+      { method: "POST", body: JSON.stringify(payload) },
       { operationName: "chat completions" },
     )
     upstreamMs = upstreamTimer()
