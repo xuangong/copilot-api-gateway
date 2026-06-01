@@ -123,12 +123,6 @@ export class CustomProvider implements ModelProvider {
     return this.send(path, init, opts, `call ${endpoint}`)
   }
 
-  callMessages(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.fetch("messages", { method: "POST", body: JSON.stringify(payload) }, opts)
-  }
-  callMessagesCountTokens(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.fetch("messages_count_tokens", { method: "POST", body: JSON.stringify(payload) }, opts)
-  }
   callEmbeddings(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
     return this.fetch("embeddings", { method: "POST", body: JSON.stringify(payload) }, opts)
   }

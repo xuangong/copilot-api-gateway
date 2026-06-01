@@ -60,10 +60,6 @@ export interface ModelProvider {
    */
   fetch(endpoint: EndpointKey, init: RequestInit, opts?: ProviderFetchOptions): Promise<Response>
 
-  /** @deprecated Use fetch('messages', ...). Removed in Plan 3. */
-  callMessages(payload: Record<string, unknown>, opts?: ProviderCallOptions): Promise<Response>
-  /** @deprecated Use fetch('messages_count_tokens', ...). Removed in Plan 3. */
-  callMessagesCountTokens(payload: Record<string, unknown>, opts?: ProviderCallOptions): Promise<Response>
   /** @deprecated Use fetch('embeddings', ...). Removed in Plan 4. */
   callEmbeddings(payload: Record<string, unknown>, opts?: ProviderCallOptions): Promise<Response>
 }
