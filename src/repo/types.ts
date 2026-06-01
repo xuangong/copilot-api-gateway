@@ -52,6 +52,8 @@ export interface UpstreamRecord {
   sortOrder: number
   config: Record<string, unknown>
   flagOverrides: Record<string, boolean>
+  /** Public model ids hidden from /v1/models and from routing. Empty by default. */
+  disabledPublicModelIds: string[]
   createdAt: string
   updatedAt: string
 }

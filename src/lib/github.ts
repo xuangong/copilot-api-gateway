@@ -41,6 +41,7 @@ async function mirrorCopilotUpstream(
       user: { id: user.id, login: user.login, name: user.name, avatar_url: user.avatar_url },
     },
     flagOverrides: existing?.flagOverrides ?? {},
+    disabledPublicModelIds: existing?.disabledPublicModelIds ?? [],
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }

@@ -307,6 +307,7 @@ export const controlPlaneRoute = new Elysia()
         sortOrder: Number.isFinite(body.sortOrder) ? Number(body.sortOrder) : 0,
         config: normalizeConfig(provider, body.config),
         flagOverrides: normalizeFlagOverrides(body.flagOverrides),
+        disabledPublicModelIds: [],
         createdAt: now,
         updatedAt: now,
       }
@@ -357,6 +358,7 @@ export const controlPlaneRoute = new Elysia()
         sortOrder: Number.isFinite(body.sortOrder) ? Number(body.sortOrder) : existing.sortOrder,
         config: mergedConfig !== undefined ? normalizeConfig(existing.provider, mergedConfig) : existing.config,
         flagOverrides: body.flagOverrides !== undefined ? normalizeFlagOverrides(body.flagOverrides) : existing.flagOverrides,
+        disabledPublicModelIds: existing.disabledPublicModelIds,
         updatedAt: new Date().toISOString(),
       }
       if (!next.name) return jsonError("name required")
