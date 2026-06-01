@@ -80,12 +80,15 @@ beforeEach(() => {
 
 describe("CopilotProvider Claude variant resolution", () => {
   test("messages payload effort selects the matching raw model", async () => {
-    await provider().callMessages({
-      model: "claude-opus-4.7",
-      messages: [{ role: "user", content: "hi" }],
-      max_tokens: 100,
-      output_config: { effort: "xhigh" },
-    })
+    await provider().fetch(
+      "messages",
+      { method: "POST", body: JSON.stringify({
+        model: "claude-opus-4.7",
+        messages: [{ role: "user", content: "hi" }],
+        max_tokens: 100,
+        output_config: { effort: "xhigh" },
+      }) },
+    )
 
     expect(calls[0]?.payload.model).toBe("claude-opus-4.7-1m-internal")
     expect(calls[0]?.payload.output_config).toEqual({ effort: "xhigh" })
@@ -120,13 +123,14 @@ describe("CopilotProvider Claude variant resolution", () => {
   })
 
   test("composite model suffix beats header and payload effort", async () => {
-    await provider().callMessages(
-      {
+    await provider().fetch(
+      "messages",
+      { method: "POST", body: JSON.stringify({
         model: "claude-opus-4.7-xhigh-1m",
         messages: [{ role: "user", content: "hi" }],
         max_tokens: 100,
         output_config: { effort: "low" },
-      },
+      }) },
       { extraHeaders: { "x-copilot-reasoning-effort": "high" } },
     )
 
@@ -136,13 +140,14 @@ describe("CopilotProvider Claude variant resolution", () => {
   })
 
   test("payload effort beats custom header effort", async () => {
-    await provider().callMessages(
-      {
+    await provider().fetch(
+      "messages",
+      { method: "POST", body: JSON.stringify({
         model: "claude-opus-4.7",
         messages: [{ role: "user", content: "hi" }],
         max_tokens: 100,
         output_config: { effort: "xhigh" },
-      },
+      }) },
       { extraHeaders: { "x-copilot-reasoning-effort": "high" } },
     )
 
