@@ -24,12 +24,6 @@ export const sessionsRoute = new Elysia()
       return new Response(JSON.stringify({ error: "No session" }), { status: 401, headers: { "Content-Type": "application/json" } })
     }
 
-    // Check ADMIN_KEY (legacy, kept for backward compat during transition)
-    const adminKey = env?.ADMIN_KEY
-    if (adminKey && sessionToken === adminKey) {
-      return { ok: true, isAdmin: true }
-    }
-
     if (sessionToken.startsWith("ses_")) {
       const repo = getRepo()
       const session = await repo.sessions.findByToken(sessionToken)
