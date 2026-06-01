@@ -106,11 +106,14 @@ describe("CopilotProvider Claude variant resolution", () => {
   })
 
   test("responses payload effort selects the matching raw model", async () => {
-    await provider().callResponses({
-      model: "claude-opus-4.7",
-      input: "hi",
-      reasoning: { effort: "xhigh" },
-    })
+    await provider().fetch(
+      "responses",
+      { method: "POST", body: JSON.stringify({
+        model: "claude-opus-4.7",
+        input: "hi",
+        reasoning: { effort: "xhigh" },
+      }) },
+    )
 
     expect(calls[0]?.payload.model).toBe("claude-opus-4.7-1m-internal")
     expect(calls[0]?.payload.reasoning).toEqual({ effort: "xhigh" })
