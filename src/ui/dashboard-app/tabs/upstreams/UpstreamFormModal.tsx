@@ -133,9 +133,32 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
   const editing = mode.kind === "edit"
   const editingId = editing ? mode.row.id : null
 
+  const [catalog, setCatalog] = useState<{ id: string; name: string }[] | null>(null)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [disabledIds, setDisabledIds] = useState<string[]>(
+    mode.kind === "edit" ? [...(mode.row.disabledPublicModelIds ?? [])] : [],
+  )
+  const [extraIdInput, setExtraIdInput] = useState("")
+
   useEffect(() => {
     ensureFlagCatalog().catch((e) => toast(e instanceof Error ? e.message : String(e), "error"))
   }, [ensureFlagCatalog, toast])
+
+  useEffect(() => {
+    if (mode.kind !== "edit") return
+    let cancelled = false
+    api.getUpstreamCatalog(mode.row.id).then(
+      (c) => {
+        if (!cancelled) setCatalog(c.models)
+      },
+      (err) => {
+        if (!cancelled) setCatalogError(err instanceof Error ? err.message : String(err))
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [mode])
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -241,6 +264,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           name: form.name.trim(),
           config,
           flagOverrides: form.flagOverrides,
+          disabledPublicModelIds: disabledIds,
         })
         toast(t("dash.toastCreated"), "success")
       } else {
@@ -264,6 +288,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           name: form.name.trim(),
           config,
           flagOverrides: form.flagOverrides,
+          disabledPublicModelIds: disabledIds,
         })
         toast(t("dash.toastUpdated"), "success")
       }
@@ -428,6 +453,81 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
             />
           </div>
         ) : null}
+
+        {provider !== "copilot" && (
+          <div className="border-t border-themed pt-3 mt-4">
+            <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">
+              {t("dash.disabledModelsLabel")}
+            </h4>
+            <p className="text-xs text-themed-dim mb-2">{t("dash.disabledModelsHint")}</p>
+            {editing && catalog === null && !catalogError && (
+              <p className="text-xs text-themed-dim">{t("dash.disabledModelsLoading")}</p>
+            )}
+            {catalogError && <p className="text-xs text-accent-red">{catalogError}</p>}
+            {editing && catalog && (
+              <select
+                multiple
+                size={Math.min(8, Math.max(3, catalog.length))}
+                className="w-full text-sm font-mono"
+                value={disabledIds}
+                onChange={(e) => {
+                  const selected = Array.from(e.target.selectedOptions).map((o) => o.value)
+                  const ids = new Set(catalog.map((m) => m.id))
+                  const stale = disabledIds.filter((id) => !ids.has(id))
+                  setDisabledIds([...new Set([...selected, ...stale])])
+                }}
+              >
+                {catalog.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.id}
+                    {m.name && m.name !== m.id ? ` — ${m.name}` : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="mt-2 flex gap-2">
+              <input
+                type="text"
+                className="flex-1 text-sm"
+                placeholder={t("dash.disabledModelsAddPlaceholder")}
+                value={extraIdInput}
+                onChange={(e) => setExtraIdInput(e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn-ghost text-sm"
+                onClick={() => {
+                  const id = extraIdInput.trim()
+                  if (!id) return
+                  if (!disabledIds.includes(id)) setDisabledIds([...disabledIds, id])
+                  setExtraIdInput("")
+                }}
+              >
+                {t("dash.disabledModelsAdd")}
+              </button>
+            </div>
+            {disabledIds.length > 0 && (
+              <ul className="mt-2 flex flex-wrap gap-1">
+                {disabledIds.map((id) => (
+                  <li
+                    key={id}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded"
+                    style={{ background: "var(--surface-700)" }}
+                  >
+                    <span className="font-mono">{id}</span>
+                    <button
+                      type="button"
+                      className="text-themed-dim hover:text-accent-red"
+                      onClick={() => setDisabledIds(disabledIds.filter((x) => x !== id))}
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {flagCatalog?.catalog?.length ? (
           <div className="border-t border-themed pt-3 mt-4">
