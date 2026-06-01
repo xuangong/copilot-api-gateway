@@ -226,3 +226,53 @@ describe("/api/upstreams CRUD", () => {
     expect(badFlag.status).toBe(400)
   })
 })
+
+describe("disabledPublicModelIds normalization", () => {
+  test("POST stores disabledPublicModelIds as deduped trimmed array", async () => {
+    const res = await app.handle(req("/api/upstreams", {
+      admin: true, method: "POST",
+      body: {
+        provider: "custom",
+        name: "deepseek",
+        config: { name: "deepseek", baseUrl: "https://api.deepseek.com", apiKey: "sk-x" },
+        disabledPublicModelIds: [" gpt-3.5-turbo ", "gpt-3.5-turbo", "", "ada-002"],
+      },
+    }))
+    expect(res.status).toBe(201)
+    const body = await res.json() as { upstream: { disabledPublicModelIds: string[] } }
+    expect(body.upstream.disabledPublicModelIds).toEqual(["gpt-3.5-turbo", "ada-002"])
+  })
+
+  test("POST rejects non-array disabledPublicModelIds with 400", async () => {
+    const res = await app.handle(req("/api/upstreams", {
+      admin: true, method: "POST",
+      body: {
+        provider: "custom",
+        name: "x",
+        config: { name: "x", baseUrl: "https://x", apiKey: "k" },
+        disabledPublicModelIds: "gpt-3.5-turbo",
+      },
+    }))
+    expect(res.status).toBe(400)
+  })
+
+  test("PATCH updates only the disabled set without touching config", async () => {
+    const create = await app.handle(req("/api/upstreams", {
+      admin: true, method: "POST",
+      body: {
+        provider: "custom",
+        name: "ds2",
+        config: { name: "ds2", baseUrl: "https://api.deepseek.com", apiKey: "sk-x" },
+      },
+    }))
+    const { upstream } = await create.json() as { upstream: { id: string } }
+
+    const patch = await app.handle(req(`/api/upstreams/${encodeURIComponent(upstream.id)}`, {
+      admin: true, method: "PATCH",
+      body: { disabledPublicModelIds: ["gpt-3.5-turbo"] },
+    }))
+    expect(patch.status).toBe(200)
+    const body = await patch.json() as { upstream: { disabledPublicModelIds: string[] } }
+    expect(body.upstream.disabledPublicModelIds).toEqual(["gpt-3.5-turbo"])
+  })
+})

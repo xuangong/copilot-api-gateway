@@ -41,6 +41,7 @@ interface UpstreamBody {
   sortOrder?: number
   config?: Record<string, unknown>
   flagOverrides?: Record<string, unknown>
+  disabledPublicModelIds?: unknown
 }
 
 const ENDPOINTS = new Set<ModelEndpoint>(["chat_completions", "responses", "messages", "messages_count_tokens", "embeddings"])
@@ -76,6 +77,21 @@ function parseEndpoints(value: unknown, fallback: readonly ModelEndpoint[]): Mod
     return v as ModelEndpoint
   })
   return [...new Set(endpoints)]
+}
+
+function normalizeDisabledPublicModelIds(value: unknown): string[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) throw new Error("disabledPublicModelIds must be an array of strings")
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const item of value) {
+    if (typeof item !== "string") throw new Error("disabledPublicModelIds entries must be strings")
+    const trimmed = item.trim()
+    if (!trimmed || seen.has(trimmed)) continue
+    seen.add(trimmed)
+    out.push(trimmed)
+  }
+  return out
 }
 
 function normalizeFlagOverrides(value: unknown): Record<string, boolean> {
@@ -307,7 +323,7 @@ export const controlPlaneRoute = new Elysia()
         sortOrder: Number.isFinite(body.sortOrder) ? Number(body.sortOrder) : 0,
         config: normalizeConfig(provider, body.config),
         flagOverrides: normalizeFlagOverrides(body.flagOverrides),
-        disabledPublicModelIds: [],
+        disabledPublicModelIds: normalizeDisabledPublicModelIds(body.disabledPublicModelIds),
         createdAt: now,
         updatedAt: now,
       }
@@ -358,7 +374,10 @@ export const controlPlaneRoute = new Elysia()
         sortOrder: Number.isFinite(body.sortOrder) ? Number(body.sortOrder) : existing.sortOrder,
         config: mergedConfig !== undefined ? normalizeConfig(existing.provider, mergedConfig) : existing.config,
         flagOverrides: body.flagOverrides !== undefined ? normalizeFlagOverrides(body.flagOverrides) : existing.flagOverrides,
-        disabledPublicModelIds: existing.disabledPublicModelIds,
+        disabledPublicModelIds:
+          body.disabledPublicModelIds === undefined
+            ? existing.disabledPublicModelIds
+            : normalizeDisabledPublicModelIds(body.disabledPublicModelIds),
         updatedAt: new Date().toISOString(),
       }
       if (!next.name) return jsonError("name required")
