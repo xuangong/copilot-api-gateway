@@ -12,6 +12,8 @@ import {
 
 import type { ModelProvider, ProbeResult, ProviderCallOptions } from "../types"
 import { probeViaModels } from "../probe"
+import { type EndpointKey } from "~/protocols/common"
+import type { ProviderFetchOptions } from "../types"
 
 export interface CopilotProviderConfig {
   copilotToken: string
@@ -21,9 +23,35 @@ export interface CopilotProviderConfig {
 
 type EndpointKind = "messages" | "chat_completions" | "responses" | "embeddings"
 
+const COPILOT_PATHS: Record<EndpointKey, string> = {
+  chat_completions: "/chat/completions",
+  responses: "/responses",
+  messages: "/v1/messages",
+  messages_count_tokens: "/v1/messages/count_tokens",
+  embeddings: "/embeddings",
+}
+
+const COPILOT_SUPPORTED: readonly EndpointKey[] = [
+  "chat_completions",
+  "responses",
+  "messages",
+  "messages_count_tokens",
+  "embeddings",
+]
+
+/** Maps each endpoint to the variant-filtering kind. embeddings = null (no filtering). */
+const VARIANT_KIND: Record<EndpointKey, EndpointKind | null> = {
+  chat_completions: "chat_completions",
+  responses: "responses",
+  messages: "messages",
+  messages_count_tokens: "messages",
+  embeddings: null,
+}
+
 export class CopilotProvider implements ModelProvider {
   readonly kind = "copilot" as const
   readonly name: string
+  readonly supportedEndpoints = COPILOT_SUPPORTED
   private readonly copilotToken: string
   private readonly accountType: AccountType
 
@@ -41,48 +69,46 @@ export class CopilotProvider implements ModelProvider {
     return probeViaModels(() => this.getModels())
   }
 
-  callChatCompletions(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.call("/chat/completions", payload, opts, "call Chat Completions", { kind: "chat_completions" })
-  }
+  async fetch(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
+    const path = COPILOT_PATHS[endpoint]
+    if (!path) throw new Error(`CopilotProvider does not support endpoint: ${endpoint}`)
 
-  callResponses(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.call("/responses", payload, opts, "call Responses", { kind: "responses" })
-  }
+    const payload = parseJsonBody(init.body)
+    const headers = mergeHeaders(init.headers, opts.extraHeaders)
 
-  callMessages(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.call("/v1/messages", payload, opts, "call Messages", { kind: "messages" })
-  }
-
-  callMessagesCountTokens(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.call("/v1/messages/count_tokens", payload, opts, "count tokens", { kind: "messages", requireModel: false })
-  }
-
-  callEmbeddings(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.call("/embeddings", payload, opts, "create embeddings", { kind: "embeddings" })
-  }
-
-  private async call(
-    endpoint: string,
-    payload: Record<string, unknown>,
-    opts: ProviderCallOptions,
-    defaultOpName: string,
-    cfg: { kind: EndpointKind; requireModel?: boolean },
-  ): Promise<Response> {
-    const headers = { ...(opts.extraHeaders ?? {}) }
-    if (cfg.kind !== "embeddings") {
-      await this.applyVariantAndBetaFiltering(payload, headers, cfg.kind)
+    const variantKind = VARIANT_KIND[endpoint]
+    if (variantKind !== null) {
+      await this.applyVariantAndBetaFiltering(payload, headers, variantKind as Exclude<EndpointKind, "embeddings">)
     }
 
+    const requireModel = opts.requireModel ?? (endpoint !== "messages_count_tokens")
+
     return callCopilotAPI({
-      endpoint,
+      endpoint: path,
       payload,
-      operationName: opts.operationName ?? defaultOpName,
+      operationName: opts.operationName ?? `call ${endpoint}`,
       copilotToken: this.copilotToken,
       accountType: this.accountType,
       timeout: opts.timeout,
       extraHeaders: headers,
-      requireModel: cfg.requireModel,
+      requireModel,
     })
+  }
+
+  callChatCompletions(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
+    return this.fetch("chat_completions", { method: "POST", body: JSON.stringify(payload) }, opts)
+  }
+  callResponses(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
+    return this.fetch("responses", { method: "POST", body: JSON.stringify(payload) }, opts)
+  }
+  callMessages(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
+    return this.fetch("messages", { method: "POST", body: JSON.stringify(payload) }, opts)
+  }
+  callMessagesCountTokens(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
+    return this.fetch("messages_count_tokens", { method: "POST", body: JSON.stringify(payload) }, { ...opts, requireModel: false })
+  }
+  callEmbeddings(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
+    return this.fetch("embeddings", { method: "POST", body: JSON.stringify(payload) }, opts)
   }
 
   /**
@@ -221,4 +247,24 @@ function hasThinkingBudget(payload: Record<string, unknown>): boolean {
 function isAdaptiveThinking(payload: Record<string, unknown>): boolean {
   const t = (payload as { thinking?: { type?: string } }).thinking
   return t?.type === "adaptive"
+}
+
+function parseJsonBody(body: BodyInit | null | undefined): Record<string, unknown> {
+  if (typeof body !== "string") {
+    throw new Error("CopilotProvider.fetch: body must be a JSON string")
+  }
+  return JSON.parse(body) as Record<string, unknown>
+}
+
+function mergeHeaders(
+  initHeaders: HeadersInit | undefined,
+  extra: Record<string, string> | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (initHeaders) {
+    const h = new Headers(initHeaders)
+    h.forEach((v, k) => { out[k] = v })
+  }
+  if (extra) Object.assign(out, extra)
+  return out
 }

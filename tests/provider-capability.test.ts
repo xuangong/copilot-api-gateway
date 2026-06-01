@@ -10,3 +10,22 @@ test("ModelProvider interface declares supportedEndpoints and fetch()", () => {
   }
   expect(stub.supportedEndpoints).toContain("chat_completions")
 })
+
+import { CopilotProvider } from "~/providers/copilot/provider"
+
+test("CopilotProvider declares its supportedEndpoints", () => {
+  const p = new CopilotProvider({ copilotToken: "tok", accountType: "individual" })
+  expect([...p.supportedEndpoints].sort()).toEqual([
+    "chat_completions",
+    "embeddings",
+    "messages",
+    "messages_count_tokens",
+    "responses",
+  ])
+})
+
+test("CopilotProvider.fetch and callChatCompletions are both functions with correct shape", () => {
+  const p = new CopilotProvider({ copilotToken: "tok", accountType: "individual" })
+  expect(typeof p.fetch).toBe("function")
+  expect(typeof p.callChatCompletions).toBe("function")
+})
