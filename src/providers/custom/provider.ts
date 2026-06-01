@@ -123,10 +123,6 @@ export class CustomProvider implements ModelProvider {
     return this.send(path, init, opts, `call ${endpoint}`)
   }
 
-  callEmbeddings(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.fetch("embeddings", { method: "POST", body: JSON.stringify(payload) }, opts)
-  }
-
   private authHeaders(extra: Record<string, string> = {}): Record<string, string> {
     return {
       "Authorization": `Bearer ${this.apiKey}`,

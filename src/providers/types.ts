@@ -59,7 +59,4 @@ export interface ModelProvider {
    * Throws HTTPError on non-2xx upstream responses.
    */
   fetch(endpoint: EndpointKey, init: RequestInit, opts?: ProviderFetchOptions): Promise<Response>
-
-  /** @deprecated Use fetch('embeddings', ...). Removed in Plan 4. */
-  callEmbeddings(payload: Record<string, unknown>, opts?: ProviderCallOptions): Promise<Response>
 }

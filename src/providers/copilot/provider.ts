@@ -95,10 +95,6 @@ export class CopilotProvider implements ModelProvider {
     })
   }
 
-  callEmbeddings(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.fetch("embeddings", { method: "POST", body: JSON.stringify(payload) }, opts)
-  }
-
   /**
    * For Claude requests, rewrite `payload.model` to the raw Copilot variant id
    * (e.g. claude-opus-4.7 → claude-opus-4.7-1m-internal) based on

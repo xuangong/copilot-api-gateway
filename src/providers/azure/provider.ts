@@ -121,10 +121,6 @@ export class AzureProvider implements ModelProvider {
     })
   }
 
-  callEmbeddings(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.fetch("embeddings", { method: "POST", body: JSON.stringify(payload) }, opts)
-  }
-
   async fetch(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
     if (!this.supportedEndpoints.includes(endpoint)) {
       throw new Error(`Azure deployment ${this.name} does not serve endpoint: ${endpoint}`)
