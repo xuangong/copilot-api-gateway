@@ -45,4 +45,53 @@ describe("parseOpenAIStream", () => {
       for await (const _ of parseOpenAIStream(streamOf(fixture))) { void _ }
     }).toThrow("boom")
   })
+
+  test("reassembles data: line split across chunks", async () => {
+    const fixture = [
+      `data: {"choices":[{"delta":{"con`,
+      `tent":"split"}}]}\n\n`,
+      `data: [DONE]\n\n`,
+    ]
+    const deltas: string[] = []
+    for await (const d of parseOpenAIStream(streamOf(fixture))) deltas.push(d)
+    expect(deltas.join("")).toBe("split")
+  })
+
+  test("handles multi-byte UTF-8 split across chunks", async () => {
+    const enc = new TextEncoder()
+    const full = enc.encode(`data: {"choices":[{"delta":{"content":"中文"}}]}\n\ndata: [DONE]\n\n`)
+    const mid = 30
+    const a = full.slice(0, mid)
+    const b = full.slice(mid)
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(a)
+        c.enqueue(b)
+        c.close()
+      },
+    })
+    const deltas: string[] = []
+    for await (const d of parseOpenAIStream(stream)) deltas.push(d)
+    expect(deltas.join("")).toBe("中文")
+  })
+
+  test("handles CRLF line endings", async () => {
+    const fixture = [
+      `data: {"choices":[{"delta":{"content":"crlf"}}]}\r\n\r\n`,
+      `data: [DONE]\r\n\r\n`,
+    ]
+    const deltas: string[] = []
+    for await (const d of parseOpenAIStream(streamOf(fixture))) deltas.push(d)
+    expect(deltas.join("")).toBe("crlf")
+  })
+
+  test("flushes trailing data: line without final newline", async () => {
+    const fixture = [
+      `data: {"choices":[{"delta":{"content":"a"}}]}\n\n`,
+      `data: {"choices":[{"delta":{"content":"b"}}]}`,
+    ]
+    const deltas: string[] = []
+    for await (const d of parseOpenAIStream(streamOf(fixture))) deltas.push(d)
+    expect(deltas.join("")).toBe("ab")
+  })
 })
