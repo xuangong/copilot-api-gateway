@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS upstreams (
   sort_order INTEGER NOT NULL DEFAULT 0,
   config_json TEXT NOT NULL DEFAULT '{}',
   flag_overrides TEXT NOT NULL DEFAULT '{}',
+  disabled_public_model_ids TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -248,6 +249,7 @@ function ensureUpstreams(db: Database): void {
       sort_order INTEGER NOT NULL DEFAULT 0,
       config_json TEXT NOT NULL DEFAULT '{}',
       flag_overrides TEXT NOT NULL DEFAULT '{}',
+      disabled_public_model_ids TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -484,6 +486,10 @@ function migrateSchema(db: Database): void {
   }
   if (!hasColumn(db, "github_accounts", "updated_at")) {
     db.exec("ALTER TABLE github_accounts ADD COLUMN updated_at TEXT")
+  }
+  // 0028: upstream disabled_public_model_ids
+  if (!hasColumn(db, "upstreams", "disabled_public_model_ids")) {
+    db.exec("ALTER TABLE upstreams ADD COLUMN disabled_public_model_ids TEXT NOT NULL DEFAULT '[]'")
   }
   // 0025: upstream identity + cost snapshot on usage/perf tables. Rebuild
   // each table when the column is missing so the unique index includes the
