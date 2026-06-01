@@ -46,7 +46,11 @@ export async function handleResponsesViaMessages(
   if (isStreaming) {
     const upstream = await withConnectionMismatchRetry(
       target as unknown as Record<string, unknown>,
-      (p) => provider.callMessages(p as Record<string, unknown>, { operationName: "responses (via messages)" }),
+      (p) => provider.fetch(
+        "messages",
+        { method: "POST", body: JSON.stringify(p) },
+        { operationName: "responses (via messages)" },
+      ),
     )
     const upstreamMs = upstreamTimer()
 
@@ -83,7 +87,11 @@ export async function handleResponsesViaMessages(
   const syncPromise = (async () => {
     const upstream = await withConnectionMismatchRetry(
       target as unknown as Record<string, unknown>,
-      (p) => provider.callMessages(p as Record<string, unknown>, { operationName: "responses (via messages)" }),
+      (p) => provider.fetch(
+        "messages",
+        { method: "POST", body: JSON.stringify(p) },
+        { operationName: "responses (via messages)" },
+      ),
     )
     upstreamMs = upstreamTimer()
     const messagesJson = (await upstream.json()) as Parameters<typeof translateMessagesToResponsesResponse>[0]
