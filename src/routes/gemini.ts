@@ -159,8 +159,9 @@ async function handleGenerateContent(ctx: RouteContext) {
   const upstreamId = binding.upstream
   let upstreamMs = 0
   const syncPromise: Promise<{ chat: ChatCompletionResponse; gemini: GeminiGenerateContentResponse }> = (async () => {
-    const response = await provider.callChatCompletions(
-      cleanPayload,
+    const response = await provider.fetch(
+      "chat_completions",
+      { method: "POST", body: JSON.stringify(cleanPayload) },
       { operationName: "gemini generate content" },
     )
     upstreamMs = upstreamTimer()
@@ -350,8 +351,9 @@ async function handleStreamGenerateContent(
     )
   }
   const upstreamId = binding.upstream
-  const response = await binding.provider.callChatCompletions(
-    cleanPayload,
+  const response = await binding.provider.fetch(
+    "chat_completions",
+    { method: "POST", body: JSON.stringify(cleanPayload) },
     { operationName: "gemini stream generate content" },
   )
   const upstreamMs = upstreamTimer()
