@@ -414,3 +414,18 @@ export const controlPlaneRoute = new Elysia()
     if (!upstream) return jsonError("upstream not found", 404)
     return probeUpstream(upstream)
   })
+  .get("/api/upstreams/:id/models", async (ctx) => {
+    const denied = adminGuard(ctx)
+    if (denied) return denied
+    const upstream = await getRepo().upstreams.getById(ctx.params.id)
+    if (!upstream) return jsonError("upstream not found", 404)
+    const provider = await createProviderFromUpstream(upstream)
+    if (!provider) return jsonError(`unable to construct ${upstream.provider} provider for upstream ${upstream.id}`, 502)
+    try {
+      const models = await provider.getModels()
+      const list = (models.data ?? []).map((m) => ({ id: m.id, name: m.name ?? m.id }))
+      return { models: list, disabledPublicModelIds: upstream.disabledPublicModelIds }
+    } catch (err) {
+      return jsonError(`failed to list models: ${err instanceof Error ? err.message : String(err)}`, 502)
+    }
+  })

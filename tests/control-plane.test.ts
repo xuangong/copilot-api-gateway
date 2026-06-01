@@ -276,3 +276,39 @@ describe("disabledPublicModelIds normalization", () => {
     expect(body.upstream.disabledPublicModelIds).toEqual(["gpt-3.5-turbo"])
   })
 })
+
+describe("GET /api/upstreams/:id/models", () => {
+  test("returns the full upstream catalog regardless of disabled list", async () => {
+    const create = await app.handle(req("/api/upstreams", {
+      admin: true, method: "POST",
+      body: {
+        provider: "custom",
+        name: "catalog",
+        config: {
+          name: "catalog",
+          baseUrl: "https://catalog.invalid",
+          apiKey: "k",
+          models: ["a", "b", "c"],
+        },
+        disabledPublicModelIds: ["a"],
+      },
+    }))
+    const { upstream } = await create.json() as { upstream: { id: string } }
+
+    const res = await app.handle(req(`/api/upstreams/${encodeURIComponent(upstream.id)}/models`, { admin: true }))
+    expect(res.status).toBe(200)
+    const body = await res.json() as { models: Array<{ id: string }>; disabledPublicModelIds: string[] }
+    expect(body.models.map((m) => m.id).sort()).toEqual(["a", "b", "c"])
+    expect(body.disabledPublicModelIds).toEqual(["a"])
+  })
+
+  test("returns 404 for an unknown upstream id", async () => {
+    const res = await app.handle(req("/api/upstreams/up_nope/models", { admin: true }))
+    expect(res.status).toBe(404)
+  })
+
+  test("requires admin", async () => {
+    const res = await app.handle(req("/api/upstreams/up_x/models"))
+    expect(res.status).toBe(403)
+  })
+})
