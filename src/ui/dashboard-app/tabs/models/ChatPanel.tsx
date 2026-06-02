@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useT } from "../../state/i18n"
 import { fileToDataUrl, ImageTooLargeError } from "./image"
-import { parseOpenAIStream, type StreamUsage } from "./streams/openai"
+import { parseOpenAIStream, type StreamUsage, type WebSearchProgress } from "./streams/openai"
 import { parseAnthropicStream } from "./streams/anthropic"
 import { parseGeminiStream } from "./streams/gemini"
 import { renderMarkdown } from "./markdown"
@@ -40,6 +40,15 @@ interface Message {
   imageUrl?: string
   usage?: StreamUsage
   durationMs?: number
+  /** Web search progress events surfaced as inline bubbles. */
+  webSearches?: WebSearchEntry[]
+}
+
+interface WebSearchEntry {
+  /** Stable ID — upstream item_id, or fallback synthetic if missing. */
+  id: string
+  status: "in_progress" | "searching" | "completed"
+  query?: string
 }
 
 interface Props {
@@ -343,6 +352,29 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
     })
   }
 
+  function applyWebSearchProgress(progress: WebSearchProgress) {
+    setMessages((prev) => {
+      const last = prev[prev.length - 1]
+      if (!last || last.role !== "assistant") return prev
+      const id: string = progress.item_id ?? `ws_${(last.webSearches?.length ?? 0)}`
+      const existing = last.webSearches ?? []
+      const idx = existing.findIndex((w) => w.id === id)
+      const merged: WebSearchEntry =
+        idx >= 0 && existing[idx]
+          ? {
+              ...existing[idx],
+              id,
+              status: progress.status,
+              ...(progress.query ? { query: progress.query } : {}),
+            }
+          : { id, status: progress.status, ...(progress.query ? { query: progress.query } : {}) }
+      const next = idx >= 0
+        ? [...existing.slice(0, idx), merged, ...existing.slice(idx + 1)]
+        : [...existing, merged]
+      return [...prev.slice(0, -1), { ...last, webSearches: next }]
+    })
+  }
+
   async function sendOpenAI(history: Message[], signal: AbortSignal) {
     const oaiMessages: Array<Record<string, unknown>> = []
     if (systemPrompt.trim()) {
@@ -392,6 +424,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
     }
     for await (const ch of parseOpenAIStream(resp.body)) {
       if (ch.type === "delta") appendAssistant(ch.text)
+      else if (ch.type === "web_search") applyWebSearchProgress(ch.progress)
       else setLastUsage(ch.usage)
     }
   }
@@ -440,7 +473,8 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
     }
     for await (const ch of parseAnthropicStream(resp.body)) {
       if (ch.type === "delta") appendAssistant(ch.text)
-      else setLastUsage(ch.usage)
+      else if (ch.type === "usage") setLastUsage(ch.usage)
+      else if (ch.type === "web_search") applyWebSearchProgress(ch.progress)
     }
   }
 
@@ -498,7 +532,8 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
     }
     for await (const ch of parseGeminiStream(resp.body)) {
       if (ch.type === "delta") appendAssistant(ch.text)
-      else setLastUsage(ch.usage)
+      else if (ch.type === "usage") setLastUsage(ch.usage)
+      else if (ch.type === "web_search") applyWebSearchProgress(ch.progress)
     }
   }
 
@@ -663,6 +698,19 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
                       <div className="md-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
                     ) : (
                       <div className="whitespace-pre-wrap">{m.text}</div>
+                    )}
+                    {isAssistant && m.webSearches && m.webSearches.length > 0 && (
+                      <div className="pg-tool-list">
+                        {m.webSearches.map((w) => (
+                          <div key={w.id} className={"pg-tool pg-tool-" + w.status}>
+                            <span className="pg-tool-icon">🔎</span>
+                            <span className="pg-tool-label">
+                              {w.status === "completed" ? "Searched" : w.status === "searching" ? "Searching" : "Preparing search"}
+                            </span>
+                            {w.query && <span className="pg-tool-query">"{w.query}"</span>}
+                          </div>
+                        ))}
+                      </div>
                     )}
                     {m.imageUrl && (
                       <img src={m.imageUrl} alt="" className="mt-2 max-h-48 rounded-lg" />

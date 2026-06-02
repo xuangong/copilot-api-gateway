@@ -252,6 +252,7 @@ describe("InMemoryImageProcessor (passthrough)", () => {
     const { createInMemoryImageProcessor, compressBase64ImageToWebp } = await import("~/image")
     initImageProcessor(createInMemoryImageProcessor())
     const result = await compressBase64ImageToWebp(TINY_PNG_B64, (s) => s)
-    expect(result).toBe(TINY_PNG_B64)
+    expect(result.data).toBe(TINY_PNG_B64)
+    expect(result.converted).toBe(false)
   })
 })

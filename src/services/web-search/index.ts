@@ -27,7 +27,7 @@ export {
   filterThinkingBlocks,
   createToolResult,
 } from "./interceptor"
-export type { InterceptOptions, MessagesPayload, ClientTool } from "./interceptor"
+export type { InterceptOptions, MessagesPayload, ClientTool, MessagesInterceptedSearch } from "./interceptor"
 
 export { replayResponseAsSSE } from "./sse-replay"
 

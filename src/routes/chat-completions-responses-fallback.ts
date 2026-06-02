@@ -5,6 +5,7 @@ import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
+import { hasOpenAIWebSearch, loadWebSearchConfig } from "~/services/web-search"
 import {
   createResponsesToChatCompletionsStream,
   translateChatCompletionsToResponsesRequest,
@@ -13,6 +14,7 @@ import {
 } from "~/translators/chat-completions-via-responses"
 
 import type { AppState } from "~/lib/state"
+import type { OpenAIChatPayload } from "~/services/web-search"
 
 interface ChatPayload {
   model: string
@@ -47,6 +49,16 @@ export async function handleChatCompletionsViaResponses(
   const client = detectClient(userAgent)
   const model = payload.model
   const isStreaming = payload.stream === true
+
+  // Web-search permission gate: the upstream-side hosted web_search tool is
+  // still a billable feature in this gateway, so keys must have it enabled.
+  // Translator below converts function:web_search → hosted {type:"web_search"};
+  // this check just enforces parity with chat-completions.ts:151 and
+  // responses/index.ts:91.
+  if (hasOpenAIWebSearch(payload as unknown as OpenAIChatPayload)) {
+    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken, state.msGroundingKey)
+    if (!cfg.enabled) return cfg.errorResponse!
+  }
 
   const respPayload = translateChatCompletionsToResponsesRequest(
     payload as unknown as Parameters<typeof translateChatCompletionsToResponsesRequest>[0],

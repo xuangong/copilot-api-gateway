@@ -10,6 +10,7 @@ import {
   interceptWebSearch,
   replayResponseAsSSE,
   type ApiResponse,
+  type MessagesInterceptedSearch,
   type MessagesPayload,
   type WebSearchMeta,
 } from "~/services/web-search"
@@ -138,7 +139,7 @@ export async function handleWebSearch(
  */
 function buildWebSearchStreamingResponse(
   payload: AnthropicMessagesPayload,
-  upstreamPromise: Promise<{ response: unknown; meta: WebSearchMeta }>,
+  upstreamPromise: Promise<{ response: unknown; meta: WebSearchMeta; searches: MessagesInterceptedSearch[] }>,
   requestId: string | undefined,
   recordSideEffects: (r: { response: unknown; meta: WebSearchMeta }) => Promise<void>,
 ): Response {
@@ -179,12 +180,27 @@ function buildWebSearchStreamingResponse(
       const stopPing = () => { closed = true; clearInterval(ping) }
 
       try {
-        const { response, meta } = await upstreamPromise
+        const result = await upstreamPromise
+        const { response, meta } = result
         console.log(JSON.stringify({
           evt: "ws_stream_replay_start",
           rid: requestId,
           searchCount: meta.searchCount,
         }))
+        // Emit a synthetic web_search_progress event per search so the
+        // dashboard playground can render inline "Searched: <query>" bubbles.
+        // Mirrors the gpt-5 hosted / claude-* intercept paths.
+        for (const s of result.searches) {
+          const frame =
+            `event: web_search_progress\ndata: ${JSON.stringify({
+              type: "web_search_progress",
+              item_id: s.toolUseId,
+              status: "completed",
+              query: s.query,
+              is_error: s.isError,
+            })}\n\n`
+          try { controller.enqueue(encoder.encode(frame)) } catch { /* ignore */ }
+        }
         const sseBody = replayResponseAsSSE(response as ApiResponse, { skipMessageStart: true })
         const wrapped = wrapAnthropicHeartbeat(sseBody)
         const reader = wrapped!.getReader()

@@ -32,7 +32,10 @@ export function ModelsTab() {
   })
   const [systemPrompt, setSystemPrompt] = useState(() => localStorage.getItem(LS_SYSTEM_PROMPT) ?? "")
   const [systemOpen, setSystemOpen] = useState(() => localStorage.getItem(LS_SYSTEM_OPEN) === "1")
-  const [webSearchEnabled, setWebSearchEnabled] = useState(() => localStorage.getItem(LS_WEB_SEARCH) === "1")
+  const [webSearchEnabled, setWebSearchEnabled] = useState(() => {
+    const v = localStorage.getItem(LS_WEB_SEARCH)
+    return v === null ? true : v === "1"
+  })
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false,
   )

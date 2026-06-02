@@ -198,6 +198,14 @@ export function translateChunkToGeminiResponses(
   chunk: ChatCompletionChunk,
 ): Array<GeminiGenerateContentResponse> {
   const out: Array<GeminiGenerateContentResponse> = []
+  // Pass through web_search progress as a candidate-less response with
+  // non-standard `_meta.web_search` at the top level. Gemini clients ignore
+  // unknown fields; our dashboard parser reads it to render inline bubbles.
+  const meta = (chunk as { _meta?: { web_search?: unknown } })._meta
+  if (meta?.web_search) {
+    out.push({ _meta: { web_search: meta.web_search } } as unknown as GeminiGenerateContentResponse)
+    return out
+  }
   const liveCandidates: GeminiCandidate[] = []
   for (const choice of chunk.choices) {
     const { live, finished } = buildCandidateForChunk(state, chunk, choice)

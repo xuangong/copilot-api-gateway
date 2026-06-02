@@ -412,6 +412,41 @@ select option {
   font-family: "IBM Plex Mono", monospace;
 }
 
+/* Inline web_search / tool progress bubbles */
+.pg-tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+.pg-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--surface-2, rgba(127,127,127,0.08));
+  color: var(--text-dim);
+  border: 1px solid var(--border, rgba(127,127,127,0.12));
+  width: fit-content;
+}
+.pg-tool-in_progress, .pg-tool-searching {
+  animation: pg-tool-pulse 1.4s ease-in-out infinite;
+}
+@keyframes pg-tool-pulse {
+  0%, 100% { opacity: 0.65; }
+  50% { opacity: 1; }
+}
+.pg-tool-completed { color: var(--text); }
+.pg-tool-icon { font-size: 12px; }
+.pg-tool-label { font-weight: 500; }
+.pg-tool-query {
+  color: var(--text);
+  font-family: "IBM Plex Mono", monospace;
+}
+
 /* Copy button on assistant bubble */
 .pg-copy {
   position: absolute;

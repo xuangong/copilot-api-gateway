@@ -24,16 +24,16 @@ export async function* parseGeminiStream(
         buf = buf.slice(nl + 1)
         const out = parseLine(raw)
         if (out) {
-          if (out.type === "delta") yield out
-          else lastUsage = out.usage
+          if (out.type === "usage") lastUsage = out.usage
+          else yield out
         }
       }
     }
     const tail = buf.replace(/\r$/, "")
     const out = parseLine(tail)
     if (out) {
-      if (out.type === "delta") yield out
-      else lastUsage = out.usage
+      if (out.type === "usage") lastUsage = out.usage
+      else yield out
     }
   } finally {
     reader.releaseLock()
@@ -60,8 +60,26 @@ function parseLine(raw: string): StreamChunk | null {
       promptTokenCount?: number
       candidatesTokenCount?: number
     }
+    _meta?: {
+      web_search?: {
+        status?: "in_progress" | "searching" | "completed"
+        query?: string
+        item_id?: string
+      }
+    }
   }
   if (obj.error) throw new Error(obj.error.message ?? "Gemini stream error")
+  const ws = obj._meta?.web_search
+  if (ws && ws.status) {
+    return {
+      type: "web_search",
+      progress: {
+        status: ws.status,
+        ...(ws.query ? { query: ws.query } : {}),
+        ...(ws.item_id ? { item_id: ws.item_id } : {}),
+      },
+    }
+  }
   const parts = obj.candidates?.[0]?.content?.parts
   let text = ""
   if (Array.isArray(parts)) {

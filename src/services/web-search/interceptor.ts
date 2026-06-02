@@ -141,8 +141,10 @@ async function executeAllSearches(
 ): Promise<{
   toolResults: ReturnType<typeof createToolResult>[]
   searchCount: number
+  searches: Array<{ toolUseId: string; query: string; isError: boolean }>
 }> {
   const toolResults = []
+  const searches: Array<{ toolUseId: string; query: string; isError: boolean }> = []
   for (const toolUse of toolUses) {
     searchCount++
     const { content, isError, resultCount, engineName } =
@@ -164,13 +166,18 @@ async function executeAllSearches(
       meta.enginesUsed.push(engineName)
     }
     toolResults.push(createToolResult(toolUse.id, content, isError))
+    searches.push({
+      toolUseId: toolUse.id,
+      query: (toolUse.input as { query?: string }).query ?? "",
+      isError,
+    })
 
     if (isError && searchCount > maxUses) {
       break
     }
   }
   meta.searchCount = searchCount
-  return { toolResults, searchCount }
+  return { toolResults, searchCount, searches }
 }
 
 const createClientWebSearchTool = () => ({
@@ -266,10 +273,16 @@ interface ToolResultBlock {
 /**
  * Intercept web_search tool calls in non-streaming Messages API
  */
+export interface MessagesInterceptedSearch {
+  toolUseId: string
+  query: string
+  isError: boolean
+}
+
 export async function interceptWebSearch(
   payload: MessagesPayload,
   options: InterceptOptions,
-): Promise<{ response: ApiResponse; meta: WebSearchMeta }> {
+): Promise<{ response: ApiResponse; meta: WebSearchMeta; searches: MessagesInterceptedSearch[] }> {
   const tools = payload.tools
   const webSearchTool = hasWebSearchTool(tools)
 
@@ -277,7 +290,7 @@ export async function interceptWebSearch(
 
   if (!webSearchTool) {
     const response = await createMessages(payload, options)
-    return { response, meta: emptyMeta() }
+    return { response, meta: emptyMeta(), searches: [] }
   }
 
   console.log("[Web Search] Intercepting web_search tool")
@@ -290,6 +303,7 @@ export async function interceptWebSearch(
 
   let searchCount = 0
   const meta: WebSearchMeta = emptyMeta()
+  const allSearches: MessagesInterceptedSearch[] = []
   const maxUses = Math.min(
     webSearchTool.max_uses || MAX_USES_HARD_LIMIT,
     MAX_USES_HARD_LIMIT,
@@ -324,7 +338,7 @@ export async function interceptWebSearch(
           "[Web Search] Response contains other tools, returning to client",
         )
       }
-      return { response, meta }
+      return { response, meta, searches: allSearches }
     }
 
     console.log(`[Web Search] Found ${webSearchToolUses.length} web_search tool(s)`)
@@ -343,6 +357,7 @@ export async function interceptWebSearch(
       engineManager,
     )
     searchCount = result.searchCount
+    for (const s of result.searches) allSearches.push(s)
 
     // Add tool results as user message
     const toolResultsContent: MessageContent[] = result.toolResults.map((tr) => ({
@@ -374,7 +389,7 @@ export async function interceptWebSearch(
         finalUpstreamMs: Date.now() - finalStart,
         totalLoopMs: Date.now() - loopStart,
       }))
-      return { response: finalResponse, meta }
+      return { response: finalResponse, meta, searches: allSearches }
     }
   }
 }

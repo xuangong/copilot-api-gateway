@@ -114,8 +114,9 @@ export const compressInlineImagesMessages = async (
   const targetSize = claudeTargetSize(upstreamModelId)
   await Promise.all(
     blocks.map(async (block) => {
-      block.source.data = await compressBase64ImageToWebp(block.source.data as string, targetSize)
-      block.source.media_type = "image/webp"
+      const { data, converted } = await compressBase64ImageToWebp(block.source.data as string, targetSize)
+      block.source.data = data
+      if (converted) block.source.media_type = "image/webp"
     }),
   )
   return blocks.length

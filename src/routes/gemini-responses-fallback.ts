@@ -15,6 +15,7 @@ import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import type { AppState } from "~/lib/state"
 import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
+import { hasGeminiWebSearch, loadWebSearchConfig } from "~/services/web-search"
 import type {
   GeminiGenerateContentRequest,
   GeminiGenerateContentResponse,
@@ -25,6 +26,7 @@ import {
   translateGeminiToResponses,
   translateResponsesToGeminiResponse,
 } from "~/translators/gemini-via-responses"
+import type { ResponseTool } from "~/transforms/types"
 
 interface RouteContext {
   state: AppState
@@ -49,6 +51,23 @@ export async function handleGeminiViaResponses(
 
   const target = translateGeminiToResponses(body, model)
   target.stream = isStreaming
+
+  // Gemini's hosted `googleSearch` tool is dropped by translateGeminiToOpenAI
+  // (only functionDeclarations survive). gpt-5.x Copilot /v1/responses
+  // executes hosted {type:"web_search"} natively, so check the original Gemini
+  // body for web-search intent and inject the hosted tool here. Mirrors the
+  // OpenAI-protocol gate in chat-completions-responses-fallback.ts.
+  if (hasGeminiWebSearch(body)) {
+    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken, state.msGroundingKey)
+    if (!cfg.enabled) {
+      return new Response(
+        JSON.stringify({ error: { code: 400, message: "Web search is not enabled for this API key.", status: "FAILED_PRECONDITION" } }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      )
+    }
+    const hostedTool = { type: "web_search" } as unknown as ResponseTool
+    target.tools = target.tools ? [...target.tools, hostedTool] : [hostedTool]
+  }
 
   const binding = await resolveBinding(state, ctx.userId, model, "responses", upstreamPin)
   if (!binding) {

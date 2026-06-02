@@ -51,7 +51,20 @@ function translateChatTools(
 ): ResponseTool[] | undefined {
   if (!tools || tools.length === 0) return undefined
   return tools.map((t) => {
+    // Hosted tool shape: `{type:"web_search"}` / `{type:"web_search_preview"}`
+    // — already in Responses form, no `function` field. Pass through.
+    const ttype = (t as { type?: string }).type
+    if (ttype === "web_search" || ttype === "web_search_preview") {
+      return { type: "web_search" } as unknown as ResponseTool
+    }
     const f = t.function as { name: string; description?: string; parameters?: Record<string, unknown>; strict?: boolean }
+    // Chat Completions can only express tools as `{type:"function"}`. When a
+    // client targets gpt-5.x with the standard `web_search` function name,
+    // translate it to the Responses hosted tool form so Copilot's
+    // /v1/responses upstream actually executes the search server-side.
+    if (f.name === "web_search") {
+      return { type: "web_search" } as unknown as ResponseTool
+    }
     return {
       type: "function" as const,
       name: f.name,

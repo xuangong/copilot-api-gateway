@@ -136,13 +136,23 @@ function translateSystem(system: AnthropicMessagesPayload["system"]): string | n
 
 function translateTools(tools: AnthropicTool[] | undefined): ResponseTool[] | null {
   if (!tools || tools.length === 0) return null
-  return tools.map((t) => ({
-    type: "function",
-    name: t.name,
-    parameters: t.input_schema,
-    strict: false,
-    ...(t.description ? { description: t.description } : {}),
-  }))
+  return tools.map((t) => {
+    // Anthropic's server-side web_search tool comes as
+    // {type:"web_search_20250305", name:"web_search", ...}. gpt-5.x served by
+    // Copilot's /v1/responses upstream executes web_search natively as a
+    // hosted tool, so translate it to the Responses hosted form rather than
+    // a custom function (which the upstream would ignore).
+    if (t.name === "web_search" || (typeof t.type === "string" && t.type.startsWith("web_search"))) {
+      return { type: "web_search" } as unknown as ResponseTool
+    }
+    return {
+      type: "function",
+      name: t.name,
+      parameters: t.input_schema,
+      strict: false,
+      ...(t.description ? { description: t.description } : {}),
+    }
+  })
 }
 
 interface MessagesToolChoice {

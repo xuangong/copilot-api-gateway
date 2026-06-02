@@ -153,7 +153,7 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
     if (!cfg.enabled) return cfg.errorResponse!
 
     const wantsStream = payload.stream === true
-    const { response, meta } = await interceptOpenAIChat(
+    const { response, meta, searches } = await interceptOpenAIChat(
       payload as unknown as OpenAIChatPayload,
       {
         copilotToken: state.copilotToken,
@@ -183,7 +183,7 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
     }
 
     if (wantsStream) {
-      const sseBody = replayChatCompletionAsSSE(response)
+      const sseBody = replayChatCompletionAsSSE(response, searches)
       const heartbeated = wrapOpenAIHeartbeat(sseBody)
       const headers: Record<string, string> = {
         "Content-Type": "text/event-stream",

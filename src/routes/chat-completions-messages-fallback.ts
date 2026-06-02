@@ -14,6 +14,18 @@ import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usag
 import type { ChatCompletionsPayload } from "~/services/gemini/format-conversion"
 import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
 import {
+  addWebSearchHeaders,
+  hasOpenAIWebSearch,
+  interceptWebSearch,
+  loadWebSearchConfig,
+  prepareOpenAIPayload,
+  recordWebSearchUsage,
+  replayChatCompletionAsSSE,
+  type MessagesPayload,
+  type OpenAIChatPayload,
+  type OpenAIChatResponse,
+} from "~/services/web-search"
+import {
   createMessagesToChatCompletionsStream,
   translateChatCompletionsToMessages,
   translateMessagesToChatCompletionsResponse,
@@ -39,7 +51,14 @@ export async function handleChatCompletionsViaMessages(
   const model = payload.model
   const isStreaming = payload.stream === true
 
-  const target = translateChatCompletionsToMessages(payload)
+  // Normalize hosted {type:"web_search"} / web_search_preview to a function tool
+  // before the request translator runs — translateChatCompletionsToMessages
+  // assumes every tool has a `function` field and crashes otherwise.
+  const normalizedPayload = hasOpenAIWebSearch(payload as unknown as OpenAIChatPayload)
+    ? (prepareOpenAIPayload(payload as unknown as OpenAIChatPayload) as unknown as ChatCompletionsPayload)
+    : payload
+
+  const target = translateChatCompletionsToMessages(normalizedPayload)
   target.stream = isStreaming
 
   const binding = await resolveBinding(state, ctx.userId, model, "messages", pinFromPayload(payload as unknown as Record<string, unknown>))
@@ -52,6 +71,66 @@ export async function handleChatCompletionsViaMessages(
   const provider = binding.provider
   const upstreamId = binding.upstream
   const upstreamTimer = startTimer()
+
+  // Web-search intercept: claude-* upstream does NOT execute web_search
+  // natively, so we run the multi-turn loop here. Mirrors the OpenAI-protocol
+  // intercept in chat-completions.ts:151 but on the Messages upstream.
+  if (hasOpenAIWebSearch(payload as unknown as OpenAIChatPayload)) {
+    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken, state.msGroundingKey)
+    if (!cfg.enabled) return cfg.errorResponse!
+
+    // The Chat→Messages translator already mapped function:web_search to a
+    // client-tool with name="web_search"; interceptor matches by name.
+    const interceptPayload: MessagesPayload = { ...(target as unknown as MessagesPayload), stream: false }
+    const { response: messagesJson, meta, searches } = await interceptWebSearch(interceptPayload, {
+      copilotToken: state.copilotToken,
+      accountType: state.accountType,
+      engineOptions: cfg.engineOptions!,
+    })
+    const upstreamMs = upstreamTimer()
+    const chatJson = translateMessagesToChatCompletionsResponse(
+      messagesJson as unknown as Parameters<typeof translateMessagesToChatCompletionsResponse>[0],
+    )
+
+    if (apiKeyId) {
+      await trackNonStreamingUsage(messagesJson, apiKeyId, model, client, upstreamId)
+      recordLatency(apiKeyId, model, colo, {
+        totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
+      }, requestId, {
+        stream: isStreaming,
+        inputTokens: chatJson.usage?.prompt_tokens,
+        outputTokens: chatJson.usage?.completion_tokens,
+        userAgent,
+        sourceApi: "chat-completions",
+        targetApi: "messages",
+        upstream: upstreamId,
+      }).catch(() => {})
+      recordWebSearchUsage(apiKeyId, meta)
+    }
+
+    if (isStreaming) {
+      const sseBody = replayChatCompletionAsSSE(
+        chatJson as unknown as OpenAIChatResponse,
+        searches.map((s) => ({
+          query: s.query,
+          content: "",
+          toolCallId: s.toolUseId,
+          isError: s.isError,
+        })),
+      )
+      const heartbeated = wrapOpenAIHeartbeat(sseBody)
+      const headers: Record<string, string> = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      }
+      addWebSearchHeaders(headers, meta)
+      return new Response(heartbeated, { headers })
+    }
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    addWebSearchHeaders(headers, meta)
+    return new Response(JSON.stringify(chatJson), { headers })
+  }
 
   if (isStreaming) {
     const upstream = await withConnectionMismatchRetry(

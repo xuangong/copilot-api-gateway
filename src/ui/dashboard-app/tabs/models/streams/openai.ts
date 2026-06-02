@@ -3,9 +3,16 @@ export interface StreamUsage {
   output_tokens: number
 }
 
+export interface WebSearchProgress {
+  status: "in_progress" | "searching" | "completed"
+  query?: string
+  item_id?: string
+}
+
 export type StreamChunk =
   | { type: "delta"; text: string }
   | { type: "usage"; usage: StreamUsage }
+  | { type: "web_search"; progress: WebSearchProgress }
 
 export async function* parseOpenAIStream(
   body: ReadableStream<Uint8Array>,
@@ -50,8 +57,26 @@ function parseLine(raw: string): StreamChunk | "DONE" | null {
     error?: { message?: string }
     choices?: Array<{ delta?: { content?: string } }>
     usage?: { prompt_tokens?: number; completion_tokens?: number }
+    _meta?: {
+      web_search?: {
+        status?: "in_progress" | "searching" | "completed"
+        query?: string
+        item_id?: string
+      }
+    }
   }
   if (obj.error) throw new Error(obj.error.message ?? "OpenAI stream error")
+  const ws = obj._meta?.web_search
+  if (ws && ws.status) {
+    return {
+      type: "web_search",
+      progress: {
+        status: ws.status,
+        ...(ws.query ? { query: ws.query } : {}),
+        ...(ws.item_id ? { item_id: ws.item_id } : {}),
+      },
+    }
+  }
   if (obj.usage && (obj.usage.prompt_tokens != null || obj.usage.completion_tokens != null)) {
     return {
       type: "usage",

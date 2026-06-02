@@ -1,4 +1,4 @@
-import type { OpenAIChatResponse } from "./openai-interceptor"
+import type { InterceptedSearch, OpenAIChatResponse } from "./openai-interceptor"
 
 const encoder = new TextEncoder()
 
@@ -22,6 +22,13 @@ interface ChatCompletionChunk {
     finish_reason: string | null
   }>
   usage?: OpenAIChatResponse["usage"]
+  _meta?: {
+    web_search?: {
+      status: "in_progress" | "searching" | "completed"
+      query?: string
+      item_id?: string
+    }
+  }
 }
 
 function buildChunkFromResponse(
@@ -61,18 +68,61 @@ function buildChunkFromResponse(
 
 /**
  * Synthesize a tiny SSE stream from a non-streaming chat completion response.
- * Emits a single chat.completion.chunk frame followed by `data: [DONE]`.
+ * Emits a content chunk, then a separate usage chunk (matching the wire
+ * shape produced by `stream_options.include_usage: true`), then `[DONE]`.
  *
- * Trade-off: not token-by-token, but every OpenAI SDK accepts a single chunk
- * and this lets us reuse the rest of the streaming plumbing unchanged.
+ * Why two frames: clients that follow the OpenAI streaming contract treat
+ * a frame as either "delta" OR "usage" — when both `choices[0].delta` and
+ * `usage` are present in one frame, some parsers (incl. our own dashboard)
+ * dispatch on usage first and drop the text. Splitting matches real upstream
+ * behaviour.
  */
 export function replayChatCompletionAsSSE(
   response: OpenAIChatResponse,
+  searches?: InterceptedSearch[],
 ): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     start(controller) {
       const chunk = buildChunkFromResponse(response)
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+      const usage = chunk.usage
+      const { usage: _omit, ...contentChunk } = chunk
+      // Surface intercept-loop search activity to dashboards/clients that
+      // honour `_meta.web_search`. Emitted BEFORE the content frame so the UI
+      // can render in-flight bubbles in the order the model issued them.
+      if (searches && searches.length > 0) {
+        for (const s of searches) {
+          const itemId = s.toolCallId || `ws_gw_${searches.indexOf(s)}`
+          for (const status of ["in_progress", "completed"] as const) {
+            const wsChunk: ChatCompletionChunk = {
+              id: chunk.id,
+              object: "chat.completion.chunk",
+              created: chunk.created,
+              model: chunk.model,
+              choices: [],
+              _meta: {
+                web_search: {
+                  status,
+                  item_id: itemId,
+                  ...(s.query ? { query: s.query } : {}),
+                },
+              },
+            }
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(wsChunk)}\n\n`))
+          }
+        }
+      }
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(contentChunk)}\n\n`))
+      if (usage) {
+        const usageChunk: ChatCompletionChunk = {
+          id: chunk.id,
+          object: "chat.completion.chunk",
+          created: chunk.created,
+          model: chunk.model,
+          choices: [],
+          usage,
+        }
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(usageChunk)}\n\n`))
+      }
       controller.enqueue(encoder.encode("data: [DONE]\n\n"))
       controller.close()
     },

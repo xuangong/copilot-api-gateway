@@ -27,6 +27,8 @@ interface RespOutputItem {
   arguments?: string
   summary?: Array<{ text?: string }>
   content?: Array<{ type: string; text?: string; refusal?: string }>
+  action?: { type?: string; query?: string; queries?: string[] }
+  status?: string
 }
 
 type RespEvent =
@@ -97,6 +99,22 @@ type RespEvent =
       type: "response.failed"
       response: { error?: { message?: string; type?: string; code?: string } }
     }
+  | {
+      type: "response.web_search_call.in_progress"
+      output_index: number
+      item_id?: string
+    }
+  | {
+      type: "response.web_search_call.searching"
+      output_index: number
+      item_id?: string
+      query?: string
+    }
+  | {
+      type: "response.web_search_call.completed"
+      output_index: number
+      item_id?: string
+    }
   | { type: "error"; message?: string; code?: string }
   | { type: string }
 
@@ -131,6 +149,18 @@ export interface ChatCompletionsChunk {
     completion_tokens: number
     total_tokens: number
     prompt_tokens_details?: { cached_tokens: number }
+  }
+  /**
+   * Non-standard progress annotation. Standard OpenAI clients ignore unknown
+   * top-level fields. Our dashboard surfaces this as a tool-progress bubble.
+   * Currently only `web_search`; extendable.
+   */
+  _meta?: {
+    web_search?: {
+      status: "searching" | "completed" | "in_progress"
+      query?: string
+      item_id?: string
+    }
   }
 }
 
@@ -179,6 +209,20 @@ function makeChunk(
     created: state.created,
     model: state.model,
     choices: [{ index: 0, delta, finish_reason: finishReason }],
+  }
+}
+
+function makeWebSearchChunk(
+  state: ResponsesToChatCompletionsState,
+  meta: NonNullable<ChatCompletionsChunk["_meta"]>["web_search"],
+): ChatCompletionsChunk {
+  return {
+    id: state.messageId || "chatcmpl-pending",
+    object: "chat.completion.chunk",
+    created: state.created,
+    model: state.model,
+    choices: [],
+    _meta: { web_search: meta },
   }
 }
 
@@ -246,6 +290,11 @@ export function translateResponsesEventToChatCompletionsChunks(
       return []
     case "response.output_item.added": {
       const e = ev as Extract<RespEvent, { type: "response.output_item.added" }>
+      if (e.item.type === "web_search_call") {
+        // Dedicated `response.web_search_call.in_progress` event handles
+        // the in-progress bubble; skip here to avoid duplicate UI rows.
+        return []
+      }
       if (e.item.type !== "function_call") return []
       state.hasFunctionCalls = true
       const toolCallIndex = state.nextToolCallIndex++
@@ -263,8 +312,42 @@ export function translateResponsesEventToChatCompletionsChunks(
         }),
       ]
     }
-    case "response.output_item.done":
+    case "response.output_item.done": {
+      const e = ev as Extract<RespEvent, { type: "response.output_item.done" }>
+      if (e.item.type === "web_search_call") {
+        const query = e.item.action?.query ?? e.item.action?.queries?.[0]
+        if (!query) return []
+        // Key by output_index, not item.id: upstream may use different ids
+        // across web_search_call.* and output_item.done for the same call,
+        // which fragments the UI into multiple rows instead of one.
+        return [
+          makeWebSearchChunk(state, {
+            status: "completed",
+            item_id: `ws_idx_${e.output_index}`,
+            query,
+          }),
+        ]
+      }
       return []
+    }
+    case "response.web_search_call.in_progress": {
+      const e = ev as Extract<RespEvent, { type: "response.web_search_call.in_progress" }>
+      return [makeWebSearchChunk(state, { status: "in_progress", item_id: `ws_idx_${e.output_index}` })]
+    }
+    case "response.web_search_call.searching": {
+      const e = ev as Extract<RespEvent, { type: "response.web_search_call.searching" }>
+      return [
+        makeWebSearchChunk(state, {
+          status: "searching",
+          item_id: `ws_idx_${e.output_index}`,
+          ...(e.query ? { query: e.query } : {}),
+        }),
+      ]
+    }
+    case "response.web_search_call.completed": {
+      const e = ev as Extract<RespEvent, { type: "response.web_search_call.completed" }>
+      return [makeWebSearchChunk(state, { status: "completed", item_id: `ws_idx_${e.output_index}` })]
+    }
     case "response.output_text.delta": {
       const e = ev as Extract<RespEvent, { type: "response.output_text.delta" }>
       return e.delta ? [makeChunk(state, { content: e.delta })] : []

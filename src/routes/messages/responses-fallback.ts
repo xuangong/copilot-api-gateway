@@ -5,6 +5,7 @@ import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
 import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
+import { hasWebSearch, loadWebSearchConfig, type MessagesPayload } from "~/services/web-search"
 import {
   createResponsesToMessagesStream,
   translateMessagesToResponses,
@@ -33,6 +34,15 @@ export async function handleMessagesViaResponses(
   const client = detectClient(userAgent)
   const model = payload.model
   const isStreaming = payload.stream !== false
+
+  // Web-search permission gate (parity with messages/web-search.ts and the
+  // OpenAI-side fallback). Translator below converts Anthropic's
+  // `web_search_20250305` server tool to Responses hosted `{type:"web_search"}`;
+  // this just enforces key-level permission.
+  if (hasWebSearch(payload as unknown as MessagesPayload)) {
+    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken, state.msGroundingKey)
+    if (!cfg.enabled) return cfg.errorResponse!
+  }
 
   const responsesPayload = translateMessagesToResponses(payload)
   responsesPayload.stream = isStreaming

@@ -16,6 +16,15 @@ import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import type { AppState } from "~/lib/state"
 import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { withConnectionMismatchRetry } from "~/services/copilot/connection-mismatch"
+import {
+  addWebSearchHeaders,
+  hasGeminiWebSearch,
+  interceptWebSearch,
+  loadWebSearchConfig,
+  recordWebSearchUsage,
+  synthChatCompletionChunks,
+  type MessagesPayload,
+} from "~/services/web-search"
 import type {
   GeminiGenerateContentRequest,
   GeminiGenerateContentResponse,
@@ -26,6 +35,10 @@ import {
   translateGeminiToMessages,
   translateMessagesToGeminiResponse,
 } from "~/translators/gemini-via-messages"
+import { translateMessagesToChatCompletionsResponse } from "~/translators/chat-completions-via-messages"
+import { translateChatCompletionsToGeminiResponse } from "~/translators/gemini-via-chat"
+import { createChatToGeminiJSONStream, createChatToGeminiSSEStream } from "~/translators/gemini-via-chat"
+import type { ChatCompletionResponse } from "~/services/gemini/format-conversion"
 
 interface RouteContext {
   state: AppState
@@ -50,6 +63,89 @@ export async function handleGeminiViaMessages(
 
   const target = translateGeminiToMessages(body, model)
   target.stream = isStreaming
+
+  // Gemini's hosted `googleSearch` tool is dropped by translateGeminiToOpenAI
+  // (only functionDeclarations survive). claude-* Copilot /v1/messages does
+  // NOT natively execute web_search, so run the gateway-side intercept loop.
+  // Mirrors the OpenAI-protocol intercept in
+  // chat-completions-messages-fallback.ts.
+  if (hasGeminiWebSearch(body)) {
+    const cfg = await loadWebSearchConfig(apiKeyId, state.githubToken, state.msGroundingKey)
+    if (!cfg.enabled) {
+      return new Response(
+        JSON.stringify({ error: { code: 400, message: "Web search is not enabled for this API key.", status: "FAILED_PRECONDITION" } }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      )
+    }
+    // Inject a `web_search` named tool so interceptWebSearch picks it up.
+    const interceptPayload: MessagesPayload = {
+      ...(target as unknown as MessagesPayload),
+      stream: false,
+      tools: [
+        ...((target as unknown as MessagesPayload).tools ?? []),
+        {
+          name: "web_search",
+          description: "Search the web for current information.",
+          input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+        } as MessagesPayload["tools"] extends Array<infer T> | undefined ? T : never,
+      ],
+    }
+    const upstreamTimer = startTimer()
+    const { response: messagesJson, meta, searches } = await interceptWebSearch(interceptPayload, {
+      copilotToken: state.copilotToken,
+      accountType: state.accountType,
+      engineOptions: cfg.engineOptions!,
+    })
+    const upstreamMs = upstreamTimer()
+    const chatJson = translateMessagesToChatCompletionsResponse(
+      messagesJson as unknown as Parameters<typeof translateMessagesToChatCompletionsResponse>[0],
+    )
+    const geminiJson = translateChatCompletionsToGeminiResponse(
+      chatJson as unknown as ChatCompletionResponse,
+      model,
+    )
+
+    if (apiKeyId) {
+      await trackNonStreamingUsage(messagesJson, apiKeyId, model, client, state.upstream)
+      recordLatency(apiKeyId, model, colo, {
+        totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
+      }, requestId, {
+        stream: isStreaming,
+        inputTokens: chatJson.usage?.prompt_tokens,
+        outputTokens: chatJson.usage?.completion_tokens,
+        userAgent,
+        sourceApi: "gemini",
+        targetApi: "messages",
+        upstream: state.upstream,
+      }).catch(() => {})
+      recordWebSearchUsage(apiKeyId, meta)
+    }
+
+    if (mode.kind === "stream") {
+      const synthesized = synthChatCompletionChunks(
+        chatJson as unknown as ChatCompletionResponse,
+        searches.map((s) => ({
+          query: s.query,
+          content: "",
+          toolCallId: s.toolUseId,
+          isError: s.isError,
+        })),
+      )
+      const transformStream = mode.useSSE
+        ? createChatToGeminiSSEStream()
+        : createChatToGeminiJSONStream()
+      const heartbeated = mode.useSSE ? wrapOpenAIHeartbeat(synthesized) : synthesized
+      const transformedBody = heartbeated?.pipeThrough(transformStream)
+      const headers: Record<string, string> = mode.useSSE
+        ? { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" }
+        : { "Content-Type": "application/json", "Transfer-Encoding": "chunked" }
+      addWebSearchHeaders(headers, meta)
+      return new Response(transformedBody, { headers })
+    }
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    addWebSearchHeaders(headers, meta)
+    return new Response(JSON.stringify(geminiJson), { headers })
+  }
 
   const binding = await resolveBinding(state, ctx.userId, model, "messages", upstreamPin)
   if (!binding) {

@@ -43,9 +43,25 @@ export async function* parseAnthropicStream(
           error?: { message?: string }
           message?: { usage?: { input_tokens?: number; output_tokens?: number } }
           usage?: { input_tokens?: number; output_tokens?: number }
+          item_id?: string
+          status?: "in_progress" | "searching" | "completed"
+          query?: string
         }
         if (currentEvent === "error" || obj.type === "error") {
           throw new Error(obj.error?.message ?? "Anthropic stream error")
+        }
+        if (currentEvent === "web_search_progress" || obj.type === "web_search_progress") {
+          if (obj.status) {
+            yield {
+              type: "web_search",
+              progress: {
+                status: obj.status,
+                ...(obj.query ? { query: obj.query } : {}),
+                ...(obj.item_id ? { item_id: obj.item_id } : {}),
+              },
+            }
+          }
+          continue
         }
         // message_start carries initial input_tokens; message_delta carries final output_tokens
         const startUsage = obj.message?.usage
