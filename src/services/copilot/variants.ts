@@ -26,7 +26,8 @@ const INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14"
 /** Betas Copilot upstream will accept verbatim. */
 const ALLOWED_ANTHROPIC_BETAS = new Set<string>([
   INTERLEAVED_THINKING_BETA,
-  "context-management-2025-06-27",
+  CONTEXT_1M_BETA,
+  "fine-grained-tool-streaming-2025-05-14",
   "advanced-tool-use-2025-11-20",
 ])
 
