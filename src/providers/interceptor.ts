@@ -37,7 +37,10 @@ export interface RequestContext {
 /**
  * Thunk that advances the chain to the next interceptor (or to the terminal
  * handler when the current interceptor is last). Calling it zero times
- * short-circuits; calling it more than once is allowed but typically unwise.
+ * short-circuits. Calling `run()` more than once re-executes the entire
+ * downstream suffix (subsequent interceptors + terminal). For terminal handlers
+ * that fire HTTP requests this means a second network round-trip — only do this
+ * intentionally (e.g. retry interceptor).
  */
 export type InterceptorRun<R> = () => Promise<R>
 

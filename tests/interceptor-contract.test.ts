@@ -43,4 +43,36 @@ describe("runInterceptors", () => {
     expect(result).toBe("short-circuit")
     expect(terminalCalled).toBe(false)
   })
+
+  test("terminal rejection propagates to caller", async () => {
+    await expect(
+      runInterceptors<Inv, Ctx, string>(
+        { value: 0 }, { trace: [] }, [],
+        async () => { throw new Error("terminal-boom") },
+      ),
+    ).rejects.toThrow("terminal-boom")
+  })
+
+  test("interceptor rejection short-circuits and propagates", async () => {
+    let terminalCalled = false
+    const thrower: Itc = async () => { throw new Error("itc-boom") }
+    await expect(
+      runInterceptors<Inv, Ctx, string>(
+        { value: 0 }, { trace: [] }, [thrower],
+        async () => { terminalCalled = true; return "unused" },
+      ),
+    ).rejects.toThrow("itc-boom")
+    expect(terminalCalled).toBe(false)
+  })
+
+  test("interceptor can catch downstream rejection and recover", async () => {
+    const recover: Itc = async (_inv, _c, run) => {
+      try { return await run() } catch { return "recovered" }
+    }
+    const result = await runInterceptors<Inv, Ctx, string>(
+      { value: 0 }, { trace: [] }, [recover],
+      async () => { throw new Error("downstream") },
+    )
+    expect(result).toBe("recovered")
+  })
 })
