@@ -28,6 +28,17 @@ function isImageGenerationToolChoice(choice: ToolChoice | undefined): boolean {
   )
 }
 
+/**
+ * True if the Responses payload requests the hosted `image_generation`
+ * tool — either via `tools[].type` or `tool_choice.type`. Used by the
+ * route entry to decide whether to dispatch the image-generation shim
+ * instead of forwarding the tool to an upstream that would reject it.
+ */
+export function hasResponsesImageGenerationTool(payload: ResponsesPayload): boolean {
+  if (Array.isArray(payload.tools) && payload.tools.some(isImageGenerationTool)) return true
+  return isImageGenerationToolChoice(payload.tool_choice)
+}
+
 export function stripImageGeneration(payload: ResponsesPayload): boolean {
   let removedTool = false
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { stripImageGeneration } from "~/transforms/strip-image-generation"
+import { hasResponsesImageGenerationTool, stripImageGeneration } from "~/transforms/strip-image-generation"
 import type { ResponsesPayload } from "~/transforms"
 
 const mk = (overrides: Partial<ResponsesPayload>): ResponsesPayload =>
@@ -90,5 +90,46 @@ describe("stripImageGeneration", () => {
   test("no-op on payload without tools", () => {
     const payload = mk({})
     expect(stripImageGeneration(payload)).toBe(false)
+  })
+})
+
+describe("hasResponsesImageGenerationTool", () => {
+  test("true when tools[] contains image_generation", () => {
+    const payload = mk({
+      tools: [
+        { type: "function", name: "lookup", parameters: { type: "object" }, strict: false },
+        { type: "image_generation" } as never,
+      ],
+    })
+    expect(hasResponsesImageGenerationTool(payload)).toBe(true)
+  })
+
+  test("true when tool_choice forces image_generation", () => {
+    const payload = mk({
+      tools: [{ type: "function", name: "lookup", parameters: { type: "object" }, strict: false }],
+      tool_choice: { type: "image_generation" },
+    })
+    expect(hasResponsesImageGenerationTool(payload)).toBe(true)
+  })
+
+  test("false when no image_generation tool or choice present", () => {
+    const payload = mk({
+      tools: [
+        { type: "function", name: "lookup", parameters: { type: "object" }, strict: false },
+        { type: "web_search" } as never,
+      ],
+      tool_choice: "auto",
+    })
+    expect(hasResponsesImageGenerationTool(payload)).toBe(false)
+  })
+
+  test("false on payload with no tools / no tool_choice", () => {
+    expect(hasResponsesImageGenerationTool(mk({}))).toBe(false)
+    expect(hasResponsesImageGenerationTool(mk({ tools: [] }))).toBe(false)
+  })
+
+  test("false on non-image hosted tool_choice forms", () => {
+    expect(hasResponsesImageGenerationTool(mk({ tool_choice: "required" }))).toBe(false)
+    expect(hasResponsesImageGenerationTool(mk({ tool_choice: { type: "web_search" } as never }))).toBe(false)
   })
 })
