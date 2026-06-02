@@ -17,6 +17,7 @@ import {
   forceStoreFalse,
   setClaudeAgentHeaders,
   setCompactHeaders,
+  stripStructuredOutputFormat,
 } from "~/transforms"
 import type {
   AnthropicMessagesPayload,
@@ -109,6 +110,9 @@ export class CopilotProvider implements ModelProvider {
       // initiator heuristic, and conversation-compaction overrides the
       // messages-proxy interaction-type that Claude Code identity sets.
       setCompactHeaders(payload as unknown as AnthropicMessagesPayload, headers)
+      // Strip output_config.format — Vertex-routed Copilot rejects
+      // structured_outputs via GCP org policy.
+      stripStructuredOutputFormat(payload as unknown as AnthropicMessagesPayload)
     }
 
     if (endpoint === "responses") {
