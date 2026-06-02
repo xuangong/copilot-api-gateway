@@ -59,6 +59,7 @@ export class D1Repo implements Repo {
   keyAssignments: Repo["keyAssignments"]
   observabilityShares: Repo["observabilityShares"]
   deviceCodes: Repo["deviceCodes"]
+  responsesItems: Repo["responsesItems"]
 
   constructor(db: D1Database) {
     const shared = buildSharedRepo(new D1Executor(db))
@@ -78,5 +79,6 @@ export class D1Repo implements Repo {
     this.keyAssignments = shared.keyAssignments
     this.observabilityShares = shared.observabilityShares
     this.deviceCodes = shared.deviceCodes
+    this.responsesItems = shared.responsesItems
   }
 }

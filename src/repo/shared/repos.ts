@@ -24,6 +24,8 @@ import type {
   PerformanceRepo,
   PerformanceSummaryRecord,
   Repo,
+  ResponsesItemRecord,
+  ResponsesItemsRepo,
   SessionRepo,
   UsageRecord,
   UsageRepo,
@@ -54,6 +56,7 @@ const SHARE_COLS = "owner_id, viewer_id, granted_by, granted_at"
 const DEVICE_COLS = "device_code, user_code, expires_at, user_id, session_token, created_at"
 const PERF_SUMMARY_COLS = "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, requests, errors, total_ms_sum"
 const PERF_BUCKET_COLS = "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, lower_ms, upper_ms, count"
+const RESPONSES_ITEMS_COLS = "id, api_key_id, kind, item_json, private_json, created_at, expires_at"
 
 function toApiKey(row: any): ApiKey {
   let priority: string[] | undefined
@@ -910,5 +913,57 @@ export function buildSharedRepo(x: SqlExecutor): Repo {
     keyAssignments: new SharedKeyAssignmentRepo(x),
     deviceCodes: new SharedDeviceCodeRepo(x),
     observabilityShares: new SharedObservabilityShareRepo(x),
+    responsesItems: new SharedResponsesItemsRepo(x),
+  }
+}
+
+function toResponsesItemRecord(r: any): ResponsesItemRecord {
+  return {
+    id: r.id,
+    apiKeyId: r.api_key_id ?? null,
+    kind: r.kind,
+    itemJson: r.item_json,
+    privateJson: r.private_json ?? null,
+    createdAt: r.created_at,
+    expiresAt: r.expires_at ?? null,
+  }
+}
+
+class SharedResponsesItemsRepo implements ResponsesItemsRepo {
+  constructor(private x: SqlExecutor) {}
+
+  async insertMany(records: ResponsesItemRecord[]): Promise<void> {
+    if (records.length === 0) return
+    for (const r of records) {
+      await this.x.run(
+        `INSERT INTO responses_items (${RESPONSES_ITEMS_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET
+           api_key_id = excluded.api_key_id,
+           kind = excluded.kind,
+           item_json = excluded.item_json,
+           private_json = excluded.private_json,
+           created_at = excluded.created_at,
+           expires_at = excluded.expires_at`,
+        [r.id, r.apiKeyId, r.kind, r.itemJson, r.privateJson, r.createdAt, r.expiresAt],
+      )
+    }
+  }
+
+  async lookupMany(ids: string[]): Promise<ResponsesItemRecord[]> {
+    if (ids.length === 0) return []
+    const placeholders = ids.map(() => "?").join(", ")
+    const rows = await this.x.all(
+      `SELECT ${RESPONSES_ITEMS_COLS} FROM responses_items WHERE id IN (${placeholders})`,
+      ids,
+    )
+    return rows.map(toResponsesItemRecord)
+  }
+
+  async deleteExpired(now: string): Promise<void> {
+    await this.x.run("DELETE FROM responses_items WHERE expires_at IS NOT NULL AND expires_at < ?", [now])
+  }
+
+  async deleteAll(): Promise<void> {
+    await this.x.run("DELETE FROM responses_items", [])
   }
 }

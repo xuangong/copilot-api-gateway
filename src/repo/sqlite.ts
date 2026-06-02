@@ -174,6 +174,18 @@ CREATE TABLE IF NOT EXISTS performance_latency_buckets (
 );
 
 CREATE INDEX IF NOT EXISTS idx_performance_latency_buckets_hour ON performance_latency_buckets (hour);
+
+CREATE TABLE IF NOT EXISTS responses_items (
+  id TEXT PRIMARY KEY,
+  api_key_id TEXT,
+  kind TEXT NOT NULL,
+  item_json TEXT NOT NULL,
+  private_json TEXT,
+  created_at TEXT NOT NULL,
+  expires_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_responses_items_expires ON responses_items (expires_at);
 `
 
 function hasColumn(db: Database, table: string, column: string): boolean {
@@ -615,6 +627,7 @@ export class SqliteRepo implements Repo {
   keyAssignments: Repo["keyAssignments"]
   observabilityShares: Repo["observabilityShares"]
   deviceCodes: Repo["deviceCodes"]
+  responsesItems: Repo["responsesItems"]
 
   constructor(db: Database) {
     db.exec(INIT_SQL)
@@ -636,6 +649,7 @@ export class SqliteRepo implements Repo {
     this.keyAssignments = shared.keyAssignments
     this.observabilityShares = shared.observabilityShares
     this.deviceCodes = shared.deviceCodes
+    this.responsesItems = shared.responsesItems
   }
 }
 

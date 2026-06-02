@@ -121,6 +121,24 @@ export type ResponseInputItem =
   | ResponseFunctionCallItem
   | ResponseFunctionCallOutputItem
   | ResponseItemReference
+  | ResponseWebSearchCallItem
+
+/**
+ * Gateway-minted web_search_call item echoed back by the client on a
+ * follow-up Responses turn. The `id` is a `ws_gw_<24hex>` reference into
+ * the gateway's `responses_items` table; the interceptor uses it to look
+ * up the original search results and splice an equivalent tool exchange
+ * into the upstream chat conversation.
+ */
+export interface ResponseWebSearchCallItem {
+  type: "web_search_call"
+  id: string
+  status?: "in_progress" | "searching" | "completed" | "failed"
+  action?: {
+    type: "search"
+    query?: string
+  }
+}
 
 export interface ResponseInputMessage {
   type: "message"

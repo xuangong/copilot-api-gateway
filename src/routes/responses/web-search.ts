@@ -1,17 +1,16 @@
 import { detectClient } from "~/lib/client-detect"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
-import { wrapOpenAIHeartbeat } from "~/lib/sse-heartbeat"
 import { trackNonStreamingUsage } from "~/middleware/usage"
 import {
   addWebSearchHeaders,
   interceptResponsesViaChat,
   loadWebSearchConfig,
   recordWebSearchUsage,
-  synthChatCompletionChunks,
+  synthResponsesSSE,
 } from "~/services/web-search"
 import type { ResponsesPayload } from "~/transforms"
 
-import { buildStreamTransform, type RouteContext } from "./utils"
+import { type RouteContext } from "./utils"
 
 /**
  * Chat-fallback web_search path (gpt-4.x etc.): upstream doesn't support
@@ -35,6 +34,7 @@ export async function handleWebSearchIntercepted(
     copilotToken: state.copilotToken,
     accountType: state.accountType,
     engineOptions: cfg.engineOptions!,
+    apiKeyId,
   })
   const upstreamMs = upstreamTimer()
 
@@ -56,16 +56,14 @@ export async function handleWebSearchIntercepted(
   }
 
   if (payload.stream === true) {
-    const synthesized = synthChatCompletionChunks(chatResponse)
-    const heartbeated = wrapOpenAIHeartbeat(synthesized)
-    const transformed = heartbeated?.pipeThrough(buildStreamTransform(payload, model))
+    const synthesized = synthResponsesSSE(responsesResult)
     const headers: Record<string, string> = {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
     }
     addWebSearchHeaders(headers, meta)
-    const streamResponse = new Response(transformed, { headers })
+    const streamResponse = new Response(synthesized, { headers })
     await recordSide()
     return streamResponse
   }

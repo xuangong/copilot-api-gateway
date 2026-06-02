@@ -135,8 +135,18 @@ export interface ResponsesAPIResponse {
 }
 
 interface ResponseOutputItem {
-  type: "message" | "function_call"
+  type: "message" | "function_call" | "web_search_call"
   [key: string]: unknown
+}
+
+export interface ResponseOutputWebSearchCall {
+  type: "web_search_call"
+  id: string
+  status: "completed" | "failed"
+  action: {
+    type: "search"
+    query: string
+  }
 }
 
 interface ResponseOutputMessage {

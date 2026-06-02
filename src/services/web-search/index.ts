@@ -69,6 +69,8 @@ export type {
   InterceptResponsesResult,
 } from "./responses-interceptor"
 
+export { synthResponsesSSE } from "./responses-sse-synth"
+
 export {
   hasGeminiWebSearch,
   interceptGeminiViaChat,

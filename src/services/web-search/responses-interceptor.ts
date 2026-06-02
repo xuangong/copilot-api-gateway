@@ -1,21 +1,39 @@
 import type { AccountType } from "~/config/constants"
+import { getRepo } from "~/repo"
+import type { ResponsesItemRecord } from "~/repo/types"
 import {
   translateResponsesToChatCompletions,
   translateChatCompletionsToResponses,
   type ChatCompletionResponse,
   type ResponsesAPIResponse,
 } from "~/services/responses"
-import type { ResponsesPayload, ResponseTool } from "~/transforms/types"
+import type {
+  ResponseFunctionCallItem,
+  ResponseFunctionCallOutputItem,
+  ResponseInputItem,
+  ResponsesPayload,
+  ResponseTool,
+  ResponseWebSearchCallItem,
+} from "~/transforms/types"
 
 import type { EngineManagerOptions } from "./engine-manager"
 import {
   interceptOpenAIChat,
+  type InterceptedSearch,
   type OpenAIChatPayload,
   type OpenAIChatResponse,
 } from "./openai-interceptor"
 import type { WebSearchMeta } from "./types"
 
 const RESPONSES_WEB_SEARCH_TYPES = new Set(["web_search", "web_search_preview"])
+
+const WS_GW_ID_RE = /^ws_gw_[0-9a-f]{24}$/
+
+/** Mint a gateway-side id for a freshly executed web_search_call. */
+function mintWsGwId(): string {
+  // crypto.randomUUID() = 8-4-4-4-12 hex w/ dashes. Strip and slice to 24 hex.
+  return `ws_gw_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`
+}
 
 /**
  * Detect web_search-style hosted tools in a Responses API payload.
@@ -43,22 +61,171 @@ function stripResponsesWebSearchTools(tools?: ResponseTool[] | null): ResponseTo
   return filtered.length > 0 ? filtered : undefined
 }
 
+/** Gateway-side state we persist next to a web_search_call item. */
+interface PrivateWsPayload {
+  query: string
+  content: string
+  /** chat-side tool_call_id; reused on replay so assistant+tool messages pair up. */
+  chatToolCallId: string
+}
+
+/**
+ * Restore step: walk payload.input, replace every echoed `web_search_call`
+ * item (whose id we recognise via the repo) with an equivalent
+ * `function_call` + `function_call_output` pair so the existing chat
+ * translator turns it into the assistant(tool_calls) + tool(result) pair
+ * the model expects.
+ *
+ * Returns the rewritten input plus the list of restored item ids (so we
+ * can re-emit them in the output verbatim — clients expect echoed items
+ * back in the new response).
+ */
+async function restoreEchoedWebSearchItems(
+  input: ResponsesPayload["input"],
+): Promise<{
+  rewrittenInput: ResponsesPayload["input"]
+  restored: Array<{ id: string; query: string }>
+}> {
+  if (!Array.isArray(input)) return { rewrittenInput: input, restored: [] }
+
+  // Collect candidate ids first so we can batch the lookup.
+  const candidateIds: string[] = []
+  for (const item of input) {
+    if (item.type === "web_search_call" && WS_GW_ID_RE.test(item.id)) {
+      candidateIds.push(item.id)
+    }
+  }
+  if (candidateIds.length === 0) return { rewrittenInput: input, restored: [] }
+
+  const repo = getRepo()
+  const records = await repo.responsesItems.lookupMany(candidateIds)
+  const byId = new Map<string, ResponsesItemRecord>()
+  for (const r of records) byId.set(r.id, r)
+
+  const rewrittenInput: ResponseInputItem[] = []
+  const restored: Array<{ id: string; query: string }> = []
+  for (const item of input) {
+    if (item.type === "web_search_call" && byId.has(item.id)) {
+      const rec = byId.get(item.id)!
+      let priv: PrivateWsPayload | null = null
+      try {
+        priv = rec.privateJson ? JSON.parse(rec.privateJson) as PrivateWsPayload : null
+      } catch {
+        priv = null
+      }
+      if (!priv) {
+        // Stored without the private payload — skip restoration but drop the item
+        // so the translator doesn't choke on the unknown type.
+        continue
+      }
+      const fc: ResponseFunctionCallItem = {
+        type: "function_call",
+        call_id: priv.chatToolCallId,
+        name: "web_search",
+        arguments: JSON.stringify({ query: priv.query }),
+      }
+      const fco: ResponseFunctionCallOutputItem = {
+        type: "function_call_output",
+        call_id: priv.chatToolCallId,
+        output: priv.content,
+      }
+      rewrittenInput.push(fc, fco)
+      restored.push({ id: item.id, query: priv.query })
+      continue
+    }
+    if (item.type === "web_search_call") {
+      // Unknown id (TTL'd, wrong gateway, …). Drop it silently — the model
+      // never saw the original results so there's nothing useful we can do.
+      continue
+    }
+    rewrittenInput.push(item)
+  }
+  return { rewrittenInput, restored }
+}
+
+/**
+ * Persist step: for every new web_search the loop ran this turn, mint a
+ * `ws_gw_*` id and write a `responses_items` row carrying the public
+ * web_search_call envelope plus the private result content needed to
+ * replay on the next turn.
+ */
+async function persistNewSearches(
+  apiKeyId: string | undefined,
+  searches: InterceptedSearch[],
+  ttlMs: number,
+): Promise<Array<{ id: string; query: string; isError: boolean }>> {
+  if (searches.length === 0) return []
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + ttlMs).toISOString()
+  const records: ResponsesItemRecord[] = []
+  const minted: Array<{ id: string; query: string; isError: boolean }> = []
+  for (const s of searches) {
+    const id = mintWsGwId()
+    const itemJson = JSON.stringify({
+      type: "web_search_call",
+      id,
+      status: s.isError ? "failed" : "completed",
+      action: { type: "search", query: s.query },
+    })
+    const privateJson = JSON.stringify({
+      query: s.query,
+      content: s.content,
+      chatToolCallId: s.toolCallId,
+    } satisfies PrivateWsPayload)
+    records.push({
+      id,
+      apiKeyId: apiKeyId ?? null,
+      kind: "web_search_call",
+      itemJson,
+      privateJson,
+      createdAt: now.toISOString(),
+      expiresAt,
+    })
+    minted.push({ id, query: s.query, isError: s.isError })
+  }
+  try {
+    await getRepo().responsesItems.insertMany(records)
+  } catch (err) {
+    console.error("[Web Search] Failed to persist responses_items:", err)
+    // Persistence failure doesn't fail the request — the SDK just can't replay later.
+  }
+  return minted
+}
+
 export interface InterceptResponsesOptions {
   copilotToken: string
   accountType: AccountType
   engineOptions: EngineManagerOptions
+  /** Owning api key id — required for persistence; if absent, items are still minted but stored with null owner. */
+  apiKeyId?: string
+  /** TTL for persisted items. Default 24h. */
+  itemTtlMs?: number
+}
+
+export interface InterceptedWebSearchItem {
+  id: string
+  query: string
+  isError: boolean
 }
 
 export interface InterceptResponsesResult {
   responsesResult: ResponsesAPIResponse
   chatResponse: OpenAIChatResponse
   meta: WebSearchMeta
+  /** Echoed back from a prior turn; we re-emit them so the client sees a stable id chain. */
+  restoredItems: Array<{ id: string; query: string }>
+  /** Newly minted this turn; persisted to repo for the next turn to replay. */
+  mintedItems: InterceptedWebSearchItem[]
 }
+
+const DEFAULT_ITEM_TTL_MS = 24 * 60 * 60 * 1000
 
 /**
  * Run the chat-fallback Responses intercept loop:
- *   Responses payload → Chat payload → multi-turn web_search loop →
- *   Chat response → Responses response.
+ *   Responses payload → (restore echoed web_search_call items) →
+ *   Chat payload → multi-turn web_search loop → Chat response →
+ *   Responses response (with restored + minted web_search_call items
+ *   spliced into output).
  *
  * Only used for non-gpt-5.x models (the path that already converts via
  * /chat/completions). gpt-5.x direct passthrough is handled separately
@@ -69,21 +236,22 @@ export async function interceptResponsesViaChat(
   options: InterceptResponsesOptions,
 ): Promise<InterceptResponsesResult> {
   const model = payload.model
-  // Drop web_search tools before translation — convertTools already filters
-  // them, but being explicit avoids depending on that internal behaviour.
+
+  const { rewrittenInput, restored } = await restoreEchoedWebSearchItems(payload.input)
+
   const cleanedPayload: ResponsesPayload = {
     ...payload,
+    input: rewrittenInput,
     tools: stripResponsesWebSearchTools(payload.tools),
   }
 
   const chatPayload = translateResponsesToChatCompletions(cleanedPayload, model)
-  // Force non-stream upstream — the loop always runs synchronous turns.
   const interceptPayload: OpenAIChatPayload = {
     ...(chatPayload as unknown as OpenAIChatPayload),
     stream: false,
   }
 
-  const { response: chatResponse, meta } = await interceptOpenAIChat(
+  const { response: chatResponse, meta, searches } = await interceptOpenAIChat(
     interceptPayload,
     {
       copilotToken: options.copilotToken,
@@ -92,11 +260,46 @@ export async function interceptResponsesViaChat(
     },
   )
 
+  const minted = await persistNewSearches(
+    options.apiKeyId,
+    searches,
+    options.itemTtlMs ?? DEFAULT_ITEM_TTL_MS,
+  )
+
   const responsesResult = translateChatCompletionsToResponses(
     chatResponse as unknown as ChatCompletionResponse,
     model,
     payload,
   )
 
-  return { responsesResult, chatResponse, meta }
+  // Splice web_search_call items into output ahead of the message item so
+  // SDK clients see them with the gateway-minted ids.
+  const synthesisedItems: ResponseWebSearchCallItem[] = [
+    ...restored.map((r): ResponseWebSearchCallItem => ({
+      type: "web_search_call",
+      id: r.id,
+      status: "completed",
+      action: { type: "search", query: r.query },
+    })),
+    ...minted.map((m): ResponseWebSearchCallItem => ({
+      type: "web_search_call",
+      id: m.id,
+      status: m.isError ? "failed" : "completed",
+      action: { type: "search", query: m.query },
+    })),
+  ]
+  if (synthesisedItems.length > 0) {
+    responsesResult.output = [
+      ...synthesisedItems as unknown as typeof responsesResult.output,
+      ...responsesResult.output,
+    ]
+  }
+
+  return {
+    responsesResult,
+    chatResponse,
+    meta,
+    restoredItems: restored,
+    mintedItems: minted,
+  }
 }

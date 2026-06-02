@@ -379,6 +379,35 @@ export interface DeviceCodeRepo {
   delete(deviceCode: string): Promise<void>
 }
 
+/**
+ * A stored Responses-API output item that the gateway minted on the client's
+ * behalf (currently only `web_search_call`). Persisted so that when a SDK
+ * client echoes the item id back in a multi-turn request input, the gateway
+ * can restore the private payload (search results, queries) and replay it
+ * into the chat-fallback conversation.
+ *
+ * `itemJson` is the public-facing item exactly as the gateway emitted it.
+ * `privateJson` is gateway-side state (e.g. raw search results) the client
+ * never sees but is needed to reconstruct an equivalent tool call/response
+ * pair on the next turn.
+ */
+export interface ResponsesItemRecord {
+  id: string
+  apiKeyId: string | null
+  kind: string
+  itemJson: string
+  privateJson: string | null
+  createdAt: string
+  expiresAt: string | null
+}
+
+export interface ResponsesItemsRepo {
+  insertMany(records: ResponsesItemRecord[]): Promise<void>
+  lookupMany(ids: string[]): Promise<ResponsesItemRecord[]>
+  deleteExpired(now: string): Promise<void>
+  deleteAll(): Promise<void>
+}
+
 export interface Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -396,4 +425,5 @@ export interface Repo {
   keyAssignments: KeyAssignmentRepo
   observabilityShares: ObservabilityShareRepo
   deviceCodes: DeviceCodeRepo
+  responsesItems: ResponsesItemsRepo
 }

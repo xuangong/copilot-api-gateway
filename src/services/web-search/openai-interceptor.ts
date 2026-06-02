@@ -185,16 +185,33 @@ async function callChat(
 /**
  * Run the multi-turn web_search loop against /chat/completions.
  * Always non-stream upstream — caller replays as SSE if the client wanted streaming.
+ *
+ * `searches` lists every web_search executed this call in turn order, with the
+ * upstream tool_call_id and the formatted result content the model was fed.
+ * The Responses interceptor uses this to mint `ws_gw_*` ids and persist the
+ * private payload so future turns can replay the same exchange.
  */
+export interface InterceptedSearch {
+  query: string
+  content: string
+  toolCallId: string
+  isError: boolean
+}
+
 export async function interceptOpenAIChat(
   payload: OpenAIChatPayload,
   options: InterceptOpenAIOptions,
-): Promise<{ response: OpenAIChatResponse; meta: WebSearchMeta }> {
+): Promise<{
+  response: OpenAIChatResponse
+  meta: WebSearchMeta
+  searches: InterceptedSearch[]
+}> {
   const meta = emptyMeta()
   const engineManager = new EngineManager(options.engineOptions)
   const prepared = prepareOpenAIPayload(payload)
 
   const messages: OpenAIMessage[] = [...(prepared.messages ?? [])]
+  const searches: InterceptedSearch[] = []
   let searchCount = 0
 
   // Defensive: bound iteration count separately from search count.
@@ -210,12 +227,12 @@ export async function interceptOpenAIChat(
     if (webSearchCalls.length === 0 || hasOtherCalls) {
       // Either no web_search to run, or the model also asked for other tools —
       // hand control back to the caller in either case.
-      return { response, meta }
+      return { response, meta, searches }
     }
 
     if (searchCount >= MAX_USES_HARD_LIMIT) {
       // Hit the hard cap — return whatever upstream gave us this turn.
-      return { response, meta }
+      return { response, meta, searches }
     }
 
     // Replay the assistant message verbatim (preserves tool_calls structure
@@ -228,27 +245,35 @@ export async function interceptOpenAIChat(
 
     for (const call of webSearchCalls) {
       if (searchCount >= MAX_USES_HARD_LIMIT) {
+        const errContent = `Error: Maximum web search uses (${MAX_USES_HARD_LIMIT}) exceeded`
         messages.push({
           role: "tool",
           tool_call_id: call.id,
-          content: `Error: Maximum web search uses (${MAX_USES_HARD_LIMIT}) exceeded`,
+          content: errContent,
+        })
+        searches.push({
+          query: parseQuery(call.function?.arguments ?? ""),
+          content: errContent,
+          toolCallId: call.id,
+          isError: true,
         })
         continue
       }
       searchCount++
       meta.searchCount = searchCount
       const query = parseQuery(call.function?.arguments ?? "")
-      const { content } = await executeWebSearch(query, null, engineManager, meta)
+      const { content, isError } = await executeWebSearch(query, null, engineManager, meta)
       messages.push({
         role: "tool",
         tool_call_id: call.id,
         content,
       })
+      searches.push({ query, content, toolCallId: call.id, isError })
     }
   }
 
   // Should be unreachable — loop above always returns once it stops finding
   // web_search calls. Defensive final upstream call so we never return undefined.
   const finalResponse = await callChat({ ...prepared, messages }, options)
-  return { response: finalResponse, meta }
+  return { response: finalResponse, meta, searches }
 }
