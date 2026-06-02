@@ -25,6 +25,7 @@ import {
   type PromoteThinkingDisplayResult,
 } from "./promote-thinking-display"
 import { adaptThinkingForModel, filterThinkingBlocks } from "./thinking-cleanup"
+import { stripToolStrict } from "./strip-tool-strict"
 import { fixApplyPatchTools } from "./tool-type"
 import type { AnthropicMessagesPayload, ResponsesPayload } from "./types"
 
@@ -47,6 +48,8 @@ export function runAnthropicMessagesPipeline(
   filterThinkingBlocks(payload)
   adaptThinkingForModel(payload)
   stripCacheControl(payload as unknown as Record<string, unknown>)
+  // Vertex-backed Copilot rejects tools.N.strict:true with FAILED_PRECONDITION.
+  stripToolStrict(payload)
   // Copilot rejects tools.N.custom.eager_input_streaming with
   // "Extra inputs are not permitted". Strip before forwarding.
   if (Array.isArray(payload.tools)) {

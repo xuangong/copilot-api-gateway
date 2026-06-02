@@ -22,6 +22,9 @@ export { stripServiceTier, type ServiceTierStripResult } from "./service-tier-st
 // Tool type transforms
 export { fixApplyPatchTools, stripWebSearchTools } from "./tool-type"
 
+// Strip tools[].strict (Vertex-backed Copilot rejects structured_outputs)
+export { stripToolStrict } from "./strip-tool-strict"
+
 // Responses → chat-completions payload compactor (codex 413 mitigation)
 export { compactResponsesInputForChatFallback } from "./compact-responses-input"
 export type { CompactStats } from "./compact-responses-input"
