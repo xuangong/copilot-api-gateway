@@ -13,14 +13,16 @@ import type { ModelPricing } from "~/protocols/common"
 type PricingRule = readonly [key: string | RegExp, pricing: ModelPricing]
 
 const CLAUDE_VARIANT_SUFFIX = /-(?:high|xhigh|1m(?:-internal)?)$/
-const CLAUDE_DATE_SUFFIX = /-\d{8}$/
+// Claude advertises dates as `-20251001`; OpenAI/Copilot ship `-2026-04-23`.
+// Strip both before pricing lookup so dated snapshots fall back to the base id.
+const DATE_SUFFIX = /-(?:\d{8}|\d{4}-\d{2}-\d{2})$/
 
 /** Convert raw upstream model id to the public id used as pricing key. */
 export function copilotPublicModelId(id: string): string {
-  if (!id.startsWith("claude-")) return id
-  return id
+  const dateless = id.replace(DATE_SUFFIX, "")
+  if (!dateless.startsWith("claude-")) return dateless
+  return dateless
     .replace(/(?<=-)(\d+)-(\d+)(?=-|$)/g, "$1.$2")
-    .replace(CLAUDE_DATE_SUFFIX, "")
     .replace(CLAUDE_VARIANT_SUFFIX, "")
     .replace(/(\d)\.(\d)/g, "$1-$2")
 }
