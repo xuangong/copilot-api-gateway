@@ -54,23 +54,38 @@ beforeEach(() => {
 describe("withInlineImagesCompressed (messages)", () => {
   test("compresses inline image when flag enabled", async () => {
     const inv = makeInv(true, true)
-    const result = await withInlineImagesCompressed(inv, ctx, async () => FAKE_RESPONSE)
+    let runCalls = 0
+    const result = await withInlineImagesCompressed(inv, ctx, async () => {
+      runCalls++
+      return FAKE_RESPONSE
+    })
     expect(result).toBe(FAKE_RESPONSE)
     expect(spy.calls).toBe(1)
+    expect(runCalls).toBe(1)
   })
 
   test("skips compression when flag disabled but still delegates", async () => {
     const inv = makeInv(false, true)
-    const result = await withInlineImagesCompressed(inv, ctx, async () => FAKE_RESPONSE)
+    let runCalls = 0
+    const result = await withInlineImagesCompressed(inv, ctx, async () => {
+      runCalls++
+      return FAKE_RESPONSE
+    })
     expect(result).toBe(FAKE_RESPONSE)
     expect(spy.calls).toBe(0)
+    expect(runCalls).toBe(1)
   })
 
   test("no-op when payload has no images, still delegates", async () => {
     const inv = makeInv(true, false)
-    const result = await withInlineImagesCompressed(inv, ctx, async () => FAKE_RESPONSE)
+    let runCalls = 0
+    const result = await withInlineImagesCompressed(inv, ctx, async () => {
+      runCalls++
+      return FAKE_RESPONSE
+    })
     expect(result).toBe(FAKE_RESPONSE)
     expect(spy.calls).toBe(0)
+    expect(runCalls).toBe(1)
   })
 
   test("propagates terminal response unchanged (no result mutation)", async () => {
