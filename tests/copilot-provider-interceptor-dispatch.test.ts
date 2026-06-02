@@ -100,7 +100,7 @@ describe("CopilotProvider dispatch via interceptors", () => {
     expect(call!.extraHeaders["copilot-integration-id"]).toBeDefined()
   })
 
-  test("messages_count_tokens: now runs compressInlineImagesMessages (latent bug fix)", async () => {
+  test("messages_count_tokens: runs the full messages payload chain (incl. compressInlineImagesMessages)", async () => {
     await provider().fetch(
       "messages_count_tokens",
       {
