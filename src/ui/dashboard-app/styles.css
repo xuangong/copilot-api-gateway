@@ -507,6 +507,17 @@ select option {
   font-size: 12px !important;
 }
 
+/* iOS Safari auto-zooms on focus when input font-size < 16px.
+   Bump composer inputs to 16px on small viewports to suppress the zoom. */
+@media (max-width: 640px) {
+  .pg-composer textarea {
+    font-size: 16px !important;
+  }
+  .pg-url-row input {
+    font-size: 16px !important;
+  }
+}
+
 /* Top bar — compact */
 .pg-topbar {
   display: flex; align-items: center; gap: 10px;
@@ -514,6 +525,26 @@ select option {
   border-bottom: 1px solid var(--border-color);
   flex-wrap: wrap;
   font-size: 12px;
+}
+.pg-topbar > .ml-auto {
+  margin-left: auto;
+}
+@media (max-width: 640px) {
+  .pg-topbar {
+    gap: 6px 8px;
+    padding: 8px 12px;
+  }
+  /* Right cluster: hug content, wrap to next line only when needed,
+     and stay right-aligned via the auto margin from .ml-auto */
+  .pg-topbar > .ml-auto {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  /* Tighter buttons so the row fits on narrow viewports without wrapping */
+  .pg-topbar .ml-auto > button {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
 }
 .pg-topbar-sep { color: var(--text-dim); opacity: 0.5; }
 .pg-topbar select,

@@ -9,6 +9,31 @@ import { renderMarkdown } from "./markdown"
 type Protocol = "openai" | "anthropic" | "gemini"
 type Role = "user" | "assistant"
 
+const LS_PROTOCOL = "playground.protocol"
+const LS_MESSAGES = "playground.messages"
+const MAX_PERSISTED_MESSAGES = 50
+
+function loadPersistedMessages(): Message[] {
+  try {
+    const raw = localStorage.getItem(LS_MESSAGES)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as Message[]
+    if (!Array.isArray(parsed)) return []
+    // Drop any trailing streaming-in-progress assistant bubble that may have
+    // been persisted without text (e.g. tab closed mid-stream).
+    const last = parsed[parsed.length - 1]
+    if (last && last.role === "assistant" && !last.text) parsed.pop()
+    return parsed
+  } catch {
+    return []
+  }
+}
+
+function loadPersistedProtocol(): Protocol {
+  const v = localStorage.getItem(LS_PROTOCOL)
+  return v === "anthropic" || v === "gemini" ? v : "openai"
+}
+
 interface Message {
   role: Role
   text: string
@@ -26,8 +51,8 @@ interface Props {
 
 export function ChatPanel({ modelId, apiKey, systemPrompt, onRevertModel }: Props) {
   const t = useT()
-  const [protocol, setProtocol] = useState<Protocol>("openai")
-  const [messages, setMessages] = useState<Message[]>([])
+  const [protocol, setProtocol] = useState<Protocol>(() => loadPersistedProtocol())
+  const [messages, setMessages] = useState<Message[]>(() => loadPersistedMessages())
   const [input, setInput] = useState("")
   const [imageUrl, setImageUrl] = useState("")
   const [imageDataUrl, setImageDataUrl] = useState("")
@@ -41,6 +66,22 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, onRevertModel }: Prop
   const lastUserRef = useRef<Message | null>(null)
   const startedAtRef = useRef<number>(0)
   const lastDepsRef = useRef<{ modelId: string; protocol: Protocol }>({ modelId, protocol })
+
+  useEffect(() => {
+    localStorage.setItem(LS_PROTOCOL, protocol)
+  }, [protocol])
+
+  // Persist messages only between streams so we don't write on every delta.
+  // The post-stream finalize update will re-trigger this with the final text.
+  useEffect(() => {
+    if (streaming) return
+    try {
+      const slice = messages.slice(-MAX_PERSISTED_MESSAGES)
+      localStorage.setItem(LS_MESSAGES, JSON.stringify(slice))
+    } catch {
+      /* quota exceeded, ignore */
+    }
+  }, [messages, streaming])
 
   // Track model+protocol changes; if there are messages, surface inline confirm bar
   // rather than wiping silently.

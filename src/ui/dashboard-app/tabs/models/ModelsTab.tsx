@@ -7,6 +7,9 @@ import { ChatPanel } from "./ChatPanel"
 
 const LS_KEY_ID = "playground.keyId"
 const LS_OPEN_GROUPS = "playground.openGroups"
+const LS_MODEL_ID = "playground.modelId"
+const LS_SYSTEM_PROMPT = "playground.systemPrompt"
+const LS_SYSTEM_OPEN = "playground.systemOpen"
 const MOBILE_BREAKPOINT = 768
 
 export function ModelsTab() {
@@ -17,7 +20,7 @@ export function ModelsTab() {
   const [models, setModels] = useState<PlaygroundModel[] | null>(null)
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
-  const [selectedModelId, setSelectedModelId] = useState<string>("")
+  const [selectedModelId, setSelectedModelId] = useState<string>(() => localStorage.getItem(LS_MODEL_ID) ?? "")
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     try {
       const raw = localStorage.getItem(LS_OPEN_GROUPS)
@@ -26,8 +29,8 @@ export function ModelsTab() {
       return {}
     }
   })
-  const [systemPrompt, setSystemPrompt] = useState("")
-  const [systemOpen, setSystemOpen] = useState(false)
+  const [systemPrompt, setSystemPrompt] = useState(() => localStorage.getItem(LS_SYSTEM_PROMPT) ?? "")
+  const [systemOpen, setSystemOpen] = useState(() => localStorage.getItem(LS_SYSTEM_OPEN) === "1")
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false,
   )
@@ -42,7 +45,7 @@ export function ModelsTab() {
   useEffect(() => {
     listKeys()
       .then((all) => {
-        const enabled = all.filter((k) => k.is_owner)
+        const enabled = all.slice()
         enabled.sort((a, b) => a.created_at.localeCompare(b.created_at))
         setKeys(enabled)
         if (enabled.length === 0) return
@@ -57,6 +60,18 @@ export function ModelsTab() {
   useEffect(() => {
     if (selectedKeyId) localStorage.setItem(LS_KEY_ID, selectedKeyId)
   }, [selectedKeyId])
+
+  useEffect(() => {
+    if (selectedModelId) localStorage.setItem(LS_MODEL_ID, selectedModelId)
+  }, [selectedModelId])
+
+  useEffect(() => {
+    localStorage.setItem(LS_SYSTEM_PROMPT, systemPrompt)
+  }, [systemPrompt])
+
+  useEffect(() => {
+    localStorage.setItem(LS_SYSTEM_OPEN, systemOpen ? "1" : "0")
+  }, [systemOpen])
 
   useEffect(() => {
     if (!selectedKeyId || !keys) return
@@ -87,14 +102,17 @@ export function ModelsTab() {
   }, [models, search])
 
   useEffect(() => {
-    if (selectedModelId) return
+    if (!models) return
+    // Keep remembered selection if still available; otherwise fall back to the first model.
+    const exists = selectedModelId && models.some((m) => m.id === selectedModelId)
+    if (exists) return
     for (const arr of grouped.values()) {
       if (arr.length) {
         setSelectedModelId(arr[0]!.id)
         return
       }
     }
-  }, [grouped, selectedModelId])
+  }, [grouped, models, selectedModelId])
 
   function toggleGroup(g: string) {
     setOpenGroups((prev) => {
