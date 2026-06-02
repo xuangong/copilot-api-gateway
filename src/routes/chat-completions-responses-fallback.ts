@@ -67,9 +67,11 @@ export async function handleChatCompletionsViaResponses(
   if (isStreaming) {
     const upstream = await withConnectionMismatchRetry(
       respPayload as unknown as Record<string, unknown>,
-      (p) => provider.callResponses(p as Record<string, unknown>, {
-        operationName: "chat completions (via responses)",
-      }),
+      (p) => provider.fetch(
+        "responses",
+        { method: "POST", body: JSON.stringify(p) },
+        { operationName: "chat completions (via responses)" },
+      ),
     )
     const upstreamMs = upstreamTimer()
 
@@ -106,9 +108,11 @@ export async function handleChatCompletionsViaResponses(
   const syncPromise = (async () => {
     const upstream = await withConnectionMismatchRetry(
       respPayload as unknown as Record<string, unknown>,
-      (p) => provider.callResponses(p as Record<string, unknown>, {
-        operationName: "chat completions (via responses)",
-      }),
+      (p) => provider.fetch(
+        "responses",
+        { method: "POST", body: JSON.stringify(p) },
+        { operationName: "chat completions (via responses)" },
+      ),
     )
     upstreamMs = upstreamTimer()
     const respJson = (await upstream.json()) as ResponsesResultLike

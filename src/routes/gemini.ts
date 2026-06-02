@@ -159,8 +159,9 @@ async function handleGenerateContent(ctx: RouteContext) {
   const upstreamId = binding.upstream
   let upstreamMs = 0
   const syncPromise: Promise<{ chat: ChatCompletionResponse; gemini: GeminiGenerateContentResponse }> = (async () => {
-    const response = await provider.callChatCompletions(
-      cleanPayload,
+    const response = await provider.fetch(
+      "chat_completions",
+      { method: "POST", body: JSON.stringify(cleanPayload) },
       { operationName: "gemini generate content" },
     )
     upstreamMs = upstreamTimer()
@@ -232,8 +233,9 @@ async function handleCountTokens(ctx: RouteContext) {
       { status: 404, headers: { "Content-Type": "application/json" } },
     )
   }
-  const response = await binding.provider.callMessagesCountTokens(
-    payload as unknown as Record<string, unknown>,
+  const response = await binding.provider.fetch(
+    "messages_count_tokens",
+    { method: "POST", body: JSON.stringify(payload) },
     { operationName: "gemini count tokens" },
   )
 
@@ -350,8 +352,9 @@ async function handleStreamGenerateContent(
     )
   }
   const upstreamId = binding.upstream
-  const response = await binding.provider.callChatCompletions(
-    cleanPayload,
+  const response = await binding.provider.fetch(
+    "chat_completions",
+    { method: "POST", body: JSON.stringify(cleanPayload) },
     { operationName: "gemini stream generate content" },
   )
   const upstreamMs = upstreamTimer()

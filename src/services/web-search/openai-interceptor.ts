@@ -171,8 +171,12 @@ async function callChat(
   payload: OpenAIChatPayload,
   options: InterceptOpenAIOptions,
 ): Promise<OpenAIChatResponse> {
-  const response = await createCopilotProvider({ copilotToken: options.copilotToken, accountType: options.accountType }).callChatCompletions(
-    { ...payload, stream: false } as unknown as Record<string, unknown>,
+  const response = await createCopilotProvider({
+    copilotToken: options.copilotToken,
+    accountType: options.accountType,
+  }).fetch(
+    "chat_completions",
+    { method: "POST", body: JSON.stringify({ ...payload, stream: false }) },
     { operationName: "chat completions (web_search intercept)", extraHeaders: options.extraHeaders },
   )
   return (await response.json()) as OpenAIChatResponse

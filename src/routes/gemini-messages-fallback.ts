@@ -66,9 +66,11 @@ export async function handleGeminiViaMessages(
     const upstream = await withConnectionMismatchRetry(
       target as unknown as Record<string, unknown>,
       (p) =>
-        provider.callMessages(p as Record<string, unknown>, {
-          operationName: "gemini stream generate content (via messages)",
-        }),
+        provider.fetch(
+          "messages",
+          { method: "POST", body: JSON.stringify(p) },
+          { operationName: "gemini stream generate content (via messages)" },
+        ),
     )
     const upstreamMs = upstreamTimer()
 
@@ -114,9 +116,11 @@ export async function handleGeminiViaMessages(
     const upstream = await withConnectionMismatchRetry(
       target as unknown as Record<string, unknown>,
       (p) =>
-        provider.callMessages(p as Record<string, unknown>, {
-          operationName: "gemini generate content (via messages)",
-        }),
+        provider.fetch(
+          "messages",
+          { method: "POST", body: JSON.stringify(p) },
+          { operationName: "gemini generate content (via messages)" },
+        ),
     )
     upstreamMs = upstreamTimer()
     const messagesJson = (await upstream.json()) as Parameters<

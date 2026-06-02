@@ -5,12 +5,10 @@ import { bindingServesEndpoint, bindingsForEndpoint } from "~/providers/binding"
 const stubProvider = {
   kind: "copilot" as const,
   name: "stub",
-  getModels: () => Promise.resolve({} as never),
-  callChatCompletions: () => Promise.resolve(new Response()),
-  callResponses: () => Promise.resolve(new Response()),
-  callMessages: () => Promise.resolve(new Response()),
-  callMessagesCountTokens: () => Promise.resolve(new Response()),
-  callEmbeddings: () => Promise.resolve(new Response()),
+  supportedEndpoints: ["chat_completions", "responses", "messages", "messages_count_tokens", "embeddings"] as const,
+  getModels: () => Promise.resolve({ object: "list", data: [] }),
+  probe: () => Promise.resolve({ ok: true }),
+  fetch: () => Promise.resolve(new Response()),
 }
 
 function makeBinding(

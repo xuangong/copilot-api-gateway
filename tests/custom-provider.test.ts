@@ -12,7 +12,7 @@ describe("CustomProvider constructor", () => {
   })
   test("defaults to chat_completions + embeddings endpoints", () => {
     const p = new CustomProvider({ name: "x", baseUrl: "https://x", apiKey: "k" })
-    expect(p.endpoints).toEqual(["chat_completions", "embeddings"])
+    expect(p.supportedEndpoints).toEqual(["chat_completions", "embeddings"])
     expect(p.kind).toBe("custom")
     expect(p.name).toBe("x")
   })
@@ -23,7 +23,7 @@ describe("CustomProvider constructor", () => {
       apiKey: "k",
       endpoints: ["chat_completions", "responses"],
     })
-    expect(p.endpoints).toEqual(["chat_completions", "responses"])
+    expect(p.supportedEndpoints).toEqual(["chat_completions", "responses"])
   })
 })
 
@@ -42,13 +42,16 @@ describe("CustomProvider request shape", () => {
     globalThis.fetch = originalFetch
   })
 
-  test("callChatCompletions sends bearer auth and POST body", async () => {
+  test("fetch('chat_completions') sends bearer auth and POST body", async () => {
     const p = new CustomProvider({
       name: "deepseek",
       baseUrl: "https://api.deepseek.com/v1/",
       apiKey: "sk-123",
     })
-    await p.callChatCompletions({ model: "x", messages: [] })
+    await p.fetch(
+      "chat_completions",
+      { method: "POST", body: JSON.stringify({ model: "x", messages: [] }) },
+    )
     expect(captured).not.toBeNull()
     expect(captured!.url).toBe("https://api.deepseek.com/v1/chat/completions")
     expect(captured!.init.method).toBe("POST")
@@ -64,7 +67,7 @@ describe("CustomProvider request shape", () => {
       apiKey: "k",
       defaultHeaders: { "X-Trace": "abc" },
     })
-    await p.callEmbeddings({ input: "hi" })
+    await p.fetch("embeddings", { method: "POST", body: JSON.stringify({ input: "hi" }) })
     const headers = captured!.init.headers as Record<string, string>
     expect(headers["X-Trace"]).toBe("abc")
     expect(headers.Authorization).toBe("Bearer k")

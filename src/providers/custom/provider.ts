@@ -11,10 +11,10 @@
 
 import { HTTPError } from "~/lib/error"
 import { fetchWithRetry } from "~/lib/fetch-retry"
-import type { ModelEndpoint } from "~/protocols/common"
+import { type EndpointKey } from "~/protocols/common"
 import type { ModelsResponse } from "~/services/copilot/models"
 
-import type { ModelProvider, ProbeResult, ProviderCallOptions } from "../types"
+import type { ModelProvider, ProbeResult, ProviderCallOptions, ProviderFetchOptions } from "../types"
 import { probeViaModels } from "../probe"
 
 export interface CustomProviderConfig {
@@ -31,7 +31,7 @@ export interface CustomProviderConfig {
    * to decide whether translation is needed. Default: chat_completions
    * + embeddings.
    */
-  endpoints?: readonly ModelEndpoint[]
+  endpoints?: readonly EndpointKey[]
   /**
    * Optional models endpoint override. Defaults to `${baseUrl}/models`.
    */
@@ -47,12 +47,22 @@ export interface CustomProviderConfig {
   models?: ReadonlyArray<string | { id: string; name?: string; ownedBy?: string }>
 }
 
-const DEFAULT_ENDPOINTS: readonly ModelEndpoint[] = ["chat_completions", "embeddings"]
+const DEFAULT_ENDPOINTS: readonly EndpointKey[] = ["chat_completions", "embeddings"]
+
+const CUSTOM_PATHS: Record<EndpointKey, string> = {
+  chat_completions: "/chat/completions",
+  responses: "/responses",
+  messages: "/messages",
+  messages_count_tokens: "/messages/count_tokens",
+  embeddings: "/embeddings",
+  images_generations: "/images/generations",
+  images_edits: "/images/edits",
+}
 
 export class CustomProvider implements ModelProvider {
   readonly kind = "custom" as const
   readonly name: string
-  readonly endpoints: readonly ModelEndpoint[]
+  readonly supportedEndpoints: readonly EndpointKey[]
   private readonly baseUrl: string
   private readonly apiKey: string
   private readonly defaultHeaders: Record<string, string>
@@ -66,7 +76,7 @@ export class CustomProvider implements ModelProvider {
     this.baseUrl = cfg.baseUrl.replace(/\/+$/, "")
     this.apiKey = cfg.apiKey
     this.defaultHeaders = cfg.defaultHeaders ?? {}
-    this.endpoints = cfg.endpoints ?? DEFAULT_ENDPOINTS
+    this.supportedEndpoints = cfg.endpoints ?? DEFAULT_ENDPOINTS
     this.modelsEndpoint = cfg.modelsEndpoint ?? `${this.baseUrl}/models`
     this.manualModels = cfg.models?.map((m) =>
       typeof m === "string" ? { id: m } : { id: m.id, name: m.name, ownedBy: m.ownedBy },
@@ -109,50 +119,46 @@ export class CustomProvider implements ModelProvider {
     return probeViaModels(() => this.getModels())
   }
 
-  callChatCompletions(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.post("/chat/completions", payload, opts, "call Chat Completions")
+  async fetch(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
+    const path = CUSTOM_PATHS[endpoint]
+    if (!path) throw new Error(`CustomProvider does not support endpoint: ${endpoint}`)
+    return this.send(path, init, opts, `call ${endpoint}`)
   }
 
-  callResponses(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.post("/responses", payload, opts, "call Responses")
-  }
-
-  callMessages(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.post("/messages", payload, opts, "call Messages")
-  }
-
-  callMessagesCountTokens(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.post("/messages/count_tokens", payload, opts, "count tokens")
-  }
-
-  callEmbeddings(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.post("/embeddings", payload, opts, "create embeddings")
-  }
-
-  private authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-    return {
+  private authHeaders(
+    extra: Record<string, string> = {},
+    opts: { includeJsonContentType?: boolean } = {},
+  ): Record<string, string> {
+    const base: Record<string, string> = {
       "Authorization": `Bearer ${this.apiKey}`,
-      "Content-Type": "application/json",
       ...this.defaultHeaders,
       ...extra,
     }
+    if (opts.includeJsonContentType !== false) {
+      base["Content-Type"] = "application/json"
+    }
+    return base
   }
 
-  private async post(
+  private async send(
     path: string,
-    payload: Record<string, unknown>,
-    opts: ProviderCallOptions,
+    init: RequestInit,
+    opts: ProviderFetchOptions,
     defaultOpName: string,
   ): Promise<Response> {
     const url = `${this.baseUrl}${path}`
-    const headers = this.authHeaders(opts.extraHeaders ?? {})
+    const bodyIsFormData = init.body instanceof FormData
+    const headers = this.authHeaders(headersInitToRecord(init.headers), {
+      includeJsonContentType: !bodyIsFormData,
+    })
+    Object.assign(headers, opts.extraHeaders ?? {})
     const operationName = opts.operationName ?? defaultOpName
     let response: Response
     try {
       response = await fetchWithRetry(url, {
-        method: "POST",
+        method: init.method ?? "POST",
         headers,
-        body: JSON.stringify(payload),
+        body: init.body,
         timeout: opts.timeout,
       })
     } catch (err) {
@@ -179,4 +185,11 @@ export class CustomProvider implements ModelProvider {
 
 function truncate(s: string): string {
   return s.length > 200 ? s.slice(0, 200) + "...(truncated)" : s
+}
+
+function headersInitToRecord(h: HeadersInit | undefined): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!h) return out
+  new Headers(h).forEach((v, k) => { out[k] = v })
+  return out
 }

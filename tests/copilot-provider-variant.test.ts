@@ -80,47 +80,57 @@ beforeEach(() => {
 
 describe("CopilotProvider Claude variant resolution", () => {
   test("messages payload effort selects the matching raw model", async () => {
-    await provider().callMessages({
-      model: "claude-opus-4.7",
-      messages: [{ role: "user", content: "hi" }],
-      max_tokens: 100,
-      output_config: { effort: "xhigh" },
-    })
+    await provider().fetch(
+      "messages",
+      { method: "POST", body: JSON.stringify({
+        model: "claude-opus-4.7",
+        messages: [{ role: "user", content: "hi" }],
+        max_tokens: 100,
+        output_config: { effort: "xhigh" },
+      }) },
+    )
 
     expect(calls[0]?.payload.model).toBe("claude-opus-4.7-1m-internal")
     expect(calls[0]?.payload.output_config).toEqual({ effort: "xhigh" })
   })
 
   test("chat completions payload effort selects the matching raw model", async () => {
-    await provider().callChatCompletions({
-      model: "claude-opus-4.7",
-      messages: [{ role: "user", content: "hi" }],
-      reasoning_effort: "xhigh",
-    })
+    await provider().fetch(
+      "chat_completions",
+      { method: "POST", body: JSON.stringify({
+        model: "claude-opus-4.7",
+        messages: [{ role: "user", content: "hi" }],
+        reasoning_effort: "xhigh",
+      }) },
+    )
 
     expect(calls[0]?.payload.model).toBe("claude-opus-4.7-1m-internal")
     expect(calls[0]?.payload.reasoning_effort).toBe("xhigh")
   })
 
   test("responses payload effort selects the matching raw model", async () => {
-    await provider().callResponses({
-      model: "claude-opus-4.7",
-      input: "hi",
-      reasoning: { effort: "xhigh" },
-    })
+    await provider().fetch(
+      "responses",
+      { method: "POST", body: JSON.stringify({
+        model: "claude-opus-4.7",
+        input: "hi",
+        reasoning: { effort: "xhigh" },
+      }) },
+    )
 
     expect(calls[0]?.payload.model).toBe("claude-opus-4.7-1m-internal")
     expect(calls[0]?.payload.reasoning).toEqual({ effort: "xhigh" })
   })
 
   test("composite model suffix beats header and payload effort", async () => {
-    await provider().callMessages(
-      {
+    await provider().fetch(
+      "messages",
+      { method: "POST", body: JSON.stringify({
         model: "claude-opus-4.7-xhigh-1m",
         messages: [{ role: "user", content: "hi" }],
         max_tokens: 100,
         output_config: { effort: "low" },
-      },
+      }) },
       { extraHeaders: { "x-copilot-reasoning-effort": "high" } },
     )
 
@@ -130,13 +140,14 @@ describe("CopilotProvider Claude variant resolution", () => {
   })
 
   test("payload effort beats custom header effort", async () => {
-    await provider().callMessages(
-      {
+    await provider().fetch(
+      "messages",
+      { method: "POST", body: JSON.stringify({
         model: "claude-opus-4.7",
         messages: [{ role: "user", content: "hi" }],
         max_tokens: 100,
         output_config: { effort: "xhigh" },
-      },
+      }) },
       { extraHeaders: { "x-copilot-reasoning-effort": "high" } },
     )
 
@@ -146,12 +157,13 @@ describe("CopilotProvider Claude variant resolution", () => {
   })
 
   test("non-Claude model ignores Copilot Claude variant hints", async () => {
-    await provider().callChatCompletions(
-      {
+    await provider().fetch(
+      "chat_completions",
+      { method: "POST", body: JSON.stringify({
         model: "gpt-5.5",
         messages: [{ role: "user", content: "hi" }],
         reasoning_effort: "xhigh",
-      },
+      }) },
       { extraHeaders: { "anthropic-beta": "context-1m-2025-08-07" } },
     )
 

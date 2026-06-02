@@ -51,7 +51,11 @@ export async function handleDirectStreaming(
     effectiveFlags(state, binding),
     () => withConnectionMismatchRetry(
       payload as unknown as Record<string, unknown>,
-      (p) => provider.callResponses(p as Record<string, unknown>, { operationName: "responses" }),
+      (p) => provider.fetch(
+        "responses",
+        { method: "POST", body: JSON.stringify(p) },
+        { operationName: "responses" },
+      ),
     ),
   )
   const upstreamMs = upstreamTimer()
@@ -132,7 +136,11 @@ export async function handleDirectNonStreaming(
       effectiveFlags(state, binding),
       () => withConnectionMismatchRetry(
         payload as unknown as Record<string, unknown>,
-        (p) => provider.callResponses(p as Record<string, unknown>, { operationName: "responses" }),
+        (p) => provider.fetch(
+          "responses",
+          { method: "POST", body: JSON.stringify(p) },
+          { operationName: "responses" },
+        ),
       ),
     )
     upstreamMs = upstreamTimer()

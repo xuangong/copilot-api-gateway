@@ -15,10 +15,10 @@
 
 import { HTTPError } from "~/lib/error"
 import { fetchWithRetry } from "~/lib/fetch-retry"
-import type { ModelEndpoint } from "~/protocols/common"
+import type { EndpointKey } from "~/protocols/common"
 import type { ModelsResponse } from "~/services/copilot/models"
 
-import type { ModelProvider, ProbeResult, ProviderCallOptions } from "../types"
+import type { ModelProvider, ProbeResult, ProviderCallOptions, ProviderFetchOptions } from "../types"
 import { probeViaModels } from "../probe"
 
 export interface AzureProviderConfig {
@@ -36,7 +36,7 @@ export interface AzureProviderConfig {
    * Which endpoints this deployment serves. Mix-and-match OpenAI vs Anthropic
    * shapes per deployment.
    */
-  endpoints: readonly ModelEndpoint[]
+  endpoints: readonly EndpointKey[]
   /** Extra headers merged on every request. */
   defaultHeaders?: Record<string, string>
   /**
@@ -48,13 +48,15 @@ export interface AzureProviderConfig {
   deployments?: ReadonlyArray<{ name: string; model: string }>
 }
 
-const OPENAI_PATHS: Partial<Record<ModelEndpoint, string>> = {
+const OPENAI_PATHS: Partial<Record<EndpointKey, string>> = {
   chat_completions: "/chat/completions",
   responses: "/responses",
   embeddings: "/embeddings",
+  images_generations: "/images/generations",
+  images_edits: "/images/edits",
 }
 
-const ANTHROPIC_PATHS: Partial<Record<ModelEndpoint, string>> = {
+const ANTHROPIC_PATHS: Partial<Record<EndpointKey, string>> = {
   messages: "/v1/messages",
   messages_count_tokens: "/v1/messages/count_tokens",
 }
@@ -62,7 +64,7 @@ const ANTHROPIC_PATHS: Partial<Record<ModelEndpoint, string>> = {
 export class AzureProvider implements ModelProvider {
   readonly kind = "azure" as const
   readonly name: string
-  readonly endpoints: readonly ModelEndpoint[]
+  readonly supportedEndpoints: readonly EndpointKey[]
   private readonly endpoint: string
   private readonly apiKey: string
   private readonly deployment: string
@@ -80,7 +82,7 @@ export class AzureProvider implements ModelProvider {
     this.apiKey = cfg.apiKey
     this.deployment = cfg.deployment
     this.apiVersion = cfg.apiVersion
-    this.endpoints = cfg.endpoints
+    this.supportedEndpoints = cfg.endpoints
     this.defaultHeaders = cfg.defaultHeaders ?? {}
     this.extraDeployments = cfg.deployments ?? []
   }
@@ -120,20 +122,11 @@ export class AzureProvider implements ModelProvider {
     })
   }
 
-  callChatCompletions(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.post("chat_completions", payload, opts, "call Chat Completions")
-  }
-  callResponses(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.post("responses", payload, opts, "call Responses")
-  }
-  callMessages(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.post("messages", payload, opts, "call Messages")
-  }
-  callMessagesCountTokens(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.post("messages_count_tokens", payload, opts, "count tokens")
-  }
-  callEmbeddings(payload: Record<string, unknown>, opts: ProviderCallOptions = {}): Promise<Response> {
-    return this.post("embeddings", payload, opts, "create embeddings")
+  async fetch(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
+    if (!this.supportedEndpoints.includes(endpoint)) {
+      throw new Error(`Azure deployment ${this.name} does not serve endpoint: ${endpoint}`)
+    }
+    return this.send(endpoint, init, opts, `call ${endpoint}`)
   }
 
   /**
@@ -151,7 +144,7 @@ export class AzureProvider implements ModelProvider {
     return this.deployment
   }
 
-  private buildUrl(endpoint: ModelEndpoint, deployment: string): string {
+  private buildUrl(endpoint: EndpointKey, deployment: string): string {
     const openai = OPENAI_PATHS[endpoint]
     if (openai) {
       return `${this.endpoint}/openai/deployments/${deployment}${openai}?api-version=${encodeURIComponent(this.apiVersion)}`
@@ -163,34 +156,46 @@ export class AzureProvider implements ModelProvider {
     throw new Error(`Azure provider does not support endpoint: ${endpoint}`)
   }
 
-  private headers(extra: Record<string, string> = {}): Record<string, string> {
-    return {
+  private headers(
+    extra: Record<string, string> = {},
+    opts: { includeJsonContentType?: boolean } = {},
+  ): Record<string, string> {
+    const base: Record<string, string> = {
       "api-key": this.apiKey,
-      "Content-Type": "application/json",
       ...this.defaultHeaders,
       ...extra,
     }
+    if (opts.includeJsonContentType !== false) {
+      base["Content-Type"] = "application/json"
+    }
+    return base
   }
 
-  private async post(
-    endpoint: ModelEndpoint,
-    payload: Record<string, unknown>,
-    opts: ProviderCallOptions,
+  private async send(
+    endpoint: EndpointKey,
+    init: RequestInit,
+    opts: ProviderFetchOptions,
     defaultOpName: string,
   ): Promise<Response> {
-    if (!this.endpoints.includes(endpoint)) {
-      throw new Error(`Azure deployment ${this.name} does not serve endpoint: ${endpoint}`)
-    }
+    const bodyIsFormData = init.body instanceof FormData
+    // For FormData bodies (images/edits), parse model from FormData for deployment routing.
+    // For JSON bodies, use the standard parseJsonBody helper.
+    const payload = bodyIsFormData
+      ? parseFormDataPayload(init.body as FormData)
+      : parseJsonBody(init.body)
     const deployment = this.resolveDeployment(payload)
     const url = this.buildUrl(endpoint, deployment)
-    const headers = this.headers(opts.extraHeaders ?? {})
+    const headers = this.headers(opts.extraHeaders ?? {}, { includeJsonContentType: !bodyIsFormData })
+    if (init.headers) {
+      new Headers(init.headers).forEach((v, k) => { headers[k] = v })
+    }
     const operationName = opts.operationName ?? defaultOpName
     let response: Response
     try {
       response = await fetchWithRetry(url, {
-        method: "POST",
+        method: init.method ?? "POST",
         headers,
-        body: JSON.stringify(payload),
+        body: init.body,
         timeout: opts.timeout,
       })
     } catch (err) {
@@ -217,4 +222,17 @@ export class AzureProvider implements ModelProvider {
 
 function truncate(s: string): string {
   return s.length > 200 ? s.slice(0, 200) + "...(truncated)" : s
+}
+
+function parseJsonBody(body: BodyInit | null | undefined): Record<string, unknown> {
+  if (typeof body !== "string") {
+    throw new Error("AzureProvider.fetch: body must be a JSON string")
+  }
+  return JSON.parse(body) as Record<string, unknown>
+}
+
+/** Extract routing-relevant fields (model) from a multipart FormData body. */
+function parseFormDataPayload(form: FormData): Record<string, unknown> {
+  const model = form.get("model")
+  return typeof model === "string" ? { model } : {}
 }

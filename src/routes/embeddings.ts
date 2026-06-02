@@ -56,8 +56,9 @@ async function handleEmbeddings(ctx: RouteContext): Promise<Response> {
   }
 
   const upstreamTimer = startTimer()
-  const response = await binding.provider.callEmbeddings(
-    body as unknown as Record<string, unknown>,
+  const response = await binding.provider.fetch(
+    "embeddings",
+    { method: "POST", body: JSON.stringify(body) },
     { operationName: "create embeddings" },
   )
   const upstreamMs = upstreamTimer()

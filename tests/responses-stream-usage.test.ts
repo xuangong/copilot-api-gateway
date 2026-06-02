@@ -17,12 +17,16 @@ let upstreamResponse: Response | null = null
 
 mock.module("~/providers/registry", () => ({
   createCopilotProvider: () => ({
-    callMessages: async () => {
+    supportedEndpoints: ["chat_completions", "responses", "messages"],
+    fetch: async (endpoint: string) => {
       if (!upstreamResponse) throw new Error("missing upstream response")
-      return upstreamResponse
-    },
-    callResponses: async () => {
-      if (!upstreamResponse) throw new Error("missing upstream response")
+      if (
+        endpoint !== "chat_completions" &&
+        endpoint !== "responses" &&
+        endpoint !== "messages"
+      ) {
+        throw new Error(`unexpected endpoint: ${endpoint}`)
+      }
       return upstreamResponse
     },
   }),

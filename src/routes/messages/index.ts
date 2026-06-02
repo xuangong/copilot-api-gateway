@@ -87,8 +87,9 @@ export const messagesRoute = new Elysia()
         { status: 404, headers: { "Content-Type": "application/json" } },
       )
     }
-    const response = await binding.provider.callMessagesCountTokens(
-      payload as unknown as Record<string, unknown>,
+    const response = await binding.provider.fetch(
+      "messages_count_tokens",
+      { method: "POST", body: JSON.stringify(payload) },
       {
         operationName: "count tokens",
         extraHeaders: extractAnthropicPassthroughHeaders(ctx),

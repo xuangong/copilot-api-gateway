@@ -41,8 +41,9 @@ export async function handleDirectMessages(
   const upstreamId = binding.upstream
 
   if (isStreaming) {
-    const response = await provider.callMessages(
-      payload as unknown as Record<string, unknown>,
+    const response = await provider.fetch(
+      "messages",
+      { method: "POST", body: JSON.stringify(payload) },
       { operationName: "create message", extraHeaders: passthroughHeaders },
     )
     const upstreamMs = upstreamTimer()
@@ -90,8 +91,9 @@ export async function handleDirectMessages(
   type SyncJson = { usage?: { input_tokens?: number; output_tokens?: number } }
   let upstreamMs = 0
   const syncPromise: Promise<SyncJson> = (async () => {
-    const response = await provider.callMessages(
-      payload as unknown as Record<string, unknown>,
+    const response = await provider.fetch(
+      "messages",
+      { method: "POST", body: JSON.stringify(payload) },
       {
         operationName: "create message",
         timeout: SYNC_REQUEST_TIMEOUT_MS,

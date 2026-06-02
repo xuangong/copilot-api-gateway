@@ -14,7 +14,7 @@
  * Returning `null` means no binding endpoint can serve this source.
  */
 
-import type { ModelEndpoint } from "~/protocols/common"
+import type { EndpointKey } from "~/protocols/common"
 
 /** Source protocol the client is speaking. */
 export type SourceProtocol = "messages" | "responses" | "chat_completions" | "gemini"
@@ -40,7 +40,7 @@ const PREFERENCE: Record<SourceProtocol, readonly TargetEndpoint[]> = {
  */
 export function pickTarget(
   source: SourceProtocol,
-  upstreamEndpoints: readonly ModelEndpoint[],
+  upstreamEndpoints: readonly EndpointKey[],
 ): TargetEndpoint | null {
   for (const candidate of PREFERENCE[source]) {
     if (upstreamEndpoints.includes(candidate)) return candidate

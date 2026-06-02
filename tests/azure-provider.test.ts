@@ -26,7 +26,7 @@ describe("AzureProvider constructor", () => {
   test("kind=azure and endpoints copied", () => {
     const p = new AzureProvider(base)
     expect(p.kind).toBe("azure")
-    expect(p.endpoints).toEqual(["chat_completions"])
+    expect(p.supportedEndpoints).toEqual(["chat_completions"])
   })
 })
 
@@ -54,7 +54,10 @@ describe("AzureProvider request shape", () => {
       apiVersion: "2024-08-01-preview",
       endpoints: ["chat_completions"],
     })
-    await p.callChatCompletions({ messages: [] })
+    await p.fetch(
+      "chat_completions",
+      { method: "POST", body: JSON.stringify({ messages: [] }) },
+    )
     expect(captured!.url).toBe(
       "https://acc.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview",
     )
@@ -72,7 +75,10 @@ describe("AzureProvider request shape", () => {
       apiVersion: "2024-08-01-preview",
       endpoints: ["messages"],
     })
-    await p.callMessages({ messages: [] })
+    await p.fetch(
+      "messages",
+      { method: "POST", body: JSON.stringify({ messages: [] }) },
+    )
     expect(captured!.url).toBe("https://acc.openai.azure.com/anthropic/v1/messages")
   })
 
@@ -85,6 +91,8 @@ describe("AzureProvider request shape", () => {
       apiVersion: "2024-08-01-preview",
       endpoints: ["chat_completions"],
     })
-    await expect(p.callMessages({ messages: [] })).rejects.toThrow(/does not serve endpoint/)
+    await expect(
+      p.fetch("messages", { method: "POST", body: JSON.stringify({ messages: [] }) }),
+    ).rejects.toThrow(/does not serve endpoint/)
   })
 })

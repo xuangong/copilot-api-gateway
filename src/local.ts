@@ -27,6 +27,7 @@ import { responsesRoute } from "~/routes/responses"
 import { chatCompletionsRoute } from "~/routes/chat-completions"
 import { modelsRoute } from "~/routes/models"
 import { embeddingsRoute } from "~/routes/embeddings"
+import { imagesRoute } from "~/routes/images"
 import { geminiRoute } from "~/routes/gemini"
 import { authRoute } from "~/routes/auth"
 import { initResend } from "~/lib/email"
@@ -578,6 +579,7 @@ async function createApp() {
         path.startsWith("/models") ||
         path === "/api/models" ||
         path.startsWith("/embeddings") ||
+        path.startsWith("/images") ||
         path.startsWith("/v1beta/")
       ) {
         try {
@@ -610,6 +612,7 @@ async function createApp() {
     .use(messagesRoute)
     .use(responsesRoute)
     .use(embeddingsRoute)
+    .use(imagesRoute)
     .use(geminiRoute)
 }
 
