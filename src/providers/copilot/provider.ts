@@ -16,8 +16,11 @@ import {
   classifyResponsesInitiator,
   forceStoreFalse,
   setClaudeAgentHeaders,
+  setChatCompletionsVisionHeader,
   setCompactHeaders,
   setInteractionIdHeader,
+  setMessagesVisionHeader,
+  setResponsesVisionHeader,
   stripImageGeneration,
   stripSafetyIdentifier,
   stripStructuredOutputFormat,
@@ -117,6 +120,10 @@ export class CopilotProvider implements ModelProvider {
       // for Copilot trace correlation. Independent of the other header
       // mutations above; runs whenever sessionId is parseable.
       await setInteractionIdHeader(payload as unknown as AnthropicMessagesPayload, headers)
+      // Flip copilot-vision-request when the payload carries any image
+      // blocks (top-level or nested in tool_result.content). Without it,
+      // Copilot treats Anthropic image blocks as plain text.
+      setMessagesVisionHeader(payload as unknown as AnthropicMessagesPayload, headers)
       // Strip output_config.format — Vertex-routed Copilot rejects
       // structured_outputs via GCP org policy.
       stripStructuredOutputFormat(payload as unknown as AnthropicMessagesPayload)
@@ -139,6 +146,8 @@ export class CopilotProvider implements ModelProvider {
       if (sourceApi !== "responses") {
         stripSafetyIdentifier(payload as unknown as ResponsesPayload)
       }
+      // Recursive scan for input_image / legacy image blocks at any depth.
+      setResponsesVisionHeader(payload as unknown as ResponsesPayload, headers)
     }
 
     if (endpoint === "chat_completions") {
@@ -147,6 +156,8 @@ export class CopilotProvider implements ModelProvider {
       // Copilot can prompt-cache them. Generic OpenAI ignores the field, so
       // it's safe to send unconditionally on this endpoint.
       attachCacheControlMarkers(payload as { messages?: Array<{ role?: string; content?: unknown }> })
+      // OpenAI-style image_url content parts → copilot-vision-request: true.
+      setChatCompletionsVisionHeader(payload as { messages?: Array<{ content?: unknown }> }, headers)
     }
 
     const requireModel = opts.requireModel ?? (endpoint !== "messages_count_tokens")
