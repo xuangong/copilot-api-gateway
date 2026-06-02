@@ -147,7 +147,7 @@ export function ModelsTab() {
   )
 
   return (
-    <div className="flex flex-col flex-1 min-h-[480px]">
+    <div className="flex flex-col flex-1 min-h-0 h-full">
       {/* Top bar */}
       <div className="flex items-center gap-3 px-3 py-2 border-b border-themed flex-wrap">
         {isMobile && (
@@ -193,14 +193,14 @@ export function ModelsTab() {
         </div>
       )}
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {!isMobile && (
-          <div className="w-72 shrink-0 border-r border-themed flex flex-col min-h-0">
+          <div className="w-72 shrink-0 border-r border-themed flex flex-col min-h-0 overflow-hidden">
             {modelList}
           </div>
         )}
 
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           {selectedModelId && selectedKey ? (
             <ChatPanel modelId={selectedModelId} apiKey={selectedKey.key} systemPrompt={systemPrompt} onRevertModel={setSelectedModelId} />
           ) : (
