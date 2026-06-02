@@ -17,6 +17,16 @@ export interface ProviderFetchOptions extends ProviderCallOptions {
    * endpoints require it. Defaults to true.
    */
   requireModel?: boolean
+  /**
+   * The protocol shape the caller originally received. Lets the provider
+   * apply translation-aware transforms (e.g. strip `safety_identifier` only
+   * on payloads we synthesized during translation, preserving values that
+   * a native Responses caller explicitly sent).
+   *
+   * Defaults to the endpoint's matching shape when omitted (e.g. an
+   * unannotated "responses" fetch is treated as native).
+   */
+  sourceApi?: "messages" | "chat_completions" | "responses"
 }
 
 /**

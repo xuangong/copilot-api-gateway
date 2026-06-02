@@ -70,7 +70,7 @@ export async function handleChatCompletionsViaResponses(
       (p) => provider.fetch(
         "responses",
         { method: "POST", body: JSON.stringify(p) },
-        { operationName: "chat completions (via responses)" },
+        { operationName: "chat completions (via responses)", sourceApi: "chat_completions" },
       ),
     )
     const upstreamMs = upstreamTimer()
@@ -111,7 +111,7 @@ export async function handleChatCompletionsViaResponses(
       (p) => provider.fetch(
         "responses",
         { method: "POST", body: JSON.stringify(p) },
-        { operationName: "chat completions (via responses)" },
+        { operationName: "chat completions (via responses)", sourceApi: "chat_completions" },
       ),
     )
     upstreamMs = upstreamTimer()

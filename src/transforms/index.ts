@@ -64,6 +64,9 @@ export { stripStructuredOutputFormat } from "./strip-structured-output-format"
 // Strip image_generation tool entries from /responses (Copilot rejects them)
 export { stripImageGeneration } from "./strip-image-generation"
 
+// Strip safety_identifier from translated-to-/responses payloads
+export { stripSafetyIdentifier } from "./strip-safety-identifier"
+
 // Responses → chat-completions payload compactor (codex 413 mitigation)
 export { compactResponsesInputForChatFallback } from "./compact-responses-input"
 export type { CompactStats } from "./compact-responses-input"

@@ -18,6 +18,7 @@ import {
   setClaudeAgentHeaders,
   setCompactHeaders,
   stripImageGeneration,
+  stripSafetyIdentifier,
   stripStructuredOutputFormat,
 } from "~/transforms"
 import type {
@@ -125,6 +126,14 @@ export class CopilotProvider implements ModelProvider {
       // Copilot rejects public image_generation tool entries; strip them
       // (other Responses-capable upstreams accept them).
       stripImageGeneration(payload as unknown as ResponsesPayload)
+      // Strip safety_identifier when the request was translated from a
+      // non-Responses shape (Messages → Responses, Chat → Responses).
+      // VSCode Copilot Chat never sends it on /responses; native Responses
+      // callers' values are preserved.
+      const sourceApi = opts.sourceApi ?? "responses"
+      if (sourceApi !== "responses") {
+        stripSafetyIdentifier(payload as unknown as ResponsesPayload)
+      }
     }
 
     if (endpoint === "chat_completions") {
