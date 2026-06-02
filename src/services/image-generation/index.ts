@@ -115,6 +115,117 @@ export function extractPromptFromInput(
   return ""
 }
 
+// Azure-strict public surface for the `image_generation` tool entry.
+// Azure rejects fields outside this list with `unknown_parameter` and
+// enum values outside the allowed sets with `invalid_value`. The shim
+// mirrors that strictness so misuse fails the same way against either
+// backend rather than silently differing.
+const ALLOWED_SIZES = new Set(["1024x1024", "1024x1536", "1536x1024", "auto"])
+const ALLOWED_QUALITIES = new Set(["low", "medium", "high", "auto"])
+const ALLOWED_BACKGROUNDS = new Set(["transparent", "opaque", "auto"])
+const ALLOWED_OUTPUT_FORMATS = new Set(["png", "jpeg"])
+const ALLOWED_MODERATIONS = new Set(["auto", "low"])
+const KNOWN_TOOL_FIELDS = new Set([
+  "type", "model", "size", "quality", "background", "output_format",
+  "output_compression", "moderation",
+])
+
+export interface ImageGenerationConfigError {
+  message: string
+  param: string
+  code: "unknown_parameter" | "invalid_value" | "integer_below_min_value" | "integer_above_max_value"
+}
+
+export type ImageGenerationConfigResult =
+  | { ok: true; config: ImageGenerationConfig }
+  | { ok: false; error: ImageGenerationConfigError }
+
+const invalidValue = (param: string, value: unknown, allowed: Iterable<string>): ImageGenerationConfigError => ({
+  message: `Invalid value: ${JSON.stringify(value)}. Supported values are: ${[...allowed].map((v) => `'${v}'`).join(", ")}.`,
+  param,
+  code: "invalid_value",
+})
+
+const integerInRange = (
+  value: unknown,
+  param: string,
+  min: number,
+  max: number,
+): ImageGenerationConfigError | null => {
+  if (value === undefined || value === null) return null
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    return { message: `Invalid value: ${JSON.stringify(value)}. Expected an integer in [${min}, ${max}].`, param, code: "invalid_value" }
+  }
+  if (value < min) return { message: `Invalid value: ${value}. Expected an integer >= ${min}.`, param, code: "integer_below_min_value" }
+  if (value > max) return { message: `Invalid value: ${value}. Expected an integer <= ${max}.`, param, code: "integer_above_max_value" }
+  return null
+}
+
+/**
+ * Strict per-entry validation of every `image_generation` tool entry,
+ * mirroring Azure's `tools[i].field` error paths. The LAST valid entry's
+ * config wins (most-recent-declaration), but any earlier entry's bad
+ * field still rejects the whole request — that matches Azure's per-entry
+ * strictness and avoids silently masking client bugs.
+ */
+export function validateImageGenerationConfig(
+  tools: readonly ResponseTool[] | null | undefined,
+): ImageGenerationConfigResult {
+  if (!Array.isArray(tools)) {
+    return { ok: false, error: { message: "No image_generation tool present.", param: "tools", code: "unknown_parameter" } }
+  }
+  let config: ImageGenerationConfig | undefined
+  for (let i = 0; i < tools.length; i++) {
+    const tool = tools[i] as Record<string, unknown>
+    if (tool.type !== "image_generation") continue
+    const path = (field: string): string => `tools[${i}].${field}`
+    for (const key of Object.keys(tool)) {
+      if (!KNOWN_TOOL_FIELDS.has(key) && tool[key] !== undefined) {
+        return { ok: false, error: { message: `Unknown parameter: '${path(key)}'.`, param: path(key), code: "unknown_parameter" } }
+      }
+    }
+    const modelRaw = tool.model
+    if (modelRaw !== undefined && modelRaw !== null && (typeof modelRaw !== "string" || modelRaw.length === 0)) {
+      return { ok: false, error: { message: `Invalid value: ${JSON.stringify(modelRaw)}. Expected a non-empty model id.`, param: path("model"), code: "invalid_value" } }
+    }
+    const size = tool.size
+    if (size !== undefined && size !== null && (typeof size !== "string" || !ALLOWED_SIZES.has(size))) {
+      return { ok: false, error: invalidValue(path("size"), size, ALLOWED_SIZES) }
+    }
+    const quality = tool.quality
+    if (quality !== undefined && quality !== null && (typeof quality !== "string" || !ALLOWED_QUALITIES.has(quality))) {
+      return { ok: false, error: invalidValue(path("quality"), quality, ALLOWED_QUALITIES) }
+    }
+    const background = tool.background
+    if (background !== undefined && background !== null && (typeof background !== "string" || !ALLOWED_BACKGROUNDS.has(background))) {
+      return { ok: false, error: invalidValue(path("background"), background, ALLOWED_BACKGROUNDS) }
+    }
+    const outputFormat = tool.output_format
+    if (outputFormat !== undefined && outputFormat !== null && (typeof outputFormat !== "string" || !ALLOWED_OUTPUT_FORMATS.has(outputFormat))) {
+      return { ok: false, error: invalidValue(path("output_format"), outputFormat, ALLOWED_OUTPUT_FORMATS) }
+    }
+    const moderation = tool.moderation
+    if (moderation !== undefined && moderation !== null && (typeof moderation !== "string" || !ALLOWED_MODERATIONS.has(moderation))) {
+      return { ok: false, error: invalidValue(path("moderation"), moderation, ALLOWED_MODERATIONS) }
+    }
+    const compressionError = integerInRange(tool.output_compression, path("output_compression"), 0, 100)
+    if (compressionError !== null) return { ok: false, error: compressionError }
+    config = {
+      model: typeof modelRaw === "string" && modelRaw.length > 0 ? modelRaw : DEFAULT_IMAGE_MODEL,
+      ...(typeof size === "string" ? { size } : {}),
+      ...(typeof quality === "string" ? { quality } : {}),
+      ...(typeof outputFormat === "string" ? { output_format: outputFormat as "png" | "jpeg" } : {}),
+      ...(typeof background === "string" ? { background: background as ImageGenerationConfig["background"] } : {}),
+      ...(typeof moderation === "string" ? { moderation: moderation as "auto" | "low" } : {}),
+      ...(typeof tool.output_compression === "number" ? { output_compression: tool.output_compression } : {}),
+    }
+  }
+  if (config === undefined) {
+    return { ok: false, error: { message: "No image_generation tool present.", param: "tools", code: "unknown_parameter" } }
+  }
+  return { ok: true, config }
+}
+
 export function synthesizeImageGenerationCallId(): string {
   return `ig_gw_${crypto.randomUUID().replace(/-/g, "")}`
 }

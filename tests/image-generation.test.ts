@@ -11,6 +11,7 @@ import {
   extractImageGenerationConfig,
   extractPromptFromInput,
   synthImageGenerationSSE,
+  validateImageGenerationConfig,
 } from "~/services/image-generation"
 import type { ResponseTool } from "~/transforms"
 
@@ -325,5 +326,68 @@ describe("buildEditsForm", () => {
     expect(form.get("size")).toBeNull()
     expect(form.get("quality")).toBeNull()
     expect(form.get("background")).toBeNull()
+  })
+})
+
+describe("validateImageGenerationConfig (Azure-strict)", () => {
+  test("rejects unknown parameter with tools[i].field path", () => {
+    const r = validateImageGenerationConfig([
+      { type: "image_generation", bogus: 1 } as never,
+    ])
+    expect(r.ok).toBe(false)
+    if (!r.ok) {
+      expect(r.error.code).toBe("unknown_parameter")
+      expect(r.error.param).toBe("tools[0].bogus")
+    }
+  })
+  test("rejects size outside ALLOWED_SIZES", () => {
+    const r = validateImageGenerationConfig([
+      { type: "image_generation", size: "512x512" } as never,
+    ])
+    expect(r.ok).toBe(false)
+    if (!r.ok) {
+      expect(r.error.code).toBe("invalid_value")
+      expect(r.error.param).toBe("tools[0].size")
+    }
+  })
+  test("rejects output_compression < 0 with distinct code", () => {
+    const r = validateImageGenerationConfig([
+      { type: "image_generation", output_compression: -1 } as never,
+    ])
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error.code).toBe("integer_below_min_value")
+  })
+  test("rejects output_compression > 100 with distinct code", () => {
+    const r = validateImageGenerationConfig([
+      { type: "image_generation", output_compression: 101 } as never,
+    ])
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error.code).toBe("integer_above_max_value")
+  })
+  test("earlier-entry error rejects even when later entry is valid", () => {
+    const r = validateImageGenerationConfig([
+      { type: "image_generation", quality: "ultra" } as never,
+      { type: "image_generation", quality: "high" } as never,
+    ])
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error.param).toBe("tools[0].quality")
+  })
+  test("last valid entry wins on success", () => {
+    const r = validateImageGenerationConfig([
+      { type: "image_generation", size: "1024x1024" } as never,
+      { type: "image_generation", model: "gpt-image-2", quality: "high" } as never,
+    ])
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.config).toEqual({ model: "gpt-image-2", quality: "high" })
+  })
+  test("missing image_generation entry returns ok:false", () => {
+    const r = validateImageGenerationConfig([{ type: "function", name: "x" } as never])
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error.param).toBe("tools")
+  })
+  test("defaults model when absent", () => {
+    const r = validateImageGenerationConfig([{ type: "image_generation" } as never])
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.config.model).toBe(DEFAULT_IMAGE_MODEL)
   })
 })

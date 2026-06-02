@@ -14,12 +14,11 @@ import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import {
   buildImageGenerationResponse,
   collectImageSources,
-  DEFAULT_IMAGE_MODEL,
   editSupportedMime,
-  extractImageGenerationConfig,
   extractPromptFromInput,
   generateImageViaBinding,
   synthImageGenerationSSE,
+  validateImageGenerationConfig,
 } from "~/services/image-generation"
 import type { ResponsesPayload } from "~/transforms"
 
@@ -33,7 +32,21 @@ export async function handleResponsesImageGeneration(
   const { state, apiKeyId, colo, requestId } = ctx
   const publicModel = payload.model
 
-  const config = extractImageGenerationConfig(payload.tools) ?? { model: DEFAULT_IMAGE_MODEL }
+  const validated = validateImageGenerationConfig(payload.tools)
+  if (!validated.ok) {
+    return new Response(
+      JSON.stringify({
+        error: {
+          type: "invalid_request_error",
+          message: validated.error.message,
+          param: validated.error.param,
+          code: validated.error.code,
+        },
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    )
+  }
+  const config = validated.config
   const prompt = extractPromptFromInput(payload.input)
 
   if (!prompt) {
