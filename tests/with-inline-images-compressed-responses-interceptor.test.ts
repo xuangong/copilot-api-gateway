@@ -4,7 +4,7 @@ import {
   type ImageProcessor,
   type ImageSizeCalculator,
 } from "~/image"
-import { withInlineImagesCompressedResponses } from "~/providers/copilot/interceptors/responses/with-inline-images-compressed"
+import { withInlineImagesCompressed } from "~/providers/copilot/interceptors/responses/with-inline-images-compressed"
 import type { Invocation, RequestContext } from "~/providers/interceptor"
 
 const TINY_PNG_B64 =
@@ -54,11 +54,11 @@ beforeEach(() => {
   initImageProcessor(spy)
 })
 
-describe("withInlineImagesCompressedResponses (responses)", () => {
+describe("withInlineImagesCompressed (responses)", () => {
   test("compresses inline image when flag enabled", async () => {
     const inv = makeInv(true, true)
     let runCalls = 0
-    const result = await withInlineImagesCompressedResponses(inv, ctx, async () => {
+    const result = await withInlineImagesCompressed(inv, ctx, async () => {
       runCalls++
       return FAKE_RESPONSE
     })
@@ -70,7 +70,7 @@ describe("withInlineImagesCompressedResponses (responses)", () => {
   test("skips compression when flag disabled but still delegates", async () => {
     const inv = makeInv(false, true)
     let runCalls = 0
-    const result = await withInlineImagesCompressedResponses(inv, ctx, async () => {
+    const result = await withInlineImagesCompressed(inv, ctx, async () => {
       runCalls++
       return FAKE_RESPONSE
     })
@@ -82,7 +82,7 @@ describe("withInlineImagesCompressedResponses (responses)", () => {
   test("no-op when payload has no images, still delegates", async () => {
     const inv = makeInv(true, false)
     let runCalls = 0
-    const result = await withInlineImagesCompressedResponses(inv, ctx, async () => {
+    const result = await withInlineImagesCompressed(inv, ctx, async () => {
       runCalls++
       return FAKE_RESPONSE
     })
@@ -94,7 +94,7 @@ describe("withInlineImagesCompressedResponses (responses)", () => {
   test("propagates terminal response unchanged (no result mutation)", async () => {
     const inv = makeInv(true, true)
     const custom = new Response("custom-body", { status: 201 })
-    const result = await withInlineImagesCompressedResponses(inv, ctx, async () => custom)
+    const result = await withInlineImagesCompressed(inv, ctx, async () => custom)
     expect(result).toBe(custom)
     expect(result.status).toBe(201)
   })

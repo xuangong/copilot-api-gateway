@@ -14,7 +14,7 @@ import type { CopilotInterceptor } from "~/providers/interceptor"
  * bytes we actually ship — otherwise count_tokens reports too high for any
  * client that sends raw PNG/JPEG inline.
  */
-export const withInlineImagesCompressedResponses: CopilotInterceptor = async (inv, _ctx, run) => {
+export const withInlineImagesCompressed: CopilotInterceptor = async (inv, _ctx, run) => {
   if (inv.enabledFlags.has("transform-compress-inline-images")) {
     await compressInlineImagesResponses(
       inv.payload as unknown as ResponsesPayload,
