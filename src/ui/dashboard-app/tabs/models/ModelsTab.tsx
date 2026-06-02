@@ -10,6 +10,7 @@ const LS_OPEN_GROUPS = "playground.openGroups"
 const LS_MODEL_ID = "playground.modelId"
 const LS_SYSTEM_PROMPT = "playground.systemPrompt"
 const LS_SYSTEM_OPEN = "playground.systemOpen"
+const LS_WEB_SEARCH = "playground.webSearchEnabled"
 const MOBILE_BREAKPOINT = 768
 
 export function ModelsTab() {
@@ -31,6 +32,7 @@ export function ModelsTab() {
   })
   const [systemPrompt, setSystemPrompt] = useState(() => localStorage.getItem(LS_SYSTEM_PROMPT) ?? "")
   const [systemOpen, setSystemOpen] = useState(() => localStorage.getItem(LS_SYSTEM_OPEN) === "1")
+  const [webSearchEnabled, setWebSearchEnabled] = useState(() => localStorage.getItem(LS_WEB_SEARCH) === "1")
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false,
   )
@@ -72,6 +74,10 @@ export function ModelsTab() {
   useEffect(() => {
     localStorage.setItem(LS_SYSTEM_OPEN, systemOpen ? "1" : "0")
   }, [systemOpen])
+
+  useEffect(() => {
+    localStorage.setItem(LS_WEB_SEARCH, webSearchEnabled ? "1" : "0")
+  }, [webSearchEnabled])
 
   useEffect(() => {
     if (!selectedKeyId || !keys) return
@@ -193,6 +199,17 @@ export function ModelsTab() {
         >
           {t("dash.playground.system")} {systemOpen ? "▴" : "▾"}
         </button>
+        <button
+          onClick={() => setWebSearchEnabled((v) => !v)}
+          title={t("dash.playground.webSearchTitle")}
+          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+            webSearchEnabled
+              ? "bg-surface-600 text-themed"
+              : "bg-surface-800 text-themed-dim hover:text-themed-secondary"
+          }`}
+        >
+          🔍 {t("dash.playground.webSearch")}
+        </button>
         {isMobile && selectedModel && (
           <span className="text-xs text-themed-dim font-mono truncate max-w-[40%]">
             {selectedModel.name ?? selectedModel.id}
@@ -220,7 +237,7 @@ export function ModelsTab() {
 
         <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           {selectedModelId && selectedKey ? (
-            <ChatPanel modelId={selectedModelId} apiKey={selectedKey.key} systemPrompt={systemPrompt} onRevertModel={setSelectedModelId} />
+            <ChatPanel modelId={selectedModelId} apiKey={selectedKey.key} systemPrompt={systemPrompt} webSearchEnabled={webSearchEnabled} onRevertModel={setSelectedModelId} />
           ) : (
             <div className="flex items-center justify-center h-full text-themed-dim text-sm">
               {t("dash.playground.selectModel")}

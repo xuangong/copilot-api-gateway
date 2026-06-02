@@ -46,10 +46,20 @@ interface Props {
   modelId: string
   apiKey: string
   systemPrompt: string
+  webSearchEnabled: boolean
   onRevertModel?: (id: string) => void
 }
 
-export function ChatPanel({ modelId, apiKey, systemPrompt, onRevertModel }: Props) {
+const WEB_SEARCH_DESCRIPTION = "Search the web for current information. Use this when you need to find recent information, news, or answers to questions that require up-to-date knowledge."
+const WEB_SEARCH_PARAMS = {
+  type: "object",
+  properties: {
+    query: { type: "string", description: "The search query to execute" },
+  },
+  required: ["query"],
+} as const
+
+export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onRevertModel }: Props) {
   const t = useT()
   const [protocol, setProtocol] = useState<Protocol>(() => loadPersistedProtocol())
   const [messages, setMessages] = useState<Message[]>(() => loadPersistedMessages())
@@ -287,7 +297,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, onRevertModel }: Prop
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [input, imageDataUrl, imageUrl, messages, protocol, modelId, apiKey, systemPrompt],
+    [input, imageDataUrl, imageUrl, messages, protocol, modelId, apiKey, systemPrompt, webSearchEnabled],
   )
 
   function retry() {
@@ -359,6 +369,20 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, onRevertModel }: Prop
         messages: oaiMessages,
         stream: true,
         stream_options: { include_usage: true },
+        ...(webSearchEnabled
+          ? {
+              tools: [
+                {
+                  type: "function",
+                  function: {
+                    name: "web_search",
+                    description: WEB_SEARCH_DESCRIPTION,
+                    parameters: WEB_SEARCH_PARAMS,
+                  },
+                },
+              ],
+            }
+          : {}),
       }),
       signal,
     })
@@ -394,6 +418,15 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, onRevertModel }: Prop
       stream: true,
     }
     if (systemPrompt.trim()) body.system = systemPrompt
+    if (webSearchEnabled) {
+      body.tools = [
+        {
+          name: "web_search",
+          description: WEB_SEARCH_DESCRIPTION,
+          input_schema: WEB_SEARCH_PARAMS,
+        },
+      ]
+    }
 
     const resp = await fetch("/v1/messages", {
       method: "POST",
@@ -436,6 +469,19 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, onRevertModel }: Prop
     const body: Record<string, unknown> = { contents }
     if (systemPrompt.trim()) {
       body.systemInstruction = { parts: [{ text: systemPrompt }] }
+    }
+    if (webSearchEnabled) {
+      body.tools = [
+        {
+          functionDeclarations: [
+            {
+              name: "web_search",
+              description: WEB_SEARCH_DESCRIPTION,
+              parameters: WEB_SEARCH_PARAMS,
+            },
+          ],
+        },
+      ]
     }
     const resp = await fetch(
       `/v1beta/models/${encodeURIComponent(modelId)}:streamGenerateContent?alt=sse`,
