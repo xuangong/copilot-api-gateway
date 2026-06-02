@@ -9,6 +9,15 @@ import {
   parseCompositeModelId,
   resolveCopilotRawModel,
 } from "~/services/copilot/variants"
+import {
+  classifyChatCompletionsInitiator,
+  classifyMessagesInitiator,
+  classifyResponsesInitiator,
+} from "~/transforms"
+import type {
+  AnthropicMessagesPayload,
+  ResponsesPayload,
+} from "~/transforms"
 
 import type { ModelProvider, ProbeResult, ProviderCallOptions } from "../types"
 import { probeViaModels } from "../probe"
@@ -86,6 +95,8 @@ export class CopilotProvider implements ModelProvider {
     if (variantKind !== null) {
       await this.applyVariantAndBetaFiltering(payload, headers, variantKind as Exclude<EndpointKind, "embeddings">)
     }
+
+    setInitiatorHeader(endpoint, payload, headers)
 
     const requireModel = opts.requireModel ?? (endpoint !== "messages_count_tokens")
 
@@ -257,4 +268,29 @@ function mergeHeaders(
   }
   if (extra) Object.assign(out, extra)
   return out
+}
+
+/**
+ * Set the `x-initiator` header that distinguishes turns the human user just
+ * triggered ("user") from agent-initiated turns consuming a tool result
+ * ("agent"). Copilot uses this for abuse controls and billing/quota accounting.
+ * Skipped for embeddings (no conversation semantics).
+ */
+function setInitiatorHeader(
+  endpoint: EndpointKey,
+  payload: Record<string, unknown>,
+  headers: Record<string, string>,
+): void {
+  let initiator: "user" | "agent" | undefined
+  if (endpoint === "messages" || endpoint === "messages_count_tokens") {
+    initiator = classifyMessagesInitiator(payload as unknown as AnthropicMessagesPayload)
+  } else if (endpoint === "chat_completions") {
+    initiator = classifyChatCompletionsInitiator(payload as { messages?: Array<{ role?: string }> })
+  } else if (endpoint === "responses") {
+    initiator = classifyResponsesInitiator(payload as unknown as ResponsesPayload)
+  }
+  if (initiator) {
+    delete headers["X-Initiator"]
+    headers["x-initiator"] = initiator
+  }
 }

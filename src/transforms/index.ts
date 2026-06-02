@@ -25,6 +25,13 @@ export { fixApplyPatchTools, stripWebSearchTools } from "./tool-type"
 // Strip tools[].strict (Vertex-backed Copilot rejects structured_outputs)
 export { stripToolStrict } from "./strip-tool-strict"
 
+// x-initiator header classification (Copilot abuse controls / billing)
+export {
+  classifyMessagesInitiator,
+  classifyChatCompletionsInitiator,
+  classifyResponsesInitiator,
+} from "./set-initiator-header"
+
 // Responses → chat-completions payload compactor (codex 413 mitigation)
 export { compactResponsesInputForChatFallback } from "./compact-responses-input"
 export type { CompactStats } from "./compact-responses-input"
