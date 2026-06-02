@@ -13,7 +13,9 @@ import { resolveBinding } from "~/lib/binding-resolver"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
 import {
   buildImageGenerationResponse,
+  collectImageSources,
   DEFAULT_IMAGE_MODEL,
+  editSupportedMime,
   extractImageGenerationConfig,
   extractPromptFromInput,
   generateImageViaBinding,
@@ -46,20 +48,28 @@ export async function handleResponsesImageGeneration(
     )
   }
 
-  const binding = await resolveBinding(state, ctx.userId, config.model, "images_generations")
+  // Slice 3: inline input_image blocks route to /images/edits as multipart.
+  // Unsupported mimetypes are dropped here (rather than rejected) so a stray
+  // wrong-type attachment doesn't blow up an otherwise valid edit request.
+  const allSources = collectImageSources(payload.input)
+  const sources = allSources.filter((s) => editSupportedMime(s.mimeType) !== null)
+  const isEdit = sources.length > 0
+  const endpointKey = isEdit ? "images_edits" : "images_generations"
+
+  const binding = await resolveBinding(state, ctx.userId, config.model, endpointKey)
   if (!binding) {
     return new Response(
       JSON.stringify({
         error: {
           type: "invalid_request_error",
-          message: `No images_generations upstream available for backend model: ${config.model}.`,
+          message: `No ${endpointKey} upstream available for backend model: ${config.model}.`,
         },
       }),
       { status: 404, headers: { "Content-Type": "application/json" } },
     )
   }
 
-  const outcome = await generateImageViaBinding(binding, prompt, config)
+  const outcome = await generateImageViaBinding(binding, prompt, config, sources)
   const responseEnvelope = buildImageGenerationResponse(publicModel, prompt, outcome)
 
   if (apiKeyId) {

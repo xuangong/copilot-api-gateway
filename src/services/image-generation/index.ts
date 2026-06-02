@@ -1,5 +1,5 @@
 /**
- * Responses `image_generation` server-tool shim (single-turn slice).
+ * Responses `image_generation` server-tool shim (single-turn slice + edits).
  *
  * Slice 2 scope: when a Responses request declares the hosted
  * `image_generation` tool, short-circuit the orchestrator entirely and
@@ -7,9 +7,14 @@
  * Returns a Responses-shaped envelope whose single output item is an
  * `image_generation_call` carrying the resulting b64.
  *
- * ReAct multi-turn (model decides when to call), input_image edits, and
- * Azure-strict tool-config validation arrive in slice 3/4 — keeping this
- * slice small so it can ship as one commit.
+ * Slice 3: when the input carries `input_image` blocks (or a previous
+ * `image_generation_call` result), dispatch to `/images/edits` as
+ * multipart/form-data instead of `/images/generations` — gpt-image-2 picks
+ * the edit target by prompt semantics across all attached images.
+ *
+ * ReAct multi-turn (model decides when to call) and Azure-strict tool-config
+ * validation arrive in slice 4 — keeping each slice small so it ships as
+ * one commit.
  */
 
 import type { ProviderBinding } from "~/providers/binding"
@@ -119,6 +124,96 @@ export function synthesizeResponseId(): string {
 }
 
 /**
+ * gpt-image-* `/images/edits` only accepts these source mimetypes; Azure
+ * gates on multipart content-type before decoding, so we forward the
+ * canonical form. Common aliases are folded onto the canonical form.
+ */
+const EDIT_MIME_ALIASES: Record<string, string> = {
+  "image/jpg": "image/jpeg",
+  "image/pjpeg": "image/jpeg",
+  "image/x-png": "image/png",
+}
+const EDIT_SUPPORTED_MIMES = new Set(["image/png", "image/jpeg", "image/webp"])
+
+export function editSupportedMime(mime: string): string | null {
+  const canonical = EDIT_MIME_ALIASES[mime] ?? mime
+  return EDIT_SUPPORTED_MIMES.has(canonical) ? canonical : null
+}
+
+function editFileExt(mime: string): string {
+  if (mime === "image/jpeg") return "jpg"
+  if (mime === "image/webp") return "webp"
+  return "png"
+}
+
+export interface ImageSource {
+  bytes: ArrayBuffer
+  mimeType: string
+}
+
+function base64ToArrayBuffer(b64: string): ArrayBuffer {
+  const binary = atob(b64)
+  const buffer = new ArrayBuffer(binary.length)
+  const view = new Uint8Array(buffer)
+  for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i)
+  return buffer
+}
+
+/**
+ * Parse a `data:<mime>;base64,<payload>` URL or a bare base64 string.
+ * Remote URLs (http(s)) are NOT fetched — only inline bytes are bound.
+ */
+export function decodeInlineImage(
+  imageUrl: string,
+  fallbackMime = "image/png",
+): ImageSource | null {
+  const dataUrlMatch = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(imageUrl)
+  if (!dataUrlMatch) {
+    if (/^https?:\/\//i.test(imageUrl)) return null
+    try {
+      return { bytes: base64ToArrayBuffer(imageUrl), mimeType: fallbackMime }
+    } catch {
+      return null
+    }
+  }
+  const isBase64 = dataUrlMatch[2] !== undefined
+  if (!isBase64) return null
+  try {
+    return {
+      bytes: base64ToArrayBuffer(dataUrlMatch[3] ?? ""),
+      mimeType: dataUrlMatch[1] ?? fallbackMime,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Walk a Responses input and collect every inline image source in forward
+ * declaration order. Order is load-bearing: gpt-image numbers attached
+ * images positionally, so a prompt like "edit the second image" resolves
+ * the same way native does.
+ */
+export function collectImageSources(input: ResponsesPayload["input"]): ImageSource[] {
+  if (!Array.isArray(input)) return []
+  const sources: ImageSource[] = []
+  for (const item of input) {
+    if (!item || typeof item !== "object") continue
+    const it = item as ResponseInputItem & { content?: unknown; result?: unknown; output_format?: unknown }
+    if (it.type === "message" && Array.isArray(it.content)) {
+      for (const block of it.content) {
+        const b = block as { type?: string; image_url?: unknown }
+        if (b.type === "input_image" && typeof b.image_url === "string") {
+          const decoded = decodeInlineImage(b.image_url)
+          if (decoded) sources.push(decoded)
+        }
+      }
+    }
+  }
+  return sources
+}
+
+/**
  * Build the request body for the upstream `/images/generations` call.
  * `n:1` and bare base64 (no `response_format`) match the standalone-images
  * surface Azure expects.
@@ -177,21 +272,60 @@ const extractEcho = (parsed: unknown): ImageGenerationOutcome["echo"] => {
 }
 
 /**
- * Dispatch the prompt to the resolved images_generations binding and
- * normalize the result into a backend-agnostic outcome.
+ * Build a multipart/form-data body for the upstream `/images/edits` call.
+ * Sources attach as `image[]` repeated parts — gpt-image-2 picks the edit
+ * target by prompt semantics across all attached images, so order is not
+ * load-bearing for the backend but we preserve declaration order for
+ * deterministic prompts ("edit the second image" still resolves the same).
+ * Sources with unsupported mimetypes are skipped by the caller; if any
+ * slips through we forward the raw mime so the backend fails loudly.
+ */
+export function buildEditsForm(
+  prompt: string,
+  config: ImageGenerationConfig,
+  sources: readonly ImageSource[],
+): FormData {
+  const form = new FormData()
+  form.append("model", config.model)
+  form.append("prompt", prompt)
+  form.append("n", "1")
+  if (config.size !== undefined) form.append("size", config.size)
+  if (config.quality !== undefined) form.append("quality", config.quality)
+  if (config.output_format !== undefined) form.append("output_format", config.output_format)
+  if (config.background !== undefined) form.append("background", config.background)
+  if (config.moderation !== undefined) form.append("moderation", config.moderation)
+  if (config.output_compression !== undefined) form.append("output_compression", String(config.output_compression))
+  for (const [i, source] of sources.entries()) {
+    const mime = editSupportedMime(source.mimeType) ?? source.mimeType
+    form.append("image[]", new Blob([source.bytes], { type: mime }), `image_${i}.${editFileExt(mime)}`)
+  }
+  return form
+}
+
+/**
+ * Dispatch the prompt to the resolved images binding and normalize the
+ * result into a backend-agnostic outcome. When `sources` is non-empty,
+ * dispatches to `images_edits` with multipart/form-data; otherwise hits
+ * `images_generations` with a JSON body.
  */
 export async function generateImageViaBinding(
   binding: ProviderBinding,
   prompt: string,
   config: ImageGenerationConfig,
+  sources: readonly ImageSource[] = [],
 ): Promise<ImageGenerationOutcome> {
   const startedAt = Date.now()
+  const isEdit = sources.length > 0
+  const endpoint: EndpointKey = (isEdit ? "images_edits" : "images_generations") as EndpointKey
+  const init: { method: string; body: BodyInit } = isEdit
+    ? { method: "POST", body: buildEditsForm(prompt, config, sources) }
+    : { method: "POST", body: JSON.stringify(buildGenerationsBody(prompt, config)) }
   let response: Response
   try {
     response = await binding.provider.fetch(
-      "images_generations" as EndpointKey,
-      { method: "POST", body: JSON.stringify(buildGenerationsBody(prompt, config)) },
-      { operationName: "image_generation shim", enabledFlags: binding.enabledFlags },
+      endpoint,
+      init,
+      { operationName: isEdit ? "image_generation edits shim" : "image_generation shim", enabledFlags: binding.enabledFlags },
     )
   } catch (e) {
     return {

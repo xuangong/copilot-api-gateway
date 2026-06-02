@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  buildEditsForm,
   buildGenerationsBody,
   buildImageGenerationResponse,
+  collectImageSources,
+  decodeInlineImage,
   DEFAULT_IMAGE_MODEL,
+  editSupportedMime,
   extractImageGenerationConfig,
   extractPromptFromInput,
   synthImageGenerationSSE,
@@ -211,5 +215,115 @@ describe("synthImageGenerationSSE", () => {
     expect(text).toContain("event: response.image_generation_call.generating")
     expect(text).not.toContain("event: response.image_generation_call.completed")
     expect(text).toContain("event: response.completed")
+  })
+})
+
+describe("editSupportedMime", () => {
+  test("canonicalizes aliases", () => {
+    expect(editSupportedMime("image/jpg")).toBe("image/jpeg")
+    expect(editSupportedMime("image/pjpeg")).toBe("image/jpeg")
+    expect(editSupportedMime("image/x-png")).toBe("image/png")
+  })
+  test("passes through canonical supported mimes", () => {
+    expect(editSupportedMime("image/png")).toBe("image/png")
+    expect(editSupportedMime("image/jpeg")).toBe("image/jpeg")
+    expect(editSupportedMime("image/webp")).toBe("image/webp")
+  })
+  test("rejects unsupported mimes", () => {
+    expect(editSupportedMime("image/gif")).toBeNull()
+    expect(editSupportedMime("application/octet-stream")).toBeNull()
+  })
+})
+
+describe("decodeInlineImage", () => {
+  test("decodes a data:base64 URL with mime", () => {
+    const png = "iVBORw0KGgo="
+    const src = decodeInlineImage(`data:image/png;base64,${png}`)
+    expect(src).not.toBeNull()
+    expect(src!.mimeType).toBe("image/png")
+    expect(src!.bytes.byteLength).toBe(8)
+  })
+  test("treats bare base64 as png by default", () => {
+    const src = decodeInlineImage("AAAA")
+    expect(src).not.toBeNull()
+    expect(src!.mimeType).toBe("image/png")
+  })
+  test("returns null for remote http(s) URLs", () => {
+    expect(decodeInlineImage("https://example.com/x.png")).toBeNull()
+  })
+  test("returns null for non-base64 data URL", () => {
+    expect(decodeInlineImage("data:image/png,raw")).toBeNull()
+  })
+})
+
+describe("collectImageSources", () => {
+  test("returns empty for non-array input", () => {
+    expect(collectImageSources("hi")).toEqual([])
+    expect(collectImageSources(undefined as never)).toEqual([])
+  })
+  test("collects input_image blocks in declaration order", () => {
+    const input = [
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "edit these" },
+          { type: "input_image", image_url: "data:image/png;base64,AAAA" },
+          { type: "input_image", image_url: "data:image/jpeg;base64,/9j/" },
+        ],
+      },
+    ] as never
+    const sources = collectImageSources(input)
+    expect(sources).toHaveLength(2)
+    expect(sources[0]!.mimeType).toBe("image/png")
+    expect(sources[1]!.mimeType).toBe("image/jpeg")
+  })
+  test("skips http(s) image_url references", () => {
+    const input = [
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_image", image_url: "https://example.com/x.png" }],
+      },
+    ] as never
+    expect(collectImageSources(input)).toEqual([])
+  })
+})
+
+describe("buildEditsForm", () => {
+  const png = new Uint8Array([1, 2, 3, 4]).buffer
+  test("emits required fields, model, and image[] parts", async () => {
+    const form = buildEditsForm("a cat", { model: "gpt-image-2", size: "1024x1024" }, [
+      { bytes: png, mimeType: "image/png" },
+    ])
+    expect(form.get("model")).toBe("gpt-image-2")
+    expect(form.get("prompt")).toBe("a cat")
+    expect(form.get("n")).toBe("1")
+    expect(form.get("size")).toBe("1024x1024")
+    const files = form.getAll("image[]")
+    expect(files).toHaveLength(1)
+    const f = files[0] as File
+    expect(f.type).toBe("image/png")
+    expect(f.name).toBe("image_0.png")
+  })
+  test("attaches multiple sources as repeated image[] parts in order", () => {
+    const form = buildEditsForm("p", { model: "gpt-image-2" }, [
+      { bytes: png, mimeType: "image/jpeg" },
+      { bytes: png, mimeType: "image/webp" },
+    ])
+    const files = form.getAll("image[]") as File[]
+    expect(files).toHaveLength(2)
+    expect(files[0]!.type).toBe("image/jpeg")
+    expect(files[0]!.name).toBe("image_0.jpg")
+    expect(files[1]!.type).toBe("image/webp")
+    expect(files[1]!.name).toBe("image_1.webp")
+  })
+  test("omits undefined optional fields", () => {
+    const form = buildEditsForm("p", { model: "gpt-image-2" }, [
+      { bytes: png, mimeType: "image/png" },
+    ])
+    expect(form.get("size")).toBeNull()
+    expect(form.get("quality")).toBeNull()
+    expect(form.get("background")).toBeNull()
   })
 })
