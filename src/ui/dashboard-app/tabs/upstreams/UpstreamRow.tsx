@@ -12,6 +12,7 @@ interface Props {
   busy: boolean
   models?: api.UpstreamModelEntry[]
   editing?: boolean
+  readOnly?: boolean
   onToggleEnabled: () => void
   onReorder: (dir: "up" | "down") => void
   onEdit: () => void
@@ -27,6 +28,7 @@ export function UpstreamRow({
   busy,
   models,
   editing,
+  readOnly = false,
   onToggleEnabled,
   onReorder,
   onEdit,
@@ -34,6 +36,7 @@ export function UpstreamRow({
   onReauth,
   onDelete,
 }: Props) {
+  const locked = readOnly
   const u = row
   const ghUser = u.provider === "copilot" ? u.config?.user : undefined
   const avatar = ghUser
@@ -69,7 +72,7 @@ export function UpstreamRow({
     <div
       className={`bg-surface-900 rounded-lg p-3 sm:p-4 border transition-colors ${
         editing ? "border-accent-violet/60" : "border-surface-600"
-      }`}
+      } ${locked ? "opacity-60" : ""}`}
     >
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -83,22 +86,22 @@ export function UpstreamRow({
         </div>
 
         <div className="flex items-center gap-1 flex-wrap shrink-0">
-          <button onClick={() => onReorder("up")} disabled={index === 0 || busy} className="btn-ghost text-xs px-2 py-1" title={t("dash.moveUp")}>↑</button>
-          <button onClick={() => onReorder("down")} disabled={index === total - 1 || busy} className="btn-ghost text-xs px-2 py-1" title={t("dash.moveDown")}>↓</button>
-          <label className="flex items-center gap-1 text-xs text-themed-dim cursor-pointer ml-1 select-none">
-            <input type="checkbox" checked={u.enabled} onChange={onToggleEnabled} />
+          <button onClick={() => onReorder("up")} disabled={locked || index === 0 || busy} className="btn-ghost text-xs px-2 py-1" title={t("dash.moveUp")}>↑</button>
+          <button onClick={() => onReorder("down")} disabled={locked || index === total - 1 || busy} className="btn-ghost text-xs px-2 py-1" title={t("dash.moveDown")}>↓</button>
+          <label className={`flex items-center gap-1 text-xs text-themed-dim ml-1 select-none ${locked ? "cursor-not-allowed" : "cursor-pointer"}`}>
+            <input type="checkbox" checked={u.enabled} onChange={onToggleEnabled} disabled={locked} />
             <span>{u.enabled ? t("dash.onLabel") : t("dash.offLabel")}</span>
           </label>
-          <button onClick={onEdit} disabled={busy} className="btn-ghost text-xs px-2 py-1">{editing ? t("dash.closeBtn") : t("dash.edit")}</button>
-          <button onClick={onRefreshModels} disabled={busy} className="btn-ghost text-xs px-2 py-1" title={t("dash.refetchModelsTip")}>
+          <button onClick={onEdit} disabled={locked || busy} className="btn-ghost text-xs px-2 py-1">{editing ? t("dash.closeBtn") : t("dash.edit")}</button>
+          <button onClick={onRefreshModels} disabled={locked || busy} className="btn-ghost text-xs px-2 py-1" title={t("dash.refetchModelsTip")}>
             {busy ? "…" : t("dash.refetchModelsLabel")}
           </button>
           {u.provider === "copilot" ? (
-            <button onClick={onReauth} className="btn-ghost text-xs px-2 py-1" title={t("dash.reauthTip")}>{t("dash.reauthBtn")}</button>
+            <button onClick={onReauth} disabled={locked} className="btn-ghost text-xs px-2 py-1 disabled:opacity-50" title={t("dash.reauthTip")}>{t("dash.reauthBtn")}</button>
           ) : null}
           <button
             onClick={onDelete}
-            disabled={busy}
+            disabled={locked || busy}
             className="text-accent-red hover:text-red-300 text-xs px-2 py-1 disabled:opacity-50"
           >
             {u.provider === "copilot" ? t("dash.signOutBtn") : t("dash.delete")}

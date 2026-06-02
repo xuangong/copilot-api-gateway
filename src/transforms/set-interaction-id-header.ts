@@ -24,8 +24,8 @@ async function sessionUuid(input: string): Promise<string> {
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", data)).slice(0, 16)
   // RFC 4122 §4.4 layout: stamp version 4 in the high nibble of byte 6 and
   // variant 10 in the high two bits of byte 8.
-  digest[6] = (digest[6] & 0x0f) | 0x40
-  digest[8] = (digest[8] & 0x3f) | 0x80
+  digest[6] = (digest[6]! & 0x0f) | 0x40
+  digest[8] = (digest[8]! & 0x3f) | 0x80
   const hex = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }

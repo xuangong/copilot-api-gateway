@@ -14,7 +14,7 @@ import type { AnthropicMessagesPayload } from "./types"
 export function stripToolStrict(payload: AnthropicMessagesPayload): boolean {
   if (!Array.isArray(payload.tools)) return false
   let mutated = false
-  for (const tool of payload.tools as Array<Record<string, unknown>>) {
+  for (const tool of payload.tools as unknown as Array<Record<string, unknown>>) {
     if (tool && typeof tool === "object" && "strict" in tool) {
       delete tool.strict
       mutated = true
