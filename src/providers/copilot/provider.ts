@@ -17,6 +17,7 @@ import {
   forceStoreFalse,
   setClaudeAgentHeaders,
   setCompactHeaders,
+  setInteractionIdHeader,
   stripImageGeneration,
   stripSafetyIdentifier,
   stripStructuredOutputFormat,
@@ -112,6 +113,10 @@ export class CopilotProvider implements ModelProvider {
       // initiator heuristic, and conversation-compaction overrides the
       // messages-proxy interaction-type that Claude Code identity sets.
       setCompactHeaders(payload as unknown as AnthropicMessagesPayload, headers)
+      // SHA-256 of metadata.user_id session fingerprint → x-interaction-id
+      // for Copilot trace correlation. Independent of the other header
+      // mutations above; runs whenever sessionId is parseable.
+      await setInteractionIdHeader(payload as unknown as AnthropicMessagesPayload, headers)
       // Strip output_config.format — Vertex-routed Copilot rejects
       // structured_outputs via GCP org policy.
       stripStructuredOutputFormat(payload as unknown as AnthropicMessagesPayload)

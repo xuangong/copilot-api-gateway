@@ -48,6 +48,9 @@ export {
 } from "./detect-claude-code-metadata"
 export { setClaudeAgentHeaders } from "./set-claude-agent-headers"
 
+// SHA-256 → UUID v4 of session id → x-interaction-id (Copilot trace correlation)
+export { setInteractionIdHeader } from "./set-interaction-id-header"
+
 // Attach Copilot's private cache-control markers on Chat Completions messages
 export { attachCacheControlMarkers } from "./attach-cache-control-markers"
 
