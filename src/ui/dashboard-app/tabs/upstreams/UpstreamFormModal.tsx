@@ -533,37 +533,44 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           <div className="border-t border-themed pt-3 mt-4">
             <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">{t("dash.featureFlagsLabel")}</h4>
             <p className="text-xs text-themed-dim mb-3">{t("dash.featureFlagsHint")}</p>
-            <div className="space-y-3">
-              {flagCatalog.catalog.map((flag) => {
-                const state = flagOverrideState(flag.id)
-                return (
-                  <div key={flag.id} className="text-xs">
-                    <div className="text-themed font-medium">{flag.label}</div>
-                    <div className="text-themed-dim mb-1">{flag.description}</div>
-                    <div className="flex gap-3">
-                      <FlagRadio
-                        checked={state === "inherit"}
-                        onChange={() => setFlagOverride(flag.id, null)}
-                        label={t("dash.inheritLabel", { val: isFlagDefault(flag.id) ? t("dash.onLabel") : t("dash.offLabel") })}
-                        tone="dim"
-                      />
-                      <FlagRadio
-                        checked={state === "on"}
-                        onChange={() => setFlagOverride(flag.id, true)}
-                        label={t("dash.flagOn")}
-                        tone="teal"
-                      />
-                      <FlagRadio
-                        checked={state === "off"}
-                        onChange={() => setFlagOverride(flag.id, false)}
-                        label={t("dash.flagOff")}
-                        tone="red"
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+            {groupFlags(flagCatalog.catalog).map((group) => (
+              <div key={group.key} className="mb-4 last:mb-0">
+                <div className="text-[11px] font-semibold text-themed-dim uppercase tracking-wider mb-2">
+                  {t(group.labelKey)}
+                </div>
+                <div className="space-y-3">
+                  {group.flags.map((flag) => {
+                    const state = flagOverrideState(flag.id)
+                    return (
+                      <div key={flag.id} className="text-xs">
+                        <div className="text-themed font-medium">{flag.label}</div>
+                        <div className="text-themed-dim mb-1">{flag.description}</div>
+                        <div className="flex gap-3">
+                          <FlagRadio
+                            checked={state === "inherit"}
+                            onChange={() => setFlagOverride(flag.id, null)}
+                            label={t("dash.inheritLabel", { val: isFlagDefault(flag.id) ? t("dash.onLabel") : t("dash.offLabel") })}
+                            tone="dim"
+                          />
+                          <FlagRadio
+                            checked={state === "on"}
+                            onChange={() => setFlagOverride(flag.id, true)}
+                            label={t("dash.flagOn")}
+                            tone="teal"
+                          />
+                          <FlagRadio
+                            checked={state === "off"}
+                            onChange={() => setFlagOverride(flag.id, false)}
+                            label={t("dash.flagOff")}
+                            tone="red"
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         ) : null}
       </div>
@@ -608,4 +615,26 @@ function FlagRadio({
       <span className={color}>{label}</span>
     </label>
   )
+}
+
+interface FlagGroup {
+  key: string
+  labelKey: string
+  flags: api.FlagCatalog["catalog"]
+}
+
+function groupFlags(catalog: api.FlagCatalog["catalog"]): FlagGroup[] {
+  const vendor: typeof catalog = []
+  const transform: typeof catalog = []
+  const behavior: typeof catalog = []
+  for (const f of catalog) {
+    if (f.id.startsWith("vendor-")) vendor.push(f)
+    else if (f.id.startsWith("transform-")) transform.push(f)
+    else behavior.push(f)
+  }
+  const groups: FlagGroup[] = []
+  if (vendor.length) groups.push({ key: "vendor", labelKey: "dash.flagGroupVendor", flags: vendor })
+  if (behavior.length) groups.push({ key: "behavior", labelKey: "dash.flagGroupBehavior", flags: behavior })
+  if (transform.length) groups.push({ key: "transform", labelKey: "dash.flagGroupTransform", flags: transform })
+  return groups
 }
