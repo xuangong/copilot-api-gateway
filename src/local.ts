@@ -31,6 +31,7 @@ import { imagesRoute } from "~/routes/images"
 import { geminiRoute } from "~/routes/gemini"
 import { authRoute } from "~/routes/auth"
 import { initResend } from "~/lib/email"
+import { createInMemoryImageProcessor, hasImageProcessor, initImageProcessor } from "~/image"
 import { hashPassword } from "~/lib/password"
 import { apiKeysRoute } from "~/routes/api-keys"
 import { dashboardRoute } from "~/routes/dashboard"
@@ -363,6 +364,13 @@ async function createApp() {
   // Initialize Resend email service
   if (env.RESEND_API_KEY) {
     initResend(env.RESEND_API_KEY)
+  }
+
+  // Local mode has no Cloudflare Images binding; install the noop processor
+  // so transforms that call getImageProcessor() degrade to passthrough
+  // instead of throwing.
+  if (!hasImageProcessor()) {
+    initImageProcessor(createInMemoryImageProcessor())
   }
 
   // Set up latency logging callback for local mode

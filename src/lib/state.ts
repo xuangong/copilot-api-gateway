@@ -1,4 +1,5 @@
 import type { AccountType } from "~/config/constants"
+import type { ImagesBinding, ImageCacheKv } from "~/image"
 import type { D1Database } from "~/repo/d1"
 
 export interface AppState {
@@ -29,4 +30,8 @@ export interface Env {
   TAVILY_API_KEY?: string
   MS_GROUNDING_API_KEY?: string
   RESEND_API_KEY?: string
+  /** Cloudflare Images binding for inline image recompression. */
+  IMAGES?: ImagesBinding
+  /** KV namespace memoising compressed image results. */
+  IMAGE_CACHE?: ImageCacheKv
 }

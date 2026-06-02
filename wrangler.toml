@@ -19,6 +19,20 @@ routes = [
 binding = "KV"
 id = "55077c6d26dd493d9752c07176c35237"
 
+# Image cache (memoises WebP-compressed inline images, 30-day TTL).
+# Kept separate from KV so auth/token traffic and large image blobs don't
+# compete for the same namespace quotas and so cache eviction stays isolated.
+# Create with: wrangler kv namespace create IMAGE_CACHE
+# Then replace the placeholder below with the returned id.
+[[kv_namespaces]]
+binding = "IMAGE_CACHE"
+id = "REPLACE_WITH_IMAGE_CACHE_KV_ID"
+
+# Cloudflare Images binding for inline image recompression.
+# No account-level setup needed beyond enabling Images on the account.
+[images]
+binding = "IMAGES"
+
 # D1 Database binding
 # Create with: wrangler d1 create copilot-db
 # Then update the database_id below

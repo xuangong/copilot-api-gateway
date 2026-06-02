@@ -15,6 +15,9 @@ import {
   classifyChatCompletionsInitiator,
   classifyMessagesInitiator,
   classifyResponsesInitiator,
+  compressInlineImagesChatCompletions,
+  compressInlineImagesMessages,
+  compressInlineImagesResponses,
   forceStoreFalse,
   setClaudeAgentHeaders,
   setChatCompletionsVisionHeader,
@@ -137,6 +140,12 @@ export class CopilotProvider implements ModelProvider {
       if (flags.has("transform-strip-structured-output-format")) {
         stripStructuredOutputFormat(payload as unknown as AnthropicMessagesPayload)
       }
+      // Recompress inline base64 images to WebP via the registered
+      // ImageProcessor. Model id is already canonicalized to a base id by
+      // applyVariantAndBetaFiltering above, so per-model caps resolve cleanly.
+      if (flags.has("transform-compress-inline-images")) {
+        await compressInlineImagesMessages(payload as unknown as AnthropicMessagesPayload, payload.model as string)
+      }
     }
 
     if (endpoint === "responses") {
@@ -164,6 +173,11 @@ export class CopilotProvider implements ModelProvider {
       if (flags.has("transform-vision-header")) {
         setResponsesVisionHeader(payload as unknown as ResponsesPayload, headers)
       }
+      // Recompress inline base64 images (input_image parts in message.content
+      // and function_call_output.output) to WebP before forwarding.
+      if (flags.has("transform-compress-inline-images")) {
+        await compressInlineImagesResponses(payload as unknown as ResponsesPayload, payload.model as string)
+      }
     }
 
     if (endpoint === "chat_completions") {
@@ -177,6 +191,10 @@ export class CopilotProvider implements ModelProvider {
       // OpenAI-style image_url content parts → copilot-vision-request: true.
       if (flags.has("transform-vision-header")) {
         setChatCompletionsVisionHeader(payload as { messages?: Array<{ content?: unknown }> }, headers)
+      }
+      // Recompress inline base64 image_url data URLs to WebP before forwarding.
+      if (flags.has("transform-compress-inline-images")) {
+        await compressInlineImagesChatCompletions(payload as { messages?: Array<{ content?: unknown }> }, payload.model as string)
       }
     }
 

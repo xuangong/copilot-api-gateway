@@ -20,6 +20,7 @@ import { imagesRoute } from "~/routes/images"
 import { geminiRoute } from "~/routes/gemini"
 import { authRoute, initOAuthKV } from "~/routes/auth"
 import { initResend } from "~/lib/email"
+import { createCloudflareImageProcessor, createInMemoryImageProcessor, hasImageProcessor, initImageProcessor } from "~/image"
 import { apiKeysRoute } from "~/routes/api-keys"
 import { dashboardRoute } from "~/routes/dashboard"
 import { upstreamAccountsRoute } from "~/routes/upstream-accounts"
@@ -245,6 +246,17 @@ function createApp(env: Env) {
   // Initialize Resend email service
   if (env.RESEND_API_KEY) {
     initResend(env.RESEND_API_KEY)
+  }
+
+  // Initialize image processor (idempotent — first request wins).
+  // Cloudflare Images + KV when bindings present; otherwise in-memory noop
+  // so inline-image transforms degrade to passthrough rather than 500.
+  if (!hasImageProcessor()) {
+    if (env.IMAGES && env.IMAGE_CACHE) {
+      initImageProcessor(createCloudflareImageProcessor(env.IMAGES, env.IMAGE_CACHE))
+    } else {
+      initImageProcessor(createInMemoryImageProcessor())
+    }
   }
 
   // Auth middleware function

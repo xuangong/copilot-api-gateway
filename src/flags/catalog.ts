@@ -124,6 +124,12 @@ export const OPTIONAL_FLAGS = [
     description: "SHA-256 hash of metadata.user_id session fingerprint → x-interaction-id on /v1/messages, for Copilot trace correlation.",
     defaultFor: ["copilot"],
   },
+  {
+    id: "transform-compress-inline-images",
+    label: "Transform: compress inline base64 images to WebP",
+    description: "Recompress base64 data-URL images in the payload to WebP via the Cloudflare Images binding before forwarding upstream. Cuts bandwidth and avoids the lossy multi-pass re-encode Copilot/Anthropic do server-side. No-op when no Images binding is configured.",
+    defaultFor: ["copilot"],
+  },
 ] as const satisfies readonly Flag[]
 
 export type OptionalFlagId = (typeof OPTIONAL_FLAGS)[number]["id"]

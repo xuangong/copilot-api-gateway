@@ -58,6 +58,13 @@ export {
   setResponsesVisionHeader,
 } from "./set-vision-header"
 
+// Recompress inline base64 images to WebP via the registered ImageProcessor
+export {
+  compressInlineImagesMessages,
+  compressInlineImagesChatCompletions,
+  compressInlineImagesResponses,
+} from "./compress-inline-images"
+
 // Attach Copilot's private cache-control markers on Chat Completions messages
 export { attachCacheControlMarkers } from "./attach-cache-control-markers"
 
