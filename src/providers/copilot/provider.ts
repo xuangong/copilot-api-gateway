@@ -13,6 +13,7 @@ import {
   classifyChatCompletionsInitiator,
   classifyMessagesInitiator,
   classifyResponsesInitiator,
+  forceStoreFalse,
 } from "~/transforms"
 import type {
   AnthropicMessagesPayload,
@@ -97,6 +98,14 @@ export class CopilotProvider implements ModelProvider {
     }
 
     setInitiatorHeader(endpoint, payload, headers)
+
+    if (endpoint === "responses") {
+      // Copilot's /responses rejects `store:true` with
+      // 400 {"code":"unsupported_value","param":"store"}. Force false on the
+      // outbound payload; our own persistence (if any) keys off the caller's
+      // original value, which we don't echo back into Copilot.
+      forceStoreFalse(payload)
+    }
 
     const requireModel = opts.requireModel ?? (endpoint !== "messages_count_tokens")
 

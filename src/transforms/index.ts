@@ -32,6 +32,9 @@ export {
   classifyResponsesInitiator,
 } from "./set-initiator-header"
 
+// Force store:false on /responses (Copilot rejects store:true)
+export { forceStoreFalse } from "./force-store-false"
+
 // Responses → chat-completions payload compactor (codex 413 mitigation)
 export { compactResponsesInputForChatFallback } from "./compact-responses-input"
 export type { CompactStats } from "./compact-responses-input"
