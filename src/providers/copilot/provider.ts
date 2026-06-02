@@ -10,6 +10,7 @@ import {
   resolveCopilotRawModel,
 } from "~/services/copilot/variants"
 import {
+  attachCacheControlMarkers,
   classifyChatCompletionsInitiator,
   classifyMessagesInitiator,
   classifyResponsesInitiator,
@@ -110,6 +111,14 @@ export class CopilotProvider implements ModelProvider {
       // outbound payload; our own persistence (if any) keys off the caller's
       // original value, which we don't echo back into Copilot.
       forceStoreFalse(payload)
+    }
+
+    if (endpoint === "chat_completions") {
+      // Tag stable prefixes (first 2 system messages) and the recent tail
+      // (last 2 non-system) with Copilot's private cache-control marker so
+      // Copilot can prompt-cache them. Generic OpenAI ignores the field, so
+      // it's safe to send unconditionally on this endpoint.
+      attachCacheControlMarkers(payload as { messages?: Array<{ role?: string; content?: unknown }> })
     }
 
     const requireModel = opts.requireModel ?? (endpoint !== "messages_count_tokens")

@@ -48,6 +48,9 @@ export {
 } from "./detect-claude-code-metadata"
 export { setClaudeAgentHeaders } from "./set-claude-agent-headers"
 
+// Attach Copilot's private cache-control markers on Chat Completions messages
+export { attachCacheControlMarkers } from "./attach-cache-control-markers"
+
 // Responses → chat-completions payload compactor (codex 413 mitigation)
 export { compactResponsesInputForChatFallback } from "./compact-responses-input"
 export type { CompactStats } from "./compact-responses-input"
