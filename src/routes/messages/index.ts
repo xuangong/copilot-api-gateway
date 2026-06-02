@@ -1,10 +1,13 @@
 import { Elysia } from "elysia"
 
 import { resolveBinding, stripUpstreamPin, pinFromPayload } from "~/lib/binding-resolver"
+import { HTTPError } from "~/lib/error"
 import { startTimer } from "~/lib/latency-tracker"
 import { checkQuota } from "~/lib/quota"
 import type { MessagesPayload } from "~/services/web-search"
 import {
+  anthropicContextWindowErrorBody,
+  isContextWindowError,
   runAnthropicCountTokensPipeline,
   runAnthropicMessagesPipeline,
   type AnthropicMessagesPayload,
@@ -47,31 +50,48 @@ export const messagesRoute = new Elysia()
     stripUpstreamPin(payload as unknown as Record<string, unknown>)
     const flags = runAnthropicMessagesPipeline(payload, routeCtx.state.enabledFlags ?? new Set())
 
-    // gpt-5.x only serves /v1/responses upstream — translate Messages↔Responses.
-    if (payload.model.startsWith("gpt-5")) {
-      return handleMessagesViaResponses(routeCtx, payload, elapsed)
-    }
+    try {
+      // gpt-5.x only serves /v1/responses upstream — translate Messages↔Responses.
+      if (payload.model.startsWith("gpt-5")) {
+        return await handleMessagesViaResponses(routeCtx, payload, elapsed)
+      }
 
-    // Other gpt-* models only serve /v1/chat/completions — translate
-    // Messages↔Chat Completions on both legs.
-    if (payload.model.startsWith("gpt-")) {
-      return handleMessagesViaChatCompletions(routeCtx, payload, elapsed)
-    }
+      // Other gpt-* models only serve /v1/chat/completions — translate
+      // Messages↔Chat Completions on both legs.
+      if (payload.model.startsWith("gpt-")) {
+        return await handleMessagesViaChatCompletions(routeCtx, payload, elapsed)
+      }
 
-    // Anthropic web_search intercept — only for native Anthropic models (claude-*
-    // and any non-GPT model). GPT models use their own web search path above.
-    const messagesPayload = payload as unknown as MessagesPayload
-    if (hasWebSearch(messagesPayload)) {
-      return handleWebSearch(routeCtx, payload, messagesPayload, elapsed)
-    }
+      // Anthropic web_search intercept — only for native Anthropic models (claude-*
+      // and any non-GPT model). GPT models use their own web search path above.
+      const messagesPayload = payload as unknown as MessagesPayload
+      if (hasWebSearch(messagesPayload)) {
+        return await handleWebSearch(routeCtx, payload, messagesPayload, elapsed)
+      }
 
-    return handleDirectMessages(
-      routeCtx,
-      payload,
-      passthroughHeaders,
-      flags.thinkingPromotion.promoted,
-      elapsed,
-    )
+      return await handleDirectMessages(
+        routeCtx,
+        payload,
+        passthroughHeaders,
+        flags.thinkingPromotion.promoted,
+        elapsed,
+      )
+    } catch (err) {
+      // Normalize upstream context-window errors into Anthropic's
+      // `invalid_request_error` shape so Claude Code (and any other client
+      // that gates auto-compact on this exact message) actually compacts
+      // instead of surfacing the raw Copilot/Vertex error.
+      if (err instanceof HTTPError) {
+        const text = await err.response.clone().text().catch(() => "")
+        if (isContextWindowError(text)) {
+          return new Response(anthropicContextWindowErrorBody(), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          })
+        }
+      }
+      throw err
+    }
   })
   .post("/v1/messages/count_tokens", async (ctx) => {
     const { state, body, userId } = ctx as unknown as RouteContext

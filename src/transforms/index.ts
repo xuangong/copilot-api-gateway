@@ -35,6 +35,12 @@ export {
 // Force store:false on /responses (Copilot rejects store:true)
 export { forceStoreFalse } from "./force-store-false"
 
+// Rewrite upstream context-window errors into Anthropic-compactable shape
+export {
+  isContextWindowError,
+  anthropicContextWindowErrorBody,
+} from "./rewrite-context-window-error"
+
 // Responses → chat-completions payload compactor (codex 413 mitigation)
 export { compactResponsesInputForChatFallback } from "./compact-responses-input"
 export type { CompactStats } from "./compact-responses-input"
