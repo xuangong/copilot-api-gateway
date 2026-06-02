@@ -9,7 +9,9 @@ describe("translateChatCompletionsToMessages", () => {
       messages: [{ role: "user", content: "hello" }],
     })
     expect(out.model).toBe("m")
-    expect(out.messages).toEqual([{ role: "user", content: "hello" }])
+    expect(out.messages).toEqual([
+      { role: "user", content: [{ type: "text", text: "hello", cache_control: { type: "ephemeral" } }] },
+    ])
     expect(out.max_tokens).toBe(4096)
     expect(out.stream).toBe(true)
   })
@@ -23,7 +25,9 @@ describe("translateChatCompletionsToMessages", () => {
         { role: "user", content: "hi" },
       ],
     })
-    expect(out.system).toBe("rule 1\n\nrule 2")
+    expect(out.system).toEqual([
+      { type: "text", text: "rule 1\n\nrule 2", cache_control: { type: "ephemeral" } },
+    ])
   })
 
   test("assistant tool_calls become tool_use blocks", () => {
@@ -108,7 +112,12 @@ describe("translateChatCompletionsToMessages", () => {
       tool_choice: "required",
     })
     expect(out.tools).toEqual([
-      { name: "search", description: "find", input_schema: { type: "object" } },
+      {
+        name: "search",
+        description: "find",
+        input_schema: { type: "object" },
+        cache_control: { type: "ephemeral" },
+      },
     ])
     expect(out.tool_choice).toEqual({ type: "any" })
   })

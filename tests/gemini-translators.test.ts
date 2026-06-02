@@ -20,7 +20,10 @@ describe("translateGeminiToMessages", () => {
       systemInstruction: { role: "system", parts: [{ text: "be terse" }] },
     } as GeminiGenerateContentRequest
     const out = translateGeminiToMessages(req, "m")
-    expect(typeof out.system === "string" ? out.system : "").toContain("be terse")
+    const systemText = Array.isArray(out.system)
+      ? out.system.map((b) => b.text).join("")
+      : (out.system ?? "")
+    expect(systemText).toContain("be terse")
   })
 
   test("fallbackMaxOutputTokens carried through", () => {

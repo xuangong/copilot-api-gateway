@@ -14,7 +14,9 @@ describe("Responses → Messages request translator", () => {
       input: "hi",
     } as any)
     expect(target.model).toBe("claude-opus-4-7")
-    expect(target.messages).toEqual([{ role: "user", content: "hi" }])
+    expect(target.messages).toEqual([
+      { role: "user", content: [{ type: "text", text: "hi", cache_control: { type: "ephemeral" } }] },
+    ])
     expect(target.max_tokens).toBe(8192)
     expect(target.stream).toBe(true)
   })
@@ -29,9 +31,11 @@ describe("Responses → Messages request translator", () => {
         { type: "message", role: "user", content: "hello" },
       ],
     } as any)
-    expect(target.system).toBe("global instr\n\nbe helpful\n\ndev hint")
+    expect(target.system).toEqual([
+      { type: "text", text: "global instr\n\nbe helpful\n\ndev hint", cache_control: { type: "ephemeral" } },
+    ])
     expect(target.messages).toEqual([
-      { role: "user", content: [{ type: "text", text: "hello" }] },
+      { role: "user", content: [{ type: "text", text: "hello", cache_control: { type: "ephemeral" } }] },
     ])
   })
 
@@ -71,7 +75,12 @@ describe("Responses → Messages request translator", () => {
     expect(extras.temperature).toBe(0.5)
     expect(extras.top_p).toBe(0.9)
     expect(target.tools).toEqual([
-      { name: "fn", description: "d", input_schema: { type: "object" } },
+      {
+        name: "fn",
+        description: "d",
+        input_schema: { type: "object" },
+        cache_control: { type: "ephemeral" },
+      },
     ])
   })
 

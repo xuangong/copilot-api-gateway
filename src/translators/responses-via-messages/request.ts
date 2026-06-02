@@ -19,6 +19,11 @@ import type {
   ResponseTool,
   ToolInput,
 } from "~/transforms/types"
+import {
+  applyLastMessageCacheBreakpoint,
+  applyLastToolCacheBreakpoint,
+  systemWithCacheBreakpoint,
+} from "~/translators/shared/cache-breakpoints"
 
 const DEFAULT_MAX_TOKENS = 8192
 
@@ -182,12 +187,13 @@ export function translateResponsesToMessages(
   const systemPieces = [payload.instructions, ...systemParts].filter(
     (p): p is string => Boolean(p),
   )
-  const system = systemPieces.join("\n\n")
   const effort = payload.reasoning?.effort
   const max_tokens = payload.max_output_tokens ?? DEFAULT_MAX_TOKENS
 
   const tools = translateTools(payload.tools)
   const tool_choice = translateToolChoice(payload.tool_choice)
+  applyLastToolCacheBreakpoint(tools)
+  applyLastMessageCacheBreakpoint(messages)
 
   // Merge reasoning effort + structured-output format into a single
   // `output_config`. Responses keeps json_schema details flat
@@ -206,12 +212,15 @@ export function translateResponsesToMessages(
   if (formatSchema) outputConfig.format = { type: "json_schema", schema: formatSchema }
   const hasOutputConfig = Object.keys(outputConfig).length > 0
 
+  const systemText = systemPieces.length > 0 ? systemPieces.join("\n\n") : undefined
+  const systemBlocks = systemWithCacheBreakpoint(systemText)
+
   const target: AnthropicMessagesPayload = {
     model: payload.model,
     messages,
     max_tokens,
     stream: payload.stream ?? true,
-    ...(system ? { system } : {}),
+    ...(systemBlocks ? { system: systemBlocks } : {}),
     ...(tools ? { tools } : {}),
     ...(hasOutputConfig ? { output_config: outputConfig } : {}),
   }

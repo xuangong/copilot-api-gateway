@@ -24,6 +24,11 @@ import type {
   AnthropicToolResultBlock,
   AnthropicTool,
 } from "~/transforms/types"
+import {
+  applyLastMessageCacheBreakpoint,
+  applyLastToolCacheBreakpoint,
+  systemWithCacheBreakpoint,
+} from "~/translators/shared/cache-breakpoints"
 
 const MESSAGES_FALLBACK_MAX_TOKENS = 4096
 
@@ -211,6 +216,12 @@ export function translateChatCompletionsToMessages(
   const max_tokens =
     payload.max_tokens ?? options.fallbackMaxOutputTokens ?? MESSAGES_FALLBACK_MAX_TOKENS
   const toolChoice = translateToolChoice(payload.tool_choice)
+  const tools = payload.tools?.length ? translateTools(payload.tools) : undefined
+  const systemBlocks = systemWithCacheBreakpoint(
+    systemParts.length > 0 ? systemParts.join("\n\n") : undefined,
+  )
+  applyLastToolCacheBreakpoint(tools)
+  applyLastMessageCacheBreakpoint(messages)
   const thinking = payload.reasoning_effort
     ? { type: "enabled" as const, budget_tokens: EFFORT_TO_BUDGET[payload.reasoning_effort] }
     : undefined
@@ -237,14 +248,14 @@ export function translateChatCompletionsToMessages(
     model: payload.model,
     messages,
     max_tokens,
-    ...(systemParts.length > 0 ? { system: systemParts.join("\n\n") } : {}),
+    ...(systemBlocks ? { system: systemBlocks } : {}),
     ...(payload.temperature != null ? { temperature: payload.temperature } : {}),
     ...(payload.top_p != null ? { top_p: payload.top_p } : {}),
     ...(payload.stop != null
       ? { stop_sequences: Array.isArray(payload.stop) ? payload.stop : [payload.stop] }
       : {}),
     stream: payload.stream ?? true,
-    ...(payload.tools?.length ? { tools: translateTools(payload.tools) } : {}),
+    ...(tools ? { tools } : {}),
     ...(toolChoice ? { tool_choice: toolChoice } : {}),
     ...(thinking ? { thinking } : {}),
     ...(output_config ? { output_config } : {}),
