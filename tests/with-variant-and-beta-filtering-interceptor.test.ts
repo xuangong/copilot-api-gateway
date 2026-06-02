@@ -27,18 +27,20 @@ describe("withVariantAndBetaFiltering", () => {
     expect(result).toBe(FAKE_RESPONSE)
   })
 
-  test("composite id claude-opus-4.7-xhigh-1m parsed: model normalized, effort injected, beta merged", async () => {
+  test("composite id claude-opus-4.7-xhigh-1m parsed: model normalized, effort injected", async () => {
     const itc = createVariantAndBetaFilteringInterceptor("", "individual")
     const inv = makeInv(
       "messages",
       { model: "claude-opus-4.7-xhigh-1m" },
-      { "anthropic-beta": "fine-grained-tool-streaming-2025-05-14" },
+      {},
     )
     await itc(inv, ctx, async () => FAKE_RESPONSE)
     expect(inv.payload.model).toBe("claude-opus-4.7")
     const oc = inv.payload.output_config as { effort?: string } | undefined
     expect(oc?.effort).toBe("xhigh")
-    expect(inv.headers["anthropic-beta"]).toContain("context-1m-2025-08-07")
+    // context-1m beta is client-only signal — dropped from upstream header
+    // by filterAnthropicBetaForUpstream, so the merged-then-filtered result
+    // omits it entirely. Only verify the normalization + effort here.
   })
 
   test("x-copilot-reasoning-effort header consumed and injected into payload field per endpoint", async () => {
@@ -61,8 +63,9 @@ describe("withVariantAndBetaFiltering", () => {
       { "anthropic-beta": "context-management-2025-06-27,fine-grained-tool-streaming-2025-05-14" },
     )
     await itc(inv, ctx, async () => FAKE_RESPONSE)
-    // context-management is stripped (not in allowlist); fine-grained-tool-streaming stays
-    expect(inv.headers["anthropic-beta"]).toBe("fine-grained-tool-streaming-2025-05-14")
+    // fine-grained-tool-streaming is stripped (not in allowlist);
+    // context-management-2025-06-27 stays (in allowlist).
+    expect(inv.headers["anthropic-beta"]).toBe("context-management-2025-06-27")
   })
 
   test("delegates to terminal and returns its response", async () => {
