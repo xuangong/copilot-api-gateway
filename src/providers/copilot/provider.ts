@@ -14,6 +14,7 @@ import {
   classifyMessagesInitiator,
   classifyResponsesInitiator,
   forceStoreFalse,
+  setClaudeAgentHeaders,
 } from "~/transforms"
 import type {
   AnthropicMessagesPayload,
@@ -98,6 +99,10 @@ export class CopilotProvider implements ModelProvider {
     }
 
     setInitiatorHeader(endpoint, payload, headers)
+
+    if (endpoint === "messages" || endpoint === "messages_count_tokens") {
+      setClaudeAgentHeaders(payload as unknown as AnthropicMessagesPayload, headers)
+    }
 
     if (endpoint === "responses") {
       // Copilot's /responses rejects `store:true` with

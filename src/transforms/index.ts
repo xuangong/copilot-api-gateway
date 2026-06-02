@@ -41,6 +41,13 @@ export {
   anthropicContextWindowErrorBody,
 } from "./rewrite-context-window-error"
 
+// Claude Code metadata + agent headers
+export {
+  parseUserIdMetadata,
+  type ClaudeCodeMetadata,
+} from "./detect-claude-code-metadata"
+export { setClaudeAgentHeaders } from "./set-claude-agent-headers"
+
 // Responses → chat-completions payload compactor (codex 413 mitigation)
 export { compactResponsesInputForChatFallback } from "./compact-responses-input"
 export type { CompactStats } from "./compact-responses-input"
