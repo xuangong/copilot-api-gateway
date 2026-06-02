@@ -2,9 +2,9 @@ import type { AccountType } from "~/config/constants"
 import { defaultsForUpstream, resolveEffectiveFlags } from "~/flags"
 import { getRepo } from "~/repo"
 import type { UpstreamRecord } from "~/repo"
-import type { EndpointKey } from "~/protocols/common"
+import type { EndpointKey, ModelKind } from "~/protocols/common"
 import { getCachedCopilotToken } from "~/services/github/copilot-token-cache"
-import type { ModelsResponse } from "~/services/copilot/models"
+import type { Model, ModelsResponse } from "~/services/copilot/models"
 
 import type { ProviderBinding } from "./binding"
 
@@ -71,11 +71,33 @@ export async function createProviderFromUpstream(upstream: UpstreamRecord, copil
   return copilot ? createCopilotProvider(copilot) : null
 }
 
+/**
+ * Infer a model's kind from upstream metadata. Source of truth for which
+ * endpoints a binding may serve. Recognized signals (in order):
+ *   1. capabilities.type === "embeddings" → embedding
+ *   2. capabilities.type === "image" / model id contains "gpt-image" /
+ *      "dall-e" / "image-gen" → image
+ *   3. otherwise → undefined (defer to upstream-declared endpoints)
+ *
+ * Returning undefined is deliberate: the kind filter only excludes
+ * bindings we are CONFIDENT belong to a different category. Unknown
+ * models keep their upstream's declared endpoint compatibility.
+ */
+export function inferModelKind(model: Model): ModelKind | undefined {
+  const capType = model.capabilities?.type?.toLowerCase()
+  if (capType === "embeddings" || capType === "embedding") return "embedding"
+  if (capType === "image" || capType === "images") return "image"
+  const id = model.id.toLowerCase()
+  if (id.startsWith("gpt-image") || id.startsWith("dall-e") || id.includes("image-gen")) return "image"
+  return undefined
+}
+
 function modelToBindingModel(model: ModelsResponse["data"][number]): ProviderBinding["model"] {
   return {
     id: model.id,
     displayName: model.name,
     ownedBy: model.vendor,
+    kind: inferModelKind(model),
     limits: model.capabilities?.limits ? {
       maxContextWindowTokens: model.capabilities.limits.max_context_window_tokens,
       maxOutputTokens: model.capabilities.limits.max_output_tokens,

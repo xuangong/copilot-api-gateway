@@ -13,7 +13,8 @@
  * persisted.
  */
 
-import type { EndpointKey, ModelPricing, UpstreamKind } from "~/protocols/common"
+import type { EndpointKey, ModelKind, ModelPricing, UpstreamKind } from "~/protocols/common"
+import { endpointCompatibleWithKind } from "~/protocols/common"
 import type { ModelProvider } from "~/providers/types"
 import type { Model } from "~/services/copilot/models"
 
@@ -28,6 +29,8 @@ export interface BindingModel {
   displayName?: string
   ownedBy?: string
   created?: number
+  /** Categorical kind — drives endpoint compatibility. Defaults to "chat". */
+  kind?: ModelKind
   limits?: {
     maxOutputTokens?: number
     maxContextWindowTokens?: number
@@ -54,13 +57,21 @@ export interface ProviderBinding {
 }
 
 /**
- * Does the binding natively serve the requested endpoint?
+ * Does the binding natively serve the requested endpoint? Combines the
+ * upstream's declared endpoints with the model's kind compatibility — an
+ * embedding model on a chat-completions upstream still won't serve chat.
+ * Models with no inferred kind (undefined) defer to upstream-declared
+ * endpoints; that keeps unknown/legacy models routable without
+ * registration changes.
  */
 export function bindingServesEndpoint(
   binding: ProviderBinding,
   endpoint: EndpointKey,
 ): boolean {
-  return binding.upstreamEndpoints.includes(endpoint)
+  if (!binding.upstreamEndpoints.includes(endpoint)) return false
+  const kind = binding.model.kind
+  if (!kind) return true
+  return endpointCompatibleWithKind(endpoint, kind)
 }
 
 /**

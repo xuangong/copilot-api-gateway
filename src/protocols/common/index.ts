@@ -38,6 +38,36 @@ export const ALL_ENDPOINT_KEYS = [
   "images_edits",
 ] as const satisfies readonly EndpointKey[]
 
+/**
+ * Categorical kind of a model. Drives endpoint compatibility and dashboard
+ * grouping. A model is exactly one kind:
+ *  - "chat"      → can serve chat_completions / responses / messages / count_tokens
+ *  - "embedding" → can serve embeddings
+ *  - "image"     → can serve images_generations / images_edits
+ *
+ * Default is "chat" when an upstream advertises a model without enough
+ * metadata to disambiguate.
+ */
+export type ModelKind = "chat" | "embedding" | "image"
+
+export const ALL_MODEL_KINDS = ["chat", "embedding", "image"] as const satisfies readonly ModelKind[]
+
+/**
+ * Endpoint compatibility per kind. Bindings whose kind is incompatible with
+ * the requested endpoint are filtered out even if the upstream nominally
+ * serves the endpoint — keeps image/embedding models from leaking into
+ * chat-completions and vice versa.
+ */
+export const ENDPOINTS_BY_MODEL_KIND: Record<ModelKind, readonly EndpointKey[]> = {
+  chat: ["chat_completions", "responses", "messages", "messages_count_tokens"],
+  embedding: ["embeddings"],
+  image: ["images_generations", "images_edits"],
+}
+
+export function endpointCompatibleWithKind(endpoint: EndpointKey, kind: ModelKind): boolean {
+  return ENDPOINTS_BY_MODEL_KIND[kind].includes(endpoint)
+}
+
 /** Single per-model pricing record (USD per million tokens). */
 export interface ModelPricing {
   input: number
