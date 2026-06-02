@@ -10,6 +10,7 @@ export type {
   AnthropicTool,
   ResponsesPayload,
   ResponseTool,
+  ResponseInputItem,
   ResponseItemReference,
 } from "./types"
 

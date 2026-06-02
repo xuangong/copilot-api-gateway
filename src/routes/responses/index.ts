@@ -7,10 +7,11 @@ import {
   hasResponsesWebSearch,
   loadWebSearchConfig,
 } from "~/services/web-search"
-import { disableResponsesReasoningOnForcedToolChoice, stripServiceTier, stripWebSearchTools, type ResponsesPayload } from "~/transforms"
+import { disableResponsesReasoningOnForcedToolChoice, hasResponsesImageGenerationTool, stripServiceTier, stripWebSearchTools, type ResponsesPayload } from "~/transforms"
 
 import { handleChatFallback } from "./chat-fallback"
 import { handleDirectNonStreaming, handleDirectStreaming } from "./direct"
+import { handleResponsesImageGeneration } from "./image-generation"
 import { handleResponsesViaMessages } from "./messages-fallback"
 import {
   rewriteCodexAutoReviewAlias,
@@ -61,6 +62,13 @@ const handleResponses = async (ctx: unknown) => {
   // claude-* 模型走 Messages 上游,需要 Responses ↔ Messages 双向翻译
   if (payload.model.startsWith("claude-")) {
     return handleResponsesViaMessages(routeCtx, payload, elapsed)
+  }
+
+  // image_generation hosted tool: short-circuit to images_generations backend.
+  // Runs before web_search / chat-fallback so the orchestrator isn't invoked
+  // for image-only requests. Slice 2: single-turn dispatch only.
+  if (hasResponsesImageGenerationTool(payload)) {
+    return handleResponsesImageGeneration(routeCtx, payload, elapsed)
   }
 
   const useChatFallback = shouldUseChatFallback(payload.model)
