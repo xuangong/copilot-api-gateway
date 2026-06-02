@@ -38,9 +38,10 @@ describe("withVariantAndBetaFiltering", () => {
     expect(inv.payload.model).toBe("claude-opus-4.7")
     const oc = inv.payload.output_config as { effort?: string } | undefined
     expect(oc?.effort).toBe("xhigh")
-    // context-1m beta is client-only signal — dropped from upstream header
-    // by filterAnthropicBetaForUpstream, so the merged-then-filtered result
-    // omits it entirely. Only verify the normalization + effort here.
+    // Composite "-1m" triggers the merge-then-filter path: context-1m is
+    // appended, then filterAnthropicBetaForUpstream drops it (client-only
+    // signal), and no other beta was present → header should be absent.
+    expect(inv.headers["anthropic-beta"]).toBeUndefined()
   })
 
   test("x-copilot-reasoning-effort header consumed and injected into payload field per endpoint", async () => {
