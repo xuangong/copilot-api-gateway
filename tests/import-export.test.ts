@@ -6,7 +6,7 @@ import {
   parseConfigBundle,
   unredactWithLive,
 } from "~/config/import-export"
-import type { ApiKey, GitHubAccount } from "~/repo/types"
+import type { ApiKey, GitHubAccount, UpstreamRecord } from "~/repo/types"
 
 const sampleKey: ApiKey = {
   id: "k1",
@@ -23,6 +23,24 @@ const sampleAccount: GitHubAccount = {
   token: "gho_live",
   accountType: "individual",
   user: { id: 42, login: "octocat", name: "Octo", avatar_url: "https://x" },
+}
+
+const sampleUpstream: UpstreamRecord = {
+  id: "u_custom_1",
+  provider: "custom",
+  name: "Internal proxy",
+  enabled: true,
+  sortOrder: 10,
+  config: {
+    baseUrl: "https://proxy.internal/v1",
+    apiKey: "sk-upstream-secret",
+    defaultHeaders: { Authorization: "Bearer abc", "X-Tenant": "team-a" },
+    models: ["gpt-4o", "gpt-4o-mini"],
+  },
+  flagOverrides: { "transform-strip-thinking": true },
+  disabledPublicModelIds: ["gpt-3.5-turbo"],
+  createdAt: "2026-04-01T00:00:00Z",
+  updatedAt: "2026-04-02T00:00:00Z",
 }
 
 describe("exportConfig", () => {
@@ -107,6 +125,7 @@ describe("parseConfigBundle", () => {
       apiKeys: [redactedKey],
       githubAccounts: [redactedAcct],
     })
+    // sampleKey has 4 secret fields, only `key` is redacted here → 1, +1 for the gh token
     expect(redactedCount).toBe(2)
   })
 
@@ -121,6 +140,112 @@ describe("parseConfigBundle", () => {
     expect(() =>
       parseConfigBundle({ version: 1, apiKeys: [], githubAccounts: [], flagOverrides: [] }),
     ).toThrow(/flagOverrides/)
+  })
+
+  test("v1 payload is lifted to v2 with empty upstreams", () => {
+    const { bundle, sourceVersion } = parseConfigBundle({
+      version: 1,
+      exportedAt: "2026-04-01T00:00:00Z",
+      apiKeys: [],
+      githubAccounts: [],
+    })
+    expect(sourceVersion).toBe(1)
+    expect(bundle.version).toBe(CONFIG_BUNDLE_VERSION)
+    expect(bundle.upstreams).toEqual([])
+  })
+
+  test("v2 payload preserves upstreams", () => {
+    const { bundle, sourceVersion } = parseConfigBundle({
+      version: 2,
+      exportedAt: "2026-04-01T00:00:00Z",
+      apiKeys: [],
+      githubAccounts: [],
+      upstreams: [sampleUpstream],
+    })
+    expect(sourceVersion).toBe(2)
+    expect(bundle.upstreams).toHaveLength(1)
+    expect(bundle.upstreams[0].id).toBe("u_custom_1")
+  })
+
+  test("rejects upstream entry missing id", () => {
+    expect(() =>
+      parseConfigBundle({
+        version: 2,
+        apiKeys: [],
+        githubAccounts: [],
+        upstreams: [{ provider: "custom", name: "x", config: {} }],
+      }),
+    ).toThrow(/upstreams entry missing id/)
+  })
+
+  test("rejects upstream with unsupported provider", () => {
+    expect(() =>
+      parseConfigBundle({
+        version: 2,
+        apiKeys: [],
+        githubAccounts: [],
+        upstreams: [{ id: "u1", provider: "bogus", name: "x", config: {} }],
+      }),
+    ).toThrow(/unsupported provider/)
+  })
+
+  test("counts redacted secrets nested in upstream config", () => {
+    const redacted = {
+      ...sampleUpstream,
+      config: { ...sampleUpstream.config, apiKey: REDACTED },
+    }
+    const { redactedCount } = parseConfigBundle({
+      version: 2,
+      apiKeys: [],
+      githubAccounts: [],
+      upstreams: [redacted],
+    })
+    expect(redactedCount).toBe(1)
+  })
+})
+
+describe("upstream round-trip", () => {
+  test("redactSecrets masks nested apiKey / Authorization header", () => {
+    const bundle = exportConfig(
+      { apiKeys: [], githubAccounts: [], upstreams: [sampleUpstream] },
+      { redactSecrets: true, now: "2026-05-25T00:00:00Z" },
+    )
+    const cfg = bundle.upstreams[0].config as Record<string, unknown>
+    expect(cfg.apiKey).toBe(REDACTED)
+    const headers = cfg.defaultHeaders as Record<string, unknown>
+    expect(headers.Authorization).toBe(REDACTED)
+    expect(headers["X-Tenant"]).toBe("team-a")
+    expect(cfg.baseUrl).toBe("https://proxy.internal/v1")
+  })
+
+  test("unredactWithLive restores nested upstream secrets matched by id", () => {
+    const exported = exportConfig(
+      { apiKeys: [], githubAccounts: [], upstreams: [sampleUpstream] },
+      { redactSecrets: true },
+    )
+    const merged = unredactWithLive(exported, {
+      apiKeys: [],
+      githubAccounts: [],
+      upstreams: [sampleUpstream],
+    })
+    const cfg = merged.upstreams[0].config as Record<string, unknown>
+    expect(cfg.apiKey).toBe("sk-upstream-secret")
+    const headers = cfg.defaultHeaders as Record<string, unknown>
+    expect(headers.Authorization).toBe("Bearer abc")
+  })
+
+  test("unredactWithLive leaves upstream alone when no live match", () => {
+    const exported = exportConfig(
+      { apiKeys: [], githubAccounts: [], upstreams: [sampleUpstream] },
+      { redactSecrets: true },
+    )
+    const merged = unredactWithLive(exported, {
+      apiKeys: [],
+      githubAccounts: [],
+      upstreams: [],
+    })
+    const cfg = merged.upstreams[0].config as Record<string, unknown>
+    expect(cfg.apiKey).toBe(REDACTED)
   })
 })
 

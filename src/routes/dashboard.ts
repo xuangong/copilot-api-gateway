@@ -345,11 +345,12 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
     const repo = getRepo()
     const url = new URL(ctx.request.url)
     const redactSecrets = url.searchParams.get("redact") === "1"
-    const [apiKeys, githubAccounts] = await Promise.all([
+    const [apiKeys, githubAccounts, upstreams] = await Promise.all([
       repo.apiKeys.list(),
       repo.github.listAccounts(),
+      repo.upstreams.list({ includeDisabled: true }),
     ])
-    return exportConfig({ apiKeys, githubAccounts }, { redactSecrets })
+    return exportConfig({ apiKeys, githubAccounts, upstreams }, { redactSecrets })
   })
 
   // POST /api/import - import a config bundle (admin only)
@@ -379,29 +380,40 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
     }
 
     const repo = getRepo()
-    const [liveKeys, liveAccounts] = await Promise.all([
+    const [liveKeys, liveAccounts, liveUpstreams] = await Promise.all([
       repo.apiKeys.list(),
       repo.github.listAccounts(),
+      repo.upstreams.list({ includeDisabled: true }),
     ])
     const merged = unredactWithLive(parsed.bundle, {
       apiKeys: liveKeys,
       githubAccounts: liveAccounts,
+      upstreams: liveUpstreams,
     })
 
     if (mode === "replace") {
-      await Promise.all([repo.apiKeys.deleteAll(), repo.github.deleteAllAccounts()])
+      await Promise.all([
+        repo.apiKeys.deleteAll(),
+        repo.github.deleteAllAccounts(),
+        repo.upstreams.deleteAll(),
+      ])
     }
 
     for (const key of merged.apiKeys) await repo.apiKeys.save(key)
     for (const account of merged.githubAccounts) {
       await repo.github.saveAccount(account.user.id, account)
     }
+    for (const upstream of merged.upstreams) {
+      await repo.upstreams.save(upstream)
+    }
 
     return {
       ok: true,
+      sourceVersion: parsed.sourceVersion,
       imported: {
         apiKeys: merged.apiKeys.length,
         githubAccounts: merged.githubAccounts.length,
+        upstreams: merged.upstreams.length,
       },
       redactedCount: parsed.redactedCount,
     }
