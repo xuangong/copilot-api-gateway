@@ -2,50 +2,25 @@ import type { AccountType } from "~/config/constants"
 import { defaultsForUpstream } from "~/flags/catalog"
 import { callCopilotAPI } from "~/services/copilot/forward"
 import { getModels, type ModelsResponse } from "~/services/copilot/models"
-import { getCachedRawModels } from "~/services/copilot/raw-models-cache"
-import {
-  filterAnthropicBetaForUpstream,
-  hasContext1mBeta,
-  parseAnthropicBeta,
-  parseCompositeModelId,
-  resolveCopilotRawModel,
-} from "~/services/copilot/variants"
-import {
-  attachCacheControlMarkers,
-  classifyChatCompletionsInitiator,
-  classifyMessagesInitiator,
-  classifyResponsesInitiator,
-  compressInlineImagesChatCompletions,
-  compressInlineImagesMessages,
-  compressInlineImagesResponses,
-  forceStoreFalse,
-  setClaudeAgentHeaders,
-  setChatCompletionsVisionHeader,
-  setCompactHeaders,
-  setInteractionIdHeader,
-  setMessagesVisionHeader,
-  setResponsesVisionHeader,
-  stripImageGeneration,
-  stripSafetyIdentifier,
-  stripStructuredOutputFormat,
-} from "~/transforms"
-import type {
-  AnthropicMessagesPayload,
-  ResponsesPayload,
-} from "~/transforms"
 
-import type { ModelProvider, ProbeResult, ProviderCallOptions } from "../types"
+import type { ModelProvider, ProbeResult } from "../types"
 import { probeViaModels } from "../probe"
 import { type EndpointKey } from "~/protocols/common"
 import type { ProviderFetchOptions } from "../types"
+import type { CopilotInterceptor, Invocation, RequestContext } from "~/providers/interceptor"
+import { runInterceptors } from "~/providers/interceptor"
+import { createVariantAndBetaFilteringInterceptor } from "./interceptors/shared/with-variant-and-beta-filtering"
+import { withInitiatorHeader } from "./interceptors/shared/with-initiator-header"
+import { messagesPayloadInterceptors } from "./interceptors/messages"
+import { responsesPayloadInterceptors } from "./interceptors/responses"
+import { chatCompletionsPayloadInterceptors } from "./interceptors/chat-completions"
+import { embeddingsPayloadInterceptors } from "./interceptors/embeddings"
 
 export interface CopilotProviderConfig {
   copilotToken: string
   accountType: AccountType
   name?: string
 }
-
-type EndpointKind = "messages" | "chat_completions" | "responses" | "embeddings"
 
 const COPILOT_PATHS: Record<EndpointKey, string> = {
   chat_completions: "/chat/completions",
@@ -67,28 +42,32 @@ const COPILOT_SUPPORTED: readonly EndpointKey[] = [
   "embeddings",
 ]
 
-/** Maps each endpoint to the variant-filtering kind. embeddings/images = null (no filtering). */
-const VARIANT_KIND: Record<EndpointKey, EndpointKind | null> = {
-  chat_completions: "chat_completions",
-  responses: "responses",
-  messages: "messages",
-  messages_count_tokens: "messages",
-  embeddings: null,
-  images_generations: null,
-  images_edits: null,
-}
-
 export class CopilotProvider implements ModelProvider {
   readonly kind = "copilot" as const
   readonly name: string
   readonly supportedEndpoints = COPILOT_SUPPORTED
   private readonly copilotToken: string
   private readonly accountType: AccountType
+  private readonly messagesChain: readonly CopilotInterceptor[]
+  private readonly messagesCountTokensChain: readonly CopilotInterceptor[]
+  private readonly responsesChain: readonly CopilotInterceptor[]
+  private readonly chatCompletionsChain: readonly CopilotInterceptor[]
+  private readonly embeddingsChain: readonly CopilotInterceptor[]
 
   constructor(cfg: CopilotProviderConfig) {
     this.copilotToken = cfg.copilotToken
     this.accountType = cfg.accountType
     this.name = cfg.name ?? "copilot"
+
+    const variantFiltering = createVariantAndBetaFilteringInterceptor(this.copilotToken, this.accountType)
+    // Canonical order: variant/beta filter rewrites model id first so
+    // downstream interceptors see the canonical name; initiator header next;
+    // then payload-shape transforms (which assume canonical model id).
+    this.messagesChain = [variantFiltering, withInitiatorHeader, ...messagesPayloadInterceptors]
+    this.messagesCountTokensChain = [variantFiltering, withInitiatorHeader, ...messagesPayloadInterceptors]
+    this.responsesChain = [variantFiltering, withInitiatorHeader, ...responsesPayloadInterceptors]
+    this.chatCompletionsChain = [variantFiltering, withInitiatorHeader, ...chatCompletionsPayloadInterceptors]
+    this.embeddingsChain = embeddingsPayloadInterceptors
   }
 
   getModels(): Promise<ModelsResponse> {
@@ -103,251 +82,45 @@ export class CopilotProvider implements ModelProvider {
     const path = COPILOT_PATHS[endpoint]
     if (!path) throw new Error(`CopilotProvider does not support endpoint: ${endpoint}`)
 
-    const payload = parseJsonBody(init.body)
-    const headers = mergeHeaders(init.headers, opts.extraHeaders)
-    const flags = opts.enabledFlags ?? defaultsForUpstream("copilot")
-
-    const variantKind = VARIANT_KIND[endpoint]
-    if (variantKind !== null) {
-      await this.applyVariantAndBetaFiltering(payload, headers, variantKind as Exclude<EndpointKind, "embeddings">)
+    const inv: Invocation = {
+      endpoint,
+      enabledFlags: opts.enabledFlags ?? defaultsForUpstream("copilot"),
+      sourceApi: opts.sourceApi,
+      payload: parseJsonBody(init.body),
+      headers: mergeHeaders(init.headers, opts.extraHeaders),
+    }
+    const ctx: RequestContext = {
+      requestStartedAt: Date.now(),
+      downstreamAbortSignal: init.signal ?? undefined,
     }
 
-    if (flags.has("transform-set-initiator-header")) {
-      setInitiatorHeader(endpoint, payload, headers)
-    }
-
-    if (endpoint === "messages" || endpoint === "messages_count_tokens") {
-      setClaudeAgentHeaders(payload as unknown as AnthropicMessagesPayload, headers)
-      // Must run AFTER setInitiatorHeader + setClaudeAgentHeaders: compact/
-      // auto-continue is a stronger signal than the structural last-message
-      // initiator heuristic, and conversation-compaction overrides the
-      // messages-proxy interaction-type that Claude Code identity sets.
-      setCompactHeaders(payload as unknown as AnthropicMessagesPayload, headers)
-      // SHA-256 of metadata.user_id session fingerprint → x-interaction-id
-      // for Copilot trace correlation. Independent of the other header
-      // mutations above; runs whenever sessionId is parseable.
-      if (flags.has("transform-set-interaction-id-header")) {
-        await setInteractionIdHeader(payload as unknown as AnthropicMessagesPayload, headers)
-      }
-      // Flip copilot-vision-request when the payload carries any image
-      // blocks (top-level or nested in tool_result.content). Without it,
-      // Copilot treats Anthropic image blocks as plain text.
-      if (flags.has("transform-vision-header")) {
-        setMessagesVisionHeader(payload as unknown as AnthropicMessagesPayload, headers)
-      }
-      // Strip output_config.format — Vertex-routed Copilot rejects
-      // structured_outputs via GCP org policy.
-      if (flags.has("transform-strip-structured-output-format")) {
-        stripStructuredOutputFormat(payload as unknown as AnthropicMessagesPayload)
-      }
-      // Recompress inline base64 images to WebP via the registered
-      // ImageProcessor. Model id is already canonicalized to a base id by
-      // applyVariantAndBetaFiltering above, so per-model caps resolve cleanly.
-      if (flags.has("transform-compress-inline-images")) {
-        await compressInlineImagesMessages(payload as unknown as AnthropicMessagesPayload, payload.model as string)
-      }
-    }
-
-    if (endpoint === "responses") {
-      // Copilot's /responses rejects `store:true` with
-      // 400 {"code":"unsupported_value","param":"store"}. Force false on the
-      // outbound payload; our own persistence (if any) keys off the caller's
-      // original value, which we don't echo back into Copilot.
-      if (flags.has("transform-force-store-false")) {
-        forceStoreFalse(payload)
-      }
-      // Copilot rejects public image_generation tool entries; strip them
-      // (other Responses-capable upstreams accept them).
-      if (flags.has("transform-strip-image-generation")) {
-        stripImageGeneration(payload as unknown as ResponsesPayload)
-      }
-      // Strip safety_identifier when the request was translated from a
-      // non-Responses shape (Messages → Responses, Chat → Responses).
-      // VSCode Copilot Chat never sends it on /responses; native Responses
-      // callers' values are preserved.
-      const sourceApi = opts.sourceApi ?? "responses"
-      if (sourceApi !== "responses" && flags.has("transform-strip-safety-identifier")) {
-        stripSafetyIdentifier(payload as unknown as ResponsesPayload)
-      }
-      // Recursive scan for input_image / legacy image blocks at any depth.
-      if (flags.has("transform-vision-header")) {
-        setResponsesVisionHeader(payload as unknown as ResponsesPayload, headers)
-      }
-      // Recompress inline base64 images (input_image parts in message.content
-      // and function_call_output.output) to WebP before forwarding.
-      if (flags.has("transform-compress-inline-images")) {
-        await compressInlineImagesResponses(payload as unknown as ResponsesPayload, payload.model as string)
-      }
-    }
-
-    if (endpoint === "chat_completions") {
-      // Tag stable prefixes (first 2 system messages) and the recent tail
-      // (last 2 non-system) with Copilot's private cache-control marker so
-      // Copilot can prompt-cache them. Generic OpenAI ignores the field, so
-      // it's safe to send unconditionally on this endpoint.
-      if (flags.has("transform-attach-cache-control-markers")) {
-        attachCacheControlMarkers(payload as { messages?: Array<{ role?: string; content?: unknown }> })
-      }
-      // OpenAI-style image_url content parts → copilot-vision-request: true.
-      if (flags.has("transform-vision-header")) {
-        setChatCompletionsVisionHeader(payload as { messages?: Array<{ content?: unknown }> }, headers)
-      }
-      // Recompress inline base64 image_url data URLs to WebP before forwarding.
-      if (flags.has("transform-compress-inline-images")) {
-        await compressInlineImagesChatCompletions(payload as { messages?: Array<{ content?: unknown }> }, payload.model as string)
-      }
-    }
-
+    const interceptors = this.interceptorsFor(endpoint)
     const requireModel = opts.requireModel ?? (endpoint !== "messages_count_tokens")
 
-    return callCopilotAPI({
-      endpoint: path,
-      payload,
-      operationName: opts.operationName ?? `call ${endpoint}`,
-      copilotToken: this.copilotToken,
-      accountType: this.accountType,
-      timeout: opts.timeout,
-      extraHeaders: headers,
-      requireModel,
-    })
+    return runInterceptors(inv, ctx, interceptors, () =>
+      callCopilotAPI({
+        endpoint: path,
+        payload: inv.payload,
+        operationName: opts.operationName ?? `call ${endpoint}`,
+        copilotToken: this.copilotToken,
+        accountType: this.accountType,
+        timeout: opts.timeout,
+        extraHeaders: inv.headers,
+        requireModel,
+      }),
+    )
   }
 
-  /**
-   * For Claude requests, rewrite `payload.model` to the raw Copilot variant id
-   * (e.g. claude-opus-4.7 → claude-opus-4.7-1m-internal) based on
-   * `anthropic-beta: context-1m-2025-08-07` and the endpoint's effort field,
-   * and filter `anthropic-beta` through Copilot's allowlist.
-   *
-   * Two extra client-side shortcuts are honored so clients that can't set
-   * protocol-native effort fields (e.g. Claude Code only sets ANTHROPIC_MODEL
-   * and ANTHROPIC_CUSTOM_HEADERS) can still pick context/effort:
-   *
-   * 1. Composite model id: `claude-opus-4.7-xhigh-1m` → parsed into
-   *    {baseId, effort:"xhigh", context1m:true}
-   * 2. Header `x-copilot-reasoning-effort: xhigh` → effort hint + injected
-   *    into payload's protocol-native field
-   *
-   * Both are stripped/normalized before forwarding so upstream never sees them.
-   */
-  private async applyVariantAndBetaFiltering(
-    payload: Record<string, unknown>,
-    headers: Record<string, string>,
-    kind: Exclude<EndpointKind, "embeddings">,
-  ): Promise<void> {
-    const rawModelId = typeof payload.model === "string" ? payload.model : undefined
-
-    const betaHeader = headers["anthropic-beta"] ?? headers["Anthropic-Beta"]
-    const clientBeta = parseAnthropicBeta(betaHeader)
-
-    const headerEffort = consumeReasoningEffortHeader(headers)
-    const parsedComposite = rawModelId ? parseCompositeModelId(rawModelId) : undefined
-    const compositeEffort = parsedComposite?.effort
-    const compositeContext1m = parsedComposite?.context1m === true
-
-    // Rewrite payload.model to the base id so downstream resolution and
-    // payload-effort injection both see the canonical name.
-    if (parsedComposite && parsedComposite.baseId !== rawModelId) {
-      payload.model = parsedComposite.baseId
-    }
-
-    const payloadEffort = extractEffort(payload, kind)
-    // Priority: composite-id suffix > payload native field > header.
-    const effectiveEffort = compositeEffort ?? payloadEffort ?? headerEffort
-    if (effectiveEffort && effectiveEffort !== payloadEffort) {
-      injectEffort(payload, kind, effectiveEffort)
-    }
-
-    const wantContext1m = hasContext1mBeta(clientBeta) || compositeContext1m
-
-    const modelId = typeof payload.model === "string" ? payload.model : undefined
-
-    if (modelId?.startsWith("claude-") && this.copilotToken) {
-      try {
-        const rawModels = await getCachedRawModels(this.copilotToken, this.accountType)
-        const resolved = resolveCopilotRawModel(rawModels, modelId, {
-          context1m: wantContext1m,
-          reasoningEffort: effectiveEffort,
-        })
-        if (resolved !== modelId) payload.model = resolved
-      } catch (e) {
-        console.error("[variants] resolve failed:", e)
-      }
-    }
-
-    if (betaHeader !== undefined || compositeContext1m) {
-      const mergedBeta = compositeContext1m && !clientBeta.includes("context-1m-2025-08-07")
-        ? [...clientBeta, "context-1m-2025-08-07"]
-        : clientBeta
-      const filtered = filterAnthropicBetaForUpstream(mergedBeta, {
-        thinkingBudgetTokens: kind === "messages" && hasThinkingBudget(payload),
-        isAdaptiveThinking: kind === "messages" && isAdaptiveThinking(payload),
-      })
-      delete headers["anthropic-beta"]
-      delete headers["Anthropic-Beta"]
-      if (filtered.length > 0) headers["anthropic-beta"] = filtered.join(",")
+  private interceptorsFor(endpoint: EndpointKey): readonly CopilotInterceptor[] {
+    switch (endpoint) {
+      case "messages": return this.messagesChain
+      case "messages_count_tokens": return this.messagesCountTokensChain
+      case "responses": return this.responsesChain
+      case "chat_completions": return this.chatCompletionsChain
+      case "embeddings": return this.embeddingsChain
+      default: return []
     }
   }
-}
-
-function consumeReasoningEffortHeader(headers: Record<string, string>): string | undefined {
-  const variants = ["x-copilot-reasoning-effort", "X-Copilot-Reasoning-Effort"]
-  let value: string | undefined
-  for (const name of variants) {
-    if (headers[name] !== undefined) {
-      value = value ?? headers[name]
-      delete headers[name]
-    }
-  }
-  const trimmed = value?.trim()
-  return trimmed && trimmed !== "none" ? trimmed : undefined
-}
-
-function injectEffort(
-  payload: Record<string, unknown>,
-  kind: Exclude<EndpointKind, "embeddings">,
-  effort: string,
-): void {
-  if (kind === "messages") {
-    const oc = (payload as { output_config?: { effort?: string } }).output_config ?? {}
-    oc.effort = effort
-    ;(payload as { output_config?: { effort?: string } }).output_config = oc
-    return
-  }
-  if (kind === "chat_completions") {
-    ;(payload as { reasoning_effort?: string }).reasoning_effort = effort
-    return
-  }
-  // responses
-  const r = (payload as { reasoning?: { effort?: string } }).reasoning ?? {}
-  r.effort = effort
-  ;(payload as { reasoning?: { effort?: string } }).reasoning = r
-}
-
-function extractEffort(
-  payload: Record<string, unknown>,
-  kind: Exclude<EndpointKind, "embeddings">,
-): string | undefined {
-  if (kind === "messages") {
-    const oc = (payload as { output_config?: { effort?: string } }).output_config
-    return oc?.effort
-  }
-  if (kind === "chat_completions") {
-    const e = (payload as { reasoning_effort?: string }).reasoning_effort
-    return e && e !== "none" ? e : undefined
-  }
-  // responses
-  const r = (payload as { reasoning?: { effort?: string } }).reasoning
-  return r?.effort && r.effort !== "none" ? r.effort : undefined
-}
-
-function hasThinkingBudget(payload: Record<string, unknown>): boolean {
-  const t = (payload as { thinking?: { budget_tokens?: number } }).thinking
-  return typeof t?.budget_tokens === "number" && t.budget_tokens > 0
-}
-
-function isAdaptiveThinking(payload: Record<string, unknown>): boolean {
-  const t = (payload as { thinking?: { type?: string } }).thinking
-  return t?.type === "adaptive"
 }
 
 function parseJsonBody(body: BodyInit | null | undefined): Record<string, unknown> {
@@ -368,29 +141,4 @@ function mergeHeaders(
   }
   if (extra) Object.assign(out, extra)
   return out
-}
-
-/**
- * Set the `x-initiator` header that distinguishes turns the human user just
- * triggered ("user") from agent-initiated turns consuming a tool result
- * ("agent"). Copilot uses this for abuse controls and billing/quota accounting.
- * Skipped for embeddings (no conversation semantics).
- */
-function setInitiatorHeader(
-  endpoint: EndpointKey,
-  payload: Record<string, unknown>,
-  headers: Record<string, string>,
-): void {
-  let initiator: "user" | "agent" | undefined
-  if (endpoint === "messages" || endpoint === "messages_count_tokens") {
-    initiator = classifyMessagesInitiator(payload as unknown as AnthropicMessagesPayload)
-  } else if (endpoint === "chat_completions") {
-    initiator = classifyChatCompletionsInitiator(payload as { messages?: Array<{ role?: string }> })
-  } else if (endpoint === "responses") {
-    initiator = classifyResponsesInitiator(payload as unknown as ResponsesPayload)
-  }
-  if (initiator) {
-    delete headers["X-Initiator"]
-    headers["x-initiator"] = initiator
-  }
 }
