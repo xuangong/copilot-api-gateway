@@ -44,7 +44,7 @@ export async function handleDirectMessages(
     const response = await provider.fetch(
       "messages",
       { method: "POST", body: JSON.stringify(payload) },
-      { operationName: "create message", extraHeaders: passthroughHeaders },
+      { operationName: "create message", extraHeaders: passthroughHeaders, enabledFlags: binding.enabledFlags },
     )
     const upstreamMs = upstreamTimer()
 
@@ -98,6 +98,7 @@ export async function handleDirectMessages(
         operationName: "create message",
         timeout: SYNC_REQUEST_TIMEOUT_MS,
         extraHeaders: passthroughHeaders,
+        enabledFlags: binding.enabledFlags,
       },
     )
     upstreamMs = upstreamTimer()

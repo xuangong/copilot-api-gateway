@@ -162,7 +162,7 @@ async function handleGenerateContent(ctx: RouteContext) {
     const response = await provider.fetch(
       "chat_completions",
       { method: "POST", body: JSON.stringify(cleanPayload) },
-      { operationName: "gemini generate content" },
+      { operationName: "gemini generate content", enabledFlags: binding.enabledFlags },
     )
     upstreamMs = upstreamTimer()
     const json = (await response.json()) as ChatCompletionResponse
@@ -236,7 +236,7 @@ async function handleCountTokens(ctx: RouteContext) {
   const response = await binding.provider.fetch(
     "messages_count_tokens",
     { method: "POST", body: JSON.stringify(payload) },
-    { operationName: "gemini count tokens" },
+    { operationName: "gemini count tokens", enabledFlags: binding.enabledFlags },
   )
 
   if (!response.ok) {
@@ -355,7 +355,7 @@ async function handleStreamGenerateContent(
   const response = await binding.provider.fetch(
     "chat_completions",
     { method: "POST", body: JSON.stringify(cleanPayload) },
-    { operationName: "gemini stream generate content" },
+    { operationName: "gemini stream generate content", enabledFlags: binding.enabledFlags },
   )
   const upstreamMs = upstreamTimer()
 

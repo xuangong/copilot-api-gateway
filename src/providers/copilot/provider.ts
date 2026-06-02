@@ -1,4 +1,5 @@
 import type { AccountType } from "~/config/constants"
+import { defaultsForUpstream } from "~/flags/catalog"
 import { callCopilotAPI } from "~/services/copilot/forward"
 import { getModels, type ModelsResponse } from "~/services/copilot/models"
 import { getCachedRawModels } from "~/services/copilot/raw-models-cache"
@@ -101,13 +102,16 @@ export class CopilotProvider implements ModelProvider {
 
     const payload = parseJsonBody(init.body)
     const headers = mergeHeaders(init.headers, opts.extraHeaders)
+    const flags = opts.enabledFlags ?? defaultsForUpstream("copilot")
 
     const variantKind = VARIANT_KIND[endpoint]
     if (variantKind !== null) {
       await this.applyVariantAndBetaFiltering(payload, headers, variantKind as Exclude<EndpointKind, "embeddings">)
     }
 
-    setInitiatorHeader(endpoint, payload, headers)
+    if (flags.has("transform-set-initiator-header")) {
+      setInitiatorHeader(endpoint, payload, headers)
+    }
 
     if (endpoint === "messages" || endpoint === "messages_count_tokens") {
       setClaudeAgentHeaders(payload as unknown as AnthropicMessagesPayload, headers)
@@ -119,14 +123,20 @@ export class CopilotProvider implements ModelProvider {
       // SHA-256 of metadata.user_id session fingerprint → x-interaction-id
       // for Copilot trace correlation. Independent of the other header
       // mutations above; runs whenever sessionId is parseable.
-      await setInteractionIdHeader(payload as unknown as AnthropicMessagesPayload, headers)
+      if (flags.has("transform-set-interaction-id-header")) {
+        await setInteractionIdHeader(payload as unknown as AnthropicMessagesPayload, headers)
+      }
       // Flip copilot-vision-request when the payload carries any image
       // blocks (top-level or nested in tool_result.content). Without it,
       // Copilot treats Anthropic image blocks as plain text.
-      setMessagesVisionHeader(payload as unknown as AnthropicMessagesPayload, headers)
+      if (flags.has("transform-vision-header")) {
+        setMessagesVisionHeader(payload as unknown as AnthropicMessagesPayload, headers)
+      }
       // Strip output_config.format — Vertex-routed Copilot rejects
       // structured_outputs via GCP org policy.
-      stripStructuredOutputFormat(payload as unknown as AnthropicMessagesPayload)
+      if (flags.has("transform-strip-structured-output-format")) {
+        stripStructuredOutputFormat(payload as unknown as AnthropicMessagesPayload)
+      }
     }
 
     if (endpoint === "responses") {
@@ -134,20 +144,26 @@ export class CopilotProvider implements ModelProvider {
       // 400 {"code":"unsupported_value","param":"store"}. Force false on the
       // outbound payload; our own persistence (if any) keys off the caller's
       // original value, which we don't echo back into Copilot.
-      forceStoreFalse(payload)
+      if (flags.has("transform-force-store-false")) {
+        forceStoreFalse(payload)
+      }
       // Copilot rejects public image_generation tool entries; strip them
       // (other Responses-capable upstreams accept them).
-      stripImageGeneration(payload as unknown as ResponsesPayload)
+      if (flags.has("transform-strip-image-generation")) {
+        stripImageGeneration(payload as unknown as ResponsesPayload)
+      }
       // Strip safety_identifier when the request was translated from a
       // non-Responses shape (Messages → Responses, Chat → Responses).
       // VSCode Copilot Chat never sends it on /responses; native Responses
       // callers' values are preserved.
       const sourceApi = opts.sourceApi ?? "responses"
-      if (sourceApi !== "responses") {
+      if (sourceApi !== "responses" && flags.has("transform-strip-safety-identifier")) {
         stripSafetyIdentifier(payload as unknown as ResponsesPayload)
       }
       // Recursive scan for input_image / legacy image blocks at any depth.
-      setResponsesVisionHeader(payload as unknown as ResponsesPayload, headers)
+      if (flags.has("transform-vision-header")) {
+        setResponsesVisionHeader(payload as unknown as ResponsesPayload, headers)
+      }
     }
 
     if (endpoint === "chat_completions") {
@@ -155,9 +171,13 @@ export class CopilotProvider implements ModelProvider {
       // (last 2 non-system) with Copilot's private cache-control marker so
       // Copilot can prompt-cache them. Generic OpenAI ignores the field, so
       // it's safe to send unconditionally on this endpoint.
-      attachCacheControlMarkers(payload as { messages?: Array<{ role?: string; content?: unknown }> })
+      if (flags.has("transform-attach-cache-control-markers")) {
+        attachCacheControlMarkers(payload as { messages?: Array<{ role?: string; content?: unknown }> })
+      }
       // OpenAI-style image_url content parts → copilot-vision-request: true.
-      setChatCompletionsVisionHeader(payload as { messages?: Array<{ content?: unknown }> }, headers)
+      if (flags.has("transform-vision-header")) {
+        setChatCompletionsVisionHeader(payload as { messages?: Array<{ content?: unknown }> }, headers)
+      }
     }
 
     const requireModel = opts.requireModel ?? (endpoint !== "messages_count_tokens")

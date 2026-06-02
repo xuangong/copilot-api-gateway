@@ -59,7 +59,7 @@ async function handleEmbeddings(ctx: RouteContext): Promise<Response> {
   const response = await binding.provider.fetch(
     "embeddings",
     { method: "POST", body: JSON.stringify(body) },
-    { operationName: "create embeddings" },
+    { operationName: "create embeddings", enabledFlags: binding.enabledFlags },
   )
   const upstreamMs = upstreamTimer()
 

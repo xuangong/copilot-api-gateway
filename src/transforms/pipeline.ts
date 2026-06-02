@@ -49,7 +49,9 @@ export function runAnthropicMessagesPipeline(
   adaptThinkingForModel(payload)
   stripCacheControl(payload as unknown as Record<string, unknown>)
   // Vertex-backed Copilot rejects tools.N.strict:true with FAILED_PRECONDITION.
-  stripToolStrict(payload)
+  if (enabledFlags.has("transform-strip-tool-strict")) {
+    stripToolStrict(payload)
+  }
   // Copilot rejects tools.N.custom.eager_input_streaming with
   // "Extra inputs are not permitted". Strip before forwarding.
   if (Array.isArray(payload.tools)) {

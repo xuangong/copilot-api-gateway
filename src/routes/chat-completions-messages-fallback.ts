@@ -60,7 +60,7 @@ export async function handleChatCompletionsViaMessages(
         provider.fetch(
           "messages",
           { method: "POST", body: JSON.stringify(p) },
-          { operationName: "chat completions (via messages)" },
+          { operationName: "chat completions (via messages)", enabledFlags: binding.enabledFlags },
         ),
     )
     const upstreamMs = upstreamTimer()
@@ -114,7 +114,7 @@ export async function handleChatCompletionsViaMessages(
         provider.fetch(
           "messages",
           { method: "POST", body: JSON.stringify(p) },
-          { operationName: "chat completions (via messages)" },
+          { operationName: "chat completions (via messages)", enabledFlags: binding.enabledFlags },
         ),
     )
     upstreamMs = upstreamTimer()

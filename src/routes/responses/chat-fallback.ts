@@ -73,7 +73,7 @@ export async function handleChatFallback(
     const response = await provider.fetch(
       "chat_completions",
       { method: "POST", body: JSON.stringify(chatPayload) },
-      { operationName: "responses (via chat)" },
+      { operationName: "responses (via chat)", enabledFlags: binding.enabledFlags },
     )
     const upstreamMs = upstreamTimer()
 
@@ -119,7 +119,7 @@ export async function handleChatFallback(
     const response = await provider.fetch(
       "chat_completions",
       { method: "POST", body: JSON.stringify(chatPayload) },
-      { operationName: "responses (via chat)" },
+      { operationName: "responses (via chat)", enabledFlags: binding.enabledFlags },
     )
     upstreamMs = upstreamTimer()
     const chatResponse = (await response.json()) as ChatCompletionResponse

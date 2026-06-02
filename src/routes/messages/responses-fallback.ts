@@ -58,7 +58,7 @@ export async function handleMessagesViaResponses(
       (p) => provider.fetch(
         "responses",
         { method: "POST", body: JSON.stringify(p) },
-        { operationName: "messages (via responses)", sourceApi: "messages" },
+        { operationName: "messages (via responses)", sourceApi: "messages", enabledFlags: binding.enabledFlags },
       ),
     )
     const upstreamMs = upstreamTimer()
@@ -100,7 +100,7 @@ export async function handleMessagesViaResponses(
       (p) => provider.fetch(
         "responses",
         { method: "POST", body: JSON.stringify(p) },
-        { operationName: "messages (via responses)", sourceApi: "messages" },
+        { operationName: "messages (via responses)", sourceApi: "messages", enabledFlags: binding.enabledFlags },
       ),
     )
     upstreamMs = upstreamTimer()

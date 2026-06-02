@@ -54,7 +54,7 @@ export async function handleDirectStreaming(
       (p) => provider.fetch(
         "responses",
         { method: "POST", body: JSON.stringify(p) },
-        { operationName: "responses" },
+        { operationName: "responses", enabledFlags: binding.enabledFlags },
       ),
     ),
   )
@@ -139,7 +139,7 @@ export async function handleDirectNonStreaming(
         (p) => provider.fetch(
           "responses",
           { method: "POST", body: JSON.stringify(p) },
-          { operationName: "responses" },
+          { operationName: "responses", enabledFlags: binding.enabledFlags },
         ),
       ),
     )

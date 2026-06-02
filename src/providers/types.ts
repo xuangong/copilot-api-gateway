@@ -27,6 +27,13 @@ export interface ProviderFetchOptions extends ProviderCallOptions {
    * unannotated "responses" fetch is treated as native).
    */
   sourceApi?: "messages" | "chat_completions" | "responses"
+  /**
+   * Effective flag set for this request (defaults + per-upstream overrides,
+   * already resolved). Providers gate optional transforms on this set.
+   * When omitted, providers fall back to their kind's catalog defaults so
+   * legacy callers retain current behavior.
+   */
+  enabledFlags?: ReadonlySet<string>
 }
 
 /**

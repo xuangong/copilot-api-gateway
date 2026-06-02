@@ -74,7 +74,7 @@ async function handleGenerations(ctx: ImagesRouteContext): Promise<Response> {
   const response = await binding.provider.fetch(
     "images_generations" as EndpointKey,
     { method: "POST", body: JSON.stringify(payload) },
-    { operationName: "create image" },
+    { operationName: "create image", enabledFlags: binding.enabledFlags },
   )
   const upstreamMs = upstreamTimer()
 
@@ -170,7 +170,7 @@ async function handleEdits(ctx: ImagesRouteContext): Promise<Response> {
   const response = await binding.provider.fetch(
     "images_edits" as EndpointKey,
     { method: "POST", body: form },
-    { operationName: "edit image" },
+    { operationName: "edit image", enabledFlags: binding.enabledFlags },
   )
   const upstreamMs = upstreamTimer()
 

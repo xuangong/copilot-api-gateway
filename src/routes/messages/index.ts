@@ -113,6 +113,7 @@ export const messagesRoute = new Elysia()
       {
         operationName: "count tokens",
         extraHeaders: extractAnthropicPassthroughHeaders(ctx),
+        enabledFlags: binding.enabledFlags,
       },
     )
 

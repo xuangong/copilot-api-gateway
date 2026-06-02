@@ -68,7 +68,7 @@ export async function handleGeminiViaResponses(
         provider.fetch(
           "responses",
           { method: "POST", body: JSON.stringify(p) },
-          { operationName: "gemini stream generate content (via responses)" },
+          { operationName: "gemini stream generate content (via responses)", enabledFlags: binding.enabledFlags },
         ),
     )
     const upstreamMs = upstreamTimer()
@@ -118,7 +118,7 @@ export async function handleGeminiViaResponses(
         provider.fetch(
           "responses",
           { method: "POST", body: JSON.stringify(p) },
-          { operationName: "gemini generate content (via responses)" },
+          { operationName: "gemini generate content (via responses)", enabledFlags: binding.enabledFlags },
         ),
     )
     upstreamMs = upstreamTimer()

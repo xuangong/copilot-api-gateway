@@ -213,7 +213,7 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
     const response = await provider.fetch(
       "chat_completions",
       { method: "POST", body: JSON.stringify(payload) },
-      { operationName: "chat completions" },
+      { operationName: "chat completions", enabledFlags: binding.enabledFlags },
     )
     const upstreamMs = upstreamTimer()
     // Inject SSE comment heartbeats during long thinking gaps so the
@@ -259,7 +259,7 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
     const response = await provider.fetch(
       "chat_completions",
       { method: "POST", body: JSON.stringify(payload) },
-      { operationName: "chat completions" },
+      { operationName: "chat completions", enabledFlags: binding.enabledFlags },
     )
     upstreamMs = upstreamTimer()
     return (await response.json()) as ChatJson
