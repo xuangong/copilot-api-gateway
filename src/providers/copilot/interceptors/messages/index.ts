@@ -5,6 +5,7 @@ import { withInteractionIdHeader } from "./with-interaction-id-header"
 import { withMessagesVisionHeader } from "./with-vision-header"
 import { withStructuredOutputFormatStripped } from "./with-structured-output-format-stripped"
 import { withInlineImagesCompressed } from "./with-inline-images-compressed"
+import { withMessagesCacheBreakpointsAttached } from "./with-cache-breakpoints-attached"
 
 /**
  * Canonical order mirrors the if-block sequence currently in
@@ -18,4 +19,5 @@ export const messagesPayloadInterceptors: readonly CopilotInterceptor[] = [
   withMessagesVisionHeader,
   withStructuredOutputFormatStripped,
   withInlineImagesCompressed,
+  withMessagesCacheBreakpointsAttached,
 ]

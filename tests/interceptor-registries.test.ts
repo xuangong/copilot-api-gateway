@@ -5,10 +5,11 @@ import { chatCompletionsPayloadInterceptors } from "~/providers/copilot/intercep
 import { embeddingsPayloadInterceptors } from "~/providers/copilot/interceptors/embeddings"
 
 describe("Copilot interceptor registries", () => {
-  test("messages registry has 6 entries in canonical order", () => {
-    expect(messagesPayloadInterceptors).toHaveLength(6)
+  test("messages registry has 7 entries in canonical order", () => {
+    expect(messagesPayloadInterceptors).toHaveLength(7)
     expect(messagesPayloadInterceptors[0]!.name).toBe("withClaudeAgentHeaders")
     expect(messagesPayloadInterceptors[5]!.name).toBe("withInlineImagesCompressed")
+    expect(messagesPayloadInterceptors[6]!.name).toBe("withMessagesCacheBreakpointsAttached")
   })
   test("responses registry has 5 entries", () => {
     expect(responsesPayloadInterceptors).toHaveLength(5)

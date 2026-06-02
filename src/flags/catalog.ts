@@ -113,6 +113,12 @@ export const OPTIONAL_FLAGS = [
     defaultFor: ["copilot"],
   },
   {
+    id: "transform-attach-messages-cache-breakpoints",
+    label: "Transform: attach /v1/messages cache breakpoints",
+    description: "Inject Anthropic ephemeral cache_control breakpoints on translated /v1/messages payloads (system end, tools end when >=3, second-to-last user turn). Skipped when caller already set any cache_control.",
+    defaultFor: ["copilot"],
+  },
+  {
     id: "transform-set-initiator-header",
     label: "Transform: x-initiator header",
     description: "Set x-initiator to user/agent based on last message role. Copilot uses this for abuse controls and billing/quota accounting.",

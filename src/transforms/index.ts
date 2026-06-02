@@ -68,6 +68,12 @@ export {
 // Attach Copilot's private cache-control markers on Chat Completions messages
 export { attachCacheControlMarkers } from "./attach-cache-control-markers"
 
+// Inject Anthropic cache_control breakpoints on /v1/messages payloads (prompt cache)
+export {
+  attachMessagesCacheBreakpoints,
+  type CacheBreakpointInjectionResult,
+} from "./attach-messages-cache-breakpoints"
+
 // Tag Claude Code / OpenCode compaction + auto-continue turns on /v1/messages
 export {
   setCompactHeaders,
