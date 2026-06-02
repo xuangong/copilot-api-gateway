@@ -1,14 +1,14 @@
-import { describe, expect, mock, test, beforeEach } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 
+import { CopilotProvider } from "~/providers/copilot/provider"
+import { clearRawModelsCache } from "~/services/copilot/raw-models-cache"
 import type { Model, ModelsResponse } from "~/services/copilot/models"
 
 type ForwardCall = {
-  endpoint: string
+  url: string
   payload: Record<string, unknown>
-  extraHeaders?: Record<string, string>
+  extraHeaders: Record<string, string>
 }
-
-const calls: ForwardCall[] = []
 
 const claudeVariant = (
   id: string,
@@ -53,29 +53,41 @@ const rawModels: ModelsResponse = {
   ],
 }
 
-mock.module("~/services/copilot/raw-models-cache", () => ({
-  getCachedRawModels: async () => rawModels,
-}))
+const originalFetch = globalThis.fetch
+const calls: ForwardCall[] = []
 
-mock.module("~/services/copilot/forward", () => ({
-  callCopilotAPI: async (args: ForwardCall) => {
-    calls.push({
-      endpoint: args.endpoint,
-      payload: { ...args.payload },
-      extraHeaders: args.extraHeaders ? { ...args.extraHeaders } : undefined,
-    })
-    return new Response("{}")
-  },
-}))
+function installFetchStub(): void {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+    const href = String(url)
+    if (href.endsWith("/models")) {
+      return Response.json(rawModels)
+    }
+    const bodyStr = typeof init?.body === "string" ? init.body : ""
+    const payload = bodyStr ? JSON.parse(bodyStr) as Record<string, unknown> : {}
+    const headerObj: Record<string, string> = {}
+    if (init?.headers) {
+      const h = new Headers(init.headers)
+      h.forEach((v, k) => { headerObj[k] = v })
+    }
+    calls.push({ url: href, payload, extraHeaders: headerObj })
+    return new Response("{}", { headers: { "Content-Type": "application/json" } })
+  }) as typeof fetch
+}
 
-const { CopilotProvider } = await import("~/providers/copilot/provider")
-
-function provider(): InstanceType<typeof CopilotProvider> {
+function provider(): CopilotProvider {
   return new CopilotProvider({ copilotToken: "token", accountType: "individual" })
 }
 
 beforeEach(() => {
   calls.length = 0
+  clearRawModelsCache()
+  installFetchStub()
+})
+
+afterEach(() => {
+  globalThis.fetch = originalFetch
+  clearRawModelsCache()
 })
 
 describe("CopilotProvider Claude variant resolution", () => {

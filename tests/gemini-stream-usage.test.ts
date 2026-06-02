@@ -1,7 +1,10 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { Database } from "bun:sqlite"
 
+import { invalidateUpstreamListCache } from "~/providers/registry"
 import { setRepoForTest } from "~/repo"
 import type { Repo } from "~/repo"
+import { SqliteRepo } from "~/repo/sqlite"
 
 type CapturedUsage = {
   keyId: string
@@ -13,24 +16,46 @@ type CapturedUsage = {
   upstream: string | null | undefined
 }
 
-let upstreamResponse: Response | null = null
+const originalFetch = globalThis.fetch
 
-mock.module("~/providers/registry", () => ({
-  createCopilotProvider: () => ({
-    supportedEndpoints: ["chat_completions", "responses", "messages"],
-    fetch: async (endpoint: string) => {
-      if (!upstreamResponse) throw new Error("missing upstream response")
-      if (
-        endpoint !== "chat_completions" &&
-        endpoint !== "responses" &&
-        endpoint !== "messages"
-      ) {
-        throw new Error(`unexpected endpoint: ${endpoint}`)
-      }
-      return upstreamResponse
-    },
-  }),
-}))
+function modelsResponse(ids: string[]): Response {
+  return Response.json({
+    object: "list",
+    data: ids.map((id) => ({
+      id,
+      object: "model",
+      name: id,
+      vendor: id.startsWith("claude-") ? "Anthropic" : "OpenAI",
+      version: id,
+      model_picker_enabled: true,
+      preview: false,
+      capabilities: {
+        family: id.startsWith("claude-") ? "claude" : "gpt",
+        limits: {},
+        object: "model_capabilities",
+        supports: {},
+        tokenizer: "cl100k_base",
+        type: "chat",
+      },
+    })),
+  })
+}
+
+function installFetchMock(modelIds: string[], upstreamBody: ReadableStream<Uint8Array>): void {
+  globalThis.fetch = mock(async (url: RequestInfo | URL) => {
+    const href = String(url)
+    if (href.endsWith("/models")) return modelsResponse(modelIds)
+    if (
+      href.endsWith("/chat/completions") ||
+      href.endsWith("/responses") ||
+      href.endsWith("/v1/messages") ||
+      href.endsWith("/v1/messages/count_tokens")
+    ) {
+      return new Response(upstreamBody)
+    }
+    return new Response("not found", { status: 404 })
+  }) as typeof fetch
+}
 
 function sse(events: unknown[]): ReadableStream<Uint8Array> {
   const enc = new TextEncoder()
@@ -100,16 +125,22 @@ function ctx() {
   }
 }
 
+beforeEach(() => {
+  setRepoForTest(new SqliteRepo(new Database(":memory:")))
+  invalidateUpstreamListCache()
+})
+
 afterEach(() => {
-  upstreamResponse = null
+  globalThis.fetch = originalFetch
   setRepoForTest(null)
+  invalidateUpstreamListCache()
 })
 
 describe("Gemini fallback streaming usage", () => {
   test("records messages upstream usage for Gemini via messages stream", async () => {
     const captured: CapturedUsage[] = []
     setRepoForTest(makeRepo(captured))
-    upstreamResponse = new Response(sse([
+    installFetchMock(["claude-sonnet-4-6"], sse([
       { type: "message_start", message: { usage: { input_tokens: 60, cache_read_input_tokens: 20, cache_creation_input_tokens: 5 } } },
       { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
       { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hi" } },
@@ -126,19 +157,19 @@ describe("Gemini fallback streaming usage", () => {
     expect(captured).toHaveLength(1)
     expect(captured[0]).toMatchObject({
       keyId: "key-1",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-4.6",
       inputTokens: 60,
       outputTokens: 13,
       cacheReadTokens: 20,
       cacheCreationTokens: 5,
-      upstream: "copilot:123",
+      upstream: "copilot:request",
     })
   })
 
   test("records responses upstream usage for Gemini via responses stream", async () => {
     const captured: CapturedUsage[] = []
     setRepoForTest(makeRepo(captured))
-    upstreamResponse = new Response(sse([
+    installFetchMock(["gpt-5.5"], sse([
       { type: "response.created", response: { id: "resp_1", model: "gpt-5.5" } },
       { type: "response.output_text.delta", output_index: 0, content_index: 0, delta: "hi" },
       {
@@ -167,7 +198,7 @@ describe("Gemini fallback streaming usage", () => {
       inputTokens: 50,
       outputTokens: 16,
       cacheReadTokens: 40,
-      upstream: "copilot:123",
+      upstream: "copilot:request",
     })
   })
 })

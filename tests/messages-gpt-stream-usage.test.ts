@@ -1,7 +1,10 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { Database } from "bun:sqlite"
 
+import { invalidateUpstreamListCache } from "~/providers/registry"
 import { setRepoForTest } from "~/repo"
 import type { Repo } from "~/repo"
+import { SqliteRepo } from "~/repo/sqlite"
 
 type CapturedUsage = {
   keyId: string
@@ -13,20 +16,46 @@ type CapturedUsage = {
   upstream: string | null | undefined
 }
 
-let upstreamResponse: Response | null = null
+const originalFetch = globalThis.fetch
 
-mock.module("~/providers/registry", () => ({
-  createCopilotProvider: () => ({
-    supportedEndpoints: ["chat_completions", "responses"],
-    fetch: async (endpoint: string) => {
-      if (!upstreamResponse) throw new Error("missing upstream response")
-      if (endpoint !== "chat_completions" && endpoint !== "responses") {
-        throw new Error(`unexpected endpoint: ${endpoint}`)
-      }
-      return upstreamResponse
-    },
-  }),
-}))
+function modelsResponse(ids: string[]): Response {
+  return Response.json({
+    object: "list",
+    data: ids.map((id) => ({
+      id,
+      object: "model",
+      name: id,
+      vendor: id.startsWith("claude-") ? "Anthropic" : "OpenAI",
+      version: id,
+      model_picker_enabled: true,
+      preview: false,
+      capabilities: {
+        family: id.startsWith("claude-") ? "claude" : "gpt",
+        limits: {},
+        object: "model_capabilities",
+        supports: {},
+        tokenizer: "cl100k_base",
+        type: "chat",
+      },
+    })),
+  })
+}
+
+function installFetchMock(modelIds: string[], upstreamBody: ReadableStream<Uint8Array>): void {
+  globalThis.fetch = mock(async (url: RequestInfo | URL) => {
+    const href = String(url)
+    if (href.endsWith("/models")) return modelsResponse(modelIds)
+    if (
+      href.endsWith("/chat/completions") ||
+      href.endsWith("/responses") ||
+      href.endsWith("/v1/messages") ||
+      href.endsWith("/v1/messages/count_tokens")
+    ) {
+      return new Response(upstreamBody)
+    }
+    return new Response("not found", { status: 404 })
+  }) as typeof fetch
+}
 
 function sse(events: unknown[]): ReadableStream<Uint8Array> {
   const enc = new TextEncoder()
@@ -184,16 +213,22 @@ function ctx() {
   }
 }
 
+beforeEach(() => {
+  setRepoForTest(new SqliteRepo(new Database(":memory:")))
+  invalidateUpstreamListCache()
+})
+
 afterEach(() => {
-  upstreamResponse = null
+  globalThis.fetch = originalFetch
   setRepoForTest(null)
+  invalidateUpstreamListCache()
 })
 
 describe("GPT /v1/messages streaming fallbacks", () => {
   test("records usage from chat-completions upstream stream", async () => {
     const captured: CapturedUsage[] = []
     setRepoForTest(makeRepo(captured))
-    upstreamResponse = new Response(sse([
+    installFetchMock(["gpt-4o"], sse([
       { id: "chatcmpl_1", model: "gpt-4o", choices: [{ delta: { role: "assistant" } }] },
       { choices: [{ delta: { content: "hi" } }] },
       { choices: [{ delta: {}, finish_reason: "stop" }] },
@@ -215,14 +250,14 @@ describe("GPT /v1/messages streaming fallbacks", () => {
       model: "gpt-4o",
       inputTokens: 42,
       outputTokens: 9,
-      upstream: "copilot:123",
+      upstream: "copilot:request",
     })
   })
 
   test("records usage from chat-completions upstream even when downstream messages stream is canceled", async () => {
     const captured: CapturedUsage[] = []
     setRepoForTest(makeRepo(captured))
-    upstreamResponse = new Response(delayedChatUsageStream())
+    installFetchMock(["gpt-4o"], delayedChatUsageStream())
 
     const { handleMessagesViaChatCompletions } = await import("~/routes/messages/chat-completions-fallback")
     const response = await handleMessagesViaChatCompletions(
@@ -245,14 +280,14 @@ describe("GPT /v1/messages streaming fallbacks", () => {
       inputTokens: 32,
       outputTokens: 9,
       cacheReadTokens: 10,
-      upstream: "copilot:123",
+      upstream: "copilot:request",
     })
   })
 
   test("records usage from responses upstream stream", async () => {
     const captured: CapturedUsage[] = []
     setRepoForTest(makeRepo(captured))
-    upstreamResponse = new Response(sse([
+    installFetchMock(["gpt-5.4"], sse([
       { type: "response.created", response: { id: "resp_1", model: "gpt-5.4" } },
       { type: "response.output_text.delta", output_index: 0, content_index: 0, delta: "hi" },
       {
@@ -285,14 +320,14 @@ describe("GPT /v1/messages streaming fallbacks", () => {
       inputTokens: 20,
       outputTokens: 7,
       cacheReadTokens: 30,
-      upstream: "copilot:123",
+      upstream: "copilot:request",
     })
   })
 
   test("records usage from responses upstream even when downstream messages stream is canceled", async () => {
     const captured: CapturedUsage[] = []
     setRepoForTest(makeRepo(captured))
-    upstreamResponse = new Response(delayedResponsesUsageStream())
+    installFetchMock(["gpt-5.5"], delayedResponsesUsageStream())
 
     const { handleMessagesViaResponses } = await import("~/routes/messages/responses-fallback")
     const response = await handleMessagesViaResponses(
@@ -315,14 +350,14 @@ describe("GPT /v1/messages streaming fallbacks", () => {
       inputTokens: 32,
       outputTokens: 11,
       cacheReadTokens: 48,
-      upstream: "copilot:123",
+      upstream: "copilot:request",
     })
   })
 
   test("records usage from chat-completions responses fallback stream", async () => {
     const captured: CapturedUsage[] = []
     setRepoForTest(makeRepo(captured))
-    upstreamResponse = new Response(sse([
+    installFetchMock(["gpt-5.5"], sse([
       { type: "response.created", response: { id: "resp_1", model: "gpt-5.5" } },
       { type: "response.output_text.delta", output_index: 0, content_index: 0, delta: "hi" },
       {
@@ -355,7 +390,7 @@ describe("GPT /v1/messages streaming fallbacks", () => {
       inputTokens: 32,
       outputTokens: 11,
       cacheReadTokens: 48,
-      upstream: "copilot:123",
+      upstream: "copilot:request",
     })
   })
 })
