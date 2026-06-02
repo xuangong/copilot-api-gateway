@@ -16,6 +16,7 @@ import {
   classifyResponsesInitiator,
   forceStoreFalse,
   setClaudeAgentHeaders,
+  setCompactHeaders,
 } from "~/transforms"
 import type {
   AnthropicMessagesPayload,
@@ -103,6 +104,11 @@ export class CopilotProvider implements ModelProvider {
 
     if (endpoint === "messages" || endpoint === "messages_count_tokens") {
       setClaudeAgentHeaders(payload as unknown as AnthropicMessagesPayload, headers)
+      // Must run AFTER setInitiatorHeader + setClaudeAgentHeaders: compact/
+      // auto-continue is a stronger signal than the structural last-message
+      // initiator heuristic, and conversation-compaction overrides the
+      // messages-proxy interaction-type that Claude Code identity sets.
+      setCompactHeaders(payload as unknown as AnthropicMessagesPayload, headers)
     }
 
     if (endpoint === "responses") {
