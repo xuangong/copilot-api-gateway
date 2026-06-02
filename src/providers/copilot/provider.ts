@@ -17,6 +17,7 @@ import {
   forceStoreFalse,
   setClaudeAgentHeaders,
   setCompactHeaders,
+  stripImageGeneration,
   stripStructuredOutputFormat,
 } from "~/transforms"
 import type {
@@ -121,6 +122,9 @@ export class CopilotProvider implements ModelProvider {
       // outbound payload; our own persistence (if any) keys off the caller's
       // original value, which we don't echo back into Copilot.
       forceStoreFalse(payload)
+      // Copilot rejects public image_generation tool entries; strip them
+      // (other Responses-capable upstreams accept them).
+      stripImageGeneration(payload as unknown as ResponsesPayload)
     }
 
     if (endpoint === "chat_completions") {

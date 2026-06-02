@@ -61,6 +61,9 @@ export {
 // Strip output_config.format (Vertex-routed Copilot rejects structured_outputs)
 export { stripStructuredOutputFormat } from "./strip-structured-output-format"
 
+// Strip image_generation tool entries from /responses (Copilot rejects them)
+export { stripImageGeneration } from "./strip-image-generation"
+
 // Responses → chat-completions payload compactor (codex 413 mitigation)
 export { compactResponsesInputForChatFallback } from "./compact-responses-input"
 export type { CompactStats } from "./compact-responses-input"
