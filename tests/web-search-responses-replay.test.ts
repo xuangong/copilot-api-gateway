@@ -188,7 +188,7 @@ describe("interceptResponsesViaChat", () => {
     expect(output[0]?.id).toBe(mintedId)
   })
 
-  test("unknown ws_gw_* id is dropped silently", async () => {
+  test("unknown ws_gw_* id emits a placeholder so the model sees the gap", async () => {
     state.chatBehaviors = [{ content: "answer with no search" }]
 
     const result = await interceptResponsesViaChat(
@@ -205,6 +205,68 @@ describe("interceptResponsesViaChat", () => {
     expect(state.langsearchCallCount).toBe(0)
     expect(result.restoredItems.length).toBe(0)
     expect(result.mintedItems.length).toBe(0)
+
+    // The chat-side payload should carry the placeholder function_call +
+    // function_call_output so the model is told the prior results are gone.
+    const sent = state.chatBodies[0]!.messages as Array<{
+      role: string
+      content?: unknown
+      tool_calls?: Array<{ id: string; function: { name: string } }>
+      tool_call_id?: string
+    }>
+    const placeholderAssistant = sent.find(
+      (m) =>
+        m.role === "assistant"
+        && Array.isArray(m.tool_calls)
+        && m.tool_calls.some((t) => t.function.name === "web_search"),
+    )
+    expect(placeholderAssistant).toBeTruthy()
+    const placeholderToolMsg = sent.find(
+      (m) => m.role === "tool" && typeof m.content === "string"
+        && (m.content as string).includes("no longer available"),
+    )
+    expect(placeholderToolMsg).toBeTruthy()
+  })
+
+  test("cross-account isolation: another api key can't restore a foreign ws_gw_* id", async () => {
+    // First turn under key A persists the payload.
+    state.chatBehaviors = [
+      {
+        toolCalls: [{ id: "call_1", name: "web_search", arguments: JSON.stringify({ query: "secret" }) }],
+      },
+      { content: "answer for A" },
+    ]
+    const first = await interceptResponsesViaChat(userPayload("ask A"), baseOptions())
+    const mintedId = first.mintedItems[0]!.id
+
+    // Second turn under key B echoes the same id — must NOT see A's content.
+    state.chatBehaviors = [{ content: "answer for B" }]
+    state.chatCallCount = 0
+    state.langsearchCallCount = 0
+    state.chatBodies = []
+
+    const second = await interceptResponsesViaChat(
+      {
+        model: "gpt-4o",
+        input: [
+          { type: "web_search_call", id: mintedId },
+          { type: "message", role: "user", content: "follow up as B" },
+        ],
+      },
+      { ...baseOptions(), apiKeyId: "k_other" },
+    )
+
+    expect(second.restoredItems.length).toBe(0)
+    const sent = state.chatBodies[0]!.messages as Array<{ role: string; content?: unknown }>
+    const leaked = sent.some(
+      (m) => typeof m.content === "string" && (m.content as string).includes("Example Result"),
+    )
+    expect(leaked).toBe(false)
+    const sawPlaceholder = sent.some(
+      (m) => m.role === "tool" && typeof m.content === "string"
+        && (m.content as string).includes("no longer available"),
+    )
+    expect(sawPlaceholder).toBe(true)
   })
 })
 

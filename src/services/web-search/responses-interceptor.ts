@@ -82,6 +82,7 @@ interface PrivateWsPayload {
  */
 async function restoreEchoedWebSearchItems(
   input: ResponsesPayload["input"],
+  apiKeyId: string | undefined,
 ): Promise<{
   rewrittenInput: ResponsesPayload["input"]
   restored: Array<{ id: string; query: string }>
@@ -98,7 +99,10 @@ async function restoreEchoedWebSearchItems(
   if (candidateIds.length === 0) return { rewrittenInput: input, restored: [] }
 
   const repo = getRepo()
-  const records = await repo.responsesItems.lookupMany(candidateIds)
+  // Scope by api key when known so a client can't read another account's
+  // persisted search results by echoing a foreign ws_gw_* id. When apiKeyId
+  // is undefined (admin path / tests) fall back to the broad lookup.
+  const records = await repo.responsesItems.lookupMany(candidateIds, apiKeyId)
   const byId = new Map<string, ResponsesItemRecord>()
   for (const r of records) byId.set(r.id, r)
 
@@ -114,8 +118,23 @@ async function restoreEchoedWebSearchItems(
         priv = null
       }
       if (!priv) {
-        // Stored without the private payload — skip restoration but drop the item
-        // so the translator doesn't choke on the unknown type.
+        // Row exists but payload is missing/corrupt. Surface a placeholder
+        // so the model knows a prior search happened but its results are no
+        // longer available — better than silently vanishing the turn.
+        const lostCallId = `ws_lost_${item.id.slice(-12)}`
+        rewrittenInput.push(
+          {
+            type: "function_call",
+            call_id: lostCallId,
+            name: "web_search",
+            arguments: JSON.stringify({ query: "" }),
+          } satisfies ResponseFunctionCallItem,
+          {
+            type: "function_call_output",
+            call_id: lostCallId,
+            output: "[web_search results from a previous turn are no longer available]",
+          } satisfies ResponseFunctionCallOutputItem,
+        )
         continue
       }
       const fc: ResponseFunctionCallItem = {
@@ -134,8 +153,23 @@ async function restoreEchoedWebSearchItems(
       continue
     }
     if (item.type === "web_search_call") {
-      // Unknown id (TTL'd, wrong gateway, …). Drop it silently — the model
-      // never saw the original results so there's nothing useful we can do.
+      // Unknown id (TTL'd, foreign api key, wrong gateway, …). Emit the same
+      // placeholder pair so the model sees the gap rather than nothing — and
+      // never trust the wire-side `results` field the client may have kept.
+      const lostCallId = `ws_lost_${item.id.slice(-12)}`
+      rewrittenInput.push(
+        {
+          type: "function_call",
+          call_id: lostCallId,
+          name: "web_search",
+          arguments: JSON.stringify({ query: "" }),
+        } satisfies ResponseFunctionCallItem,
+        {
+          type: "function_call_output",
+          call_id: lostCallId,
+          output: "[web_search results from a previous turn are no longer available]",
+        } satisfies ResponseFunctionCallOutputItem,
+      )
       continue
     }
     rewrittenInput.push(item)
@@ -237,7 +271,10 @@ export async function interceptResponsesViaChat(
 ): Promise<InterceptResponsesResult> {
   const model = payload.model
 
-  const { rewrittenInput, restored } = await restoreEchoedWebSearchItems(payload.input)
+  const { rewrittenInput, restored } = await restoreEchoedWebSearchItems(
+    payload.input,
+    options.apiKeyId,
+  )
 
   const cleanedPayload: ResponsesPayload = {
     ...payload,

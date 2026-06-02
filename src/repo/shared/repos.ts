@@ -949,12 +949,15 @@ class SharedResponsesItemsRepo implements ResponsesItemsRepo {
     }
   }
 
-  async lookupMany(ids: string[]): Promise<ResponsesItemRecord[]> {
+  async lookupMany(ids: string[], apiKeyId?: string): Promise<ResponsesItemRecord[]> {
     if (ids.length === 0) return []
     const placeholders = ids.map(() => "?").join(", ")
+    const where = apiKeyId !== undefined ? ` AND api_key_id = ?` : ""
+    const params: Array<string | number | null> = [...ids]
+    if (apiKeyId !== undefined) params.push(apiKeyId)
     const rows = await this.x.all(
-      `SELECT ${RESPONSES_ITEMS_COLS} FROM responses_items WHERE id IN (${placeholders})`,
-      ids,
+      `SELECT ${RESPONSES_ITEMS_COLS} FROM responses_items WHERE id IN (${placeholders})${where}`,
+      params,
     )
     return rows.map(toResponsesItemRecord)
   }

@@ -403,7 +403,13 @@ export interface ResponsesItemRecord {
 
 export interface ResponsesItemsRepo {
   insertMany(records: ResponsesItemRecord[]): Promise<void>
-  lookupMany(ids: string[]): Promise<ResponsesItemRecord[]>
+  /**
+   * Look up stored items by id, optionally restricted to a single owning
+   * api key. Pass `apiKeyId` to enforce cross-account isolation — items
+   * minted under a different key (or items whose owner is null) are filtered
+   * out. Omit to read across all owners (admin / migration paths only).
+   */
+  lookupMany(ids: string[], apiKeyId?: string): Promise<ResponsesItemRecord[]>
   deleteExpired(now: string): Promise<void>
   deleteAll(): Promise<void>
 }
