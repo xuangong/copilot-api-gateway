@@ -16,6 +16,7 @@
 
 import { repairToolResultPairs } from "~/services/copilot"
 
+import { applyTopLevelCacheControl } from "./apply-top-level-cache-control"
 import { stripReservedKeywords } from "./billing-header"
 import { stripCacheControl } from "./cache-control"
 import { stripContextManagement } from "./context-management"
@@ -47,6 +48,9 @@ export function runAnthropicMessagesPipeline(
   disableMessagesReasoningOnForcedToolChoice(payload, enabledFlags)
   filterThinkingBlocks(payload)
   adaptThinkingForModel(payload)
+  // Run BEFORE stripCacheControl so any extensions (scope/ttl) that ride along
+  // with the top-level field get cleaned up by the stripper.
+  applyTopLevelCacheControl(payload as unknown as Record<string, unknown>)
   stripCacheControl(payload as unknown as Record<string, unknown>)
   // Vertex-backed Copilot rejects tools.N.strict:true with FAILED_PRECONDITION.
   if (enabledFlags.has("transform-strip-tool-strict")) {
@@ -73,6 +77,7 @@ export function runAnthropicMessagesPipeline(
  */
 export function runAnthropicCountTokensPipeline(payload: AnthropicMessagesPayload): void {
   stripContextManagement(payload as unknown as Record<string, unknown>)
+  applyTopLevelCacheControl(payload as unknown as Record<string, unknown>)
   stripCacheControl(payload as unknown as Record<string, unknown>)
   if (Array.isArray(payload.messages)) {
     payload.messages = repairToolResultPairs(payload.messages) as typeof payload.messages

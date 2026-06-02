@@ -107,6 +107,7 @@ export {
 
 // Cache control cleanup (prompt caching not supported by Copilot)
 export { stripCacheControl, type CacheControlStripResult } from "./cache-control"
+export { applyTopLevelCacheControl } from "./apply-top-level-cache-control"
 
 // Disable reasoning when caller forces a specific tool (opt-in workaround).
 export {

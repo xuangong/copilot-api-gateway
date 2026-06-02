@@ -1,88 +1,102 @@
 /**
- * Strip unsupported fields from cache_control in messages and system prompts
+ * Neutralize cache_control extensions that strict Anthropic Messages slots reject.
  *
- * Anthropic's prompt caching feature uses cache_control fields.
- * The upstream Copilot API supports basic cache_control (e.g. { type: "ephemeral" })
- * but rejects newer fields like "scope".
+ * Two sub-fields are beta extensions to the base `CacheControlEphemeral` shape
+ * that Copilot's stricter Messages-upstream deployments (claude-haiku-4.5,
+ * claude-sonnet-4.5/4.6, intermittently claude-opus-4.5) reject:
  *
- * This transform removes only the unsupported "scope" field while preserving
- * cache_control itself so that prompt caching can work.
+ *   - `scope`: added by the `prompt-caching-scope-2025-11-27` beta.
+ *     Upstream returns `cache_control.scope: Extra inputs are not permitted`.
+ *   - `ttl`:   added by the `extended-cache-ttl-2025-04-11` beta. That beta is
+ *     not on Copilot's accepted allow-list either, so any `ttl` trips the
+ *     same schema rejection.
  *
- * Example error without this transform:
- * "system.2.cache_control.ephemeral.scope: Extra inputs are not permitted"
+ * Walk every position where `cache_control` may appear — system blocks,
+ * tools, message content blocks including `tool_use`/`tool_result` — strip
+ * both sub-fields, keep `{ type: "ephemeral" }` so prompt caching still
+ * primes on lenient slots, and drop `cache_control` entirely if nothing
+ * recognisable survives.
+ *
+ * The top-level `cache_control` field (which Anthropic auto-applies to the
+ * last cacheable block) is handled by `applyTopLevelCacheControl`, which
+ * runs immediately BEFORE this transform and ports it onto the last cacheable
+ * block. This stripper then cleans whatever extensions came along for the
+ * ride.
+ *
+ * References:
+ *   - https://github.com/anthropics/anthropic-sdk-typescript (MessageCreateParamsBase)
+ *   - https://github.com/caozhiyuan/copilot-api/issues/143
+ *   - https://github.com/caozhiyuan/copilot-api/issues/144
+ *   - https://github.com/caozhiyuan/copilot-api/issues/269
  */
 
 export interface CacheControlStripResult {
   stripped: boolean
   count: number
-  locations: string[] // e.g., ["system[0]", "messages[2].content[1]"]
+  locations: string[] // e.g., ["system[0]", "messages[2].content[1]", "tools[0]"]
 }
 
-/**
- * Remove unsupported fields (scope) from cache_control on a content block
- */
-function stripCacheControlScope(
+function stripExtensions(
   block: Record<string, unknown>,
   location: string,
   result: CacheControlStripResult,
-): Record<string, unknown> {
-  if (
-    block &&
-    typeof block === "object" &&
-    "cache_control" in block &&
-    block.cache_control &&
-    typeof block.cache_control === "object"
-  ) {
-    const cc = block.cache_control as Record<string, unknown>
-    if ("scope" in cc) {
-      const { scope: _, ...rest } = cc
-      block.cache_control = rest
-      result.stripped = true
-      result.count++
-      result.locations.push(location)
-    }
+): void {
+  if (!block || typeof block !== "object") return
+  const cc = block.cache_control
+  if (!cc || typeof cc !== "object") return
+
+  const { scope: _scope, ttl: _ttl, ...rest } = cc as Record<string, unknown>
+  const hadExt = "scope" in (cc as Record<string, unknown>) || "ttl" in (cc as Record<string, unknown>)
+  if (!hadExt) return
+
+  if (Object.keys(rest).length > 0) {
+    block.cache_control = rest
+  } else {
+    delete block.cache_control
   }
-  return block
+  result.stripped = true
+  result.count++
+  result.locations.push(location)
 }
 
 /**
- * Strip unsupported cache_control fields from the payload
- * Works with any payload that has system and/or messages fields
- * Returns info about what was stripped for logging
+ * Strip unsupported cache_control sub-fields (`scope`, `ttl`) from system,
+ * tools, and message content blocks. Returns info about what was stripped.
  */
 export function stripCacheControl(payload: Record<string, unknown>): CacheControlStripResult {
-  const result: CacheControlStripResult = {
-    stripped: false,
-    count: 0,
-    locations: [],
-  }
+  const result: CacheControlStripResult = { stripped: false, count: 0, locations: [] }
 
-  // Strip scope from system prompt (can be string or array of blocks)
   if (Array.isArray(payload.system)) {
-    payload.system = payload.system.map((block, idx) =>
-      typeof block === "object" && block !== null
-        ? stripCacheControlScope(block as Record<string, unknown>, `system[${idx}]`, result)
-        : block
-    )
+    payload.system.forEach((block, i) => {
+      if (block && typeof block === "object") {
+        stripExtensions(block as Record<string, unknown>, `system[${i}]`, result)
+      }
+    })
   }
 
-  // Strip scope from messages
+  if (Array.isArray(payload.tools)) {
+    payload.tools.forEach((tool, i) => {
+      if (tool && typeof tool === "object") {
+        stripExtensions(tool as Record<string, unknown>, `tools[${i}]`, result)
+      }
+    })
+  }
+
   const messages = payload.messages as Array<{ content?: unknown }> | undefined
   if (Array.isArray(messages)) {
-    for (let i = 0; i < messages.length; i++) {
-      const message = messages[i]
+    messages.forEach((message, i) => {
       if (message && Array.isArray(message.content)) {
-        message.content = message.content.map((block, j) =>
-          typeof block === "object" && block !== null
-            ? stripCacheControlScope(
-                block as Record<string, unknown>,
-                `messages[${i}].content[${j}]`,
-                result
-              )
-            : block
-        )
+        message.content.forEach((block, j) => {
+          if (block && typeof block === "object") {
+            stripExtensions(
+              block as Record<string, unknown>,
+              `messages[${i}].content[${j}]`,
+              result,
+            )
+          }
+        })
       }
-    }
+    })
   }
 
   return result
