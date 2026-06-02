@@ -9,6 +9,14 @@ workers_dev = true
 [placement]
 mode = "smart"
 
+# Inline the prebuilt dashboard bundle (.txt twins of dashboard.js / .css)
+# as strings into the worker. esbuild does not support the
+# `with { type: "text" }` import attribute, so we match by extension.
+[[rules]]
+type = "Text"
+globs = ["**/*.txt"]
+fallthrough = true
+
 # Custom domain
 routes = [
   { pattern = "token.xianliao.de5.net", custom_domain = true }
@@ -26,7 +34,7 @@ id = "55077c6d26dd493d9752c07176c35237"
 # Then replace the placeholder below with the returned id.
 [[kv_namespaces]]
 binding = "IMAGE_CACHE"
-id = "REPLACE_WITH_IMAGE_CACHE_KV_ID"
+id = "613f7f5754bc4be887b74cb97874f6a9"
 
 # Cloudflare Images binding for inline image recompression.
 # No account-level setup needed beyond enabling Images on the account.

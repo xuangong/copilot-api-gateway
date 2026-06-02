@@ -26,7 +26,7 @@ export function KeysTab() {
   return (
     <div>
       <div className="glass-card p-4 sm:p-6 mb-8 animate-in">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
           <div>
             <h3 className="text-themed font-medium">{t("dash.apiKeys")}</h3>
             <p className="text-xs text-themed-dim mt-1">
@@ -46,7 +46,7 @@ export function KeysTab() {
                   }
                 }}
                 placeholder={t("dash.keyNamePlaceholder")}
-                className="flex-1 sm:flex-none sm:!w-40 mt-1 text-sm min-w-0"
+                className="flex-1 sm:flex-none sm:!w-40 text-sm min-w-0"
               />
               <button
                 type="button"

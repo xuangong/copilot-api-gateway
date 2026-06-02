@@ -1,8 +1,10 @@
 // Renders the React-based dashboard at /dashboard.
 // JS and CSS are inlined into the worker bundle via text imports so
 // the same Response works on Cloudflare Workers and local Bun.
-import dashboardJsModule from "./dist/dashboard.js" with { type: "text" }
-import dashboardCss from "./dist/dashboard.css" with { type: "text" }
+// The .txt extension matches wrangler.toml's [[rules]] Text matcher
+// (esbuild does not support `with { type: "text" }`).
+import dashboardJsModule from "./dist/dashboard.js.txt"
+import dashboardCss from "./dist/dashboard.css.txt"
 import { renderI18nScript } from "../i18n"
 
 const dashboardJs = dashboardJsModule as unknown as string

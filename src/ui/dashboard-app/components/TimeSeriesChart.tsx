@@ -80,10 +80,10 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
     const dark = isDarkTheme()
     const gridC = cssVar("--grid-color")
     const tickC = cssVar("--tick-color")
-    const ttBg = cssVar("--tooltip-bg")
-    const ttBorder = cssVar("--tooltip-border")
-    const ttText = cssVar("--tooltip-text")
-    const ttText2 = cssVar("--tooltip-text2")
+    const ttBg = dark ? "rgba(22, 25, 34, 0.95)" : "rgba(255, 255, 255, 0.98)"
+    const ttBorder = dark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)"
+    const ttText = dark ? "#f3f4f6" : "#111827"
+    const ttText2 = dark ? "#d1d5db" : "#374151"
     const ptBg = dark ? "#161922" : "#ffffff"
     const fillAlpha = dark ? "20" : "30"
     const tickFmt = yTickFormat ?? defaultYTick

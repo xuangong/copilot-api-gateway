@@ -56,6 +56,94 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, onRevertModel }: Prop
     setPendingDeps({ modelId, protocol })
   }, [modelId, protocol, messages.length])
 
+  // —— Context token counting (Option D) ——
+  // Calls /v1/messages/count_tokens after debounce so the topbar shows the
+  // exact upstream token cost (matches what billing/limits will see).
+  const [ctxTokens, setCtxTokens] = useState<number | null>(null)
+  const [ctxCounting, setCtxCounting] = useState(false)
+  const [compactNotice, setCompactNotice] = useState<string | null>(null)
+  useEffect(() => {
+    if (messages.length === 0) {
+      setCtxTokens(0)
+      return
+    }
+    if (streaming) return
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => {
+      void countContextTokens(messages, ctrl.signal)
+    }, 400)
+    return () => {
+      clearTimeout(timer)
+      ctrl.abort()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, streaming, modelId, apiKey, systemPrompt])
+
+  async function countContextTokens(history: Message[], signal: AbortSignal) {
+    const anMessages = toAnthropicMessages(history)
+    const body: Record<string, unknown> = { model: modelId, messages: anMessages }
+    if (systemPrompt.trim()) body.system = systemPrompt
+    setCtxCounting(true)
+    try {
+      const resp = await fetch("/v1/messages/count_tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+        body: JSON.stringify(body),
+        signal,
+      })
+      if (!resp.ok) return
+      const j = await resp.json() as { input_tokens?: number }
+      if (typeof j.input_tokens === "number") setCtxTokens(j.input_tokens)
+    } catch {
+      /* aborted or network error — leave previous value */
+    } finally {
+      setCtxCounting(false)
+    }
+  }
+
+  function toAnthropicMessages(history: Message[]): Array<Record<string, unknown>> {
+    const out: Array<Record<string, unknown>> = []
+    for (const m of history) {
+      if (!m.text && !m.imageUrl) continue
+      if (m.imageUrl) {
+        const parts: Array<Record<string, unknown>> = []
+        if (m.text) parts.push({ type: "text", text: m.text })
+        if (m.imageUrl.startsWith("data:")) {
+          const comma = m.imageUrl.indexOf(",")
+          const meta = m.imageUrl.slice(5, comma)
+          const mime = meta.split(";")[0] || "image/png"
+          const data = m.imageUrl.slice(comma + 1)
+          parts.push({ type: "image", source: { type: "base64", media_type: mime, data } })
+        } else {
+          parts.push({ type: "image", source: { type: "url", url: m.imageUrl } })
+        }
+        out.push({ role: m.role, content: parts })
+      } else {
+        out.push({ role: m.role, content: m.text })
+      }
+    }
+    return out
+  }
+
+  function compact() {
+    // Drop the oldest user+assistant pair(s). One click = up to 2 oldest turns
+    // (4 messages) so the user can shrink large contexts quickly without
+    // losing the most recent exchanges that carry conversational state.
+    setMessages((prev) => {
+      if (prev.length <= 2) return prev
+      const dropCount = Math.min(4, prev.length - 2)
+      // Always start drop from a user message so the surviving history stays
+      // user→assistant aligned.
+      let start = 0
+      while (start < prev.length && prev[start]!.role !== "user") start++
+      const next = [...prev.slice(0, start), ...prev.slice(start + dropCount)]
+      const dropped = prev.length - next.length
+      setCompactNotice(t("dash.playground.compacted", { n: Math.ceil(dropped / 2) }))
+      setTimeout(() => setCompactNotice(null), 3000)
+      return next
+    })
+  }
+
   function confirmSwitch() {
     abortRef.current?.abort()
     setMessages([])
@@ -369,6 +457,23 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, onRevertModel }: Prop
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
+          {messages.length > 0 && (
+            <span className="text-themed-dim text-xs mr-2 font-mono">
+              {ctxCounting
+                ? t("dash.playground.ctxCounting")
+                : t("dash.playground.ctxTokens", { n: ctxTokens ?? "—" })}
+            </span>
+          )}
+          {messages.length >= 4 && (
+            <button
+              onClick={compact}
+              disabled={streaming}
+              title={t("dash.playground.compactTitle")}
+              className="px-3 py-1 rounded-md text-xs font-medium bg-surface-800 text-themed-secondary hover:text-themed transition-all disabled:opacity-50"
+            >
+              {t("dash.playground.compact")}
+            </button>
+          )}
           {streaming && (
             <button
               onClick={() => abortRef.current?.abort()}
@@ -456,6 +561,12 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, onRevertModel }: Prop
           </div>
         )}
       </div>
+
+      {compactNotice && (
+        <div className="pg-confirm">
+          <span>✂ {compactNotice}</span>
+        </div>
+      )}
 
       {error && (
         <div className="pg-error">
