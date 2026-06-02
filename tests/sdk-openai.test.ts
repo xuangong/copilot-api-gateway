@@ -18,8 +18,10 @@ import OpenAI from "openai"
 
 const BASE_URL = process.env.TEST_API_BASE_URL || "http://localhost:41414"
 const TEST_TIMEOUT = 30_000
+// Skip when no live server is configured; these tests require `bun run local`.
+const SKIP_LIVE = !process.env.TEST_API_BASE_URL
 
-describe("OpenAI SDK - Chat Completions API", () => {
+describe.skipIf(SKIP_LIVE)("OpenAI SDK - Chat Completions API", () => {
   let client: OpenAI
 
   beforeAll(() => {
@@ -151,7 +153,7 @@ describe("OpenAI SDK - Chat Completions API", () => {
   }, TEST_TIMEOUT)
 })
 
-describe("OpenAI SDK - Streaming", () => {
+describe.skipIf(SKIP_LIVE)("OpenAI SDK - Streaming", () => {
   let client: OpenAI
 
   beforeAll(() => {
@@ -250,7 +252,7 @@ describe("OpenAI SDK - Streaming", () => {
   }, TEST_TIMEOUT)
 })
 
-describe("OpenAI SDK - Function Calling", () => {
+describe.skipIf(SKIP_LIVE)("OpenAI SDK - Function Calling", () => {
   let client: OpenAI
 
   beforeAll(() => {
@@ -394,7 +396,7 @@ describe("OpenAI SDK - Function Calling", () => {
   }, TEST_TIMEOUT)
 })
 
-describe("OpenAI SDK - Responses API", () => {
+describe.skipIf(SKIP_LIVE)("OpenAI SDK - Responses API", () => {
   let client: OpenAI
 
   beforeAll(() => {
@@ -460,7 +462,7 @@ describe("OpenAI SDK - Responses API", () => {
   }, TEST_TIMEOUT)
 })
 
-describe("OpenAI SDK - Models API", () => {
+describe.skipIf(SKIP_LIVE)("OpenAI SDK - Models API", () => {
   let client: OpenAI
 
   beforeAll(() => {
@@ -484,7 +486,7 @@ describe("OpenAI SDK - Models API", () => {
   }, TEST_TIMEOUT)
 })
 
-describe("OpenAI SDK - Response Validation", () => {
+describe.skipIf(SKIP_LIVE)("OpenAI SDK - Response Validation", () => {
   let client: OpenAI
 
   beforeAll(() => {

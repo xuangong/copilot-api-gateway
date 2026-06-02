@@ -18,8 +18,10 @@ import Anthropic from "@anthropic-ai/sdk"
 
 const BASE_URL = process.env.TEST_API_BASE_URL || "http://localhost:41414"
 const TEST_TIMEOUT = 30_000
+// Skip when no live server is configured; these tests require `bun run local`.
+const SKIP_LIVE = !process.env.TEST_API_BASE_URL
 
-describe("Anthropic SDK - Messages API", () => {
+describe.skipIf(SKIP_LIVE)("Anthropic SDK - Messages API", () => {
   let client: Anthropic
 
   beforeAll(() => {
@@ -153,7 +155,7 @@ describe("Anthropic SDK - Messages API", () => {
   }, TEST_TIMEOUT)
 })
 
-describe("Anthropic SDK - Streaming", () => {
+describe.skipIf(SKIP_LIVE)("Anthropic SDK - Streaming", () => {
   let client: Anthropic
 
   beforeAll(() => {
@@ -301,7 +303,7 @@ describe("Anthropic SDK - Streaming", () => {
   }, TEST_TIMEOUT)
 })
 
-describe("Anthropic SDK - Tool Use", () => {
+describe.skipIf(SKIP_LIVE)("Anthropic SDK - Tool Use", () => {
   let client: Anthropic
 
   beforeAll(() => {
@@ -414,7 +416,7 @@ describe("Anthropic SDK - Tool Use", () => {
   }, TEST_TIMEOUT)
 })
 
-describe("Anthropic SDK - Response Validation", () => {
+describe.skipIf(SKIP_LIVE)("Anthropic SDK - Response Validation", () => {
   let client: Anthropic
 
   beforeAll(() => {

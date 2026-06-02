@@ -19,6 +19,8 @@ import { GoogleGenAI } from "@google/genai"
 const BASE_URL = process.env.TEST_API_BASE_URL || "http://localhost:41414"
 const API_KEY = process.env.TEST_API_KEY || "test-key"
 const TEST_TIMEOUT = 30_000
+// Skip when no live server is configured; these tests require `bun run local`.
+const SKIP_LIVE = !process.env.TEST_API_BASE_URL
 
 // Reusable client factory
 function createClient() {
@@ -30,7 +32,7 @@ function createClient() {
   })
 }
 
-describe("Gemini API - generateContent", () => {
+describe.skipIf(SKIP_LIVE)("Gemini API - generateContent", () => {
   let client: ReturnType<typeof createClient>
 
   beforeAll(() => {
@@ -198,7 +200,7 @@ describe("Gemini API - generateContent", () => {
   }, TEST_TIMEOUT)
 })
 
-describe("Gemini API - generateContentStream", () => {
+describe.skipIf(SKIP_LIVE)("Gemini API - generateContentStream", () => {
   let client: ReturnType<typeof createClient>
 
   beforeAll(() => {
@@ -310,7 +312,7 @@ describe("Gemini API - generateContentStream", () => {
   }, TEST_TIMEOUT)
 })
 
-describe("Gemini API - Function Calling", () => {
+describe.skipIf(SKIP_LIVE)("Gemini API - Function Calling", () => {
   let client: ReturnType<typeof createClient>
 
   beforeAll(() => {
@@ -450,7 +452,7 @@ describe("Gemini API - Function Calling", () => {
   }, TEST_TIMEOUT)
 })
 
-describe("Gemini API - Simple String Input", () => {
+describe.skipIf(SKIP_LIVE)("Gemini API - Simple String Input", () => {
   test("accepts string as contents", async () => {
     const client = createClient()
 

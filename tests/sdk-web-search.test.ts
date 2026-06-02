@@ -15,13 +15,15 @@ import { describe, test, expect } from "bun:test"
 import OpenAI from "openai"
 
 const BASE_URL = process.env.TEST_API_BASE_URL || "http://localhost:4141"
+// Skip when no live server is configured; these tests require `bun run dev`.
+const SKIP_LIVE = !process.env.TEST_API_BASE_URL
 
 const openai = new OpenAI({
   apiKey: "test-key",
   baseURL: BASE_URL + "/v1",
 })
 
-describe("Web Search - Messages API (Bing)", () => {
+describe.skipIf(SKIP_LIVE)("Web Search - Messages API (Bing)", () => {
   test("non-streaming: web search is intercepted", async () => {
     const response = await fetch(`${BASE_URL}/v1/messages`, {
       method: "POST",
@@ -101,7 +103,7 @@ describe("Web Search - Messages API (Bing)", () => {
   }, 120000)
 })
 
-describe("Web Search - Responses API (Bing)", () => {
+describe.skipIf(SKIP_LIVE)("Web Search - Responses API (Bing)", () => {
   test("non-streaming: web_search tool triggers search", async () => {
     const response = await openai.responses.create({
       model: "gpt-5.1",
@@ -147,7 +149,7 @@ describe("Web Search - Responses API (Bing)", () => {
   }, 120000)
 })
 
-describe("Web Search - with allowed_domains", () => {
+describe.skipIf(SKIP_LIVE)("Web Search - with allowed_domains", () => {
   test("respects allowed_domains restriction", async () => {
     const response = await fetch(`${BASE_URL}/v1/messages`, {
       method: "POST",
@@ -181,7 +183,7 @@ describe("Web Search - with allowed_domains", () => {
   }, 120000)
 })
 
-describe("Web Search - max_uses limit", () => {
+describe.skipIf(SKIP_LIVE)("Web Search - max_uses limit", () => {
   test("respects max_uses limit", async () => {
     const response = await fetch(`${BASE_URL}/v1/messages`, {
       method: "POST",
