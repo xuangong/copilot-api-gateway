@@ -24,7 +24,16 @@ export interface ChatCompletionsPayload {
   n?: number
   stream?: boolean
   stream_options?: { include_usage?: boolean }
-  response_format?: { type: "json_object" | "text" }
+  response_format?:
+    | { type: "json_object" | "text" }
+    | {
+        type: "json_schema"
+        json_schema: {
+          name: string
+          strict?: boolean
+          schema: Record<string, unknown>
+        }
+      }
   reasoning_effort?: "low" | "medium" | "high" | "xhigh"
 }
 
@@ -167,7 +176,16 @@ export function translateGeminiToOpenAI(
   if (request.generationConfig?.candidateCount != null && request.generationConfig.candidateCount > 1) {
     result.n = request.generationConfig.candidateCount
   }
-  if (request.generationConfig?.responseMimeType === "application/json") {
+  if (request.generationConfig?.responseSchema) {
+    result.response_format = {
+      type: "json_schema",
+      json_schema: {
+        name: "gemini_response",
+        strict: true,
+        schema: request.generationConfig.responseSchema,
+      },
+    }
+  } else if (request.generationConfig?.responseMimeType === "application/json") {
     result.response_format = { type: "json_object" }
   }
   const effort = request.generationConfig?.thinkingConfig

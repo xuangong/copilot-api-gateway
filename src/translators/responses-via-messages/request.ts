@@ -189,6 +189,23 @@ export function translateResponsesToMessages(
   const tools = translateTools(payload.tools)
   const tool_choice = translateToolChoice(payload.tool_choice)
 
+  // Merge reasoning effort + structured-output format into a single
+  // `output_config`. Responses keeps json_schema details flat
+  // (`text.format = { type, schema }`); a `text` mode or absent config has
+  // no Messages equivalent and drops.
+  const responsesFormat = payload.text?.format
+  const formatSchema =
+    responsesFormat?.type === "json_schema"
+    && responsesFormat.schema
+    && typeof responsesFormat.schema === "object"
+    && !Array.isArray(responsesFormat.schema)
+      ? (responsesFormat.schema as Record<string, unknown>)
+      : undefined
+  const outputConfig: NonNullable<AnthropicMessagesPayload["output_config"]> = {}
+  if (effort) outputConfig.effort = effort
+  if (formatSchema) outputConfig.format = { type: "json_schema", schema: formatSchema }
+  const hasOutputConfig = Object.keys(outputConfig).length > 0
+
   const target: AnthropicMessagesPayload = {
     model: payload.model,
     messages,
@@ -196,7 +213,7 @@ export function translateResponsesToMessages(
     stream: payload.stream ?? true,
     ...(system ? { system } : {}),
     ...(tools ? { tools } : {}),
-    ...(effort ? { output_config: { effort } } : {}),
+    ...(hasOutputConfig ? { output_config: outputConfig } : {}),
   }
   // Anthropic payload type doesn't formally declare temperature/top_p/tool_choice
   // but they're accepted by upstream — attach as additional fields.

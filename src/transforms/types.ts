@@ -24,6 +24,10 @@ export interface AnthropicMessagesPayload {
   }
   output_config?: {
     effort?: "low" | "medium" | "high" | "xhigh"
+    format?: {
+      type: "json_schema"
+      schema: Record<string, unknown>
+    }
   }
 }
 
@@ -113,6 +117,19 @@ export interface ResponsesPayload {
   reasoning?: {
     effort: "low" | "medium" | "high" | "xhigh"
     summary?: "detailed" | "auto"
+  }
+  /**
+   * Responses-side structured-output config. The `format` shape mirrors the
+   * Anthropic Messages `output_config.format` plus an OpenAI-required `name`
+   * (synthesised by the translator when forwarding from Messages).
+   */
+  text?: {
+    format?: {
+      type: "json_schema"
+      name?: string
+      strict?: boolean
+      schema: Record<string, unknown>
+    }
   }
 }
 

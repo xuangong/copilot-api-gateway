@@ -10,6 +10,7 @@
  */
 
 import type { ChatCompletionsPayload, Message, Tool, ToolCall, ContentPart } from "~/services/gemini/format-conversion"
+import { openAiJsonSchemaCoreFromMessagesFormat } from "~/translators/shared/structured-output"
 import type {
   AnthropicMessagesPayload,
   AnthropicMessage,
@@ -262,6 +263,10 @@ export function translateMessagesToChatCompletions(
   const tools = translateTools(payload.tools)
 
   const reasoning_effort = translateEffort(payload)
+  const jsonSchema = openAiJsonSchemaCoreFromMessagesFormat(payload.output_config?.format)
+  const response_format = jsonSchema
+    ? ({ type: "json_schema" as const, json_schema: jsonSchema })
+    : undefined
 
   const result: ChatCompletionsPayload = {
     model: payload.model,
@@ -273,6 +278,7 @@ export function translateMessagesToChatCompletions(
     ...(extended.top_p !== undefined ? { top_p: extended.top_p } : {}),
     ...(extended.stop_sequences ? { stop: extended.stop_sequences } : {}),
     ...(tools ? { tools } : {}),
+    ...(response_format ? { response_format } : {}),
   }
   const toolChoice = translateToolChoice(extended.tool_choice, tools)
   if (toolChoice !== undefined) {

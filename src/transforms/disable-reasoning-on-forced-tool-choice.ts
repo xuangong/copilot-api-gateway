@@ -54,8 +54,10 @@ const chatHasForcedToolChoice = (
 }
 
 /**
- * Messages: strip `output_config` (the effort knob) and set
+ * Messages: strip `output_config.effort` (the thinking knob) and set
  * `thinking: { type: "disabled" }`, which is the protocol-native off switch.
+ * Preserve `output_config.format` — structured outputs compose fine with
+ * forced tool choice; only thinking did not.
  */
 export function disableMessagesReasoningOnForcedToolChoice(
   payload: AnthropicMessagesPayload,
@@ -64,10 +66,15 @@ export function disableMessagesReasoningOnForcedToolChoice(
   if (!enabledFlags.has("disable-reasoning-on-forced-tool-choice")) return false
   if (!messagesHasForcedToolChoice(payload)) return false
   const mut = payload as unknown as {
-    output_config?: unknown
+    output_config?: { effort?: unknown; format?: unknown }
     thinking?: { type: "disabled" }
   }
-  delete mut.output_config
+  if (mut.output_config) {
+    delete mut.output_config.effort
+    if (Object.keys(mut.output_config).length === 0) {
+      delete mut.output_config
+    }
+  }
   mut.thinking = { type: "disabled" }
   return true
 }

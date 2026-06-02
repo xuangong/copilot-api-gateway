@@ -215,6 +215,24 @@ export function translateChatCompletionsToMessages(
     ? { type: "enabled" as const, budget_tokens: EFFORT_TO_BUDGET[payload.reasoning_effort] }
     : undefined
 
+  // Chat nests json_schema details (`response_format = { type: 'json_schema',
+  // json_schema: { schema } }`); `json_object` / `text` / absent have no
+  // Messages equivalent and drop.
+  const rf = payload.response_format
+  const jsonSchema =
+    rf?.type === "json_schema"
+      ? (rf.json_schema as { schema?: unknown } | undefined)
+      : undefined
+  const formatSchema =
+    jsonSchema?.schema
+    && typeof jsonSchema.schema === "object"
+    && !Array.isArray(jsonSchema.schema)
+      ? (jsonSchema.schema as Record<string, unknown>)
+      : undefined
+  const output_config = formatSchema
+    ? { format: { type: "json_schema" as const, schema: formatSchema } }
+    : undefined
+
   return {
     model: payload.model,
     messages,
@@ -229,5 +247,6 @@ export function translateChatCompletionsToMessages(
     ...(payload.tools?.length ? { tools: translateTools(payload.tools) } : {}),
     ...(toolChoice ? { tool_choice: toolChoice } : {}),
     ...(thinking ? { thinking } : {}),
+    ...(output_config ? { output_config } : {}),
   }
 }

@@ -26,6 +26,7 @@ import type {
   ResponseContentBlock,
   ResponseTool,
 } from "~/transforms/types"
+import { openAiJsonSchemaCoreFromMessagesFormat } from "~/translators/shared/structured-output"
 
 type ToolChoice = NonNullable<ResponsesPayload["tool_choice"]>
 
@@ -189,6 +190,8 @@ export function translateMessagesToResponses(payload: AnthropicMessagesPayload):
   const temperature = (payload as unknown as { temperature?: number }).temperature
   const top_p = (payload as unknown as { top_p?: number }).top_p
   const metadata = (payload as unknown as { metadata?: Record<string, string> }).metadata
+  const jsonSchema = openAiJsonSchemaCoreFromMessagesFormat(payload.output_config?.format)
+  const text = jsonSchema ? { format: { type: "json_schema" as const, ...jsonSchema } } : undefined
   return {
     model: payload.model,
     input: translateInput(payload.messages),
@@ -201,5 +204,6 @@ export function translateMessagesToResponses(payload: AnthropicMessagesPayload):
     ...(metadata ? { metadata: { ...metadata } } : {}),
     stream: payload.stream ?? true,
     ...(effort ? { reasoning: { effort } } : {}),
+    ...(text ? { text } : {}),
   }
 }
