@@ -1,0 +1,23 @@
+{
+  "name": "copilot-gateway-vnext",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "bun run --filter '*' typecheck",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/bun": "latest",
+    "eslint": "9",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import": "^2.32.0",
+    "globals": "^17.6.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.60.1"
+  }
+}
