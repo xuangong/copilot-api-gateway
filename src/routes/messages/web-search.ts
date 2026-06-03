@@ -2,7 +2,6 @@ import { getApiKeyById } from "~/lib/api-keys"
 import { detectClient } from "~/lib/client-detect"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
-import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
 import { trackNonStreamingUsage } from "~/middleware/usage"
 import { getRepo } from "~/repo"
 import {
@@ -201,9 +200,14 @@ function buildWebSearchStreamingResponse(
             })}\n\n`
           try { controller.enqueue(encoder.encode(frame)) } catch { /* ignore */ }
         }
+        // Forward replay frames as-is, preserving the per-delta pacing emitted
+        // by sse-replay.ts. We do NOT wrap in wrapAnthropicHeartbeat here: that
+        // wrapper coalesces multi-frame writes through its `pending` buffer,
+        // which destroys the 12ms inter-delta cadence. Replay runs entirely
+        // from memory in well under 1s, so the 60s idle-keepalive concern
+        // does not apply on this path.
         const sseBody = replayResponseAsSSE(response as ApiResponse, { skipMessageStart: true })
-        const wrapped = wrapAnthropicHeartbeat(sseBody)
-        const reader = wrapped!.getReader()
+        const reader = sseBody.getReader()
         for (;;) {
           const { done, value } = await reader.read()
           if (done) break

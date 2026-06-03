@@ -19,12 +19,14 @@ export interface ReplayOptions {
   skipMessageStart?: boolean
 }
 
-/** Delay between text deltas (ms). Forces each delta into its own network
- * flush so the dashboard / SDK clients render progressively instead of
- * receiving one big TCP segment. */
-const DELTA_INTERVAL_MS = 12
-/** Codepoint count per delta. CJK-safe. */
-const DELTA_CHUNK_SIZE = 24
+/** Delay between text deltas (ms). Tuned so a typical multi-paragraph reply
+ * (~500 chars) takes ~2s to fully render — close to the cadence of a real
+ * upstream LLM stream. Smaller values render so fast that humans perceive
+ * "all at once" even though the frames are independent on the wire. */
+const DELTA_INTERVAL_MS = 30
+/** Codepoint count per delta. Small enough that each chunk reads like a
+ * word/phrase rather than a full sentence. CJK-safe (codepoint, not byte). */
+const DELTA_CHUNK_SIZE = 8
 
 export function replayResponseAsSSE(
   response: ApiResponse,
