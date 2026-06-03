@@ -2,14 +2,16 @@ import { getApiKeyById } from "~/lib/api-keys"
 import { detectClient } from "~/lib/client-detect"
 import { raceWithHeartbeat } from "~/lib/heartbeat-json"
 import { recordLatency, startTimer } from "~/lib/latency-tracker"
-import { wrapAnthropicHeartbeat } from "~/lib/sse-heartbeat"
-import { trackNonStreamingUsage } from "~/middleware/usage"
+import { consumeStreamForUsage, trackNonStreamingUsage } from "~/middleware/usage"
 import { getRepo } from "~/repo"
 import {
   hasWebSearch,
   interceptWebSearch,
   replayResponseAsSSE,
+  runWebSearchLoop,
+  streamTerminalCall,
   type ApiResponse,
+  type LoopResult,
   type MessagesInterceptedSearch,
   type MessagesPayload,
   type WebSearchMeta,
@@ -55,17 +57,43 @@ export async function handleWebSearch(
   const interceptPayload: MessagesPayload = { ...messagesPayload, stream: false }
   const resolvedKeys = await resolveWebSearchKeys(keyConfig, state.msGroundingKey)
 
-  const upstreamTimer = startTimer()
-  const upstreamPromise = interceptWebSearch(interceptPayload, {
+  const callOptions = {
     copilotToken: state.copilotToken,
     accountType: state.accountType,
-    engineOptions: {
-      langsearchKey: resolvedKeys.langsearchKey,
-      tavilyKey: resolvedKeys.tavilyKey,
-      githubToken: state.githubToken,
-      msGroundingKey: resolvedKeys.msGroundingKey,
-      priority: keyConfig.webSearchPriority,
-    },
+  }
+  const engineOptions = {
+    langsearchKey: resolvedKeys.langsearchKey,
+    tavilyKey: resolvedKeys.tavilyKey,
+    githubToken: state.githubToken,
+    msGroundingKey: resolvedKeys.msGroundingKey,
+    priority: keyConfig.webSearchPriority,
+  }
+
+  // Streaming clients: run the loop (non-streaming upstream for tool rounds),
+  // then re-issue the terminal turn with stream:true so the client sees real
+  // per-token cadence from upstream. No replay, no synthetic pacing.
+  if (wantsStream) {
+    const upstreamTimer = startTimer()
+    const loopPromise = runWebSearchLoop(interceptPayload, {
+      ...callOptions,
+      engineOptions,
+    })
+    return buildWebSearchStreamingResponse(
+      ctx,
+      payload,
+      loopPromise,
+      callOptions,
+      upstreamTimer,
+      elapsed,
+      client,
+    )
+  }
+
+  // Non-streaming: legacy path — loop to completion then return full JSON.
+  const upstreamTimer = startTimer()
+  const upstreamPromise = interceptWebSearch(interceptPayload, {
+    ...callOptions,
+    engineOptions,
   })
 
   const recordSideEffects = async (
@@ -107,18 +135,12 @@ export async function handleWebSearch(
     }
   }
 
-  if (wantsStream) {
-    return buildWebSearchStreamingResponse(payload, upstreamPromise, requestId, recordSideEffects)
-  }
-
   const raced = await raceWithHeartbeat(upstreamPromise, {
     serialize: (v) => JSON.stringify(v.response),
     onResolve: recordSideEffects,
   })
 
   if (raced.kind === "stream") {
-    // Headers (incl. X-Web-Search-*) are locked once streaming starts; we omit
-    // them on the slow path. Caller can still inspect response body.
     return raced.response
   }
 
@@ -131,18 +153,60 @@ export async function handleWebSearch(
 }
 
 /**
- * Streaming client needs immediate bytes to dodge first-byte timeouts (e.g.
- * the PowerPoint Claude plugin closes after ~14s of silence). We open the SSE
- * stream with a synthetic message_start so the client sees a real protocol
- * event right away, ping periodically while the upstream web_search loop
- * runs, then append the replayed message frames once it resolves.
+ * Strip upstream's `message_start` event from a raw Anthropic SSE stream.
+ * We've already emitted a synthetic one when the response opened (so the
+ * client got first bytes immediately during the search loop) — letting
+ * upstream's also through would break SDK accumulators that assume exactly
+ * one message_start per stream.
+ *
+ * Works on frame boundaries (\n\n) which Anthropic guarantees per event.
+ */
+function stripUpstreamMessageStart(): TransformStream<Uint8Array, Uint8Array> {
+  const decoder = new TextDecoder()
+  const encoder = new TextEncoder()
+  let buffer = ""
+  let stripped = false
+  return new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      buffer += decoder.decode(chunk, { stream: true })
+      // Drain complete frames; keep partial tail in buffer.
+      while (true) {
+        const idx = buffer.indexOf("\n\n")
+        if (idx === -1) break
+        const frame = buffer.slice(0, idx + 2)
+        buffer = buffer.slice(idx + 2)
+        if (!stripped && frame.startsWith("event: message_start")) {
+          stripped = true
+          continue
+        }
+        controller.enqueue(encoder.encode(frame))
+      }
+    },
+    flush(controller) {
+      if (buffer.length > 0) controller.enqueue(encoder.encode(buffer))
+    },
+  })
+}
+
+/**
+ * Streaming web-search response. Opens SSE immediately with a synthetic
+ * message_start (dodges first-byte timeouts during the search loop), pings
+ * periodically, then either:
+ *   - terminal_required: opens a fresh streaming upstream call and pipes
+ *     raw bytes (minus upstream's own message_start) directly to the client.
+ *     Client sees real per-token cadence.
+ *   - complete (early exit): falls back to the replay-with-pacing path.
  */
 function buildWebSearchStreamingResponse(
+  ctx: RouteContext,
   payload: AnthropicMessagesPayload,
-  upstreamPromise: Promise<{ response: unknown; meta: WebSearchMeta; searches: MessagesInterceptedSearch[] }>,
-  requestId: string | undefined,
-  recordSideEffects: (r: { response: unknown; meta: WebSearchMeta }) => Promise<void>,
+  loopPromise: Promise<LoopResult>,
+  callOptions: { copilotToken: string; accountType: import("~/config/constants").AccountType },
+  upstreamTimer: () => number,
+  elapsed: () => number,
+  client: string | undefined,
 ): Response {
+  const { state, apiKeyId, colo, requestId, userAgent } = ctx
   const encoder = new TextEncoder()
   const PING = encoder.encode("event: ping\ndata: {}\n\n")
   const PING_INTERVAL_MS = 5000
@@ -169,6 +233,58 @@ function buildWebSearchStreamingResponse(
     Connection: "keep-alive",
     "X-Accel-Buffering": "no",
   }
+
+  const recordSearchUsage = (meta: WebSearchMeta) => {
+    if (!apiKeyId || meta.searchCount === 0) return
+    const hour = new Date().toISOString().slice(0, 13)
+    const repo = getRepo()
+    for (let i = 0; i < meta.successes; i++) {
+      repo.webSearchUsage.record(apiKeyId, hour, true).catch(() => {})
+    }
+    for (let i = 0; i < meta.failures; i++) {
+      repo.webSearchUsage.record(apiKeyId, hour, false).catch(() => {})
+    }
+    for (const a of meta.engineAttempts) {
+      repo.webSearchEngineUsage
+        .record(apiKeyId, a.engineId, hour, {
+          ok: a.ok, resultCount: a.resultCount, durationMs: a.durationMs,
+        })
+        .catch(() => {})
+    }
+  }
+
+  const recordLatencyOnce = (upstreamMs: number, usage?: { input_tokens?: number; output_tokens?: number }) => {
+    if (!apiKeyId) return
+    recordLatency(apiKeyId, payload.model, colo, {
+      totalMs: elapsed(), upstreamMs, ttfbMs: upstreamMs, tokenMiss: state.tokenMiss,
+    }, requestId, {
+      stream: true,
+      inputTokens: usage?.input_tokens,
+      outputTokens: usage?.output_tokens,
+      userAgent,
+      sourceApi: "messages",
+      targetApi: "messages",
+      upstream: state.upstream,
+    }).catch(() => {})
+  }
+
+  const emitSearchProgress = (
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    searches: MessagesInterceptedSearch[],
+  ) => {
+    for (const s of searches) {
+      const frame =
+        `event: web_search_progress\ndata: ${JSON.stringify({
+          type: "web_search_progress",
+          item_id: s.toolUseId,
+          status: "completed",
+          query: s.query,
+          is_error: s.isError,
+        })}\n\n`
+      try { controller.enqueue(encoder.encode(frame)) } catch { /* ignore */ }
+    }
+  }
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try { controller.enqueue(synthStart) } catch { /* ignore */ }
@@ -180,35 +296,59 @@ function buildWebSearchStreamingResponse(
       const stopPing = () => { closed = true; clearInterval(ping) }
 
       try {
-        const result = await upstreamPromise
-        const { response, meta } = result
-        console.log(JSON.stringify({
-          evt: "ws_stream_replay_start",
-          rid: requestId,
-          searchCount: meta.searchCount,
-        }))
-        // Emit a synthetic web_search_progress event per search so the
-        // dashboard playground can render inline "Searched: <query>" bubbles.
-        // Mirrors the gpt-5 hosted / claude-* intercept paths.
-        for (const s of result.searches) {
-          const frame =
-            `event: web_search_progress\ndata: ${JSON.stringify({
-              type: "web_search_progress",
-              item_id: s.toolUseId,
-              status: "completed",
-              query: s.query,
-              is_error: s.isError,
-            })}\n\n`
-          try { controller.enqueue(encoder.encode(frame)) } catch { /* ignore */ }
-        }
-        const sseBody = replayResponseAsSSE(response as ApiResponse, { skipMessageStart: true })
-        const wrapped = wrapAnthropicHeartbeat(sseBody)
-        const reader = wrapped!.getReader()
-        for (;;) {
-          const { done, value } = await reader.read()
-          if (done) break
-          if (value && value.length > 0) {
-            try { controller.enqueue(value) } catch { /* downstream gone */ break }
+        const result = await loopPromise
+        recordSearchUsage(result.meta)
+        emitSearchProgress(controller, result.searches)
+
+        if (result.kind === "complete") {
+          // Early exit (model returned non-web_search tool alongside). The
+          // intercepted response IS the final turn — replay it with pacing,
+          // there's no upstream turn left to stream from.
+          console.log(JSON.stringify({
+            evt: "ws_stream_complete_replay", rid: requestId,
+            searchCount: result.meta.searchCount,
+          }))
+          const usage = (result.response as { usage?: { input_tokens?: number; output_tokens?: number } }).usage
+          if (apiKeyId) {
+            await trackNonStreamingUsage(result.response, apiKeyId, payload.model, client, state.upstream)
+          }
+          recordLatencyOnce(upstreamTimer(), usage)
+          const sseBody = replayResponseAsSSE(result.response as ApiResponse, { skipMessageStart: true })
+          const reader = sseBody.getReader()
+          for (;;) {
+            const { done, value } = await reader.read()
+            if (done) break
+            if (value && value.length > 0) {
+              try { controller.enqueue(value) } catch { break }
+            }
+          }
+        } else {
+          // Terminal turn re-issued with stream:true — pipe raw upstream bytes
+          // straight to the client so per-token cadence is real (not synthesized).
+          console.log(JSON.stringify({
+            evt: "ws_stream_terminal_open", rid: requestId,
+            searchCount: result.meta.searchCount,
+          }))
+          const upstreamBody = await streamTerminalCall(result, callOptions)
+          const upstreamMs = upstreamTimer()
+          // tee() so usage extractor reads its own copy without competing
+          // with the forward branch.
+          let forwardBranch = upstreamBody
+          if (apiKeyId) {
+            const [usageBranch, fwd] = upstreamBody.tee()
+            forwardBranch = fwd
+            const usagePromise = consumeStreamForUsage(usageBranch, apiKeyId, payload.model, client, state.upstream)
+            ctx.executionCtx?.waitUntil(usagePromise)
+          }
+          recordLatencyOnce(upstreamMs)
+          const filtered = forwardBranch.pipeThrough(stripUpstreamMessageStart())
+          const reader = filtered.getReader()
+          for (;;) {
+            const { done, value } = await reader.read()
+            if (done) break
+            if (value && value.length > 0) {
+              try { controller.enqueue(value) } catch { break }
+            }
           }
         }
         stopPing()
@@ -229,7 +369,5 @@ function buildWebSearchStreamingResponse(
       }
     },
   })
-  const streamResponse = new Response(stream, { headers })
-  upstreamPromise.then((v) => recordSideEffects(v)).catch(() => {})
-  return streamResponse
+  return new Response(stream, { headers })
 }
