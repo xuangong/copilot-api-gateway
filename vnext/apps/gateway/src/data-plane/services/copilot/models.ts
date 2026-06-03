@@ -1,0 +1,68 @@
+import { getCopilotBaseUrl, type AccountType } from "../../../shared/config/constants.ts"
+import { copilotHeaders } from "../../../shared/config/headers.ts"
+import { HTTPError } from "../../../shared/lib/error.ts"
+
+export interface ModelsResponse {
+  data: Array<Model>
+  object: string
+}
+
+export interface ModelLimits {
+  max_context_window_tokens?: number
+  max_output_tokens?: number
+  max_prompt_tokens?: number
+  max_inputs?: number
+}
+
+export interface ModelSupports {
+  tool_calls?: boolean
+  parallel_tool_calls?: boolean
+  dimensions?: boolean
+}
+
+export interface ModelCapabilities {
+  family: string
+  limits: ModelLimits
+  object: string
+  supports: ModelSupports
+  tokenizer: string
+  type: string
+}
+
+export interface Model {
+  capabilities: ModelCapabilities
+  id: string
+  model_picker_enabled: boolean
+  name: string
+  object: string
+  preview: boolean
+  vendor: string
+  version: string
+  policy?: {
+    state: string
+    terms: string
+  }
+  available_combinations?: Array<{ context1m: boolean; effort?: string }>
+}
+
+export async function getRawModels(
+  copilotToken: string,
+  accountType: AccountType,
+): Promise<ModelsResponse> {
+  const baseUrl = getCopilotBaseUrl(accountType)
+  const response = await fetch(`${baseUrl}/models`, {
+    headers: copilotHeaders(copilotToken),
+  })
+
+  if (!response.ok) throw new HTTPError("Failed to get models", response)
+
+  return (await response.json()) as ModelsResponse
+}
+
+export async function getModels(
+  copilotToken: string,
+  accountType: AccountType,
+): Promise<ModelsResponse> {
+  return getRawModels(copilotToken, accountType)
+}
+
