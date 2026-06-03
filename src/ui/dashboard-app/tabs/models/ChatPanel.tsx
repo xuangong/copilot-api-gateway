@@ -68,6 +68,28 @@ const WEB_SEARCH_PARAMS = {
   required: ["query"],
 } as const
 
+/**
+ * Prepend the user's current local time to the system prompt so models can
+ * resolve "now / today / recent / yesterday" without ambiguity. Browser-side
+ * only — no server tool, no extra round-trip. Re-evaluated on every send so
+ * long-running sessions don't drift.
+ */
+function buildTimeContext(): string {
+  const now = new Date()
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+  const local = new Intl.DateTimeFormat(undefined, {
+    dateStyle: "full",
+    timeStyle: "long",
+  }).format(now)
+  return `Current time: ${now.toISOString()} (${local}, timezone ${tz}).`
+}
+
+function composeSystemPrompt(userPrompt: string): string {
+  const timeLine = buildTimeContext()
+  const trimmed = userPrompt.trim()
+  return trimmed ? `${timeLine}\n\n${trimmed}` : timeLine
+}
+
 export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onRevertModel }: Props) {
   const t = useT()
   const [protocol, setProtocol] = useState<Protocol>(() => loadPersistedProtocol())
@@ -143,7 +165,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
   async function countContextTokens(history: Message[], signal: AbortSignal) {
     const anMessages = toAnthropicMessages(history)
     const body: Record<string, unknown> = { model: modelId, messages: anMessages }
-    if (systemPrompt.trim()) body.system = systemPrompt
+    body.system = composeSystemPrompt(systemPrompt)
     setCtxCounting(true)
     try {
       const resp = await fetch("/v1/messages/count_tokens", {
@@ -377,9 +399,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
 
   async function sendOpenAI(history: Message[], signal: AbortSignal) {
     const oaiMessages: Array<Record<string, unknown>> = []
-    if (systemPrompt.trim()) {
-      oaiMessages.push({ role: "system", content: systemPrompt })
-    }
+    oaiMessages.push({ role: "system", content: composeSystemPrompt(systemPrompt) })
     for (const m of history) {
       if (m.imageUrl) {
         oaiMessages.push({
@@ -452,7 +472,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
       messages: anMessages,
       stream: true,
     }
-    if (systemPrompt.trim()) body.system = systemPrompt
+    body.system = composeSystemPrompt(systemPrompt)
     if (webSearchEnabled) {
       body.tools = [
         {
@@ -505,9 +525,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
       contents.push({ role, parts })
     }
     const body: Record<string, unknown> = { contents }
-    if (systemPrompt.trim()) {
-      body.systemInstruction = { parts: [{ text: systemPrompt }] }
-    }
+    body.systemInstruction = { parts: [{ text: composeSystemPrompt(systemPrompt) }] }
     if (webSearchEnabled) {
       body.tools = [
         {
