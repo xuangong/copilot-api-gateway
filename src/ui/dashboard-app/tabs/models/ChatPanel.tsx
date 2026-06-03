@@ -423,8 +423,10 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
       throw new Error(errText || `HTTP ${resp.status}`)
     }
     for await (const ch of parseOpenAIStream(resp.body)) {
-      if (ch.type === "delta") appendAssistant(ch.text)
-      else if (ch.type === "web_search") applyWebSearchProgress(ch.progress)
+      if (ch.type === "delta") {
+        appendAssistant(ch.text)
+        await new Promise<void>((r) => setTimeout(r, 0))
+      } else if (ch.type === "web_search") applyWebSearchProgress(ch.progress)
       else setLastUsage(ch.usage)
     }
   }
@@ -472,8 +474,10 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
       throw new Error(errText || `HTTP ${resp.status}`)
     }
     for await (const ch of parseAnthropicStream(resp.body)) {
-      if (ch.type === "delta") appendAssistant(ch.text)
-      else if (ch.type === "usage") setLastUsage(ch.usage)
+      if (ch.type === "delta") {
+        appendAssistant(ch.text)
+        await new Promise<void>((r) => setTimeout(r, 0))
+      } else if (ch.type === "usage") setLastUsage(ch.usage)
       else if (ch.type === "web_search") applyWebSearchProgress(ch.progress)
     }
   }
@@ -531,8 +535,10 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
       throw new Error(errText || `HTTP ${resp.status}`)
     }
     for await (const ch of parseGeminiStream(resp.body)) {
-      if (ch.type === "delta") appendAssistant(ch.text)
-      else if (ch.type === "usage") setLastUsage(ch.usage)
+      if (ch.type === "delta") {
+        appendAssistant(ch.text)
+        await new Promise<void>((r) => setTimeout(r, 0))
+      } else if (ch.type === "usage") setLastUsage(ch.usage)
       else if (ch.type === "web_search") applyWebSearchProgress(ch.progress)
     }
   }

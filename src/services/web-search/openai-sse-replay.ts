@@ -111,7 +111,35 @@ export function replayChatCompletionAsSSE(
           }
         }
       }
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify(contentChunk)}\n\n`))
+      const content = contentChunk.choices[0]?.delta.content
+      const toolCalls = contentChunk.choices[0]?.delta.tool_calls
+      if (typeof content === "string" && content.length > 0 && !toolCalls) {
+        const pieces = chunkText(content)
+        for (let i = 0; i < pieces.length; i++) {
+          const piece = pieces[i]!
+          const isLast = i === pieces.length - 1
+          const piecedChunk: ChatCompletionChunk = {
+            id: contentChunk.id,
+            object: "chat.completion.chunk",
+            created: contentChunk.created,
+            model: contentChunk.model,
+            choices: [
+              {
+                index: 0,
+                delta: i === 0
+                  ? { role: "assistant", content: piece }
+                  : { content: piece },
+                finish_reason: isLast
+                  ? contentChunk.choices[0]!.finish_reason
+                  : null,
+              },
+            ],
+          }
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(piecedChunk)}\n\n`))
+        }
+      } else {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(contentChunk)}\n\n`))
+      }
       if (usage) {
         const usageChunk: ChatCompletionChunk = {
           id: chunk.id,
@@ -135,3 +163,14 @@ export function replayChatCompletionAsSSE(
  * (e.g. translateChunkToGemini). Identical wire format.
  */
 export const synthChatCompletionChunks = replayChatCompletionAsSSE
+
+function chunkText(text: string, size = 24): Array<string> {
+  if (!text) return [""]
+  const chars = Array.from(text)
+  if (chars.length <= size) return [text]
+  const out: Array<string> = []
+  for (let i = 0; i < chars.length; i += size) {
+    out.push(chars.slice(i, i + size).join(""))
+  }
+  return out
+}
