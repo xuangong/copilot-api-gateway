@@ -279,10 +279,43 @@ export interface MessagesInterceptedSearch {
   isError: boolean
 }
 
-export async function interceptWebSearch(
+/**
+ * Run the web_search ReAct loop and stop **before** the terminal LLM call.
+ * Returns the conversation state (`messages`) at the moment the loop is done
+ * dispatching searches. The caller decides how to make the terminal call:
+ *   - non-streaming client → `createMessages(messages)` → JSON
+ *   - streaming client     → `provider.fetch(stream: true)` → pipe upstream
+ *                            body directly to client (real per-token cadence,
+ *                            no replay, no faked pacing)
+ *
+ * Returns `kind: "terminal_required"` when the loop ended naturally (model
+ * stopped issuing web_search) — in that case `messages` is ready for the
+ * caller's terminal call.
+ *
+ * Returns `kind: "complete"` when the loop ended with an early-exit response
+ * that is itself the final assistant turn (e.g. the model emitted a
+ * non-web_search tool alongside web_search — we surface that response as-is
+ * without making a terminal call).
+ */
+export type LoopResult =
+  | {
+      kind: "terminal_required"
+      messages: Message[]
+      modifiedPayload: MessagesPayload
+      meta: WebSearchMeta
+      searches: MessagesInterceptedSearch[]
+    }
+  | {
+      kind: "complete"
+      response: ApiResponse
+      meta: WebSearchMeta
+      searches: MessagesInterceptedSearch[]
+    }
+
+export async function runWebSearchLoop(
   payload: MessagesPayload,
   options: InterceptOptions,
-): Promise<{ response: ApiResponse; meta: WebSearchMeta; searches: MessagesInterceptedSearch[] }> {
+): Promise<LoopResult> {
   const tools = payload.tools
   const webSearchTool = hasWebSearchTool(tools)
 
@@ -290,7 +323,7 @@ export async function interceptWebSearch(
 
   if (!webSearchTool) {
     const response = await createMessages(payload, options)
-    return { response, meta: emptyMeta(), searches: [] }
+    return { kind: "complete", response, meta: emptyMeta(), searches: [] }
   }
 
   console.log("[Web Search] Intercepting web_search tool")
@@ -320,7 +353,6 @@ export async function interceptWebSearch(
       options,
     )
     const upstreamMs = Date.now() - iterStart
-    // Only log slow iterations or beyond the first round (interesting cases)
     if (iter > 1 || upstreamMs > 10000) {
       console.log(JSON.stringify({
         evt: "ws_iter", iter, upstreamMs,
@@ -332,13 +364,31 @@ export async function interceptWebSearch(
       response.content || [],
     )
 
-    if (webSearchToolUses.length === 0 || hasOtherTools) {
-      if (hasOtherTools && webSearchToolUses.length > 0) {
-        console.log(
-          "[Web Search] Response contains other tools, returning to client",
-        )
+    // Early exit: model returned a non-web_search tool alongside (or instead
+    // of) web_search. This response IS the terminal turn — surface it as-is.
+    if (hasOtherTools) {
+      if (webSearchToolUses.length > 0) {
+        console.log("[Web Search] Response contains other tools, returning to client")
       }
-      return { response, meta, searches: allSearches }
+      return { kind: "complete", response, meta, searches: allSearches }
+    }
+
+    // Natural terminal: model stopped issuing web_search. We DROP this
+    // response's text content (caller will re-call upstream to get the
+    // terminal turn — streaming if the client wants stream:true). The
+    // alternative — reusing this response's text — only works for the
+    // non-streaming caller, and we'd rather have one code path.
+    if (webSearchToolUses.length === 0) {
+      console.log(JSON.stringify({
+        evt: "ws_loop_done", iter, searchCount, totalLoopMs: Date.now() - loopStart,
+      }))
+      return {
+        kind: "terminal_required",
+        messages,
+        modifiedPayload,
+        meta,
+        searches: allSearches,
+      }
     }
 
     console.log(`[Web Search] Found ${webSearchToolUses.length} web_search tool(s)`)
@@ -359,7 +409,6 @@ export async function interceptWebSearch(
     searchCount = result.searchCount
     for (const s of result.searches) allSearches.push(s)
 
-    // Add tool results as user message
     const toolResultsContent: MessageContent[] = result.toolResults.map((tr) => ({
       type: tr.type,
       tool_use_id: tr.tool_use_id,
@@ -373,25 +422,59 @@ export async function interceptWebSearch(
 
     if (searchCount >= maxUses) {
       console.log(JSON.stringify({
-        evt: "ws_max_uses_final_call",
-        iter,
-        searchCount,
-        maxUses,
-        elapsedMs: Date.now() - loopStart,
+        evt: "ws_max_uses_terminal",
+        iter, searchCount, maxUses, elapsedMs: Date.now() - loopStart,
       }))
-      const finalStart = Date.now()
-      const finalResponse = await createMessages(
-        { ...modifiedPayload, messages },
-        options,
-      )
-      console.log(JSON.stringify({
-        evt: "ws_final_done",
-        finalUpstreamMs: Date.now() - finalStart,
-        totalLoopMs: Date.now() - loopStart,
-      }))
-      return { response: finalResponse, meta, searches: allSearches }
+      return {
+        kind: "terminal_required",
+        messages,
+        modifiedPayload,
+        meta,
+        searches: allSearches,
+      }
     }
   }
+}
+
+/**
+ * Legacy entry: run loop to completion and produce a full JSON ApiResponse
+ * (terminal call is always non-streaming). Kept for non-streaming clients
+ * and for back-compat with callers that still expect the old shape.
+ */
+export async function interceptWebSearch(
+  payload: MessagesPayload,
+  options: InterceptOptions,
+): Promise<{ response: ApiResponse; meta: WebSearchMeta; searches: MessagesInterceptedSearch[] }> {
+  const result = await runWebSearchLoop(payload, options)
+  if (result.kind === "complete") {
+    return { response: result.response, meta: result.meta, searches: result.searches }
+  }
+  const finalStart = Date.now()
+  const finalResponse = await createMessages(
+    { ...result.modifiedPayload, messages: result.messages },
+    options,
+  )
+  console.log(JSON.stringify({
+    evt: "ws_terminal_nonstream_done",
+    finalUpstreamMs: Date.now() - finalStart,
+  }))
+  return { response: finalResponse, meta: result.meta, searches: result.searches }
+}
+
+/**
+ * Streaming-terminal helper: take a loop result that needs a terminal call,
+ * dispatch it upstream with `stream: true`, and return the raw upstream SSE
+ * body. The caller is expected to pipe this directly to the downstream
+ * response — every byte is real upstream cadence, no replay involved.
+ */
+export async function streamTerminalCall(
+  result: Extract<LoopResult, { kind: "terminal_required" }>,
+  options: CallOptions,
+): Promise<ReadableStream<Uint8Array>> {
+  return createMessagesStream(
+    { ...result.modifiedPayload, messages: result.messages },
+    options,
+  )
 }
 
 /**

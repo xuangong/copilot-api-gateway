@@ -21,13 +21,15 @@ export { BingSearchEngine, LangSearchEngine, TavilySearchEngine } from "./engine
 
 export {
   interceptWebSearch,
+  runWebSearchLoop,
+  streamTerminalCall,
   hasWebSearch,
   prepareWebSearchPayload,
   classifyToolUses,
   filterThinkingBlocks,
   createToolResult,
 } from "./interceptor"
-export type { InterceptOptions, MessagesPayload, ClientTool, MessagesInterceptedSearch } from "./interceptor"
+export type { InterceptOptions, MessagesPayload, ClientTool, MessagesInterceptedSearch, LoopResult } from "./interceptor"
 
 export { replayResponseAsSSE } from "./sse-replay"
 
