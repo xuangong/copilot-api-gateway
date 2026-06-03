@@ -1,0 +1,10 @@
+import { setInteractionIdHeader } from "../../../../transforms/index"
+import type { AnthropicMessagesPayload } from "../../../../transforms/index"
+import type { CopilotInterceptor } from "../../../../interceptors/runner"
+
+export const withInteractionIdHeader: CopilotInterceptor = async (inv, _ctx, run) => {
+  if (inv.enabledFlags.has("transform-set-interaction-id-header")) {
+    await setInteractionIdHeader(inv.payload as unknown as AnthropicMessagesPayload, inv.headers)
+  }
+  return run()
+}
