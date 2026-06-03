@@ -1,0 +1,21 @@
+{
+  "name": "@vnext/protocols",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./common": "./src/common/index.ts",
+    "./ir": "./src/ir/index.ts",
+    "./messages": "./src/messages/index.ts",
+    "./chat": "./src/chat/index.ts",
+    "./responses": "./src/responses/index.ts",
+    "./gemini": "./src/gemini/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}
