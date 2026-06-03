@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "copilot-gateway-vnext",
+  "main": "entry-cloudflare.ts",
+  "compatibility_date": "2025-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "placement": { "mode": "smart" },
+  "rules": [
+    { "type": "Text", "globs": ["**/*.txt"], "fallthrough": true }
+  ],
+  "kv_namespaces": [
+    { "binding": "KV", "id": "55077c6d26dd493d9752c07176c35237" },
+    { "binding": "IMAGE_CACHE", "id": "613f7f5754bc4be887b74cb97874f6a9" }
+  ],
+  "images": { "binding": "IMAGES" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "copilot-db",
+      "database_id": "9a81ab21-8c45-4fce-bf32-95796e574b16",
+      "migrations_dir": "../../migrations"
+    }
+  ],
+  "vars": {
+    "ACCOUNT_TYPE": "individual"
+  },
+  "dev": {
+    "port": 8788,
+    "local_protocol": "http"
+  }
+}
