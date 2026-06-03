@@ -8,6 +8,8 @@ export interface Env {
   IMAGE_CACHE: KVNamespace
   IMAGES: ImagesBinding
   ACCOUNT_TYPE?: string
+  GOOGLE_CLIENT_ID?: string
+  GOOGLE_CLIENT_SECRET?: string
 }
 
 export const app = new Hono<{ Bindings: Env }>()

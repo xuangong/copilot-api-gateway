@@ -20,6 +20,12 @@ import { listUpstreamModels, type CreateProviderOptions } from '../providers/reg
 export interface DataPlaneAuthCtx {
   userId?: string
   copilot?: CreateProviderOptions
+  /** API-key id authenticated for this request; required for per-key web-search/quota lookups. */
+  apiKeyId?: string
+  /** GitHub OAuth token attached to the request (used by Copilot web-search engine). */
+  githubToken?: string
+  /** Env-derived Microsoft Grounding key, surfaced via auth ctx so handlers don't reach into env directly. */
+  msGroundingKey?: string
 }
 
 type Vars = { auth: DataPlaneAuthCtx }

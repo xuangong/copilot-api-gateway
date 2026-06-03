@@ -1,22 +1,20 @@
 /**
- * Auth control-plane router — Week 5a-impl (sessions + admin).
+ * Auth control-plane router — Week 5a-impl (sessions + admin) + 5b (email, device, OAuth).
  *
- * Ports from old src/routes/auth/{sessions,admin}.ts. Old project mounted
- * authRoute under "/auth"; vNext mounts under "/api/auth" — see note in
- * control-plane/routes.ts. Caller (middleware) is responsible for filling
- * c.set('auth', AuthCtx) for admin routes.
- *
- * Deferred (need KV + external HTTP fixtures):
- *   - google.ts, github.ts (OAuth)
- *   - device.ts (device-flow)
- *   - email.ts (email magic link)
- *   - stores.ts (OAuth KV)
+ * Ports from old src/routes/auth/{sessions,admin,email,device,github,google}.ts.
+ * Old project mounted authRoute under "/auth"; vNext mounts under "/api/auth" —
+ * see note in control-plane/routes.ts. Caller (middleware) is responsible for
+ * filling c.set('auth', AuthCtx) for admin routes.
  */
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import { ADMIN_EMAILS } from '../../shared/config/constants.ts'
 import { validateApiKey } from '../../shared/lib/api-keys.ts'
+import { emailAuthRouter } from './email-routes.ts'
+import { deviceAuthRouter } from './device-routes.ts'
+import { githubAuthRouter } from './github-routes.ts'
+import { googleAuthRouter } from './google-routes.ts'
 
 export const SESSION_TTL_DAYS = 30
 
@@ -35,6 +33,11 @@ function generateInviteCode(): string {
 }
 
 export const authRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
+
+authRouter.route('/', emailAuthRouter)
+authRouter.route('/', deviceAuthRouter)
+authRouter.route('/', githubAuthRouter)
+authRouter.route('/', googleAuthRouter)
 
 authRouter.get('/_health', (c) => c.json({ scope: 'control-plane:auth', status: 'scaffold' }))
 

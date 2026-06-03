@@ -21,6 +21,11 @@ import { apiKeysRouter } from './api-keys/routes.ts'
 import { observabilitySharesRouter } from './observability-shares/routes.ts'
 import { authRouter } from './auth/routes.ts'
 import { githubAccountsRouter } from './github-accounts/routes.ts'
+import { copilotQuotaRouter } from './copilot-quota/routes.ts'
+import { tokenUsageRouter } from './token-usage/routes.ts'
+import { performanceRouter } from './performance/routes.ts'
+import { presenceRouter } from './presence/routes.ts'
+import { dataTransferRouter } from './data-transfer/routes.ts'
 
 export const controlPlane = new Hono<{ Bindings: Env }>()
 
@@ -36,3 +41,13 @@ controlPlane.route('/auth', authRouter)
 // (src/routes/upstream-accounts.ts). Subdir name stays `github-accounts/`
 // since the table backing it is `github_accounts`.
 controlPlane.route('/api/upstream-accounts', githubAccountsRouter)
+// /api/copilot-quota + /api/admin/copilot-quota/:id
+controlPlane.route('/api', copilotQuotaRouter)
+// /api/token-usage
+controlPlane.route('/api', tokenUsageRouter)
+// /api/latency + /api/performance
+controlPlane.route('/api', performanceRouter)
+// /api/heartbeat + /api/relays
+controlPlane.route('/api', presenceRouter)
+// /api/export + /api/import
+controlPlane.route('/api', dataTransferRouter)

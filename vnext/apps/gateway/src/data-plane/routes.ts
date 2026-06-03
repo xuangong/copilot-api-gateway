@@ -12,6 +12,8 @@ import type { IRRequest, IREvent } from '@vnext/protocols/ir'
 import { modelsRouter, type DataPlaneAuthCtx } from './models/routes.ts'
 import { embeddingsRouter } from './embeddings/routes.ts'
 import { imagesRouter } from './images/routes.ts'
+import { handleMessagesWebSearch, hasWebSearch } from './orchestrator/server-tools/plugins/web-search/index.ts'
+import { handleResponsesImageGeneration, hasImageGeneration } from './orchestrator/server-tools/plugins/image-generation/index.ts'
 
 export const dataPlane = new Hono<{ Bindings: Env }>()
 
@@ -68,17 +70,82 @@ async function dispatch<TPayload>(
   return Response.json(body)
 }
 
-dataPlane.post('/v1/messages', (c) =>
-  dispatch(c, messagesIn, (p) => messagesIn.toIR(p), (status, body) =>
-    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })))
+dataPlane.post('/v1/messages', async (c) => {
+  // Web-search intercept short-circuits the IR pipeline: the multi-turn loop
+  // runs against upstream in non-streaming mode and we either return JSON
+  // or replay as SSE. See plugins/web-search/index.ts for the rationale.
+  let raw: unknown
+  try { raw = await c.req.json() } catch {
+    return new Response(
+      JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'invalid JSON' } }),
+      { status: 400, headers: { 'content-type': 'application/json' } },
+    )
+  }
+  if (hasWebSearch(raw as Parameters<typeof hasWebSearch>[0])) {
+    const auth = (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx
+    if (!auth.copilot?.copilotToken || !auth.githubToken) {
+      return new Response(
+        JSON.stringify({ error: { type: 'invalid_request_error', message: 'Copilot/GitHub credentials required for web search.' } }),
+        { status: 401, headers: { 'content-type': 'application/json' } },
+      )
+    }
+    return handleMessagesWebSearch(
+      {
+        copilotToken: auth.copilot.copilotToken,
+        accountType: auth.copilot.accountType,
+        githubToken: auth.githubToken,
+        msGroundingKey: auth.msGroundingKey,
+        apiKeyId: auth.apiKeyId,
+        requestId: c.req.header('x-request-id') ?? undefined,
+      },
+      raw as Parameters<typeof handleMessagesWebSearch>[1],
+    )
+  }
+  // Re-inject raw body into the dispatcher's JSON reader by wrapping the
+  // c.req shape; cheaper than re-parsing once here, then again inside dispatch.
+  return dispatch(
+    { ...c, req: { json: async () => raw }, json: c.json.bind(c), body: c.body.bind(c) } as Parameters<typeof dispatch>[0],
+    messagesIn,
+    (p) => messagesIn.toIR(p),
+    (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
+  )
+})
 
 dataPlane.post('/v1/chat/completions', (c) =>
   dispatch(c, chatIn, (p) => chatIn.toIR(p), (status, body) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })))
 
-dataPlane.post('/v1/responses', (c) =>
-  dispatch(c, responsesIn, (p) => responsesIn.toIR(p), (status, body) =>
-    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })))
+dataPlane.post('/v1/responses', async (c) => {
+  // image_generation server-tool intercept short-circuits the IR pipeline:
+  // single-turn call to the image backend, returned as a Responses envelope
+  // (JSON or synthesized SSE). See plugins/image-generation/index.ts.
+  let raw: unknown
+  try { raw = await c.req.json() } catch {
+    return new Response(
+      JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'invalid JSON' } }),
+      { status: 400, headers: { 'content-type': 'application/json' } },
+    )
+  }
+  const rawObj = raw as { tools?: Array<Record<string, unknown>> } | null
+  if (rawObj && hasImageGeneration(rawObj.tools as Parameters<typeof hasImageGeneration>[0])) {
+    const auth = (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx
+    return handleResponsesImageGeneration(
+      {
+        userId: auth.userId,
+        copilot: auth.copilot,
+        apiKeyId: auth.apiKeyId,
+        requestId: c.req.header('x-request-id') ?? undefined,
+      },
+      raw as Parameters<typeof handleResponsesImageGeneration>[1],
+    )
+  }
+  return dispatch(
+    { ...c, req: { json: async () => raw }, json: c.json.bind(c), body: c.body.bind(c) } as Parameters<typeof dispatch>[0],
+    responsesIn,
+    (p) => responsesIn.toIR(p),
+    (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
+  )
+})
 
 dataPlane.post('/v1beta/models/:model{.+}', (c) => {
   // Gemini path encodes model + verb: "gemini-1.5-pro:generateContent" or ":streamGenerateContent"
