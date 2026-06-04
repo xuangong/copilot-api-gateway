@@ -47,5 +47,9 @@ docker-compose.override.yml
 # Wrangler local state
 .wrangler/
 
+# vNext local sqlite (bun dev bootstrap)
+vnext/.vnext-local.sqlite
+vnext/*.sqlite
+
 # Claude Code local state (settings, worktrees, plans)
 .claude/

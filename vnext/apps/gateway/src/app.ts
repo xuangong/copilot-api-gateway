@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { dataPlane } from './data-plane/routes.ts'
 import { controlPlane } from './control-plane/routes.ts'
+import { staticPages } from './shared/edge/static-pages.ts'
+import { getRepo } from './shared/repo/index.ts'
 
 export interface Env {
   DB: D1Database
@@ -17,9 +19,10 @@ export const app = new Hono<{ Bindings: Env }>()
 app.get('/health', (c) => c.json({ status: 'ok', service: 'copilot-gateway-vnext' }))
 
 app.get('/debug/db/users-count', async (c) => {
-  const row = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>()
-  return c.json({ users: row?.n ?? null })
+  const users = await getRepo().users.list()
+  return c.json({ users: users.length })
 })
 
 app.route('/', dataPlane)
 app.route('/', controlPlane)
+app.route('/', staticPages)
