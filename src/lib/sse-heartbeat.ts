@@ -142,8 +142,18 @@ export function createIdleHeartbeatStream(
           // Advance read only after the prior one resolved.
           readP = reader.read().then((r) => ({ read: r as ReadableStreamReadResult<Uint8Array> }))
         }
-      } catch (err) {
-        controller.error(err)
+      } catch (_err) {
+        // Upstream blew up. The recover wrapper below us already turns
+        // most upstream aborts into a graceful "synthesize close + EOF",
+        // so this catch is a true last-resort. Flushing pending bytes is
+        // strictly better than calling controller.error() — that would
+        // surface as a stream error to the client (e.g. "socket closed
+        // unexpectedly"), discarding any text we'd already buffered.
+        if (pending.length > 0) {
+          try { controller.enqueue(pending) } catch { /* ignore */ }
+          pending = new Uint8Array(0)
+        }
+        try { controller.close() } catch { /* ignore */ }
       }
     },
     async cancel(reason) {
@@ -258,6 +268,27 @@ function recoverAnthropicMidStreamError(
 
   const synthesizeClose = (): Uint8Array => {
     const parts: Array<string> = []
+    // If upstream died before any message_start frame, the SDK has nothing
+    // to finalize — we still need to give it a complete protocol envelope so
+    // the client doesn't see a bare socket close. Emit a minimal
+    // message_start with an empty assistant message.
+    if (!sawMessageStart) {
+      parts.push(
+        `event: message_start\ndata: ${JSON.stringify({
+          type: "message_start",
+          message: {
+            id: "msg_recover",
+            type: "message",
+            role: "assistant",
+            content: [],
+            model: "unknown",
+            stop_reason: null,
+            stop_sequence: null,
+            usage: { input_tokens: 0, output_tokens: 0 },
+          },
+        })}\n\n`,
+      )
+    }
     // Close any open content blocks first.
     for (const idx of openBlocks) {
       parts.push(
@@ -296,24 +327,29 @@ function recoverAnthropicMidStreamError(
           }
         }
       } catch (err) {
-        // Upstream errored mid-stream. If we'd already seen message_stop or
-        // never saw message_start (no useful partial content), just close.
-        if (sawMessageStop || !sawMessageStart) {
+        // Upstream errored mid-stream. Always emit a complete Anthropic
+        // protocol envelope so the SDK finalizes cleanly instead of seeing
+        // a bare socket close. After message_stop further synthesis is a
+        // no-op for the SDK — skip it.
+        if (sawMessageStop) {
           try {
             console.log(JSON.stringify({
               evt: "anthropic_recover_skip",
-              reason: sawMessageStop ? "after_stop" : "before_start",
+              reason: "after_stop",
               err: err instanceof Error ? err.message : String(err),
             }))
           } catch { /* best-effort */ }
           controller.close()
           return
         }
-        // Synthesize graceful close so SDK keeps already-streamed content.
+        // Synthesize graceful close so SDK keeps already-streamed content
+        // (or, if upstream died before message_start, sees an empty but
+        // valid assistant turn instead of a torn socket).
         try {
           console.log(JSON.stringify({
             evt: "anthropic_recover_synth",
             openBlocks: openBlocks.size,
+            sawMessageStart,
             err: err instanceof Error ? err.message : String(err),
           }))
         } catch { /* best-effort */ }
