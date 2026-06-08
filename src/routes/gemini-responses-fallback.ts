@@ -36,6 +36,7 @@ interface RouteContext {
   requestId?: string
   userAgent?: string
   userId?: string
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void }
 }
 
 export async function handleGeminiViaResponses(
@@ -101,7 +102,8 @@ export async function handleGeminiViaResponses(
     let pipeBody = heartbeated
     if (apiKeyId && pipeBody) {
       const [usageBranch, responseBranch] = pipeBody.tee()
-      consumeStreamForUsage(usageBranch, apiKeyId, model, client, upstreamId)
+      const usagePromise = consumeStreamForUsage(usageBranch, apiKeyId, model, client, upstreamId)
+      ctx.executionCtx?.waitUntil(usagePromise)
       pipeBody = responseBranch
     }
     if (pipeBody) {

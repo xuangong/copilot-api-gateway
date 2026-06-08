@@ -96,7 +96,8 @@ export async function handleChatFallback(
       transformBranch = b
     }
     if (apiKeyId && usageBranch) {
-      consumeStreamForUsage(usageBranch, apiKeyId, model, client, upstreamId)
+      const usagePromise = consumeStreamForUsage(usageBranch, apiKeyId, model, client, upstreamId)
+      ctx.executionCtx?.waitUntil(usagePromise)
     }
     const transformedBody = transformBranch?.pipeThrough(buildStreamTransform(payload, model))
     return new Response(transformedBody, {

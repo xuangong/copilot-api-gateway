@@ -44,6 +44,7 @@ interface RouteContext {
   userAgent?: string
   userId?: string
   params: { modelWithMethod: string }
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void }
 }
 
 
@@ -394,7 +395,8 @@ async function handleStreamGenerateContent(
     transformBranch = b
   }
   if (apiKeyId && usageBranch) {
-    consumeStreamForUsage(usageBranch, apiKeyId, model, client, upstreamId)
+    const usagePromise = consumeStreamForUsage(usageBranch, apiKeyId, model, client, upstreamId)
+    ctx.executionCtx?.waitUntil(usagePromise)
   }
   const transformedBody = transformBranch?.pipeThrough(transformStream)
   return new Response(transformedBody, {
