@@ -48,6 +48,7 @@ interface RouteContext {
   requestId?: string
   userAgent?: string
   userId?: string
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void }
 }
 
 type ChatJson = { usage?: { prompt_tokens?: number; completion_tokens?: number } }
@@ -224,7 +225,8 @@ export async function handleChatCompletions(ctx: RouteContext): Promise<Response
     let responseBody = response.body
     if (apiKeyId && responseBody) {
       const [usageBranch, forwardBranch] = responseBody.tee()
-      consumeStreamForUsage(usageBranch, apiKeyId, payload.model, client, upstreamId)
+      const usagePromise = consumeStreamForUsage(usageBranch, apiKeyId, payload.model, client, upstreamId)
+      ctx.executionCtx?.waitUntil(usagePromise)
       responseBody = forwardBranch
     }
     const heartbeated = wrapOpenAIHeartbeat(responseBody)

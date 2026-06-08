@@ -57,7 +57,8 @@ export async function handleResponsesViaMessages(
     let translateBody = upstream.body
     if (apiKeyId && translateBody) {
       const [usageBranch, responseBranch] = translateBody.tee()
-      consumeStreamForUsage(usageBranch, apiKeyId, model, client, upstreamId)
+      const usagePromise = consumeStreamForUsage(usageBranch, apiKeyId, model, client, upstreamId)
+      ctx.executionCtx?.waitUntil(usagePromise)
       translateBody = responseBranch
     }
     const translated = translateBody?.pipeThrough(createMessagesToResponsesStream(model))

@@ -66,7 +66,8 @@ export async function handleDirectStreaming(
   let responseBody = response.body
   if (apiKeyId && responseBody) {
     const [usageBranch, forwardBranch] = responseBody.tee()
-    consumeStreamForUsage(usageBranch, apiKeyId, model, client, upstreamId)
+    const usagePromise = consumeStreamForUsage(usageBranch, apiKeyId, model, client, upstreamId)
+    ctx.executionCtx?.waitUntil(usagePromise)
     responseBody = forwardBranch
   }
   const heartbeated = wrapOpenAIHeartbeat(responseBody)
