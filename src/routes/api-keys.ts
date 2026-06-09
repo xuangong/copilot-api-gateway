@@ -483,6 +483,11 @@ export const apiKeysRoute = new Elysia({ prefix: "/api/keys" })
     if (existing.some(a => a.userId === targetUser!.id)) {
       return new Response(JSON.stringify({ error: "Already shared with this user" }), { status: 409, headers: { "Content-Type": "application/json" } })
     }
+    // A key can only be shared with one user — usage attribution depends on a
+    // single assignee so the gateway can route all usage on this key to them.
+    if (existing.length > 0) {
+      return new Response(JSON.stringify({ error: "Key is already shared with another user. Unshare first." }), { status: 409, headers: { "Content-Type": "application/json" } })
+    }
     await repo.keyAssignments.assign(params.id, targetUser.id, authCtx.userId || "admin")
     return { ok: true }
   })
