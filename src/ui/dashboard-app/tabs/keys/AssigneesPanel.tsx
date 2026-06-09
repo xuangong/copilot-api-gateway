@@ -12,6 +12,7 @@ export function AssigneesPanel({ keyRow, onAssign, onUnassign }: Props) {
   const [email, setEmail] = useState("")
   const [sharing, setSharing] = useState(false)
   const t = useT()
+  const alreadyShared = (keyRow.assignees ?? []).length > 0
 
   const submit = async () => {
     const trimmed = email.trim()
@@ -63,14 +64,15 @@ export function AssigneesPanel({ keyRow, onAssign, onUnassign }: Props) {
               submit()
             }
           }}
-          placeholder={t("dash.shareEmailPlaceholderLong")}
-          disabled={sharing}
+          placeholder={alreadyShared ? t("dash.shareUnshareFirst") : t("dash.shareEmailPlaceholderLong")}
+          disabled={sharing || alreadyShared}
           className="w-full mt-1 text-sm flex-1"
         />
         <button
           type="button"
           onClick={submit}
-          disabled={sharing || !email}
+          disabled={sharing || !email || alreadyShared}
+          title={alreadyShared ? t("dash.shareUnshareFirst") : undefined}
           className="btn-primary text-xs py-1.5 px-3"
         >
           {t("dash.share")}

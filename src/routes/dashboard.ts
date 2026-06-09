@@ -41,26 +41,45 @@ function enrichUsage<T extends UsageRecord>(r: T): T & { cost: CostBreakdown | n
   return { ...r, cost: resolveRecordCost(r) }
 }
 
-/** Get key IDs for the current user (owned + assigned, for scoping usage/latency queries) */
+/**
+ * Keys whose usage/latency/performance should be attributed to `userId`:
+ *   - Keys assigned to this user (1:1 share — assignee owns the usage)
+ *   - Keys owned by this user that have NOT been shared with anyone
+ *
+ * Owned-but-shared keys are intentionally excluded: once a key is shared
+ * (1:1), all traffic on that key — including the owner's own use — is
+ * attributed to the assignee, matching how the gateway records usage by
+ * keyId only.
+ */
 async function getUserKeyIds(userId: string): Promise<string[]> {
   const repo = getRepo()
   const [ownKeys, assignments] = await Promise.all([
     repo.apiKeys.listByOwner(userId),
     repo.keyAssignments.listByUser(userId),
   ])
-  const ids = new Set(ownKeys.map(k => k.id))
+  const sharedOutOwned = new Set<string>()
+  await Promise.all(ownKeys.map(async (k) => {
+    const a = await repo.keyAssignments.listByKey(k.id)
+    if (a.length > 0) sharedOutOwned.add(k.id)
+  }))
+  const ids = new Set(ownKeys.filter(k => !sharedOutOwned.has(k.id)).map(k => k.id))
   for (const a of assignments) ids.add(a.keyId)
   return [...ids]
 }
 
-/** Get all keys accessible to the current user (owned + assigned, for name resolution) */
+/** Same scoping rule as getUserKeyIds, but returns full ApiKey rows for name resolution. */
 async function getUserKeys(userId: string): Promise<ApiKey[]> {
   const repo = getRepo()
   const [ownKeys, assignments] = await Promise.all([
     repo.apiKeys.listByOwner(userId),
     repo.keyAssignments.listByUser(userId),
   ])
-  const keyMap = new Map(ownKeys.map(k => [k.id, k]))
+  const sharedOutOwned = new Set<string>()
+  await Promise.all(ownKeys.map(async (k) => {
+    const a = await repo.keyAssignments.listByKey(k.id)
+    if (a.length > 0) sharedOutOwned.add(k.id)
+  }))
+  const keyMap = new Map(ownKeys.filter(k => !sharedOutOwned.has(k.id)).map(k => [k.id, k]))
   if (assignments.length > 0) {
     const assignedKeys = await Promise.all(
       assignments.filter(a => !keyMap.has(a.keyId)).map(a => repo.apiKeys.getById(a.keyId))
@@ -199,22 +218,33 @@ export const dashboardRoute = new Elysia({ prefix: "/api" })
     const records = await repo.usage.query(queryOpts)
     const nameMap = new Map(keys.map((k) => [k.id, k.name]))
 
-    // For admin: enrich with owner info so frontend can group by user
+    // For admin: enrich with owner info so frontend can group by user.
+     // If a key is shared (1:1 assignment), attribute usage to the assignee
+     // rather than the original owner — matches the 1:1 share semantics
+     // enforced at assign time.
     if (isAdmin) {
       const ownerIdMap = new Map(keys.map((k) => [k.id, k.ownerId]))
-      const userIds = new Set(keys.map((k) => k.ownerId).filter(Boolean) as string[])
-      const users = await Promise.all([...userIds].map((id) => repo.users.getById(id)))
+      const keyIdsInUse = [...new Set(records.map(r => r.keyId))]
+      const assigneeMap = new Map<string, string>()
+      await Promise.all(keyIdsInUse.map(async (kid) => {
+        const a = await repo.keyAssignments.listByKey(kid)
+        if (a.length > 0 && a[0]) assigneeMap.set(kid, a[0].userId)
+      }))
+      const attributedIds = new Set<string>()
+      for (const k of keys) if (k.ownerId) attributedIds.add(k.ownerId)
+      for (const uid of assigneeMap.values()) attributedIds.add(uid)
+      const users = await Promise.all([...attributedIds].map((id) => repo.users.getById(id)))
       const userNameMap = new Map<string, string>()
       for (const u of users) {
         if (u) userNameMap.set(u.id, u.name)
       }
       return records.map((r) => {
-        const ownerId = ownerIdMap.get(r.keyId)
+        const attributedId = assigneeMap.get(r.keyId) ?? ownerIdMap.get(r.keyId)
         return {
           ...enrichUsage(r),
           keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),
-          ownerId: ownerId ?? '',
-          ownerName: ownerId ? (userNameMap.get(ownerId) ?? '') : '',
+          ownerId: attributedId ?? '',
+          ownerName: attributedId ? (userNameMap.get(attributedId) ?? '') : '',
         }
       })
     }
