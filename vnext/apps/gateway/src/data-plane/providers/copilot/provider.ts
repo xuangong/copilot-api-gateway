@@ -15,8 +15,8 @@ import { defaultsForUpstream } from '../../flags/catalog.ts'
 import { callCopilotAPI } from '../../services/copilot/forward.ts'
 import { getModels, type ModelsResponse } from '../../services/copilot/models.ts'
 import type { EndpointKey } from '@vnext/protocols/common'
-import type { CopilotInterceptor, Invocation, RequestContext } from '../../interceptors/runner.ts'
-import { runInterceptors } from '../../interceptors/runner.ts'
+import type { CopilotInterceptor, Invocation, RequestContext } from "@vnext/interceptor"
+import { runInterceptors } from "@vnext/interceptor"
 import type { ModelProvider, ProbeResult, ProviderFetchOptions } from '../types.ts'
 import { probeViaModels } from '../probe.ts'
 import { createVariantAndBetaFilteringInterceptor } from './interceptors/shared/with-variant-and-beta-filtering.ts'

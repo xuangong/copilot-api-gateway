@@ -25,6 +25,7 @@
       "name": "@vnext/gateway",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext/interceptor": "workspace:*",
         "@vnext/protocols": "workspace:*",
         "@vnext/translate": "workspace:*",
         "hono": "^4.12.23",
@@ -33,6 +34,13 @@
       "devDependencies": {
         "@cloudflare/workers-types": "^4.20260602.1",
         "wrangler": "^4.97.0",
+      },
+    },
+    "packages/interceptor": {
+      "name": "@vnext/interceptor",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vnext/protocols": "workspace:*",
       },
     },
     "packages/protocols": {
@@ -304,6 +312,8 @@
     "@vnext/dashboard": ["@vnext/dashboard@workspace:apps/dashboard"],
 
     "@vnext/gateway": ["@vnext/gateway@workspace:apps/gateway"],
+
+    "@vnext/interceptor": ["@vnext/interceptor@workspace:packages/interceptor"],
 
     "@vnext/protocols": ["@vnext/protocols@workspace:packages/protocols"],
 

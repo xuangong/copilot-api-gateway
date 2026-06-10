@@ -1,6 +1,6 @@
 import { stripStructuredOutputFormat } from "../../../../transforms/index"
 import type { AnthropicMessagesPayload } from "../../../../transforms/index"
-import type { CopilotInterceptor } from "../../../../interceptors/runner"
+import type { CopilotInterceptor } from "@vnext/interceptor"
 
 export const withStructuredOutputFormatStripped: CopilotInterceptor = async (inv, _ctx, run) => {
   if (inv.enabledFlags.has("transform-strip-structured-output-format")) {

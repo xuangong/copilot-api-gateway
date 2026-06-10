@@ -1,6 +1,6 @@
 import { stripSafetyIdentifier } from "../../../../transforms/index"
 import type { ResponsesPayload } from "../../../../transforms/index"
-import type { CopilotInterceptor } from "../../../../interceptors/runner"
+import type { CopilotInterceptor } from "@vnext/interceptor"
 
 export const withSafetyIdentifierStripped: CopilotInterceptor = async (inv, _ctx, run) => {
   const sourceApi = inv.sourceApi ?? "responses"

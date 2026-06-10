@@ -1,5 +1,5 @@
 import { setChatCompletionsVisionHeader } from "../../../../transforms/index"
-import type { CopilotInterceptor } from "../../../../interceptors/runner"
+import type { CopilotInterceptor } from "@vnext/interceptor"
 
 export const withChatCompletionsVisionHeader: CopilotInterceptor = async (inv, _ctx, run) => {
   if (inv.enabledFlags.has("transform-vision-header")) {

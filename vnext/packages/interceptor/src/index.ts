@@ -1,9 +1,10 @@
 /**
  * Interceptor runner — Koa-style middleware chain.
  *
- * Ported verbatim from old src/providers/interceptor.ts; logic unchanged.
- * Used by Copilot/Azure providers to wrap upstream fetch with
- * payload/header rewriting and response post-processing.
+ * Generic `runInterceptors` plus the gateway's per-request typedefs
+ * (`Invocation`, `RequestContext`, `CopilotInterceptor`). Providers compose
+ * payload/header rewrites by stacking `CopilotInterceptor` functions; the
+ * terminal handler issues the upstream fetch.
  */
 import type { EndpointKey } from '@vnext/protocols/common'
 

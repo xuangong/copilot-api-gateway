@@ -1,6 +1,6 @@
 import { setInteractionIdHeader } from "../../../../transforms/index"
 import type { AnthropicMessagesPayload } from "../../../../transforms/index"
-import type { CopilotInterceptor } from "../../../../interceptors/runner"
+import type { CopilotInterceptor } from "@vnext/interceptor"
 
 export const withInteractionIdHeader: CopilotInterceptor = async (inv, _ctx, run) => {
   if (inv.enabledFlags.has("transform-set-interaction-id-header")) {
