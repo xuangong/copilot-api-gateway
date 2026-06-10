@@ -20,8 +20,7 @@ import { defaultsForUpstream, resolveEffectiveFlags } from '../flags/index.ts'
 import type { UpstreamRecord } from '../../shared/repo/types.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { Model, ModelsResponse } from '../services/copilot/models.ts'
-import type { ProviderBinding } from '../routing/binding.ts'
-import type { ModelProvider } from '@vnext/provider'
+import type { ModelProvider, ProviderBinding } from '@vnext/provider'
 import { CopilotProvider } from './copilot/provider.ts'
 
 export interface CreateProviderOptions {
