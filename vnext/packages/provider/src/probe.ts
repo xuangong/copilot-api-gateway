@@ -1,4 +1,4 @@
-import type { ProbeResult } from "./types"
+import type { ProbeResult } from './types'
 
 /**
  * Map low-level probe failures to a one-line "what to check next" hint

@@ -5,33 +5,10 @@
  * A binding answers: "for this requested model, which provider should I
  * dispatch to, on which endpoint, with which flags effective?"
  */
-import type { EndpointKey, ModelKind, ModelPricing, UpstreamKind } from '@vnext/protocols/common'
+import type { EndpointKey } from '@vnext/protocols/common'
 import { endpointCompatibleWithKind } from '@vnext/protocols/common'
-import type { ModelProvider } from '../providers/types.ts'
-
-/** Per-binding model metadata. */
-export interface BindingModel {
-  id: string
-  displayName?: string
-  ownedBy?: string
-  created?: number
-  kind?: ModelKind
-  limits?: {
-    maxOutputTokens?: number
-    maxContextWindowTokens?: number
-    maxPromptTokens?: number
-  }
-  cost?: ModelPricing
-}
-
-export interface ProviderBinding {
-  upstream: string
-  kind: UpstreamKind
-  model: BindingModel
-  upstreamEndpoints: readonly EndpointKey[]
-  enabledFlags: ReadonlySet<string>
-  provider: ModelProvider
-}
+import type { BindingModel, ProviderBinding } from '@vnext/provider'
+export type { BindingModel, ProviderBinding }
 
 export function bindingServesEndpoint(
   binding: ProviderBinding,

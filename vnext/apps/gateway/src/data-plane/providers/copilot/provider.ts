@@ -17,8 +17,8 @@ import { getModels, type ModelsResponse } from '../../services/copilot/models.ts
 import type { EndpointKey } from '@vnext/protocols/common'
 import type { CopilotInterceptor, Invocation, RequestContext } from "@vnext/interceptor"
 import { runInterceptors } from "@vnext/interceptor"
-import type { ModelProvider, ProbeResult, ProviderFetchOptions } from '../types.ts'
-import { probeViaModels } from '../probe.ts'
+import type { ModelProvider, ProbeResult, ProviderFetchOptions } from '@vnext/provider'
+import { probeViaModels } from '@vnext/provider'
 import { createVariantAndBetaFilteringInterceptor } from './interceptors/shared/with-variant-and-beta-filtering.ts'
 import { withInitiatorHeader } from './interceptors/shared/with-initiator-header.ts'
 import { messagesPayloadInterceptors } from './interceptors/messages/index.ts'

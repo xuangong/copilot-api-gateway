@@ -1,0 +1,18 @@
+{
+  "name": "@vnext/provider",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./probe": "./src/probe.ts",
+    "./binding": "./src/binding.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vnext/protocols": "workspace:*"
+  }
+}

@@ -18,7 +18,7 @@
  * lands its concern in isolation.
  */
 import type { EndpointKey } from '@vnext/protocols/common'
-import type { ModelProvider, ProviderFetchOptions } from '../providers/types.ts'
+import type { ModelProvider, ProviderFetchOptions } from '@vnext/provider'
 
 export interface OrchestratorInput {
   provider: ModelProvider

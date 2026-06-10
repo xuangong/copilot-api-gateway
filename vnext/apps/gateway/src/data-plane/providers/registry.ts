@@ -21,7 +21,7 @@ import type { UpstreamRecord } from '../../shared/repo/types.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { Model, ModelsResponse } from '../services/copilot/models.ts'
 import type { ProviderBinding } from '../routing/binding.ts'
-import type { ModelProvider } from './types.ts'
+import type { ModelProvider } from '@vnext/provider'
 import { CopilotProvider } from './copilot/provider.ts'
 
 export interface CreateProviderOptions {
@@ -138,7 +138,7 @@ export async function listProviderBindings(
         bindings.push({
           upstream: upstream.id,
           kind: upstream.provider,
-          model: modelToBindingModel(model),
+          model: modelToBindingModel(model as Model),
           upstreamEndpoints: endpoints,
           enabledFlags,
           provider,
@@ -160,7 +160,7 @@ export async function listProviderBindings(
         bindings.push({
           upstream: 'copilot:request',
           kind: 'copilot',
-          model: modelToBindingModel(model),
+          model: modelToBindingModel(model as Model),
           upstreamEndpoints: DEFAULT_ENDPOINTS.copilot,
           enabledFlags,
           provider,

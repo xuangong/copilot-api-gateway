@@ -1,11 +1,12 @@
 /**
- * Provider abstraction — aligned with old src/providers/types.ts contract.
+ * Provider abstraction — generic ModelProvider contract shared by every
+ * upstream adapter (Copilot, Azure, Custom).
  *
- * ModelProvider.fetch(endpoint, init, opts) is the single dispatch entry; per-plan
- * "不改 ModelProvider.fetch 签名（已经正确）" the vNext shape mirrors the old project.
+ * `ProviderModelsResponse` is a minimal shim; concrete provider packages
+ * (`@vnext/provider-copilot` etc.) may return richer subtypes assignable to
+ * this shape.
  */
 import type { EndpointKey, UpstreamKind } from '@vnext/protocols/common'
-import type { ModelsResponse } from '../services/copilot/models.ts'
 
 export type { UpstreamKind }
 
@@ -34,11 +35,18 @@ export interface ProbeResult {
   hint?: string
 }
 
+/** Minimal shape every ModelProvider.getModels must satisfy. */
+export interface ProviderModelsResponse {
+  object: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: Array<any>
+}
+
 export interface ModelProvider {
   readonly kind: UpstreamKind
   readonly name: string
   readonly supportedEndpoints: readonly EndpointKey[]
-  getModels(): Promise<ModelsResponse>
+  getModels(): Promise<ProviderModelsResponse>
   probe(): Promise<ProbeResult>
   fetch(endpoint: EndpointKey, init: RequestInit, opts?: ProviderFetchOptions): Promise<Response>
 }
@@ -54,7 +62,7 @@ export class FakeProvider implements ModelProvider {
     this.text = opts.text ?? 'Hello from FakeProvider.'
   }
 
-  async getModels(): Promise<ModelsResponse> {
+  async getModels(): Promise<ProviderModelsResponse> {
     return {
       object: 'list',
       data: [{

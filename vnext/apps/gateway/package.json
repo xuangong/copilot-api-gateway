@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@vnext/interceptor": "workspace:*",
+    "@vnext/provider": "workspace:*",
     "@vnext/protocols": "workspace:*",
     "@vnext/translate": "workspace:*",
     "hono": "^4.12.23",
