@@ -1,0 +1,4 @@
+# Dashboard placeholders so that fresh clones can run `bun test` without first
+# building apps/dashboard. Real build artifacts overwrite these locally.
+!apps/gateway/src/shared/edge/ui-pages/dashboard-app/dist/
+!apps/gateway/src/shared/edge/ui-pages/dashboard-app/dist/*.txt
