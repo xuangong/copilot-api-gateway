@@ -21,6 +21,7 @@ import { HTTPError } from '@vnext/provider-copilot'
 import { handleMessagesWebSearch, hasWebSearch } from './orchestrator/server-tools/plugins/web-search/index.ts'
 import { handleResponsesImageGeneration, hasImageGeneration } from './orchestrator/server-tools/plugins/image-generation/index.ts'
 import { checkQuota } from '../shared/observability/quota.ts'
+import { recordLatency, startTimer, type SourceApiInput, type TargetApiInput } from '../shared/observability/latency-tracker.ts'
 
 export const dataPlane = new Hono<{ Bindings: Env }>()
 
@@ -128,9 +129,13 @@ async function dispatch<TPayload>(
       })
     }
   }
+  const elapsed = startTimer()
+  let upstreamStart = 0
+  let upstreamMs = 0
   const backend = backendForEndpoint(upstreamEndpoint)
   const upstreamPayload = backend.toUpstream(ir)
   let upstreamRes: Response
+  upstreamStart = Date.now()
   try {
     upstreamRes = await binding.provider.fetch(
       upstreamEndpoint,
@@ -138,13 +143,35 @@ async function dispatch<TPayload>(
       { operationName: 'data-plane dispatch', enabledFlags: binding.enabledFlags, sourceApi },
     )
   } catch (err) {
+    upstreamMs = Date.now() - upstreamStart
+    if (obsCtx.apiKeyId) {
+      await recordLatency(
+        obsCtx.apiKeyId,
+        ir.model,
+        'local',
+        { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
+        obsCtx.requestId,
+        { isError: true, upstream: 'github_copilot', userAgent: obsCtx.userAgent },
+      )
+    }
     if (err instanceof HTTPError) {
       return await repackageUpstreamError(err.response, sourceApi)
     }
     const message = err instanceof Error ? err.message : 'upstream error'
     return errorWrap(502, { error: { type: 'api_error', message } })
   }
+  upstreamMs = Date.now() - upstreamStart
   if (!upstreamRes.ok) {
+    if (obsCtx.apiKeyId) {
+      await recordLatency(
+        obsCtx.apiKeyId,
+        ir.model,
+        'local',
+        { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
+        obsCtx.requestId,
+        { isError: true, upstream: 'github_copilot', userAgent: obsCtx.userAgent },
+      )
+    }
     return await repackageUpstreamError(upstreamRes, sourceApi)
   }
   if (ir.stream) {
@@ -152,11 +179,43 @@ async function dispatch<TPayload>(
       ? backend.decodeSSE(upstreamRes.body)
       : (async function* (): AsyncIterable<IREvent> { /* empty */ })()
     const out = adapter.encodeSSE(events)
+    if (obsCtx.apiKeyId) {
+      await recordLatency(
+        obsCtx.apiKeyId,
+        ir.model,
+        'local',
+        { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
+        obsCtx.requestId,
+        {
+          stream: true,
+          sourceApi: sourceApi as SourceApiInput,
+          targetApi: upstreamEndpoint as TargetApiInput,
+          upstream: 'github_copilot',
+          userAgent: obsCtx.userAgent,
+        },
+      )
+    }
     return new Response(out, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' } })
   }
   const upstreamJson = await upstreamRes.json()
   const events = backend.decodeBody(upstreamJson)
   const body = await adapter.encodeBody(events)
+  if (obsCtx.apiKeyId) {
+    await recordLatency(
+      obsCtx.apiKeyId,
+      ir.model,
+      'local',
+      { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
+      obsCtx.requestId,
+      {
+        stream: false,
+        sourceApi: sourceApi as SourceApiInput,
+        targetApi: upstreamEndpoint as TargetApiInput,
+        upstream: 'github_copilot',
+        userAgent: obsCtx.userAgent,
+      },
+    )
+  }
   return Response.json(body)
 }
 
