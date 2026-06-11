@@ -20,10 +20,8 @@ import { repackageUpstreamError, type SourceApi } from './errors/repackage.ts'
 import { HTTPError } from '@vnext/provider-copilot'
 import { handleMessagesWebSearch, hasWebSearch } from './orchestrator/server-tools/plugins/web-search/index.ts'
 import { handleResponsesImageGeneration, hasImageGeneration } from './orchestrator/server-tools/plugins/image-generation/index.ts'
-import { checkQuota } from '../shared/observability/quota.ts'
-import { recordLatency, startTimer, type SourceApiInput, type TargetApiInput } from '../shared/observability/latency-tracker.ts'
-import { trackNonStreamingUsage, trackStreamingUsage } from '../shared/observability/usage-tracker.ts'
-import { detectClient } from '../shared/observability/client-detect.ts'
+import { runConversationAttempt } from './observability/attempts/conversation-attempt.ts'
+import type { SourceApiInput, TargetApiInput } from '../shared/observability/latency-tracker.ts'
 
 export const dataPlane = new Hono<{ Bindings: Env }>()
 
@@ -82,7 +80,6 @@ async function dispatch<TPayload>(
   pickTarget: PickTarget,
   obsCtx: DispatchObsCtx,
 ): Promise<Response> {
-  const client = detectClient(obsCtx.userAgent)
   let raw: unknown
   try { raw = await c.req.json() } catch {
     return errorWrap(400, { type: 'error', error: { type: 'invalid_request_error', message: 'invalid JSON' } })
@@ -120,112 +117,63 @@ async function dispatch<TPayload>(
     })
   }
   const { binding, targetEndpoint: upstreamEndpoint } = candidates[0]!
-  if (obsCtx.apiKeyId) {
-    const quota = await checkQuota(obsCtx.apiKeyId)
-    if (!quota.allowed) {
-      return errorWrap(429, {
-        error: {
-          type: 'rate_limit_error',
-          message: quota.reason ?? 'Daily quota exceeded.',
-          ...(quota.retryAfterSeconds != null ? { retry_after_seconds: quota.retryAfterSeconds } : {}),
-        },
-      })
-    }
-  }
-  const elapsed = startTimer()
-  let upstreamStart = 0
-  let upstreamMs = 0
   const backend = backendForEndpoint(upstreamEndpoint)
   const upstreamPayload = backend.toUpstream(ir)
-  let upstreamRes: Response
-  upstreamStart = Date.now()
+
+  // Delegate quota / timer / call / record / usage to the attempt module.
+  // HTTPError still surfaces from binding.provider.fetch (it's how the
+  // copilot provider repackages auth/4xx responses), so we catch it at the
+  // route level and let repackageUpstreamError do its job. The attempt
+  // module already recorded the error-tagged latency before rethrowing.
+  let attempt: Awaited<ReturnType<typeof runConversationAttempt>>
   try {
-    upstreamRes = await binding.provider.fetch(
-      upstreamEndpoint,
-      { method: 'POST', body: JSON.stringify(upstreamPayload), headers: { 'content-type': 'application/json' } },
-      { operationName: 'data-plane dispatch', enabledFlags: binding.enabledFlags, sourceApi },
-    )
+    attempt = await runConversationAttempt({
+      apiKeyId: obsCtx.apiKeyId,
+      model: ir.model,
+      sourceApi: sourceApi as SourceApiInput,
+      targetApi: upstreamEndpoint as TargetApiInput,
+      upstream: 'github_copilot',
+      userAgent: obsCtx.userAgent,
+      requestId: obsCtx.requestId,
+      stream: ir.stream,
+      call: () => binding.provider.fetch(
+        upstreamEndpoint,
+        { method: 'POST', body: JSON.stringify(upstreamPayload), headers: { 'content-type': 'application/json' } },
+        { operationName: 'data-plane dispatch', enabledFlags: binding.enabledFlags, sourceApi },
+      ),
+    })
   } catch (err) {
-    upstreamMs = Date.now() - upstreamStart
-    if (obsCtx.apiKeyId) {
-      await recordLatency(
-        obsCtx.apiKeyId,
-        ir.model,
-        'local',
-        { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
-        obsCtx.requestId,
-        { isError: true, upstream: 'github_copilot', userAgent: obsCtx.userAgent },
-      )
-    }
     if (err instanceof HTTPError) {
       return await repackageUpstreamError(err.response, sourceApi)
     }
     const message = err instanceof Error ? err.message : 'upstream error'
     return errorWrap(502, { error: { type: 'api_error', message } })
   }
-  upstreamMs = Date.now() - upstreamStart
-  if (!upstreamRes.ok) {
-    if (obsCtx.apiKeyId) {
-      await recordLatency(
-        obsCtx.apiKeyId,
-        ir.model,
-        'local',
-        { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
-        obsCtx.requestId,
-        { isError: true, upstream: 'github_copilot', userAgent: obsCtx.userAgent },
-      )
-    }
-    return await repackageUpstreamError(upstreamRes, sourceApi)
+
+  if (!attempt.ok && attempt.status === 429 && 'rateLimit' in attempt) {
+    return errorWrap(429, {
+      error: {
+        type: 'rate_limit_error',
+        message: attempt.rateLimit.reason,
+        ...(attempt.rateLimit.retryAfterSeconds != null
+          ? { retry_after_seconds: attempt.rateLimit.retryAfterSeconds }
+          : {}),
+      },
+    })
   }
-  if (ir.stream) {
-    let upstreamForDecode: Response = upstreamRes
-    if (obsCtx.apiKeyId) {
-      upstreamForDecode = trackStreamingUsage(upstreamRes, obsCtx.apiKeyId, ir.model, client, 'github_copilot')
-    }
-    const events = upstreamForDecode.body
-      ? backend.decodeSSE(upstreamForDecode.body)
+  if (!attempt.ok) {
+    if ('response' in attempt) return await repackageUpstreamError(attempt.response, sourceApi)
+    return errorWrap(502, { error: { type: 'api_error', message: 'upstream error' } })
+  }
+  if (attempt.stream) {
+    const events = attempt.response.body
+      ? backend.decodeSSE(attempt.response.body)
       : (async function* (): AsyncIterable<IREvent> { /* empty */ })()
     const out = adapter.encodeSSE(events)
-    if (obsCtx.apiKeyId) {
-      await recordLatency(
-        obsCtx.apiKeyId,
-        ir.model,
-        'local',
-        { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
-        obsCtx.requestId,
-        {
-          stream: true,
-          sourceApi: sourceApi as SourceApiInput,
-          targetApi: upstreamEndpoint as TargetApiInput,
-          upstream: 'github_copilot',
-          userAgent: obsCtx.userAgent,
-        },
-      )
-    }
     return new Response(out, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' } })
   }
-  const upstreamJson = await upstreamRes.json()
-  const events = backend.decodeBody(upstreamJson)
+  const events = backend.decodeBody(attempt.json)
   const body = await adapter.encodeBody(events)
-  if (obsCtx.apiKeyId) {
-    await trackNonStreamingUsage(upstreamJson, obsCtx.apiKeyId, ir.model, client, 'github_copilot')
-  }
-  if (obsCtx.apiKeyId) {
-    await recordLatency(
-      obsCtx.apiKeyId,
-      ir.model,
-      'local',
-      { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
-      obsCtx.requestId,
-      {
-        stream: false,
-        sourceApi: sourceApi as SourceApiInput,
-        targetApi: upstreamEndpoint as TargetApiInput,
-        upstream: 'github_copilot',
-        userAgent: obsCtx.userAgent,
-      },
-    )
-  }
   return Response.json(body)
 }
 
