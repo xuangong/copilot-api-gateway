@@ -1,0 +1,23 @@
+# vnext-only ignores. Mirrors the root .dockerignore but rooted at vnext/.
+node_modules
+**/node_modules
+**/.DS_Store
+**/dist
+**/build
+**/.wrangler
+**/coverage
+**/*.test.ts
+**/*.spec.ts
+tests/
+docs/
+*.md
+!README.md
+.git
+.env
+.env.*
+!.env.example
+*.sqlite
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

@@ -1,0 +1,20 @@
+services:
+  gateway-vnext:
+    build:
+      context: ./vnext
+      dockerfile: Dockerfile
+    container_name: copilot-gateway-vnext
+    ports:
+      - "${VNEXT_PORT:-41415}:41415"
+    environment:
+      - PORT=41415
+      - ACCOUNT_TYPE=${ACCOUNT_TYPE:-individual}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - NO_PROXY=localhost,127.0.0.1
+    volumes:
+      # Persist vnext sqlite separately from the prod gateway's .data dir.
+      - ./data-vnext:/data
+    restart: unless-stopped

@@ -53,3 +53,4 @@ vnext/*.sqlite
 
 # Claude Code local state (settings, worktrees, plans)
 .claude/
+data-vnext/
