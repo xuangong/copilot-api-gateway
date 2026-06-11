@@ -16,7 +16,7 @@ import type { EndpointKey } from '@vnext/protocols/common'
 export interface Invocation {
   readonly endpoint: EndpointKey
   readonly enabledFlags: ReadonlySet<string>
-  readonly sourceApi?: 'messages' | 'chat_completions' | 'responses'
+  readonly sourceApi?: 'messages' | 'chat_completions' | 'responses' | 'gemini'
   payload: Record<string, unknown>
   headers: Record<string, string>
 }
