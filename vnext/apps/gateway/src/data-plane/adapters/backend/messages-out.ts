@@ -70,7 +70,36 @@ export const messagesOut: BackendAdapter = {
   async *decodeSSE(): AsyncIterable<IREvent> {
     throw new Error('messagesOut.decodeSSE: not implemented (Task 8)')
   },
-  async *decodeBody(): AsyncIterable<IREvent> {
-    throw new Error('messagesOut.decodeBody: not implemented (Task 7)')
+  async *decodeBody(body: unknown): AsyncIterable<IREvent> {
+    const r = body as {
+      id?: string
+      content?: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }>
+      stop_reason?: string
+      usage?: { input_tokens?: number; output_tokens?: number }
+    }
+    yield { type: 'response.created', response: { id: r.id ?? '' } }
+    for (const block of r.content ?? []) {
+      if (block.type === 'text' && typeof block.text === 'string') {
+        yield { type: 'response.output_text.delta', delta: block.text }
+      } else if (block.type === 'tool_use') {
+        yield {
+          type: 'response.tool_call.completed',
+          itemId: block.id ?? '',
+          name: block.name ?? '',
+          arguments: block.input ?? {},
+        }
+      }
+    }
+    yield {
+      type: 'response.completed',
+      response: {
+        id: r.id,
+        finish_reason: r.stop_reason ?? 'stop',
+        usage: r.usage ? {
+          input_tokens: r.usage.input_tokens ?? 0,
+          output_tokens: r.usage.output_tokens ?? 0,
+        } : undefined,
+      },
+    }
   },
 }

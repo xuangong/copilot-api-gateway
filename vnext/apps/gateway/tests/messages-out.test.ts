@@ -1,8 +1,14 @@
 import { test, expect } from 'bun:test'
 import { messagesOut } from '../src/data-plane/adapters/backend/messages-out.ts'
-import type { IRRequest } from '@vnext/protocols/ir'
+import type { IRRequest, IREvent } from '@vnext/protocols/ir'
 
 const meta = { flags: {}, binding: null, iteration: 0, privateState: {}, clientProtocol: 'messages' as const }
+
+async function collect(iter: AsyncIterable<IREvent>): Promise<IREvent[]> {
+  const out: IREvent[] = []
+  for await (const e of iter) out.push(e)
+  return out
+}
 
 test('toUpstream concatenates system messages into top-level system field', () => {
   const req: IRRequest = {
@@ -61,3 +67,30 @@ test('toUpstream maps tool_use / tool_result content blocks', () => {
   expect(out.messages[1]?.content[0]).toEqual({ type: 'tool_use', id: 'toolu_1', name: 'get_weather', input: { city: 'sf' } })
   expect(out.messages[2]?.content[0]).toEqual({ type: 'tool_result', tool_use_id: 'toolu_1', content: '72F' })
 })
+
+test('decodeBody maps Anthropic message → created/text/tool_call/completed', async () => {
+  const body = {
+    id: 'msg_1',
+    type: 'message',
+    role: 'assistant',
+    content: [
+      { type: 'text', text: 'thinking…' },
+      { type: 'tool_use', id: 'toolu_1', name: 'get_weather', input: { city: 'sf' } },
+    ],
+    stop_reason: 'tool_use',
+    usage: { input_tokens: 11, output_tokens: 7 },
+  }
+  const events = await collect(messagesOut.decodeBody(body))
+  expect(events[0]).toEqual({ type: 'response.created', response: { id: 'msg_1' } })
+  const delta = events.find((e) => e.type === 'response.output_text.delta') as Extract<IREvent, { type: 'response.output_text.delta' }>
+  expect(delta.delta).toBe('thinking…')
+  const tc = events.find((e) => e.type === 'response.tool_call.completed') as Extract<IREvent, { type: 'response.tool_call.completed' }>
+  expect(tc.itemId).toBe('toolu_1')
+  expect(tc.name).toBe('get_weather')
+  expect(tc.arguments).toEqual({ city: 'sf' })
+  const done = events[events.length - 1] as Extract<IREvent, { type: 'response.completed' }>
+  expect(done.response.finish_reason).toBe('tool_use')
+  expect(done.response.usage?.input_tokens).toBe(11)
+  expect(done.response.usage?.output_tokens).toBe(7)
+})
+
