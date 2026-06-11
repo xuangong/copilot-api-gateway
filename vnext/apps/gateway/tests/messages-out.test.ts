@@ -94,3 +94,51 @@ test('decodeBody maps Anthropic message → created/text/tool_call/completed', a
   expect(done.response.usage?.output_tokens).toBe(7)
 })
 
+function sseStream(chunks: string[]): ReadableStream<Uint8Array> {
+  const enc = new TextEncoder()
+  return new ReadableStream({
+    start(controller) {
+      for (const c of chunks) controller.enqueue(enc.encode(c))
+      controller.close()
+    },
+  })
+}
+
+test('decodeSSE translates Anthropic SSE event types → IR events', async () => {
+  const chunks = [
+    `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message: { id: 'msg_1', usage: { input_tokens: 5, output_tokens: 0 } } })}\n\n`,
+    `event: content_block_start\ndata: ${JSON.stringify({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } })}\n\n`,
+    `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello' } })}\n\n`,
+    `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: ' world' } })}\n\n`,
+    `event: content_block_stop\ndata: ${JSON.stringify({ type: 'content_block_stop', index: 0 })}\n\n`,
+    `event: message_delta\ndata: ${JSON.stringify({ type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 2 } })}\n\n`,
+    `event: message_stop\ndata: ${JSON.stringify({ type: 'message_stop' })}\n\n`,
+  ]
+  const events = await collect(messagesOut.decodeSSE(sseStream(chunks)))
+  expect(events[0]?.type).toBe('response.created')
+  const deltas = events.filter((e) => e.type === 'response.output_text.delta') as Array<Extract<IREvent, { type: 'response.output_text.delta' }>>
+  expect(deltas.map((d) => d.delta).join('')).toBe('Hello world')
+  const done = events[events.length - 1] as Extract<IREvent, { type: 'response.completed' }>
+  expect(done.type).toBe('response.completed')
+  expect(done.response.finish_reason).toBe('end_turn')
+  expect(done.response.usage?.input_tokens).toBe(5)
+  expect(done.response.usage?.output_tokens).toBe(2)
+})
+
+test('decodeSSE accumulates tool_use input_json_delta into a completed tool call', async () => {
+  const chunks = [
+    `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message: { id: 'msg_2' } })}\n\n`,
+    `event: content_block_start\ndata: ${JSON.stringify({ type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_1', name: 'do_it', input: {} } })}\n\n`,
+    `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"a":' } })}\n\n`,
+    `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '1}' } })}\n\n`,
+    `event: content_block_stop\ndata: ${JSON.stringify({ type: 'content_block_stop', index: 0 })}\n\n`,
+    `event: message_delta\ndata: ${JSON.stringify({ type: 'message_delta', delta: { stop_reason: 'tool_use' } })}\n\n`,
+    `event: message_stop\ndata: ${JSON.stringify({ type: 'message_stop' })}\n\n`,
+  ]
+  const events = await collect(messagesOut.decodeSSE(sseStream(chunks)))
+  const tc = events.find((e) => e.type === 'response.tool_call.completed') as Extract<IREvent, { type: 'response.tool_call.completed' }>
+  expect(tc.itemId).toBe('toolu_1')
+  expect(tc.name).toBe('do_it')
+  expect(tc.arguments).toEqual({ a: 1 })
+})
+

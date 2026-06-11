@@ -67,8 +67,84 @@ export const messagesOut: BackendAdapter = {
       tool_choice: translateToolChoice(req.tool_choice),
     }
   },
-  async *decodeSSE(): AsyncIterable<IREvent> {
-    throw new Error('messagesOut.decodeSSE: not implemented (Task 8)')
+  async *decodeSSE(stream: ReadableStream<Uint8Array>): AsyncIterable<IREvent> {
+    const reader = stream.getReader()
+    const dec = new TextDecoder()
+    let buf = ''
+    let respId = ''
+    let createdEmitted = false
+    let finishReason = 'stop'
+    let inputTokens = 0
+    let outputTokens = 0
+    const blocks = new Map<number, { kind: 'text' | 'tool_use'; toolId?: string; toolName?: string; jsonBuf?: string }>()
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      const frames = buf.split('\n\n')
+      buf = frames.pop() ?? ''
+      for (const f of frames) {
+        const dataLines = f.split('\n').filter((ln) => ln.startsWith('data:'))
+        if (dataLines.length === 0) continue
+        const data = dataLines.map((ln) => ln.slice(5).trim()).join('')
+        if (!data) continue
+        let evt: {
+          type?: string
+          message?: { id?: string; usage?: { input_tokens?: number; output_tokens?: number } }
+          index?: number
+          content_block?: { type?: string; id?: string; name?: string }
+          delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string }
+          usage?: { output_tokens?: number }
+        }
+        try { evt = JSON.parse(data) } catch { continue }
+        if (evt.type === 'message_start') {
+          respId = evt.message?.id ?? ''
+          if (evt.message?.usage?.input_tokens) inputTokens = evt.message.usage.input_tokens
+          if (!createdEmitted) {
+            yield { type: 'response.created', response: { id: respId } }
+            createdEmitted = true
+          }
+        } else if (evt.type === 'content_block_start' && typeof evt.index === 'number') {
+          const cb = evt.content_block
+          if (cb?.type === 'tool_use') {
+            blocks.set(evt.index, { kind: 'tool_use', toolId: cb.id, toolName: cb.name, jsonBuf: '' })
+          } else {
+            blocks.set(evt.index, { kind: 'text' })
+          }
+        } else if (evt.type === 'content_block_delta' && typeof evt.index === 'number') {
+          const slot = blocks.get(evt.index)
+          if (!slot) continue
+          if (evt.delta?.type === 'text_delta' && typeof evt.delta.text === 'string') {
+            yield { type: 'response.output_text.delta', delta: evt.delta.text }
+          } else if (evt.delta?.type === 'input_json_delta' && typeof evt.delta.partial_json === 'string') {
+            slot.jsonBuf = (slot.jsonBuf ?? '') + evt.delta.partial_json
+          }
+        } else if (evt.type === 'content_block_stop' && typeof evt.index === 'number') {
+          const slot = blocks.get(evt.index)
+          if (slot?.kind === 'tool_use') {
+            let parsed: unknown = {}
+            try { parsed = JSON.parse(slot.jsonBuf ?? '{}') } catch { parsed = slot.jsonBuf ?? '' }
+            yield {
+              type: 'response.tool_call.completed',
+              itemId: slot.toolId ?? '',
+              name: slot.toolName ?? '',
+              arguments: parsed,
+            }
+          }
+        } else if (evt.type === 'message_delta') {
+          if (evt.delta?.stop_reason) finishReason = evt.delta.stop_reason
+          if (evt.usage?.output_tokens) outputTokens = evt.usage.output_tokens
+        }
+      }
+    }
+    yield {
+      type: 'response.completed',
+      response: {
+        id: respId,
+        finish_reason: finishReason,
+        usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+      },
+    }
   },
   async *decodeBody(body: unknown): AsyncIterable<IREvent> {
     const r = body as {
