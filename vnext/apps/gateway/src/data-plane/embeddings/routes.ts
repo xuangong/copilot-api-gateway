@@ -4,8 +4,6 @@
  * Routes: POST /embeddings and POST /v1/embeddings (both mounted for SDK compat).
  *
  * vnext deltas:
- *   - quota / latency-tracker / usage trackers not yet ported to vnext; skipped
- *     with TODO markers. When ported, hook them in around binding.provider.fetch.
  *   - resolveBinding no longer takes AppState; CreateProviderOptions ride on the
  *     request-scoped auth ctx (see modelsRouter for the shape).
  *   - Forwards upstream JSON verbatim (mirrors old behavior).
@@ -14,6 +12,10 @@ import { Hono, type Context } from 'hono'
 import type { Env } from '../../app.ts'
 import { resolveBinding, stripUpstreamPin } from '../routing/binding-resolver.ts'
 import type { DataPlaneAuthCtx } from '../models/routes.ts'
+import { checkQuota } from '../../shared/observability/quota.ts'
+import { recordLatency, startTimer } from '../../shared/observability/latency-tracker.ts'
+import { trackNonStreamingUsage } from '../../shared/observability/usage-tracker.ts'
+import { detectClient } from '../../shared/observability/client-detect.ts'
 
 type Vars = { auth: DataPlaneAuthCtx }
 
@@ -58,16 +60,64 @@ async function handle(c: EmbeddingsCtx): Promise<Response> {
     )
   }
 
+  const apiKeyId = auth.apiKeyId
+  const userAgent = c.req.header('user-agent') ?? undefined
+  const requestId = c.req.header('x-request-id') ?? undefined
+  const client = detectClient(userAgent)
+
+  if (apiKeyId) {
+    const quota = await checkQuota(apiKeyId)
+    if (!quota.allowed) {
+      return c.json({
+        error: {
+          type: 'rate_limit_error',
+          message: quota.reason ?? 'Daily quota exceeded.',
+          ...(quota.retryAfterSeconds != null ? { retry_after_seconds: quota.retryAfterSeconds } : {}),
+        },
+      }, 429)
+    }
+  }
+
+  const elapsed = startTimer()
+  const upstreamStart = Date.now()
   const response = await binding.provider.fetch(
     'embeddings',
     { method: 'POST', body: JSON.stringify(body) },
     { operationName: 'create embeddings', enabledFlags: binding.enabledFlags },
   )
-
-  // TODO(week5+): quota check / recordLatency / trackNonStreamingUsage once
-  // those modules are ported into vnext.
+  const upstreamMs = Date.now() - upstreamStart
 
   const json = await response.json()
+
+  if (apiKeyId) {
+    if (response.ok) {
+      await trackNonStreamingUsage(json, apiKeyId, body.model, client, 'github_copilot')
+      await recordLatency(
+        apiKeyId,
+        body.model,
+        'local',
+        { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
+        requestId,
+        {
+          stream: false,
+          sourceApi: 'embeddings',
+          targetApi: 'embeddings',
+          upstream: 'github_copilot',
+          userAgent,
+        },
+      )
+    } else {
+      await recordLatency(
+        apiKeyId,
+        body.model,
+        'local',
+        { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
+        requestId,
+        { isError: true, upstream: 'github_copilot', userAgent },
+      )
+    }
+  }
+
   return Response.json(json, { status: response.status })
 }
 
