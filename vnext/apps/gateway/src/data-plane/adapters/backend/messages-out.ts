@@ -76,6 +76,7 @@ export const messagesOut: BackendAdapter = {
     let finishReason = 'stop'
     let inputTokens = 0
     let outputTokens = 0
+    let sawUsage = false
     const blocks = new Map<number, { kind: 'text' | 'tool_use'; toolId?: string; toolName?: string; jsonBuf?: string }>()
     while (true) {
       const { done, value } = await reader.read()
@@ -99,7 +100,7 @@ export const messagesOut: BackendAdapter = {
         try { evt = JSON.parse(data) } catch { continue }
         if (evt.type === 'message_start') {
           respId = evt.message?.id ?? ''
-          if (evt.message?.usage?.input_tokens) inputTokens = evt.message.usage.input_tokens
+          if (evt.message?.usage?.input_tokens) { inputTokens = evt.message.usage.input_tokens; sawUsage = true }
           if (!createdEmitted) {
             yield { type: 'response.created', response: { id: respId } }
             createdEmitted = true
@@ -133,7 +134,7 @@ export const messagesOut: BackendAdapter = {
           }
         } else if (evt.type === 'message_delta') {
           if (evt.delta?.stop_reason) finishReason = evt.delta.stop_reason
-          if (evt.usage?.output_tokens) outputTokens = evt.usage.output_tokens
+          if (evt.usage?.output_tokens) { outputTokens = evt.usage.output_tokens; sawUsage = true }
         }
       }
     }
@@ -142,7 +143,7 @@ export const messagesOut: BackendAdapter = {
       response: {
         id: respId,
         finish_reason: finishReason,
-        usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+        usage: sawUsage ? { input_tokens: inputTokens, output_tokens: outputTokens } : undefined,
       },
     }
   },

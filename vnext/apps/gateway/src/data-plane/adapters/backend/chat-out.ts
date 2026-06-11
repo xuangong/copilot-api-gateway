@@ -118,8 +118,8 @@ export const chatOut: BackendAdapter = {
         }
         for (const tc of delta?.tool_calls ?? []) {
           const slot = toolAcc.get(tc.index) ?? { id: '', name: '', argsBuf: '' }
-          if (tc.id) slot.id = tc.id
-          if (tc.function?.name) slot.name = tc.function.name
+          if (tc.id && !slot.id) slot.id = tc.id
+          if (tc.function?.name && !slot.name) slot.name = tc.function.name
           if (tc.function?.arguments) slot.argsBuf += tc.function.arguments
           toolAcc.set(tc.index, slot)
         }

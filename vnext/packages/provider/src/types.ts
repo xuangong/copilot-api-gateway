@@ -21,7 +21,7 @@ export interface ProviderFetchOptions extends ProviderCallOptions {
   /** Defaults to true. count_tokens is the only endpoint where model is optional. */
   requireModel?: boolean
   /** Original client protocol shape — lets providers gate translation-aware transforms. */
-  sourceApi?: 'messages' | 'chat_completions' | 'responses'
+  sourceApi?: 'messages' | 'chat_completions' | 'responses' | 'gemini'
   /** Pre-resolved flag set (defaults + overrides). Providers fall back to their kind catalog. */
   enabledFlags?: ReadonlySet<string>
 }

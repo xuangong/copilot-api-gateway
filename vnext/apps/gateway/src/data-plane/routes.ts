@@ -86,7 +86,7 @@ async function dispatch<TPayload>(
     upstreamRes = await binding.provider.fetch(
       upstreamEndpoint,
       { method: 'POST', body: JSON.stringify(upstreamPayload), headers: { 'content-type': 'application/json' } },
-      { operationName: 'data-plane dispatch', enabledFlags: binding.enabledFlags, sourceApi: sourceApi === 'gemini' ? undefined : sourceApi },
+      { operationName: 'data-plane dispatch', enabledFlags: binding.enabledFlags, sourceApi },
     )
   } catch (err) {
     if (err instanceof HTTPError) {
