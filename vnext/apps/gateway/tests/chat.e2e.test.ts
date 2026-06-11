@@ -77,22 +77,27 @@ const ACCOUNT_TYPE = 'individual' as const
 const MODEL_ID = 'gpt-4o-mini'
 
 const upstreamJson = {
-  id: 'resp_upstream_1',
-  output_text: 'Hello from upstream',
-  output: [],
-  usage: { input_tokens: 5, output_tokens: 7 },
+  id: 'chatcmpl_upstream_1',
+  object: 'chat.completion',
+  choices: [{
+    index: 0,
+    message: { role: 'assistant', content: 'Hello from upstream' },
+    finish_reason: 'stop',
+  }],
+  usage: { prompt_tokens: 5, completion_tokens: 7, total_tokens: 12 },
 }
 
 function makeUpstreamSSE(): Response {
   const body = [
-    `event: response.created\ndata: ${JSON.stringify({ type: 'response.created', response: { id: 'resp_upstream_1' } })}\n\n`,
-    `event: response.output_text.delta\ndata: ${JSON.stringify({ type: 'response.output_text.delta', delta: 'Hello from upstream' })}\n\n`,
-    `event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed', response: { id: 'resp_upstream_1', usage: { input_tokens: 5, output_tokens: 7 }, finish_reason: 'stop' } })}\n\n`,
+    `data: ${JSON.stringify({ id: 'chatcmpl_upstream_1', choices: [{ index: 0, delta: { role: 'assistant', content: 'Hello' } }] })}\n\n`,
+    `data: ${JSON.stringify({ id: 'chatcmpl_upstream_1', choices: [{ index: 0, delta: { content: ' from upstream' } }] })}\n\n`,
+    `data: ${JSON.stringify({ id: 'chatcmpl_upstream_1', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`,
+    `data: [DONE]\n\n`,
   ].join('')
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
-function installCopilotFetch(opts: { stream: boolean }) {
+function installCopilotFetch(opts: { stream: boolean; upstreamStatus?: number; upstreamBody?: unknown }) {
   installFetch((req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
@@ -101,7 +106,12 @@ function installCopilotFetch(opts: { stream: boolean }) {
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }
-    if (url.pathname.endsWith('/responses')) {
+    if (url.pathname.endsWith('/chat/completions')) {
+      if (opts.upstreamStatus && opts.upstreamStatus >= 400) {
+        return new Response(JSON.stringify(opts.upstreamBody ?? { error: { message: 'upstream sad' } }), {
+          status: opts.upstreamStatus, headers: { 'content-type': 'application/json' },
+        })
+      }
       if (opts.stream) return makeUpstreamSSE()
       return new Response(JSON.stringify(upstreamJson), {
         status: 200, headers: { 'content-type': 'application/json' },
@@ -170,4 +180,20 @@ test('POST /v1/chat/completions with invalid payload returns OpenAI error shape'
   })
   const res = await app.fetch(req, env)
   expect(res.status).toBe(400)
+})
+
+test('POST /v1/chat/completions surfaces upstream 400 as OpenAI error envelope', async () => {
+  setRepoForTest(stubRepo([stubUpstream()]))
+  installCopilotFetch({ stream: false, upstreamStatus: 400, upstreamBody: { error: { message: 'model not allowed' } } })
+  const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
+  const req = new Request('http://local/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: MODEL_ID, messages: [{ role: 'user', content: 'hi' }] }),
+  })
+  const res = await app.fetch(req, env)
+  expect(res.status).toBe(400)
+  const body = await res.json() as { error: { type: string; message: string } }
+  expect(body.error.type).toBe('invalid_request_error')
+  expect(body.error.message).toContain('model not allowed')
 })

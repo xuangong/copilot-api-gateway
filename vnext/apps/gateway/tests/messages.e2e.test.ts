@@ -80,29 +80,28 @@ const COPILOT_TOKEN = 'tkn'
 const ACCOUNT_TYPE = 'individual' as const
 const MODEL_ID = 'claude-3-5-sonnet-20241022'
 
-// Canned response from the upstream's /responses endpoint (non-stream JSON).
-// responsesOut.decodeBody reads { id, output_text, usage } and emits IR events
-// (response.created → response.output_text.delta → response.completed).
 const upstreamJson = {
-  id: 'resp_upstream_1',
-  output_text: 'Hello from upstream',
-  output: [],
+  id: 'msg_upstream_1',
+  type: 'message',
+  role: 'assistant',
+  content: [{ type: 'text', text: 'Hello from upstream' }],
+  stop_reason: 'end_turn',
   usage: { input_tokens: 5, output_tokens: 7 },
 }
 
-// Canned SSE frames from /responses for the streaming path. The Copilot
-// upstream emits Responses-API events; responsesOut.decodeSSE forwards
-// response.created / response.output_text.delta / response.completed.
 function makeUpstreamSSE(): Response {
   const body = [
-    `event: response.created\ndata: ${JSON.stringify({ type: 'response.created', response: { id: 'resp_upstream_1' } })}\n\n`,
-    `event: response.output_text.delta\ndata: ${JSON.stringify({ type: 'response.output_text.delta', delta: 'Hello from upstream' })}\n\n`,
-    `event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed', response: { id: 'resp_upstream_1', usage: { input_tokens: 5, output_tokens: 7 }, finish_reason: 'stop' } })}\n\n`,
+    `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message: { id: 'msg_upstream_1', usage: { input_tokens: 5, output_tokens: 0 } } })}\n\n`,
+    `event: content_block_start\ndata: ${JSON.stringify({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } })}\n\n`,
+    `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello from upstream' } })}\n\n`,
+    `event: content_block_stop\ndata: ${JSON.stringify({ type: 'content_block_stop', index: 0 })}\n\n`,
+    `event: message_delta\ndata: ${JSON.stringify({ type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 7 } })}\n\n`,
+    `event: message_stop\ndata: ${JSON.stringify({ type: 'message_stop' })}\n\n`,
   ].join('')
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
-function installCopilotFetch(opts: { stream: boolean }) {
+function installCopilotFetch(opts: { stream: boolean; upstreamStatus?: number; upstreamBody?: unknown }) {
   installFetch((req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
@@ -111,7 +110,12 @@ function installCopilotFetch(opts: { stream: boolean }) {
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }
-    if (url.pathname.endsWith('/responses')) {
+    if (url.pathname.endsWith('/messages') || url.pathname.endsWith('/v1/messages')) {
+      if (opts.upstreamStatus && opts.upstreamStatus >= 400) {
+        return new Response(JSON.stringify(opts.upstreamBody ?? { error: { message: 'upstream sad' } }), {
+          status: opts.upstreamStatus, headers: { 'content-type': 'application/json' },
+        })
+      }
       if (opts.stream) return makeUpstreamSSE()
       return new Response(JSON.stringify(upstreamJson), {
         status: 200, headers: { 'content-type': 'application/json' },
@@ -189,4 +193,21 @@ test('POST /v1/messages with invalid payload returns Anthropic error shape', asy
   const body = await res.json() as { type: string; error: { type: string; message: string } }
   expect(body.type).toBe('error')
   expect(body.error.type).toBe('invalid_request_error')
+})
+
+test('POST /v1/messages surfaces upstream 503 as Anthropic error envelope', async () => {
+  setRepoForTest(stubRepo([stubUpstream()]))
+  installCopilotFetch({ stream: false, upstreamStatus: 503, upstreamBody: { error: { message: 'upstream overloaded' } } })
+  const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
+  const req = new Request('http://local/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: MODEL_ID, max_tokens: 64, messages: [{ role: 'user', content: 'hi' }] }),
+  })
+  const res = await app.fetch(req, env)
+  expect(res.status).toBe(503)
+  const body = await res.json() as { type: string; error: { type: string; message: string } }
+  expect(body.type).toBe('error')
+  expect(body.error.type).toBe('api_error')
+  expect(body.error.message).toContain('upstream overloaded')
 })
