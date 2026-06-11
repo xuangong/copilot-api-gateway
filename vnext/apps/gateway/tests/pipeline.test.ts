@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
 import { createPipelineRunner } from '../src/data-plane/pipeline/runner.ts'
-import { bindingServesEndpoint, bindingsForEndpoint, type ProviderBinding } from '../src/data-plane/routing/binding.ts'
+import { bindingServesEndpoint, type ProviderBinding } from '../src/data-plane/routing/binding.ts'
 import type { IRRequest } from '@vnext/protocols/ir'
 
 const newReq = (): IRRequest => ({
@@ -31,17 +31,15 @@ test('pipeline runner: when=false skips transform', async () => {
   expect(ran).toBe(false)
 })
 
-test('binding: bindingServesEndpoint respects endpoint list + model kind', () => {
+test('binding: bindingServesEndpoint reads model.endpoints map', () => {
   const fakeProvider = { kind: 'fake', id: 'p', fetch: async () => new Response() }
   const b: ProviderBinding = {
     upstream: 'u1', kind: 'copilot',
-    model: { id: 'm', kind: 'chat' },
-    upstreamEndpoints: ['chat_completions', 'responses'],
+    model: { id: 'm', endpoints: { chat_completions: {}, responses: {} } },
     enabledFlags: new Set(),
     provider: fakeProvider,
   }
   expect(bindingServesEndpoint(b, 'chat_completions')).toBe(true)
   expect(bindingServesEndpoint(b, 'embeddings')).toBe(false)
-  expect(bindingsForEndpoint([b], 'responses').length).toBe(1)
-  expect(bindingsForEndpoint([b], 'embeddings').length).toBe(0)
+  expect(bindingServesEndpoint(b, 'responses')).toBe(true)
 })

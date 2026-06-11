@@ -4,10 +4,10 @@
  *
  * Strategy mirrors data-plane-models-embeddings-images.test.ts: stub the repo
  * with one Copilot upstream + stub globalThis.fetch to return canned responses
- * for the Copilot /models and /responses endpoints. The dispatcher always
- * fetches /responses regardless of the inbound (Gemini) protocol — the
- * responsesOut backend adapter normalizes the upstream payload into IR events
- * before geminiIn re-encodes them as Gemini wire shape.
+ * for the Copilot /models and /chat/completions endpoints. Per Plan 2 the
+ * Gemini route uses chatPick (chat_completions preferred), so the chatOut
+ * backend adapter normalizes the upstream payload into IR events before
+ * geminiIn re-encodes them as Gemini wire shape.
  */
 import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
@@ -80,17 +80,19 @@ const ACCOUNT_TYPE = 'individual' as const
 const MODEL_ID = 'gpt-5-mini'
 
 const upstreamJson = {
-  id: 'resp_upstream_1',
-  output_text: 'Hello from upstream',
-  output: [],
-  usage: { input_tokens: 5, output_tokens: 7 },
+  id: 'chatcmpl_upstream_1',
+  object: 'chat.completion',
+  choices: [
+    { index: 0, message: { role: 'assistant', content: 'Hello from upstream' }, finish_reason: 'stop' },
+  ],
+  usage: { prompt_tokens: 5, completion_tokens: 7, total_tokens: 12 },
 }
 
 function makeUpstreamSSE(): Response {
   const body = [
-    `event: response.created\ndata: ${JSON.stringify({ type: 'response.created', response: { id: 'resp_upstream_1' } })}\n\n`,
-    `event: response.output_text.delta\ndata: ${JSON.stringify({ type: 'response.output_text.delta', delta: 'Hello from upstream' })}\n\n`,
-    `event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed', response: { id: 'resp_upstream_1', usage: { input_tokens: 5, output_tokens: 7 }, finish_reason: 'stop' } })}\n\n`,
+    `data: ${JSON.stringify({ id: 'chatcmpl_upstream_1', object: 'chat.completion.chunk', choices: [{ index: 0, delta: { role: 'assistant', content: 'Hello from upstream' } }] })}\n\n`,
+    `data: ${JSON.stringify({ id: 'chatcmpl_upstream_1', object: 'chat.completion.chunk', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 5, completion_tokens: 7, total_tokens: 12 } })}\n\n`,
+    `data: [DONE]\n\n`,
   ].join('')
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
@@ -104,7 +106,7 @@ function installCopilotFetch(opts: { stream: boolean }) {
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }
-    if (url.pathname.endsWith('/responses')) {
+    if (url.pathname.endsWith('/chat/completions')) {
       if (opts.stream) return makeUpstreamSSE()
       return new Response(JSON.stringify(upstreamJson), {
         status: 200, headers: { 'content-type': 'application/json' },

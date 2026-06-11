@@ -10,12 +10,12 @@ import { chatOut } from './adapters/backend/chat-out.ts'
 import { messagesOut } from './adapters/backend/messages-out.ts'
 import type { BackendAdapter, FrontendAdapter } from '@vnext/translate/contract'
 import type { IRRequest, IREvent } from '@vnext/protocols/ir'
-import type { EndpointKey } from '@vnext/protocols/common'
+import type { EndpointKey, ModelEndpoints } from '@vnext/protocols/common'
 import { modelsRouter, type DataPlaneAuthCtx } from './models/routes.ts'
 import { embeddingsRouter } from './embeddings/routes.ts'
 import { imagesRouter } from './images/routes.ts'
-import { resolveBinding, parseModelRouting } from './routing/binding-resolver.ts'
-import { chooseBackendEndpoint } from './routing/backend-selector.ts'
+import { parseModelRouting } from './routing/binding-resolver.ts'
+import { enumerateBindingCandidates } from './routing/candidates.ts'
 import { repackageUpstreamError, type SourceApi } from './errors/repackage.ts'
 import { HTTPError } from '@vnext/provider-copilot'
 import { handleMessagesWebSearch, hasWebSearch } from './orchestrator/server-tools/plugins/web-search/index.ts'
@@ -42,6 +42,26 @@ function backendForEndpoint(endpoint: EndpointKey): BackendAdapter {
   return responsesOut
 }
 
+type PickTarget = (e: ModelEndpoints) => EndpointKey | null
+
+const messagesPick: PickTarget = (e) =>
+  e.messages ? 'messages'
+  : e.responses ? 'responses'
+  : e.chat_completions ? 'chat_completions'
+  : null
+
+const responsesPick: PickTarget = (e) =>
+  e.responses ? 'responses'
+  : e.messages ? 'messages'
+  : e.chat_completions ? 'chat_completions'
+  : null
+
+const chatPick: PickTarget = (e) =>
+  e.chat_completions ? 'chat_completions'
+  : e.messages ? 'messages'
+  : e.responses ? 'responses'
+  : null
+
 async function dispatch<TPayload>(
   c: { req: { json: () => Promise<unknown> }; json: (b: unknown, s?: number) => Response; body: (b: BodyInit, s?: number, h?: Record<string, string>) => Response },
   adapter: FrontendAdapter<TPayload>,
@@ -49,6 +69,7 @@ async function dispatch<TPayload>(
   errorWrap: (status: number, body: unknown) => Response,
   auth: DataPlaneAuthCtx,
   sourceApi: SourceApi,
+  pickTarget: PickTarget,
 ): Promise<Response> {
   let raw: unknown
   try { raw = await c.req.json() } catch {
@@ -65,21 +86,29 @@ async function dispatch<TPayload>(
   const { bareModel } = parseModelRouting(requestedModel)
   if (bareModel !== requestedModel) ir.model = bareModel
 
-  const upstreamEndpoint = chooseBackendEndpoint(bareModel)
-  const backend = backendForEndpoint(upstreamEndpoint)
-
-  const binding = await resolveBinding(requestedModel, upstreamEndpoint, {
-    ownerId: auth.userId,
-    copilot: auth.copilot,
+  const { candidates, sawModel } = await enumerateBindingCandidates({
+    model: requestedModel,
+    pickTarget,
+    opts: { ownerId: auth.userId, copilot: auth.copilot },
   })
-  if (!binding) {
+  if (candidates.length === 0) {
+    if (sawModel) {
+      return errorWrap(400, {
+        error: {
+          type: 'invalid_request_error',
+          message: `Model "${requestedModel}" does not support the "${sourceApi}" client protocol.`,
+        },
+      })
+    }
     return errorWrap(404, {
       error: {
         type: 'invalid_request_error',
-        message: `No upstream serves model "${requestedModel}" on endpoint "${upstreamEndpoint}". Run GET /v1/models for available ids.`,
+        message: `No upstream serves model "${requestedModel}". Run GET /v1/models for available ids.`,
       },
     })
   }
+  const { binding, targetEndpoint: upstreamEndpoint } = candidates[0]!
+  const backend = backendForEndpoint(upstreamEndpoint)
   const upstreamPayload = backend.toUpstream(ir)
   let upstreamRes: Response
   try {
@@ -151,6 +180,7 @@ dataPlane.post('/v1/messages', async (c) => {
     (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
     (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx,
     'messages',
+    messagesPick,
   )
 })
 
@@ -159,6 +189,7 @@ dataPlane.post('/v1/chat/completions', (c) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
     (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx,
     'chat_completions',
+    chatPick,
   ))
 
 dataPlane.post('/v1/responses', async (c) => {
@@ -192,6 +223,7 @@ dataPlane.post('/v1/responses', async (c) => {
     (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
     (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx,
     'responses',
+    responsesPick,
   )
 })
 
@@ -208,5 +240,6 @@ dataPlane.post('/v1beta/models/:model{.+}', (c) => {
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
     (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx,
     'gemini',
+    chatPick,
   )
 })

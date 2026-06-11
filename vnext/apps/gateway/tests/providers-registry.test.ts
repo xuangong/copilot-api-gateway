@@ -4,7 +4,6 @@ import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import {
   listProviderBindings,
   listUpstreamModels,
-  inferModelKind,
 } from '../src/data-plane/providers/registry.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 
@@ -59,12 +58,6 @@ function stubFetch(models: Model[]) {
 afterEach(() => {
   globalThis.fetch = originalFetch
   setRepoForTest(null)
-})
-
-test('inferModelKind detects embedding/image/text', () => {
-  expect(inferModelKind(stubModel('text-embedding-3', 'embedding'))).toBe('embedding')
-  expect(inferModelKind(stubModel('gpt-image-1', 'image'))).toBe('image')
-  expect(inferModelKind(stubModel('gpt-4o'))).toBeUndefined()
 })
 
 test('listProviderBindings expands stored Copilot upstream into per-model bindings', async () => {
