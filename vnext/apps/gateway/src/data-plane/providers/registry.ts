@@ -14,12 +14,13 @@
  *   - 15s upstreamListCache: premature optimization for the scaffold;
  *     re-introduce once /v1/models route shows it in profiles
  */
-import type { EndpointKey, ModelKind, UpstreamKind } from '@vnext/protocols/common'
+import type { UpstreamKind } from '@vnext/protocols/common'
 import type { AccountType } from '../../shared/config/constants.ts'
 import { defaultsForUpstream, resolveEffectiveFlags } from '../flags/index.ts'
 import type { UpstreamRecord } from '../../shared/repo/types.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
+import { copilotModelEndpoints } from '@vnext/provider-copilot'
 import type { ModelProvider, ProviderBinding } from '@vnext/provider'
 import { CopilotProvider } from '@vnext/provider-copilot'
 
@@ -31,12 +32,6 @@ export interface CreateProviderOptions {
 export interface ListUpstreamModelsOptions {
   ownerId?: string
   copilot?: CreateProviderOptions
-}
-
-const DEFAULT_ENDPOINTS: Record<UpstreamKind, readonly EndpointKey[]> = {
-  copilot: ['chat_completions', 'responses', 'messages', 'messages_count_tokens', 'embeddings'],
-  custom: ['chat_completions', 'embeddings'],
-  azure: ['chat_completions'],
 }
 
 export function createCopilotProvider(opts: CreateProviderOptions): ModelProvider {
@@ -69,22 +64,12 @@ export async function createProviderFromUpstream(
   return copilot ? createCopilotProvider(copilot) : null
 }
 
-/** Infer ModelKind from upstream metadata; returns undefined when unsure. */
-export function inferModelKind(model: Model): ModelKind | undefined {
-  const capType = model.capabilities?.type?.toLowerCase()
-  if (capType === 'embeddings' || capType === 'embedding') return 'embedding'
-  if (capType === 'image' || capType === 'images') return 'image'
-  const id = model.id.toLowerCase()
-  if (id.startsWith('gpt-image') || id.startsWith('dall-e') || id.includes('image-gen')) return 'image'
-  return undefined
-}
-
 function modelToBindingModel(model: ModelsResponse['data'][number]): ProviderBinding['model'] {
   return {
     id: model.id,
     displayName: model.name,
     ownedBy: model.vendor,
-    kind: inferModelKind(model),
+    endpoints: copilotModelEndpoints(model as Model),
     limits: model.capabilities?.limits ? {
       maxContextWindowTokens: model.capabilities.limits.max_context_window_tokens,
       maxOutputTokens: model.capabilities.limits.max_output_tokens,
@@ -92,6 +77,7 @@ function modelToBindingModel(model: ModelsResponse['data'][number]): ProviderBin
     } : undefined,
   }
 }
+
 
 function sortUpstreams(upstreams: UpstreamRecord[]): UpstreamRecord[] {
   return upstreams.sort((a, b) =>
@@ -127,9 +113,6 @@ export async function listProviderBindings(
       const provider = await createProviderFromUpstream(upstream, opts.copilot)
       if (!provider) continue
       const models = await provider.getModels()
-      const endpoints = Array.isArray(upstream.config.endpoints)
-        ? upstream.config.endpoints as EndpointKey[]
-        : DEFAULT_ENDPOINTS[upstream.provider]
       const enabledFlags = resolveEffectiveFlags(defaultsForUpstream(upstream.provider), [upstream.flagOverrides])
       const disabled = new Set(upstream.disabledPublicModelIds)
       for (const model of models.data ?? []) {
@@ -138,7 +121,6 @@ export async function listProviderBindings(
           upstream: upstream.id,
           kind: upstream.provider,
           model: modelToBindingModel(model as Model),
-          upstreamEndpoints: endpoints,
           enabledFlags,
           provider,
         })
@@ -160,7 +142,6 @@ export async function listProviderBindings(
           upstream: 'copilot:request',
           kind: 'copilot',
           model: modelToBindingModel(model as Model),
-          upstreamEndpoints: DEFAULT_ENDPOINTS.copilot,
           enabledFlags,
           provider,
         })
