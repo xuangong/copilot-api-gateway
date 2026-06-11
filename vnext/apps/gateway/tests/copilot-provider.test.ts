@@ -8,7 +8,7 @@
  * boundary that the contract guarantees.
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
-import { CopilotProvider } from '../src/data-plane/providers/copilot/provider.ts'
+import { CopilotProvider } from '@vnext/provider-copilot'
 
 const origFetch = globalThis.fetch
 

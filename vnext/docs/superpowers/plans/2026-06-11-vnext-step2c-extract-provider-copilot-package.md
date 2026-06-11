@@ -48,7 +48,7 @@
 - Create: `packages/provider-copilot/package.json`
 - Create: `packages/provider-copilot/tsconfig.json`
 
-- [ ] **Step 1: Write package.json**
+- [x] **Step 1: Write package.json**
 
 `packages/provider-copilot/package.json`:
 ```json
@@ -68,7 +68,7 @@
 }
 ```
 
-- [ ] **Step 2: Write tsconfig.json**
+- [x] **Step 2: Write tsconfig.json**
 
 `packages/provider-copilot/tsconfig.json`:
 ```json
@@ -158,7 +158,7 @@ Expected: PASS — at this point nothing imports the new package yet, but the ne
 - Create: `packages/provider-copilot/src/connection-mismatch.ts`
 - Create: `packages/provider-copilot/src/forward.ts`
 
-- [ ] **Step 1: Port the 6 service files**
+- [x] **Step 1: Port the 6 service files**
 
 For each of the 6 files below, copy the content verbatim from `apps/gateway/src/data-plane/services/copilot/` into `packages/provider-copilot/src/`. Adjust only `import` paths:
 - Imports that were `'../../../shared/config/constants.ts'` → `'./account-type'`
@@ -176,7 +176,7 @@ Files to port:
 
 Per file: read the original, write the copy with adjusted imports, then run `bun run typecheck` inside the package to catch missed paths early.
 
-- [ ] **Step 2: Typecheck the package after each file is added**
+- [x] **Step 2: Typecheck the package after each file is added**
 
 After each file is created, run:
 ```bash
@@ -191,7 +191,7 @@ Expected: PASS. Errors usually mean an import path was not rewritten — fix and
 **Files:**
 - All 22 files under `packages/provider-copilot/src/interceptors/{messages,responses,chat-completions,embeddings,shared}/`
 
-- [ ] **Step 1: Port the interceptors verbatim**
+- [x] **Step 1: Port the interceptors verbatim**
 
 For each file under `apps/gateway/src/data-plane/providers/copilot/interceptors/`, copy to the same relative path under `packages/provider-copilot/src/interceptors/`. Adjust only:
 - `import type { CopilotInterceptor } from "../../../../interceptors/runner"` → `from "@vnext/interceptor"`
@@ -200,7 +200,7 @@ For each file under `apps/gateway/src/data-plane/providers/copilot/interceptors/
 
 There are 22 files spanning 5 subdirectories. The diff per file is import-only; bodies are unchanged.
 
-- [ ] **Step 2: Typecheck**
+- [x] **Step 2: Typecheck**
 
 Run:
 ```bash
@@ -216,7 +216,7 @@ Expected: PASS.
 - Create: `packages/provider-copilot/src/provider.ts`
 - Create: `packages/provider-copilot/src/index.ts`
 
-- [ ] **Step 1: Port `provider.ts`**
+- [x] **Step 1: Port `provider.ts`**
 
 Copy `apps/gateway/src/data-plane/providers/copilot/provider.ts` to `packages/provider-copilot/src/provider.ts`. Adjust imports:
 - `'../../../shared/config/constants.ts'` (`AccountType`) → `'./account-type'`
@@ -228,7 +228,7 @@ Copy `apps/gateway/src/data-plane/providers/copilot/provider.ts` to `packages/pr
 - `'../probe.ts'` (`probeViaModels`) → `'@vnext/provider'`
 - `'./interceptors/...'` → `'./interceptors/...'` (paths within the same new package, unchanged relative)
 
-- [ ] **Step 2: Write the package barrel `index.ts`**
+- [x] **Step 2: Write the package barrel `index.ts`**
 
 `packages/provider-copilot/src/index.ts`:
 ```ts
@@ -241,7 +241,7 @@ export type { Model, ModelsResponse } from './models'
 
 NOTE: Confirm `CopilotProviderConfig` is the exact exported name in `provider.ts`; adjust if the verbatim port used a different name.
 
-- [ ] **Step 3: Typecheck the package end-to-end**
+- [x] **Step 3: Typecheck the package end-to-end**
 
 Run: `cd /Users/zhangxian/projects/copilot-api-gateway/vnext/packages/provider-copilot && bun run typecheck`
 Expected: PASS.
@@ -259,7 +259,7 @@ Expected: PASS.
 - Modify: `apps/gateway/src/control-plane/upstreams/routes.ts`
 - Modify: any other site grepped in Step 2
 
-- [ ] **Step 1: Add the dependency**
+- [x] **Step 1: Add the dependency**
 
 In `apps/gateway/package.json` dependencies block, add (alphabetical order):
 ```json
@@ -267,7 +267,7 @@ In `apps/gateway/package.json` dependencies block, add (alphabetical order):
 ```
 Then: `cd /Users/zhangxian/projects/copilot-api-gateway/vnext && bun install`
 
-- [ ] **Step 2: Find every gateway site importing from the soon-to-be-deleted paths**
+- [x] **Step 2: Find every gateway site importing from the soon-to-be-deleted paths**
 
 Run:
 ```bash
@@ -276,7 +276,7 @@ grep -rn "from.*data-plane/providers/copilot\|from.*data-plane/services/copilot\
 ```
 Expected: list of ~10–15 files. Each one needs an import-path rewrite to `@vnext/provider-copilot` (or to its `./models` / `./forward` subpath exports).
 
-- [ ] **Step 3: Mechanical import rewrite**
+- [x] **Step 3: Mechanical import rewrite**
 
 For each match in Step 2, replace the local relative path with one of:
 - `@vnext/provider-copilot` (for `CopilotProvider`, `callCopilotAPI`, `getModels`, `repairToolResultPairs`, `Model`, `ModelsResponse`)
@@ -289,7 +289,7 @@ grep -rln "data-plane/providers/copilot\|data-plane/services/copilot\|services/c
 xargs perl -i -pe 's|from\s+'\''(\.\./)+providers/copilot/provider(\.ts)?'\''|from "@vnext/provider-copilot"|g; s|from\s+"(\.\./)+providers/copilot/provider(\.ts)?"|from "@vnext/provider-copilot"|g; s|from\s+'\''(\.\./)+services/copilot(/index)?(\.ts)?'\''|from "@vnext/provider-copilot"|g; s|from\s+"(\.\./)+services/copilot(/index)?(\.ts)?"|from "@vnext/provider-copilot"|g; s|from\s+'\''(\.\./)+services/copilot/forward(\.ts)?'\''|from "@vnext/provider-copilot"|g; s|from\s+"(\.\./)+services/copilot/forward(\.ts)?"|from "@vnext/provider-copilot"|g; s|from\s+'\''(\.\./)+services/copilot/models(\.ts)?'\''|from "@vnext/provider-copilot"|g; s|from\s+"(\.\./)+services/copilot/models(\.ts)?"|from "@vnext/provider-copilot"|g'
 ```
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 ```bash
@@ -298,7 +298,7 @@ grep -rn "data-plane/providers/copilot\|data-plane/services/copilot" --include="
 ```
 Expected: `OK` (no remaining non-test relative imports). Any line that prints means a manual fix is required.
 
-- [ ] **Step 5: Typecheck**
+- [x] **Step 5: Typecheck**
 
 Run: `cd /Users/zhangxian/projects/copilot-api-gateway/vnext && bun run typecheck`
 Expected: PASS.
@@ -310,12 +310,12 @@ Expected: PASS.
 **Files:**
 - Modify: `apps/gateway/src/data-plane/routes.ts`
 
-- [ ] **Step 1: Read the current dispatcher**
+- [x] **Step 1: Read the current dispatcher**
 
 Run: `cat /Users/zhangxian/projects/copilot-api-gateway/vnext/apps/gateway/src/data-plane/routes.ts`
 Expected output: shows the file. Locate the line `const provider = new FakeProvider()` and the surrounding handler context (endpoint, requested model, source api).
 
-- [ ] **Step 2: Implement real binding resolution**
+- [x] **Step 2: Implement real binding resolution**
 
 Replace the FakeProvider construction with a call to the existing `resolveBinding` helper (`apps/gateway/src/data-plane/routing/binding-resolver.ts`), which is already what `embeddings/routes.ts` and `images/routes.ts` use. The dispatcher now follows the same shape:
 
@@ -340,7 +340,7 @@ const enabledFlags = binding.enabledFlags
 
 The exact variable names in scope (`endpoint`, `requestedModelId`, `sourceApi`, etc.) must be read from the current `routes.ts` body. Match its existing style and reuse `stripUpstreamPin` to strip any `upstream:` prefix the same way `embeddings/routes.ts` does (look at that file as the reference implementation).
 
-- [ ] **Step 3: Typecheck**
+- [x] **Step 3: Typecheck**
 
 Run: `cd /Users/zhangxian/projects/copilot-api-gateway/vnext && bun run typecheck`
 Expected: PASS.
@@ -353,7 +353,7 @@ Expected: PASS.
 - Delete: `apps/gateway/src/data-plane/providers/copilot/` (recursive)
 - Delete: `apps/gateway/src/data-plane/services/copilot/` (recursive)
 
-- [ ] **Step 1: Confirm nothing in gateway still imports from these directories**
+- [x] **Step 1: Confirm nothing in gateway still imports from these directories**
 
 Run:
 ```bash
@@ -362,7 +362,7 @@ grep -rn "data-plane/providers/copilot\|data-plane/services/copilot" --include="
 ```
 Expected: `OK`. (Tests under `apps/gateway/tests/` referencing internal paths should now go through `@vnext/provider-copilot`; if any are still pointing at the old paths, rewrite them now.)
 
-- [ ] **Step 2: Delete the directories**
+- [x] **Step 2: Delete the directories**
 
 Run:
 ```bash
@@ -370,7 +370,7 @@ cd /Users/zhangxian/projects/copilot-api-gateway/vnext && \
 rm -r apps/gateway/src/data-plane/providers/copilot apps/gateway/src/data-plane/services/copilot
 ```
 
-- [ ] **Step 3: Typecheck after deletion**
+- [x] **Step 3: Typecheck after deletion**
 
 Run: `cd /Users/zhangxian/projects/copilot-api-gateway/vnext && bun run typecheck`
 Expected: PASS.
@@ -379,12 +379,14 @@ Expected: PASS.
 
 ### Task 9: Run the gateway test suite
 
-- [ ] **Step 1: Run all tests**
+- [x] **Step 1: Run all tests**
 
 Run: `cd /Users/zhangxian/projects/copilot-api-gateway/vnext && bun test`
 Expected: 237 pass / 0 fail / 0 error.
 
 If a test fails because it imports an internal path like `'../src/data-plane/providers/copilot/...'`, rewrite the test's import to `@vnext/provider-copilot` (the public surface). Do NOT add re-export shims in gateway to keep deleted paths alive — the migration must be clean.
+
+NOTE: Per user decision (Plan A), the four legacy e2e files (`messages.e2e.test.ts`, `chat.e2e.test.ts`, `responses.e2e.test.ts`, `gemini.e2e.test.ts`) were rewritten to the same stub-upstream pattern as `data-plane-models-embeddings-images.test.ts`: stub repo with one Copilot upstream, stub `globalThis.fetch` to canned `/models` + `/responses` responses, wrap the real Hono app with a tiny Hono shim that pre-populates `auth.copilot`. The wire-shape assertions (event names, JSON fields, stop_reason mapping, SSE chunking) are preserved verbatim — only the hard-coded "FakeProvider" literal is replaced by the upstream's "Hello from upstream" stub text.
 
 ---
 
@@ -417,7 +419,7 @@ Expected: HTTP 200, valid Anthropic Messages JSON. Any 5xx means the dispatcher 
 
 ### Task 11: Commit
 
-- [ ] **Step 1: Stage and commit**
+- [x] **Step 1: Stage and commit**
 
 Run:
 ```bash

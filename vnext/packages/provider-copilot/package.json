@@ -1,0 +1,19 @@
+{
+  "name": "@vnext/provider-copilot",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./models": "./src/models.ts",
+    "./forward": "./src/forward.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vnext/protocols": "workspace:*",
+    "@vnext/interceptor": "workspace:*",
+    "@vnext/provider": "workspace:*"
+  }
+}

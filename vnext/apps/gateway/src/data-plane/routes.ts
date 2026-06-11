@@ -6,12 +6,12 @@ import { chatIn } from './adapters/frontend/chat-in.ts'
 import { responsesIn } from './adapters/frontend/responses-in.ts'
 import { geminiIn } from './adapters/frontend/gemini-in.ts'
 import { responsesOut } from './adapters/backend/responses-out.ts'
-import { FakeProvider } from '@vnext/provider'
 import type { FrontendAdapter } from '@vnext/translate/contract'
 import type { IRRequest, IREvent } from '@vnext/protocols/ir'
 import { modelsRouter, type DataPlaneAuthCtx } from './models/routes.ts'
 import { embeddingsRouter } from './embeddings/routes.ts'
 import { imagesRouter } from './images/routes.ts'
+import { resolveBinding, parseModelRouting } from './routing/binding-resolver.ts'
 import { handleMessagesWebSearch, hasWebSearch } from './orchestrator/server-tools/plugins/web-search/index.ts'
 import { handleResponsesImageGeneration, hasImageGeneration } from './orchestrator/server-tools/plugins/image-generation/index.ts'
 
@@ -35,6 +35,8 @@ async function dispatch<TPayload>(
   adapter: FrontendAdapter<TPayload>,
   toIR: (payload: TPayload) => IRRequest,
   errorWrap: (status: number, body: unknown) => Response,
+  auth: DataPlaneAuthCtx,
+  sourceApi: 'messages' | 'chat_completions' | 'responses' | undefined,
 ): Promise<Response> {
   let raw: unknown
   try { raw = await c.req.json() } catch {
@@ -47,11 +49,28 @@ async function dispatch<TPayload>(
     return errorWrap(e.status ?? 400, e.body ?? { type: 'error', error: { type: 'invalid_request_error', message: e.message } })
   }
   const ir = toIR(payload)
-  const provider = new FakeProvider()
+  // Strip any "up_<id>/<model>" pin from ir.model so the upstream payload is clean.
+  // resolveBinding accepts the raw (pinned) model id and parses it internally.
+  const requestedModel = ir.model
+  const { bareModel } = parseModelRouting(requestedModel)
+  if (bareModel !== requestedModel) ir.model = bareModel
+  const binding = await resolveBinding(requestedModel, 'responses', {
+    ownerId: auth.userId,
+    copilot: auth.copilot,
+  })
+  if (!binding) {
+    return errorWrap(404, {
+      error: {
+        type: 'invalid_request_error',
+        message: `No upstream serves model "${requestedModel}" on endpoint "responses". Run GET /v1/models for available ids.`,
+      },
+    })
+  }
   const upstreamPayload = responsesOut.toUpstream(ir)
-  const upstreamRes = await provider.fetch(
+  const upstreamRes = await binding.provider.fetch(
     'responses',
     { method: 'POST', body: JSON.stringify(upstreamPayload), headers: { 'content-type': 'application/json' } },
+    { operationName: 'data-plane dispatch', enabledFlags: binding.enabledFlags, sourceApi },
   )
   if (!upstreamRes.ok) {
     const body = await upstreamRes.text()
@@ -108,12 +127,17 @@ dataPlane.post('/v1/messages', async (c) => {
     messagesIn,
     (p) => messagesIn.toIR(p),
     (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
+    (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx,
+    'messages',
   )
 })
 
 dataPlane.post('/v1/chat/completions', (c) =>
   dispatch(c, chatIn, (p) => chatIn.toIR(p), (status, body) =>
-    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })))
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
+    (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx,
+    'chat_completions',
+  ))
 
 dataPlane.post('/v1/responses', async (c) => {
   // image_generation server-tool intercept short-circuits the IR pipeline:
@@ -144,6 +168,8 @@ dataPlane.post('/v1/responses', async (c) => {
     responsesIn,
     (p) => responsesIn.toIR(p),
     (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
+    (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx,
+    'responses',
   )
 })
 
@@ -157,5 +183,8 @@ dataPlane.post('/v1beta/models/:model{.+}', (c) => {
     ir.stream = stream
     return ir
   }, (status, body) =>
-    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }))
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
+    (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx,
+    undefined,
+  )
 })

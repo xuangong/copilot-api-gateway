@@ -19,9 +19,9 @@ import type { AccountType } from '../../shared/config/constants.ts'
 import { defaultsForUpstream, resolveEffectiveFlags } from '../flags/index.ts'
 import type { UpstreamRecord } from '../../shared/repo/types.ts'
 import { getRepo } from '../../shared/repo/index.ts'
-import type { Model, ModelsResponse } from '../services/copilot/models.ts'
+import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import type { ModelProvider, ProviderBinding } from '@vnext/provider'
-import { CopilotProvider } from './copilot/provider.ts'
+import { CopilotProvider } from '@vnext/provider-copilot'
 
 export interface CreateProviderOptions {
   copilotToken: string

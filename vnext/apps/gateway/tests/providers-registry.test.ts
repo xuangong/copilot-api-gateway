@@ -6,7 +6,7 @@ import {
   listUpstreamModels,
   inferModelKind,
 } from '../src/data-plane/providers/registry.ts'
-import type { Model, ModelsResponse } from '../src/data-plane/services/copilot/models.ts'
+import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 
 const stubModel = (id: string, type = 'text'): Model => ({
   id,

@@ -28,6 +28,7 @@
         "@vnext/interceptor": "workspace:*",
         "@vnext/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
+        "@vnext/provider-copilot": "workspace:*",
         "@vnext/translate": "workspace:*",
         "hono": "^4.12.23",
         "zod": "^4.4.3",
@@ -56,6 +57,15 @@
       "version": "0.0.0",
       "dependencies": {
         "@vnext/protocols": "workspace:*",
+      },
+    },
+    "packages/provider-copilot": {
+      "name": "@vnext/provider-copilot",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vnext/interceptor": "workspace:*",
+        "@vnext/protocols": "workspace:*",
+        "@vnext/provider": "workspace:*",
       },
     },
     "packages/translate": {
@@ -326,6 +336,8 @@
     "@vnext/protocols": ["@vnext/protocols@workspace:packages/protocols"],
 
     "@vnext/provider": ["@vnext/provider@workspace:packages/provider"],
+
+    "@vnext/provider-copilot": ["@vnext/provider-copilot@workspace:packages/provider-copilot"],
 
     "@vnext/translate": ["@vnext/translate@workspace:packages/translate"],
 

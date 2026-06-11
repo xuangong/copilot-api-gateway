@@ -14,7 +14,7 @@
  *   - Flag aggregation gives downstream handlers a single object to read.
  */
 
-import { repairToolResultPairs } from "../services/copilot/index"
+import { repairToolResultPairs } from "@vnext/provider-copilot"
 
 import { applyTopLevelCacheControl } from "./apply-top-level-cache-control"
 import { stripReservedKeywords } from "./billing-header"

@@ -36,7 +36,7 @@ import {
   defaultsForUpstream,
 } from '../../data-plane/flags/index.ts'
 import { createProviderFromUpstream } from '../../data-plane/providers/registry.ts'
-import { clearRawModelsCache } from '../../data-plane/services/copilot/raw-models-cache.ts'
+import { clearRawModelsCache } from '@vnext/provider-copilot'
 
 export interface AuthCtx {
   isAdmin?: boolean

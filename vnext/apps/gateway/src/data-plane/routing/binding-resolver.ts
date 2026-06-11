@@ -13,7 +13,7 @@
 import type { EndpointKey } from '@vnext/protocols/common'
 import { bindingsForEndpoint, type ProviderBinding } from './binding.ts'
 import { listProviderBindings, type CreateProviderOptions } from '../providers/registry.ts'
-import { parseCompositeModelId } from '../services/copilot/variants.ts'
+import { parseCompositeModelId } from '@vnext/provider-copilot'
 
 export interface ModelRoutingHint {
   upstreamPin?: string
