@@ -24,13 +24,13 @@ async function extractUpstream(res: Response): Promise<ExtractedError> {
   const ct = res.headers.get('content-type') ?? ''
   if (ct.includes('application/json')) {
     try {
-      const parsed = JSON.parse(text) as {
-        error?: { message?: string; type?: string; code?: string }
-        message?: string
+      const parsed = JSON.parse(text) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const p = parsed as { error?: { message?: string; type?: string; code?: string }; message?: string }
+        const e = p.error
+        if (e && typeof e.message === 'string') return { message: e.message, type: e.type, code: e.code }
+        if (typeof p.message === 'string') return { message: p.message }
       }
-      const e = parsed.error
-      if (e && typeof e.message === 'string') return { message: e.message, type: e.type, code: e.code }
-      if (typeof parsed.message === 'string') return { message: parsed.message }
       return { message: text }
     } catch {
       return { message: text }
@@ -63,7 +63,7 @@ export async function repackageUpstreamError(res: Response, sourceApi: SourceApi
       error: {
         type: type ?? (status >= 500 ? 'api_error' : 'invalid_request_error'),
         message,
-        code: code ?? null,
+        ...(code !== undefined ? { code } : {}),
       },
     }
   } else if (sourceApi === 'gemini') {
@@ -71,7 +71,7 @@ export async function repackageUpstreamError(res: Response, sourceApi: SourceApi
       error: { code: status, message, status: geminiStatus(status) },
     }
   } else {
-    body = { error: { message, code: code ?? null } }
+    body = { error: { message, ...(code !== undefined ? { code } : {}) } }
   }
   return new Response(JSON.stringify(body), {
     status,

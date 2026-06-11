@@ -50,7 +50,8 @@ test('non-JSON upstream body falls back to raw text', async () => {
   const up = new Response('upstream down', { status: 502, headers: { 'content-type': 'text/plain' } })
   const out = await repackageUpstreamError(up, 'chat_completions')
   expect(out.status).toBe(502)
-  const body = await out.json() as { error: { message: string } }
+  const body = await out.json() as { error: { type: string; message: string } }
+  expect(body.error.type).toBe('api_error')
   expect(body.error.message).toContain('upstream down')
 })
 
@@ -61,3 +62,22 @@ test('unknown sourceApi → generic JSON passthrough', async () => {
   const body = await out.json() as { error: { message: string } }
   expect(body.error.message).toContain('teapot')
 })
+
+test('upstream JSON array body falls back to raw text', async () => {
+  const up = jsonRes(500, [{ message: 'x' }])
+  const out = await repackageUpstreamError(up, 'chat_completions')
+  expect(out.status).toBe(500)
+  const body = await out.json() as { error: { type: string; message: string } }
+  expect(body.error.type).toBe('api_error')
+  expect(body.error.message).toContain('[')
+})
+
+test('upstream-provided error.type overrides default for chat_completions', async () => {
+  const up = jsonRes(503, { error: { type: 'server_error', message: 'boom' } })
+  const out = await repackageUpstreamError(up, 'chat_completions')
+  expect(out.status).toBe(503)
+  const body = await out.json() as { error: { type: string; message: string } }
+  expect(body.error.type).toBe('server_error')
+  expect(body.error.message).toBe('boom')
+})
+
