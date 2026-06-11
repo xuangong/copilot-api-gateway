@@ -98,6 +98,7 @@ export const chatOut: BackendAdapter = {
       yield { type: 'response.output_text.delta', delta: msg.content }
     }
     for (const tc of msg?.tool_calls ?? []) {
+      if (!tc.function) continue
       let parsed: unknown = {}
       try { parsed = JSON.parse(tc.function.arguments) } catch { parsed = tc.function.arguments }
       yield {
