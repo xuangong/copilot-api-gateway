@@ -152,3 +152,43 @@ test('decodeBody surfaces tool_calls as tool_call.completed events', async () =>
   const done = events[events.length - 1] as Extract<IREvent, { type: 'response.completed' }>
   expect(done.response.finish_reason).toBe('tool_calls')
 })
+
+function sseStream(chunks: string[]): ReadableStream<Uint8Array> {
+  const enc = new TextEncoder()
+  return new ReadableStream({
+    start(controller) {
+      for (const c of chunks) controller.enqueue(enc.encode(c))
+      controller.close()
+    },
+  })
+}
+
+test('decodeSSE emits text deltas and completed with finish_reason', async () => {
+  const chunks = [
+    `data: ${JSON.stringify({ id: 'cmpl_1', choices: [{ index: 0, delta: { role: 'assistant', content: 'Hello' } }] })}\n\n`,
+    `data: ${JSON.stringify({ id: 'cmpl_1', choices: [{ index: 0, delta: { content: ' world' } }] })}\n\n`,
+    `data: ${JSON.stringify({ id: 'cmpl_1', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`,
+    `data: [DONE]\n\n`,
+  ]
+  const events = await collect(chatOut.decodeSSE(sseStream(chunks)))
+  expect(events[0]?.type).toBe('response.created')
+  const deltas = events.filter((e) => e.type === 'response.output_text.delta') as Array<Extract<IREvent, { type: 'response.output_text.delta' }>>
+  expect(deltas.map((d) => d.delta).join('')).toBe('Hello world')
+  const done = events[events.length - 1] as Extract<IREvent, { type: 'response.completed' }>
+  expect(done.type).toBe('response.completed')
+  expect(done.response.finish_reason).toBe('stop')
+})
+
+test('decodeSSE accumulates tool_call argument fragments', async () => {
+  const chunks = [
+    `data: ${JSON.stringify({ id: 'cmpl_2', choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: 'call_1', function: { name: 'do_it', arguments: '{"a":' } }] } }] })}\n\n`,
+    `data: ${JSON.stringify({ id: 'cmpl_2', choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '1}' } }] } }] })}\n\n`,
+    `data: ${JSON.stringify({ id: 'cmpl_2', choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] })}\n\n`,
+    `data: [DONE]\n\n`,
+  ]
+  const events = await collect(chatOut.decodeSSE(sseStream(chunks)))
+  const tc = events.find((e) => e.type === 'response.tool_call.completed') as Extract<IREvent, { type: 'response.tool_call.completed' }>
+  expect(tc.itemId).toBe('call_1')
+  expect(tc.name).toBe('do_it')
+  expect(tc.arguments).toEqual({ a: 1 })
+})

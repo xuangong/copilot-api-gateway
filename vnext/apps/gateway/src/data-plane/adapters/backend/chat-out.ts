@@ -79,8 +79,59 @@ export const chatOut: BackendAdapter = {
       parallel_tool_calls: req.parallel_tool_calls,
     }
   },
-  async *decodeSSE(): AsyncIterable<IREvent> {
-    throw new Error('chatOut.decodeSSE: not implemented (Task 5)')
+  async *decodeSSE(stream: ReadableStream<Uint8Array>): AsyncIterable<IREvent> {
+    const reader = stream.getReader()
+    const dec = new TextDecoder()
+    let buf = ''
+    let respId = ''
+    let finishReason = 'stop'
+    let createdEmitted = false
+    const toolAcc = new Map<number, { id: string; name: string; argsBuf: string }>()
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      const frames = buf.split('\n\n')
+      buf = frames.pop() ?? ''
+      for (const f of frames) {
+        const dataLines = f.split('\n').filter((ln) => ln.startsWith('data:'))
+        if (dataLines.length === 0) continue
+        const data = dataLines.map((ln) => ln.slice(5).trim()).join('')
+        if (!data || data === '[DONE]') continue
+        let chunk: {
+          id?: string
+          choices?: Array<{
+            delta?: { content?: string; tool_calls?: Array<{ index: number; id?: string; function?: { name?: string; arguments?: string } }> }
+            finish_reason?: string | null
+          }>
+        }
+        try { chunk = JSON.parse(data) } catch { continue }
+        if (!createdEmitted) {
+          respId = chunk.id ?? ''
+          yield { type: 'response.created', response: { id: respId } }
+          createdEmitted = true
+        }
+        const choice = chunk.choices?.[0]
+        const delta = choice?.delta
+        if (delta?.content) {
+          yield { type: 'response.output_text.delta', delta: delta.content }
+        }
+        for (const tc of delta?.tool_calls ?? []) {
+          const slot = toolAcc.get(tc.index) ?? { id: '', name: '', argsBuf: '' }
+          if (tc.id) slot.id = tc.id
+          if (tc.function?.name) slot.name = tc.function.name
+          if (tc.function?.arguments) slot.argsBuf += tc.function.arguments
+          toolAcc.set(tc.index, slot)
+        }
+        if (choice?.finish_reason) finishReason = choice.finish_reason
+      }
+    }
+    for (const slot of toolAcc.values()) {
+      let parsed: unknown = {}
+      try { parsed = JSON.parse(slot.argsBuf) } catch { parsed = slot.argsBuf }
+      yield { type: 'response.tool_call.completed', itemId: slot.id, name: slot.name, arguments: parsed }
+    }
+    yield { type: 'response.completed', response: { id: respId, finish_reason: finishReason } }
   },
   async *decodeBody(body: unknown): AsyncIterable<IREvent> {
     const r = body as {
