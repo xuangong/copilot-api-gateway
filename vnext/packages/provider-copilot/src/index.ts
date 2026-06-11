@@ -24,7 +24,7 @@ export type {
   ModelCapabilities,
 } from "./models"
 
-export { parseCompositeModelId } from "./variants"
+export { parseCompositeModelId, normalizeAnthropicVersion, copilotPublicModelId } from "./variants"
 export { clearRawModelsCache } from "./raw-models-cache"
 
 export type { AccountType } from "./account-type"
