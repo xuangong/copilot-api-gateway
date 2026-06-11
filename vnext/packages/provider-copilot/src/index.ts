@@ -28,3 +28,5 @@ export { parseCompositeModelId } from "./variants"
 export { clearRawModelsCache } from "./raw-models-cache"
 
 export type { AccountType } from "./account-type"
+
+export { copilotModelEndpoints } from "./endpoints"
