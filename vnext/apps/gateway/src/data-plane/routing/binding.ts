@@ -6,7 +6,6 @@
  * dispatch to, on which endpoint, with which flags effective?"
  */
 import type { EndpointKey } from '@vnext/protocols/common'
-import { endpointCompatibleWithKind } from '@vnext/protocols/common'
 import type { BindingModel, ProviderBinding } from '@vnext/provider'
 export type { BindingModel, ProviderBinding }
 
@@ -14,10 +13,7 @@ export function bindingServesEndpoint(
   binding: ProviderBinding,
   endpoint: EndpointKey,
 ): boolean {
-  if (!binding.upstreamEndpoints.includes(endpoint)) return false
-  const kind = binding.model.kind
-  if (!kind) return true
-  return endpointCompatibleWithKind(endpoint, kind)
+  return binding.model.endpoints[endpoint] !== undefined
 }
 
 export function bindingsForEndpoint(
