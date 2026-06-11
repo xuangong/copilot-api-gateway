@@ -73,7 +73,7 @@ function buildApp(auth: DataPlaneAuthCtx) {
 
 const COPILOT_TOKEN = 'tkn'
 const ACCOUNT_TYPE = 'individual' as const
-const MODEL_ID = 'gpt-4o-mini'
+const MODEL_ID = 'gpt-5-mini'
 
 const upstreamJson = {
   id: 'resp_upstream_1',

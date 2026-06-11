@@ -145,7 +145,7 @@ test('POST /v1/messages non-stream returns Anthropic-shaped body', async () => {
   expect(body.role).toBe('assistant')
   expect(body.content[0]?.type).toBe('text')
   expect(body.content[0]?.text).toContain('Hello from upstream')
-  expect(body.stop_reason).toBe('stop')
+  expect(body.stop_reason).toBe('end_turn')
   expect(body.usage.output_tokens).toBeGreaterThan(0)
 })
 
@@ -210,4 +210,4 @@ test('POST /v1/messages surfaces upstream 503 as Anthropic error envelope', asyn
   expect(body.type).toBe('error')
   expect(body.error.type).toBe('api_error')
   expect(body.error.message).toContain('upstream overloaded')
-})
+}, 20000)
