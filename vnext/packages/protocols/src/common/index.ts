@@ -48,3 +48,6 @@ export interface ModelPricing {
 
 /** Client-visible protocol families. */
 export type ClientProtocol = 'messages' | 'chat' | 'responses' | 'gemini'
+
+export type { ModelEndpoints } from './model-endpoints'
+export { kindForEndpoints } from './model-endpoints'
