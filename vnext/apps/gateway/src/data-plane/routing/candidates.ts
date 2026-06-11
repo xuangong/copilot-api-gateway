@@ -27,17 +27,20 @@ export interface EnumerateResult {
   upstreamPin?: string
 }
 
-export async function enumerateBindingCandidates(args: {
+/**
+ * Pure filter — exposed for testing. Same logic as enumerateBindingCandidates
+ * minus the listProviderBindings I/O.
+ */
+export function filterBindingCandidates(args: {
+  bindings: readonly ProviderBinding[]
   model: string
   pickTarget: (e: ModelEndpoints) => EndpointKey | null
-  opts?: EnumerateOptions
-}): Promise<EnumerateResult> {
-  const { model, pickTarget, opts = {} } = args
+  pin?: string
+}): EnumerateResult {
+  const { bindings, model, pickTarget, pin } = args
   const parsed = parseModelRouting(model)
-  const upstreamPin = opts.pin ?? parsed.upstreamPin
+  const upstreamPin = pin ?? parsed.upstreamPin
   const bareModel = parsed.bareModel
-
-  const bindings = await listProviderBindings({ ownerId: opts.ownerId, copilot: opts.copilot })
 
   const composite = parseCompositeModelId(bareModel)
   const altId = composite.baseId && composite.baseId !== bareModel ? composite.baseId : null
@@ -59,4 +62,14 @@ export async function enumerateBindingCandidates(args: {
   }
 
   return { candidates, sawModel, bareModel, upstreamPin }
+}
+
+export async function enumerateBindingCandidates(args: {
+  model: string
+  pickTarget: (e: ModelEndpoints) => EndpointKey | null
+  opts?: EnumerateOptions
+}): Promise<EnumerateResult> {
+  const { model, pickTarget, opts = {} } = args
+  const bindings = await listProviderBindings({ ownerId: opts.ownerId, copilot: opts.copilot })
+  return filterBindingCandidates({ bindings, model, pickTarget, pin: opts.pin })
 }
