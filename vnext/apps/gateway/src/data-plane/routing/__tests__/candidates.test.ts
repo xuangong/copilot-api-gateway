@@ -27,8 +27,8 @@ test('filterBindingCandidates: messages pick strategy on claude-3-5-sonnet', () 
   const result = filterBindingCandidates({ bindings, model: 'claude-3-5-sonnet', pickTarget: messagesPick })
 
   expect(result.candidates).toHaveLength(1)
-  expect(result.candidates[0].binding.model.id).toBe('claude-3-5-sonnet')
-  expect(result.candidates[0].targetEndpoint).toBe('messages')
+  expect(result.candidates[0]!.binding.model.id).toBe('claude-3-5-sonnet')
+  expect(result.candidates[0]!.targetEndpoint).toBe('messages')
   expect(result.sawModel).toBe(true)
 })
 
@@ -39,8 +39,8 @@ test('filterBindingCandidates: messages pick strategy on gpt-5-mini', () => {
   const result = filterBindingCandidates({ bindings, model: 'gpt-5-mini', pickTarget: messagesPick })
 
   expect(result.candidates).toHaveLength(1)
-  expect(result.candidates[0].binding.model.id).toBe('gpt-5-mini')
-  expect(result.candidates[0].targetEndpoint).toBe('responses')
+  expect(result.candidates[0]!.binding.model.id).toBe('gpt-5-mini')
+  expect(result.candidates[0]!.targetEndpoint).toBe('responses')
   expect(result.sawModel).toBe(true)
 })
 
