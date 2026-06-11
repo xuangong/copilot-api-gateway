@@ -14,6 +14,11 @@ services:
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=localhost,127.0.0.1
+      # Dev-only: bypasses dashboard OAuth so smoke tests can hit /v1/* directly.
+      # Set ONE of these in .env (or shell) — leave both unset for prod-like runs.
+      - VNEXT_DEV_GITHUB_TOKEN=${VNEXT_DEV_GITHUB_TOKEN:-}
+      - VNEXT_DEV_COPILOT_TOKEN=${VNEXT_DEV_COPILOT_TOKEN:-}
+      - VNEXT_DEV_USER_ID=${VNEXT_DEV_USER_ID:-dev-user}
     volumes:
       # Persist vnext sqlite separately from the prod gateway's .data dir.
       - ./data-vnext:/data

@@ -3,6 +3,7 @@ import { dataPlane } from './data-plane/routes.ts'
 import { controlPlane } from './control-plane/routes.ts'
 import { staticPages } from './shared/edge/static-pages.ts'
 import { getRepo } from './shared/repo/index.ts'
+import { devAuthMiddleware } from './shared/dev-auth.ts'
 
 export interface Env {
   DB: D1Database
@@ -22,6 +23,8 @@ app.get('/debug/db/users-count', async (c) => {
   const users = await getRepo().users.list()
   return c.json({ users: users.length })
 })
+
+app.use('*', devAuthMiddleware)
 
 app.route('/', dataPlane)
 app.route('/', controlPlane)
