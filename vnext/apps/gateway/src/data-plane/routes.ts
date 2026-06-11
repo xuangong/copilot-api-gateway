@@ -1,4 +1,4 @@
-/** Data-plane routes. Week 3a: unified dispatcher for all 4 frontend protocols via FakeProvider. */
+/** Data-plane routes. Plan 1 (Task #29): endpoint chosen per model; backend adapter per endpoint; HTTPError + non-2xx caught and repackaged. */
 import { Hono } from 'hono'
 import type { Env } from '../app.ts'
 import { messagesIn } from './adapters/frontend/messages-in.ts'
@@ -6,12 +6,18 @@ import { chatIn } from './adapters/frontend/chat-in.ts'
 import { responsesIn } from './adapters/frontend/responses-in.ts'
 import { geminiIn } from './adapters/frontend/gemini-in.ts'
 import { responsesOut } from './adapters/backend/responses-out.ts'
-import type { FrontendAdapter } from '@vnext/translate/contract'
+import { chatOut } from './adapters/backend/chat-out.ts'
+import { messagesOut } from './adapters/backend/messages-out.ts'
+import type { BackendAdapter, FrontendAdapter } from '@vnext/translate/contract'
 import type { IRRequest, IREvent } from '@vnext/protocols/ir'
+import type { EndpointKey } from '@vnext/protocols/common'
 import { modelsRouter, type DataPlaneAuthCtx } from './models/routes.ts'
 import { embeddingsRouter } from './embeddings/routes.ts'
 import { imagesRouter } from './images/routes.ts'
 import { resolveBinding, parseModelRouting } from './routing/binding-resolver.ts'
+import { chooseBackendEndpoint } from './routing/backend-selector.ts'
+import { repackageUpstreamError, type SourceApi } from './errors/repackage.ts'
+import { HTTPError } from '@vnext/provider-copilot'
 import { handleMessagesWebSearch, hasWebSearch } from './orchestrator/server-tools/plugins/web-search/index.ts'
 import { handleResponsesImageGeneration, hasImageGeneration } from './orchestrator/server-tools/plugins/image-generation/index.ts'
 
@@ -30,13 +36,19 @@ dataPlane.route('/', modelsRouter)
 dataPlane.route('/', embeddingsRouter)
 dataPlane.route('/', imagesRouter)
 
+function backendForEndpoint(endpoint: EndpointKey): BackendAdapter {
+  if (endpoint === 'chat_completions') return chatOut
+  if (endpoint === 'messages') return messagesOut
+  return responsesOut
+}
+
 async function dispatch<TPayload>(
   c: { req: { json: () => Promise<unknown> }; json: (b: unknown, s?: number) => Response; body: (b: BodyInit, s?: number, h?: Record<string, string>) => Response },
   adapter: FrontendAdapter<TPayload>,
   toIR: (payload: TPayload) => IRRequest,
   errorWrap: (status: number, body: unknown) => Response,
   auth: DataPlaneAuthCtx,
-  sourceApi: 'messages' | 'chat_completions' | 'responses' | undefined,
+  sourceApi: SourceApi,
 ): Promise<Response> {
   let raw: unknown
   try { raw = await c.req.json() } catch {
@@ -49,12 +61,14 @@ async function dispatch<TPayload>(
     return errorWrap(e.status ?? 400, e.body ?? { type: 'error', error: { type: 'invalid_request_error', message: e.message } })
   }
   const ir = toIR(payload)
-  // Strip any "up_<id>/<model>" pin from ir.model so the upstream payload is clean.
-  // resolveBinding accepts the raw (pinned) model id and parses it internally.
   const requestedModel = ir.model
   const { bareModel } = parseModelRouting(requestedModel)
   if (bareModel !== requestedModel) ir.model = bareModel
-  const binding = await resolveBinding(requestedModel, 'responses', {
+
+  const upstreamEndpoint = chooseBackendEndpoint(bareModel)
+  const backend = backendForEndpoint(upstreamEndpoint)
+
+  const binding = await resolveBinding(requestedModel, upstreamEndpoint, {
     ownerId: auth.userId,
     copilot: auth.copilot,
   })
@@ -62,29 +76,37 @@ async function dispatch<TPayload>(
     return errorWrap(404, {
       error: {
         type: 'invalid_request_error',
-        message: `No upstream serves model "${requestedModel}" on endpoint "responses". Run GET /v1/models for available ids.`,
+        message: `No upstream serves model "${requestedModel}" on endpoint "${upstreamEndpoint}". Run GET /v1/models for available ids.`,
       },
     })
   }
-  const upstreamPayload = responsesOut.toUpstream(ir)
-  const upstreamRes = await binding.provider.fetch(
-    'responses',
-    { method: 'POST', body: JSON.stringify(upstreamPayload), headers: { 'content-type': 'application/json' } },
-    { operationName: 'data-plane dispatch', enabledFlags: binding.enabledFlags, sourceApi },
-  )
+  const upstreamPayload = backend.toUpstream(ir)
+  let upstreamRes: Response
+  try {
+    upstreamRes = await binding.provider.fetch(
+      upstreamEndpoint,
+      { method: 'POST', body: JSON.stringify(upstreamPayload), headers: { 'content-type': 'application/json' } },
+      { operationName: 'data-plane dispatch', enabledFlags: binding.enabledFlags, sourceApi: sourceApi === 'gemini' ? undefined : sourceApi },
+    )
+  } catch (err) {
+    if (err instanceof HTTPError) {
+      return await repackageUpstreamError(err.response, sourceApi)
+    }
+    const message = err instanceof Error ? err.message : 'upstream error'
+    return errorWrap(502, { error: { type: 'api_error', message } })
+  }
   if (!upstreamRes.ok) {
-    const body = await upstreamRes.text()
-    return new Response(body, { status: upstreamRes.status, headers: { 'content-type': upstreamRes.headers.get('content-type') ?? 'application/json' } })
+    return await repackageUpstreamError(upstreamRes, sourceApi)
   }
   if (ir.stream) {
     const events = upstreamRes.body
-      ? responsesOut.decodeSSE(upstreamRes.body)
+      ? backend.decodeSSE(upstreamRes.body)
       : (async function* (): AsyncIterable<IREvent> { /* empty */ })()
     const out = adapter.encodeSSE(events)
     return new Response(out, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' } })
   }
   const upstreamJson = await upstreamRes.json()
-  const events = responsesOut.decodeBody(upstreamJson)
+  const events = backend.decodeBody(upstreamJson)
   const body = await adapter.encodeBody(events)
   return Response.json(body)
 }
@@ -185,6 +207,6 @@ dataPlane.post('/v1beta/models/:model{.+}', (c) => {
   }, (status, body) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
     (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx,
-    undefined,
+    'gemini',
   )
 })

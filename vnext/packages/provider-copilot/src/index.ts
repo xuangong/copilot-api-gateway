@@ -13,6 +13,8 @@ export type { CopilotProviderConfig } from "./provider"
 
 export { callCopilotAPI, repairToolResultPairs } from "./forward"
 
+export { HTTPError } from "./lib/error"
+
 export { getModels, getRawModels } from "./models"
 export type {
   Model,
