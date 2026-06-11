@@ -6,15 +6,18 @@
  *   - POST /images/edits        + /v1/images/edits        (multipart in, raw forward out)
  *
  * vnext deltas:
- *   - Quota / latency / usage trackers skipped with TODO markers; not yet ported.
  *   - resolveBinding signature change (see binding-resolver.ts).
  *   - Body forwarding: response.body + status + headers verbatim, same as old.
  *   - Hono parses JSON / FormData on demand via c.req.json() / c.req.formData().
+ *   - Quota + latency-only observability wired (images carry no usage tokens;
+ *     sourceApi/targetApi intentionally omitted so the perf fan-out is skipped).
  */
 import { Hono, type Context } from 'hono'
 import type { Env } from '../../app.ts'
 import { resolveBinding, stripUpstreamPin } from '../routing/binding-resolver.ts'
 import type { DataPlaneAuthCtx } from '../models/routes.ts'
+import { checkQuota } from '../../shared/observability/quota.ts'
+import { recordLatency, startTimer } from '../../shared/observability/latency-tracker.ts'
 
 type Vars = { auth: DataPlaneAuthCtx }
 
@@ -55,13 +58,42 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
     )
   }
 
+  const apiKeyId = auth.apiKeyId
+  const userAgent = c.req.header('user-agent') ?? undefined
+  const requestId = c.req.header('x-request-id') ?? undefined
+
+  if (apiKeyId) {
+    const quota = await checkQuota(apiKeyId)
+    if (!quota.allowed) {
+      return c.json({
+        error: {
+          type: 'rate_limit_error',
+          message: quota.reason ?? 'Daily quota exceeded.',
+          ...(quota.retryAfterSeconds != null ? { retry_after_seconds: quota.retryAfterSeconds } : {}),
+        },
+      }, 429)
+    }
+  }
+
+  const elapsed = startTimer()
+  const upstreamStart = Date.now()
   const response = await binding.provider.fetch(
     'images_generations',
     { method: 'POST', body: JSON.stringify(payload) },
     { operationName: 'create image', enabledFlags: binding.enabledFlags },
   )
+  const upstreamMs = Date.now() - upstreamStart
 
-  // TODO(week5+): recordLatency once latency-tracker is ported (images carry no usage tokens).
+  if (apiKeyId) {
+    await recordLatency(
+      apiKeyId,
+      payload.model,
+      'local',
+      { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
+      requestId,
+      { isError: !response.ok, upstream: 'github_copilot', userAgent },
+    )
+  }
 
   return new Response(response.body, {
     status: response.status,
@@ -109,6 +141,23 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
     )
   }
 
+  const apiKeyId = auth.apiKeyId
+  const userAgent = c.req.header('user-agent') ?? undefined
+  const requestId = c.req.header('x-request-id') ?? undefined
+
+  if (apiKeyId) {
+    const quota = await checkQuota(apiKeyId)
+    if (!quota.allowed) {
+      return c.json({
+        error: {
+          type: 'rate_limit_error',
+          message: quota.reason ?? 'Daily quota exceeded.',
+          ...(quota.retryAfterSeconds != null ? { retry_after_seconds: quota.retryAfterSeconds } : {}),
+        },
+      }, 429)
+    }
+  }
+
   // Rebuild FormData so upstream sees File/Blob verbatim. Hono's formData() returns
   // entries where files are File instances; preserve filename via append(key, value, name).
   const forward = new FormData()
@@ -121,11 +170,25 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
     }
   }
 
+  const elapsed = startTimer()
+  const upstreamStart = Date.now()
   const response = await binding.provider.fetch(
     'images_edits',
     { method: 'POST', body: forward },
     { operationName: 'edit image', enabledFlags: binding.enabledFlags },
   )
+  const upstreamMs = Date.now() - upstreamStart
+
+  if (apiKeyId) {
+    await recordLatency(
+      apiKeyId,
+      model,
+      'local',
+      { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
+      requestId,
+      { isError: !response.ok, upstream: 'github_copilot', userAgent },
+    )
+  }
 
   return new Response(response.body, {
     status: response.status,
