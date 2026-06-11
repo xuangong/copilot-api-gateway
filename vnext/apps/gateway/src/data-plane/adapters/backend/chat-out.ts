@@ -47,7 +47,8 @@ function toChatMessages(messages: IRMessage[]): ChatMessage[] {
       continue
     }
     if (toolCalls.length > 0) {
-      out.push({ role: 'assistant', content: null, tool_calls: toolCalls })
+      const text = messageText(m.content)
+      out.push({ role: 'assistant', content: text || null, tool_calls: toolCalls })
       continue
     }
     out.push({ role: m.role, content: messageText(m.content) })

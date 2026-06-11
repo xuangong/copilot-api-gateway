@@ -79,3 +79,26 @@ test('toUpstream translates structured tool_choice', () => {
   const out = chatOut.toUpstream(req) as { tool_choice: { type: string; function: { name: string } } }
   expect(out.tool_choice).toEqual({ type: 'function', function: { name: 'do_it' } })
 })
+
+test('toUpstream preserves assistant text when sibling tool_use is present', () => {
+  const req: IRRequest = {
+    model: 'gpt-4o-mini',
+    stream: false,
+    messages: [
+      { role: 'user', content: 'weather?' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'output_text', text: 'let me check' },
+          { type: 'tool_use', id: 'call_1', name: 'get_weather', arguments: { city: 'sf' } },
+        ],
+      },
+    ],
+    meta,
+  }
+  const out = chatOut.toUpstream(req) as { messages: Array<{ role: string; content: string | null; tool_calls?: unknown[] }> }
+  const asst = out.messages[1]
+  expect(asst?.role).toBe('assistant')
+  expect(asst?.content).toBe('let me check')
+  expect(asst?.tool_calls).toHaveLength(1)
+})
