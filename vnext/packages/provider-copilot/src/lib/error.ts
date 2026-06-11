@@ -1,16 +1,9 @@
 /**
- * HTTPError class — verbatim copy from apps/gateway/src/shared/lib/error.ts.
+ * HTTPError class — re-exported from @vnext/provider in Phase A Task 2 (X-2).
  *
- * Only the `HTTPError` shape is copied; gateway's `formatErrorResponse`
- * and `isAuthError` stay there because no Copilot data-plane file imports
- * them. Acceptable duplication: the class is structural, not behavioral
- * state, so two copies cannot drift in semantics.
+ * Original definition lives at `@vnext/provider/src/errors.ts`. This file
+ * stays so existing call-sites that import from
+ * `@vnext/provider-copilot/lib/error` keep working without churn; new code
+ * should prefer importing from `@vnext/provider`.
  */
-export class HTTPError extends Error {
-  response: Response
-
-  constructor(message: string, response: Response) {
-    super(message)
-    this.response = response
-  }
-}
+export { HTTPError } from '@vnext/provider'

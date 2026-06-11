@@ -1,3 +1,5 @@
 export * from './types'
 export * from './probe'
 export * from './binding'
+export * from './errors'
+export * from './upstream-response'
