@@ -3,6 +3,12 @@
  *
  * Routes: POST /embeddings and POST /v1/embeddings (both mounted for SDK compat).
  *
+ * Phase A Task 4 (X-4) refactor: the per-call observability scaffolding
+ * (quota gate → timer → call → record → usage) was extracted into
+ * `runEmbeddingsAttempt`. This file keeps request validation, body normalization,
+ * and binding resolution — i.e. everything embeddings-specific — and delegates
+ * the call/observability shape to the attempt module. No behavior change.
+ *
  * vnext deltas:
  *   - resolveBinding no longer takes AppState; CreateProviderOptions ride on the
  *     request-scoped auth ctx (see modelsRouter for the shape).
@@ -12,10 +18,7 @@ import { Hono, type Context } from 'hono'
 import type { Env } from '../../app.ts'
 import { resolveBinding, stripUpstreamPin } from '../routing/binding-resolver.ts'
 import type { DataPlaneAuthCtx } from '../models/routes.ts'
-import { checkQuota } from '../../shared/observability/quota.ts'
-import { recordLatency, startTimer } from '../../shared/observability/latency-tracker.ts'
-import { trackNonStreamingUsage } from '../../shared/observability/usage-tracker.ts'
-import { detectClient } from '../../shared/observability/client-detect.ts'
+import { runEmbeddingsAttempt } from '../observability/attempts/embeddings-attempt.ts'
 
 type Vars = { auth: DataPlaneAuthCtx }
 
@@ -60,65 +63,39 @@ async function handle(c: EmbeddingsCtx): Promise<Response> {
     )
   }
 
-  const apiKeyId = auth.apiKeyId
-  const userAgent = c.req.header('user-agent') ?? undefined
-  const requestId = c.req.header('x-request-id') ?? undefined
-  const client = detectClient(userAgent)
+  const attempt = await runEmbeddingsAttempt({
+    apiKeyId: auth.apiKeyId,
+    model: body.model,
+    upstream: 'github_copilot',
+    userAgent: c.req.header('user-agent') ?? undefined,
+    requestId: c.req.header('x-request-id') ?? undefined,
+    call: () => binding.provider.fetch(
+      'embeddings',
+      { method: 'POST', body: JSON.stringify(body) },
+      { operationName: 'create embeddings', enabledFlags: binding.enabledFlags },
+    ),
+  })
 
-  if (apiKeyId) {
-    const quota = await checkQuota(apiKeyId)
-    if (!quota.allowed) {
-      return c.json({
-        error: {
-          type: 'rate_limit_error',
-          message: quota.reason ?? 'Daily quota exceeded.',
-          ...(quota.retryAfterSeconds != null ? { retry_after_seconds: quota.retryAfterSeconds } : {}),
-        },
-      }, 429)
-    }
+  if (!attempt.ok && attempt.status === 429) {
+    return c.json({
+      error: {
+        type: 'rate_limit_error',
+        message: attempt.rateLimit.reason,
+        ...(attempt.rateLimit.retryAfterSeconds != null
+          ? { retry_after_seconds: attempt.rateLimit.retryAfterSeconds }
+          : {}),
+      },
+    }, 429)
   }
 
-  const elapsed = startTimer()
-  const upstreamStart = Date.now()
-  const response = await binding.provider.fetch(
-    'embeddings',
-    { method: 'POST', body: JSON.stringify(body) },
-    { operationName: 'create embeddings', enabledFlags: binding.enabledFlags },
-  )
-  const upstreamMs = Date.now() - upstreamStart
-
-  const json = await response.json()
-
-  if (apiKeyId) {
-    if (response.ok) {
-      await trackNonStreamingUsage(json, apiKeyId, body.model, client, 'github_copilot')
-      await recordLatency(
-        apiKeyId,
-        body.model,
-        'local',
-        { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
-        requestId,
-        {
-          stream: false,
-          sourceApi: 'embeddings',
-          targetApi: 'embeddings',
-          upstream: 'github_copilot',
-          userAgent,
-        },
-      )
-    } else {
-      await recordLatency(
-        apiKeyId,
-        body.model,
-        'local',
-        { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
-        requestId,
-        { isError: true, upstream: 'github_copilot', userAgent },
-      )
-    }
+  if (!attempt.ok) {
+    // Forward the upstream JSON verbatim (matches the pre-refactor behavior:
+    // the old handler always returned `Response.json(json, { status })`).
+    const json = await attempt.response.json().catch(() => null)
+    return Response.json(json, { status: attempt.status })
   }
 
-  return Response.json(json, { status: response.status })
+  return Response.json(attempt.json, { status: attempt.status })
 }
 
 embeddingsRouter.post('/embeddings', handle)
