@@ -25,11 +25,33 @@ const ToolResultBlock = z.object({
   is_error: z.boolean().optional(),
 }).loose()
 
-const ThinkingBlock = z.object({
-  type: z.union([z.literal('thinking'), z.literal('redacted_thinking')]),
+export const MessagesThinkingBlockSchema = z.object({
+  type: z.literal('thinking'),
+  thinking: z.string(),
+  signature: z.string().optional(),
+  id: z.string().optional(),
+  encryptedContent: z.string().optional(),
 }).loose()
 
-const ContentBlock = z.union([TextBlock, ImageBlock, ToolUseBlock, ToolResultBlock, ThinkingBlock])
+export const MessagesRedactedThinkingBlockSchema = z.object({
+  type: z.literal('redacted_thinking'),
+  data: z.string(),
+}).loose()
+
+export type MessagesThinkingBlock = z.infer<typeof MessagesThinkingBlockSchema>
+export type MessagesRedactedThinkingBlock = z.infer<typeof MessagesRedactedThinkingBlockSchema>
+
+/** Backwards-compatible alias for the previous loose ThinkingBlock union. */
+export type ThinkingBlock = MessagesThinkingBlock | MessagesRedactedThinkingBlock
+
+const ContentBlock = z.union([
+  TextBlock,
+  ImageBlock,
+  ToolUseBlock,
+  ToolResultBlock,
+  MessagesThinkingBlockSchema,
+  MessagesRedactedThinkingBlockSchema,
+])
 
 const Message = z.object({
   role: z.union([z.literal('user'), z.literal('assistant')]),
@@ -59,3 +81,24 @@ export const MessagesPayloadSchema = z.object({
 }).loose()
 
 export type MessagesPayload = z.infer<typeof MessagesPayloadSchema>
+
+export const MessagesResponseSchema = z.object({
+  id: z.string(),
+  type: z.literal('message'),
+  role: z.literal('assistant'),
+  model: z.string(),
+  content: z.array(ContentBlock),
+  stop_reason: z.string().nullable().optional(),
+  stop_sequence: z.string().nullable().optional(),
+  usage: z.object({
+    input_tokens: z.number(),
+    output_tokens: z.number(),
+    cache_creation_input_tokens: z.number().optional(),
+    cache_read_input_tokens: z.number().optional(),
+  }).loose(),
+}).loose()
+
+export type MessagesResponse = z.infer<typeof MessagesResponseSchema>
+
+export { HUB_VERSION } from './version.ts'
+export * from './events.ts'
