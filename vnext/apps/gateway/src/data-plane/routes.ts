@@ -22,6 +22,8 @@ import { handleMessagesWebSearch, hasWebSearch } from './orchestrator/server-too
 import { handleResponsesImageGeneration, hasImageGeneration } from './orchestrator/server-tools/plugins/image-generation/index.ts'
 import { checkQuota } from '../shared/observability/quota.ts'
 import { recordLatency, startTimer, type SourceApiInput, type TargetApiInput } from '../shared/observability/latency-tracker.ts'
+import { trackNonStreamingUsage, trackStreamingUsage } from '../shared/observability/usage-tracker.ts'
+import { detectClient } from '../shared/observability/client-detect.ts'
 
 export const dataPlane = new Hono<{ Bindings: Env }>()
 
@@ -80,6 +82,7 @@ async function dispatch<TPayload>(
   pickTarget: PickTarget,
   obsCtx: DispatchObsCtx,
 ): Promise<Response> {
+  const client = detectClient(obsCtx.userAgent)
   let raw: unknown
   try { raw = await c.req.json() } catch {
     return errorWrap(400, { type: 'error', error: { type: 'invalid_request_error', message: 'invalid JSON' } })
@@ -175,8 +178,12 @@ async function dispatch<TPayload>(
     return await repackageUpstreamError(upstreamRes, sourceApi)
   }
   if (ir.stream) {
-    const events = upstreamRes.body
-      ? backend.decodeSSE(upstreamRes.body)
+    let upstreamForDecode: Response = upstreamRes
+    if (obsCtx.apiKeyId) {
+      upstreamForDecode = trackStreamingUsage(upstreamRes, obsCtx.apiKeyId, ir.model, client, 'github_copilot')
+    }
+    const events = upstreamForDecode.body
+      ? backend.decodeSSE(upstreamForDecode.body)
       : (async function* (): AsyncIterable<IREvent> { /* empty */ })()
     const out = adapter.encodeSSE(events)
     if (obsCtx.apiKeyId) {
@@ -200,6 +207,9 @@ async function dispatch<TPayload>(
   const upstreamJson = await upstreamRes.json()
   const events = backend.decodeBody(upstreamJson)
   const body = await adapter.encodeBody(events)
+  if (obsCtx.apiKeyId) {
+    await trackNonStreamingUsage(upstreamJson, obsCtx.apiKeyId, ir.model, client, 'github_copilot')
+  }
   if (obsCtx.apiKeyId) {
     await recordLatency(
       obsCtx.apiKeyId,
