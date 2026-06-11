@@ -1,9 +1,15 @@
 /**
  * ProviderBinding — joined view of an upstream row + one of its catalog
  * models + a ready-to-call ModelProvider instance. The shape every routing
- * helper (`bindingsForEndpoint`, `resolveBinding`, ...) operates on.
+ * helper (`enumerateBindingCandidates`, `resolveBinding`, ...) operates on.
+ *
+ * Plan 2 (Task #27) cutover:
+ *   - `BindingModel.endpoints: ModelEndpoints` is now the single source of
+ *     truth for per-model endpoint capability.
+ *   - `BindingModel.kind` is removed; consumers derive via kindForEndpoints.
+ *   - `ProviderBinding.upstreamEndpoints` is removed.
  */
-import type { EndpointKey, ModelKind, ModelPricing, UpstreamKind } from '@vnext/protocols/common'
+import type { ModelEndpoints, ModelPricing, UpstreamKind } from '@vnext/protocols/common'
 import type { ModelProvider } from './types'
 
 /** Per-binding model metadata. */
@@ -12,7 +18,7 @@ export interface BindingModel {
   displayName?: string
   ownedBy?: string
   created?: number
-  kind?: ModelKind
+  endpoints: ModelEndpoints
   limits?: {
     maxOutputTokens?: number
     maxContextWindowTokens?: number
@@ -25,7 +31,6 @@ export interface ProviderBinding {
   upstream: string
   kind: UpstreamKind
   model: BindingModel
-  upstreamEndpoints: readonly EndpointKey[]
   enabledFlags: ReadonlySet<string>
   provider: ModelProvider
 }
