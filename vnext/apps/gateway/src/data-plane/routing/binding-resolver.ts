@@ -11,7 +11,7 @@
  *   - Composite-model fallback (parseCompositeModelId) is reused verbatim.
  */
 import type { EndpointKey } from '@vnext/protocols/common'
-import { bindingsForEndpoint, type ProviderBinding } from './binding.ts'
+import { bindingServesEndpoint, type ProviderBinding } from './binding.ts'
 import { listProviderBindings, type CreateProviderOptions } from '../providers/registry.ts'
 import { parseCompositeModelId } from '@vnext/provider-copilot'
 
@@ -43,7 +43,7 @@ export async function resolveBinding(
   const upstreamPin = opts.pin ?? parsed.upstreamPin
   const bareModel = parsed.bareModel
   const bindings = await listProviderBindings({ ownerId: opts.ownerId, copilot: opts.copilot })
-  const candidates = bindingsForEndpoint(bindings, endpoint)
+  const candidates = bindings.filter((b) => bindingServesEndpoint(b, endpoint))
   const matches = (b: ProviderBinding, id: string) =>
     b.model.id === id && (!upstreamPin || b.upstream === upstreamPin)
 
