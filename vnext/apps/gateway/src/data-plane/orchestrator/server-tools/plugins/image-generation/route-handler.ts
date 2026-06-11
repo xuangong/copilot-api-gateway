@@ -41,6 +41,9 @@ export async function handleResponsesImageGeneration(
   ctx: ImageGenerationRouteContext,
   payload: ResponsesPayloadLike,
 ): Promise<Response> {
+  // Observability bypass: this intercept hits the image backend directly and
+  // does not flow through dispatch(), so quota/latency/usage trackers are skipped.
+  console.warn('[observability] handleResponsesImageGeneration bypasses dispatch quota/latency/usage tracking')
   const publicModel = payload.model
 
   const validated = validateImageGenerationConfig(payload.tools as Parameters<typeof validateImageGenerationConfig>[0])

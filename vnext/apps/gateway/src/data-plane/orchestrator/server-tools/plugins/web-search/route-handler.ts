@@ -36,6 +36,9 @@ export async function handleMessagesWebSearch(
   ctx: WebSearchRouteContext,
   messagesPayload: MessagesPayload,
 ): Promise<Response> {
+  // Observability bypass: this intercept runs its own multi-turn loop and does
+  // not flow through dispatch(), so quota/latency/usage trackers are skipped.
+  console.warn('[observability] handleMessagesWebSearch bypasses dispatch quota/latency/usage tracking')
   const cfg = await loadWebSearchConfig(ctx.apiKeyId, ctx.githubToken, ctx.msGroundingKey)
   if (!cfg.enabled || !cfg.engineOptions) {
     return cfg.errorResponse ?? new Response(
