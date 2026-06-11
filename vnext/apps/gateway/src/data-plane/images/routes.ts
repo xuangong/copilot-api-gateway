@@ -5,19 +5,24 @@
  *   - POST /images/generations  + /v1/images/generations  (JSON in, raw forward out)
  *   - POST /images/edits        + /v1/images/edits        (multipart in, raw forward out)
  *
+ * Phase A Task 4 (X-4) refactor: the per-call observability scaffolding
+ * (quota gate → timer → call → record latency-only) was extracted into
+ * `runImagesAttempt`. This file keeps request validation, multipart handling,
+ * and binding resolution — i.e. everything image-specific — and delegates
+ * the call/observability shape to the attempt module. No behavior change:
+ * sourceApi/targetApi remain intentionally omitted from recordLatency so
+ * perf fan-out stays skipped (images carry no perf-enum target).
+ *
  * vnext deltas:
  *   - resolveBinding signature change (see binding-resolver.ts).
  *   - Body forwarding: response.body + status + headers verbatim, same as old.
  *   - Hono parses JSON / FormData on demand via c.req.json() / c.req.formData().
- *   - Quota + latency-only observability wired (images carry no usage tokens;
- *     sourceApi/targetApi intentionally omitted so the perf fan-out is skipped).
  */
 import { Hono, type Context } from 'hono'
 import type { Env } from '../../app.ts'
 import { resolveBinding, stripUpstreamPin } from '../routing/binding-resolver.ts'
 import type { DataPlaneAuthCtx } from '../models/routes.ts'
-import { checkQuota } from '../../shared/observability/quota.ts'
-import { recordLatency, startTimer } from '../../shared/observability/latency-tracker.ts'
+import { runImagesAttempt } from '../observability/attempts/images-attempt.ts'
 
 type Vars = { auth: DataPlaneAuthCtx }
 
@@ -33,6 +38,23 @@ interface GenerationsPayload {
 export const imagesRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
 
 type ImagesCtx = Context<{ Bindings: Env; Variables: Vars }>
+
+function rateLimitResponse(c: ImagesCtx, rl: { reason: string; retryAfterSeconds?: number }) {
+  return c.json({
+    error: {
+      type: 'rate_limit_error',
+      message: rl.reason,
+      ...(rl.retryAfterSeconds != null ? { retry_after_seconds: rl.retryAfterSeconds } : {}),
+    },
+  }, 429)
+}
+
+function forwardUpstream(response: Response): Response {
+  return new Response(response.body, {
+    status: response.status,
+    headers: response.headers,
+  })
+}
 
 async function handleGenerations(c: ImagesCtx): Promise<Response> {
   const auth = c.get('auth') ?? {}
@@ -58,47 +80,26 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
     )
   }
 
-  const apiKeyId = auth.apiKeyId
-  const userAgent = c.req.header('user-agent') ?? undefined
-  const requestId = c.req.header('x-request-id') ?? undefined
-
-  if (apiKeyId) {
-    const quota = await checkQuota(apiKeyId)
-    if (!quota.allowed) {
-      return c.json({
-        error: {
-          type: 'rate_limit_error',
-          message: quota.reason ?? 'Daily quota exceeded.',
-          ...(quota.retryAfterSeconds != null ? { retry_after_seconds: quota.retryAfterSeconds } : {}),
-        },
-      }, 429)
-    }
-  }
-
-  const elapsed = startTimer()
-  const upstreamStart = Date.now()
-  const response = await binding.provider.fetch(
-    'images_generations',
-    { method: 'POST', body: JSON.stringify(payload) },
-    { operationName: 'create image', enabledFlags: binding.enabledFlags },
-  )
-  const upstreamMs = Date.now() - upstreamStart
-
-  if (apiKeyId) {
-    await recordLatency(
-      apiKeyId,
-      payload.model,
-      'local',
-      { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
-      requestId,
-      { isError: !response.ok, upstream: 'github_copilot', userAgent },
-    )
-  }
-
-  return new Response(response.body, {
-    status: response.status,
-    headers: response.headers,
+  const attempt = await runImagesAttempt({
+    apiKeyId: auth.apiKeyId,
+    model: payload.model,
+    upstream: 'github_copilot',
+    userAgent: c.req.header('user-agent') ?? undefined,
+    requestId: c.req.header('x-request-id') ?? undefined,
+    call: () => binding.provider.fetch(
+      'images_generations',
+      { method: 'POST', body: JSON.stringify(payload) },
+      { operationName: 'create image', enabledFlags: binding.enabledFlags },
+    ),
   })
+
+  if (!attempt.ok && attempt.status === 429 && 'rateLimit' in attempt) {
+    return rateLimitResponse(c, attempt.rateLimit)
+  }
+
+  // Both success and non-2xx fall through here — the route has always
+  // forwarded the upstream body verbatim regardless of status code.
+  return forwardUpstream(attempt.response)
 }
 
 async function handleEdits(c: ImagesCtx): Promise<Response> {
@@ -141,23 +142,6 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
     )
   }
 
-  const apiKeyId = auth.apiKeyId
-  const userAgent = c.req.header('user-agent') ?? undefined
-  const requestId = c.req.header('x-request-id') ?? undefined
-
-  if (apiKeyId) {
-    const quota = await checkQuota(apiKeyId)
-    if (!quota.allowed) {
-      return c.json({
-        error: {
-          type: 'rate_limit_error',
-          message: quota.reason ?? 'Daily quota exceeded.',
-          ...(quota.retryAfterSeconds != null ? { retry_after_seconds: quota.retryAfterSeconds } : {}),
-        },
-      }, 429)
-    }
-  }
-
   // Rebuild FormData so upstream sees File/Blob verbatim. Hono's formData() returns
   // entries where files are File instances; preserve filename via append(key, value, name).
   const forward = new FormData()
@@ -170,30 +154,24 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
     }
   }
 
-  const elapsed = startTimer()
-  const upstreamStart = Date.now()
-  const response = await binding.provider.fetch(
-    'images_edits',
-    { method: 'POST', body: forward },
-    { operationName: 'edit image', enabledFlags: binding.enabledFlags },
-  )
-  const upstreamMs = Date.now() - upstreamStart
+  const attempt = await runImagesAttempt({
+    apiKeyId: auth.apiKeyId,
+    model,
+    upstream: 'github_copilot',
+    userAgent: c.req.header('user-agent') ?? undefined,
+    requestId: c.req.header('x-request-id') ?? undefined,
+    call: () => binding.provider.fetch(
+      'images_edits',
+      { method: 'POST', body: forward },
+      { operationName: 'edit image', enabledFlags: binding.enabledFlags },
+    ),
+  })
 
-  if (apiKeyId) {
-    await recordLatency(
-      apiKeyId,
-      model,
-      'local',
-      { totalMs: elapsed(), upstreamMs, ttfbMs: 0, tokenMiss: false },
-      requestId,
-      { isError: !response.ok, upstream: 'github_copilot', userAgent },
-    )
+  if (!attempt.ok && attempt.status === 429 && 'rateLimit' in attempt) {
+    return rateLimitResponse(c, attempt.rateLimit)
   }
 
-  return new Response(response.body, {
-    status: response.status,
-    headers: response.headers,
-  })
+  return forwardUpstream(attempt.response)
 }
 
 imagesRouter.post('/images/generations', handleGenerations)
