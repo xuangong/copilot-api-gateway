@@ -20,6 +20,7 @@ import { repackageUpstreamError, type SourceApi } from './errors/repackage.ts'
 import { HTTPError } from '@vnext/provider-copilot'
 import { handleMessagesWebSearch, hasWebSearch } from './orchestrator/server-tools/plugins/web-search/index.ts'
 import { handleResponsesImageGeneration, hasImageGeneration } from './orchestrator/server-tools/plugins/image-generation/index.ts'
+import { checkQuota } from '../shared/observability/quota.ts'
 
 export const dataPlane = new Hono<{ Bindings: Env }>()
 
@@ -78,7 +79,6 @@ async function dispatch<TPayload>(
   pickTarget: PickTarget,
   obsCtx: DispatchObsCtx,
 ): Promise<Response> {
-  void obsCtx  // Mark intentionally unused for this task
   let raw: unknown
   try { raw = await c.req.json() } catch {
     return errorWrap(400, { type: 'error', error: { type: 'invalid_request_error', message: 'invalid JSON' } })
@@ -116,6 +116,18 @@ async function dispatch<TPayload>(
     })
   }
   const { binding, targetEndpoint: upstreamEndpoint } = candidates[0]!
+  if (obsCtx.apiKeyId) {
+    const quota = await checkQuota(obsCtx.apiKeyId)
+    if (!quota.allowed) {
+      return errorWrap(429, {
+        error: {
+          type: 'rate_limit_error',
+          message: quota.reason ?? 'Daily quota exceeded.',
+          ...(quota.retryAfterSeconds != null ? { retry_after_seconds: quota.retryAfterSeconds } : {}),
+        },
+      })
+    }
+  }
   const backend = backendForEndpoint(upstreamEndpoint)
   const upstreamPayload = backend.toUpstream(ir)
   let upstreamRes: Response
