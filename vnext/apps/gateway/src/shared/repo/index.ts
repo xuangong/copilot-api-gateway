@@ -15,6 +15,16 @@ export function setRepoForTest(r: Repo | null): void {
   _override = r
 }
 
+/** Phase 2 alias: setRepoOverride (same as setRepoForTest) */
+export function setRepoOverride(r: Repo | null): void {
+  _override = r
+}
+
+/** Phase 2 alias: clearRepoOverride (same as setRepoForTest(null)) */
+export function clearRepoOverride(): void {
+  _override = null
+}
+
 export function getRepo(): Repo {
   if (_override) return _override
   if (!_repo) throw new Error("Repo not initialized")
