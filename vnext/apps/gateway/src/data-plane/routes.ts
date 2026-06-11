@@ -42,6 +42,12 @@ function backendForEndpoint(endpoint: EndpointKey): BackendAdapter {
   return responsesOut
 }
 
+type DispatchObsCtx = {
+  apiKeyId: string | undefined
+  userAgent: string | undefined
+  requestId: string | undefined
+}
+
 type PickTarget = (e: ModelEndpoints) => EndpointKey | null
 
 const messagesPick: PickTarget = (e) =>
@@ -70,7 +76,9 @@ async function dispatch<TPayload>(
   auth: DataPlaneAuthCtx,
   sourceApi: SourceApi,
   pickTarget: PickTarget,
+  obsCtx: DispatchObsCtx,
 ): Promise<Response> {
+  void obsCtx  // Mark intentionally unused for this task
   let raw: unknown
   try { raw = await c.req.json() } catch {
     return errorWrap(400, { type: 'error', error: { type: 'invalid_request_error', message: 'invalid JSON' } })
@@ -171,6 +179,13 @@ dataPlane.post('/v1/messages', async (c) => {
       raw as Parameters<typeof handleMessagesWebSearch>[1],
     )
   }
+  // Read obsCtx from ORIGINAL c before synthetic wrap
+  const auth = (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx
+  const obsCtx: DispatchObsCtx = {
+    apiKeyId: auth.apiKeyId,
+    userAgent: c.req.header('user-agent') ?? undefined,
+    requestId: c.req.header('x-request-id') ?? undefined,
+  }
   // Re-inject raw body into the dispatcher's JSON reader by wrapping the
   // c.req shape; cheaper than re-parsing once here, then again inside dispatch.
   return dispatch(
@@ -178,19 +193,31 @@ dataPlane.post('/v1/messages', async (c) => {
     messagesIn,
     (p) => messagesIn.toIR(p),
     (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
-    (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx,
+    auth,
     'messages',
     messagesPick,
+    obsCtx,
   )
 })
 
-dataPlane.post('/v1/chat/completions', (c) =>
-  dispatch(c, chatIn, (p) => chatIn.toIR(p), (status, body) =>
-    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
-    (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx,
+dataPlane.post('/v1/chat/completions', (c) => {
+  const auth = (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx
+  const obsCtx: DispatchObsCtx = {
+    apiKeyId: auth.apiKeyId,
+    userAgent: c.req.header('user-agent') ?? undefined,
+    requestId: c.req.header('x-request-id') ?? undefined,
+  }
+  return dispatch(
+    c,
+    chatIn,
+    (p) => chatIn.toIR(p),
+    (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
+    auth,
     'chat_completions',
     chatPick,
-  ))
+    obsCtx,
+  )
+})
 
 dataPlane.post('/v1/responses', async (c) => {
   // image_generation server-tool intercept short-circuits the IR pipeline:
@@ -216,14 +243,22 @@ dataPlane.post('/v1/responses', async (c) => {
       raw as Parameters<typeof handleResponsesImageGeneration>[1],
     )
   }
+  // Read obsCtx from ORIGINAL c before synthetic wrap
+  const auth = (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx
+  const obsCtx: DispatchObsCtx = {
+    apiKeyId: auth.apiKeyId,
+    userAgent: c.req.header('user-agent') ?? undefined,
+    requestId: c.req.header('x-request-id') ?? undefined,
+  }
   return dispatch(
     { ...c, req: { json: async () => raw }, json: c.json.bind(c), body: c.body.bind(c) } as Parameters<typeof dispatch>[0],
     responsesIn,
     (p) => responsesIn.toIR(p),
     (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
-    (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx,
+    auth,
     'responses',
     responsesPick,
+    obsCtx,
   )
 })
 
@@ -232,14 +267,24 @@ dataPlane.post('/v1beta/models/:model{.+}', (c) => {
   const raw = c.req.param('model')
   const [model, verb] = raw.split(':')
   const stream = verb === 'streamGenerateContent'
-  return dispatch(c, geminiIn, (p) => {
-    const ir = geminiIn.toIRForModel(p, model ?? '')
-    ir.stream = stream
-    return ir
-  }, (status, body) =>
-    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
-    (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx,
+  const auth = (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx
+  const obsCtx: DispatchObsCtx = {
+    apiKeyId: auth.apiKeyId,
+    userAgent: c.req.header('user-agent') ?? undefined,
+    requestId: c.req.header('x-request-id') ?? undefined,
+  }
+  return dispatch(
+    c,
+    geminiIn,
+    (p) => {
+      const ir = geminiIn.toIRForModel(p, model ?? '')
+      ir.stream = stream
+      return ir
+    },
+    (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
+    auth,
     'gemini',
     chatPick,
+    obsCtx,
   )
 })
