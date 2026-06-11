@@ -102,3 +102,53 @@ test('toUpstream preserves assistant text when sibling tool_use is present', () 
   expect(asst?.content).toBe('let me check')
   expect(asst?.tool_calls).toHaveLength(1)
 })
+
+import type { IREvent } from '@vnext/protocols/ir'
+
+async function collect(iter: AsyncIterable<IREvent>): Promise<IREvent[]> {
+  const out: IREvent[] = []
+  for await (const e of iter) out.push(e)
+  return out
+}
+
+test('decodeBody emits created → text delta → completed with usage', async () => {
+  const body = {
+    id: 'chatcmpl_1',
+    object: 'chat.completion',
+    choices: [{ index: 0, message: { role: 'assistant', content: 'Hello world' }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+  }
+  const events = await collect(chatOut.decodeBody(body))
+  expect(events[0]).toEqual({ type: 'response.created', response: { id: 'chatcmpl_1' } })
+  const delta = events.find((e) => e.type === 'response.output_text.delta') as Extract<IREvent, { type: 'response.output_text.delta' }>
+  expect(delta?.delta).toBe('Hello world')
+  const done = events[events.length - 1] as Extract<IREvent, { type: 'response.completed' }>
+  expect(done.type).toBe('response.completed')
+  expect(done.response.finish_reason).toBe('stop')
+  expect(done.response.usage?.input_tokens).toBe(5)
+  expect(done.response.usage?.output_tokens).toBe(2)
+})
+
+test('decodeBody surfaces tool_calls as tool_call.completed events', async () => {
+  const body = {
+    id: 'chatcmpl_2',
+    choices: [{
+      index: 0,
+      message: {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          { id: 'call_1', type: 'function', function: { name: 'get_weather', arguments: '{"city":"sf"}' } },
+        ],
+      },
+      finish_reason: 'tool_calls',
+    }],
+  }
+  const events = await collect(chatOut.decodeBody(body))
+  const tc = events.find((e) => e.type === 'response.tool_call.completed') as Extract<IREvent, { type: 'response.tool_call.completed' }>
+  expect(tc.itemId).toBe('call_1')
+  expect(tc.name).toBe('get_weather')
+  expect(tc.arguments).toEqual({ city: 'sf' })
+  const done = events[events.length - 1] as Extract<IREvent, { type: 'response.completed' }>
+  expect(done.response.finish_reason).toBe('tool_calls')
+})

@@ -82,7 +82,41 @@ export const chatOut: BackendAdapter = {
   async *decodeSSE(): AsyncIterable<IREvent> {
     throw new Error('chatOut.decodeSSE: not implemented (Task 5)')
   },
-  async *decodeBody(): AsyncIterable<IREvent> {
-    throw new Error('chatOut.decodeBody: not implemented (Task 4)')
+  async *decodeBody(body: unknown): AsyncIterable<IREvent> {
+    const r = body as {
+      id?: string
+      choices?: Array<{
+        message?: { role?: string; content?: string | null; tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }> }
+        finish_reason?: string
+      }>
+      usage?: { prompt_tokens?: number; completion_tokens?: number }
+    }
+    yield { type: 'response.created', response: { id: r.id ?? '' } }
+    const choice = r.choices?.[0]
+    const msg = choice?.message
+    if (msg?.content && typeof msg.content === 'string') {
+      yield { type: 'response.output_text.delta', delta: msg.content }
+    }
+    for (const tc of msg?.tool_calls ?? []) {
+      let parsed: unknown = {}
+      try { parsed = JSON.parse(tc.function.arguments) } catch { parsed = tc.function.arguments }
+      yield {
+        type: 'response.tool_call.completed',
+        itemId: tc.id,
+        name: tc.function.name,
+        arguments: parsed,
+      }
+    }
+    yield {
+      type: 'response.completed',
+      response: {
+        id: r.id,
+        finish_reason: choice?.finish_reason ?? 'stop',
+        usage: r.usage ? {
+          input_tokens: r.usage.prompt_tokens ?? 0,
+          output_tokens: r.usage.completion_tokens ?? 0,
+        } : undefined,
+      },
+    }
   },
 }
