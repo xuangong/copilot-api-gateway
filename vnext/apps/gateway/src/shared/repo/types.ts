@@ -111,6 +111,8 @@ export interface ApiKeyRepo {
   save(key: ApiKey): Promise<void>
   delete(id: string): Promise<boolean>
   deleteAll(): Promise<void>
+  /** Bump last_used_at to now. No-op if id does not exist. */
+  touchLastUsed(id: string): Promise<void>
 }
 
 export interface GitHubRepo {

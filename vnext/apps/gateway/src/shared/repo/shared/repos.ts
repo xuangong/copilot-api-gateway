@@ -318,6 +318,13 @@ class SharedApiKeyRepo implements ApiKeyRepo {
   async deleteAll(): Promise<void> {
     await this.x.run("DELETE FROM api_keys", [])
   }
+
+  async touchLastUsed(id: string): Promise<void> {
+    await this.x.run(
+      `UPDATE api_keys SET last_used_at = ? WHERE id = ?`,
+      [new Date().toISOString(), id],
+    )
+  }
 }
 
 class SharedGitHubRepo implements GitHubRepo {
