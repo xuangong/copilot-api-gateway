@@ -9,7 +9,14 @@
     "./chat": "./src/chat.ts",
     "./responses": "./src/responses.ts",
     "./gemini": "./src/gemini.ts",
-    "./contract": "./src/contract.ts"
+    "./contract": "./src/contract.ts",
+    "./shared/*": "./src/shared/*.ts",
+    "./chat-completions-via-messages": "./src/chat-completions-via-messages/index.ts",
+    "./messages-via-chat-completions": "./src/messages-via-chat-completions/index.ts",
+    "./responses-via-messages": "./src/responses-via-messages/index.ts",
+    "./messages-via-responses": "./src/messages-via-responses/index.ts",
+    "./gemini-via-messages": "./src/gemini-via-messages/index.ts",
+    "./messages-via-gemini": "./src/messages-via-gemini/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
