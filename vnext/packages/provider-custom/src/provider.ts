@@ -11,6 +11,8 @@ import type {
   ProviderFetchOptions,
   ProviderModelsResponse,
 } from '@vnext/provider'
+import { HTTPError } from '@vnext/provider'
+import { fetchWithRetry, mergeHeaders, truncateBody } from '@vnext/shared-http'
 
 export interface CustomProviderConfig {
   name: string
@@ -51,7 +53,38 @@ export class CustomProvider implements ModelProvider {
   }
 
   async getModels(): Promise<ProviderModelsResponse> {
-    throw new Error('not yet implemented')
+    // G2: manual list bypasses /models entirely. Useful for upstreams
+    // that don't implement /models or that return too many entries.
+    if (this.manualModels && this.manualModels.length > 0) {
+      return {
+        object: 'list',
+        data: this.manualModels.map((m) => ({
+          id: m.id,
+          object: 'model',
+          name: m.name ?? m.id,
+          vendor: m.ownedBy ?? this.name,
+          version: m.id,
+          model_picker_enabled: true,
+          preview: false,
+          capabilities: {
+            family: 'custom', limits: {}, object: 'model_capabilities',
+            supports: {}, tokenizer: 'unknown', type: 'text',
+          },
+        })),
+      }
+    }
+    const res = await fetchWithRetry(this.modelsEndpoint, {
+      method: 'GET',
+      headers: this.authHeaders(),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new HTTPError(
+        `Failed to list models from ${this.name}: ${res.status} ${truncateBody(body)}`,
+        new Response(body, { status: res.status }),
+      )
+    }
+    return (await res.json()) as ProviderModelsResponse
   }
 
   async probe(): Promise<ProbeResult> {
@@ -60,5 +93,20 @@ export class CustomProvider implements ModelProvider {
 
   async fetch(_endpoint: EndpointKey, _init: RequestInit, _opts: ProviderFetchOptions = {}): Promise<Response> {
     throw new Error('not yet implemented')
+  }
+
+  private authHeaders(
+    extra: Record<string, string> = {},
+    opts: { includeJsonContentType?: boolean } = {},
+  ): Record<string, string> {
+    const base: Record<string, string> = {
+      'Authorization': `Bearer ${this.apiKey}`,
+      ...this.defaultHeaders,
+      ...extra,
+    }
+    if (opts.includeJsonContentType !== false) {
+      base['Content-Type'] = 'application/json'
+    }
+    return base
   }
 }
