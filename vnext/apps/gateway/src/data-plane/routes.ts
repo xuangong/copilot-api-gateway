@@ -460,31 +460,44 @@ dataPlane.post('/v1/responses', async (c) => {
   if (!ct.includes('application/json')) return response
 
   const cloned = response.clone()
+  const apiKeyIdSnap = auth.apiKeyId ?? null
+  const fallbackModel = (raw as { model?: string }).model ?? ''
+  const requestIdSnap = obsCtx.requestId ?? null
+  const savePromise = (async () => {
+    try {
+      const json = await cloned.json() as {
+        id?: string
+        model?: string
+        output?: unknown[]
+      }
+      // snapshot key === translator-preserved upstream id; bridge never rewrites
+      if (typeof json.id === 'string' && Array.isArray(json.output)) {
+        await savePostTurnSnapshot(store, {
+          responseId: json.id,
+          apiKeyId: apiKeyIdSnap,
+          model: typeof json.model === 'string' ? json.model : fallbackModel,
+          inputItems: mergedInputItems,
+          outputItems: json.output,
+        })
+      }
+    } catch (err) {
+      console.warn(JSON.stringify({
+        evt: '[responses-snapshot] non-stream save failed',
+        rid: requestIdSnap,
+        apiKeyId: apiKeyIdSnap,
+        model: fallbackModel,
+        message: err instanceof Error ? err.message : String(err),
+      }))
+    }
+  })()
+  // Match the streaming branch: hand the save off to the runtime so it never
+  // blocks the user-perceived response. On local Bun there is no
+  // executionCtx, so we fall back to fire-and-forget with a swallowed catch
+  // (the IIFE above already logs failures).
   try {
-    const json = await cloned.json() as {
-      id?: string
-      model?: string
-      output?: unknown[]
-    }
-    const inputItems = mergedInputItems
-    // snapshot key === translator-preserved upstream id; bridge never rewrites
-    if (typeof json.id === 'string' && Array.isArray(json.output)) {
-      await savePostTurnSnapshot(store, {
-        responseId: json.id,
-        apiKeyId: auth.apiKeyId ?? null,
-        model: typeof json.model === 'string' ? json.model : ((raw as { model?: string }).model ?? ''),
-        inputItems,
-        outputItems: json.output,
-      })
-    }
-  } catch (err) {
-    console.warn(JSON.stringify({
-      evt: '[responses-snapshot] non-stream save failed',
-      rid: obsCtx.requestId ?? null,
-      apiKeyId: auth.apiKeyId ?? null,
-      model: (raw as { model?: string }).model ?? null,
-      message: err instanceof Error ? err.message : String(err),
-    }))
+    c.executionCtx?.waitUntil(savePromise)
+  } catch {
+    savePromise.catch(() => { /* swallowed; save IIFE already logs */ })
   }
   return response
 })
