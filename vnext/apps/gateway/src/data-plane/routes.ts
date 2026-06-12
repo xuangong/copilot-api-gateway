@@ -45,6 +45,11 @@ import type { SourceApiInput, TargetApiInput } from '../shared/observability/lat
 import { selectPair, type SourceApi } from './dispatch/pair-selector.ts'
 import { getTranslator, type TranslateContext } from './dispatch/translator-registry.ts'
 import { encodeClientSSE } from './dispatch/sse-writers.ts'
+import {
+  expandPreviousResponseId,
+  PreviousResponseNotFoundError,
+} from './dispatch/responses-store-bridge.ts'
+import { renderPreviousResponseNotFound } from './errors/repackage.ts'
 
 export const dataPlane = new Hono<{ Bindings: Env }>()
 
@@ -340,6 +345,21 @@ dataPlane.post('/v1/responses', async (c) => {
     )
   }
   const auth = (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx
+  const store = c.env?.responsesStore
+  if (store) {
+    try {
+      await expandPreviousResponseId(
+        raw as { previous_response_id?: string | null; input?: unknown },
+        store,
+        auth.apiKeyId ?? null,
+      )
+    } catch (err) {
+      if (err instanceof PreviousResponseNotFoundError) {
+        return renderPreviousResponseNotFound(err)
+      }
+      throw err
+    }
+  }
   const obsCtx: DispatchObsCtx = {
     apiKeyId: auth.apiKeyId,
     userAgent: c.req.header('user-agent') ?? undefined,
