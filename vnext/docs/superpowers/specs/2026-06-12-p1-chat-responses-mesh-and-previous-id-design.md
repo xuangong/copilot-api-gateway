@@ -80,7 +80,7 @@ export class SqliteResponsesSnapshotStore implements ResponsesSnapshotStore { /*
 //   ctor 接受 { exec(sql, params): Promise<...> } 形态的薄 driver；CFW 适配 D1，本地适配 bun:sqlite
 ```
 
-**所有权隔离规则**：`load(responseId, apiKeyId)` 内部 `WHERE response_id = ? AND api_key_id IS NOT DISTINCT FROM ?`。两个不同 apiKey 的客户端即使猜到对方的 response_id，也读不到对方快照。
+**所有权隔离规则**：`load(responseId, apiKeyId)` 内部使用 nullable-safe 比较 `WHERE response_id = ? AND ((api_key_id = ?) OR (api_key_id IS NULL AND ? IS NULL))`（SQLite/D1 不支持 `IS NOT DISTINCT FROM`）。两个不同 apiKey 的客户端即使猜到对方的 response_id，也读不到对方快照。
 
 **TTL**：默认 24h（常量 `DEFAULT_TTL_MS = 24 * 3600_000`，可由 ctor option 覆盖）。
 
