@@ -69,6 +69,20 @@ import {
   translateGeminiToMessagesBody,
 } from '@vnext/translate/messages-via-gemini'
 
+// Pair 7: client = chat_completions, hub = responses
+import {
+  translateChatToResponses,
+  translateResponsesToChatSSE,
+  translateResponsesToChatBody,
+} from '@vnext/translate/chat-completions-via-responses'
+
+// Pair 8: client = responses, hub = chat_completions
+import {
+  translateResponsesToChat,
+  translateChatToResponsesEvents,
+  translateChatToResponsesBody,
+} from '@vnext/translate/responses-via-chat-completions'
+
 /** Translation context passed through both directions. */
 export interface TranslateContext {
   signal: AbortSignal
@@ -157,6 +171,28 @@ const PAIR_GEMINI_TO_MESSAGES: PairTranslator = {
     translateMessagesToGeminiBody(body as never, { model: ctx.model ?? '' }),
 }
 
+/** Pair 7: Chat Completions client → Responses hub. */
+const PAIR_CHAT_TO_RESPONSES: PairTranslator = {
+  translateRequest: (payload, ctx) => {
+    const result = translateChatToResponses(payload as never, {
+      fallbackMaxOutputTokens: ctx.fallbackMaxOutputTokens,
+    })
+    return result.target
+  },
+  translateEvents: (events) => translateResponsesToChatSSE(events as never),
+  translateBody: (body) => translateResponsesToChatBody(body),
+}
+
+/** Pair 8: Responses client → Chat Completions hub. */
+const PAIR_RESPONSES_TO_CHAT: PairTranslator = {
+  translateRequest: (payload) => {
+    const result = translateResponsesToChat(payload as never)
+    return result.target
+  },
+  translateEvents: (events) => translateChatToResponsesEvents(events as never),
+  translateBody: (body) => translateChatToResponsesBody(body),
+}
+
 /**
  * Source-to-target dispatch table. Composite key `${source}->${target}` keeps
  * the lookup O(1) and trivially testable. messages→messages is handled
@@ -173,6 +209,10 @@ const TABLE: Record<string, PairTranslator> = {
   'messages->responses': PAIR_MESSAGES_TO_RESPONSES,
   // Pair 5
   'gemini->messages': PAIR_GEMINI_TO_MESSAGES,
+  // Pair 7
+  'chat_completions->responses': PAIR_CHAT_TO_RESPONSES,
+  // Pair 8
+  'responses->chat_completions': PAIR_RESPONSES_TO_CHAT,
   // Note on Pair 6 (messages→gemini): the gateway never selects this pair
   // because messages clients prefer messages → responses → chat_completions
   // (see PREFERENCE in pair-selector.ts). It exists in @vnext/translate for
