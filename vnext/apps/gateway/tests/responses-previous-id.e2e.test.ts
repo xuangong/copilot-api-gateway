@@ -232,3 +232,62 @@ test('responses non-stream saves snapshot using upstream response.id', async () 
   expect(JSON.stringify(snap!.items)).toContain('hello')
   expect(JSON.stringify(snap!.items)).toContain('ok')
 })
+
+test('responses stream saves snapshot when response.completed fires', async () => {
+  setRepoForTest(stubRepo([stubUpstream()]))
+  const store = new InMemoryResponsesSnapshotStore()
+
+  const sse = (events: Array<{ type: string; data: unknown }>) => {
+    const enc = new TextEncoder()
+    return new ReadableStream<Uint8Array>({
+      start(c) {
+        for (const e of events) c.enqueue(enc.encode(`event: ${e.type}\ndata: ${JSON.stringify(e.data)}\n\n`))
+        c.close()
+      },
+    })
+  }
+
+  installFetch((req) => {
+    const url = new URL(req.url)
+    if (url.pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({ data: [stubModel(MODEL_ID)] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })
+    }
+    if (url.pathname.endsWith('/responses')) {
+      return new Response(sse([
+        { type: 'response.created', data: { type: 'response.created', response: { id: 'resp_stream_1', model: MODEL_ID } } },
+        { type: 'response.output_item.done', data: {
+          type: 'response.output_item.done', output_index: 0,
+          item: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'streamed' }] },
+        } },
+        { type: 'response.completed', data: { type: 'response.completed', response: { id: 'resp_stream_1', model: MODEL_ID, status: 'completed' } } },
+      ]), { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    }
+    return new Response('not found', { status: 404 })
+  })
+
+  const wrapper = buildApp(
+    { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
+    store,
+  )
+  const res = await wrapper.fetch(new Request('http://x/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: MODEL_ID,
+      stream: true,
+      input: [{ type: 'message', role: 'user', content: 'streamed user' }],
+    }),
+  }), {} as never)
+  expect(res.status).toBe(200)
+  // Drain the stream so the sidecar save completes.
+  const reader = res.body!.getReader()
+  while (true) { const { done } = await reader.read(); if (done) break }
+  // sidecar save runs after the stream closes; give it a microtask tick
+  await new Promise((r) => setTimeout(r, 10))
+  const snap = await store.load('resp_stream_1', 'k1')
+  expect(snap).not.toBeNull()
+  expect(JSON.stringify(snap!.items)).toContain('streamed user')
+  expect(JSON.stringify(snap!.items)).toContain('streamed')
+})

@@ -380,9 +380,44 @@ dataPlane.post('/v1/responses', async (c) => {
 
   if (!store || response.status !== 200) return response
   const ct = response.headers.get('content-type') ?? ''
-  if (ct.includes('text/event-stream')) {
-    // Stream path handled in Task 9 — return as-is for now.
-    return response
+  if (ct.includes('text/event-stream') && response.body) {
+    const [forClient, forSidecar] = response.body.tee()
+    const inputItems = Array.isArray((raw as { input?: unknown }).input)
+      ? ((raw as { input: unknown[] }).input)
+      : []
+    const fallbackModel = (raw as { model?: string }).model ?? ''
+    const apiKeyIdSnap = auth.apiKeyId ?? null
+    ;(async () => {
+      let responseId: string | null = null
+      let model = fallbackModel
+      const outputItems: unknown[] = []
+      try {
+        for await (const evt of parseResponsesSSEStream(forSidecar)) {
+          const e = evt as { type?: string; response?: { id?: string; model?: string }; item?: unknown }
+          if (e.type === 'response.created' && e.response?.id) {
+            responseId = e.response.id
+            if (e.response.model) model = e.response.model
+          } else if (e.type === 'response.output_item.done' && e.item) {
+            outputItems.push(e.item)
+          } else if (e.type === 'response.completed') {
+            if (e.response?.id && !responseId) responseId = e.response.id
+            if (e.response?.model) model = e.response.model
+          }
+        }
+        if (responseId) {
+          await savePostTurnSnapshot(store, {
+            responseId,
+            apiKeyId: apiKeyIdSnap,
+            model,
+            inputItems,
+            outputItems,
+          })
+        }
+      } catch (err) {
+        console.warn('savePostTurnSnapshot (stream) failed', err)
+      }
+    })()
+    return new Response(forClient, { status: response.status, headers: response.headers })
   }
   if (!ct.includes('application/json')) return response
 
