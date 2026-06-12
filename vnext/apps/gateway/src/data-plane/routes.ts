@@ -346,7 +346,7 @@ dataPlane.post('/v1/responses', async (c) => {
     )
   }
   const auth = (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx
-  const store = c.env?.responsesStore
+  const store = c.env.responsesStore
   if (store) {
     try {
       await expandPreviousResponseId(
@@ -387,7 +387,8 @@ dataPlane.post('/v1/responses', async (c) => {
       : []
     const fallbackModel = (raw as { model?: string }).model ?? ''
     const apiKeyIdSnap = auth.apiKeyId ?? null
-    ;(async () => {
+    const requestIdSnap = obsCtx.requestId ?? null
+    const sidecarPromise = (async () => {
       let responseId: string | null = null
       let model = fallbackModel
       const outputItems: unknown[] = []
@@ -414,9 +415,24 @@ dataPlane.post('/v1/responses', async (c) => {
           })
         }
       } catch (err) {
-        console.warn('savePostTurnSnapshot (stream) failed', err)
+        console.warn(JSON.stringify({
+          evt: '[responses-snapshot] stream save failed',
+          rid: requestIdSnap,
+          responseId,
+          apiKeyId: apiKeyIdSnap,
+          model,
+          message: err instanceof Error ? err.message : String(err),
+        }))
       }
     })()
+    // Bind the sidecar to the CFW ExecutionContext so the runtime keeps the
+    // worker alive past response settlement; on local Bun there is no
+    // executionCtx, so we fall back to fire-and-forget with a logged catch.
+    try {
+      c.executionCtx?.waitUntil(sidecarPromise)
+    } catch {
+      sidecarPromise.catch(() => { /* swallowed; sidecar already logs */ })
+    }
     return new Response(forClient, { status: response.status, headers: response.headers })
   }
   if (!ct.includes('application/json')) return response
@@ -431,6 +447,7 @@ dataPlane.post('/v1/responses', async (c) => {
     const inputItems = Array.isArray((raw as { input?: unknown }).input)
       ? ((raw as { input: unknown[] }).input)
       : []
+    // snapshot key === translator-preserved upstream id; bridge never rewrites
     if (typeof json.id === 'string' && Array.isArray(json.output)) {
       await savePostTurnSnapshot(store, {
         responseId: json.id,
@@ -441,7 +458,13 @@ dataPlane.post('/v1/responses', async (c) => {
       })
     }
   } catch (err) {
-    console.warn('savePostTurnSnapshot (non-stream) failed', err)
+    console.warn(JSON.stringify({
+      evt: '[responses-snapshot] non-stream save failed',
+      rid: obsCtx.requestId ?? null,
+      apiKeyId: auth.apiKeyId ?? null,
+      model: (raw as { model?: string }).model ?? null,
+      message: err instanceof Error ? err.message : String(err),
+    }))
   }
   return response
 })
