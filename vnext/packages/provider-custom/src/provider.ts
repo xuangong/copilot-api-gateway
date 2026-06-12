@@ -26,6 +26,16 @@ export interface CustomProviderConfig {
 
 const DEFAULT_ENDPOINTS: readonly EndpointKey[] = ['chat_completions', 'embeddings']
 
+const CUSTOM_PATHS: Record<EndpointKey, string> = {
+  chat_completions: '/chat/completions',
+  responses: '/responses',
+  messages: '/messages',
+  messages_count_tokens: '/messages/count_tokens',
+  embeddings: '/embeddings',
+  images_generations: '/images/generations',
+  images_edits: '/images/edits',
+}
+
 export class CustomProvider implements ModelProvider {
   readonly kind = 'custom' as const
   readonly name: string
@@ -42,7 +52,7 @@ export class CustomProvider implements ModelProvider {
     this.name = cfg.name
     this.baseUrl = cfg.baseUrl.replace(/\/+$/, '')
     this.apiKey = cfg.apiKey
-    this.defaultHeaders = cfg.defaultHeaders ?? {}
+    this.defaultHeaders = mergeHeaders(cfg.defaultHeaders, undefined)
     this.supportedEndpoints = cfg.endpoints ?? DEFAULT_ENDPOINTS
     this.modelsEndpoint = cfg.modelsEndpoint ?? `${this.baseUrl}/models`
     this.manualModels = cfg.models?.map((m) =>
@@ -91,8 +101,10 @@ export class CustomProvider implements ModelProvider {
     throw new Error('not yet implemented')
   }
 
-  async fetch(_endpoint: EndpointKey, _init: RequestInit, _opts: ProviderFetchOptions = {}): Promise<Response> {
-    throw new Error('not yet implemented')
+  async fetch(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
+    const path = CUSTOM_PATHS[endpoint]
+    if (!path) throw new Error(`CustomProvider does not support endpoint: ${endpoint}`)
+    return this.send(path, init, opts, `call ${endpoint}`)
   }
 
   private authHeaders(
@@ -108,5 +120,48 @@ export class CustomProvider implements ModelProvider {
       base['Content-Type'] = 'application/json'
     }
     return base
+  }
+
+  private async send(
+    path: string,
+    init: RequestInit,
+    opts: ProviderFetchOptions,
+    defaultOpName: string,
+  ): Promise<Response> {
+    const url = `${this.baseUrl}${path}`
+    const bodyIsFormData = init.body instanceof FormData
+    const headers = this.authHeaders(mergeHeaders(init.headers, undefined), {
+      includeJsonContentType: !bodyIsFormData,
+    })
+    Object.assign(headers, mergeHeaders(opts.extraHeaders, undefined))
+    const operationName = opts.operationName ?? defaultOpName
+    let response: Response
+    try {
+      response = await fetchWithRetry(url, {
+        method: init.method ?? 'POST',
+        headers,
+        body: init.body,
+        timeout: opts.timeout,
+        maxRetries: 0,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      throw new HTTPError(
+        `Failed to ${operationName} via ${this.name}: ${msg}`,
+        new Response(msg, { status: 502 }),
+      )
+    }
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      throw new HTTPError(
+        `Failed to ${operationName} via ${this.name}: ${response.status} ${truncateBody(body)}`,
+        new Response(body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        }),
+      )
+    }
+    return response
   }
 }

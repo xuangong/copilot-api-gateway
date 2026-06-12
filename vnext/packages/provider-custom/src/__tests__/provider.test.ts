@@ -133,3 +133,141 @@ describe('CustomProvider.getModels', () => {
     } finally { globalThis.fetch = realFetch }
   })
 })
+
+describe('CustomProvider.fetch', () => {
+  const realFetch = globalThis.fetch
+
+  function captureFetch(response: () => Response | Promise<Response>): {
+    calls: Array<{ url: string; init?: RequestInit }>
+    restore: () => void
+  } {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      calls.push({ url: String(input), init })
+      return response()
+    }) as unknown as typeof fetch
+    return { calls, restore: () => { globalThis.fetch = realFetch } }
+  }
+
+  test('rejects unsupported endpoint with descriptive error', async () => {
+    const p = new CustomProvider({ name: 'x', baseUrl: 'https://x', apiKey: 'k' })
+    let caught: Error | undefined
+    try {
+      await p.fetch('not_an_endpoint' as unknown as 'chat_completions', { body: '{}' })
+    } catch (e) { caught = e as Error }
+    expect(caught).toBeDefined()
+    expect(caught!.message).toMatch(/CustomProvider does not support endpoint: not_an_endpoint/)
+  })
+
+  test('chat_completions: builds URL, layers headers, posts JSON body', async () => {
+    const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
+    try {
+      const p = new CustomProvider({
+        name: 'ds', baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-1',
+        defaultHeaders: { 'X-Default': 'd' },
+      })
+      const res = await p.fetch('chat_completions', { body: '{"model":"m"}', headers: { 'X-Init': 'i' } })
+      expect(res.status).toBe(200)
+      expect(calls.length).toBe(1)
+      expect(calls[0]!.url).toBe('https://api.deepseek.com/v1/chat/completions')
+      expect(calls[0]!.init?.method).toBe('POST')
+      const h = new Headers(calls[0]!.init?.headers)
+      expect(h.get('authorization')).toBe('Bearer sk-1')
+      expect(h.get('x-default')).toBe('d')
+      expect(h.get('x-init')).toBe('i')
+      expect(h.get('content-type')).toBe('application/json')
+      expect(calls[0]!.init?.body).toBe('{"model":"m"}')
+    } finally { restore() }
+  })
+
+  test('path map: each declared endpoint hits the right URL suffix', async () => {
+    const cases: Array<[Parameters<CustomProvider['fetch']>[0], string]> = [
+      ['chat_completions', '/chat/completions'],
+      ['responses', '/responses'],
+      ['messages', '/messages'],
+      ['messages_count_tokens', '/messages/count_tokens'],
+      ['embeddings', '/embeddings'],
+      ['images_generations', '/images/generations'],
+      ['images_edits', '/images/edits'],
+    ]
+    for (const [endpoint, suffix] of cases) {
+      const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
+      try {
+        const p = new CustomProvider({ name: 'x', baseUrl: 'https://x/v1', apiKey: 'k' })
+        await p.fetch(endpoint, { body: '{}' })
+        expect(calls[0]!.url).toBe(`https://x/v1${suffix}`)
+      } finally { restore() }
+    }
+  })
+
+  test('opts.extraHeaders overrides init headers and defaultHeaders', async () => {
+    const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
+    try {
+      const p = new CustomProvider({
+        name: 'x', baseUrl: 'https://x', apiKey: 'k',
+        defaultHeaders: { 'X-Both': 'default' },
+      })
+      await p.fetch('chat_completions', {
+        body: '{}',
+        headers: { 'X-Both': 'init' },
+      }, {
+        extraHeaders: { 'X-Both': 'extra', 'X-Extra-Only': 'yes' },
+      })
+      const h = new Headers(calls[0]!.init?.headers)
+      expect(h.get('x-both')).toBe('extra')        // extra wins
+      expect(h.get('x-extra-only')).toBe('yes')
+      expect(h.get('authorization')).toBe('Bearer k')  // auth never overridden by extra
+    } finally { restore() }
+  })
+
+  test('FormData body suppresses Content-Type: application/json', async () => {
+    const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
+    try {
+      const p = new CustomProvider({ name: 'x', baseUrl: 'https://x', apiKey: 'k' })
+      const fd = new FormData()
+      fd.append('model', 'm')
+      await p.fetch('images_edits', { body: fd })
+      const h = new Headers(calls[0]!.init?.headers)
+      // The runtime fetch will set the multipart Content-Type itself; we must NOT preset application/json.
+      expect(h.get('content-type')).not.toBe('application/json')
+    } finally { restore() }
+  })
+
+  test('non-2xx upstream wraps body in HTTPError with truncation', async () => {
+    const longBody = 'e'.repeat(500)
+    const { restore } = captureFetch(() => new Response(longBody, { status: 502, statusText: 'Bad Gateway' }))
+    try {
+      const p = new CustomProvider({ name: 'ds', baseUrl: 'https://x', apiKey: 'k' })
+      let caught: Error | undefined
+      try { await p.fetch('chat_completions', { body: '{}' }) } catch (e) { caught = e as Error }
+      expect(caught).toBeDefined()
+      expect(caught!.message).toMatch(/Failed to call chat_completions via ds: 502/)
+      expect(caught!.message).toContain('...(truncated)')
+      // HTTPError carries the original Response status
+      expect((caught as { response?: Response }).response?.status).toBe(502)
+    } finally { restore() }
+  })
+
+  test('opts.operationName overrides the default "call <endpoint>" string in error message', async () => {
+    const { restore } = captureFetch(() => new Response('nope', { status: 500 }))
+    try {
+      const p = new CustomProvider({ name: 'x', baseUrl: 'https://x', apiKey: 'k' })
+      let caught: Error | undefined
+      try {
+        await p.fetch('chat_completions', { body: '{}' }, { operationName: 'do special thing' })
+      } catch (e) { caught = e as Error }
+      expect(caught!.message).toMatch(/Failed to do special thing via x: 500/)
+    } finally { restore() }
+  })
+
+  test('transport-layer error (fetch throws) wraps as HTTPError with 502', async () => {
+    globalThis.fetch = (async () => { throw new Error('network down') }) as unknown as typeof fetch
+    try {
+      const p = new CustomProvider({ name: 'x', baseUrl: 'https://x', apiKey: 'k' })
+      let caught: Error | undefined
+      try { await p.fetch('chat_completions', { body: '{}' }) } catch (e) { caught = e as Error }
+      expect(caught!.message).toMatch(/Failed to call chat_completions via x: network down/)
+      expect((caught as { response?: Response }).response?.status).toBe(502)
+    } finally { globalThis.fetch = realFetch }
+  })
+})
