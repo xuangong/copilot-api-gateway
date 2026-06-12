@@ -1,5 +1,6 @@
 import type { AccountType } from "../../../../../shared/config/constants.ts"
 import { createCopilotProvider } from "../../../../providers/registry.ts"
+import { runConversationAttempt } from "../../../../observability/attempts/conversation-attempt.ts"
 
 import { EngineManager, type EngineManagerOptions } from "./engine-manager"
 import { formatSearchResults } from "./formatter"
@@ -34,6 +35,15 @@ interface SearchExecutionResult {
 interface CallOptions {
   copilotToken: string
   accountType: AccountType
+  /**
+   * Optional observability context — when present, each leaf upstream call is
+   * wrapped in runConversationAttempt so quota/latency/usage trackers fire.
+   * undefined apiKeyId disables observability silently (matches dispatch).
+   */
+  apiKeyId?: string
+  userAgent?: string
+  requestId?: string
+  model?: string
 }
 
 /** Tool definition sent to Copilot */
@@ -61,36 +71,64 @@ interface MessagesPayload {
   system?: string | { type: string; text: string }[]
 }
 
-// Helper to call Copilot API and get JSON response
+// Helper to call Copilot API and get JSON response. When observability fields
+// are present on `options`, the leaf upstream call flows through
+// runConversationAttempt so quota/latency/usage trackers fire on every
+// intercept-loop iteration; otherwise it short-circuits to a plain fetch.
 async function createMessages(
   payload: MessagesPayload,
   options: CallOptions,
 ): Promise<ApiResponse> {
-  const response = await createCopilotProvider({
+  const provider = createCopilotProvider({
     copilotToken: options.copilotToken,
     accountType: options.accountType,
-  }).fetch(
+  })
+  const call = () => provider.fetch(
     "messages",
     { method: "POST", body: JSON.stringify(payload) },
     { operationName: "create message" },
   )
-  return response.json() as Promise<ApiResponse>
-}
 
-// Helper to call Copilot API and get stream
-async function createMessagesStream(
-  payload: MessagesPayload,
-  options: CallOptions,
-): Promise<ReadableStream<Uint8Array>> {
-  const response = await createCopilotProvider({
-    copilotToken: options.copilotToken,
-    accountType: options.accountType,
-  }).fetch(
-    "messages",
-    { method: "POST", body: JSON.stringify({ ...payload, stream: true }) },
-    { operationName: "create message stream" },
-  )
-  return response.body!
+  // No observability context — keep the legacy direct path so callers without
+  // an apiKey (e.g. internal probes) don't pay quota or latency bookkeeping.
+  if (!options.apiKeyId) {
+    const response = await call()
+    return response.json() as Promise<ApiResponse>
+  }
+
+  const result = await runConversationAttempt({
+    apiKeyId: options.apiKeyId,
+    model: options.model ?? payload.model,
+    sourceApi: 'messages',
+    targetApi: 'messages',
+    upstream: 'github_copilot',
+    userAgent: options.userAgent,
+    requestId: options.requestId,
+    stream: false,
+    call,
+  })
+
+  if (result.ok && 'json' in result) {
+    // ok:true non-streaming → the attempt module already parsed json once.
+    return result.json as ApiResponse
+  }
+  if (!result.ok && 'rateLimit' in result) {
+    // Surface quota rejection as an upstream-style error so the loop's
+    // existing try/catch in route-handler propagates it cleanly.
+    const err = new Error(result.rateLimit.reason)
+    ;(err as Error & { status?: number }).status = 429
+    throw err
+  }
+  if (!result.ok && 'response' in result) {
+    // Non-2xx upstream — mirror the prior behaviour where the caller would
+    // surface the body via HTTPError. Read the body once and rethrow.
+    const text = await result.response.text()
+    const err = new Error(`Web search upstream returned HTTP ${result.status}: ${text}`)
+    ;(err as Error & { status?: number }).status = result.status
+    throw err
+  }
+  // Streaming branch is never hit (we set stream:false above); guard anyway.
+  throw new Error('web-search createMessages: unexpected attempt result shape')
 }
 
 function isWebSearchTool(tool: ClientTool): tool is WebSearchTool {

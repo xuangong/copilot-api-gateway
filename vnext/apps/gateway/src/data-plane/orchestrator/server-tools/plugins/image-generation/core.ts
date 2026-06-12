@@ -16,6 +16,7 @@
  */
 import type { EndpointKey } from '@vnext/protocols/common'
 import type { ProviderBinding } from '../../../../routing/binding.ts'
+import { runImagesAttempt } from '../../../../observability/attempts/images-attempt.ts'
 import type { ResponsesTool, ResponsesInputItem } from '../../types.ts'
 
 export const SHIM_TOOL_NAME = 'image_generation'
@@ -319,11 +320,18 @@ export function buildEditsForm(
   return form
 }
 
+export interface ImageGenerationObservability {
+  apiKeyId?: string
+  userAgent?: string
+  requestId?: string
+}
+
 export async function generateImageViaBinding(
   binding: ProviderBinding,
   prompt: string,
   config: ImageGenerationConfig,
   sources: readonly ImageSource[] = [],
+  obs?: ImageGenerationObservability,
 ): Promise<ImageGenerationOutcome> {
   const startedAt = Date.now()
   const isEdit = sources.length > 0
@@ -331,13 +339,38 @@ export async function generateImageViaBinding(
   const init: { method: string; body: BodyInit } = isEdit
     ? { method: 'POST', body: buildEditsForm(prompt, config, sources) }
     : { method: 'POST', body: JSON.stringify(buildGenerationsBody(prompt, config)) }
+  const upstreamCall = () => binding.provider.fetch(
+    endpoint,
+    init,
+    { operationName: isEdit ? 'image_generation edits shim' : 'image_generation shim', enabledFlags: binding.enabledFlags },
+  )
+
   let response: Response
   try {
-    response = await binding.provider.fetch(
-      endpoint,
-      init,
-      { operationName: isEdit ? 'image_generation edits shim' : 'image_generation shim', enabledFlags: binding.enabledFlags },
-    )
+    // The attempt module wraps quota/latency around the leaf upstream call;
+    // a missing apiKeyId is a silent no-op so this branch is the single hot path.
+    const attempt = await runImagesAttempt({
+      apiKeyId: obs?.apiKeyId,
+      model: config.model,
+      upstream: 'github_copilot',
+      userAgent: obs?.userAgent,
+      requestId: obs?.requestId,
+      call: upstreamCall,
+    })
+    if (!attempt.ok) {
+      if ('rateLimit' in attempt) {
+        return {
+          ok: false,
+          error: { type: 'image_generation_error', code: 'rate_limited', message: attempt.rateLimit.reason },
+          echo: {},
+          upstreamMs: Date.now() - startedAt,
+        }
+      }
+      // Non-2xx → preserve the prior parse path on the response body.
+      response = attempt.response
+    } else {
+      response = attempt.response
+    }
   } catch (e) {
     return {
       ok: false,

@@ -28,6 +28,8 @@ export interface ImageGenerationRouteContext {
   copilot?: CreateProviderOptions
   apiKeyId?: string
   requestId?: string
+  /** Forwarded to runImagesAttempt so latency rows carry the correct client tag. */
+  userAgent?: string
 }
 
 interface ResponsesPayloadLike {
@@ -41,9 +43,6 @@ export async function handleResponsesImageGeneration(
   ctx: ImageGenerationRouteContext,
   payload: ResponsesPayloadLike,
 ): Promise<Response> {
-  // Observability bypass: this intercept hits the image backend directly and
-  // does not flow through dispatch(), so quota/latency/usage trackers are skipped.
-  console.warn('[observability] handleResponsesImageGeneration bypasses dispatch quota/latency/usage tracking')
   const publicModel = payload.model
 
   const validated = validateImageGenerationConfig(payload.tools as Parameters<typeof validateImageGenerationConfig>[0])
@@ -96,7 +95,11 @@ export async function handleResponsesImageGeneration(
     )
   }
 
-  const outcome = await generateImageViaBinding(binding, prompt, config, sources)
+  const outcome = await generateImageViaBinding(binding, prompt, config, sources, {
+    apiKeyId: ctx.apiKeyId,
+    userAgent: ctx.userAgent,
+    requestId: ctx.requestId,
+  })
   const responseEnvelope = buildImageGenerationResponse(publicModel, prompt, outcome)
 
   if (payload.stream === true) {

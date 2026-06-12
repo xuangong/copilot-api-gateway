@@ -270,6 +270,7 @@ dataPlane.post('/v1/messages', async (c) => {
         msGroundingKey: auth.msGroundingKey,
         apiKeyId: auth.apiKeyId,
         requestId: c.req.header('x-request-id') ?? undefined,
+        userAgent: c.req.header('user-agent') ?? undefined,
       },
       raw as Parameters<typeof handleMessagesWebSearch>[1],
     )
@@ -333,6 +334,7 @@ dataPlane.post('/v1/responses', async (c) => {
         copilot: auth.copilot,
         apiKeyId: auth.apiKeyId,
         requestId: c.req.header('x-request-id') ?? undefined,
+        userAgent: c.req.header('user-agent') ?? undefined,
       },
       raw as Parameters<typeof handleResponsesImageGeneration>[1],
     )
