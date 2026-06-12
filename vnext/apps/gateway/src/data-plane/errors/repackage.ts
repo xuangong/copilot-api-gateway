@@ -11,6 +11,8 @@
  *   - The envelope shape matches what the client SDK expects so users see
  *     a coherent error instead of an upstream-shaped object.
  */
+import type { PreviousResponseNotFoundError } from '../dispatch/responses-store-bridge.ts'
+
 export type SourceApi = 'messages' | 'chat_completions' | 'responses' | 'gemini' | undefined
 
 interface ExtractedError {
@@ -75,6 +77,26 @@ export async function repackageUpstreamError(res: Response, sourceApi: SourceApi
   }
   return new Response(JSON.stringify(body), {
     status,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
+/**
+ * Render the responses snapshot miss as the OpenAI verbatim 400 envelope.
+ * Kept separate from `repackageUpstreamError` because the "upstream" here is
+ * gateway-side state (the snapshot store), not a remote 4xx body.
+ */
+export function renderPreviousResponseNotFound(err: PreviousResponseNotFoundError): Response {
+  const body = {
+    error: {
+      message: err.message,
+      type: 'invalid_request_error',
+      param: 'previous_response_id',
+      code: 'previous_response_not_found',
+    },
+  }
+  return new Response(JSON.stringify(body), {
+    status: 400,
     headers: { 'content-type': 'application/json' },
   })
 }
