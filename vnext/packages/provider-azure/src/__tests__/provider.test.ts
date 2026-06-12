@@ -56,3 +56,48 @@ describe('AzureProvider constructor', () => {
     expect(x).toEqual(deployments)
   })
 })
+
+describe('AzureProvider.getModels', () => {
+  const okCfg = {
+    name: 'azure-eastus2',
+    endpoint: 'https://my-aoai.openai.azure.com',
+    apiKey: 'az-key',
+    deployment: 'gpt-4o',
+    apiVersion: '2024-08-01-preview',
+    endpoints: ['chat_completions'] as const,
+  }
+
+  test('returns default deployment only when no extras', async () => {
+    const p = new AzureProvider(okCfg)
+    const res = await p.getModels() as { object: string; data: Array<{ id: string; owned_by: string }> }
+    expect(res.object).toBe('list')
+    expect(res.data).toHaveLength(1)
+    expect(res.data[0]!.id).toBe('gpt-4o')
+    expect(res.data[0]!.owned_by).toBe('azure')
+  })
+
+  test('combines default + extras and dedupes by model id', async () => {
+    const p = new AzureProvider({
+      ...okCfg,
+      deployments: [
+        { name: 'gpt-4o-mini-dep', model: 'gpt-4o-mini' },
+        { name: 'gpt-4o-alt', model: 'gpt-4o' },
+        { name: 'o1-preview-dep', model: 'o1-preview' },
+      ],
+    })
+    const res = await p.getModels() as { data: Array<{ id: string }> }
+    expect(res.data.map((m) => m.id)).toEqual(['gpt-4o', 'gpt-4o-mini', 'o1-preview'])
+  })
+
+  test('skips deployments with empty model field', async () => {
+    const p = new AzureProvider({
+      ...okCfg,
+      deployments: [
+        { name: 'unset-dep', model: '' },
+        { name: 'ok-dep', model: 'gpt-35-turbo' },
+      ],
+    })
+    const res = await p.getModels() as { data: Array<{ id: string }> }
+    expect(res.data.map((m) => m.id)).toEqual(['gpt-4o', 'gpt-35-turbo'])
+  })
+})

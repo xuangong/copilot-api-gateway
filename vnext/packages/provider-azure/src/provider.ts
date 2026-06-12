@@ -57,7 +57,16 @@ export class AzureProvider implements ModelProvider {
   }
 
   async getModels(): Promise<ProviderModelsResponse> {
-    throw new Error('not yet implemented')
+    // G6: list default deployment + extras as separate models so binding
+    // selection by model id works. Dedup by model id.
+    const seen = new Set<string>()
+    const out: Array<{ id: string; object: string; created: number; owned_by: string }> = []
+    for (const m of [this.deployment, ...this.extraDeployments.map((d) => d.model)]) {
+      if (!m || seen.has(m)) continue
+      seen.add(m)
+      out.push({ id: m, object: 'model', created: 0, owned_by: 'azure' })
+    }
+    return { object: 'list', data: out } as unknown as ProviderModelsResponse
   }
 
   async probe(): Promise<ProbeResult> {
