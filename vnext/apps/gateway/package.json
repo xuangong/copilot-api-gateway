@@ -9,7 +9,9 @@
   "dependencies": {
     "@vnext/interceptor": "workspace:*",
     "@vnext/provider": "workspace:*",
+    "@vnext/provider-azure": "workspace:*",
     "@vnext/provider-copilot": "workspace:*",
+    "@vnext/provider-custom": "workspace:*",
     "@vnext/protocols": "workspace:*",
     "@vnext/responses-store": "workspace:*",
     "@vnext/translate": "workspace:*",
