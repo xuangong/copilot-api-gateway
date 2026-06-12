@@ -41,6 +41,21 @@ runStoreContract({
     db.exec(SCHEMA)
     let nowMs = 0
     const store = new SqliteResponsesSnapshotStore(makeExecutor(db), { now: () => nowMs })
-    return { store, setNow: (ms) => { nowMs = ms } }
+    return {
+      store,
+      setNow: (ms) => { nowMs = ms },
+      rawCount: async () => {
+        const row = db.query('SELECT COUNT(*) AS n FROM responses_snapshots').get() as { n: number }
+        return row.n
+      },
+      injectCorruptRow: async (responseId, apiKeyId) => {
+        // Bypass the store API to plant a row whose items_json cannot be parsed.
+        db.query(
+          `INSERT INTO responses_snapshots
+             (response_id, api_key_id, model, items_json, created_at, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        ).run(responseId, apiKeyId, 'gpt-5', 'not json', 1_000, 1_000_000_000_000)
+      },
+    }
   },
 })

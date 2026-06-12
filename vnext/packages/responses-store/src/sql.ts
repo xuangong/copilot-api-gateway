@@ -50,11 +50,18 @@ export class SqliteResponsesSnapshotStore implements ResponsesSnapshotStore {
       [responseId, apiKeyId, apiKeyId, this.now()],
     )
     if (!row) return null
+    let items: unknown[]
+    try {
+      items = JSON.parse(row.items_json) as unknown[]
+    } catch {
+      // A corrupt snapshot is functionally equivalent to a missing one.
+      return null
+    }
     return {
       responseId: row.response_id,
       apiKeyId: row.api_key_id,
       model: row.model,
-      items: JSON.parse(row.items_json) as unknown[],
+      items,
       createdAt: row.created_at,
       expiresAt: row.expires_at,
     }

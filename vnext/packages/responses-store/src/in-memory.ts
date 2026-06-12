@@ -33,6 +33,11 @@ export class InMemoryResponsesSnapshotStore implements ResponsesSnapshotStore {
     this.gc()
   }
 
+  /** Test/debug seam: total rows in storage, ignoring TTL. Not part of the public store contract. */
+  _size(): number {
+    return this.rows.size
+  }
+
   private gc(): void {
     const cutoff = this.now()
     let evicted = 0

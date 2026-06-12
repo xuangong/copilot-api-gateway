@@ -13,7 +13,21 @@ import type { ResponsesSnapshotStore, ResponsesSnapshot } from '../types.ts'
 
 export interface StoreFactory {
   /** Returns a fresh store + a setter that controls `now()` for that store. */
-  make(): Promise<{ store: ResponsesSnapshotStore; setNow: (ms: number) => void }>
+  make(): Promise<{
+    store: ResponsesSnapshotStore
+    setNow: (ms: number) => void
+    /**
+     * Optional: total rows in storage, ignoring TTL filter.
+     * Lets the GC test prove rows were actually evicted (not just hidden by load()'s TTL filter).
+     */
+    rawCount?: () => Promise<number>
+    /**
+     * Optional: insert a row whose items_json cannot be parsed.
+     * Only meaningful for impls where storage can hold corrupt data (e.g. SQL).
+     * In-memory impls hold typed values and skip this case.
+     */
+    injectCorruptRow?: (responseId: string, apiKeyId: string | null) => Promise<void>
+  }>
   /** Human-readable label used in test names. */
   label: string
 }
@@ -78,7 +92,7 @@ export function runStoreContract(factory: StoreFactory): void {
   })
 
   test(`[${factory.label}] save runs opportunistic GC of expired rows`, async () => {
-    const { store, setNow } = await factory.make()
+    const { store, setNow, rawCount } = await factory.make()
     setNow(1_000)
     // Insert two rows that will be expired by t=70_000.
     await store.save({ ...make(), responseId: 'expired_1' })
@@ -86,12 +100,16 @@ export function runStoreContract(factory: StoreFactory): void {
     setNow(70_000)
     // Saving a fresh one should also evict the two expired siblings.
     await store.save({ ...make(), responseId: 'fresh', createdAt: 70_000, expiresAt: 130_000 })
-    setNow(70_000) // still after expiry — load() returns null on its own;
-                   // GC effect is observable only at the storage layer.
-                   // We assert via load() which combines both: must be null.
+    setNow(70_000)
+    // load() applies its own TTL filter, so these nulls are necessary but not
+    // sufficient to prove eviction. rawCount() (when available) bypasses the
+    // filter and proves the expired rows were actually deleted from storage.
     expect(await store.load('expired_1', 'key_a')).toBeNull()
     expect(await store.load('expired_2', 'key_a')).toBeNull()
     expect(await store.load('fresh', 'key_a')).not.toBeNull()
+    if (rawCount) {
+      expect(await rawCount()).toBe(1)
+    }
   })
 
   test(`[${factory.label}] items round-trip preserves nested arrays and objects`, async () => {
@@ -104,5 +122,12 @@ export function runStoreContract(factory: StoreFactory): void {
     await store.save({ ...make(), items: nested })
     const got = await store.load('resp_1', 'key_a')
     expect(got!.items).toEqual(nested)
+  })
+
+  test(`[${factory.label}] load returns null when stored row has corrupt items_json`, async () => {
+    const { store, injectCorruptRow } = await factory.make()
+    if (!injectCorruptRow) return // Impls that can't hold corrupt data (e.g. in-memory) skip this case.
+    await injectCorruptRow('resp_corrupt', 'key_a')
+    expect(await store.load('resp_corrupt', 'key_a')).toBeNull()
   })
 }
