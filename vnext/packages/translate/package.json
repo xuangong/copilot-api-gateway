@@ -4,12 +4,6 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./messages": "./src/messages.ts",
-    "./chat": "./src/chat.ts",
-    "./responses": "./src/responses.ts",
-    "./gemini": "./src/gemini.ts",
-    "./contract": "./src/contract.ts",
     "./shared/*": "./src/shared/*.ts",
     "./chat-completions-via-messages": "./src/chat-completions-via-messages/index.ts",
     "./messages-via-chat-completions": "./src/messages-via-chat-completions/index.ts",

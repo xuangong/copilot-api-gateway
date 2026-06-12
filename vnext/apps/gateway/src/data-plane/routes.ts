@@ -19,10 +19,12 @@
  */
 import { Hono } from 'hono'
 import type { Env } from '../app.ts'
-import { messagesIn } from './adapters/frontend/messages-in.ts'
-import { chatIn } from './adapters/frontend/chat-in.ts'
-import { responsesIn } from './adapters/frontend/responses-in.ts'
-import { geminiIn } from './adapters/frontend/gemini-in.ts'
+import {
+  parseMessagesPayload,
+  parseChatPayload,
+  parseResponsesPayload,
+  parseGeminiPayload,
+} from './parsers.ts'
 import type { EndpointKey, ModelEndpoints } from '@vnext/protocols/common'
 import { modelsRouter, type DataPlaneAuthCtx } from './models/routes.ts'
 import { embeddingsRouter } from './embeddings/routes.ts'
@@ -281,7 +283,7 @@ dataPlane.post('/v1/messages', async (c) => {
   return dispatch(
     { req: { json: async () => raw } },
     {
-      parse: (r) => messagesIn.parse(r),
+      parse: (r) => parseMessagesPayload(r),
       modelOf: (p) => (p as { model?: string }).model ?? '',
       sourceApi: 'messages',
       errorWrap: messagesErrorWrap,
@@ -299,7 +301,7 @@ dataPlane.post('/v1/chat/completions', (c) => {
     requestId: c.req.header('x-request-id') ?? undefined,
   }
   return dispatch(c, {
-    parse: (r) => chatIn.parse(r),
+    parse: (r) => parseChatPayload(r),
     modelOf: (p) => (p as { model?: string }).model ?? '',
     sourceApi: 'chat_completions',
     // Chat Completions has no required max_tokens — give chat→messages a default
@@ -344,7 +346,7 @@ dataPlane.post('/v1/responses', async (c) => {
   return dispatch(
     { req: { json: async () => raw } },
     {
-      parse: (r) => responsesIn.parse(r),
+      parse: (r) => parseResponsesPayload(r),
       modelOf: (p) => (p as { model?: string }).model ?? '',
       sourceApi: 'responses',
       errorWrap: messagesErrorWrap,
@@ -366,7 +368,7 @@ dataPlane.post('/v1beta/models/:model{.+}', (c) => {
     requestId: c.req.header('x-request-id') ?? undefined,
   }
   return dispatch(c, {
-    parse: (r) => geminiIn.parse(r),
+    parse: (r) => parseGeminiPayload(r),
     modelOf: () => model ?? '',
     // Gemini payload has no top-level model; the translator reads it from
     // TranslateContext.model. Force-stream is decoded from the URL verb.
