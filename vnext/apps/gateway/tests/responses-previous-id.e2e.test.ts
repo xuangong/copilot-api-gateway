@@ -188,3 +188,47 @@ test('responses + previous_response_id owned by another api key returns 400', as
   const body = await res.json() as { error: { code: string } }
   expect(body.error.code).toBe('previous_response_not_found')
 })
+
+test('responses non-stream saves snapshot using upstream response.id', async () => {
+  setRepoForTest(stubRepo([stubUpstream()]))
+  const store = new InMemoryResponsesSnapshotStore()
+  installFetch((req) => {
+    const url = new URL(req.url)
+    if (url.pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({ data: [stubModel(MODEL_ID)] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })
+    }
+    if (url.pathname.endsWith('/responses')) {
+      return new Response(JSON.stringify({
+        id: 'resp_saved_xyz', object: 'response', model: MODEL_ID,
+        output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'ok' }] }],
+        usage: { input_tokens: 5, output_tokens: 2, total_tokens: 7 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    return new Response('not found', { status: 404 })
+  })
+
+  const wrapper = buildApp(
+    { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
+    store,
+  )
+  const res = await wrapper.fetch(new Request('http://x/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: MODEL_ID,
+      input: [{ type: 'message', role: 'user', content: 'hello' }],
+    }),
+  }), {} as never)
+  expect(res.status).toBe(200)
+  // give the post-turn save a tick to settle (it's awaited in-route, but we
+  // read the body to be sure the response has been emitted)
+  await res.text()
+  const snap = await store.load('resp_saved_xyz', 'k1')
+  expect(snap).not.toBeNull()
+  expect(snap!.model).toBe(MODEL_ID)
+  // items must include both the user input and the assistant output
+  expect(JSON.stringify(snap!.items)).toContain('hello')
+  expect(JSON.stringify(snap!.items)).toContain('ok')
+})

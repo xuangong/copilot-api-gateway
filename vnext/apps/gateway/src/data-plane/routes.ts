@@ -48,6 +48,7 @@ import { encodeClientSSE } from './dispatch/sse-writers.ts'
 import {
   expandPreviousResponseId,
   PreviousResponseNotFoundError,
+  savePostTurnSnapshot,
 } from './dispatch/responses-store-bridge.ts'
 import { renderPreviousResponseNotFound } from './errors/repackage.ts'
 
@@ -365,7 +366,7 @@ dataPlane.post('/v1/responses', async (c) => {
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,
   }
-  return dispatch(
+  const response = await dispatch(
     { req: { json: async () => raw } },
     {
       parse: (r) => parseResponsesPayload(r),
@@ -376,6 +377,38 @@ dataPlane.post('/v1/responses', async (c) => {
       obsCtx,
     },
   )
+
+  if (!store || response.status !== 200) return response
+  const ct = response.headers.get('content-type') ?? ''
+  if (ct.includes('text/event-stream')) {
+    // Stream path handled in Task 9 — return as-is for now.
+    return response
+  }
+  if (!ct.includes('application/json')) return response
+
+  const cloned = response.clone()
+  try {
+    const json = await cloned.json() as {
+      id?: string
+      model?: string
+      output?: unknown[]
+    }
+    const inputItems = Array.isArray((raw as { input?: unknown }).input)
+      ? ((raw as { input: unknown[] }).input)
+      : []
+    if (typeof json.id === 'string' && Array.isArray(json.output)) {
+      await savePostTurnSnapshot(store, {
+        responseId: json.id,
+        apiKeyId: auth.apiKeyId ?? null,
+        model: typeof json.model === 'string' ? json.model : ((raw as { model?: string }).model ?? ''),
+        inputItems,
+        outputItems: json.output,
+      })
+    }
+  } catch (err) {
+    console.warn('savePostTurnSnapshot (non-stream) failed', err)
+  }
+  return response
 })
 
 dataPlane.post('/v1beta/models/:model{.+}', (c) => {
