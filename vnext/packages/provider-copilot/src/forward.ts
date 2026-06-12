@@ -1,7 +1,7 @@
 import { getCopilotBaseUrl, type AccountType } from "./account-type"
 import { copilotHeaders } from "./headers"
 import { HTTPError } from "./lib/error"
-import { fetchWithRetry } from "@vnext/shared-http"
+import { fetchWithRetry, truncateBody } from "@vnext/shared-http"
 
 interface CallCopilotAPIOptions {
   endpoint: string
@@ -82,10 +82,7 @@ export async function callCopilotAPI({
       const parsed = JSON.parse(errorBody)
       errorDetail = JSON.stringify(parsed)
     } catch {
-      errorDetail =
-        errorBody.length > 200
-          ? errorBody.slice(0, 200) + "...(truncated)"
-          : errorBody
+      errorDetail = truncateBody(errorBody)
     }
 
     // Include full error detail in the message for logging
