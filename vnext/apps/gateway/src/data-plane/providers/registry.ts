@@ -23,6 +23,8 @@ import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import { copilotModelEndpoints } from '@vnext/provider-copilot'
 import type { ModelProvider, ProviderBinding } from '@vnext/provider'
 import { CopilotProvider } from '@vnext/provider-copilot'
+import { CustomProvider, type CustomProviderConfig } from '@vnext/provider-custom'
+import { AzureProvider, type AzureProviderConfig } from '@vnext/provider-azure'
 
 export interface CreateProviderOptions {
   copilotToken: string
@@ -39,18 +41,24 @@ export function createCopilotProvider(opts: CreateProviderOptions): ModelProvide
 }
 
 /**
- * Build a ModelProvider from a stored upstream row. Returns null when the
- * upstream's provider kind is not yet ported to vnext (azure/custom) or
- * when a Copilot upstream lacks a github token and no fallback opts were
- * passed.
+ * Build a ModelProvider from a stored upstream row. Returns null when a
+ * Copilot upstream lacks a github token AND no fallback `copilot` opts were
+ * passed; custom/azure upstreams construct from their stored config.
+ *
+ * Note: CustomProvider/AzureProvider constructors VALIDATE config and throw
+ * Error on missing apiKey/baseUrl/endpoint/deployment/apiVersion. Callers
+ * that want to translate that into HTTP 4xx must wrap in try/catch
+ * themselves (see control-plane upstream-probe).
  */
 export async function createProviderFromUpstream(
   upstream: UpstreamRecord,
   copilot?: CreateProviderOptions,
 ): Promise<ModelProvider | null> {
-  if (upstream.provider === 'azure' || upstream.provider === 'custom') {
-    // TODO(Week 5+): port Azure/Custom providers, then route through here.
-    return null
+  if (upstream.provider === 'custom') {
+    return new CustomProvider(upstream.config as unknown as CustomProviderConfig)
+  }
+  if (upstream.provider === 'azure') {
+    return new AzureProvider(upstream.config as unknown as AzureProviderConfig)
   }
   if (upstream.provider !== 'copilot') return null
   const config = upstream.config

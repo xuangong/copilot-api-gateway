@@ -4,6 +4,7 @@ import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import {
   listProviderBindings,
   listUpstreamModels,
+  createProviderFromUpstream,
 } from '../src/data-plane/providers/registry.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 
@@ -90,4 +91,63 @@ test('listUpstreamModels dedupes by model id and attaches provenance', async () 
   const resp = await listUpstreamModels({ copilot: { copilotToken: 'tkn', accountType: 'individual' } })
   expect(resp.data).toHaveLength(1)
   expect((resp.data[0] as Model & { _upstream: string })._upstream).toBe('copilot:u1')
+})
+
+const customUpstream = (overrides: Partial<UpstreamRecord> = {}): UpstreamRecord => ({
+  id: 'up_custom_a',
+  provider: 'custom',
+  name: 'my-llm',
+  enabled: true,
+  sortOrder: 0,
+  config: {
+    name: 'my-llm',
+    baseUrl: 'https://api.example.com/v1',
+    apiKey: 'sk-secret',
+    endpoints: ['chat_completions', 'embeddings'],
+  },
+  flagOverrides: {},
+  disabledPublicModelIds: [],
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+  ...overrides,
+})
+
+const azureUpstream = (overrides: Partial<UpstreamRecord> = {}): UpstreamRecord => ({
+  id: 'up_azure_a',
+  provider: 'azure',
+  name: 'my-azure',
+  enabled: true,
+  sortOrder: 0,
+  config: {
+    name: 'my-azure',
+    endpoint: 'https://az.example.com',
+    apiKey: 'az-secret',
+    deployment: 'gpt-4o',
+    apiVersion: '2024-02-15-preview',
+    endpoints: ['chat_completions'],
+  },
+  flagOverrides: {},
+  disabledPublicModelIds: [],
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+  ...overrides,
+})
+
+test('createProviderFromUpstream returns CustomProvider for kind=custom', async () => {
+  const provider = await createProviderFromUpstream(customUpstream())
+  expect(provider).not.toBeNull()
+  expect(provider!.kind).toBe('custom')
+})
+
+test('createProviderFromUpstream returns AzureProvider for kind=azure', async () => {
+  const provider = await createProviderFromUpstream(azureUpstream())
+  expect(provider).not.toBeNull()
+  expect(provider!.kind).toBe('azure')
+})
+
+test('createProviderFromUpstream does not require copilot opts for custom/azure', async () => {
+  const cu = await createProviderFromUpstream(customUpstream())
+  const az = await createProviderFromUpstream(azureUpstream())
+  expect(cu).not.toBeNull()
+  expect(az).not.toBeNull()
 })
