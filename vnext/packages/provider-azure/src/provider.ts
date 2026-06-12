@@ -12,12 +12,14 @@
  */
 
 import type { EndpointKey } from '@vnext/protocols/common'
-import type {
-  ModelProvider,
-  ProbeResult,
-  ProviderFetchOptions,
-  ProviderModelsResponse,
+import {
+  HTTPError,
+  type ModelProvider,
+  type ProbeResult,
+  type ProviderFetchOptions,
+  type ProviderModelsResponse,
 } from '@vnext/provider'
+import { fetchWithRetry, mergeHeaders, parseJsonBody, truncateBody } from '@vnext/shared-http'
 
 export interface AzureProviderConfig {
   name: string
@@ -28,6 +30,19 @@ export interface AzureProviderConfig {
   endpoints: readonly EndpointKey[]
   defaultHeaders?: Record<string, string>
   deployments?: ReadonlyArray<{ name: string; model: string }>
+}
+
+const OPENAI_PATHS: Partial<Record<EndpointKey, string>> = {
+  chat_completions: '/chat/completions',
+  responses: '/responses',
+  embeddings: '/embeddings',
+  images_generations: '/images/generations',
+  images_edits: '/images/edits',
+}
+
+const ANTHROPIC_PATHS: Partial<Record<EndpointKey, string>> = {
+  messages: '/v1/messages',
+  messages_count_tokens: '/v1/messages/count_tokens',
 }
 
 export class AzureProvider implements ModelProvider {
@@ -73,7 +88,104 @@ export class AzureProvider implements ModelProvider {
     throw new Error('not yet implemented')
   }
 
-  async fetch(_endpoint: EndpointKey, _init: RequestInit, _opts: ProviderFetchOptions = {}): Promise<Response> {
-    throw new Error('not yet implemented')
+  async fetch(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
+    if (!this.supportedEndpoints.includes(endpoint)) {
+      throw new Error(`Azure deployment ${this.name} does not serve endpoint: ${endpoint}`)
+    }
+    return this.send(endpoint, init, opts, `call ${endpoint}`)
   }
+
+  /**
+   * Map the request's payload.model to the Azure deployment name to use.
+   * Falls back to the configured default deployment when no mapping
+   * matches — preserves the pre-G6 single-deployment behavior.
+   */
+  private resolveDeployment(payload: Record<string, unknown>): string {
+    const model = typeof payload.model === 'string' ? payload.model : undefined
+    if (!model) return this.deployment
+    for (const d of this.extraDeployments) {
+      if (d.model === model || d.name === model) return d.name
+    }
+    return this.deployment
+  }
+
+  private buildUrl(endpoint: EndpointKey, deployment: string): string {
+    const openai = OPENAI_PATHS[endpoint]
+    if (openai) {
+      return `${this.endpoint}/openai/deployments/${deployment}${openai}?api-version=${encodeURIComponent(this.apiVersion)}`
+    }
+    const anthropic = ANTHROPIC_PATHS[endpoint]
+    if (anthropic) {
+      return `${this.endpoint}/anthropic${anthropic}`
+    }
+    throw new Error(`Azure provider does not support endpoint: ${endpoint}`)
+  }
+
+  private headers(
+    extra: Record<string, string> = {},
+    opts: { includeJsonContentType?: boolean } = {},
+  ): Record<string, string> {
+    const base: Record<string, string> = {
+      'api-key': this.apiKey,
+      ...this.defaultHeaders,
+      ...extra,
+    }
+    if (opts.includeJsonContentType !== false) {
+      base['Content-Type'] = 'application/json'
+    }
+    return base
+  }
+
+  private async send(
+    endpoint: EndpointKey,
+    init: RequestInit,
+    opts: ProviderFetchOptions,
+    defaultOpName: string,
+  ): Promise<Response> {
+    const bodyIsFormData = init.body instanceof FormData
+    const payload = bodyIsFormData
+      ? parseFormDataPayload(init.body as FormData)
+      : parseJsonBody(init.body)
+    const deployment = this.resolveDeployment(payload)
+    const url = this.buildUrl(endpoint, deployment)
+    const headers = this.headers(opts.extraHeaders ?? {}, { includeJsonContentType: !bodyIsFormData })
+    if (init.headers) {
+      Object.assign(headers, mergeHeaders(init.headers, undefined))
+    }
+    const operationName = opts.operationName ?? defaultOpName
+    let response: Response
+    try {
+      response = await fetchWithRetry(url, {
+        method: init.method ?? 'POST',
+        headers,
+        body: init.body,
+        timeout: opts.timeout,
+        maxRetries: 0,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      throw new HTTPError(
+        `Failed to ${operationName} via ${this.name}: ${msg}`,
+        new Response(msg, { status: 502 }),
+      )
+    }
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      throw new HTTPError(
+        `Failed to ${operationName} via ${this.name}: ${response.status} ${truncateBody(body)}`,
+        new Response(body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        }),
+      )
+    }
+    return response
+  }
+}
+
+/** Extract routing-relevant fields (model) from a multipart FormData body. */
+function parseFormDataPayload(form: FormData): Record<string, unknown> {
+  const model = form.get('model')
+  return typeof model === 'string' ? { model } : {}
 }
