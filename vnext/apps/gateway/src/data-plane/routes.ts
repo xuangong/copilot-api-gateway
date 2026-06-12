@@ -29,8 +29,9 @@ import type { EndpointKey, ModelEndpoints } from '@vnext/protocols/common'
 import { modelsRouter, type DataPlaneAuthCtx } from './models/routes.ts'
 import { embeddingsRouter } from './embeddings/routes.ts'
 import { imagesRouter } from './images/routes.ts'
-import { parseModelRouting } from './routing/binding-resolver.ts'
+import { parseModelRouting, resolveBinding, stripUpstreamPin } from './routing/binding-resolver.ts'
 import { enumerateBindingCandidates } from './routing/candidates.ts'
+import { runAnthropicCountTokensPipeline } from './transforms/index.ts'
 import { repackageUpstreamError, type SourceApi as ErrorSourceApi } from './errors/repackage.ts'
 import {
   HTTPError,
@@ -320,6 +321,65 @@ dataPlane.post('/v1/messages', async (c) => {
       obsCtx,
     },
   )
+})
+
+dataPlane.post('/v1/messages/count_tokens', async (c) => {
+  let raw: unknown
+  try { raw = await c.req.json() } catch {
+    return new Response(
+      JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'invalid JSON' } }),
+      { status: 400, headers: { 'content-type': 'application/json' } },
+    )
+  }
+  let payload
+  try { payload = parseMessagesPayload(raw) }
+  catch (err) {
+    const e = err as Error & { status?: number; body?: unknown }
+    return new Response(
+      JSON.stringify(e.body ?? { type: 'error', error: { type: 'invalid_request_error', message: e.message } }),
+      { status: e.status ?? 400, headers: { 'content-type': 'application/json' } },
+    )
+  }
+  runAnthropicCountTokensPipeline(payload as Parameters<typeof runAnthropicCountTokensPipeline>[0])
+  stripUpstreamPin(payload as unknown as Record<string, unknown>)
+
+  const auth = (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx
+  const binding = await resolveBinding(payload.model, 'messages_count_tokens', {
+    ownerId: auth.userId,
+    copilot: auth.copilot,
+  })
+  if (!binding) {
+    return new Response(
+      JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: `No messages_count_tokens upstream available for model: ${payload.model}. Run GET /v1/models for available ids.` } }),
+      { status: 404, headers: { 'content-type': 'application/json' } },
+    )
+  }
+
+  const reqHeaders = c.req.raw.headers
+  const extraHeaders: Record<string, string> = {}
+  const beta = reqHeaders.get('anthropic-beta')
+  if (beta) extraHeaders['anthropic-beta'] = beta
+  const version = reqHeaders.get('anthropic-version')
+  if (version) extraHeaders['anthropic-version'] = version
+
+  try {
+    const response = await binding.provider.fetch(
+      'messages_count_tokens',
+      { method: 'POST', body: JSON.stringify(payload), headers: { 'content-type': 'application/json' } },
+      { operationName: 'count tokens', extraHeaders, enabledFlags: binding.enabledFlags },
+    )
+    const json = await response.json()
+    return Response.json(json, { status: response.status })
+  } catch (err) {
+    if (err instanceof HTTPError) {
+      return await repackageUpstreamError(err.response, 'messages')
+    }
+    const message = err instanceof Error ? err.message : 'upstream error'
+    return new Response(
+      JSON.stringify({ type: 'error', error: { type: 'api_error', message } }),
+      { status: 502, headers: { 'content-type': 'application/json' } },
+    )
+  }
 })
 
 dataPlane.post('/v1/chat/completions', (c) => {
