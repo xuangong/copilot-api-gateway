@@ -321,3 +321,55 @@ describe('AzureProvider.fetch', () => {
     } finally { globalThis.fetch = realFetch }
   })
 })
+
+describe('AzureProvider.probe', () => {
+  const realFetch = globalThis.fetch
+
+  const okCfg = {
+    name: 'azure-eastus2',
+    endpoint: 'https://my-aoai.openai.azure.com',
+    apiKey: 'az-key',
+    deployment: 'gpt-4o',
+    apiVersion: '2024-08-01-preview',
+    endpoints: ['chat_completions'] as const,
+  }
+
+  test('hits /openai/deployments?api-version=… with api-key header on probe', async () => {
+    const captured: Array<{ url: string; headers?: RequestInit['headers'] }> = []
+    globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      captured.push({ url: String(input), headers: init?.headers })
+      return Response.json({ data: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }] })
+    }) as unknown as typeof fetch
+    try {
+      const p = new AzureProvider(okCfg)
+      const r = await p.probe()
+      expect(captured[0]!.url).toBe(
+        'https://my-aoai.openai.azure.com/openai/deployments?api-version=2024-08-01-preview'
+      )
+      expect(new Headers(captured[0]!.headers).get('api-key')).toBe('az-key')
+      expect(r.ok).toBe(true)
+      expect(r.modelCount).toBe(2)
+    } finally { globalThis.fetch = realFetch }
+  })
+
+  test('returns ok=false with status + hint on 401', async () => {
+    globalThis.fetch = (async () => new Response('unauthorized', { status: 401 })) as unknown as typeof fetch
+    try {
+      const p = new AzureProvider({ ...okCfg, apiKey: 'bad' })
+      const r = await p.probe()
+      expect(r.ok).toBe(false)
+      expect(r.status).toBe(401)
+      expect(r.hint).toMatch(/401/)
+    } finally { globalThis.fetch = realFetch }
+  })
+
+  test('returns ok=false on 403', async () => {
+    globalThis.fetch = (async () => new Response('forbidden', { status: 403 })) as unknown as typeof fetch
+    try {
+      const p = new AzureProvider(okCfg)
+      const r = await p.probe()
+      expect(r.ok).toBe(false)
+      expect(r.status).toBe(403)
+    } finally { globalThis.fetch = realFetch }
+  })
+})

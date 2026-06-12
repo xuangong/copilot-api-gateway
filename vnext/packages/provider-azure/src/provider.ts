@@ -14,6 +14,7 @@
 import type { EndpointKey } from '@vnext/protocols/common'
 import {
   HTTPError,
+  probeViaModels,
   type ModelProvider,
   type ProbeResult,
   type ProviderFetchOptions,
@@ -84,8 +85,26 @@ export class AzureProvider implements ModelProvider {
     return { object: 'list', data: out } as unknown as ProviderModelsResponse
   }
 
+  /**
+   * Azure has no /v1/models surface, so probe by listing the resource's
+   * deployments via the management-style REST endpoint. A 200 means the
+   * api-key is valid AND the configured deployment name appears in the
+   * response, which is what an admin actually wants to verify before
+   * trusting this upstream.
+   */
   async probe(): Promise<ProbeResult> {
-    throw new Error('not yet implemented')
+    return probeViaModels(async () => {
+      const url = `${this.endpoint}/openai/deployments?api-version=${encodeURIComponent(this.apiVersion)}`
+      const res = await fetch(url, { headers: this.headers() })
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        const err = new Error(`Azure deployments list failed: ${res.status} ${body.slice(0, 500)}`) as Error & { status?: number }
+        err.status = res.status
+        throw err
+      }
+      const json = (await res.json()) as { data?: Array<{ id?: string }> }
+      return { data: json.data ?? [] } as unknown as ProviderModelsResponse
+    })
   }
 
   async fetch(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
