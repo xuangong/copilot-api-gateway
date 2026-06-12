@@ -271,3 +271,48 @@ describe('CustomProvider.fetch', () => {
     } finally { globalThis.fetch = realFetch }
   })
 })
+
+describe('CustomProvider.probe', () => {
+  const realFetch = globalThis.fetch
+
+  test('returns ok=true with modelCount + models on success', async () => {
+    globalThis.fetch = (async () => Response.json({
+      object: 'list',
+      data: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
+    })) as unknown as typeof fetch
+    try {
+      const p = new CustomProvider({ name: 'x', baseUrl: 'https://x', apiKey: 'k' })
+      const r = await p.probe()
+      expect(r.ok).toBe(true)
+      expect(r.modelCount).toBe(3)
+      expect(r.models).toEqual(['a', 'b', 'c'])
+    } finally { globalThis.fetch = realFetch }
+  })
+
+  test('returns ok=false with hint on 401', async () => {
+    globalThis.fetch = (async () => new Response('unauthorized', { status: 401 })) as unknown as typeof fetch
+    try {
+      const p = new CustomProvider({ name: 'x', baseUrl: 'https://x', apiKey: 'bad' })
+      const r = await p.probe()
+      expect(r.ok).toBe(false)
+      expect(r.status).toBe(401)
+      expect(r.hint).toMatch(/401/)
+    } finally { globalThis.fetch = realFetch }
+  })
+
+  test('manual models populate probe result without hitting network', async () => {
+    let calls = 0
+    globalThis.fetch = (async () => { calls++; return new Response('', { status: 200 }) }) as unknown as typeof fetch
+    try {
+      const p = new CustomProvider({
+        name: 'x', baseUrl: 'https://x', apiKey: 'k',
+        models: ['m1', 'm2'],
+      })
+      const r = await p.probe()
+      expect(calls).toBe(0)
+      expect(r.ok).toBe(true)
+      expect(r.modelCount).toBe(2)
+      expect(r.models).toEqual(['m1', 'm2'])
+    } finally { globalThis.fetch = realFetch }
+  })
+})

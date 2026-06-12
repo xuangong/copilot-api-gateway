@@ -5,13 +5,14 @@
  */
 
 import type { EndpointKey } from '@vnext/protocols/common'
-import type {
-  ModelProvider,
-  ProbeResult,
-  ProviderFetchOptions,
-  ProviderModelsResponse,
+import {
+  HTTPError,
+  probeViaModels,
+  type ModelProvider,
+  type ProbeResult,
+  type ProviderFetchOptions,
+  type ProviderModelsResponse,
 } from '@vnext/provider'
-import { HTTPError } from '@vnext/provider'
 import { fetchWithRetry, mergeHeaders, truncateBody } from '@vnext/shared-http'
 
 export interface CustomProviderConfig {
@@ -98,7 +99,7 @@ export class CustomProvider implements ModelProvider {
   }
 
   async probe(): Promise<ProbeResult> {
-    throw new Error('not yet implemented')
+    return probeViaModels(() => this.getModels())
   }
 
   async fetch(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
