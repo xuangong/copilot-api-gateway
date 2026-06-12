@@ -127,15 +127,72 @@ test('POST /api/upstream-probe copilot → 400 explanatory', async () => {
   expect(res.status).toBe(400)
 })
 
-test('POST /api/upstream-probe azure/custom → 501 (not ported)', async () => {
-  for (const kind of ['azure', 'custom']) {
+test('POST /api/upstream-probe custom valid config → ok via probe', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ object: 'list', data: [{ id: 'm1' }] }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    })) as typeof fetch
+  try {
     const res = await buildApp({ isAdmin: true }).request('/api/upstream-probe', {
       method: 'POST',
-      body: JSON.stringify({ kind, config: { name: 'x' } }),
+      body: JSON.stringify({
+        kind: 'custom',
+        config: { name: 'x', baseUrl: 'https://api.example.com/v1', apiKey: 'sk-x' },
+      }),
       headers: { 'content-type': 'application/json' },
     })
-    expect(res.status).toBe(501)
+    expect(res.status).toBe(200)
+    const body = await res.json() as { ok?: boolean }
+    expect(body.ok).toBe(true)
+  } finally {
+    globalThis.fetch = originalFetch
   }
+})
+
+test('POST /api/upstream-probe azure valid config → ok via probe', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () =>
+    new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch
+  try {
+    const res = await buildApp({ isAdmin: true }).request('/api/upstream-probe', {
+      method: 'POST',
+      body: JSON.stringify({
+        kind: 'azure',
+        config: {
+          name: 'a', endpoint: 'https://az.example', apiKey: 'k',
+          deployment: 'd', apiVersion: '2024-02-15-preview',
+        },
+      }),
+      headers: { 'content-type': 'application/json' },
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { ok?: boolean }
+    expect(body.ok).toBe(true)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('POST /api/upstream-probe custom missing apiKey → 400', async () => {
+  const res = await buildApp({ isAdmin: true }).request('/api/upstream-probe', {
+    method: 'POST',
+    body: JSON.stringify({ kind: 'custom', config: { name: 'x', baseUrl: 'https://e.com' } }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(res.status).toBe(400)
+})
+
+test('POST /api/upstream-probe azure missing deployment → 400', async () => {
+  const res = await buildApp({ isAdmin: true }).request('/api/upstream-probe', {
+    method: 'POST',
+    body: JSON.stringify({
+      kind: 'azure',
+      config: { name: 'a', endpoint: 'https://az.example', apiKey: 'k', apiVersion: '2024-02-15-preview' },
+    }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(res.status).toBe(400)
 })
 
 test('GET /api/upstreams non-admin → 403', async () => {
@@ -277,25 +334,63 @@ test('POST /api/upstreams/:id/test missing → 404', async () => {
   expect(res.status).toBe(404)
 })
 
-test('POST /api/upstreams/:id/test azure/custom (not ported) → 502', async () => {
-  const now = new Date().toISOString()
-  const u: UpstreamRecord = {
-    id: 'up_azure_a_aaaaaaaa',
-    provider: 'azure',
-    name: 'a',
-    enabled: true,
-    sortOrder: 0,
-    config: {
-      name: 'a', endpoint: 'https://az.example', apiKey: 'k',
-      deployment: 'd', apiVersion: '2024-02-15-preview', endpoints: ['chat_completions'],
-    },
-    flagOverrides: {},
-    disabledPublicModelIds: [],
-    createdAt: now, updatedAt: now,
+test('POST /api/upstreams/:id/test custom → 200 via probe', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ object: 'list', data: [{ id: 'm1' }] }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    })) as typeof fetch
+  try {
+    const now = new Date().toISOString()
+    const u: UpstreamRecord = {
+      id: 'up_custom_a_aaaaaaaa',
+      provider: 'custom',
+      name: 'a',
+      enabled: true,
+      sortOrder: 0,
+      config: { name: 'a', baseUrl: 'https://api.example.com/v1', apiKey: 'sk-x', endpoints: ['chat_completions'] },
+      flagOverrides: {},
+      disabledPublicModelIds: [],
+      createdAt: now, updatedAt: now,
+    }
+    await store.repo.upstreams.save(u)
+    const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${u.id}/test`, { method: 'POST' })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { ok?: boolean }
+    expect(body.ok).toBe(true)
+  } finally {
+    globalThis.fetch = originalFetch
   }
-  await store.repo.upstreams.save(u)
-  const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${u.id}/test`, { method: 'POST' })
-  expect(res.status).toBe(502)
+})
+
+test('POST /api/upstreams/:id/test azure → 200 via probe', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () =>
+    new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch
+  try {
+    const now = new Date().toISOString()
+    const u: UpstreamRecord = {
+      id: 'up_azure_a_aaaaaaaa',
+      provider: 'azure',
+      name: 'a',
+      enabled: true,
+      sortOrder: 0,
+      config: {
+        name: 'a', endpoint: 'https://az.example', apiKey: 'k',
+        deployment: 'd', apiVersion: '2024-02-15-preview', endpoints: ['chat_completions'],
+      },
+      flagOverrides: {},
+      disabledPublicModelIds: [],
+      createdAt: now, updatedAt: now,
+    }
+    await store.repo.upstreams.save(u)
+    const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${u.id}/test`, { method: 'POST' })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { ok?: boolean }
+    expect(body.ok).toBe(true)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('GET /api/upstreams/:id/models missing → 404', async () => {

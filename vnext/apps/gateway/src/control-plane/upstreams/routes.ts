@@ -37,6 +37,10 @@ import {
 } from '../../data-plane/flags/index.ts'
 import { createProviderFromUpstream } from '../../data-plane/providers/registry.ts'
 import { clearRawModelsCache } from '@vnext/provider-copilot'
+import { CustomProvider } from '@vnext/provider-custom'
+import type { CustomProviderConfig as PkgCustomConfig } from '@vnext/provider-custom'
+import { AzureProvider } from '@vnext/provider-azure'
+import type { AzureProviderConfig as PkgAzureConfig } from '@vnext/provider-azure'
 
 export interface AuthCtx {
   isAdmin?: boolean
@@ -343,7 +347,16 @@ upstreamMiscRouter.post('/upstream-probe', async (c) => {
     return jsonError('Copilot probe uses /api/copilot-quota — not handled here')
   }
   if (kind === 'custom' || kind === 'azure') {
-    return jsonError(`${kind} provider not yet ported to vnext`, 501)
+    try {
+      const provider = kind === 'custom'
+        ? new CustomProvider(normalizeCustomConfig(config as Record<string, unknown>) as PkgCustomConfig)
+        : new AzureProvider(normalizeAzureConfig(config as Record<string, unknown>) as PkgAzureConfig)
+      const result = await provider.probe()
+      return c.json(result)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return jsonError(message, 400)
+    }
   }
   return jsonError(`Unknown kind: ${kind}`)
 })
