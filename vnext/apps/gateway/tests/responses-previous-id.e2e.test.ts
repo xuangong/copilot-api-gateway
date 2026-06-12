@@ -150,6 +150,42 @@ test('responses + unknown previous_response_id returns 400 with verbatim envelop
   expect(body.error.message).toBe("Previous response with id 'resp_missing' not found.")
 })
 
+test('responses + non-array input is rejected by Zod before expand mutates payload', async () => {
+  // Regression: previously expandPreviousResponseId ran before parse and would
+  // silently coerce a non-array `input` to []. With expand moved into dispatch
+  // (post-parse), Zod must reject malformed input first and the snapshot store
+  // must never be touched.
+  setRepoForTest(stubRepo([stubUpstream()]))
+  const store = new InMemoryResponsesSnapshotStore()
+  // If expand were to fire we'd want it to fail loudly — wrap load() to throw.
+  const guardedStore = new Proxy(store, {
+    get(target, prop, receiver) {
+      if (prop === 'load') {
+        return () => { throw new Error('store.load must not be called when input is invalid') }
+      }
+      return Reflect.get(target, prop, receiver)
+    },
+  }) as InMemoryResponsesSnapshotStore
+  installFetch(() => new Response('upstream must not be called', { status: 500 }))
+
+  const wrapper = buildApp(
+    { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
+    guardedStore,
+  )
+  const res = await wrapper.fetch(new Request('http://x/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: MODEL_ID,
+      previous_response_id: 'resp_anything',
+      input: 42, // not a string and not an array — must fail Zod validation
+    }),
+  }), {} as never)
+  expect(res.status).toBe(400)
+  const body = await res.json() as { error?: { type?: string } }
+  expect(body.error?.type).toBe('invalid_request_error')
+})
+
 test('responses + previous_response_id owned by another api key returns 400', async () => {
   setRepoForTest(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()

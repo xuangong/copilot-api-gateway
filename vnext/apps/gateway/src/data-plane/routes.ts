@@ -95,6 +95,16 @@ interface DispatchInput<TPayload> {
   modelOf: (payload: TPayload) => string
   /** Optional payload mutator (e.g. Gemini injects model + stream). */
   preprocess?: (payload: TPayload) => TPayload
+  /**
+   * Optional async hook invoked after parse + preprocess succeed and before
+   * candidate enumeration. Used by /v1/responses to expand
+   * previous_response_id once Zod has validated the merged shape — running
+   * the expansion before parse would let a non-array `input` slip past
+   * validation. Throwing from the hook is honoured: PreviousResponseNotFoundError
+   * is rendered as the OpenAI 400 envelope; any other Error is repackaged as
+   * an upstream-shaped error via errorWrap.
+   */
+  postParse?: (payload: TPayload) => Promise<void>
   /** Fallback max-output-tokens for translators that need a default. */
   fallbackMaxOutputTokens?: number
   /** Force stream true/false for sources where the wire indicates it (Gemini verb). */
@@ -123,6 +133,18 @@ async function dispatch<TPayload>(
     return input.errorWrap(e.status ?? 400, e.body ?? { type: 'error', error: { type: 'invalid_request_error', message: e.message } })
   }
   if (input.preprocess) payload = input.preprocess(payload)
+
+  if (input.postParse) {
+    try {
+      await input.postParse(payload)
+    } catch (err) {
+      if (err instanceof PreviousResponseNotFoundError) {
+        return renderPreviousResponseNotFound(err)
+      }
+      const message = err instanceof Error ? err.message : 'request error'
+      return input.errorWrap(400, { error: { type: 'invalid_request_error', message } })
+    }
+  }
 
   const requestedModel = input.modelOf(payload)
   const { bareModel } = parseModelRouting(requestedModel)
@@ -347,25 +369,16 @@ dataPlane.post('/v1/responses', async (c) => {
   }
   const auth = (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx
   const store = c.env.responsesStore
-  if (store) {
-    try {
-      await expandPreviousResponseId(
-        raw as { previous_response_id?: string | null; input?: unknown },
-        store,
-        auth.apiKeyId ?? null,
-      )
-    } catch (err) {
-      if (err instanceof PreviousResponseNotFoundError) {
-        return renderPreviousResponseNotFound(err)
-      }
-      throw err
-    }
-  }
   const obsCtx: DispatchObsCtx = {
     apiKeyId: auth.apiKeyId,
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,
   }
+  // Capture the post-parse, post-expand input items so the snapshot writer
+  // saves the merged turn history (previous turn + current turn) rather than
+  // the un-expanded raw input. The hook mutates the parsed payload in place,
+  // so we read it back here.
+  let mergedInputItems: unknown[] = []
   const response = await dispatch(
     { req: { json: async () => raw } },
     {
@@ -375,6 +388,17 @@ dataPlane.post('/v1/responses', async (c) => {
       errorWrap: messagesErrorWrap,
       auth,
       obsCtx,
+      postParse: store
+        ? async (payload) => {
+            await expandPreviousResponseId(
+              payload as { previous_response_id?: string | null; input?: unknown },
+              store,
+              auth.apiKeyId ?? null,
+            )
+            const expanded = (payload as { input?: unknown }).input
+            mergedInputItems = Array.isArray(expanded) ? (expanded as unknown[]) : []
+          }
+        : undefined,
     },
   )
 
@@ -382,9 +406,7 @@ dataPlane.post('/v1/responses', async (c) => {
   const ct = response.headers.get('content-type') ?? ''
   if (ct.includes('text/event-stream') && response.body) {
     const [forClient, forSidecar] = response.body.tee()
-    const inputItems = Array.isArray((raw as { input?: unknown }).input)
-      ? ((raw as { input: unknown[] }).input)
-      : []
+    const inputItems = mergedInputItems
     const fallbackModel = (raw as { model?: string }).model ?? ''
     const apiKeyIdSnap = auth.apiKeyId ?? null
     const requestIdSnap = obsCtx.requestId ?? null
@@ -444,9 +466,7 @@ dataPlane.post('/v1/responses', async (c) => {
       model?: string
       output?: unknown[]
     }
-    const inputItems = Array.isArray((raw as { input?: unknown }).input)
-      ? ((raw as { input: unknown[] }).input)
-      : []
+    const inputItems = mergedInputItems
     // snapshot key === translator-preserved upstream id; bridge never rewrites
     if (typeof json.id === 'string' && Array.isArray(json.output)) {
       await savePostTurnSnapshot(store, {
