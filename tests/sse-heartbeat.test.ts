@@ -74,7 +74,12 @@ test("stops heartbeats once upstream closes", async () => {
   expect(text).toBe("data: only\n\n")
 })
 
-test("propagates upstream error to downstream", async () => {
+test("upstream error closes downstream gracefully (no error propagation)", async () => {
+  // Intentional behavior: createIdleHeartbeatStream catches upstream errors,
+  // flushes any buffered bytes, and closes — instead of propagating. The
+  // recover wrapper that sits above this stream synthesizes a complete
+  // protocol envelope from the error path; surfacing the error here would
+  // discard already-buffered text and confuse the SDK with a torn socket.
   const upstream = new ReadableStream<Uint8Array>({
     start(c) {
       c.enqueue(enc.encode("data: x\n\n"))
@@ -87,8 +92,10 @@ test("propagates upstream error to downstream", async () => {
     heartbeat: enc.encode(": ping\n\n"),
   })
   const reader = out.getReader()
-  await reader.read() // consume first chunk
-  await expect(reader.read()).rejects.toThrow("boom")
+  const first = await reader.read()
+  expect(new TextDecoder().decode(first.value)).toBe("data: x\n\n")
+  const next = await reader.read()
+  expect(next.done).toBe(true)
 })
 
 test("downstream cancel cancels upstream reader", async () => {
