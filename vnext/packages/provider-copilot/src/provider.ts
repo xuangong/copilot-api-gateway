@@ -29,6 +29,7 @@ import type {
   UpstreamResponse,
 } from '@vnext/provider'
 import { probeViaModels } from '@vnext/provider'
+import { parseJsonBody, mergeHeaders } from '@vnext/shared-http'
 import type { MessagesEvent } from '@vnext/protocols/messages'
 import { createVariantAndBetaFilteringInterceptor } from './interceptors/shared/with-variant-and-beta-filtering'
 import { withInitiatorHeader } from './interceptors/shared/with-initiator-header'
@@ -291,26 +292,6 @@ export class CopilotProvider implements ModelProvider {
       default: return []
     }
   }
-}
-
-function parseJsonBody(body: RequestInit['body'] | null | undefined): Record<string, unknown> {
-  if (typeof body !== 'string') {
-    throw new Error('CopilotProvider.fetch: body must be a JSON string')
-  }
-  return JSON.parse(body) as Record<string, unknown>
-}
-
-function mergeHeaders(
-  initHeaders: RequestInit['headers'] | undefined,
-  extra: Record<string, string> | undefined,
-): Record<string, string> {
-  const out: Record<string, string> = {}
-  if (initHeaders) {
-    const h = new Headers(initHeaders)
-    h.forEach((v, k) => { out[k] = v })
-  }
-  if (extra) Object.assign(out, extra)
-  return out
 }
 
 function readsStream(payload: unknown): boolean {
