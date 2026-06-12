@@ -8,6 +8,8 @@
  */
 import type { ResponsesSnapshotStore } from '@vnext/responses-store'
 
+const DEFAULT_TTL_MS = 24 * 3600_000
+
 export class PreviousResponseNotFoundError extends Error {
   readonly status = 400
   constructor(readonly responseId: string) {
@@ -40,7 +42,13 @@ export async function savePostTurnSnapshot(
     outputItems: unknown[]
   },
 ): Promise<void> {
-  void store
-  void args
-  throw new Error('not implemented')
+  const now = Date.now()
+  await store.save({
+    responseId: args.responseId,
+    apiKeyId: args.apiKeyId,
+    model: args.model,
+    items: [...args.inputItems, ...args.outputItems],
+    createdAt: now,
+    expiresAt: now + DEFAULT_TTL_MS,
+  })
 }

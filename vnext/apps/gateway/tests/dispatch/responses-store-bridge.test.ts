@@ -3,6 +3,7 @@ import { InMemoryResponsesSnapshotStore } from '@vnext/responses-store'
 import {
   PreviousResponseNotFoundError,
   expandPreviousResponseId,
+  savePostTurnSnapshot,
 } from '../../src/data-plane/dispatch/responses-store-bridge.ts'
 
 test('PreviousResponseNotFoundError carries id and 400 status', () => {
@@ -86,4 +87,36 @@ test('expand: snapshot owned by another api key is not visible', async () => {
   const payload = { previous_response_id: 'resp_owned' }
   await expect(expandPreviousResponseId(payload, store, 'k1'))
     .rejects.toBeInstanceOf(PreviousResponseNotFoundError)
+})
+
+test('save: writes merged input+output items keyed by responseId', async () => {
+  const store = new InMemoryResponsesSnapshotStore()
+  const inputItems = [{ type: 'message', role: 'user', content: 'in1' }]
+  const outputItems = [{ type: 'message', role: 'assistant', content: 'out1' }]
+  await savePostTurnSnapshot(store, {
+    responseId: 'resp_save_1',
+    apiKeyId: 'k1',
+    model: 'gpt-x',
+    inputItems,
+    outputItems,
+  })
+  const got = await store.load('resp_save_1', 'k1')
+  expect(got).not.toBeNull()
+  expect(got!.items).toEqual([...inputItems, ...outputItems])
+  expect(got!.model).toBe('gpt-x')
+  expect(got!.apiKeyId).toBe('k1')
+  expect(got!.expiresAt).toBeGreaterThan(got!.createdAt)
+})
+
+test('save: anonymous owner uses null apiKeyId', async () => {
+  const store = new InMemoryResponsesSnapshotStore()
+  await savePostTurnSnapshot(store, {
+    responseId: 'resp_save_2',
+    apiKeyId: null,
+    model: 'gpt-x',
+    inputItems: [],
+    outputItems: [{ type: 'message', role: 'assistant', content: 'hi' }],
+  })
+  expect(await store.load('resp_save_2', null)).not.toBeNull()
+  expect(await store.load('resp_save_2', 'k1')).toBeNull()
 })
