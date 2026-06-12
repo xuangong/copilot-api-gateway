@@ -10,7 +10,8 @@
     "./responses-via-messages": "./src/responses-via-messages/index.ts",
     "./messages-via-responses": "./src/messages-via-responses/index.ts",
     "./gemini-via-messages": "./src/gemini-via-messages/index.ts",
-    "./messages-via-gemini": "./src/messages-via-gemini/index.ts"
+    "./messages-via-gemini": "./src/messages-via-gemini/index.ts",
+    "./chat-completions-via-responses": "./src/chat-completions-via-responses/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
