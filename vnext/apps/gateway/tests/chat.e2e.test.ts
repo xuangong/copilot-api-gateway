@@ -89,9 +89,10 @@ const upstreamJson = {
 
 function makeUpstreamSSE(): Response {
   const body = [
-    `data: ${JSON.stringify({ id: 'chatcmpl_upstream_1', choices: [{ index: 0, delta: { role: 'assistant', content: 'Hello' } }] })}\n\n`,
-    `data: ${JSON.stringify({ id: 'chatcmpl_upstream_1', choices: [{ index: 0, delta: { content: ' from upstream' } }] })}\n\n`,
-    `data: ${JSON.stringify({ id: 'chatcmpl_upstream_1', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`,
+    `data: ${JSON.stringify({ id: 'chatcmpl_upstream_1', object: 'chat.completion.chunk', choices: [{ index: 0, delta: { role: 'assistant' } }] })}\n\n`,
+    `data: ${JSON.stringify({ id: 'chatcmpl_upstream_1', object: 'chat.completion.chunk', choices: [{ index: 0, delta: { content: 'Hello' } }] })}\n\n`,
+    `data: ${JSON.stringify({ id: 'chatcmpl_upstream_1', object: 'chat.completion.chunk', choices: [{ index: 0, delta: { content: ' from upstream' } }] })}\n\n`,
+    `data: ${JSON.stringify({ id: 'chatcmpl_upstream_1', object: 'chat.completion.chunk', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`,
     `data: [DONE]\n\n`,
   ].join('')
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })

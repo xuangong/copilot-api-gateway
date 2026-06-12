@@ -4,10 +4,10 @@
  *
  * Strategy mirrors data-plane-models-embeddings-images.test.ts: stub the repo
  * with one Copilot upstream + stub globalThis.fetch to return canned responses
- * for the Copilot /models and /chat/completions endpoints. Per Plan 2 the
- * Gemini route uses chatPick (chat_completions preferred), so the chatOut
- * backend adapter normalizes the upstream payload into IR events before
- * geminiIn re-encodes them as Gemini wire shape.
+ * for the Copilot /models and /messages endpoints. Under Phase B (X-5) the
+ * Gemini route routes through the messages hub via gemini-via-messages, so
+ * the binding must serve the messages endpoint (use a claude-family model id
+ * so copilotModelEndpoints adds `messages`).
  */
 import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
@@ -23,13 +23,13 @@ const stubModel = (id: string): Model => ({
   id,
   object: 'model',
   name: id,
-  vendor: 'google',
+  vendor: 'anthropic',
   version: id,
   model_picker_enabled: true,
   preview: false,
   capabilities: {
-    family: 'gemini',
-    limits: { max_context_window_tokens: 1000000, max_output_tokens: 8192 },
+    family: 'claude',
+    limits: { max_context_window_tokens: 200000, max_output_tokens: 8192 },
     object: 'model_capabilities',
     supports: {},
     tokenizer: 'cl100k',
@@ -77,22 +77,26 @@ function buildApp(auth: DataPlaneAuthCtx) {
 
 const COPILOT_TOKEN = 'tkn'
 const ACCOUNT_TYPE = 'individual' as const
-const MODEL_ID = 'gpt-5-mini'
+const MODEL_ID = 'claude-3-5-sonnet-20241022'
 
 const upstreamJson = {
-  id: 'chatcmpl_upstream_1',
-  object: 'chat.completion',
-  choices: [
-    { index: 0, message: { role: 'assistant', content: 'Hello from upstream' }, finish_reason: 'stop' },
-  ],
-  usage: { prompt_tokens: 5, completion_tokens: 7, total_tokens: 12 },
+  id: 'msg_upstream_1',
+  type: 'message',
+  role: 'assistant',
+  model: MODEL_ID,
+  content: [{ type: 'text', text: 'Hello from upstream' }],
+  stop_reason: 'end_turn',
+  usage: { input_tokens: 5, output_tokens: 7 },
 }
 
 function makeUpstreamSSE(): Response {
   const body = [
-    `data: ${JSON.stringify({ id: 'chatcmpl_upstream_1', object: 'chat.completion.chunk', choices: [{ index: 0, delta: { role: 'assistant', content: 'Hello from upstream' } }] })}\n\n`,
-    `data: ${JSON.stringify({ id: 'chatcmpl_upstream_1', object: 'chat.completion.chunk', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 5, completion_tokens: 7, total_tokens: 12 } })}\n\n`,
-    `data: [DONE]\n\n`,
+    `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message: { id: 'msg_upstream_1', type: 'message', role: 'assistant', model: MODEL_ID, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 5, output_tokens: 0 } } })}\n\n`,
+    `event: content_block_start\ndata: ${JSON.stringify({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } })}\n\n`,
+    `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello from upstream' } })}\n\n`,
+    `event: content_block_stop\ndata: ${JSON.stringify({ type: 'content_block_stop', index: 0 })}\n\n`,
+    `event: message_delta\ndata: ${JSON.stringify({ type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 7 } })}\n\n`,
+    `event: message_stop\ndata: ${JSON.stringify({ type: 'message_stop' })}\n\n`,
   ].join('')
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
@@ -106,7 +110,7 @@ function installCopilotFetch(opts: { stream: boolean }) {
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }
-    if (url.pathname.endsWith('/chat/completions')) {
+    if (url.pathname.endsWith('/messages') || url.pathname.endsWith('/v1/messages')) {
       if (opts.stream) return makeUpstreamSSE()
       return new Response(JSON.stringify(upstreamJson), {
         status: 200, headers: { 'content-type': 'application/json' },

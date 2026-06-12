@@ -1,27 +1,48 @@
-/** Data-plane routes. Plan 1 (Task #29): endpoint chosen per model; backend adapter per endpoint; HTTPError + non-2xx caught and repackaged. */
+/**
+ * Data-plane routes — pairwise translation pipeline.
+ *
+ * Flow per request:
+ *   1. frontend.parse(raw)               — Zod-validate client payload
+ *   2. enumerateBindingCandidates(...)   — pick binding + target endpoint via
+ *                                          source-API preference (selectPair)
+ *   3. getTranslator(source, target)     — uniform PairTranslator handle
+ *   4. translator.translateRequest(...)  — client payload → hub payload
+ *   5. runConversationAttempt(...)       — quota gate → timer → call → record
+ *   6. streaming:   parse upstream SSE → translator.translateEvents → encodeClientSSE
+ *      non-stream:  translator.translateBody(json) → JSON
+ *
+ * No IR (intermediate representation). The messages→messages route uses the
+ * identity translator (zero-cost passthrough). Other routes pay one
+ * translateRequest + one translateEvents/translateBody. HTTPError surfaces
+ * from binding.provider.fetch and is repackaged into the client's native
+ * error wire shape.
+ */
 import { Hono } from 'hono'
 import type { Env } from '../app.ts'
 import { messagesIn } from './adapters/frontend/messages-in.ts'
 import { chatIn } from './adapters/frontend/chat-in.ts'
 import { responsesIn } from './adapters/frontend/responses-in.ts'
 import { geminiIn } from './adapters/frontend/gemini-in.ts'
-import { responsesOut } from './adapters/backend/responses-out.ts'
-import { chatOut } from './adapters/backend/chat-out.ts'
-import { messagesOut } from './adapters/backend/messages-out.ts'
-import type { BackendAdapter, FrontendAdapter } from '@vnext/translate/contract'
-import type { IRRequest, IREvent } from '@vnext/protocols/ir'
 import type { EndpointKey, ModelEndpoints } from '@vnext/protocols/common'
 import { modelsRouter, type DataPlaneAuthCtx } from './models/routes.ts'
 import { embeddingsRouter } from './embeddings/routes.ts'
 import { imagesRouter } from './images/routes.ts'
 import { parseModelRouting } from './routing/binding-resolver.ts'
 import { enumerateBindingCandidates } from './routing/candidates.ts'
-import { repackageUpstreamError, type SourceApi } from './errors/repackage.ts'
-import { HTTPError } from '@vnext/provider-copilot'
+import { repackageUpstreamError, type SourceApi as ErrorSourceApi } from './errors/repackage.ts'
+import {
+  HTTPError,
+  parseMessagesSSEStream,
+  parseChatSSEStream,
+  parseResponsesSSEStream,
+} from '@vnext/provider-copilot'
 import { handleMessagesWebSearch, hasWebSearch } from './orchestrator/server-tools/plugins/web-search/index.ts'
 import { handleResponsesImageGeneration, hasImageGeneration } from './orchestrator/server-tools/plugins/image-generation/index.ts'
 import { runConversationAttempt } from './observability/attempts/conversation-attempt.ts'
 import type { SourceApiInput, TargetApiInput } from '../shared/observability/latency-tracker.ts'
+import { selectPair, type SourceApi } from './dispatch/pair-selector.ts'
+import { getTranslator, type TranslateContext } from './dispatch/translator-registry.ts'
+import { encodeClientSSE } from './dispatch/sse-writers.ts'
 
 export const dataPlane = new Hono<{ Bindings: Env }>()
 
@@ -38,120 +59,154 @@ dataPlane.route('/', modelsRouter)
 dataPlane.route('/', embeddingsRouter)
 dataPlane.route('/', imagesRouter)
 
-function backendForEndpoint(endpoint: EndpointKey): BackendAdapter {
-  if (endpoint === 'chat_completions') return chatOut
-  if (endpoint === 'messages') return messagesOut
-  return responsesOut
-}
-
 type DispatchObsCtx = {
   apiKeyId: string | undefined
   userAgent: string | undefined
   requestId: string | undefined
 }
 
-type PickTarget = (e: ModelEndpoints) => EndpointKey | null
+/**
+ * Parse an upstream SSE byte stream into typed events for the given target
+ * endpoint. The translator's translateEvents consumes these typed events.
+ */
+function parseTargetSSE(
+  target: EndpointKey,
+  body: ReadableStream<Uint8Array> | null,
+  signal?: AbortSignal,
+): AsyncIterable<unknown> {
+  if (target === 'messages') return parseMessagesSSEStream(body, signal)
+  if (target === 'chat_completions') return parseChatSSEStream(body, signal)
+  if (target === 'responses') return parseResponsesSSEStream(body, signal)
+  // Other endpoints (embeddings, images) don't stream events through this path.
+  return (async function* (): AsyncIterable<unknown> { /* empty */ })()
+}
 
-const messagesPick: PickTarget = (e) =>
-  e.messages ? 'messages'
-  : e.responses ? 'responses'
-  : e.chat_completions ? 'chat_completions'
-  : null
-
-const responsesPick: PickTarget = (e) =>
-  e.responses ? 'responses'
-  : e.messages ? 'messages'
-  : e.chat_completions ? 'chat_completions'
-  : null
-
-const chatPick: PickTarget = (e) =>
-  e.chat_completions ? 'chat_completions'
-  : e.messages ? 'messages'
-  : e.responses ? 'responses'
-  : null
+interface DispatchInput<TPayload> {
+  parse: (raw: unknown) => TPayload
+  /** Extract the model id from the parsed payload. */
+  modelOf: (payload: TPayload) => string
+  /** Optional payload mutator (e.g. Gemini injects model + stream). */
+  preprocess?: (payload: TPayload) => TPayload
+  /** Fallback max-output-tokens for translators that need a default. */
+  fallbackMaxOutputTokens?: number
+  /** Force stream true/false for sources where the wire indicates it (Gemini verb). */
+  forceStream?: boolean
+  /** Source-API key used by pair-selector / translator registry. */
+  sourceApi: SourceApi
+  /** Error wrapping helper — produces the client's native 4xx/5xx wire shape. */
+  errorWrap: (status: number, body: unknown) => Response
+  auth: DataPlaneAuthCtx
+  obsCtx: DispatchObsCtx
+}
 
 async function dispatch<TPayload>(
-  c: { req: { json: () => Promise<unknown> }; json: (b: unknown, s?: number) => Response; body: (b: BodyInit, s?: number, h?: Record<string, string>) => Response },
-  adapter: FrontendAdapter<TPayload>,
-  toIR: (payload: TPayload) => IRRequest,
-  errorWrap: (status: number, body: unknown) => Response,
-  auth: DataPlaneAuthCtx,
-  sourceApi: SourceApi,
-  pickTarget: PickTarget,
-  obsCtx: DispatchObsCtx,
+  c: { req: { json: () => Promise<unknown> } },
+  input: DispatchInput<TPayload>,
 ): Promise<Response> {
   let raw: unknown
   try { raw = await c.req.json() } catch {
-    return errorWrap(400, { type: 'error', error: { type: 'invalid_request_error', message: 'invalid JSON' } })
+    return input.errorWrap(400, { type: 'error', error: { type: 'invalid_request_error', message: 'invalid JSON' } })
   }
+
   let payload: TPayload
-  try { payload = adapter.parse(raw) }
+  try { payload = input.parse(raw) }
   catch (err) {
     const e = err as Error & { status?: number; body?: unknown }
-    return errorWrap(e.status ?? 400, e.body ?? { type: 'error', error: { type: 'invalid_request_error', message: e.message } })
+    return input.errorWrap(e.status ?? 400, e.body ?? { type: 'error', error: { type: 'invalid_request_error', message: e.message } })
   }
-  const ir = toIR(payload)
-  const requestedModel = ir.model
-  const { bareModel } = parseModelRouting(requestedModel)
-  if (bareModel !== requestedModel) ir.model = bareModel
+  if (input.preprocess) payload = input.preprocess(payload)
 
+  const requestedModel = input.modelOf(payload)
+  const { bareModel } = parseModelRouting(requestedModel)
+
+  const pickTarget = (e: ModelEndpoints): EndpointKey | null => selectPair(input.sourceApi, e)
   const { candidates, sawModel } = await enumerateBindingCandidates({
     model: requestedModel,
     pickTarget,
-    opts: { ownerId: auth.userId, copilot: auth.copilot },
+    opts: { ownerId: input.auth.userId, copilot: input.auth.copilot },
   })
   if (candidates.length === 0) {
     if (sawModel) {
-      return errorWrap(400, {
+      return input.errorWrap(400, {
         error: {
           type: 'invalid_request_error',
-          message: `Model "${requestedModel}" does not support the "${sourceApi}" client protocol.`,
+          message: `Model "${requestedModel}" does not support the "${input.sourceApi}" client protocol.`,
         },
       })
     }
-    return errorWrap(404, {
+    return input.errorWrap(404, {
       error: {
         type: 'invalid_request_error',
         message: `No upstream serves model "${requestedModel}". Run GET /v1/models for available ids.`,
       },
     })
   }
-  const { binding, targetEndpoint: upstreamEndpoint } = candidates[0]!
-  const backend = backendForEndpoint(upstreamEndpoint)
-  const upstreamPayload = backend.toUpstream(ir)
+  const { binding, targetEndpoint } = candidates[0]!
 
-  // Delegate quota / timer / call / record / usage to the attempt module.
-  // HTTPError still surfaces from binding.provider.fetch (it's how the
-  // copilot provider repackages auth/4xx responses), so we catch it at the
-  // route level and let repackageUpstreamError do its job. The attempt
-  // module already recorded the error-tagged latency before rethrowing.
+  const translator = getTranslator(input.sourceApi, targetEndpoint)
+  if (!translator) {
+    // selectPair returned a target but no translator exists for the pair.
+    // Should not happen for the four chat-flow endpoints; surface clearly.
+    return input.errorWrap(400, {
+      error: {
+        type: 'invalid_request_error',
+        message: `No translator for ${input.sourceApi}→${targetEndpoint}.`,
+      },
+    })
+  }
+
+  const controller = new AbortController()
+  const ctx: TranslateContext = {
+    signal: controller.signal,
+    fallbackMaxOutputTokens: input.fallbackMaxOutputTokens,
+    model: bareModel,
+  }
+
+  let upstreamPayload: unknown
+  try {
+    upstreamPayload = await translator.translateRequest(payload, ctx)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'translation error'
+    return input.errorWrap(400, { error: { type: 'invalid_request_error', message } })
+  }
+
+  // Determine streaming intent. translators preserve the caller's `stream`
+  // flag in the payload they produce; we infer from the upstream payload.
+  let isStream: boolean
+  if (typeof input.forceStream === 'boolean') {
+    isStream = input.forceStream
+  } else {
+    const upstreamObj = upstreamPayload as { stream?: unknown } | null
+    isStream = upstreamObj?.stream === true
+  }
+
   let attempt: Awaited<ReturnType<typeof runConversationAttempt>>
   try {
     attempt = await runConversationAttempt({
-      apiKeyId: obsCtx.apiKeyId,
-      model: ir.model,
-      sourceApi: sourceApi as SourceApiInput,
-      targetApi: upstreamEndpoint as TargetApiInput,
+      apiKeyId: input.obsCtx.apiKeyId,
+      model: bareModel,
+      sourceApi: input.sourceApi as SourceApiInput,
+      targetApi: targetEndpoint as TargetApiInput,
       upstream: 'github_copilot',
-      userAgent: obsCtx.userAgent,
-      requestId: obsCtx.requestId,
-      stream: ir.stream,
+      userAgent: input.obsCtx.userAgent,
+      requestId: input.obsCtx.requestId,
+      stream: isStream,
       call: () => binding.provider.fetch(
-        upstreamEndpoint,
+        targetEndpoint,
         { method: 'POST', body: JSON.stringify(upstreamPayload), headers: { 'content-type': 'application/json' } },
-        { operationName: 'data-plane dispatch', enabledFlags: binding.enabledFlags, sourceApi },
+        { operationName: 'data-plane dispatch', enabledFlags: binding.enabledFlags, sourceApi: input.sourceApi },
       ),
     })
   } catch (err) {
     if (err instanceof HTTPError) {
-      return await repackageUpstreamError(err.response, sourceApi)
+      return await repackageUpstreamError(err.response, input.sourceApi as ErrorSourceApi)
     }
     const message = err instanceof Error ? err.message : 'upstream error'
-    return errorWrap(502, { error: { type: 'api_error', message } })
+    return input.errorWrap(502, { error: { type: 'api_error', message } })
   }
 
   if (!attempt.ok && attempt.status === 429 && 'rateLimit' in attempt) {
-    return errorWrap(429, {
+    return input.errorWrap(429, {
       error: {
         type: 'rate_limit_error',
         message: attempt.rateLimit.reason,
@@ -162,24 +217,33 @@ async function dispatch<TPayload>(
     })
   }
   if (!attempt.ok) {
-    if ('response' in attempt) return await repackageUpstreamError(attempt.response, sourceApi)
-    return errorWrap(502, { error: { type: 'api_error', message: 'upstream error' } })
+    if ('response' in attempt) return await repackageUpstreamError(attempt.response, input.sourceApi as ErrorSourceApi)
+    return input.errorWrap(502, { error: { type: 'api_error', message: 'upstream error' } })
   }
+
   if (attempt.stream) {
-    const events = attempt.response.body
-      ? backend.decodeSSE(attempt.response.body)
-      : (async function* (): AsyncIterable<IREvent> { /* empty */ })()
-    const out = adapter.encodeSSE(events)
+    const hubEvents = parseTargetSSE(targetEndpoint, attempt.response.body, ctx.signal)
+    const clientEvents = translator.translateEvents(hubEvents, ctx)
+    const out = encodeClientSSE(input.sourceApi, clientEvents)
     return new Response(out, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' } })
   }
-  const events = backend.decodeBody(attempt.json)
-  const body = await adapter.encodeBody(events)
-  return Response.json(body)
+  // Non-streaming: attempt.json is the parsed upstream JSON.
+  let clientBody: unknown
+  try {
+    clientBody = await translator.translateBody(attempt.json, ctx)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'translation error'
+    return input.errorWrap(502, { error: { type: 'api_error', message } })
+  }
+  return Response.json(clientBody)
 }
 
+const messagesErrorWrap = (status: number, body: unknown): Response =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
 dataPlane.post('/v1/messages', async (c) => {
-  // Web-search intercept short-circuits the IR pipeline: the multi-turn loop
-  // runs against upstream in non-streaming mode and we either return JSON
+  // Web-search intercept short-circuits the pairwise pipeline: the multi-turn
+  // loop runs against upstream in non-streaming mode and we either return JSON
   // or replay as SSE. See plugins/web-search/index.ts for the rationale.
   let raw: unknown
   try { raw = await c.req.json() } catch {
@@ -208,24 +272,22 @@ dataPlane.post('/v1/messages', async (c) => {
       raw as Parameters<typeof handleMessagesWebSearch>[1],
     )
   }
-  // Read obsCtx from ORIGINAL c before synthetic wrap
   const auth = (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx
   const obsCtx: DispatchObsCtx = {
     apiKeyId: auth.apiKeyId,
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,
   }
-  // Re-inject raw body into the dispatcher's JSON reader by wrapping the
-  // c.req shape; cheaper than re-parsing once here, then again inside dispatch.
   return dispatch(
-    { ...c, req: { json: async () => raw }, json: c.json.bind(c), body: c.body.bind(c) } as Parameters<typeof dispatch>[0],
-    messagesIn,
-    (p) => messagesIn.toIR(p),
-    (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
-    auth,
-    'messages',
-    messagesPick,
-    obsCtx,
+    { req: { json: async () => raw } },
+    {
+      parse: (r) => messagesIn.parse(r),
+      modelOf: (p) => (p as { model?: string }).model ?? '',
+      sourceApi: 'messages',
+      errorWrap: messagesErrorWrap,
+      auth,
+      obsCtx,
+    },
   )
 })
 
@@ -236,20 +298,21 @@ dataPlane.post('/v1/chat/completions', (c) => {
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,
   }
-  return dispatch(
-    c,
-    chatIn,
-    (p) => chatIn.toIR(p),
-    (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
+  return dispatch(c, {
+    parse: (r) => chatIn.parse(r),
+    modelOf: (p) => (p as { model?: string }).model ?? '',
+    sourceApi: 'chat_completions',
+    // Chat Completions has no required max_tokens — give chat→messages a default
+    // so the Anthropic upstream contract (which requires max_tokens) is met.
+    fallbackMaxOutputTokens: 4096,
+    errorWrap: messagesErrorWrap,
     auth,
-    'chat_completions',
-    chatPick,
     obsCtx,
-  )
+  })
 })
 
 dataPlane.post('/v1/responses', async (c) => {
-  // image_generation server-tool intercept short-circuits the IR pipeline:
+  // image_generation server-tool intercept short-circuits the pairwise pipeline:
   // single-turn call to the image backend, returned as a Responses envelope
   // (JSON or synthesized SSE). See plugins/image-generation/index.ts.
   let raw: unknown
@@ -272,7 +335,6 @@ dataPlane.post('/v1/responses', async (c) => {
       raw as Parameters<typeof handleResponsesImageGeneration>[1],
     )
   }
-  // Read obsCtx from ORIGINAL c before synthetic wrap
   const auth = (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx
   const obsCtx: DispatchObsCtx = {
     apiKeyId: auth.apiKeyId,
@@ -280,14 +342,15 @@ dataPlane.post('/v1/responses', async (c) => {
     requestId: c.req.header('x-request-id') ?? undefined,
   }
   return dispatch(
-    { ...c, req: { json: async () => raw }, json: c.json.bind(c), body: c.body.bind(c) } as Parameters<typeof dispatch>[0],
-    responsesIn,
-    (p) => responsesIn.toIR(p),
-    (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
-    auth,
-    'responses',
-    responsesPick,
-    obsCtx,
+    { req: { json: async () => raw } },
+    {
+      parse: (r) => responsesIn.parse(r),
+      modelOf: (p) => (p as { model?: string }).model ?? '',
+      sourceApi: 'responses',
+      errorWrap: messagesErrorWrap,
+      auth,
+      obsCtx,
+    },
   )
 })
 
@@ -302,18 +365,16 @@ dataPlane.post('/v1beta/models/:model{.+}', (c) => {
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,
   }
-  return dispatch(
-    c,
-    geminiIn,
-    (p) => {
-      const ir = geminiIn.toIRForModel(p, model ?? '')
-      ir.stream = stream
-      return ir
-    },
-    (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
+  return dispatch(c, {
+    parse: (r) => geminiIn.parse(r),
+    modelOf: () => model ?? '',
+    // Gemini payload has no top-level model; the translator reads it from
+    // TranslateContext.model. Force-stream is decoded from the URL verb.
+    forceStream: stream,
+    fallbackMaxOutputTokens: 4096,
+    sourceApi: 'gemini',
+    errorWrap: messagesErrorWrap,
     auth,
-    'gemini',
-    chatPick,
     obsCtx,
-  )
+  })
 })

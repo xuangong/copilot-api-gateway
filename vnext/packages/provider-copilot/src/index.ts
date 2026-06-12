@@ -30,3 +30,10 @@ export { clearRawModelsCache } from "./raw-models-cache"
 export type { AccountType } from "./account-type"
 
 export { copilotModelEndpoints } from "./endpoints"
+
+// SSE parsers for hub-shape upstream responses. Exposed for the gateway's
+// pairwise dispatch pipeline so it can decode upstream byte streams into
+// typed events that pairwise translators consume.
+export { parseSSEStream as parseMessagesSSEStream } from "./parse/messages-sse"
+export { parseChatSSEStream } from "./parse/chat-sse"
+export { parseResponsesSSEStream } from "./parse/responses-sse"

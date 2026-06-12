@@ -77,9 +77,14 @@ const MODEL_ID = 'gpt-5-mini'
 
 const upstreamJson = {
   id: 'resp_upstream_1',
+  object: 'response',
   output_text: 'Hello from upstream',
-  output: [],
-  usage: { input_tokens: 5, output_tokens: 7 },
+  output: [{
+    type: 'message',
+    role: 'assistant',
+    content: [{ type: 'output_text', text: 'Hello from upstream' }],
+  }],
+  usage: { input_tokens: 5, output_tokens: 7, total_tokens: 12 },
 }
 
 function makeUpstreamSSE(): Response {
