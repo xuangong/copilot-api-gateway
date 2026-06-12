@@ -67,6 +67,7 @@
         "@vnext/interceptor": "workspace:*",
         "@vnext/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
+        "@vnext/shared-http": "workspace:*",
       },
     },
     "packages/responses-store": {

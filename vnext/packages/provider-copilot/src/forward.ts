@@ -1,7 +1,7 @@
 import { getCopilotBaseUrl, type AccountType } from "./account-type"
 import { copilotHeaders } from "./headers"
 import { HTTPError } from "./lib/error"
-import { fetchWithRetry } from "./lib/fetch-retry"
+import { fetchWithRetry } from "@vnext/shared-http"
 
 interface CallCopilotAPIOptions {
   endpoint: string
