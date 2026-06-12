@@ -68,6 +68,10 @@
         "@vnext/provider": "workspace:*",
       },
     },
+    "packages/responses-store": {
+      "name": "@vnext/responses-store",
+      "version": "0.0.0",
+    },
     "packages/translate": {
       "name": "@vnext/translate",
       "version": "0.0.0",
@@ -338,6 +342,8 @@
     "@vnext/provider": ["@vnext/provider@workspace:packages/provider"],
 
     "@vnext/provider-copilot": ["@vnext/provider-copilot@workspace:packages/provider-copilot"],
+
+    "@vnext/responses-store": ["@vnext/responses-store@workspace:packages/responses-store"],
 
     "@vnext/translate": ["@vnext/translate@workspace:packages/translate"],
 
