@@ -29,6 +29,7 @@
         "@vnext/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
         "@vnext/provider-copilot": "workspace:*",
+        "@vnext/responses-store": "workspace:*",
         "@vnext/translate": "workspace:*",
         "hono": "^4.12.23",
         "zod": "^4.4.3",

@@ -21,10 +21,13 @@ export async function expandPreviousResponseId(
   store: ResponsesSnapshotStore,
   apiKeyId: string | null,
 ): Promise<void> {
-  void payload
-  void store
-  void apiKeyId
-  throw new Error('not implemented')
+  const id = payload.previous_response_id
+  if (id == null || id === '') return
+  const snap = await store.load(id, apiKeyId)
+  if (!snap) throw new PreviousResponseNotFoundError(id)
+  const existing = Array.isArray(payload.input) ? (payload.input as unknown[]) : []
+  payload.input = [...snap.items, ...existing]
+  delete payload.previous_response_id
 }
 
 export async function savePostTurnSnapshot(
