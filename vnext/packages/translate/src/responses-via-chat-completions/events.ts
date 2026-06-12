@@ -1,3 +1,28 @@
+/**
+ * Streaming translator: Chat Completions SSE upstream → Responses event
+ * stream.
+ *
+ * Direction: events = hub → client. Wraps the upstream Chat SSE chunks
+ * into Responses lifecycle events.
+ *
+ * Conventions:
+ *  - First event is a synthesized `response.created` (status `in_progress`),
+ *    using the first chunk's `id`/`model`/`created`.
+ *  - Text deltas open a single `response.output_item.added` (assistant
+ *    message) on the first content chunk, then emit
+ *    `response.output_text.delta` events for each chunk's content.
+ *  - Tool call deltas open one `response.output_item.added` per chunk
+ *    `index`, then emit `response.function_call_arguments.delta` for each
+ *    incremental `arguments` string.
+ *  - On Chat `finish_reason`, the loop breaks; an `output_item.done` is
+ *    emitted for the message (if opened) and each tool call. The final
+ *    `response.completed` carries `status: 'incomplete'` with reason
+ *    `max_output_tokens` when finish was `length`; otherwise `completed`.
+ *  - `finish` starts as `null` (no fallback) — Chat upstreams reliably set
+ *    `finish_reason` on the final chunk, so the null sentinel only signals
+ *    "stream ended without a finish reason," which still maps to
+ *    `completed` in the emitted lifecycle.
+ */
 interface ChatChunk {
   id?: string
   model?: string

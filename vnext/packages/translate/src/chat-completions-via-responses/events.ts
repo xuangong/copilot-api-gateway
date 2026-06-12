@@ -1,3 +1,24 @@
+/**
+ * Streaming translator: Responses SSE upstream → Chat Completions SSE client.
+ *
+ * Direction: events = hub → client. Wraps the upstream Responses event
+ * stream into Chat Completion chunks (`chat.completion.chunk`).
+ *
+ * Conventions:
+ *  - First chunk emits `delta: { role: 'assistant' }`. If upstream skips
+ *    `response.created`, a synthetic role chunk is yielded before the first
+ *    real delta so the SSE stream stays well-formed.
+ *  - `response.output_text.delta` → `delta: { content }`.
+ *  - `response.output_item.added` (function_call) emits a tool_calls entry
+ *    with `id`, `type`, and the initial `name`/`arguments`. Subsequent
+ *    `response.function_call_arguments.delta` events emit only the
+ *    incremental `arguments` string keyed by `index`.
+ *  - On `response.completed`, finish maps from `incomplete_details.reason`
+ *    (`max_output_tokens` → `length`) or, if any tool call was seen,
+ *    `tool_calls`; otherwise `stop`. If the upstream stream ends without
+ *    `response.completed`, finish stays `null` until the final chunk and
+ *    is then defaulted to `stop` to preserve a valid Chat SSE finish.
+ */
 interface ChatChoiceDelta {
   role?: 'assistant'
   content?: string
@@ -39,7 +60,7 @@ export async function* translateResponsesToChatSSE(
   let model = ''
   let created = Math.floor(Date.now() / 1000)
   let sawToolCall = false
-  let finish: ChatSSEChunk['choices'][number]['finish_reason'] = 'stop'
+  let finish: string | null = null
   let started = false
 
   for await (const ev of events as AsyncIterable<ResponsesEvent>) {
@@ -87,5 +108,11 @@ export async function* translateResponsesToChatSSE(
     }
   }
 
-  yield makeChunk(id, model, created, {}, finish)
+  // If the upstream stream ended without `response.completed`, fall back to
+  // `stop` so the emitted Chat SSE always carries a valid finish_reason.
+  const finalFinish: ChatSSEChunk['choices'][number]['finish_reason'] =
+    finish === 'length' || finish === 'tool_calls' || finish === 'stop'
+      ? finish
+      : 'stop'
+  yield makeChunk(id, model, created, {}, finalFinish)
 }

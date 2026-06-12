@@ -1,3 +1,23 @@
+/**
+ * Request translator: Chat Completions client → Responses upstream.
+ *
+ * Direction: request = client → hub. Used when the client speaks
+ * /v1/chat/completions but the chosen model is served via /v1/responses.
+ *
+ * Faithful, minimal translation: knobs absent in the source are NOT
+ * synthesized. Notable behaviors:
+ *  - System messages are filtered out and joined with `\n\n` into Responses
+ *    `instructions`.
+ *  - User text becomes `input_text`; user `image_url` parts (string OR
+ *    `{ url }` object) become `input_image`.
+ *  - Assistant `tool_calls` map to `function_call` items; `tool` role
+ *    messages map to `function_call_output`.
+ *  - Custom tools become Responses `function` tools with `strict: false`.
+ *    Non-function client tools (e.g. `web_search`) are dropped — they have
+ *    no Chat→Responses analogue.
+ *  - `max_tokens` (or `fallbackMaxOutputTokens` option) maps to
+ *    `max_output_tokens`.
+ */
 import type { ChatPayload } from '@vnext/protocols/chat'
 import type { ResponsesPayload } from '@vnext/protocols/responses'
 

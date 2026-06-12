@@ -1,3 +1,13 @@
+/**
+ * Non-streaming translator: Responses upstream JSON → Chat Completion JSON.
+ *
+ * Direction: body = hub → client. Maps a single Responses object into a
+ * `chat.completion` shape with one choice. `output_text` parts join into
+ * `message.content`; `function_call` items map to `message.tool_calls`.
+ * Finish reason: `incomplete_details.reason === 'max_output_tokens'` →
+ * `length`; tool calls present → `tool_calls`; else `stop`. Usage tokens
+ * are mapped (`input_tokens`/`output_tokens` → `prompt_tokens`/`completion_tokens`).
+ */
 interface ResponsesOutputItem {
   type: 'message' | 'function_call'
   role?: string
