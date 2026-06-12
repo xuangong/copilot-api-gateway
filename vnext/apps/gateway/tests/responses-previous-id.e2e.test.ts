@@ -114,3 +114,77 @@ test('responses + previous_response_id expands snapshot and clears the field', a
     { type: 'message', role: 'user', content: 'turn2 user' },
   ])
 })
+
+test('responses + unknown previous_response_id returns 400 with verbatim envelope', async () => {
+  setRepoForTest(stubRepo([stubUpstream()]))
+  const store = new InMemoryResponsesSnapshotStore()
+  installFetch((req) => {
+    const url = new URL(req.url)
+    if (url.pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({ data: [stubModel(MODEL_ID)] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })
+    }
+    return new Response('upstream must not be called', { status: 500 })
+  })
+
+  const wrapper = buildApp(
+    { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
+    store,
+  )
+  const res = await wrapper.fetch(new Request('http://x/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: MODEL_ID,
+      previous_response_id: 'resp_missing',
+      input: [{ type: 'message', role: 'user', content: 'hi' }],
+    }),
+  }), {} as never)
+
+  expect(res.status).toBe(400)
+  const body = await res.json() as { error: { code: string; param: string; type: string; message: string } }
+  expect(body.error.code).toBe('previous_response_not_found')
+  expect(body.error.param).toBe('previous_response_id')
+  expect(body.error.type).toBe('invalid_request_error')
+  expect(body.error.message).toBe("Previous response with id 'resp_missing' not found.")
+})
+
+test('responses + previous_response_id owned by another api key returns 400', async () => {
+  setRepoForTest(stubRepo([stubUpstream()]))
+  const store = new InMemoryResponsesSnapshotStore()
+  await store.save({
+    responseId: 'resp_owned',
+    apiKeyId: 'k_other',
+    model: MODEL_ID,
+    items: [{ type: 'message', role: 'user', content: 'secret' }],
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 60_000,
+  })
+  installFetch((req) => {
+    const url = new URL(req.url)
+    if (url.pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({ data: [stubModel(MODEL_ID)] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })
+    }
+    return new Response('upstream must not be called', { status: 500 })
+  })
+
+  const wrapper = buildApp(
+    { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
+    store,
+  )
+  const res = await wrapper.fetch(new Request('http://x/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: MODEL_ID,
+      previous_response_id: 'resp_owned',
+      input: [{ type: 'message', role: 'user', content: 'turn2' }],
+    }),
+  }), {} as never)
+  expect(res.status).toBe(400)
+  const body = await res.json() as { error: { code: string } }
+  expect(body.error.code).toBe('previous_response_not_found')
+})
