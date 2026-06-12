@@ -73,6 +73,10 @@
       "name": "@vnext/responses-store",
       "version": "0.0.0",
     },
+    "packages/shared-http": {
+      "name": "@vnext/shared-http",
+      "version": "0.0.0",
+    },
     "packages/translate": {
       "name": "@vnext/translate",
       "version": "0.0.0",
@@ -345,6 +349,8 @@
     "@vnext/provider-copilot": ["@vnext/provider-copilot@workspace:packages/provider-copilot"],
 
     "@vnext/responses-store": ["@vnext/responses-store@workspace:packages/responses-store"],
+
+    "@vnext/shared-http": ["@vnext/shared-http@workspace:packages/shared-http"],
 
     "@vnext/translate": ["@vnext/translate@workspace:packages/translate"],
 
