@@ -64,4 +64,26 @@ describe('translateResponsesToChatSSE', () => {
     const chunks = await collect(translateResponsesToChatSSE(feed(events))) as Array<{ choices: Array<{ finish_reason: string | null }> }>
     expect(chunks.at(-1)!.choices[0].finish_reason).toBe('length')
   })
+
+  test('cancellation: consumer breaking early runs upstream finally', async () => {
+    let upstreamClosed = false
+    async function* upstream(): AsyncGenerator<unknown> {
+      try {
+        yield { type: 'response.created', response: { id: 'r', model: 'm', created_at: 1 } }
+        for (let i = 0; i < 100; i++) {
+          yield { type: 'response.output_text.delta', delta: 'x' }
+        }
+      } finally {
+        upstreamClosed = true
+      }
+    }
+    const it = translateResponsesToChatSSE(upstream())
+    let count = 0
+    for await (const _ of it) {
+      count++
+      if (count >= 3) break
+    }
+    expect(upstreamClosed).toBe(true)
+    expect(count).toBe(3)
+  })
 })

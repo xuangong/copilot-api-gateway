@@ -64,4 +64,26 @@ describe('translateChatToResponsesEvents', () => {
     expect(completed.response?.status).toBe('incomplete')
     expect(completed.response?.incomplete_details?.reason).toBe('max_output_tokens')
   })
+
+  test('cancellation: consumer breaking early runs upstream finally', async () => {
+    let upstreamClosed = false
+    async function* upstream(): AsyncGenerator<unknown> {
+      try {
+        yield { id: 'r', model: 'm', created: 1, choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }] }
+        for (let i = 0; i < 100; i++) {
+          yield { id: 'r', model: 'm', created: 1, choices: [{ index: 0, delta: { content: 'x' }, finish_reason: null }] }
+        }
+      } finally {
+        upstreamClosed = true
+      }
+    }
+    const it = translateChatToResponsesEvents(upstream())
+    let count = 0
+    for await (const _ of it) {
+      count++
+      if (count >= 3) break
+    }
+    expect(upstreamClosed).toBe(true)
+    expect(count).toBe(3)
+  })
 })
