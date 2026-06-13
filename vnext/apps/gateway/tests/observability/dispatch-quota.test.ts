@@ -77,7 +77,10 @@ test('dispatch returns 429 when token quota exceeded', async () => {
   // weighted = cacheRead*0.1 + input*1.0 + output*5.0
   // input=1000 → weighted=1000, which exceeds 100
   const todayHour = new Date().toISOString().slice(0, 13)
-  await repo.usage.record('k1', 'm', todayHour, 1, 1000, 0)
+  await repo.usage.record({
+    keyId: 'k1', model: 'm', modelKey: 'm', upstream: null, client: '',
+    hour: todayHour, requests: 1, tokens: { input: 1000 }, cost: null,
+  })
 
   // Save a Copilot upstream so enumerateBindingCandidates can find the model
   await repo.upstreams.save({

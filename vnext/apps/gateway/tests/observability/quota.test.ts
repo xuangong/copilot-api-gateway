@@ -46,7 +46,10 @@ test('checkQuota: key with no quotas configured allowed', async () => {
 test('checkQuota: request quota exceeded denies with Retry-After', async () => {
   await repo.apiKeys.save(baseKey({ quotaRequestsPerDay: 2 }))
   const today = new Date().toISOString().slice(0, 10) + 'T00'
-  await repo.usage.record('k1', 'gpt-4o', today, 2, 100, 50)
+  await repo.usage.record({
+    keyId: 'k1', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
+    hour: today, requests: 2, tokens: { input: 100, output: 50 }, cost: null,
+  })
   const r = await checkQuota('k1')
   expect(r.allowed).toBe(false)
   expect(r.reason).toMatch(/request quota/i)
@@ -57,7 +60,10 @@ test('checkQuota: request quota exceeded denies with Retry-After', async () => {
 test('checkQuota: token quota exceeded denies', async () => {
   await repo.apiKeys.save(baseKey({ quotaTokensPerDay: 500 }))
   const today = new Date().toISOString().slice(0, 10) + 'T00'
-  await repo.usage.record('k1', 'gpt-4o', today, 1, 100, 100)
+  await repo.usage.record({
+    keyId: 'k1', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
+    hour: today, requests: 1, tokens: { input: 100, output: 100 }, cost: null,
+  })
   const r = await checkQuota('k1')
   expect(r.allowed).toBe(false)
   expect(r.reason).toMatch(/token quota/i)
@@ -66,7 +72,10 @@ test('checkQuota: token quota exceeded denies', async () => {
 test('checkQuota: usage below quota allowed', async () => {
   await repo.apiKeys.save(baseKey({ quotaRequestsPerDay: 100, quotaTokensPerDay: 1_000_000 }))
   const today = new Date().toISOString().slice(0, 10) + 'T00'
-  await repo.usage.record('k1', 'gpt-4o', today, 1, 10, 10)
+  await repo.usage.record({
+    keyId: 'k1', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
+    hour: today, requests: 1, tokens: { input: 10, output: 10 }, cost: null,
+  })
   const r = await checkQuota('k1')
   expect(r.allowed).toBe(true)
 })
