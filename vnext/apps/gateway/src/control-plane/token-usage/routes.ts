@@ -8,14 +8,16 @@
  *   - user (session)  → owned + assigned keys
  *   - fallback (e.g. apiKey caller w/o userId) → key_id query honored, list() keys
  *
- * Records are enriched with `cost` (recomputed from tokens — costJson column
- * is intentionally ignored, see old dashboard.ts:26-29).
+ * Cost is summed from each row's per-dimension `cost` snapshot (frozen at
+ * write time) via `aggregateUsageForDisplay`; the global pricing table is
+ * never consulted at read time, so historical cost is stable when pricing
+ * later changes. See aggregate.ts for the math.
  */
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../shared/repo/index.ts'
-import type { ApiKey, UsageRecord } from '../../shared/repo/types.ts'
-import { costForUsage, type CostBreakdown } from '../../shared/lib/pricing/index.ts'
+import type { ApiKey } from '../../shared/repo/types.ts'
+import { aggregateUsageForDisplay, type DisplayUsageRecord } from './aggregate.ts'
 import {
   redactForSharedView,
   getServerSecret,
@@ -30,19 +32,6 @@ export interface TokenUsageAuthCtx {
 }
 
 type Vars = { auth: TokenUsageAuthCtx }
-
-function enrichUsage<T extends UsageRecord>(r: T): T & { cost: CostBreakdown | null } {
-  return {
-    ...r,
-    cost: costForUsage({
-      model: r.model,
-      inputTokens: r.inputTokens,
-      outputTokens: r.outputTokens,
-      cacheReadTokens: r.cacheReadTokens,
-      cacheCreationTokens: r.cacheCreationTokens,
-    }),
-  }
-}
 
 async function getUserKeys(userId: string): Promise<ApiKey[]> {
   const repo = getRepo()
@@ -60,6 +49,16 @@ async function getUserKeys(userId: string): Promise<ApiKey[]> {
     }
   }
   return [...keyMap.values()]
+}
+
+function enrichWithKeyName(
+  rows: DisplayUsageRecord[],
+  nameMap: Map<string, string>,
+): Array<DisplayUsageRecord & { keyName: string }> {
+  return rows.map((r) => ({
+    ...r,
+    keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),
+  }))
 }
 
 export const tokenUsageRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
@@ -86,10 +85,7 @@ tokenUsageRouter.get('/token-usage', async (c) => {
     const ownedKeys = await repo.apiKeys.listByOwner(auth.ownerId)
     const records = await repo.usage.query({ keyIds: ids, start, end })
     const nameMap = new Map(ownedKeys.map((k) => [k.id, k.name]))
-    const enriched = records.map((r) => ({
-      ...enrichUsage(r),
-      keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),
-    }))
+    const enriched = enrichWithKeyName(aggregateUsageForDisplay(records), nameMap)
     return c.json(
       redactForSharedView({
         kind: 'tokenUsage',
@@ -118,6 +114,7 @@ tokenUsageRouter.get('/token-usage', async (c) => {
 
   const records = await repo.usage.query(queryOpts)
   const nameMap = new Map(keys.map((k) => [k.id, k.name]))
+  const display = aggregateUsageForDisplay(records)
 
   if (auth.isAdmin) {
     const ownerIdMap = new Map(keys.map((k) => [k.id, k.ownerId]))
@@ -128,10 +125,10 @@ tokenUsageRouter.get('/token-usage', async (c) => {
       if (u) userNameMap.set(u.id, u.name)
     }
     return c.json(
-      records.map((r) => {
+      display.map((r) => {
         const ownerId = ownerIdMap.get(r.keyId)
         return {
-          ...enrichUsage(r),
+          ...r,
           keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),
           ownerId: ownerId ?? '',
           ownerName: ownerId ? (userNameMap.get(ownerId) ?? '') : '',
@@ -140,10 +137,5 @@ tokenUsageRouter.get('/token-usage', async (c) => {
     )
   }
 
-  return c.json(
-    records.map((r) => ({
-      ...enrichUsage(r),
-      keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),
-    })),
-  )
+  return c.json(enrichWithKeyName(display, nameMap))
 })

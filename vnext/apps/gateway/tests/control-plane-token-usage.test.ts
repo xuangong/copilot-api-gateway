@@ -3,6 +3,10 @@
  *
  * Per bun_mock_module_unrestorable: in-memory repo + setRepoForTest.
  * Covers 4 scoping branches + redaction in shared view.
+ *
+ * Cost in the response is summed from each row's frozen per-dimension price
+ * snapshot (UsageRecord.cost), not from a global pricing table — see
+ * aggregate.ts.
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
@@ -72,10 +76,12 @@ function mkKey(id: string, name: string, ownerId?: string): ApiKey {
 }
 
 function mkUsage(keyId: string, hour: string, model = 'claude-sonnet-4-6'): UsageRecord {
+  // input=1000 × $3/M + output=500 × $15/M = 0.003 + 0.0075 = 0.0105 USD
   return {
-    keyId, model, hour, client: 'test', upstream: null,
-    requests: 1, inputTokens: 1000, outputTokens: 500,
-    cacheReadTokens: 0, cacheCreationTokens: 0, costJson: null,
+    keyId, model, modelKey: model, hour, client: 'test', upstream: null,
+    requests: 1,
+    tokens: { input: 1000, output: 500 },
+    cost: { input: 3, output: 15 },
   }
 }
 
@@ -101,7 +107,7 @@ test('GET /api/token-usage user with no keys → []', async () => {
   expect(await res.json()).toEqual([])
 })
 
-test('GET /api/token-usage user scopes to own + assigned keys; enriches cost+keyName', async () => {
+test('GET /api/token-usage user scopes to own + assigned keys; aggregates cost from per-row snapshot + keyName', async () => {
   store.keys.set('k1', mkKey('k1', 'mine', 'u1'))
   store.keys.set('k2', mkKey('k2', 'other', 'u2'))
   store.keys.set('k3', mkKey('k3', 'assigned', 'u3'))
@@ -112,13 +118,14 @@ test('GET /api/token-usage user scopes to own + assigned keys; enriches cost+key
 
   const res = await call(buildApp({ userId: 'u1' }), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
   expect(res.status).toBe(200)
-  const body = await res.json() as Array<{ keyId: string; keyName: string; cost: { totalUSD: number } | null }>
+  const body = await res.json() as Array<{ keyId: string; keyName: string; cost: number; tokens: { input?: number; output?: number } }>
   const seen = body.map((r) => r.keyId).sort()
   expect(seen).toEqual(['k1', 'k3'])
   const k1 = body.find((r) => r.keyId === 'k1')!
   expect(k1.keyName).toBe('mine')
-  expect(k1.cost).not.toBeNull()
-  expect(k1.cost!.totalUSD).toBeGreaterThan(0)
+  expect(k1.tokens.input).toBe(1000)
+  expect(k1.tokens.output).toBe(500)
+  expect(k1.cost).toBeCloseTo(0.0105, 6)
 })
 
 test('GET /api/token-usage admin sees all keys + ownerId/ownerName enrichment', async () => {
