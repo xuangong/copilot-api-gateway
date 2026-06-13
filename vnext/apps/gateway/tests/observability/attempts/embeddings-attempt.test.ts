@@ -57,6 +57,8 @@ test('embeddings success: usage + latency + perf fan-out', async () => {
   const result = await runEmbeddingsAttempt({
     apiKeyId: 'e-ok',
     model: 'text-embedding-3-small',
+    modelKey: 'text-embedding-3-small',
+    pricing: null,
     upstream: 'github_copilot',
     userAgent: 'curl/8',
     requestId: 'req-e-1',
@@ -72,9 +74,9 @@ test('embeddings success: usage + latency + perf fan-out', async () => {
   expect(lat.length).toBe(1)
   const usage = await repo.usage.query({ keyId: 'e-ok', start: dayStart(), end: dayEnd() })
   expect(usage.length).toBe(1)
-  expect(usage[0]!.inputTokens).toBe(8)
-  // Embeddings have prompt_tokens only; output_tokens stays at 0.
-  expect(usage[0]!.outputTokens).toBe(0)
+  expect(usage[0]!.tokens.input).toBe(8)
+  // Embeddings have prompt_tokens only; output_tokens stays undefined/0.
+  expect(usage[0]!.tokens.output ?? 0).toBe(0)
   const perf = await repo.performance.query({ keyId: 'e-ok', start: dayStart(), end: dayEnd() })
   // Both source and target are 'embeddings' → perf fan-out fires
   expect(perf.summary.length).toBe(2)
@@ -92,6 +94,8 @@ test('embeddings 4xx: error latency only, no perf fan-out', async () => {
   const result = await runEmbeddingsAttempt({
     apiKeyId: 'e-bad',
     model: 'text-embedding-3-small',
+    modelKey: 'text-embedding-3-small',
+    pricing: null,
     upstream: 'github_copilot',
     userAgent: undefined,
     requestId: undefined,
@@ -121,6 +125,8 @@ test('embeddings throw: rethrows after recording error latency', async () => {
     await runEmbeddingsAttempt({
       apiKeyId: 'e-throw',
       model: 'text-embedding-3-small',
+      modelKey: 'text-embedding-3-small',
+      pricing: null,
       upstream: 'github_copilot',
       userAgent: undefined,
       requestId: 'req-e-throw',
@@ -135,15 +141,59 @@ test('embeddings throw: rethrows after recording error latency', async () => {
   expect(lat.length).toBe(1)
 })
 
+test('embeddings persists pricing snapshot when caller supplies it', async () => {
+  await seedKey('e-price')
+
+  const upstreamJson = {
+    object: 'list',
+    data: [{ object: 'embedding', embedding: [0.1], index: 0 }],
+    model: 'text-embedding-3-small',
+    usage: { prompt_tokens: 5, total_tokens: 5 },
+  }
+  const upstreamResponse = new Response(JSON.stringify(upstreamJson), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
+
+  const result = await runEmbeddingsAttempt({
+    apiKeyId: 'e-price',
+    model: 'text-embedding-3-small',
+    modelKey: 'text-embedding-3-small',
+    pricing: { input: 0.02 },
+    upstream: 'github_copilot',
+    userAgent: undefined,
+    requestId: undefined,
+    call: () => Promise.resolve(upstreamResponse),
+  })
+
+  expect(result.ok).toBe(true)
+  const usage = await repo.usage.query({ keyId: 'e-price', start: dayStart(), end: dayEnd() })
+  expect(usage.length).toBe(1)
+  expect(usage[0]!.modelKey).toBe('text-embedding-3-small')
+  expect(usage[0]!.cost).toEqual({ input: 0.02 })
+})
+
 test('embeddings quota exceeded: 429 short-circuit, no upstream call', async () => {
   await seedKey('e-q', { quotaTokensPerDay: 50 })
   const todayHour = new Date().toISOString().slice(0, 13)
-  await repo.usage.record('e-q', 'm', todayHour, 1, 1000, 0)
+  await repo.usage.record({
+    keyId: 'e-q',
+    model: 'm',
+    modelKey: 'm',
+    upstream: null,
+    client: '',
+    hour: todayHour,
+    requests: 1,
+    tokens: { input: 1000 },
+    cost: null,
+  })
 
   let calls = 0
   const result = await runEmbeddingsAttempt({
     apiKeyId: 'e-q',
     model: 'text-embedding-3-small',
+    modelKey: 'text-embedding-3-small',
+    pricing: null,
     upstream: 'github_copilot',
     userAgent: undefined,
     requestId: undefined,
@@ -171,6 +221,8 @@ test('embeddings without apiKeyId: skips observability, returns parsed json', as
   const result = await runEmbeddingsAttempt({
     apiKeyId: undefined,
     model: 'text-embedding-3-small',
+    modelKey: 'text-embedding-3-small',
+    pricing: null,
     upstream: 'github_copilot',
     userAgent: undefined,
     requestId: undefined,

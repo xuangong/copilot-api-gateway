@@ -23,6 +23,7 @@
  *     (matches the existing perf fan-out invariant).
  *   - apiKeyId === undefined skips every observability hook; upstream still fires.
  */
+import type { ModelPricing } from '@vnext/protocols/common'
 import { checkQuota } from '../../../shared/observability/quota.ts'
 import {
   recordLatency,
@@ -39,6 +40,18 @@ import { detectClient } from '../../../shared/observability/client-detect.ts'
 export interface ConversationAttemptInput {
   apiKeyId: string | undefined
   model: string
+  /**
+   * Raw upstream model id used as the pricing-lookup key (post upstream-pin
+   * strip). Persisted alongside the usage row so aggregate.ts can recover the
+   * pricing snapshot deterministically.
+   */
+  modelKey: string
+  /**
+   * Pre-resolved pricing snapshot from `provider.getPricingForModelKey(modelKey)`.
+   * `null` when the provider has no pricing entry for this key; the usage row
+   * still writes the token columns, just without per-dimension unit prices.
+   */
+  pricing: ModelPricing | null
   sourceApi: SourceApiInput
   targetApi: TargetApiInput
   upstream: 'github_copilot'
@@ -124,7 +137,7 @@ export async function runConversationAttempt(
   if (input.stream) {
     let response = res
     if (input.apiKeyId) {
-      response = trackStreamingUsage(res, input.apiKeyId, input.model, client, input.upstream)
+      response = trackStreamingUsage(res, input.apiKeyId, input.model, client, input.upstream, input.modelKey, input.pricing)
       await recordLatency(
         input.apiKeyId,
         input.model,
@@ -147,7 +160,7 @@ export async function runConversationAttempt(
   // can run backend.decodeBody on it; usage extracted from the same JSON.
   const json = await res.json()
   if (input.apiKeyId) {
-    await trackNonStreamingUsage(json, input.apiKeyId, input.model, client, input.upstream)
+    await trackNonStreamingUsage(json, input.apiKeyId, input.model, client, input.upstream, input.modelKey, input.pricing)
     await recordLatency(
       input.apiKeyId,
       input.model,

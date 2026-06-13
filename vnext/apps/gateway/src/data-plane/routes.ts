@@ -213,9 +213,15 @@ async function dispatch<TPayload>(
 
   let attempt: Awaited<ReturnType<typeof runConversationAttempt>>
   try {
+    // Resolve pricing once per call; the provider owns the lookup table
+    // (Copilot static table / Azure config.models / Custom auto-parse).
+    // `bareModel` is the post-pin-strip upstream id used everywhere else.
+    const pricing = binding.provider.getPricingForModelKey(bareModel)
     attempt = await runConversationAttempt({
       apiKeyId: input.obsCtx.apiKeyId,
       model: bareModel,
+      modelKey: bareModel,
+      pricing,
       sourceApi: input.sourceApi as SourceApiInput,
       targetApi: targetEndpoint as TargetApiInput,
       upstream: 'github_copilot',

@@ -99,6 +99,10 @@ async function createMessages(
   const result = await runConversationAttempt({
     apiKeyId: options.apiKeyId,
     model: options.model ?? payload.model,
+    // The web-search loop calls Messages→Messages on every iteration; pricing
+    // is bound to the upstream model id, so look it up here and pass through.
+    modelKey: options.model ?? payload.model,
+    pricing: provider.getPricingForModelKey(options.model ?? payload.model),
     sourceApi: 'messages',
     targetApi: 'messages',
     upstream: 'github_copilot',

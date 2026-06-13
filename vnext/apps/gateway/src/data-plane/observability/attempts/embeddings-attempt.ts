@@ -15,6 +15,7 @@
  * Caller still handles request validation (model field, JSON parse, upstream
  * pin strip) and the binding resolution; this module only wraps the call site.
  */
+import type { ModelPricing } from '@vnext/protocols/common'
 import { checkQuota } from '../../../shared/observability/quota.ts'
 import {
   recordLatency,
@@ -26,6 +27,10 @@ import { detectClient } from '../../../shared/observability/client-detect.ts'
 export interface EmbeddingsAttemptInput {
   apiKeyId: string | undefined
   model: string
+  /** Raw upstream model id — same value handed to provider for pricing lookup. */
+  modelKey: string
+  /** Pre-resolved pricing snapshot from `provider.getPricingForModelKey(modelKey)`. */
+  pricing: ModelPricing | null
   upstream: 'github_copilot'
   userAgent: string | undefined
   requestId: string | undefined
@@ -97,7 +102,7 @@ export async function runEmbeddingsAttempt(
   // can extract usage from the same JSON.
   const json = await res.json()
   if (input.apiKeyId) {
-    await trackNonStreamingUsage(json, input.apiKeyId, input.model, client, input.upstream)
+    await trackNonStreamingUsage(json, input.apiKeyId, input.model, client, input.upstream, input.modelKey, input.pricing)
     await recordLatency(
       input.apiKeyId,
       input.model,

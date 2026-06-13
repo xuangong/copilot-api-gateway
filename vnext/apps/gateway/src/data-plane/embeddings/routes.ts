@@ -63,9 +63,15 @@ async function handle(c: EmbeddingsCtx): Promise<Response> {
     )
   }
 
+  // Pricing lookup uses the post-pin-strip model id (same value handed to the
+  // provider's binding resolver above). The provider returns null when no
+  // pricing entry exists; we still record the usage row, just without prices.
+  const pricing = binding.provider.getPricingForModelKey(body.model)
   const attempt = await runEmbeddingsAttempt({
     apiKeyId: auth.apiKeyId,
     model: body.model,
+    modelKey: body.model,
+    pricing,
     upstream: 'github_copilot',
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,

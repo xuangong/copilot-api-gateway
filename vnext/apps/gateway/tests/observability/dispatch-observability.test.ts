@@ -157,13 +157,14 @@ test('streaming SSE dispatch writes 1 latency + 1 usage + 2 perf rows', async ()
 
   // --- Assert observability rows ---
 
-  const usage = db.query('SELECT * FROM usage WHERE key_id = ?').all('k-stream') as Array<{
-    input_tokens: number
-    output_tokens: number
-  }>
+  const usage = await repo.usage.query({
+    keyId: 'k-stream',
+    start: new Date().toISOString().slice(0, 10) + 'T00',
+    end: new Date().toISOString().slice(0, 10) + 'T24',
+  })
   expect(usage).toHaveLength(1)
-  expect(usage[0]!.input_tokens).toBeGreaterThan(0)
-  expect(usage[0]!.output_tokens).toBeGreaterThan(0)
+  expect((usage[0]!.tokens.input ?? 0)).toBeGreaterThan(0)
+  expect((usage[0]!.tokens.output ?? 0)).toBeGreaterThan(0)
 
   const latency = db.query('SELECT * FROM latency WHERE key_id = ?').all('k-stream') as unknown[]
   expect(latency).toHaveLength(1)
@@ -176,4 +177,86 @@ test('streaming SSE dispatch writes 1 latency + 1 usage + 2 perf rows', async ()
 
   const buckets = db.query('SELECT * FROM performance_latency_buckets').all() as unknown[]
   expect(buckets.length).toBeGreaterThan(0)
+})
+
+test('non-streaming dispatch persists pricing snapshot from provider.getPricingForModelKey', async () => {
+  const db = new Database(':memory:')
+  const repo = new SqliteRepo(db)
+
+  await repo.apiKeys.save({
+    id: 'k-price',
+    name: 'k',
+    key: 'sk-price',
+    createdAt: new Date().toISOString(),
+  })
+  await repo.upstreams.save({
+    id: 'copilot:p1',
+    provider: 'copilot',
+    name: 'p1',
+    enabled: true,
+    sortOrder: 0,
+    config: { githubToken: 'ghp_test' },
+    flagOverrides: {},
+    disabledPublicModelIds: [],
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+  })
+
+  setRepoForTest(repo)
+
+  // gpt-4 has built-in Copilot pricing { input: 30, output: 60 }.
+  const upstreamJson = {
+    id: 'chatcmpl-1',
+    object: 'chat.completion',
+    created: 1700000000,
+    model: MODEL_ID,
+    choices: [{ index: 0, message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 11, completion_tokens: 3, total_tokens: 14 },
+  }
+  installFetch((req) => {
+    const url = new URL(req.url)
+    if (url.pathname.endsWith('/models')) {
+      return new Response(
+        JSON.stringify({ object: 'list', data: [stubModel(MODEL_ID)] } satisfies ModelsResponse),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }
+    return new Response(JSON.stringify(upstreamJson), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  })
+
+  const app = buildApp({
+    apiKeyId: 'k-price',
+    copilot: { copilotToken: 'tkn', accountType: 'individual' },
+  })
+
+  const res = await app.fetch(
+    new Request('http://local/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: MODEL_ID,
+        stream: false,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    }),
+    env,
+  )
+
+  expect(res.status).toBe(200)
+  await new Promise(r => setTimeout(r, 50))
+
+  const usage = await repo.usage.query({
+    keyId: 'k-price',
+    start: new Date().toISOString().slice(0, 10) + 'T00',
+    end: new Date().toISOString().slice(0, 10) + 'T24',
+  })
+  expect(usage).toHaveLength(1)
+  expect(usage[0]!.modelKey).toBe(MODEL_ID)
+  // Pricing snapshot was resolved from CopilotProvider.getPricingForModelKey(gpt-4)
+  // and threaded through runConversationAttempt → tracker → repo.usage.record,
+  // landing on the per-dimension unit_price columns and reconstructed on read.
+  expect(usage[0]!.cost).toEqual({ input: 30, output: 60 })
 })

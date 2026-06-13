@@ -59,6 +59,8 @@ test('non-streaming success records latency + usage and returns parsed json', as
   const result = await runConversationAttempt({
     apiKeyId: 'k-ns',
     model: 'claude-3-5-sonnet',
+    modelKey: 'claude-3-5-sonnet',
+    pricing: null,
     sourceApi: 'messages',
     targetApi: 'messages',
     upstream: 'github_copilot',
@@ -83,8 +85,8 @@ test('non-streaming success records latency + usage and returns parsed json', as
   expect(lat.length).toBe(1)
   const usage = await repo.usage.query({ keyId: 'k-ns', start: dayStart(), end: dayEnd() })
   expect(usage.length).toBe(1)
-  expect(usage[0]!.inputTokens).toBe(12)
-  expect(usage[0]!.outputTokens).toBe(5)
+  expect(usage[0]!.tokens.input).toBe(12)
+  expect(usage[0]!.tokens.output).toBe(5)
   const perf = await repo.performance.query({ keyId: 'k-ns', start: dayStart(), end: dayEnd() })
   expect(perf.summary.length).toBe(2)
 })
@@ -112,6 +114,8 @@ test('streaming success records latency and wraps body for usage tap', async () 
   const result = await runConversationAttempt({
     apiKeyId: 'k-st',
     model: 'gpt-4',
+    modelKey: 'gpt-4',
+    pricing: null,
     sourceApi: 'chat_completions',
     targetApi: 'chat_completions',
     upstream: 'github_copilot',
@@ -139,8 +143,8 @@ test('streaming success records latency and wraps body for usage tap', async () 
   expect(lat.length).toBe(1)
   const usage = await repo.usage.query({ keyId: 'k-st', start: dayStart(), end: dayEnd() })
   expect(usage.length).toBe(1)
-  expect(usage[0]!.inputTokens).toBe(7)
-  expect(usage[0]!.outputTokens).toBe(2)
+  expect(usage[0]!.tokens.input).toBe(7)
+  expect(usage[0]!.tokens.output).toBe(2)
   const perf = await repo.performance.query({ keyId: 'k-st', start: dayStart(), end: dayEnd() })
   expect(perf.summary.length).toBe(2)
 })
@@ -157,6 +161,8 @@ test('upstream 5xx returns ok=false with response and records error latency', as
   const result = await runConversationAttempt({
     apiKeyId: 'k-5xx',
     model: 'gpt-4',
+    modelKey: 'gpt-4',
+    pricing: null,
     sourceApi: 'chat_completions',
     targetApi: 'chat_completions',
     upstream: 'github_copilot',
@@ -191,6 +197,8 @@ test('thrown HTTPError records error latency and rethrows', async () => {
     await runConversationAttempt({
       apiKeyId: 'k-throw',
       model: 'gpt-4',
+      modelKey: 'gpt-4',
+      pricing: null,
       sourceApi: 'chat_completions',
       targetApi: 'chat_completions',
       upstream: 'github_copilot',
@@ -211,16 +219,64 @@ test('thrown HTTPError records error latency and rethrows', async () => {
   expect(perf.summary.length).toBe(0)
 })
 
+test('persists pricing snapshot onto usage row when caller supplies it', async () => {
+  await seedKey('k-price')
+
+  const upstreamJson = {
+    id: 'msg_p',
+    object: 'chat.completion',
+    choices: [{ index: 0, message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 },
+  }
+  const upstreamResponse = new Response(JSON.stringify(upstreamJson), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
+
+  const result = await runConversationAttempt({
+    apiKeyId: 'k-price',
+    model: 'claude-opus-4-7',
+    modelKey: 'claude-opus-4-7',
+    pricing: { input: 15, output: 75 },
+    sourceApi: 'messages',
+    targetApi: 'messages',
+    upstream: 'github_copilot',
+    userAgent: undefined,
+    requestId: undefined,
+    stream: false,
+    call: () => Promise.resolve(upstreamResponse),
+  })
+
+  expect(result.ok).toBe(true)
+
+  const usage = await repo.usage.query({ keyId: 'k-price', start: dayStart(), end: dayEnd() })
+  expect(usage.length).toBe(1)
+  expect(usage[0]!.modelKey).toBe('claude-opus-4-7')
+  expect(usage[0]!.cost).toEqual({ input: 15, output: 75 })
+})
+
 test('quota exceeded returns 429 rateLimit envelope without invoking upstream', async () => {
   // Tiny quota; pre-fill enough usage to trip it.
   await seedKey('k-q', { quotaTokensPerDay: 100 })
   const todayHour = new Date().toISOString().slice(0, 13)
-  await repo.usage.record('k-q', 'm', todayHour, 1, 1000, 0)
+  await repo.usage.record({
+    keyId: 'k-q',
+    model: 'm',
+    modelKey: 'm',
+    upstream: null,
+    client: '',
+    hour: todayHour,
+    requests: 1,
+    tokens: { input: 1000 },
+    cost: null,
+  })
 
   let calls = 0
   const result = await runConversationAttempt({
     apiKeyId: 'k-q',
     model: 'gpt-4',
+    modelKey: 'gpt-4',
+    pricing: null,
     sourceApi: 'chat_completions',
     targetApi: 'chat_completions',
     upstream: 'github_copilot',
@@ -258,6 +314,8 @@ test('no apiKeyId skips all observability hooks but still calls upstream', async
   const result = await runConversationAttempt({
     apiKeyId: undefined,
     model: 'gpt-4',
+    modelKey: 'gpt-4',
+    pricing: null,
     sourceApi: 'chat_completions',
     targetApi: 'chat_completions',
     upstream: 'github_copilot',

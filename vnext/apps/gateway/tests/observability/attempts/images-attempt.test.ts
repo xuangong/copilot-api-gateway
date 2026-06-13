@@ -124,7 +124,17 @@ test('images throw: rethrows after recording error latency', async () => {
 test('images quota exceeded: 429 envelope, no upstream call, no latency', async () => {
   await seedKey('i-q', { quotaTokensPerDay: 10 })
   const todayHour = new Date().toISOString().slice(0, 13)
-  await repo.usage.record('i-q', 'm', todayHour, 1, 100, 0)
+  await repo.usage.record({
+    keyId: 'i-q',
+    model: 'm',
+    modelKey: 'm',
+    upstream: null,
+    client: '',
+    hour: todayHour,
+    requests: 1,
+    tokens: { input: 100 },
+    cost: null,
+  })
 
   let calls = 0
   const result = await runImagesAttempt({
