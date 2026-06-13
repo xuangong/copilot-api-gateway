@@ -16,7 +16,12 @@ COPY apps/dashboard/package.json apps/dashboard/
 COPY packages/interceptor/package.json packages/interceptor/
 COPY packages/protocols/package.json packages/protocols/
 COPY packages/provider/package.json packages/provider/
+COPY packages/provider-azure/package.json packages/provider-azure/
 COPY packages/provider-copilot/package.json packages/provider-copilot/
+COPY packages/provider-custom/package.json packages/provider-custom/
+COPY packages/responses-store/package.json packages/responses-store/
+COPY packages/shared-cache/package.json packages/shared-cache/
+COPY packages/shared-http/package.json packages/shared-http/
 COPY packages/translate/package.json packages/translate/
 
 RUN bun install --frozen-lockfile
