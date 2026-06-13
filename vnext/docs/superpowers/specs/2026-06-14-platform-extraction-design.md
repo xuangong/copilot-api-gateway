@@ -328,6 +328,7 @@ bootstrapBunPlatform({
   filesDir: process.env.VNEXT_FILES_DIR ?? '.vnext-files',
 })
 
+// Docker compose sets PORT=41415; bare local runs fall back to 8788.
 const port = Number(process.env.PORT ?? 8788)
 Bun.serve({ port, fetch: app.fetch })
 ```
@@ -360,8 +361,9 @@ The `WORKDIR` and final `CMD` change to point at this app.
   `apps/platform-cloudflare/`.
 - `docker-compose.vnext.yml` build context: change Dockerfile path to
   `vnext/apps/platform-bun/Dockerfile`. Build context stays at `vnext/`.
-- `tsconfig.base.json` paths: nothing required since workspace resolution
-  handles `@vnext/*` already. Confirm during implementation.
+- `tsconfig.base.json` paths: no change required. `@vnext/*` resolution goes
+  through workspace symlinks + each package's `package.json` `name` field, not
+  through tsconfig `paths`.
 
 ## §6 Risks
 
