@@ -4,7 +4,7 @@
  * helpers in place of the inline transport utilities.
  */
 
-import type { EndpointKey } from '@vnext/protocols/common'
+import type { EndpointKey, ModelPricing } from '@vnext/protocols/common'
 import {
   HTTPError,
   probeViaModels,
@@ -22,7 +22,11 @@ export interface CustomProviderConfig {
   defaultHeaders?: Record<string, string>
   endpoints?: readonly EndpointKey[]
   modelsEndpoint?: string
-  models?: ReadonlyArray<string | { id: string; name?: string; ownedBy?: string }>
+  models?: ReadonlyArray<
+    | string
+    | { id: string; name?: string; ownedBy?: string }
+    | { upstreamModelId: string; cost?: ModelPricing }
+  >
 }
 
 const DEFAULT_ENDPOINTS: readonly EndpointKey[] = ['chat_completions', 'embeddings']
@@ -46,6 +50,8 @@ export class CustomProvider implements ModelProvider {
   private readonly defaultHeaders: Record<string, string>
   private readonly modelsEndpoint: string
   private readonly manualModels?: ReadonlyArray<{ id: string; name?: string; ownedBy?: string }>
+  private readonly manualPricing: Map<string, ModelPricing>
+  private autoPricing: Map<string, ModelPricing> = new Map()
 
   constructor(cfg: CustomProviderConfig) {
     if (!cfg.apiKey) throw new Error('Custom provider requires an apiKey')
@@ -56,11 +62,23 @@ export class CustomProvider implements ModelProvider {
     this.defaultHeaders = mergeHeaders(cfg.defaultHeaders, undefined)
     this.supportedEndpoints = cfg.endpoints ?? DEFAULT_ENDPOINTS
     this.modelsEndpoint = cfg.modelsEndpoint ?? `${this.baseUrl}/models`
-    this.manualModels = cfg.models?.map((m) =>
+    // Split cfg.models: display entries (string | {id,...}) feed manualModels;
+    // pricing-only entries ({upstreamModelId, cost?}) feed manualPricing. The
+    // two shapes are discriminated by which key is present.
+    const displayEntries = cfg.models?.filter(
+      (m) => typeof m === 'string' || 'id' in m,
+    ) as ReadonlyArray<string | { id: string; name?: string; ownedBy?: string }> | undefined
+    this.manualModels = displayEntries?.map((m) =>
       typeof m === 'string'
         ? { id: m, name: undefined, ownedBy: undefined }
         : { id: m.id, name: m.name, ownedBy: m.ownedBy },
     )
+    this.manualPricing = new Map()
+    for (const m of cfg.models ?? []) {
+      if (typeof m !== 'string' && 'upstreamModelId' in m && m.cost) {
+        this.manualPricing.set(m.upstreamModelId, m.cost)
+      }
+    }
   }
 
   async getModels(): Promise<ProviderModelsResponse> {
@@ -101,6 +119,16 @@ export class CustomProvider implements ModelProvider {
 
   async probe(): Promise<ProbeResult> {
     return probeViaModels(() => this.getModels())
+  }
+
+  getPricingForModelKey(modelKey: string): ModelPricing | null {
+    return this.manualPricing.get(modelKey) ?? this.autoPricing.get(modelKey) ?? null
+  }
+
+  /** Populated by Task 5 (auto-parse cost from /v1/models). Manual config
+   *  always wins over auto-fetched values. */
+  setAutoPricing(map: Map<string, ModelPricing>): void {
+    this.autoPricing = map
   }
 
   async fetch(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {

@@ -11,7 +11,7 @@
  * Authentication uses the `api-key` header (Azure convention), not bearer.
  */
 
-import type { EndpointKey } from '@vnext/protocols/common'
+import type { EndpointKey, ModelPricing } from '@vnext/protocols/common'
 import {
   HTTPError,
   probeViaModels,
@@ -31,6 +31,7 @@ export interface AzureProviderConfig {
   endpoints: readonly EndpointKey[]
   defaultHeaders?: Record<string, string>
   deployments?: ReadonlyArray<{ name: string; model: string }>
+  models?: ReadonlyArray<{ upstreamModelId: string; cost?: ModelPricing }>
 }
 
 const OPENAI_PATHS: Partial<Record<EndpointKey, string>> = {
@@ -64,6 +65,7 @@ export class AzureProvider implements ModelProvider {
   private readonly apiVersion: string
   private readonly defaultHeaders: Record<string, string>
   private readonly extraDeployments: ReadonlyArray<{ name: string; model: string }>
+  private readonly modelPricing: ReadonlyArray<{ upstreamModelId: string; cost?: ModelPricing }>
 
   constructor(cfg: AzureProviderConfig) {
     if (!cfg.apiKey) throw new Error('Azure provider requires an apiKey')
@@ -79,6 +81,7 @@ export class AzureProvider implements ModelProvider {
     this.supportedEndpoints = cfg.endpoints
     this.defaultHeaders = cfg.defaultHeaders ?? {}
     this.extraDeployments = cfg.deployments ?? []
+    this.modelPricing = cfg.models ?? []
   }
 
   async getModels(): Promise<ProviderModelsResponse> {
@@ -114,6 +117,11 @@ export class AzureProvider implements ModelProvider {
       const json = (await res.json()) as { data?: Array<{ id?: string }> }
       return { data: json.data ?? [] } as unknown as ProviderModelsResponse
     })
+  }
+
+  getPricingForModelKey(modelKey: string): ModelPricing | null {
+    const entry = this.modelPricing.find((m) => m.upstreamModelId === modelKey)
+    return entry?.cost ?? null
   }
 
   async fetch(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {

@@ -18,7 +18,8 @@ import { defaultsForUpstream } from './flags'
 import { callCopilotAPI } from './forward'
 import { HTTPError } from './lib/error'
 import { getModels, type ModelsResponse } from './models'
-import type { EndpointKey } from '@vnext/protocols/common'
+import { pricingForCopilotModelKey } from './pricing'
+import type { EndpointKey, ModelPricing } from '@vnext/protocols/common'
 import type { CopilotInterceptor, Invocation, RequestContext } from "@vnext/interceptor"
 import { runInterceptors } from "@vnext/interceptor"
 import type {
@@ -94,6 +95,10 @@ export class CopilotProvider implements ModelProvider {
 
   probe(): Promise<ProbeResult> {
     return probeViaModels(() => this.getModels())
+  }
+
+  getPricingForModelKey(modelKey: string): ModelPricing | null {
+    return pricingForCopilotModelKey(modelKey)
   }
 
   async fetch(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
