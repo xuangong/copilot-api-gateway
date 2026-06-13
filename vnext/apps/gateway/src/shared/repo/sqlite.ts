@@ -52,20 +52,32 @@ CREATE INDEX IF NOT EXISTS idx_upstreams_owner_sort ON upstreams (owner_id, sort
 CREATE INDEX IF NOT EXISTS idx_upstreams_provider_enabled_sort ON upstreams (provider, enabled, sort_order, created_at);
 
 CREATE TABLE IF NOT EXISTS usage (
-  key_id TEXT NOT NULL,
-  model TEXT NOT NULL,
-  upstream TEXT,
-  hour TEXT NOT NULL,
-  client TEXT NOT NULL DEFAULT '',
-  requests INTEGER NOT NULL DEFAULT 0,
-  input_tokens INTEGER NOT NULL DEFAULT 0,
-  output_tokens INTEGER NOT NULL DEFAULT 0,
-  cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-  cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
-  cost_json TEXT
+  key_id     TEXT NOT NULL,
+  model      TEXT NOT NULL,
+  upstream   TEXT,
+  model_key  TEXT NOT NULL,
+  client     TEXT NOT NULL DEFAULT '',
+  hour       TEXT NOT NULL,
+  dimension  TEXT NOT NULL,
+  tokens     INTEGER NOT NULL,
+  unit_price REAL
 );
-
 CREATE INDEX IF NOT EXISTS idx_usage_hour ON usage (hour);
+
+CREATE TABLE IF NOT EXISTS usage_requests (
+  key_id    TEXT NOT NULL,
+  model     TEXT NOT NULL,
+  upstream  TEXT,
+  model_key TEXT NOT NULL,
+  client    TEXT NOT NULL DEFAULT '',
+  hour      TEXT NOT NULL,
+  requests  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_usage_requests_hour ON usage_requests (hour);
+-- Unique identity indexes for usage / usage_requests are created in
+-- migrateSchema after the Plan 6 in-place migration runs, because
+-- CREATE TABLE IF NOT EXISTS is a no-op against a pre-Plan-6 usage
+-- table that lacks model_key / dimension columns.
 
 CREATE TABLE IF NOT EXISTS latency (
   key_id TEXT NOT NULL,
@@ -215,35 +227,42 @@ function copilotUpstreamId(ownerId: string, userId: number): string {
  * separate migration runner.
  */
 function rewriteLegacyUpstreamIds(db: Database): void {
-  for (const table of ["usage", "performance_summary", "performance_latency_buckets"]) {
+  // Plan 6: `usage` split into (usage, usage_requests) with per-dimension rows
+  // and a `model_key` identity column. Each table keeps its own copilot:%
+  // rewrite logic; perf tables retain the original column shape.
+  for (const table of ["usage", "usage_requests", "performance_summary", "performance_latency_buckets"]) {
     const hasRows = db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM ${table} WHERE upstream LIKE 'copilot:%'`).get()
     if (!hasRows || hasRows.n === 0) continue
     const cols = table === "usage"
-      ? "key_id, model, upstream, hour, client, requests, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_json"
-      : table === "performance_summary"
-        ? "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, requests, errors, total_ms_sum"
-        : "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, lower_ms, upper_ms, count"
+      ? "key_id, model, upstream, model_key, client, hour, dimension, tokens, unit_price"
+      : table === "usage_requests"
+        ? "key_id, model, upstream, model_key, client, hour, requests"
+        : table === "performance_summary"
+          ? "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, requests, errors, total_ms_sum"
+          : "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, lower_ms, upper_ms, count"
     const conflictKey = table === "usage"
-      ? "(key_id, model, COALESCE(upstream, ''), hour, client)"
-      : table === "performance_summary"
-        ? "(hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location)"
-        : "(hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, lower_ms, upper_ms)"
+      ? "(key_id, model, COALESCE(upstream, ''), model_key, client, hour, dimension)"
+      : table === "usage_requests"
+        ? "(key_id, model, COALESCE(upstream, ''), model_key, client, hour)"
+        : table === "performance_summary"
+          ? "(hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location)"
+          : "(hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, lower_ms, upper_ms)"
     const setClause = table === "usage"
-      ? `requests = ${table}.requests + excluded.requests,
-         input_tokens = ${table}.input_tokens + excluded.input_tokens,
-         output_tokens = ${table}.output_tokens + excluded.output_tokens,
-         cache_read_tokens = ${table}.cache_read_tokens + excluded.cache_read_tokens,
-         cache_creation_tokens = ${table}.cache_creation_tokens + excluded.cache_creation_tokens`
-      : table === "performance_summary"
-        ? `requests = ${table}.requests + excluded.requests,
-           errors = ${table}.errors + excluded.errors,
-           total_ms_sum = ${table}.total_ms_sum + excluded.total_ms_sum`
-        : `count = ${table}.count + excluded.count`
+      ? `tokens = ${table}.tokens + excluded.tokens`
+      : table === "usage_requests"
+        ? `requests = ${table}.requests + excluded.requests`
+        : table === "performance_summary"
+          ? `requests = ${table}.requests + excluded.requests,
+             errors = ${table}.errors + excluded.errors,
+             total_ms_sum = ${table}.total_ms_sum + excluded.total_ms_sum`
+          : `count = ${table}.count + excluded.count`
     const selectExprs = table === "usage"
-      ? "t.key_id, t.model, MAPPED, t.hour, t.client, t.requests, t.input_tokens, t.output_tokens, t.cache_read_tokens, t.cache_creation_tokens, t.cost_json"
-      : table === "performance_summary"
-        ? "t.hour, t.metric_scope, t.key_id, t.model, MAPPED, t.source_api, t.target_api, t.stream, t.runtime_location, t.requests, t.errors, t.total_ms_sum"
-        : "t.hour, t.metric_scope, t.key_id, t.model, MAPPED, t.source_api, t.target_api, t.stream, t.runtime_location, t.lower_ms, t.upper_ms, t.count"
+      ? "t.key_id, t.model, MAPPED, t.model_key, t.client, t.hour, t.dimension, t.tokens, t.unit_price"
+      : table === "usage_requests"
+        ? "t.key_id, t.model, MAPPED, t.model_key, t.client, t.hour, t.requests"
+        : table === "performance_summary"
+          ? "t.hour, t.metric_scope, t.key_id, t.model, MAPPED, t.source_api, t.target_api, t.stream, t.runtime_location, t.requests, t.errors, t.total_ms_sum"
+          : "t.hour, t.metric_scope, t.key_id, t.model, MAPPED, t.source_api, t.target_api, t.stream, t.runtime_location, t.lower_ms, t.upper_ms, t.count"
     const mapped = `(SELECT up.id FROM upstreams up WHERE up.provider='copilot' AND json_extract(up.config_json, '$.user.id') = CAST(substr(t.upstream, 9) AS INTEGER) LIMIT 1)`
     db.exec(`
       INSERT INTO ${table} (${cols})
@@ -356,6 +375,45 @@ function migrateSchema(db: Database): void {
     db.exec("ALTER TABLE users ADD COLUMN user_key TEXT")
     db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_key ON users(user_key)")
   }
+  // Plan 6: in-place upgrade legacy 4-column `usage` to per-dimension rows.
+  // Detect legacy by presence of `input_tokens` (gone in new schema).
+  if (hasColumn(db, "usage", "input_tokens")) {
+    db.exec(`
+      -- Stage new tables under temp names so we can swap atomically.
+      CREATE TABLE usage_dims_new (
+        key_id TEXT NOT NULL, model TEXT NOT NULL, upstream TEXT, model_key TEXT NOT NULL,
+        client TEXT NOT NULL DEFAULT '', hour TEXT NOT NULL, dimension TEXT NOT NULL,
+        tokens INTEGER NOT NULL, unit_price REAL
+      );
+      CREATE TABLE usage_reqs_new (
+        key_id TEXT NOT NULL, model TEXT NOT NULL, upstream TEXT, model_key TEXT NOT NULL,
+        client TEXT NOT NULL DEFAULT '', hour TEXT NOT NULL, requests INTEGER NOT NULL
+      );
+
+      INSERT INTO usage_reqs_new (key_id, model, upstream, model_key, client, hour, requests)
+        SELECT key_id, model, upstream, model AS model_key, client, hour, requests FROM usage;
+
+      INSERT INTO usage_dims_new (key_id, model, upstream, model_key, client, hour, dimension, tokens, unit_price)
+        SELECT key_id, model, upstream, model, client, hour, 'input', input_tokens, NULL FROM usage WHERE input_tokens > 0
+        UNION ALL
+        SELECT key_id, model, upstream, model, client, hour, 'output', output_tokens, NULL FROM usage WHERE output_tokens > 0
+        UNION ALL
+        SELECT key_id, model, upstream, model, client, hour, 'input_cache_read', cache_read_tokens, NULL FROM usage WHERE cache_read_tokens > 0
+        UNION ALL
+        SELECT key_id, model, upstream, model, client, hour, 'input_cache_write', cache_creation_tokens, NULL FROM usage WHERE cache_creation_tokens > 0;
+
+      DROP TABLE usage;
+      DROP TABLE IF EXISTS usage_requests;
+      ALTER TABLE usage_dims_new RENAME TO usage;
+      ALTER TABLE usage_reqs_new RENAME TO usage_requests;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_identity
+        ON usage (key_id, model, COALESCE(upstream, ''), model_key, client, hour, dimension);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_requests_identity
+        ON usage_requests (key_id, model, COALESCE(upstream, ''), model_key, client, hour);
+      CREATE INDEX IF NOT EXISTS idx_usage_hour ON usage (hour);
+      CREATE INDEX IF NOT EXISTS idx_usage_requests_hour ON usage_requests (hour);
+    `)
+  }
   const pkInfo = db.query<{ name: string }, []>("PRAGMA table_info(github_accounts)").all()
   const ownerCol = pkInfo.find(c => c.name === "owner_id")
   if (ownerCol && (ownerCol as any).pk === 0) {
@@ -376,32 +434,6 @@ function migrateSchema(db: Database): void {
       DROP TABLE github_accounts;
       ALTER TABLE github_accounts_new RENAME TO github_accounts;
     `)
-  }
-  if (!hasColumn(db, "usage", "client")) {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS usage_new (
-        key_id TEXT NOT NULL,
-        model TEXT NOT NULL,
-        hour TEXT NOT NULL,
-        client TEXT NOT NULL DEFAULT '',
-        requests INTEGER NOT NULL DEFAULT 0,
-        input_tokens INTEGER NOT NULL DEFAULT 0,
-        output_tokens INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (key_id, model, hour, client)
-      );
-      INSERT OR IGNORE INTO usage_new (key_id, model, hour, client, requests, input_tokens, output_tokens)
-        SELECT key_id, model, hour, '', requests, input_tokens, output_tokens
-        FROM usage;
-      DROP TABLE usage;
-      ALTER TABLE usage_new RENAME TO usage;
-      CREATE INDEX IF NOT EXISTS idx_usage_hour ON usage (hour);
-    `)
-  }
-  if (!hasColumn(db, "usage", "cache_read_tokens")) {
-    db.exec("ALTER TABLE usage ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0")
-  }
-  if (!hasColumn(db, "usage", "cache_creation_tokens")) {
-    db.exec("ALTER TABLE usage ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0")
   }
   if (!hasColumn(db, "api_keys", "quota_requests_per_day")) {
     db.exec("ALTER TABLE api_keys ADD COLUMN quota_requests_per_day INTEGER")
@@ -589,9 +621,14 @@ function migrateSchema(db: Database): void {
   // pre-0025 schemas don't yet have the `upstream` column when CREATE TABLE
   // IF NOT EXISTS is a no-op against an older table. The migration branches
   // above handle old DBs; for new DBs we add the indexes here.
+  // Plan 6: same reasoning applies to usage / usage_requests — the new
+  // identity uses `model_key` + `dimension` which don't exist on legacy
+  // tables, so the unique index must be created post-migration.
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_identity
-      ON usage (key_id, model, COALESCE(upstream, ''), hour, client);
+      ON usage (key_id, model, COALESCE(upstream, ''), model_key, client, hour, dimension);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_requests_identity
+      ON usage_requests (key_id, model, COALESCE(upstream, ''), model_key, client, hour);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_performance_summary_identity
       ON performance_summary (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_performance_latency_buckets_identity
@@ -599,6 +636,11 @@ function migrateSchema(db: Database): void {
   `)
   ensureUpstreams(db)
   rewriteLegacyUpstreamIds(db)
+}
+
+export function initSqlite(db: Database): void {
+  db.exec(INIT_SQL)
+  migrateSchema(db)
 }
 
 class SqliteExecutor implements SqlExecutor {
@@ -638,8 +680,7 @@ export class SqliteRepo implements Repo {
   responsesItems: Repo["responsesItems"]
 
   constructor(db: Database) {
-    db.exec(INIT_SQL)
-    migrateSchema(db)
+    initSqlite(db)
     const shared = buildSharedRepo(new SqliteExecutor(db))
     this.apiKeys = shared.apiKeys
     this.github = shared.github
