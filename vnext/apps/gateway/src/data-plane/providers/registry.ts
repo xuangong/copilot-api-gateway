@@ -17,7 +17,8 @@
 import type { AccountType } from '../../shared/config/constants.ts'
 import { defaultsForUpstream, resolveEffectiveFlags } from '../flags/index.ts'
 import type { UpstreamRecord } from '../../shared/repo/types.ts'
-import { getRepo } from '../../shared/repo/index.ts'
+import { getRepo, onRepoReset } from '../../shared/repo/index.ts'
+import { getCache, onCacheReset } from '../../shared/cache/index.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import { copilotModelEndpoints } from '@vnext/provider-copilot'
 import type { ModelProvider, ProviderBinding } from '@vnext/provider'
@@ -86,6 +87,13 @@ export async function createProviderFromUpstream(
  * otherwise fall back to the upstream's declared supportedEndpoints intersected
  * with what makes sense for a chat-shaped model.
  */
+// Token-based embedding family detection — runs when upstream's /models
+// response didn't publish an explicit `capabilities.type`. Tokens cover OpenAI
+// (text-embedding-3), Voyage, Cohere (embed-*), Mistral (mistral-embed), and
+// common local catalogs (bge, e5, gte, uae, nomic). Borrowed from
+// copilot-gateway/packages/provider-custom/src/infer-endpoints.ts.
+const EMBEDDING_TOKENS = new Set(['embed', 'embedding', 'embeddings', 'bge', 'e5', 'gte', 'uae', 'nomic', 'voyage'])
+
 function genericModelEndpoints(
   model: Model,
   supported: readonly EndpointKey[],
@@ -93,6 +101,9 @@ function genericModelEndpoints(
   const capType = model.capabilities?.type?.toLowerCase()
   if (capType === 'embeddings' || capType === 'embedding') return { embeddings: {} }
   const id = model.id.toLowerCase()
+  if (id.split(/[/_\-.]+/).some((tok) => EMBEDDING_TOKENS.has(tok))) {
+    return { embeddings: {} }
+  }
   if (capType === 'image' || capType === 'images' ||
       id.startsWith('gpt-image') || id.startsWith('dall-e') || id.includes('image-gen')) {
     const out: ModelEndpoints = {}
@@ -133,6 +144,64 @@ function modelToBindingModel(
 }
 
 
+/**
+ * In-process /models memo. Each `listProviderBindings` call previously fetched
+ * /models from every visible upstream — N HTTP round-trips per gateway request.
+ * Key by `upstream.id + updatedAt` so a control-plane edit invalidates the
+ * entry immediately (no need for a manual bust). 120s TTL matches the
+ * copilot-gateway reference. Module-level Map works in both Docker
+ * (long-lived process) and CFW (shared within an isolate's lifetime).
+ */
+const MODELS_MEMO_TTL_MS = 120_000
+const MODELS_L2_TTL_SEC = 120
+const modelsMemo = new Map<string, { expiresAt: number; models: ModelsResponse }>()
+
+async function getCachedModels(
+  upstream: UpstreamRecord,
+  provider: ModelProvider,
+): Promise<ModelsResponse> {
+  const key = `models:${upstream.id}@${upstream.updatedAt}`
+  const now = Date.now()
+
+  // L1: in-process memo (Map). Fast, isolate-local.
+  const l1 = modelsMemo.get(key)
+  if (l1 && l1.expiresAt > now) return l1.models
+
+  // L2: distributed cache (KV/D1/Memory). Survives isolate restarts.
+  let l2Hit: ModelsResponse | null = null
+  try {
+    l2Hit = await getCache().get<ModelsResponse>(key)
+  } catch {
+    // Bootstrap edge case: cache not yet initialized (e.g. a test that forgot
+    // setCacheForTest). Behave as a miss so we fall back to upstream.
+    l2Hit = null
+  }
+  if (l2Hit) {
+    modelsMemo.set(key, { expiresAt: now + MODELS_MEMO_TTL_MS, models: l2Hit })
+    return l2Hit
+  }
+
+  // Both miss: fetch upstream + write both layers.
+  const models = await provider.getModels()
+  modelsMemo.set(key, { expiresAt: now + MODELS_MEMO_TTL_MS, models })
+  try {
+    await getCache().set(key, models, MODELS_L2_TTL_SEC)
+  } catch {
+    // L2 write failure is non-fatal; L1 still serves this isolate.
+  }
+  return models
+}
+
+/** Clears the in-process /models memo. Test-only. */
+export function _clearModelsMemoForTest(): void {
+  modelsMemo.clear()
+}
+
+// Auto-clear when test harness swaps repos so a stale cached /models from a
+// previous test can't bleed into the next one.
+onRepoReset(() => modelsMemo.clear())
+onCacheReset(() => modelsMemo.clear())
+
 function sortUpstreams(upstreams: UpstreamRecord[]): UpstreamRecord[] {
   return upstreams.sort((a, b) =>
     a.sortOrder - b.sortOrder || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
@@ -166,7 +235,7 @@ export async function listProviderBindings(
     try {
       const provider = await createProviderFromUpstream(upstream, opts.copilot)
       if (!provider) continue
-      const models = await provider.getModels()
+      const models = await getCachedModels(upstream, provider)
       const enabledFlags = resolveEffectiveFlags(defaultsForUpstream(upstream.provider), [upstream.flagOverrides])
       const disabled = new Set(upstream.disabledPublicModelIds)
       for (const model of models.data ?? []) {

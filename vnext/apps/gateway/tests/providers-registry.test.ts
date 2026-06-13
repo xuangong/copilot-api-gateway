@@ -5,9 +5,12 @@ import {
   listProviderBindings,
   listUpstreamModels,
   createProviderFromUpstream,
+  _clearModelsMemoForTest,
 } from '../src/data-plane/providers/registry.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import type { ModelEndpoints } from '@vnext/protocols/common'
+import { MemoryCache } from '@vnext/shared-cache'
+import { setCacheForTest } from '../src/shared/cache/index.ts'
 
 const stubModel = (id: string, type = 'text'): Model => ({
   id,
@@ -60,6 +63,8 @@ function stubFetch(models: Model[]) {
 afterEach(() => {
   globalThis.fetch = originalFetch
   setRepoForTest(null)
+  setCacheForTest(null)
+  _clearModelsMemoForTest()
 })
 
 test('listProviderBindings expands stored Copilot upstream into per-model bindings', async () => {
@@ -121,7 +126,7 @@ const azureUpstream = (overrides: Partial<UpstreamRecord> = {}): UpstreamRecord 
   sortOrder: 0,
   config: {
     name: 'my-azure',
-    endpoint: 'https://az.example.com',
+    endpoint: 'https://az.openai.azure.com',
     apiKey: 'az-secret',
     deployment: 'gpt-4o',
     apiVersion: '2024-02-15-preview',
@@ -181,10 +186,27 @@ test('listProviderBindings: custom model endpoints derive from supportedEndpoint
   expect(byId.get('text-embedding-ada-002')).toEqual({ embeddings: {} })
 })
 
+test('listProviderBindings: custom embedding model id tokens narrow to embeddings (bge/e5/voyage/nomic/mistral-embed)', async () => {
+  setRepoForTest(stubRepo([customUpstream()]))
+  // Models without explicit capabilities.type=embeddings — pure id-token detection.
+  stubFetch([
+    stubModel('bge-large-en-v1.5'),
+    stubModel('e5-mistral-7b-instruct'),
+    stubModel('voyage-3'),
+    stubModel('nomic-embed-text'),
+    stubModel('mistral-embed'),
+  ])
+  const bindings = await listProviderBindings({})
+  const byId = new Map(bindings.map((b) => [b.model.id, b.model.endpoints as ModelEndpoints]))
+  for (const id of ['bge-large-en-v1.5', 'e5-mistral-7b-instruct', 'voyage-3', 'nomic-embed-text', 'mistral-embed']) {
+    expect(byId.get(id)).toEqual({ embeddings: {} })
+  }
+})
+
 test('listProviderBindings: azure model endpoints derive from supportedEndpoints (no copilot heuristic)', async () => {
   setRepoForTest(stubRepo([azureUpstream({ config: {
     name: 'my-azure',
-    endpoint: 'https://az.example.com',
+    endpoint: 'https://az.openai.azure.com',
     apiKey: 'az-secret',
     deployment: 'o3-mini',
     apiVersion: '2024-02-15-preview',
@@ -200,4 +222,42 @@ test('listProviderBindings: azure model endpoints derive from supportedEndpoints
   expect(ep.responses).toBeUndefined()
   expect(ep.messages).toBeUndefined()
   expect(ep.chat_completions).toEqual({})
+})
+
+test('L2: second call backfills L1 when L1 was cleared mid-life', async () => {
+  setRepoForTest(stubRepo([stubUpstream()]))
+  const l2 = new MemoryCache()
+  setCacheForTest(l2)
+
+  let fetchCount = 0
+  globalThis.fetch = (async () => {
+    fetchCount++
+    return new Response(JSON.stringify({ object: 'list', data: [stubModel('gpt-4o')] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  }) as typeof fetch
+
+  // First call: both L1 and L2 are empty → fetch upstream + write both.
+  await listProviderBindings({ copilot: { copilotToken: 't', accountType: 'individual' } })
+  expect(fetchCount).toBe(1)
+
+  // Clear L1 only (simulating a CFW isolate restart). L2 still has the entry.
+  _clearModelsMemoForTest()
+
+  // Second call: L1 miss + L2 hit → no upstream fetch.
+  await listProviderBindings({ copilot: { copilotToken: 't', accountType: 'individual' } })
+  expect(fetchCount).toBe(1)
+})
+
+test('L2: a failing get is treated as a miss, not a 5xx', async () => {
+  setRepoForTest(stubRepo([stubUpstream()]))
+  setCacheForTest({
+    async get() { throw new Error('kv down') },
+    async set() {},
+    async delete() {},
+  })
+  stubFetch([stubModel('gpt-4o')])
+  const bindings = await listProviderBindings({ copilot: { copilotToken: 't', accountType: 'individual' } })
+  expect(bindings.map((b) => b.model.id)).toEqual(['gpt-4o'])
 })
