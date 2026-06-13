@@ -68,7 +68,7 @@ export function unitPriceForDimension(
   switch (dimension) {
     case 'input':            return pricing.input ?? null
     case 'input_cache_read': return pricing.input_cache_read ?? pricing.input ?? null
-    case 'input_cache_write':return pricing.input_cache_write ?? pricing.input ?? null
+    case 'input_cache_write': return pricing.input_cache_write ?? pricing.input ?? null
     case 'input_image':      return pricing.input_image ?? pricing.input ?? null
     case 'output':           return pricing.output ?? null
     case 'output_image':     return pricing.output_image ?? pricing.output ?? null
