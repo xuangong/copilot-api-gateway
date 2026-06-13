@@ -36,11 +36,12 @@ CREATE TABLE usage (
   model       TEXT NOT NULL,
   upstream    TEXT,                -- nullable: pre-port rows / request-scoped fallback
   model_key   TEXT NOT NULL,       -- raw upstream model id (post-variant strip lives in pricing lookup)
+  client      TEXT NOT NULL DEFAULT '',  -- vNext-specific: SDK/client distinguisher (kept from old schema)
   hour        TEXT NOT NULL,       -- ISO hour bucket "YYYY-MM-DDTHH"
   dimension   TEXT NOT NULL,       -- BillingDimension enum
   tokens      INTEGER NOT NULL,
   unit_price  REAL,                -- USD per million tokens; null = pricing unknown at write time
-  PRIMARY KEY (key_id, model, COALESCE(upstream, ''), model_key, hour, dimension)
+  PRIMARY KEY (key_id, model, COALESCE(upstream, ''), model_key, client, hour, dimension)
 );
 CREATE INDEX usage_hour ON usage(hour);
 
@@ -50,14 +51,15 @@ CREATE TABLE usage_requests (
   model       TEXT NOT NULL,
   upstream    TEXT,
   model_key   TEXT NOT NULL,
+  client      TEXT NOT NULL DEFAULT '',
   hour        TEXT NOT NULL,
   requests    INTEGER NOT NULL,
-  PRIMARY KEY (key_id, model, COALESCE(upstream, ''), model_key, hour)
+  PRIMARY KEY (key_id, model, COALESCE(upstream, ''), model_key, client, hour)
 );
 CREATE INDEX usage_requests_hour ON usage_requests(hour);
 ```
 
-Note: vNext currently has a `client` column; we keep it on both tables for parity with the existing `usage` schema (drop it only if main doesn't have it — it doesn't; we'll drop `client`).
+vNext keeps the `client` column (vNext-specific extension; main doesn't have it). It's already in the old schema, used as PK part to distinguish per-SDK call patterns, and surfaced in the dashboard UI (`dash.client`). The port to per-dimension rows preserves it.
 
 **Migration strategy** (in-place upgrade of `apps/gateway/src/shared/repo/sqlite.ts` and `d1.ts` init code, since vNext has no migrations directory):
 
@@ -118,6 +120,7 @@ export interface UsageRecord {
   model: string             // public model id (post-variant-merge)
   modelKey: string          // raw upstream model id (used for pricing lookup)
   upstream: string | null   // provider-prefixed upstream id, e.g. "copilot:u_abc"; null for pre-port rows
+  client: string            // SDK/client distinguisher; '' when unknown (vNext-specific PK component)
   hour: string
   requests: number
   tokens: TokenUsage        // dimensions with 0 tokens are dropped
@@ -168,13 +171,23 @@ Each provider's source of pricing:
    - `cacheCreation` → `input_cache_write`
    - `output` → `output`
    - Image-modality split (`input_tokens_details.image_tokens` etc.) → `input_image`/`output_image`. Port `tokenUsageFromImagesResponse` from main.
-2. `persistUsage` resolves pricing via the provider that served the request:
+2. Pricing is resolved at the **dispatcher** (data-plane), not inside observability — the dispatcher already holds the resolved `ModelProvider` for the request, so it calls `provider.getPricingForModelKey(modelKey)` once per request and passes the result through to the tracker. This keeps `shared/observability/` a leaf module (no reverse-dependency on `data-plane/providers/`).
+
+   `track*Usage` entrypoints get an extra parameter:
 
    ```ts
-   const provider = providerForUpstream(upstream)
-   const pricing = provider?.getPricingForModelKey(modelKey) ?? null
+   // signatures gain `pricing: ModelPricing | null` (after upstream/client)
+   trackNonStreamingUsage(json, keyId, model, client, upstream, modelKey, pricing)
+   trackStreamingUsage(response, keyId, model, client, upstream, modelKey, pricing)
+   consumeStreamForUsage(response, keyId, model, client, upstream, modelKey, pricing)
+   ```
+
+   `persistUsage` then becomes a straight write:
+
+   ```ts
    await getRepo().usage.record({
-     keyId, model, modelKey, upstream, hour: currentHour(),
+     keyId, model, modelKey, upstream, client,
+     hour: currentHour(),
      requests: 1, tokens: usage, cost: pricing,
    })
    ```
@@ -212,7 +225,8 @@ apps/gateway/src/shared/repo/types.ts           rewrite UsageRecord, UsageRepo
 apps/gateway/src/shared/repo/sqlite.ts          new schema + in-place migration block
 apps/gateway/src/shared/repo/d1.ts              new schema (init) + same migration block
 apps/gateway/src/shared/repo/shared/repos.ts    rewrite UsageRepo (record/set/query) for two-table model
-apps/gateway/src/shared/observability/usage-tracker.ts    map UsageInfo → TokenUsage; resolve pricing via provider
+apps/gateway/src/shared/observability/usage-tracker.ts    map UsageInfo → TokenUsage; accept pricing parameter from dispatcher
+apps/gateway/src/data-plane/dispatch/*.ts        resolve pricing via dispatched provider, pass to track*Usage
 apps/gateway/src/shared/observability/usage-extractor.ts  add image-modality split (port tokenUsageFromImagesResponse)
 apps/gateway/src/shared/lib/pricing/index.ts    delete costForUsage; thin re-export of provider helpers
 apps/gateway/src/shared/lib/pricing/copilot.ts  delete (moved to provider-copilot)
