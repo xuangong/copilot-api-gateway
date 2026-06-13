@@ -7,6 +7,7 @@ import {
   createProviderFromUpstream,
 } from '../src/data-plane/providers/registry.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
+import type { ModelEndpoints } from '@vnext/protocols/common'
 
 const stubModel = (id: string, type = 'text'): Model => ({
   id,
@@ -150,4 +151,53 @@ test('createProviderFromUpstream does not require copilot opts for custom/azure'
   const az = await createProviderFromUpstream(azureUpstream())
   expect(cu).not.toBeNull()
   expect(az).not.toBeNull()
+})
+
+// Endpoint inference per provider kind — custom/azure must NOT use copilot heuristic.
+test('listProviderBindings: copilot model endpoints follow copilot heuristic', async () => {
+  setRepoForTest(stubRepo([stubUpstream()]))
+  stubFetch([stubModel('claude-3.7-sonnet'), stubModel('gpt-5'), stubModel('text-embedding-3', 'embeddings')])
+  const bindings = await listProviderBindings({ copilot: { copilotToken: 't', accountType: 'individual' } })
+  const byId = new Map(bindings.map((b) => [b.model.id, b.model.endpoints]))
+  expect(byId.get('claude-3.7-sonnet')).toMatchObject({ messages: {}, messages_count_tokens: {}, chat_completions: {} })
+  expect(byId.get('gpt-5')).toMatchObject({ responses: {}, chat_completions: {} })
+  expect(byId.get('text-embedding-3')).toEqual({ embeddings: {} })
+})
+
+test('listProviderBindings: custom model endpoints derive from supportedEndpoints (no copilot heuristic)', async () => {
+  setRepoForTest(stubRepo([customUpstream()]))
+  // Even a model named "claude-3.7-sonnet" on a custom upstream must NOT
+  // get `messages` — that's copilot-specific. It should reflect the
+  // upstream's declared endpoints (chat_completions + embeddings here).
+  stubFetch([stubModel('claude-3.7-sonnet'), stubModel('text-embedding-ada-002', 'embeddings')])
+  const bindings = await listProviderBindings({})
+  const byId = new Map(bindings.map((b) => [b.model.id, b.model.endpoints as ModelEndpoints]))
+  const claude = byId.get('claude-3.7-sonnet')!
+  expect(claude.messages).toBeUndefined()
+  expect(claude.messages_count_tokens).toBeUndefined()
+  expect(claude.responses).toBeUndefined()
+  expect(claude.chat_completions).toEqual({})
+  // Embedding-typed model is narrowed to embeddings only regardless of upstream's endpoints.
+  expect(byId.get('text-embedding-ada-002')).toEqual({ embeddings: {} })
+})
+
+test('listProviderBindings: azure model endpoints derive from supportedEndpoints (no copilot heuristic)', async () => {
+  setRepoForTest(stubRepo([azureUpstream({ config: {
+    name: 'my-azure',
+    endpoint: 'https://az.example.com',
+    apiKey: 'az-secret',
+    deployment: 'o3-mini',
+    apiVersion: '2024-02-15-preview',
+    endpoints: ['chat_completions'],
+  } })]))
+  // Azure synthesizes models from its deployment config; deployment "o3-mini"
+  // would match copilot's responses heuristic. Must NOT auto-acquire `responses`.
+  stubFetch([])
+  const bindings = await listProviderBindings({})
+  expect(bindings.length).toBeGreaterThan(0)
+  const o3 = bindings.find((b) => b.model.id === 'o3-mini')!
+  const ep = o3.model.endpoints as ModelEndpoints
+  expect(ep.responses).toBeUndefined()
+  expect(ep.messages).toBeUndefined()
+  expect(ep.chat_completions).toEqual({})
 })

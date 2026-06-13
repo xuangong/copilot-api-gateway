@@ -14,7 +14,6 @@
  *   - 15s upstreamListCache: premature optimization for the scaffold;
  *     re-introduce once /v1/models route shows it in profiles
  */
-import type { UpstreamKind } from '@vnext/protocols/common'
 import type { AccountType } from '../../shared/config/constants.ts'
 import { defaultsForUpstream, resolveEffectiveFlags } from '../flags/index.ts'
 import type { UpstreamRecord } from '../../shared/repo/types.ts'
@@ -22,6 +21,7 @@ import { getRepo } from '../../shared/repo/index.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import { copilotModelEndpoints } from '@vnext/provider-copilot'
 import type { ModelProvider, ProviderBinding } from '@vnext/provider'
+import type { EndpointKey, ModelEndpoints, UpstreamKind } from '@vnext/protocols/common'
 import { CopilotProvider } from '@vnext/provider-copilot'
 import { CustomProvider, type CustomProviderConfig } from '@vnext/provider-custom'
 import { AzureProvider, type AzureProviderConfig } from '@vnext/provider-azure'
@@ -72,12 +72,58 @@ export async function createProviderFromUpstream(
   return copilot ? createCopilotProvider(copilot) : null
 }
 
-function modelToBindingModel(model: ModelsResponse['data'][number]): ProviderBinding['model'] {
+/**
+ * Endpoint capability inference per upstream kind.
+ *
+ * Copilot uses a family-aware heuristic (claude→messages, gpt-5/o[134]*→responses)
+ * because /models doesn't expose `supported_endpoints`. Custom/Azure must NOT
+ * use that heuristic — their model lists come from arbitrary OpenAI-compatible
+ * upstreams (DeepSeek, Together, Azure deployments) where a "claude-3.7-sonnet"
+ * id does not imply Anthropic-native messages support, and a "gpt-5" id does
+ * not imply Responses API support.
+ *
+ * For custom/azure we narrow by capability.type when present (embeddings/image),
+ * otherwise fall back to the upstream's declared supportedEndpoints intersected
+ * with what makes sense for a chat-shaped model.
+ */
+function genericModelEndpoints(
+  model: Model,
+  supported: readonly EndpointKey[],
+): ModelEndpoints {
+  const capType = model.capabilities?.type?.toLowerCase()
+  if (capType === 'embeddings' || capType === 'embedding') return { embeddings: {} }
+  const id = model.id.toLowerCase()
+  if (capType === 'image' || capType === 'images' ||
+      id.startsWith('gpt-image') || id.startsWith('dall-e') || id.includes('image-gen')) {
+    const out: ModelEndpoints = {}
+    if (supported.includes('images_generations')) out.images_generations = {}
+    if (supported.includes('images_edits')) out.images_edits = {}
+    return Object.keys(out).length > 0 ? out : { images_generations: {} }
+  }
+  const out: ModelEndpoints = {}
+  if (supported.includes('chat_completions')) out.chat_completions = {}
+  // No `messages`/`responses`/`embeddings` for chat-typed models on custom/azure
+  // unless the upstream explicitly declared them in cfg.endpoints (rare).
+  if (supported.includes('responses')) out.responses = {}
+  if (supported.includes('messages')) out.messages = {}
+  if (supported.includes('embeddings')) out.embeddings = {}
+  if (Object.keys(out).length === 0) out.chat_completions = {}
+  return out
+}
+
+function modelToBindingModel(
+  model: ModelsResponse['data'][number],
+  kind: UpstreamKind,
+  supportedEndpoints: readonly EndpointKey[],
+): ProviderBinding['model'] {
+  const endpoints = kind === 'copilot'
+    ? copilotModelEndpoints(model as Model)
+    : genericModelEndpoints(model as Model, supportedEndpoints)
   return {
     id: model.id,
     displayName: model.name,
     ownedBy: model.vendor,
-    endpoints: copilotModelEndpoints(model as Model),
+    endpoints,
     limits: model.capabilities?.limits ? {
       maxContextWindowTokens: model.capabilities.limits.max_context_window_tokens,
       maxOutputTokens: model.capabilities.limits.max_output_tokens,
@@ -128,7 +174,7 @@ export async function listProviderBindings(
         bindings.push({
           upstream: upstream.id,
           kind: upstream.provider,
-          model: modelToBindingModel(model as Model),
+          model: modelToBindingModel(model as Model, upstream.provider, provider.supportedEndpoints),
           enabledFlags,
           provider,
         })
@@ -149,7 +195,7 @@ export async function listProviderBindings(
         bindings.push({
           upstream: 'copilot:request',
           kind: 'copilot',
-          model: modelToBindingModel(model as Model),
+          model: modelToBindingModel(model as Model, 'copilot', provider.supportedEndpoints),
           enabledFlags,
           provider,
         })
