@@ -143,6 +143,9 @@ export class CustomProvider implements ModelProvider {
         headers,
         body: init.body,
         timeout: opts.timeout,
+        // CFW divergence from main: disable shared-http retries. Workers
+        // subrequest CPU budgets don't tolerate up to 3 retries with
+        // exponential backoff; clients (OpenAI/Anthropic SDKs) retry themselves.
         maxRetries: 0,
       })
     } catch (err) {
