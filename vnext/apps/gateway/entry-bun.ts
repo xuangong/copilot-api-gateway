@@ -9,10 +9,13 @@ import { Database } from 'bun:sqlite'
 import { app } from './src/app.ts'
 import { SqliteRepo } from './src/shared/repo/sqlite.ts'
 import { initRepo } from './src/shared/repo/index.ts'
+import { initCache } from './src/shared/cache/index.ts'
+import { createCacheFromEnv } from './src/shared/cache/factory.ts'
 
 const dbPath = process.env.VNEXT_DB_PATH ?? '.vnext-local.sqlite'
 const db = new Database(dbPath)
 initRepo(new SqliteRepo(db))
+initCache(createCacheFromEnv({ /* no CFW bindings under bun */ }, process.env))
 
 const port = Number(process.env.PORT ?? 8788)
 const env = {
