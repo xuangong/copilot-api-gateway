@@ -378,7 +378,11 @@ function migrateSchema(db: Database): void {
   // Plan 6: in-place upgrade legacy 4-column `usage` to per-dimension rows.
   // Detect legacy by presence of `input_tokens` (gone in new schema).
   if (hasColumn(db, "usage", "input_tokens")) {
+    // Wrap the legacy → Plan 6 swap in a transaction so a crash mid-migration
+    // can't leave the DB with `usage_dims_new` materialised but `usage` not yet
+    // renamed (which would break startup on the next boot).
     db.exec(`
+      BEGIN IMMEDIATE;
       -- Stage new tables under temp names so we can swap atomically.
       CREATE TABLE usage_dims_new (
         key_id TEXT NOT NULL, model TEXT NOT NULL, upstream TEXT, model_key TEXT NOT NULL,
@@ -412,6 +416,7 @@ function migrateSchema(db: Database): void {
         ON usage_requests (key_id, model, COALESCE(upstream, ''), model_key, client, hour);
       CREATE INDEX IF NOT EXISTS idx_usage_hour ON usage (hour);
       CREATE INDEX IF NOT EXISTS idx_usage_requests_hour ON usage_requests (hour);
+      COMMIT;
     `)
   }
   const pkInfo = db.query<{ name: string }, []>("PRAGMA table_info(github_accounts)").all()
