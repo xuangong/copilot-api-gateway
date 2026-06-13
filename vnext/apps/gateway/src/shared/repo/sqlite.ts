@@ -186,6 +186,14 @@ CREATE TABLE IF NOT EXISTS responses_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_responses_items_expires ON responses_items (expires_at);
+
+CREATE TABLE IF NOT EXISTS cache_kv (
+  key TEXT PRIMARY KEY,
+  value_json TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cache_kv_expires_at ON cache_kv (expires_at);
 `
 
 function hasColumn(db: Database, table: string, column: string): boolean {
