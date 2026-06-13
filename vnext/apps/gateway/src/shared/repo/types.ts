@@ -1,4 +1,4 @@
-import type { UpstreamKind } from "@vnext/protocols/common"
+import type { BillingDimension, ModelPricing, UpstreamKind } from "@vnext/protocols/common"
 
 export interface ApiKey {
   id: string
@@ -58,20 +58,25 @@ export interface UpstreamRecord {
   updatedAt: string
 }
 
+export type TokenUsage = Partial<Record<BillingDimension, number>>
+
 export interface UsageRecord {
   keyId: string
+  /** Public model id (post-variant-merge). */
   model: string
-  hour: string
-  client: string
-  /** Provider-prefixed upstream id, e.g. "copilot:<user_id>"; null for pre-0025 rows. */
+  /** Raw upstream model id used for pricing lookup. */
+  modelKey: string
+  /** Provider-prefixed upstream id, e.g. "copilot:<id>"; null for pre-port rows. */
   upstream: string | null
+  /** SDK/client distinguisher; '' when unknown (vNext-specific PK part). */
+  client: string
+  hour: string
   requests: number
-  inputTokens: number
-  outputTokens: number
-  cacheReadTokens: number
-  cacheCreationTokens: number
-  /** Frozen pricing snapshot (JSON string) captured at write time. */
-  costJson: string | null
+  /** Per-dimension token counts; dimensions with 0 tokens are dropped. */
+  tokens: TokenUsage
+  /** Frozen pricing snapshot reassembled from per-dimension unit_price on read,
+   *  or supplied at write time from `provider.getPricingForModelKey`. */
+  cost: ModelPricing | null
 }
 
 export interface User {
@@ -139,22 +144,13 @@ export interface UpstreamRepo {
 }
 
 export interface UsageRepo {
-  record(
-    keyId: string,
-    model: string,
-    hour: string,
-    requests: number,
-    inputTokens: number,
-    outputTokens: number,
-    client?: string,
-    cacheReadTokens?: number,
-    cacheCreationTokens?: number,
-    upstream?: string | null,
-    costJson?: string | null,
-  ): Promise<void>
+  /** Additive upsert: tokens += excluded.tokens, requests += excluded.requests. */
+  record(r: UsageRecord): Promise<void>
+  /** Replacement upsert (used by data-transfer import): clears bucket's
+   *  dimension rows first, then inserts the new record's dimensions. */
+  set(r: UsageRecord): Promise<void>
   query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<UsageRecord[]>
   listAll(): Promise<UsageRecord[]>
-  set(record: UsageRecord): Promise<void>
   deleteAll(): Promise<void>
 }
 
