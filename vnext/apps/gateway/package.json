@@ -8,15 +8,16 @@
   },
   "dependencies": {
     "@vnext/interceptor": "workspace:*",
+    "@vnext/protocols": "workspace:*",
     "@vnext/provider": "workspace:*",
     "@vnext/provider-azure": "workspace:*",
     "@vnext/provider-copilot": "workspace:*",
     "@vnext/provider-custom": "workspace:*",
-    "@vnext/protocols": "workspace:*",
     "@vnext/responses-store": "workspace:*",
     "@vnext/shared-cache": "workspace:*",
     "@vnext/translate": "workspace:*",
     "hono": "^4.12.23",
+    "image-size": "^2.0.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
