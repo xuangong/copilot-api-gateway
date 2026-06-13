@@ -13,6 +13,7 @@
     "@vnext/provider-azure": "workspace:*",
     "@vnext/provider-copilot": "workspace:*",
     "@vnext/provider-custom": "workspace:*",
+    "@vnext/provider-sdf": "workspace:*",
     "@vnext/responses-store": "workspace:*",
     "@vnext/shared-cache": "workspace:*",
     "@vnext/translate": "workspace:*",

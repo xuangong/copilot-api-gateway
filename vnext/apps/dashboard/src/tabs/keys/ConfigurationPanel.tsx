@@ -178,7 +178,7 @@ export function ConfigurationPanel({ keyRow }: Props) {
                   <Select
                     value={claudeBig}
                     onChange={setClaudeBig}
-                    className="min-w-[140px]"
+                    className="min-w-[220px]"
                     options={catalog.claudeBig.map((m) => ({ value: m, label: m }))}
                   />
                 </div>
@@ -187,7 +187,7 @@ export function ConfigurationPanel({ keyRow }: Props) {
                   <Select
                     value={claudeSmall}
                     onChange={setClaudeSmall}
-                    className="min-w-[140px]"
+                    className="min-w-[220px]"
                     options={catalog.claudeSmall.map((m) => ({ value: m, label: m }))}
                   />
                 </div>
@@ -262,7 +262,7 @@ export function ConfigurationPanel({ keyRow }: Props) {
                   <Select
                     value={codexModel}
                     onChange={setCodexModel}
-                    className="min-w-[140px]"
+                    className="min-w-[220px]"
                     options={catalog.codex.map((m) => ({ value: m, label: m }))}
                   />
                 </div>
@@ -318,7 +318,7 @@ export function ConfigurationPanel({ keyRow }: Props) {
                   <Select
                     value={geminiModel}
                     onChange={setGeminiModel}
-                    className="min-w-[140px]"
+                    className="min-w-[220px]"
                     options={catalog.gemini.map((m) => ({ value: m, label: m }))}
                   />
                 </div>

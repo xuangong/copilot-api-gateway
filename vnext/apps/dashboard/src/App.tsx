@@ -23,7 +23,7 @@ interface TabDef {
 }
 
 const ALL_TABS: ReadonlyArray<TabDef> = [
-  { id: "upstreams", labelKey: "dash.upstream", fallback: "Upstreams", adminOnly: true },
+  { id: "upstreams", labelKey: "dash.upstream", fallback: "Upstreams", userOk: true },
   { id: "users", labelKey: "dash.users", fallback: "Users", adminOnly: true },
   { id: "keys", labelKey: "dash.apiKeys", fallback: "API Keys", userOk: true },
   { id: "models", labelKey: "dash.models", fallback: "Models", userOk: true },

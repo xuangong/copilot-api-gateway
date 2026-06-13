@@ -4,6 +4,7 @@ import { controlPlane } from './control-plane/routes.ts'
 import { staticPages } from './shared/edge/static-pages.ts'
 import { getRepo } from './shared/repo/index.ts'
 import { devAuthMiddleware } from './shared/dev-auth.ts'
+import { sessionAuthMiddleware } from './shared/session-auth.ts'
 import type { ResponsesSnapshotStore } from '@vnext/responses-store'
 import { createD1ResponsesStore } from './shared/runtime/responses-store-factory.ts'
 import { initCache } from './shared/cache/index.ts'
@@ -48,6 +49,7 @@ app.use('*', async (c, next) => {
 })
 
 app.use('*', devAuthMiddleware)
+app.use('*', sessionAuthMiddleware)
 
 app.route('/', dataPlane)
 app.route('/', controlPlane)

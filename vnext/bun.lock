@@ -42,6 +42,7 @@
         "@vnext/provider-azure": "workspace:*",
         "@vnext/provider-copilot": "workspace:*",
         "@vnext/provider-custom": "workspace:*",
+        "@vnext/provider-sdf": "workspace:*",
         "@vnext/responses-store": "workspace:*",
         "@vnext/shared-cache": "workspace:*",
         "@vnext/translate": "workspace:*",
@@ -96,6 +97,15 @@
     },
     "packages/provider-custom": {
       "name": "@vnext/provider-custom",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vnext/protocols": "workspace:*",
+        "@vnext/provider": "workspace:*",
+        "@vnext/shared-http": "workspace:*",
+      },
+    },
+    "packages/provider-sdf": {
+      "name": "@vnext/provider-sdf",
       "version": "0.0.0",
       "dependencies": {
         "@vnext/protocols": "workspace:*",
@@ -407,6 +417,8 @@
     "@vnext/provider-copilot": ["@vnext/provider-copilot@workspace:packages/provider-copilot"],
 
     "@vnext/provider-custom": ["@vnext/provider-custom@workspace:packages/provider-custom"],
+
+    "@vnext/provider-sdf": ["@vnext/provider-sdf@workspace:packages/provider-sdf"],
 
     "@vnext/responses-store": ["@vnext/responses-store@workspace:packages/responses-store"],
 

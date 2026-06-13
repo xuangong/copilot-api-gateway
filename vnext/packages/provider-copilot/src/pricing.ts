@@ -17,9 +17,12 @@ import type { ModelPricing } from "@vnext/protocols/common"
 type PricingRule = readonly [key: string | RegExp, pricing: ModelPricing]
 
 const COPILOT_MODEL_PRICING: readonly PricingRule[] = [
-  [/^claude-opus-4-[5678]$/, { input: 5, input_cache_read: 0.5, input_cache_write: 6.25, output: 25 }],
-  [/^claude-sonnet-4(-[56])?$/, { input: 3, input_cache_read: 0.3, input_cache_write: 3.75, output: 15 }],
-  ["claude-haiku-4-5", { input: 1, input_cache_read: 0.1, input_cache_write: 1.25, output: 5 }],
+  // Claude ids may appear in either dot form (`claude-opus-4.7`, Copilot raw)
+  // or dash form (`claude-opus-4-7`, Anthropic SDK). Match both — the upstream
+  // path that produces the modelKey isn't fully consistent across providers.
+  [/^claude-opus-4[.-][5678]$/, { input: 5, input_cache_read: 0.5, input_cache_write: 6.25, output: 25 }],
+  [/^claude-sonnet-4([.-][56])?$/, { input: 3, input_cache_read: 0.3, input_cache_write: 3.75, output: 15 }],
+  [/^claude-haiku-4[.-]5$/, { input: 1, input_cache_read: 0.1, input_cache_write: 1.25, output: 5 }],
   ["gpt-5.5", { input: 5, input_cache_read: 0.5, output: 30 }],
   ["gpt-5.4", { input: 2.5, input_cache_read: 0.25, output: 15 }],
   ["gpt-5.4-mini", { input: 0.75, input_cache_read: 0.075, output: 4.5 }],

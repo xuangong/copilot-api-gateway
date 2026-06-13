@@ -67,7 +67,7 @@ export function patchUpstream(id: string, body: UpstreamPatch): Promise<Upstream
 }
 
 export interface CreateUpstreamBody {
-  provider: "azure" | "custom"
+  provider: "azure" | "custom" | "sdf"
   name: string
   config: Record<string, unknown>
   flagOverrides?: Record<string, boolean>

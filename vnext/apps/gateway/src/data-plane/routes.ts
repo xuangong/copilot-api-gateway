@@ -21,6 +21,7 @@ import { Hono } from 'hono'
 import type { Env } from '../app.ts'
 import {
   parseMessagesPayload,
+  parseMessagesCountTokensPayload,
   parseChatPayload,
   parseResponsesPayload,
   parseGeminiPayload,
@@ -338,7 +339,7 @@ dataPlane.post('/v1/messages/count_tokens', async (c) => {
     )
   }
   let payload
-  try { payload = parseMessagesPayload(raw) }
+  try { payload = parseMessagesCountTokensPayload(raw) }
   catch (err) {
     const e = err as Error & { status?: number; body?: unknown }
     return new Response(

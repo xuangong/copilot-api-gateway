@@ -4,7 +4,7 @@ import { useToast } from "../../state/toast"
 import * as api from "../../api/upstreams"
 import type { UpstreamRecord } from "../../api/types"
 
-type Provider = "copilot" | "azure" | "custom"
+type Provider = "copilot" | "azure" | "custom" | "sdf"
 
 interface Props {
   mode: { kind: "create"; provider: Exclude<Provider, "copilot"> } | { kind: "edit"; row: UpstreamRecord }
@@ -28,6 +28,7 @@ interface FormState {
   azureDeploymentsError: string
   flagOverrides: Record<string, boolean>
   copilotLogin: string
+  substrateToken: string
 }
 
 const EMPTY: FormState = {
@@ -44,6 +45,7 @@ const EMPTY: FormState = {
   azureDeploymentsError: "",
   flagOverrides: {},
   copilotLogin: "",
+  substrateToken: "",
 }
 
 const SERVED_ENDPOINTS = ["chat_completions", "responses", "messages", "messages_count_tokens", "embeddings"] as const
@@ -54,7 +56,12 @@ function buildInitial(mode: Props["mode"]): { provider: Provider; form: FormStat
       provider: mode.provider,
       form: {
         ...EMPTY,
-        endpoints: mode.provider === "azure" ? ["chat_completions"] : ["chat_completions", "embeddings"],
+        endpoints:
+          mode.provider === "azure"
+            ? ["chat_completions"]
+            : mode.provider === "sdf"
+              ? ["images_generations", "images_edits"]
+              : ["chat_completions", "embeddings"],
       },
     }
   }
@@ -87,12 +94,15 @@ function buildInitial(mode: Props["mode"]): { provider: Provider; form: FormStat
         ? [...cfg.endpoints]
         : u.provider === "custom"
           ? ["chat_completions", "embeddings"]
-          : ["chat_completions"],
+          : u.provider === "sdf"
+            ? ["images_generations", "images_edits"]
+            : ["chat_completions"],
       modelsText,
       azureDeployments: azureDepsText,
       azureDeploymentsError: "",
       flagOverrides: { ...(u.flagOverrides ?? {}) },
       copilotLogin: u.provider === "copilot" ? cfg.user?.login ?? "" : "",
+      substrateToken: "",
     },
   }
 }
@@ -243,6 +253,15 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           }
           const models = parseModelsText(form.modelsText)
           if (models) (config as { models: unknown }).models = models
+        } else if (provider === "sdf") {
+          if (!form.substrateToken.trim()) {
+            toast(t("dash.errSubstrateTokenRequired"), "error")
+            return
+          }
+          config = {
+            name: form.name.trim(),
+            substrateToken: form.substrateToken.trim(),
+          }
         } else {
           if (!form.endpoint.trim() || !form.azureApiKey.trim() || !form.deployment.trim()) {
             toast(t("dash.errEndpointApiKeyDeploymentRequired"), "error")
@@ -275,6 +294,10 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           ;(config as { endpoints: string[] }).endpoints = form.endpoints
           const models = parseModelsText(form.modelsText)
           ;(config as { models: unknown }).models = models ?? []
+        } else if (provider === "sdf") {
+          if (form.substrateToken.trim()) {
+            (config as { substrateToken: string }).substrateToken = form.substrateToken.trim()
+          }
         } else {
           if (form.endpoint.trim()) (config as { endpoint: string }).endpoint = form.endpoint.trim()
           if (form.azureApiKey.trim()) (config as { apiKey: string }).apiKey = form.azureApiKey.trim()
@@ -405,6 +428,21 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           </>
         ) : null}
 
+        {provider === "sdf" ? (
+          <>
+            <Field label={t("dash.substrateTokenLabel")}>
+              <input
+                value={form.substrateToken}
+                onChange={(e) => update("substrateToken", e.target.value)}
+                type="password"
+                placeholder={editing ? t("dash.leaveBlankToKeep") : ""}
+                className={inputCls}
+              />
+            </Field>
+            <p className="text-xs text-themed-dim">{t("dash.substrateTokenHint")}</p>
+          </>
+        ) : null}
+
         {provider === "copilot" ? (
           <div className="bg-surface-800 border border-surface-600 rounded p-3 text-xs space-y-1">
             <div className="text-themed-dim">{t("dash.githubLoginLabel")}</div>
@@ -415,7 +453,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           </div>
         ) : null}
 
-        {provider !== "copilot" ? (
+        {provider !== "copilot" && provider !== "sdf" ? (
           <div className="border-t border-themed pt-3 mt-3">
             <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">{t("dash.servedEndpointsLabel")}</h4>
             <p className="text-xs text-themed-dim mb-2">
@@ -454,7 +492,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           </div>
         ) : null}
 
-        {provider !== "copilot" && (
+        {provider !== "copilot" && provider !== "sdf" && (
           <div className="border-t border-themed pt-3 mt-4">
             <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">
               {t("dash.disabledModelsLabel")}

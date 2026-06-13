@@ -2,7 +2,7 @@
 // loadModels() logic from src/ui/dashboard/client.ts: expands composite
 // claude ids (effort + 1m context) and groups every advertised model by
 // its serving upstream.
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { api } from "../api/client"
 
 interface RawModel {
@@ -95,6 +95,8 @@ export function useModelCatalog() {
   const [catalog, setCatalog] = useState<ModelCatalog>(EMPTY)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryCount = useRef(0)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -111,6 +113,31 @@ export function useModelCatalog() {
 
   useEffect(() => {
     refresh()
+  }, [refresh])
+
+  // Upstream model fetch can transiently fail (e.g. Copilot session token
+  // refresh hits a flaky network). When that produces an empty catalog,
+  // schedule a single debounced retry so the user doesn't have to refresh.
+  // Cap at 3 attempts — if it's still empty, the user genuinely has no
+  // upstream and further retries are pointless.
+  useEffect(() => {
+    if (loading) return
+    const empty = catalog.claudeBig.length === 0 && catalog.codex.length === 0 && catalog.gemini.length === 0
+    if (!empty) { retryCount.current = 0; return }
+    if (retryCount.current >= 3) return
+    if (retryTimer.current) clearTimeout(retryTimer.current)
+    retryTimer.current = setTimeout(() => { retryCount.current += 1; refresh() }, 1500)
+    return () => { if (retryTimer.current) clearTimeout(retryTimer.current) }
+  }, [loading, catalog, refresh])
+
+  // Periodic refresh to pick up upstream changes (model added/removed,
+  // upstream enabled/disabled). 60s is rare enough not to spam, fast
+  // enough that a user adding an upstream sees it without F5.
+  useEffect(() => {
+    const id = setInterval(() => { refresh() }, 60_000)
+    const onFocus = () => { refresh() }
+    window.addEventListener("focus", onFocus)
+    return () => { clearInterval(id); window.removeEventListener("focus", onFocus) }
   }, [refresh])
 
   return { catalog, loading, error, refresh }

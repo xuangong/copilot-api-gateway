@@ -6,30 +6,35 @@ const RING: Record<Provider, string> = {
   copilot: "ring-violet-400/40",
   azure: "ring-sky-400/40",
   custom: "ring-fuchsia-400/40",
+  sdf: "ring-amber-400/40",
 }
 
 const BADGE_BG: Record<Provider, string> = {
   copilot: "bg-violet-500 text-white",
   azure: "bg-sky-500 text-white",
   custom: "bg-fuchsia-500 text-white",
+  sdf: "bg-amber-500 text-white",
 }
 
 const FRAME_FALLBACK: Record<Provider, string> = {
   copilot: "bg-violet-900/40 text-violet-200",
   azure: "bg-sky-900/40 text-sky-200",
   custom: "bg-fuchsia-900/40 text-fuchsia-200",
+  sdf: "bg-amber-900/40 text-amber-200",
 }
 
 const LETTER: Record<Provider, string> = {
   copilot: "C",
   azure: "A",
   custom: "X",
+  sdf: "S",
 }
 
 const FULL_LABEL: Record<Provider, string> = {
   copilot: "Copilot",
   azure: "Azure",
   custom: "Custom",
+  sdf: "SDF",
 }
 
 interface Props {

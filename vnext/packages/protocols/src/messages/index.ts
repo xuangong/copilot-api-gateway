@@ -82,6 +82,15 @@ export const MessagesPayloadSchema = z.object({
 
 export type MessagesPayload = z.infer<typeof MessagesPayloadSchema>
 
+// /v1/messages/count_tokens accepts the same shape but does not require
+// `max_tokens` (the call doesn't generate). Reuse the messages schema
+// loosened only on that field.
+export const MessagesCountTokensPayloadSchema = MessagesPayloadSchema.extend({
+  max_tokens: z.number().int().positive().optional(),
+})
+
+export type MessagesCountTokensPayload = z.infer<typeof MessagesCountTokensPayloadSchema>
+
 export const MessagesResponseSchema = z.object({
   id: z.string(),
   type: z.literal('message'),

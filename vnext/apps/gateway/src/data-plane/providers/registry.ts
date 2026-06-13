@@ -26,6 +26,8 @@ import type { EndpointKey, ModelEndpoints, UpstreamKind } from '@vnext/protocols
 import { CopilotProvider } from '@vnext/provider-copilot'
 import { CustomProvider, type CustomProviderConfig } from '@vnext/provider-custom'
 import { AzureProvider, type AzureProviderConfig } from '@vnext/provider-azure'
+import { SdfProvider, type SdfProviderConfig } from '@vnext/provider-sdf'
+import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
 
 export interface CreateProviderOptions {
   copilotToken: string
@@ -61,14 +63,19 @@ export async function createProviderFromUpstream(
   if (upstream.provider === 'azure') {
     return new AzureProvider(upstream.config as unknown as AzureProviderConfig)
   }
+  if (upstream.provider === 'sdf') {
+    return new SdfProvider(upstream.config as unknown as SdfProviderConfig)
+  }
   if (upstream.provider !== 'copilot') return null
   const config = upstream.config
+  const accountType = (config.accountType as AccountType | undefined) ?? 'individual'
   if (typeof config.githubToken === 'string' && config.githubToken) {
-    // NOTE: old project exchanges githubToken→copilotToken via getCachedCopilotToken.
-    // vnext doesn't have that cache module yet; callers handling a Copilot upstream
-    // with only a github token must perform the exchange upstream of this call.
-    // Falling back to provided opts if available.
-    return copilot ? createCopilotProvider(copilot) : null
+    try {
+      const copilotToken = await getCachedCopilotToken(config.githubToken, accountType)
+      return createCopilotProvider({ copilotToken, accountType })
+    } catch {
+      return copilot ? createCopilotProvider(copilot) : null
+    }
   }
   return copilot ? createCopilotProvider(copilot) : null
 }
@@ -283,9 +290,23 @@ export async function listUpstreamModels(
   const bindings = await listProviderBindings(opts)
   const data: ModelsResponse['data'] = []
   const seen = new Set<string>()
+  // Map binding.model.endpoints (internal EndpointKey) → SDK-facing path tokens
+  // so dashboard filters that look at `supported_endpoints` (`/v1/messages`,
+  // `/responses`, `/v1/chat/completions`, `/v1/embeddings`) keep working.
+  const ENDPOINT_PATHS: Record<string, string> = {
+    messages: '/v1/messages',
+    messages_count_tokens: '/v1/messages/count_tokens',
+    responses: '/responses',
+    chat_completions: '/v1/chat/completions',
+    embeddings: '/v1/embeddings',
+    images_generations: '/v1/images/generations',
+  }
   for (const binding of bindings) {
     if (seen.has(binding.model.id)) continue
     seen.add(binding.model.id)
+    const supportedEndpoints = Object.keys(binding.model.endpoints ?? {})
+      .map((k) => ENDPOINT_PATHS[k])
+      .filter((v): v is string => Boolean(v))
     data.push({
       id: binding.model.id,
       object: 'model',
@@ -306,6 +327,7 @@ export async function listUpstreamModels(
         tokenizer: 'unknown',
         type: 'text',
       },
+      supported_endpoints: supportedEndpoints,
       // Provenance — non-standard, SDKs ignore.
       _upstream: binding.upstream,
       _provider: binding.kind,

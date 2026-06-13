@@ -7,7 +7,7 @@ import { UpstreamFormModal } from "./UpstreamFormModal"
 import { DeviceFlowModal } from "./DeviceFlowModal"
 import type { UpstreamRecord } from "../../api/types"
 
-type CreateMode = { kind: "create"; provider: "custom" | "azure" }
+type CreateMode = { kind: "create"; provider: "custom" | "azure" | "sdf" }
 
 interface OwnerGroup {
   ownerId: string
@@ -25,7 +25,7 @@ export function UpstreamsTab() {
   const [deviceFlowOpen, setDeviceFlowOpen] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
-  const openCreate = (provider: "custom" | "azure") => {
+  const openCreate = (provider: "custom" | "azure" | "sdf") => {
     setEditingId(null)
     setCreateMode({ kind: "create", provider })
   }
@@ -78,6 +78,7 @@ export function UpstreamsTab() {
             <button onClick={() => setDeviceFlowOpen(true)} className="btn-primary text-sm">{t("dash.addCopilot")}</button>
             <button onClick={() => openCreate("custom")} className="btn-ghost text-sm">{t("dash.addCustom")}</button>
             <button onClick={() => openCreate("azure")} className="btn-ghost text-sm">{t("dash.addAzure")}</button>
+            <button onClick={() => openCreate("sdf")} className="btn-ghost text-sm">{t("dash.addSdf")}</button>
             <button onClick={store.reload} disabled={store.loading} className="btn-ghost text-sm">↻</button>
           </div>
         </div>

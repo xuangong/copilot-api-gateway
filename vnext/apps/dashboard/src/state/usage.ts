@@ -87,23 +87,26 @@ function buildDistribution(
   const m = new Map<string, DistributionRow>()
   for (const r of rows) {
     const k = keyFn(r)
+    const req = r.requests ?? 0
+    const inp = r.inputTokens ?? 0
+    const out = r.outputTokens ?? 0
     const cr = r.cacheReadTokens ?? 0
     const cc = r.cacheCreationTokens ?? 0
     const cost = r.cost && typeof r.cost.totalUSD === "number" ? r.cost.totalUSD : 0
     const existing = m.get(k)
     if (existing) {
-      existing.requests += r.requests
-      existing.input += r.inputTokens
-      existing.output += r.outputTokens
+      existing.requests += req
+      existing.input += inp
+      existing.output += out
       existing.cacheRead += cr
       existing.cacheCreation += cc
       existing.costUSD += cost
     } else {
       m.set(k, {
         label: labelFn(r, k),
-        requests: r.requests,
-        input: r.inputTokens,
-        output: r.outputTokens,
+        requests: req,
+        input: inp,
+        output: out,
         cacheRead: cr,
         cacheCreation: cc,
         costUSD: cost,
@@ -198,9 +201,9 @@ export function useUsage(isAdmin: boolean) {
   const summary: UsageSummary = useMemo(() => {
     const s = { ...EMPTY_SUMMARY }
     for (const r of filtered) {
-      s.requests += r.requests
-      s.input += r.inputTokens
-      s.output += r.outputTokens
+      s.requests += r.requests ?? 0
+      s.input += r.inputTokens ?? 0
+      s.output += r.outputTokens ?? 0
       s.cacheRead += r.cacheReadTokens ?? 0
       s.cacheCreation += r.cacheCreationTokens ?? 0
       if (r.cost && typeof r.cost.totalUSD === "number") s.costUSD += r.cost.totalUSD
@@ -275,7 +278,7 @@ export function useUsage(isAdmin: boolean) {
       }
       const m = agg.get(bucket)!
       const cache = (r.cacheReadTokens ?? 0) + (r.cacheCreationTokens ?? 0)
-      const value = metric === "requests" ? r.requests : r.inputTokens + r.outputTokens + cache
+      const value = metric === "requests" ? (r.requests ?? 0) : (r.inputTokens ?? 0) + (r.outputTokens ?? 0) + cache
       m.set(seriesKey, (m.get(seriesKey) ?? 0) + value)
       if (metric === "tokens") cacheAgg.set(bucket, (cacheAgg.get(bucket) ?? 0) + cache)
     }

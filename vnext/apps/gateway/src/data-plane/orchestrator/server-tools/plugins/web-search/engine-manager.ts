@@ -82,6 +82,9 @@ export class EngineManager {
     if (options.tavilyKey) {
       this.engines.push(new TavilySearchEngine(options.tavilyKey))
     }
+    if (this.engines.length === 0 && options.githubToken) {
+      this.engines.push(new CopilotSearchEngine(options.githubToken))
+    }
   }
 
   private tryBuild(id: EngineId, opts: EngineManagerOptions): SearchEngine | null {

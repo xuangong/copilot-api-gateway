@@ -10,7 +10,12 @@
  * request validation, not translation — the pairwise translators
  * operate on already-validated payloads.
  */
-import { MessagesPayloadSchema, type MessagesPayload } from '@vnext/protocols/messages'
+import {
+  MessagesPayloadSchema,
+  MessagesCountTokensPayloadSchema,
+  type MessagesPayload,
+  type MessagesCountTokensPayload,
+} from '@vnext/protocols/messages'
 import { ChatPayloadSchema, type ChatPayload } from '@vnext/protocols/chat'
 import { ResponsesPayloadSchema, type ResponsesPayload } from '@vnext/protocols/responses'
 import { GeminiPayloadSchema, type GeminiPayload } from '@vnext/protocols/gemini'
@@ -26,6 +31,17 @@ function shape(message: string, body: unknown): ShapedError {
 
 export function parseMessagesPayload(raw: unknown): MessagesPayload {
   const r = MessagesPayloadSchema.safeParse(raw)
+  if (!r.success) {
+    throw shape(r.error.message, {
+      type: 'error',
+      error: { type: 'invalid_request_error', message: r.error.message },
+    })
+  }
+  return r.data
+}
+
+export function parseMessagesCountTokensPayload(raw: unknown): MessagesCountTokensPayload {
+  const r = MessagesCountTokensPayloadSchema.safeParse(raw)
   if (!r.success) {
     throw shape(r.error.message, {
       type: 'error',

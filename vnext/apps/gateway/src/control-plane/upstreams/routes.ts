@@ -41,14 +41,18 @@ import { CustomProvider } from '@vnext/provider-custom'
 import type { CustomProviderConfig as PkgCustomConfig } from '@vnext/provider-custom'
 import { AzureProvider } from '@vnext/provider-azure'
 import type { AzureProviderConfig as PkgAzureConfig } from '@vnext/provider-azure'
+import { SdfProvider } from '@vnext/provider-sdf'
+import type { SdfProviderConfig as PkgSdfConfig } from '@vnext/provider-sdf'
 
 export interface AuthCtx {
   isAdmin?: boolean
+  isUser?: boolean
+  userId?: string
 }
 
 type Vars = { auth: AuthCtx }
 
-const KINDS: readonly UpstreamKind[] = ['copilot', 'custom', 'azure']
+const KINDS: readonly UpstreamKind[] = ['copilot', 'custom', 'azure', 'sdf']
 
 const ENDPOINTS = new Set<EndpointKey>([
   'chat_completions',
@@ -97,8 +101,17 @@ interface AzureProviderConfig {
   deployments?: Array<{ name: string; model: string }>
 }
 
+interface SdfProviderConfig {
+  name: string
+  substrateToken: string
+}
+
 function isAdmin(c: { get: (k: 'auth') => AuthCtx | undefined }): boolean {
   return !!c.get('auth')?.isAdmin
+}
+
+function authUserId(c: { get: (k: 'auth') => AuthCtx | undefined }): string | undefined {
+  return c.get('auth')?.userId
 }
 
 function jsonError(message: string, status = 400) {
@@ -159,7 +172,7 @@ function normalizeFlagOverrides(value: unknown): Record<string, boolean> {
 }
 
 function normalizeProvider(provider: unknown): UpstreamKind {
-  if (provider === 'copilot' || provider === 'custom' || provider === 'azure') return provider
+  if (provider === 'copilot' || provider === 'custom' || provider === 'azure' || provider === 'sdf') return provider
   throw new Error(`Unknown provider: ${String(provider)}`)
 }
 
@@ -269,6 +282,17 @@ function normalizeCopilotConfig(config: Record<string, unknown>): Record<string,
   return config
 }
 
+function normalizeSdfConfig(config: Record<string, unknown>): SdfProviderConfig {
+  if (typeof config.name !== 'string' || !config.name.trim()) throw new Error('sdf config.name required')
+  if (typeof config.substrateToken !== 'string' || !config.substrateToken) {
+    throw new Error('sdf config.substrateToken required')
+  }
+  return {
+    name: config.name.trim(),
+    substrateToken: config.substrateToken,
+  }
+}
+
 function normalizeConfig(provider: UpstreamKind, config: unknown): Record<string, unknown> {
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
     throw new Error('config must be an object')
@@ -276,6 +300,7 @@ function normalizeConfig(provider: UpstreamKind, config: unknown): Record<string
   const raw = config as Record<string, unknown>
   if (provider === 'custom') return normalizeCustomConfig(raw) as unknown as Record<string, unknown>
   if (provider === 'azure') return normalizeAzureConfig(raw) as unknown as Record<string, unknown>
+  if (provider === 'sdf') return normalizeSdfConfig(raw) as unknown as Record<string, unknown>
   return normalizeCopilotConfig(raw)
 }
 
@@ -358,6 +383,16 @@ upstreamMiscRouter.post('/upstream-probe', async (c) => {
       return jsonError(message, 400)
     }
   }
+  if (kind === 'sdf') {
+    try {
+      const provider = new SdfProvider(normalizeSdfConfig(config as Record<string, unknown>) as PkgSdfConfig)
+      const result = await provider.probe()
+      return c.json(result)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return jsonError(message, 400)
+    }
+  }
   return jsonError(`Unknown kind: ${kind}`)
 })
 
@@ -369,16 +404,20 @@ export const upstreamsRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
 upstreamsRouter.get('/_health', (c) => c.json({ scope: 'control-plane:upstreams', status: 'scaffold' }))
 
 upstreamsRouter.get('/', async (c) => {
-  if (!isAdmin(c)) return jsonError('Forbidden', 403)
+  const admin = isAdmin(c)
+  const userId = authUserId(c)
+  if (!admin && !userId) return jsonError('Forbidden', 403)
   const url = new URL(c.req.url)
-  const ownerId = url.searchParams.get('ownerId') ?? undefined
+  const ownerId = admin ? (url.searchParams.get('ownerId') ?? undefined) : userId
   const includeDisabled = url.searchParams.get('includeDisabled') === '1'
   const upstreams = await getRepo().upstreams.list({ ownerId, includeDisabled })
   return c.json({ upstreams: upstreams.map(serializeUpstream) })
 })
 
 upstreamsRouter.post('/', async (c) => {
-  if (!isAdmin(c)) return jsonError('Forbidden', 403)
+  const admin = isAdmin(c)
+  const userId = authUserId(c)
+  if (!admin && !userId) return jsonError('Forbidden', 403)
   try {
     let body: UpstreamBody
     try {
@@ -389,9 +428,11 @@ upstreamsRouter.post('/', async (c) => {
     const provider = normalizeProvider(body.provider)
     if (typeof body.name !== 'string' || !body.name.trim()) return jsonError('name required')
     const now = new Date().toISOString()
+    const ownerId = admin && typeof body.ownerId === 'string' && body.ownerId ? body.ownerId : userId
+    if (!ownerId) return jsonError('ownerId required', 400)
     const upstream: UpstreamRecord = {
       id: upstreamId(provider, body.name),
-      ownerId: body.ownerId,
+      ownerId,
       provider,
       name: body.name.trim(),
       enabled: body.enabled !== false,
@@ -414,10 +455,13 @@ upstreamsRouter.post('/', async (c) => {
 })
 
 upstreamsRouter.patch('/:id', async (c) => {
-  if (!isAdmin(c)) return jsonError('Forbidden', 403)
+  const admin = isAdmin(c)
+  const userId = authUserId(c)
+  if (!admin && !userId) return jsonError('Forbidden', 403)
   const id = c.req.param('id')
   const existing = await getRepo().upstreams.getById(id)
   if (!existing) return jsonError('upstream not found', 404)
+  if (!admin && existing.ownerId !== userId) return jsonError('Forbidden', 403)
   try {
     let body: UpstreamBody
     try {
@@ -447,7 +491,7 @@ upstreamsRouter.patch('/:id', async (c) => {
     }
     const next: UpstreamRecord = {
       ...existing,
-      ownerId: body.ownerId !== undefined ? body.ownerId : existing.ownerId,
+      ownerId: admin && typeof body.ownerId === 'string' && body.ownerId ? body.ownerId : existing.ownerId,
       name: typeof body.name === 'string' ? body.name.trim() : existing.name,
       enabled: typeof body.enabled === 'boolean' ? body.enabled : existing.enabled,
       sortOrder: Number.isFinite(body.sortOrder) ? Number(body.sortOrder) : existing.sortOrder,
@@ -470,9 +514,12 @@ upstreamsRouter.patch('/:id', async (c) => {
 })
 
 upstreamsRouter.delete('/:id', async (c) => {
-  if (!isAdmin(c)) return jsonError('Forbidden', 403)
+  const admin = isAdmin(c)
+  const userId = authUserId(c)
+  if (!admin && !userId) return jsonError('Forbidden', 403)
   const id = c.req.param('id')
   const existing = await getRepo().upstreams.getById(id)
+  if (existing && !admin && existing.ownerId !== userId) return jsonError('Forbidden', 403)
   // For copilot upstreams, cascade-delete the github_accounts row so the
   // legacy token store doesn't keep a now-orphan account around.
   if (existing?.provider === 'copilot') {
@@ -490,9 +537,12 @@ upstreamsRouter.delete('/:id', async (c) => {
 })
 
 upstreamsRouter.post('/:id/test', async (c) => {
-  if (!isAdmin(c)) return jsonError('Forbidden', 403)
+  const admin = isAdmin(c)
+  const userId = authUserId(c)
+  if (!admin && !userId) return jsonError('Forbidden', 403)
   const upstream = await getRepo().upstreams.getById(c.req.param('id'))
   if (!upstream) return jsonError('upstream not found', 404)
+  if (!admin && upstream.ownerId !== userId) return jsonError('Forbidden', 403)
   const provider = await createProviderFromUpstream(upstream)
   if (!provider) {
     return jsonError(`unable to construct ${upstream.provider} provider for upstream ${upstream.id}`, 502)
@@ -501,9 +551,12 @@ upstreamsRouter.post('/:id/test', async (c) => {
 })
 
 upstreamsRouter.get('/:id/models', async (c) => {
-  if (!isAdmin(c)) return jsonError('Forbidden', 403)
+  const admin = isAdmin(c)
+  const userId = authUserId(c)
+  if (!admin && !userId) return jsonError('Forbidden', 403)
   const upstream = await getRepo().upstreams.getById(c.req.param('id'))
   if (!upstream) return jsonError('upstream not found', 404)
+  if (!admin && upstream.ownerId !== userId) return jsonError('Forbidden', 403)
   const provider = await createProviderFromUpstream(upstream)
   if (!provider) {
     return jsonError(`unable to construct ${upstream.provider} provider for upstream ${upstream.id}`, 502)

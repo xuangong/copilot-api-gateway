@@ -15,7 +15,7 @@ export interface SessionInfo {
 export interface UpstreamRecord {
   id: string
   ownerId: string
-  provider: "copilot" | "azure" | "custom"
+  provider: "copilot" | "azure" | "custom" | "sdf"
   name: string
   enabled: boolean
   sortOrder: number
