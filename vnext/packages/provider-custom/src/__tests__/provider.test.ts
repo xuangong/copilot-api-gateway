@@ -100,7 +100,56 @@ describe('CustomProvider.getModels', () => {
       expect(captured[0]!.url).toBe('https://api.example.com/v1/models')
       expect(captured[0]!.method).toBe('GET')
       expect(new Headers(captured[0]!.headers).get('authorization')).toBe('Bearer sk-1')
-      expect(res.data).toEqual([{ id: 'm1' }, { id: 'm2' }])
+      // Normalizer projects upstream shape onto OpenAI-style model entries.
+      expect(res.data.map((m) => m.id)).toEqual(['m1', 'm2'])
+    } finally { globalThis.fetch = realFetch }
+  })
+
+  test('normalizer accepts Anthropic /models shape (display_name, no top-level object)', async () => {
+    globalThis.fetch = (async () => Response.json({
+      data: [
+        { type: 'model', id: 'claude-3-5-sonnet-20241022', display_name: 'Claude 3.5 Sonnet', created_at: '2024-10-22T00:00:00Z' },
+        { type: 'model', id: 'claude-3-haiku-20240307', display_name: 'Claude 3 Haiku' },
+      ],
+      has_more: false,
+      first_id: 'claude-3-5-sonnet-20241022',
+      last_id: 'claude-3-haiku-20240307',
+    })) as unknown as typeof fetch
+    try {
+      const p = new CustomProvider({ name: 'anth', baseUrl: 'https://x', apiKey: 'k' })
+      const res = await p.getModels() as { data: Array<{ id: string; name: string; vendor: string }> }
+      expect(res.data.map((m) => m.id)).toEqual(['claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307'])
+      expect(res.data[0]!.name).toBe('Claude 3.5 Sonnet')
+    } finally { globalThis.fetch = realFetch }
+  })
+
+  test('normalizer maps kind=embedding/image onto capabilities.type', async () => {
+    globalThis.fetch = (async () => Response.json({
+      object: 'list',
+      data: [
+        { id: 'bge-m3', kind: 'embedding' },
+        { id: 'gpt-image-1', kind: 'image' },
+        { id: 'chat-x', kind: 'chat' },
+      ],
+    })) as unknown as typeof fetch
+    try {
+      const p = new CustomProvider({ name: 'flo', baseUrl: 'https://x', apiKey: 'k' })
+      const res = await p.getModels() as { data: Array<{ id: string; capabilities: { type: string } }> }
+      const byId = new Map(res.data.map((m) => [m.id, m.capabilities.type]))
+      expect(byId.get('bge-m3')).toBe('embeddings')
+      expect(byId.get('gpt-image-1')).toBe('image')
+      expect(byId.get('chat-x')).toBe('text')
+    } finally { globalThis.fetch = realFetch }
+  })
+
+  test('normalizer drops entries without a string id', async () => {
+    globalThis.fetch = (async () => Response.json({
+      data: [{ id: 'ok' }, { id: 42 }, {}, { id: '' }, { id: 'also-ok' }],
+    })) as unknown as typeof fetch
+    try {
+      const p = new CustomProvider({ name: 'x', baseUrl: 'https://x', apiKey: 'k' })
+      const res = await p.getModels() as { data: Array<{ id: string }> }
+      expect(res.data.map((m) => m.id)).toEqual(['ok', 'also-ok'])
     } finally { globalThis.fetch = realFetch }
   })
 

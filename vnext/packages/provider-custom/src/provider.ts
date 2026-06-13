@@ -95,7 +95,8 @@ export class CustomProvider implements ModelProvider {
         new Response(body, { status: res.status }),
       )
     }
-    return (await res.json()) as ProviderModelsResponse
+    const raw = await res.json().catch(() => null) as unknown
+    return normalizeModelsResponse(raw, this.name)
   }
 
   async probe(): Promise<ProbeResult> {
@@ -168,4 +169,69 @@ export class CustomProvider implements ModelProvider {
     }
     return response
   }
+}
+
+/**
+ * Permissively normalize an upstream's /models response into the OpenAI-style
+ * shape the gateway registry expects. Accepts three shapes the `custom`
+ * provider needs to interoperate with (borrowed from
+ * copilot-gateway/packages/provider-custom/src/fetch-models.ts):
+ *
+ *   1. OpenAI:    { object: 'list', data: [{ id, object?, owned_by?, created? }] }
+ *   2. Anthropic: { data: [{ type: 'model', id, display_name?, created_at? }],
+ *                   has_more?, first_id?, last_id? }   (no top-level `object`)
+ *   3. Floway-superset: 1+2 with extra `display_name`, `name`, `created_at`,
+ *      `limits`, `cost`, `kind`.
+ *
+ * Models without a string `id` are dropped. `kind: 'embedding' | 'image'` is
+ * mapped onto `capabilities.type` so the registry's endpoint inference can
+ * narrow correctly without relying on id-token heuristics alone.
+ */
+function normalizeModelsResponse(raw: unknown, providerName: string): ProviderModelsResponse {
+  if (!isRecord(raw) || !Array.isArray(raw.data)) {
+    return { object: 'list', data: [] }
+  }
+  const data: Array<Record<string, unknown>> = []
+  for (const item of raw.data) {
+    if (!isRecord(item)) continue
+    const id = typeof item.id === 'string' && item.id !== '' ? item.id : null
+    if (id === null) continue
+    const name = optStr(item.display_name) ?? optStr(item.name) ?? id
+    const vendor = optStr(item.owned_by) ?? optStr(item.vendor) ?? providerName
+    const kind = item.kind === 'embedding' ? 'embeddings'
+      : item.kind === 'image' ? 'image'
+      : item.kind === 'chat' ? 'text'
+      : undefined
+    const capsIn = isRecord(item.capabilities) ? item.capabilities : {}
+    const limits = isRecord(item.limits) ? item.limits
+      : isRecord(capsIn.limits) ? capsIn.limits
+      : {}
+    const capType = kind ?? optStr(capsIn.type) ?? 'text'
+    data.push({
+      id,
+      object: 'model',
+      name,
+      vendor,
+      version: optStr(item.version) ?? id,
+      model_picker_enabled: true,
+      preview: false,
+      capabilities: {
+        family: optStr(capsIn.family) ?? 'custom',
+        limits,
+        object: 'model_capabilities',
+        supports: isRecord(capsIn.supports) ? capsIn.supports : {},
+        tokenizer: optStr(capsIn.tokenizer) ?? 'unknown',
+        type: capType,
+      },
+    })
+  }
+  return { object: 'list', data }
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+function optStr(v: unknown): string | undefined {
+  return typeof v === 'string' && v !== '' ? v : undefined
 }
