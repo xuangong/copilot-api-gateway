@@ -14,6 +14,7 @@
     "@vnext/provider-custom": "workspace:*",
     "@vnext/protocols": "workspace:*",
     "@vnext/responses-store": "workspace:*",
+    "@vnext/shared-cache": "workspace:*",
     "@vnext/translate": "workspace:*",
     "hono": "^4.12.23",
     "zod": "^4.4.3"
