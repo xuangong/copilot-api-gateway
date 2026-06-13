@@ -39,11 +39,40 @@ export function endpointCompatibleWithKind(endpoint: EndpointKey, kind: ModelKin
   return ENDPOINTS_BY_MODEL_KIND[kind].includes(endpoint)
 }
 
-export interface ModelPricing {
-  input: number
-  output: number
-  cache_read?: number
-  cache_write?: number
+export type BillingDimension =
+  | 'input'
+  | 'input_cache_read'
+  | 'input_cache_write'
+  | 'input_image'
+  | 'output'
+  | 'output_image'
+
+export const BILLING_DIMENSIONS: readonly BillingDimension[] = [
+  'input', 'input_cache_read', 'input_cache_write', 'input_image', 'output', 'output_image',
+]
+
+/** USD per million tokens, per billing dimension. Aligned with sst/models.dev `Cost`. */
+export type ModelPricing = Partial<Record<BillingDimension, number>>
+
+/**
+ * Resolve unit price for a dimension with fallback chain:
+ *   input_cache_read / input_cache_write / input_image → input
+ *   output_image → output
+ * Returns null if neither the dimension nor its fallback is set.
+ */
+export function unitPriceForDimension(
+  pricing: ModelPricing | null,
+  dimension: BillingDimension,
+): number | null {
+  if (!pricing) return null
+  switch (dimension) {
+    case 'input':            return pricing.input ?? null
+    case 'input_cache_read': return pricing.input_cache_read ?? pricing.input ?? null
+    case 'input_cache_write':return pricing.input_cache_write ?? pricing.input ?? null
+    case 'input_image':      return pricing.input_image ?? pricing.input ?? null
+    case 'output':           return pricing.output ?? null
+    case 'output_image':     return pricing.output_image ?? pricing.output ?? null
+  }
 }
 
 /** Client-visible protocol families. */
