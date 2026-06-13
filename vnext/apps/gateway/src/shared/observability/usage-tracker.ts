@@ -7,7 +7,9 @@
  *   - consumeStreamForUsage: drains an upstream body purely for usage; the
  *     returned promise settles AFTER the persist write completes.
  */
+import type { ModelPricing } from '@vnext/protocols/common'
 import { getRepo } from '../repo/index.ts'
+import type { TokenUsage, UsageRecord } from '../repo/types.ts'
 import { extractFromJson, applyStreamEvent, pickUsageModelId, type UsageInfo } from './usage-extractor.ts'
 import { createFrameBuffer, parseDataJSON } from '../lib/sse/parser.ts'
 
@@ -15,19 +17,37 @@ function currentHour(): string {
   return new Date().toISOString().slice(0, 13)
 }
 
+function hasAnyTokens(usage: TokenUsage): boolean {
+  for (const value of Object.values(usage)) {
+    if ((value ?? 0) > 0) return true
+  }
+  return false
+}
+
 async function persistUsage(
+  usage: TokenUsage,
   keyId: string,
   model: string,
-  inputTokens: number,
-  outputTokens: number,
-  client: string | undefined,
-  cacheReadTokens: number,
-  cacheCreationTokens: number,
-  upstream: string | null | undefined,
+  client: string,
+  upstream: string | null,
+  modelKey: string,
+  pricing: ModelPricing | null,
 ): Promise<void> {
+  if (!hasAnyTokens(usage)) return
+  const rec: UsageRecord = {
+    keyId,
+    model,
+    modelKey,
+    upstream,
+    client,
+    hour: currentHour(),
+    requests: 1,
+    tokens: usage,
+    cost: pricing,
+  }
   const repo = getRepo()
   await Promise.all([
-    repo.usage.record(keyId, model, currentHour(), 1, inputTokens, outputTokens, client, cacheReadTokens, cacheCreationTokens, upstream ?? null),
+    repo.usage.record(rec),
     repo.apiKeys.touchLastUsed(keyId),
   ])
 }
@@ -36,18 +56,21 @@ export async function trackNonStreamingUsage(
   json: unknown,
   keyId: string,
   model: string,
-  client?: string,
-  upstream?: string | null,
+  client: string,
+  upstream: string | null,
+  modelKey: string,
+  pricing: ModelPricing | null,
 ): Promise<void> {
-  const usage = extractFromJson(json)
-  if (!usage) return
+  const info = extractFromJson(json)
+  if (!info) return
   await persistUsage(
+    info.tokens,
     keyId,
-    pickUsageModelId(usage.model, model),
-    usage.input, usage.output,
+    pickUsageModelId(info.model, model),
     client,
-    usage.cacheRead, usage.cacheCreation,
     upstream,
+    modelKey,
+    pricing,
   )
 }
 
@@ -55,21 +78,30 @@ export function trackStreamingUsage(
   response: Response,
   keyId: string,
   model: string,
-  client?: string,
-  upstream?: string | null,
+  client: string,
+  upstream: string | null,
+  modelKey: string,
+  pricing: ModelPricing | null,
 ): Response {
   const body = response.body
   if (!body) return response
 
-  const latest: UsageInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
+  const latest: UsageInfo = { tokens: {} }
   const frameBuffer = createFrameBuffer()
   let persisted = false
   const persistOnce = () => {
     if (persisted) return
-    if (latest.input <= 0 && latest.output <= 0) return
+    if (!hasAnyTokens(latest.tokens)) return
     persisted = true
-    persistUsage(keyId, pickUsageModelId(latest.model, model), latest.input, latest.output, client, latest.cacheRead, latest.cacheCreation, upstream)
-      .catch(() => { /* fire-and-forget */ })
+    persistUsage(
+      latest.tokens,
+      keyId,
+      pickUsageModelId(latest.model, model),
+      client,
+      upstream,
+      modelKey,
+      pricing,
+    ).catch(() => { /* fire-and-forget */ })
   }
 
   const transform = new TransformStream<Uint8Array, Uint8Array>({
@@ -101,19 +133,28 @@ export function consumeStreamForUsage(
   upstreamBody: ReadableStream<Uint8Array>,
   keyId: string,
   model: string,
-  client?: string,
-  upstream?: string | null,
+  client: string,
+  upstream: string | null,
+  modelKey: string,
+  pricing: ModelPricing | null,
 ): Promise<void> {
-  const latest: UsageInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
+  const latest: UsageInfo = { tokens: {} }
   const frameBuffer = createFrameBuffer()
   let persisted = false
   let persistPromise: Promise<void> | null = null
   const persistOnce = () => {
     if (persisted) return
-    if (latest.input <= 0 && latest.output <= 0) return
+    if (!hasAnyTokens(latest.tokens)) return
     persisted = true
-    persistPromise = persistUsage(keyId, pickUsageModelId(latest.model, model), latest.input, latest.output, client, latest.cacheRead, latest.cacheCreation, upstream)
-      .catch(() => { /* best-effort */ })
+    persistPromise = persistUsage(
+      latest.tokens,
+      keyId,
+      pickUsageModelId(latest.model, model),
+      client,
+      upstream,
+      modelKey,
+      pricing,
+    ).catch(() => { /* best-effort */ })
   }
 
   const reader = upstreamBody.getReader()
