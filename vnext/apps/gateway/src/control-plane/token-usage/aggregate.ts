@@ -19,6 +19,9 @@ export interface DisplayUsageRecord {
   /** Disjoint per-dimension token counts. Absent dimensions are zero. */
   tokens: Partial<Record<BillingDimension, number>>
   cost: number
+  // Index signature lets redactForSharedView accept this shape (it expects
+  // Record<string, unknown> & { keyId: string }).
+  [k: string]: unknown
 }
 
 export interface DisplayUsageByUserRecord {
