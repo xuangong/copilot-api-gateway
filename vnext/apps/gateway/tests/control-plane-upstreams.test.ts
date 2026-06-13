@@ -160,7 +160,7 @@ test('POST /api/upstream-probe azure valid config → ok via probe', async () =>
       body: JSON.stringify({
         kind: 'azure',
         config: {
-          name: 'a', endpoint: 'https://az.example', apiKey: 'k',
+          name: 'a', endpoint: 'https://az.openai.azure.com', apiKey: 'k',
           deployment: 'd', apiVersion: '2024-02-15-preview',
         },
       }),
@@ -188,7 +188,7 @@ test('POST /api/upstream-probe azure missing deployment → 400', async () => {
     method: 'POST',
     body: JSON.stringify({
       kind: 'azure',
-      config: { name: 'a', endpoint: 'https://az.example', apiKey: 'k', apiVersion: '2024-02-15-preview' },
+      config: { name: 'a', endpoint: 'https://az.openai.azure.com', apiKey: 'k', apiVersion: '2024-02-15-preview' },
     }),
     headers: { 'content-type': 'application/json' },
   })
@@ -376,7 +376,7 @@ test('POST /api/upstreams/:id/test azure → 200 via probe', async () => {
       enabled: true,
       sortOrder: 0,
       config: {
-        name: 'a', endpoint: 'https://az.example', apiKey: 'k',
+        name: 'a', endpoint: 'https://az.openai.azure.com', apiKey: 'k',
         deployment: 'd', apiVersion: '2024-02-15-preview', endpoints: ['chat_completions'],
       },
       flagOverrides: {},

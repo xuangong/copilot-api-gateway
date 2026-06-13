@@ -33,6 +33,43 @@ describe('AzureProvider constructor', () => {
       .toBe('https://my-aoai.openai.azure.com')
   })
 
+  test('rejects non-azure hostnames', () => {
+    expect(() => new AzureProvider({ ...okCfg, endpoint: 'https://az.example.com' }))
+      .toThrow(/openai\.azure\.com.*services\.ai\.azure\.com/)
+  })
+
+  test('rejects http (non-https) endpoints', () => {
+    expect(() => new AzureProvider({ ...okCfg, endpoint: 'http://my-aoai.openai.azure.com' }))
+      .toThrow(/https/)
+  })
+
+  test('rejects endpoints with query string', () => {
+    expect(() => new AzureProvider({ ...okCfg, endpoint: 'https://my-aoai.openai.azure.com/?x=1' }))
+      .toThrow(/query|fragment/)
+  })
+
+  test('accepts services.ai.azure.com hostnames', () => {
+    const p = new AzureProvider({ ...okCfg, endpoint: 'https://my-foundry.services.ai.azure.com' })
+    expect((p as unknown as { endpoint: string }).endpoint)
+      .toBe('https://my-foundry.services.ai.azure.com')
+  })
+
+  test('accepts Foundry project root path', () => {
+    const p = new AzureProvider({
+      ...okCfg,
+      endpoint: 'https://my-foundry.services.ai.azure.com/api/projects/myproj',
+    })
+    expect((p as unknown as { endpoint: string }).endpoint)
+      .toBe('https://my-foundry.services.ai.azure.com/api/projects/myproj')
+  })
+
+  test('rejects non-Foundry path segments', () => {
+    expect(() => new AzureProvider({
+      ...okCfg,
+      endpoint: 'https://my-aoai.openai.azure.com/openai/deployments/x',
+    })).toThrow(/Foundry project root/)
+  })
+
   test('exposes kind/name/supportedEndpoints', () => {
     const p = new AzureProvider({ ...okCfg, endpoints: ['chat_completions', 'embeddings'] })
     expect(p.kind).toBe('azure')
@@ -176,6 +213,31 @@ describe('AzureProvider.fetch', () => {
     } finally { restore() }
   })
 
+  test('Anthropic surface uses x-api-key + anthropic-version, NOT api-key', async () => {
+    const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
+    try {
+      const p = new AzureProvider(okCfg)
+      await p.fetch('messages', { body: '{}' })
+      const h = new Headers(calls[0]!.init?.headers)
+      expect(h.get('x-api-key')).toBe('az-key')
+      expect(h.get('anthropic-version')).toBe('2023-06-01')
+      expect(h.get('api-key')).toBeNull()
+      expect(h.get('authorization')).toBeNull()
+    } finally { restore() }
+  })
+
+  test('messages_count_tokens also uses Anthropic surface headers', async () => {
+    const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
+    try {
+      const p = new AzureProvider(okCfg)
+      await p.fetch('messages_count_tokens', { body: '{}' })
+      const h = new Headers(calls[0]!.init?.headers)
+      expect(h.get('x-api-key')).toBe('az-key')
+      expect(h.get('anthropic-version')).toBe('2023-06-01')
+      expect(h.get('api-key')).toBeNull()
+    } finally { restore() }
+  })
+
   test('OpenAI path map: each declared endpoint hits the right URL suffix', async () => {
     const cases: Array<[Parameters<AzureProvider['fetch']>[0], string]> = [
       ['chat_completions', '/chat/completions'],
@@ -208,6 +270,34 @@ describe('AzureProvider.fetch', () => {
       const p = new AzureProvider(okCfg)
       await p.fetch('messages_count_tokens', { body: '{}' })
       expect(calls[0]!.url).toBe('https://my-aoai.openai.azure.com/anthropic/v1/messages/count_tokens')
+    } finally { restore() }
+  })
+
+  test('Foundry endpoint: project path preserved in OpenAI URL', async () => {
+    const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
+    try {
+      const p = new AzureProvider({
+        ...okCfg,
+        endpoint: 'https://my-foundry.services.ai.azure.com/api/projects/myproj',
+      })
+      await p.fetch('chat_completions', { body: JSON.stringify({ model: 'gpt-4o' }) })
+      expect(calls[0]!.url).toBe(
+        'https://my-foundry.services.ai.azure.com/api/projects/myproj/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview'
+      )
+    } finally { restore() }
+  })
+
+  test('Foundry endpoint: project path preserved in Anthropic URL', async () => {
+    const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
+    try {
+      const p = new AzureProvider({
+        ...okCfg,
+        endpoint: 'https://my-foundry.services.ai.azure.com/api/projects/myproj',
+      })
+      await p.fetch('messages', { body: '{}' })
+      expect(calls[0]!.url).toBe(
+        'https://my-foundry.services.ai.azure.com/api/projects/myproj/anthropic/v1/messages'
+      )
     } finally { restore() }
   })
 

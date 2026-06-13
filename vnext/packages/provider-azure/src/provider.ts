@@ -46,6 +46,14 @@ const ANTHROPIC_PATHS: Partial<Record<EndpointKey, string>> = {
   messages_count_tokens: '/v1/messages/count_tokens',
 }
 
+type AzureSurface = 'openai' | 'anthropic'
+
+function surfaceForEndpoint(endpoint: EndpointKey): AzureSurface | null {
+  if (OPENAI_PATHS[endpoint]) return 'openai'
+  if (ANTHROPIC_PATHS[endpoint]) return 'anthropic'
+  return null
+}
+
 export class AzureProvider implements ModelProvider {
   readonly kind = 'azure' as const
   readonly name: string
@@ -62,6 +70,7 @@ export class AzureProvider implements ModelProvider {
     if (!cfg.endpoint) throw new Error('Azure provider requires an endpoint')
     if (!cfg.deployment) throw new Error('Azure provider requires a deployment')
     if (!cfg.apiVersion) throw new Error('Azure provider requires an apiVersion')
+    assertAzureEndpoint(cfg.endpoint)
     this.name = cfg.name
     this.endpoint = cfg.endpoint.replace(/\/+$/, '')
     this.apiKey = cfg.apiKey
@@ -95,7 +104,7 @@ export class AzureProvider implements ModelProvider {
   async probe(): Promise<ProbeResult> {
     return probeViaModels(async () => {
       const url = `${this.endpoint}/openai/deployments?api-version=${encodeURIComponent(this.apiVersion)}`
-      const res = await fetch(url, { headers: this.headers() })
+      const res = await fetch(url, { headers: this.headers('openai') })
       if (!res.ok) {
         const body = await res.text().catch(() => '')
         const err = new Error(`Azure deployments list failed: ${res.status} ${body.slice(0, 500)}`) as Error & { status?: number }
@@ -129,6 +138,9 @@ export class AzureProvider implements ModelProvider {
   }
 
   private buildUrl(endpoint: EndpointKey, deployment: string): string {
+    // Foundry project endpoints (`https://*.services.ai.azure.com/api/projects/<name>`)
+    // require the project path prefix to be preserved on every upstream call —
+    // it's part of the resource scope, not just a base-URL convenience.
     const openai = OPENAI_PATHS[endpoint]
     if (openai) {
       return `${this.endpoint}/openai/deployments/${deployment}${openai}?api-version=${encodeURIComponent(this.apiVersion)}`
@@ -141,14 +153,16 @@ export class AzureProvider implements ModelProvider {
   }
 
   private headers(
+    surface: AzureSurface,
     extra: Record<string, string> = {},
     opts: { includeJsonContentType?: boolean } = {},
   ): Record<string, string> {
-    const base: Record<string, string> = {
-      'api-key': this.apiKey,
-      ...this.defaultHeaders,
-      ...extra,
-    }
+    // Azure swaps credential header by surface: OpenAI v1 uses `api-key`;
+    // the Anthropic surface (Azure-hosted Claude on services.ai.azure.com)
+    // requires `x-api-key` + `anthropic-version` to satisfy Anthropic SDKs.
+    const base: Record<string, string> = surface === 'anthropic'
+      ? { 'x-api-key': this.apiKey, 'anthropic-version': '2023-06-01', ...this.defaultHeaders, ...extra }
+      : { 'api-key': this.apiKey, ...this.defaultHeaders, ...extra }
     if (opts.includeJsonContentType !== false) {
       base['Content-Type'] = 'application/json'
     }
@@ -167,7 +181,9 @@ export class AzureProvider implements ModelProvider {
       : parseJsonBody(init.body)
     const deployment = this.resolveDeployment(payload)
     const url = this.buildUrl(endpoint, deployment)
-    const headers = this.headers(opts.extraHeaders ?? {}, { includeJsonContentType: !bodyIsFormData })
+    const surface = surfaceForEndpoint(endpoint)
+    if (!surface) throw new Error(`Azure provider does not support endpoint: ${endpoint}`)
+    const headers = this.headers(surface, opts.extraHeaders ?? {}, { includeJsonContentType: !bodyIsFormData })
     if (init.headers) {
       Object.assign(headers, mergeHeaders(init.headers, undefined))
     }
@@ -210,4 +226,43 @@ export class AzureProvider implements ModelProvider {
 function parseFormDataPayload(form: FormData): Record<string, unknown> {
   const model = form.get('model')
   return typeof model === 'string' ? { model } : {}
+}
+
+/**
+ * Validate the configured endpoint is an https URL on a known Azure host.
+ * Borrowed from copilot-gateway/packages/provider-azure/src/config.ts —
+ * surfaces config errors at construct-time instead of waiting for the first
+ * upstream call to fail with an opaque DNS/TLS error.
+ */
+const AZURE_ENDPOINT_HOST_SUFFIXES = ['.openai.azure.com', '.services.ai.azure.com']
+
+function assertAzureEndpoint(raw: string): void {
+  let parsed: URL
+  try {
+    parsed = new URL(raw)
+  } catch {
+    throw new Error(`Azure provider endpoint must be a valid URL: ${raw}`)
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`Azure provider endpoint must use https: ${raw}`)
+  }
+  const host = parsed.hostname
+  const ok = AZURE_ENDPOINT_HOST_SUFFIXES.some((s) => host.endsWith(s) && host.length > s.length)
+  if (!ok) {
+    throw new Error(
+      `Azure provider endpoint must be on *.openai.azure.com or *.services.ai.azure.com: ${raw}`,
+    )
+  }
+  if (parsed.search || parsed.hash) {
+    throw new Error(`Azure provider endpoint must not include query or fragment: ${raw}`)
+  }
+  // Admitted path shapes: empty, or a Foundry project root `/api/projects/<name>`.
+  // Anything else (e.g. `/openai/...`, stray segments) is rejected so we don't
+  // double up the path prefix when buildUrl appends `/openai/deployments/...`.
+  const path = parsed.pathname.replace(/\/+$/, '')
+  if (path !== '' && !/^\/api\/projects\/[^/]+$/.test(path)) {
+    throw new Error(
+      `Azure provider endpoint path must be empty or a Foundry project root (/api/projects/<name>): ${raw}`,
+    )
+  }
 }
