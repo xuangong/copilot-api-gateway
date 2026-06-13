@@ -39,11 +39,14 @@ import type {
 } from "../types"
 import { latencyBucketForMs } from "../../performance-histogram.ts"
 import type { SqlExecutor } from "./executor"
+import { BILLING_DIMENSIONS, unitPriceForDimension } from "@vnext/protocols/common"
+import type { BillingDimension, ModelPricing } from "@vnext/protocols/common"
 
 const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref"
 const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at"
 const UPSTREAM_COLS = "id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, created_at, updated_at"
-const USAGE_COLS = "key_id, model, upstream, hour, client, requests, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_json"
+const USAGE_DIM_COLS = "key_id, model, upstream, model_key, client, hour, dimension, tokens, unit_price"
+const USAGE_REQ_COLS = "key_id, model, upstream, model_key, client, hour, requests"
 const LATENCY_COLS = "key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss"
 const USER_COLS = "id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash"
 const INVITE_COLS = "id, code, name, email, created_at, used_at, used_by"
@@ -169,22 +172,6 @@ function toUpstreamRecord(row: any): UpstreamRecord {
     disabledPublicModelIds: parseStringArray(row.disabled_public_model_ids),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-  }
-}
-
-function toUsageRecord(r: any): UsageRecord {
-  return {
-    keyId: r.key_id,
-    model: r.model,
-    hour: r.hour,
-    client: r.client || "",
-    upstream: r.upstream ?? null,
-    requests: r.requests,
-    inputTokens: r.input_tokens,
-    outputTokens: r.output_tokens,
-    cacheReadTokens: r.cache_read_tokens ?? 0,
-    cacheCreationTokens: r.cache_creation_tokens ?? 0,
-    costJson: r.cost_json ?? null,
   }
 }
 
@@ -449,36 +436,154 @@ class SharedUpstreamRepo implements UpstreamRepo {
   }
 }
 
+interface UsageDimensionRow {
+  key_id: string
+  model: string
+  upstream: string | null
+  model_key: string
+  client: string
+  hour: string
+  dimension: string
+  tokens: number
+  unit_price: number | null
+}
+
+interface UsageRequestRow {
+  key_id: string
+  model: string
+  upstream: string | null
+  model_key: string
+  client: string
+  hour: string
+  requests: number
+}
+
+function dimensionRows(record: UsageRecord): { dimension: BillingDimension; tokens: number; unitPrice: number | null }[] {
+  return BILLING_DIMENSIONS.flatMap((dimension) => {
+    const tokens = record.tokens[dimension] ?? 0
+    return tokens > 0 ? [{ dimension, tokens, unitPrice: unitPriceForDimension(record.cost, dimension) }] : []
+  })
+}
+
+function usageBucketKey(row: { key_id: string; model: string; upstream: string | null; model_key: string; client: string; hour: string }): string {
+  return [row.key_id, row.model, row.upstream ?? "", row.model_key, row.client, row.hour].join("\0")
+}
+
+// Reassemble per-bucket UsageRecords from the two narrow tables. The dimension
+// rows carry the disjoint counts and the per-dimension unit_price snapshot,
+// which we fold back into a ModelPricing snapshot; usage_requests carries the
+// request count. A bucket may appear in either table independently.
+function assembleUsageRecords(dimensions: readonly UsageDimensionRow[], requests: readonly UsageRequestRow[]): UsageRecord[] {
+  const byBucket = new Map<string, UsageRecord>()
+
+  const ensureRecord = (row: { key_id: string; model: string; upstream: string | null; model_key: string; client: string; hour: string }): UsageRecord => {
+    const key = usageBucketKey(row)
+    let record = byBucket.get(key)
+    if (!record) {
+      record = {
+        keyId: row.key_id,
+        model: row.model,
+        upstream: row.upstream ?? null,
+        modelKey: row.model_key,
+        client: row.client || "",
+        hour: row.hour,
+        requests: 0,
+        tokens: {},
+        cost: null,
+      }
+      byBucket.set(key, record)
+    }
+    return record
+  }
+
+  const pricingByBucket = new Map<string, ModelPricing>()
+  for (const row of dimensions) {
+    const record = ensureRecord(row)
+    record.tokens[row.dimension as BillingDimension] = row.tokens
+    if (row.unit_price !== null) {
+      const key = usageBucketKey(row)
+      const pricing = pricingByBucket.get(key) ?? {}
+      pricing[row.dimension as BillingDimension] = row.unit_price
+      pricingByBucket.set(key, pricing)
+    }
+  }
+  for (const [key, pricing] of pricingByBucket) {
+    const record = byBucket.get(key)
+    if (record) record.cost = pricing
+  }
+
+  for (const row of requests) ensureRecord(row).requests = row.requests
+
+  return [...byBucket.values()].sort((a, b) => a.hour.localeCompare(b.hour))
+}
+
 class SharedUsageRepo implements UsageRepo {
   constructor(private x: SqlExecutor) {}
 
-  async record(keyId: string, model: string, hour: string, requests: number, inputTokens: number, outputTokens: number, client?: string, cacheReadTokens?: number, cacheCreationTokens?: number, upstream?: string | null, costJson?: string | null): Promise<void> {
+  async record(r: UsageRecord): Promise<void> {
+    const upstream = r.upstream ?? null
+    const client = r.client || ""
+    for (const row of dimensionRows(r)) {
+      await this.x.run(
+        `INSERT INTO usage (${USAGE_DIM_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (key_id, model, COALESCE(upstream, ''), model_key, client, hour, dimension) DO UPDATE SET
+           tokens = tokens + excluded.tokens,
+           unit_price = COALESCE(unit_price, excluded.unit_price)`,
+        [r.keyId, r.model, upstream, r.modelKey, client, r.hour, row.dimension, row.tokens, row.unitPrice],
+      )
+    }
     await this.x.run(
-      `INSERT INTO usage (${USAGE_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (key_id, model, COALESCE(upstream, ''), hour, client) DO UPDATE SET requests = requests + excluded.requests, input_tokens = input_tokens + excluded.input_tokens, output_tokens = output_tokens + excluded.output_tokens, cache_read_tokens = cache_read_tokens + excluded.cache_read_tokens, cache_creation_tokens = cache_creation_tokens + excluded.cache_creation_tokens, cost_json = COALESCE(excluded.cost_json, cost_json)`,
-      [keyId, model, upstream ?? null, hour, client || "", requests, inputTokens, outputTokens, cacheReadTokens ?? 0, cacheCreationTokens ?? 0, costJson ?? null],
+      `INSERT INTO usage_requests (${USAGE_REQ_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (key_id, model, COALESCE(upstream, ''), model_key, client, hour) DO UPDATE SET
+         requests = requests + excluded.requests`,
+      [r.keyId, r.model, upstream, r.modelKey, client, r.hour, r.requests],
+    )
+  }
+
+  async set(r: UsageRecord): Promise<void> {
+    const upstream = r.upstream ?? null
+    const client = r.client || ""
+    // Replacement upsert: clear the bucket's existing dimension rows first so
+    // dimensions absent from the new record do not linger.
+    await this.x.run(
+      "DELETE FROM usage WHERE key_id = ? AND model = ? AND COALESCE(upstream, '') = COALESCE(?, '') AND model_key = ? AND client = ? AND hour = ?",
+      [r.keyId, r.model, upstream, r.modelKey, client, r.hour],
+    )
+    for (const row of dimensionRows(r)) {
+      await this.x.run(
+        `INSERT INTO usage (${USAGE_DIM_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [r.keyId, r.model, upstream, r.modelKey, client, r.hour, row.dimension, row.tokens, row.unitPrice],
+      )
+    }
+    await this.x.run(
+      `INSERT INTO usage_requests (${USAGE_REQ_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (key_id, model, COALESCE(upstream, ''), model_key, client, hour) DO UPDATE SET
+         requests = excluded.requests`,
+      [r.keyId, r.model, upstream, r.modelKey, client, r.hour, r.requests],
     )
   }
 
   async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<UsageRecord[]> {
-    const { sql, binds } = buildKeyIdRangeQuery("usage", USAGE_COLS, opts)
-    return (await this.x.all(sql, binds)).map(toUsageRecord)
+    const dimQuery = buildKeyIdRangeQuery("usage", USAGE_DIM_COLS, opts)
+    const reqQuery = buildKeyIdRangeQuery("usage_requests", USAGE_REQ_COLS, opts)
+    const [dimensions, requests] = await Promise.all([
+      this.x.all<UsageDimensionRow>(dimQuery.sql, dimQuery.binds),
+      this.x.all<UsageRequestRow>(reqQuery.sql, reqQuery.binds),
+    ])
+    return assembleUsageRecords(dimensions, requests)
   }
 
   async listAll(): Promise<UsageRecord[]> {
-    return (await this.x.all(`SELECT ${USAGE_COLS} FROM usage ORDER BY hour`, [])).map(toUsageRecord)
-  }
-
-  async set(record: UsageRecord): Promise<void> {
-    await this.x.run(
-      `INSERT INTO usage (${USAGE_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (key_id, model, COALESCE(upstream, ''), hour, client) DO UPDATE SET requests = excluded.requests, input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens, cache_read_tokens = excluded.cache_read_tokens, cache_creation_tokens = excluded.cache_creation_tokens, cost_json = excluded.cost_json`,
-      [record.keyId, record.model, record.upstream ?? null, record.hour, record.client || "", record.requests, record.inputTokens, record.outputTokens, record.cacheReadTokens ?? 0, record.cacheCreationTokens ?? 0, record.costJson ?? null],
-    )
+    const [dimensions, requests] = await Promise.all([
+      this.x.all<UsageDimensionRow>(`SELECT ${USAGE_DIM_COLS} FROM usage ORDER BY hour`, []),
+      this.x.all<UsageRequestRow>(`SELECT ${USAGE_REQ_COLS} FROM usage_requests ORDER BY hour`, []),
+    ])
+    return assembleUsageRecords(dimensions, requests)
   }
 
   async deleteAll(): Promise<void> {
     await this.x.run("DELETE FROM usage", [])
+    await this.x.run("DELETE FROM usage_requests", [])
   }
 }
 
