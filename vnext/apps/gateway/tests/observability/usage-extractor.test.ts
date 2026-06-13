@@ -3,6 +3,7 @@ import {
   extractFromJson,
   applyStreamEvent,
   pickUsageModelId,
+  tokenUsageFromImagesResponse,
   type UsageInfo,
 } from '../../src/shared/observability/usage-extractor.ts'
 
@@ -18,7 +19,7 @@ test('extractFromJson: Anthropic Messages with cache fields', () => {
   })
   expect(out).toEqual({
     model: 'claude-opus-4.7',
-    input: 100, output: 50, cacheRead: 200, cacheCreation: 30,
+    tokens: { input: 100, output: 50, input_cache_read: 200, input_cache_write: 30 },
   })
 })
 
@@ -29,7 +30,7 @@ test('extractFromJson: Responses input_tokens_details.cached_tokens subtraction'
   })
   expect(out).toEqual({
     model: 'gpt-5',
-    input: 70, output: 20, cacheRead: 30, cacheCreation: 0,
+    tokens: { input: 70, output: 20, input_cache_read: 30 },
   })
 })
 
@@ -40,7 +41,23 @@ test('extractFromJson: OpenAI Chat prompt_tokens', () => {
   })
   expect(out).toEqual({
     model: 'gpt-4o',
-    input: 90, output: 25, cacheRead: 10, cacheCreation: 0,
+    tokens: { input: 90, output: 25, input_cache_read: 10 },
+  })
+})
+
+test('extractFromJson: Responses with image-modality split routes via tokenUsageFromImagesResponse', () => {
+  const out = extractFromJson({
+    response: { model: 'gpt-5' },
+    usage: {
+      input_tokens: 100,
+      output_tokens: 50,
+      input_tokens_details: { text_tokens: 80, image_tokens: 20 },
+      output_tokens_details: { text_tokens: 30, image_tokens: 20 },
+    },
+  })
+  expect(out).toEqual({
+    model: 'gpt-5',
+    tokens: { input: 80, input_image: 20, output: 30, output_image: 20 },
   })
 })
 
@@ -66,50 +83,90 @@ test('pickUsageModelId: JSON wins for unrelated ids', () => {
 })
 
 test('applyStreamEvent: Anthropic message_start sets input/cache, not terminal', () => {
-  const latest: UsageInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
+  const latest: UsageInfo = { tokens: {} }
   const terminal = applyStreamEvent({
     type: 'message_start',
     message: { model: 'claude-opus-4-7', usage: { input_tokens: 50, cache_read_input_tokens: 5, cache_creation_input_tokens: 1 } },
   }, latest)
   expect(terminal).toBe(false)
-  expect(latest.input).toBe(50)
-  expect(latest.cacheRead).toBe(5)
-  expect(latest.cacheCreation).toBe(1)
+  expect(latest.tokens.input).toBe(50)
+  expect(latest.tokens.input_cache_read).toBe(5)
+  expect(latest.tokens.input_cache_write).toBe(1)
   expect(latest.model).toBe('claude-opus-4.7')
 })
 
 test('applyStreamEvent: Anthropic message_delta accumulates, not terminal', () => {
-  const latest: UsageInfo = { input: 50, output: 0, cacheRead: 0, cacheCreation: 0 }
+  const latest: UsageInfo = { tokens: { input: 50 } }
   const terminal = applyStreamEvent({ type: 'message_delta', usage: { output_tokens: 25 } }, latest)
   expect(terminal).toBe(false)
-  expect(latest.output).toBe(25)
+  expect(latest.tokens.output).toBe(25)
+  expect(latest.tokens.input).toBe(50)
 })
 
 test('applyStreamEvent: Responses response.completed is terminal', () => {
-  const latest: UsageInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
+  const latest: UsageInfo = { tokens: {} }
   const terminal = applyStreamEvent({
     type: 'response.completed',
     response: { usage: { input_tokens: 100, output_tokens: 30, input_tokens_details: { cached_tokens: 20 } } },
   }, latest)
   expect(terminal).toBe(true)
-  expect(latest.input).toBe(80)
-  expect(latest.output).toBe(30)
-  expect(latest.cacheRead).toBe(20)
+  expect(latest.tokens.input).toBe(80)
+  expect(latest.tokens.output).toBe(30)
+  expect(latest.tokens.input_cache_read).toBe(20)
+})
+
+test('applyStreamEvent: Responses response.completed with image-modality split is terminal', () => {
+  const latest: UsageInfo = { tokens: {} }
+  const terminal = applyStreamEvent({
+    type: 'response.completed',
+    response: {
+      usage: {
+        input_tokens: 100,
+        output_tokens: 50,
+        input_tokens_details: { text_tokens: 80, image_tokens: 20 },
+        output_tokens_details: { text_tokens: 30, image_tokens: 20 },
+      },
+    },
+  }, latest)
+  expect(terminal).toBe(true)
+  expect(latest.tokens).toEqual({ input: 80, input_image: 20, output: 30, output_image: 20 })
 })
 
 test('applyStreamEvent: OpenAI Chat end-frame is terminal', () => {
-  const latest: UsageInfo = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
+  const latest: UsageInfo = { tokens: {} }
   const terminal = applyStreamEvent({
     usage: { prompt_tokens: 50, completion_tokens: 10, prompt_tokens_details: { cached_tokens: 5 } },
   }, latest)
   expect(terminal).toBe(true)
-  expect(latest.input).toBe(45)
-  expect(latest.output).toBe(10)
-  expect(latest.cacheRead).toBe(5)
+  expect(latest.tokens.input).toBe(45)
+  expect(latest.tokens.output).toBe(10)
+  expect(latest.tokens.input_cache_read).toBe(5)
 })
 
 test('applyStreamEvent: unrelated event returns false, no mutation', () => {
-  const latest: UsageInfo = { input: 1, output: 2, cacheRead: 3, cacheCreation: 4 }
+  const latest: UsageInfo = { tokens: { input: 1, output: 2, input_cache_read: 3, input_cache_write: 4 } }
   expect(applyStreamEvent({ type: 'content_block_start' }, latest)).toBe(false)
-  expect(latest).toEqual({ input: 1, output: 2, cacheRead: 3, cacheCreation: 4 })
+  expect(latest.tokens).toEqual({ input: 1, output: 2, input_cache_read: 3, input_cache_write: 4 })
+})
+
+test('tokenUsageFromImagesResponse: splits text/image counts via details', () => {
+  expect(tokenUsageFromImagesResponse({
+    input_tokens: 100, output_tokens: 50,
+    input_tokens_details: { text_tokens: 80, image_tokens: 20 },
+    output_tokens_details: { text_tokens: 30, image_tokens: 20 },
+  })).toEqual({ input: 80, input_image: 20, output: 30, output_image: 20 })
+})
+
+test('tokenUsageFromImagesResponse: missing details charges total to bare dim', () => {
+  expect(tokenUsageFromImagesResponse({ input_tokens: 100, output_tokens: 50 }))
+    .toEqual({ input: 100, output: 50 })
+})
+
+test('tokenUsageFromImagesResponse: malformed (non-number) → null', () => {
+  expect(tokenUsageFromImagesResponse({ input_tokens: 'huh', output_tokens: 50 })).toBeNull()
+})
+
+test('tokenUsageFromImagesResponse: null/non-object → null', () => {
+  expect(tokenUsageFromImagesResponse(null)).toBeNull()
+  expect(tokenUsageFromImagesResponse('x')).toBeNull()
 })
