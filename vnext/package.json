@@ -8,7 +8,8 @@
   ],
   "scripts": {
     "typecheck": "bun run --filter '*' typecheck",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "build:ui": "bun scripts/build-dashboard.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

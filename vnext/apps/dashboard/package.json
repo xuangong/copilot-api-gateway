@@ -4,9 +4,21 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "bun ../../scripts/build-dashboard.ts"
   },
   "dependencies": {
-    "@vnext/protocols": "workspace:*"
+    "@vnext/protocols": "workspace:*",
+    "dompurify": "^3.4.7",
+    "highlight.js": "^11.11.1",
+    "marked": "^18.0.4",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@types/dompurify": "^3.2.0",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "3"
   }
 }
