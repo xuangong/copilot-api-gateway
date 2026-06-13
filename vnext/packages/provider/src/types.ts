@@ -6,7 +6,7 @@
  * (`@vnext/provider-copilot` etc.) may return richer subtypes assignable to
  * this shape.
  */
-import type { EndpointKey, UpstreamKind } from '@vnext/protocols/common'
+import type { EndpointKey, ModelPricing, UpstreamKind } from '@vnext/protocols/common'
 import type { MessagesEvent } from '@vnext/protocols/messages'
 import type { UpstreamResponse } from './upstream-response'
 
@@ -67,6 +67,10 @@ export interface ModelProvider {
   probe(): Promise<ProbeResult>
   fetch(endpoint: EndpointKey, init: RequestInit, opts?: ProviderFetchOptions): Promise<Response>
 
+  /** Resolve pricing for the given raw upstream model id. Returns null when
+   *  this provider doesn't know the price (caller persists null unit_price). */
+  getPricingForModelKey(modelKey: string): ModelPricing | null
+
   /**
    * Per-endpoint methods — Phase A Task 2 (X-2). Each is OPTIONAL so existing
    * implementations (`FakeProvider`) keep compiling without churn. New code
@@ -116,6 +120,10 @@ export class FakeProvider implements ModelProvider {
 
   async probe(): Promise<ProbeResult> {
     return { ok: true, modelCount: 1, models: ['fake-model'] }
+  }
+
+  getPricingForModelKey(_modelKey: string): ModelPricing | null {
+    return null
   }
 
   async fetch(endpoint: EndpointKey, init: RequestInit, _opts: ProviderFetchOptions = {}): Promise<Response> {
