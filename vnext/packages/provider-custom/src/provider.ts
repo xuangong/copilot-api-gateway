@@ -4,7 +4,7 @@
  * helpers in place of the inline transport utilities.
  */
 
-import type { EndpointKey, ModelPricing } from '@vnext/protocols/common'
+import { BILLING_DIMENSIONS, type EndpointKey, type ModelPricing } from '@vnext/protocols/common'
 import {
   HTTPError,
   probeViaModels,
@@ -114,6 +114,18 @@ export class CustomProvider implements ModelProvider {
       )
     }
     const raw = await res.json().catch(() => null) as unknown
+    // Auto-extract pricing from cost block (models.dev convention).
+    if (raw && typeof raw === 'object' && Array.isArray((raw as { data?: unknown }).data)) {
+      const pricingMap = new Map<string, ModelPricing>()
+      for (const m of (raw as { data: unknown[] }).data) {
+        if (!m || typeof m !== 'object') continue
+        const id = (m as { id?: unknown }).id
+        if (typeof id !== 'string' || id === '') continue
+        const cost = parseCost((m as { cost?: unknown }).cost)
+        if (cost) pricingMap.set(id, cost)
+      }
+      this.setAutoPricing(pricingMap)
+    }
     return normalizeModelsResponse(raw, this.name)
   }
 
@@ -197,6 +209,24 @@ export class CustomProvider implements ModelProvider {
     }
     return response
   }
+}
+
+/**
+ * Extract a `ModelPricing` from a raw upstream `cost` object using the 6-dim
+ * billing shape. Lenient by design: non-number fields are silently dropped,
+ * and a malformed/empty `cost` block resolves to `undefined` (i.e. "absent").
+ *
+ * Used by `CustomProvider.getModels()` to auto-populate per-model pricing
+ * from the models.dev-style `cost` block returned by `/v1/models`.
+ */
+export function parseCost(raw: unknown): ModelPricing | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const out: ModelPricing = {}
+  for (const dim of BILLING_DIMENSIONS) {
+    const v = (raw as Record<string, unknown>)[dim]
+    if (typeof v === 'number') out[dim] = v
+  }
+  return Object.keys(out).length === 0 ? undefined : out
 }
 
 /**
