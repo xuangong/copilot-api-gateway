@@ -27,16 +27,16 @@ COPY packages/translate/package.json packages/translate/
 RUN bun install --frozen-lockfile
 
 # Source
-COPY tsconfig.base.json ./
+COPY tsconfig.base.json tailwind.config.ts ./
 COPY apps ./apps
 COPY packages ./packages
+COPY scripts ./scripts
 
-# Dashboard bundle stubs — vnext has no dashboard build pipeline yet, but the
-# /dashboard route imports `./dist/dashboard.{js,css}.txt`. The smoke target
-# is /v1/*, not the UI; empty stubs keep the import graph resolvable.
-RUN mkdir -p apps/gateway/src/shared/edge/ui-pages/dashboard-app/dist && \
-    : > apps/gateway/src/shared/edge/ui-pages/dashboard-app/dist/dashboard.js.txt && \
-    : > apps/gateway/src/shared/edge/ui-pages/dashboard-app/dist/dashboard.css.txt
+# Build the React dashboard bundle. Outputs land at
+# apps/gateway/src/shared/edge/ui-pages/dashboard-app/dist/dashboard.{js,css}.txt
+# where page.ts imports them as text. The repo-checked-in .txt files are empty
+# stubs so `bun test` works on a fresh clone without a build step.
+RUN bun run build:ui
 
 # Local sqlite lives under /data so it can be mounted as a volume and
 # survive container restarts. entry-bun.ts reads VNEXT_DB_PATH.
