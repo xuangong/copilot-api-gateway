@@ -5,10 +5,11 @@ import {
   initCache,
   setCacheForTest,
   onCacheReset,
+  _resetCacheForTest,
 } from '../src/shared/cache/index.ts'
 import { createCacheFromEnv } from '../src/shared/cache/factory.ts'
 
-afterEach(() => setCacheForTest(null))
+afterEach(() => _resetCacheForTest())
 
 test('getCache throws when neither initCache nor setCacheForTest ran', () => {
   setCacheForTest(null)

@@ -17,6 +17,15 @@ export function initCache(cache: Cache): void {
   _cache = cache
 }
 
+/** Test-only: clear the default cache registered by initCache. Pairs with
+ *  setCacheForTest(null) for a full reset between tests that use initCache
+ *  directly (otherwise _cache leaks across files and pollutes L2 lookups). */
+export function _resetCacheForTest(): void {
+  _cache = null
+  _override = null
+  for (const cb of _onCacheReset) cb()
+}
+
 /** Test-only: swap the cache without touching the default registered by initCache. */
 export function setCacheForTest(c: Cache | null): void {
   _override = c
