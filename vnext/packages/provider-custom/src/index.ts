@@ -8,3 +8,4 @@
 
 export { CustomProvider } from './provider'
 export type { CustomProviderConfig } from './provider'
+export { customProviderPlugin } from './plugin'
