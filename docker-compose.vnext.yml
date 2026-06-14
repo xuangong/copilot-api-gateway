@@ -2,7 +2,7 @@ services:
   gateway-vnext:
     build:
       context: ./vnext
-      dockerfile: Dockerfile
+      dockerfile: apps/platform-bun/Dockerfile
     container_name: copilot-gateway-vnext
     ports:
       - "${VNEXT_PORT:-41415}:41415"
