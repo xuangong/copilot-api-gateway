@@ -9,3 +9,4 @@
 
 export { AzureProvider } from './provider'
 export type { AzureProviderConfig } from './provider'
+export { azureProviderPlugin } from './plugin'
