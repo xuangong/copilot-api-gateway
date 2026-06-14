@@ -157,7 +157,40 @@ export class FakeProvider implements ModelProvider {
     return null
   }
 
-  async fetch(endpoint: EndpointKey, init: RequestInit, _opts: ProviderFetchOptions = {}): Promise<Response> {
+  async fetch(req: ProviderRequest): Promise<ProviderResponse>
+  async fetch(endpoint: EndpointKey, init: RequestInit, opts?: ProviderFetchOptions): Promise<Response>
+  async fetch(
+    arg: EndpointKey | ProviderRequest,
+    init?: RequestInit,
+    opts: ProviderFetchOptions = {},
+  ): Promise<Response | ProviderResponse> {
+    if (typeof arg === 'object') {
+      return this.fetchInternal(arg)
+    }
+    return this.fetchLegacy(arg, init!, opts)
+  }
+
+  private async fetchInternal(req: ProviderRequest): Promise<ProviderResponse> {
+    // FakeProvider has no interceptor chain; serialize the payload and reuse
+    // the legacy path. The shim mirrors the live providers so the contract
+    // stays uniform across implementations.
+    const headers = new Headers(req.headers)
+    if (!headers.has('content-type')) headers.set('content-type', 'application/json')
+    const legacyOpts: ProviderFetchOptions = {
+      sourceApi: mapFakeSourceApiToLegacy(req.sourceApi),
+      operationName: req.operationName,
+      timeout: req.timeout,
+      requireModel: req.requireModel,
+    }
+    const res = await this.fetchLegacy(
+      req.endpoint,
+      { method: 'POST', body: JSON.stringify(req.payload ?? {}), headers, signal: req.signal },
+      legacyOpts,
+    )
+    return { status: res.status, headers: res.headers, body: res.body }
+  }
+
+  private async fetchLegacy(endpoint: EndpointKey, init: RequestInit, _opts: ProviderFetchOptions = {}): Promise<Response> {
     if (endpoint !== 'responses') {
       return new Response(JSON.stringify({ error: { message: `endpoint ${endpoint} not supported by fake` } }), {
         status: 400, headers: { 'content-type': 'application/json' },
@@ -194,4 +227,10 @@ export class FakeProvider implements ModelProvider {
     })
     return new Response(sse, { headers: { 'content-type': 'text/event-stream' } })
   }
+}
+
+function mapFakeSourceApiToLegacy(src: SourceApi): 'messages' | 'chat_completions' | 'responses' | 'gemini' {
+  if (src === 'anthropic') return 'messages'
+  if (src === 'openai') return 'chat_completions'  // safe default; routes always pre-narrows
+  return src
 }
