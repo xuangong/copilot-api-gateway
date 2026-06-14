@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "copilot-gateway-vnext",
-  "main": "entry-cloudflare.ts",
+  "main": "src/worker.ts",
   "compatibility_date": "2025-06-01",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,

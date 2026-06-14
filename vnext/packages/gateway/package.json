@@ -21,9 +21,5 @@
     "hono": "^4.12.23",
     "image-size": "^2.0.2",
     "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260602.1",
-    "wrangler": "^4.97.0"
   }
 }
