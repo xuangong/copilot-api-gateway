@@ -58,3 +58,4 @@ export {
 } from "./strip-image-generation"
 export { stripSafetyIdentifier } from "./strip-safety-identifier"
 export { stripStructuredOutputFormat } from "./strip-structured-output-format"
+export { runCountTokensPrelude } from "./count-tokens-prelude"
