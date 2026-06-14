@@ -474,6 +474,11 @@ dataPlane.post('/v1/responses', async (c) => {
     const fallbackModel = (raw as { model?: string }).model ?? ''
     const apiKeyIdSnap = auth.apiKeyId ?? null
     const requestIdSnap = obsCtx.requestId ?? null
+    // Sidecar snapshot writer. Lives at route level because it needs
+    // auth.apiKeyId, obsCtx.requestId, the responses-store handle, and
+    // c.executionCtx — none of which the interceptor chain currently
+    // carries. Relocation deferred to a future plan; commits 33a16c9 +
+    // 69d489c semantics must hold here.
     const sidecarPromise = (async () => {
       let responseId: string | null = null
       let model = fallbackModel
