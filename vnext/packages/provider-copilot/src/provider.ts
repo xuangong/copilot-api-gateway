@@ -35,6 +35,7 @@ import type { MessagesEvent } from '@vnext/protocols/messages'
 import { createVariantAndBetaFilteringInterceptor } from './interceptors/shared/with-variant-and-beta-filtering'
 import { withInitiatorHeader } from './interceptors/shared/with-initiator-header'
 import { messagesPayloadInterceptors } from './interceptors/messages'
+import { messagesCountTokensPayloadInterceptors } from './interceptors/messages-count-tokens'
 import { responsesPayloadInterceptors } from './interceptors/responses'
 import { chatCompletionsPayloadInterceptors } from './interceptors/chat-completions'
 import { embeddingsPayloadInterceptors } from './interceptors/embeddings'
@@ -83,7 +84,7 @@ export class CopilotProvider implements ModelProvider {
 
     const variantFiltering = createVariantAndBetaFilteringInterceptor(this.copilotToken, this.accountType)
     this.messagesChain = [variantFiltering, withInitiatorHeader, ...messagesPayloadInterceptors]
-    this.messagesCountTokensChain = [variantFiltering, withInitiatorHeader, ...messagesPayloadInterceptors]
+    this.messagesCountTokensChain = [variantFiltering, withInitiatorHeader, ...messagesCountTokensPayloadInterceptors]
     this.responsesChain = [variantFiltering, withInitiatorHeader, ...responsesPayloadInterceptors]
     this.chatCompletionsChain = [variantFiltering, withInitiatorHeader, ...chatCompletionsPayloadInterceptors]
     this.embeddingsChain = embeddingsPayloadInterceptors
