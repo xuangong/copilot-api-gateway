@@ -9,7 +9,9 @@ import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
 import { initRepo } from '../src/shared/repo/index.ts'
+import { initResponsesStore } from '../src/shared/runtime/responses-store.ts'
 import { __resetPlatformForTests } from '@vnext/platform'
+import { InMemoryResponsesSnapshotStore } from '@vnext/responses-store'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
@@ -118,6 +120,7 @@ function installCopilotFetch(opts: { stream: boolean }) {
 
 test('POST /v1/responses non-stream returns Responses-shaped body', async () => {
   initRepo(stubRepo([stubUpstream()]))
+  initResponsesStore(new InMemoryResponsesSnapshotStore())
   installCopilotFetch({ stream: false })
   const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
   const req = new Request('http://local/v1/responses', {
@@ -145,6 +148,7 @@ test('POST /v1/responses non-stream returns Responses-shaped body', async () => 
 
 test('POST /v1/responses streaming returns Responses SSE events', async () => {
   initRepo(stubRepo([stubUpstream()]))
+  initResponsesStore(new InMemoryResponsesSnapshotStore())
   installCopilotFetch({ stream: true })
   const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
   const req = new Request('http://local/v1/responses', {
@@ -169,6 +173,7 @@ test('POST /v1/responses streaming returns Responses SSE events', async () => {
 
 test('POST /v1/responses with invalid payload returns Responses error shape', async () => {
   initRepo(stubRepo([]))
+  initResponsesStore(new InMemoryResponsesSnapshotStore())
   const app = buildApp({})
   const req = new Request('http://local/v1/responses', {
     method: 'POST',

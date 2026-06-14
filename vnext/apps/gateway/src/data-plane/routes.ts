@@ -53,6 +53,7 @@ import {
   savePostTurnSnapshot,
 } from './dispatch/responses-store-bridge.ts'
 import { renderPreviousResponseNotFound } from './errors/repackage.ts'
+import { getResponsesStore } from '../shared/runtime/responses-store.ts'
 
 export const dataPlane = new Hono<{ Bindings: Env }>()
 
@@ -435,7 +436,7 @@ dataPlane.post('/v1/responses', async (c) => {
     )
   }
   const auth = (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx
-  const store = c.env.responsesStore
+  const store = getResponsesStore()
   const obsCtx: DispatchObsCtx = {
     apiKeyId: auth.apiKeyId,
     userAgent: c.req.header('user-agent') ?? undefined,
@@ -455,8 +456,7 @@ dataPlane.post('/v1/responses', async (c) => {
       errorWrap: messagesErrorWrap,
       auth,
       obsCtx,
-      postParse: store
-        ? async (payload) => {
+      postParse: async (payload) => {
             await expandPreviousResponseId(
               payload as { previous_response_id?: string | null; input?: unknown },
               store,
@@ -464,12 +464,11 @@ dataPlane.post('/v1/responses', async (c) => {
             )
             const expanded = (payload as { input?: unknown }).input
             mergedInputItems = Array.isArray(expanded) ? (expanded as unknown[]) : []
-          }
-        : undefined,
+          },
     },
   )
 
-  if (!store || response.status !== 200) return response
+  if (response.status !== 200) return response
   const ct = response.headers.get('content-type') ?? ''
   if (ct.includes('text/event-stream') && response.body) {
     const [forClient, forSidecar] = response.body.tee()

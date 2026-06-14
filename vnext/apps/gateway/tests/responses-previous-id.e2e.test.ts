@@ -3,6 +3,7 @@ import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
 import { initRepo } from '../src/shared/repo/index.ts'
+import { initResponsesStore } from '../src/shared/runtime/responses-store.ts'
 import { __resetPlatformForTests } from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model } from '@vnext/provider-copilot'
@@ -42,11 +43,10 @@ function installFetch(handler: (req: Request) => Promise<Response> | Response) {
 
 afterEach(() => { globalThis.fetch = originalFetch; __resetPlatformForTests() })
 
-function buildApp(auth: DataPlaneAuthCtx, store: InMemoryResponsesSnapshotStore) {
+function buildApp(auth: DataPlaneAuthCtx) {
   const wrapper = new Hono()
   wrapper.use('*', (c, next) => {
     c.set('auth', auth)
-    ;(c.env as unknown as { responsesStore: InMemoryResponsesSnapshotStore }).responsesStore = store
     return next()
   })
   wrapper.route('/', innerApp)
@@ -70,6 +70,7 @@ test('responses + previous_response_id expands snapshot and clears the field', a
     createdAt: Date.now(),
     expiresAt: Date.now() + 60_000,
   })
+  initResponsesStore(store)
 
   let observedUpstreamBody: { input?: unknown[]; previous_response_id?: unknown } | null = null
   installFetch((req) => {
@@ -94,7 +95,6 @@ test('responses + previous_response_id expands snapshot and clears the field', a
 
   const wrapper = buildApp(
     { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
-    store,
   )
   const res = await wrapper.fetch(new Request('http://x/v1/responses', {
     method: 'POST',
@@ -119,6 +119,7 @@ test('responses + previous_response_id expands snapshot and clears the field', a
 test('responses + unknown previous_response_id returns 400 with verbatim envelope', async () => {
   initRepo(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()
+  initResponsesStore(store)
   installFetch((req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
@@ -131,7 +132,6 @@ test('responses + unknown previous_response_id returns 400 with verbatim envelop
 
   const wrapper = buildApp(
     { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
-    store,
   )
   const res = await wrapper.fetch(new Request('http://x/v1/responses', {
     method: 'POST',
@@ -167,11 +167,11 @@ test('responses + non-array input is rejected by Zod before expand mutates paylo
       return Reflect.get(target, prop, receiver)
     },
   }) as InMemoryResponsesSnapshotStore
+  initResponsesStore(guardedStore)
   installFetch(() => new Response('upstream must not be called', { status: 500 }))
 
   const wrapper = buildApp(
     { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
-    guardedStore,
   )
   const res = await wrapper.fetch(new Request('http://x/v1/responses', {
     method: 'POST',
@@ -198,6 +198,7 @@ test('responses + previous_response_id owned by another api key returns 400', as
     createdAt: Date.now(),
     expiresAt: Date.now() + 60_000,
   })
+  initResponsesStore(store)
   installFetch((req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
@@ -210,7 +211,6 @@ test('responses + previous_response_id owned by another api key returns 400', as
 
   const wrapper = buildApp(
     { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
-    store,
   )
   const res = await wrapper.fetch(new Request('http://x/v1/responses', {
     method: 'POST',
@@ -229,6 +229,7 @@ test('responses + previous_response_id owned by another api key returns 400', as
 test('responses non-stream saves snapshot using upstream response.id', async () => {
   initRepo(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()
+  initResponsesStore(store)
   installFetch((req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
@@ -248,7 +249,6 @@ test('responses non-stream saves snapshot using upstream response.id', async () 
 
   const wrapper = buildApp(
     { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
-    store,
   )
   const res = await wrapper.fetch(new Request('http://x/v1/responses', {
     method: 'POST',
@@ -273,6 +273,7 @@ test('responses non-stream saves snapshot using upstream response.id', async () 
 test('responses stream saves snapshot when response.completed fires', async () => {
   initRepo(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()
+  initResponsesStore(store)
 
   const sse = (events: Array<{ type: string; data: unknown }>) => {
     const enc = new TextEncoder()
@@ -306,7 +307,6 @@ test('responses stream saves snapshot when response.completed fires', async () =
 
   const wrapper = buildApp(
     { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
-    store,
   )
   const res = await wrapper.fetch(new Request('http://x/v1/responses', {
     method: 'POST',

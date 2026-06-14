@@ -18,6 +18,7 @@ import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
 import { initRepo } from '../src/shared/repo/index.ts'
+import { initResponsesStore } from '../src/shared/runtime/responses-store.ts'
 import { __resetPlatformForTests } from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model } from '@vnext/provider-copilot'
@@ -65,11 +66,10 @@ function installFetch(handler: (req: Request) => Promise<Response> | Response) {
 
 afterEach(() => { globalThis.fetch = originalFetch; __resetPlatformForTests() })
 
-function buildApp(auth: DataPlaneAuthCtx, store: InMemoryResponsesSnapshotStore) {
+function buildApp(auth: DataPlaneAuthCtx) {
   const wrapper = new Hono()
   wrapper.use('*', (c, next) => {
     c.set('auth', auth)
-    ;(c.env as unknown as { responsesStore: InMemoryResponsesSnapshotStore }).responsesStore = store
     return next()
   })
   wrapper.route('/', innerApp)
@@ -91,6 +91,7 @@ async function waitForSave(store: InMemoryResponsesSnapshotStore, id: string, ap
 test('round-trip: responses→responses identity preserves id across turns', async () => {
   initRepo(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()
+  initResponsesStore(store)
 
   let turn = 0
   let observedTurn2Body: { input?: unknown[]; previous_response_id?: unknown } | null = null
@@ -125,7 +126,6 @@ test('round-trip: responses→responses identity preserves id across turns', asy
 
   const wrapper = buildApp(
     { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: 'tkn', accountType: 'individual' } } as DataPlaneAuthCtx,
-    store,
   )
 
   // Turn 1 — verify the client sees the same id we will replay.
@@ -173,6 +173,7 @@ test('round-trip: responses client + chat_completions hub (Pair 8) preserves syn
   // assert that surfaced id round-trips through the snapshot store.
   initRepo(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()
+  initResponsesStore(store)
 
   let turn = 0
   let observedTurn2Upstream: { messages?: unknown[] } | null = null
@@ -214,7 +215,6 @@ test('round-trip: responses client + chat_completions hub (Pair 8) preserves syn
 
   const wrapper = buildApp(
     { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: 'tkn', accountType: 'individual' } } as DataPlaneAuthCtx,
-    store,
   )
 
   // Turn 1 — capture the client-visible id (synthesized by Pair 8 from the
