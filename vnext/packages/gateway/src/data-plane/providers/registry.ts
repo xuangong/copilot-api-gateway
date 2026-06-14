@@ -22,12 +22,12 @@ import { __registerPlatformReset } from '@vnext/platform'
 import { getCache } from '../../shared/cache/index.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import { copilotModelEndpoints } from '@vnext/provider-copilot'
-import type { ModelProvider, ProviderBinding } from '@vnext/provider'
+import type { ModelProvider, ProviderBinding, ProviderPlugin } from '@vnext/provider'
 import type { EndpointKey, ModelEndpoints, UpstreamKind } from '@vnext/protocols/common'
-import { CopilotProvider } from '@vnext/provider-copilot'
-import { CustomProvider, type CustomProviderConfig } from '@vnext/provider-custom'
-import { AzureProvider, type AzureProviderConfig } from '@vnext/provider-azure'
-import { SdfProvider, type SdfProviderConfig } from '@vnext/provider-sdf'
+import { CopilotProvider, copilotProviderPlugin } from '@vnext/provider-copilot'
+import { azureProviderPlugin } from '@vnext/provider-azure'
+import { customProviderPlugin } from '@vnext/provider-custom'
+import { sdfProviderPlugin } from '@vnext/provider-sdf'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
 
 export interface CreateProviderOptions {
@@ -45,40 +45,31 @@ export function createCopilotProvider(opts: CreateProviderOptions): ModelProvide
 }
 
 /**
- * Build a ModelProvider from a stored upstream row. Returns null when a
- * Copilot upstream lacks a github token AND no fallback `copilot` opts were
- * passed; custom/azure upstreams construct from their stored config.
+ * Build a ModelProvider from a stored upstream row by dispatching to the
+ * provider's plugin factory. Returns null when no plugin matches the
+ * upstream.provider kind, or when the plugin itself returns null
+ * (Copilot: missing githubToken AND no fallback opts).
  *
- * Note: CustomProvider/AzureProvider constructors VALIDATE config and throw
- * Error on missing apiKey/baseUrl/endpoint/deployment/apiVersion. Callers
- * that want to translate that into HTTP 4xx must wrap in try/catch
- * themselves (see control-plane upstream-probe).
+ * Note: Custom/Azure/Sdf plugin factories may construct providers whose
+ * constructors validate config and throw on missing apiKey/baseUrl/
+ * deployment/etc. Callers wanting HTTP 4xx must wrap in try/catch
+ * (see control-plane upstream-probe).
  */
+const PROVIDER_PLUGINS: ReadonlyMap<UpstreamKind, ProviderPlugin> = new Map(
+  [copilotProviderPlugin, azureProviderPlugin, customProviderPlugin, sdfProviderPlugin]
+    .map((p) => [p.kind, p] as const),
+)
+
 export async function createProviderFromUpstream(
   upstream: UpstreamRecord,
   copilot?: CreateProviderOptions,
 ): Promise<ModelProvider | null> {
-  if (upstream.provider === 'custom') {
-    return new CustomProvider(upstream.config as unknown as CustomProviderConfig)
-  }
-  if (upstream.provider === 'azure') {
-    return new AzureProvider(upstream.config as unknown as AzureProviderConfig)
-  }
-  if (upstream.provider === 'sdf') {
-    return new SdfProvider(upstream.config as unknown as SdfProviderConfig)
-  }
-  if (upstream.provider !== 'copilot') return null
-  const config = upstream.config
-  const accountType = (config.accountType as AccountType | undefined) ?? 'individual'
-  if (typeof config.githubToken === 'string' && config.githubToken) {
-    try {
-      const copilotToken = await getCachedCopilotToken(config.githubToken, accountType)
-      return createCopilotProvider({ copilotToken, accountType })
-    } catch {
-      return copilot ? createCopilotProvider(copilot) : null
-    }
-  }
-  return copilot ? createCopilotProvider(copilot) : null
+  const plugin = PROVIDER_PLUGINS.get(upstream.provider)
+  if (!plugin) return null
+  return plugin.createFromUpstream(upstream, {
+    getCachedCopilotToken,
+    copilotFallback: copilot,
+  })
 }
 
 /**
