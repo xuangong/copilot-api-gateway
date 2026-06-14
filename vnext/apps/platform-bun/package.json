@@ -1,0 +1,16 @@
+{
+  "name": "@vnext/platform-bun",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "start": "bun run src/server.ts"
+  },
+  "dependencies": {
+    "@vnext/gateway": "workspace:*",
+    "@vnext/platform": "workspace:*",
+    "@vnext/responses-store": "workspace:*",
+    "@vnext/shared-cache": "workspace:*"
+  }
+}

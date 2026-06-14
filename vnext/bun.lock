@@ -32,7 +32,31 @@
         "tailwindcss": "3",
       },
     },
-    "apps/gateway": {
+    "apps/platform-bun": {
+      "name": "@vnext/platform-bun",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vnext/gateway": "workspace:*",
+        "@vnext/platform": "workspace:*",
+        "@vnext/responses-store": "workspace:*",
+        "@vnext/shared-cache": "workspace:*",
+      },
+    },
+    "apps/platform-cloudflare": {
+      "name": "@vnext/platform-cloudflare",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vnext/gateway": "workspace:*",
+        "@vnext/platform": "workspace:*",
+        "@vnext/responses-store": "workspace:*",
+        "@vnext/shared-cache": "workspace:*",
+      },
+      "devDependencies": {
+        "@cloudflare/workers-types": "^4.20260602.1",
+        "wrangler": "^4.97.0",
+      },
+    },
+    "packages/gateway": {
       "name": "@vnext/gateway",
       "version": "0.0.0",
       "dependencies": {
@@ -409,11 +433,15 @@
 
     "@vnext/dashboard": ["@vnext/dashboard@workspace:apps/dashboard"],
 
-    "@vnext/gateway": ["@vnext/gateway@workspace:apps/gateway"],
+    "@vnext/gateway": ["@vnext/gateway@workspace:packages/gateway"],
 
     "@vnext/interceptor": ["@vnext/interceptor@workspace:packages/interceptor"],
 
     "@vnext/platform": ["@vnext/platform@workspace:packages/platform"],
+
+    "@vnext/platform-bun": ["@vnext/platform-bun@workspace:apps/platform-bun"],
+
+    "@vnext/platform-cloudflare": ["@vnext/platform-cloudflare@workspace:apps/platform-cloudflare"],
 
     "@vnext/protocols": ["@vnext/protocols@workspace:packages/protocols"],
 
