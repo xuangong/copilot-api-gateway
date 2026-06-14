@@ -369,11 +369,18 @@ dataPlane.post('/v1/messages/count_tokens', async (c) => {
   if (version) extraHeaders['anthropic-version'] = version
 
   try {
-    const response = await binding.provider.fetch(
-      'messages_count_tokens',
-      { method: 'POST', body: JSON.stringify(payload), headers: { 'content-type': 'application/json' } },
-      { operationName: 'count tokens', extraHeaders, enabledFlags: binding.enabledFlags },
-    )
+    const headers = new Headers({ 'content-type': 'application/json' })
+    for (const [k, v] of Object.entries(extraHeaders)) headers.set(k, v)
+    const pr = await binding.provider.fetch({
+      endpoint: 'messages_count_tokens',
+      payload,
+      headers,
+      sourceApi: 'anthropic',
+      operationName: 'count tokens',
+      flags: { isStreaming: false },
+      signal: c.req.raw.signal,
+    })
+    const response = new Response(pr.body, { status: pr.status, headers: pr.headers })
     const json = await response.json()
     return Response.json(json, { status: response.status })
   } catch (err) {
