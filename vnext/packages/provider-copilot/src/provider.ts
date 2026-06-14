@@ -27,6 +27,9 @@ import type {
   PerEndpointCallOptions,
   ProbeResult,
   ProviderFetchOptions,
+  ProviderRequest,
+  ProviderResponse,
+  SourceApi,
   UpstreamResponse,
 } from '@vnext/provider'
 import { probeViaModels } from '@vnext/provider'
@@ -102,37 +105,77 @@ export class CopilotProvider implements ModelProvider {
     return pricingForCopilotModelKey(modelKey)
   }
 
-  async fetch(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
+  async fetch(req: ProviderRequest): Promise<ProviderResponse>
+  async fetch(endpoint: EndpointKey, init: RequestInit, opts?: ProviderFetchOptions): Promise<Response>
+  async fetch(
+    arg: EndpointKey | ProviderRequest,
+    init?: RequestInit,
+    opts: ProviderFetchOptions = {},
+  ): Promise<Response | ProviderResponse> {
+    if (typeof arg === 'object') {
+      return this.fetchInternal(arg)
+    }
+    // Legacy path — adapt into ProviderRequest then unwrap to Response.
+    const endpoint = arg
     const path = COPILOT_PATHS[endpoint]
     if (!path) throw new Error(`CopilotProvider does not support endpoint: ${endpoint}`)
+    // Headers→Record at chain boundary; Invocation.headers is Record. Legacy
+    // mergeHeaders returns Record, so wrap in Headers for the ProviderRequest.
+    const headerRecord = mergeHeaders(init?.headers, opts.extraHeaders)
+    const headers = new Headers(headerRecord)
+    const req: ProviderRequest = {
+      endpoint,
+      payload: parseJsonBody(init?.body),
+      headers,
+      sourceApi: (opts.sourceApi ?? 'anthropic') as SourceApi,
+      signal: init?.signal ?? undefined,
+      operationName: opts.operationName,
+      requireModel: opts.requireModel,
+      timeout: opts.timeout,
+      flags: { isStreaming: false },
+    }
+    const pr = await this.fetchInternal(req, opts.enabledFlags)
+    return new Response(pr.body, { status: pr.status, headers: pr.headers })
+  }
+
+  private async fetchInternal(
+    req: ProviderRequest,
+    enabledFlagsOverride?: ReadonlySet<string>,
+  ): Promise<ProviderResponse> {
+    const path = COPILOT_PATHS[req.endpoint]
+    if (!path) throw new Error(`CopilotProvider does not support endpoint: ${req.endpoint}`)
+
+    // Headers→Record at chain boundary; Invocation.headers is Record.
+    const headerRecord: Record<string, string> = {}
+    req.headers.forEach((v, k) => { headerRecord[k] = v })
 
     const inv: Invocation = {
-      endpoint,
-      enabledFlags: opts.enabledFlags ?? defaultsForUpstream('copilot'),
-      sourceApi: opts.sourceApi,
-      payload: parseJsonBody(init.body),
-      headers: mergeHeaders(init.headers, opts.extraHeaders),
+      endpoint: req.endpoint,
+      enabledFlags: enabledFlagsOverride ?? defaultsForUpstream('copilot'),
+      sourceApi: mapSourceApi(req.sourceApi),
+      payload: req.payload,
+      headers: headerRecord,
     }
     const ctx: RequestContext = {
       requestStartedAt: Date.now(),
-      downstreamAbortSignal: init.signal ?? undefined,
+      downstreamAbortSignal: req.signal,
     }
+    const interceptors = this.interceptorsFor(req.endpoint)
+    const requireModel = req.requireModel ?? req.endpoint !== 'messages_count_tokens'
 
-    const interceptors = this.interceptorsFor(endpoint)
-    const requireModel = opts.requireModel ?? endpoint !== 'messages_count_tokens'
-
-    return runInterceptors(inv, ctx, interceptors, () =>
+    const response = await runInterceptors(inv, ctx, interceptors, () =>
       callCopilotAPI({
         endpoint: path,
         payload: inv.payload,
-        operationName: opts.operationName ?? `call ${endpoint}`,
+        operationName: req.operationName ?? `call ${req.endpoint}`,
         copilotToken: this.copilotToken,
         accountType: this.accountType,
-        timeout: opts.timeout,
+        timeout: req.timeout,
         extraHeaders: inv.headers,
         requireModel,
       }),
     )
+    return { status: response.status, headers: response.headers, body: response.body }
   }
 
   // ── per-endpoint call* methods (Phase A Task 2) ────────────────────────────
@@ -308,4 +351,11 @@ function buildExtraHeaders(opts: PerEndpointCallOptions): Record<string, string>
   const merged: Record<string, string> = { ...(opts.extraHeaders ?? {}) }
   if (opts.anthropicBeta) merged['anthropic-beta'] = opts.anthropicBeta
   return Object.keys(merged).length > 0 ? merged : undefined
+}
+
+function mapSourceApi(src: SourceApi | undefined): 'messages' | 'chat_completions' | 'responses' | 'gemini' | undefined {
+  if (!src) return undefined
+  if (src === 'anthropic') return 'messages'
+  if (src === 'openai') return 'chat_completions'
+  return src
 }
