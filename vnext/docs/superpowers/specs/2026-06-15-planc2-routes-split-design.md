@@ -91,6 +91,8 @@ export interface DispatchObsCtx {
 export interface DispatchInput<TPayload> {
   parse: (raw: unknown) => TPayload
   modelOf: (payload: TPayload) => string
+  /** 现状保留字段：parse 后立即同步 transform。当前 5 个端点都未使用，
+   *  保留以避免同时改 dispatch 内部分支；可由后续 plan 清理。 */
   preprocess?: (payload: TPayload) => TPayload
   postParse?: (payload: TPayload) => Promise<void>
   fallbackMaxOutputTokens?: number
@@ -214,12 +216,18 @@ export function serveMessages(args: MessagesServeArgs): Promise<Response> {
 #### 2.9 `chat-flow/responses/serve.ts`（~35 行）
 
 ```ts
+export interface ResponsesServeArgs {
+  raw: unknown
+  auth: DataPlaneAuthCtx
+  obsCtx: DispatchObsCtx
+}
+
 export interface ResponsesServeResult {
   response: Response
   mergedInputItems: unknown[]
 }
 
-export async function serveResponses(args): Promise<ResponsesServeResult> {
+export async function serveResponses(args: ResponsesServeArgs): Promise<ResponsesServeResult> {
   const store = getResponsesStore()
   let mergedInputItems: unknown[] = []
   const response = await dispatch(args.raw, {
@@ -418,9 +426,11 @@ test('attachStreamSidecar — falls back to fire-and-forget when executionCtx ab
 
 ### 7. 验收标准
 
-1. `routes.ts` ≤ 40 行非空白代码。
+行数均按"非空白非纯注释代码行"计算（即 `wc -l` 减去空行和单行/块注释行）。
+
+1. `routes.ts` ≤ 40 行。
 2. `chat-flow/shared/dispatch.ts` ≤ 100 行；签名 `(rawJson, input) => Promise<Response>`；**不 import `hono`**。
-3. 每个 `chat-flow/*/serve.ts` ≤ 60 行；**不 import `hono`**。
+3. 每个 `chat-flow/*/serve.ts` ≤ 60 行；**不 import `hono`**（`count-tokens/serve.ts` 例外可放宽至 70 行，因为不走 dispatch 而是独立路径）。
 4. 每个 `chat-flow/*/http.ts` ≤ 80 行；是允许 import `Context from 'hono'` 的唯一层（连同 `routes.ts` 自身 import `Hono`）。
 5. `bun test`（curated）pass 数不下降；新增 ≥ 13 条测试全部通过。
 6. `bunx tsc --noEmit` 全 pass。
