@@ -37,3 +37,5 @@ export { copilotModelEndpoints } from "./endpoints"
 export { parseSSEStream as parseMessagesSSEStream } from "./parse/messages-sse"
 export { parseChatSSEStream } from "./parse/chat-sse"
 export { parseResponsesSSEStream } from "./parse/responses-sse"
+
+export { copilotProviderPlugin } from './plugin'
