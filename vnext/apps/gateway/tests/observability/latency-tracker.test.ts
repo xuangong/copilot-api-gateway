@@ -1,16 +1,17 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { SqliteRepo } from '../../src/shared/repo/sqlite.ts'
-import { setRepoOverride, clearRepoOverride } from '../../src/shared/repo/index.ts'
+import { initRepo } from '../../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import { recordLatency, startTimer } from '../../src/shared/observability/latency-tracker.ts'
 
 let repo: SqliteRepo
 
 beforeEach(() => {
   repo = new SqliteRepo(new Database(':memory:'))
-  setRepoOverride(repo)
+  initRepo(repo)
 })
-afterEach(() => clearRepoOverride())
+afterEach(() => __resetPlatformForTests())
 
 const today = () => new Date().toISOString().slice(0, 13)
 

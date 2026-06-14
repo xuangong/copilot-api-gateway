@@ -7,7 +7,8 @@
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type {
   ApiKey,
   GitHubAccount,
@@ -81,11 +82,11 @@ let store: ReturnType<typeof inMemoryRepo>
 
 beforeEach(() => {
   store = inMemoryRepo()
-  setRepoForTest(store.repo)
+  initRepo(store.repo)
 })
 
 afterEach(() => {
-  setRepoForTest(null)
+  __resetPlatformForTests()
 })
 
 test('GET /api/export non-admin → 403', async () => {

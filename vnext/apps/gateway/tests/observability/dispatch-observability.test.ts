@@ -13,7 +13,8 @@ import { test, expect, afterEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { Hono } from 'hono'
 import { app as innerApp } from '../../src/app.ts'
-import { setRepoForTest } from '../../src/shared/repo/index.ts'
+import { initRepo } from '../../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import { SqliteRepo } from '../../src/shared/repo/sqlite.ts'
 import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
@@ -66,7 +67,7 @@ function installFetch(handler: FetchHandler) {
 
 afterEach(() => {
   globalThis.fetch = originalFetch
-  setRepoForTest(null)
+  __resetPlatformForTests()
 })
 
 function buildApp(auth: DataPlaneAuthCtx) {
@@ -102,7 +103,7 @@ test('streaming SSE dispatch writes 1 latency + 1 usage + 2 perf rows', async ()
     updatedAt: '2026-01-01T00:00:00Z',
   })
 
-  setRepoForTest(repo)
+  initRepo(repo)
 
   // Stub fetch: /models → model list; everything else → SSE streaming body
   installFetch((req) => {
@@ -202,7 +203,7 @@ test('non-streaming dispatch persists pricing snapshot from provider.getPricingF
     updatedAt: '2026-01-01T00:00:00Z',
   })
 
-  setRepoForTest(repo)
+  initRepo(repo)
 
   // gpt-4 has built-in Copilot pricing { input: 30, output: 60 }.
   const upstreamJson = {

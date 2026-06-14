@@ -2,7 +2,8 @@
 import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model } from '@vnext/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
@@ -39,7 +40,7 @@ function installFetch(handler: (req: Request) => Promise<Response> | Response) {
   }) as typeof fetch
 }
 
-afterEach(() => { globalThis.fetch = originalFetch; setRepoForTest(null) })
+afterEach(() => { globalThis.fetch = originalFetch; __resetPlatformForTests() })
 
 function buildApp(auth: DataPlaneAuthCtx, store: InMemoryResponsesSnapshotStore) {
   const wrapper = new Hono()
@@ -56,7 +57,7 @@ const COPILOT_TOKEN = 'tkn'
 const MODEL_ID = 'gpt-5-mini'
 
 test('responses + previous_response_id expands snapshot and clears the field', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()
   await store.save({
     responseId: 'resp_prev',
@@ -116,7 +117,7 @@ test('responses + previous_response_id expands snapshot and clears the field', a
 })
 
 test('responses + unknown previous_response_id returns 400 with verbatim envelope', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()
   installFetch((req) => {
     const url = new URL(req.url)
@@ -155,7 +156,7 @@ test('responses + non-array input is rejected by Zod before expand mutates paylo
   // silently coerce a non-array `input` to []. With expand moved into dispatch
   // (post-parse), Zod must reject malformed input first and the snapshot store
   // must never be touched.
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()
   // If expand were to fire we'd want it to fail loudly — wrap load() to throw.
   const guardedStore = new Proxy(store, {
@@ -187,7 +188,7 @@ test('responses + non-array input is rejected by Zod before expand mutates paylo
 })
 
 test('responses + previous_response_id owned by another api key returns 400', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()
   await store.save({
     responseId: 'resp_owned',
@@ -226,7 +227,7 @@ test('responses + previous_response_id owned by another api key returns 400', as
 })
 
 test('responses non-stream saves snapshot using upstream response.id', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()
   installFetch((req) => {
     const url = new URL(req.url)
@@ -270,7 +271,7 @@ test('responses non-stream saves snapshot using upstream response.id', async () 
 })
 
 test('responses stream saves snapshot when response.completed fires', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()
 
   const sse = (events: Array<{ type: string; data: unknown }>) => {

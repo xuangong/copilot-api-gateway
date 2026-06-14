@@ -13,7 +13,8 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { SqliteRepo } from '../../../src/shared/repo/sqlite.ts'
-import { setRepoOverride, clearRepoOverride } from '../../../src/shared/repo/index.ts'
+import { initRepo } from '../../../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import { runEmbeddingsAttempt } from '../../../src/data-plane/observability/attempts/embeddings-attempt.ts'
 
 let repo: SqliteRepo
@@ -22,10 +23,10 @@ let db: Database
 beforeEach(() => {
   db = new Database(':memory:')
   repo = new SqliteRepo(db)
-  setRepoOverride(repo)
+  initRepo(repo)
 })
 
-afterEach(() => clearRepoOverride())
+afterEach(() => __resetPlatformForTests())
 
 const dayStart = () => new Date().toISOString().slice(0, 10) + 'T00'
 const dayEnd = () => new Date().toISOString().slice(0, 10) + 'T24'

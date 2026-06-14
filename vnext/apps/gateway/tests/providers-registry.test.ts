@@ -1,5 +1,6 @@
 import { test, expect, afterEach } from 'bun:test'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import {
   listProviderBindings,
@@ -62,13 +63,13 @@ function stubFetch(models: Model[]) {
 
 afterEach(() => {
   globalThis.fetch = originalFetch
-  setRepoForTest(null)
+  __resetPlatformForTests()
   setCacheForTest(null)
   _clearModelsMemoForTest()
 })
 
 test('listProviderBindings expands stored Copilot upstream into per-model bindings', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   stubFetch([stubModel('gpt-4o'), stubModel('o3-mini')])
   const bindings = await listProviderBindings({ copilot: { copilotToken: 'tkn', accountType: 'individual' } })
   expect(bindings.map((b) => b.model.id).sort()).toEqual(['gpt-4o', 'o3-mini'])
@@ -77,14 +78,14 @@ test('listProviderBindings expands stored Copilot upstream into per-model bindin
 })
 
 test('listProviderBindings hides disabledPublicModelIds', async () => {
-  setRepoForTest(stubRepo([stubUpstream({ disabledPublicModelIds: ['o3-mini'] })]))
+  initRepo(stubRepo([stubUpstream({ disabledPublicModelIds: ['o3-mini'] })]))
   stubFetch([stubModel('gpt-4o'), stubModel('o3-mini')])
   const bindings = await listProviderBindings({ copilot: { copilotToken: 'tkn', accountType: 'individual' } })
   expect(bindings.map((b) => b.model.id)).toEqual(['gpt-4o'])
 })
 
 test('listProviderBindings falls back to request-scoped Copilot when no stored upstream', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   stubFetch([stubModel('gpt-4o')])
   const bindings = await listProviderBindings({ copilot: { copilotToken: 'tkn', accountType: 'individual' } })
   expect(bindings).toHaveLength(1)
@@ -92,7 +93,7 @@ test('listProviderBindings falls back to request-scoped Copilot when no stored u
 })
 
 test('listUpstreamModels dedupes by model id and attaches provenance', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   stubFetch([stubModel('gpt-4o'), stubModel('gpt-4o')])
   const resp = await listUpstreamModels({ copilot: { copilotToken: 'tkn', accountType: 'individual' } })
   expect(resp.data).toHaveLength(1)
@@ -160,7 +161,7 @@ test('createProviderFromUpstream does not require copilot opts for custom/azure'
 
 // Endpoint inference per provider kind — custom/azure must NOT use copilot heuristic.
 test('listProviderBindings: copilot model endpoints follow copilot heuristic', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   stubFetch([stubModel('claude-3.7-sonnet'), stubModel('gpt-5'), stubModel('text-embedding-3', 'embeddings')])
   const bindings = await listProviderBindings({ copilot: { copilotToken: 't', accountType: 'individual' } })
   const byId = new Map(bindings.map((b) => [b.model.id, b.model.endpoints]))
@@ -170,7 +171,7 @@ test('listProviderBindings: copilot model endpoints follow copilot heuristic', a
 })
 
 test('listProviderBindings: custom model endpoints derive from supportedEndpoints (no copilot heuristic)', async () => {
-  setRepoForTest(stubRepo([customUpstream()]))
+  initRepo(stubRepo([customUpstream()]))
   // Even a model named "claude-3.7-sonnet" on a custom upstream must NOT
   // get `messages` — that's copilot-specific. It should reflect the
   // upstream's declared endpoints (chat_completions + embeddings here).
@@ -187,7 +188,7 @@ test('listProviderBindings: custom model endpoints derive from supportedEndpoint
 })
 
 test('listProviderBindings: custom embedding model id tokens narrow to embeddings (bge/e5/voyage/nomic/mistral-embed)', async () => {
-  setRepoForTest(stubRepo([customUpstream()]))
+  initRepo(stubRepo([customUpstream()]))
   // Models without explicit capabilities.type=embeddings — pure id-token detection.
   stubFetch([
     stubModel('bge-large-en-v1.5'),
@@ -204,7 +205,7 @@ test('listProviderBindings: custom embedding model id tokens narrow to embedding
 })
 
 test('listProviderBindings: azure model endpoints derive from supportedEndpoints (no copilot heuristic)', async () => {
-  setRepoForTest(stubRepo([azureUpstream({ config: {
+  initRepo(stubRepo([azureUpstream({ config: {
     name: 'my-azure',
     endpoint: 'https://az.openai.azure.com',
     apiKey: 'az-secret',
@@ -225,7 +226,7 @@ test('listProviderBindings: azure model endpoints derive from supportedEndpoints
 })
 
 test('L2: second call backfills L1 when L1 was cleared mid-life', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   const l2 = new MemoryCache()
   setCacheForTest(l2)
 
@@ -251,7 +252,7 @@ test('L2: second call backfills L1 when L1 was cleared mid-life', async () => {
 })
 
 test('L2: a failing get is treated as a miss, not a 5xx', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   setCacheForTest({
     async get() { throw new Error('kv down') },
     async set() {},

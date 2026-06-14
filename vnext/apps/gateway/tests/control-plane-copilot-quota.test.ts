@@ -6,7 +6,8 @@
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type { GitHubAccount, Repo } from '../src/shared/repo/types.ts'
 import {
   copilotQuotaRouter,
@@ -69,7 +70,7 @@ let originalFetch: typeof fetch
 
 beforeEach(() => {
   store = inMemoryRepo()
-  setRepoForTest(store.repo)
+  initRepo(store.repo)
   originalFetch = globalThis.fetch
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
@@ -84,7 +85,7 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch
-  setRepoForTest(null)
+  __resetPlatformForTests()
 })
 
 test('GET /api/copilot-quota unauthenticated → 401', async () => {

@@ -17,7 +17,8 @@
 import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model } from '@vnext/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
@@ -62,7 +63,7 @@ function installFetch(handler: (req: Request) => Promise<Response> | Response) {
   }) as typeof fetch
 }
 
-afterEach(() => { globalThis.fetch = originalFetch; setRepoForTest(null) })
+afterEach(() => { globalThis.fetch = originalFetch; __resetPlatformForTests() })
 
 function buildApp(auth: DataPlaneAuthCtx, store: InMemoryResponsesSnapshotStore) {
   const wrapper = new Hono()
@@ -88,7 +89,7 @@ async function waitForSave(store: InMemoryResponsesSnapshotStore, id: string, ap
 }
 
 test('round-trip: responses→responses identity preserves id across turns', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()
 
   let turn = 0
@@ -170,7 +171,7 @@ test('round-trip: responses client + chat_completions hub (Pair 8) preserves syn
   // Responses request is translated through Pair 8. The translator surfaces
   // the upstream chat completion id as the Responses `response.id`, and we
   // assert that surfaced id round-trips through the snapshot store.
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()
 
   let turn = 0

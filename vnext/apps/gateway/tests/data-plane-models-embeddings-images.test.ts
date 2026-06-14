@@ -8,7 +8,8 @@
  */
 import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import { modelsRouter, type DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
@@ -62,7 +63,7 @@ function installFetch(handler: FetchHandler) {
 
 afterEach(() => {
   globalThis.fetch = originalFetch
-  setRepoForTest(null)
+  __resetPlatformForTests()
 })
 
 function buildApp(router: Hono, auth: DataPlaneAuthCtx = {}) {
@@ -75,7 +76,7 @@ function buildApp(router: Hono, auth: DataPlaneAuthCtx = {}) {
 // ── models ───────────────────────────────────────────────────────────────────
 
 test('GET /api/models returns empty list with no upstream', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const res = await buildApp(modelsRouter).request('/api/models')
   expect(res.status).toBe(200)
   const body = await res.json() as { data: unknown[] }
@@ -83,13 +84,13 @@ test('GET /api/models returns empty list with no upstream', async () => {
 })
 
 test('GET /v1/models 404 when no upstream and no copilot token', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const res = await buildApp(modelsRouter).request('/v1/models')
   expect(res.status).toBe(404)
 })
 
 test('GET /v1/models success when stored upstream serves models', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   installFetch(async () => new Response(
     JSON.stringify({ object: 'list', data: [stubModel('gpt-4o')] } satisfies ModelsResponse),
     { status: 200, headers: { 'content-type': 'application/json' } },
@@ -103,7 +104,7 @@ test('GET /v1/models success when stored upstream serves models', async () => {
 // ── embeddings ───────────────────────────────────────────────────────────────
 
 test('POST /v1/embeddings 400 without model', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const res = await buildApp(embeddingsRouter).request('/v1/embeddings', {
     method: 'POST', body: '{}', headers: { 'content-type': 'application/json' },
   })
@@ -111,7 +112,7 @@ test('POST /v1/embeddings 400 without model', async () => {
 })
 
 test('POST /v1/embeddings 404 when no binding', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const res = await buildApp(embeddingsRouter).request('/v1/embeddings', {
     method: 'POST',
     body: JSON.stringify({ model: 'text-embedding-3', input: 'hi' }),
@@ -121,7 +122,7 @@ test('POST /v1/embeddings 404 when no binding', async () => {
 })
 
 test('POST /v1/embeddings success forwards upstream JSON', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   installFetch(async (req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
@@ -146,7 +147,7 @@ test('POST /v1/embeddings success forwards upstream JSON', async () => {
 // ── images ───────────────────────────────────────────────────────────────────
 
 test('POST /v1/images/generations 400 without model', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const res = await buildApp(imagesRouter).request('/v1/images/generations', {
     method: 'POST', body: '{}', headers: { 'content-type': 'application/json' },
   })
@@ -154,7 +155,7 @@ test('POST /v1/images/generations 400 without model', async () => {
 })
 
 test('POST /v1/images/generations 404 when no binding', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const res = await buildApp(imagesRouter).request('/v1/images/generations', {
     method: 'POST',
     body: JSON.stringify({ model: 'gpt-image-1', prompt: 'a cat' }),
@@ -164,7 +165,7 @@ test('POST /v1/images/generations 404 when no binding', async () => {
 })
 
 test('POST /v1/images/edits 400 when not multipart', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const res = await buildApp(imagesRouter).request('/v1/images/edits', {
     method: 'POST', body: '{}', headers: { 'content-type': 'application/json' },
   })
@@ -172,7 +173,7 @@ test('POST /v1/images/edits 400 when not multipart', async () => {
 })
 
 test('POST /v1/images/edits 400 when model field missing', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const fd = new FormData()
   fd.append('image', new Blob(['x'], { type: 'image/png' }), 'a.png')
   const res = await buildApp(imagesRouter).request('/v1/images/edits', {

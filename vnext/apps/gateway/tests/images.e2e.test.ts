@@ -13,7 +13,8 @@
 import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
 
@@ -24,7 +25,7 @@ const stubRepo = (upstreams: UpstreamRecord[]): Repo => ({
 } as unknown as Repo)
 
 afterEach(() => {
-  setRepoForTest(null)
+  __resetPlatformForTests()
 })
 
 function buildApp(auth: DataPlaneAuthCtx) {
@@ -35,7 +36,7 @@ function buildApp(auth: DataPlaneAuthCtx) {
 }
 
 test('POST /v1/images/generations 400 without model', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const app = buildApp({})
   const req = new Request('http://local/v1/images/generations', {
     method: 'POST',
@@ -47,7 +48,7 @@ test('POST /v1/images/generations 400 without model', async () => {
 })
 
 test('POST /v1/images/generations 404 when no binding for model', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const app = buildApp({})
   const req = new Request('http://local/v1/images/generations', {
     method: 'POST',
@@ -62,7 +63,7 @@ test('POST /v1/images/generations 404 when no binding for model', async () => {
 })
 
 test('POST /v1/images/edits 400 when not multipart', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const app = buildApp({})
   const req = new Request('http://local/v1/images/edits', {
     method: 'POST',
@@ -74,7 +75,7 @@ test('POST /v1/images/edits 400 when not multipart', async () => {
 })
 
 test('POST /v1/images/edits 400 when model field missing in multipart', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const app = buildApp({})
   const form = new FormData()
   form.append('image', new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }), 'a.png')
@@ -87,7 +88,7 @@ test('POST /v1/images/edits 400 when model field missing in multipart', async ()
 })
 
 test('POST /v1/images/edits 404 when no binding for model', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const app = buildApp({})
   const form = new FormData()
   form.append('model', 'gpt-image-1')

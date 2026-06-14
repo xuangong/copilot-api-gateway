@@ -1,7 +1,8 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { SqliteRepo } from '../../src/shared/repo/sqlite.ts'
-import { setRepoOverride, clearRepoOverride, getRepo } from '../../src/shared/repo/index.ts'
+import { initRepo, getRepo } from '../../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import {
   trackNonStreamingUsage,
   trackStreamingUsage,
@@ -12,9 +13,9 @@ let repo: SqliteRepo
 
 beforeEach(() => {
   repo = new SqliteRepo(new Database(':memory:'))
-  setRepoOverride(repo)
+  initRepo(repo)
 })
-afterEach(() => clearRepoOverride())
+afterEach(() => __resetPlatformForTests())
 
 const baseKey = (id: string) => ({
   id, name: id, key: `sk-${id}`,

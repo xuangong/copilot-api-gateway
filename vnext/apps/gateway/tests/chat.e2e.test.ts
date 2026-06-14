@@ -9,7 +9,8 @@
 import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
@@ -62,7 +63,7 @@ function installFetch(handler: FetchHandler) {
 
 afterEach(() => {
   globalThis.fetch = originalFetch
-  setRepoForTest(null)
+  __resetPlatformForTests()
 })
 
 function buildApp(auth: DataPlaneAuthCtx) {
@@ -123,7 +124,7 @@ function installCopilotFetch(opts: { stream: boolean; upstreamStatus?: number; u
 }
 
 test('POST /v1/chat/completions non-stream returns OpenAI-shaped body', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   installCopilotFetch({ stream: false })
   const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
   const req = new Request('http://local/v1/chat/completions', {
@@ -149,7 +150,7 @@ test('POST /v1/chat/completions non-stream returns OpenAI-shaped body', async ()
 })
 
 test('POST /v1/chat/completions streaming returns OpenAI SSE chunks + [DONE]', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   installCopilotFetch({ stream: true })
   const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
   const req = new Request('http://local/v1/chat/completions', {
@@ -172,7 +173,7 @@ test('POST /v1/chat/completions streaming returns OpenAI SSE chunks + [DONE]', a
 })
 
 test('POST /v1/chat/completions with invalid payload returns OpenAI error shape', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const app = buildApp({})
   const req = new Request('http://local/v1/chat/completions', {
     method: 'POST',
@@ -184,7 +185,7 @@ test('POST /v1/chat/completions with invalid payload returns OpenAI error shape'
 })
 
 test('POST /v1/chat/completions surfaces upstream 400 as OpenAI error envelope', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   installCopilotFetch({ stream: false, upstreamStatus: 400, upstreamBody: { error: { message: 'model not allowed' } } })
   const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
   const req = new Request('http://local/v1/chat/completions', {

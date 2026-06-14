@@ -1,5 +1,6 @@
 import { test, expect, beforeEach } from 'bun:test'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type { ApiKey, Repo } from '../src/shared/repo/types.ts'
 import {
   createApiKey,
@@ -34,7 +35,7 @@ let store: Map<string, ApiKey>
 beforeEach(() => {
   const { store: s, repo: apiKeys } = inMemoryApiKeyRepo()
   store = s
-  setRepoForTest({ apiKeys } as unknown as Repo)
+  initRepo({ apiKeys } as unknown as Repo)
 })
 
 test('createApiKey sets defaults and persists', async () => {

@@ -9,7 +9,8 @@ import { test, expect, afterEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { Hono } from 'hono'
 import { app as innerApp } from '../../src/app.ts'
-import { setRepoForTest } from '../../src/shared/repo/index.ts'
+import { initRepo } from '../../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import { SqliteRepo } from '../../src/shared/repo/sqlite.ts'
 import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
@@ -49,7 +50,7 @@ function installFetch(handler: FetchHandler) {
 
 afterEach(() => {
   globalThis.fetch = originalFetch
-  setRepoForTest(null)
+  __resetPlatformForTests()
 })
 
 function buildApp(auth: DataPlaneAuthCtx) {
@@ -96,7 +97,7 @@ test('dispatch returns 429 when token quota exceeded', async () => {
     updatedAt: '2026-01-01T00:00:00Z',
   })
 
-  setRepoForTest(repo)
+  initRepo(repo)
 
   // Stub globalThis.fetch so the Copilot provider returns a model list
   // containing MODEL_ID, so enumerateBindingCandidates succeeds

@@ -9,7 +9,8 @@
 import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
@@ -62,7 +63,7 @@ function installFetch(handler: FetchHandler) {
 
 afterEach(() => {
   globalThis.fetch = originalFetch
-  setRepoForTest(null)
+  __resetPlatformForTests()
 })
 
 function buildApp(auth: DataPlaneAuthCtx) {
@@ -109,7 +110,7 @@ function installCopilotFetch(opts: { upstreamStatus?: number; upstreamBody?: unk
 }
 
 test('POST /v1/embeddings returns OpenAI-shaped embeddings list', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   installCopilotFetch()
   const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
   const req = new Request('http://local/v1/embeddings', {
@@ -127,7 +128,7 @@ test('POST /v1/embeddings returns OpenAI-shaped embeddings list', async () => {
 })
 
 test('POST /v1/embeddings with missing model returns 400', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const app = buildApp({})
   const req = new Request('http://local/v1/embeddings', {
     method: 'POST',
@@ -139,7 +140,7 @@ test('POST /v1/embeddings with missing model returns 400', async () => {
 })
 
 test('POST /v1/embeddings 404 when model has no embeddings binding', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const app = buildApp({})
   const req = new Request('http://local/v1/embeddings', {
     method: 'POST',
@@ -151,7 +152,7 @@ test('POST /v1/embeddings 404 when model has no embeddings binding', async () =>
 })
 
 test('POST /v1/embeddings supports array input', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   installCopilotFetch()
   const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
   const req = new Request('http://local/v1/embeddings', {

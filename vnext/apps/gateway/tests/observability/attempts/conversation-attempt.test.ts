@@ -12,7 +12,8 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { SqliteRepo } from '../../../src/shared/repo/sqlite.ts'
-import { setRepoOverride, clearRepoOverride } from '../../../src/shared/repo/index.ts'
+import { initRepo } from '../../../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import { runConversationAttempt } from '../../../src/data-plane/observability/attempts/conversation-attempt.ts'
 import { HTTPError } from '@vnext/provider'
 
@@ -22,10 +23,10 @@ let db: Database
 beforeEach(() => {
   db = new Database(':memory:')
   repo = new SqliteRepo(db)
-  setRepoOverride(repo)
+  initRepo(repo)
 })
 
-afterEach(() => clearRepoOverride())
+afterEach(() => __resetPlatformForTests())
 
 const todayHourPrefix = () => new Date().toISOString().slice(0, 10)
 const dayStart = () => todayHourPrefix() + 'T00'

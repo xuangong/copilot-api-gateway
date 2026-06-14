@@ -7,7 +7,8 @@
  */
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type {
   ApiKey, GitHubAccount, InviteCode, KeyAssignment,
   Repo, User, UserSession,
@@ -133,7 +134,7 @@ let mail: Captured
 
 beforeEach(() => {
   store = inMemoryRepo()
-  setRepoForTest(store.repo)
+  initRepo(store.repo)
   resetAuthStoresForTest()
   mail = { codes: [], magic: [] }
   setEmailSenderForTest(captureSender(mail))

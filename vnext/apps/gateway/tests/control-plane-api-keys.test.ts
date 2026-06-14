@@ -7,7 +7,7 @@
  */
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
 import type {
   ApiKey,
   KeyAssignment,
@@ -90,7 +90,7 @@ let store: ReturnType<typeof inMemoryRepo>
 
 beforeEach(() => {
   store = inMemoryRepo()
-  setRepoForTest(store.repo)
+  initRepo(store.repo)
 })
 
 test('GET / as admin returns all keys with assignees', async () => {

@@ -7,7 +7,8 @@
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type {
   InviteCode, Repo, User, UserSession,
 } from '../src/shared/repo/types.ts'
@@ -95,7 +96,7 @@ let store: ReturnType<typeof inMemoryRepo>
 
 beforeEach(() => {
   store = inMemoryRepo()
-  setRepoForTest(store.repo)
+  initRepo(store.repo)
   resetAuthStoresForTest()
 })
 

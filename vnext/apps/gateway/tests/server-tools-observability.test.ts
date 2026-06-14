@@ -15,7 +15,8 @@
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import { SqliteRepo } from '../src/shared/repo/sqlite.ts'
 import { generateImageViaBinding, type ImageGenerationConfig } from '../src/data-plane/orchestrator/server-tools/plugins/image-generation/core.ts'
 import { handleMessagesWebSearch } from '../src/data-plane/orchestrator/server-tools/plugins/web-search/route-handler.ts'
@@ -30,13 +31,13 @@ let db: Database
 beforeEach(() => {
   db = new Database(':memory:')
   repo = new SqliteRepo(db)
-  setRepoForTest(repo)
+  initRepo(repo)
   invalidateResolverCache()
 })
 
 afterEach(() => {
   globalThis.fetch = origFetch
-  setRepoForTest(null)
+  __resetPlatformForTests()
   invalidateResolverCache()
 })
 

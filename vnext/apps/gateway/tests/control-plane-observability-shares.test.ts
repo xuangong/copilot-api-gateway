@@ -6,7 +6,8 @@
  */
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type { ObservabilityShare, Repo, User } from '../src/shared/repo/types.ts'
 import {
   observabilitySharesRouter,
@@ -63,7 +64,7 @@ let store: ReturnType<typeof inMemoryRepo>
 
 beforeEach(() => {
   store = inMemoryRepo()
-  setRepoForTest(store.repo)
+  initRepo(store.repo)
 })
 
 test('POST unauthenticated → 403', async () => {

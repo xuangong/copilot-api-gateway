@@ -8,7 +8,8 @@
  *   - stub globalThis.fetch to swallow any provider calls
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type { Repo } from '../src/shared/repo/types.ts'
 import { handleResponsesImageGeneration } from '../src/data-plane/orchestrator/server-tools/plugins/image-generation/route-handler.ts'
 
@@ -39,12 +40,12 @@ function emptyRepo(): Repo {
 }
 
 beforeEach(() => {
-  setRepoForTest(emptyRepo())
+  initRepo(emptyRepo())
 })
 
 afterEach(() => {
   globalThis.fetch = origFetch
-  setRepoForTest(null)
+  __resetPlatformForTests()
 })
 
 const basePayload = {

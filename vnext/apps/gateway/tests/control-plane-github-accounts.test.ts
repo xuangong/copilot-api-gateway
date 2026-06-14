@@ -9,7 +9,8 @@
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type { GitHubAccount, Repo } from '../src/shared/repo/types.ts'
 import {
   githubAccountsRouter,
@@ -70,7 +71,7 @@ let originalFetch: typeof fetch
 
 beforeEach(() => {
   store = inMemoryRepo()
-  setRepoForTest(store.repo)
+  initRepo(store.repo)
   originalFetch = globalThis.fetch
   // Shim: /user → 200 (token valid), /copilot_internal/user → quota json
   globalThis.fetch = (async (input: RequestInfo | URL) => {

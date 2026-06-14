@@ -6,7 +6,8 @@
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type {
   ApiKey,
   KeyAssignment,
@@ -108,11 +109,11 @@ let store: ReturnType<typeof inMemoryRepo>
 
 beforeEach(() => {
   store = inMemoryRepo()
-  setRepoForTest(store.repo)
+  initRepo(store.repo)
 })
 
 afterEach(() => {
-  setRepoForTest(null)
+  __resetPlatformForTests()
 })
 
 const RANGE = '?start=2026-03-01T00&end=2026-03-01T23'

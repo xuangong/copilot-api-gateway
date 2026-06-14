@@ -27,7 +27,8 @@
 import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../../app.ts'
-import { setRepoForTest } from '../../shared/repo/index.ts'
+import { initRepo } from '../../shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../../shared/repo/types.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import type { DataPlaneAuthCtx } from '../models/routes.ts'
@@ -171,7 +172,7 @@ function installCapturingFetch(
 
 afterEach(() => {
   globalThis.fetch = originalFetch
-  setRepoForTest(null)
+  __resetPlatformForTests()
 })
 
 function buildApp(auth: DataPlaneAuthCtx) {
@@ -192,7 +193,7 @@ const MESSAGES_MODEL_ID = 'gpt-4o-anthropic-bridge'
 const CHAT_MODEL_ID = 'gpt-4o-2024-08-06'
 
 test('messages→messages identity: request body forwarded upstream unchanged (no IR rewrite)', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   const captured: CapturedUpstreamCall[] = []
   installCapturingFetch(captured, stubMessagesModel(MESSAGES_MODEL_ID))
   const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
@@ -235,7 +236,7 @@ test('messages→chat_completions cross-pair: Anthropic Messages client request 
   // so the selector falls through to chat_completions. The translator pair is
   // PAIR_MESSAGES_TO_CHAT (translateMessagesToChat for request, translateChatBodyToMessages
   // for response).
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   const captured: CapturedUpstreamCall[] = []
   installCapturingFetch(captured, stubChatModel(CHAT_MODEL_ID))
   const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })

@@ -7,7 +7,8 @@
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type {
   GitHubAccount, Repo, UpstreamRecord,
 } from '../src/shared/repo/types.ts'
@@ -126,7 +127,7 @@ const originalFetch = globalThis.fetch
 
 beforeEach(() => {
   store = inMemoryRepo()
-  setRepoForTest(store.repo)
+  initRepo(store.repo)
   // detectAccountType uses raw fetch; stub it to avoid real network.
   globalThis.fetch = (async () => jsonResp({ copilot_plan: 'individual' })) as typeof fetch
 })

@@ -6,7 +6,8 @@
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type {
   ApiKey,
   ClientPresence,
@@ -82,11 +83,11 @@ let store: ReturnType<typeof inMemoryRepo>
 
 beforeEach(() => {
   store = inMemoryRepo()
-  setRepoForTest(store.repo)
+  initRepo(store.repo)
 })
 
 afterEach(() => {
-  setRepoForTest(null)
+  __resetPlatformForTests()
 })
 
 test('POST /api/heartbeat without apiKeyId → 401', async () => {

@@ -8,7 +8,8 @@
 import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
-import { setRepoForTest } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/shared/repo/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
@@ -61,7 +62,7 @@ function installFetch(handler: FetchHandler) {
 
 afterEach(() => {
   globalThis.fetch = originalFetch
-  setRepoForTest(null)
+  __resetPlatformForTests()
 })
 
 function buildApp(auth: DataPlaneAuthCtx) {
@@ -116,7 +117,7 @@ function installCopilotFetch(opts: { stream: boolean }) {
 }
 
 test('POST /v1/responses non-stream returns Responses-shaped body', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   installCopilotFetch({ stream: false })
   const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
   const req = new Request('http://local/v1/responses', {
@@ -143,7 +144,7 @@ test('POST /v1/responses non-stream returns Responses-shaped body', async () => 
 })
 
 test('POST /v1/responses streaming returns Responses SSE events', async () => {
-  setRepoForTest(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]))
   installCopilotFetch({ stream: true })
   const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
   const req = new Request('http://local/v1/responses', {
@@ -167,7 +168,7 @@ test('POST /v1/responses streaming returns Responses SSE events', async () => {
 })
 
 test('POST /v1/responses with invalid payload returns Responses error shape', async () => {
-  setRepoForTest(stubRepo([]))
+  initRepo(stubRepo([]))
   const app = buildApp({})
   const req = new Request('http://local/v1/responses', {
     method: 'POST',
