@@ -12,8 +12,8 @@ import { InMemoryResponsesSnapshotStore } from '@vnext/responses-store'
 import { initRepo } from '../src/shared/repo/index.ts'
 import { initCache } from '../src/shared/cache/index.ts'
 import { initResponsesStore } from '../src/shared/runtime/responses-store.ts'
-import { SqliteRepo } from '../src/shared/repo/sqlite.ts'
-import { createInMemoryImageProcessor } from '../src/shared/image/memory.ts'
+import { BunSqliteRepo as SqliteRepo } from '@vnext/platform-bun/src/bun-sqlite-repo.ts'
+import { createInMemoryImageProcessor } from '@vnext/platform-bun/src/memory-image-processor.ts'
 
 export interface SetupOptions {
   envLookup?: (name: string) => string

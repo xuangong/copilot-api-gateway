@@ -75,6 +75,10 @@
         "image-size": "^2.0.2",
         "zod": "^4.4.3",
       },
+      "devDependencies": {
+        "@vnext/platform-bun": "workspace:*",
+        "@vnext/platform-cloudflare": "workspace:*",
+      },
     },
     "packages/interceptor": {
       "name": "@vnext/interceptor",

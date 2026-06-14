@@ -16,7 +16,7 @@ import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { initRepo } from '../src/shared/repo/index.ts'
 import { __resetPlatformForTests } from '@vnext/platform'
-import { SqliteRepo } from '../src/shared/repo/sqlite.ts'
+import { BunSqliteRepo as SqliteRepo } from '@vnext/platform-bun/src/bun-sqlite-repo.ts'
 import { handleMessagesWebSearch } from '../src/data-plane/orchestrator/server-tools/plugins/web-search/route-handler.ts'
 import { invalidateResolverCache } from '../src/data-plane/orchestrator/server-tools/plugins/web-search/resolver.ts'
 

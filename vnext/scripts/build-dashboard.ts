@@ -7,7 +7,7 @@ import { $ } from "bun"
 
 const root = `${import.meta.dir}/..`
 const src = `${root}/apps/dashboard/src`
-const out = `${root}/apps/gateway/src/shared/edge/ui-pages/dashboard-app/dist`
+const out = `${root}/packages/gateway/src/shared/edge/ui-pages/dashboard-app/dist`
 
 await Bun.build({
   entrypoints: [`${src}/index.tsx`],

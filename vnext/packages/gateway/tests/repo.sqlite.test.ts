@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
 import { Database } from 'bun:sqlite'
-import { SqliteRepo } from '../src/shared/repo/sqlite.ts'
+import { BunSqliteRepo as SqliteRepo } from '@vnext/platform-bun/src/bun-sqlite-repo.ts'
 
 const newRepo = () => new SqliteRepo(new Database(':memory:'))
 

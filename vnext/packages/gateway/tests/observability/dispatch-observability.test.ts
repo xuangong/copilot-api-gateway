@@ -15,7 +15,7 @@ import { Hono } from 'hono'
 import { app as innerApp } from '../../src/app.ts'
 import { initRepo } from '../../src/shared/repo/index.ts'
 import { __resetPlatformForTests } from '@vnext/platform'
-import { SqliteRepo } from '../../src/shared/repo/sqlite.ts'
+import { BunSqliteRepo as SqliteRepo } from '@vnext/platform-bun/src/bun-sqlite-repo.ts'
 import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 

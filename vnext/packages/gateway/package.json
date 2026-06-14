@@ -21,5 +21,9 @@
     "hono": "^4.12.23",
     "image-size": "^2.0.2",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@vnext/platform-bun": "workspace:*",
+    "@vnext/platform-cloudflare": "workspace:*"
   }
 }
