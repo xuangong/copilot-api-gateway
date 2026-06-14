@@ -79,6 +79,13 @@ type DispatchObsCtx = {
  * Parse an upstream SSE byte stream into typed events for the given target
  * endpoint. The translator's translateEvents consumes these typed events.
  */
+function mapSourceApiToProviderRequest(src: 'messages' | 'chat_completions' | 'responses' | 'gemini'): 'anthropic' | 'openai' | 'gemini' {
+  if (src === 'messages') return 'anthropic'
+  if (src === 'chat_completions') return 'openai'
+  if (src === 'responses') return 'openai'
+  return 'gemini'
+}
+
 function parseTargetSSE(
   target: EndpointKey,
   body: ReadableStream<Uint8Array> | null,
@@ -229,11 +236,18 @@ async function dispatch<TPayload>(
       userAgent: input.obsCtx.userAgent,
       requestId: input.obsCtx.requestId,
       stream: isStream,
-      call: () => binding.provider.fetch(
-        targetEndpoint,
-        { method: 'POST', body: JSON.stringify(upstreamPayload), headers: { 'content-type': 'application/json' } },
-        { operationName: 'data-plane dispatch', enabledFlags: binding.enabledFlags, sourceApi: input.sourceApi },
-      ),
+      call: async () => {
+        const pr = await binding.provider.fetch({
+          endpoint: targetEndpoint,
+          payload: upstreamPayload,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          sourceApi: mapSourceApiToProviderRequest(input.sourceApi),
+          operationName: 'data-plane dispatch',
+          flags: { isStreaming: isStream },
+          signal: ctx.signal,
+        })
+        return new Response(pr.body, { status: pr.status, headers: pr.headers })
+      },
     })
   } catch (err) {
     if (err instanceof HTTPError) {
