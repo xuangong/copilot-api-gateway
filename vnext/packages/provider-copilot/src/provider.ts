@@ -123,16 +123,17 @@ export class CopilotProvider implements ModelProvider {
     // mergeHeaders returns Record, so wrap in Headers for the ProviderRequest.
     const headerRecord = mergeHeaders(init?.headers, opts.extraHeaders)
     const headers = new Headers(headerRecord)
+    const payload = parseJsonBody(init?.body)
     const req: ProviderRequest = {
       endpoint,
-      payload: parseJsonBody(init?.body),
+      payload,
       headers,
       sourceApi: (opts.sourceApi ?? 'anthropic') as SourceApi,
       signal: init?.signal ?? undefined,
       operationName: opts.operationName,
       requireModel: opts.requireModel,
       timeout: opts.timeout,
-      flags: { isStreaming: false },
+      flags: { isStreaming: readsStream(payload) },
     }
     const pr = await this.fetchInternal(req, opts.enabledFlags)
     return new Response(pr.body, { status: pr.status, headers: pr.headers })
