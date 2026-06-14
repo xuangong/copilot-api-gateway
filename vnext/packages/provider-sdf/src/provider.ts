@@ -19,6 +19,9 @@ import {
   type ProbeResult,
   type ProviderFetchOptions,
   type ProviderModelsResponse,
+  type ProviderRequest,
+  type ProviderResponse,
+  type SourceApi,
 } from '@vnext/provider'
 import { fetchWithRetry, mergeHeaders, truncateBody } from '@vnext/shared-http'
 
@@ -93,7 +96,39 @@ export class SdfProvider implements ModelProvider {
     return null
   }
 
-  async fetch(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
+  async fetch(req: ProviderRequest): Promise<ProviderResponse>
+  async fetch(endpoint: EndpointKey, init: RequestInit, opts?: ProviderFetchOptions): Promise<Response>
+  async fetch(
+    arg: EndpointKey | ProviderRequest,
+    init?: RequestInit,
+    opts: ProviderFetchOptions = {},
+  ): Promise<Response | ProviderResponse> {
+    if (typeof arg === 'object') {
+      return this.fetchInternal(arg)
+    }
+    return this.fetchLegacy(arg, init!, opts)
+  }
+
+  private async fetchInternal(req: ProviderRequest): Promise<ProviderResponse> {
+    // Wrap into a Request once. SDF has no interceptor chain, so headers
+    // and payload pass straight through.
+    const headers = new Headers(req.headers)
+    if (!headers.has('content-type')) headers.set('content-type', 'application/json')
+    const legacyOpts: ProviderFetchOptions = {
+      sourceApi: mapSourceApiToLegacy(req.sourceApi),
+      operationName: req.operationName,
+      timeout: req.timeout,
+      requireModel: req.requireModel,
+    }
+    const res = await this.fetchLegacy(
+      req.endpoint,
+      { method: 'POST', body: JSON.stringify(req.payload ?? {}), headers, signal: req.signal },
+      legacyOpts,
+    )
+    return { status: res.status, headers: res.headers, body: res.body }
+  }
+
+  private async fetchLegacy(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
     const path = SDF_PATHS[endpoint]
     if (!path) throw new Error(`SDF provider does not support endpoint: ${endpoint}`)
     const url = `${SDF_BASE_URL}${path}`
@@ -183,4 +218,10 @@ function cryptoUuid(): string {
 
 function randomShort(): string {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 8)
+}
+
+function mapSourceApiToLegacy(src: SourceApi): 'messages' | 'chat_completions' | 'responses' | 'gemini' {
+  if (src === 'anthropic') return 'messages'
+  if (src === 'openai') return 'chat_completions'  // safe default; routes always pre-narrows
+  return src
 }
