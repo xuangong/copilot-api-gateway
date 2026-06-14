@@ -15,4 +15,3 @@ export {
   compressBase64ImageToWebp,
   compressImageDataUrlToWebp,
 } from "./inline"
-export { createInMemoryImageProcessor } from "./memory"

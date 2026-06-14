@@ -1,17 +1,12 @@
-import type { ImageProcessor, ImageSizeCalculator } from "@vnext/platform"
-
 /**
- * In-memory image processor for tests and local dev. There is no WebP codec
- * available in pure Bun without a native dep, so this stub returns the input
- * bytes unchanged. It exists only to satisfy the ImageProcessor contract so
- * the inline-image transform can run end-to-end locally; behaviour assertions
- * (which images get rewritten, with which size calculator) belong in
- * dedicated transform tests using a spy processor.
+ * TEMPORARY: relocated to @vnext/platform-bun in plan A3 T4. This re-export
+ * keeps `entry-bun.ts` and `tests/_setup-platform.ts` building until T9
+ * rewires every consumer to import from
+ * `@vnext/platform-bun/src/memory-image-processor.ts` directly, at which
+ * point this residual file is deleted.
+ *
+ * Why a relative path: gateway cannot workspace-depend on platform-bun (it
+ * would invert the dependency direction), so the @vnext/platform-bun
+ * subpath strategy used by platform-cloudflare in T3 doesn't work here.
  */
-class InMemoryImageProcessor implements ImageProcessor {
-  compressToWebp(input: Uint8Array, _targetSize: ImageSizeCalculator): Promise<Uint8Array> {
-    return Promise.resolve(input)
-  }
-}
-
-export const createInMemoryImageProcessor = (): ImageProcessor => new InMemoryImageProcessor()
+export { createInMemoryImageProcessor } from "../../../../../apps/platform-bun/src/memory-image-processor.ts"
