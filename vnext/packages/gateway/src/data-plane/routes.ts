@@ -32,7 +32,6 @@ import { embeddingsRouter } from './embeddings/routes.ts'
 import { imagesRouter } from './images/routes.ts'
 import { parseModelRouting, resolveBinding, stripUpstreamPin } from './routing/binding-resolver.ts'
 import { enumerateBindingCandidates } from './routing/candidates.ts'
-import { runAnthropicCountTokensPipeline } from './transforms/index.ts'
 import { repackageUpstreamError, type SourceApi as ErrorSourceApi } from './errors/repackage.ts'
 import {
   HTTPError,
@@ -348,7 +347,6 @@ dataPlane.post('/v1/messages/count_tokens', async (c) => {
       { status: e.status ?? 400, headers: { 'content-type': 'application/json' } },
     )
   }
-  runAnthropicCountTokensPipeline(payload as Parameters<typeof runAnthropicCountTokensPipeline>[0])
   stripUpstreamPin(payload as unknown as Record<string, unknown>)
 
   const auth = (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx
