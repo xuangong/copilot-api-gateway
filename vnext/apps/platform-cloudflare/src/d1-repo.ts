@@ -1,6 +1,6 @@
-import type { Repo } from "./types"
-import type { SqlExecutor } from "./shared/executor"
-import { buildSharedRepo } from "./shared/repos"
+import type { Repo } from "@vnext/gateway/src/shared/repo/types.ts"
+import type { SqlExecutor } from "@vnext/gateway/src/shared/repo/shared/executor.ts"
+import { buildSharedRepo } from "@vnext/gateway/src/shared/repo/shared/repos.ts"
 
 interface D1Result<T = Record<string, unknown>> {
   results: T[]
