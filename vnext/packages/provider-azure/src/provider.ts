@@ -134,9 +134,8 @@ export class AzureProvider implements ModelProvider {
     // bypass JSON serialization so multipart boundaries are preserved;
     // send() owns the auth + content-type layering so callers don't have to
     // worry about case-sensitivity collisions on the way down.
-    const bodyIsFormData = req.payload instanceof FormData
-    const body: BodyInit = bodyIsFormData
-      ? (req.payload as FormData)
+    const body: BodyInit = req.payload instanceof FormData
+      ? req.payload
       : JSON.stringify(req.payload ?? {})
     const res = await this.send(
       req.endpoint,
@@ -203,23 +202,35 @@ export class AzureProvider implements ModelProvider {
     defaultOpName: string,
   ): Promise<Response> {
     const bodyIsFormData = init.body instanceof FormData
-    const payload = bodyIsFormData
-      ? parseFormDataPayload(init.body as FormData)
+    const payload = init.body instanceof FormData
+      ? parseFormDataPayload(init.body)
       : parseJsonBody(init.body)
     const deployment = this.resolveDeployment(payload)
     const url = this.buildUrl(endpoint, deployment)
     const surface = surfaceForEndpoint(endpoint)
     if (!surface) throw new Error(`Azure provider does not support endpoint: ${endpoint}`)
-    const headers = this.headers(surface, {}, { includeJsonContentType: !bodyIsFormData })
+    // Layer headers onto a Headers instance so HTTP-header-name case
+    // collisions (e.g. caller's lowercase `content-type` vs our
+    // `Content-Type`) collapse to a single normalized entry instead of
+    // racing on last-key-wins in a plain Record.
+    const outHeaders = new Headers()
+    const defaults = this.headers(surface, {}, { includeJsonContentType: !bodyIsFormData })
+    for (const [k, v] of Object.entries(defaults)) outHeaders.set(k, v)
     if (init.headers) {
-      Object.assign(headers, mergeHeaders(init.headers, undefined))
+      for (const [k, v] of Object.entries(mergeHeaders(init.headers, undefined))) {
+        outHeaders.set(k, v)
+      }
     }
+    // Defense-in-depth: any caller-supplied content-type would kill the
+    // multipart boundary that fetch sets automatically for FormData bodies.
+    // Strip after all merging so this always wins.
+    if (bodyIsFormData) outHeaders.delete('content-type')
     const operationName = opts.operationName ?? defaultOpName
     let response: Response
     try {
       response = await fetchWithRetry(url, {
         method: init.method ?? 'POST',
-        headers,
+        headers: outHeaders,
         body: init.body,
         timeout: opts.timeout,
         // CFW divergence from main: disable shared-http retries. Workers

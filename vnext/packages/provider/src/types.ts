@@ -45,7 +45,7 @@ export interface ProviderRequest {
   signal?: AbortSignal
   /** Optional log-friendly label. Defaults to `call ${endpoint}` in the provider. */
   operationName?: string
-  /** Defaults to true. count_tokens is the only endpoint where model is optional. */
+  /** Defaults to true. Copilot-specific: count_tokens is the only endpoint where model is optional. Other providers ignore this field. */
   requireModel?: boolean
   /** Per-call timeout override in ms. */
   timeout?: number

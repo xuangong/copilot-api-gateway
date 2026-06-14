@@ -1,7 +1,7 @@
 /**
  * Anthropic Messages SSE parser — yields validated MessagesEvent values.
  *
- * Used by CopilotProvider.callMessages when streaming. Parses
+ * Used by CopilotProvider.fetch when streaming the messages endpoint. Parses
  * `data: {…}\n\n` frames, validates each via MessagesEventSchema, and skips
  * unknown shapes silently. AbortSignal is honored before each read; the
  * reader is released in a `finally` so cancellation doesn't leak the stream.

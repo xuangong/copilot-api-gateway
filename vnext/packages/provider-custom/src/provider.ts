@@ -152,9 +152,8 @@ export class CustomProvider implements ModelProvider {
     // bypass JSON serialization so multipart boundaries are preserved;
     // send() is responsible for layering auth + content-type so callers
     // never have to think about case-sensitivity collisions on the way down.
-    const bodyIsFormData = req.payload instanceof FormData
-    const body: BodyInit = bodyIsFormData
-      ? (req.payload as FormData)
+    const body: BodyInit = req.payload instanceof FormData
+      ? req.payload
       : JSON.stringify(req.payload ?? {})
     const res = await this.send(
       path,
@@ -188,15 +187,25 @@ export class CustomProvider implements ModelProvider {
   ): Promise<Response> {
     const url = `${this.baseUrl}${path}`
     const bodyIsFormData = init.body instanceof FormData
-    const headers = this.authHeaders(mergeHeaders(init.headers, undefined), {
+    // Layer headers onto a Headers instance so HTTP-header-name case
+    // collisions (e.g. caller's lowercase `content-type` vs our
+    // `Content-Type`) collapse to a single normalized entry instead of
+    // racing on last-key-wins in a plain Record.
+    const outHeaders = new Headers()
+    const defaults = this.authHeaders(mergeHeaders(init.headers, undefined), {
       includeJsonContentType: !bodyIsFormData,
     })
+    for (const [k, v] of Object.entries(defaults)) outHeaders.set(k, v)
+    // Defense-in-depth: any caller-supplied content-type would kill the
+    // multipart boundary that fetch sets automatically for FormData bodies.
+    // Strip after all merging so this always wins.
+    if (bodyIsFormData) outHeaders.delete('content-type')
     const operationName = opts.operationName ?? defaultOpName
     let response: Response
     try {
       response = await fetchWithRetry(url, {
         method: init.method ?? 'POST',
-        headers,
+        headers: outHeaders,
         body: init.body,
         timeout: opts.timeout,
         // CFW divergence from main: disable shared-http retries. Workers

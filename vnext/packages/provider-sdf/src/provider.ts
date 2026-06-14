@@ -104,26 +104,35 @@ export class SdfProvider implements ModelProvider {
     // bypass JSON serialization so multipart boundaries are preserved;
     // JSON payloads get model rewritten to the SDF upstream id.
     const bodyIsFormData = req.payload instanceof FormData
-    const rewrittenBody: BodyInit = bodyIsFormData
-      ? rewriteFormDataModel(req.payload as FormData)
+    const rewrittenBody: BodyInit = req.payload instanceof FormData
+      ? rewriteFormDataModel(req.payload)
       : (rewriteJsonModel(JSON.stringify(req.payload ?? {})) as string)
 
-    const finalHeaders: Record<string, string> = {
-      'Authorization': `Bearer ${this.substrateToken}`,
-      'X-ModelType': SDF_UPSTREAM_MODEL_ID,
-      'X-CV': `vnext.${randomShort()}`,
-      'X-InteractionId': cryptoUuid(),
-      'X-ScenarioGUID': SCENARIO_GUID,
+    // Layer headers onto a Headers instance so HTTP-header-name case
+    // collisions (e.g. caller's lowercase `content-type` vs our
+    // `Content-Type`) collapse to a single normalized entry instead of
+    // racing on last-key-wins in a plain Record.
+    const outHeaders = new Headers()
+    outHeaders.set('Authorization', `Bearer ${this.substrateToken}`)
+    outHeaders.set('X-ModelType', SDF_UPSTREAM_MODEL_ID)
+    outHeaders.set('X-CV', `vnext.${randomShort()}`)
+    outHeaders.set('X-InteractionId', cryptoUuid())
+    outHeaders.set('X-ScenarioGUID', SCENARIO_GUID)
+    if (!bodyIsFormData) outHeaders.set('Content-Type', 'application/json')
+    for (const [k, v] of Object.entries(mergeHeaders(req.headers, undefined))) {
+      outHeaders.set(k, v)
     }
-    if (!bodyIsFormData) finalHeaders['Content-Type'] = 'application/json'
-    Object.assign(finalHeaders, mergeHeaders(req.headers, undefined))
+    // Defense-in-depth: any caller-supplied content-type would kill the
+    // multipart boundary that fetch sets automatically for FormData bodies.
+    // Strip after all merging so this always wins.
+    if (bodyIsFormData) outHeaders.delete('content-type')
 
     const operationName = req.operationName ?? `call ${req.endpoint}`
     let response: Response
     try {
       response = await fetchWithRetry(url, {
         method: 'POST',
-        headers: finalHeaders,
+        headers: outHeaders,
         body: rewrittenBody,
         timeout: req.timeout,
         // Match Custom/Azure: clients retry; Workers subrequest budget
