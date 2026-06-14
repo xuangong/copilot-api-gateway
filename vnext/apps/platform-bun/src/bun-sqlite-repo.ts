@@ -665,7 +665,7 @@ class SqliteExecutor implements SqlExecutor {
   }
 }
 
-export class SqliteRepo implements Repo {
+export class BunSqliteRepo implements Repo {
   apiKeys: Repo["apiKeys"]
   github: Repo["github"]
   upstreams: Repo["upstreams"]
