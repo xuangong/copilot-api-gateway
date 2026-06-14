@@ -181,7 +181,7 @@ async function getCachedModels(
     l2Hit = await getCache().get<ModelsResponse>(key)
   } catch {
     // Bootstrap edge case: cache not yet initialized (e.g. a test that forgot
-    // setCacheForTest). Behave as a miss so we fall back to upstream.
+    // initCache). Behave as a miss so we fall back to upstream.
     l2Hit = null
   }
   if (l2Hit) {
