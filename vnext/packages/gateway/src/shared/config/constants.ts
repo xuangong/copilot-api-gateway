@@ -1,3 +1,6 @@
+import type { AccountType } from "@vnext/protocols/common"
+export type { AccountType }
+
 // Admin emails - these users get admin access when logging in via Google OAuth
 export const ADMIN_EMAILS = ["zhangxian1124@gmail.com", "test@local.dev"]
 
@@ -17,8 +20,6 @@ export const API_VERSION = "2025-04-01"
 export const RESEND_FROM_EMAIL = "noreply@xianliao.de5.net"
 
 // Account types
-export type AccountType = "individual" | "business" | "enterprise"
-
 export const getCopilotBaseUrl = (accountType: AccountType) =>
   accountType === "individual"
     ? "https://api.githubcopilot.com"

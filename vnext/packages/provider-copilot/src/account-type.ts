@@ -8,6 +8,9 @@
  * without dragging in unrelated admin/email config.
  */
 
+import type { AccountType } from "@vnext/protocols/common"
+export type { AccountType }
+
 // Copilot API
 export const COPILOT_VERSION = "0.26.7"
 export const EDITOR_PLUGIN_VERSION = `copilot-chat/${COPILOT_VERSION}`
@@ -15,8 +18,6 @@ export const USER_AGENT = `GitHubCopilotChat/${COPILOT_VERSION}`
 export const API_VERSION = "2025-04-01"
 
 // Account types
-export type AccountType = "individual" | "business" | "enterprise"
-
 export const getCopilotBaseUrl = (accountType: AccountType) =>
   accountType === "individual"
     ? "https://api.githubcopilot.com"

@@ -82,3 +82,5 @@ export type { ModelEndpoints } from './model-endpoints'
 export { kindForEndpoints } from './model-endpoints'
 
 export type { UpstreamRecord } from './upstream'
+
+export type { AccountType } from './account-type'
