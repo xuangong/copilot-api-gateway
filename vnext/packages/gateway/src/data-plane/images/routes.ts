@@ -86,11 +86,17 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
     upstream: 'github_copilot',
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,
-    call: () => binding.provider.fetch(
-      'images_generations',
-      { method: 'POST', body: JSON.stringify(payload) },
-      { operationName: 'create image', enabledFlags: binding.enabledFlags },
-    ),
+    call: async () => {
+      const pr = await binding.provider.fetch({
+        endpoint: 'images_generations',
+        payload,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        sourceApi: 'openai',
+        operationName: 'create image',
+        flags: { isStreaming: false },
+      })
+      return new Response(pr.body, { status: pr.status, headers: pr.headers })
+    },
   })
 
   if (!attempt.ok && attempt.status === 429 && 'rateLimit' in attempt) {
@@ -160,11 +166,17 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
     upstream: 'github_copilot',
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,
-    call: () => binding.provider.fetch(
-      'images_edits',
-      { method: 'POST', body: forward },
-      { operationName: 'edit image', enabledFlags: binding.enabledFlags },
-    ),
+    call: async () => {
+      const pr = await binding.provider.fetch({
+        endpoint: 'images_edits',
+        payload: forward,
+        headers: new Headers(),
+        sourceApi: 'openai',
+        operationName: 'edit image',
+        flags: { isStreaming: false },
+      })
+      return new Response(pr.body, { status: pr.status, headers: pr.headers })
+    },
   })
 
   if (!attempt.ok && attempt.status === 429 && 'rateLimit' in attempt) {

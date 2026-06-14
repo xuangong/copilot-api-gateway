@@ -175,7 +175,12 @@ describe('AzureProvider.fetch', () => {
     const p = new AzureProvider({ ...okCfg, endpoints: ['chat_completions'] })
     let caught: Error | undefined
     try {
-      await p.fetch('embeddings', { body: '{}' })
+      await p.fetch({
+        endpoint: 'embeddings',
+        payload: {},
+        headers: new Headers(),
+        sourceApi: 'openai',
+      })
     } catch (e) { caught = e as Error }
     expect(caught).toBeDefined()
     expect(caught!.message).toMatch(/Azure deployment azure-eastus2 does not serve endpoint: embeddings/)
@@ -185,7 +190,12 @@ describe('AzureProvider.fetch', () => {
     const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
     try {
       const p = new AzureProvider(okCfg)
-      await p.fetch('chat_completions', { body: JSON.stringify({ model: 'gpt-4o' }) })
+      await p.fetch({
+        endpoint: 'chat_completions',
+        payload: { model: 'gpt-4o' },
+        headers: new Headers(),
+        sourceApi: 'openai',
+      })
       expect(calls[0]!.url).toBe(
         'https://my-aoai.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview'
       )
@@ -196,7 +206,12 @@ describe('AzureProvider.fetch', () => {
     const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
     try {
       const p = new AzureProvider(okCfg)
-      await p.fetch('messages', { body: JSON.stringify({ model: 'gpt-4o' }) })
+      await p.fetch({
+        endpoint: 'messages',
+        payload: { model: 'gpt-4o' },
+        headers: new Headers(),
+        sourceApi: 'anthropic',
+      })
       expect(calls[0]!.url).toBe('https://my-aoai.openai.azure.com/anthropic/v1/messages')
       expect(calls[0]!.url).not.toContain('api-version')
     } finally { restore() }
@@ -206,7 +221,12 @@ describe('AzureProvider.fetch', () => {
     const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
     try {
       const p = new AzureProvider(okCfg)
-      await p.fetch('chat_completions', { body: '{}' })
+      await p.fetch({
+        endpoint: 'chat_completions',
+        payload: {},
+        headers: new Headers(),
+        sourceApi: 'openai',
+      })
       const h = new Headers(calls[0]!.init?.headers)
       expect(h.get('api-key')).toBe('az-key')
       expect(h.get('authorization')).toBeNull()
@@ -217,7 +237,12 @@ describe('AzureProvider.fetch', () => {
     const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
     try {
       const p = new AzureProvider(okCfg)
-      await p.fetch('messages', { body: '{}' })
+      await p.fetch({
+        endpoint: 'messages',
+        payload: {},
+        headers: new Headers(),
+        sourceApi: 'anthropic',
+      })
       const h = new Headers(calls[0]!.init?.headers)
       expect(h.get('x-api-key')).toBe('az-key')
       expect(h.get('anthropic-version')).toBe('2023-06-01')
@@ -230,7 +255,12 @@ describe('AzureProvider.fetch', () => {
     const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
     try {
       const p = new AzureProvider(okCfg)
-      await p.fetch('messages_count_tokens', { body: '{}' })
+      await p.fetch({
+        endpoint: 'messages_count_tokens',
+        payload: {},
+        headers: new Headers(),
+        sourceApi: 'anthropic',
+      })
       const h = new Headers(calls[0]!.init?.headers)
       expect(h.get('x-api-key')).toBe('az-key')
       expect(h.get('anthropic-version')).toBe('2023-06-01')
@@ -239,7 +269,7 @@ describe('AzureProvider.fetch', () => {
   })
 
   test('OpenAI path map: each declared endpoint hits the right URL suffix', async () => {
-    const cases: Array<[Parameters<AzureProvider['fetch']>[0], string]> = [
+    const cases: Array<['chat_completions' | 'responses' | 'embeddings' | 'images_generations' | 'images_edits', string]> = [
       ['chat_completions', '/chat/completions'],
       ['responses', '/responses'],
       ['embeddings', '/embeddings'],
@@ -253,9 +283,19 @@ describe('AzureProvider.fetch', () => {
         if (endpoint === 'images_edits') {
           const fd = new FormData()
           fd.append('model', 'gpt-4o')
-          await p.fetch(endpoint, { body: fd })
+          await p.fetch({
+            endpoint,
+            payload: fd,
+            headers: new Headers(),
+            sourceApi: 'openai',
+          })
         } else {
-          await p.fetch(endpoint, { body: '{}' })
+          await p.fetch({
+            endpoint,
+            payload: {},
+            headers: new Headers(),
+            sourceApi: 'openai',
+          })
         }
         expect(calls[0]!.url).toBe(
           `https://my-aoai.openai.azure.com/openai/deployments/gpt-4o${suffix}?api-version=2024-08-01-preview`
@@ -268,7 +308,12 @@ describe('AzureProvider.fetch', () => {
     const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
     try {
       const p = new AzureProvider(okCfg)
-      await p.fetch('messages_count_tokens', { body: '{}' })
+      await p.fetch({
+        endpoint: 'messages_count_tokens',
+        payload: {},
+        headers: new Headers(),
+        sourceApi: 'anthropic',
+      })
       expect(calls[0]!.url).toBe('https://my-aoai.openai.azure.com/anthropic/v1/messages/count_tokens')
     } finally { restore() }
   })
@@ -280,7 +325,12 @@ describe('AzureProvider.fetch', () => {
         ...okCfg,
         endpoint: 'https://my-foundry.services.ai.azure.com/api/projects/myproj',
       })
-      await p.fetch('chat_completions', { body: JSON.stringify({ model: 'gpt-4o' }) })
+      await p.fetch({
+        endpoint: 'chat_completions',
+        payload: { model: 'gpt-4o' },
+        headers: new Headers(),
+        sourceApi: 'openai',
+      })
       expect(calls[0]!.url).toBe(
         'https://my-foundry.services.ai.azure.com/api/projects/myproj/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview'
       )
@@ -294,7 +344,12 @@ describe('AzureProvider.fetch', () => {
         ...okCfg,
         endpoint: 'https://my-foundry.services.ai.azure.com/api/projects/myproj',
       })
-      await p.fetch('messages', { body: '{}' })
+      await p.fetch({
+        endpoint: 'messages',
+        payload: {},
+        headers: new Headers(),
+        sourceApi: 'anthropic',
+      })
       expect(calls[0]!.url).toBe(
         'https://my-foundry.services.ai.azure.com/api/projects/myproj/anthropic/v1/messages'
       )
@@ -308,7 +363,12 @@ describe('AzureProvider.fetch', () => {
         ...okCfg,
         deployments: [{ name: 'gpt-4o-mini-dep', model: 'gpt-4o-mini' }],
       })
-      await p.fetch('chat_completions', { body: JSON.stringify({ model: 'gpt-4o-mini' }) })
+      await p.fetch({
+        endpoint: 'chat_completions',
+        payload: { model: 'gpt-4o-mini' },
+        headers: new Headers(),
+        sourceApi: 'openai',
+      })
       expect(calls[0]!.url).toContain('/deployments/gpt-4o-mini-dep/chat/completions')
     } finally { restore() }
   })
@@ -320,7 +380,12 @@ describe('AzureProvider.fetch', () => {
         ...okCfg,
         deployments: [{ name: 'o1-preview-dep', model: 'o1-preview' }],
       })
-      await p.fetch('chat_completions', { body: JSON.stringify({ model: 'o1-preview-dep' }) })
+      await p.fetch({
+        endpoint: 'chat_completions',
+        payload: { model: 'o1-preview-dep' },
+        headers: new Headers(),
+        sourceApi: 'openai',
+      })
       expect(calls[0]!.url).toContain('/deployments/o1-preview-dep/chat/completions')
     } finally { restore() }
   })
@@ -332,7 +397,12 @@ describe('AzureProvider.fetch', () => {
         ...okCfg,
         deployments: [{ name: 'gpt-4o-mini-dep', model: 'gpt-4o-mini' }],
       })
-      await p.fetch('chat_completions', { body: JSON.stringify({ model: 'something-unknown' }) })
+      await p.fetch({
+        endpoint: 'chat_completions',
+        payload: { model: 'something-unknown' },
+        headers: new Headers(),
+        sourceApi: 'openai',
+      })
       expect(calls[0]!.url).toContain('/deployments/gpt-4o/chat/completions')
     } finally { restore() }
   })
@@ -347,7 +417,12 @@ describe('AzureProvider.fetch', () => {
       const fd = new FormData()
       fd.append('model', 'dall-e-3')
       fd.append('image', new Blob(['x']), 'x.png')
-      await p.fetch('images_edits', { body: fd })
+      await p.fetch({
+        endpoint: 'images_edits',
+        payload: fd,
+        headers: new Headers(),
+        sourceApi: 'openai',
+      })
       expect(calls[0]!.url).toContain('/deployments/dalle3-dep/images/edits')
       const h = new Headers(calls[0]!.init?.headers)
       expect(h.get('content-type')).not.toBe('application/json')
@@ -360,23 +435,28 @@ describe('AzureProvider.fetch', () => {
       const p = new AzureProvider(okCfg)
       const fd = new FormData()
       fd.append('image', new Blob(['x']), 'x.png')
-      await p.fetch('images_edits', { body: fd })
+      await p.fetch({
+        endpoint: 'images_edits',
+        payload: fd,
+        headers: new Headers(),
+        sourceApi: 'openai',
+      })
       expect(calls[0]!.url).toContain('/deployments/gpt-4o/images/edits')
     } finally { restore() }
   })
 
-  test('opts.extraHeaders merged; init headers overlay; api-key never overridden', async () => {
+  test('defaultHeaders and request headers both flow through; api-key never overridden', async () => {
     const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
     try {
       const p = new AzureProvider({
         ...okCfg,
         defaultHeaders: { 'x-default': 'd' },
       })
-      await p.fetch('chat_completions', {
-        body: '{}',
-        headers: { 'x-init': 'i' },
-      }, {
-        extraHeaders: { 'x-extra': 'e' },
+      await p.fetch({
+        endpoint: 'chat_completions',
+        payload: {},
+        headers: new Headers({ 'x-init': 'i', 'x-extra': 'e' }),
+        sourceApi: 'openai',
       })
       const h = new Headers(calls[0]!.init?.headers)
       expect(h.get('api-key')).toBe('az-key')
@@ -392,7 +472,14 @@ describe('AzureProvider.fetch', () => {
     try {
       const p = new AzureProvider(okCfg)
       let caught: Error | undefined
-      try { await p.fetch('chat_completions', { body: '{}' }) } catch (e) { caught = e as Error }
+      try {
+        await p.fetch({
+          endpoint: 'chat_completions',
+          payload: {},
+          headers: new Headers(),
+          sourceApi: 'openai',
+        })
+      } catch (e) { caught = e as Error }
       expect(caught).toBeDefined()
       expect(caught!.message).toMatch(/Failed to call chat_completions via azure-eastus2: 502/)
       expect(caught!.message).toContain('...(truncated)')
@@ -405,7 +492,14 @@ describe('AzureProvider.fetch', () => {
     try {
       const p = new AzureProvider(okCfg)
       let caught: Error | undefined
-      try { await p.fetch('chat_completions', { body: '{}' }) } catch (e) { caught = e as Error }
+      try {
+        await p.fetch({
+          endpoint: 'chat_completions',
+          payload: {},
+          headers: new Headers(),
+          sourceApi: 'openai',
+        })
+      } catch (e) { caught = e as Error }
       expect(caught!.message).toMatch(/Failed to call chat_completions via azure-eastus2: connection refused/)
       expect((caught as { response?: Response }).response?.status).toBe(502)
     } finally { globalThis.fetch = realFetch }

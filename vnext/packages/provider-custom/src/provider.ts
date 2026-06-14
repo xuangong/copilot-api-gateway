@@ -10,11 +10,9 @@ import {
   probeViaModels,
   type ModelProvider,
   type ProbeResult,
-  type ProviderFetchOptions,
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
-  type SourceApi,
 } from '@vnext/provider'
 import { fetchWithRetry, mergeHeaders, truncateBody } from '@vnext/shared-http'
 
@@ -146,42 +144,25 @@ export class CustomProvider implements ModelProvider {
     this.autoPricing = map
   }
 
-  async fetch(req: ProviderRequest): Promise<ProviderResponse>
-  async fetch(endpoint: EndpointKey, init: RequestInit, opts?: ProviderFetchOptions): Promise<Response>
-  async fetch(
-    arg: EndpointKey | ProviderRequest,
-    init?: RequestInit,
-    opts: ProviderFetchOptions = {},
-  ): Promise<Response | ProviderResponse> {
-    if (typeof arg === 'object') {
-      return this.fetchInternal(arg)
-    }
-    return this.fetchLegacy(arg, init!, opts)
-  }
-
-  private async fetchInternal(req: ProviderRequest): Promise<ProviderResponse> {
+  async fetch(req: ProviderRequest): Promise<ProviderResponse> {
+    const path = CUSTOM_PATHS[req.endpoint]
+    if (!path) throw new Error(`CustomProvider does not support endpoint: ${req.endpoint}`)
     // Wrap into a Request once. Custom has no interceptor chain, so headers
-    // and payload pass straight through.
-    const headers = new Headers(req.headers)
-    if (!headers.has('content-type')) headers.set('content-type', 'application/json')
-    const legacyOpts: ProviderFetchOptions = {
-      sourceApi: mapSourceApiToLegacy(req.sourceApi),
-      operationName: req.operationName,
-      timeout: req.timeout,
-      requireModel: req.requireModel,
-    }
-    const res = await this.fetchLegacy(
-      req.endpoint,
-      { method: 'POST', body: JSON.stringify(req.payload ?? {}), headers, signal: req.signal },
-      legacyOpts,
+    // and payload pass straight through. FormData payloads (images_edits)
+    // bypass JSON serialization so multipart boundaries are preserved;
+    // send() is responsible for layering auth + content-type so callers
+    // never have to think about case-sensitivity collisions on the way down.
+    const bodyIsFormData = req.payload instanceof FormData
+    const body: BodyInit = bodyIsFormData
+      ? (req.payload as FormData)
+      : JSON.stringify(req.payload ?? {})
+    const res = await this.send(
+      path,
+      { method: 'POST', body, headers: req.headers, signal: req.signal },
+      { operationName: req.operationName, timeout: req.timeout },
+      `call ${req.endpoint}`,
     )
     return { status: res.status, headers: res.headers, body: res.body }
-  }
-
-  private async fetchLegacy(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
-    const path = CUSTOM_PATHS[endpoint]
-    if (!path) throw new Error(`CustomProvider does not support endpoint: ${endpoint}`)
-    return this.send(path, init, opts, `call ${endpoint}`)
   }
 
   private authHeaders(
@@ -202,7 +183,7 @@ export class CustomProvider implements ModelProvider {
   private async send(
     path: string,
     init: RequestInit,
-    opts: ProviderFetchOptions,
+    opts: { operationName?: string; timeout?: number },
     defaultOpName: string,
   ): Promise<Response> {
     const url = `${this.baseUrl}${path}`
@@ -210,7 +191,6 @@ export class CustomProvider implements ModelProvider {
     const headers = this.authHeaders(mergeHeaders(init.headers, undefined), {
       includeJsonContentType: !bodyIsFormData,
     })
-    Object.assign(headers, mergeHeaders(opts.extraHeaders, undefined))
     const operationName = opts.operationName ?? defaultOpName
     let response: Response
     try {
@@ -327,10 +307,4 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 function optStr(v: unknown): string | undefined {
   return typeof v === 'string' && v !== '' ? v : undefined
-}
-
-function mapSourceApiToLegacy(src: SourceApi): 'messages' | 'chat_completions' | 'responses' | 'gemini' {
-  if (src === 'anthropic') return 'messages'
-  if (src === 'openai') return 'chat_completions'  // safe default; routes always pre-narrows
-  return src
 }

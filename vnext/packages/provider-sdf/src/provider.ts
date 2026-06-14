@@ -17,11 +17,9 @@ import {
   probeViaModels,
   type ModelProvider,
   type ProbeResult,
-  type ProviderFetchOptions,
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
-  type SourceApi,
 } from '@vnext/provider'
 import { fetchWithRetry, mergeHeaders, truncateBody } from '@vnext/shared-http'
 
@@ -96,67 +94,38 @@ export class SdfProvider implements ModelProvider {
     return null
   }
 
-  async fetch(req: ProviderRequest): Promise<ProviderResponse>
-  async fetch(endpoint: EndpointKey, init: RequestInit, opts?: ProviderFetchOptions): Promise<Response>
-  async fetch(
-    arg: EndpointKey | ProviderRequest,
-    init?: RequestInit,
-    opts: ProviderFetchOptions = {},
-  ): Promise<Response | ProviderResponse> {
-    if (typeof arg === 'object') {
-      return this.fetchInternal(arg)
-    }
-    return this.fetchLegacy(arg, init!, opts)
-  }
-
-  private async fetchInternal(req: ProviderRequest): Promise<ProviderResponse> {
-    // Wrap into a Request once. SDF has no interceptor chain, so headers
-    // and payload pass straight through.
-    const headers = new Headers(req.headers)
-    if (!headers.has('content-type')) headers.set('content-type', 'application/json')
-    const legacyOpts: ProviderFetchOptions = {
-      sourceApi: mapSourceApiToLegacy(req.sourceApi),
-      operationName: req.operationName,
-      timeout: req.timeout,
-      requireModel: req.requireModel,
-    }
-    const res = await this.fetchLegacy(
-      req.endpoint,
-      { method: 'POST', body: JSON.stringify(req.payload ?? {}), headers, signal: req.signal },
-      legacyOpts,
-    )
-    return { status: res.status, headers: res.headers, body: res.body }
-  }
-
-  private async fetchLegacy(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
-    const path = SDF_PATHS[endpoint]
-    if (!path) throw new Error(`SDF provider does not support endpoint: ${endpoint}`)
+  async fetch(req: ProviderRequest): Promise<ProviderResponse> {
+    const path = SDF_PATHS[req.endpoint]
+    if (!path) throw new Error(`SDF provider does not support endpoint: ${req.endpoint}`)
     const url = `${SDF_BASE_URL}${path}`
 
-    const bodyIsFormData = init.body instanceof FormData
-    const rewrittenBody = bodyIsFormData
-      ? rewriteFormDataModel(init.body as FormData)
-      : rewriteJsonModel(init.body)
+    // Wrap into a Request once. SDF has no interceptor chain, so headers
+    // and payload pass straight through. FormData payloads (images_edits)
+    // bypass JSON serialization so multipart boundaries are preserved;
+    // JSON payloads get model rewritten to the SDF upstream id.
+    const bodyIsFormData = req.payload instanceof FormData
+    const rewrittenBody: BodyInit = bodyIsFormData
+      ? rewriteFormDataModel(req.payload as FormData)
+      : (rewriteJsonModel(JSON.stringify(req.payload ?? {})) as string)
 
-    const headers: Record<string, string> = {
+    const finalHeaders: Record<string, string> = {
       'Authorization': `Bearer ${this.substrateToken}`,
       'X-ModelType': SDF_UPSTREAM_MODEL_ID,
       'X-CV': `vnext.${randomShort()}`,
       'X-InteractionId': cryptoUuid(),
       'X-ScenarioGUID': SCENARIO_GUID,
     }
-    if (!bodyIsFormData) headers['Content-Type'] = 'application/json'
-    if (init.headers) Object.assign(headers, mergeHeaders(init.headers, undefined))
-    if (opts.extraHeaders) Object.assign(headers, mergeHeaders(opts.extraHeaders, undefined))
+    if (!bodyIsFormData) finalHeaders['Content-Type'] = 'application/json'
+    Object.assign(finalHeaders, mergeHeaders(req.headers, undefined))
 
-    const operationName = opts.operationName ?? `call ${endpoint}`
+    const operationName = req.operationName ?? `call ${req.endpoint}`
     let response: Response
     try {
       response = await fetchWithRetry(url, {
-        method: init.method ?? 'POST',
-        headers,
+        method: 'POST',
+        headers: finalHeaders,
         body: rewrittenBody,
-        timeout: opts.timeout,
+        timeout: req.timeout,
         // Match Custom/Azure: clients retry; Workers subrequest budget
         // doesn't tolerate extra retries with backoff.
         maxRetries: 0,
@@ -179,7 +148,7 @@ export class SdfProvider implements ModelProvider {
         }),
       )
     }
-    return response
+    return { status: response.status, headers: response.headers, body: response.body }
   }
 }
 
@@ -218,10 +187,4 @@ function cryptoUuid(): string {
 
 function randomShort(): string {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 8)
-}
-
-function mapSourceApiToLegacy(src: SourceApi): 'messages' | 'chat_completions' | 'responses' | 'gemini' {
-  if (src === 'anthropic') return 'messages'
-  if (src === 'openai') return 'chat_completions'  // safe default; routes always pre-narrows
-  return src
 }

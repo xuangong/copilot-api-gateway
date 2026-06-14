@@ -17,14 +17,11 @@
  * and lose review granularity. This scaffold proves the wiring; each follow-up
  * lands its concern in isolation.
  */
-import type { EndpointKey } from '@vnext/protocols/common'
-import type { ModelProvider, ProviderFetchOptions } from '@vnext/provider'
+import type { ModelProvider, ProviderRequest } from '@vnext/provider'
 
 export interface OrchestratorInput {
   provider: ModelProvider
-  endpoint: EndpointKey
-  init: RequestInit
-  opts?: ProviderFetchOptions
+  req: ProviderRequest
 }
 
 export interface OrchestratorResult {
@@ -33,7 +30,6 @@ export interface OrchestratorResult {
 }
 
 export const runOrchestrator = async (input: OrchestratorInput): Promise<OrchestratorResult> => {
-  const { provider, endpoint, init, opts } = input
-  const response = await provider.fetch(endpoint, init, opts)
-  return { response, attempts: 1 }
+  const pr = await input.provider.fetch(input.req)
+  return { response: new Response(pr.body, { status: pr.status, headers: pr.headers }), attempts: 1 }
 }

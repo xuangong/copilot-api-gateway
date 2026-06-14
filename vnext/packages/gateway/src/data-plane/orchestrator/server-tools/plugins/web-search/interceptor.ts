@@ -83,11 +83,17 @@ async function createMessages(
     copilotToken: options.copilotToken,
     accountType: options.accountType,
   })
-  const call = () => provider.fetch(
-    "messages",
-    { method: "POST", body: JSON.stringify(payload) },
-    { operationName: "create message" },
-  )
+  const call = async () => {
+    const pr = await provider.fetch({
+      endpoint: 'messages',
+      payload,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      sourceApi: 'anthropic',
+      operationName: 'create message',
+      flags: { isStreaming: payload.stream === true },
+    })
+    return new Response(pr.body, { status: pr.status, headers: pr.headers })
+  }
 
   // No observability context — keep the legacy direct path so callers without
   // an apiKey (e.g. internal probes) don't pay quota or latency bookkeeping.

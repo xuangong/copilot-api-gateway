@@ -17,11 +17,9 @@ import {
   probeViaModels,
   type ModelProvider,
   type ProbeResult,
-  type ProviderFetchOptions,
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
-  type SourceApi,
 } from '@vnext/provider'
 import { fetchWithRetry, mergeHeaders, parseJsonBody, truncateBody } from '@vnext/shared-http'
 
@@ -127,43 +125,29 @@ export class AzureProvider implements ModelProvider {
     return entry?.cost ?? null
   }
 
-  async fetch(req: ProviderRequest): Promise<ProviderResponse>
-  async fetch(endpoint: EndpointKey, init: RequestInit, opts?: ProviderFetchOptions): Promise<Response>
-  async fetch(
-    arg: EndpointKey | ProviderRequest,
-    init?: RequestInit,
-    opts: ProviderFetchOptions = {},
-  ): Promise<Response | ProviderResponse> {
-    if (typeof arg === 'object') {
-      return this.fetchInternal(arg)
+  async fetch(req: ProviderRequest): Promise<ProviderResponse> {
+    if (!this.supportedEndpoints.includes(req.endpoint)) {
+      throw new Error(`Azure deployment ${this.name} does not serve endpoint: ${req.endpoint}`)
     }
-    return this.fetchLegacy(arg, init!, opts)
-  }
-
-  private async fetchInternal(req: ProviderRequest): Promise<ProviderResponse> {
     // Wrap into a Request once. Azure has no interceptor chain, so headers
-    // and payload pass straight through.
-    const headers = new Headers(req.headers)
-    if (!headers.has('content-type')) headers.set('content-type', 'application/json')
-    const legacyOpts: ProviderFetchOptions = {
-      sourceApi: mapSourceApiToLegacy(req.sourceApi),
-      operationName: req.operationName,
-      timeout: req.timeout,
-      requireModel: req.requireModel,
-    }
-    const res = await this.fetchLegacy(
+    // and payload pass straight through. FormData payloads (images_edits)
+    // bypass JSON serialization so multipart boundaries are preserved;
+    // send() owns the auth + content-type layering so callers don't have to
+    // worry about case-sensitivity collisions on the way down.
+    const bodyIsFormData = req.payload instanceof FormData
+    const body: BodyInit = bodyIsFormData
+      ? (req.payload as FormData)
+      : JSON.stringify(req.payload ?? {})
+    const res = await this.send(
       req.endpoint,
-      { method: 'POST', body: JSON.stringify(req.payload ?? {}), headers, signal: req.signal },
-      legacyOpts,
+      { method: 'POST', body, headers: req.headers, signal: req.signal },
+      {
+        operationName: req.operationName,
+        timeout: req.timeout,
+      },
+      `call ${req.endpoint}`,
     )
     return { status: res.status, headers: res.headers, body: res.body }
-  }
-
-  private async fetchLegacy(endpoint: EndpointKey, init: RequestInit, opts: ProviderFetchOptions = {}): Promise<Response> {
-    if (!this.supportedEndpoints.includes(endpoint)) {
-      throw new Error(`Azure deployment ${this.name} does not serve endpoint: ${endpoint}`)
-    }
-    return this.send(endpoint, init, opts, `call ${endpoint}`)
   }
 
   /**
@@ -215,7 +199,7 @@ export class AzureProvider implements ModelProvider {
   private async send(
     endpoint: EndpointKey,
     init: RequestInit,
-    opts: ProviderFetchOptions,
+    opts: { operationName?: string; timeout?: number },
     defaultOpName: string,
   ): Promise<Response> {
     const bodyIsFormData = init.body instanceof FormData
@@ -226,7 +210,7 @@ export class AzureProvider implements ModelProvider {
     const url = this.buildUrl(endpoint, deployment)
     const surface = surfaceForEndpoint(endpoint)
     if (!surface) throw new Error(`Azure provider does not support endpoint: ${endpoint}`)
-    const headers = this.headers(surface, opts.extraHeaders ?? {}, { includeJsonContentType: !bodyIsFormData })
+    const headers = this.headers(surface, {}, { includeJsonContentType: !bodyIsFormData })
     if (init.headers) {
       Object.assign(headers, mergeHeaders(init.headers, undefined))
     }
@@ -269,12 +253,6 @@ export class AzureProvider implements ModelProvider {
 function parseFormDataPayload(form: FormData): Record<string, unknown> {
   const model = form.get('model')
   return typeof model === 'string' ? { model } : {}
-}
-
-function mapSourceApiToLegacy(src: SourceApi): 'messages' | 'chat_completions' | 'responses' | 'gemini' {
-  if (src === 'anthropic') return 'messages'
-  if (src === 'openai') return 'chat_completions'  // safe default; routes always pre-narrows
-  return src
 }
 
 /**

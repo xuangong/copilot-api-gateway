@@ -6,8 +6,13 @@ test('runOrchestrator dispatches once via provider', async () => {
   const provider = new FakeProvider({ text: 'orch-test' })
   const { response, attempts } = await runOrchestrator({
     provider,
-    endpoint: 'responses',
-    init: { method: 'POST', body: JSON.stringify({ model: 'fake-model', input: [] }) },
+    req: {
+      endpoint: 'responses',
+      payload: { model: 'fake-model', input: [] },
+      headers: new Headers({ 'content-type': 'application/json' }),
+      sourceApi: 'openai',
+      flags: { isStreaming: false },
+    },
   })
   expect(response.ok).toBe(true)
   expect(attempts).toBe(1)
@@ -19,8 +24,13 @@ test('runOrchestrator surfaces provider error response without throwing', async 
   const provider = new FakeProvider()
   const { response } = await runOrchestrator({
     provider,
-    endpoint: 'messages',
-    init: { method: 'POST', body: JSON.stringify({}) },
+    req: {
+      endpoint: 'messages',
+      payload: {},
+      headers: new Headers({ 'content-type': 'application/json' }),
+      sourceApi: 'anthropic',
+      flags: { isStreaming: false },
+    },
   })
   expect(response.status).toBe(400)
 })

@@ -75,11 +75,17 @@ async function handle(c: EmbeddingsCtx): Promise<Response> {
     upstream: 'github_copilot',
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,
-    call: () => binding.provider.fetch(
-      'embeddings',
-      { method: 'POST', body: JSON.stringify(body) },
-      { operationName: 'create embeddings', enabledFlags: binding.enabledFlags },
-    ),
+    call: async () => {
+      const pr = await binding.provider.fetch({
+        endpoint: 'embeddings',
+        payload: body,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        sourceApi: 'openai',
+        operationName: 'create embeddings',
+        flags: { isStreaming: false },
+      })
+      return new Response(pr.body, { status: pr.status, headers: pr.headers })
+    },
   })
 
   if (!attempt.ok && attempt.status === 429) {

@@ -8,9 +8,9 @@
  * NOT a primitive observability hook. The shared/* modules expose the hooks;
  * this file orchestrates them around one upstream conversational request.
  *
- * Phase A keeps the module consuming a `Response` directly (the existing
- * call shape from `binding.provider.fetch`); Phase B will introduce a parallel
- * overload that takes the typed `UpstreamResponse` from per-endpoint methods.
+ * Consumes a `Response` directly (built by the caller from
+ * `binding.provider.fetch(req)` — see `ProviderResponse → Response` in the
+ * data-plane routes).
  *
  * Behavior preserved verbatim from the inline version it replaces:
  *   - Quota gate fires BEFORE the timer starts; rejection short-circuits

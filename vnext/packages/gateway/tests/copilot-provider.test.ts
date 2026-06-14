@@ -37,12 +37,14 @@ afterEach(() => { globalThis.fetch = origFetch })
 
 test('CopilotProvider.fetch dispatches /responses to Copilot base url', async () => {
   const provider = new CopilotProvider({ copilotToken: 'tok', accountType: 'individual' })
-  const res = await provider.fetch('responses', {
-    method: 'POST',
-    body: JSON.stringify({ model: 'gpt-4o', input: [], stream: false }),
-    headers: { 'content-type': 'application/json' },
+  const res = await provider.fetch({
+    endpoint: 'responses',
+    payload: { model: 'gpt-4o', input: [], stream: false },
+    headers: new Headers({ 'content-type': 'application/json' }),
+    sourceApi: 'openai',
+    flags: { isStreaming: false },
   })
-  expect(res.ok).toBe(true)
+  expect(res.status >= 200 && res.status < 300).toBe(true)
   expect(captured).toHaveLength(1)
   expect(captured[0]!.url).toMatch(/\/responses$/)
   expect(captured[0]!.method).toBe('POST')
@@ -53,24 +55,25 @@ test('CopilotProvider.fetch dispatches /responses to Copilot base url', async ()
 test('CopilotProvider rejects unsupported endpoints', async () => {
   const provider = new CopilotProvider({ copilotToken: 'tok', accountType: 'individual' })
   await expect(
-    provider.fetch('images_generations', { method: 'POST', body: JSON.stringify({}) }),
+    provider.fetch({
+      endpoint: 'images_generations',
+      payload: {},
+      headers: new Headers({ 'content-type': 'application/json' }),
+      sourceApi: 'openai',
+      flags: { isStreaming: false },
+    }),
   ).rejects.toThrow(/does not support endpoint/)
 })
 
-test('CopilotProvider requires JSON string body', async () => {
+test('CopilotProvider forwards request headers verbatim', async () => {
   const provider = new CopilotProvider({ copilotToken: 'tok', accountType: 'individual' })
-  await expect(
-    provider.fetch('responses', { method: 'POST', body: new Uint8Array() as unknown as BodyInit }),
-  ).rejects.toThrow(/body must be a JSON string/)
-})
-
-test('CopilotProvider merges extraHeaders into outbound request', async () => {
-  const provider = new CopilotProvider({ copilotToken: 'tok', accountType: 'individual' })
-  await provider.fetch(
-    'responses',
-    { method: 'POST', body: JSON.stringify({ model: 'gpt-4o' }), headers: { 'x-base': 'b' } },
-    { extraHeaders: { 'x-extra': 'e' } },
-  )
+  await provider.fetch({
+    endpoint: 'responses',
+    payload: { model: 'gpt-4o' },
+    headers: new Headers({ 'content-type': 'application/json', 'x-base': 'b', 'x-extra': 'e' }),
+    sourceApi: 'openai',
+    flags: { isStreaming: false },
+  })
   expect(captured[0]!.headers['x-base']).toBe('b')
   expect(captured[0]!.headers['x-extra']).toBe('e')
 })

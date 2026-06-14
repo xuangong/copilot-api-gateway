@@ -336,14 +336,20 @@ export async function generateImageViaBinding(
   const startedAt = Date.now()
   const isEdit = sources.length > 0
   const endpoint: EndpointKey = (isEdit ? 'images_edits' : 'images_generations') as EndpointKey
-  const init: { method: string; body: BodyInit } = isEdit
-    ? { method: 'POST', body: buildEditsForm(prompt, config, sources) }
-    : { method: 'POST', body: JSON.stringify(buildGenerationsBody(prompt, config)) }
-  const upstreamCall = () => binding.provider.fetch(
-    endpoint,
-    init,
-    { operationName: isEdit ? 'image_generation edits shim' : 'image_generation shim', enabledFlags: binding.enabledFlags },
-  )
+  const payload: unknown = isEdit
+    ? buildEditsForm(prompt, config, sources)
+    : buildGenerationsBody(prompt, config)
+  const upstreamCall = async () => {
+    const pr = await binding.provider.fetch({
+      endpoint,
+      payload,
+      headers: new Headers(isEdit ? {} : { 'content-type': 'application/json' }),
+      sourceApi: 'openai',
+      operationName: isEdit ? 'image_generation edits shim' : 'image_generation shim',
+      flags: { isStreaming: false },
+    })
+    return new Response(pr.body, { status: pr.status, headers: pr.headers })
+  }
 
   let response: Response
   try {
