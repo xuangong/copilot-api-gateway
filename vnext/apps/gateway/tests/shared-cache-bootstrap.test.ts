@@ -1,44 +1,26 @@
-import { test, expect, afterEach } from 'bun:test'
+import { afterEach, expect, test } from 'bun:test'
 import { MemoryCache, KvCache, D1Cache } from '@vnext/shared-cache'
-import {
-  getCache,
-  initCache,
-  setCacheForTest,
-  onCacheReset,
-  _resetCacheForTest,
-} from '../src/shared/cache/index.ts'
+import { __resetPlatformForTests } from '@vnext/platform'
+import { initCache, getCache } from '../src/shared/cache/index.ts'
 import { createCacheFromEnv } from '../src/shared/cache/factory.ts'
 
-afterEach(() => _resetCacheForTest())
+afterEach(() => { __resetPlatformForTests() })
 
-test('getCache throws when neither initCache nor setCacheForTest ran', () => {
-  setCacheForTest(null)
-  // After clearing, prior initCache state must not leak between tests; the
-  // bootstrap module remembers _cache only via setCacheForTest in tests.
+test('getCache throws before initCache', () => {
+  __resetPlatformForTests()
   expect(() => getCache()).toThrow(/Cache not initialized/)
 })
 
-test('initCache wires a default cache that getCache returns', () => {
-  initCache(new MemoryCache())
-  expect(getCache()).toBeInstanceOf(MemoryCache)
+test('initCache + getCache round-trip', () => {
+  const c = new MemoryCache()
+  initCache(c)
+  expect(getCache()).toBe(c)
 })
 
-test('setCacheForTest overrides initCache without mutating the default', () => {
+test('__resetPlatformForTests clears the cache slot', () => {
   initCache(new MemoryCache())
-  const override = new MemoryCache()
-  setCacheForTest(override)
-  expect(getCache()).toBe(override)
-  setCacheForTest(null)
-  expect(getCache()).toBeInstanceOf(MemoryCache)
-})
-
-test('onCacheReset fires when setCacheForTest swaps the override', () => {
-  initCache(new MemoryCache())
-  let fired = 0
-  onCacheReset(() => fired++)
-  setCacheForTest(new MemoryCache())
-  setCacheForTest(null)
-  expect(fired).toBe(2)
+  __resetPlatformForTests()
+  expect(() => getCache()).toThrow(/Cache not initialized/)
 })
 
 test('factory: CACHE_BACKEND=memory wins regardless of bindings', () => {

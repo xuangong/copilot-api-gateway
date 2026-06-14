@@ -19,7 +19,7 @@ import { defaultsForUpstream, resolveEffectiveFlags } from '../flags/index.ts'
 import type { UpstreamRecord } from '../../shared/repo/types.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import { __registerPlatformReset } from '@vnext/platform'
-import { getCache, onCacheReset } from '../../shared/cache/index.ts'
+import { getCache } from '../../shared/cache/index.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import { copilotModelEndpoints } from '@vnext/provider-copilot'
 import type { ModelProvider, ProviderBinding } from '@vnext/provider'
@@ -205,10 +205,9 @@ export function _clearModelsMemoForTest(): void {
   modelsMemo.clear()
 }
 
-// Auto-clear when test harness swaps repos so a stale cached /models from a
+// Auto-clear when test harness swaps repos or cache so a stale cached /models from a
 // previous test can't bleed into the next one.
 __registerPlatformReset(() => modelsMemo.clear())
-onCacheReset(() => modelsMemo.clear())
 
 function sortUpstreams(upstreams: UpstreamRecord[]): UpstreamRecord[] {
   return upstreams.sort((a, b) =>

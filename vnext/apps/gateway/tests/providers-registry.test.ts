@@ -11,7 +11,7 @@ import {
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import type { ModelEndpoints } from '@vnext/protocols/common'
 import { MemoryCache } from '@vnext/shared-cache'
-import { setCacheForTest } from '../src/shared/cache/index.ts'
+import { initCache } from '../src/shared/cache/index.ts'
 
 const stubModel = (id: string, type = 'text'): Model => ({
   id,
@@ -64,7 +64,6 @@ function stubFetch(models: Model[]) {
 afterEach(() => {
   globalThis.fetch = originalFetch
   __resetPlatformForTests()
-  setCacheForTest(null)
   _clearModelsMemoForTest()
 })
 
@@ -228,7 +227,7 @@ test('listProviderBindings: azure model endpoints derive from supportedEndpoints
 test('L2: second call backfills L1 when L1 was cleared mid-life', async () => {
   initRepo(stubRepo([stubUpstream()]))
   const l2 = new MemoryCache()
-  setCacheForTest(l2)
+  initCache(l2)
 
   let fetchCount = 0
   globalThis.fetch = (async () => {
@@ -253,7 +252,7 @@ test('L2: second call backfills L1 when L1 was cleared mid-life', async () => {
 
 test('L2: a failing get is treated as a miss, not a 5xx', async () => {
   initRepo(stubRepo([stubUpstream()]))
-  setCacheForTest({
+  initCache({
     async get() { throw new Error('kv down') },
     async set() {},
     async delete() {},
