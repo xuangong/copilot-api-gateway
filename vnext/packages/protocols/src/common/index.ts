@@ -80,3 +80,5 @@ export type ClientProtocol = 'messages' | 'chat' | 'responses' | 'gemini'
 
 export type { ModelEndpoints } from './model-endpoints'
 export { kindForEndpoints } from './model-endpoints'
+
+export type { UpstreamRecord } from './upstream'

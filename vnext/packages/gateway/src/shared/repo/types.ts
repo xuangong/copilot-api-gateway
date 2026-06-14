@@ -43,20 +43,7 @@ export interface GitHubAccount {
   updatedAt?: string
 }
 
-export interface UpstreamRecord {
-  id: string
-  ownerId?: string
-  provider: UpstreamKind
-  name: string
-  enabled: boolean
-  sortOrder: number
-  config: Record<string, unknown>
-  flagOverrides: Record<string, boolean>
-  /** Public model ids hidden from /v1/models and from routing. Empty by default. */
-  disabledPublicModelIds: string[]
-  createdAt: string
-  updatedAt: string
-}
+export type { UpstreamRecord } from '@vnext/protocols/common'
 
 export type TokenUsage = Partial<Record<BillingDimension, number>>
 
