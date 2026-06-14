@@ -59,6 +59,37 @@ export interface ProviderModelsResponse {
   data: Array<any>
 }
 
+export type SourceApi = 'anthropic' | 'openai' | 'gemini'
+
+export interface ProviderRequestFlags {
+  isStreaming: boolean
+  hasWebSearch?: boolean
+  hasImageGen?: boolean
+}
+
+export interface ProviderRequest {
+  endpoint: EndpointKey
+  /** Schema-validated JSON object. NOT a string. Interceptors mutate fields directly. */
+  payload: unknown
+  /** Mutable along the interceptor chain. Terminal HTTP reads the final state. */
+  headers: Headers
+  sourceApi: SourceApi
+  flags?: ProviderRequestFlags
+  signal?: AbortSignal
+  /** Optional log-friendly label. Defaults to `call ${endpoint}` in the provider. */
+  operationName?: string
+  /** Defaults to true. count_tokens is the only endpoint where model is optional. */
+  requireModel?: boolean
+  /** Per-call timeout override in ms. */
+  timeout?: number
+}
+
+export interface ProviderResponse {
+  status: number
+  headers: Headers
+  body: ReadableStream<Uint8Array> | null
+}
+
 export interface ModelProvider {
   readonly kind: UpstreamKind
   readonly name: string
