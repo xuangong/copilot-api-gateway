@@ -1,4 +1,4 @@
-import type { ImageProcessor, ImageSizeCalculator } from "./types"
+import type { ImageProcessor, ImageSizeCalculator } from "@vnext/platform"
 
 /**
  * In-memory image processor for tests and local dev. There is no WebP codec

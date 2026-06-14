@@ -1,17 +1,14 @@
 import { __registerPlatformReset } from "./reset.ts"
 
-export interface CompressOpts {
-  maxBytes?: number
-  format?: "auto" | "webp" | "jpeg"
+export interface ImageDimensions {
+  width: number
+  height: number
 }
-export interface CompressedImage {
-  bytes: Uint8Array
-  format: string
-  bytesIn: number
-  bytesOut: number
-}
+
+export type ImageSizeCalculator = (source: ImageDimensions) => ImageDimensions
+
 export interface ImageProcessor {
-  compress(input: Uint8Array, opts?: CompressOpts): Promise<CompressedImage>
+  compressToWebp(input: Uint8Array, targetSize: ImageSizeCalculator): Promise<Uint8Array>
 }
 
 let _ip: ImageProcessor | null = null

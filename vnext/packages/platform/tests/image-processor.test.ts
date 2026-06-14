@@ -9,12 +9,7 @@ import { __resetPlatformForTests } from "../src/reset.ts"
 beforeEach(() => __resetPlatformForTests())
 
 const stub: ImageProcessor = {
-  compress: async (input) => ({
-    bytes: input,
-    format: "webp",
-    bytesIn: input.byteLength,
-    bytesOut: input.byteLength,
-  }),
+  compressToWebp: async (input) => input,
 }
 
 test("getImageProcessor throws before init", () => {
