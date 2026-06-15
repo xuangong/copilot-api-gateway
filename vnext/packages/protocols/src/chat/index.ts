@@ -58,3 +58,9 @@ export type {
   ChatCompletionsChoiceStreaming,
   ChatCompletionsUsage,
 } from './events.ts'
+
+export {
+  parseChatCompletionsStream,
+  type ParseChatCompletionsStreamOptions,
+} from './stream'
+export { chatCompletionsErrorPayloadMessage } from './errors'
