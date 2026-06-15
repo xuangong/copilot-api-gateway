@@ -7,8 +7,16 @@ import {
   eventFrame,
   doneFrame,
   type ProtocolFrame,
+  type TelemetryModelIdentity,
 } from '@vnext/protocols/common'
 import type { ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
+
+const stubIdentity: TelemetryModelIdentity = {
+  model: '<unknown>',
+  upstream: '<unknown>',
+  modelKey: '<unknown>',
+  cost: null,
+}
 
 // Helper that yields a complete chat-completions stream (event + DONE). The
 // generator is invoked per-test so each call gets a fresh async iterable.
@@ -24,7 +32,7 @@ const okFrames = async function* (): AsyncGenerator<ProtocolFrame<ChatCompletion
 }
 
 test('events + wantsStream=true → SSE Response with [DONE]', async () => {
-  const resp = await respondChatCompletions(eventResult(okFrames()), { wantsStream: true, includeUsageChunk: false })
+  const resp = await respondChatCompletions(eventResult(okFrames(), stubIdentity), { wantsStream: true, includeUsageChunk: false })
   expect(resp.headers.get('content-type')).toContain('text/event-stream')
   const body = await resp.text()
   expect(body).toContain('data: [DONE]')
@@ -32,7 +40,7 @@ test('events + wantsStream=true → SSE Response with [DONE]', async () => {
 })
 
 test('events + wantsStream=false → JSON Response with reassembled completion', async () => {
-  const resp = await respondChatCompletions(eventResult(okFrames()), { wantsStream: false, includeUsageChunk: false })
+  const resp = await respondChatCompletions(eventResult(okFrames(), stubIdentity), { wantsStream: false, includeUsageChunk: false })
   expect(resp.headers.get('content-type')).toContain('application/json')
   const json = (await resp.json()) as { choices: Array<{ message: { content: string } }> }
   expect(json.choices[0]?.message.content).toBe('hi')
@@ -92,13 +100,13 @@ test('mid-stream throw → SSE writes error event-frame and closes', async () =>
     } as unknown as ChatCompletionsStreamEvent)
     throw new Error('mid-stream-boom')
   }
-  const resp = await respondChatCompletions(eventResult(failing()), { wantsStream: true, includeUsageChunk: false })
+  const resp = await respondChatCompletions(eventResult(failing(), stubIdentity), { wantsStream: true, includeUsageChunk: false })
   const body = await resp.text()
   expect(body).toContain('mid-stream-boom')
 })
 
 test('SSE response carries no-cache + keep-alive + x-accel-buffering headers', async () => {
-  const resp = await respondChatCompletions(eventResult(okFrames()), { wantsStream: true, includeUsageChunk: false })
+  const resp = await respondChatCompletions(eventResult(okFrames(), stubIdentity), { wantsStream: true, includeUsageChunk: false })
   expect(resp.headers.get('content-type')).toContain('text/event-stream')
   expect(resp.headers.get('cache-control')).toBe('no-cache')
   expect(resp.headers.get('connection')).toBe('keep-alive')
@@ -116,7 +124,7 @@ test('downstream cancel aborts the controller passed in options', async () => {
     await new Promise<void>(() => {})
   }
   const controller = new AbortController()
-  const resp = await respondChatCompletions(eventResult(neverEnds()), {
+  const resp = await respondChatCompletions(eventResult(neverEnds(), stubIdentity), {
     wantsStream: true,
     includeUsageChunk: false,
     downstreamAbortController: controller,

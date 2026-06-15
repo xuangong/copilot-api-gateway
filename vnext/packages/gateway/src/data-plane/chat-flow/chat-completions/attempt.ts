@@ -135,7 +135,11 @@ export const chatCompletionsAttempt = {
         { recordFirstByteLatency: () => {}, recordSuccess: () => {}, recordFailure: () => {} },
         { protocol: 'chat_completions' },
       )
-      return eventResult(decorated)
+      // FIXME(spec3-part2): replace stub identity with telemetryModelIdentity(sel.binding, sel.bareModel)
+      return eventResult(
+        decorated,
+        { model: '<unknown>', upstream: '<unknown>', modelKey: '<unknown>', cost: null },
+      )
     }
 
     try {
