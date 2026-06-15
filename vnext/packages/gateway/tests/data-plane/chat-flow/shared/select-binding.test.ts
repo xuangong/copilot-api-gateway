@@ -56,3 +56,19 @@ test('returns no-eligible-binding when sawModel but no candidates', async () => 
   })
   expect(res.kind).toBe('no-eligible-binding')
 })
+
+test('returns no-translator when targetEndpoint has no chat_completions translator', async () => {
+  const res = await selectBindingForChatCompletions({
+    model: 'embed-model',
+    auth: fakeAuth,
+    enumerate: async () => ({
+      candidates: [{ binding: fakeBinding('chat_completions'), targetEndpoint: 'embeddings' as const }],
+      sawModel: true, bareModel: 'embed-model', upstreamPin: undefined,
+    }),
+  })
+  expect(res.kind).toBe('no-translator')
+  if (res.kind === 'no-translator') {
+    expect(res.bareModel).toBe('embed-model')
+    expect(res.targetEndpoint).toBe('embeddings')
+  }
+})

@@ -9,6 +9,7 @@
  * candidate set without depending on the live routing table.
  */
 import type { EndpointKey, ModelEndpoints } from '@vnext/protocols/common'
+import type { ProviderBinding } from '@vnext/provider'
 import {
   enumerateBindingCandidates,
   type EnumerateResult,
@@ -19,7 +20,7 @@ import { getTranslator, type PairTranslator } from '../../dispatch/translator-re
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type SelectBindingResult =
-  | { kind: 'ok'; binding: unknown; targetEndpoint: EndpointKey; translator: PairTranslator }
+  | { kind: 'ok'; binding: ProviderBinding; targetEndpoint: EndpointKey; translator: PairTranslator }
   | { kind: 'model-not-found'; bareModel: string }
   | { kind: 'no-eligible-binding'; bareModel: string }
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
