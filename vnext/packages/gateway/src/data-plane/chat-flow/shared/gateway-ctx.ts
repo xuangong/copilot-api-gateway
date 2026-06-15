@@ -3,15 +3,16 @@
  * The dispatch core does NOT depend on Hono — it consumes the resulting
  * plain values via DispatchObsCtx. Kept here so each http.ts handler can
  * call `readAuth(c)` + `readObsCtx(c, auth)` in two lines.
+ *
+ * `DispatchObsCtx` itself lives in `./obs-ctx.ts` so the type can be imported
+ * without pulling in the legacy dispatch chain. We re-export it here so
+ * existing callers don't have to change paths during the spec-3 transition.
  */
 import type { Context } from 'hono'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
+import type { DispatchObsCtx } from './obs-ctx.ts'
 
-export interface DispatchObsCtx {
-  apiKeyId: string | undefined
-  userAgent: string | undefined
-  requestId: string | undefined
-}
+export type { DispatchObsCtx }
 
 export function readAuth(c: Context): DataPlaneAuthCtx {
   return (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx

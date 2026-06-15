@@ -24,7 +24,7 @@ import type {
 } from '../../../shared/observability/latency-tracker.ts'
 import { HTTPError } from '@vnext/provider-copilot'
 import { parseTargetSSE, mapSourceApiToProviderRequest } from './sse-readers.ts'
-import type { DispatchObsCtx } from './gateway-ctx.ts'
+import type { DispatchObsCtx } from './obs-ctx.ts'
 
 export type { DispatchObsCtx }
 

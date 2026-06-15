@@ -13,7 +13,7 @@ import { __resetPlatformForTests } from '@vnext/platform'
 import { setupTestPlatform } from '../../../_setup-platform.ts'
 import { serveChatCompletions } from '../../../../src/data-plane/chat-flow/chat-completions/serve'
 import type { DataPlaneAuthCtx } from '../../../../src/data-plane/models/routes'
-import type { DispatchObsCtx } from '../../../../src/data-plane/chat-flow/shared/gateway-ctx'
+import type { DispatchObsCtx } from '../../../../src/data-plane/chat-flow/shared/obs-ctx'
 
 // serve.ts now reads `getRuntimeLocation()` and the respond path issues
 // `waitUntil(recordPerformance(...))` for the no-binding 404 branch — both
