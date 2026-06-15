@@ -87,3 +87,12 @@ export type { AccountType } from './account-type'
 
 export type { SseFrame, SseCommentFrame, SseWritableFrame, EventFrame, DoneFrame, ProtocolFrame } from './sse'
 export { sseFrame, sseCommentFrame, eventFrame, doneFrame } from './sse'
+
+export type { EventResult, UpstreamErrorResult, InternalErrorResult, ExecuteResult } from './result'
+export {
+  eventResult,
+  internalErrorResult,
+  readUpstreamError,
+  upstreamErrorToResponse,
+  decodeUpstreamErrorBody,
+} from './result'
