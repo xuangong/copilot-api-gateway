@@ -1,21 +1,10 @@
 /**
- * Data-plane routes — pairwise translation pipeline.
+ * Data-plane routes — Hono mount + auth bridge.
  *
- * Flow per request:
- *   1. frontend.parse(raw)               — Zod-validate client payload
- *   2. enumerateBindingCandidates(...)   — pick binding + target endpoint via
- *                                          source-API preference (selectPair)
- *   3. getTranslator(source, target)     — uniform PairTranslator handle
- *   4. translator.translateRequest(...)  — client payload → hub payload
- *   5. runConversationAttempt(...)       — quota gate → timer → call → record
- *   6. streaming:   parse upstream SSE → translator.translateEvents → encodeClientSSE
- *      non-stream:  translator.translateBody(json) → JSON
- *
- * No IR (intermediate representation). The messages→messages route uses the
- * identity translator (zero-cost passthrough). Other routes pay one
- * translateRequest + one translateEvents/translateBody. HTTPError surfaces
- * from binding.provider.fetch and is repackaged into the client's native
- * error wire shape.
+ * Each chat-flow endpoint lives under `chat-flow/<endpoint>/{http,serve}.ts`
+ * (responses also has snapshot-sidecar.ts + image-generation-shortcut.ts;
+ * messages has web-search-shortcut.ts). The shared dispatch orchestrator
+ * lives in `chat-flow/shared/dispatch.ts` with no Hono dependency.
  */
 import { Hono } from 'hono'
 import type { Env } from '../app.ts'
@@ -30,7 +19,7 @@ import { countTokensHandler } from './chat-flow/count-tokens/http.ts'
 
 export const dataPlane = new Hono<{ Bindings: Env }>()
 
-// Auth bridge — populated by future auth middleware; for now defaults to empty so
+// Auth bridge — populated by future auth middleware; defaults to empty so
 // downstream routers can read c.get('auth') without nullish surprises.
 dataPlane.use('*', async (c, next) => {
   if (!c.get('auth' as never)) {
@@ -44,11 +33,7 @@ dataPlane.route('/', embeddingsRouter)
 dataPlane.route('/', imagesRouter)
 
 dataPlane.post('/v1/messages', messagesHandler)
-
 dataPlane.post('/v1/messages/count_tokens', countTokensHandler)
-
 dataPlane.post('/v1/chat/completions', chatCompletionsHandler)
-
 dataPlane.post('/v1/responses', responsesHandler)
-
 dataPlane.post('/v1beta/models/:model{.+}', geminiHandler)
