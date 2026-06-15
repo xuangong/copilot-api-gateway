@@ -114,3 +114,4 @@ export type MessagesResponse = z.infer<typeof MessagesResponseSchema>
 
 export { HUB_VERSION } from './version.ts'
 export * from './events.ts'
+export { parseMessagesStream, type ParseMessagesStreamOptions } from './stream.ts'
