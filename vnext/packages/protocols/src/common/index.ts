@@ -98,3 +98,9 @@ export {
 } from './result'
 
 export { parseSSEStream, type ParseSSEStreamOptions } from './stream/parse-sse'
+
+export {
+  parseTargetStreamFrames,
+  type ParseTargetStreamFramesOptions,
+  type ParsedTargetStreamFrame,
+} from './stream/parse-events'
