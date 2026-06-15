@@ -19,16 +19,11 @@
  */
 import { Hono } from 'hono'
 import type { Env } from '../app.ts'
-import {
-  parseMessagesCountTokensPayload,
-  parseResponsesPayload,
-} from './parsers.ts'
+import { parseResponsesPayload } from './parsers.ts'
 import { modelsRouter, type DataPlaneAuthCtx } from './models/routes.ts'
 import { embeddingsRouter } from './embeddings/routes.ts'
 import { imagesRouter } from './images/routes.ts'
-import { resolveBinding, stripUpstreamPin } from './routing/binding-resolver.ts'
-import { repackageUpstreamError } from './errors/repackage.ts'
-import { HTTPError, parseResponsesSSEStream } from '@vnext/provider-copilot'
+import { parseResponsesSSEStream } from '@vnext/provider-copilot'
 import { handleResponsesImageGeneration, hasImageGeneration } from './orchestrator/server-tools/plugins/image-generation/index.ts'
 import {
   expandPreviousResponseId,
@@ -41,6 +36,7 @@ import { readAuth, readObsCtx } from './chat-flow/shared/gateway-ctx.ts'
 import { messagesHandler } from './chat-flow/messages/http.ts'
 import { chatCompletionsHandler } from './chat-flow/chat-completions/http.ts'
 import { geminiHandler } from './chat-flow/gemini/http.ts'
+import { countTokensHandler } from './chat-flow/count-tokens/http.ts'
 
 export const dataPlane = new Hono<{ Bindings: Env }>()
 
@@ -59,70 +55,7 @@ dataPlane.route('/', imagesRouter)
 
 dataPlane.post('/v1/messages', messagesHandler)
 
-dataPlane.post('/v1/messages/count_tokens', async (c) => {
-  let raw: unknown
-  try { raw = await c.req.json() } catch {
-    return new Response(
-      JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'invalid JSON' } }),
-      { status: 400, headers: { 'content-type': 'application/json' } },
-    )
-  }
-  let payload
-  try { payload = parseMessagesCountTokensPayload(raw) }
-  catch (err) {
-    const e = err as Error & { status?: number; body?: unknown }
-    return new Response(
-      JSON.stringify(e.body ?? { type: 'error', error: { type: 'invalid_request_error', message: e.message } }),
-      { status: e.status ?? 400, headers: { 'content-type': 'application/json' } },
-    )
-  }
-  stripUpstreamPin(payload as unknown as Record<string, unknown>)
-
-  const auth = (c.get('auth' as never) ?? {}) as DataPlaneAuthCtx
-  const binding = await resolveBinding(payload.model, 'messages_count_tokens', {
-    ownerId: auth.userId,
-    copilot: auth.copilot,
-  })
-  if (!binding) {
-    return new Response(
-      JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: `No messages_count_tokens upstream available for model: ${payload.model}. Run GET /v1/models for available ids.` } }),
-      { status: 404, headers: { 'content-type': 'application/json' } },
-    )
-  }
-
-  const reqHeaders = c.req.raw.headers
-  const extraHeaders: Record<string, string> = {}
-  const beta = reqHeaders.get('anthropic-beta')
-  if (beta) extraHeaders['anthropic-beta'] = beta
-  const version = reqHeaders.get('anthropic-version')
-  if (version) extraHeaders['anthropic-version'] = version
-
-  try {
-    const headers = new Headers({ 'content-type': 'application/json' })
-    for (const [k, v] of Object.entries(extraHeaders)) headers.set(k, v)
-    const pr = await binding.provider.fetch({
-      endpoint: 'messages_count_tokens',
-      payload,
-      headers,
-      sourceApi: 'anthropic',
-      operationName: 'count tokens',
-      flags: { isStreaming: false },
-      signal: c.req.raw.signal,
-    })
-    const response = new Response(pr.body, { status: pr.status, headers: pr.headers })
-    const json = await response.json()
-    return Response.json(json, { status: response.status })
-  } catch (err) {
-    if (err instanceof HTTPError) {
-      return await repackageUpstreamError(err.response, 'messages')
-    }
-    const message = err instanceof Error ? err.message : 'upstream error'
-    return new Response(
-      JSON.stringify({ type: 'error', error: { type: 'api_error', message } }),
-      { status: 502, headers: { 'content-type': 'application/json' } },
-    )
-  }
-})
+dataPlane.post('/v1/messages/count_tokens', countTokensHandler)
 
 dataPlane.post('/v1/chat/completions', chatCompletionsHandler)
 
