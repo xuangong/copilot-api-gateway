@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { MessagesThinkingBlock, MessagesRedactedThinkingBlock } from './events.ts'
 
 const TextBlock = z.object({
   type: z.literal('text'),
@@ -38,8 +39,10 @@ export const MessagesRedactedThinkingBlockSchema = z.object({
   data: z.string(),
 }).loose()
 
-export type MessagesThinkingBlock = z.infer<typeof MessagesThinkingBlockSchema>
-export type MessagesRedactedThinkingBlock = z.infer<typeof MessagesRedactedThinkingBlockSchema>
+// `MessagesThinkingBlock` / `MessagesRedactedThinkingBlock` interface types
+// are exported from `./events.ts` (verbatim port of the upstream protocols
+// package). The schema-derived alias previously declared here was removed
+// to avoid duplicate exports of the same name.
 
 /** Backwards-compatible alias for the previous loose ThinkingBlock union. */
 export type ThinkingBlock = MessagesThinkingBlock | MessagesRedactedThinkingBlock

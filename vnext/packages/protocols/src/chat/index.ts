@@ -49,3 +49,12 @@ export const ChatPayloadSchema = z.object({
 }).loose()
 
 export type ChatPayload = z.infer<typeof ChatPayloadSchema>
+
+export type {
+  ChatCompletionsStreamEvent,
+  ChatCompletionsDelta,
+  ChatCompletionsToolCall,
+  ChatCompletionsReasoningItem,
+  ChatCompletionsChoiceStreaming,
+  ChatCompletionsUsage,
+} from './events.ts'
