@@ -91,3 +91,7 @@ export type {
   ResponsesMcpApprovalResponseItem,
 } from './events.ts'
 export { isResponsesTerminalEvent, responsesResultFromStreamEvent } from './events.ts'
+
+export { responsesResultToEvents } from './from-result.ts'
+
+export { parseResponsesStream, type ParseResponsesStreamOptions } from './stream.ts'
