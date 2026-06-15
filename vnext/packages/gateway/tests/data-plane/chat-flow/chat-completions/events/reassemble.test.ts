@@ -35,3 +35,15 @@ test('throws on upstream error payload chunk', async () => {
     { error: { message: 'upstream failed' } } as any,
   ]))).rejects.toThrow(/upstream failed/)
 })
+
+test('accumulates reasoning_text, reasoning_opaque, and reasoning_items across chunks', async () => {
+  const result = await reassembleChatCompletions(drainable([
+    { id: 'c1', object: 'chat.completion.chunk', model: 'm', choices: [{ index: 0, delta: { reasoning_text: 'think ' } }] } as any,
+    { id: 'c1', object: 'chat.completion.chunk', model: 'm', choices: [{ index: 0, delta: { reasoning_text: 'harder', reasoning_opaque: 'enc1' } }] } as any,
+    { id: 'c1', object: 'chat.completion.chunk', model: 'm', choices: [{ index: 0, delta: { reasoning_items: [{ type: 'thinking', id: 'r1', summary: [{ type: 'summary_text', text: 'summary' }] }] }, finish_reason: 'stop' }] } as any,
+  ]))
+  expect(result.choices[0]!.message.reasoning_text).toBe('think harder')
+  expect(result.choices[0]!.message.reasoning_opaque).toBe('enc1')
+  expect(result.choices[0]!.message.reasoning_items).toEqual([{ type: 'thinking', id: 'r1', summary: [{ type: 'summary_text', text: 'summary' }] }])
+  expect(result.choices[0]!.finish_reason).toBe('stop')
+})

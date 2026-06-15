@@ -1,5 +1,5 @@
 import { chatCompletionsErrorPayloadMessage } from '@vnext/protocols/chat'
-import type { ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
+import type { ChatCompletionsStreamEvent, ChatCompletionsReasoningItem } from '@vnext/protocols/chat'
 
 export interface ChatCompletionsResult {
   id: string
@@ -12,9 +12,11 @@ export interface ChatCompletionsResult {
       role: 'assistant'
       content: string | null
       tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>
-      reasoning_content?: string
+      reasoning_text?: string
+      reasoning_opaque?: string
+      reasoning_items?: ChatCompletionsReasoningItem[]
     }
-    finish_reason: string | null
+    finish_reason: string
   }>
   usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number; [k: string]: unknown }
 }
@@ -26,8 +28,11 @@ export async function reassembleChatCompletions(
   let model = ''
   let created = 0
   let content = ''
-  let reasoningContent = ''
-  let finishReason: string | null = null
+  let reasoningText = ''
+  let reasoningOpaque = ''
+  let hasReasoningOpaque = false
+  const reasoningItems: ChatCompletionsReasoningItem[] = []
+  let finishReason: string = 'stop'
   let lastUsage: ChatCompletionsResult['usage'] | undefined
 
   const toolCallsMap = new Map<number, { id: string; name: string; arguments: string }>()
@@ -58,8 +63,15 @@ export async function reassembleChatCompletions(
       if (typeof delta.content === 'string') {
         content += delta.content
       }
-      if (typeof delta.reasoning_content === 'string') {
-        reasoningContent += delta.reasoning_content
+      if (typeof delta.reasoning_text === 'string') {
+        reasoningText += delta.reasoning_text
+      }
+      if (typeof delta.reasoning_opaque === 'string') {
+        reasoningOpaque += delta.reasoning_opaque
+        hasReasoningOpaque = true
+      }
+      if (Array.isArray(delta.reasoning_items)) {
+        reasoningItems.push(...(delta.reasoning_items as ChatCompletionsReasoningItem[]))
       }
 
       if (Array.isArray(delta.tool_calls)) {
@@ -104,7 +116,9 @@ export async function reassembleChatCompletions(
     role: 'assistant',
     content: content || null,
     ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
-    ...(reasoningContent && { reasoning_content: reasoningContent }),
+    ...(reasoningText && { reasoning_text: reasoningText }),
+    ...(hasReasoningOpaque ? { reasoning_opaque: reasoningOpaque } : {}),
+    ...(reasoningItems.length > 0 && { reasoning_items: reasoningItems }),
   }
 
   const result: ChatCompletionsResult = {
