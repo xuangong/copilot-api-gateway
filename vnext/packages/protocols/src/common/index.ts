@@ -96,3 +96,5 @@ export {
   upstreamErrorToResponse,
   decodeUpstreamErrorBody,
 } from './result'
+
+export { parseSSEStream, type ParseSSEStreamOptions } from './stream/parse-sse'
