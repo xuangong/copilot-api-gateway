@@ -17,14 +17,26 @@ import {
   type ExecuteResult,
   type ProtocolFrame,
   type SseFrame,
+  type UpstreamErrorResult,
 } from '@vnext/protocols/common'
 import type { ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
+import { repackageUpstreamError } from '../../errors/repackage'
 import { collectChatCompletionsProtocolEventsToResult } from './events/to-result'
 import { chatCompletionsProtocolFrameToSSEFrame } from './events/to-sse'
 
 export interface RespondChatCompletionsOptions {
   readonly wantsStream: boolean
   readonly includeUsageChunk: boolean
+  /**
+   * Optional abort signal used to cancel an in-flight SSE source generator
+   * when the downstream client disconnects mid-stream. serve.ts pairs this
+   * with the same controller it injects via `RequestContext.downstreamAbortSignal`
+   * — when the browser/SDK closes its read end, ReadableStream.cancel() fires,
+   * we abort the controller, and the upstream `parseChatCompletionsStream` +
+   * `provider.fetch(... , {signal})` chain unwinds. Without this, an abandoned
+   * client leaks the upstream socket until the model itself stops streaming.
+   */
+  readonly downstreamAbortController?: AbortController
 }
 
 /**
@@ -70,10 +82,26 @@ const renderEventsAsSSE = (
         controller.close()
       }
     },
+    // Downstream client closed its read end (browser navigated away, SDK
+    // dropped the connection, etc.). Abort the shared controller so the
+    // upstream socket — held open by `provider.fetch` + `parseChatCompletionsStream`
+    // via the same signal — unwinds promptly instead of waiting for the model
+    // to finish.
+    cancel(_reason) {
+      options.downstreamAbortController?.abort()
+    },
   })
   return new Response(body, {
     status: 200,
-    headers: { 'content-type': 'text/event-stream' },
+    // Headers mirror the reference (`copilot-gateway`) shape so reverse
+    // proxies (nginx `x-accel-buffering: no`, CDN edges, etc.) don't buffer
+    // and SSE clients don't auto-reconnect from a stale cache entry.
+    headers: {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      'connection': 'keep-alive',
+      'x-accel-buffering': 'no',
+    },
   })
 }
 
@@ -103,11 +131,20 @@ const isBridgedResponse = (
 ): result is { readonly kind: 'bridged-response'; readonly response: Response } =>
   'kind' in result && result.kind === 'bridged-response'
 
+// Upstream errors carry the raw provider body verbatim; the OpenAI SDK expects
+// the `{ error: { type, message, ...code } }` envelope shape. We reuse the
+// existing `repackageUpstreamError` helper (sourceApi='chat_completions') so
+// the body is normalized identically to the legacy `dispatch()` path — same
+// type defaults (`invalid_request_error` for 4xx, `api_error` for 5xx), same
+// status preservation.
+const renderUpstreamError = async (result: UpstreamErrorResult): Promise<Response> =>
+  await repackageUpstreamError(upstreamErrorToResponse(result), 'chat_completions')
+
 const renderExecuteResult = async (
   result: ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
   options: RespondChatCompletionsOptions,
 ): Promise<Response> => {
-  if (result.type === 'upstream-error') return upstreamErrorToResponse(result)
+  if (result.type === 'upstream-error') return await renderUpstreamError(result)
   if (result.type === 'internal-error') {
     return Response.json({ error: { message: result.error.message } }, { status: result.status })
   }

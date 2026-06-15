@@ -9,5 +9,5 @@ export async function chatCompletionsHandler(c: Context<{ Bindings: Env }>): Pro
   let raw: unknown
   try { raw = await c.req.json() } catch { return invalidJsonResponse() }
   const auth = readAuth(c)
-  return serveChatCompletions({ raw, auth, obsCtx: readObsCtx(c, auth) })
+  return serveChatCompletions({ raw, auth, obsCtx: readObsCtx(c, auth), signal: c.req.raw.signal })
 }
