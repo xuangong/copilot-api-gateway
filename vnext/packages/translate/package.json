@@ -12,7 +12,9 @@
     "./gemini-via-messages": "./src/gemini-via-messages/index.ts",
     "./messages-via-gemini": "./src/messages-via-gemini/index.ts",
     "./chat-completions-via-responses": "./src/chat-completions-via-responses/index.ts",
-    "./responses-via-chat-completions": "./src/responses-via-chat-completions/index.ts"
+    "./responses-via-chat-completions": "./src/responses-via-chat-completions/index.ts",
+    "./gemini-via-responses": "./src/gemini-via-responses/index.ts",
+    "./gemini-via-chat-completions": "./src/gemini-via-chat-completions/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

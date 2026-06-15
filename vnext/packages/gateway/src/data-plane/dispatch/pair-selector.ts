@@ -18,9 +18,8 @@ export type SourceApi = 'messages' | 'chat_completions' | 'responses' | 'gemini'
  * - chat_completions   : chat_completions → messages → responses
  * - responses          : responses → messages → chat_completions
  * - gemini             : messages → responses → chat_completions
- *   (Gemini source pairs with the messages hub via gemini-via-messages. We
- *    do not register a gemini→chat_completions or gemini→responses translator,
- *    so the selector must prefer messages whenever the binding serves it.)
+ *   (Gemini source pairs with any of the three hub endpoints via the
+ *    gemini-via-{messages,responses,chat-completions} translators.)
  */
 const PREFERENCE: Record<SourceApi, readonly EndpointKey[]> = {
   messages: ['messages', 'responses', 'chat_completions'],
