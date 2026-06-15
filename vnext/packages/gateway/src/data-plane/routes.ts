@@ -21,7 +21,6 @@ import { Hono } from 'hono'
 import type { Env } from '../app.ts'
 import {
   parseMessagesCountTokensPayload,
-  parseChatPayload,
   parseResponsesPayload,
   parseGeminiPayload,
 } from './parsers.ts'
@@ -41,6 +40,7 @@ import { dispatch, type DispatchObsCtx } from './chat-flow/shared/dispatch.ts'
 import { invalidJsonResponse, jsonErrorWrap } from './chat-flow/shared/error-wrap.ts'
 import { readAuth, readObsCtx } from './chat-flow/shared/gateway-ctx.ts'
 import { messagesHandler } from './chat-flow/messages/http.ts'
+import { chatCompletionsHandler } from './chat-flow/chat-completions/http.ts'
 
 export const dataPlane = new Hono<{ Bindings: Env }>()
 
@@ -124,22 +124,7 @@ dataPlane.post('/v1/messages/count_tokens', async (c) => {
   }
 })
 
-dataPlane.post('/v1/chat/completions', async (c) => {
-  let raw: unknown
-  try { raw = await c.req.json() } catch { return invalidJsonResponse() }
-  const auth = readAuth(c)
-  return dispatch(raw, {
-    parse: (r) => parseChatPayload(r),
-    modelOf: (p) => (p as { model?: string }).model ?? '',
-    sourceApi: 'chat_completions',
-    // Chat Completions has no required max_tokens — give chat→messages a default
-    // so the Anthropic upstream contract (which requires max_tokens) is met.
-    fallbackMaxOutputTokens: 4096,
-    errorWrap: jsonErrorWrap,
-    auth,
-    obsCtx: readObsCtx(c, auth),
-  })
-})
+dataPlane.post('/v1/chat/completions', chatCompletionsHandler)
 
 dataPlane.post('/v1/responses', async (c) => {
   // image_generation server-tool intercept short-circuits the pairwise pipeline:
