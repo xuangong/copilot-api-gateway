@@ -22,7 +22,6 @@ import type { Env } from '../app.ts'
 import {
   parseMessagesCountTokensPayload,
   parseResponsesPayload,
-  parseGeminiPayload,
 } from './parsers.ts'
 import { modelsRouter, type DataPlaneAuthCtx } from './models/routes.ts'
 import { embeddingsRouter } from './embeddings/routes.ts'
@@ -41,6 +40,7 @@ import { invalidJsonResponse, jsonErrorWrap } from './chat-flow/shared/error-wra
 import { readAuth, readObsCtx } from './chat-flow/shared/gateway-ctx.ts'
 import { messagesHandler } from './chat-flow/messages/http.ts'
 import { chatCompletionsHandler } from './chat-flow/chat-completions/http.ts'
+import { geminiHandler } from './chat-flow/gemini/http.ts'
 
 export const dataPlane = new Hono<{ Bindings: Env }>()
 
@@ -277,24 +277,4 @@ dataPlane.post('/v1/responses', async (c) => {
   return response
 })
 
-dataPlane.post('/v1beta/models/:model{.+}', async (c) => {
-  // Gemini path encodes model + verb: "gemini-1.5-pro:generateContent" or ":streamGenerateContent"
-  const raw = c.req.param('model')
-  const [model, verb] = raw.split(':')
-  const stream = verb === 'streamGenerateContent'
-  let body: unknown
-  try { body = await c.req.json() } catch { return invalidJsonResponse() }
-  const auth = readAuth(c)
-  return dispatch(body, {
-    parse: (r) => parseGeminiPayload(r),
-    modelOf: () => model ?? '',
-    // Gemini payload has no top-level model; the translator reads it from
-    // TranslateContext.model. Force-stream is decoded from the URL verb.
-    forceStream: stream,
-    fallbackMaxOutputTokens: 4096,
-    sourceApi: 'gemini',
-    errorWrap: jsonErrorWrap,
-    auth,
-    obsCtx: readObsCtx(c, auth),
-  })
-})
+dataPlane.post('/v1beta/models/:model{.+}', geminiHandler)
