@@ -84,3 +84,6 @@ export { kindForEndpoints } from './model-endpoints'
 export type { UpstreamRecord } from './upstream'
 
 export type { AccountType } from './account-type'
+
+export type { SseFrame, SseCommentFrame, SseWritableFrame, EventFrame, DoneFrame, ProtocolFrame } from './sse'
+export { sseFrame, sseCommentFrame, eventFrame, doneFrame } from './sse'
