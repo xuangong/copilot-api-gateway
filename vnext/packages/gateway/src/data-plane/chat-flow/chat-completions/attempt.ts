@@ -128,13 +128,11 @@ export const chatCompletionsAttempt = {
       const stream = upstreamIsJson
         ? await readUpstreamJsonAsFrames(upstreamResp.body)
         : parseChatCompletionsStream(upstreamResp.body, { signal: args.ctx.downstreamAbortSignal })
-      // Telemetry recorder wiring stays minimal in spec2; real wiring lands in Part 4.
-      const decorated = withUpstreamTelemetry(
-        stream,
-        { abortSignal: args.ctx.downstreamAbortSignal },
-        { recordFirstByteLatency: () => {}, recordSuccess: () => {}, recordFailure: () => {} },
-        { protocol: 'chat_completions' },
-      )
+      // Telemetry classifier wiring; Part 2 will route finalMetadata into TelemetryRequestContext.
+      const { events: decorated } = withUpstreamTelemetry(stream, {
+        abortSignal: args.ctx.downstreamAbortSignal,
+        protocol: 'chat_completions',
+      })
       // FIXME(spec3-part2): replace stub identity with telemetryModelIdentity(sel.binding, sel.bareModel)
       return eventResult(
         decorated,
