@@ -3,6 +3,7 @@ import {
   initImageProcessor,
   initEnv,
   initBackground,
+  initRuntimeLocation,
   type SqlDatabase,
 } from "@vnext/platform"
 import { initRepo } from "@vnext/gateway/src/shared/repo/index.ts"
@@ -39,6 +40,7 @@ export function bootstrapCloudflarePlatform(env: CloudflareEnv, ctx: ExecutionCo
   initSqlDatabase(env.DB as unknown as SqlDatabase)
   initEnv((name) => String((env as unknown as Record<string, unknown>)[name] ?? ""))
   initBackground({ waitUntil: (p) => ctx.waitUntil(p) })
+  initRuntimeLocation('cloudflare')
   initImageProcessor(
     createCloudflareImageProcessor(env.IMAGES, env.IMAGE_CACHE as unknown as ImageCacheKv),
   )

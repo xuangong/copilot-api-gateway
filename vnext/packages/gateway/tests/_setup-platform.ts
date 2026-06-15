@@ -3,6 +3,7 @@ import {
   initImageProcessor,
   initEnv,
   initBackground,
+  initRuntimeLocation,
   initSqlDatabase,
   type SqlDatabase,
 } from '@vnext/platform'
@@ -29,6 +30,7 @@ export function setupTestPlatform(opts: SetupOptions = {}): {
   initSqlDatabase(db as unknown as SqlDatabase)
   initEnv(opts.envLookup ?? (() => ''))
   initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
+  initRuntimeLocation('bun')
   initImageProcessor(createInMemoryImageProcessor())
   initRepo(repo)
   initCache(new MemoryCache())
