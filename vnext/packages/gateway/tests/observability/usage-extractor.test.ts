@@ -45,6 +45,21 @@ test('extractFromJson: OpenAI Chat prompt_tokens', () => {
   })
 })
 
+test('extractFromJson: OpenAI Chat with cache_creation_input_tokens (Copilot extension)', () => {
+  const out = extractFromJson({
+    model: 'gpt-5.5',
+    usage: {
+      prompt_tokens: 1000,
+      completion_tokens: 50,
+      prompt_tokens_details: { cached_tokens: 100, cache_creation_input_tokens: 200 },
+    },
+  })
+  expect(out).toEqual({
+    model: 'gpt-5.5',
+    tokens: { input: 700, output: 50, input_cache_read: 100, input_cache_write: 200 },
+  })
+})
+
 test('extractFromJson: Responses with image-modality split routes via tokenUsageFromImagesResponse', () => {
   const out = extractFromJson({
     response: { model: 'gpt-5' },
@@ -141,6 +156,19 @@ test('applyStreamEvent: OpenAI Chat end-frame is terminal', () => {
   expect(latest.tokens.input).toBe(45)
   expect(latest.tokens.output).toBe(10)
   expect(latest.tokens.input_cache_read).toBe(5)
+})
+
+test('applyStreamEvent: OpenAI Chat end-frame with cache_creation_input_tokens', () => {
+  const latest: UsageInfo = { tokens: {} }
+  const terminal = applyStreamEvent({
+    usage: {
+      prompt_tokens: 1000,
+      completion_tokens: 25,
+      prompt_tokens_details: { cached_tokens: 100, cache_creation_input_tokens: 200 },
+    },
+  }, latest)
+  expect(terminal).toBe(true)
+  expect(latest.tokens).toEqual({ input: 700, output: 25, input_cache_read: 100, input_cache_write: 200 })
 })
 
 test('applyStreamEvent: unrelated event returns false, no mutation', () => {

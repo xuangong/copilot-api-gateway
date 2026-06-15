@@ -124,7 +124,7 @@ export function extractFromJson(json: unknown): UsageInfo | null {
       output_tokens_details?: { text_tokens?: number; image_tokens?: number }
       prompt_tokens?: number
       completion_tokens?: number
-      prompt_tokens_details?: { cached_tokens?: number }
+      prompt_tokens_details?: { cached_tokens?: number; cache_creation_input_tokens?: number }
     }
   } | null
   const u = j?.usage
@@ -161,12 +161,14 @@ export function extractFromJson(json: unknown): UsageInfo | null {
   }
   if (u.prompt_tokens != null) {
     const cached = u.prompt_tokens_details?.cached_tokens ?? 0
+    const cacheWrite = u.prompt_tokens_details?.cache_creation_input_tokens ?? 0
     return {
       model: modelFromJson(json),
       tokens: compactTokens({
-        input: Math.max(0, u.prompt_tokens - cached),
+        input: Math.max(0, u.prompt_tokens - cached - cacheWrite),
         output: u.completion_tokens ?? 0,
         input_cache_read: cached,
+        input_cache_write: cacheWrite,
       }),
     }
   }
@@ -204,7 +206,7 @@ export function applyStreamEvent(parsed: unknown, latest: UsageInfo): boolean {
       cache_creation_input_tokens?: number
       prompt_tokens?: number
       completion_tokens?: number
-      prompt_tokens_details?: { cached_tokens?: number }
+      prompt_tokens_details?: { cached_tokens?: number; cache_creation_input_tokens?: number }
     }
     model?: string
   }
@@ -254,10 +256,12 @@ export function applyStreamEvent(parsed: unknown, latest: UsageInfo): boolean {
   }
   if (p.usage?.prompt_tokens != null) {
     const cached = p.usage.prompt_tokens_details?.cached_tokens ?? 0
+    const cacheWrite = p.usage.prompt_tokens_details?.cache_creation_input_tokens ?? 0
     latest.tokens = compactTokens({
-      input: Math.max(0, p.usage.prompt_tokens - cached),
+      input: Math.max(0, p.usage.prompt_tokens - cached - cacheWrite),
       output: p.usage.completion_tokens ?? 0,
       input_cache_read: cached,
+      input_cache_write: cacheWrite,
     })
     return true
   }
