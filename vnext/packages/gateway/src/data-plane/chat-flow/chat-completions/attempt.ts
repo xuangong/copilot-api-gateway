@@ -67,6 +67,11 @@ export const chatCompletionsAttempt = {
     }
     const chain = args.interceptors ?? chatCompletionsInterceptors
 
+    // Lifted so the outer catch can cancel the upstream body if a wrapping
+    // interceptor throws AFTER the terminal opened it. Without this, the
+    // upstream stream lingers until GC.
+    let upstreamResp: ProviderResponse | undefined
+
     const terminal = async (): Promise<ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>> => {
       const upstreamPayload = await sel.translator.translateRequest(invocation.payload, {
         signal: args.ctx.downstreamAbortSignal ?? new AbortController().signal,
@@ -82,17 +87,17 @@ export const chatCompletionsAttempt = {
         signal: args.ctx.downstreamAbortSignal,
       }
       const binding = sel.binding as unknown as AttemptBinding
-      const resp = await binding.provider.fetch(providerReq)
-      if (resp.status < 200 || resp.status >= 300) {
+      upstreamResp = await binding.provider.fetch(providerReq)
+      if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
         // Wrap the ProviderResponse shape into a Response so readUpstreamError
         // can buffer body + headers using the standard helper.
-        const errResp = new Response(resp.body, { status: resp.status, headers: resp.headers })
+        const errResp = new Response(upstreamResp.body, { status: upstreamResp.status, headers: upstreamResp.headers })
         return await readUpstreamError(errResp)
       }
-      if (!resp.body) {
+      if (!upstreamResp.body) {
         return internalErrorResult(502, new Error('upstream returned empty body'))
       }
-      const stream = parseChatCompletionsStream(resp.body, { signal: args.ctx.downstreamAbortSignal })
+      const stream = parseChatCompletionsStream(upstreamResp.body, { signal: args.ctx.downstreamAbortSignal })
       // Telemetry recorder wiring stays minimal in spec2; real wiring lands in Part 4.
       const decorated = withUpstreamTelemetry(
         stream,
@@ -106,6 +111,10 @@ export const chatCompletionsAttempt = {
     try {
       return await runInterceptors(invocation, args.ctx, chain, terminal)
     } catch (err) {
+      // If terminal opened an upstream body but a wrapping interceptor threw
+      // before anyone could consume it, cancel to release the connection.
+      // Swallow cancel errors (body may be locked or already cancelled).
+      if (upstreamResp?.body) void upstreamResp.body.cancel().catch(() => {})
       return internalErrorResult(502, err instanceof Error ? err : new Error(String(err)))
     }
   },

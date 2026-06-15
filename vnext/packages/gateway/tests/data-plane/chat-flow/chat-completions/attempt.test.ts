@@ -122,3 +122,72 @@ test('case f — model-not-found from selectBinding returns InternalErrorResult(
   expect(res.type).toBe('internal-error')
   if (res.type === 'internal-error') expect(res.status).toBe(404)
 })
+
+test('case g — provider returns null body returns InternalErrorResult(502)', async () => {
+  const fetchMock = mock(async () => ({ status: 200, headers: new Headers(), body: null }))
+  const fakeBinding = { provider: { fetch: fetchMock } } as any
+  const res = await chatCompletionsAttempt.generate({
+    payload: { model: 'gpt-x', messages: [], stream: true },
+    raw: new Request('http://x'),
+    auth: baseAuth,
+    ctx: baseCtx,
+    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator }),
+    dispatchFallback: async () => new Response(),
+  })
+  expect(res.type).toBe('internal-error')
+  if (res.type === 'internal-error') {
+    expect(res.status).toBe(502)
+    expect(String(res.error)).toMatch(/empty body/)
+  }
+})
+
+test('case h — interceptor throw AFTER terminal cancels upstream stream body', async () => {
+  // Build a body whose cancel() we can observe. The interceptor below wraps
+  // terminal so it can throw post-leaf, after terminal has opened resp.body.
+  const cancelSpy = mock(async () => {})
+  const baseBody = new Response(okSseBody).body!
+  const observableBody = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const reader = baseBody.getReader()
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) { controller.close(); break }
+        controller.enqueue(value)
+      }
+    },
+    async cancel(reason) {
+      await cancelSpy(reason)
+      try { await baseBody.cancel(reason) } catch { /* may already be locked */ }
+    },
+  })
+  const fetchMock = mock(async () => ({
+    status: 200,
+    headers: new Headers({ 'content-type': 'text/event-stream' }),
+    body: observableBody,
+  }))
+  const fakeBinding = { provider: { fetch: fetchMock } } as any
+
+  // Wrapping interceptor: calls next() (which runs terminal and opens the
+  // upstream body), then throws BEFORE returning the result to the caller.
+  const postLeafThrow = async (_inv: any, _ctx: any, next: () => Promise<unknown>) => {
+    await next()
+    throw new Error('post-leaf-boom')
+  }
+
+  const res = await chatCompletionsAttempt.generate({
+    payload: { model: 'gpt-x', messages: [], stream: true },
+    raw: new Request('http://x'),
+    auth: baseAuth,
+    ctx: baseCtx,
+    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator }),
+    dispatchFallback: async () => new Response(),
+    interceptors: [postLeafThrow as any],
+  })
+  expect(res.type).toBe('internal-error')
+  if (res.type === 'internal-error') {
+    expect(res.status).toBe(502)
+    expect(String(res.error)).toMatch(/post-leaf-boom/)
+  }
+  expect(fetchMock).toHaveBeenCalledTimes(1)
+  expect(cancelSpy).toHaveBeenCalledTimes(1)
+})
