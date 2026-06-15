@@ -6,7 +6,10 @@
  * payload/header rewrites by stacking `CopilotInterceptor` functions; the
  * terminal handler issues the upstream fetch.
  */
-import type { EndpointKey } from '@vnext/protocols/common'
+import type { EndpointKey, ProtocolFrame, ExecuteResult } from '@vnext/protocols/common'
+import type { ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
+import type { MessagesStreamEvent } from '@vnext/protocols/messages'
+import type { ResponsesStreamEvent } from '@vnext/protocols/responses'
 
 /**
  * Mutable snapshot of a single proxy request. Interceptors read and write
@@ -48,3 +51,21 @@ export const runInterceptors = async <TInv, TCtx, R>(
 }
 
 export type CopilotInterceptor = Interceptor<Invocation, RequestContext, Response>
+
+export type ChatCompletionsStreamInterceptor = Interceptor<
+  Invocation,
+  RequestContext,
+  ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
+>
+
+export type MessagesStreamInterceptor = Interceptor<
+  Invocation,
+  RequestContext,
+  ExecuteResult<ProtocolFrame<MessagesStreamEvent>>
+>
+
+export type ResponsesStreamInterceptor = Interceptor<
+  Invocation,
+  RequestContext,
+  ExecuteResult<ProtocolFrame<ResponsesStreamEvent>>
+>
