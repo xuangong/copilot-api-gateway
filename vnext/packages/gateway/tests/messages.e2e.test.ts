@@ -7,11 +7,15 @@
  * real CopilotProvider, so we verify the full resolveBinding → provider.fetch
  * → responsesOut.decode → frontend.encode wire shape.
  */
-import { test, expect, afterEach } from 'bun:test'
+import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
 import { initRepo } from '../src/shared/repo/index.ts'
-import { __resetPlatformForTests } from '@vnext/platform'
+import {
+  __resetPlatformForTests,
+  initBackground,
+  initRuntimeLocation,
+} from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
@@ -65,6 +69,11 @@ function installFetch(handler: FetchHandler) {
 afterEach(() => {
   globalThis.fetch = originalFetch
   __resetPlatformForTests()
+})
+
+beforeEach(() => {
+  initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
+  initRuntimeLocation('bun')
 })
 
 // Wrap the real app behind a tiny shim that pre-populates auth.copilot. The

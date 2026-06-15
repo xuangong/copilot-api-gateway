@@ -24,11 +24,15 @@
  * onto the Hono app. We avoid mock.module() because Bun 1.3 leaks module
  * mocks across files (see MEMORY note `bun_mock_module_unrestorable`).
  */
-import { test, expect, afterEach } from 'bun:test'
+import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../../app.ts'
 import { initRepo } from '../../shared/repo/index.ts'
-import { __resetPlatformForTests } from '@vnext/platform'
+import {
+  __resetPlatformForTests,
+  initBackground,
+  initRuntimeLocation,
+} from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../../shared/repo/types.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import type { DataPlaneAuthCtx } from '../models/routes.ts'
@@ -173,6 +177,11 @@ function installCapturingFetch(
 afterEach(() => {
   globalThis.fetch = originalFetch
   __resetPlatformForTests()
+})
+
+beforeEach(() => {
+  initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
+  initRuntimeLocation('bun')
 })
 
 function buildApp(auth: DataPlaneAuthCtx) {
