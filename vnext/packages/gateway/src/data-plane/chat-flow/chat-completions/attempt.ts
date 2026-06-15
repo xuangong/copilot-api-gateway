@@ -14,10 +14,11 @@
 import { runInterceptors, type Invocation, type RequestContext, type ChatCompletionsStreamInterceptor } from '@vnext/interceptor'
 import { eventResult, internalErrorResult, readUpstreamError, type ExecuteResult, type ProtocolFrame } from '@vnext/protocols/common'
 import { parseChatCompletionsStream, type ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
-import type { ProviderRequest, ProviderResponse } from '@vnext/provider'
+import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext/provider'
 import { withUpstreamTelemetry } from '../shared/upstream-telemetry'
 import { selectBindingForChatCompletions, type SelectBindingAuth, type SelectBindingResult } from '../shared/select-binding'
 import { chatCompletionsInterceptors } from './interceptors'
+import { synthesizeChatCompletionsFramesFromJson, type ChatCompletionsJsonBody } from './events/json-to-frames'
 
 export type ChatCompletionsAttemptResult =
   | ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
@@ -43,6 +44,19 @@ export interface ChatCompletionsAttemptArgs {
 // Minimal binding shape we actually depend on. Keeps tests free of the full
 // ProviderBinding ceremony while staying type-safe inside this module.
 type AttemptBinding = { readonly provider: { readonly fetch: (req: ProviderRequest) => Promise<ProviderResponse> } }
+
+// Buffer the upstream body, decode as a `chat.completion` envelope, and hand
+// it to the JSON→frames synthesizer. Returns the same async-iterable shape as
+// `parseChatCompletionsStream` so the rest of the terminal stays branch-free.
+// Any decode failure surfaces as a `parseChatCompletionsStream`-shaped error
+// (single throw on iteration), which the outer try/catch maps to a 502.
+const readUpstreamJsonAsFrames = async (
+  body: ReadableStream<Uint8Array>,
+): Promise<AsyncGenerator<ProtocolFrame<ChatCompletionsStreamEvent>>> => {
+  const buf = await new Response(body).text()
+  const json = JSON.parse(buf) as ChatCompletionsJsonBody
+  return synthesizeChatCompletionsFramesFromJson(json)
+}
 
 export const chatCompletionsAttempt = {
   generate: async (args: ChatCompletionsAttemptArgs): Promise<ChatCompletionsAttemptResult> => {
@@ -97,7 +111,23 @@ export const chatCompletionsAttempt = {
       if (!upstreamResp.body) {
         return internalErrorResult(502, new Error('upstream returned empty body'))
       }
-      const stream = parseChatCompletionsStream(upstreamResp.body, { signal: args.ctx.downstreamAbortSignal })
+      // Non-streaming requests (or unexpectedly-JSON responses) need to be
+      // funneled through the SAME ProtocolFrame pipeline the SSE path uses,
+      // so interceptors and `collectChatCompletionsProtocolEventsToResult`
+      // don't see two parallel shapes. We sniff content-type first (matches
+      // legacy `dispatch()`'s upstream-payload-driven branch) and fall back to
+      // synthesizing frames from the buffered JSON.
+      //
+      // Why not always sniff: when content-type is text/event-stream we MUST
+      // hand the body to `parseChatCompletionsStream` lazily — buffering would
+      // serialize the upstream and defeat first-byte-latency telemetry.
+      const upstreamContentType = upstreamResp.headers.get('content-type') ?? ''
+      const upstreamIsJson =
+        invocation.payload.stream !== true ||
+        upstreamContentType.includes('application/json')
+      const stream = upstreamIsJson
+        ? await readUpstreamJsonAsFrames(upstreamResp.body)
+        : parseChatCompletionsStream(upstreamResp.body, { signal: args.ctx.downstreamAbortSignal })
       // Telemetry recorder wiring stays minimal in spec2; real wiring lands in Part 4.
       const decorated = withUpstreamTelemetry(
         stream,
@@ -115,6 +145,11 @@ export const chatCompletionsAttempt = {
       // before anyone could consume it, cancel to release the connection.
       // Swallow cancel errors (body may be locked or already cancelled).
       if (upstreamResp?.body) void upstreamResp.body.cancel().catch(() => {})
+      // Providers throw `HTTPError` for upstream non-2xx (matches the legacy
+      // `dispatch()` contract). Surface it as an `UpstreamErrorResult` so
+      // respond.ts can preserve the original status (400/401/etc.) and body
+      // instead of collapsing every upstream error to a generic 502.
+      if (err instanceof HTTPError) return await readUpstreamError(err.response)
       return internalErrorResult(502, err instanceof Error ? err : new Error(String(err)))
     }
   },
