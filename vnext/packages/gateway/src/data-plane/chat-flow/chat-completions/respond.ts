@@ -9,11 +9,19 @@
  * drain to a reassembled JSON envelope. The bridged-response branch hands the
  * legacy `dispatch()` `Response` back unchanged.
  *
+ * Telemetry phase: when `telemetryCtx` is supplied, the renderer drains each
+ * frame through a `SourceStreamState` (model-key correction + usage capture +
+ * mid-stream-fail flag) then `waitUntil`s `recordUsage` + `recordPerformance`
+ * so dashboards keep working even when the client disconnects mid-stream. The
+ * field is optional so unit tests can skip telemetry entirely.
+ *
  * Reference: copilot-gateway/packages/gateway/src/data-plane/llm/chat-completions/respond.ts
  */
+import { waitUntil } from '@vnext/platform'
 import {
   upstreamErrorToResponse,
   sseFrame,
+  type EventResult,
   type ExecuteResult,
   type ProtocolFrame,
   type SseFrame,
@@ -21,6 +29,13 @@ import {
 } from '@vnext/protocols/common'
 import type { ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
 import { repackageUpstreamError } from '../../errors/repackage'
+import {
+  SourceStreamState,
+  eventResultMetadata,
+  recordPerformance,
+  recordUsage,
+} from '../shared/respond-telemetry.ts'
+import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import { collectChatCompletionsProtocolEventsToResult } from './events/to-result'
 import { chatCompletionsProtocolFrameToSSEFrame } from './events/to-sse'
 
@@ -37,6 +52,12 @@ export interface RespondChatCompletionsOptions {
    * client leaks the upstream socket until the model itself stops streaming.
    */
   readonly downstreamAbortController?: AbortController
+  /**
+   * Optional — when provided, respond.ts persists usage + performance rows
+   * via `recordUsage` + `recordPerformance` (wrapped in `waitUntil` so the
+   * client response isn't blocked). Unit tests omit this to skip persistence.
+   */
+  readonly telemetryCtx?: TelemetryRequestContext
 }
 
 /**
@@ -60,14 +81,76 @@ const encodeSseFrame = (frame: SseFrame): Uint8Array => {
   return SSE_TEXT_ENCODER.encode(lines.join('\n') + '\n\n')
 }
 
+/**
+ * Wraps the protocol-frame stream so each frame's usage + reported model are
+ * captured into `SourceStreamState`. Throws are propagated AFTER flagging the
+ * state as failed so respond-telemetry's `recordPerformance` writes
+ * `failed=true`. The `model` extraction matches legacy snapshot-sidecar's
+ * pattern (try `event.model`, else `event.response.model`, else
+ * `event.message.model`) so dashboards keep showing the corrected key for
+ * provider aliasing (e.g. `gpt-4-turbo` → `gpt-4-turbo-2025`).
+ */
+async function* consumeWithState<T>(
+  events: AsyncIterable<ProtocolFrame<T>>,
+  state: SourceStreamState,
+): AsyncGenerator<ProtocolFrame<T>> {
+  try {
+    for await (const frame of events) {
+      if (frame.type === 'event') {
+        state.rememberUsage(frame.event)
+        const evObj = frame.event as {
+          model?: unknown
+          response?: { model?: unknown }
+          message?: { model?: unknown }
+        }
+        state.rememberModelKey(evObj.model ?? evObj.response?.model ?? evObj.message?.model)
+      }
+      yield frame
+    }
+  } catch (err) {
+    state.failedAfter()
+    throw err
+  }
+}
+
+/**
+ * Persists usage + performance rows from a drained `EventResult`. Prefers the
+ * interceptor-replaced `finalMetadata` over `result.modelIdentity` so a
+ * downstream interceptor that swaps the stream (responses-via-chat, etc.) gets
+ * its own corrected identity. Otherwise the model key observed in-stream
+ * supersedes the binding-time guess (e.g. provider returns `gpt-4-turbo-2025`
+ * instead of the requested `gpt-4-turbo`).
+ */
+async function persistFromEventResult<T>(
+  result: EventResult<ProtocolFrame<T>>,
+  state: SourceStreamState,
+  telemetryCtx: TelemetryRequestContext,
+): Promise<void> {
+  const md = await eventResultMetadata(result)
+  // Refresh pricing using the corrected modelKey observed by SourceStreamState,
+  // unless finalMetadata already supplied a corrected identity (interceptor-
+  // replaced streams already know their own identity).
+  const finalIdentity = result.finalMetadata
+    ? md.modelIdentity
+    : { ...md.modelIdentity, modelKey: state.modelKey }
+  await recordUsage(telemetryCtx, finalIdentity, state.usage.tokens)
+  await recordPerformance(telemetryCtx, md.performance, state.failed)
+}
+
 // Mid-stream errors must still terminate with a well-formed SSE record so the
 // client parser doesn't hang waiting for the next chunk. We emit a single
 // `event: error` frame carrying a minimal `{ error: { message } }` payload
-// before closing the controller.
+// before closing the controller. When `telemetryCtx` is set, the finally
+// block hands off persistence to `waitUntil` so a slow repo write never
+// blocks the response close.
 const renderEventsAsSSE = (
-  events: AsyncIterable<ProtocolFrame<ChatCompletionsStreamEvent>>,
+  result: EventResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
   options: RespondChatCompletionsOptions,
 ): Response => {
+  const state = options.telemetryCtx
+    ? new SourceStreamState(result.modelIdentity.modelKey)
+    : null
+  const events = state ? consumeWithState(result.events, state) : result.events
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
@@ -80,6 +163,9 @@ const renderEventsAsSSE = (
         controller.enqueue(encodeSseFrame(sseFrame(JSON.stringify({ error: { message } }), 'error')))
       } finally {
         controller.close()
+        if (state && options.telemetryCtx) {
+          waitUntil(persistFromEventResult(result, state, options.telemetryCtx))
+        }
       }
     },
     // Downstream client closed its read end (browser navigated away, SDK
@@ -108,14 +194,26 @@ const renderEventsAsSSE = (
 // Non-streaming branch: drain the protocol-frame stream into a single
 // `ChatCompletionsResult` envelope and emit it as JSON. Any reassembly error
 // surfaces as a 502 with the same `{ error: { message } }` shape used by the
-// internal-error branch.
+// internal-error branch. Telemetry persistence runs in both branches.
 const renderEventsAsJson = async (
-  events: AsyncIterable<ProtocolFrame<ChatCompletionsStreamEvent>>,
+  result: EventResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
+  options: RespondChatCompletionsOptions,
 ): Promise<Response> => {
+  const state = options.telemetryCtx
+    ? new SourceStreamState(result.modelIdentity.modelKey)
+    : null
+  const events = state ? consumeWithState(result.events, state) : result.events
   try {
-    const result = await collectChatCompletionsProtocolEventsToResult(events)
-    return Response.json(result)
+    const reassembled = await collectChatCompletionsProtocolEventsToResult(events)
+    if (state && options.telemetryCtx) {
+      waitUntil(persistFromEventResult(result, state, options.telemetryCtx))
+    }
+    return Response.json(reassembled)
   } catch (err) {
+    if (state) state.failedAfter()
+    if (state && options.telemetryCtx) {
+      waitUntil(persistFromEventResult(result, state, options.telemetryCtx))
+    }
     const message = err instanceof Error ? err.message : String(err)
     return Response.json({ error: { message } }, { status: 502 })
   }
@@ -136,22 +234,35 @@ const isBridgedResponse = (
 // existing `repackageUpstreamError` helper (sourceApi='chat_completions') so
 // the body is normalized identically to the legacy `dispatch()` path — same
 // type defaults (`invalid_request_error` for 4xx, `api_error` for 5xx), same
-// status preservation.
-const renderUpstreamError = async (result: UpstreamErrorResult): Promise<Response> =>
-  await repackageUpstreamError(upstreamErrorToResponse(result), 'chat_completions')
+// status preservation. The performance row is fired-and-forgotten via
+// `waitUntil` so a slow repo write never blocks the client response.
+const renderUpstreamError = async (
+  result: UpstreamErrorResult,
+  options: RespondChatCompletionsOptions,
+): Promise<Response> => {
+  if (options.telemetryCtx) {
+    waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
+  }
+  return await repackageUpstreamError(upstreamErrorToResponse(result), 'chat_completions')
+}
 
 const renderExecuteResult = async (
   result: ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
   options: RespondChatCompletionsOptions,
 ): Promise<Response> => {
-  if (result.type === 'upstream-error') return await renderUpstreamError(result)
+  if (result.type === 'upstream-error') return await renderUpstreamError(result, options)
   if (result.type === 'internal-error') {
+    if (options.telemetryCtx) {
+      // recordPerformance no-ops when `result.performance` is undefined
+      // (pre-binding errors per spec §6.2 deliberately omit perf rows).
+      waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
+    }
     return Response.json({ error: { message: result.error.message } }, { status: result.status })
   }
   // result.type === 'events'
   return options.wantsStream
-    ? renderEventsAsSSE(result.events, options)
-    : await renderEventsAsJson(result.events)
+    ? renderEventsAsSSE(result, options)
+    : await renderEventsAsJson(result, options)
 }
 
 export const respondChatCompletions = async (

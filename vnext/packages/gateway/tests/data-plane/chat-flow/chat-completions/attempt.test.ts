@@ -1,6 +1,7 @@
 // vnext/packages/gateway/tests/data-plane/chat-flow/chat-completions/attempt.test.ts
 import { test, expect, mock } from 'bun:test'
 import { chatCompletionsAttempt } from '../../../../src/data-plane/chat-flow/chat-completions/attempt'
+import type { TelemetryRequestContext } from '../../../../src/data-plane/chat-flow/shared/telemetry-ctx'
 import type { RequestContext } from '@vnext/interceptor'
 
 type FakeProviderResponse = {
@@ -21,18 +22,34 @@ const okSseBody =
 
 const baseCtx: RequestContext = { requestStartedAt: Date.now() }
 const baseAuth = { ownerId: 'o', copilot: false }
+const baseTelemetry: TelemetryRequestContext = {
+  apiKeyId: 'k',
+  userAgent: 'ua',
+  requestId: 'rid',
+  isStreaming: true,
+  runtimeLocation: 'bun',
+  requestStartedAt: Date.now(),
+}
+// Minimal binding shape so attempt-helpers can build a model identity without
+// us mocking the full ProviderBinding ceremony.
+const fakeBindingBase = {
+  upstream: 'fake',
+  model: { id: 'gpt-x' },
+  provider: { getPricingForModelKey: () => null },
+}
 
 const identityTranslator = { translateRequest: (p: unknown) => p } as any
 
 test('case a — same-protocol leaf returns EventResult on provider 200', async () => {
   const fetchMock = mock(async () => makeProviderResponse({ status: 200, body: okSseBody }))
-  const fakeBinding = { provider: { fetch: fetchMock } } as any
+  const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: fetchMock } } as any
   const res = await chatCompletionsAttempt.generate({
     payload: { model: 'gpt-x', messages: [], stream: true },
     raw: new Request('http://x', { method: 'POST', body: '{}' }),
     auth: baseAuth,
     ctx: baseCtx,
-    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator }),
+    telemetryCtx: baseTelemetry,
+    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator, bareModel: 'gpt-x' }),
     dispatchFallback: async () => { throw new Error('should not be called') },
   })
   expect(res.type).toBe('events')
@@ -45,13 +62,14 @@ test('case b — interceptor sees mutated payload before terminal (include_usage
     leafSawPayload = req.payload
     return makeProviderResponse({ status: 200, body: okSseBody })
   })
-  const fakeBinding = { provider: { fetch: fetchMock } } as any
+  const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: fetchMock } } as any
   const res = await chatCompletionsAttempt.generate({
     payload: { model: 'gpt-x', messages: [], stream: true },
     raw: new Request('http://x'),
     auth: baseAuth,
     ctx: baseCtx,
-    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator }),
+    telemetryCtx: baseTelemetry,
+    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator, bareModel: 'gpt-x' }),
     dispatchFallback: async () => new Response(),
   })
   // Drain the stream so the lazy interceptor work runs to completion.
@@ -65,13 +83,14 @@ test('case c — provider 401 returns UpstreamErrorResult', async () => {
   const fetchMock = mock(async () =>
     makeProviderResponse({ status: 401, body: '{"error":"unauth"}', contentType: 'application/json' }),
   )
-  const fakeBinding = { provider: { fetch: fetchMock } } as any
+  const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: fetchMock } } as any
   const res = await chatCompletionsAttempt.generate({
     payload: { model: 'gpt-x', messages: [], stream: true },
     raw: new Request('http://x'),
     auth: baseAuth,
     ctx: baseCtx,
-    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator }),
+    telemetryCtx: baseTelemetry,
+    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator, bareModel: 'gpt-x' }),
     dispatchFallback: async () => new Response(),
   })
   expect(res.type).toBe('upstream-error')
@@ -79,13 +98,14 @@ test('case c — provider 401 returns UpstreamErrorResult', async () => {
 })
 
 test('case d — interceptor throw becomes InternalErrorResult', async () => {
-  const fakeBinding = { provider: { fetch: mock(async () => makeProviderResponse({ status: 200, body: okSseBody })) } } as any
+  const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: mock(async () => makeProviderResponse({ status: 200, body: okSseBody })) } } as any
   const res = await chatCompletionsAttempt.generate({
     payload: { model: 'gpt-x', messages: [], stream: true },
     raw: new Request('http://x'),
     auth: baseAuth,
     ctx: baseCtx,
-    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator }),
+    telemetryCtx: baseTelemetry,
+    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator, bareModel: 'gpt-x' }),
     dispatchFallback: async () => new Response(),
     interceptors: [async () => { throw new Error('interceptor-boom') }],
   })
@@ -100,7 +120,8 @@ test('case e — cross-protocol target short-circuits to dispatchFallback Respon
     raw: new Request('http://x'),
     auth: baseAuth,
     ctx: baseCtx,
-    selectBinding: async () => ({ kind: 'ok', binding: {} as any, targetEndpoint: 'messages', translator: {} as any }),
+    telemetryCtx: baseTelemetry,
+    selectBinding: async () => ({ kind: 'ok', binding: {} as any, targetEndpoint: 'messages', translator: {} as any, bareModel: 'claude' }),
     dispatchFallback: fallback,
   })
   expect((res as any).kind).toBe('bridged-response')
@@ -116,6 +137,7 @@ test('case f — model-not-found from selectBinding returns InternalErrorResult(
     raw: new Request('http://x'),
     auth: baseAuth,
     ctx: baseCtx,
+    telemetryCtx: baseTelemetry,
     selectBinding: async () => ({ kind: 'model-not-found', bareModel: 'nope' }),
     dispatchFallback: async () => new Response(),
   })
@@ -125,13 +147,14 @@ test('case f — model-not-found from selectBinding returns InternalErrorResult(
 
 test('case g — provider returns null body returns InternalErrorResult(502)', async () => {
   const fetchMock = mock(async () => ({ status: 200, headers: new Headers(), body: null }))
-  const fakeBinding = { provider: { fetch: fetchMock } } as any
+  const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: fetchMock } } as any
   const res = await chatCompletionsAttempt.generate({
     payload: { model: 'gpt-x', messages: [], stream: true },
     raw: new Request('http://x'),
     auth: baseAuth,
     ctx: baseCtx,
-    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator }),
+    telemetryCtx: baseTelemetry,
+    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator, bareModel: 'gpt-x' }),
     dispatchFallback: async () => new Response(),
   })
   expect(res.type).toBe('internal-error')
@@ -165,7 +188,7 @@ test('case h — interceptor throw AFTER terminal cancels upstream stream body',
     headers: new Headers({ 'content-type': 'text/event-stream' }),
     body: observableBody,
   }))
-  const fakeBinding = { provider: { fetch: fetchMock } } as any
+  const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: fetchMock } } as any
 
   // Wrapping interceptor: calls next() (which runs terminal and opens the
   // upstream body), then throws BEFORE returning the result to the caller.
@@ -179,7 +202,8 @@ test('case h — interceptor throw AFTER terminal cancels upstream stream body',
     raw: new Request('http://x'),
     auth: baseAuth,
     ctx: baseCtx,
-    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator }),
+    telemetryCtx: baseTelemetry,
+    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator, bareModel: 'gpt-x' }),
     dispatchFallback: async () => new Response(),
     interceptors: [postLeafThrow as any],
   })

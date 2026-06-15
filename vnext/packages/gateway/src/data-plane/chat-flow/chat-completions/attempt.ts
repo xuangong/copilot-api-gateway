@@ -15,6 +15,12 @@ import { runInterceptors, type Invocation, type RequestContext, type ChatComplet
 import { eventResult, internalErrorResult, readUpstreamError, type ExecuteResult, type ProtocolFrame } from '@vnext/protocols/common'
 import { parseChatCompletionsStream, type ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
 import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext/provider'
+import {
+  telemetryModelIdentity,
+  upstreamPerformanceContext,
+  type AttemptBindingShape,
+} from '../shared/attempt-helpers.ts'
+import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import { withUpstreamTelemetry } from '../shared/upstream-telemetry'
 import { selectBindingForChatCompletions, type SelectBindingAuth, type SelectBindingResult } from '../shared/select-binding'
 import { chatCompletionsInterceptors } from './interceptors'
@@ -33,6 +39,12 @@ export interface ChatCompletionsAttemptArgs {
   readonly raw: Request
   readonly auth: ChatCompletionsAttemptAuth
   readonly ctx: RequestContext
+  /**
+   * Telemetry context built once in serve.ts. Threaded into the resulting
+   * `EventResult.performance` / `UpstreamErrorResult.performance` so respond.ts
+   * can persist usage + perf rows with the right keyId/upstream/runtime.
+   */
+  readonly telemetryCtx: TelemetryRequestContext
   /** Injected for tests; defaults to {@link selectBindingForChatCompletions}. */
   readonly selectBinding?: (args: { model: string; auth: ChatCompletionsAttemptAuth }) => Promise<SelectBindingResult>
   /** Legacy bridge for cross-protocol targets; called with the raw `Request`. */
@@ -101,15 +113,23 @@ export const chatCompletionsAttempt = {
         signal: args.ctx.downstreamAbortSignal,
       }
       const binding = sel.binding as unknown as AttemptBinding
+      // Cast once to the shape the telemetry helpers consume (provider.fetch
+      // returns a structurally-equivalent ProviderBinding; we only depend on
+      // upstream.name + upstreamModel.id + provider.getPricingForModelKey).
+      const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       upstreamResp = await binding.provider.fetch(providerReq)
       if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
         // Wrap the ProviderResponse shape into a Response so readUpstreamError
-        // can buffer body + headers using the standard helper.
+        // can buffer body + headers using the standard helper. The performance
+        // ctx flows through so respond.ts can write a `failed=true` perf row
+        // without losing keyId/upstream/runtime.
         const errResp = new Response(upstreamResp.body, { status: upstreamResp.status, headers: upstreamResp.headers })
-        return await readUpstreamError(errResp)
+        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
+        return await readUpstreamError(errResp, performance)
       }
       if (!upstreamResp.body) {
-        return internalErrorResult(502, new Error('upstream returned empty body'))
+        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
+        return internalErrorResult(502, new Error('upstream returned empty body'), performance)
       }
       // Non-streaming requests (or unexpectedly-JSON responses) need to be
       // funneled through the SAME ProtocolFrame pipeline the SSE path uses,
@@ -128,16 +148,13 @@ export const chatCompletionsAttempt = {
       const stream = upstreamIsJson
         ? await readUpstreamJsonAsFrames(upstreamResp.body)
         : parseChatCompletionsStream(upstreamResp.body, { signal: args.ctx.downstreamAbortSignal })
-      // Telemetry classifier wiring; Part 2 will route finalMetadata into TelemetryRequestContext.
       const { events: decorated } = withUpstreamTelemetry(stream, {
         abortSignal: args.ctx.downstreamAbortSignal,
         protocol: 'chat_completions',
       })
-      // FIXME(spec3-part2): replace stub identity with telemetryModelIdentity(sel.binding, sel.bareModel)
-      return eventResult(
-        decorated,
-        { model: '<unknown>', upstream: '<unknown>', modelKey: '<unknown>', cost: null },
-      )
+      const modelIdentity = telemetryModelIdentity(bindingForTelemetry, sel.bareModel)
+      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
+      return eventResult(decorated, modelIdentity, performance)
     }
 
     try {
@@ -147,12 +164,18 @@ export const chatCompletionsAttempt = {
       // before anyone could consume it, cancel to release the connection.
       // Swallow cancel errors (body may be locked or already cancelled).
       if (upstreamResp?.body) void upstreamResp.body.cancel().catch(() => {})
+      // Errors caught here are post-binding-selection — surface a `performance`
+      // ctx so respond.ts can persist a `failed=true` perf row. Pre-binding
+      // errors (model-not-found, etc.) returned earlier above deliberately
+      // omit `performance` per spec §6.2.
+      const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
+      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
       // Providers throw `HTTPError` for upstream non-2xx (matches the legacy
       // `dispatch()` contract). Surface it as an `UpstreamErrorResult` so
       // respond.ts can preserve the original status (400/401/etc.) and body
       // instead of collapsing every upstream error to a generic 502.
-      if (err instanceof HTTPError) return await readUpstreamError(err.response)
-      return internalErrorResult(502, err instanceof Error ? err : new Error(String(err)))
+      if (err instanceof HTTPError) return await readUpstreamError(err.response, performance)
+      return internalErrorResult(502, err instanceof Error ? err : new Error(String(err)), performance)
     }
   },
 }

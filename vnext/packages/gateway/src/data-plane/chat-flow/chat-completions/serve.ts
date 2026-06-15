@@ -21,11 +21,13 @@
  *
  * Reference: copilot-gateway/packages/gateway/src/data-plane/llm/chat-completions/serve.ts
  */
+import { getRuntimeLocation } from '@vnext/platform'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseChatPayload } from '../../parsers.ts'
 import { dispatch } from '../shared/dispatch.ts'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'
 import type { DispatchObsCtx } from '../shared/gateway-ctx.ts'
+import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import { chatCompletionsAttempt } from './attempt.ts'
 import { respondChatCompletions } from './respond.ts'
 
@@ -64,6 +66,22 @@ export async function serveChatCompletions(args: ChatCompletionsServeArgs): Prom
   const wantsStream = payload.stream === true
   const includeUsageChunk = payload.stream_options?.include_usage === true
 
+  // Build the telemetry context once per request. Threaded through attempt +
+  // respond so persistence helpers (`recordUsage`, `recordPerformance`) can
+  // write usage rows without leaking auth/tx state into the dispatch path.
+  // Falls back to '<unknown>' when an upstream caller hasn't populated
+  // `apiKeyId` (e.g. tests that bypass the auth middleware), mirroring how
+  // legacy DispatchObsCtx tolerates anonymous requests.
+  const requestStartedAt = Date.now()
+  const telemetryCtx: TelemetryRequestContext = {
+    apiKeyId: args.obsCtx.apiKeyId ?? args.auth.apiKeyId ?? '<unknown>',
+    userAgent: args.obsCtx.userAgent ?? null,
+    requestId: args.obsCtx.requestId ?? crypto.randomUUID(),
+    isStreaming: wantsStream,
+    runtimeLocation: getRuntimeLocation(),
+    requestStartedAt,
+  }
+
   // Linked controller: aborts when the upstream client signal aborts, and is
   // also aborted by respond.ts's SSE `cancel()` if the downstream client
   // closes its read end mid-stream. Either direction triggers attempt.ts's
@@ -100,7 +118,8 @@ export async function serveChatCompletions(args: ChatCompletionsServeArgs): Prom
       body: JSON.stringify(args.raw ?? {}),
     }),
     auth: { ownerId: args.auth.userId, copilot: args.auth.copilot },
-    ctx: { requestStartedAt: Date.now(), downstreamAbortSignal: controller.signal },
+    ctx: { requestStartedAt, downstreamAbortSignal: controller.signal },
+    telemetryCtx,
     dispatchFallback,
   })
 
@@ -108,5 +127,6 @@ export async function serveChatCompletions(args: ChatCompletionsServeArgs): Prom
     wantsStream,
     includeUsageChunk,
     downstreamAbortController: controller,
+    telemetryCtx,
   })
 }

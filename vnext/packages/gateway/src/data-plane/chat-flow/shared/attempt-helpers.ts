@@ -14,9 +14,18 @@ import type { ProviderResponse } from '@vnext/provider'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 import { withUpstreamTelemetry } from './upstream-telemetry.ts'
 
+/**
+ * Minimal shape this module reads from a `ProviderBinding`. The live
+ * `ProviderBinding` (from `@vnext/provider`) has:
+ *   - `upstream: string` — the upstream's name
+ *   - `model: BindingModel` — `{ id, ..., cost? }`
+ *   - `provider: ModelProvider` — exposes `getPricingForModelKey(k)`
+ *
+ * Tests can substitute any structurally-compatible object via `as never` cast.
+ */
 export interface AttemptBindingShape {
-  readonly upstream: { readonly name: string }
-  readonly upstreamModel: { readonly id: string }
+  readonly upstream: string
+  readonly model: { readonly id: string }
   readonly provider: {
     readonly getPricingForModelKey: (k: string) => unknown | null
   }
@@ -27,8 +36,8 @@ export function telemetryModelIdentity(
   modelKey: string,
 ): TelemetryModelIdentity {
   return {
-    model: binding.upstreamModel.id,
-    upstream: binding.upstream.name,
+    model: binding.model.id,
+    upstream: binding.upstream,
     modelKey,
     cost: (binding.provider.getPricingForModelKey(modelKey) ?? null) as TelemetryModelIdentity['cost'],
   }
@@ -41,8 +50,8 @@ export function upstreamPerformanceContext(
 ): PerformanceTelemetryContext {
   return {
     keyId: telemetryCtx.apiKeyId,
-    model: binding.upstreamModel.id,
-    upstream: binding.upstream.name,
+    model: binding.model.id,
+    upstream: binding.upstream,
     modelKey,
     stream: telemetryCtx.isStreaming,
     runtimeLocation: telemetryCtx.runtimeLocation,

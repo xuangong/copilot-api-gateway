@@ -8,10 +8,18 @@
  *     even when binding selection fails (404 surfaces as the upstream-shaped
  *     internal error, not a crash)
  */
-import { test, expect } from 'bun:test'
+import { test, expect, beforeAll, afterAll } from 'bun:test'
+import { __resetPlatformForTests } from '@vnext/platform'
+import { setupTestPlatform } from '../../../_setup-platform.ts'
 import { serveChatCompletions } from '../../../../src/data-plane/chat-flow/chat-completions/serve'
 import type { DataPlaneAuthCtx } from '../../../../src/data-plane/models/routes'
 import type { DispatchObsCtx } from '../../../../src/data-plane/chat-flow/shared/gateway-ctx'
+
+// serve.ts now reads `getRuntimeLocation()` and the respond path issues
+// `waitUntil(recordPerformance(...))` for the no-binding 404 branch — both
+// of which require platform/repo bootstrap.
+beforeAll(() => { setupTestPlatform() })
+afterAll(() => { __resetPlatformForTests() })
 
 const fakeAuth: DataPlaneAuthCtx = { userId: 'o' }
 const fakeObsCtx: DispatchObsCtx = { apiKeyId: 'k', userAgent: 'ua', requestId: 'rid' }

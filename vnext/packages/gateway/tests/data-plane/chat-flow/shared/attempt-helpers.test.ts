@@ -6,8 +6,8 @@ import {
 import type { TelemetryRequestContext } from '../../../../src/data-plane/chat-flow/shared/telemetry-ctx.ts'
 
 const fakeBinding = {
-  upstream: { name: 'openai-prod' },
-  upstreamModel: { id: 'gpt-4' },
+  upstream: 'openai-prod',
+  model: { id: 'gpt-4' },
   provider: {
     getPricingForModelKey: (k: string) => k === 'gpt-4' ? { inputPerM: 1, outputPerM: 2 } : null,
   },

@@ -21,7 +21,7 @@ import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../../src/app.ts'
 import { initRepo } from '../../src/shared/repo/index.ts'
-import { __resetPlatformForTests } from '@vnext/platform'
+import { initBackground, initRuntimeLocation, __resetPlatformForTests } from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../../src/shared/repo/types.ts'
 import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'
 
@@ -150,6 +150,8 @@ async function drainSSE(res: Response): Promise<void> {
 
 test('streaming request with no stream_options → interceptor adds include_usage:true to upstream payload', async () => {
   initRepo(stubRepo([customUpstream()]))
+  initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
+  initRuntimeLocation('bun')
   const install = installFetchCapture()
 
   const res = await postChat({
@@ -168,6 +170,8 @@ test('streaming request with no stream_options → interceptor adds include_usag
 
 test('streaming request with pre-set stream_options → interceptor overrides include_usage but preserves siblings', async () => {
   initRepo(stubRepo([customUpstream()]))
+  initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
+  initRuntimeLocation('bun')
   const install = installFetchCapture()
 
   const res = await postChat({
