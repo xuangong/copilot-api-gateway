@@ -14,16 +14,25 @@
 // Both cases run two consecutive turns against the same in-memory store and
 // assert that turn-2's upstream payload carries the merged history from
 // turn-1 (proof the id round-tripped successfully).
-import { test, expect, afterEach } from 'bun:test'
+import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
 import { initRepo } from '../src/shared/repo/index.ts'
 import { initResponsesStore } from '../src/shared/runtime/responses-store.ts'
-import { __resetPlatformForTests } from '@vnext/platform'
+import {
+  __resetPlatformForTests,
+  initBackground,
+  initRuntimeLocation,
+} from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model } from '@vnext/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
 import { InMemoryResponsesSnapshotStore } from '@vnext/responses-store'
+
+beforeEach(() => {
+  initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
+  initRuntimeLocation('bun')
+})
 
 // gpt-5-mini → has both `responses` and `chat_completions` endpoints, so
 // selectPair('responses', ...) prefers the `responses` target.
