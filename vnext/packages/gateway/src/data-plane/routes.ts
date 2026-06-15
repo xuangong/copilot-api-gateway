@@ -20,7 +20,6 @@
 import { Hono } from 'hono'
 import type { Env } from '../app.ts'
 import {
-  parseMessagesPayload,
   parseMessagesCountTokensPayload,
   parseChatPayload,
   parseResponsesPayload,
@@ -32,7 +31,6 @@ import { imagesRouter } from './images/routes.ts'
 import { resolveBinding, stripUpstreamPin } from './routing/binding-resolver.ts'
 import { repackageUpstreamError } from './errors/repackage.ts'
 import { HTTPError, parseResponsesSSEStream } from '@vnext/provider-copilot'
-import { handleMessagesWebSearch, hasWebSearch } from './orchestrator/server-tools/plugins/web-search/index.ts'
 import { handleResponsesImageGeneration, hasImageGeneration } from './orchestrator/server-tools/plugins/image-generation/index.ts'
 import {
   expandPreviousResponseId,
@@ -42,6 +40,7 @@ import { getResponsesStore } from '../shared/runtime/responses-store.ts'
 import { dispatch, type DispatchObsCtx } from './chat-flow/shared/dispatch.ts'
 import { invalidJsonResponse, jsonErrorWrap } from './chat-flow/shared/error-wrap.ts'
 import { readAuth, readObsCtx } from './chat-flow/shared/gateway-ctx.ts'
+import { messagesHandler } from './chat-flow/messages/http.ts'
 
 export const dataPlane = new Hono<{ Bindings: Env }>()
 
@@ -58,44 +57,7 @@ dataPlane.route('/', modelsRouter)
 dataPlane.route('/', embeddingsRouter)
 dataPlane.route('/', imagesRouter)
 
-dataPlane.post('/v1/messages', async (c) => {
-  // Web-search intercept short-circuits the pairwise pipeline: the multi-turn
-  // loop runs against upstream in non-streaming mode and we either return JSON
-  // or replay as SSE. See plugins/web-search/index.ts for the rationale.
-  let raw: unknown
-  try { raw = await c.req.json() } catch { return invalidJsonResponse() }
-
-  if (hasWebSearch(raw as Parameters<typeof hasWebSearch>[0])) {
-    const auth = readAuth(c)
-    if (!auth.copilot?.copilotToken || !auth.githubToken) {
-      return new Response(
-        JSON.stringify({ error: { type: 'invalid_request_error', message: 'Copilot/GitHub credentials required for web search.' } }),
-        { status: 401, headers: { 'content-type': 'application/json' } },
-      )
-    }
-    return handleMessagesWebSearch(
-      {
-        copilotToken: auth.copilot.copilotToken,
-        accountType: auth.copilot.accountType,
-        githubToken: auth.githubToken,
-        msGroundingKey: auth.msGroundingKey,
-        apiKeyId: auth.apiKeyId,
-        requestId: c.req.header('x-request-id') ?? undefined,
-        userAgent: c.req.header('user-agent') ?? undefined,
-      },
-      raw as Parameters<typeof handleMessagesWebSearch>[1],
-    )
-  }
-  const auth = readAuth(c)
-  return dispatch(raw, {
-    parse: (r) => parseMessagesPayload(r),
-    modelOf: (p) => (p as { model?: string }).model ?? '',
-    sourceApi: 'messages',
-    errorWrap: jsonErrorWrap,
-    auth,
-    obsCtx: readObsCtx(c, auth),
-  })
-})
+dataPlane.post('/v1/messages', messagesHandler)
 
 dataPlane.post('/v1/messages/count_tokens', async (c) => {
   let raw: unknown
