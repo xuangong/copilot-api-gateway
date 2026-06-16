@@ -28,6 +28,7 @@ import type {
 } from '@vnext/provider'
 import { probeViaModels } from '@vnext/provider'
 import { createVariantAndBetaFilteringInterceptor } from './interceptors/shared/with-variant-and-beta-filtering'
+import { withContextManagementBetaAligned } from './interceptors/shared/with-context-management-beta-aligned'
 import { withInitiatorHeader } from './interceptors/shared/with-initiator-header'
 import { messagesPayloadInterceptors } from './interceptors/messages'
 import { messagesCountTokensPayloadInterceptors } from './interceptors/messages-count-tokens'
@@ -75,8 +76,8 @@ export class CopilotProvider implements ModelProvider {
     this.name = cfg.name ?? 'copilot'
 
     const variantFiltering = createVariantAndBetaFilteringInterceptor(this.copilotToken, this.accountType)
-    this.messagesChain = [variantFiltering, withInitiatorHeader, ...messagesPayloadInterceptors]
-    this.messagesCountTokensChain = [variantFiltering, withInitiatorHeader, ...messagesCountTokensPayloadInterceptors]
+    this.messagesChain = [variantFiltering, withContextManagementBetaAligned, withInitiatorHeader, ...messagesPayloadInterceptors]
+    this.messagesCountTokensChain = [variantFiltering, withContextManagementBetaAligned, withInitiatorHeader, ...messagesCountTokensPayloadInterceptors]
     this.responsesChain = [variantFiltering, withInitiatorHeader, ...responsesPayloadInterceptors]
     this.chatCompletionsChain = [variantFiltering, withInitiatorHeader, ...chatCompletionsPayloadInterceptors]
     this.embeddingsChain = embeddingsPayloadInterceptors
