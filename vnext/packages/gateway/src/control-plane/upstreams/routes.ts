@@ -428,8 +428,10 @@ upstreamsRouter.post('/', async (c) => {
     const provider = normalizeProvider(body.provider)
     if (typeof body.name !== 'string' || !body.name.trim()) return jsonError('name required')
     const now = new Date().toISOString()
-    const ownerId = admin && typeof body.ownerId === 'string' && body.ownerId ? body.ownerId : userId
-    if (!ownerId) return jsonError('ownerId required', 400)
+    const ownerId = admin
+      ? (typeof body.ownerId === 'string' ? body.ownerId : '')
+      : userId
+    if (ownerId === undefined) return jsonError('ownerId required', 400)
     const upstream: UpstreamRecord = {
       id: upstreamId(provider, body.name),
       ownerId,

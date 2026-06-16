@@ -54,6 +54,9 @@ export async function getCachedCopilotToken(
   if (isFresh(mem, nowSec)) return mem!.token
 
   const fresh = await exchangeGithubToken(githubToken)
+  if (typeof fresh.token !== 'string' || !fresh.token || typeof fresh.expires_at !== 'number') {
+    throw new Error('Malformed Copilot token exchange response')
+  }
   memCache.set(cacheKey, { token: fresh.token, expiresAt: fresh.expires_at })
   return fresh.token
 }
