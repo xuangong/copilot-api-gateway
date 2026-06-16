@@ -20,13 +20,13 @@ export function computeCost(
   tokens: { input: number; output: number; cacheRead?: number; cacheWrite?: number },
   pricing: ModelPricing,
 ): CostBreakdown {
-  const inputUSD = (tokens.input * pricing.input) / 1_000_000
-  const outputUSD = (tokens.output * pricing.output) / 1_000_000
-  const cacheReadUSD = pricing.cache_read != null
-    ? ((tokens.cacheRead ?? 0) * pricing.cache_read) / 1_000_000
+  const inputUSD = (tokens.input * (pricing.input ?? 0)) / 1_000_000
+  const outputUSD = (tokens.output * (pricing.output ?? 0)) / 1_000_000
+  const cacheReadUSD = pricing.input_cache_read != null
+    ? ((tokens.cacheRead ?? 0) * pricing.input_cache_read) / 1_000_000
     : 0
-  const cacheWriteUSD = pricing.cache_write != null
-    ? ((tokens.cacheWrite ?? 0) * pricing.cache_write) / 1_000_000
+  const cacheWriteUSD = pricing.input_cache_write != null
+    ? ((tokens.cacheWrite ?? 0) * pricing.input_cache_write) / 1_000_000
     : 0
   return {
     inputUSD,

@@ -10,7 +10,7 @@
  * decide policy. This keeps public endpoints (login, OAuth callbacks)
  * working while still attaching auth context where present.
  */
-import type { MiddlewareHandler } from 'hono'
+import type { Context, MiddlewareHandler } from 'hono'
 import { getRepo } from './repo/index.ts'
 import { ADMIN_EMAILS, type AccountType } from './config/constants.ts'
 import { validateApiKey } from './lib/api-keys.ts'

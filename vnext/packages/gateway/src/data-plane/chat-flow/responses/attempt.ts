@@ -31,6 +31,7 @@
  * Reference: messages/attempt.ts.
  */
 import { runInterceptors, type Invocation, type RequestContext } from '@vnext/interceptor'
+import { responsesInterceptors, type ResponsesInterceptor } from './interceptors'
 import {
   eventFrame,
   eventResult,
@@ -92,12 +93,8 @@ export interface ResponsesAttemptArgs {
   readonly requestId?: string
 }
 
-// Stream-interceptor stub mirrors messages — Spec 3 keeps the minimum scope.
-export type ResponsesInterceptor = (
-  inv: Invocation,
-  ctx: RequestContext,
-  next: (inv: Invocation, ctx: RequestContext) => Promise<ExecuteResult<ProtocolFrame<ResponsesStreamEvent>>>,
-) => Promise<ExecuteResult<ProtocolFrame<ResponsesStreamEvent>>>
+// Stream-interceptor type re-exported from the registry module (Batch 4).
+export type { ResponsesInterceptor } from './interceptors'
 
 // ─── Binding selection ───────────────────────────────────────────────────
 
@@ -234,7 +231,7 @@ export const responsesAttempt = {
       payload: args.payload as Record<string, unknown>,
       headers: {},
     }
-    const chain: ReadonlyArray<ResponsesInterceptor> = args.interceptors ?? []
+    const chain: ReadonlyArray<ResponsesInterceptor> = args.interceptors ?? responsesInterceptors
 
     let upstreamResp: ProviderResponse | undefined
 

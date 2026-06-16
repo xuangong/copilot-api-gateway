@@ -88,7 +88,7 @@ async function handle(c: EmbeddingsCtx): Promise<Response> {
     },
   })
 
-  if (!attempt.ok && attempt.status === 429) {
+  if (!attempt.ok && 'rateLimit' in attempt) {
     return c.json({
       error: {
         type: 'rate_limit_error',

@@ -18,8 +18,8 @@ type Cacheable = { cache_control?: CacheControl }
 
 type ToolLike = { name: string; type?: string } & Cacheable
 type TextBlockLike = { type: 'text'; text: string } & Cacheable
-type ContentBlockLike = { type: string } & Cacheable
-type MessageLike = { role: 'user' | 'assistant'; content: string | ContentBlockLike[] }
+export type ContentBlockLike = { type: string } & Cacheable
+export type MessageLike = { role: 'user' | 'assistant'; content: string | ContentBlockLike[] }
 
 const CACHEABLE_BLOCK_TYPES = new Set(['text', 'image', 'tool_use', 'tool_result'])
 

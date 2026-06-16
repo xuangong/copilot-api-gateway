@@ -99,7 +99,7 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
     },
   })
 
-  if (!attempt.ok && attempt.status === 429 && 'rateLimit' in attempt) {
+  if (!attempt.ok && 'rateLimit' in attempt) {
     return rateLimitResponse(c, attempt.rateLimit)
   }
 
@@ -179,7 +179,7 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
     },
   })
 
-  if (!attempt.ok && attempt.status === 429 && 'rateLimit' in attempt) {
+  if (!attempt.ok && 'rateLimit' in attempt) {
     return rateLimitResponse(c, attempt.rateLimit)
   }
 

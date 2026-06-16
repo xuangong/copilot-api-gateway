@@ -186,7 +186,7 @@ beforeEach(() => {
 
 function buildApp(auth: DataPlaneAuthCtx) {
   const wrapper = new Hono()
-  wrapper.use('*', (c, next) => { c.set('auth', auth); return next() })
+  wrapper.use('*', (c, next) => { (c.set as (key: string, value: unknown) => void)('auth', auth); return next() })
   wrapper.route('/', innerApp)
   return wrapper
 }

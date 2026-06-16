@@ -12,7 +12,7 @@ import type {
   GeminiFunctionDeclaration,
   GeminiPayload,
   GeminiPart,
-  GeminiStreamEvent,
+  GeminiResult,
   GeminiThinkingConfig,
   GeminiUsageMetadata,
 } from './types.ts'
@@ -81,7 +81,7 @@ const GEMINI_PART_DATA_FIELDS = Object.keys(GEMINI_PART_FIELD_TO_KIND) as Gemini
 
 export const geminiPartKind = (part: GeminiPart): GeminiPartKind | null => {
   const presentFields = GEMINI_PART_DATA_FIELDS.filter(field => part[field] !== undefined)
-  if (presentFields.length === 1) return GEMINI_PART_FIELD_TO_KIND[presentFields[0]]
+  if (presentFields.length === 1) return GEMINI_PART_FIELD_TO_KIND[presentFields[0]!]
   if (presentFields.length > 1) {
     throw new Error(`Gemini part sets conflicting content fields: ${presentFields.join(', ')}.`)
   }
@@ -135,8 +135,8 @@ export const geminiFunctionCallPart = (
   if (!call) return null
 
   const id = call.id ?? geminiToolCallId(turnIndex, partIndex)
-  ids[call.name] ??= []
-  ids[call.name].push(id)
+  const bucket = (ids[call.name] ??= [])
+  bucket.push(id)
 
   return { call, id }
 }
@@ -283,7 +283,7 @@ export const geminiCandidateEvent = (
   parts: GeminiPart[],
   finishReason?: GeminiFinishReason,
   usageMetadata?: GeminiUsageMetadata,
-): GeminiStreamEvent => ({
+): GeminiResult => ({
   candidates: [
     {
       index: 0,
