@@ -48,8 +48,8 @@ app.get('/debug/db/users-count', async (c) => {
   return c.json({ users: users.length })
 })
 
-app.use('*', devAuthMiddleware)
 app.use('*', sessionAuthMiddleware)
+app.use('*', devAuthMiddleware)
 
 app.route('/', dataPlane)
 app.route('/', controlPlane)

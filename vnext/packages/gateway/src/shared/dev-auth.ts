@@ -71,6 +71,16 @@ export const devAuthMiddleware: MiddlewareHandler = async (c: Context, next) => 
     await next()
     return
   }
+  // dev-auth runs AFTER session-auth (see app.ts middleware order). It only
+  // fills auth ctx when no real session/key resolved, so a logged-in dashboard
+  // user (admin or regular) is never downgraded to dev-user. The dev-user
+  // bypass remains available for unauthenticated /v1/* smoke tests with bogus
+  // bearer tokens (session-auth leaves ctx empty in that case).
+  const existing = c.get('auth' as never) as { userId?: string; apiKeyId?: string } | undefined
+  if (existing && (existing.userId || existing.apiKeyId)) {
+    await next()
+    return
+  }
   try {
     const copilotToken = await getCopilotToken()
     if (copilotToken) {
