@@ -2,12 +2,12 @@
 
 将 GitHub Copilot API 转换为标准 AI SDK 接口的网关代理。让 **Claude Code**、**Codex CLI**、**Gemini CLI** 三大 AI 编程工具直接使用你的 GitHub Copilot 订阅，无需额外 API 费用。
 
-基于 **Elysia + Bun** 构建，支持部署到 **Cloudflare Workers**（D1 + KV）或通过 **Docker** 自托管。
+基于 **Hono + Bun** 构建，支持部署到 **Cloudflare Workers**（D1 + KV）或通过 **Docker** 自托管。代码位于 `vnext/`（Bun workspace，14 个 package + 3 个 app）。
 
 ## 特性
 
 - **三大 CLI 直连** — Claude Code、OpenAI Codex CLI、Google Gemini CLI 开箱即用
-- **多 SDK 兼容** — 同时支持 Anthropic Messages API、OpenAI Chat Completions / Responses API、Google Gemini API
+- **多 SDK 兼容** — 同时支持 Anthropic Messages API、OpenAI Chat Completions / Responses API、Google Gemini API，并提供 `/v1/images/generations`、`/v1/images/edits`（gpt-image-2）和 `/v1/embeddings`
 - **多用户隔离** — Admin 通过邀请码邀请用户，每个用户独立绑定自己的 GitHub Copilot 账号，API key 和用量数据完全隔离
 - **共享可观测性** — 用户可向他人授予只读访问权限，对方仅能查看用量/延迟/中继/上游账号面板，所有密钥被脱敏，内部 ID 替换为 HMAC 替身
 - **Web Search** — 内置 Web 搜索工具，支持 LangSearch / Tavily / Bing 三引擎自动降级
@@ -15,7 +15,7 @@
   - GitHub 账号管理（Admin 可查看所有用户的 GitHub 账号）
   - API key 管理（创建、删除、轮换、重命名）
   - 用量统计 — 多维度筛选（User / Key / Client / Model），分布图 + 趋势图
-  - 延迟监控 — 按模型筛选，Stream/Sync 分离，按 Colo 分布
+  - 延迟监控 — 按模型筛选，Stream/Sync 分离，按 Colo 分布；底层数据已迁移至 `performance_summary` 双桶（request_total / upstream_success），dashboard `/api/latency` 视图从该表派生
   - 三大 CLI 配置指引（含推荐模型选择）
   - 数据导入导出
 - **Per-Key Quota** — 每个 API key 可设日级别配额（Requests/Day + Weighted Tokens/Day），超限返回 429；Dashboard 实时展示配额进度
@@ -29,15 +29,18 @@
 ### Cloudflare Workers 部署
 
 ```bash
-# 1. 安装依赖
+# 1. 安装依赖（根目录与 vnext 工作区一次性安装）
 bun install
+cd vnext && bun install && cd ..
 
 # 2. 创建 D1 数据库和 KV 命名空间
+cd vnext/apps/platform-cloudflare
 wrangler d1 create copilot-db
 wrangler kv:namespace create KV
-# 将输出的 ID 更新到 wrangler.toml
+wrangler kv:namespace create IMAGE_CACHE
+# 将输出的 ID 更新到 wrangler.jsonc
 
-# 3. 执行数据库迁移
+# 3. 执行数据库迁移（migrations 位于仓库根 ./migrations，wrangler.jsonc 通过 ../../migrations 引用）
 wrangler d1 migrations apply copilot-db --remote
 
 # 4. 设置管理员密钥
@@ -52,17 +55,23 @@ bun run deploy
 ### Docker 部署
 
 ```bash
-# 使用 docker compose
-ADMIN_KEY=your_admin_key docker compose up -d
+# 使用 vNext 专用 compose（端口 41415，数据卷 ./data-vnext）
+ADMIN_KEY=your_admin_key docker compose -f docker-compose.vnext.yml up -d
 ```
 
-数据持久化在 `./data` 目录，使用 SQLite 存储。
+数据持久化在 `./data-vnext` 目录，使用 SQLite 存储。
 
 ### 本地开发
 
 ```bash
-bun install
-bun run local:watch    # 热重载开发服务器，端口 41414
+cd vnext && bun install
+cd apps/platform-bun && bun run start    # Bun + Hono 本地服务器，端口 41415
+
+# 类型检查（在 vnext 根目录）
+cd vnext && bun run typecheck
+
+# Dashboard 单独构建（产物输出到 platform-bun/platform-cloudflare 静态资源）
+cd vnext && bun run build:ui
 ```
 
 ## API 端点
@@ -76,8 +85,12 @@ bun run local:watch    # 热重载开发服务器，端口 41414
 | `POST /v1/responses` | Responses API | OpenAI SDK / Codex CLI |
 | `POST /responses` | Responses API（无 /v1 前缀） | Codex CLI |
 | `POST /chat/completions` | Chat Completions | OpenAI SDK |
+| `POST /v1/chat/completions` | Chat Completions | OpenAI SDK |
 | `POST /v1beta/models/{model}:generateContent` | Generate Content | Gemini SDK |
 | `POST /v1beta/models/{model}:streamGenerateContent` | Stream Generate | Gemini SDK |
+| `POST /v1/embeddings` | Embeddings | OpenAI SDK |
+| `POST /v1/images/generations` | 图像生成（gpt-image-2） | OpenAI SDK |
+| `POST /v1/images/edits` | 图像编辑（gpt-image-2，multipart） | OpenAI SDK |
 | `GET /v1/models` | 模型列表 | 通用 |
 
 ### Dashboard & 管理
@@ -255,6 +268,8 @@ curl -X PATCH https://your-gateway/api/keys/{id} \
 - **Clean White**（亮色）— 纯净白底 + 高对比强调色
 - **移动端适配** — 导航栏横向滚动、表格横向滚动、筛选器自动堆叠对齐、统计网格自适应列数
 
+Dashboard 由 React 19 + Vite + Tailwind 构建（`vnext/apps/dashboard/`），通过 `bun run build:ui` 编译为静态资源，由 platform-bun / platform-cloudflare 直接 serve。
+
 ### 用量分析
 
 - 多维度正交筛选：User / Key / Client / Model
@@ -268,7 +283,6 @@ curl -X PATCH https://your-gateway/api/keys/{id} \
 - Stream / Sync 双曲线趋势图
 - 按模型筛选
 - 按类型和数据中心分布统计
-- Token Miss Rate 监控
 
 ## 环境变量
 
@@ -298,28 +312,37 @@ curl -X PATCH https://your-gateway/api/keys/{id} \
 ## 项目结构
 
 ```
-├── src/
-│   ├── index.ts              # Cloudflare Workers 入口
-│   ├── local.ts              # 本地开发入口（Bun + SQLite）
-│   ├── config/               # 常量配置
-│   ├── lib/                  # 核心库（认证、API key、GitHub、用量追踪、SSE 缓冲）
-│   ├── middleware/            # 中间件（请求头、用量统计）
-│   ├── repo/                 # 数据层（D1 + SQLite 双实现）
-│   ├── routes/               # API 路由
-│   ├── services/
-│   │   ├── copilot/          # Copilot API 转发
-│   │   ├── gemini/           # Gemini 格式转换（模型映射、工具参数修复）
-│   │   ├── responses/        # Responses API ↔ Chat Completions 格式转换
-│   │   ├── github/           # GitHub OAuth
-│   │   └── web-search/       # Web 搜索（LangSearch / Tavily / Bing）
-│   ├── transforms/           # 请求/响应兼容性转换
-│   ├── storage/              # KV 存储抽象
-│   └── ui/                   # Dashboard 前端（Alpine.js + Tailwind + Chart.js）
-├── migrations/               # D1 数据库迁移
-├── tests/                    # SDK 集成测试
-├── Dockerfile                # Docker 构建
-├── docker-compose.yml        # Docker Compose 配置
-└── wrangler.toml             # Cloudflare Workers 配置
+├── vnext/
+│   ├── apps/
+│   │   ├── dashboard/              # React 19 + Vite + Tailwind 管理面板
+│   │   ├── platform-bun/           # Bun + Hono 本地/Docker 服务器（端口 41415）
+│   │   └── platform-cloudflare/    # Cloudflare Workers 入口（wrangler.jsonc）
+│   ├── packages/
+│   │   ├── gateway/                # 核心：control-plane + data-plane 路由、observability
+│   │   │   └── src/
+│   │   │       ├── control-plane/  # auth, api-keys, github-accounts, upstreams,
+│   │   │       │                   # observability-shares, performance, presence,
+│   │   │       │                   # token-usage, copilot-quota, data-transfer
+│   │   │       ├── data-plane/     # chat-flow (messages/responses/chat-completions/
+│   │   │       │                   # gemini/count-tokens), embeddings, images, models,
+│   │   │       │                   # dispatch, routing, providers, observability
+│   │   │       └── shared/         # observability, repo, http, etc.
+│   │   ├── protocols/              # SDK 协议类型与 SSE 编解码
+│   │   ├── translate/              # 协议间互转（messages ↔ chat-completions ↔ responses ↔ gemini）
+│   │   ├── interceptor/            # 请求/响应拦截器（web-search、quota 等挂载点）
+│   │   ├── provider/               # Provider 抽象
+│   │   ├── provider-copilot/       # GitHub Copilot 上游适配
+│   │   ├── provider-azure/         # Azure OpenAI 上游适配
+│   │   ├── provider-custom/        # 自定义 OpenAI 兼容上游
+│   │   ├── provider-sdf/           # Smart-default fallback provider
+│   │   ├── responses-store/        # Responses API 流式 item 持久化
+│   │   ├── shared-cache/           # KV / cache_kv 抽象
+│   │   ├── shared-http/            # 共享 HTTP 工具
+│   │   └── platform/               # Bun + CFW 平台抽象（D1 ↔ bun:sqlite）
+│   └── docs/                       # 设计 spec 与实现 plan
+├── migrations/                     # D1 / SQLite schema 迁移（wrangler 与 bun-sqlite 共用）
+├── tests/                          # SDK 集成测试
+└── docker-compose.vnext.yml        # Docker 编排（端口 41415，卷 ./data-vnext）
 ```
 
 ## 测试

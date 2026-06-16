@@ -9,8 +9,6 @@ export interface LatencyRecord {
   requests: number
   totalMs: number
   upstreamMs: number
-  ttfbMs: number
-  tokenMiss: number
   keyName?: string
 }
 

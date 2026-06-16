@@ -47,11 +47,12 @@ function inMemoryRepo() {
         }),
     },
     performance: {
-      query: async (opts: { keyId?: string; keyIds?: string[]; start: string; end: string }) => {
-        const filter = <T extends { keyId: string; hour: string }>(rows: T[]) =>
+      query: async (opts: { keyId?: string; keyIds?: string[]; start: string; end: string; metricScope?: string }) => {
+        const filter = <T extends { keyId: string; hour: string; metricScope?: string }>(rows: T[]) =>
           rows.filter((r) => {
             if (opts.keyId && r.keyId !== opts.keyId) return false
             if (opts.keyIds && !opts.keyIds.includes(r.keyId)) return false
+            if (opts.metricScope && r.metricScope !== opts.metricScope) return false
             return r.hour >= opts.start && r.hour <= opts.end
           })
         return { summary: filter(perfSummary), buckets: filter(perfBuckets) }
@@ -131,8 +132,9 @@ test('GET /api/performance missing start/end → 400', async () => {
 test('GET /api/latency user scopes to own + assigned keys', async () => {
   store.keys.set('k1', mkKey('k1', 'mine', 'u1'))
   store.keys.set('k2', mkKey('k2', 'other', 'u2'))
-  store.latency.push(mkLatency('k1', '2026-03-01T00'))
-  store.latency.push(mkLatency('k2', '2026-03-01T00'))
+  // Spec-3: /api/latency derives from performance_summary (request_total scope).
+  store.perfSummary.push(mkSummary('k1', '2026-03-01T00'))
+  store.perfSummary.push(mkSummary('k2', '2026-03-01T00'))
 
   const res = await call(buildApp({ userId: 'u1' }), `/api/latency${RANGE}`)
   expect(res.status).toBe(200)
@@ -152,8 +154,9 @@ test('GET /api/latency shared-view: owned-only + HMAC-redacted keyId', async () 
   store.keys.set('k-owned', mkKey('k-owned', 'owned-key', 'owner'))
   store.keys.set('k-assigned', mkKey('k-assigned', 'a', 'someone'))
   store.assignments.push({ keyId: 'k-assigned', userId: 'owner', assignedBy: 'admin', assignedAt: '' })
-  store.latency.push(mkLatency('k-owned', '2026-03-01T00'))
-  store.latency.push(mkLatency('k-assigned', '2026-03-01T00'))
+  // Spec-3: /api/latency derives from performance_summary (request_total scope).
+  store.perfSummary.push(mkSummary('k-owned', '2026-03-01T00'))
+  store.perfSummary.push(mkSummary('k-assigned', '2026-03-01T00'))
 
   const res = await call(
     buildApp({ userId: 'viewer', isViewingShared: true, ownerId: 'owner' }),

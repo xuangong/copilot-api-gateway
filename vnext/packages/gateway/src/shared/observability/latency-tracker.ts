@@ -1,7 +1,13 @@
 /**
- * Latency tracker: always writes the `latency` aggregate; conditionally fans
- * out to `performance_summary` + `performance_latency_buckets` when the caller
- * supplies BOTH `sourceApi` and `targetApi` (and they map to valid perf enums).
+ * Latency tracker: conditionally fans out to `performance_summary` +
+ * `performance_latency_buckets` when the caller supplies BOTH `sourceApi`
+ * and `targetApi` (and they map to valid perf enums).
+ *
+ * The legacy `latency` aggregate table is no longer written — the dashboard
+ * `/api/latency` view derives from `performance_summary` (see
+ * control-plane/performance/routes.ts::summaryToLatencyRecords). The table
+ * and `LatencyRepo` are kept temporarily for schema stability but receive
+ * no new rows.
  *
  * Source-api enums use dash form in the perf tables ('chat-completions') but
  * the dispatcher's SourceApi type from errors/repackage.ts uses underscore
@@ -66,25 +72,13 @@ export async function recordLatency(
   requestId?: string,
   logInfo?: LatencyLogInfo,
 ): Promise<void> {
+  const sourceApi = logInfo?.sourceApi
+  const targetApi = logInfo?.targetApi
+  if (!sourceApi || !targetApi) return
+
   const repo = getRepo()
   const hour = currentHour()
   const stream = logInfo?.stream ?? false
-
-  const latencyP = repo.latency.record({
-    keyId, model, hour, colo, stream,
-    totalMs: timings.totalMs,
-    upstreamMs: timings.upstreamMs,
-    ttfbMs: timings.ttfbMs,
-    tokenMiss: timings.tokenMiss,
-  })
-
-  const sourceApi = logInfo?.sourceApi
-  const targetApi = logInfo?.targetApi
-  if (!sourceApi || !targetApi) {
-    await latencyP
-    return
-  }
-
   const isError = logInfo?.isError ?? false
   const base = {
     hour, keyId, model,
@@ -109,5 +103,5 @@ export async function recordLatency(
       isError: false,
     })
 
-  await Promise.all([latencyP, perfTotal, perfSuccess])
+  await Promise.all([perfTotal, perfSuccess])
 }

@@ -10,7 +10,12 @@
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../shared/repo/index.ts'
-import type { ApiKey, PerformanceMetricScope } from '../../shared/repo/types.ts'
+import type {
+  ApiKey,
+  LatencyRecord,
+  PerformanceMetricScope,
+  PerformanceSummaryRecord,
+} from '../../shared/repo/types.ts'
 import {
   redactForSharedView,
   getServerSecret,
@@ -26,6 +31,47 @@ export interface PerformanceAuthCtx {
 }
 
 type Vars = { auth: PerformanceAuthCtx }
+
+/**
+ * Spec-3 transition: legacy `latency` table is no longer written by chat-flow
+ * (recordPerformance only fills performance_summary). Derive LatencyRecord[]
+ * from PerformanceSummaryRecord[] so the dashboard /api/latency view keeps
+ * working. Collapses (sourceApi,targetApi) sub-rows into one bucket per
+ * (keyId, model, hour, runtimeLocation, stream).
+ *
+ * Field mapping (some are degraded — Spec-3 doesn't capture them):
+ *   colo       ← runtimeLocation
+ *   totalMs    ← Σ totalMsSum
+ *   upstreamMs ← Σ totalMsSum (mirror; no separate upstream timing in summary)
+ *   ttfbMs     ← 0 (not captured)
+ *   tokenMiss  ← 0 (not captured)
+ */
+function summaryToLatencyRecords(rows: PerformanceSummaryRecord[]): LatencyRecord[] {
+  const buckets = new Map<string, LatencyRecord>()
+  for (const r of rows) {
+    const key = `${r.keyId}|${r.model}|${r.hour}|${r.runtimeLocation}|${r.stream ? 1 : 0}`
+    const existing = buckets.get(key)
+    if (existing) {
+      existing.requests += r.requests
+      existing.totalMs += r.totalMsSum
+      existing.upstreamMs += r.totalMsSum
+    } else {
+      buckets.set(key, {
+        keyId: r.keyId,
+        model: r.model,
+        hour: r.hour,
+        colo: r.runtimeLocation,
+        stream: r.stream,
+        requests: r.requests,
+        totalMs: r.totalMsSum,
+        upstreamMs: r.totalMsSum,
+        ttfbMs: 0,
+        tokenMiss: 0,
+      })
+    }
+  }
+  return [...buckets.values()]
+}
 
 async function getUserKeys(userId: string): Promise<ApiKey[]> {
   const repo = getRepo()
@@ -63,7 +109,8 @@ performanceRouter.get('/latency', async (c) => {
     const ids = await getOwnedKeyIdsForScope(auth.ownerId)
     if (ids.length === 0) return c.json([])
     const ownedKeys = await repo.apiKeys.listByOwner(auth.ownerId)
-    const records = await repo.latency.query({ keyIds: ids, start, end })
+    const perfResult = await repo.performance.query({ keyIds: ids, start, end, metricScope: 'request_total' })
+    const records = summaryToLatencyRecords(perfResult.summary)
     const nameMap = new Map(ownedKeys.map((k) => [k.id, k.name]))
     const enriched = records.map((r) => ({
       ...r,
@@ -93,7 +140,8 @@ performanceRouter.get('/latency', async (c) => {
     queryOpts = { keyId, start, end }
     keys = await repo.apiKeys.list()
   }
-  const records = await repo.latency.query(queryOpts)
+  const perfResult = await repo.performance.query({ ...queryOpts, metricScope: 'request_total' })
+  const records = summaryToLatencyRecords(perfResult.summary)
   const nameMap = new Map(keys.map((k) => [k.id, k.name]))
   return c.json(
     records.map((r) => ({ ...r, keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8) })),
