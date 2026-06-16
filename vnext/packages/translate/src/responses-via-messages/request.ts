@@ -13,6 +13,7 @@ import {
   applyLastMessageCacheBreakpoint,
   applyLastToolCacheBreakpoint,
   systemWithCacheBreakpoint,
+  type MessageLike as SharedMessageLike,
 } from '../shared/cache-breakpoints.ts'
 
 const DEFAULT_MAX_TOKENS = 8192
@@ -219,7 +220,7 @@ export function translateResponsesToMessages(payload: ResponsesPayload): Respons
   const tool_choice = translateToolChoice(payload.tool_choice)
 
   applyLastToolCacheBreakpoint(tools)
-  applyLastMessageCacheBreakpoint(messages)
+  applyLastMessageCacheBreakpoint(messages as unknown as SharedMessageLike[])
 
   // output_config: bundle reasoning effort + structured-output schema.
   const text = payload.text as { format?: { type?: string; schema?: unknown } } | undefined

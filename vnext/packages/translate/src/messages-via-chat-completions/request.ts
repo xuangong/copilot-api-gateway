@@ -90,7 +90,7 @@ function toChatToolResultContent(content: AnthropicToolResultBlock['content']): 
   }
 }
 
-interface ChatToolCall { id: string; type: 'function'; function: { name: string; arguments: string } }
+interface ChatToolCall { id: string; type: 'function'; function: { name: string; arguments: string }; [k: string]: unknown }
 
 function toChatToolCall(block: AnthropicToolUseBlock): ChatToolCall {
   let args = '{}'

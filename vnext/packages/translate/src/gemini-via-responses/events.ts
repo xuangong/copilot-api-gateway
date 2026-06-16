@@ -8,11 +8,11 @@
  *  - Reference uses `ProtocolFrame<T>` framing (`event` / `done` types) and
  *    `eventFrame()` helper. vNext consumes a plain `AsyncIterable<unknown>`
  *    (matching `messages-via-responses/events.ts`) and yields bare
- *    `GeminiStreamEvent` objects; the gateway encoder wraps them as SSE.
+ *    `GeminiResult` objects; the gateway encoder wraps them as SSE.
  *  - Responses event shapes are inlined locally (vNext protocols package
  *    leaves nested Responses shapes loose).
  */
-import type { GeminiFinishReason, GeminiPart, GeminiStreamEvent, GeminiUsageMetadata } from '../shared/gemini-via/types.ts'
+import type { GeminiFinishReason, GeminiPart, GeminiResult, GeminiUsageMetadata } from '../shared/gemini-via/types.ts'
 import { geminiCandidateEvent, parseStrictJsonObject } from '../shared/gemini-via/gemini.ts'
 
 export interface TranslateResponsesToGeminiEventsOptions {
@@ -188,13 +188,13 @@ const mapTerminalFinishReason = (event: RespTerminalEvent): GeminiFinishReason =
   return event.response.incomplete_details?.reason === 'max_output_tokens' ? 'MAX_TOKENS' : 'OTHER'
 }
 
-const emitTextPart = (part: GeminiPart): GeminiStreamEvent => geminiCandidateEvent([part])
+const emitTextPart = (part: GeminiPart): GeminiResult => geminiCandidateEvent([part])
 
 function* reasoningItemDoneEvents(
   item: RespOutputReasoning,
   outputIndex: number,
   state: State,
-): Generator<GeminiStreamEvent> {
+): Generator<GeminiResult> {
   for (const [summaryIndex, summary] of item.summary.entries()) {
     const key = partKey(outputIndex, summaryIndex)
     if (!summary.text || state.emittedReasoningKeys.has(key)) continue
@@ -207,7 +207,7 @@ function functionCallDoneEvent(
   item: RespOutputFunctionCall,
   outputIndex: number,
   state: State,
-): GeminiStreamEvent {
+): GeminiResult {
   const current = state.functionCalls.get(outputIndex)
   state.functionCalls.delete(outputIndex)
 
@@ -231,13 +231,13 @@ function functionCallDoneEvent(
   })
 }
 
-const handleTerminal = (event: RespTerminalEvent): GeminiStreamEvent =>
+const handleTerminal = (event: RespTerminalEvent): GeminiResult =>
   geminiCandidateEvent([], mapTerminalFinishReason(event), mapUsage(event.response.usage))
 
 export async function* translateResponsesToGeminiEvents(
   events: AsyncIterable<unknown>,
   _options: TranslateResponsesToGeminiEventsOptions = {},
-): AsyncGenerator<GeminiStreamEvent> {
+): AsyncGenerator<GeminiResult> {
   const state: State = {
     functionCalls: new Map(),
     emittedReasoningKeys: new Set(),

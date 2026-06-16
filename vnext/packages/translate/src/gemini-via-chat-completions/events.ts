@@ -6,8 +6,8 @@
  * Ported from copilot-gateway's `gemini-via-chat-completions/events.ts`.
  * vNext differences:
  *  - Reference consumes `ProtocolFrame<ChatCompletionsStreamEvent>` and emits
- *    `ProtocolFrame<GeminiStreamEvent>`. vNext consumes `AsyncIterable<unknown>`
- *    and yields bare `GeminiStreamEvent` (matching messages-via-responses /
+ *    `ProtocolFrame<GeminiResult>`. vNext consumes `AsyncIterable<unknown>`
+ *    and yields bare `GeminiResult` (matching messages-via-responses /
  *    gemini-via-responses convention).
  *  - Chat chunk shape inlined locally (vNext `@vnext/protocols/chat` does not
  *    define a stream-event schema).
@@ -18,7 +18,7 @@ import type {
   GeminiCandidate,
   GeminiFinishReason,
   GeminiPart,
-  GeminiStreamEvent,
+  GeminiResult,
   GeminiUsageMetadata,
 } from '../shared/gemini-via/types.ts'
 import {
@@ -219,7 +219,7 @@ const throwOnErrorPayload = (chunk: ChatStreamChunk): void => {
 export async function* translateChatToGeminiEvents(
   events: AsyncIterable<unknown>,
   _options: TranslateChatToGeminiEventsOptions = {},
-): AsyncGenerator<GeminiStreamEvent> {
+): AsyncGenerator<GeminiResult> {
   const states: Record<number, ChoiceState> = {}
   let pendingUsageMetadata: GeminiUsageMetadata | undefined
   const deferredFinalCandidates: GeminiCandidate[] = []
