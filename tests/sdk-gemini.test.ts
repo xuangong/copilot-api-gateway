@@ -162,8 +162,10 @@ describe.skipIf(SKIP_LIVE)("Gemini API - generateContent", () => {
     expect(typeof response.usageMetadata!.promptTokenCount).toBe("number")
     expect(typeof response.usageMetadata!.candidatesTokenCount).toBe("number")
     expect(typeof response.usageMetadata!.totalTokenCount).toBe("number")
-    expect(response.usageMetadata!.totalTokenCount).toBe(
-      response.usageMetadata!.promptTokenCount + response.usageMetadata!.candidatesTokenCount
+    // Gemini's totalTokenCount includes thoughtsTokenCount (reasoning tokens) for
+    // thinking-capable models like gemini-2.5-pro, so it can exceed prompt + candidates.
+    expect(response.usageMetadata!.totalTokenCount).toBeGreaterThanOrEqual(
+      response.usageMetadata!.promptTokenCount! + response.usageMetadata!.candidatesTokenCount!
     )
   }, TEST_TIMEOUT)
 

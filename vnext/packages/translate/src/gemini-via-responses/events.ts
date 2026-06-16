@@ -16,7 +16,7 @@ import type { GeminiFinishReason, GeminiPart, GeminiStreamEvent, GeminiUsageMeta
 import { geminiCandidateEvent, parseStrictJsonObject } from '../shared/gemini-via/gemini.ts'
 
 export interface TranslateResponsesToGeminiEventsOptions {
-  /** Reserved for future passthrough into emitted modelVersion. */
+  /** Used only as a passthrough into the emitted `modelVersion` field. */
   model?: string
 }
 
@@ -231,12 +231,15 @@ function functionCallDoneEvent(
   })
 }
 
-const handleTerminal = (event: RespTerminalEvent): GeminiStreamEvent =>
-  geminiCandidateEvent([], mapTerminalFinishReason(event), mapUsage(event.response.usage))
+const handleTerminal = (event: RespTerminalEvent, model?: string): GeminiStreamEvent => {
+  const out = geminiCandidateEvent([], mapTerminalFinishReason(event), mapUsage(event.response.usage))
+  if (model) (out as { modelVersion?: string }).modelVersion = model
+  return out
+}
 
 export async function* translateResponsesToGeminiEvents(
   events: AsyncIterable<unknown>,
-  _options: TranslateResponsesToGeminiEventsOptions = {},
+  options: TranslateResponsesToGeminiEventsOptions = {},
 ): AsyncGenerator<GeminiStreamEvent> {
   const state: State = {
     functionCalls: new Map(),
@@ -314,7 +317,7 @@ export async function* translateResponsesToGeminiEvents(
         case 'response.completed':
         case 'response.incomplete':
         case 'response.failed':
-          yield handleTerminal(event as RespTerminalEvent)
+          yield handleTerminal(event as RespTerminalEvent, options.model)
           return
 
         case 'error': {

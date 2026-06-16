@@ -10,7 +10,11 @@ export const chatCompletionsProtocolFrameToSSEFrame = (
   options: ChatCompletionsProtocolFrameToSSEFrameOptions,
 ): SseFrame | null => {
   if (frame.type === 'done') return sseFrame('[DONE]')
-  const ev = frame.event as { choices?: unknown[]; usage?: unknown }
+  const ev = frame.event as { choices?: unknown[]; usage?: unknown; object?: string }
   if (!options.includeUsageChunk && Array.isArray(ev.choices) && ev.choices.length === 0 && ev.usage !== undefined) return null
-  return sseFrame(JSON.stringify(frame.event))
+  // Some upstreams (Azure-flavored Copilot) omit `object` on streaming chunks.
+  // The OpenAI spec requires `chat.completion.chunk` so SDK clients can
+  // discriminate. Patch when missing rather than mutating the source frame.
+  const out = ev.object ? frame.event : { ...frame.event, object: 'chat.completion.chunk' }
+  return sseFrame(JSON.stringify(out))
 }

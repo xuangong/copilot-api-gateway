@@ -30,7 +30,7 @@ import {
 } from '../shared/gemini-via/gemini.ts'
 
 export interface TranslateChatToGeminiEventsOptions {
-  /** Reserved for future passthrough into emitted modelVersion. */
+  /** Used only as a passthrough into the emitted `modelVersion` field. */
   model?: string
 }
 
@@ -218,7 +218,7 @@ const throwOnErrorPayload = (chunk: ChatStreamChunk): void => {
 
 export async function* translateChatToGeminiEvents(
   events: AsyncIterable<unknown>,
-  _options: TranslateChatToGeminiEventsOptions = {},
+  options: TranslateChatToGeminiEventsOptions = {},
 ): AsyncGenerator<GeminiStreamEvent> {
   const states: Record<number, ChoiceState> = {}
   let pendingUsageMetadata: GeminiUsageMetadata | undefined
@@ -255,9 +255,13 @@ export async function* translateChatToGeminiEvents(
       yield {
         candidates: deferredFinalCandidates,
         ...(pendingUsageMetadata ? { usageMetadata: pendingUsageMetadata } : {}),
+        ...(options.model ? { modelVersion: options.model } : {}),
       }
     } else if (pendingUsageMetadata) {
-      yield { usageMetadata: pendingUsageMetadata }
+      yield {
+        usageMetadata: pendingUsageMetadata,
+        ...(options.model ? { modelVersion: options.model } : {}),
+      }
     }
   } finally {
     for (const k of Object.keys(states)) delete states[Number(k)]

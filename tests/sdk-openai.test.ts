@@ -17,6 +17,7 @@ import { describe, test, expect, beforeAll } from "bun:test"
 import OpenAI from "openai"
 
 const BASE_URL = process.env.TEST_API_BASE_URL || "http://localhost:41414"
+const API_KEY = process.env.TEST_API_KEY || "test-key"
 const TEST_TIMEOUT = 30_000
 // Skip when no live server is configured; these tests require `bun run local`.
 const SKIP_LIVE = !process.env.TEST_API_BASE_URL
@@ -26,7 +27,7 @@ describe.skipIf(SKIP_LIVE)("OpenAI SDK - Chat Completions API", () => {
 
   beforeAll(() => {
     client = new OpenAI({
-      apiKey: "test-key",
+      apiKey: API_KEY,
       baseURL: BASE_URL + "/v1",
     })
   })
@@ -158,7 +159,7 @@ describe.skipIf(SKIP_LIVE)("OpenAI SDK - Streaming", () => {
 
   beforeAll(() => {
     client = new OpenAI({
-      apiKey: "test-key",
+      apiKey: API_KEY,
       baseURL: BASE_URL + "/v1",
     })
   })
@@ -257,7 +258,7 @@ describe.skipIf(SKIP_LIVE)("OpenAI SDK - Function Calling", () => {
 
   beforeAll(() => {
     client = new OpenAI({
-      apiKey: "test-key",
+      apiKey: API_KEY,
       baseURL: BASE_URL + "/v1",
     })
   })
@@ -401,14 +402,14 @@ describe.skipIf(SKIP_LIVE)("OpenAI SDK - Responses API", () => {
 
   beforeAll(() => {
     client = new OpenAI({
-      apiKey: "test-key",
+      apiKey: API_KEY,
       baseURL: BASE_URL + "/v1",
     })
   })
 
   test("create response - minimal params", async () => {
     const response = await client.responses.create({
-      model: "gpt-5.2",
+      model: "gpt-5.5",
       input: "Say hello",
     })
 
@@ -419,19 +420,19 @@ describe.skipIf(SKIP_LIVE)("OpenAI SDK - Responses API", () => {
 
   test("create response - with instructions", async () => {
     const response = await client.responses.create({
-      model: "gpt-5.1",
+      model: "gpt-5.4",
       input: "What is 2+2?",
       instructions: "You are a math tutor. Be concise.",
       max_output_tokens: 100,
     })
 
-    expect(response.model).toContain("gpt-5.1")
+    expect(response.model).toContain("gpt-5.4")
     expect(response.usage).toBeDefined()
   }, TEST_TIMEOUT)
 
   test("streaming response", async () => {
     const stream = await client.responses.create({
-      model: "gpt-5.1",
+      model: "gpt-5.4",
       input: "Count to 3",
       stream: true,
     })
@@ -450,11 +451,11 @@ describe.skipIf(SKIP_LIVE)("OpenAI SDK - Responses API", () => {
     expect(hasTextDelta).toBe(true)
   }, TEST_TIMEOUT)
 
-  test("create response - with temperature", async () => {
+  // Note: gpt-5.x reasoning models reject `temperature`; test max_output_tokens alone.
+  test("create response - with max_output_tokens", async () => {
     const response = await client.responses.create({
-      model: "gpt-5.1",
+      model: "gpt-5.4",
       input: "Say hi",
-      temperature: 0.7,
       max_output_tokens: 50,
     })
 
@@ -467,7 +468,7 @@ describe.skipIf(SKIP_LIVE)("OpenAI SDK - Models API", () => {
 
   beforeAll(() => {
     client = new OpenAI({
-      apiKey: "test-key",
+      apiKey: API_KEY,
       baseURL: BASE_URL + "/v1",
     })
   })
@@ -491,7 +492,7 @@ describe.skipIf(SKIP_LIVE)("OpenAI SDK - Response Validation", () => {
 
   beforeAll(() => {
     client = new OpenAI({
-      apiKey: "test-key",
+      apiKey: API_KEY,
       baseURL: BASE_URL + "/v1",
     })
   })

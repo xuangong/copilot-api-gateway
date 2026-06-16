@@ -330,14 +330,16 @@ export const geminiAttempt = {
       // extractor. `targetEndpoint` selects the parser and the protocol
       // ctx in one place — no need to extend `withUpstreamTelemetry`'s
       // protocol union with `'gemini'` because the wire is the hub wire.
-      // JSON-vs-SSE detection mirrors messages/responses attempt.ts: when the
-      // upstream returns JSON (either because the client wanted a single
-      // envelope or because the upstream chose to buffer), buffer + synthesise
-      // the equivalent hub frame sequence so the rest of the pipeline is
-      // identical. `respond.ts` still decides the wire shape we hand back.
-      const isClientStreaming = wantsUpstreamStream
+      //
+      // JSON-vs-SSE detection: gemini-via translators always force
+      // `stream: true` on the upstream payload (gemini-via-chat-completions/request.ts:289,
+      // gemini-via-responses/request.ts:269), so the client's
+      // `wantsUpstreamStream` flag is NOT a reliable proxy for the upstream
+      // wire shape. We rely on the upstream's content-type alone: SSE carries
+      // `text/event-stream`; anything else (JSON, missing/empty header) is
+      // treated as a single JSON envelope and synthesised into hub frames.
       const upstreamContentType = upstreamResp.headers.get('content-type') ?? ''
-      const upstreamLooksJson = !isClientStreaming || upstreamContentType.includes('application/json')
+      const upstreamLooksJson = !upstreamContentType.includes('text/event-stream')
 
       const hubProtocol = targetToHubProtocol(sel.targetEndpoint)
       const hubFrames = upstreamLooksJson
