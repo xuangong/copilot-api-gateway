@@ -53,6 +53,12 @@ authRouter.post('/login', async (c) => {
 
   if (!sessionToken) return c.json({ error: 'No session' }, 401)
 
+  // ADMIN_KEY match → returns admin context without a userId (matches legacy behavior).
+  const adminKey = (c.env as { ADMIN_KEY?: string } | undefined)?.ADMIN_KEY ?? process.env.ADMIN_KEY
+  if (adminKey && sessionToken === adminKey) {
+    return c.json({ ok: true, isAdmin: true, isUser: false })
+  }
+
   if (sessionToken.startsWith('ses_')) {
     const repo = getRepo()
     const session = await repo.sessions.findByToken(sessionToken)
@@ -96,6 +102,22 @@ authRouter.post('/login', async (c) => {
       keyId: result.id,
       keyName: result.name,
       keyHint: sessionToken.slice(-4),
+    })
+  }
+
+  // User Key (legacy users.user_key column) — accepted by older clients (llm-relay).
+  const user = await getRepo().users.findByKey(sessionToken)
+  if (user) {
+    if (user.disabled) return c.json({ error: 'Account disabled' }, 403)
+    const isAdmin = !!(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))
+    return c.json({
+      ok: true,
+      isAdmin,
+      isUser: true,
+      userId: user.id,
+      userName: user.name,
+      email: user.email,
+      avatarUrl: user.avatarUrl,
     })
   }
 

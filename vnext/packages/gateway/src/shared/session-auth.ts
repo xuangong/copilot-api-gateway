@@ -16,6 +16,11 @@ import { ADMIN_EMAILS, type AccountType } from './config/constants.ts'
 import { validateApiKey } from './lib/api-keys.ts'
 import { getCachedCopilotToken } from './copilot-token-cache.ts'
 
+function resolveAdminKey(c: Context): string | undefined {
+  const fromEnv = (c.env as { ADMIN_KEY?: string } | undefined)?.ADMIN_KEY
+  return fromEnv ?? process.env.ADMIN_KEY
+}
+
 interface FullAuthCtx {
   userId?: string
   isAdmin?: boolean
@@ -57,7 +62,10 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
   let resolvedUserId: string | undefined
   let ctx: FullAuthCtx | undefined
   try {
-    if (key.startsWith('ses_')) {
+    const adminKey = resolveAdminKey(c)
+    if (adminKey && key === adminKey) {
+      ctx = { isAdmin: true, authKind: 'apiKey' }
+    } else if (key.startsWith('ses_')) {
       const repo = getRepo()
       const session = await repo.sessions.findByToken(key)
       if (session && new Date(session.expiresAt) > new Date()) {
@@ -83,6 +91,19 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
           authKind: 'apiKey',
         }
         resolvedUserId = result.ownerId
+      } else {
+        // Try User Key (legacy: users.user_key column) for llm-relay / older clients.
+        const user = await getRepo().users.findByKey(key)
+        if (user && !user.disabled) {
+          const isAdmin = !!(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))
+          ctx = {
+            userId: user.id,
+            isAdmin,
+            isUser: true,
+            authKind: 'session',
+          }
+          resolvedUserId = user.id
+        }
       }
     }
   } catch {

@@ -8,6 +8,7 @@ import { sessionAuthMiddleware } from './shared/session-auth.ts'
 
 export interface Env {
   ACCOUNT_TYPE?: string
+  ADMIN_KEY?: string
   GOOGLE_CLIENT_ID?: string
   GOOGLE_CLIENT_SECRET?: string
 }
