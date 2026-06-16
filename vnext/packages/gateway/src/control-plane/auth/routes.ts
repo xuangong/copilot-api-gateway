@@ -53,12 +53,6 @@ authRouter.post('/login', async (c) => {
 
   if (!sessionToken) return c.json({ error: 'No session' }, 401)
 
-  // ADMIN_KEY match → returns admin context without a userId (matches legacy behavior).
-  const adminKey = (c.env as { ADMIN_KEY?: string } | undefined)?.ADMIN_KEY ?? process.env.ADMIN_KEY
-  if (adminKey && sessionToken === adminKey) {
-    return c.json({ ok: true, isAdmin: true, isUser: false })
-  }
-
   if (sessionToken.startsWith('ses_')) {
     const repo = getRepo()
     const session = await repo.sessions.findByToken(sessionToken)

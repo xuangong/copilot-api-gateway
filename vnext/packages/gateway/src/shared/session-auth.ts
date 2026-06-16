@@ -10,16 +10,11 @@
  * decide policy. This keeps public endpoints (login, OAuth callbacks)
  * working while still attaching auth context where present.
  */
-import type { MiddlewareHandler, Context } from 'hono'
+import type { MiddlewareHandler } from 'hono'
 import { getRepo } from './repo/index.ts'
 import { ADMIN_EMAILS, type AccountType } from './config/constants.ts'
 import { validateApiKey } from './lib/api-keys.ts'
 import { getCachedCopilotToken } from './copilot-token-cache.ts'
-
-function resolveAdminKey(c: Context): string | undefined {
-  const fromEnv = (c.env as { ADMIN_KEY?: string } | undefined)?.ADMIN_KEY
-  return fromEnv ?? process.env.ADMIN_KEY
-}
 
 interface FullAuthCtx {
   userId?: string
@@ -62,10 +57,7 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
   let resolvedUserId: string | undefined
   let ctx: FullAuthCtx | undefined
   try {
-    const adminKey = resolveAdminKey(c)
-    if (adminKey && key === adminKey) {
-      ctx = { isAdmin: true, authKind: 'apiKey' }
-    } else if (key.startsWith('ses_')) {
+    if (key.startsWith('ses_')) {
       const repo = getRepo()
       const session = await repo.sessions.findByToken(key)
       if (session && new Date(session.expiresAt) > new Date()) {
