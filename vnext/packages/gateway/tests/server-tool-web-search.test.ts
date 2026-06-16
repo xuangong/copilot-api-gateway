@@ -4,7 +4,7 @@
  *
  * Strategy (per memory: bun_mock_module_unrestorable):
  *   - real SqliteRepo via setRepoForTest so loadWebSearchConfig +
- *     runConversationAttempt's observability fan-out (latency + usage) write
+ *     messagesAttempt's observability fan-out (usage + performance) write
  *     to real tables
  *   - stub globalThis.fetch so the intercept loop sees a deterministic
  *     "no tool_use" Anthropic response and returns immediately. The /models
@@ -15,7 +15,11 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { initRepo } from '../src/shared/repo/index.ts'
-import { __resetPlatformForTests } from '@vnext/platform'
+import {
+  __resetPlatformForTests,
+  initBackground,
+  initRuntimeLocation,
+} from '@vnext/platform'
 import { BunSqliteRepo as SqliteRepo } from '@vnext/platform-bun/src/bun-sqlite-repo.ts'
 import { handleMessagesWebSearch } from '../src/data-plane/orchestrator/server-tools/plugins/web-search/route-handler.ts'
 import { invalidateResolverCache } from '../src/data-plane/orchestrator/server-tools/plugins/web-search/resolver.ts'
@@ -24,11 +28,30 @@ const origFetch = globalThis.fetch
 let repo: SqliteRepo
 let db: Database
 
-beforeEach(() => {
+const COPILOT = { copilotToken: 'tok', accountType: 'individual' as const }
+
+beforeEach(async () => {
   db = new Database(':memory:')
   repo = new SqliteRepo(db)
   invalidateResolverCache()
   initRepo(repo)
+  initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
+  initRuntimeLocation('bun')
+  // The new messagesAttempt chain enumerates UpstreamRecord-backed bindings;
+  // register a Copilot upstream so binding selection finds the messages
+  // endpoint via copilotProviderPlugin.
+  await repo.upstreams.save({
+    id: 'copilot:u-ws',
+    provider: 'copilot',
+    name: 'u-ws',
+    enabled: true,
+    sortOrder: 0,
+    config: { githubToken: 'ghp_test' },
+    flagOverrides: {},
+    disabledPublicModelIds: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  })
 })
 
 afterEach(() => {
@@ -49,7 +72,7 @@ test('returns 400 when the api key does not have web search enabled', async () =
     id: 'key-1', name: 'k', key: 'raw', createdAt: new Date().toISOString(), webSearchEnabled: false,
   })
   const res = await handleMessagesWebSearch(
-    { copilotToken: 'tok', accountType: 'individual', githubToken: 'gh', apiKeyId: 'key-1' },
+    { copilot: COPILOT, githubToken: 'gh', apiKeyId: 'key-1' },
     wsPayload,
   )
   expect(res.status).toBe(400)
@@ -63,8 +86,34 @@ test('non-streaming pass-through when upstream returns no tool_use blocks', asyn
   })
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input instanceof Request ? input.url : input.toString()
+    if (url.includes('/copilot_internal/v2/token')) {
+      return Response.json({
+        token: 'tok-stub',
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        refresh_in: 3000,
+      })
+    }
     if (url.includes('/models')) {
-      return Response.json({ object: 'list', data: [] })
+      return Response.json({
+        object: 'list',
+        data: [{
+          id: 'claude-3-5-sonnet-latest',
+          object: 'model',
+          name: 'claude-3-5-sonnet-latest',
+          vendor: 'anthropic',
+          version: 'claude-3-5-sonnet-latest',
+          model_picker_enabled: true,
+          preview: false,
+          capabilities: {
+            family: 'claude',
+            limits: { max_context_window_tokens: 200000, max_output_tokens: 8192 },
+            object: 'model_capabilities',
+            supports: {},
+            tokenizer: 'cl100k',
+            type: 'text',
+          },
+        }],
+      })
     }
     return Response.json({
       id: 'msg_stub',
@@ -78,7 +127,7 @@ test('non-streaming pass-through when upstream returns no tool_use blocks', asyn
   }) as typeof fetch
 
   const res = await handleMessagesWebSearch(
-    { copilotToken: 'tok', accountType: 'individual', githubToken: 'gh', apiKeyId: 'key-2' },
+    { copilot: COPILOT, githubToken: 'gh', apiKeyId: 'key-2' },
     wsPayload,
   )
   expect(res.status).toBe(200)

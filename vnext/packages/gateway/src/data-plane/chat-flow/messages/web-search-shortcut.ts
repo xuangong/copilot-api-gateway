@@ -16,8 +16,7 @@ export async function invokeMessagesWebSearchShortcut(
   }
   return handleMessagesWebSearch(
     {
-      copilotToken: auth.copilot.copilotToken,
-      accountType: auth.copilot.accountType,
+      copilot: auth.copilot,
       githubToken: auth.githubToken,
       msGroundingKey: auth.msGroundingKey,
       apiKeyId: auth.apiKeyId,

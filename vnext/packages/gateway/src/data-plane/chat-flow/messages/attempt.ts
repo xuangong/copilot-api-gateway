@@ -202,12 +202,16 @@ export async function* synthesizeMessagesFramesFromJson(
   const blocks = Array.isArray(body.content) ? body.content : []
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i] as { type?: string; text?: string }
+    // Match real upstream SSE: `content_block_start` opens with empty text;
+    // the body arrives via subsequent `content_block_delta`. Initialising
+    // text here would double-count when the reassembler concatenates the
+    // delta on top (cf. messages/events/reassemble.ts).
     yield {
       type: 'event',
       event: {
         type: 'content_block_start',
         index: i,
-        content_block: { type: block.type ?? 'text', text: block.text ?? '' } as never,
+        content_block: { type: block.type ?? 'text', text: '' } as never,
       } as MessagesStreamEvent,
     }
     if (block.type === 'text' && typeof block.text === 'string') {
