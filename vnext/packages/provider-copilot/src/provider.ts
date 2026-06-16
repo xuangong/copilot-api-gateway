@@ -107,7 +107,7 @@ export class CopilotProvider implements ModelProvider {
       endpoint: req.endpoint,
       enabledFlags: defaultsForUpstream('copilot'),
       sourceApi: mapSourceApi(req.sourceApi),
-      payload: req.payload,
+      payload: req.payload as Record<string, unknown>,
       headers: headerRecord,
     }
     const ctx: RequestContext = {

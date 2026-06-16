@@ -7,7 +7,7 @@ import { invalidJsonResponse } from '../shared/error-wrap.ts'
 import { readAuth, readObsCtx } from '../shared/gateway-ctx.ts'
 
 export async function geminiHandler(c: Context<{ Bindings: Env }>): Promise<Response> {
-  const rawParam = c.req.param('model')
+  const rawParam = c.req.param('model') ?? ''
   const [model, verb] = rawParam.split(':')
 
   let raw: unknown

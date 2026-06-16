@@ -485,11 +485,12 @@ upstreamsRouter.patch('/:id', async (c) => {
     let mergedConfig: Record<string, unknown> | undefined
     if (body.config !== undefined) {
       const incoming = body.config as Record<string, unknown>
-      mergedConfig = { ...existing.config }
+      const merged: Record<string, unknown> = { ...existing.config }
       for (const [k, v] of Object.entries(incoming)) {
         if (v === '***') continue
-        mergedConfig[k] = v
+        merged[k] = v
       }
+      mergedConfig = merged
     }
     const next: UpstreamRecord = {
       ...existing,

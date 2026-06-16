@@ -113,7 +113,7 @@ export const collectMessagesProtocolEventsToResult = async (
     type: 'message',
     role: 'assistant',
     model,
-    content: blocks.filter((b): b is PartialBlock => b !== undefined).map(blockToOutput) as MessagesResult['content'],
+    content: blocks.filter((b): b is PartialBlock => b !== undefined).map(blockToOutput) as unknown as MessagesResult['content'],
     stop_reason,
     stop_sequence,
     usage,

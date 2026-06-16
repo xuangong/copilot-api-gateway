@@ -1,4 +1,4 @@
-import type { BillingDimension, ModelPricing, UpstreamKind } from "@vnext/protocols/common"
+import type { BillingDimension, ModelPricing, UpstreamKind, UpstreamRecord } from "@vnext/protocols/common"
 
 export interface ApiKey {
   id: string
