@@ -96,6 +96,7 @@ export type {
   TelemetryModelIdentity,
   PerformanceTelemetryContext,
   EventResultMetadata,
+  TranslateBodyContext,
 } from './result'
 export {
   eventResult,

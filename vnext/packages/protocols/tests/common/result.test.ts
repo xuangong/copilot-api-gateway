@@ -57,3 +57,24 @@ test('EventResultMetadata shape', () => {
   const md: EventResultMetadata = { modelIdentity: identity(), performance: perf() }
   expect(md.modelIdentity.upstream).toBe('openai-prod')
 })
+
+test('eventResult accepts translateBody', () => {
+  async function* gen() { yield 1 as never }
+  const id = { model: 'm', upstream: 'u', modelKey: 'k', cost: null }
+  const tb = (j: unknown) => ({ ok: true, j })
+  const r = eventResult(gen(), id, undefined, undefined, tb)
+  expect(r.translateBody).toBe(tb)
+})
+
+test('internalErrorResult accepts reason', () => {
+  const r = internalErrorResult(400, new Error('bad'), undefined, 'translator-validation')
+  expect(r.reason).toBe('translator-validation')
+})
+
+test('TelemetryModelIdentity accepts translatorPair', () => {
+  const id: TelemetryModelIdentity = {
+    model: 'm', upstream: 'u', modelKey: 'k', cost: null,
+    translatorPair: { source: 'chat_completions' as const, hub: 'responses' as const },
+  }
+  expect(id.translatorPair?.hub).toBe('responses')
+})
