@@ -74,12 +74,12 @@ export function UpstreamsTab() {
               {t("dash.managedUpstreamsDesc")}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
             <button onClick={() => setDeviceFlowOpen(true)} className="btn-primary text-sm">{t("dash.addCopilot")}</button>
             <button onClick={() => openCreate("custom")} className="btn-ghost text-sm">{t("dash.addCustom")}</button>
             <button onClick={() => openCreate("azure")} className="btn-ghost text-sm">{t("dash.addAzure")}</button>
             <button onClick={() => openCreate("sdf")} className="btn-ghost text-sm">{t("dash.addSdf")}</button>
-            <button onClick={store.reload} disabled={store.loading} className="btn-ghost text-sm">↻</button>
+            <button onClick={store.reload} disabled={store.loading} className="btn-ghost text-sm" title="Refresh">↻</button>
           </div>
         </div>
 
