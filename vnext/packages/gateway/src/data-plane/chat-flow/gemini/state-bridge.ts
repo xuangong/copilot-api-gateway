@@ -26,9 +26,7 @@
  * splice in `state.modelKey` so the corrected key reaches the usage row.
  */
 import type {
-  EventResultMetadata,
-  PerformanceTelemetryContext,
-  TelemetryModelIdentity,
+  EventResult,
 } from '@vnext/protocols/common'
 import {
   SourceStreamState,
@@ -61,18 +59,6 @@ export async function* consumeWithState(
 }
 
 /**
- * EventResult-shape input for `persistFromEventResult` — declared inline to
- * avoid pulling the attempt-side `GeminiAttemptResult` typedef. Matches the
- * subset of `EventResult<unknown>` we actually read.
- */
-export interface PersistInput {
-  readonly type: 'events'
-  readonly modelIdentity: TelemetryModelIdentity
-  readonly performance?: PerformanceTelemetryContext
-  readonly finalMetadata?: Promise<EventResultMetadata>
-}
-
-/**
  * Persist a usage row + performance row from a drained gemini `EventResult`.
  * Prefers interceptor-replaced `finalMetadata`. Otherwise the in-stream
  * observed `modelKey` (from `modelVersion`) supersedes the binding-time guess.
@@ -84,7 +70,7 @@ export interface PersistInput {
  * block the client response.
  */
 export async function persistFromEventResult(
-  result: PersistInput,
+  result: EventResult<unknown>,
   state: SourceStreamState,
   telemetryCtx: TelemetryRequestContext,
 ): Promise<void> {

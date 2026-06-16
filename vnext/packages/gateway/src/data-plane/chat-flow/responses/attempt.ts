@@ -144,8 +144,11 @@ const defaultSelectBinding: SelectResponsesBinding = async ({ model, auth }) => 
  * a `JSON.parse` error to the caller so attempt.ts's outer try/catch can map
  * it to an internal-error result populated with `performance` ctx (parity
  * with the messages JSON branch).
+ *
+ * Exported for cross-protocol reuse by `gemini/attempt.ts` when its hub target
+ * is `responses`.
  */
-async function readUpstreamResponsesJson(
+export async function readUpstreamResponsesJson(
   body: ReadableStream<Uint8Array>,
 ): Promise<ResponsesResult> {
   const buf = await new Response(body).text()
@@ -169,8 +172,10 @@ async function readUpstreamResponsesJson(
  * needs to reassemble the original JSON envelope. The terminal lifecycle
  * frame (`response.completed` / `incomplete` / `failed`) still carries the
  * full `ResponsesResult`, so reassembly remains correct.
+ *
+ * Exported for cross-protocol reuse by `gemini/attempt.ts` (see above).
  */
-async function* synthesizeResponsesFramesFromJson(
+export async function* synthesizeResponsesFramesFromJson(
   body: ResponsesResult,
 ): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
   for (const frame of responsesResultToEvents(body, { genericOutputItems: true })) yield frame

@@ -71,6 +71,15 @@ import { enumerateBindingCandidates, type EnumerateOptions } from '../../routing
 import { selectPair } from '../../dispatch/pair-selector.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
 import { mapSourceApiToProviderRequest } from '../shared/sse-readers.ts'
+import {
+  readUpstreamMessagesJson,
+  synthesizeMessagesFramesFromJson,
+} from '../messages/attempt.ts'
+import {
+  readUpstreamResponsesJson,
+  synthesizeResponsesFramesFromJson,
+} from '../responses/attempt.ts'
+import { synthesizeChatCompletionsFramesFromJson, type ChatCompletionsJsonBody } from '../chat-completions/events/json-to-frames'
 
 // ─── Public types ─────────────────────────────────────────────────────────
 
@@ -191,6 +200,34 @@ function parseHubStream(
   throw new Error(`gemini attempt: unsupported target endpoint "${target}"`)
 }
 
+/**
+ * Buffer the upstream JSON body and synthesise the equivalent hub-shape SSE
+ * frame sequence. Keeps the gemini attempt's downstream pipeline (`withUpstreamTelemetry`
+ * → `unwrapHubFrames` → `translator.translateEvents`) identical between
+ * streamed and buffered-JSON upstreams. Mirrors the messages/responses
+ * non-stream branches (their attempt.ts handles this for native targets;
+ * we delegate to the same exported helpers for cross-protocol gemini routes).
+ */
+async function synthesizeHubFramesFromJson(
+  target: EndpointKey,
+  body: ReadableStream<Uint8Array>,
+): Promise<AsyncIterable<ProtocolFrame<unknown>>> {
+  if (target === 'messages') {
+    const json = await readUpstreamMessagesJson(body)
+    return synthesizeMessagesFramesFromJson(json) as AsyncIterable<ProtocolFrame<unknown>>
+  }
+  if (target === 'responses') {
+    const json = await readUpstreamResponsesJson(body)
+    return synthesizeResponsesFramesFromJson(json) as AsyncIterable<ProtocolFrame<unknown>>
+  }
+  if (target === 'chat_completions') {
+    const buf = await new Response(body).text()
+    const json = JSON.parse(buf) as ChatCompletionsJsonBody
+    return synthesizeChatCompletionsFramesFromJson(json) as AsyncIterable<ProtocolFrame<unknown>>
+  }
+  throw new Error(`gemini attempt: unsupported target endpoint "${target}"`)
+}
+
 /** Pure protocol-name mapper used for the `withUpstreamTelemetry` ctx. */
 type HubProtocol = 'chat_completions' | 'messages' | 'responses'
 function targetToHubProtocol(target: EndpointKey): HubProtocol {
@@ -294,12 +331,23 @@ export const geminiAttempt = {
       // extractor. `targetEndpoint` selects the parser and the protocol
       // ctx in one place — no need to extend `withUpstreamTelemetry`'s
       // protocol union with `'gemini'` because the wire is the hub wire.
+      // JSON-vs-SSE detection mirrors messages/responses attempt.ts: when the
+      // upstream returns JSON (either because the client wanted a single
+      // envelope or because the upstream chose to buffer), buffer + synthesise
+      // the equivalent hub frame sequence so the rest of the pipeline is
+      // identical. `respond.ts` still decides the wire shape we hand back.
+      const isClientStreaming = wantsUpstreamStream
+      const upstreamContentType = upstreamResp.headers.get('content-type') ?? ''
+      const upstreamLooksJson = !isClientStreaming || upstreamContentType.includes('application/json')
+
       const hubProtocol = targetToHubProtocol(sel.targetEndpoint)
-      const hubFrames = parseHubStream(
-        sel.targetEndpoint,
-        upstreamResp.body,
-        args.ctx.downstreamAbortSignal,
-      )
+      const hubFrames = upstreamLooksJson
+        ? await synthesizeHubFramesFromJson(sel.targetEndpoint, upstreamResp.body)
+        : parseHubStream(
+            sel.targetEndpoint,
+            upstreamResp.body,
+            args.ctx.downstreamAbortSignal,
+          )
       const { events: decoratedFrames } = withUpstreamTelemetry(hubFrames, {
         abortSignal: args.ctx.downstreamAbortSignal,
         protocol: hubProtocol,

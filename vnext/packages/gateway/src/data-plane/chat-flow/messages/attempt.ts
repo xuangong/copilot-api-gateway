@@ -147,8 +147,12 @@ interface MessagesNonStreamEnvelope {
  * `JSON.parse` error to the caller so attempt.ts's outer try/catch can map it
  * to an internal-error result populated with `performance` ctx (Test 3 of the
  * acceptance battery).
+ *
+ * Exported for cross-protocol reuse by `gemini/attempt.ts` when its hub target
+ * is `messages`: gemini-side enumerates the same hub bindings, so when the
+ * upstream returns JSON instead of SSE we run identical buffering + synth.
  */
-async function readUpstreamMessagesJson(
+export async function readUpstreamMessagesJson(
   body: ReadableStream<Uint8Array>,
 ): Promise<MessagesNonStreamEnvelope> {
   const buf = await new Response(body).text()
@@ -165,8 +169,10 @@ async function readUpstreamMessagesJson(
  * trio per top-level content block → `message_delta` (final usage +
  * stop_reason) → `message_stop`. Order matches the live SSE feed observed in
  * `messages.e2e.test.ts:makeUpstreamSSE`.
+ *
+ * Exported for cross-protocol reuse by `gemini/attempt.ts` (see above).
  */
-async function* synthesizeMessagesFramesFromJson(
+export async function* synthesizeMessagesFramesFromJson(
   body: MessagesNonStreamEnvelope,
 ): AsyncGenerator<ProtocolFrame<MessagesStreamEvent>> {
   const id = body.id ?? `msg_${Date.now()}`
