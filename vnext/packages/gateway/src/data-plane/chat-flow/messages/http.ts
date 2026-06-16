@@ -16,5 +16,5 @@ export async function messagesHandler(c: Context<{ Bindings: Env }>): Promise<Re
   }
 
   const auth = readAuth(c)
-  return serveMessages({ raw, auth, obsCtx: readObsCtx(c, auth) })
+  return serveMessages({ raw, auth, obsCtx: readObsCtx(c, auth), signal: c.req.raw.signal })
 }

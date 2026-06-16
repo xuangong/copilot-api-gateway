@@ -1,10 +1,12 @@
 /**
  * X-7 observability test: validates that both server-tool intercepts
- * (web-search + image-generation) write at least one latency row per leaf
- * upstream call after the X-7 rewire.
+ * (web-search + image-generation) write at least one telemetry row per leaf
+ * upstream call after the X-7 rewire. After Spec 3 P4.T6, web-search routes
+ * its inner LLM call through `messagesAttempt`, so usage + performance rows
+ * (instead of legacy latency rows) are the canonical telemetry surface.
  *
  * Strategy (per memory: bun_mock_module_unrestorable):
- *   - real SqliteRepo via setRepoForTest so latency/usage tables persist
+ *   - real SqliteRepo via setRepoForTest so usage/performance tables persist
  *   - stub globalThis.fetch so leaf upstream calls (Copilot Messages,
  *     Copilot image endpoint) resolve deterministically
  *   - image-generation: skip the routing layer (Copilot's endpoints map has
@@ -16,7 +18,11 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { initRepo } from '../src/shared/repo/index.ts'
-import { __resetPlatformForTests } from '@vnext/platform'
+import {
+  __resetPlatformForTests,
+  initBackground,
+  initRuntimeLocation,
+} from '@vnext/platform'
 import { BunSqliteRepo as SqliteRepo } from '@vnext/platform-bun/src/bun-sqlite-repo.ts'
 import { generateImageViaBinding, type ImageGenerationConfig } from '../src/data-plane/orchestrator/server-tools/plugins/image-generation/core.ts'
 import { handleMessagesWebSearch } from '../src/data-plane/orchestrator/server-tools/plugins/web-search/route-handler.ts'
@@ -28,11 +34,22 @@ const origFetch = globalThis.fetch
 let repo: SqliteRepo
 let db: Database
 
+const COPILOT = { copilotToken: 'tok', accountType: 'individual' as const }
+
+// Tracking background executor so tests can drain telemetry promises before
+// asserting against the SqliteRepo tables (waitUntil is otherwise fire-and-forget).
+function installTrackingBackground(): { drain: () => Promise<void> } {
+  const pending: Promise<unknown>[] = []
+  initBackground({ waitUntil: (p) => { pending.push(p.catch(() => {})) } })
+  return { drain: async () => { await Promise.all(pending.splice(0)) } }
+}
+
 beforeEach(() => {
   db = new Database(':memory:')
   repo = new SqliteRepo(db)
   initRepo(repo)
   invalidateResolverCache()
+  initRuntimeLocation('bun')
 })
 
 afterEach(() => {
@@ -87,7 +104,7 @@ test('image-generation rewire writes ≥1 latency row per call', async () => {
   expect(latency.length).toBeGreaterThanOrEqual(1)
 })
 
-test('web-search rewire writes ≥1 latency row per leaf call', async () => {
+test('web-search rewire writes ≥1 usage row + ≥1 performance row per leaf call', async () => {
   await repo.apiKeys.save({
     id: 'k-ws',
     name: 'k',
@@ -95,16 +112,62 @@ test('web-search rewire writes ≥1 latency row per leaf call', async () => {
     createdAt: new Date().toISOString(),
     webSearchEnabled: true,
   })
+  // The new messagesAttempt chain enumerates UpstreamRecord-backed bindings;
+  // register a Copilot upstream so binding selection finds the messages
+  // endpoint via copilotProviderPlugin.
+  await repo.upstreams.save({
+    id: 'copilot:u-ws',
+    provider: 'copilot',
+    name: 'u-ws',
+    enabled: true,
+    sortOrder: 0,
+    config: { githubToken: 'ghp_test' },
+    flagOverrides: {},
+    disabledPublicModelIds: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  })
+  const bg = installTrackingBackground()
 
   // Stub fetch:
-  //   - any /models URL → empty list (variants filter no-ops)
+  //   - /copilot_internal/v2/token → exchanged copilot session token (the
+  //     copilotProviderPlugin runs this exchange when upstream.config has a
+  //     githubToken so the inner LLM call has a valid `tok` to forward)
+  //   - any /models URL → list with claude-3-5-sonnet so the messages endpoint
+  //     resolves through the Copilot binding's family-derived endpoint map
   //   - everything else (the Messages POST) → canned Anthropic response
   //     with zero web_search tool_uses so the intercept loop terminates
   //     after exactly one upstream call.
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input instanceof Request ? input.url : input.toString()
+    if (url.includes('/copilot_internal/v2/token')) {
+      return Response.json({
+        token: 'tok-stub',
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        refresh_in: 3000,
+      })
+    }
     if (url.includes('/models')) {
-      return Response.json({ object: 'list', data: [] })
+      return Response.json({
+        object: 'list',
+        data: [{
+          id: 'claude-3-5-sonnet-latest',
+          object: 'model',
+          name: 'claude-3-5-sonnet-latest',
+          vendor: 'anthropic',
+          version: 'claude-3-5-sonnet-latest',
+          model_picker_enabled: true,
+          preview: false,
+          capabilities: {
+            family: 'claude',
+            limits: { max_context_window_tokens: 200000, max_output_tokens: 8192 },
+            object: 'model_capabilities',
+            supports: {},
+            tokenizer: 'cl100k',
+            type: 'text',
+          },
+        }],
+      })
     }
     return Response.json({
       id: 'msg_stub',
@@ -119,8 +182,7 @@ test('web-search rewire writes ≥1 latency row per leaf call', async () => {
 
   const res = await handleMessagesWebSearch(
     {
-      copilotToken: 'tok',
-      accountType: 'individual',
+      copilot: COPILOT,
       githubToken: 'gh',
       apiKeyId: 'k-ws',
       userAgent: 'test-ua/2',
@@ -134,7 +196,13 @@ test('web-search rewire writes ≥1 latency row per leaf call', async () => {
     },
   )
   expect(res.status).toBe(200)
+  await bg.drain()
 
-  const latency = db.query('SELECT * FROM latency WHERE key_id = ?').all('k-ws') as unknown[]
-  expect(latency.length).toBeGreaterThanOrEqual(1)
+  // After P4.T6 the inner LLM call goes through messagesAttempt, so the
+  // canonical telemetry rows are usage_requests + performance_summary
+  // (latency-tracker is scheduled for deletion in P4.T8).
+  const usageReqs = db.query('SELECT * FROM usage_requests WHERE key_id = ?').all('k-ws') as unknown[]
+  expect(usageReqs.length).toBeGreaterThanOrEqual(1)
+  const perf = db.query('SELECT * FROM performance_summary WHERE key_id = ?').all('k-ws') as unknown[]
+  expect(perf.length).toBeGreaterThanOrEqual(1)
 })

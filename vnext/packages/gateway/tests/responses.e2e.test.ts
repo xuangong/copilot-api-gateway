@@ -5,18 +5,27 @@
  * with one Copilot upstream + stub globalThis.fetch to return canned responses
  * for the Copilot /models and /responses endpoints.
  */
-import { test, expect, afterEach } from 'bun:test'
+import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
 import { initRepo } from '../src/shared/repo/index.ts'
 import { initResponsesStore } from '../src/shared/runtime/responses-store.ts'
-import { __resetPlatformForTests } from '@vnext/platform'
+import {
+  __resetPlatformForTests,
+  initBackground,
+  initRuntimeLocation,
+} from '@vnext/platform'
 import { InMemoryResponsesSnapshotStore } from '@vnext/responses-store'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
 
 const env = {} as never
+
+beforeEach(() => {
+  initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
+  initRuntimeLocation('bun')
+})
 
 const stubModel = (id: string): Model => ({
   id,

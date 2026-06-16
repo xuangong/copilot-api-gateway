@@ -11,8 +11,16 @@ import {
   eventResult,
   type ExecuteResult,
   type ProtocolFrame,
+  type TelemetryModelIdentity,
 } from '@vnext/protocols/common'
 import type { ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
+
+const stubIdentity: TelemetryModelIdentity = {
+  model: '<unknown>',
+  upstream: '<unknown>',
+  modelKey: '<unknown>',
+  cost: null,
+}
 
 const doneOnlyEvents = (): AsyncIterable<ProtocolFrame<ChatCompletionsStreamEvent>> =>
   (async function* () {
@@ -20,7 +28,7 @@ const doneOnlyEvents = (): AsyncIterable<ProtocolFrame<ChatCompletionsStreamEven
   })()
 
 const fakeRun = async (): Promise<ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>> =>
-  eventResult(doneOnlyEvents())
+  eventResult(doneOnlyEvents(), stubIdentity)
 
 const baseInv = (payload: Record<string, unknown>): Invocation => ({
   endpoint: 'chat_completions',
@@ -73,7 +81,7 @@ test('chatCompletionsInterceptors chain mutates payload before terminal', async 
   let payloadSeenByTerminal: unknown = null
   const terminal = async (): Promise<ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>> => {
     payloadSeenByTerminal = JSON.parse(JSON.stringify(inv.payload))
-    return eventResult(doneOnlyEvents())
+    return eventResult(doneOnlyEvents(), stubIdentity)
   }
   await runInterceptors(inv, baseCtx, chatCompletionsInterceptors, terminal)
   const seen = payloadSeenByTerminal as { stream_options?: unknown }

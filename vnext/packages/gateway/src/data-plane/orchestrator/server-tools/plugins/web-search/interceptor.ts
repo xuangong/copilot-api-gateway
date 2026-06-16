@@ -1,6 +1,17 @@
-import type { AccountType } from "../../../../../shared/config/constants.ts"
-import { createCopilotProvider } from "../../../../providers/registry.ts"
-import { runConversationAttempt } from "../../../../observability/attempts/conversation-attempt.ts"
+import { getRuntimeLocation, waitUntil } from "@vnext/platform"
+
+import type { CreateProviderOptions } from "../../../../providers/registry.ts"
+import { messagesAttempt } from "../../../../chat-flow/messages/attempt.ts"
+import { collectMessagesProtocolEventsToResult } from "../../../../chat-flow/messages/events/reassemble.ts"
+import {
+  SourceStreamState,
+  eventResultMetadata,
+  recordPerformance,
+  recordUsage,
+} from "../../../../chat-flow/shared/respond-telemetry.ts"
+import type { TelemetryRequestContext } from "../../../../chat-flow/shared/telemetry-ctx.ts"
+import { decodeUpstreamErrorBody, type ProtocolFrame } from "@vnext/protocols/common"
+import type { MessagesStreamEvent } from "@vnext/protocols/messages"
 
 import { EngineManager, type EngineManagerOptions } from "./engine-manager"
 import { formatSearchResults } from "./formatter"
@@ -33,12 +44,12 @@ interface SearchExecutionResult {
 }
 
 interface CallOptions {
-  copilotToken: string
-  accountType: AccountType
+  copilot: CreateProviderOptions
   /**
    * Optional observability context — when present, each leaf upstream call is
-   * wrapped in runConversationAttempt so quota/latency/usage trackers fire.
-   * undefined apiKeyId disables observability silently (matches dispatch).
+   * wrapped in messagesAttempt.generate so per-attempt usage/performance rows
+   * fire on every intercept-loop iteration. undefined apiKeyId disables
+   * observability silently (mirrors legacy dispatch behaviour).
    */
   apiKeyId?: string
   userAgent?: string
@@ -71,74 +82,125 @@ interface MessagesPayload {
   system?: string | { type: string; text: string }[]
 }
 
-// Helper to call Copilot API and get JSON response. When observability fields
-// are present on `options`, the leaf upstream call flows through
-// runConversationAttempt so quota/latency/usage trackers fire on every
-// intercept-loop iteration; otherwise it short-circuits to a plain fetch.
+// Helper to call upstream LLM via the new messagesAttempt chain and return the
+// parsed JSON envelope. The web-search loop is purely server-side (we read the
+// JSON to decide whether another iteration is needed), so we always run with
+// `stream:false` upstream and reassemble the synthesised frame stream into a
+// MessagesResult-shaped JSON via collectMessagesProtocolEventsToResult.
+//
+// Telemetry persistence (recordUsage + recordPerformance) is best-effort and
+// fires through `waitUntil` so a slow repo write never blocks the next loop
+// iteration. When `options.apiKeyId` is undefined we skip persistence entirely
+// — same exit lane the legacy dispatch path uses for internal/anonymous probes.
 async function createMessages(
   payload: MessagesPayload,
   options: CallOptions,
 ): Promise<ApiResponse> {
-  const provider = createCopilotProvider({
-    copilotToken: options.copilotToken,
-    accountType: options.accountType,
-  })
-  const call = async () => {
-    const pr = await provider.fetch({
-      endpoint: 'messages',
-      payload,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      sourceApi: 'anthropic',
-      operationName: 'create message',
-      flags: { isStreaming: payload.stream === true },
-    })
-    return new Response(pr.body, { status: pr.status, headers: pr.headers })
+  // The web-search loop always asks upstream for JSON (no SSE re-emission);
+  // strip any client-supplied `stream:true` so attempt.ts's `wantsUpstreamStream`
+  // resolves to false and the JSON branch synthesises frames for us.
+  const innerPayload = { ...payload, stream: false }
+  const requestStartedAt = Date.now()
+  const telemetryCtx: TelemetryRequestContext = {
+    apiKeyId: options.apiKeyId ?? '<unknown>',
+    userAgent: options.userAgent ?? null,
+    requestId: options.requestId ?? crypto.randomUUID(),
+    isStreaming: false,
+    runtimeLocation: getRuntimeLocation(),
+    requestStartedAt,
   }
 
-  // No observability context — keep the legacy direct path so callers without
-  // an apiKey (e.g. internal probes) don't pay quota or latency bookkeeping.
-  if (!options.apiKeyId) {
-    const response = await call()
-    return response.json() as Promise<ApiResponse>
-  }
-
-  const result = await runConversationAttempt({
-    apiKeyId: options.apiKeyId,
-    model: options.model ?? payload.model,
-    // The web-search loop calls Messages→Messages on every iteration; pricing
-    // is bound to the upstream model id, so look it up here and pass through.
-    modelKey: options.model ?? payload.model,
-    pricing: provider.getPricingForModelKey(options.model ?? payload.model),
-    sourceApi: 'messages',
-    targetApi: 'messages',
-    upstream: 'github_copilot',
-    userAgent: options.userAgent,
-    requestId: options.requestId,
-    stream: false,
-    call,
+  const result = await messagesAttempt.generate({
+    payload: innerPayload as Record<string, unknown> & { model: string; stream?: boolean },
+    auth: { copilot: options.copilot },
+    ctx: { requestStartedAt, downstreamAbortSignal: undefined },
+    telemetryCtx,
   })
 
-  if (result.ok && 'json' in result) {
-    // ok:true non-streaming → the attempt module already parsed json once.
-    return result.json as ApiResponse
-  }
-  if (!result.ok && 'rateLimit' in result) {
-    // Surface quota rejection as an upstream-style error so the loop's
-    // existing try/catch in route-handler propagates it cleanly.
-    const err = new Error(result.rateLimit.reason)
-    ;(err as Error & { status?: number }).status = 429
-    throw err
-  }
-  if (!result.ok && 'response' in result) {
-    // Non-2xx upstream — mirror the prior behaviour where the caller would
-    // surface the body via HTTPError. Read the body once and rethrow.
-    const text = await result.response.text()
-    const err = new Error(`Web search upstream returned HTTP ${result.status}: ${text}`)
+  // After Spec 3 Part 4 deleted the cross-protocol `dispatch()` bridge, the
+  // messagesAttempt result is always an `ExecuteResult<ProtocolFrame<MessagesStreamEvent>>`
+  // — bridged-response no longer exists. If binding selection picks a
+  // non-messages target the attempt surfaces an `internal-error` (501) which
+  // we throw below.
+  if (result.type === 'upstream-error') {
+    if (options.apiKeyId) {
+      waitUntil(recordPerformance(telemetryCtx, result.performance, true))
+    }
+    const bodyText = decodeUpstreamErrorBody(result)
+    const err = new Error(
+      `Web search upstream returned HTTP ${result.status}: ${bodyText || '<empty>'}`,
+    )
     ;(err as Error & { status?: number }).status = result.status
     throw err
   }
-  // Streaming branch is never hit (we set stream:false above); guard anyway.
-  throw new Error('web-search createMessages: unexpected attempt result shape')
+  if (result.type === 'internal-error') {
+    if (options.apiKeyId) {
+      // recordPerformance no-ops when result.performance is undefined
+      // (pre-binding errors per spec §6.2 deliberately omit perf rows).
+      waitUntil(recordPerformance(telemetryCtx, result.performance, true))
+    }
+    throw result.error
+  }
+
+  // events branch — drain through SourceStreamState (model-key correction +
+  // usage capture) and reassemble into a MessagesResult JSON envelope.
+  const state = new SourceStreamState(result.modelIdentity.modelKey)
+  const drained = consumeFramesWithState(result.events, state)
+  let reassembled: ApiResponse
+  try {
+    reassembled = (await collectMessagesProtocolEventsToResult(drained)) as ApiResponse
+  } catch (err) {
+    state.failedAfter()
+    if (options.apiKeyId) {
+      waitUntil(persistFromEventResult(result, state, telemetryCtx))
+    }
+    throw err
+  }
+  if (options.apiKeyId) {
+    waitUntil(persistFromEventResult(result, state, telemetryCtx))
+  }
+  return reassembled
+}
+
+/**
+ * Drain a `ProtocolFrame<MessagesStreamEvent>` stream while folding usage +
+ * model identity into `state`. Mirrors `chat-flow/messages/respond.ts`'s
+ * `consumeWithState` so both paths emit identical telemetry.
+ */
+async function* consumeFramesWithState(
+  events: AsyncIterable<ProtocolFrame<MessagesStreamEvent>>,
+  state: SourceStreamState,
+): AsyncGenerator<ProtocolFrame<MessagesStreamEvent>> {
+  try {
+    for await (const frame of events) {
+      if (frame.type === 'event') {
+        state.rememberUsage(frame.event)
+        const evObj = frame.event as {
+          model?: unknown
+          response?: { model?: unknown }
+          message?: { model?: unknown }
+        }
+        state.rememberModelKey(evObj.model ?? evObj.response?.model ?? evObj.message?.model)
+      }
+      yield frame
+    }
+  } catch (err) {
+    state.failedAfter()
+    throw err
+  }
+}
+
+async function persistFromEventResult(
+  result: import('@vnext/protocols/common').EventResult<ProtocolFrame<MessagesStreamEvent>>,
+  state: SourceStreamState,
+  telemetryCtx: TelemetryRequestContext,
+): Promise<void> {
+  const md = await eventResultMetadata(result)
+  const finalIdentity = result.finalMetadata
+    ? md.modelIdentity
+    : { ...md.modelIdentity, modelKey: state.modelKey }
+  await recordUsage(telemetryCtx, finalIdentity, state.usage.tokens)
+  await recordPerformance(telemetryCtx, md.performance, state.failed)
 }
 
 function isWebSearchTool(tool: ClientTool): tool is WebSearchTool {

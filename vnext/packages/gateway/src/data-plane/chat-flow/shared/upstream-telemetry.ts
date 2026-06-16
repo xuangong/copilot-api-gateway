@@ -1,22 +1,32 @@
+/**
+ * Pure terminal-frame classifier. Wraps an upstream protocol-frame stream
+ * and exposes a `finalMetadata` promise that resolves to the terminal-state
+ * snapshot (`failed`, accumulated `usage`) once the stream drains.
+ *
+ * No callbacks, no I/O. Replaces the Spec-2 recorder interface.
+ */
 import type { ProtocolFrame } from '@vnext/protocols/common'
 
-export interface UpstreamTelemetryRecorder {
-  recordFirstByteLatency: (ms: number) => void
-  recordSuccess: (usage: unknown) => void
-  recordFailure: (reason: string) => void
-}
-
-export interface UpstreamTelemetryStreamCtx {
+export interface UpstreamTelemetryCtx {
   readonly abortSignal?: AbortSignal
+  readonly protocol: 'chat_completions' | 'messages' | 'responses'
 }
 
-export interface UpstreamTelemetryClassifierCtx {
-  readonly protocol: 'chat_completions' | 'messages' | 'responses'
+export interface UpstreamTerminalState {
+  readonly failed: boolean
+  readonly usage: unknown
+  readonly firstByteLatencyMs: number | null
+  readonly totalLatencyMs: number
+}
+
+export interface UpstreamTelemetryOutput<T> {
+  readonly events: AsyncGenerator<ProtocolFrame<T>>
+  readonly finalMetadata: Promise<UpstreamTerminalState>
 }
 
 const isTerminalFrame = <T>(
   frame: ProtocolFrame<T>,
-  protocol: UpstreamTelemetryClassifierCtx['protocol'],
+  protocol: UpstreamTelemetryCtx['protocol'],
 ): { terminal: boolean; failed: boolean } => {
   if (frame.type === 'done') return { terminal: protocol === 'chat_completions', failed: false }
   const ev = frame.event as Record<string, unknown>
@@ -33,51 +43,57 @@ const isTerminalFrame = <T>(
 
 const extractUsage = <T>(frame: ProtocolFrame<T>): unknown => {
   if (frame.type !== 'event') return null
-  const ev = frame.event as { usage?: unknown; choices?: unknown[] }
+  const ev = frame.event as {
+    type?: string
+    usage?: unknown
+    choices?: unknown[]
+    response?: { usage?: unknown }
+    message?: { usage?: unknown }
+  }
   if (Array.isArray(ev.choices) && ev.choices.length === 0 && ev.usage) return ev.usage
+  if (ev.response?.usage) return ev.response.usage
+  if (ev.message?.usage) return ev.message.usage
+  if (ev.usage && (ev.type === 'message_delta' || ev.type === 'message_start')) return ev.usage
   return null
 }
 
-export const withUpstreamTelemetry = async function* <T>(
+export function withUpstreamTelemetry<T>(
   stream: AsyncIterable<ProtocolFrame<T>>,
-  streamCtx: UpstreamTelemetryStreamCtx,
-  recorder: UpstreamTelemetryRecorder,
-  classifierCtx: UpstreamTelemetryClassifierCtx,
-): AsyncGenerator<ProtocolFrame<T>> {
+  ctx: UpstreamTelemetryCtx,
+): UpstreamTelemetryOutput<T> {
+  let resolveMeta!: (s: UpstreamTerminalState) => void
+  const finalMetadata = new Promise<UpstreamTerminalState>((res) => { resolveMeta = res })
   const startedAt = performance.now()
-  let firstByteRecorded = false
-  let recorded = false
-  let accumulatedUsage: unknown = null
 
-  try {
-    for await (const frame of stream) {
-      if (!firstByteRecorded) {
-        recorder.recordFirstByteLatency(performance.now() - startedAt)
-        firstByteRecorded = true
+  async function* run(): AsyncGenerator<ProtocolFrame<T>> {
+    let firstByteLatencyMs: number | null = null
+    let accumulatedUsage: unknown = null
+    let resolved = false
+    const settle = (failed: boolean): void => {
+      if (resolved) return
+      resolved = true
+      resolveMeta({
+        failed,
+        usage: accumulatedUsage,
+        firstByteLatencyMs,
+        totalLatencyMs: performance.now() - startedAt,
+      })
+    }
+    try {
+      for await (const frame of stream) {
+        if (firstByteLatencyMs === null) firstByteLatencyMs = performance.now() - startedAt
+        const usage = extractUsage(frame)
+        if (usage) accumulatedUsage = usage
+        const { terminal, failed } = isTerminalFrame(frame, ctx.protocol)
+        yield frame
+        if (terminal) { settle(failed); return }
       }
-      const usage = extractUsage(frame)
-      if (usage) accumulatedUsage = usage
-      const { terminal, failed } = isTerminalFrame(frame, classifierCtx.protocol)
-      yield frame
-      if (terminal) {
-        if (!recorded) {
-          recorded = true
-          if (failed) recorder.recordFailure('terminal-failure-frame')
-          else recorder.recordSuccess(accumulatedUsage)
-        }
-        return
-      }
+      settle(true) // eof without terminal = failed
+    } catch (err) {
+      settle(true)
+      throw err
     }
-    if (!recorded) {
-      recorded = true
-      if (streamCtx.abortSignal?.aborted) recorder.recordFailure('client-aborted')
-      else recorder.recordFailure('eof-without-terminal')
-    }
-  } catch (err) {
-    if (!recorded) {
-      recorded = true
-      recorder.recordFailure(err instanceof Error ? err.message : String(err))
-    }
-    throw err
   }
+
+  return { events: run(), finalMetadata }
 }

@@ -4,6 +4,7 @@ import {
   initImageProcessor,
   initEnv,
   initBackground,
+  initRuntimeLocation,
 } from "@vnext/platform"
 import { initRepo } from "@vnext/gateway/src/shared/repo/index.ts"
 import { initCache } from "@vnext/gateway/src/shared/cache/index.ts"
@@ -29,6 +30,7 @@ export function bootstrapBunPlatform(opts: BunPlatformOptions): { db: BunSqliteD
   initSqlDatabase(db)
   initEnv((name) => process.env[name] ?? "")
   initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
+  initRuntimeLocation('bun')
   initImageProcessor(createInMemoryImageProcessor())
   initRepo(new BunSqliteRepo(sqliteDb))
   initCache(createBunCache({ db, backend: opts.cacheBackend }))

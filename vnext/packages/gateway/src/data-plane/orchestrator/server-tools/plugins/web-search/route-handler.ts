@@ -11,7 +11,7 @@
  *     streaming path still does its own synthetic message_start + 5s ping
  *     loop so SSE clients dodge first-byte timeouts.
  */
-import type { AccountType } from '../../../../../shared/config/constants.ts'
+import type { CreateProviderOptions } from '../../../../providers/registry.ts'
 
 import { addWebSearchHeaders, loadWebSearchConfig, recordWebSearchUsage } from './core.ts'
 import { interceptWebSearch, type MessagesPayload, type MessagesInterceptedSearch } from './interceptor.ts'
@@ -19,13 +19,13 @@ import { replayResponseAsSSE } from './sse-replay.ts'
 import type { ApiResponse, WebSearchMeta } from './types.ts'
 
 export interface WebSearchRouteContext {
-  copilotToken: string
-  accountType: AccountType
+  /** Copilot upstream credentials packaged for the provider registry. */
+  copilot: CreateProviderOptions
   githubToken: string
   msGroundingKey?: string
   apiKeyId?: string
   requestId?: string
-  /** Forwarded to runConversationAttempt so client-detect categorises the leaf calls. */
+  /** Forwarded to the inner messagesAttempt call so client-detect categorises the leaf calls. */
   userAgent?: string
 }
 
@@ -55,8 +55,7 @@ export async function handleMessagesWebSearch(
   const interceptPayload: MessagesPayload = { ...messagesPayload, stream: false }
 
   const upstreamPromise = interceptWebSearch(interceptPayload, {
-    copilotToken: ctx.copilotToken,
-    accountType: ctx.accountType,
+    copilot: ctx.copilot,
     engineOptions: cfg.engineOptions,
     apiKeyId: ctx.apiKeyId,
     userAgent: ctx.userAgent,

@@ -5,12 +5,16 @@
  * pre-populates c.set('auth', authCtx). Use a real SqliteRepo so checkQuota can
  * call repo.apiKeys.getById + repo.usage.query against real data.
  */
-import { test, expect, afterEach } from 'bun:test'
+import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { Hono } from 'hono'
 import { app as innerApp } from '../../src/app.ts'
 import { initRepo } from '../../src/shared/repo/index.ts'
-import { __resetPlatformForTests } from '@vnext/platform'
+import {
+  __resetPlatformForTests,
+  initBackground,
+  initRuntimeLocation,
+} from '@vnext/platform'
 import { BunSqliteRepo as SqliteRepo } from '@vnext/platform-bun/src/bun-sqlite-repo.ts'
 import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
@@ -51,6 +55,14 @@ function installFetch(handler: FetchHandler) {
 afterEach(() => {
   globalThis.fetch = originalFetch
   __resetPlatformForTests()
+})
+
+beforeEach(() => {
+  // Spec 3 chains read getRuntimeLocation() inside serveChatCompletions to
+  // populate TelemetryRequestContext; without it the request returns 500
+  // before quota check would have a chance to run.
+  initRuntimeLocation('bun')
+  initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
 })
 
 function buildApp(auth: DataPlaneAuthCtx) {

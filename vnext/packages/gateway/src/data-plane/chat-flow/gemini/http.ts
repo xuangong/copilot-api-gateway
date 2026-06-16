@@ -29,5 +29,6 @@ export async function geminiHandler(c: Context<{ Bindings: Env }>): Promise<Resp
     forceStream: verb === 'streamGenerateContent',
     auth,
     obsCtx: readObsCtx(c, auth),
+    signal: c.req.raw.signal,
   })
 }

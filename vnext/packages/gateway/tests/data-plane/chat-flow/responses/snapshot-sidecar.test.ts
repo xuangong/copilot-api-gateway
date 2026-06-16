@@ -5,8 +5,18 @@
  * initialize the store via initResponsesStore() with an in-memory store.
  * Per project memory `bun_mock_module_unrestorable`, we avoid mock.module()
  * and instead instantiate a real InMemoryResponsesSnapshotStore.
+ *
+ * The final test in this file is a **negative structural assertion** (Spec 3
+ * Part 3 Task 9): it reads the source of `snapshot-sidecar.ts` and verifies
+ * the strings `finalMetadata` and `__interceptorReplaced` are absent. Those
+ * are owned by the new telemetry channel (see `respond-telemetry.ts` +
+ * `image-generation-shortcut.ts`). If the sidecar ever starts touching
+ * either field, telemetry persistence and snapshot persistence will silently
+ * cross over and corrupt each other — the test fails loudly first.
  */
 import { test, expect, afterEach } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import type { Context } from 'hono'
 import { InMemoryResponsesSnapshotStore } from '@vnext/responses-store'
 import { initResponsesStore } from '../../../../src/shared/runtime/responses-store.ts'
@@ -192,4 +202,33 @@ test('attachStreamSidecar — falls back to fire-and-forget when executionCtx is
   const snap = await store.load(responseId, 'kid_3')
   expect(snap).not.toBeNull()
   expect(snap!.items.length).toBe(2)
+})
+
+// ---------------------------------------------------------------------------
+// Negative structural test (Spec 3 Part 3 Task 9 — #357)
+// ---------------------------------------------------------------------------
+
+/**
+ * The snapshot sidecar exists alongside the new telemetry channel
+ * (`respond-telemetry.ts`). They MUST stay disjoint:
+ *
+ *   - The telemetry channel owns `finalMetadata` and the
+ *     `__interceptorReplaced` provenance flag (set by
+ *     `image-generation-shortcut.ts`'s `markInterceptorReplaced`).
+ *   - The sidecar owns the post-turn `responses-store` snapshot persistence.
+ *
+ * If snapshot-sidecar.ts ever references either string, it has either started
+ * reading the telemetry-channel's interceptor metadata (cross-cutting concerns
+ * mixed) or started writing it (double-persistence + identity drift). This
+ * structural test detects that regression at lint speed without needing an
+ * end-to-end execution path.
+ */
+test('snapshot-sidecar.ts does NOT reference finalMetadata or __interceptorReplaced (telemetry channel ownership)', () => {
+  const sidecarPath = resolve(
+    import.meta.dir,
+    '../../../../src/data-plane/chat-flow/responses/snapshot-sidecar.ts',
+  )
+  const source = readFileSync(sidecarPath, 'utf8')
+  expect(source).not.toContain('finalMetadata')
+  expect(source).not.toContain('__interceptorReplaced')
 })

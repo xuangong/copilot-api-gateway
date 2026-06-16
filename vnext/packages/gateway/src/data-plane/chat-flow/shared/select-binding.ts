@@ -20,7 +20,7 @@ import { getTranslator, type PairTranslator } from '../../dispatch/translator-re
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type SelectBindingResult =
-  | { kind: 'ok'; binding: ProviderBinding; targetEndpoint: EndpointKey; translator: PairTranslator }
+  | { kind: 'ok'; binding: ProviderBinding; targetEndpoint: EndpointKey; translator: PairTranslator; bareModel: string }
   | { kind: 'model-not-found'; bareModel: string }
   | { kind: 'no-eligible-binding'; bareModel: string }
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
@@ -93,5 +93,6 @@ export async function selectBindingForChatCompletions(
     binding: first.binding,
     targetEndpoint: first.targetEndpoint,
     translator,
+    bareModel,
   }
 }

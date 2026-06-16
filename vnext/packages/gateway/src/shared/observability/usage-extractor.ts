@@ -254,6 +254,33 @@ export function applyStreamEvent(parsed: unknown, latest: UsageInfo): boolean {
     })
     return true
   }
+  // Gemini terminal frame — usage lives on a top-level `usageMetadata` object
+  // (NOT under `usage`). Final frame of streamGenerateContent carries
+  // {promptTokenCount, candidatesTokenCount, cachedContentTokenCount?,
+  //  thoughtsTokenCount?, totalTokenCount?}. We mirror the responses-side
+  // cache subtraction: `input` excludes cached read, which goes to
+  // `input_cache_read`. Returns `true` because the gemini final frame IS the
+  // terminator (there's no separate done sentinel on the gemini wire).
+  // Placed above the OpenAI `prompt_tokens` fallthrough so gemini frames that
+  // also happen to carry an `usage` object (rare proxy edge case) still
+  // resolve to the source-specific extractor.
+  const usageMetaCandidate = (parsed as { usageMetadata?: unknown }).usageMetadata
+  if (usageMetaCandidate && typeof usageMetaCandidate === 'object') {
+    const u = usageMetaCandidate as {
+      promptTokenCount?: number
+      candidatesTokenCount?: number
+      cachedContentTokenCount?: number
+    }
+    if (u.promptTokenCount != null) {
+      const cached = u.cachedContentTokenCount ?? 0
+      latest.tokens = compactTokens({
+        input: Math.max(0, u.promptTokenCount - cached),
+        output: u.candidatesTokenCount ?? 0,
+        input_cache_read: cached,
+      })
+      return true
+    }
+  }
   if (p.usage?.prompt_tokens != null) {
     const cached = p.usage.prompt_tokens_details?.cached_tokens ?? 0
     const cacheWrite = p.usage.prompt_tokens_details?.cache_creation_input_tokens ?? 0

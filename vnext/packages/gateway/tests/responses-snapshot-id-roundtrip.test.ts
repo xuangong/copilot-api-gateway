@@ -14,16 +14,25 @@
 // Both cases run two consecutive turns against the same in-memory store and
 // assert that turn-2's upstream payload carries the merged history from
 // turn-1 (proof the id round-tripped successfully).
-import { test, expect, afterEach } from 'bun:test'
+import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
 import { initRepo } from '../src/shared/repo/index.ts'
 import { initResponsesStore } from '../src/shared/runtime/responses-store.ts'
-import { __resetPlatformForTests } from '@vnext/platform'
+import {
+  __resetPlatformForTests,
+  initBackground,
+  initRuntimeLocation,
+} from '@vnext/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model } from '@vnext/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
 import { InMemoryResponsesSnapshotStore } from '@vnext/responses-store'
+
+beforeEach(() => {
+  initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
+  initRuntimeLocation('bun')
+})
 
 // gpt-5-mini → has both `responses` and `chat_completions` endpoints, so
 // selectPair('responses', ...) prefers the `responses` target.
@@ -166,17 +175,17 @@ test('round-trip: responses→responses identity preserves id across turns', asy
   expect(JSON.stringify(inputs)).toContain('turn2 user')
 })
 
-test('round-trip: responses client + chat_completions hub (Pair 8) preserves synthesized id', async () => {
-  // gpt-4o-mini's endpoints only include chat_completions, so the client's
-  // Responses request is translated through Pair 8. The translator surfaces
-  // the upstream chat completion id as the Responses `response.id`, and we
-  // assert that surfaced id round-trips through the snapshot store.
+test('round-trip: responses → chat_completions cross-pair deferred to Spec 6 (returns 501)', async () => {
+  // The Pair 8 (responses → chat_completions) cross-protocol bridge was
+  // deleted alongside `dispatch()` in Spec 3 Part 4. attempt.ts now surfaces a
+  // 501 internal-error for native cross-protocol attempts; once Spec 6 wires
+  // the translator pair into the leaf, this test should be flipped back to
+  // assert the synthesized id round-trip through the snapshot store.
   initRepo(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()
   initResponsesStore(store)
 
-  let turn = 0
-  let observedTurn2Upstream: { messages?: unknown[] } | null = null
+  let upstreamHit = false
   installFetch((req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
@@ -185,30 +194,8 @@ test('round-trip: responses client + chat_completions hub (Pair 8) preserves syn
       })
     }
     if (url.pathname.endsWith('/chat/completions')) {
-      return req.json().then((body) => {
-        turn++
-        if (turn === 1) {
-          return new Response(JSON.stringify({
-            id: 'chatcmpl_synth_1', object: 'chat.completion', created: 1, model: CHAT_MODEL,
-            choices: [{
-              index: 0,
-              message: { role: 'assistant', content: 'turn1 chat reply' },
-              finish_reason: 'stop',
-            }],
-            usage: { prompt_tokens: 5, completion_tokens: 4, total_tokens: 9 },
-          }), { status: 200, headers: { 'content-type': 'application/json' } })
-        }
-        observedTurn2Upstream = body as typeof observedTurn2Upstream
-        return new Response(JSON.stringify({
-          id: 'chatcmpl_synth_2', object: 'chat.completion', created: 2, model: CHAT_MODEL,
-          choices: [{
-            index: 0,
-            message: { role: 'assistant', content: 'turn2 chat reply' },
-            finish_reason: 'stop',
-          }],
-          usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 },
-        }), { status: 200, headers: { 'content-type': 'application/json' } })
-      })
+      upstreamHit = true
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     }
     return new Response('not found', { status: 404 })
   })
@@ -217,51 +204,17 @@ test('round-trip: responses client + chat_completions hub (Pair 8) preserves syn
     { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: 'tkn', accountType: 'individual' } } as DataPlaneAuthCtx,
   )
 
-  // Turn 1 — capture the client-visible id (synthesized by Pair 8 from the
-  // upstream chat id).
   const t1 = await wrapper.fetch(new Request('http://x/v1/responses', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       model: CHAT_MODEL,
-      // Force non-stream — translateResponsesToChat defaults stream=true,
-      // which would force us into SSE on both turns.
       stream: false,
       input: [{ type: 'message', role: 'user', content: 'turn1 user' }],
     }),
   }), {} as never)
-  expect(t1.status).toBe(200)
-  const t1Body = await t1.json() as { id: string; object?: string }
-  expect(t1Body.object).toBe('response')
-  // The chat translator surfaces the upstream id verbatim — this is the very
-  // assumption routes.ts banks on for the snapshot key.
-  expect(t1Body.id).toBe('chatcmpl_synth_1')
-  await waitForSave(store, t1Body.id, 'k1')
-
-  // Turn 2 — replay; the upstream chat payload's `messages` array must
-  // include the turn-1 history (translator converts Responses input items
-  // into chat messages).
-  const t2 = await wrapper.fetch(new Request('http://x/v1/responses', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: CHAT_MODEL,
-      stream: false,
-      previous_response_id: t1Body.id,
-      input: [{ type: 'message', role: 'user', content: 'turn2 user' }],
-    }),
-  }), {} as never)
-  expect(t2.status).toBe(200)
-  expect(observedTurn2Upstream).not.toBeNull()
-  // No previous_response_id should leak to the chat upstream.
-  expect((observedTurn2Upstream as Record<string, unknown>).previous_response_id).toBeUndefined()
-  const messages = observedTurn2Upstream!.messages as Array<{ role: string; content: unknown }>
-  expect(Array.isArray(messages)).toBe(true)
-  // Translator builds: prior user, prior assistant, current user (3 turns).
-  // Some translators may also inject a system message, so assert the prior
-  // turns appear in order rather than checking length exactly.
-  const flat = JSON.stringify(messages)
-  expect(flat).toContain('turn1 user')
-  expect(flat).toContain('turn1 chat reply')
-  expect(flat).toContain('turn2 user')
+  expect(t1.status).toBe(501)
+  // attempt.ts shorts to internal-error before opening any upstream
+  // connection — so /chat/completions should NOT have been called.
+  expect(upstreamHit).toBe(false)
 })
