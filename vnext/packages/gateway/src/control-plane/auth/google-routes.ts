@@ -37,7 +37,7 @@ const HTML = { 'Content-Type': 'text/html; charset=utf-8' }
 export const googleAuthRouter = new Hono<{ Bindings: Env }>()
 
 googleAuthRouter.get('/google', async (c) => {
-  const clientId = c.env.GOOGLE_CLIENT_ID
+  const clientId = c.env.GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID
   if (!clientId) {
     return c.json({ error: 'Google OAuth not configured' }, 500)
   }
@@ -62,8 +62,8 @@ googleAuthRouter.get('/google', async (c) => {
 })
 
 googleAuthRouter.get('/google/callback', async (c) => {
-  const clientId = c.env.GOOGLE_CLIENT_ID
-  const clientSecret = c.env.GOOGLE_CLIENT_SECRET
+  const clientId = c.env.GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID
+  const clientSecret = c.env.GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_CLIENT_SECRET
   if (!clientId || !clientSecret) {
     return c.html(errorPage('Google OAuth not configured'), 500, HTML)
   }
