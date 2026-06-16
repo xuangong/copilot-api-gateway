@@ -23,6 +23,7 @@
  * `isError=true`.
  */
 import { runInterceptors, type Invocation, type RequestContext } from '@vnext/interceptor'
+import { messagesInterceptors, type MessagesInterceptor } from './interceptors'
 import {
   eventResult,
   internalErrorResult,
@@ -78,14 +79,10 @@ export interface MessagesAttemptArgs {
   readonly interceptors?: ReadonlyArray<MessagesInterceptor>
 }
 
-// We don't expose a stream-interceptor for messages yet (Spec 3 keeps the
-// minimum scope). Define a placeholder that mirrors the chat-completions shape
-// so future Spec-N work can plug in.
-export type MessagesInterceptor = (
-  inv: Invocation,
-  ctx: RequestContext,
-  next: (inv: Invocation, ctx: RequestContext) => Promise<ExecuteResult<ProtocolFrame<MessagesStreamEvent>>>,
-) => Promise<ExecuteResult<ProtocolFrame<MessagesStreamEvent>>>
+// Stream-interceptor type re-exported from the registry module (Batch 4: stream
+// interceptors port). External callers import `MessagesInterceptor` from
+// here for backwards compatibility.
+export type { MessagesInterceptor } from './interceptors'
 
 // ─── Binding selection ───────────────────────────────────────────────────
 
@@ -272,7 +269,7 @@ export const messagesAttempt = {
       payload: args.payload as Record<string, unknown>,
       headers: {},
     }
-    const chain: ReadonlyArray<MessagesInterceptor> = args.interceptors ?? []
+    const chain: ReadonlyArray<MessagesInterceptor> = args.interceptors ?? messagesInterceptors
 
     let upstreamResp: ProviderResponse | undefined
 
