@@ -39,6 +39,7 @@ import { parseResponsesPayload } from '../../parsers.ts'
 import { dispatch } from '../shared/dispatch.ts'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'
 import type { DispatchObsCtx } from '../shared/obs-ctx.ts'
+import { runQuotaGate } from '../shared/quota-gate.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import { expandPreviousResponseId } from '../../dispatch/responses-store-bridge.ts'
 import { PreviousResponseNotFoundError } from '../../dispatch/responses-store-bridge.ts'
@@ -139,6 +140,12 @@ export async function serveResponses(args: ResponsesServeArgs): Promise<Response
     runtimeLocation: getRuntimeLocation(),
     requestStartedAt,
   }
+
+  // Daily quota gate. Legacy dispatch ran this inside runConversationAttempt;
+  // Spec 3 deletes that helper but the per-key cap is still enforced here so
+  // the public `429 + rate_limit_error` envelope is preserved for SDKs.
+  const quotaResp = await runQuotaGate(args.auth.apiKeyId)
+  if (quotaResp) return { response: quotaResp, mergedInputItems: [] }
 
   // Linked controller — same plumbing as messages/serve.ts.
   const controller = new AbortController()

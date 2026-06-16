@@ -27,6 +27,7 @@ import { parseChatPayload } from '../../parsers.ts'
 import { dispatch } from '../shared/dispatch.ts'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'
 import type { DispatchObsCtx } from '../shared/gateway-ctx.ts'
+import { runQuotaGate } from '../shared/quota-gate.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import { chatCompletionsAttempt } from './attempt.ts'
 import { respondChatCompletions } from './respond.ts'
@@ -81,6 +82,12 @@ export async function serveChatCompletions(args: ChatCompletionsServeArgs): Prom
     runtimeLocation: getRuntimeLocation(),
     requestStartedAt,
   }
+
+  // Daily quota gate. Legacy dispatch ran this inside runConversationAttempt;
+  // Spec 3 deletes that helper but the per-key cap is still enforced here so
+  // the public `429 + rate_limit_error` envelope is preserved for SDKs.
+  const quotaResp = await runQuotaGate(args.auth.apiKeyId)
+  if (quotaResp) return quotaResp
 
   // Linked controller: aborts when the upstream client signal aborts, and is
   // also aborted by respond.ts's SSE `cancel()` if the downstream client

@@ -9,12 +9,16 @@
  * Uses /v1/chat/completions (chatPick → chat_completions endpoint) with an
  * OpenAI-style streaming SSE fixture so chat-out's decodeSSE picks up tokens.
  */
-import { test, expect, afterEach } from 'bun:test'
+import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { Hono } from 'hono'
 import { app as innerApp } from '../../src/app.ts'
 import { initRepo } from '../../src/shared/repo/index.ts'
-import { __resetPlatformForTests } from '@vnext/platform'
+import {
+  __resetPlatformForTests,
+  initBackground,
+  initRuntimeLocation,
+} from '@vnext/platform'
 import { BunSqliteRepo as SqliteRepo } from '@vnext/platform-bun/src/bun-sqlite-repo.ts'
 import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
@@ -70,6 +74,15 @@ afterEach(() => {
   __resetPlatformForTests()
 })
 
+beforeEach(() => {
+  // Spec 3 chains read getRuntimeLocation() inside serveChatCompletions to
+  // populate TelemetryRequestContext; without it the request returns 500
+  // before usage/perf tracking has a chance to run. initBackground supplies
+  // a no-op `waitUntil` so the fire-and-forget persistOnce promises resolve.
+  initRuntimeLocation('bun')
+  initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
+})
+
 function buildApp(auth: DataPlaneAuthCtx) {
   const wrapper = new Hono()
   wrapper.use('*', (c, next) => { c.set('auth', auth); return next() })
@@ -77,7 +90,7 @@ function buildApp(auth: DataPlaneAuthCtx) {
   return wrapper
 }
 
-test('streaming SSE dispatch writes 1 latency + 1 usage + 2 perf rows', async () => {
+test('streaming SSE dispatch writes 1 usage + 1 perf row', async () => {
   const db = new Database(':memory:')
   const repo = new SqliteRepo(db)
 
@@ -105,9 +118,16 @@ test('streaming SSE dispatch writes 1 latency + 1 usage + 2 perf rows', async ()
 
   initRepo(repo)
 
-  // Stub fetch: /models → model list; everything else → SSE streaming body
+  // Stub fetch: /token → exchanged Copilot session; /models → list; everything else → SSE
   installFetch((req) => {
     const url = new URL(req.url)
+    if (url.pathname.includes('/copilot_internal/v2/token')) {
+      return new Response(JSON.stringify({
+        token: 'tok-stub',
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        refresh_in: 3000,
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
     if (url.pathname.endsWith('/models')) {
       return new Response(
         JSON.stringify({ object: 'list', data: [stubModel(MODEL_ID)] } satisfies ModelsResponse),
@@ -167,14 +187,16 @@ test('streaming SSE dispatch writes 1 latency + 1 usage + 2 perf rows', async ()
   expect((usage[0]!.tokens.input ?? 0)).toBeGreaterThan(0)
   expect((usage[0]!.tokens.output ?? 0)).toBeGreaterThan(0)
 
-  const latency = db.query('SELECT * FROM latency WHERE key_id = ?').all('k-stream') as unknown[]
-  expect(latency).toHaveLength(1)
-
+  // Spec 3 retires the legacy `latency` table — performance_summary +
+  // performance_latency_buckets are now the canonical performance store. The
+  // new chain emits a single `request_total` scope per request (the legacy
+  // `upstream_success` scope went away with conversation-attempt). The
+  // request_total scope captures the same lifecycle signal end-to-end.
   const perf = db.query('SELECT metric_scope FROM performance_summary').all() as Array<{
     metric_scope: string
   }>
   const scopes = perf.map(r => r.metric_scope).sort()
-  expect(scopes).toEqual(['request_total', 'upstream_success'])
+  expect(scopes).toEqual(['request_total'])
 
   const buckets = db.query('SELECT * FROM performance_latency_buckets').all() as unknown[]
   expect(buckets.length).toBeGreaterThan(0)
@@ -216,6 +238,13 @@ test('non-streaming dispatch persists pricing snapshot from provider.getPricingF
   }
   installFetch((req) => {
     const url = new URL(req.url)
+    if (url.pathname.includes('/copilot_internal/v2/token')) {
+      return new Response(JSON.stringify({
+        token: 'tok-stub',
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        refresh_in: 3000,
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
     if (url.pathname.endsWith('/models')) {
       return new Response(
         JSON.stringify({ object: 'list', data: [stubModel(MODEL_ID)] } satisfies ModelsResponse),
