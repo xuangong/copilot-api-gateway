@@ -335,9 +335,14 @@ export const geminiAttempt = {
       // envelope or because the upstream chose to buffer), buffer + synthesise
       // the equivalent hub frame sequence so the rest of the pipeline is
       // identical. `respond.ts` still decides the wire shape we hand back.
-      const isClientStreaming = wantsUpstreamStream
+      // Gemini-via translators hardcode `stream: true` on the upstream payload,
+      // so the upstream is virtually always SSE regardless of the client's verb
+      // (`generateContent` vs `streamGenerateContent`). Detect the upstream
+      // wire shape from content-type alone — using `wantsUpstreamStream` here
+      // would incorrectly funnel SSE bodies through `JSON.parse` and fail with
+      // "Unexpected identifier 'data'".
       const upstreamContentType = upstreamResp.headers.get('content-type') ?? ''
-      const upstreamLooksJson = !isClientStreaming || upstreamContentType.includes('application/json')
+      const upstreamLooksJson = upstreamContentType.includes('application/json')
 
       const hubProtocol = targetToHubProtocol(sel.targetEndpoint)
       const hubFrames = upstreamLooksJson
