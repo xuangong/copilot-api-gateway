@@ -58,15 +58,11 @@ test('internal-error renders JSON envelope with status', async () => {
   expect(errStr).toContain('boom')
 })
 
-test('bridged-response passes through unchanged', async () => {
-  const passthrough = new Response('legacy-body', { status: 200, headers: { 'x-from': 'dispatch' } })
-  const resp = await respondChatCompletions(
-    { kind: 'bridged-response', response: passthrough },
-    { wantsStream: true, includeUsageChunk: false },
-  )
-  expect(resp).toBe(passthrough)
-  expect(await resp.text()).toBe('legacy-body')
-})
+// The `bridged-response` sentinel was removed when the cross-protocol
+// `dispatch()` bridge was deleted in Spec 3 Part 4. Native cross-protocol
+// attempts now surface a 501 internal-error result via attempt.ts, so the
+// renderer no longer accepts a bridged-response variant. The pass-through test
+// from the dispatch era was deleted alongside the union variant.
 
 test('upstream-error renders via repackageUpstreamError (status preserved + OpenAI error envelope)', async () => {
   const resp = await respondChatCompletions(

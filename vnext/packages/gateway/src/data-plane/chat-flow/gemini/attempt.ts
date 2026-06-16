@@ -117,7 +117,6 @@ export interface GeminiAttemptArgs {
    * to stream; whether to actually render SSE vs JSON is owned by respond.ts.
    */
   readonly forceStream: boolean
-  readonly raw: Request
   readonly auth: GeminiAttemptAuth
   readonly ctx: RequestContext
   readonly telemetryCtx: TelemetryRequestContext

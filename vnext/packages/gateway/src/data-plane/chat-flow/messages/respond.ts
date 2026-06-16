@@ -3,11 +3,10 @@
  * Anthropic Messages response renderer.
  *
  * Converts the {@link MessagesAttemptResult} (events / upstream-error /
- * internal-error from `ExecuteResult` plus the bridged-response sentinel) into
- * a single `Response` for the client. SSE streaming is rendered frame-by-frame
- * via {@link messagesProtocolFrameToSSEFrame}; non-streaming requests drain to
- * a reassembled `MessagesResult` JSON envelope. The bridged-response branch
- * hands the legacy `dispatch()` `Response` back unchanged.
+ * internal-error from `ExecuteResult`) into a single `Response` for the
+ * client. SSE streaming is rendered frame-by-frame via
+ * {@link messagesProtocolFrameToSSEFrame}; non-streaming requests drain to
+ * a reassembled `MessagesResult` JSON envelope.
  *
  * Telemetry phase: when `telemetryCtx` is supplied, the renderer drains each
  * frame through a `SourceStreamState` (model-key correction + usage capture +
@@ -70,12 +69,10 @@ export interface RespondMessagesOptions {
 /**
  * Mirrors {@link MessagesAttemptResult} from `./attempt.ts`. Declared inline
  * rather than imported to keep this module decoupled from the attempt surface
- * — the union is part of the chat-flow public contract, not the leaf's
+ * — the alias is part of the chat-flow public contract, not the leaf's
  * implementation.
  */
-export type RespondMessagesInput =
-  | ExecuteResult<ProtocolFrame<MessagesStreamEvent>>
-  | { readonly kind: 'bridged-response'; readonly response: Response }
+export type RespondMessagesInput = ExecuteResult<ProtocolFrame<MessagesStreamEvent>>
 
 const SSE_TEXT_ENCODER = new TextEncoder()
 
@@ -221,10 +218,10 @@ const renderEventsAsJson = async (
   }
 }
 
-const isBridgedResponse = (
-  result: RespondMessagesInput,
-): result is { readonly kind: 'bridged-response'; readonly response: Response } =>
-  'kind' in result && result.kind === 'bridged-response'
+// The bridged-response sentinel was removed when the cross-protocol
+// `dispatch()` bridge was deleted in Spec 3 Part 4. Native cross-protocol
+// attempts surface a 501 internal-error result via attempt.ts now, so the
+// renderer only handles `ExecuteResult` variants.
 
 /**
  * Repackage an upstream non-2xx body as an Anthropic-shaped error envelope.
@@ -267,9 +264,4 @@ const renderExecuteResult = async (
 export const respondMessages = async (
   result: RespondMessagesInput,
   options: RespondMessagesOptions,
-): Promise<Response> => {
-  // bridged-response is the legacy `dispatch()` short-circuit from
-  // attempt.ts; the wrapped Response is already client-shaped.
-  if (isBridgedResponse(result)) return result.response
-  return await renderExecuteResult(result, options)
-}
+): Promise<Response> => renderExecuteResult(result, options)

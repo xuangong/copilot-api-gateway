@@ -239,12 +239,14 @@ test('messages→messages identity: request body forwarded upstream unchanged (n
   expect(body.content[0]!.text).toContain('Hello from upstream')
 })
 
-test('messages→chat_completions cross-pair: Anthropic Messages client request reaches upstream as Chat Completions; response decoded back to Anthropic JSON', async () => {
-  // Model only serves /chat/completions (Copilot's default for non-claude
-  // families). The messages preference is messages → responses → chat_completions,
-  // so the selector falls through to chat_completions. The translator pair is
-  // PAIR_MESSAGES_TO_CHAT (translateMessagesToChat for request, translateChatBodyToMessages
-  // for response).
+test('messages→chat_completions cross-pair: deferred to Spec 6 (returns 501 internal-error)', async () => {
+  // The legacy `dispatch()` cross-protocol bridge was deleted in Spec 3 Part 4
+  // (Telemetry Channel cleanup). Until Spec 6 wires native cross-protocol
+  // attempts (PAIR_MESSAGES_TO_CHAT request/response translation under the
+  // attempt.ts surface), the messages source over a chat_completions-only
+  // upstream surfaces a 501 internal-error instead of silently bridging.
+  // We keep the test as a regression marker so Spec 6 implementer flips it
+  // back to the cross-pair semantics.
   initRepo(stubRepo([stubUpstream()]))
   const captured: CapturedUpstreamCall[] = []
   installCapturingFetch(captured, stubChatModel(CHAT_MODEL_ID))
@@ -261,26 +263,12 @@ test('messages→chat_completions cross-pair: Anthropic Messages client request 
     }),
   })
   const res = await app.fetch(req, env)
-  expect(res.status).toBe(200)
-  expect(captured.length).toBe(1)
-  // Upstream payload must be Chat Completions shape: system is inlined as a
-  // role:'system' message, the user turn is preserved.
-  const upstreamBody = captured[0]!.body as {
-    model: string
-    messages: Array<{ role: string; content: unknown }>
-  }
-  expect(upstreamBody.model).toBe(CHAT_MODEL_ID)
-  expect(upstreamBody.messages.some((m) => m.role === 'system')).toBe(true)
-  expect(upstreamBody.messages.some((m) => m.role === 'user')).toBe(true)
-  // Response should be an Anthropic Messages envelope (translated from Chat).
-  const body = await res.json() as {
-    type: string
-    role: string
-    content: Array<{ type: string; text?: string }>
-    stop_reason?: string
-  }
-  expect(body.type).toBe('message')
-  expect(body.role).toBe('assistant')
-  expect(body.content[0]!.text).toContain('Hello from upstream')
-  expect(body.stop_reason).toBe('end_turn')
+  expect(res.status).toBe(501)
+  // Upstream must NOT have been hit — attempt.ts shorts to internal-error
+  // before opening a leaf connection.
+  expect(captured.length).toBe(0)
+  const body = await res.json() as { type?: string; error?: { type?: string; message?: string } }
+  // messages/respond.ts renders internal-error as `{type:'error', error:{...}}`.
+  expect(body.type).toBe('error')
+  expect(body.error?.message).toMatch(/cross-protocol/)
 })

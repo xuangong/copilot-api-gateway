@@ -112,45 +112,16 @@ async function createMessages(
 
   const result = await messagesAttempt.generate({
     payload: innerPayload as Record<string, unknown> & { model: string; stream?: boolean },
-    // attempt.ts only reads `raw` for the cross-protocol bridge, which we
-    // never hit (target is always `messages` for the web-search inner call).
-    // Synthesise a minimal request to keep the signature satisfied.
-    raw: new Request('http://internal/v1/messages', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(innerPayload),
-    }),
     auth: { copilot: options.copilot },
     ctx: { requestStartedAt, downstreamAbortSignal: undefined },
     telemetryCtx,
-    // Web-search inner calls always identity-target messages → messages; if
-    // this fires it means binding selection picked a non-messages target
-    // (e.g. responses), which would silently break the loop. Surface loudly.
-    dispatchFallback: () => {
-      throw new Error('web-search inner call must target messages → messages identity')
-    },
   })
 
-  // Bridged-response is an attempt.ts short-circuit for cross-protocol targets.
-  // The web-search loop only runs against messages-native upstreams (Copilot
-  // bindings expose the messages endpoint directly), so this branch is unreachable
-  // in practice — but it's part of the union, so guard it.
-  if (isBridgedResponse(result)) {
-    const text = await result.response.text()
-    if (!result.response.ok) {
-      const err = new Error(`Web search upstream returned HTTP ${result.response.status}: ${text}`)
-      ;(err as Error & { status?: number }).status = result.response.status
-      throw err
-    }
-    try {
-      return JSON.parse(text) as ApiResponse
-    } catch {
-      throw new Error('web-search createMessages: bridged-response body was not JSON')
-    }
-  }
-
-  // After the bridged-response guard, `result` is narrowed to the
-  // ExecuteResult<ProtocolFrame<MessagesStreamEvent>> union variants.
+  // After Spec 3 Part 4 deleted the cross-protocol `dispatch()` bridge, the
+  // messagesAttempt result is always an `ExecuteResult<ProtocolFrame<MessagesStreamEvent>>`
+  // — bridged-response no longer exists. If binding selection picks a
+  // non-messages target the attempt surfaces an `internal-error` (501) which
+  // we throw below.
   if (result.type === 'upstream-error') {
     if (options.apiKeyId) {
       waitUntil(recordPerformance(telemetryCtx, result.performance, true))
@@ -190,16 +161,6 @@ async function createMessages(
   }
   return reassembled
 }
-
-// Local copy of respond.ts's `isBridgedResponse` type guard. Narrowing the
-// MessagesAttemptResult union without an explicit `is` predicate is unreliable
-// because the bridged-response variant uses `kind` while the ExecuteResult
-// variants use `type` — `'kind' in result` doesn't help TS exclude the
-// ExecuteResult branches in subsequent checks.
-const isBridgedResponse = (
-  result: import('../../../../chat-flow/messages/attempt.ts').MessagesAttemptResult,
-): result is { readonly kind: 'bridged-response'; readonly response: Response } =>
-  'kind' in result && result.kind === 'bridged-response'
 
 /**
  * Drain a `ProtocolFrame<MessagesStreamEvent>` stream while folding usage +

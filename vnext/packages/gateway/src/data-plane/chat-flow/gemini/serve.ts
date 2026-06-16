@@ -15,10 +15,11 @@
  *     envelope (`forceStream === false`). This flag is forwarded both to
  *     attempt.ts (so the upstream knows to negotiate a stream) and to
  *     respond.ts (which actually decides the wire shape we hand back).
- *   - There is NO cross-protocol `dispatchFallback` — gemini has no identity
- *     target, so every binding selection picks one of `messages | responses |
- *     chat_completions` as the hub target and the translator handles the
- *     reshape in a single hop. attempt.ts does not consult a fallback.
+ *   - Gemini has no identity target — every binding selection picks one of
+ *     `messages | responses | chat_completions` as the hub target and the
+ *     translator handles the reshape in a single hop. attempt.ts therefore
+ *     never needs a cross-protocol fallback; the legacy `dispatch()` bridge
+ *     was deleted in Spec 3 Part 4.
  *
  * Telemetry context is built once per request and threaded through both
  * attempt + respond, so persistence helpers (`recordUsage`,
@@ -113,14 +114,6 @@ export async function serveGemini(args: GeminiServeArgs): Promise<Response> {
     payload,
     model: args.model,
     forceStream: args.forceStream,
-    // attempt.ts uses `raw` only as a passthrough; gemini has no
-    // dispatchFallback so this is purely cosmetic. We synthesise a minimal
-    // Request to keep the type stable — attempt.ts doesn't read its body.
-    raw: new Request('http://internal/v1beta/generate', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(args.raw ?? {}),
-    }),
     auth: { ownerId: args.auth.userId, copilot: args.auth.copilot, apiKeyId: args.auth.apiKeyId },
     ctx: { requestStartedAt, downstreamAbortSignal: controller.signal },
     telemetryCtx,

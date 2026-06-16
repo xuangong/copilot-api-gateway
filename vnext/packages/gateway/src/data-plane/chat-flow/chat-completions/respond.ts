@@ -3,11 +3,10 @@
  * Chat Completions response renderer.
  *
  * Converts the {@link ChatCompletionsAttemptResult} (events / upstream-error /
- * internal-error from `ExecuteResult` plus the bridged-response sentinel) into
- * a single `Response` for the client. SSE streaming is rendered frame-by-frame
- * via {@link chatCompletionsProtocolFrameToSSEFrame}; non-streaming requests
- * drain to a reassembled JSON envelope. The bridged-response branch hands the
- * legacy `dispatch()` `Response` back unchanged.
+ * internal-error from `ExecuteResult`) into a single `Response` for the
+ * client. SSE streaming is rendered frame-by-frame via
+ * {@link chatCompletionsProtocolFrameToSSEFrame}; non-streaming requests
+ * drain to a reassembled JSON envelope.
  *
  * Telemetry phase: when `telemetryCtx` is supplied, the renderer drains each
  * frame through a `SourceStreamState` (model-key correction + usage capture +
@@ -63,12 +62,10 @@ export interface RespondChatCompletionsOptions {
 /**
  * Mirrors {@link ChatCompletionsAttemptResult} from `./attempt.ts`. Declared
  * inline rather than imported to keep this module decoupled from the attempt
- * surface — the union is part of the chat-flow public contract, not the
+ * surface — the alias is part of the chat-flow public contract, not the
  * leaf's implementation.
  */
-export type RespondChatCompletionsInput =
-  | ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
-  | { readonly kind: 'bridged-response'; readonly response: Response }
+export type RespondChatCompletionsInput = ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
 
 const SSE_TEXT_ENCODER = new TextEncoder()
 
@@ -219,15 +216,10 @@ const renderEventsAsJson = async (
   }
 }
 
-// The bridged-response sentinel uses `kind` while ExecuteResult uses `type`,
-// so the union's discriminants are disjoint. TS can't narrow the negation of
-// `'kind' in x && x.kind === 'bridged-response'` to "this is an ExecuteResult"
-// because Object types don't preclude having a `kind` property. We narrow with
-// an explicit guard + dedicated executeResult dispatcher.
-const isBridgedResponse = (
-  result: RespondChatCompletionsInput,
-): result is { readonly kind: 'bridged-response'; readonly response: Response } =>
-  'kind' in result && result.kind === 'bridged-response'
+// The bridged-response sentinel was removed when the cross-protocol
+// `dispatch()` bridge was deleted in Spec 3 Part 4. Native cross-protocol
+// attempts surface a 501 internal-error result via attempt.ts now, so the
+// renderer only handles `ExecuteResult` variants.
 
 // Upstream errors carry the raw provider body verbatim; the OpenAI SDK expects
 // the `{ error: { type, message, ...code } }` envelope shape. We reuse the
@@ -268,9 +260,4 @@ const renderExecuteResult = async (
 export const respondChatCompletions = async (
   result: RespondChatCompletionsInput,
   options: RespondChatCompletionsOptions,
-): Promise<Response> => {
-  // bridged-response is the legacy `dispatch()` short-circuit from
-  // attempt.ts; the wrapped Response is already client-shaped.
-  if (isBridgedResponse(result)) return result.response
-  return await renderExecuteResult(result, options)
-}
+): Promise<Response> => renderExecuteResult(result, options)

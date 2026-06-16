@@ -3,11 +3,13 @@
  * Chat Completions attempt orchestrator.
  *
  * Builds an `Invocation`, runs `chatCompletionsInterceptors`, and (in the
- * terminal handler) issues the upstream call via the resolved provider. On
- * a cross-protocol target (e.g. `chat_completions → messages`) we short-
- * circuit to the legacy `dispatch()` helper via `dispatchFallback`; the
- * returned `Response` is surfaced as a `bridged-response` sentinel that
- * `respond.ts` (Part 3 Task 2) hands back to the client unchanged.
+ * terminal handler) issues the upstream call via the resolved provider.
+ *
+ * Cross-protocol targets (e.g. `chat_completions → messages`) are NOT yet
+ * supported natively — Spec 3 Part 4 deleted the legacy `dispatch()` bridge
+ * but native cross-protocol attempts are deferred to Spec 6. For now we surface
+ * a 501-shaped internal-error result so the failure mode is loud and the
+ * abandoned response is fully accounted for in telemetry.
  *
  * Reference: copilot-gateway/packages/gateway/src/data-plane/llm/chat-completions/attempt.ts
  */
@@ -26,9 +28,7 @@ import { selectBindingForChatCompletions, type SelectBindingAuth, type SelectBin
 import { chatCompletionsInterceptors } from './interceptors'
 import { synthesizeChatCompletionsFramesFromJson, type ChatCompletionsJsonBody } from './events/json-to-frames'
 
-export type ChatCompletionsAttemptResult =
-  | ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
-  | { readonly kind: 'bridged-response'; readonly response: Response }
+export type ChatCompletionsAttemptResult = ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
 
 // Reuses the routing helper's auth shape so we never lose detail when the
 // terminal hands the same value back to `selectBindingForChatCompletions`.
@@ -36,7 +36,6 @@ export type ChatCompletionsAttemptAuth = SelectBindingAuth
 
 export interface ChatCompletionsAttemptArgs {
   readonly payload: Record<string, unknown> & { model: string; stream?: boolean }
-  readonly raw: Request
   readonly auth: ChatCompletionsAttemptAuth
   readonly ctx: RequestContext
   /**
@@ -47,8 +46,6 @@ export interface ChatCompletionsAttemptArgs {
   readonly telemetryCtx: TelemetryRequestContext
   /** Injected for tests; defaults to {@link selectBindingForChatCompletions}. */
   readonly selectBinding?: (args: { model: string; auth: ChatCompletionsAttemptAuth }) => Promise<SelectBindingResult>
-  /** Legacy bridge for cross-protocol targets; called with the raw `Request`. */
-  readonly dispatchFallback: (raw: Request) => Promise<Response>
   /** Overridable interceptor chain (defaults to the production registry). */
   readonly interceptors?: ReadonlyArray<ChatCompletionsStreamInterceptor>
 }
@@ -80,8 +77,14 @@ export const chatCompletionsAttempt = {
     if (sel.kind === 'no-translator') return internalErrorResult(500, new Error(`no translator for chat_completions → ${sel.targetEndpoint}`))
 
     if (sel.targetEndpoint !== 'chat_completions') {
-      // FIXME(spec-6): native cross-protocol attempts; for now bridge to legacy dispatch().
-      return { kind: 'bridged-response', response: await args.dispatchFallback(args.raw) }
+      // FIXME(spec-6): native cross-protocol attempts deferred. The legacy
+      // `dispatch()` bridge was removed in Spec 3 Part 4; surface a 501 so
+      // the failure mode is loud and telemetry accounts for the abandoned
+      // response.
+      return internalErrorResult(
+        501,
+        new Error(`cross-protocol attempts not yet supported: chat_completions → ${sel.targetEndpoint}`),
+      )
     }
 
     const invocation: Invocation = {

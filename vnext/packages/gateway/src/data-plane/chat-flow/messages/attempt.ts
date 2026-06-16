@@ -10,9 +10,11 @@
  *     `parseMessagesStream`, decorates with `withUpstreamTelemetry({protocol:
  *     'messages'})`, and emits an `EventResult<ProtocolFrame<MessagesStreamEvent>>`
  *   - cross-protocol targets (`messages → responses` / `messages →
- *     chat_completions`) short-circuit through `dispatchFallback` to the legacy
- *     `dispatch()` helper; the wrapped `Response` is surfaced as a
- *     `bridged-response` sentinel that `respond.ts` hands back unchanged.
+ *     chat_completions`) are NOT yet supported natively — Spec 3 Part 4
+ *     deleted the legacy `dispatch()` bridge but native cross-protocol
+ *     attempts are deferred to Spec 6. We surface a 501-shaped
+ *     internal-error result so the failure mode is loud and the abandoned
+ *     response is fully accounted for in telemetry.
  *
  * Pre-binding errors (model-not-found, no-eligible-binding, no-translator)
  * deliberately omit `performance` per Spec 3 §6.2 — `respond.ts` skips the
@@ -48,9 +50,7 @@ import { getTranslator, type PairTranslator } from '../../dispatch/translator-re
 
 // ─── Public types ─────────────────────────────────────────────────────────
 
-export type MessagesAttemptResult =
-  | ExecuteResult<ProtocolFrame<MessagesStreamEvent>>
-  | { readonly kind: 'bridged-response'; readonly response: Response }
+export type MessagesAttemptResult = ExecuteResult<ProtocolFrame<MessagesStreamEvent>>
 
 export interface MessagesAttemptAuth {
   readonly ownerId?: string
@@ -66,7 +66,6 @@ export interface MessagesAttemptAuth {
  */
 export interface MessagesAttemptArgs {
   readonly payload: Record<string, unknown> & { model: string; stream?: boolean }
-  readonly raw: Request
   readonly auth: MessagesAttemptAuth
   readonly ctx: RequestContext
   readonly telemetryCtx: TelemetryRequestContext
@@ -75,8 +74,6 @@ export interface MessagesAttemptArgs {
    * `enumerateBindingCandidates({pickTarget: selectPair('messages', e)})`.
    */
   readonly selectBinding?: SelectMessagesBinding
-  /** Legacy bridge for cross-protocol targets; called with the raw `Request`. */
-  readonly dispatchFallback: (raw: Request) => Promise<Response>
   /** Overridable interceptor chain; defaults to an empty chain (terminal-only). */
   readonly interceptors?: ReadonlyArray<MessagesInterceptor>
 }
@@ -258,10 +255,14 @@ export const messagesAttempt = {
     if (sel.kind === 'no-translator') return internalErrorResult(500, new Error(`no translator for messages → ${sel.targetEndpoint}`))
 
     if (sel.targetEndpoint !== 'messages') {
-      // FIXME(spec-6): native cross-protocol attempts. For now bridge to legacy
-      // dispatch() to keep messages → responses / messages → chat_completions
-      // working unchanged.
-      return { kind: 'bridged-response', response: await args.dispatchFallback(args.raw) }
+      // FIXME(spec-6): native cross-protocol attempts deferred. The legacy
+      // `dispatch()` bridge was removed in Spec 3 Part 4; surface a 501 so
+      // the failure mode is loud and telemetry accounts for the abandoned
+      // response.
+      return internalErrorResult(
+        501,
+        new Error(`cross-protocol attempts not yet supported: messages → ${sel.targetEndpoint}`),
+      )
     }
 
     const invocation: Invocation = {

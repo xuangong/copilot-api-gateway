@@ -12,9 +12,10 @@
  *     whether to stream SSE or render a JSON envelope;
  *   - hand off to `messagesAttempt.generate` for binding selection +
  *     translator + provider.fetch. Cross-protocol targets (`messages →
- *     responses` / `messages → chat_completions`) short-circuit through
- *     `dispatchFallback`, which re-enters legacy `dispatch()` with the same
- *     `raw` body so the bridge stays a single hop;
+ *     responses` / `messages → chat_completions`) are NOT yet supported
+ *     natively — Spec 3 Part 4 deleted the legacy `dispatch()` bridge but
+ *     native cross-protocol attempts are deferred to Spec 6. Attempt
+ *     surfaces a 501 internal-error in that branch;
  *   - thread an `AbortController` linked to the inbound `args.signal`
  *     (Hono's `c.req.raw.signal`) so a client disconnect mid-SSE cancels
  *     `provider.fetch` + `parseMessagesStream` via the same downstream
@@ -31,7 +32,6 @@
 import { getRuntimeLocation } from '@vnext/platform'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseMessagesPayload } from '../../parsers.ts'
-import { dispatch } from '../shared/dispatch.ts'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'
 import type { DispatchObsCtx } from '../shared/obs-ctx.ts'
 import { runQuotaGate } from '../shared/quota-gate.ts'
@@ -105,34 +105,11 @@ export async function serveMessages(args: MessagesServeArgs): Promise<Response> 
     else args.signal.addEventListener('abort', () => controller.abort(), { once: true })
   }
 
-  // Build the raw Request shim that dispatchFallback hands back to legacy
-  // `dispatch()`. The cross-protocol bridge re-uses the same parser +
-  // errorWrap as our per-protocol path so the wire shape stays identical
-  // when a messages request targets a chat_completions/responses binding.
-  const dispatchFallback = (_raw: Request): Promise<Response> =>
-    dispatch(args.raw, {
-      parse: (r) => parseMessagesPayload(r),
-      modelOf: (p) => (p as { model?: string }).model ?? '',
-      sourceApi: 'messages',
-      errorWrap: jsonErrorWrap,
-      auth: args.auth,
-      obsCtx: args.obsCtx,
-    })
-
   const result = await messagesAttempt.generate({
     payload,
-    // attempt.ts only reads `raw` to hand off to dispatchFallback; we
-    // synthesise a minimal Request so the bridge keeps a stable signature
-    // even though dispatch() consumes `args.raw` (the parsed body) directly.
-    raw: new Request('http://internal/v1/messages', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(args.raw ?? {}),
-    }),
     auth: { ownerId: args.auth.userId, copilot: args.auth.copilot },
     ctx: { requestStartedAt, downstreamAbortSignal: controller.signal },
     telemetryCtx,
-    dispatchFallback,
   })
 
   return respondMessages(result, {

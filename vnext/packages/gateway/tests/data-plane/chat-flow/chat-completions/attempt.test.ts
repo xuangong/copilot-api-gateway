@@ -45,12 +45,10 @@ test('case a — same-protocol leaf returns EventResult on provider 200', async 
   const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: fetchMock } } as any
   const res = await chatCompletionsAttempt.generate({
     payload: { model: 'gpt-x', messages: [], stream: true },
-    raw: new Request('http://x', { method: 'POST', body: '{}' }),
     auth: baseAuth,
     ctx: baseCtx,
     telemetryCtx: baseTelemetry,
     selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator, bareModel: 'gpt-x' }),
-    dispatchFallback: async () => { throw new Error('should not be called') },
   })
   expect(res.type).toBe('events')
   expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -65,12 +63,10 @@ test('case b — interceptor sees mutated payload before terminal (include_usage
   const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: fetchMock } } as any
   const res = await chatCompletionsAttempt.generate({
     payload: { model: 'gpt-x', messages: [], stream: true },
-    raw: new Request('http://x'),
     auth: baseAuth,
     ctx: baseCtx,
     telemetryCtx: baseTelemetry,
     selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator, bareModel: 'gpt-x' }),
-    dispatchFallback: async () => new Response(),
   })
   // Drain the stream so the lazy interceptor work runs to completion.
   if (res.type === 'events') {
@@ -86,12 +82,10 @@ test('case c — provider 401 returns UpstreamErrorResult', async () => {
   const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: fetchMock } } as any
   const res = await chatCompletionsAttempt.generate({
     payload: { model: 'gpt-x', messages: [], stream: true },
-    raw: new Request('http://x'),
     auth: baseAuth,
     ctx: baseCtx,
     telemetryCtx: baseTelemetry,
     selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator, bareModel: 'gpt-x' }),
-    dispatchFallback: async () => new Response(),
   })
   expect(res.type).toBe('upstream-error')
   if (res.type === 'upstream-error') expect(res.status).toBe(401)
@@ -101,45 +95,43 @@ test('case d — interceptor throw becomes InternalErrorResult', async () => {
   const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: mock(async () => makeProviderResponse({ status: 200, body: okSseBody })) } } as any
   const res = await chatCompletionsAttempt.generate({
     payload: { model: 'gpt-x', messages: [], stream: true },
-    raw: new Request('http://x'),
     auth: baseAuth,
     ctx: baseCtx,
     telemetryCtx: baseTelemetry,
     selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator, bareModel: 'gpt-x' }),
-    dispatchFallback: async () => new Response(),
     interceptors: [async () => { throw new Error('interceptor-boom') }],
   })
   expect(res.type).toBe('internal-error')
   if (res.type === 'internal-error') expect(String(res.error)).toMatch(/interceptor-boom/)
 })
 
-test('case e — cross-protocol target short-circuits to dispatchFallback Response (pass-through)', async () => {
-  const fallback = mock(async () => new Response('fallback-body', { status: 200 }))
+test('case e — cross-protocol target returns InternalErrorResult(501) (deferred to Spec 6)', async () => {
+  // The legacy `dispatch()` bridge was deleted in Spec 3 Part 4 — native
+  // cross-protocol attempts (chat_completions → messages, etc.) are deferred
+  // to Spec 6. Until then, the attempt surfaces a 501-shaped internal-error
+  // so the failure mode is loud and telemetry accounts for the abandoned
+  // response.
   const res = await chatCompletionsAttempt.generate({
     payload: { model: 'claude', messages: [], stream: true },
-    raw: new Request('http://x'),
     auth: baseAuth,
     ctx: baseCtx,
     telemetryCtx: baseTelemetry,
     selectBinding: async () => ({ kind: 'ok', binding: {} as any, targetEndpoint: 'messages', translator: {} as any, bareModel: 'claude' }),
-    dispatchFallback: fallback,
   })
-  expect((res as any).kind).toBe('bridged-response')
-  if ((res as any).kind === 'bridged-response') {
-    expect(await (res as any).response.text()).toBe('fallback-body')
+  expect(res.type).toBe('internal-error')
+  if (res.type === 'internal-error') {
+    expect(res.status).toBe(501)
+    expect(String(res.error)).toMatch(/cross-protocol/)
   }
-  expect(fallback).toHaveBeenCalledTimes(1)
 })
 
 test('case f — model-not-found from selectBinding returns InternalErrorResult(404)', async () => {
   const res = await chatCompletionsAttempt.generate({
     payload: { model: 'nope', messages: [] },
-    raw: new Request('http://x'),
     auth: baseAuth,
     ctx: baseCtx,
     telemetryCtx: baseTelemetry,
     selectBinding: async () => ({ kind: 'model-not-found', bareModel: 'nope' }),
-    dispatchFallback: async () => new Response(),
   })
   expect(res.type).toBe('internal-error')
   if (res.type === 'internal-error') expect(res.status).toBe(404)
@@ -150,12 +142,10 @@ test('case g — provider returns null body returns InternalErrorResult(502)', a
   const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: fetchMock } } as any
   const res = await chatCompletionsAttempt.generate({
     payload: { model: 'gpt-x', messages: [], stream: true },
-    raw: new Request('http://x'),
     auth: baseAuth,
     ctx: baseCtx,
     telemetryCtx: baseTelemetry,
     selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator, bareModel: 'gpt-x' }),
-    dispatchFallback: async () => new Response(),
   })
   expect(res.type).toBe('internal-error')
   if (res.type === 'internal-error') {
@@ -199,12 +189,10 @@ test('case h — interceptor throw AFTER terminal cancels upstream stream body',
 
   const res = await chatCompletionsAttempt.generate({
     payload: { model: 'gpt-x', messages: [], stream: true },
-    raw: new Request('http://x'),
     auth: baseAuth,
     ctx: baseCtx,
     telemetryCtx: baseTelemetry,
     selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator, bareModel: 'gpt-x' }),
-    dispatchFallback: async () => new Response(),
     interceptors: [postLeafThrow as any],
   })
   expect(res.type).toBe('internal-error')

@@ -18,8 +18,10 @@
  *   - hand off to `responsesAttempt.generate` for image-generation
  *     short-circuit / binding selection / translator / provider.fetch.
  *     Cross-protocol targets (`responses → messages` / `responses →
- *     chat_completions`) short-circuit through `dispatchFallback` so the
- *     legacy bridge stays a single hop;
+ *     chat_completions`) are NOT yet supported natively — Spec 3 Part 4
+ *     deleted the legacy `dispatch()` bridge but native cross-protocol
+ *     attempts are deferred to Spec 6. Attempt surfaces a 501 internal-error
+ *     in that branch;
  *   - thread an `AbortController` linked to the inbound `args.signal`
  *     (Hono's `c.req.raw.signal`) so a client disconnect mid-SSE cancels
  *     `provider.fetch` + `parseResponsesStream` via the same downstream
@@ -36,7 +38,6 @@
 import { getRuntimeLocation } from '@vnext/platform'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseResponsesPayload } from '../../parsers.ts'
-import { dispatch } from '../shared/dispatch.ts'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'
 import type { DispatchObsCtx } from '../shared/obs-ctx.ts'
 import { runQuotaGate } from '../shared/quota-gate.ts'
@@ -154,34 +155,8 @@ export async function serveResponses(args: ResponsesServeArgs): Promise<Response
     else args.signal.addEventListener('abort', () => controller.abort(), { once: true })
   }
 
-  // Cross-protocol bridge: re-uses the same parser + errorWrap + auth so the
-  // wire shape stays identical when a responses request targets a
-  // chat_completions/messages binding.
-  //
-  // Critical: we hand `dispatch()` the ALREADY-expanded `payload` (we mutated
-  // it above via expandPreviousResponseId) by short-circuiting the parser to
-  // return our reference verbatim. If we re-parsed `args.raw` here, the
-  // legacy bridge would translate the original `previous_response_id` +
-  // unexpanded input — which is wrong for cross-protocol Pair 8. The
-  // postParse expansion in dispatch is intentionally bypassed because we've
-  // already done it.
-  const dispatchFallback = (_raw: Request): Promise<Response> =>
-    dispatch(args.raw, {
-      parse: (_r) => payload,
-      modelOf: (p) => (p as { model?: string }).model ?? '',
-      sourceApi: 'responses',
-      errorWrap: jsonErrorWrap,
-      auth: args.auth,
-      obsCtx: args.obsCtx,
-    })
-
   const result = await responsesAttempt.generate({
     payload,
-    raw: new Request('http://internal/v1/responses', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(args.raw ?? {}),
-    }),
     auth: {
       ownerId: args.auth.userId,
       copilot: args.auth.copilot,
@@ -189,7 +164,6 @@ export async function serveResponses(args: ResponsesServeArgs): Promise<Response
     },
     ctx: { requestStartedAt, downstreamAbortSignal: controller.signal },
     telemetryCtx,
-    dispatchFallback,
     requestId: args.requestId,
     userAgent: args.userAgent,
   })
