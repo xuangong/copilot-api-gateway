@@ -225,7 +225,9 @@ test('listProviderBindings: azure model endpoints derive from supportedEndpoints
 })
 
 test('L2: second call backfills L1 when L1 was cleared mid-life', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  // Use config without githubToken so the plugin skips token exchange and
+  // takes the copilotFallback path directly — keeping fetchCount = models-only.
+  initRepo(stubRepo([stubUpstream({ config: {} })]))
   const l2 = new MemoryCache()
   initCache(l2)
 

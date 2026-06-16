@@ -9,8 +9,6 @@ export type LatencyRange = "today" | "week" | "7d" | "30d"
 export interface LatencySummary {
   avgTotal: number
   avgUpstream: number
-  avgTtfb: number
-  tokenMissRate: number
 }
 
 export interface LatencyByType {
@@ -18,8 +16,6 @@ export interface LatencyByType {
   requests: number
   avgTotal: number
   avgUpstream: number
-  avgTtfb: number
-  tokenMissRate: number
 }
 
 export interface LatencyByColo {
@@ -27,7 +23,6 @@ export interface LatencyByColo {
   requests: number
   avgTotal: number
   avgUpstream: number
-  tokenMissRate: number
 }
 
 // Compute [start, end) ISO-13-char window (YYYY-MM-DDTHH) to match
@@ -107,32 +102,26 @@ export function useLatency() {
   const filtered = useMemo(() => (model ? data.filter((r) => r.model === model) : data), [data, model])
 
   const summary = useMemo<LatencySummary>(() => {
-    let totalReqs = 0, sumTotal = 0, sumUpstream = 0, sumTtfb = 0, sumMiss = 0
+    let totalReqs = 0, sumTotal = 0, sumUpstream = 0
     for (const r of filtered) {
       totalReqs += r.requests
       sumTotal += r.totalMs
       sumUpstream += r.upstreamMs
-      sumTtfb += r.ttfbMs
-      sumMiss += r.tokenMiss
     }
     return {
       avgTotal: totalReqs > 0 ? Math.round(sumTotal / totalReqs) : 0,
       avgUpstream: totalReqs > 0 ? Math.round(sumUpstream / totalReqs) : 0,
-      avgTtfb: totalReqs > 0 ? Math.round(sumTtfb / totalReqs) : 0,
-      tokenMissRate: totalReqs > 0 ? Math.round((sumMiss / totalReqs) * 100) : 0,
     }
   }, [filtered])
 
   const byType = useMemo<LatencyByType[]>(() => {
-    const m = new Map<string, { requests: number; totalMs: number; upstreamMs: number; ttfbMs: number; tokenMiss: number }>()
+    const m = new Map<string, { requests: number; totalMs: number; upstreamMs: number }>()
     for (const r of filtered) {
       const key = r.stream ? "Stream" : "Sync"
-      const cur = m.get(key) ?? { requests: 0, totalMs: 0, upstreamMs: 0, ttfbMs: 0, tokenMiss: 0 }
+      const cur = m.get(key) ?? { requests: 0, totalMs: 0, upstreamMs: 0 }
       cur.requests += r.requests
       cur.totalMs += r.totalMs
       cur.upstreamMs += r.upstreamMs
-      cur.ttfbMs += r.ttfbMs
-      cur.tokenMiss += r.tokenMiss
       m.set(key, cur)
     }
     return [...m.entries()]
@@ -141,20 +130,17 @@ export function useLatency() {
         requests: v.requests,
         avgTotal: v.requests > 0 ? Math.round(v.totalMs / v.requests) : 0,
         avgUpstream: v.requests > 0 ? Math.round(v.upstreamMs / v.requests) : 0,
-        avgTtfb: v.requests > 0 ? Math.round(v.ttfbMs / v.requests) : 0,
-        tokenMissRate: v.requests > 0 ? Math.round((v.tokenMiss / v.requests) * 100) : 0,
       }))
       .sort((a, b) => b.requests - a.requests)
   }, [filtered])
 
   const byColo = useMemo<LatencyByColo[]>(() => {
-    const m = new Map<string, { requests: number; totalMs: number; upstreamMs: number; tokenMiss: number }>()
+    const m = new Map<string, { requests: number; totalMs: number; upstreamMs: number }>()
     for (const r of filtered) {
-      const cur = m.get(r.colo) ?? { requests: 0, totalMs: 0, upstreamMs: 0, tokenMiss: 0 }
+      const cur = m.get(r.colo) ?? { requests: 0, totalMs: 0, upstreamMs: 0 }
       cur.requests += r.requests
       cur.totalMs += r.totalMs
       cur.upstreamMs += r.upstreamMs
-      cur.tokenMiss += r.tokenMiss
       m.set(r.colo, cur)
     }
     return [...m.entries()]
@@ -163,7 +149,6 @@ export function useLatency() {
         requests: v.requests,
         avgTotal: v.requests > 0 ? Math.round(v.totalMs / v.requests) : 0,
         avgUpstream: v.requests > 0 ? Math.round(v.upstreamMs / v.requests) : 0,
-        tokenMissRate: v.requests > 0 ? Math.round((v.tokenMiss / v.requests) * 100) : 0,
       }))
       .sort((a, b) => b.requests - a.requests)
   }, [filtered])

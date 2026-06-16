@@ -21,11 +21,10 @@ test('startTimer returns a function returning elapsed ms', async () => {
   expect(elapsed()).toBeGreaterThanOrEqual(4)
 })
 
-test('recordLatency without source/target writes only latency row', async () => {
+test('recordLatency without source/target is a no-op (legacy latency table no longer written)', async () => {
   await recordLatency('k1', 'gpt-4o', 'docker', { totalMs: 100, upstreamMs: 80, ttfbMs: 80, tokenMiss: false })
   const lat = await repo.latency.query({ keyId: 'k1', start: today().slice(0,10)+'T00', end: today().slice(0,10)+'T24' })
-  expect(lat.length).toBe(1)
-  expect(lat[0].totalMs).toBe(100)
+  expect(lat.length).toBe(0)
   const perf = await repo.performance.query({ keyId: 'k1', start: today().slice(0,10)+'T00', end: today().slice(0,10)+'T24' })
   expect(perf.summary.length).toBe(0)
   expect(perf.buckets.length).toBe(0)

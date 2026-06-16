@@ -37,7 +37,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Messages API", () => {
     const response = await client.messages.create({
       max_tokens: 100,
       messages: [{ role: "user", content: "Say hello in one word" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
     })
 
     expect(response.id).toBeDefined()
@@ -55,7 +55,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Messages API", () => {
     const response = await client.messages.create({
       max_tokens: 100,
       messages: [{ role: "user", content: "What are you?" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
       system: "You are a helpful assistant. Respond in one sentence.",
     })
 
@@ -63,14 +63,14 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Messages API", () => {
     expect(response.stop_reason).toBeDefined()
   }, TEST_TIMEOUT)
 
-  // Reference: messages.test.ts - temperature param
-  // Note: claude-sonnet-4.5 rejects temperature+top_p together; test temperature alone.
-  test("create message - with temperature", async () => {
+  // Reference: messages.test.ts - temperature and top_p params
+  test("create message - with temperature and top_p", async () => {
     const response = await client.messages.create({
       max_tokens: 50,
       messages: [{ role: "user", content: "Hi" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
       temperature: 0.5,
+      top_p: 0.9,
     })
 
     expect(response.id).toBeDefined()
@@ -82,7 +82,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Messages API", () => {
     const response = await client.messages.create({
       max_tokens: 50,
       messages: [{ role: "user", content: "Say yes" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
       top_k: 5,
     })
 
@@ -97,7 +97,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Messages API", () => {
         { role: "assistant", content: "Hi there!" },
         { role: "user", content: "How are you?" },
       ],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
     })
 
     expect(response.input_tokens).toBeGreaterThan(0)
@@ -107,7 +107,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Messages API", () => {
   test("count tokens - with system", async () => {
     const response = await client.messages.countTokens({
       messages: [{ role: "user", content: "Hello" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
       system: "You are a helpful assistant",
     })
 
@@ -122,7 +122,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Messages API", () => {
         { role: "assistant", content: "Got it! I'll remember your name is Alice." },
         { role: "user", content: "What's my name?" },
       ],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
     })
 
     expect(response.content[0].type).toBe("text")
@@ -135,11 +135,11 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Messages API", () => {
     const response = await client.messages.create({
       max_tokens: 100,
       messages: [{ role: "user", content: "Count: 1, 2, 3, 4, 5" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
       stop_sequences: ["3"],
     })
 
-    expect(["end_turn", "stop_sequence"]).toContain(response.stop_reason)
+    expect(["stop_sequence", "end_turn"]).toContain(response.stop_reason)
     // Text should stop before or at "3"
   }, TEST_TIMEOUT)
 
@@ -148,7 +148,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Messages API", () => {
     const response = await client.messages.create({
       max_tokens: 50,
       messages: [{ role: "user", content: "Hi" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
       metadata: { user_id: "test-user-123" },
     })
 
@@ -171,7 +171,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Streaming", () => {
     const stream = await client.messages.create({
       max_tokens: 100,
       messages: [{ role: "user", content: "Count to 3" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
       stream: true,
     })
 
@@ -207,7 +207,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Streaming", () => {
     const stream = await client.messages.create({
       max_tokens: 100,
       messages: [{ role: "user", content: "Say hello" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
       stream: true,
     })
 
@@ -230,7 +230,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Streaming", () => {
     const stream = await client.messages.create({
       max_tokens: 50,
       messages: [{ role: "user", content: "Hi" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
       stream: true,
     })
 
@@ -261,7 +261,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Streaming", () => {
     const stream = await client.messages.create({
       max_tokens: 50,
       messages: [{ role: "user", content: "Say yes" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
       stream: true,
     })
 
@@ -284,7 +284,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Streaming", () => {
     const stream = await client.messages.create({
       max_tokens: 100,
       messages: [{ role: "user", content: "I say high" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
       system: "When I say high, you say low",
       stream: true,
     })
@@ -319,7 +319,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Tool Use", () => {
     const response = await client.messages.create({
       max_tokens: 200,
       messages: [{ role: "user", content: "What's the weather in Tokyo?" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
       tools: [
         {
           name: "get_weather",
@@ -348,7 +348,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Tool Use", () => {
     const response = await client.messages.create({
       max_tokens: 200,
       messages: [{ role: "user", content: "What is 2 + 2?" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
       tools: [
         {
           name: "calculator",
@@ -395,7 +395,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Tool Use", () => {
           ],
         },
       ],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
       tools: [
         {
           name: "get_weather",
@@ -431,7 +431,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Response Validation", () => {
     const response = await client.messages.create({
       max_tokens: 50,
       messages: [{ role: "user", content: "Hi" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
     })
 
     // Verify all required response fields per Anthropic API spec
@@ -451,7 +451,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Response Validation", () => {
     const response = await client.messages.create({
       max_tokens: 50,
       messages: [{ role: "user", content: "Say yes" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
     })
 
     const textBlock = response.content.find((b) => b.type === "text")
@@ -464,7 +464,7 @@ describe.skipIf(SKIP_LIVE)("Anthropic SDK - Response Validation", () => {
     const response = await client.messages.create({
       max_tokens: 100,
       messages: [{ role: "user", content: "Say yes" }],
-      model: "claude-sonnet-4.5",
+      model: "claude-sonnet-4.6",
     })
 
     // Valid stop_reason values per Anthropic API

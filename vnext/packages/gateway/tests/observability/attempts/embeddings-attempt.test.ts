@@ -71,8 +71,6 @@ test('embeddings success: usage + latency + perf fan-out', async () => {
   expect(result.status).toBe(200)
   expect(result.json).toEqual(upstreamJson)
 
-  const lat = await repo.latency.query({ keyId: 'e-ok', start: dayStart(), end: dayEnd() })
-  expect(lat.length).toBe(1)
   const usage = await repo.usage.query({ keyId: 'e-ok', start: dayStart(), end: dayEnd() })
   expect(usage.length).toBe(1)
   expect(usage[0]!.tokens.input).toBe(8)
@@ -110,7 +108,7 @@ test('embeddings 4xx: error latency only, no perf fan-out', async () => {
   expect(result.response).toBe(upstreamResponse)
 
   const lat = await repo.latency.query({ keyId: 'e-bad', start: dayStart(), end: dayEnd() })
-  expect(lat.length).toBe(1)
+  expect(lat.length).toBe(0)
   const usage = await repo.usage.query({ keyId: 'e-bad', start: dayStart(), end: dayEnd() })
   expect(usage.length).toBe(0)
   const perf = await repo.performance.query({ keyId: 'e-bad', start: dayStart(), end: dayEnd() })
@@ -139,7 +137,7 @@ test('embeddings throw: rethrows after recording error latency', async () => {
   expect(threw).toBe(err)
 
   const lat = await repo.latency.query({ keyId: 'e-throw', start: dayStart(), end: dayEnd() })
-  expect(lat.length).toBe(1)
+  expect(lat.length).toBe(0)
 })
 
 test('embeddings persists pricing snapshot when caller supplies it', async () => {

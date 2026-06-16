@@ -66,7 +66,7 @@ test('images success: latency only (no usage, no perf fan-out)', async () => {
   expect(result.response).toBe(upstreamResponse)
 
   const lat = await repo.latency.query({ keyId: 'i-ok', start: dayStart(), end: dayEnd() })
-  expect(lat.length).toBe(1)
+  expect(lat.length).toBe(0)
   // Images don't extract usage
   const usage = await repo.usage.query({ keyId: 'i-ok', start: dayStart(), end: dayEnd() })
   expect(usage.length).toBe(0)
@@ -96,7 +96,7 @@ test('images 4xx: error-tagged latency, response forwarded', async () => {
   expect(result.response).toBe(upstreamResponse)
 
   const lat = await repo.latency.query({ keyId: 'i-bad', start: dayStart(), end: dayEnd() })
-  expect(lat.length).toBe(1)
+  expect(lat.length).toBe(0)
 })
 
 test('images throw: rethrows after recording error latency', async () => {
@@ -119,7 +119,7 @@ test('images throw: rethrows after recording error latency', async () => {
   expect(threw).toBe(err)
 
   const lat = await repo.latency.query({ keyId: 'i-throw', start: dayStart(), end: dayEnd() })
-  expect(lat.length).toBe(1)
+  expect(lat.length).toBe(0)
 })
 
 test('images quota exceeded: 429 envelope, no upstream call, no latency', async () => {

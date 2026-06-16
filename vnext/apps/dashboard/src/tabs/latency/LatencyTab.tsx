@@ -4,12 +4,6 @@ import { TimeSeriesChart, type ChartDataset } from "../../components/TimeSeriesC
 import { useT } from "../../state/i18n"
 import { Select } from "../../components/Select"
 
-function missClass(rate: number): string {
-  if (rate > 50) return "text-accent-red"
-  if (rate > 20) return "text-accent-amber"
-  return "text-accent-teal"
-}
-
 export function LatencyTab() {
   const s = useLatency()
   const t = useT()
@@ -108,15 +102,9 @@ export function LatencyTab() {
           />
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-2 pt-5 border-t border-white/5">
+        <div className="grid grid-cols-2 gap-4 mt-2 pt-5 border-t border-white/5">
           <SummaryCell label={t("dash.avgTotalLabel")} value={`${s.summary.avgTotal} ms`} />
           <SummaryCell label={t("dash.avgUpstreamLabel")} value={`${s.summary.avgUpstream} ms`} />
-          <SummaryCell label={t("dash.avgTtfbLabel")} value={`${s.summary.avgTtfb} ms`} />
-          <SummaryCell
-            label={t("dash.tokenMissRate")}
-            value={`${s.summary.tokenMissRate}%`}
-            valueClass={missClass(s.summary.tokenMissRate)}
-          />
         </div>
       </div>
 
@@ -130,9 +118,7 @@ export function LatencyTab() {
                   <Th align="left">{t("dash.typeLabel")}</Th>
                   <Th>{t("dash.requestsLabel")}</Th>
                   <Th>{t("dash.avgTotalLabel")}</Th>
-                  <Th>{t("dash.avgUpstreamLabel")}</Th>
-                  <Th>{t("dash.avgTtfbLabel")}</Th>
-                  <Th className="pr-0">{t("dash.tokenMissLabel")}</Th>
+                  <Th className="pr-0">{t("dash.avgUpstreamLabel")}</Th>
                 </tr>
               </thead>
               <tbody>
@@ -145,10 +131,8 @@ export function LatencyTab() {
                     </td>
                     <NumCell>{t.requests.toLocaleString()}</NumCell>
                     <NumCell>{t.avgTotal} ms</NumCell>
-                    <NumCell>{t.avgUpstream} ms</NumCell>
-                    <NumCell>{t.avgTtfb} ms</NumCell>
-                    <td className={`py-2.5 pr-0 text-right font-mono text-xs ${missClass(t.tokenMissRate)}`}>
-                      {t.tokenMissRate}%
+                    <td className="py-2.5 pr-0 text-right text-themed-secondary font-mono text-xs">
+                      {t.avgUpstream} ms
                     </td>
                   </tr>
                 ))}
@@ -168,8 +152,7 @@ export function LatencyTab() {
                   <Th align="left">{t("dash.coloLabel")}</Th>
                   <Th>{t("dash.requestsLabel")}</Th>
                   <Th>{t("dash.avgTotalLabel")}</Th>
-                  <Th>{t("dash.avgUpstreamLabel")}</Th>
-                  <Th className="pr-0">{t("dash.tokenMissLabel")}</Th>
+                  <Th className="pr-0">{t("dash.avgUpstreamLabel")}</Th>
                 </tr>
               </thead>
               <tbody>
@@ -180,9 +163,8 @@ export function LatencyTab() {
                     </td>
                     <NumCell>{c.requests.toLocaleString()}</NumCell>
                     <NumCell>{c.avgTotal} ms</NumCell>
-                    <NumCell>{c.avgUpstream} ms</NumCell>
-                    <td className={`py-2.5 pr-0 text-right font-mono text-xs ${missClass(c.tokenMissRate)}`}>
-                      {c.tokenMissRate}%
+                    <td className="py-2.5 pr-0 text-right text-themed-secondary font-mono text-xs">
+                      {c.avgUpstream} ms
                     </td>
                   </tr>
                 ))}

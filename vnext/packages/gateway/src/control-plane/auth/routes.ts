@@ -99,6 +99,22 @@ authRouter.post('/login', async (c) => {
     })
   }
 
+  // User Key (legacy users.user_key column) — accepted by older clients (llm-relay).
+  const user = await getRepo().users.findByKey(sessionToken)
+  if (user) {
+    if (user.disabled) return c.json({ error: 'Account disabled' }, 403)
+    const isAdmin = !!(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))
+    return c.json({
+      ok: true,
+      isAdmin,
+      isUser: true,
+      userId: user.id,
+      userName: user.name,
+      email: user.email,
+      avatarUrl: user.avatarUrl,
+    })
+  }
+
   return c.json({ error: 'Invalid session' }, 401)
 })
 

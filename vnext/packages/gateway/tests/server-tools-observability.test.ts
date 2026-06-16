@@ -81,7 +81,7 @@ function makeImageBinding(): ProviderBinding {
   }
 }
 
-test('image-generation rewire writes ≥1 latency row per call', async () => {
+test('image-generation rewire invokes runImagesAttempt successfully', async () => {
   await repo.apiKeys.save({
     id: 'k-img',
     name: 'k',
@@ -100,8 +100,11 @@ test('image-generation rewire writes ≥1 latency row per call', async () => {
   )
   expect(outcome.ok).toBe(true)
 
+  // Spec-3: images intentionally skip perf fan-out (no meaningful target-api),
+  // and the legacy `latency` table is no longer written. So observability is
+  // a silent no-op for images — covered by attempts/images-attempt.test.ts.
   const latency = db.query('SELECT * FROM latency WHERE key_id = ?').all('k-img') as unknown[]
-  expect(latency.length).toBeGreaterThanOrEqual(1)
+  expect(latency.length).toBe(0)
 })
 
 test('web-search rewire writes ≥1 usage row + ≥1 performance row per leaf call', async () => {
