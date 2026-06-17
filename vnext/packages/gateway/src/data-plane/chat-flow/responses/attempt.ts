@@ -64,6 +64,8 @@ import {
   runImageGenerationShortcut,
 } from './image-generation-shortcut.ts'
 import type { CreateProviderOptions } from '../../providers/registry.ts'
+import { traverseTranslation } from '../shared/traverse-translation.ts'
+import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-dispatch.ts'
 
 // ─── Public types ─────────────────────────────────────────────────────────
 
@@ -93,6 +95,15 @@ export interface ResponsesAttemptArgs {
   readonly requestId?: string
   readonly inheritedHeaders?: Record<string, string>
   readonly snapshotMode?: 'none'
+  /**
+   * Test seam for cross-protocol dispatch. When the resolved binding routes to
+   * a non-`responses` hub, the attempt looks up the hub attempt via this
+   * override (if provided) or {@link pickHubAttempt} otherwise. Production
+   * code never sets this; tests inject a fake hub attempt to keep the
+   * cross-protocol contract independent of the real messages/chat_completions
+   * attempt implementations.
+   */
+  readonly hubAttemptOverride?: (p: HubAttemptProtocol) => { generate: (a: never) => Promise<never> }
 }
 
 // Stream-interceptor type re-exported from the registry module (Batch 4).
@@ -216,14 +227,44 @@ export const responsesAttempt = {
     if (sel.kind === 'no-translator') return internalErrorResult(500, new Error(`no translator for responses → ${sel.targetEndpoint}`))
 
     if (sel.targetEndpoint !== 'responses') {
-      // FIXME(spec-6): native cross-protocol attempts deferred. The legacy
-      // `dispatch()` bridge was removed in Spec 3 Part 4; surface a 501 so
-      // the failure mode is loud and telemetry accounts for the abandoned
-      // response.
-      return internalErrorResult(
-        501,
-        new Error(`cross-protocol attempts not yet supported: responses → ${sel.targetEndpoint}`),
-      )
+      // Cross-protocol attempt: delegate to the hub attempt via
+      // `traverseTranslation`. The translator shapes the request payload into
+      // the hub protocol, the hub attempt issues the upstream call, then the
+      // translator's event mapper rewraps the returned event stream so the
+      // responses caller still sees its native frames. See Spec 6 §3.4.
+      //
+      // Note: `requestId` and `userAgent` are responses-specific args that are
+      // forwarded through `traverseTranslation` to the hub attempt for
+      // image-gen + telemetry correlation. The image-generation shortcut already
+      // ran before this point, so these are safe to pass through.
+      const hubProtocol = sel.targetEndpoint as HubAttemptProtocol
+      const hubAttempt = (args.hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
+      return await traverseTranslation({
+        sourcePayload: args.payload as Record<string, unknown>,
+        sourceProtocol: 'responses',
+        hubProtocol,
+        translator: sel.translator,
+        innerAttempt: async (innerArgs) => {
+          return (await hubAttempt.generate({
+            payload: innerArgs.payload as never,
+            auth: innerArgs.auth as never,
+            ctx: { downstreamAbortSignal: innerArgs.signal } as never,
+            telemetryCtx: innerArgs.inheritedTelemetryCtx,
+            inheritedHeaders: innerArgs.inheritedHeaders,
+            snapshotMode: innerArgs.snapshotMode,
+            requestId: innerArgs.requestId,
+            userAgent: innerArgs.userAgent,
+          } as never)) as never
+        },
+        inheritedHeaders: args.inheritedHeaders ?? {},
+        inheritedTelemetryCtx: args.telemetryCtx,
+        auth: args.auth,
+        requestId: args.requestId,
+        userAgent: args.userAgent,
+        signal: args.ctx.downstreamAbortSignal,
+        fallbackMaxOutputTokens: (sel.binding as { upstreamMaxOutputTokens?: number }).upstreamMaxOutputTokens,
+        model: sel.bareModel,
+      })
     }
 
     const invocation: Invocation = {
