@@ -14,13 +14,16 @@
  * Telemetry persistence is exercised separately in state-bridge.test.ts —
  * here we omit `telemetryCtx` so no usage/perf rows are required.
  */
-import { test, expect } from 'bun:test'
+import { test, expect, mock } from 'bun:test'
 import { respondGemini } from '../../../../src/data-plane/chat-flow/gemini/respond.ts'
 import {
   eventResult,
   internalErrorResult,
   type TelemetryModelIdentity,
+  type ProtocolFrame,
 } from '@vnext/protocols/common'
+import type { ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
+import type { MessagesStreamEvent } from '@vnext/protocols/messages'
 
 const stubIdentity: TelemetryModelIdentity = {
   model: '<unknown>',
@@ -143,4 +146,138 @@ test('events + wantsStream=false: error frame from translator short-circuits to 
   expect(resp.status).toBe(200)
   const json = (await resp.json()) as { error: { message: string } }
   expect(json.error.message).toBe('boom')
+})
+
+// ─── Spec 6 Part 4 Task 2: translateBody wiring ────────────────────────────
+//
+// When `translateBody` is set on the EventResult (from `traverseTranslation`),
+// the non-streaming branch must:
+//   1. Dispatch reassembly to the correct hub reassembler (not reassembleGeminiEvents).
+//   2. Call `translateBody(hubJson, ctx)` to convert the hub JSON to gemini JSON.
+//   3. Return the translated JSON, not the raw hub-shaped JSON.
+//
+// Gemini has no native hub — all bindings are cross-protocol.
+// Default fallback for hubProtocol is 'chat_completions'.
+
+test('wantsStream=false + translateBody set: invokes translateBody with hub-reassembled JSON', async () => {
+  // Simulate a chat_completions hub frame: a [DONE] sentinel after a content chunk.
+  const chatFrame1: ProtocolFrame<ChatCompletionsStreamEvent> = {
+    type: 'event',
+    event: {
+      id: 'cmp-1',
+      object: 'chat.completion.chunk',
+      model: 'gpt-4',
+      choices: [{ index: 0, delta: { role: 'assistant', content: 'hello' }, finish_reason: null }],
+    } as ChatCompletionsStreamEvent,
+  }
+  const chatFrameDone: ProtocolFrame<ChatCompletionsStreamEvent> = { type: 'done' }
+
+  async function* chatHubFrames(): AsyncGenerator<ProtocolFrame<ChatCompletionsStreamEvent>> {
+    yield chatFrame1
+    yield chatFrameDone
+  }
+
+  // translateBody mock: returns a sentinel gemini-shaped object so we can verify
+  // it was called with the hub-shaped JSON and its return value is what respond.ts serves.
+  const sentinelGeminiJson = {
+    candidates: [{ index: 0, content: { role: 'model', parts: [{ text: 'hello' }] }, finishReason: 'STOP' }],
+    modelVersion: 'gemini-2.5-pro',
+  }
+  const translateBody = mock(async (_hubJson: unknown) => sentinelGeminiJson)
+
+  const identity: TelemetryModelIdentity = {
+    ...stubIdentity,
+    translatorPair: { source: 'gemini', hub: 'chat_completions' },
+  }
+
+  const result = eventResult(
+    chatHubFrames() as unknown as AsyncIterable<unknown>,
+    identity,
+    undefined,
+    undefined,
+    translateBody as never,
+  )
+
+  const resp = await respondGemini(result, { wantsStream: false })
+  expect(resp.status).toBe(200)
+  const json = await resp.json()
+
+  // translateBody must have been called (not the legacy reassembleGeminiEvents path)
+  expect(translateBody).toHaveBeenCalledTimes(1)
+  // The first arg to translateBody should be the hub-shaped chat_completions JSON
+  const hubArg = translateBody.mock.calls[0]![0] as { choices?: unknown[] }
+  expect(hubArg).toHaveProperty('choices')
+
+  // The response body must be what translateBody returned (gemini-shaped sentinel)
+  expect(json).toEqual(sentinelGeminiJson)
+})
+
+test('wantsStream=false + translateBody set with hub=messages: dispatches to messages reassembler', async () => {
+  // Emit a minimal messages hub stream: message_start → content_block_start →
+  // content_block_delta → content_block_stop → message_delta → message_stop
+  const framesMessages: Array<ProtocolFrame<MessagesStreamEvent>> = [
+    {
+      type: 'event',
+      event: {
+        type: 'message_start',
+        message: {
+          id: 'm1', type: 'message', role: 'assistant', model: 'claude-3', content: [],
+          stop_reason: null, stop_sequence: null,
+          usage: { input_tokens: 5, output_tokens: 0 },
+        },
+      } as ProtocolFrame<MessagesStreamEvent>['event'],
+    },
+    {
+      type: 'event',
+      event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } as ProtocolFrame<MessagesStreamEvent>['event'],
+    },
+    {
+      type: 'event',
+      event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'hi' } } as ProtocolFrame<MessagesStreamEvent>['event'],
+    },
+    {
+      type: 'event',
+      event: { type: 'content_block_stop', index: 0 } as ProtocolFrame<MessagesStreamEvent>['event'],
+    },
+    {
+      type: 'event',
+      event: { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 2 } } as ProtocolFrame<MessagesStreamEvent>['event'],
+    },
+    {
+      type: 'event',
+      event: { type: 'message_stop' } as ProtocolFrame<MessagesStreamEvent>['event'],
+    },
+  ]
+
+  async function* messagesHubFrames(): AsyncGenerator<ProtocolFrame<MessagesStreamEvent>> {
+    for (const f of framesMessages) yield f
+  }
+
+  const sentinelGeminiJson2 = { candidates: [{ index: 0, content: { role: 'model', parts: [{ text: 'hi' }] } }] }
+  const translateBody2 = mock(async (_hubJson: unknown) => sentinelGeminiJson2)
+
+  const identity2: TelemetryModelIdentity = {
+    ...stubIdentity,
+    translatorPair: { source: 'gemini', hub: 'messages' },
+  }
+
+  const result2 = eventResult(
+    messagesHubFrames() as unknown as AsyncIterable<unknown>,
+    identity2,
+    undefined,
+    undefined,
+    translateBody2 as never,
+  )
+
+  const resp2 = await respondGemini(result2, { wantsStream: false })
+  expect(resp2.status).toBe(200)
+  const json2 = await resp2.json()
+
+  expect(translateBody2).toHaveBeenCalledTimes(1)
+  // The first arg must be the messages-shaped JSON (has a 'content' array)
+  const hubArg2 = translateBody2.mock.calls[0]![0] as { content?: unknown[]; type?: string }
+  expect(hubArg2).toHaveProperty('content')
+  expect(hubArg2.type).toBe('message')
+
+  expect(json2).toEqual(sentinelGeminiJson2)
 })

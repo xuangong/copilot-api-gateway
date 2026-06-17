@@ -42,6 +42,9 @@ import { encodeClientSSE } from '../../dispatch/sse-writers.ts'
 import { SourceStreamState, recordPerformance } from '../shared/respond-telemetry.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import { consumeWithState, persistFromEventResult } from './state-bridge.ts'
+import { collectChatCompletionsProtocolEventsToResult } from '../chat-completions/events/to-result'
+import { collectMessagesProtocolEventsToResult } from '../messages/events/reassemble'
+import { collectResponsesProtocolEventsToResult } from '../responses/events/reassemble'
 
 export interface RespondGeminiOptions {
   /**
@@ -246,6 +249,16 @@ const reassembleGeminiEvents = async (
  * envelope and emits it as JSON. Any reassembly error surfaces as a 502 with
  * the gemini-shape `{error: {message}}` envelope. Telemetry persistence runs
  * in both success and error paths.
+ *
+ * Cross-protocol attempts (Spec 6 Part 4): when `translatorPair` is present,
+ * the events array carries HUB-shaped frames. Reassemble using the hub's
+ * reassembler, then hand the hub-shaped JSON to `translateBody` to convert
+ * back to the gemini JSON envelope before responding.
+ *
+ * Gemini has no native hub — all successful bindings are cross-protocol.
+ * Default fallback for `hubProtocol` is `'chat_completions'` (the most
+ * common hub for gemini; `translatorPair` will always be set in practice
+ * but the fallback keeps the legacy same-protocol path intact).
  */
 const renderEventsAsJson = async (
   result: EventResult<unknown>,
@@ -256,11 +269,36 @@ const renderEventsAsJson = async (
     : null
   const events = state ? consumeWithState(result.events, state) : result.events
   try {
-    const envelope = await reassembleGeminiEvents(events)
+    // Dispatch reassembly on hub protocol.
+    // Gemini has no native hub, so all production bindings are cross-protocol
+    // (traverseTranslation always stamps `translatorPair`). When `translatorPair`
+    // is absent (legacy tests / unknown paths), fall back to the native gemini
+    // stream reassembler so existing callers keep working.
+    const hubProtocol = result.modelIdentity.translatorPair?.hub
+    let reassembled: unknown
+    if (hubProtocol === 'messages') {
+      reassembled = await collectMessagesProtocolEventsToResult(events as never)
+    } else if (hubProtocol === 'responses') {
+      reassembled = await collectResponsesProtocolEventsToResult(events as never)
+    } else if (hubProtocol === 'chat_completions') {
+      reassembled = await collectChatCompletionsProtocolEventsToResult(events as never)
+    } else {
+      // No translatorPair (or unknown hub) — use the legacy gemini reassembler.
+      reassembled = await reassembleGeminiEvents(events)
+    }
+    // If a translator-supplied body translator is attached, convert the
+    // hub-shaped JSON back to the gemini JSON envelope.
+    const finalBody = result.translateBody
+      ? await result.translateBody(reassembled, {
+          signal: options.downstreamAbortController?.signal ?? new AbortController().signal,
+          fallbackMaxOutputTokens: undefined,
+          model: result.modelIdentity.modelKey,
+        })
+      : reassembled
     if (state && options.telemetryCtx) {
       waitUntil(persistFromEventResult(result, state, options.telemetryCtx))
     }
-    return Response.json(envelope)
+    return Response.json(finalBody)
   } catch (err) {
     if (state) state.failedAfter()
     if (state && options.telemetryCtx) {
