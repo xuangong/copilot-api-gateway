@@ -24,3 +24,11 @@ test('passes usage-only chunk when includeUsageChunk=true', () => {
   const sse = chatCompletionsProtocolFrameToSSEFrame(eventFrame(ev), { includeUsageChunk: true })
   expect(sse).not.toBeNull()
 })
+
+test('translator-error sentinel frame → terminal SSE error chunk', () => {
+  const sentinel = { kind: 'translator-error', protocol: 'chat_completions', error: 'oops' } as any
+  const sse = chatCompletionsProtocolFrameToSSEFrame(sentinel, { includeUsageChunk: false })
+  expect(sse).not.toBeNull()
+  expect(sse!.event).toBe('error')
+  expect(JSON.parse(sse!.data).error.message).toBe('oops')
+})

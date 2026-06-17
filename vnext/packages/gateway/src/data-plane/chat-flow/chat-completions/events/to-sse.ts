@@ -9,6 +9,10 @@ export const chatCompletionsProtocolFrameToSSEFrame = (
   frame: ProtocolFrame<ChatCompletionsStreamEvent>,
   options: ChatCompletionsProtocolFrameToSSEFrameOptions,
 ): SseFrame | null => {
+  if ((frame as { kind?: string }).kind === 'translator-error') {
+    const f = frame as unknown as { error?: string }
+    return sseFrame(JSON.stringify({ error: { message: f.error ?? 'translator error' } }), 'error')
+  }
   if (frame.type === 'done') return sseFrame('[DONE]')
   const ev = frame.event as { object?: unknown; choices?: unknown[]; usage?: unknown }
   // Drop usage-only chunks unless includeUsageChunk is set
