@@ -201,13 +201,14 @@ test('responses client → messages upstream (streaming): returns SSE body; upst
   expect(res.headers.get('content-type') ?? '').toContain('text/event-stream')
 
   const body = await readSSEText(res)
-  // The responses respond.ts streaming branch applies responsesProtocolFrameToSSEFrame
-  // to each hub frame. For responses→messages cross-protocol, the hub frames are
-  // messages-protocol shaped — they pass through containing messages events since
-  // no translateEvents is applied at the SSE layer yet (only non-streaming path
-  // uses translateBody). The messages hub terminates with message_stop.
+  // After fix: responses/respond.ts streaming branch applies
+  // applyTranslatorEventsForStreaming which runs translateMessagesToResponsesSSE
+  // at SSE-time. The translated output yields responses-shaped events, so the
+  // SSE body must contain "response.completed" (the responses protocol terminator),
+  // NOT "message_stop" (the messages hub terminator).
   expect(body).toContain('data:')
-  expect(body).toContain('message_stop')
+  expect(body).toContain('"type":"response.completed"')
+  expect(body).not.toContain('message_stop')
 
   const path = install.capturedPath()
   expect(path).not.toBeNull()

@@ -29,6 +29,7 @@
 import { waitUntil } from '@vnext/platform'
 import {
   upstreamErrorToResponse,
+  eventFrame,
   sseFrame,
   type EventResult,
   type ExecuteResult,
@@ -137,6 +138,40 @@ async function persistFromEventResult<T>(
   await recordPerformance(telemetryCtx, md.performance, state.failed)
 }
 
+// Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
+// sees source-shape (messages) frames; same-protocol falls through unchanged.
+//
+// When `translateEvents` is set on the EventResult, `result.events` carries
+// HUB-shape frames (e.g. `ProtocolFrame<ResponsesStreamEvent>` for
+// messages→responses, or `ProtocolFrame<ChatCompletionsStreamEvent>` for
+// messages→chat_completions). Before SSE encoding we:
+//   1. unwrap `ProtocolFrame<HubFrame>` → bare hub events (yield `frame.event`
+//      for `frame.type === 'event'`),
+//   2. run them through the translator (`translateResponsesToMessagesSSE`,
+//      `translateChatToMessagesSSE`),
+//   3. re-wrap each yielded source event as a `ProtocolFrame<MessagesStreamEvent>`.
+// No `doneFrame()` is appended — messages SSE terminates with `message_stop`
+// (the natural terminator emitted by the translator), not a synthetic sentinel.
+async function* applyTranslatorEventsForStreaming(
+  hubFrames: AsyncIterable<ProtocolFrame<unknown>>,
+  translateEvents: NonNullable<EventResult<unknown>['translateEvents']>,
+  signal: AbortSignal | undefined,
+  model: string | undefined,
+): AsyncGenerator<ProtocolFrame<MessagesStreamEvent>> {
+  async function* unwrap(): AsyncGenerator<unknown> {
+    for await (const frame of hubFrames) {
+      if (frame.type === 'event') yield frame.event
+    }
+  }
+  const ctx = {
+    signal: signal ?? new AbortController().signal,
+    fallbackMaxOutputTokens: undefined,
+    model,
+  }
+  const translated = translateEvents(unwrap(), ctx) as AsyncIterable<MessagesStreamEvent>
+  for await (const ev of translated) yield eventFrame(ev) as ProtocolFrame<MessagesStreamEvent>
+}
+
 /**
  * Mid-stream errors must still terminate with a well-formed SSE record so the
  * client parser doesn't hang waiting for the next chunk. Anthropic's `error`
@@ -150,7 +185,17 @@ const renderEventsAsSSE = (
   const state = options.telemetryCtx
     ? new SourceStreamState(result.modelIdentity.modelKey)
     : null
-  const events = state ? consumeWithState(result.events, state) : result.events
+  // Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
+  // sees source-shape frames; same-protocol falls through unchanged.
+  const upstreamFrames: AsyncIterable<ProtocolFrame<MessagesStreamEvent>> = result.translateEvents
+    ? applyTranslatorEventsForStreaming(
+        result.events as unknown as AsyncIterable<ProtocolFrame<unknown>>,
+        result.translateEvents,
+        options.downstreamAbortController?.signal,
+        result.modelIdentity.modelKey,
+      )
+    : result.events
+  const events = state ? consumeWithState(upstreamFrames, state) : upstreamFrames
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {

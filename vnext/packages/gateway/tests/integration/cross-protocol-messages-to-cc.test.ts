@@ -204,13 +204,14 @@ test('messages client → chat_completions upstream (streaming): returns SSE bod
   expect(res.headers.get('content-type') ?? '').toContain('text/event-stream')
 
   const body = await readSSEText(res)
-  // The messages respond.ts streaming branch applies messagesProtocolFrameToSSEFrame
-  // to each hub frame. For messages→chat_completions cross-protocol, the hub
-  // frames are chat.completion.chunk shaped — they pass through as-is since no
-  // translateEvents is applied at the SSE layer yet (only non-streaming path uses
-  // translateBody). The load-bearing assertions are the presence of SSE data frames
-  // and the captured upstream path.
+  // After fix: messages/respond.ts streaming branch applies
+  // applyTranslatorEventsForStreaming which runs translateChatToMessagesSSE
+  // at SSE-time. The translated output yields messages-shaped events, so the
+  // SSE body must contain "message_stop" (the messages protocol terminator),
+  // NOT "[DONE]" (the chat_completions hub terminator).
   expect(body).toContain('data:')
+  expect(body).toContain('"type":"message_stop"')
+  expect(body).not.toContain('[DONE]')
 
   const path = install.capturedPath()
   expect(path).not.toBeNull()
