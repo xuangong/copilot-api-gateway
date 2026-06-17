@@ -16,39 +16,29 @@
  *     the client's POV"; the translator handles request + event reshaping in
  *     a single hop.
  *
- *   - Upstream stream is parsed in the HUB wire shape (one of
- *     `parseMessagesStream` / `parseChatCompletionsStream` / `parseResponsesStream`)
- *     so `withUpstreamTelemetry({protocol: <hub>})` reuses the hub's
- *     terminal-frame classifier + usage extractor. After telemetry
- *     decoration, we unwrap `ProtocolFrame<HubEvent>` back to bare hub events
- *     and feed them through `translator.translateEvents(events, {model})` to
- *     produce the bare `GeminiStreamEvent` sequence the client (and
- *     `gemini/respond.ts`) consumes. The output `EventResult` is therefore
- *     `EventResult<unknown>` carrying bare gemini events — NOT
- *     `ProtocolFrame<GeminiStreamEvent>` — because no gemini-shape protocol
- *     frame parser exists and the SSE writer (`encodeClientSSE('gemini', …)`)
- *     reads bare events.
+ *   - Every binding selection drives through `traverseTranslation` (Spec 6
+ *     §3.4 / §5), which: (a) stamps `translatorPair` on `modelIdentity` so
+ *     respond.ts can dispatch reassembly on the hub protocol; (b) forwards
+ *     hub-shape frames downstream verbatim; (c) sets `translateBody` on the
+ *     result so respond.ts can convert hub JSON → gemini JSON for non-streaming
+ *     responses. The hub attempt (`pickHubAttempt`) owns the upstream fetch,
+ *     SSE parsing, and `withUpstreamTelemetry` decoration — no bespoke stream
+ *     pipeline in this file.
  *
  *   - `forceStream` semantics (set by `gemini/serve.ts` when the verb is
  *     `streamGenerateContent`) are intentionally NOT consumed here. Whether
  *     to render SSE vs JSON is a presentation concern owned by `respond.ts`
  *     (per plan Part 4 Task 2 note: "This affects respond.ts, not attempt.ts").
- *     We still pass `flags.isStreaming` to the provider based on what the
- *     upstream SHOULD do (forceStream OR payload.stream === true) so the
- *     provider negotiates SSE when streaming is wanted — but the
- *     stream-vs-buffer branch is decided by the renderer.
  *
  * Pre-binding errors (model-not-found, no-eligible-binding, no-translator)
  * deliberately omit `performance` per Spec 3 §6.2 — `respond.ts` skips the
- * perf row in that branch. Post-binding errors (upstream 4xx/5xx, terminal
- * decode failures) carry a `performance` ctx so `recordPerformance` writes
- * `isError=true`.
+ * perf row in that branch. Post-binding errors flow through hub attempt, which
+ * carries a `performance` ctx so `recordPerformance` writes `isError=true`.
  *
  * Reference: messages/attempt.ts, responses/attempt.ts.
  */
 import { runInterceptors, type Invocation, type RequestContext } from '@vnext/interceptor'
 import {
-  eventResult,
   internalErrorResult,
   readUpstreamError,
   type EndpointKey,
@@ -56,42 +46,28 @@ import {
   type ModelEndpoints,
   type ProtocolFrame,
 } from '@vnext/protocols/common'
-import { parseChatCompletionsStream } from '@vnext/protocols/chat'
-import { parseMessagesStream } from '@vnext/protocols/messages'
-import { parseResponsesStream } from '@vnext/protocols/responses'
 import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext/provider'
 import {
-  telemetryModelIdentity,
   upstreamPerformanceContext,
   type AttemptBindingShape,
 } from '../shared/attempt-helpers.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
-import { withUpstreamTelemetry } from '../shared/upstream-telemetry'
 import { enumerateBindingCandidates, type EnumerateOptions } from '../../routing/candidates.ts'
 import { selectPair } from '../../dispatch/pair-selector.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
-import { mapSourceApiToProviderRequest } from '../shared/sse-readers.ts'
-import {
-  readUpstreamMessagesJson,
-  synthesizeMessagesFramesFromJson,
-} from '../messages/attempt.ts'
-import {
-  readUpstreamResponsesJson,
-  synthesizeResponsesFramesFromJson,
-} from '../responses/attempt.ts'
-import { synthesizeChatCompletionsFramesFromJson, type ChatCompletionsJsonBody } from '../chat-completions/events/json-to-frames'
+import { traverseTranslation } from '../shared/traverse-translation.ts'
+import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-dispatch.ts'
 
 // ─── Public types ─────────────────────────────────────────────────────────
 
 /**
- * Gemini attempt produces bare gemini stream events (`GeminiStreamEvent`,
- * typed `unknown` here to avoid pulling the translate package into the
- * attempt surface). `respond.ts` re-encodes them per the gemini SSE wire.
- *
- * Unlike messages/responses, there is no `bridged-response` sentinel —
- * gemini source never has an identity target to bridge around.
+ * Gemini attempt produces hub-shape protocol frames (wrapped in
+ * `ProtocolFrame<unknown>`) forwarded verbatim from the hub attempt.
+ * `respond.ts` discriminates on `modelIdentity.translatorPair` to decide
+ * whether to apply `translateEvents` (streaming) or `translateBody`
+ * (non-streaming), matching the pattern in messages/responses respond.ts.
  */
-export type GeminiAttemptResult = ExecuteResult<unknown>
+export type GeminiAttemptResult = ExecuteResult<ProtocolFrame<unknown>>
 
 export interface GeminiAttemptAuth {
   readonly ownerId?: string
@@ -113,8 +89,9 @@ export interface GeminiAttemptArgs {
   readonly model: string
   /**
    * True when the URL verb is `streamGenerateContent` (client wants SSE).
-   * Forwarded to the provider as `flags.isStreaming` so the upstream knows
-   * to stream; whether to actually render SSE vs JSON is owned by respond.ts.
+   * Forwarded to the hub attempt as part of the invocation context so the
+   * upstream negotiates SSE when streaming is wanted; whether to actually
+   * render SSE vs JSON is owned by respond.ts.
    */
   readonly forceStream: boolean
   readonly auth: GeminiAttemptAuth
@@ -126,6 +103,15 @@ export interface GeminiAttemptArgs {
   readonly interceptors?: ReadonlyArray<GeminiInterceptor>
   readonly inheritedHeaders?: Record<string, string>
   readonly snapshotMode?: 'none'
+  /**
+   * Test seam for cross-protocol dispatch. When the resolved binding routes to
+   * a hub target, the attempt looks up the hub attempt via this override (if
+   * provided) or {@link pickHubAttempt} otherwise. Production code never sets
+   * this; tests inject a fake hub attempt to keep the cross-protocol contract
+   * independent of the real messages/responses/chat_completions attempt
+   * implementations.
+   */
+  readonly hubAttemptOverride?: (p: HubAttemptProtocol) => { generate: (a: never) => Promise<never> }
 }
 
 // Stream-interceptor stub mirrors messages/responses — Spec 3 keeps the
@@ -133,8 +119,8 @@ export interface GeminiAttemptArgs {
 export type GeminiInterceptor = (
   inv: Invocation,
   ctx: RequestContext,
-  next: (inv: Invocation, ctx: RequestContext) => Promise<ExecuteResult<unknown>>,
-) => Promise<ExecuteResult<unknown>>
+  next: (inv: Invocation, ctx: RequestContext) => Promise<ExecuteResult<ProtocolFrame<unknown>>>,
+) => Promise<ExecuteResult<ProtocolFrame<unknown>>>
 
 // ─── Binding selection ───────────────────────────────────────────────────
 
@@ -175,86 +161,6 @@ const defaultSelectBinding: SelectGeminiBinding = async ({ model, auth }) => {
   }
 }
 
-// ─── Upstream stream parsing ─────────────────────────────────────────────
-
-/**
- * Pick the correct hub-shape protocol-frame parser for the chosen target
- * endpoint. The wrapped frames feed `withUpstreamTelemetry({protocol: hub})`,
- * which uses the hub's terminal-frame classifier + usage extractor — no
- * gemini-side telemetry code is needed because the wire IS the hub wire.
- */
-function parseHubStream(
-  target: EndpointKey,
-  body: ReadableStream<Uint8Array>,
-  signal?: AbortSignal,
-): AsyncIterable<ProtocolFrame<unknown>> {
-  if (target === 'messages') {
-    return parseMessagesStream(body, { signal }) as AsyncIterable<ProtocolFrame<unknown>>
-  }
-  if (target === 'chat_completions') {
-    return parseChatCompletionsStream(body, { signal }) as AsyncIterable<ProtocolFrame<unknown>>
-  }
-  if (target === 'responses') {
-    return parseResponsesStream(body, { signal }) as AsyncIterable<ProtocolFrame<unknown>>
-  }
-  // Unreachable — selectPair('gemini', …) only returns one of the above.
-  throw new Error(`gemini attempt: unsupported target endpoint "${target}"`)
-}
-
-/**
- * Buffer the upstream JSON body and synthesise the equivalent hub-shape SSE
- * frame sequence. Keeps the gemini attempt's downstream pipeline (`withUpstreamTelemetry`
- * → `unwrapHubFrames` → `translator.translateEvents`) identical between
- * streamed and buffered-JSON upstreams. Mirrors the messages/responses
- * non-stream branches (their attempt.ts handles this for native targets;
- * we delegate to the same exported helpers for cross-protocol gemini routes).
- */
-async function synthesizeHubFramesFromJson(
-  target: EndpointKey,
-  body: ReadableStream<Uint8Array>,
-): Promise<AsyncIterable<ProtocolFrame<unknown>>> {
-  if (target === 'messages') {
-    const json = await readUpstreamMessagesJson(body)
-    return synthesizeMessagesFramesFromJson(json) as AsyncIterable<ProtocolFrame<unknown>>
-  }
-  if (target === 'responses') {
-    const json = await readUpstreamResponsesJson(body)
-    return synthesizeResponsesFramesFromJson(json) as AsyncIterable<ProtocolFrame<unknown>>
-  }
-  if (target === 'chat_completions') {
-    const buf = await new Response(body).text()
-    const json = JSON.parse(buf) as ChatCompletionsJsonBody
-    return synthesizeChatCompletionsFramesFromJson(json) as AsyncIterable<ProtocolFrame<unknown>>
-  }
-  throw new Error(`gemini attempt: unsupported target endpoint "${target}"`)
-}
-
-/** Pure protocol-name mapper used for the `withUpstreamTelemetry` ctx. */
-type HubProtocol = 'chat_completions' | 'messages' | 'responses'
-function targetToHubProtocol(target: EndpointKey): HubProtocol {
-  if (target === 'messages') return 'messages'
-  if (target === 'chat_completions') return 'chat_completions'
-  if (target === 'responses') return 'responses'
-  throw new Error(`gemini attempt: unsupported target endpoint "${target}"`)
-}
-
-/**
- * Unwrap `ProtocolFrame<HubEvent>` → bare hub events. The translator's
- * `translateEvents` signature expects an `AsyncIterable<MessagesEvent>` /
- * `AsyncIterable<unknown>` (bare events, no envelope), so we strip the frame
- * wrapper after telemetry observation. `done` frames (chat_completions
- * terminator) are dropped because the gemini-via-chat translator drives off
- * the openai-chunk shape directly and doesn't expect a sentinel.
- */
-async function* unwrapHubFrames<T>(
-  frames: AsyncIterable<ProtocolFrame<T>>,
-): AsyncGenerator<T> {
-  for await (const frame of frames) {
-    if (frame.type === 'event') yield frame.event
-    // 'done' frames are intentionally dropped here.
-  }
-}
-
 // ─── Main attempt ─────────────────────────────────────────────────────────
 
 export const geminiAttempt = {
@@ -267,8 +173,11 @@ export const geminiAttempt = {
     if (sel.kind === 'no-translator') return internalErrorResult(500, new Error(`no translator for gemini → ${sel.targetEndpoint}`))
 
     // Gemini has no identity target — selectPair('gemini', …) never returns
-    // 'gemini' — so there's no bridged-response branch. Every successful
-    // selection drives the terminal path below.
+    // 'gemini' — so every successful selection is a cross-protocol attempt.
+    // Delegate to `traverseTranslation` so telemetry (`translatorPair`) and
+    // `translateBody` propagation match messages/responses (Spec 6 §3.4 / §5).
+    const hubProtocol = sel.targetEndpoint as HubAttemptProtocol
+    const hubAttempt = (args.hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
 
     const invocation: Invocation = {
       endpoint: sel.targetEndpoint,
@@ -279,97 +188,31 @@ export const geminiAttempt = {
     }
     const chain: ReadonlyArray<GeminiInterceptor> = args.interceptors ?? []
 
-    let upstreamResp: ProviderResponse | undefined
+    const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
 
-    const terminal = async (): Promise<ExecuteResult<unknown>> => {
-      // Translator returns the HUB-shape payload for the upstream call. The
-      // gemini-via translators all accept `(payload, {signal, model,
-      // fallbackMaxOutputTokens})` — `model` is required because several
-      // hub shapes (chat completions, responses) put the model in the payload
-      // even though gemini puts it in the URL.
-      const translateCtx = {
-        signal: args.ctx.downstreamAbortSignal ?? new AbortController().signal,
-        model: sel.bareModel,
-        fallbackMaxOutputTokens: 4096,
-      }
-      const upstreamPayload = await sel.translator.translateRequest(
-        invocation.payload,
-        translateCtx,
-      )
-      const headers = new Headers({ 'content-type': 'application/json' })
-      for (const [k, v] of Object.entries(invocation.headers)) headers.set(k, v)
-      // Upstream streams whenever either side wants streaming. respond.ts
-      // decides whether the CLIENT sees SSE vs a buffered JSON envelope —
-      // the upstream just needs to know "stream the result back so we can
-      // render it incrementally".
-      const wantsUpstreamStream =
-        args.forceStream === true || invocation.payload.stream === true
-      const providerReq: ProviderRequest = {
-        endpoint: sel.targetEndpoint,
-        payload: upstreamPayload,
-        headers,
-        // The provider tags the request line per upstream taxonomy; gemini
-        // sourceApi maps through `mapSourceApiToProviderRequest` (defined in
-        // shared/sse-readers.ts) to keep the legacy header set unchanged.
-        sourceApi: mapSourceApiToProviderRequest('gemini'),
-        flags: { isStreaming: wantsUpstreamStream },
+    const terminal = async (): Promise<GeminiAttemptResult> => {
+      return await traverseTranslation({
+        sourcePayload: args.payload as Record<string, unknown>,
+        sourceProtocol: 'gemini',
+        hubProtocol,
+        translator: sel.translator,
+        innerAttempt: async (innerArgs) => {
+          return (await hubAttempt.generate({
+            payload: innerArgs.payload as never,
+            auth: innerArgs.auth as never,
+            ctx: { downstreamAbortSignal: innerArgs.signal } as never,
+            telemetryCtx: innerArgs.inheritedTelemetryCtx,
+            inheritedHeaders: innerArgs.inheritedHeaders,
+            snapshotMode: innerArgs.snapshotMode,
+          } as never)) as never
+        },
+        inheritedHeaders: args.inheritedHeaders ?? {},
+        inheritedTelemetryCtx: args.telemetryCtx,
+        auth: args.auth,
         signal: args.ctx.downstreamAbortSignal,
-      }
-      const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
-      upstreamResp = await sel.binding.provider.fetch(providerReq)
-      if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
-        const errResp = new Response(upstreamResp.body, { status: upstreamResp.status, headers: upstreamResp.headers })
-        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
-        return await readUpstreamError(errResp, performance)
-      }
-      if (!upstreamResp.body) {
-        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
-        return internalErrorResult(502, new Error('upstream returned empty body'), performance)
-      }
-
-      // Parse upstream as HUB-shape protocol frames so the telemetry wrapper
-      // can use the hub's already-tested terminal-frame classifier + usage
-      // extractor. `targetEndpoint` selects the parser and the protocol
-      // ctx in one place — no need to extend `withUpstreamTelemetry`'s
-      // protocol union with `'gemini'` because the wire is the hub wire.
-      // JSON-vs-SSE detection mirrors messages/responses attempt.ts: when the
-      // upstream returns JSON (either because the client wanted a single
-      // envelope or because the upstream chose to buffer), buffer + synthesise
-      // the equivalent hub frame sequence so the rest of the pipeline is
-      // identical. `respond.ts` still decides the wire shape we hand back.
-      // Gemini-via translators hardcode `stream: true` on the upstream payload,
-      // so the upstream is virtually always SSE regardless of the client's verb
-      // (`generateContent` vs `streamGenerateContent`). Detect the upstream
-      // wire shape from content-type alone — using `wantsUpstreamStream` here
-      // would incorrectly funnel SSE bodies through `JSON.parse` and fail with
-      // "Unexpected identifier 'data'".
-      const upstreamContentType = upstreamResp.headers.get('content-type') ?? ''
-      const upstreamLooksJson = upstreamContentType.includes('application/json')
-
-      const hubProtocol = targetToHubProtocol(sel.targetEndpoint)
-      const hubFrames = upstreamLooksJson
-        ? await synthesizeHubFramesFromJson(sel.targetEndpoint, upstreamResp.body)
-        : parseHubStream(
-            sel.targetEndpoint,
-            upstreamResp.body,
-            args.ctx.downstreamAbortSignal,
-          )
-      const { events: decoratedFrames } = withUpstreamTelemetry(hubFrames, {
-        abortSignal: args.ctx.downstreamAbortSignal,
-        protocol: hubProtocol,
-      })
-      // Translator consumes bare hub events (NOT ProtocolFrame). Unwrap after
-      // telemetry observation so usage/terminal detection sees every frame
-      // but the translator gets the shape it expects.
-      const bareHubEvents = unwrapHubFrames(decoratedFrames)
-      const geminiEvents = sel.translator.translateEvents(bareHubEvents, translateCtx)
-
-      const modelIdentity = telemetryModelIdentity(bindingForTelemetry, sel.bareModel)
-      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
-      // EventResult<unknown>: gemini events are bare GeminiStreamEvent objects
-      // (no ProtocolFrame wrapper), matching what `encodeClientSSE('gemini', …)`
-      // and the JSON renderer in respond.ts both expect.
-      return eventResult(geminiEvents as AsyncIterable<unknown>, modelIdentity, performance)
+        fallbackMaxOutputTokens: (sel.binding as { upstreamMaxOutputTokens?: number }).upstreamMaxOutputTokens,
+        model: sel.bareModel,
+      }) as GeminiAttemptResult
     }
 
     try {
@@ -384,12 +227,10 @@ export const geminiAttempt = {
         terminal as never,
       )
     } catch (err) {
-      if (upstreamResp?.body) void upstreamResp.body.cancel().catch(() => {})
-      const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
       // HTTPError is the legacy provider contract for upstream non-2xx; the
-      // ProviderResponse-based branch above already covers the new contract,
-      // but we keep this guard for providers that still throw.
+      // hub attempt's ProviderResponse-based branch above already covers the
+      // new contract, but we keep this guard for providers that still throw.
       if (err instanceof HTTPError) return await readUpstreamError(err.response, performance)
       return internalErrorResult(502, err instanceof Error ? err : new Error(String(err)), performance)
     }
