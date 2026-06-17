@@ -48,6 +48,8 @@ import { withUpstreamTelemetry } from '../shared/upstream-telemetry'
 import { enumerateBindingCandidates, type EnumerateOptions } from '../../routing/candidates.ts'
 import { selectPair } from '../../dispatch/pair-selector.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
+import { traverseTranslation } from '../shared/traverse-translation.ts'
+import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-dispatch.ts'
 
 // ─── Public types ─────────────────────────────────────────────────────────
 
@@ -79,6 +81,15 @@ export interface MessagesAttemptArgs {
   readonly interceptors?: ReadonlyArray<MessagesInterceptor>
   readonly inheritedHeaders?: Record<string, string>
   readonly snapshotMode?: 'none'
+  /**
+   * Test seam for cross-protocol dispatch. When the resolved binding routes to
+   * a non-`messages` hub, the attempt looks up the hub attempt via this
+   * override (if provided) or {@link pickHubAttempt} otherwise. Production
+   * code never sets this; tests inject a fake hub attempt to keep the
+   * cross-protocol contract independent of the real responses/chat_completions
+   * attempt implementations.
+   */
+  readonly hubAttemptOverride?: (p: HubAttemptProtocol) => { generate: (a: never) => Promise<never> }
 }
 
 // Stream-interceptor type re-exported from the registry module (Batch 4: stream
@@ -254,14 +265,35 @@ export const messagesAttempt = {
     if (sel.kind === 'no-translator') return internalErrorResult(500, new Error(`no translator for messages → ${sel.targetEndpoint}`))
 
     if (sel.targetEndpoint !== 'messages') {
-      // FIXME(spec-6): native cross-protocol attempts deferred. The legacy
-      // `dispatch()` bridge was removed in Spec 3 Part 4; surface a 501 so
-      // the failure mode is loud and telemetry accounts for the abandoned
-      // response.
-      return internalErrorResult(
-        501,
-        new Error(`cross-protocol attempts not yet supported: messages → ${sel.targetEndpoint}`),
-      )
+      // Cross-protocol attempt: delegate to the hub attempt via
+      // `traverseTranslation`. The translator shapes the request payload into
+      // the hub protocol, the hub attempt issues the upstream call, then the
+      // translator's event mapper rewraps the returned event stream so the
+      // messages caller still sees its native frames. See Spec 6 §3.4.
+      const hubProtocol = sel.targetEndpoint as HubAttemptProtocol
+      const hubAttempt = (args.hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
+      return await traverseTranslation({
+        sourcePayload: args.payload as Record<string, unknown>,
+        sourceProtocol: 'messages',
+        hubProtocol,
+        translator: sel.translator,
+        innerAttempt: async (innerArgs) => {
+          return (await hubAttempt.generate({
+            payload: innerArgs.payload as never,
+            auth: innerArgs.auth as never,
+            ctx: { downstreamAbortSignal: innerArgs.signal } as never,
+            telemetryCtx: innerArgs.inheritedTelemetryCtx,
+            inheritedHeaders: innerArgs.inheritedHeaders,
+            snapshotMode: innerArgs.snapshotMode,
+          } as never)) as never
+        },
+        inheritedHeaders: args.inheritedHeaders ?? {},
+        inheritedTelemetryCtx: args.telemetryCtx,
+        auth: args.auth,
+        signal: args.ctx.downstreamAbortSignal,
+        fallbackMaxOutputTokens: (sel.binding as { upstreamMaxOutputTokens?: number }).upstreamMaxOutputTokens,
+        model: sel.bareModel,
+      })
     }
 
     // snapshotMode is a no-op for messages (per spec 6 §3.5 — only `responses`
