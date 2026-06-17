@@ -68,6 +68,41 @@ export interface RespondGeminiOptions {
   readonly telemetryCtx?: TelemetryRequestContext
 }
 
+// Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
+// sees bare gemini-shape events; same-protocol falls through unchanged.
+//
+// When `translateEvents` is set on the EventResult (from traverseTranslation),
+// `result.events` carries HUB-shape ProtocolFrame<HubEvent> objects. Before
+// passing to encodeClientSSE (which expects bare gemini events) we:
+//   1. unwrap ProtocolFrame<HubFrame> → bare hub events (yield `frame.event`
+//      for `frame.type === 'event'`),
+//   2. run them through the translator (`translateChatToGeminiSSE`,
+//      `translateMessagesToGeminiSSE`, etc.),
+//   3. yield the resulting bare gemini events directly (no re-wrap needed
+//      since encodeClientSSE consumes bare events for gemini).
+// No `[DONE]` terminator is appended — gemini SSE terminates naturally with
+// the last `candidates` frame (no sentinel by convention).
+async function* applyTranslatorEventsForStreaming(
+  hubFrames: AsyncIterable<unknown>,
+  translateEvents: NonNullable<EventResult<unknown>['translateEvents']>,
+  signal: AbortSignal | undefined,
+  model: string | undefined,
+): AsyncGenerator<unknown> {
+  async function* unwrap(): AsyncGenerator<unknown> {
+    for await (const frame of hubFrames) {
+      const f = frame as { type?: string; event?: unknown }
+      if (f?.type === 'event') yield f.event
+    }
+  }
+  const ctx = {
+    signal: signal ?? new AbortController().signal,
+    fallbackMaxOutputTokens: undefined,
+    model,
+  }
+  const translated = translateEvents(unwrap(), ctx) as AsyncIterable<unknown>
+  for await (const ev of translated) yield ev
+}
+
 /**
  * SSE rendering branch. Data-only frames per gemini convention. Telemetry
  * observation happens inline via `consumeWithState`; on stream close we
@@ -78,6 +113,11 @@ export interface RespondGeminiOptions {
  * on translator throws — matching the legacy dispatch behaviour. We wrap
  * that ReadableStream in an outer stream so we can hook the `cancel` for
  * downstream-abort propagation and run telemetry persistence on close.
+ *
+ * Cross-protocol attempts (Spec 6 Part 4): when `translateEvents` is set,
+ * `result.events` carries HUB-shape frames from traverseTranslation. We
+ * apply `applyTranslatorEventsForStreaming` to convert them to bare gemini
+ * events before passing to `consumeWithState` + `encodeClientSSE`.
  */
 const renderEventsAsSSE = (
   result: EventResult<unknown>,
@@ -86,7 +126,18 @@ const renderEventsAsSSE = (
   const state = options.telemetryCtx
     ? new SourceStreamState(result.modelIdentity.modelKey)
     : null
-  const events = state ? consumeWithState(result.events, state) : result.events
+  // Cross-protocol streaming: apply translator at SSE-time so encodeClientSSE
+  // and consumeWithState see bare gemini-shape events; same-protocol (no
+  // translateEvents) passes result.events through unchanged.
+  const upstreamEvents: AsyncIterable<unknown> = result.translateEvents
+    ? applyTranslatorEventsForStreaming(
+        result.events,
+        result.translateEvents,
+        options.downstreamAbortController?.signal,
+        result.modelIdentity.modelKey,
+      )
+    : result.events
+  const events = state ? consumeWithState(upstreamEvents, state) : upstreamEvents
   const inner = encodeClientSSE('gemini', events)
   const reader = inner.getReader()
   const body = new ReadableStream<Uint8Array>({
