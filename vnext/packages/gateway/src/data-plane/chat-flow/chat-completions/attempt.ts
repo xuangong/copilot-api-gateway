@@ -5,11 +5,12 @@
  * Builds an `Invocation`, runs `chatCompletionsInterceptors`, and (in the
  * terminal handler) issues the upstream call via the resolved provider.
  *
- * Cross-protocol targets (e.g. `chat_completions → messages`) are NOT yet
- * supported natively — Spec 3 Part 4 deleted the legacy `dispatch()` bridge
- * but native cross-protocol attempts are deferred to Spec 6. For now we surface
- * a 501-shaped internal-error result so the failure mode is loud and the
- * abandoned response is fully accounted for in telemetry.
+ * For cross-protocol targets (e.g. `chat_completions → messages` /
+ * `chat_completions → responses`) the attempt delegates to
+ * `traverseTranslation`, which calls the source translator to produce a
+ * hub-protocol payload, runs the hub attempt, and wraps the returned event
+ * stream with the translator's event mapper so the source sees its native
+ * frames. See Spec 6 §3.4.
  *
  * Reference: copilot-gateway/packages/gateway/src/data-plane/llm/chat-completions/attempt.ts
  */
@@ -27,6 +28,8 @@ import { withUpstreamTelemetry } from '../shared/upstream-telemetry'
 import { selectBindingForChatCompletions, type SelectBindingAuth, type SelectBindingResult } from '../shared/select-binding'
 import { chatCompletionsInterceptors } from './interceptors'
 import { synthesizeChatCompletionsFramesFromJson, type ChatCompletionsJsonBody } from './events/json-to-frames'
+import { traverseTranslation } from '../shared/traverse-translation.ts'
+import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-dispatch.ts'
 
 export type ChatCompletionsAttemptResult = ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
 
@@ -50,6 +53,15 @@ export interface ChatCompletionsAttemptArgs {
   readonly interceptors?: ReadonlyArray<ChatCompletionsStreamInterceptor>
   readonly inheritedHeaders?: Record<string, string>
   readonly snapshotMode?: 'none'
+  /**
+   * Test seam for cross-protocol dispatch. When the resolved binding routes to
+   * a non-`chat_completions` hub, the attempt looks up the hub attempt via
+   * this override (if provided) or {@link pickHubAttempt} otherwise. Production
+   * code never sets this; tests inject a fake hub attempt to keep the
+   * cross-protocol contract independent of the real messages/responses
+   * attempt implementations.
+   */
+  readonly hubAttemptOverride?: (p: HubAttemptProtocol) => { generate: (a: never) => Promise<never> }
 }
 
 // Minimal binding shape we actually depend on. Keeps tests free of the full
@@ -79,14 +91,41 @@ export const chatCompletionsAttempt = {
     if (sel.kind === 'no-translator') return internalErrorResult(500, new Error(`no translator for chat_completions → ${sel.targetEndpoint}`))
 
     if (sel.targetEndpoint !== 'chat_completions') {
-      // FIXME(spec-6): native cross-protocol attempts deferred. The legacy
-      // `dispatch()` bridge was removed in Spec 3 Part 4; surface a 501 so
-      // the failure mode is loud and telemetry accounts for the abandoned
-      // response.
-      return internalErrorResult(
-        501,
-        new Error(`cross-protocol attempts not yet supported: chat_completions → ${sel.targetEndpoint}`),
-      )
+      // Cross-protocol attempt: delegate to the hub attempt via
+      // `traverseTranslation`. The translator shapes the request payload into
+      // the hub protocol, the hub attempt issues the upstream call, then the
+      // translator's event mapper rewraps the returned event stream so the
+      // chat_completions caller still sees its native frames. See Spec 6 §3.4.
+      //
+      // `sel.targetEndpoint` is typed as the wide `EndpointKey` (includes
+      // embeddings/images), but `pickTargetForChatCompletions` filters the
+      // selection to the chat-flow subset (`chat_completions | messages |
+      // responses`). The cast narrows the type to what
+      // `pickHubAttempt`/`traverseTranslation` accept.
+      const hubProtocol = sel.targetEndpoint as HubAttemptProtocol
+      const hubAttempt = (args.hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
+      return await traverseTranslation({
+        sourcePayload: args.payload as Record<string, unknown>,
+        sourceProtocol: 'chat_completions',
+        hubProtocol,
+        translator: sel.translator,
+        innerAttempt: async (innerArgs) => {
+          return (await hubAttempt.generate({
+            payload: innerArgs.payload as never,
+            auth: innerArgs.auth as never,
+            ctx: { downstreamAbortSignal: innerArgs.signal } as never,
+            telemetryCtx: innerArgs.inheritedTelemetryCtx,
+            inheritedHeaders: innerArgs.inheritedHeaders,
+            snapshotMode: innerArgs.snapshotMode,
+          } as never)) as never
+        },
+        inheritedHeaders: args.inheritedHeaders ?? {},
+        inheritedTelemetryCtx: args.telemetryCtx,
+        auth: args.auth,
+        signal: args.ctx.downstreamAbortSignal,
+        fallbackMaxOutputTokens: (sel.binding as { upstreamMaxOutputTokens?: number }).upstreamMaxOutputTokens,
+        model: sel.bareModel,
+      })
     }
 
     const invocation: Invocation = {

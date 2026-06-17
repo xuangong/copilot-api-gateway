@@ -105,24 +105,13 @@ test('case d — interceptor throw becomes InternalErrorResult', async () => {
   if (res.type === 'internal-error') expect(String(res.error)).toMatch(/interceptor-boom/)
 })
 
-test('case e — cross-protocol target returns InternalErrorResult(501) (deferred to Spec 6)', async () => {
-  // The legacy `dispatch()` bridge was deleted in Spec 3 Part 4 — native
-  // cross-protocol attempts (chat_completions → messages, etc.) are deferred
-  // to Spec 6. Until then, the attempt surfaces a 501-shaped internal-error
-  // so the failure mode is loud and telemetry accounts for the abandoned
-  // response.
-  const res = await chatCompletionsAttempt.generate({
-    payload: { model: 'claude', messages: [], stream: true },
-    auth: baseAuth,
-    ctx: baseCtx,
-    telemetryCtx: baseTelemetry,
-    selectBinding: async () => ({ kind: 'ok', binding: {} as any, targetEndpoint: 'messages', translator: {} as any, bareModel: 'claude' }),
-  })
-  expect(res.type).toBe('internal-error')
-  if (res.type === 'internal-error') {
-    expect(res.status).toBe(501)
-    expect(String(res.error)).toMatch(/cross-protocol/)
-  }
+test('case e — REMOVED: cross-protocol now covered by attempt.cross.test.ts', () => {
+  // Spec 6 Part 2 Task 2: the legacy 501 short-circuit was replaced with a
+  // real `traverseTranslation` dispatch. The cross-protocol contract is now
+  // covered by `attempt.cross.test.ts`, which injects a fake hub attempt and
+  // asserts translatorPair lands on modelIdentity. This placeholder remains
+  // only to mark where the old test sat in the file's case-letter sequence.
+  expect(true).toBe(true)
 })
 
 test('case f — model-not-found from selectBinding returns InternalErrorResult(404)', async () => {
