@@ -264,12 +264,14 @@ export const messagesAttempt = {
       )
     }
 
+    // snapshotMode is a no-op for messages (per spec 6 §3.5 — only `responses`
+    // owns the snapshot sidecar; other source protocols ignore the hint).
     const invocation: Invocation = {
       endpoint: 'messages',
       enabledFlags: new Set(),
       sourceApi: 'messages',
       payload: args.payload as Record<string, unknown>,
-      headers: {},
+      headers: { ...(args.inheritedHeaders ?? {}) },
     }
     const chain: ReadonlyArray<MessagesInterceptor> = args.interceptors ?? messagesInterceptors
 
