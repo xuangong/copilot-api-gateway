@@ -37,6 +37,8 @@ import {
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import { collectChatCompletionsProtocolEventsToResult } from './events/to-result'
 import { chatCompletionsProtocolFrameToSSEFrame } from './events/to-sse'
+import { collectMessagesProtocolEventsToResult } from '../messages/events/reassemble'
+import { collectResponsesProtocolEventsToResult } from '../responses/events/reassemble'
 
 export interface RespondChatCompletionsOptions {
   readonly wantsStream: boolean
@@ -192,6 +194,14 @@ const renderEventsAsSSE = (
 // `ChatCompletionsResult` envelope and emit it as JSON. Any reassembly error
 // surfaces as a 502 with the same `{ error: { message } }` shape used by the
 // internal-error branch. Telemetry persistence runs in both branches.
+//
+// Cross-protocol attempts (Spec 6 Part 2): when `translatorPair` is present,
+// the events array carries HUB-shaped frames (responses or messages frames,
+// not chat-completions frames). Reassemble using the hub's reassembler, then
+// hand the hub-shaped JSON to `translateBody` to convert back to the source
+// (chat_completions) JSON envelope before responding. Same-protocol attempts
+// leave `translatorPair`/`translateBody` undefined and fall through to the
+// chat-completions reassembler unchanged.
 const renderEventsAsJson = async (
   result: EventResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
   options: RespondChatCompletionsOptions,
@@ -201,11 +211,34 @@ const renderEventsAsJson = async (
     : null
   const events = state ? consumeWithState(result.events, state) : result.events
   try {
-    const reassembled = await collectChatCompletionsProtocolEventsToResult(events)
+    // Dispatch reassembly on hub protocol — same-protocol (or absent) →
+    // chat-completions reassembler; cross-protocol → hub reassembler so the
+    // hub-shaped frames reassemble into a hub-shaped envelope first.
+    const hub = result.modelIdentity.translatorPair?.hub
+    let reassembled: unknown
+    if (hub === 'messages') {
+      reassembled = await collectMessagesProtocolEventsToResult(events as never)
+    } else if (hub === 'responses') {
+      reassembled = await collectResponsesProtocolEventsToResult(events as never)
+    } else {
+      reassembled = await collectChatCompletionsProtocolEventsToResult(events)
+    }
+    // If a translator-supplied body translator is attached, convert the
+    // hub-shaped JSON back to the source (chat_completions) JSON envelope.
+    // The signal is sourced from the downstream abort controller when
+    // available so a slow translateBody unwinds promptly on client cancel;
+    // otherwise we hand it a fresh (never-aborted) controller's signal.
+    const finalBody = result.translateBody
+      ? await result.translateBody(reassembled, {
+          signal: options.downstreamAbortController?.signal ?? new AbortController().signal,
+          fallbackMaxOutputTokens: undefined,
+          model: result.modelIdentity.modelKey,
+        })
+      : reassembled
     if (state && options.telemetryCtx) {
       waitUntil(persistFromEventResult(result, state, options.telemetryCtx))
     }
-    return Response.json(reassembled)
+    return Response.json(finalBody)
   } catch (err) {
     if (state) state.failedAfter()
     if (state && options.telemetryCtx) {

@@ -6,10 +6,12 @@ import {
   internalErrorResult,
   eventFrame,
   doneFrame,
+  type EventResult,
   type ProtocolFrame,
   type TelemetryModelIdentity,
 } from '@vnext/protocols/common'
 import type { ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
+import type { ResponsesResult, ResponsesStreamEvent } from '@vnext/protocols/responses'
 
 const stubIdentity: TelemetryModelIdentity = {
   model: '<unknown>',
@@ -128,4 +130,64 @@ test('downstream cancel aborts the controller passed in options', async () => {
   // Force a downstream cancellation — mimics a client closing the connection.
   await resp.body!.cancel('client closed')
   expect(controller.signal.aborted).toBe(true)
+})
+
+// ── Spec 6 Part 2 Task 4: cross-protocol non-streaming reassembly + translateBody ──
+
+const stubResponsesResult: ResponsesResult = {
+  id: 'resp_hub_1',
+  object: 'response',
+  model: 'gpt-x',
+  output: [],
+  status: 'completed',
+  incomplete_details: null,
+  error: null,
+}
+
+// Hub-shaped frames the chat_completions source attempt would receive after
+// `traverseTranslation` dispatches to a `responses` hub. The renderer must
+// reassemble these via `collectResponsesProtocolEventsToResult` (NOT the
+// chat-completions reassembler — that would error since the events are not
+// chat-completions chunks) before calling `translateBody`.
+const responsesHubFrames = async function* (): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
+  yield eventFrame({
+    type: 'response.completed',
+    response: stubResponsesResult,
+  } as ResponsesStreamEvent)
+  yield doneFrame()
+}
+
+test('cross-protocol cc→responses: reassembles via hub + translateBody → cc-shaped JSON', async () => {
+  let translateBodyCalled = false
+  let receivedHubJson: unknown = null
+  // The translator-supplied translateBody converts hub-shaped JSON
+  // (ResponsesResult) back into the source (chat-completions) JSON envelope.
+  // We assert respond.ts (a) reassembles via the responses reassembler and
+  // (b) feeds that reassembled body into translateBody before responding.
+  const result: EventResult<ProtocolFrame<ChatCompletionsStreamEvent>> = {
+    type: 'events',
+    events: responsesHubFrames() as never,
+    modelIdentity: {
+      ...stubIdentity,
+      modelKey: 'gpt-x',
+      translatorPair: { source: 'chat_completions', hub: 'responses' },
+    },
+    translateBody: async (hubJson) => {
+      translateBodyCalled = true
+      receivedHubJson = hubJson
+      return { id: 'cc-shaped', from: hubJson }
+    },
+  }
+
+  const resp = await respondChatCompletions(result, { wantsStream: false, includeUsageChunk: false })
+  expect(resp.headers.get('content-type')).toContain('application/json')
+  const json = (await resp.json()) as { id: string; from: { id: string; object: string } }
+  expect(translateBodyCalled).toBe(true)
+  // The hub reassembler must have produced the ResponsesResult envelope —
+  // verify translateBody saw the hub JSON, not chat-completions chunks.
+  expect((receivedHubJson as { id: string; object: string }).id).toBe('resp_hub_1')
+  expect((receivedHubJson as { id: string; object: string }).object).toBe('response')
+  // And translateBody's return value is what reaches the client.
+  expect(json.id).toBe('cc-shaped')
+  expect(json.from.id).toBe('resp_hub_1')
 })
