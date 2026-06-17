@@ -231,7 +231,7 @@ export const responsesAttempt = {
       enabledFlags: new Set(),
       sourceApi: 'responses',
       payload: args.payload as Record<string, unknown>,
-      headers: {},
+      headers: { ...(args.inheritedHeaders ?? {}) },
     }
     const chain: ReadonlyArray<ResponsesInterceptor> = args.interceptors ?? responsesInterceptors
 
