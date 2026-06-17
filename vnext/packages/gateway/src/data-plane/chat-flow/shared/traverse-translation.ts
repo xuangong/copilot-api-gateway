@@ -1,8 +1,22 @@
 /**
  * Cross-protocol attempt traversal. Calls the source translator to produce a
- * hub-protocol payload, invokes the hub attempt, then wraps the returned event
- * stream with the translator's event mapper so the source protocol sees its
- * native frames. See spec §3.3.
+ * hub-protocol payload, invokes the hub attempt, and forwards the returned
+ * hub-shape frames downstream verbatim — the translator's event mapper is
+ * applied at the source-protocol respond.ts streaming branch, NOT here. See
+ * spec §3.7.
+ *
+ * Why pass-through (not in-line translate): respond.ts has two consumers of
+ * the result event stream:
+ *   1. Streaming (SSE): needs source-shape frames → translator must run.
+ *   2. Non-streaming (JSON): needs HUB-shape frames so the hub reassembler
+ *      (`collectResponsesProtocolEventsToResult` / `…Messages…`) can drain
+ *      them into a hub-shape JSON envelope, which `translateBody` then maps
+ *      to the source JSON shape.
+ *
+ * Translating in `traverseTranslation` would satisfy (1) but break (2) — and
+ * vice versa. Forwarding hub frames lets respond.ts apply the translator
+ * lazily ONLY for streaming, while non-streaming gets the canonical
+ * "hub-events → hub-JSON → translateBody" path described in spec §3.7.
  */
 import { TranslatorValidationError } from '@vnext/translate/errors'
 import {
@@ -90,41 +104,42 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     return { ...inner, reason }
   }
 
-  // Hoist into a typed local so the closure below sees the narrowed `EventResult`.
-  // (TS does not propagate type-guard narrowing into nested function expressions.)
+  // Hoist into a typed local so the cast below sees the narrowed `EventResult`.
+  // (TS does not propagate type-guard narrowing across the assignment.)
   const innerEvents: EventResult<ProtocolFrame<HubFrame>> = inner
 
-  // events: wrap with translator.translateEvents and protect against mid-stream throws
-  async function* safeWrap(): AsyncGenerator<ProtocolFrame<SourceFrame>> {
-    try {
-      const translated = args.translator.translateEvents(innerEvents.events as never, {
-        signal: args.signal ?? new AbortController().signal,
-        fallbackMaxOutputTokens: args.fallbackMaxOutputTokens,
-        model: args.model,
-      }) as AsyncIterable<ProtocolFrame<SourceFrame>>
-      for await (const frame of translated) yield frame
-    } catch (err) {
-      // Emit a terminal source-protocol error frame instead of throwing.
-      // Shape is intentionally generic — `withUpstreamTelemetry` consumers downstream
-      // tolerate unknown frame kinds; consumers that need a specific shape (e.g.
-      // SSE encoders) sniff `kind` and ignore.
-      yield {
-        kind: 'translator-error',
-        protocol: args.sourceProtocol,
-        error: err instanceof Error ? err.message : String(err),
-      } as never
-    }
-  }
-
+  // Forward hub-shape frames downstream verbatim. respond.ts decides per
+  // request mode (streaming vs non-streaming) whether to apply the translator:
+  //   - streaming: the chat-completions / messages / responses respond.ts
+  //     unwraps `ProtocolFrame<HubFrame>` → bare hub events, runs
+  //     `translator.translateEvents`, re-wraps source events into ProtocolFrame
+  //     before SSE encoding;
+  //   - non-streaming: respond.ts dispatches reassembly on
+  //     `modelIdentity.translatorPair.hub`, drains hub frames through the hub
+  //     reassembler into a hub-shape JSON envelope, then calls
+  //     `result.translateBody` to convert the envelope to the source JSON
+  //     shape (per spec §3.7).
+  // The `translatorPair` field on `modelIdentity` (set below) is the discriminator
+  // respond.ts uses for the dispatch.
   const sourceModelIdentity = {
     ...innerEvents.modelIdentity,
     translatorPair: { source: args.sourceProtocol, hub: args.hubProtocol },
   }
   return eventResult(
-    safeWrap(),
+    // Cast: the events stream is structurally `ProtocolFrame<HubFrame>`, but
+    // the source-protocol ExecuteResult is typed as `ProtocolFrame<SourceFrame>`.
+    // respond.ts (the only consumer of this result) discriminates on
+    // `translatorPair` and treats the events as hub-shape — so the cast is sound
+    // at runtime, just outside what TS can prove.
+    innerEvents.events as unknown as AsyncIterable<ProtocolFrame<SourceFrame>>,
     sourceModelIdentity,
     innerEvents.performance,
     innerEvents.finalMetadata,
     args.translator.translateBody as EventResult<ProtocolFrame<SourceFrame>>['translateBody'],
+    // translateEvents: respond.ts streaming branch unwraps hub frames, runs
+    // these through the translator, then re-wraps as source frames before SSE
+    // encoding. The translator function here consumes BARE hub events (not
+    // ProtocolFrame envelopes) and yields BARE source events.
+    args.translator.translateEvents as EventResult<ProtocolFrame<SourceFrame>>['translateEvents'],
   )
 }

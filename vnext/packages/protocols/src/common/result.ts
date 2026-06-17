@@ -65,6 +65,24 @@ export interface EventResult<T> {
     hubJson: unknown,
     ctx: TranslateBodyContext,
   ) => unknown | Promise<unknown>
+  /**
+   * Optional streaming-side counterpart of `translateBody` for cross-protocol
+   * attempts. When set, `events` carries HUB-shape bare events (NOT wrapped
+   * `ProtocolFrame<HubFrame>` — wrapping happens at the source-protocol
+   * SSE encoder); the SSE renderer in respond.ts is expected to:
+   *   1. unwrap `ProtocolFrame<HubFrame>` → bare hub events,
+   *   2. run them through `translateEvents`,
+   *   3. re-wrap each yielded source event as a `ProtocolFrame<SourceFrame>`,
+   *   4. feed to the source-protocol SSE encoder (`chatCompletionsProtocolFrameToSSEFrame`,
+   *      etc).
+   * This pairs with `translateBody` for the non-streaming branch — together
+   * they let `traverseTranslation` forward hub frames verbatim and defer
+   * translation to respond.ts (per spec §3.7).
+   */
+  readonly translateEvents?: (
+    events: AsyncIterable<unknown>,
+    ctx: TranslateBodyContext,
+  ) => AsyncIterable<unknown>
 }
 
 export interface UpstreamErrorResult {
@@ -99,6 +117,7 @@ export const eventResult = <T>(
   performance?: PerformanceTelemetryContext,
   finalMetadata?: Promise<EventResultMetadata>,
   translateBody?: EventResult<T>['translateBody'],
+  translateEvents?: EventResult<T>['translateEvents'],
 ): EventResult<T> => ({
   type: 'events',
   events,
@@ -106,6 +125,7 @@ export const eventResult = <T>(
   performance,
   finalMetadata,
   translateBody,
+  translateEvents,
 })
 
 export const internalErrorResult = (

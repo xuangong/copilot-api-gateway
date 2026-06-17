@@ -19,6 +19,8 @@
 import { waitUntil } from '@vnext/platform'
 import {
   upstreamErrorToResponse,
+  doneFrame,
+  eventFrame,
   sseFrame,
   type EventResult,
   type ExecuteResult,
@@ -142,6 +144,38 @@ async function persistFromEventResult<T>(
 // before closing the controller. When `telemetryCtx` is set, the finally
 // block hands off persistence to `waitUntil` so a slow repo write never
 // blocks the response close.
+//
+// Cross-protocol attempts (Spec 6 Part 2 §3.7): when `translateEvents` is set
+// on the EventResult, `result.events` carries HUB-shape frames (e.g.
+// `ProtocolFrame<ResponsesStreamEvent>` for cc→responses). Before SSE
+// encoding we:
+//   1. unwrap `ProtocolFrame<HubFrame>` → bare hub events,
+//   2. run them through the translator (`translateResponsesToChatSSE`,
+//      `translateMessagesToChatSSE`),
+//   3. re-wrap each yielded source event as a `ProtocolFrame<ChatCompletionsStreamEvent>`,
+//   4. terminate with a `doneFrame()` so the SSE encoder emits `[DONE]`.
+// Same-protocol attempts have no `translateEvents` and skip this entirely.
+async function* applyTranslatorEventsForStreaming(
+  hubFrames: AsyncIterable<ProtocolFrame<unknown>>,
+  translateEvents: NonNullable<EventResult<unknown>['translateEvents']>,
+  signal: AbortSignal | undefined,
+  model: string | undefined,
+): AsyncGenerator<ProtocolFrame<ChatCompletionsStreamEvent>> {
+  async function* unwrap(): AsyncGenerator<unknown> {
+    for await (const frame of hubFrames) {
+      if (frame.type === 'event') yield frame.event
+    }
+  }
+  const ctx = {
+    signal: signal ?? new AbortController().signal,
+    fallbackMaxOutputTokens: undefined,
+    model,
+  }
+  const translated = translateEvents(unwrap(), ctx) as AsyncIterable<ChatCompletionsStreamEvent>
+  for await (const ev of translated) yield eventFrame(ev) as ProtocolFrame<ChatCompletionsStreamEvent>
+  yield doneFrame() as ProtocolFrame<ChatCompletionsStreamEvent>
+}
+
 const renderEventsAsSSE = (
   result: EventResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
   options: RespondChatCompletionsOptions,
@@ -149,7 +183,17 @@ const renderEventsAsSSE = (
   const state = options.telemetryCtx
     ? new SourceStreamState(result.modelIdentity.modelKey)
     : null
-  const events = state ? consumeWithState(result.events, state) : result.events
+  // Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
+  // sees source-shape frames; same-protocol falls through unchanged.
+  const upstreamFrames: AsyncIterable<ProtocolFrame<ChatCompletionsStreamEvent>> = result.translateEvents
+    ? applyTranslatorEventsForStreaming(
+        result.events as unknown as AsyncIterable<ProtocolFrame<unknown>>,
+        result.translateEvents,
+        options.downstreamAbortController?.signal,
+        result.modelIdentity.modelKey,
+      )
+    : result.events
+  const events = state ? consumeWithState(upstreamFrames, state) : upstreamFrames
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {

@@ -114,10 +114,16 @@ test('internal-error reason is prefixed with via-translator', async () => {
   expect(result.reason).toBe('via-translator:chat_completions→responses:inner-cause')
 })
 
-test('translateEvents mid-stream error becomes terminal source-error frame, does not throw', async () => {
+test('hub events pass through unchanged (translator NOT applied in traverse)', async () => {
+  // After spec §3.7, traverseTranslation is a pass-through for events:
+  // it yields the inner attempt's hub-shape frames verbatim and exposes the
+  // translator on the result via `translateEvents` / `translateBody` so
+  // respond.ts can apply it lazily depending on streaming/non-streaming mode.
+  // The translator must NOT be invoked here.
+  let translatorCalled = false
   async function* hubEvents() {
-    yield { kind: 'hub-evt' } as never
-    throw new Error('mid-stream failure')
+    yield { kind: 'hub-evt-1' } as never
+    yield { kind: 'hub-evt-2' } as never
   }
   const innerResult = eventResult(hubEvents(), fakeIdentity)
   const result = await traverseTranslation({
@@ -125,8 +131,9 @@ test('translateEvents mid-stream error becomes terminal source-error frame, does
     sourceProtocol: 'chat_completions',
     hubProtocol: 'responses',
     translator: fakeTranslator({
-      translateEvents: async function* (events) {
-        for await (const e of events) yield e as never
+      translateEvents: async function* () {
+        translatorCalled = true
+        yield { kind: 'translated' } as never
       },
     }),
     innerAttempt: async () => innerResult,
@@ -136,10 +143,48 @@ test('translateEvents mid-stream error becomes terminal source-error frame, does
   })
   expect(result.type).toBe('events')
   if (result.type !== 'events') throw new Error('unreachable')
-  // Iterator must complete without throwing — wrapper swallows + emits terminal error frame.
+  // Drain the events — should yield hub frames untranslated.
+  const collected: Array<{ kind?: string }> = []
+  for await (const f of result.events) collected.push(f as { kind?: string })
+  expect(translatorCalled).toBe(false)
+  expect(collected).toEqual([{ kind: 'hub-evt-1' }, { kind: 'hub-evt-2' }])
+  // The translator is exposed on the result so respond.ts can apply it.
+  expect(result.translateEvents).toBeDefined()
+  expect(result.translateBody).toBeDefined()
+})
+
+test('mid-stream error propagates verbatim (no swallowing in traverseTranslation)', async () => {
+  // After spec §3.7, traverseTranslation no longer wraps the events with a
+  // safe iterator — error handling is the source-protocol respond.ts layer's
+  // responsibility (its SSE renderer has try/catch and emits a terminal
+  // event:error frame). The pass-through traverseTranslation lets errors
+  // propagate naturally.
+  async function* hubEvents() {
+    yield { kind: 'hub-evt' } as never
+    throw new Error('mid-stream failure')
+  }
+  const innerResult = eventResult(hubEvents(), fakeIdentity)
+  const result = await traverseTranslation({
+    sourcePayload: { model: 'x' },
+    sourceProtocol: 'chat_completions',
+    hubProtocol: 'responses',
+    translator: fakeTranslator(),
+    innerAttempt: async () => innerResult,
+    inheritedHeaders: {},
+    inheritedTelemetryCtx: fakeTelemetryCtx,
+    auth: {} as never,
+  })
+  expect(result.type).toBe('events')
+  if (result.type !== 'events') throw new Error('unreachable')
   const collected: unknown[] = []
-  for await (const f of result.events) collected.push(f)
-  expect(collected.length).toBeGreaterThan(0)
+  let caught: Error | null = null
+  try {
+    for await (const f of result.events) collected.push(f)
+  } catch (err) {
+    caught = err as Error
+  }
+  expect(collected.length).toBe(1)
+  expect(caught?.message).toBe('mid-stream failure')
 })
 
 test('header inheritance: passes inheritedHeaders into innerAttempt', async () => {
