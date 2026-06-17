@@ -203,3 +203,29 @@ test('case h — interceptor throw AFTER terminal cancels upstream stream body',
   expect(fetchMock).toHaveBeenCalledTimes(1)
   expect(cancelSpy).toHaveBeenCalledTimes(1)
 })
+
+test('case i — inheritedHeaders are merged into invocation before terminal', async () => {
+  // Spec 6 Part 2 Task 1: when a calling cross-protocol attempt seeds the inner
+  // attempt with `inheritedHeaders`, those entries must appear on the upstream
+  // ProviderRequest. The merge happens via the existing
+  // `for ... Object.entries(invocation.headers) ... headers.set(...)` loop in
+  // terminal — once `invocation.headers` is seeded with inherited values they
+  // flow through unchanged.
+  let captured: Headers | null = null
+  const fetchMock = mock(async (req: any) => {
+    captured = req.headers as Headers
+    return makeProviderResponse({ status: 200, body: okSseBody })
+  })
+  const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: fetchMock } } as any
+  const res = await chatCompletionsAttempt.generate({
+    payload: { model: 'gpt-x', messages: [], stream: true },
+    auth: baseAuth,
+    ctx: baseCtx,
+    telemetryCtx: baseTelemetry,
+    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator, bareModel: 'gpt-x' }),
+    inheritedHeaders: { 'x-trace-id': 'abc' },
+  })
+  expect(res.type).toBe('events')
+  expect(captured).not.toBeNull()
+  expect(captured!.get('x-trace-id')).toBe('abc')
+})

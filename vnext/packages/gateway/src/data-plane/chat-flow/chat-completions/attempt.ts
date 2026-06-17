@@ -94,7 +94,7 @@ export const chatCompletionsAttempt = {
       enabledFlags: new Set(),
       sourceApi: 'chat_completions',
       payload: args.payload as Record<string, unknown>,
-      headers: {},
+      headers: { ...(args.inheritedHeaders ?? {}) },
     }
     const chain = args.interceptors ?? chatCompletionsInterceptors
 
