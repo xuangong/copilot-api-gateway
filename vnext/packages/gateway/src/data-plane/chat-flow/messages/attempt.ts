@@ -77,6 +77,8 @@ export interface MessagesAttemptArgs {
   readonly selectBinding?: SelectMessagesBinding
   /** Overridable interceptor chain; defaults to an empty chain (terminal-only). */
   readonly interceptors?: ReadonlyArray<MessagesInterceptor>
+  readonly inheritedHeaders?: Record<string, string>
+  readonly snapshotMode?: 'none'
 }
 
 // Stream-interceptor type re-exported from the registry module (Batch 4: stream

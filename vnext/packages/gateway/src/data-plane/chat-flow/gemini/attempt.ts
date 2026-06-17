@@ -124,6 +124,8 @@ export interface GeminiAttemptArgs {
   readonly selectBinding?: SelectGeminiBinding
   /** Overridable interceptor chain; defaults to an empty chain (terminal-only). */
   readonly interceptors?: ReadonlyArray<GeminiInterceptor>
+  readonly inheritedHeaders?: Record<string, string>
+  readonly snapshotMode?: 'none'
 }
 
 // Stream-interceptor stub mirrors messages/responses — Spec 3 keeps the

@@ -48,6 +48,8 @@ export interface ChatCompletionsAttemptArgs {
   readonly selectBinding?: (args: { model: string; auth: ChatCompletionsAttemptAuth }) => Promise<SelectBindingResult>
   /** Overridable interceptor chain (defaults to the production registry). */
   readonly interceptors?: ReadonlyArray<ChatCompletionsStreamInterceptor>
+  readonly inheritedHeaders?: Record<string, string>
+  readonly snapshotMode?: 'none'
 }
 
 // Minimal binding shape we actually depend on. Keeps tests free of the full

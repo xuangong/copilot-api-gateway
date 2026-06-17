@@ -91,6 +91,8 @@ export interface ResponsesAttemptArgs {
   readonly userAgent?: string
   /** Optional request id passthrough so the image-gen shortcut can stamp it on upstream image calls. */
   readonly requestId?: string
+  readonly inheritedHeaders?: Record<string, string>
+  readonly snapshotMode?: 'none'
 }
 
 // Stream-interceptor type re-exported from the registry module (Batch 4).
