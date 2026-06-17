@@ -239,36 +239,5 @@ test('messages→messages identity: request body forwarded upstream unchanged (n
   expect(body.content[0]!.text).toContain('Hello from upstream')
 })
 
-test('messages→chat_completions cross-pair: deferred to Spec 6 (returns 501 internal-error)', async () => {
-  // The legacy `dispatch()` cross-protocol bridge was deleted in Spec 3 Part 4
-  // (Telemetry Channel cleanup). Until Spec 6 wires native cross-protocol
-  // attempts (PAIR_MESSAGES_TO_CHAT request/response translation under the
-  // attempt.ts surface), the messages source over a chat_completions-only
-  // upstream surfaces a 501 internal-error instead of silently bridging.
-  // We keep the test as a regression marker so Spec 6 implementer flips it
-  // back to the cross-pair semantics.
-  initRepo(stubRepo([stubUpstream()]))
-  const captured: CapturedUpstreamCall[] = []
-  installCapturingFetch(captured, stubChatModel(CHAT_MODEL_ID))
-  const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
-  const req = new Request('http://local/v1/messages', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: CHAT_MODEL_ID,
-      max_tokens: 64,
-      system: 'be concise',
-      stream: false,
-      messages: [{ role: 'user', content: 'cross-pair-marker' }],
-    }),
-  })
-  const res = await app.fetch(req, env)
-  expect(res.status).toBe(501)
-  // Upstream must NOT have been hit — attempt.ts shorts to internal-error
-  // before opening a leaf connection.
-  expect(captured.length).toBe(0)
-  const body = await res.json() as { type?: string; error?: { type?: string; message?: string } }
-  // messages/respond.ts renders internal-error as `{type:'error', error:{...}}`.
-  expect(body.type).toBe('error')
-  expect(body.error?.message).toMatch(/cross-protocol/)
-})
+// Spec 6 wired native cross-protocol attempts. The messages→chat_completions
+// happy path is now covered by tests/integration/cross-protocol-messages-to-cc.test.ts.

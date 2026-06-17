@@ -175,46 +175,5 @@ test('round-trip: responses→responses identity preserves id across turns', asy
   expect(JSON.stringify(inputs)).toContain('turn2 user')
 })
 
-test('round-trip: responses → chat_completions cross-pair deferred to Spec 6 (returns 501)', async () => {
-  // The Pair 8 (responses → chat_completions) cross-protocol bridge was
-  // deleted alongside `dispatch()` in Spec 3 Part 4. attempt.ts now surfaces a
-  // 501 internal-error for native cross-protocol attempts; once Spec 6 wires
-  // the translator pair into the leaf, this test should be flipped back to
-  // assert the synthesized id round-trip through the snapshot store.
-  initRepo(stubRepo([stubUpstream()]))
-  const store = new InMemoryResponsesSnapshotStore()
-  initResponsesStore(store)
-
-  let upstreamHit = false
-  installFetch((req) => {
-    const url = new URL(req.url)
-    if (url.pathname.endsWith('/models')) {
-      return new Response(JSON.stringify({ data: [stubModel(CHAT_MODEL)] }), {
-        status: 200, headers: { 'content-type': 'application/json' },
-      })
-    }
-    if (url.pathname.endsWith('/chat/completions')) {
-      upstreamHit = true
-      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
-    }
-    return new Response('not found', { status: 404 })
-  })
-
-  const wrapper = buildApp(
-    { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: 'tkn', accountType: 'individual' } } as DataPlaneAuthCtx,
-  )
-
-  const t1 = await wrapper.fetch(new Request('http://x/v1/responses', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: CHAT_MODEL,
-      stream: false,
-      input: [{ type: 'message', role: 'user', content: 'turn1 user' }],
-    }),
-  }), {} as never)
-  expect(t1.status).toBe(501)
-  // attempt.ts shorts to internal-error before opening any upstream
-  // connection — so /chat/completions should NOT have been called.
-  expect(upstreamHit).toBe(false)
-})
+// Spec 6 wired native cross-protocol attempts. The responses→chat_completions
+// happy path is now covered by tests/integration/cross-protocol-responses-to-cc.test.ts.
