@@ -16,6 +16,7 @@ import {
   applyLastToolCacheBreakpoint,
   systemWithCacheBreakpoint,
 } from '../shared/cache-breakpoints.ts'
+import { TranslatorValidationError } from '../errors.ts'
 
 const MESSAGES_FALLBACK_MAX_TOKENS = 4096
 
@@ -132,7 +133,7 @@ function buildMessages(messages: ChatMessage[]): AnthropicMessage[] {
     } else if (m.role === 'assistant') {
       out.push({ role: 'assistant', content: assistantBlocks(m) })
     } else if (m.role === 'tool') {
-      if (!m.tool_call_id) throw new Error('tool message requires tool_call_id')
+      if (!m.tool_call_id) throw new TranslatorValidationError('tool message requires tool_call_id', 'tool_call_id')
       const tr: AnthropicToolResultBlock = {
         type: 'tool_result',
         tool_use_id: m.tool_call_id,

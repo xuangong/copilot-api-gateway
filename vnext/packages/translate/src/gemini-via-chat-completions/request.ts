@@ -26,6 +26,7 @@ import {
   geminiVisibleText,
 } from '../shared/gemini-via/gemini.ts'
 import type { GeminiContent, GeminiPayload, GeminiGenerationConfig, GeminiPart } from '../shared/gemini-via/types.ts'
+import { TranslatorValidationError } from '../errors.ts'
 
 export interface TranslateGeminiToChatOptions {
   model: string
@@ -159,7 +160,7 @@ const buildAssistantMessage = (
         visibleParts.push(part)
         return
       default:
-        throw new Error(`Gemini → Chat Completions translator does not accept ${kind} parts in model content.`)
+        throw new TranslatorValidationError(`Gemini → Chat Completions translator does not accept ${kind} parts in model content.`, 'contents.parts')
     }
   })
 
@@ -226,7 +227,7 @@ const buildUserMessages = (
         pendingParts.push(part)
         return
       default:
-        throw new Error(`Gemini → Chat Completions translator does not accept ${kind} parts in user content.`)
+        throw new TranslatorValidationError(`Gemini → Chat Completions translator does not accept ${kind} parts in user content.`, 'contents.parts')
     }
   })
 
@@ -308,8 +309,9 @@ export function translateGeminiToChat(
         request.messages.push(...buildUserMessages(content, turnIndex, unmatchedToolCallIds))
         return
       default:
-        throw new Error(
+        throw new TranslatorValidationError(
           `Gemini → Chat Completions translator does not accept ${(content as { role: string }).role} content roles.`,
+          'contents.role',
         )
     }
   })

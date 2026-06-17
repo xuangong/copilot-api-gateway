@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'bun:test'
 import { translateChatToMessages } from '@vnext/translate/chat-completions-via-messages'
 import { EPHEMERAL_CACHE_CONTROL } from '@vnext/translate/shared/cache-breakpoints'
+import { TranslatorValidationError } from '@vnext/translate/errors'
 
 describe('chat-completions-via-messages :: request', () => {
   it('translates a minimal text-only chat payload to a Messages payload', () => {
@@ -178,5 +179,18 @@ describe('chat-completions-via-messages :: request', () => {
       max_tokens: 1,
     })
     expect(out.thinking).toBeUndefined()
+  })
+
+  it('throws TranslatorValidationError when tool message is missing tool_call_id', () => {
+    expect(() =>
+      translateChatToMessages({
+        model: 'm',
+        messages: [
+          { role: 'user', content: 'hi' },
+          { role: 'tool', content: 'result' } as never,
+        ],
+        max_tokens: 1,
+      }),
+    ).toThrow(TranslatorValidationError)
   })
 })

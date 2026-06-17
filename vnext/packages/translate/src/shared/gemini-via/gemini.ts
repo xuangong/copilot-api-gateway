@@ -16,6 +16,7 @@ import type {
   GeminiThinkingConfig,
   GeminiUsageMetadata,
 } from './types.ts'
+import { TranslatorValidationError } from '../../errors.ts'
 
 const isJsonObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -83,12 +84,13 @@ export const geminiPartKind = (part: GeminiPart): GeminiPartKind | null => {
   const presentFields = GEMINI_PART_DATA_FIELDS.filter(field => part[field] !== undefined)
   if (presentFields.length === 1) return GEMINI_PART_FIELD_TO_KIND[presentFields[0]!]
   if (presentFields.length > 1) {
-    throw new Error(`Gemini part sets conflicting content fields: ${presentFields.join(', ')}.`)
+    throw new TranslatorValidationError(`Gemini part sets conflicting content fields: ${presentFields.join(', ')}.`, 'contents.parts')
   }
   if (part.thoughtSignature !== undefined) return null
   const keys = Object.keys(part)
-  throw new Error(
+  throw new TranslatorValidationError(
     `Gemini part has no recognized content. Keys present: ${keys.length ? keys.join(', ') : '(none)'}.`,
+    'contents.parts',
   )
 }
 

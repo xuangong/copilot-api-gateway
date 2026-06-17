@@ -26,6 +26,7 @@ import {
   geminiVisibleText,
 } from '../shared/gemini-via/gemini.ts'
 import type { GeminiContent, GeminiPayload, GeminiGenerationConfig, GeminiPart } from '../shared/gemini-via/types.ts'
+import { TranslatorValidationError } from '../errors.ts'
 
 export interface TranslateGeminiToResponsesOptions {
   model: string
@@ -153,7 +154,7 @@ const buildUserInputItems = (
         return
       }
       default:
-        throw new Error(`Gemini → Responses translator does not accept ${kind} parts in user content.`)
+        throw new TranslatorValidationError(`Gemini → Responses translator does not accept ${kind} parts in user content.`, 'contents.parts')
     }
   })
 
@@ -203,7 +204,7 @@ const buildAssistantInputItems = (
         return
       }
       default:
-        throw new Error(`Gemini → Responses translator does not accept ${kind} parts in model content.`)
+        throw new TranslatorValidationError(`Gemini → Responses translator does not accept ${kind} parts in model content.`, 'contents.parts')
     }
   })
 
@@ -284,8 +285,9 @@ export function translateGeminiToResponses(
         request.input.push(...buildUserInputItems(content, turnIndex, unmatchedToolCallIds))
         return
       default:
-        throw new Error(
+        throw new TranslatorValidationError(
           `Gemini → Responses translator does not accept ${(content as { role: string }).role} content roles.`,
+          'contents.role',
         )
     }
   })

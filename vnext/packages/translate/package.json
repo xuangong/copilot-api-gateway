@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
+    "./errors": "./src/errors.ts",
     "./shared/*": "./src/shared/*.ts",
     "./chat-completions-via-messages": "./src/chat-completions-via-messages/index.ts",
     "./messages-via-chat-completions": "./src/messages-via-chat-completions/index.ts",
