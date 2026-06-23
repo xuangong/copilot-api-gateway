@@ -88,13 +88,17 @@ vNext 已经有 **13 个包**,框架 / 域 在物理上已有分离:
 
 | # | 动作 | 类型 | 风险 | 阶段 |
 |---|------|------|------|------|
-| 0 | **vNext → main 上位:删除根 `src/`,把 `vnext/` 提到根** | 仓库结构 | 中 | **先于 1-5** |
 | 1 | 改名 `shared-http` → `http`,`shared-cache` → `cache` | 纯 rename | 极低 | 顺手 |
 | 2 | `@vnext/interceptor` 改为 `Interceptor<Ctx,Req,Result>` 三参 | 框架层重构 | 低 | Spec 7 |
 | 3 | `@vnext/protocols` 拆为 `@vnext/result` + `@vnext/protocols-llm` | 包级切分 | 中 | Spec 8 |
 | 4 | `@vnext/provider` 拆为 `@vnext/upstream` + `@vnext/provider-llm` | 包级切分 | 中 | Spec 9 |
 | 5 | `gateway/data-plane/chat-flow` 收敛 4 endpoint 模板 | 业务层去重 | 中 | Spec 10 |
 | 6 | 整套 `@vnext/*` 重命名到对外名字(例: `@floe/*`) | codemod | 低 | Final epilogue |
+| 7 | **vNext → main 上位:删除根 `src/`,把 `vnext/` 提到根** | 仓库结构 | 中 | **Deferred — 等 vnext 完全能替代 prod 后再做** |
+
+> **2026-06-23 决策变更:** 原 Step 0 (vnext→main 上位) 降级为 Step 7 / Final-final epilogue。
+> 原因:根 `src/` 仍在 prod 跑稳,vnext 内部还有 5-6 个 Spec 的演进。同时动两个稳定点的风险高于收益。
+> 改为:Spec 7-10 全部直接在 `vnext/packages/*` 内迭代,根 `src/` 不动,等 vnext 真正能 cutover prod 时再做物理提升。
 
 ---
 
@@ -115,17 +119,10 @@ vNext 已经有 **13 个包**,框架 / 域 在物理上已有分离:
 当前: Spec 6 cross-protocol attempt wiring (in progress)
    │
    ▼
-[Tag] pre-vnext-promotion-2026-06-23
-   │
-   ▼
-Step 0: vNext → main 上位
-        - 删除根 src/
-        - vnext/ 内容提到根
-        - 更新 package.json / docker-compose / 路径
-        - 旧测试归档或迁移
-   │
-   ▼
-[Tag] post-vnext-promotion-2026-06-23
+[Tag] vnext-2026-06-23-baseline
+        - 当前 vNext 13 包结构 + Spec 1-6 进展的快照
+        - 之后 Spec 7-10 全部在 vnext/packages/* 内直接迭代
+        - 根 src/ 不动,继续跑 prod
    │
    ▼
 Step 1: rename shared-http/shared-cache (顺手)
@@ -144,6 +141,12 @@ Spec 10: chat-flow 4 endpoint 收敛
    │
    ▼
 Final: @vnext → @<final-name> 整体改名
+   │
+   ▼
+[Final-final, deferred] Step 7: vNext → main 上位
+        - 触发条件:vnext 能完全替代根 src/ 的 prod 行为
+        - 动作:删除根 src/,vnext/ 内容提到根,
+                更新 package.json / docker-compose / 路径,旧测试归档
 ```
 
 ---
