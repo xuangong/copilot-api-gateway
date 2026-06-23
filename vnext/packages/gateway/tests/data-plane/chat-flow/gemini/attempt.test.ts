@@ -19,7 +19,7 @@
 import { test, expect, mock } from 'bun:test'
 import { geminiAttempt } from '../../../../src/data-plane/chat-flow/gemini/attempt'
 import type { TelemetryRequestContext } from '../../../../src/data-plane/chat-flow/shared/telemetry-ctx'
-import type { RequestContext } from '@vnext/interceptor'
+import type { RequestContext } from '@vnext/protocols/common'
 import { eventResult, type ProtocolFrame } from '@vnext/protocols/common'
 
 const baseCtx: RequestContext = { requestStartedAt: Date.now() }

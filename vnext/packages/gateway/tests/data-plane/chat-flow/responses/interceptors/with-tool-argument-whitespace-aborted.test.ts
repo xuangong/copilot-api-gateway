@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
 import { withToolArgumentWhitespaceAborted } from '../../../../../src/data-plane/chat-flow/responses/interceptors/with-tool-argument-whitespace-aborted'
-import type { Invocation, RequestContext } from '@vnext/interceptor'
+import type { Invocation, RequestContext } from '@vnext/protocols/common'
 import {
   doneFrame,
   eventResult,

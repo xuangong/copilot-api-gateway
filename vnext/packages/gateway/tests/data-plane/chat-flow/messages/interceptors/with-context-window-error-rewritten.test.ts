@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
 import { withContextWindowErrorRewritten } from '../../../../../src/data-plane/chat-flow/messages/interceptors/with-context-window-error-rewritten'
-import type { Invocation, RequestContext } from '@vnext/interceptor'
+import type { Invocation, RequestContext } from '@vnext/protocols/common'
 import {
   doneFrame,
   eventResult,

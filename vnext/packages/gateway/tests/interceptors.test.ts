@@ -1,5 +1,6 @@
 import { test, expect } from 'bun:test'
-import { runInterceptors, type CopilotInterceptor, type Invocation, type RequestContext } from "@vnext/interceptor"
+import { runInterceptors } from "@vnext/service"
+import type { CopilotInterceptor, Invocation, RequestContext } from "@vnext/protocols/common"
 
 const newInv = (): Invocation => ({
   endpoint: 'chat_completions',

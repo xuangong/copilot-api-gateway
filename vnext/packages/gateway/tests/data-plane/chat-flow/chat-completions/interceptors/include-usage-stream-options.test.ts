@@ -1,16 +1,14 @@
 import { test, expect } from 'bun:test'
 import { withUsageStreamOptionsIncluded } from '../../../../../src/data-plane/chat-flow/chat-completions/interceptors/include-usage-stream-options'
 import { chatCompletionsInterceptors } from '../../../../../src/data-plane/chat-flow/chat-completions/interceptors'
-import {
-  runInterceptors,
-  type Invocation,
-  type RequestContext,
-} from '@vnext/interceptor'
+import { runInterceptors } from '@vnext/service'
 import {
   doneFrame,
   eventResult,
   type ExecuteResult,
+  type Invocation,
   type ProtocolFrame,
+  type RequestContext,
   type TelemetryModelIdentity,
 } from '@vnext/protocols/common'
 import type { ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
