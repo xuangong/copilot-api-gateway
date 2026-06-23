@@ -95,6 +95,7 @@
       "name": "@vnext/protocols",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext/service": "workspace:*",
         "zod": "^4.4.3",
       },
     },
