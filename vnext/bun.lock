@@ -80,14 +80,6 @@
         "@vnext/platform-cloudflare": "workspace:*",
       },
     },
-    "packages/interceptor": {
-      "name": "@vnext/interceptor",
-      "version": "0.0.0",
-      "dependencies": {
-        "@vnext/protocols": "workspace:*",
-        "@vnext/service": "workspace:*",
-      },
-    },
     "packages/platform": {
       "name": "@vnext/platform",
       "version": "0.0.0",
@@ -440,8 +432,6 @@
     "@vnext/dashboard": ["@vnext/dashboard@workspace:apps/dashboard"],
 
     "@vnext/gateway": ["@vnext/gateway@workspace:packages/gateway"],
-
-    "@vnext/interceptor": ["@vnext/interceptor@workspace:packages/interceptor"],
 
     "@vnext/platform": ["@vnext/platform@workspace:packages/platform"],
 
