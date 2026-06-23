@@ -26,8 +26,9 @@ export type Next<R> = () => Promise<R>
 
 /**
  * Compose an interceptor chain with a terminal handler and run it.
- * Behaviorally identical to the legacy @vnext/interceptor.runInterceptors;
- * only the generic parameter order changes to <Ctx, Req, R>.
+ * Behaviorally identical to the legacy runInterceptors helper that previously
+ * lived in the interceptor package; only the generic parameter order changes
+ * to <Ctx, Req, R>.
  */
 export const runInterceptors = async <Ctx, Req, R>(
   req: Req,

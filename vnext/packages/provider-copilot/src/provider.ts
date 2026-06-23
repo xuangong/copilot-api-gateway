@@ -2,8 +2,8 @@
  * CopilotProvider — extracted to @vnext/provider-copilot in Plan 2c.
  *
  * Per-endpoint interceptor chains feed into runInterceptors, whose terminal
- * is callCopilotAPI. Cross-package contracts (@vnext/interceptor,
- * @vnext/provider, @vnext/protocols) are unchanged.
+ * is callCopilotAPI. Cross-package contracts (@vnext/service,
+ * @vnext/protocols) are unchanged.
  *
  * After Plan B Task B2.8, the legacy `fetch(endpoint, init, opts)` overload
  * and the seven per-endpoint `call*` shim methods were retired. The provider
