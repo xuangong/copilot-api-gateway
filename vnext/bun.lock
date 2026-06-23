@@ -85,6 +85,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@vnext/protocols": "workspace:*",
+        "@vnext/service": "workspace:*",
       },
     },
     "packages/platform": {
