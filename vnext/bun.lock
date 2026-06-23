@@ -146,6 +146,10 @@
       "name": "@vnext/responses-store",
       "version": "0.0.0",
     },
+    "packages/service": {
+      "name": "@vnext/service",
+      "version": "0.0.0",
+    },
     "packages/shared-cache": {
       "name": "@vnext/shared-cache",
       "version": "0.0.0",
@@ -456,6 +460,8 @@
     "@vnext/provider-sdf": ["@vnext/provider-sdf@workspace:packages/provider-sdf"],
 
     "@vnext/responses-store": ["@vnext/responses-store@workspace:packages/responses-store"],
+
+    "@vnext/service": ["@vnext/service@workspace:packages/service"],
 
     "@vnext/shared-cache": ["@vnext/shared-cache@workspace:packages/shared-cache"],
 
