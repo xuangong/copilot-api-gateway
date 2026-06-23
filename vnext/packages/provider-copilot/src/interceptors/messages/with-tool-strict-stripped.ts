@@ -1,4 +1,4 @@
-import type { CopilotInterceptor } from "@vnext/interceptor"
+import type { CopilotInterceptor } from "@vnext/protocols/common"
 
 /**
  * Anthropic Messages tools may carry `strict: true` to compile `input_schema`

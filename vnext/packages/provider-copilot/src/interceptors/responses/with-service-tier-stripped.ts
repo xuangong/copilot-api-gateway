@@ -1,4 +1,4 @@
-import type { CopilotInterceptor } from "@vnext/interceptor"
+import type { CopilotInterceptor } from "@vnext/protocols/common"
 
 /**
  * Copilot does not expose a compatible `service_tier` control on native or

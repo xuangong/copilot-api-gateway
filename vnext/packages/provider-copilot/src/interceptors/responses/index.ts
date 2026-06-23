@@ -1,4 +1,4 @@
-import type { CopilotInterceptor } from "@vnext/interceptor"
+import type { CopilotInterceptor } from "@vnext/protocols/common"
 import { withStoreForcedFalse } from "./with-store-forced-false"
 import { withImageGenerationStripped } from "./with-image-generation-stripped"
 import { withSafetyIdentifierStripped } from "./with-safety-identifier-stripped"

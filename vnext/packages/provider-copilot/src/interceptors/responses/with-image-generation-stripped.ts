@@ -1,6 +1,6 @@
 import { stripImageGeneration } from "../../transforms"
 import type { ResponsesPayload } from "../../transforms"
-import type { CopilotInterceptor } from "@vnext/interceptor"
+import type { CopilotInterceptor } from "@vnext/protocols/common"
 
 export const withImageGenerationStripped: CopilotInterceptor = async (inv, _ctx, run) => {
   if (inv.enabledFlags.has("transform-strip-image-generation")) {

@@ -8,7 +8,7 @@ import {
   parseCompositeModelId,
   resolveCopilotRawModel,
 } from "../../variants"
-import type { CopilotInterceptor, Invocation } from "@vnext/interceptor"
+import type { CopilotInterceptor, Invocation } from "@vnext/protocols/common"
 
 type VariantKind = "messages" | "chat_completions" | "responses"
 

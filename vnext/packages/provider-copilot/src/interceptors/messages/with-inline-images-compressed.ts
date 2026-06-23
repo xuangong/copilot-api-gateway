@@ -1,6 +1,6 @@
 import { compressInlineImagesMessages } from "../../transforms/compress-inline-images"
 import type { AnthropicMessagesPayload } from "../../transforms"
-import type { CopilotInterceptor } from "@vnext/interceptor"
+import type { CopilotInterceptor } from "@vnext/protocols/common"
 
 /**
  * Recompress inline base64 images in /v1/messages payloads to WebP.

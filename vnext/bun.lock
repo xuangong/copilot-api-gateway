@@ -120,9 +120,9 @@
       "name": "@vnext/provider-copilot",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext/interceptor": "workspace:*",
         "@vnext/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
+        "@vnext/service": "workspace:*",
         "@vnext/shared-http": "workspace:*",
       },
     },

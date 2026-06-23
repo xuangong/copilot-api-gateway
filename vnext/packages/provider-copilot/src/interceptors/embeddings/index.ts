@@ -1,4 +1,4 @@
-import type { CopilotInterceptor } from "@vnext/interceptor"
+import type { CopilotInterceptor } from "@vnext/protocols/common"
 
 /**
  * Empty — embeddings has no payload-shape transforms, only variant filtering

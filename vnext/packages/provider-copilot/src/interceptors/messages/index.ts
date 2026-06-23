@@ -1,4 +1,4 @@
-import type { CopilotInterceptor } from "@vnext/interceptor"
+import type { CopilotInterceptor } from "@vnext/protocols/common"
 import { withClaudeAgentHeaders } from "./with-claude-agent-headers"
 import { withCompactHeaders } from "./with-compact-headers"
 import { withInteractionIdHeader } from "./with-interaction-id-header"
