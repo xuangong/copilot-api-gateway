@@ -22,7 +22,8 @@
  * decode failures) carry a `performance` ctx so `recordPerformance` writes
  * `isError=true`.
  */
-import { runInterceptors, type Invocation, type RequestContext } from '@vnext/interceptor'
+import { runInterceptors } from '@vnext/service'
+import type { Invocation, RequestContext } from '@vnext/protocols/common'
 import { messagesInterceptors, type MessagesInterceptor } from './interceptors'
 import {
   eventResult,

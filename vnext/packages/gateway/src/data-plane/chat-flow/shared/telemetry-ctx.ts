@@ -1,5 +1,5 @@
 /**
- * Telemetry-only request context, distinct from `@vnext/interceptor`'s
+ * Telemetry-only request context, distinct from `@vnext/protocols/common`'s
  * minimal `RequestContext`. Built once per request in serve.ts and threaded
  * through attempt + respond so persistence helpers (`recordUsage`,
  * `recordPerformance`) can write usage rows without touching `RequestContext`.

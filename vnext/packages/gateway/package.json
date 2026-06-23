@@ -7,7 +7,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vnext/interceptor": "workspace:*",
     "@vnext/platform": "workspace:*",
     "@vnext/protocols": "workspace:*",
     "@vnext/provider": "workspace:*",
@@ -16,6 +15,7 @@
     "@vnext/provider-custom": "workspace:*",
     "@vnext/provider-sdf": "workspace:*",
     "@vnext/responses-store": "workspace:*",
+    "@vnext/service": "workspace:*",
     "@vnext/shared-cache": "workspace:*",
     "@vnext/translate": "workspace:*",
     "hono": "^4.12.23",

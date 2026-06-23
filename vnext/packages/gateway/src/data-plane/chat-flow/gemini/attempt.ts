@@ -37,7 +37,8 @@
  *
  * Reference: messages/attempt.ts, responses/attempt.ts.
  */
-import { runInterceptors, type Invocation, type RequestContext } from '@vnext/interceptor'
+import { runInterceptors } from '@vnext/service'
+import type { Invocation, RequestContext } from '@vnext/protocols/common'
 import {
   internalErrorResult,
   readUpstreamError,

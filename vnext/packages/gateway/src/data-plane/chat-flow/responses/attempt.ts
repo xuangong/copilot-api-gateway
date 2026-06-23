@@ -30,7 +30,8 @@
  *
  * Reference: messages/attempt.ts.
  */
-import { runInterceptors, type Invocation, type RequestContext } from '@vnext/interceptor'
+import { runInterceptors } from '@vnext/service'
+import type { Invocation, RequestContext } from '@vnext/protocols/common'
 import { responsesInterceptors, type ResponsesInterceptor } from './interceptors'
 import {
   eventFrame,
