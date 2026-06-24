@@ -3,8 +3,8 @@ import { MemoryCache, KvCache, D1Cache } from '@vnext-gateway/cache'
 import { __resetPlatformForTests } from '@vnext-gateway/platform'
 import { initCache, getCache } from '../src/shared/cache/index.ts'
 import { createCloudflareCache } from '@vnext/platform-cloudflare/src/cache-factory.ts'
-import { createBunCache } from '@vnext/platform-bun/src/cache-factory.ts'
-import { BunSqliteDatabase } from '@vnext/platform-bun/src/bun-sqlite-database.ts'
+import { createBunCache } from '@vnext-llm/platform-bun/src/cache-factory.ts'
+import { BunSqliteDatabase } from '@vnext-llm/platform-bun/src/bun-sqlite-database.ts'
 import { Database } from 'bun:sqlite'
 
 afterEach(() => { __resetPlatformForTests() })

@@ -24,7 +24,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@vnext/platform-bun": "workspace:*",
+    "@vnext-llm/platform-bun": "workspace:*",
     "@vnext/platform-cloudflare": "workspace:*"
   }
 }

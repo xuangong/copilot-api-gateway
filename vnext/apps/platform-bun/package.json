@@ -1,5 +1,5 @@
 {
-  "name": "@vnext/platform-bun",
+  "name": "@vnext-llm/platform-bun",
   "private": true,
   "version": "0.0.0",
   "type": "module",
