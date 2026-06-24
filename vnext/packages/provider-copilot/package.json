@@ -15,6 +15,6 @@
     "@vnext/protocols": "workspace:*",
     "@vnext/service": "workspace:*",
     "@vnext/provider": "workspace:*",
-    "@vnext/shared-http": "workspace:*"
+    "@vnext/http": "workspace:*"
   }
 }

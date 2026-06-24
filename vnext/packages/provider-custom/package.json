@@ -12,6 +12,6 @@
   "dependencies": {
     "@vnext/protocols": "workspace:*",
     "@vnext/provider": "workspace:*",
-    "@vnext/shared-http": "workspace:*"
+    "@vnext/http": "workspace:*"
   }
 }

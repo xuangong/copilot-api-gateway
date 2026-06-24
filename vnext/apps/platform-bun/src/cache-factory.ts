@@ -14,7 +14,7 @@ import {
   MemoryCache,
   type Cache,
   type CacheSqlExecutor,
-} from "@vnext/shared-cache"
+} from "@vnext/cache"
 import type { BunSqliteDatabase } from "./bun-sqlite-database.ts"
 
 export interface BunCacheEnv {

@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { MemoryCache, KvCache, D1Cache } from '@vnext/shared-cache'
+import { MemoryCache, KvCache, D1Cache } from '@vnext/cache'
 import { __resetPlatformForTests } from '@vnext/platform'
 import { initCache, getCache } from '../src/shared/cache/index.ts'
 import { createCloudflareCache } from '@vnext/platform-cloudflare/src/cache-factory.ts'

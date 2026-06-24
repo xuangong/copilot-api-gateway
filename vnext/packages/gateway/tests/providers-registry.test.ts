@@ -10,7 +10,7 @@ import {
 } from '../src/data-plane/providers/registry.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import type { ModelEndpoints } from '@vnext/protocols/common'
-import { MemoryCache } from '@vnext/shared-cache'
+import { MemoryCache } from '@vnext/cache'
 import { initCache } from '../src/shared/cache/index.ts'
 
 const stubModel = (id: string, type = 'text'): Model => ({

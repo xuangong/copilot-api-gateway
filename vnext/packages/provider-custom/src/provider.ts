@@ -1,6 +1,6 @@
 /**
  * Generic OpenAI-compatible provider. Verbatim port of
- * src/providers/custom/provider.ts from main; uses @vnext/shared-http
+ * src/providers/custom/provider.ts from main; uses @vnext/http
  * helpers in place of the inline transport utilities.
  */
 
@@ -14,7 +14,7 @@ import {
   type ProviderRequest,
   type ProviderResponse,
 } from '@vnext/provider'
-import { fetchWithRetry, mergeHeaders, truncateBody } from '@vnext/shared-http'
+import { fetchWithRetry, mergeHeaders, truncateBody } from '@vnext/http'
 
 export interface CustomProviderConfig {
   name: string

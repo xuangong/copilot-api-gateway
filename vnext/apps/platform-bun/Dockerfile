@@ -24,8 +24,8 @@ COPY packages/provider-copilot/package.json packages/provider-copilot/
 COPY packages/provider-custom/package.json packages/provider-custom/
 COPY packages/provider-sdf/package.json packages/provider-sdf/
 COPY packages/responses-store/package.json packages/responses-store/
-COPY packages/shared-cache/package.json packages/shared-cache/
-COPY packages/shared-http/package.json packages/shared-http/
+COPY packages/cache/package.json packages/cache/
+COPY packages/http/package.json packages/http/
 COPY packages/translate/package.json packages/translate/
 
 RUN bun install --frozen-lockfile

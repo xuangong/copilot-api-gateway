@@ -19,7 +19,7 @@ import {
   type Cache,
   type CacheSqlExecutor,
   type KVLike,
-} from '@vnext/shared-cache'
+} from '@vnext/cache'
 
 export interface CloudflareEnv {
   DB?: unknown

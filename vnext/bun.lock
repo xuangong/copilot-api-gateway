@@ -36,30 +36,35 @@
       "name": "@vnext/platform-bun",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext/cache": "workspace:*",
         "@vnext/gateway": "workspace:*",
         "@vnext/platform": "workspace:*",
         "@vnext/responses-store": "workspace:*",
-        "@vnext/shared-cache": "workspace:*",
       },
     },
     "apps/platform-cloudflare": {
       "name": "@vnext/platform-cloudflare",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext/cache": "workspace:*",
         "@vnext/gateway": "workspace:*",
         "@vnext/platform": "workspace:*",
         "@vnext/responses-store": "workspace:*",
-        "@vnext/shared-cache": "workspace:*",
       },
       "devDependencies": {
         "@cloudflare/workers-types": "^4.20260602.1",
         "wrangler": "^4.97.0",
       },
     },
+    "packages/cache": {
+      "name": "@vnext/cache",
+      "version": "0.0.0",
+    },
     "packages/gateway": {
       "name": "@vnext/gateway",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext/cache": "workspace:*",
         "@vnext/platform": "workspace:*",
         "@vnext/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
@@ -69,7 +74,6 @@
         "@vnext/provider-sdf": "workspace:*",
         "@vnext/responses-store": "workspace:*",
         "@vnext/service": "workspace:*",
-        "@vnext/shared-cache": "workspace:*",
         "@vnext/translate": "workspace:*",
         "hono": "^4.12.23",
         "image-size": "^2.0.2",
@@ -79,6 +83,10 @@
         "@vnext/platform-bun": "workspace:*",
         "@vnext/platform-cloudflare": "workspace:*",
       },
+    },
+    "packages/http": {
+      "name": "@vnext/http",
+      "version": "0.0.0",
     },
     "packages/platform": {
       "name": "@vnext/platform",
@@ -103,37 +111,37 @@
       "name": "@vnext/provider-azure",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext/http": "workspace:*",
         "@vnext/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
-        "@vnext/shared-http": "workspace:*",
       },
     },
     "packages/provider-copilot": {
       "name": "@vnext/provider-copilot",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext/http": "workspace:*",
         "@vnext/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
         "@vnext/service": "workspace:*",
-        "@vnext/shared-http": "workspace:*",
       },
     },
     "packages/provider-custom": {
       "name": "@vnext/provider-custom",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext/http": "workspace:*",
         "@vnext/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
-        "@vnext/shared-http": "workspace:*",
       },
     },
     "packages/provider-sdf": {
       "name": "@vnext/provider-sdf",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext/http": "workspace:*",
         "@vnext/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
-        "@vnext/shared-http": "workspace:*",
       },
     },
     "packages/responses-store": {
@@ -142,14 +150,6 @@
     },
     "packages/service": {
       "name": "@vnext/service",
-      "version": "0.0.0",
-    },
-    "packages/shared-cache": {
-      "name": "@vnext/shared-cache",
-      "version": "0.0.0",
-    },
-    "packages/shared-http": {
-      "name": "@vnext/shared-http",
       "version": "0.0.0",
     },
     "packages/translate": {
@@ -429,9 +429,13 @@
 
     "@unrs/resolver-binding-win32-x64-msvc": ["@unrs/resolver-binding-win32-x64-msvc@1.12.2", "", { "os": "win32", "cpu": "x64" }, "sha512-nAB74NfSNKknqQ1RrYj6uz8FcXEomu/MATJZxh/x+BArzN2U3JbOYC0APYzUIGhVY3m5hRxA8VPNdPBoG8txlA=="],
 
+    "@vnext/cache": ["@vnext/cache@workspace:packages/cache"],
+
     "@vnext/dashboard": ["@vnext/dashboard@workspace:apps/dashboard"],
 
     "@vnext/gateway": ["@vnext/gateway@workspace:packages/gateway"],
+
+    "@vnext/http": ["@vnext/http@workspace:packages/http"],
 
     "@vnext/platform": ["@vnext/platform@workspace:packages/platform"],
 
@@ -454,10 +458,6 @@
     "@vnext/responses-store": ["@vnext/responses-store@workspace:packages/responses-store"],
 
     "@vnext/service": ["@vnext/service@workspace:packages/service"],
-
-    "@vnext/shared-cache": ["@vnext/shared-cache@workspace:packages/shared-cache"],
-
-    "@vnext/shared-http": ["@vnext/shared-http@workspace:packages/shared-http"],
 
     "@vnext/translate": ["@vnext/translate@workspace:packages/translate"],
 
