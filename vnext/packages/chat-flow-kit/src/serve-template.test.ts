@@ -153,3 +153,54 @@ describe('serveTemplate — parse error path', () => {
     expect(calls).toEqual(['render:418'])
   })
 })
+
+describe('serveTemplate — preProcess short-circuit', () => {
+  test('short-circuit returns the supplied Response and skips quota/attempt/respond', async () => {
+    const calls: string[] = []
+    const hooks = defaultHooks({
+      preProcess: async () => {
+        calls.push('preProcess')
+        return {
+          kind: 'short-circuit',
+          response: new Response('blocked', { status: 451, headers: { 'x-from': 'pre' } }),
+          extra: { tag: 'sc' },
+        }
+      },
+      runAttempt: async () => {
+        calls.push('runAttempt')
+        return { kind: 'ok', echoed: -1 }
+      },
+      respond: async () => {
+        calls.push('respond')
+        return new Response('should not happen', { status: 500 })
+      },
+    })
+    const deps = defaultDeps({
+      runQuotaGate: async () => {
+        calls.push('runQuotaGate')
+        return null
+      },
+    })
+    const result = await serveTemplate(hooks, defaultInput(), deps)
+    expect(result.response.status).toBe(451)
+    expect(result.response.headers.get('x-from')).toBe('pre')
+    expect(await result.response.text()).toBe('blocked')
+    expect(result.extra).toEqual({ tag: 'sc' })
+    expect(calls).toEqual(['preProcess'])
+  })
+
+  test('preProcess throw with status+body uses jsonErrorWrap', async () => {
+    const hooks = defaultHooks({
+      preProcess: async () => {
+        throw Object.assign(new Error('pre-bad'), {
+          status: 409,
+          body: { error: { message: 'conflict' } },
+        })
+      },
+    })
+    const result = await serveTemplate(hooks, defaultInput(), defaultDeps())
+    expect(result.response.status).toBe(409)
+    expect(await result.response.json()).toEqual({ error: { message: 'conflict' } })
+    expect(result.extra).toBeUndefined()
+  })
+})
