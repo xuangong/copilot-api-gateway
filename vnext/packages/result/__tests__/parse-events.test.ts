@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { parseTargetStreamFrames } from '../parse-events'
-import type { SseFrame } from '../../sse'
+import { parseTargetStreamFrames } from '../src/parse-events'
+import type { SseFrame } from '../src/frame'
 
 const sseSource = (frames: SseFrame[]): AsyncIterable<SseFrame> => ({
   async *[Symbol.asyncIterator]() {

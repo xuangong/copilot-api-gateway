@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { parseSSEStream } from '../parse-sse'
+import { parseSSEStream } from '../src/parse-sse'
 
 const streamFromString = (s: string): ReadableStream<Uint8Array> =>
   new ReadableStream({

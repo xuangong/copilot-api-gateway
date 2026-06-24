@@ -2,8 +2,7 @@
 import { chatCompletionsErrorPayloadMessage } from './errors'
 import type { ChatCompletionsStreamEvent } from './events'
 import { doneFrame, eventFrame, type ProtocolFrame } from '../common/sse'
-import { parseTargetStreamFrames } from '../common/stream/parse-events'
-import { parseSSEStream } from '../common/stream/parse-sse'
+import { parseTargetStreamFrames, parseSSEStream } from '@vnext-gateway/result/parse'
 
 export interface ParseChatCompletionsStreamOptions {
   signal?: AbortSignal

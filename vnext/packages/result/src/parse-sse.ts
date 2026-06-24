@@ -1,4 +1,4 @@
-import { type SseFrame, sseFrame } from '../sse'
+import { type SseFrame, sseFrame } from './frame'
 
 export interface ParseSSEStreamOptions {
   signal?: AbortSignal

@@ -1,8 +1,7 @@
 import { isResponsesTerminalEvent, type ResponsesResult, type ResponsesStreamEvent } from './events'
 import { responsesResultToEvents } from './from-result'
 import { doneFrame, eventFrame, type ProtocolFrame } from '../common/sse'
-import { parseTargetStreamFrames } from '../common/stream/parse-events'
-import { parseSSEStream } from '../common/stream/parse-sse'
+import { parseTargetStreamFrames, parseSSEStream } from '@vnext-gateway/result/parse'
 
 export interface ParseResponsesStreamOptions {
   signal?: AbortSignal
