@@ -50,6 +50,7 @@ docker-compose.override.yml
 # vNext local sqlite (bun dev bootstrap)
 vnext/.vnext-local.sqlite
 vnext/*.sqlite
+vnext/apps/**/*.sqlite
 
 # Claude Code local state (settings, worktrees, plans)
 .claude/
