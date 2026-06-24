@@ -11,7 +11,7 @@ import { test, expect, mock } from 'bun:test'
 import { geminiAttempt } from '../../../../src/data-plane/chat-flow/gemini/attempt'
 import type { TelemetryRequestContext } from '../../../../src/data-plane/chat-flow/shared/telemetry-ctx'
 import type { RequestContext } from '@vnext-llm/protocols/common'
-import { eventResult, type ProtocolFrame } from '@vnext-llm/protocols/common'
+import { llmEventResult, type ProtocolFrame } from '@vnext-llm/protocols/common'
 
 const baseCtx: RequestContext = { requestStartedAt: Date.now() }
 const baseAuth = { ownerId: 'o', copilot: false as const }
@@ -49,7 +49,7 @@ const makeTranslator = () =>
 test('cross-protocol gemini → messages: translatorPair is stamped on modelIdentity', async () => {
   const translator = makeTranslator()
   const hubGenerate = mock(async () =>
-    eventResult(
+    llmEventResult(
       hubFrames() as never,
       { upstream: 'fake', upstreamModel: 'claude-x', sourceModel: 'claude-x' },
       undefined,
@@ -88,7 +88,7 @@ test('cross-protocol gemini → messages: translatorPair is stamped on modelIden
 test('cross-protocol gemini → messages: translateBody is set from translator.translateBody', async () => {
   const translator = makeTranslator()
   const hubGenerate = mock(async () =>
-    eventResult(
+    llmEventResult(
       hubFrames() as never,
       { upstream: 'fake', upstreamModel: 'claude-x', sourceModel: 'claude-x' },
       undefined,
@@ -130,7 +130,7 @@ test('cross-protocol gemini → messages: translateBody is set from translator.t
 test('cross-protocol gemini → responses: translatorPair hub is responses', async () => {
   const translator = makeTranslator()
   const hubGenerate = mock(async () =>
-    eventResult(
+    llmEventResult(
       hubFrames() as never,
       { upstream: 'fake', upstreamModel: 'gpt-x', sourceModel: 'gpt-x' },
       undefined,
@@ -167,7 +167,7 @@ test('cross-protocol gemini → responses: translatorPair hub is responses', asy
 test('cross-protocol gemini → chat_completions: translatorPair hub is chat_completions', async () => {
   const translator = makeTranslator()
   const hubGenerate = mock(async () =>
-    eventResult(
+    llmEventResult(
       hubFrames() as never,
       { upstream: 'fake', upstreamModel: 'gpt-4', sourceModel: 'gpt-4' },
       undefined,
@@ -210,7 +210,7 @@ test('streaming path: hub frames flow through translateEvents (regression guard)
     yield { type: 'event', event: hubFrame } as never
   }
   const hubGenerate = mock(async () =>
-    eventResult(
+    llmEventResult(
       singleHubFrame() as never,
       { upstream: 'fake', upstreamModel: 'claude-x', sourceModel: 'claude-x' },
       undefined,

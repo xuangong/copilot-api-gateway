@@ -89,18 +89,18 @@ export type { SseFrame, SseCommentFrame, SseWritableFrame, EventFrame, DoneFrame
 export { sseFrame, sseCommentFrame, eventFrame, doneFrame } from './sse'
 
 export type {
-  EventResult,
+  LlmEventResult,
   UpstreamErrorResult,
   InternalErrorResult,
-  ExecuteResult,
+  LlmExecuteResult,
   TelemetryModelIdentity,
   PerformanceTelemetryContext,
   EventResultMetadata,
   TranslateBodyContext,
 } from './result'
 export {
-  eventResult,
-  internalErrorResult,
+  llmEventResult,
+  llmInternalErrorResult,
   readUpstreamError,
   upstreamErrorToResponse,
   decodeUpstreamErrorBody,

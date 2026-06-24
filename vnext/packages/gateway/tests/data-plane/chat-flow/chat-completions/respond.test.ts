@@ -2,11 +2,11 @@
 import { test, expect } from 'bun:test'
 import { respondChatCompletions } from '../../../../src/data-plane/chat-flow/chat-completions/respond'
 import {
-  eventResult,
-  internalErrorResult,
+  llmEventResult,
+  llmInternalErrorResult,
   eventFrame,
   doneFrame,
-  type EventResult,
+  type LlmEventResult,
   type ProtocolFrame,
   type TelemetryModelIdentity,
 } from '@vnext-llm/protocols/common'
@@ -34,7 +34,7 @@ const okFrames = async function* (): AsyncGenerator<ProtocolFrame<ChatCompletion
 }
 
 test('events + wantsStream=true → SSE Response with [DONE]', async () => {
-  const resp = await respondChatCompletions(eventResult(okFrames(), stubIdentity), { wantsStream: true, includeUsageChunk: false })
+  const resp = await respondChatCompletions(llmEventResult(okFrames(), stubIdentity), { wantsStream: true, includeUsageChunk: false })
   expect(resp.headers.get('content-type')).toContain('text/event-stream')
   const body = await resp.text()
   expect(body).toContain('data: [DONE]')
@@ -42,14 +42,14 @@ test('events + wantsStream=true → SSE Response with [DONE]', async () => {
 })
 
 test('events + wantsStream=false → JSON Response with reassembled completion', async () => {
-  const resp = await respondChatCompletions(eventResult(okFrames(), stubIdentity), { wantsStream: false, includeUsageChunk: false })
+  const resp = await respondChatCompletions(llmEventResult(okFrames(), stubIdentity), { wantsStream: false, includeUsageChunk: false })
   expect(resp.headers.get('content-type')).toContain('application/json')
   const json = (await resp.json()) as { choices: Array<{ message: { content: string } }> }
   expect(json.choices[0]?.message.content).toBe('hi')
 })
 
 test('internal-error renders JSON envelope with status', async () => {
-  const resp = await respondChatCompletions(internalErrorResult(502, new Error('boom')), {
+  const resp = await respondChatCompletions(llmInternalErrorResult(502, new Error('boom')), {
     wantsStream: true,
     includeUsageChunk: false,
   })
@@ -98,13 +98,13 @@ test('mid-stream throw → SSE writes error event-frame and closes', async () =>
     } as unknown as ChatCompletionsStreamEvent)
     throw new Error('mid-stream-boom')
   }
-  const resp = await respondChatCompletions(eventResult(failing(), stubIdentity), { wantsStream: true, includeUsageChunk: false })
+  const resp = await respondChatCompletions(llmEventResult(failing(), stubIdentity), { wantsStream: true, includeUsageChunk: false })
   const body = await resp.text()
   expect(body).toContain('mid-stream-boom')
 })
 
 test('SSE response carries no-cache + keep-alive + x-accel-buffering headers', async () => {
-  const resp = await respondChatCompletions(eventResult(okFrames(), stubIdentity), { wantsStream: true, includeUsageChunk: false })
+  const resp = await respondChatCompletions(llmEventResult(okFrames(), stubIdentity), { wantsStream: true, includeUsageChunk: false })
   expect(resp.headers.get('content-type')).toContain('text/event-stream')
   expect(resp.headers.get('cache-control')).toBe('no-cache')
   expect(resp.headers.get('connection')).toBe('keep-alive')
@@ -122,7 +122,7 @@ test('downstream cancel aborts the controller passed in options', async () => {
     await new Promise<void>(() => {})
   }
   const controller = new AbortController()
-  const resp = await respondChatCompletions(eventResult(neverEnds(), stubIdentity), {
+  const resp = await respondChatCompletions(llmEventResult(neverEnds(), stubIdentity), {
     wantsStream: true,
     includeUsageChunk: false,
     downstreamAbortController: controller,
@@ -164,7 +164,7 @@ test('cross-protocol cc→responses: reassembles via hub + translateBody → cc-
   // (ResponsesResult) back into the source (chat-completions) JSON envelope.
   // We assert respond.ts (a) reassembles via the responses reassembler and
   // (b) feeds that reassembled body into translateBody before responding.
-  const result: EventResult<ProtocolFrame<ChatCompletionsStreamEvent>> = {
+  const result: LlmEventResult<ProtocolFrame<ChatCompletionsStreamEvent>> = {
     type: 'events',
     events: responsesHubFrames() as never,
     modelIdentity: {

@@ -14,7 +14,7 @@
  *      envelope back (content-type: application/json), and
  *      `synthesizeResponsesFramesFromJson` produces hub frames;
  *   3. `translateResponsesToGeminiSSE` (streaming) or `translateResponsesToGeminiBody`
- *      (non-streaming, via `EventResult.translateBody`) maps the hub-shaped
+ *      (non-streaming, via `LlmEventResult.translateBody`) maps the hub-shaped
  *      output back into gemini wire format.
  *
  * Both branches are asserted: streaming (assert `data:` chunks containing

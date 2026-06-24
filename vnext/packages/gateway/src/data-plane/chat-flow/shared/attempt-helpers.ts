@@ -3,9 +3,9 @@
  * Kept free of I/O so unit tests can drive them with stub bindings.
  */
 import {
-  eventResult,
+  llmEventResult,
   parseTargetStreamFrames,
-  type EventResult,
+  type LlmEventResult,
   type PerformanceTelemetryContext,
   type ProtocolFrame,
   type TelemetryModelIdentity,
@@ -69,7 +69,7 @@ export interface ProviderResponseToExecuteResultArgs<T> {
 }
 
 /**
- * 2xx provider response → `EventResult` populated with telemetry channel.
+ * 2xx provider response → `LlmEventResult` populated with telemetry channel.
  * Wraps the body via the rewritten `withUpstreamTelemetry` so a `finalMetadata`
  * promise (for downstream interceptors that DON'T replace the stream — but
  * may want to read the terminal-frame state) is exposed; pass-through callers
@@ -78,19 +78,19 @@ export interface ProviderResponseToExecuteResultArgs<T> {
  */
 export function providerResponseToExecuteResult<T>(
   args: ProviderResponseToExecuteResultArgs<T>,
-): EventResult<ProtocolFrame<T>> {
+): LlmEventResult<ProtocolFrame<T>> {
   if (!args.providerResp.body) throw new Error('upstream returned empty body')
   const events = args.toEvents(args.providerResp.body)
   const { events: decorated } = withUpstreamTelemetry(events, {
     abortSignal: args.abortSignal,
     protocol: args.protocol,
   })
-  return eventResult(
+  return llmEventResult(
     decorated,
     telemetryModelIdentity(args.binding, args.bareModel),
     upstreamPerformanceContext(args.telemetryCtx, args.binding, args.bareModel),
     // No finalMetadata: pass-through path. Interceptors that replace the stream
-    // construct their own EventResult with their own finalMetadata.
+    // construct their own LlmEventResult with their own finalMetadata.
   )
 }
 

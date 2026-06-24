@@ -29,8 +29,8 @@ import {
   upstreamErrorToResponse,
   eventFrame,
   sseFrame,
-  type EventResult,
-  type ExecuteResult,
+  type LlmEventResult,
+  type LlmExecuteResult,
   type ProtocolFrame,
   type SseFrame,
   type UpstreamErrorResult,
@@ -63,7 +63,7 @@ export interface RespondResponsesOptions {
  * of the chat-flow public contract, not the leaf's implementation.
  */
 export type RespondResponsesInput =
-  | ExecuteResult<ProtocolFrame<ResponsesStreamEvent>>
+  | LlmExecuteResult<ProtocolFrame<ResponsesStreamEvent>>
   | { readonly kind: 'bridged-response'; readonly response: Response }
 
 const SSE_TEXT_ENCODER = new TextEncoder()
@@ -108,14 +108,14 @@ async function* consumeWithState<T>(
 }
 
 /**
- * Persists usage + performance rows from a drained `EventResult`. Prefers
+ * Persists usage + performance rows from a drained `LlmEventResult`. Prefers
  * the interceptor-replaced `finalMetadata` over `result.modelIdentity` so
  * an interceptor that replaces the stream (the image-generation shortcut)
  * gets its own corrected identity. Otherwise the model key observed
  * in-stream supersedes the binding-time guess.
  */
 async function persistFromEventResult<T>(
-  result: EventResult<ProtocolFrame<T>>,
+  result: LlmEventResult<ProtocolFrame<T>>,
   state: SourceStreamState,
   telemetryCtx: TelemetryRequestContext,
 ): Promise<void> {
@@ -130,7 +130,7 @@ async function persistFromEventResult<T>(
 // Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
 // sees source-shape (responses) frames; same-protocol falls through unchanged.
 //
-// When `translateEvents` is set on the EventResult, `result.events` carries
+// When `translateEvents` is set on the LlmEventResult, `result.events` carries
 // HUB-shape frames (e.g. `ProtocolFrame<MessagesStreamEvent>` for
 // responses→messages, or `ProtocolFrame<ChatCompletionsStreamEvent>` for
 // responses→chat_completions). Before SSE encoding we:
@@ -144,7 +144,7 @@ async function persistFromEventResult<T>(
 // translator), not a synthetic sentinel.
 async function* applyTranslatorEventsForStreaming(
   hubFrames: AsyncIterable<ProtocolFrame<unknown>>,
-  translateEvents: NonNullable<EventResult<unknown>['translateEvents']>,
+  translateEvents: NonNullable<LlmEventResult<unknown>['translateEvents']>,
   signal: AbortSignal | undefined,
   model: string | undefined,
 ): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
@@ -169,7 +169,7 @@ async function* applyTranslatorEventsForStreaming(
  * `event: error` name.
  */
 const renderEventsAsSSE = (
-  result: EventResult<ProtocolFrame<ResponsesStreamEvent>>,
+  result: LlmEventResult<ProtocolFrame<ResponsesStreamEvent>>,
   options: RespondResponsesOptions,
 ): Response => {
   const state = options.telemetryCtx
@@ -235,7 +235,7 @@ const renderEventsAsSSE = (
  * leave `translatorPair`/`translateBody` undefined and use the responses reassembler.
  */
 const renderEventsAsJson = async (
-  result: EventResult<ProtocolFrame<ResponsesStreamEvent>>,
+  result: LlmEventResult<ProtocolFrame<ResponsesStreamEvent>>,
   options: RespondResponsesOptions,
 ): Promise<Response> => {
   const state = options.telemetryCtx
@@ -303,7 +303,7 @@ const renderUpstreamError = async (
 }
 
 const renderExecuteResult = async (
-  result: ExecuteResult<ProtocolFrame<ResponsesStreamEvent>>,
+  result: LlmExecuteResult<ProtocolFrame<ResponsesStreamEvent>>,
   options: RespondResponsesOptions,
 ): Promise<Response> => {
   if (result.type === 'upstream-error') return await renderUpstreamError(result, options)

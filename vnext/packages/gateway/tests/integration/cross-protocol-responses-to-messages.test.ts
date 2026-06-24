@@ -13,7 +13,7 @@
  *      `synthesizeMessagesFramesFromJson` produces hub frames;
  *   3. `translateMessagesToResponsesSSE` (streaming) or
  *      `translateMessagesToResponsesBody` (non-streaming, via
- *      `EventResult.translateBody`) maps the hub-shaped output back into
+ *      `LlmEventResult.translateBody`) maps the hub-shaped output back into
  *      responses wire format.
  *
  * Both branches are asserted: streaming (assert `data:` chunks containing

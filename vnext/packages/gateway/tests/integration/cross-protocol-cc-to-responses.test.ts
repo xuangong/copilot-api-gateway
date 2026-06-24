@@ -14,7 +14,7 @@
  *      envelope back (content-type: application/json), and
  *      `synthesizeResponsesFramesFromJson` produces hub frames;
  *   3. `translateResponsesToChatSSE` (streaming) or `translateResponsesToChatBody`
- *      (non-streaming, via `EventResult.translateBody`) maps the hub-shaped
+ *      (non-streaming, via `LlmEventResult.translateBody`) maps the hub-shaped
  *      output back into chat-completions wire format.
  *
  * Both branches are asserted: streaming (assert `data:` chunks ending with

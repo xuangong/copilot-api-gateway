@@ -6,8 +6,8 @@ import {
 import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
 import {
   doneFrame,
-  eventResult,
-  type ExecuteResult,
+  llmEventResult,
+  type LlmExecuteResult,
   type ProtocolFrame,
   type TelemetryModelIdentity,
 } from '@vnext-llm/protocols/common'
@@ -37,9 +37,9 @@ const eventFrame = (event: MessagesStreamEvent): ProtocolFrame<MessagesStreamEve
 
 const runEvents = (
   ...events: MessagesStreamEvent[]
-): (() => Promise<ExecuteResult<ProtocolFrame<MessagesStreamEvent>>>) =>
+): (() => Promise<LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>>) =>
   async () =>
-    eventResult(
+    llmEventResult(
       (async function* () {
         for (const e of events) yield eventFrame(e)
         yield doneFrame()
@@ -48,7 +48,7 @@ const runEvents = (
     )
 
 const collect = async (
-  result: ExecuteResult<ProtocolFrame<MessagesStreamEvent>>,
+  result: LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>,
 ): Promise<ProtocolFrame<MessagesStreamEvent>[]> => {
   if (result.type !== 'events') throw new Error('expected events')
   const out: ProtocolFrame<MessagesStreamEvent>[] = []

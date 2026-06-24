@@ -3,7 +3,7 @@
  * Anthropic Messages response renderer.
  *
  * Converts the {@link MessagesAttemptResult} (events / upstream-error /
- * internal-error from `ExecuteResult`) into a single `Response` for the
+ * internal-error from `LlmExecuteResult`) into a single `Response` for the
  * client. SSE streaming is rendered frame-by-frame via
  * {@link messagesProtocolFrameToSSEFrame}; non-streaming requests drain to
  * a reassembled `MessagesResult` JSON envelope.
@@ -31,8 +31,8 @@ import {
   upstreamErrorToResponse,
   eventFrame,
   sseFrame,
-  type EventResult,
-  type ExecuteResult,
+  type LlmEventResult,
+  type LlmExecuteResult,
   type ProtocolFrame,
   type SseFrame,
   type UpstreamErrorResult,
@@ -75,7 +75,7 @@ export interface RespondMessagesOptions {
  * — the alias is part of the chat-flow public contract, not the leaf's
  * implementation.
  */
-export type RespondMessagesInput = ExecuteResult<ProtocolFrame<MessagesStreamEvent>>
+export type RespondMessagesInput = LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>
 
 const SSE_TEXT_ENCODER = new TextEncoder()
 
@@ -119,14 +119,14 @@ async function* consumeWithState<T>(
 }
 
 /**
- * Persists usage + performance rows from a drained `EventResult`. Prefers the
+ * Persists usage + performance rows from a drained `LlmEventResult`. Prefers the
  * interceptor-replaced `finalMetadata` over `result.modelIdentity` so a
  * downstream interceptor that swaps the stream gets its own corrected
  * identity. Otherwise the model key observed in-stream supersedes the
  * binding-time guess.
  */
 async function persistFromEventResult<T>(
-  result: EventResult<ProtocolFrame<T>>,
+  result: LlmEventResult<ProtocolFrame<T>>,
   state: SourceStreamState,
   telemetryCtx: TelemetryRequestContext,
 ): Promise<void> {
@@ -141,7 +141,7 @@ async function persistFromEventResult<T>(
 // Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
 // sees source-shape (messages) frames; same-protocol falls through unchanged.
 //
-// When `translateEvents` is set on the EventResult, `result.events` carries
+// When `translateEvents` is set on the LlmEventResult, `result.events` carries
 // HUB-shape frames (e.g. `ProtocolFrame<ResponsesStreamEvent>` for
 // messages→responses, or `ProtocolFrame<ChatCompletionsStreamEvent>` for
 // messages→chat_completions). Before SSE encoding we:
@@ -154,7 +154,7 @@ async function persistFromEventResult<T>(
 // (the natural terminator emitted by the translator), not a synthetic sentinel.
 async function* applyTranslatorEventsForStreaming(
   hubFrames: AsyncIterable<ProtocolFrame<unknown>>,
-  translateEvents: NonNullable<EventResult<unknown>['translateEvents']>,
+  translateEvents: NonNullable<LlmEventResult<unknown>['translateEvents']>,
   signal: AbortSignal | undefined,
   model: string | undefined,
 ): AsyncGenerator<ProtocolFrame<MessagesStreamEvent>> {
@@ -179,7 +179,7 @@ async function* applyTranslatorEventsForStreaming(
  * error` SSE name.
  */
 const renderEventsAsSSE = (
-  result: EventResult<ProtocolFrame<MessagesStreamEvent>>,
+  result: LlmEventResult<ProtocolFrame<MessagesStreamEvent>>,
   options: RespondMessagesOptions,
 ): Response => {
   const state = options.telemetryCtx
@@ -245,7 +245,7 @@ const renderEventsAsSSE = (
  * leave `translatorPair`/`translateBody` undefined and use the messages reassembler.
  */
 const renderEventsAsJson = async (
-  result: EventResult<ProtocolFrame<MessagesStreamEvent>>,
+  result: LlmEventResult<ProtocolFrame<MessagesStreamEvent>>,
   options: RespondMessagesOptions,
 ): Promise<Response> => {
   const state = options.telemetryCtx
@@ -294,7 +294,7 @@ const renderEventsAsJson = async (
 // The bridged-response sentinel was removed when the cross-protocol
 // `dispatch()` bridge was deleted in Spec 3 Part 4. Native cross-protocol
 // attempts surface a 501 internal-error result via attempt.ts now, so the
-// renderer only handles `ExecuteResult` variants.
+// renderer only handles `LlmExecuteResult` variants.
 
 /**
  * Repackage an upstream non-2xx body as an Anthropic-shaped error envelope.
@@ -313,7 +313,7 @@ const renderUpstreamError = async (
 }
 
 const renderExecuteResult = async (
-  result: ExecuteResult<ProtocolFrame<MessagesStreamEvent>>,
+  result: LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>,
   options: RespondMessagesOptions,
 ): Promise<Response> => {
   if (result.type === 'upstream-error') return await renderUpstreamError(result, options)

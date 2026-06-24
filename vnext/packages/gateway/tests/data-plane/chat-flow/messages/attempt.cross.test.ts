@@ -9,7 +9,7 @@ import { test, expect, mock } from 'bun:test'
 import { messagesAttempt } from '../../../../src/data-plane/chat-flow/messages/attempt'
 import type { TelemetryRequestContext } from '../../../../src/data-plane/chat-flow/shared/telemetry-ctx'
 import type { RequestContext } from '@vnext-llm/protocols/common'
-import { eventResult, type ProtocolFrame } from '@vnext-llm/protocols/common'
+import { llmEventResult, type ProtocolFrame } from '@vnext-llm/protocols/common'
 
 const baseCtx: RequestContext = { requestStartedAt: Date.now() }
 const baseAuth = { ownerId: 'o', copilot: false }
@@ -50,10 +50,10 @@ const makeTranslator = () =>
 
 test('cross-protocol messages → responses dispatches via traverseTranslation', async () => {
   const translator = makeTranslator()
-  // Fake hub attempt: returns an EventResult so traverseTranslation enters the
+  // Fake hub attempt: returns an LlmEventResult so traverseTranslation enters the
   // events branch and stamps translatorPair onto modelIdentity.
   const hubGenerate = mock(async () =>
-    eventResult(
+    llmEventResult(
       hubFrames() as never,
       { upstream: 'fake', upstreamModel: 'gpt-x', sourceModel: 'gpt-x' },
       undefined,
@@ -90,7 +90,7 @@ test('cross-protocol messages → responses dispatches via traverseTranslation',
 test('cross-protocol messages → chat_completions dispatches via traverseTranslation', async () => {
   const translator = makeTranslator()
   const hubGenerate = mock(async () =>
-    eventResult(
+    llmEventResult(
       hubFrames() as never,
       { upstream: 'fake', upstreamModel: 'gpt-4', sourceModel: 'gpt-4' },
       undefined,

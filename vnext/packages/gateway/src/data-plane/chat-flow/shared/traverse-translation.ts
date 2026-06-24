@@ -20,10 +20,10 @@
  */
 import { TranslatorValidationError } from '@vnext/translate/errors'
 import {
-  eventResult,
-  internalErrorResult,
-  type EventResult,
-  type ExecuteResult,
+  llmEventResult,
+  llmInternalErrorResult,
+  type LlmEventResult,
+  type LlmExecuteResult,
   type ProtocolFrame,
 } from '@vnext-llm/protocols/common'
 import type { PairTranslator } from '../../dispatch/translator-registry.ts'
@@ -53,7 +53,7 @@ export interface TraverseTranslationArgs<HubFrame, SourceFrame> {
   sourceProtocol: TranslatorProtocol
   hubProtocol: TranslatorProtocol
   translator: PairTranslator
-  innerAttempt: (args: InnerAttemptArgs) => Promise<ExecuteResult<ProtocolFrame<HubFrame>>>
+  innerAttempt: (args: InnerAttemptArgs) => Promise<LlmExecuteResult<ProtocolFrame<HubFrame>>>
   inheritedHeaders: Record<string, string>
   inheritedTelemetryCtx: TelemetryRequestContext
   auth: unknown
@@ -66,7 +66,7 @@ export interface TraverseTranslationArgs<HubFrame, SourceFrame> {
 
 export async function traverseTranslation<HubFrame, SourceFrame>(
   args: TraverseTranslationArgs<HubFrame, SourceFrame>,
-): Promise<ExecuteResult<ProtocolFrame<SourceFrame>>> {
+): Promise<LlmExecuteResult<ProtocolFrame<SourceFrame>>> {
   let hubPayload: Record<string, unknown>
   try {
     hubPayload = (await args.translator.translateRequest(args.sourcePayload, {
@@ -76,9 +76,9 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     })) as Record<string, unknown>
   } catch (err) {
     if (err instanceof TranslatorValidationError) {
-      return internalErrorResult(400, err, undefined, 'translator-validation')
+      return llmInternalErrorResult(400, err, undefined, 'translator-validation')
     }
-    return internalErrorResult(
+    return llmInternalErrorResult(
       500,
       err instanceof Error ? err : new Error(String(err)),
       undefined,
@@ -104,9 +104,9 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     return { ...inner, reason }
   }
 
-  // Hoist into a typed local so the cast below sees the narrowed `EventResult`.
+  // Hoist into a typed local so the cast below sees the narrowed `LlmEventResult`.
   // (TS does not propagate type-guard narrowing across the assignment.)
-  const innerEvents: EventResult<ProtocolFrame<HubFrame>> = inner
+  const innerEvents: LlmEventResult<ProtocolFrame<HubFrame>> = inner
 
   // Forward hub-shape frames downstream verbatim. respond.ts decides per
   // request mode (streaming vs non-streaming) whether to apply the translator:
@@ -125,9 +125,9 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     ...innerEvents.modelIdentity,
     translatorPair: { source: args.sourceProtocol, hub: args.hubProtocol },
   }
-  return eventResult(
+  return llmEventResult(
     // Cast: the events stream is structurally `ProtocolFrame<HubFrame>`, but
-    // the source-protocol ExecuteResult is typed as `ProtocolFrame<SourceFrame>`.
+    // the source-protocol LlmExecuteResult is typed as `ProtocolFrame<SourceFrame>`.
     // respond.ts (the only consumer of this result) discriminates on
     // `translatorPair` and treats the events as hub-shape — so the cast is sound
     // at runtime, just outside what TS can prove.
@@ -135,11 +135,11 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     sourceModelIdentity,
     innerEvents.performance,
     innerEvents.finalMetadata,
-    args.translator.translateBody as EventResult<ProtocolFrame<SourceFrame>>['translateBody'],
+    args.translator.translateBody as LlmEventResult<ProtocolFrame<SourceFrame>>['translateBody'],
     // translateEvents: respond.ts streaming branch unwraps hub frames, runs
     // these through the translator, then re-wraps as source frames before SSE
     // encoding. The translator function here consumes BARE hub events (not
     // ProtocolFrame envelopes) and yields BARE source events.
-    args.translator.translateEvents as EventResult<ProtocolFrame<SourceFrame>>['translateEvents'],
+    args.translator.translateEvents as LlmEventResult<ProtocolFrame<SourceFrame>>['translateEvents'],
   )
 }

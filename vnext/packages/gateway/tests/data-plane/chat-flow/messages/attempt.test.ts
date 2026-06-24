@@ -23,7 +23,7 @@ const makeProviderResponse = (init: { status: number; body: string; contentType?
 })
 
 // A minimal non-streaming messages JSON body that synthesizeMessagesFramesFromJson
-// can handle so the attempt returns an EventResult.
+// can handle so the attempt returns an LlmEventResult.
 const okJsonBody = JSON.stringify({
   id: 'msg_test',
   type: 'message',
@@ -54,7 +54,7 @@ const fakeBindingBase = {
 
 const identityTranslator = { translateRequest: (p: unknown) => p } as never
 
-test('case a — same-protocol leaf returns EventResult on provider 200', async () => {
+test('case a — same-protocol leaf returns LlmEventResult on provider 200', async () => {
   const fetchMock = mock(async () => makeProviderResponse({ status: 200, body: okJsonBody }))
   const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: fetchMock } } as never
   const res = await messagesAttempt.generate({

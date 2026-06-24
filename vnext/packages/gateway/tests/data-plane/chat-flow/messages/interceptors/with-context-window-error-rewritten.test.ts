@@ -3,8 +3,8 @@ import { withContextWindowErrorRewritten } from '../../../../../src/data-plane/c
 import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
 import {
   doneFrame,
-  eventResult,
-  type ExecuteResult,
+  llmEventResult,
+  type LlmExecuteResult,
   type ProtocolFrame,
   type TelemetryModelIdentity,
   type UpstreamErrorResult,
@@ -27,8 +27,8 @@ const baseInv: Invocation = {
 }
 const baseCtx: RequestContext = { requestStartedAt: Date.now() }
 
-const eventsRun = async (): Promise<ExecuteResult<ProtocolFrame<MessagesStreamEvent>>> =>
-  eventResult(
+const eventsRun = async (): Promise<LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>> =>
+  llmEventResult(
     (async function* () {
       yield doneFrame()
     })(),

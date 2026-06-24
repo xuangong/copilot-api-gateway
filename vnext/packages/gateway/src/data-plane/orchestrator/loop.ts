@@ -5,7 +5,7 @@
  * one upstream call via the given provider and returns the Response verbatim.
  *
  * Follow-ups (tracked separately, NOT in this file):
- *   - Real multi-provider walk with ExecuteResult { retry-next-provider } signal
+ *   - Real multi-provider walk with LlmExecuteResult { retry-next-provider } signal
  *   - Stored responses_items affinity + rewriteStoredResponsesItemsForProvider
  *   - ReAct tool dispatch (server-tool plugin invocation between iterations)
  *   - SSE merge across iterations

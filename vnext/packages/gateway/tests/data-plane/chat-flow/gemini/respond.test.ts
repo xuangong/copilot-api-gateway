@@ -1,7 +1,7 @@
 // vnext/packages/gateway/tests/data-plane/chat-flow/gemini/respond.test.ts
 /**
  * Coverage for `gemini/respond.ts` — the renderer that converts a
- * `GeminiAttemptResult` (`ExecuteResult<unknown>`) into a client `Response`.
+ * `GeminiAttemptResult` (`LlmExecuteResult<unknown>`) into a client `Response`.
  *
  * Two render branches:
  *   - `wantsStream === true`: data-only SSE per gemini convention
@@ -17,8 +17,8 @@
 import { test, expect, mock } from 'bun:test'
 import { respondGemini } from '../../../../src/data-plane/chat-flow/gemini/respond.ts'
 import {
-  eventResult,
-  internalErrorResult,
+  llmEventResult,
+  llmInternalErrorResult,
   type TelemetryModelIdentity,
   type ProtocolFrame,
 } from '@vnext-llm/protocols/common'
@@ -50,7 +50,7 @@ const okEvents = async function* (): AsyncGenerator<unknown> {
 }
 
 test('events + wantsStream=true → SSE data-only frames, no [DONE]', async () => {
-  const resp = await respondGemini(eventResult(okEvents(), stubIdentity), { wantsStream: true })
+  const resp = await respondGemini(llmEventResult(okEvents(), stubIdentity), { wantsStream: true })
   expect(resp.status).toBe(200)
   expect(resp.headers.get('content-type')).toContain('text/event-stream')
   const body = await resp.text()
@@ -64,7 +64,7 @@ test('events + wantsStream=true → SSE data-only frames, no [DONE]', async () =
 })
 
 test('events + wantsStream=false → JSON envelope with concatenated text + final usage/modelVersion', async () => {
-  const resp = await respondGemini(eventResult(okEvents(), stubIdentity), { wantsStream: false })
+  const resp = await respondGemini(llmEventResult(okEvents(), stubIdentity), { wantsStream: false })
   expect(resp.status).toBe(200)
   expect(resp.headers.get('content-type')).toContain('application/json')
   const json = (await resp.json()) as {
@@ -83,7 +83,7 @@ test('events + wantsStream=false → JSON envelope with concatenated text + fina
 })
 
 test('internal-error → JSON {error:{message}} envelope at the given status', async () => {
-  const resp = await respondGemini(internalErrorResult(404, new Error('model not found: x')), {
+  const resp = await respondGemini(llmInternalErrorResult(404, new Error('model not found: x')), {
     wantsStream: false,
   })
   expect(resp.status).toBe(404)
@@ -126,7 +126,7 @@ test('events + wantsStream=false carries non-text parts (functionCall) verbatim'
       modelVersion: 'gemini-2.5-pro',
     }
   }
-  const resp = await respondGemini(eventResult(events(), stubIdentity), { wantsStream: false })
+  const resp = await respondGemini(llmEventResult(events(), stubIdentity), { wantsStream: false })
   const json = (await resp.json()) as {
     candidates: Array<{ content: { parts: Array<{ text?: string; functionCall?: unknown }> } }>
   }
@@ -139,7 +139,7 @@ test('events + wantsStream=false: error frame from translator short-circuits to 
   const events = async function* (): AsyncGenerator<unknown> {
     yield { error: { code: 500, message: 'boom', status: 'INTERNAL' } }
   }
-  const resp = await respondGemini(eventResult(events(), stubIdentity), { wantsStream: false })
+  const resp = await respondGemini(llmEventResult(events(), stubIdentity), { wantsStream: false })
   // We render the error frame as the response body verbatim; status 200 because
   // the frame surfaced AFTER the upstream-error gate (mid-stream from the
   // translator's POV). This matches legacy dispatch behaviour.
@@ -150,7 +150,7 @@ test('events + wantsStream=false: error frame from translator short-circuits to 
 
 // ─── Spec 6 Part 4 Task 2: translateBody wiring ────────────────────────────
 //
-// When `translateBody` is set on the EventResult (from `traverseTranslation`),
+// When `translateBody` is set on the LlmEventResult (from `traverseTranslation`),
 // the non-streaming branch must:
 //   1. Dispatch reassembly to the correct hub reassembler (not reassembleGeminiEvents).
 //   2. Call `translateBody(hubJson, ctx)` to convert the hub JSON to gemini JSON.
@@ -190,7 +190,7 @@ test('wantsStream=false + translateBody set: invokes translateBody with hub-reas
     translatorPair: { source: 'gemini', hub: 'chat_completions' },
   }
 
-  const result = eventResult(
+  const result = llmEventResult(
     chatHubFrames() as unknown as AsyncIterable<unknown>,
     identity,
     undefined,
@@ -261,7 +261,7 @@ test('wantsStream=false + translateBody set with hub=messages: dispatches to mes
     translatorPair: { source: 'gemini', hub: 'messages' },
   }
 
-  const result2 = eventResult(
+  const result2 = llmEventResult(
     messagesHubFrames() as unknown as AsyncIterable<unknown>,
     identity2,
     undefined,

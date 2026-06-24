@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test'
 import {
-  eventResult,
-  internalErrorResult,
+  llmEventResult,
+  llmInternalErrorResult,
   readUpstreamError,
   type TelemetryModelIdentity,
   type PerformanceTelemetryContext,
@@ -25,24 +25,24 @@ const perf = (): PerformanceTelemetryContext => ({
 
 async function* empty(): AsyncGenerator<number> { /* yields nothing */ }
 
-test('eventResult requires modelIdentity, accepts performance + finalMetadata', () => {
-  const r = eventResult(empty(), identity(), perf(), Promise.resolve({ modelIdentity: identity() }))
+test('llmEventResult requires modelIdentity, accepts performance + finalMetadata', () => {
+  const r = llmEventResult(empty(), identity(), perf(), Promise.resolve({ modelIdentity: identity() }))
   expect(r.type).toBe('events')
   expect(r.modelIdentity.model).toBe('gpt-4')
   expect(r.performance?.keyId).toBe('k1')
   expect(r.finalMetadata).toBeInstanceOf(Promise)
 })
 
-test('eventResult without performance/finalMetadata leaves them undefined', () => {
-  const r = eventResult(empty(), identity())
+test('llmEventResult without performance/finalMetadata leaves them undefined', () => {
+  const r = llmEventResult(empty(), identity())
   expect(r.performance).toBeUndefined()
   expect(r.finalMetadata).toBeUndefined()
 })
 
-test('internalErrorResult accepts optional performance', () => {
-  const r = internalErrorResult(502, new Error('boom'), perf())
+test('llmInternalErrorResult accepts optional performance', () => {
+  const r = llmInternalErrorResult(502, new Error('boom'), perf())
   expect(r.performance?.keyId).toBe('k1')
-  const r2 = internalErrorResult(404, new Error('nope'))
+  const r2 = llmInternalErrorResult(404, new Error('nope'))
   expect(r2.performance).toBeUndefined()
 })
 
@@ -58,16 +58,16 @@ test('EventResultMetadata shape', () => {
   expect(md.modelIdentity.upstream).toBe('openai-prod')
 })
 
-test('eventResult accepts translateBody', () => {
+test('llmEventResult accepts translateBody', () => {
   async function* gen() { yield 1 as never }
   const id = { model: 'm', upstream: 'u', modelKey: 'k', cost: null }
   const tb = (j: unknown) => ({ ok: true, j })
-  const r = eventResult(gen(), id, undefined, undefined, tb)
+  const r = llmEventResult(gen(), id, undefined, undefined, tb)
   expect(r.translateBody).toBe(tb)
 })
 
-test('internalErrorResult accepts reason', () => {
-  const r = internalErrorResult(400, new Error('bad'), undefined, 'translator-validation')
+test('llmInternalErrorResult accepts reason', () => {
+  const r = llmInternalErrorResult(400, new Error('bad'), undefined, 'translator-validation')
   expect(r.reason).toBe('translator-validation')
 })
 

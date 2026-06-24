@@ -40,10 +40,10 @@
 import { runInterceptors } from '@vnext-gateway/service'
 import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
 import {
-  internalErrorResult,
+  llmInternalErrorResult,
   readUpstreamError,
   type EndpointKey,
-  type ExecuteResult,
+  type LlmExecuteResult,
   type ModelEndpoints,
   type ProtocolFrame,
 } from '@vnext-llm/protocols/common'
@@ -68,7 +68,7 @@ import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-d
  * whether to apply `translateEvents` (streaming) or `translateBody`
  * (non-streaming), matching the pattern in messages/responses respond.ts.
  */
-export type GeminiAttemptResult = ExecuteResult<ProtocolFrame<unknown>>
+export type GeminiAttemptResult = LlmExecuteResult<ProtocolFrame<unknown>>
 
 export interface GeminiAttemptAuth {
   readonly ownerId?: string
@@ -120,8 +120,8 @@ export interface GeminiAttemptArgs {
 export type GeminiInterceptor = (
   inv: Invocation,
   ctx: RequestContext,
-  next: (inv: Invocation, ctx: RequestContext) => Promise<ExecuteResult<ProtocolFrame<unknown>>>,
-) => Promise<ExecuteResult<ProtocolFrame<unknown>>>
+  next: (inv: Invocation, ctx: RequestContext) => Promise<LlmExecuteResult<ProtocolFrame<unknown>>>,
+) => Promise<LlmExecuteResult<ProtocolFrame<unknown>>>
 
 // ─── Binding selection ───────────────────────────────────────────────────
 
@@ -169,9 +169,9 @@ export const geminiAttempt = {
     const selectFn = args.selectBinding ?? defaultSelectBinding
     const sel = await selectFn({ model: args.model, auth: args.auth })
 
-    if (sel.kind === 'model-not-found') return internalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
-    if (sel.kind === 'no-eligible-binding') return internalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
-    if (sel.kind === 'no-translator') return internalErrorResult(500, new Error(`no translator for gemini → ${sel.targetEndpoint}`))
+    if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
+    if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
+    if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for gemini → ${sel.targetEndpoint}`))
 
     // Gemini has no identity target — selectPair('gemini', …) never returns
     // 'gemini' — so every successful selection is a cross-protocol attempt.
@@ -233,7 +233,7 @@ export const geminiAttempt = {
       // hub attempt's ProviderResponse-based branch above already covers the
       // new contract, but we keep this guard for providers that still throw.
       if (err instanceof HTTPError) return await readUpstreamError(err.response, performance)
-      return internalErrorResult(502, err instanceof Error ? err : new Error(String(err)), performance)
+      return llmInternalErrorResult(502, err instanceof Error ? err : new Error(String(err)), performance)
     }
   },
 }

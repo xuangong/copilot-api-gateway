@@ -4,7 +4,7 @@
  *
  * Spec 3 Part 3 Task 7: simplified handler now that the image-generation
  * server-tool short-circuit has moved into `responses/attempt.ts` (the
- * new orchestrator surfaces it as an `__interceptorReplaced` EventResult
+ * new orchestrator surfaces it as an `__interceptorReplaced` LlmEventResult
  * with backend image-model `modelKey` on `finalMetadata`).
  *
  * The flow:

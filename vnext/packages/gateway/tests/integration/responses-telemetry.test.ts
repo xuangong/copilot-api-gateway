@@ -5,7 +5,7 @@
  *
  * Mirrors `messages-telemetry.test.ts` (Part 3 messages battery) plus an
  * extra scenario for the `image_generation` server-tool shortcut, which
- * sets `finalMetadata` on the EventResult so the persisted perf row carries
+ * sets `finalMetadata` on the LlmEventResult so the persisted perf row carries
  * the BACKEND image model in `modelKey` (not the public model the SDK
  * passed in). The image-gen shortcut is the only path that uses
  * `__interceptorReplaced`, so the modelKey-correction guarantee is

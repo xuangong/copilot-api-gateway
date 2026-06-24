@@ -3,7 +3,7 @@
  * Gemini response renderer.
  *
  * Converts the {@link GeminiAttemptResult} (events / upstream-error /
- * internal-error from `ExecuteResult`) into a single `Response` for the
+ * internal-error from `LlmExecuteResult`) into a single `Response` for the
  * client. Two render branches:
  *
  *   - `wantsStream === true` (URL verb was `streamGenerateContent`): SSE
@@ -33,8 +33,8 @@
 import { waitUntil } from '@vnext-gateway/platform'
 import {
   upstreamErrorToResponse,
-  type EventResult,
-  type ExecuteResult,
+  type LlmEventResult,
+  type LlmExecuteResult,
   type UpstreamErrorResult,
 } from '@vnext-llm/protocols/common'
 import { repackageUpstreamError } from '../../errors/repackage'
@@ -71,7 +71,7 @@ export interface RespondGeminiOptions {
 // Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
 // sees bare gemini-shape events; same-protocol falls through unchanged.
 //
-// When `translateEvents` is set on the EventResult (from traverseTranslation),
+// When `translateEvents` is set on the LlmEventResult (from traverseTranslation),
 // `result.events` carries HUB-shape ProtocolFrame<HubEvent> objects. Before
 // passing to encodeClientSSE (which expects bare gemini events) we:
 //   1. unwrap ProtocolFrame<HubFrame> → bare hub events (yield `frame.event`
@@ -84,7 +84,7 @@ export interface RespondGeminiOptions {
 // the last `candidates` frame (no sentinel by convention).
 async function* applyTranslatorEventsForStreaming(
   hubFrames: AsyncIterable<unknown>,
-  translateEvents: NonNullable<EventResult<unknown>['translateEvents']>,
+  translateEvents: NonNullable<LlmEventResult<unknown>['translateEvents']>,
   signal: AbortSignal | undefined,
   model: string | undefined,
 ): AsyncGenerator<unknown> {
@@ -120,7 +120,7 @@ async function* applyTranslatorEventsForStreaming(
  * events before passing to `consumeWithState` + `encodeClientSSE`.
  */
 const renderEventsAsSSE = (
-  result: EventResult<unknown>,
+  result: LlmEventResult<unknown>,
   options: RespondGeminiOptions,
 ): Response => {
   const state = options.telemetryCtx
@@ -312,7 +312,7 @@ const reassembleGeminiEvents = async (
  * but the fallback keeps the legacy same-protocol path intact).
  */
 const renderEventsAsJson = async (
-  result: EventResult<unknown>,
+  result: LlmEventResult<unknown>,
   options: RespondGeminiOptions,
 ): Promise<Response> => {
   const state = options.telemetryCtx
@@ -377,7 +377,7 @@ const renderUpstreamError = async (
 }
 
 const renderExecuteResult = async (
-  result: ExecuteResult<unknown>,
+  result: LlmExecuteResult<unknown>,
   options: RespondGeminiOptions,
 ): Promise<Response> => {
   if (result.type === 'upstream-error') return await renderUpstreamError(result, options)
@@ -399,7 +399,7 @@ const renderExecuteResult = async (
 }
 
 export const respondGemini = async (
-  result: ExecuteResult<unknown>,
+  result: LlmExecuteResult<unknown>,
   options: RespondGeminiOptions,
 ): Promise<Response> => {
   return await renderExecuteResult(result, options)

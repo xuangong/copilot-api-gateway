@@ -1,5 +1,5 @@
 import type { EndpointKey } from './index'
-import type { ExecuteResult } from './result'
+import type { LlmExecuteResult } from './result'
 import type { ProtocolFrame } from './sse'
 import type { ChatCompletionsStreamEvent } from '../chat'
 import type { MessagesStreamEvent } from '../messages'
@@ -24,17 +24,17 @@ export type CopilotInterceptor = Interceptor<RequestContext, Invocation, Respons
 export type ChatCompletionsStreamInterceptor = Interceptor<
   RequestContext,
   Invocation,
-  ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
+  LlmExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
 >
 
 export type MessagesStreamInterceptor = Interceptor<
   RequestContext,
   Invocation,
-  ExecuteResult<ProtocolFrame<MessagesStreamEvent>>
+  LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>
 >
 
 export type ResponsesStreamInterceptor = Interceptor<
   RequestContext,
   Invocation,
-  ExecuteResult<ProtocolFrame<ResponsesStreamEvent>>
+  LlmExecuteResult<ProtocolFrame<ResponsesStreamEvent>>
 >

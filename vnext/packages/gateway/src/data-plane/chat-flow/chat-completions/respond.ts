@@ -3,7 +3,7 @@
  * Chat Completions response renderer.
  *
  * Converts the {@link ChatCompletionsAttemptResult} (events / upstream-error /
- * internal-error from `ExecuteResult`) into a single `Response` for the
+ * internal-error from `LlmExecuteResult`) into a single `Response` for the
  * client. SSE streaming is rendered frame-by-frame via
  * {@link chatCompletionsProtocolFrameToSSEFrame}; non-streaming requests
  * drain to a reassembled JSON envelope.
@@ -22,8 +22,8 @@ import {
   doneFrame,
   eventFrame,
   sseFrame,
-  type EventResult,
-  type ExecuteResult,
+  type LlmEventResult,
+  type LlmExecuteResult,
   type ProtocolFrame,
   type SseFrame,
   type UpstreamErrorResult,
@@ -69,7 +69,7 @@ export interface RespondChatCompletionsOptions {
  * surface — the alias is part of the chat-flow public contract, not the
  * leaf's implementation.
  */
-export type RespondChatCompletionsInput = ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
+export type RespondChatCompletionsInput = LlmExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
 
 const SSE_TEXT_ENCODER = new TextEncoder()
 
@@ -115,7 +115,7 @@ async function* consumeWithState<T>(
 }
 
 /**
- * Persists usage + performance rows from a drained `EventResult`. Prefers the
+ * Persists usage + performance rows from a drained `LlmEventResult`. Prefers the
  * interceptor-replaced `finalMetadata` over `result.modelIdentity` so a
  * downstream interceptor that swaps the stream (responses-via-chat, etc.) gets
  * its own corrected identity. Otherwise the model key observed in-stream
@@ -123,7 +123,7 @@ async function* consumeWithState<T>(
  * instead of the requested `gpt-4-turbo`).
  */
 async function persistFromEventResult<T>(
-  result: EventResult<ProtocolFrame<T>>,
+  result: LlmEventResult<ProtocolFrame<T>>,
   state: SourceStreamState,
   telemetryCtx: TelemetryRequestContext,
 ): Promise<void> {
@@ -146,7 +146,7 @@ async function persistFromEventResult<T>(
 // blocks the response close.
 //
 // Cross-protocol attempts (Spec 6 Part 2 §3.7): when `translateEvents` is set
-// on the EventResult, `result.events` carries HUB-shape frames (e.g.
+// on the LlmEventResult, `result.events` carries HUB-shape frames (e.g.
 // `ProtocolFrame<ResponsesStreamEvent>` for cc→responses). Before SSE
 // encoding we:
 //   1. unwrap `ProtocolFrame<HubFrame>` → bare hub events,
@@ -157,7 +157,7 @@ async function persistFromEventResult<T>(
 // Same-protocol attempts have no `translateEvents` and skip this entirely.
 async function* applyTranslatorEventsForStreaming(
   hubFrames: AsyncIterable<ProtocolFrame<unknown>>,
-  translateEvents: NonNullable<EventResult<unknown>['translateEvents']>,
+  translateEvents: NonNullable<LlmEventResult<unknown>['translateEvents']>,
   signal: AbortSignal | undefined,
   model: string | undefined,
 ): AsyncGenerator<ProtocolFrame<ChatCompletionsStreamEvent>> {
@@ -177,7 +177,7 @@ async function* applyTranslatorEventsForStreaming(
 }
 
 const renderEventsAsSSE = (
-  result: EventResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
+  result: LlmEventResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
   options: RespondChatCompletionsOptions,
 ): Response => {
   const state = options.telemetryCtx
@@ -247,7 +247,7 @@ const renderEventsAsSSE = (
 // leave `translatorPair`/`translateBody` undefined and fall through to the
 // chat-completions reassembler unchanged.
 const renderEventsAsJson = async (
-  result: EventResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
+  result: LlmEventResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
   options: RespondChatCompletionsOptions,
 ): Promise<Response> => {
   const state = options.telemetryCtx
@@ -296,7 +296,7 @@ const renderEventsAsJson = async (
 // The bridged-response sentinel was removed when the cross-protocol
 // `dispatch()` bridge was deleted in Spec 3 Part 4. Native cross-protocol
 // attempts surface a 501 internal-error result via attempt.ts now, so the
-// renderer only handles `ExecuteResult` variants.
+// renderer only handles `LlmExecuteResult` variants.
 
 // Upstream errors carry the raw provider body verbatim; the OpenAI SDK expects
 // the `{ error: { type, message, ...code } }` envelope shape. We reuse the
@@ -316,7 +316,7 @@ const renderUpstreamError = async (
 }
 
 const renderExecuteResult = async (
-  result: ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
+  result: LlmExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
   options: RespondChatCompletionsOptions,
 ): Promise<Response> => {
   if (result.type === 'upstream-error') return await renderUpstreamError(result, options)

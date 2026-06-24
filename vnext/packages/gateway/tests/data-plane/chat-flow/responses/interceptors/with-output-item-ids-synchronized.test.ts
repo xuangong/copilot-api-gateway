@@ -3,8 +3,8 @@ import { withOutputItemIdsSynchronized } from '../../../../../src/data-plane/cha
 import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
 import {
   doneFrame,
-  eventResult,
-  type ExecuteResult,
+  llmEventResult,
+  type LlmExecuteResult,
   type ProtocolFrame,
   type TelemetryModelIdentity,
 } from '@vnext-llm/protocols/common'
@@ -33,9 +33,9 @@ const eventFrame = (event: ResponsesStreamEvent): ProtocolFrame<ResponsesStreamE
 
 const runEvents = (
   ...events: ResponsesStreamEvent[]
-): (() => Promise<ExecuteResult<ProtocolFrame<ResponsesStreamEvent>>>) =>
+): (() => Promise<LlmExecuteResult<ProtocolFrame<ResponsesStreamEvent>>>) =>
   async () =>
-    eventResult(
+    llmEventResult(
       (async function* () {
         for (const e of events) yield eventFrame(e)
         yield doneFrame()
@@ -44,7 +44,7 @@ const runEvents = (
     )
 
 const collect = async (
-  result: ExecuteResult<ProtocolFrame<ResponsesStreamEvent>>,
+  result: LlmExecuteResult<ProtocolFrame<ResponsesStreamEvent>>,
 ): Promise<ResponsesStreamEvent[]> => {
   if (result.type !== 'events') throw new Error('expected events')
   const out: ResponsesStreamEvent[] = []

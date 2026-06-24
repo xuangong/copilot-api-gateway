@@ -1,7 +1,7 @@
 /**
  * Centralised telemetry persistence for the data-plane chat-flow.
  *
- * `respond.ts` of every endpoint funnels its `EventResult` through these
+ * `respond.ts` of every endpoint funnels its `LlmEventResult` through these
  * helpers exactly once, replacing the legacy `runConversationAttempt` triple
  * (quota → upstream → recordLatency).
  *
@@ -18,7 +18,7 @@
  * `applyStreamEvent` / `extractFromJson` plumbing.
  */
 import type {
-  EventResult,
+  LlmEventResult,
   EventResultMetadata,
   PerformanceTelemetryContext,
   TelemetryModelIdentity,
@@ -50,7 +50,7 @@ const __replacedFlag = '__interceptorReplaced'
  * accidental sets surface in dev logs.
  */
 export async function eventResultMetadata<T>(
-  result: EventResult<T>,
+  result: LlmEventResult<T>,
 ): Promise<EventResultMetadata> {
   if (result.finalMetadata) {
     const md = await result.finalMetadata
@@ -185,4 +185,4 @@ export async function recordPerformance(
   await repo.performance.record(row)
 }
 
-export type { EventResult }
+export type { LlmEventResult }

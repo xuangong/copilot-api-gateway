@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test'
 import { traverseTranslation } from './traverse-translation.ts'
 import { TranslatorValidationError } from '@vnext/translate/errors'
-import { eventResult, internalErrorResult } from '@vnext-llm/protocols/common'
+import { llmEventResult, llmInternalErrorResult } from '@vnext-llm/protocols/common'
 import type { PairTranslator } from '../../dispatch/translator-registry.ts'
 
 const fakeTelemetryCtx = {} as never
@@ -19,7 +19,7 @@ function fakeTranslator(overrides: Partial<PairTranslator> = {}): PairTranslator
 
 test('happy path: stamps translatorPair and forwards translateBody', async () => {
   async function* hubEvents() { yield { kind: 'hub-evt' } as never }
-  const innerResult = eventResult(hubEvents(), fakeIdentity)
+  const innerResult = llmEventResult(hubEvents(), fakeIdentity)
   const result = await traverseTranslation({
     sourcePayload: { model: 'x' },
     sourceProtocol: 'chat_completions',
@@ -98,7 +98,7 @@ test('upstream-error pass-through unchanged', async () => {
 })
 
 test('internal-error reason is prefixed with via-translator', async () => {
-  const inner = internalErrorResult(500, new Error('inner'), undefined, 'inner-cause')
+  const inner = llmInternalErrorResult(500, new Error('inner'), undefined, 'inner-cause')
   const result = await traverseTranslation({
     sourcePayload: { model: 'x' },
     sourceProtocol: 'chat_completions',
@@ -125,7 +125,7 @@ test('hub events pass through unchanged (translator NOT applied in traverse)', a
     yield { kind: 'hub-evt-1' } as never
     yield { kind: 'hub-evt-2' } as never
   }
-  const innerResult = eventResult(hubEvents(), fakeIdentity)
+  const innerResult = llmEventResult(hubEvents(), fakeIdentity)
   const result = await traverseTranslation({
     sourcePayload: { model: 'x' },
     sourceProtocol: 'chat_completions',
@@ -163,7 +163,7 @@ test('mid-stream error propagates verbatim (no swallowing in traverseTranslation
     yield { kind: 'hub-evt' } as never
     throw new Error('mid-stream failure')
   }
-  const innerResult = eventResult(hubEvents(), fakeIdentity)
+  const innerResult = llmEventResult(hubEvents(), fakeIdentity)
   const result = await traverseTranslation({
     sourcePayload: { model: 'x' },
     sourceProtocol: 'chat_completions',
@@ -197,7 +197,7 @@ test('header inheritance: passes inheritedHeaders into innerAttempt', async () =
     translator: fakeTranslator(),
     innerAttempt: async (innerArgs) => {
       captured = innerArgs.inheritedHeaders
-      return eventResult(hubEvents(), fakeIdentity)
+      return llmEventResult(hubEvents(), fakeIdentity)
     },
     inheritedHeaders: { 'x-trace-id': 'abc' },
     inheritedTelemetryCtx: fakeTelemetryCtx,

@@ -13,7 +13,7 @@
  *      gets a JSON envelope back (content-type: application/json), and
  *      `synthesizeChatFramesFromJson` produces hub frames;
  *   3. `translateChatToMessagesSSE` (streaming) or `translateChatToMessagesBody`
- *      (non-streaming, via `EventResult.translateBody`) maps the hub-shaped
+ *      (non-streaming, via `LlmEventResult.translateBody`) maps the hub-shaped
  *      output back into messages wire format.
  *
  * Both branches are asserted: streaming (assert `data:` chunks containing

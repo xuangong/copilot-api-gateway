@@ -26,7 +26,7 @@
  * splice in `state.modelKey` so the corrected key reaches the usage row.
  */
 import type {
-  EventResult,
+  LlmEventResult,
 } from '@vnext-llm/protocols/common'
 import {
   SourceStreamState,
@@ -59,7 +59,7 @@ export async function* consumeWithState(
 }
 
 /**
- * Persist a usage row + performance row from a drained gemini `EventResult`.
+ * Persist a usage row + performance row from a drained gemini `LlmEventResult`.
  * Prefers interceptor-replaced `finalMetadata`. Otherwise the in-stream
  * observed `modelKey` (from `modelVersion`) supersedes the binding-time guess.
  *
@@ -70,7 +70,7 @@ export async function* consumeWithState(
  * block the client response.
  */
 export async function persistFromEventResult(
-  result: EventResult<unknown>,
+  result: LlmEventResult<unknown>,
   state: SourceStreamState,
   telemetryCtx: TelemetryRequestContext,
 ): Promise<void> {

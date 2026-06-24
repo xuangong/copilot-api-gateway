@@ -8,7 +8,7 @@ import {
 } from '../../../../src/data-plane/chat-flow/shared/respond-telemetry.ts'
 import type { TelemetryRequestContext } from '../../../../src/data-plane/chat-flow/shared/telemetry-ctx.ts'
 import type {
-  EventResult,
+  LlmEventResult,
   TelemetryModelIdentity,
   PerformanceTelemetryContext,
 } from '@vnext-llm/protocols/common'
@@ -42,20 +42,20 @@ const ctx: TelemetryRequestContext = {
 beforeEach(() => setupTestPlatform())
 
 test('eventResultMetadata prefers finalMetadata when present', async () => {
-  const replaced: EventResult<unknown> = {
+  const replaced: LlmEventResult<unknown> = {
     type: 'events',
     events: (async function* () {})(),
     modelIdentity: identity('gpt-4'),
     finalMetadata: Promise.resolve({ modelIdentity: identity('gpt-4-turbo') }),
     // Provenance flag suppresses the drift warn for legitimate replacement.
     __interceptorReplaced: true,
-  } as EventResult<unknown> & { __interceptorReplaced: true }
+  } as LlmEventResult<unknown> & { __interceptorReplaced: true }
   const md = await eventResultMetadata(replaced)
   expect(md.modelIdentity.modelKey).toBe('gpt-4-turbo')
 })
 
 test('eventResultMetadata falls back to result.modelIdentity + performance', async () => {
-  const r: EventResult<unknown> = {
+  const r: LlmEventResult<unknown> = {
     type: 'events',
     events: (async function* () {})(),
     modelIdentity: identity('gpt-4'),

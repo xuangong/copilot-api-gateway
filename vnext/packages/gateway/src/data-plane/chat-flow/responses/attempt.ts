@@ -8,7 +8,7 @@
  *     `pair-selector.ts`);
  *   - identity target (`responses → responses`) parses the upstream SSE body
  *     via `parseResponsesStream`, decorates with `withUpstreamTelemetry({protocol:
- *     'responses'})`, and emits an `EventResult<ProtocolFrame<ResponsesStreamEvent>>`;
+ *     'responses'})`, and emits an `LlmEventResult<ProtocolFrame<ResponsesStreamEvent>>`;
  *   - cross-protocol targets (`responses → messages` / `responses →
  *     chat_completions`) are NOT yet supported natively — Spec 3 Part 4
  *     deleted the legacy `dispatch()` bridge but native cross-protocol
@@ -35,11 +35,11 @@ import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
 import { responsesInterceptors, type ResponsesInterceptor } from './interceptors'
 import {
   eventFrame,
-  eventResult,
-  internalErrorResult,
+  llmEventResult,
+  llmInternalErrorResult,
   readUpstreamError,
   type EndpointKey,
-  type ExecuteResult,
+  type LlmExecuteResult,
   type ModelEndpoints,
   type ProtocolFrame,
 } from '@vnext-llm/protocols/common'
@@ -71,7 +71,7 @@ import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-d
 // ─── Public types ─────────────────────────────────────────────────────────
 
 export type ResponsesAttemptResult =
-  | ExecuteResult<ProtocolFrame<ResponsesStreamEvent>>
+  | LlmExecuteResult<ProtocolFrame<ResponsesStreamEvent>>
   | { readonly kind: 'bridged-response'; readonly response: Response }
 
 export interface ResponsesAttemptAuth {
@@ -223,9 +223,9 @@ export const responsesAttempt = {
     const selectFn = args.selectBinding ?? defaultSelectBinding
     const sel = await selectFn({ model: args.payload.model, auth: args.auth })
 
-    if (sel.kind === 'model-not-found') return internalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
-    if (sel.kind === 'no-eligible-binding') return internalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
-    if (sel.kind === 'no-translator') return internalErrorResult(500, new Error(`no translator for responses → ${sel.targetEndpoint}`))
+    if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
+    if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
+    if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for responses → ${sel.targetEndpoint}`))
 
     if (sel.targetEndpoint !== 'responses') {
       // Cross-protocol attempt: delegate to the hub attempt via
@@ -279,7 +279,7 @@ export const responsesAttempt = {
 
     let upstreamResp: ProviderResponse | undefined
 
-    const terminal = async (): Promise<ExecuteResult<ProtocolFrame<ResponsesStreamEvent>>> => {
+    const terminal = async (): Promise<LlmExecuteResult<ProtocolFrame<ResponsesStreamEvent>>> => {
       const upstreamPayload = await sel.translator.translateRequest(invocation.payload, {
         signal: args.ctx.downstreamAbortSignal ?? new AbortController().signal,
       })
@@ -302,7 +302,7 @@ export const responsesAttempt = {
       }
       if (!upstreamResp.body) {
         const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
-        return internalErrorResult(502, new Error('upstream returned empty body'), performance)
+        return llmInternalErrorResult(502, new Error('upstream returned empty body'), performance)
       }
       // Streaming branch: parse the upstream SSE body as Responses frames.
       // Non-streaming branch: buffer JSON, then synthesise frames so respond.ts
@@ -330,7 +330,7 @@ export const responsesAttempt = {
       })
       const modelIdentity = telemetryModelIdentity(bindingForTelemetry, sel.bareModel)
       const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
-      return eventResult(decorated, modelIdentity, performance)
+      return llmEventResult(decorated, modelIdentity, performance)
     }
 
     try {
@@ -352,7 +352,7 @@ export const responsesAttempt = {
       // ProviderResponse-based branch above already covers the new contract,
       // but we keep this guard for providers that still throw.
       if (err instanceof HTTPError) return await readUpstreamError(err.response, performance)
-      return internalErrorResult(502, err instanceof Error ? err : new Error(String(err)), performance)
+      return llmInternalErrorResult(502, err instanceof Error ? err : new Error(String(err)), performance)
     }
   },
 }

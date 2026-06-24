@@ -14,7 +14,7 @@
  *      gets a JSON envelope back (content-type: application/json), and
  *      `synthesizeChatFramesFromJson` produces hub frames;
  *   3. `translateChatToGeminiSSE` (streaming) or `translateChatToGeminiBody`
- *      (non-streaming, via `EventResult.translateBody`) maps the hub-shaped
+ *      (non-streaming, via `LlmEventResult.translateBody`) maps the hub-shaped
  *      output back into gemini wire format.
  *
  * Both branches are asserted: streaming (assert `data:` chunks containing

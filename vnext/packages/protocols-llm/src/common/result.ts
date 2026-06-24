@@ -40,7 +40,7 @@ export interface EventResultMetadata {
 }
 
 /**
- * Context passed to `EventResult.translateBody` when a translator is reused for
+ * Context passed to `LlmEventResult.translateBody` when a translator is reused for
  * non-streaming JSON envelopes (e.g. `gemini → responses` countTokens).
  */
 export interface TranslateBodyContext {
@@ -49,7 +49,7 @@ export interface TranslateBodyContext {
   readonly model?: string
 }
 
-export interface EventResult<T> {
+export interface LlmEventResult<T> {
   readonly type: 'events'
   readonly events: AsyncIterable<T>
   readonly modelIdentity: TelemetryModelIdentity
@@ -106,19 +106,19 @@ export interface InternalErrorResult {
   readonly reason?: string
 }
 
-export type ExecuteResult<T> =
-  | EventResult<T>
+export type LlmExecuteResult<T> =
+  | LlmEventResult<T>
   | UpstreamErrorResult
   | InternalErrorResult
 
-export const eventResult = <T>(
+export const llmEventResult = <T>(
   events: AsyncIterable<T>,
   modelIdentity: TelemetryModelIdentity,
   performance?: PerformanceTelemetryContext,
   finalMetadata?: Promise<EventResultMetadata>,
-  translateBody?: EventResult<T>['translateBody'],
-  translateEvents?: EventResult<T>['translateEvents'],
-): EventResult<T> => ({
+  translateBody?: LlmEventResult<T>['translateBody'],
+  translateEvents?: LlmEventResult<T>['translateEvents'],
+): LlmEventResult<T> => ({
   type: 'events',
   events,
   modelIdentity,
@@ -128,7 +128,7 @@ export const eventResult = <T>(
   translateEvents,
 })
 
-export const internalErrorResult = (
+export const llmInternalErrorResult = (
   status: number,
   error: Error,
   performance?: PerformanceTelemetryContext,

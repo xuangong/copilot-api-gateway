@@ -4,8 +4,8 @@ import { chatCompletionsInterceptors } from '../../../../../src/data-plane/chat-
 import { runInterceptors } from '@vnext-gateway/service'
 import {
   doneFrame,
-  eventResult,
-  type ExecuteResult,
+  llmEventResult,
+  type LlmExecuteResult,
   type Invocation,
   type ProtocolFrame,
   type RequestContext,
@@ -25,8 +25,8 @@ const doneOnlyEvents = (): AsyncIterable<ProtocolFrame<ChatCompletionsStreamEven
     yield doneFrame()
   })()
 
-const fakeRun = async (): Promise<ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>> =>
-  eventResult(doneOnlyEvents(), stubIdentity)
+const fakeRun = async (): Promise<LlmExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>> =>
+  llmEventResult(doneOnlyEvents(), stubIdentity)
 
 const baseInv = (payload: Record<string, unknown>): Invocation => ({
   endpoint: 'chat_completions',
@@ -77,9 +77,9 @@ test('withUsageStreamOptionsIncluded: no-op when stream !== true', async () => {
 test('chatCompletionsInterceptors chain mutates payload before terminal', async () => {
   const inv = baseInv({ model: 'm', stream: true })
   let payloadSeenByTerminal: unknown = null
-  const terminal = async (): Promise<ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>> => {
+  const terminal = async (): Promise<LlmExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>> => {
     payloadSeenByTerminal = JSON.parse(JSON.stringify(inv.payload))
-    return eventResult(doneOnlyEvents(), stubIdentity)
+    return llmEventResult(doneOnlyEvents(), stubIdentity)
   }
   await runInterceptors(inv, baseCtx, chatCompletionsInterceptors, terminal)
   const seen = payloadSeenByTerminal as { stream_options?: unknown }

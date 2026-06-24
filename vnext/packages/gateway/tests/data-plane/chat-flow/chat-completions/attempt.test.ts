@@ -40,7 +40,7 @@ const fakeBindingBase = {
 
 const identityTranslator = { translateRequest: (p: unknown) => p } as any
 
-test('case a — same-protocol leaf returns EventResult on provider 200', async () => {
+test('case a — same-protocol leaf returns LlmEventResult on provider 200', async () => {
   const fetchMock = mock(async () => makeProviderResponse({ status: 200, body: okSseBody }))
   const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: fetchMock } } as any
   const res = await chatCompletionsAttempt.generate({

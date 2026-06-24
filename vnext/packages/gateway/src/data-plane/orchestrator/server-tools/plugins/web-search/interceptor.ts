@@ -118,7 +118,7 @@ async function createMessages(
   })
 
   // After Spec 3 Part 4 deleted the cross-protocol `dispatch()` bridge, the
-  // messagesAttempt result is always an `ExecuteResult<ProtocolFrame<MessagesStreamEvent>>`
+  // messagesAttempt result is always an `LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>`
   // — bridged-response no longer exists. If binding selection picks a
   // non-messages target the attempt surfaces an `internal-error` (501) which
   // we throw below.
@@ -191,7 +191,7 @@ async function* consumeFramesWithState(
 }
 
 async function persistFromEventResult(
-  result: import('@vnext-llm/protocols/common').EventResult<ProtocolFrame<MessagesStreamEvent>>,
+  result: import('@vnext-llm/protocols/common').LlmEventResult<ProtocolFrame<MessagesStreamEvent>>,
   state: SourceStreamState,
   telemetryCtx: TelemetryRequestContext,
 ): Promise<void> {

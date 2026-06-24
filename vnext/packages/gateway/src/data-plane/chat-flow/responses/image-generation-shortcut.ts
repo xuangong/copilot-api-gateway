@@ -9,7 +9,7 @@
  *     route a payload through this shortcut instead of the general
  *     binding-selection terminal.
  *   - `runImageGenerationShortcut(args)` — produces an
- *     `EventResult<ProtocolFrame<ResponsesStreamEvent>>` populated with a
+ *     `LlmEventResult<ProtocolFrame<ResponsesStreamEvent>>` populated with a
  *     `finalMetadata` Promise so respond.ts persists usage + perf rows
  *     under the corrected `modelKey` (the backend image model, defaulting
  *     to `gpt-image-2`) instead of the public model the user requested.
@@ -17,19 +17,19 @@
  * Telemetry-channel ownership: this shortcut REPLACES the upstream stream
  * (synthesises SSE events from the image-generation outcome) and must own
  * its own modelIdentity + performance rows. The `__interceptorReplaced` flag
- * is set on the returned EventResult object via `Object.assign` so
+ * is set on the returned LlmEventResult object via `Object.assign` so
  * `eventResultMetadata` in respond-telemetry.ts can prefer `finalMetadata`
  * over the surface `modelIdentity` without warning about a drift bug.
  *
  * Failure shape: any 4xx/5xx the route helper returns (validation, missing
  * binding) is preserved verbatim by surfacing it as a `bridged-response`
  * sentinel so respond.ts hands the original Response back unchanged. We
- * only synthesise an EventResult on the success path because only the
+ * only synthesise an LlmEventResult on the success path because only the
  * success path produces a stream-shaped envelope from `synthImageGenerationSSE`.
  */
 import {
   eventFrame,
-  type EventResult,
+  type LlmEventResult,
   type EventResultMetadata,
   type ProtocolFrame,
   type TelemetryModelIdentity,
@@ -51,7 +51,7 @@ import { resolveBinding } from '../../routing/binding-resolver.ts'
 import type { CreateProviderOptions } from '../../providers/registry.ts'
 import {
   recordPerformance,
-  type EventResult as _EventResult,
+  type LlmEventResult as _EventResult,
 } from '../shared/respond-telemetry.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import { waitUntil } from '@vnext-gateway/platform'
@@ -82,7 +82,7 @@ export interface RunImageGenerationShortcutArgs {
 }
 
 export type RunImageGenerationShortcutResult =
-  | EventResult<ProtocolFrame<ResponsesStreamEvent>>
+  | LlmEventResult<ProtocolFrame<ResponsesStreamEvent>>
   | { readonly kind: 'bridged-response'; readonly response: Response }
 
 const IMAGE_GEN_UPSTREAM = 'image-generation' as const
@@ -166,15 +166,15 @@ const errorJsonResponse = (status: number, body: unknown): Response =>
   })
 
 /**
- * Attach the `__interceptorReplaced` provenance flag to an EventResult so
+ * Attach the `__interceptorReplaced` provenance flag to an LlmEventResult so
  * `respond-telemetry.eventResultMetadata` knows the surface modelIdentity
  * was deliberately overridden by an interceptor-style replacement (here,
  * the image-gen shortcut). Without the flag respond-telemetry warns on the
  * console about an accidental finalMetadata set.
  */
 const markInterceptorReplaced = <T>(
-  result: EventResult<ProtocolFrame<T>>,
-): EventResult<ProtocolFrame<T>> =>
+  result: LlmEventResult<ProtocolFrame<T>>,
+): LlmEventResult<ProtocolFrame<T>> =>
   Object.assign(result, { __interceptorReplaced: true }) as never
 
 export async function runImageGenerationShortcut(
@@ -306,7 +306,7 @@ export async function runImageGenerationShortcut(
     for (const frame of synthesizeFramesFromResponse(responseEnvelope)) yield frame
   })()
 
-  const result: EventResult<ProtocolFrame<ResponsesStreamEvent>> = {
+  const result: LlmEventResult<ProtocolFrame<ResponsesStreamEvent>> = {
     type: 'events',
     events,
     modelIdentity,

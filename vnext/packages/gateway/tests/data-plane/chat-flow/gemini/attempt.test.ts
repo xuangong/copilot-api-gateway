@@ -12,7 +12,7 @@
  * real provider.fetch directly. The cases below pin:
  *   1. the module surface exists and binds successfully on a clean input
  *   2. cross-protocol target (messages) reaches the hub attempt and yields
- *      EventResult that respond.ts can consume
+ *      LlmEventResult that respond.ts can consume
  *   3. selection-failure 4xx paths surface as internal-error (without
  *      performance ctx per Spec 3 §6.2)
  */
@@ -20,7 +20,7 @@ import { test, expect, mock } from 'bun:test'
 import { geminiAttempt } from '../../../../src/data-plane/chat-flow/gemini/attempt'
 import type { TelemetryRequestContext } from '../../../../src/data-plane/chat-flow/shared/telemetry-ctx'
 import type { RequestContext } from '@vnext-llm/protocols/common'
-import { eventResult, type ProtocolFrame } from '@vnext-llm/protocols/common'
+import { llmEventResult, type ProtocolFrame } from '@vnext-llm/protocols/common'
 
 const baseCtx: RequestContext = { requestStartedAt: Date.now() }
 const baseAuth = { ownerId: 'o', copilot: false }
@@ -58,9 +58,9 @@ test('module surface exists', () => {
   expect(typeof geminiAttempt.generate).toBe('function')
 })
 
-test('happy path — bridges gemini → messages target and yields EventResult', async () => {
+test('happy path — bridges gemini → messages target and yields LlmEventResult', async () => {
   const hubGenerate = mock(async () =>
-    eventResult(
+    llmEventResult(
       fakeHubFrames() as never,
       { upstream: 'fake', upstreamModel: 'gemini-x', sourceModel: 'gemini-x' },
       undefined,

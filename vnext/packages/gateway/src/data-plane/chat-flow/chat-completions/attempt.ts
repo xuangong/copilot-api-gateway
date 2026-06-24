@@ -16,7 +16,7 @@
  */
 import { runInterceptors } from '@vnext-gateway/service'
 import type { ChatCompletionsStreamInterceptor, Invocation, RequestContext } from '@vnext-llm/protocols/common'
-import { eventResult, internalErrorResult, readUpstreamError, type ExecuteResult, type ProtocolFrame } from '@vnext-llm/protocols/common'
+import { llmEventResult, llmInternalErrorResult, readUpstreamError, type LlmExecuteResult, type ProtocolFrame } from '@vnext-llm/protocols/common'
 import { parseChatCompletionsStream, type ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
 import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext/provider'
 import {
@@ -32,7 +32,7 @@ import { synthesizeChatCompletionsFramesFromJson, type ChatCompletionsJsonBody }
 import { traverseTranslation } from '../shared/traverse-translation.ts'
 import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-dispatch.ts'
 
-export type ChatCompletionsAttemptResult = ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
+export type ChatCompletionsAttemptResult = LlmExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
 
 // Reuses the routing helper's auth shape so we never lose detail when the
 // terminal hands the same value back to `selectBindingForChatCompletions`.
@@ -44,7 +44,7 @@ export interface ChatCompletionsAttemptArgs {
   readonly ctx: RequestContext
   /**
    * Telemetry context built once in serve.ts. Threaded into the resulting
-   * `EventResult.performance` / `UpstreamErrorResult.performance` so respond.ts
+   * `LlmEventResult.performance` / `UpstreamErrorResult.performance` so respond.ts
    * can persist usage + perf rows with the right keyId/upstream/runtime.
    */
   readonly telemetryCtx: TelemetryRequestContext
@@ -87,9 +87,9 @@ export const chatCompletionsAttempt = {
     const selectFn = args.selectBinding ?? ((a) => selectBindingForChatCompletions(a))
     const sel = await selectFn({ model: args.payload.model, auth: args.auth })
 
-    if (sel.kind === 'model-not-found') return internalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
-    if (sel.kind === 'no-eligible-binding') return internalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
-    if (sel.kind === 'no-translator') return internalErrorResult(500, new Error(`no translator for chat_completions → ${sel.targetEndpoint}`))
+    if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
+    if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
+    if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for chat_completions → ${sel.targetEndpoint}`))
 
     if (sel.targetEndpoint !== 'chat_completions') {
       // Cross-protocol attempt: delegate to the hub attempt via
@@ -143,7 +143,7 @@ export const chatCompletionsAttempt = {
     // upstream stream lingers until GC.
     let upstreamResp: ProviderResponse | undefined
 
-    const terminal = async (): Promise<ExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>> => {
+    const terminal = async (): Promise<LlmExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>> => {
       const upstreamPayload = await sel.translator.translateRequest(invocation.payload, {
         signal: args.ctx.downstreamAbortSignal ?? new AbortController().signal,
       })
@@ -174,7 +174,7 @@ export const chatCompletionsAttempt = {
       }
       if (!upstreamResp.body) {
         const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
-        return internalErrorResult(502, new Error('upstream returned empty body'), performance)
+        return llmInternalErrorResult(502, new Error('upstream returned empty body'), performance)
       }
       // Non-streaming requests (or unexpectedly-JSON responses) need to be
       // funneled through the SAME ProtocolFrame pipeline the SSE path uses,
@@ -199,7 +199,7 @@ export const chatCompletionsAttempt = {
       })
       const modelIdentity = telemetryModelIdentity(bindingForTelemetry, sel.bareModel)
       const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
-      return eventResult(decorated, modelIdentity, performance)
+      return llmEventResult(decorated, modelIdentity, performance)
     }
 
     try {
@@ -220,7 +220,7 @@ export const chatCompletionsAttempt = {
       // respond.ts can preserve the original status (400/401/etc.) and body
       // instead of collapsing every upstream error to a generic 502.
       if (err instanceof HTTPError) return await readUpstreamError(err.response, performance)
-      return internalErrorResult(502, err instanceof Error ? err : new Error(String(err)), performance)
+      return llmInternalErrorResult(502, err instanceof Error ? err : new Error(String(err)), performance)
     }
   },
 }
