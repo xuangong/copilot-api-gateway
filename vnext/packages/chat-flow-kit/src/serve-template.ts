@@ -31,8 +31,8 @@ export interface ServeTemplateInput<TAuth extends KitAuthCtx = KitAuthCtx> {
   readonly auth: TAuth
   readonly obsCtx: KitObsCtx
   readonly signal?: AbortSignal
-  /** Catch-all bag for endpoint-specific side inputs (gemini model/verb,
-   *  responses requestId/userAgent passthrough). Opaque to the kit. */
+  /** Catch-all bag for endpoint-specific side inputs (e.g. URL-derived
+   *  model name + verb, or per-request passthrough fields). Opaque to the kit. */
   readonly extras: Record<string, unknown>
 }
 
@@ -42,8 +42,8 @@ export interface PreProcessCtx<TAuth extends KitAuthCtx = KitAuthCtx> {
 
 /** preProcess returns one of two shapes: continue with a (possibly mutated)
  *  payload + extra, OR short-circuit with a Response. The short-circuit branch
- *  lets endpoints render bespoke error envelopes (e.g. responses'
- *  previous_response_not_found) without the kit knowing their wire shape. */
+ *  lets endpoints render bespoke error envelopes (e.g. domain-specific
+ *  not-found shapes) without the kit knowing their wire shape. */
 export type PreProcessResult<TPayload, TExtra> =
   | { kind: 'continue'; payload: TPayload; extra: TExtra }
   | { kind: 'short-circuit'; response: Response; extra: TExtra }

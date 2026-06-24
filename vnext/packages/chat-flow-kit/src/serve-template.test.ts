@@ -312,7 +312,7 @@ describe('serveTemplate — AbortController linking', () => {
     })
     await serveTemplate(hooks, defaultInput(), defaultDeps())
     expect(respondController).toBeDefined()
-    expect(respondController!.signal).toBe(attemptSignal)
+    expect(respondController!.signal).toBe(attemptSignal!)
   })
 })
 
