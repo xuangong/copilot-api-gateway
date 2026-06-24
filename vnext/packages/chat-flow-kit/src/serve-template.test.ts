@@ -204,3 +204,31 @@ describe('serveTemplate — preProcess short-circuit', () => {
     expect(result.extra).toBeUndefined()
   })
 })
+
+describe('serveTemplate — preProcess continue + mutation', () => {
+  test('mutated payload is what runAttempt + respond see', async () => {
+    const seenByAttempt: Payload[] = []
+    const seenByRespond: Payload[] = []
+    const hooks = defaultHooks({
+      preProcess: async (payload) => ({
+        kind: 'continue',
+        payload: { ...payload, value: payload.value + 100 },
+        extra: { tag: 'mutated' },
+      }),
+      runAttempt: async (a) => {
+        seenByAttempt.push(a.payload)
+        return { kind: 'ok', echoed: a.payload.value }
+      },
+      respond: async (r, c) => {
+        seenByRespond.push(c.payload)
+        return new Response(JSON.stringify({ r, extra: c.extra }), { status: 200 })
+      },
+    })
+    const result = await serveTemplate(hooks, defaultInput({ raw: { value: 7 } }), defaultDeps())
+    expect(seenByAttempt).toEqual([{ value: 107 }])
+    expect(seenByRespond).toEqual([{ value: 107 }])
+    expect(result.extra).toEqual({ tag: 'mutated' })
+    const body = await result.response.json()
+    expect(body).toEqual({ r: { kind: 'ok', echoed: 107 }, extra: { tag: 'mutated' } })
+  })
+})
