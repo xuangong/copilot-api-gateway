@@ -1,6 +1,6 @@
 /**
  * Adapts Bun's native `bun:sqlite` Database to the runtime-neutral
- * `SqlDatabase` interface defined in `@vnext/platform`. The shape mirrors
+ * `SqlDatabase` interface defined in `@vnext-gateway/platform`. The shape mirrors
  * Cloudflare D1 (prepare → bind → first/all/run) so the gateway can switch
  * sql backends without knowing which runtime it's running under.
  *

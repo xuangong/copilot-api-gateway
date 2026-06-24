@@ -11,7 +11,7 @@
  *     deterministic (status, body, model name in delta)
  *
  * Telemetry persistence runs through `waitUntil` (registered by serve.ts via
- * `getRuntimeLocation()` + the `initBackground` shim from `@vnext/platform`).
+ * `getRuntimeLocation()` + the `initBackground` shim from `@vnext-gateway/platform`).
  * To avoid races between `app.fetch()` returning and the spy seeing the row,
  * we install a tracking background executor that lets each test
  * `await pending.drain()` before asserting.
