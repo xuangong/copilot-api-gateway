@@ -232,3 +232,34 @@ describe('serveTemplate — preProcess continue + mutation', () => {
     expect(body).toEqual({ r: { kind: 'ok', echoed: 107 }, extra: { tag: 'mutated' } })
   })
 })
+
+describe('serveTemplate — quota-gate short-circuit', () => {
+  test('quota Response returns immediately; runAttempt + respond not invoked', async () => {
+    const calls: string[] = []
+    const hooks = defaultHooks({
+      preProcess: async (p) => {
+        calls.push('preProcess')
+        return { kind: 'continue', payload: p, extra: { tag: 'q' } }
+      },
+      runAttempt: async () => {
+        calls.push('runAttempt')
+        return { kind: 'ok', echoed: -1 }
+      },
+      respond: async () => {
+        calls.push('respond')
+        return new Response('should not happen', { status: 500 })
+      },
+    })
+    const deps = defaultDeps({
+      runQuotaGate: async (apiKeyId) => {
+        calls.push(`runQuotaGate:${apiKeyId}`)
+        return new Response(JSON.stringify({ error: { type: 'rate_limit_error' } }), { status: 429 })
+      },
+    })
+    const result = await serveTemplate(hooks, defaultInput(), deps)
+    expect(result.response.status).toBe(429)
+    expect(await result.response.json()).toEqual({ error: { type: 'rate_limit_error' } })
+    expect(result.extra).toEqual({ tag: 'q' })
+    expect(calls).toEqual(['preProcess', 'runQuotaGate:k1'])
+  })
+})
