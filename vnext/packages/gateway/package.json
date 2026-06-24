@@ -25,6 +25,6 @@
   },
   "devDependencies": {
     "@vnext-llm/platform-bun": "workspace:*",
-    "@vnext/platform-cloudflare": "workspace:*"
+    "@vnext-llm/platform-cloudflare": "workspace:*"
   }
 }

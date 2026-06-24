@@ -1,5 +1,5 @@
 {
-  "name": "@vnext/platform-cloudflare",
+  "name": "@vnext-llm/platform-cloudflare",
   "private": true,
   "version": "0.0.0",
   "type": "module",
