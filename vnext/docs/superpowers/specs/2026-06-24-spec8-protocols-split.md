@@ -55,6 +55,11 @@ After Spec 7 the framework / business boundary is correct in code but **invisibl
 | `@vnext-llm/provider-custom` | rename of `@vnext/provider-custom` |
 | `@vnext-llm/provider-sdf` | rename of `@vnext/provider-sdf` |
 | `@vnext-llm/gateway` | rename of `@vnext/gateway` |
+| `@vnext-llm/platform-bun` | rename of `@vnext/platform-bun` (app entry) |
+| `@vnext-llm/platform-cloudflare` | rename of `@vnext/platform-cloudflare` (app entry) |
+| `@vnext-llm/dashboard` | rename of `@vnext/dashboard` (app entry) |
+
+The three `apps/*` entries are LLM-specific deployments (they wire the LLM gateway to Bun / Cloudflare / dashboard) and therefore live under `@vnext-llm/`, not `@vnext-gateway/`. Several gateway tests deep-import from `@vnext/platform-bun/src/...` for the in-process test platform; those imports rename to `@vnext-llm/platform-bun/src/...` in the same step as the app rename.
 
 The business package that today is called `@vnext/gateway` retains the word *gateway* in its package name because the `@vnext-llm/` scope already says "LLM business" — keeping the name preserves directory continuity (`vnext/packages/gateway/` stays) and aligns with the Envoy Gateway naming convention for the user-facing entry package.
 
@@ -164,8 +169,8 @@ Steps land in dependency-topological order. After every step `bun test` must pas
 
 1. **Create `vnext/packages/result/`** with `@vnext-gateway/result`. Move `protocols/common/sse.ts` → `result/src/frame.ts` and `protocols/common/stream/*` → `result/src/`. Add re-exports inside `@vnext/protocols/common` so consumers still compile (temporary, removed in step 4). Run tests.
 2. **Rename framework packages** to `@vnext-gateway/*`: service, platform, http, cache. One commit per rename; `sed` every consumer import; regenerate `bun.lock`. Tests after each.
-3. **Create `@vnext-llm/protocols`** as a directory rename of `packages/protocols/` → `packages/protocols-llm/`, package.json `name` to `@vnext-llm/protocols`. Internal imports of frame types switch to `@vnext-gateway/result`. Apply the `EventResult` → `LlmEventResult` renames across all consumers (≈128 files). Single commit.
-4. **Rename remaining business packages** to `@vnext-llm/*`: translate, responses-store, provider, provider-{copilot,azure,custom,sdf}, gateway. `sed` consumers; one commit per package; `bun.lock` refresh.
+3. **Create `@vnext-llm/protocols`** as a directory rename of `packages/protocols/` → `packages/protocols-llm/`, package.json `name` to `@vnext-llm/protocols`. **Remove the root `"."` entry from the package.json `exports` map and delete `src/index.ts`** — §3.4 mandates consumers go through subpath exports (`./common`, `./chat`, ...) and a verification grep already confirms no consumer imports the bare specifier today, so this is a no-op at call sites but enforces the boundary going forward. Internal imports of frame types switch to `@vnext-gateway/result`. Apply the `EventResult` → `LlmEventResult` renames across all consumers (≈128 files). Single commit.
+4. **Rename remaining business packages** to `@vnext-llm/*`: translate, responses-store, provider, provider-{copilot,azure,custom,sdf}, gateway, **plus the three `apps/*` packages** (`platform-bun`, `platform-cloudflare`, `dashboard`). `sed` consumers (including gateway tests that deep-import `@vnext/platform-bun/src/...` for the in-process test platform); one commit per package; `bun.lock` refresh.
 5. **Drop the temporary re-exports** from step 1 (they were only needed during steps 2–4).
 6. **Add `scripts/check-framework-purity.ts`** wired into `bun test` (runs before the suite). Violation example output:
    ```
@@ -185,10 +190,25 @@ Workspaces in `vnext/package.json` use glob `packages/*`, so directory names cha
 `vnext/scripts/check-framework-purity.ts`:
 
 - Reads every `package.json` under `vnext/packages/*` and `vnext/apps/*`.
-- For each package with scope `@vnext-gateway/`, scans its `src/` and `__tests__/` for `from '@vnext-llm/...'` imports.
-- Also rejects `@vnext-gateway/*` packages whose `dependencies` / `devDependencies` mention `@vnext-llm/*`.
-- Exit 0 = clean; exit 1 = violations, prints offending file:line.
-- Hook: `bun test` script becomes `bun run scripts/check-framework-purity.ts && bun test` (root `package.json`).
+- For each package whose `name` starts with `@vnext-gateway/`, scans **all `.ts` / `.tsx` files** under that package (typically `src/`, `tests/`, `__tests__/`) — excluding `dist/`, `node_modules/`, and other build artifacts — for any of:
+  - `from '@vnext-llm/...'`
+  - `from "@vnext-llm/..."`
+  - `export ... from '@vnext-llm/...'`
+  - bare side-effect imports: `import '@vnext-llm/...'`
+  - dynamic imports: `import('@vnext-llm/...')`
+- Also rejects `@vnext-gateway/*` packages whose `dependencies` / `devDependencies` / `peerDependencies` reference `@vnext-llm/*`.
+- Additionally rejects **any** import of an un-scoped `@vnext/*` name across the entire monorepo (catches habit-revert during/after migration). Historical mentions in `docs/superpowers/` are allowlisted.
+- Allowlist: `vnext/scripts/`, `vnext/docs/`, top-level `vnext/package.json`.
+- Exit 0 = clean; exit 1 = violations, prints offending `file:line` and the matched substring.
+
+Violation example output:
+```
+[FRAMEWORK PURITY VIOLATION]
+  @vnext-gateway/result imports @vnext-llm/protocols at:
+    packages/result/src/parse-sse.ts:12  →  from '@vnext-llm/protocols/common'
+```
+
+**Wiring:** the root `vnext/package.json` does **not** currently have a `test` script — `bun test` is invoked directly by developers and CI. Add a new `"test": "bun run scripts/check-framework-purity.ts && bun test"` entry and switch every documented invocation (CI workflow, contributor docs, this Spec's acceptance criteria) to `bun run test`. The purity gate must run *before* the test suite so a violation fails fast without consuming test time.
 
 This is the durable mechanism that prevents future drift. Without it the scope split is decorative.
 
