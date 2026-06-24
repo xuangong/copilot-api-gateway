@@ -21,7 +21,7 @@ import { app as innerApp } from '../../src/app.ts'
 import { initRepo } from '../../src/shared/repo/index.ts'
 import { initResponsesStore } from '../../src/shared/runtime/responses-store.ts'
 import { initBackground, initRuntimeLocation, __resetPlatformForTests } from '@vnext-gateway/platform'
-import { InMemoryResponsesSnapshotStore } from '@vnext/responses-store'
+import { InMemoryResponsesSnapshotStore } from '@vnext-llm/responses-store'
 import type { Repo, UpstreamRecord } from '../../src/shared/repo/types.ts'
 import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'
 

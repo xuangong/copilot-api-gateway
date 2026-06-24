@@ -6,7 +6,7 @@
  * `items` to `payload.input`, and drop the field so the upstream call never
  * sees it. `savePostTurnSnapshot` is the post-turn writer.
  */
-import type { ResponsesSnapshotStore } from '@vnext/responses-store'
+import type { ResponsesSnapshotStore } from '@vnext-llm/responses-store'
 
 const DEFAULT_TTL_MS = 24 * 3600_000
 

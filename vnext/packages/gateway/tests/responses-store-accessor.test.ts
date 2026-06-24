@@ -4,7 +4,7 @@ import {
   getResponsesStore,
 } from "../src/shared/runtime/responses-store.ts"
 import { __resetPlatformForTests } from "@vnext-gateway/platform"
-import { InMemoryResponsesSnapshotStore } from "@vnext/responses-store"
+import { InMemoryResponsesSnapshotStore } from "@vnext-llm/responses-store"
 
 beforeEach(() => __resetPlatformForTests())
 

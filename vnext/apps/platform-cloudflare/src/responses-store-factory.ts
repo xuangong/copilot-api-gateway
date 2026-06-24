@@ -10,7 +10,7 @@ import {
   SqliteResponsesSnapshotStore,
   type ResponsesSnapshotStore,
   type SqlExecutor,
-} from '@vnext/responses-store'
+} from '@vnext-llm/responses-store'
 
 interface D1Result<T = Record<string, unknown>> {
   results: T[]

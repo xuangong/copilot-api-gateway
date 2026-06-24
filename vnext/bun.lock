@@ -38,8 +38,8 @@
       "dependencies": {
         "@vnext-gateway/cache": "workspace:*",
         "@vnext-gateway/platform": "workspace:*",
+        "@vnext-llm/responses-store": "workspace:*",
         "@vnext/gateway": "workspace:*",
-        "@vnext/responses-store": "workspace:*",
       },
     },
     "apps/platform-cloudflare": {
@@ -48,8 +48,8 @@
       "dependencies": {
         "@vnext-gateway/cache": "workspace:*",
         "@vnext-gateway/platform": "workspace:*",
+        "@vnext-llm/responses-store": "workspace:*",
         "@vnext/gateway": "workspace:*",
-        "@vnext/responses-store": "workspace:*",
       },
       "devDependencies": {
         "@cloudflare/workers-types": "^4.20260602.1",
@@ -69,13 +69,13 @@
         "@vnext-gateway/result": "workspace:*",
         "@vnext-gateway/service": "workspace:*",
         "@vnext-llm/protocols": "workspace:*",
+        "@vnext-llm/responses-store": "workspace:*",
         "@vnext-llm/translate": "workspace:*",
         "@vnext/provider": "workspace:*",
         "@vnext/provider-azure": "workspace:*",
         "@vnext/provider-copilot": "workspace:*",
         "@vnext/provider-custom": "workspace:*",
         "@vnext/provider-sdf": "workspace:*",
-        "@vnext/responses-store": "workspace:*",
         "hono": "^4.12.23",
         "image-size": "^2.0.2",
         "zod": "^4.4.3",
@@ -148,7 +148,7 @@
       },
     },
     "packages/responses-store": {
-      "name": "@vnext/responses-store",
+      "name": "@vnext-llm/responses-store",
       "version": "0.0.0",
     },
     "packages/result": {
@@ -449,6 +449,8 @@
 
     "@vnext-llm/protocols": ["@vnext-llm/protocols@workspace:packages/protocols-llm"],
 
+    "@vnext-llm/responses-store": ["@vnext-llm/responses-store@workspace:packages/responses-store"],
+
     "@vnext-llm/translate": ["@vnext-llm/translate@workspace:packages/translate"],
 
     "@vnext/dashboard": ["@vnext/dashboard@workspace:apps/dashboard"],
@@ -468,8 +470,6 @@
     "@vnext/provider-custom": ["@vnext/provider-custom@workspace:packages/provider-custom"],
 
     "@vnext/provider-sdf": ["@vnext/provider-sdf@workspace:packages/provider-sdf"],
-
-    "@vnext/responses-store": ["@vnext/responses-store@workspace:packages/responses-store"],
 
     "acorn": ["acorn@8.16.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw=="],
 

@@ -11,7 +11,7 @@
   "dependencies": {
     "@vnext/gateway": "workspace:*",
     "@vnext-gateway/platform": "workspace:*",
-    "@vnext/responses-store": "workspace:*",
+    "@vnext-llm/responses-store": "workspace:*",
     "@vnext-gateway/cache": "workspace:*"
   },
   "devDependencies": {

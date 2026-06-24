@@ -15,7 +15,7 @@
     "@vnext/provider-copilot": "workspace:*",
     "@vnext/provider-custom": "workspace:*",
     "@vnext/provider-sdf": "workspace:*",
-    "@vnext/responses-store": "workspace:*",
+    "@vnext-llm/responses-store": "workspace:*",
     "@vnext-gateway/service": "workspace:*",
     "@vnext-gateway/cache": "workspace:*",
     "@vnext-llm/translate": "workspace:*",

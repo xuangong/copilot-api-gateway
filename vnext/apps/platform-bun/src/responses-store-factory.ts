@@ -11,7 +11,7 @@ import {
   SqliteResponsesSnapshotStore,
   type ResponsesSnapshotStore,
   type SqlExecutor,
-} from "@vnext/responses-store"
+} from "@vnext-llm/responses-store"
 import type { BunSqliteDatabase } from "./bun-sqlite-database.ts"
 
 function toExecutor(db: BunSqliteDatabase): SqlExecutor {

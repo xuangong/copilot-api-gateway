@@ -12,7 +12,7 @@ import {
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model } from '@vnext/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
-import { InMemoryResponsesSnapshotStore } from '@vnext/responses-store'
+import { InMemoryResponsesSnapshotStore } from '@vnext-llm/responses-store'
 
 beforeEach(() => {
   initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })

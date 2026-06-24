@@ -1,5 +1,5 @@
 /**
- * Public types for @vnext/responses-store.
+ * Public types for @vnext-llm/responses-store.
  *
  * A "snapshot" is the merged input + output items array from one /v1/responses
  * turn. The next turn — when the client sends previous_response_id — the
