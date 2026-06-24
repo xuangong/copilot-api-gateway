@@ -103,6 +103,4 @@ export {
   decodeUpstreamErrorBody,
 } from './result'
 
-export * from '@vnext-gateway/result/parse'
-
 export * from './invocation'
