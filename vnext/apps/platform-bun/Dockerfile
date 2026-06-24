@@ -16,7 +16,8 @@ COPY apps/platform-cloudflare/package.json apps/platform-cloudflare/
 COPY apps/dashboard/package.json apps/dashboard/
 COPY packages/gateway/package.json packages/gateway/
 COPY packages/platform/package.json packages/platform/
-COPY packages/protocols/package.json packages/protocols/
+COPY packages/protocols-llm/package.json packages/protocols-llm/
+COPY packages/result/package.json packages/result/
 COPY packages/service/package.json packages/service/
 COPY packages/provider/package.json packages/provider/
 COPY packages/provider-azure/package.json packages/provider-azure/
