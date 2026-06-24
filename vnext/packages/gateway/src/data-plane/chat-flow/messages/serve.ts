@@ -1,42 +1,30 @@
 // vnext/packages/gateway/src/data-plane/chat-flow/messages/serve.ts
 /**
- * Anthropic Messages HTTP serve layer.
+ * Anthropic Messages HTTP serve layer (Spec 10 — chat-flow convergence).
  *
- * Replaces the previous `dispatch(...)` delegation with the per-protocol
- * attempt → respond chain (Spec 3 Part 3 — messages-side mirror of chat
- * completions Part 2 migration). Steps:
- *   - validate the JSON body via `parseMessagesPayload`, surfacing the legacy
- *     400 envelope (`{type: 'error', error: {type: 'invalid_request_error',
- *     message}}`) on failure;
- *   - derive `wantsStream = payload.stream === true` so respond.ts knows
- *     whether to stream SSE or render a JSON envelope;
- *   - hand off to `messagesAttempt.generate` for binding selection +
- *     translator + provider.fetch. Cross-protocol targets (`messages →
- *     responses` / `messages → chat_completions`) are NOT yet supported
- *     natively — Spec 3 Part 4 deleted the legacy `dispatch()` bridge but
- *     native cross-protocol attempts are deferred to Spec 6. Attempt
- *     surfaces a 501 internal-error in that branch;
- *   - thread an `AbortController` linked to the inbound `args.signal`
- *     (Hono's `c.req.raw.signal`) so a client disconnect mid-SSE cancels
- *     `provider.fetch` + `parseMessagesStream` via the same downstream
- *     signal. respond.ts's SSE `cancel()` aborts the same controller for the
- *     reverse direction.
+ * Migrated to the framework kit (@vnext-gateway/chat-flow-kit). The old
+ * inline parse → telemetry → quota → AbortController → attempt → respond
+ * chain now lives behind `serveTemplate(...)`; this file only declares the
+ * endpoint-specific hooks and shapes the inbound DataPlaneAuthCtx into the
+ * intersection auth type the kit needs.
  *
- * Telemetry context is built once per request and threaded through both
- * attempt + respond, so persistence helpers (`recordUsage`,
- * `recordPerformance`) write usage rows without leaking auth/transaction
- * state into the legacy dispatch path.
+ * Why the intersection? `MessagesAttemptAuth` has `{ownerId?, pin?, copilot?}`
+ * but no `apiKeyId`. The kit requires `TAuth extends KitAuthCtx` so it can
+ * run quota + tag telemetry. The wrapper-local
+ * `MessagesServeAuth = MessagesAttemptAuth & KitAuthCtx` satisfies the kit
+ * without touching the existing attempt-auth type — structural typing means
+ * the extra `apiKeyId` field is ignored when `runAttempt` forwards `auth` to
+ * `messagesAttempt.generate`.
  *
- * Reference: chat-completions/serve.ts (Spec 2 Part 3 Task 1).
+ * Reference: Spec 10 §3.4. Pattern mirrors chat-completions/serve.ts.
  */
-import { getRuntimeLocation } from '@vnext-gateway/platform'
+import { serveTemplate, type KitAuthCtx, type KitObsCtx, type ServeTemplateHooks } from '@vnext-gateway/chat-flow-kit'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseMessagesPayload } from '../../parsers.ts'
-import { jsonErrorWrap } from '../shared/error-wrap.ts'
+import { kitDeps } from '../shared/kit-deps.ts'
 import type { DispatchObsCtx } from '../shared/obs-ctx.ts'
-import { runQuotaGate } from '../shared/quota-gate.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
-import { messagesAttempt } from './attempt.ts'
+import { messagesAttempt, type MessagesAttemptAuth, type MessagesAttemptResult } from './attempt.ts'
 import { respondMessages } from './respond.ts'
 
 export interface MessagesServeArgs {
@@ -45,76 +33,70 @@ export interface MessagesServeArgs {
   readonly auth: DataPlaneAuthCtx
   readonly obsCtx: DispatchObsCtx
   /**
-   * Optional client-side abort signal (Hono's `c.req.raw.signal`). When the
-   * client disconnects we propagate the abort down to provider.fetch via a
-   * controller linked here, so the upstream socket releases promptly.
+   * Optional client-side abort signal (Hono's `c.req.raw.signal`). The kit
+   * links this into the downstream controller so a client disconnect mid-SSE
+   * cancels provider.fetch + parseMessagesStream.
    */
   readonly signal?: AbortSignal
 }
 
-export async function serveMessages(args: MessagesServeArgs): Promise<Response> {
-  // Parse via the shared Zod schema. parseMessagesPayload throws a shaped
-  // Error (`status: 400, body: {type: 'error', error: {type:
-  // 'invalid_request_error', message}}`) — jsonErrorWrap surfaces it as the
-  // Anthropic-shaped 400 envelope clients already speak.
-  let payload: Record<string, unknown> & { model: string; stream?: boolean }
-  try {
-    payload = parseMessagesPayload(args.raw) as typeof payload
-  } catch (err) {
-    const e = err as Error & { status?: number; body?: unknown }
-    return jsonErrorWrap(
-      e.status ?? 400,
-      e.body ?? {
+type MessagesPayload = Record<string, unknown> & { model: string; stream?: boolean }
+
+type MessagesServeAuth = MessagesAttemptAuth & KitAuthCtx
+
+const messagesHooks: ServeTemplateHooks<
+  MessagesPayload,
+  MessagesAttemptResult,
+  undefined,
+  MessagesServeAuth,
+  TelemetryRequestContext
+> = {
+  endpointTag: 'messages',
+
+  parse: ({ raw }) => {
+    try {
+      return parseMessagesPayload(raw) as MessagesPayload
+    } catch (err) {
+      // Re-throw with the {status, body} shape kitDeps.jsonErrorWrap consumes.
+      // Default body matches the Anthropic-shaped envelope clients expect.
+      const e = err as Error & { status?: number; body?: unknown }
+      const wrapped = new Error(e.message) as Error & { status?: number; body?: unknown }
+      wrapped.status = e.status ?? 400
+      wrapped.body = e.body ?? {
         type: 'error',
         error: { type: 'invalid_request_error', message: e.message },
-      },
-    )
+      }
+      throw wrapped
+    }
+  },
+
+  wantsStream: (p) => p.stream === true,
+
+  runAttempt: (a) => messagesAttempt.generate({
+    payload: a.payload,
+    // Structural typing: extra apiKeyId on auth is ignored by attempt.
+    auth: a.auth,
+    ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal },
+    telemetryCtx: a.telemetryCtx,
+  }),
+
+  respond: (r, c) => respondMessages(r, {
+    wantsStream: c.wantsStream,
+    downstreamAbortController: c.downstreamAbortController,
+    telemetryCtx: c.telemetryCtx,
+  }),
+}
+
+export async function serveMessages(args: MessagesServeArgs): Promise<Response> {
+  const auth: MessagesServeAuth = {
+    ownerId: args.auth.userId,
+    copilot: args.auth.copilot,
+    apiKeyId: args.auth.apiKeyId,
   }
-
-  const wantsStream = payload.stream === true
-
-  // Build the telemetry context once per request. Threaded through attempt +
-  // respond so persistence helpers (`recordUsage`, `recordPerformance`) can
-  // write usage rows without leaking auth/tx state into the dispatch path.
-  // Falls back to '<unknown>' when an upstream caller hasn't populated
-  // `apiKeyId` (e.g. tests that bypass the auth middleware), mirroring how
-  // legacy DispatchObsCtx tolerates anonymous requests.
-  const requestStartedAt = Date.now()
-  const telemetryCtx: TelemetryRequestContext = {
-    apiKeyId: args.obsCtx.apiKeyId ?? args.auth.apiKeyId ?? '<unknown>',
-    userAgent: args.obsCtx.userAgent ?? null,
-    requestId: args.obsCtx.requestId ?? crypto.randomUUID(),
-    isStreaming: wantsStream,
-    runtimeLocation: getRuntimeLocation(),
-    requestStartedAt,
-  }
-
-  // Daily quota gate. Legacy dispatch ran this inside runConversationAttempt;
-  // Spec 3 deletes that helper but the per-key cap is still enforced here so
-  // the public `429 + rate_limit_error` envelope is preserved for SDKs.
-  const quotaResp = await runQuotaGate(args.auth.apiKeyId)
-  if (quotaResp) return quotaResp
-
-  // Linked controller: aborts when the upstream client signal aborts, and is
-  // also aborted by respond.ts's SSE `cancel()` if the downstream client
-  // closes its read end mid-stream. Either direction triggers attempt.ts's
-  // provider.fetch + parseMessagesStream to unwind via the same signal.
-  const controller = new AbortController()
-  if (args.signal) {
-    if (args.signal.aborted) controller.abort()
-    else args.signal.addEventListener('abort', () => controller.abort(), { once: true })
-  }
-
-  const result = await messagesAttempt.generate({
-    payload,
-    auth: { ownerId: args.auth.userId, copilot: args.auth.copilot },
-    ctx: { requestStartedAt, downstreamAbortSignal: controller.signal },
-    telemetryCtx,
-  })
-
-  return respondMessages(result, {
-    wantsStream,
-    downstreamAbortController: controller,
-    telemetryCtx,
-  })
+  const { response } = await serveTemplate(
+    messagesHooks,
+    { raw: args.raw, auth, obsCtx: args.obsCtx as KitObsCtx, signal: args.signal, extras: {} },
+    kitDeps,
+  )
+  return response
 }
