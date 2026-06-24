@@ -1,5 +1,5 @@
 {
-  "name": "@vnext/service",
+  "name": "@vnext-gateway/service",
   "private": true,
   "version": "0.0.0",
   "type": "module",

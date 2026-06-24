@@ -15,7 +15,7 @@
     "@vnext/provider-custom": "workspace:*",
     "@vnext/provider-sdf": "workspace:*",
     "@vnext/responses-store": "workspace:*",
-    "@vnext/service": "workspace:*",
+    "@vnext-gateway/service": "workspace:*",
     "@vnext/cache": "workspace:*",
     "@vnext/translate": "workspace:*",
     "hono": "^4.12.23",

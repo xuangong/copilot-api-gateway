@@ -64,6 +64,7 @@
       "name": "@vnext/gateway",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext-gateway/service": "workspace:*",
         "@vnext/cache": "workspace:*",
         "@vnext/platform": "workspace:*",
         "@vnext/protocols": "workspace:*",
@@ -73,7 +74,6 @@
         "@vnext/provider-custom": "workspace:*",
         "@vnext/provider-sdf": "workspace:*",
         "@vnext/responses-store": "workspace:*",
-        "@vnext/service": "workspace:*",
         "@vnext/translate": "workspace:*",
         "hono": "^4.12.23",
         "image-size": "^2.0.2",
@@ -97,7 +97,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@vnext-gateway/result": "workspace:*",
-        "@vnext/service": "workspace:*",
+        "@vnext-gateway/service": "workspace:*",
         "zod": "^4.4.3",
       },
     },
@@ -121,10 +121,10 @@
       "name": "@vnext/provider-copilot",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext-gateway/service": "workspace:*",
         "@vnext/http": "workspace:*",
         "@vnext/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
-        "@vnext/service": "workspace:*",
       },
     },
     "packages/provider-custom": {
@@ -154,7 +154,7 @@
       "version": "0.0.0",
     },
     "packages/service": {
-      "name": "@vnext/service",
+      "name": "@vnext-gateway/service",
       "version": "0.0.0",
     },
     "packages/translate": {
@@ -436,6 +436,8 @@
 
     "@vnext-gateway/result": ["@vnext-gateway/result@workspace:packages/result"],
 
+    "@vnext-gateway/service": ["@vnext-gateway/service@workspace:packages/service"],
+
     "@vnext/cache": ["@vnext/cache@workspace:packages/cache"],
 
     "@vnext/dashboard": ["@vnext/dashboard@workspace:apps/dashboard"],
@@ -463,8 +465,6 @@
     "@vnext/provider-sdf": ["@vnext/provider-sdf@workspace:packages/provider-sdf"],
 
     "@vnext/responses-store": ["@vnext/responses-store@workspace:packages/responses-store"],
-
-    "@vnext/service": ["@vnext/service@workspace:packages/service"],
 
     "@vnext/translate": ["@vnext/translate@workspace:packages/translate"],
 

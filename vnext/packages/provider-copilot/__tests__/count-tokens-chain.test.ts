@@ -1,5 +1,5 @@
 import { test, expect, mock } from 'bun:test'
-import { runInterceptors } from '@vnext/service'
+import { runInterceptors } from '@vnext-gateway/service'
 import { withCountTokensPrelude } from '../src/interceptors/messages-count-tokens/with-count-tokens-prelude'
 
 test('count-tokens prelude strips context_management before terminal', async () => {

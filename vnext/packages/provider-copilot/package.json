@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@vnext/protocols": "workspace:*",
-    "@vnext/service": "workspace:*",
+    "@vnext-gateway/service": "workspace:*",
     "@vnext/provider": "workspace:*",
     "@vnext/http": "workspace:*"
   }

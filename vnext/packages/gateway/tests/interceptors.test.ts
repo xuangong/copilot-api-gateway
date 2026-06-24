@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test'
-import { runInterceptors } from "@vnext/service"
+import { runInterceptors } from "@vnext-gateway/service"
 import type { CopilotInterceptor, Invocation, RequestContext } from "@vnext/protocols/common"
 
 const newInv = (): Invocation => ({

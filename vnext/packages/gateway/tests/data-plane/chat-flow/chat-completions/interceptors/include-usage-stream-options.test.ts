@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test'
 import { withUsageStreamOptionsIncluded } from '../../../../../src/data-plane/chat-flow/chat-completions/interceptors/include-usage-stream-options'
 import { chatCompletionsInterceptors } from '../../../../../src/data-plane/chat-flow/chat-completions/interceptors'
-import { runInterceptors } from '@vnext/service'
+import { runInterceptors } from '@vnext-gateway/service'
 import {
   doneFrame,
   eventResult,

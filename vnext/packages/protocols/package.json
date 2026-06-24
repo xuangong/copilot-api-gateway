@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@vnext-gateway/result": "workspace:*",
-    "@vnext/service": "workspace:*",
+    "@vnext-gateway/service": "workspace:*",
     "zod": "^4.4.3"
   }
 }

@@ -37,7 +37,7 @@
  *
  * Reference: messages/attempt.ts, responses/attempt.ts.
  */
-import { runInterceptors } from '@vnext/service'
+import { runInterceptors } from '@vnext-gateway/service'
 import type { Invocation, RequestContext } from '@vnext/protocols/common'
 import {
   internalErrorResult,

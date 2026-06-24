@@ -4,7 +4,7 @@ import type { ProtocolFrame } from './sse'
 import type { ChatCompletionsStreamEvent } from '../chat'
 import type { MessagesStreamEvent } from '../messages'
 import type { ResponsesStreamEvent } from '../responses'
-import type { Interceptor } from '@vnext/service'
+import type { Interceptor } from '@vnext-gateway/service'
 
 export interface Invocation {
   readonly endpoint: EndpointKey

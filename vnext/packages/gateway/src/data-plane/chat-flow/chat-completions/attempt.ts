@@ -14,7 +14,7 @@
  *
  * Reference: copilot-gateway/packages/gateway/src/data-plane/llm/chat-completions/attempt.ts
  */
-import { runInterceptors } from '@vnext/service'
+import { runInterceptors } from '@vnext-gateway/service'
 import type { ChatCompletionsStreamInterceptor, Invocation, RequestContext } from '@vnext/protocols/common'
 import { eventResult, internalErrorResult, readUpstreamError, type ExecuteResult, type ProtocolFrame } from '@vnext/protocols/common'
 import { parseChatCompletionsStream, type ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
