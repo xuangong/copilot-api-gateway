@@ -19,7 +19,7 @@ import type { ChatCompletionsStreamInterceptor, Invocation, RequestContext } fro
 import { llmEventResult, llmInternalErrorResult, readUpstreamError, type LlmExecuteResult } from '@vnext-llm/protocols/common'
 import { type ProtocolFrame } from '@vnext-gateway/result'
 import { parseChatCompletionsStream, type ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
-import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext-llm/provider'
+import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext-llm/provider-llm'
 import {
   telemetryModelIdentity,
   upstreamPerformanceContext,
@@ -67,7 +67,7 @@ export interface ChatCompletionsAttemptArgs {
 }
 
 // Minimal binding shape we actually depend on. Keeps tests free of the full
-// ProviderBinding ceremony while staying type-safe inside this module.
+// LlmProviderBinding ceremony while staying type-safe inside this module.
 type AttemptBinding = { readonly provider: { readonly fetch: (req: ProviderRequest) => Promise<ProviderResponse> } }
 
 // Buffer the upstream body, decode as a `chat.completion` envelope, and hand
@@ -160,7 +160,7 @@ export const chatCompletionsAttempt = {
       }
       const binding = sel.binding as unknown as AttemptBinding
       // Cast once to the shape the telemetry helpers consume (provider.fetch
-      // returns a structurally-equivalent ProviderBinding; we only depend on
+      // returns a structurally-equivalent LlmProviderBinding; we only depend on
       // upstream.name + upstreamModel.id + provider.getPricingForModelKey).
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       upstreamResp = await binding.provider.fetch(providerReq)

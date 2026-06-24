@@ -8,12 +8,12 @@ import { BILLING_DIMENSIONS, type EndpointKey, type ModelPricing } from '@vnext-
 import {
   HTTPError,
   probeViaModels,
-  type ModelProvider,
+  type LlmModelProvider,
   type ProbeResult,
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
-} from '@vnext-llm/provider'
+} from '@vnext-llm/provider-llm'
 import { fetchWithRetry, mergeHeaders, truncateBody } from '@vnext-gateway/http'
 
 export interface CustomProviderConfig {
@@ -42,7 +42,7 @@ const CUSTOM_PATHS: Record<EndpointKey, string> = {
   images_edits: '/images/edits',
 }
 
-export class CustomProvider implements ModelProvider {
+export class CustomProvider implements LlmModelProvider {
   readonly kind = 'custom' as const
   readonly name: string
   readonly supportedEndpoints: readonly EndpointKey[]

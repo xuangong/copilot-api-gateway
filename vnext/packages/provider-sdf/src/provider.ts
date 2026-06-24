@@ -15,12 +15,12 @@ import type { EndpointKey, ModelPricing } from '@vnext-llm/protocols/common'
 import {
   HTTPError,
   probeViaModels,
-  type ModelProvider,
+  type LlmModelProvider,
   type ProbeResult,
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
-} from '@vnext-llm/provider'
+} from '@vnext-llm/provider-llm'
 import { fetchWithRetry, mergeHeaders, truncateBody } from '@vnext-gateway/http'
 
 export const SDF_BASE_URL = 'https://fe-26.qas.bing.net'
@@ -44,7 +44,7 @@ export interface SdfProviderConfig {
   substrateToken: string
 }
 
-export class SdfProvider implements ModelProvider {
+export class SdfProvider implements LlmModelProvider {
   readonly kind = 'sdf' as const
   readonly name: string
   readonly supportedEndpoints: readonly EndpointKey[] = SUPPORTED_ENDPOINTS

@@ -11,11 +11,11 @@
  * vnext deltas:
  *   - ResponseTool / ResponseInputItem typed as ServerToolPlugin's open shape
  *     instead of the old `~/transforms` re-exports; functionality unchanged.
- *   - ProviderBinding sourced from data-plane/routing/binding.ts (not old
+ *   - LlmProviderBinding sourced from data-plane/routing/binding.ts (not old
  *     ~/providers/binding) — provider.fetch signature is identical.
  */
 import type { EndpointKey } from '@vnext-llm/protocols/common'
-import type { ProviderBinding } from '../../../../routing/binding.ts'
+import type { LlmProviderBinding } from '../../../../routing/binding.ts'
 import { runImagesAttempt } from '../../../../observability/attempts/images-attempt.ts'
 import type { ResponsesTool, ResponsesInputItem } from '../../types.ts'
 
@@ -327,7 +327,7 @@ export interface ImageGenerationObservability {
 }
 
 export async function generateImageViaBinding(
-  binding: ProviderBinding,
+  binding: LlmProviderBinding,
   prompt: string,
   config: ImageGenerationConfig,
   sources: readonly ImageSource[] = [],

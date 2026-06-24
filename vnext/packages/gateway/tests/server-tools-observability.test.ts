@@ -11,7 +11,7 @@
  *     Copilot image endpoint) resolve deterministically
  *   - image-generation: skip the routing layer (Copilot's endpoints map has
  *     no images_* entries) and call generateImageViaBinding with a fake
- *     ProviderBinding so the test exercises the observability wrap only
+ *     LlmProviderBinding so the test exercises the observability wrap only
  *   - web-search: full handleMessagesWebSearch entry, canned response with
  *     zero web_search tool_uses → loop terminates after one upstream call
  */
@@ -27,8 +27,8 @@ import { BunSqliteRepo as SqliteRepo } from '@vnext-llm/platform-bun/src/bun-sql
 import { generateImageViaBinding, type ImageGenerationConfig } from '../src/data-plane/orchestrator/server-tools/plugins/image-generation/core.ts'
 import { handleMessagesWebSearch } from '../src/data-plane/orchestrator/server-tools/plugins/web-search/route-handler.ts'
 import { invalidateResolverCache } from '../src/data-plane/orchestrator/server-tools/plugins/web-search/resolver.ts'
-import type { ProviderBinding } from '../src/data-plane/routing/binding.ts'
-import type { ModelProvider } from '@vnext-llm/provider'
+import type { LlmProviderBinding } from '../src/data-plane/routing/binding.ts'
+import type { LlmModelProvider } from '@vnext-llm/provider-llm'
 
 const origFetch = globalThis.fetch
 let repo: SqliteRepo
@@ -58,17 +58,17 @@ afterEach(() => {
   invalidateResolverCache()
 })
 
-// Minimal ProviderBinding for the image path. provider.fetch is the only
+// Minimal LlmProviderBinding for the image path. provider.fetch is the only
 // surface generateImageViaBinding touches; we stub it to return a canned
 // images_generations success body.
-function makeImageBinding(): ProviderBinding {
+function makeImageBinding(): LlmProviderBinding {
   const provider = {
     getModels: () => Promise.resolve({ object: 'list', data: [] }),
     fetch: () => Promise.resolve(new Response(
       JSON.stringify({ data: [{ b64_json: 'AAAA' }] }),
       { status: 200, headers: { 'content-type': 'application/json' } },
     )),
-  } as unknown as ModelProvider
+  } as unknown as LlmModelProvider
   return {
     upstream: 'copilot:test',
     kind: 'copilot',

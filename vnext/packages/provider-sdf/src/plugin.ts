@@ -1,7 +1,7 @@
-import type { ProviderPlugin } from '@vnext-llm/provider'
+import type { LlmProviderPlugin } from '@vnext-llm/provider-llm'
 import { SdfProvider, type SdfProviderConfig } from './provider'
 
-export const sdfProviderPlugin: ProviderPlugin = {
+export const sdfProviderPlugin: LlmProviderPlugin = {
   kind: 'sdf',
   async createFromUpstream(upstream) {
     return new SdfProvider(upstream.config as unknown as SdfProviderConfig)

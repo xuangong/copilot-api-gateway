@@ -15,7 +15,7 @@
     "@vnext-gateway/result": "workspace:*",
     "@vnext-llm/protocols": "workspace:*",
     "@vnext-gateway/service": "workspace:*",
-    "@vnext-llm/provider": "workspace:*",
+    "@vnext-llm/provider-llm": "workspace:*",
     "@vnext-gateway/http": "workspace:*"
   }
 }

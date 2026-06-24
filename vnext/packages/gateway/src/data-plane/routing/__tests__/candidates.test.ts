@@ -1,12 +1,12 @@
 import { test, expect } from 'bun:test'
 import { filterBindingCandidates } from '../candidates.ts'
-import type { ProviderBinding } from '@vnext-llm/provider'
+import type { LlmProviderBinding } from '@vnext-llm/provider-llm'
 
 /**
- * Stub factory for creating minimal ProviderBinding objects for testing.
+ * Stub factory for creating minimal LlmProviderBinding objects for testing.
  * Only populates fields used by filterBindingCandidates; rest use as any casts.
  */
-const stub = (id: string, endpoints: any, upstream = 'up_a'): ProviderBinding => ({
+const stub = (id: string, endpoints: any, upstream = 'up_a'): LlmProviderBinding => ({
   upstream,
   kind: 'copilot',
   model: { id, endpoints, displayName: id, limits: undefined } as any,

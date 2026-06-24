@@ -1,8 +1,8 @@
 import { test, expect } from 'bun:test'
-import { bindingServesEndpoint, type ProviderBinding } from '../binding.ts'
+import { bindingServesEndpoint, type LlmProviderBinding } from '../binding.ts'
 
 test('binding: bindingServesEndpoint reads model.endpoints map', () => {
-  const b: ProviderBinding = {
+  const b: LlmProviderBinding = {
     upstream: 'u1',
     kind: 'copilot',
     model: { id: 'm', endpoints: { chat_completions: {}, responses: {} } } as never,

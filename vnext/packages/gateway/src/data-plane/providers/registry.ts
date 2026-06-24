@@ -22,7 +22,7 @@ import { __registerPlatformReset } from '@vnext-gateway/platform'
 import { getCache } from '../../shared/cache/index.ts'
 import type { Model, ModelsResponse } from '@vnext-llm/provider-copilot'
 import { copilotModelEndpoints } from '@vnext-llm/provider-copilot'
-import type { ModelProvider, ProviderBinding, ProviderPlugin } from '@vnext-llm/provider'
+import type { LlmModelProvider, LlmProviderBinding, LlmProviderPlugin } from '@vnext-llm/provider-llm'
 import type { EndpointKey, ModelEndpoints, UpstreamKind } from '@vnext-llm/protocols/common'
 import { CopilotProvider, copilotProviderPlugin } from '@vnext-llm/provider-copilot'
 import { azureProviderPlugin } from '@vnext-llm/provider-azure'
@@ -40,12 +40,12 @@ export interface ListUpstreamModelsOptions {
   copilot?: CreateProviderOptions
 }
 
-export function createCopilotProvider(opts: CreateProviderOptions): ModelProvider {
+export function createCopilotProvider(opts: CreateProviderOptions): LlmModelProvider {
   return new CopilotProvider({ copilotToken: opts.copilotToken, accountType: opts.accountType })
 }
 
 /**
- * Build a ModelProvider from a stored upstream row by dispatching to the
+ * Build a LlmModelProvider from a stored upstream row by dispatching to the
  * provider's plugin factory. Returns null when no plugin matches the
  * upstream.provider kind, or when the plugin itself returns null
  * (Copilot: missing githubToken AND no fallback opts).
@@ -55,7 +55,7 @@ export function createCopilotProvider(opts: CreateProviderOptions): ModelProvide
  * deployment/etc. Callers wanting HTTP 4xx must wrap in try/catch
  * (see control-plane upstream-probe).
  */
-const PROVIDER_PLUGINS: ReadonlyMap<UpstreamKind, ProviderPlugin> = new Map(
+const PROVIDER_PLUGINS: ReadonlyMap<UpstreamKind, LlmProviderPlugin> = new Map(
   [copilotProviderPlugin, azureProviderPlugin, customProviderPlugin, sdfProviderPlugin]
     .map((p) => [p.kind, p] as const),
 )
@@ -63,7 +63,7 @@ const PROVIDER_PLUGINS: ReadonlyMap<UpstreamKind, ProviderPlugin> = new Map(
 export async function createProviderFromUpstream(
   upstream: UpstreamRecord,
   copilot?: CreateProviderOptions,
-): Promise<ModelProvider | null> {
+): Promise<LlmModelProvider | null> {
   const plugin = PROVIDER_PLUGINS.get(upstream.provider)
   if (!plugin) return null
   return plugin.createFromUpstream(upstream, {
@@ -125,7 +125,7 @@ function modelToBindingModel(
   model: ModelsResponse['data'][number],
   kind: UpstreamKind,
   supportedEndpoints: readonly EndpointKey[],
-): ProviderBinding['model'] {
+): LlmProviderBinding['model'] {
   const endpoints = kind === 'copilot'
     ? copilotModelEndpoints(model as Model)
     : genericModelEndpoints(model as Model, supportedEndpoints)
@@ -157,7 +157,7 @@ const modelsMemo = new Map<string, { expiresAt: number; models: ModelsResponse }
 
 async function getCachedModels(
   upstream: UpstreamRecord,
-  provider: ModelProvider,
+  provider: LlmModelProvider,
 ): Promise<ModelsResponse> {
   const key = `models:${upstream.id}@${upstream.updatedAt}`
   const now = Date.now()
@@ -220,7 +220,7 @@ async function listVisibleUpstreams(ownerId?: string): Promise<UpstreamRecord[]>
 
 export async function listProviderBindings(
   opts: ListUpstreamModelsOptions = {},
-): Promise<ProviderBinding[]> {
+): Promise<LlmProviderBinding[]> {
   let upstreams: UpstreamRecord[]
   try {
     upstreams = await listVisibleUpstreams(opts.ownerId)
@@ -228,7 +228,7 @@ export async function listProviderBindings(
     upstreams = []
   }
 
-  const bindings: ProviderBinding[] = []
+  const bindings: LlmProviderBinding[] = []
   for (const upstream of upstreams) {
     try {
       const provider = await createProviderFromUpstream(upstream, opts.copilot)

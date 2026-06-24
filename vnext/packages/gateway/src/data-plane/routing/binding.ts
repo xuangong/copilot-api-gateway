@@ -6,19 +6,19 @@
  * dispatch to, on which endpoint, with which flags effective?"
  */
 import type { EndpointKey } from '@vnext-llm/protocols/common'
-import type { BindingModel, ProviderBinding } from '@vnext-llm/provider'
-export type { BindingModel, ProviderBinding }
+import type { BindingModel, LlmProviderBinding } from '@vnext-llm/provider-llm'
+export type { BindingModel, LlmProviderBinding }
 
 export function bindingServesEndpoint(
-  binding: ProviderBinding,
+  binding: LlmProviderBinding,
   endpoint: EndpointKey,
 ): boolean {
   return binding.model.endpoints[endpoint] !== undefined
 }
 
 export function bindingsForEndpoint(
-  bindings: readonly ProviderBinding[],
+  bindings: readonly LlmProviderBinding[],
   endpoint: EndpointKey,
-): ProviderBinding[] {
+): LlmProviderBinding[] {
   return bindings.filter((b) => bindingServesEndpoint(b, endpoint))
 }

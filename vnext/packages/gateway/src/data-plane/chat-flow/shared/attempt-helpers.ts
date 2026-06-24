@@ -10,16 +10,16 @@ import {
 } from '@vnext-llm/protocols/common'
 import { type ProtocolFrame } from '@vnext-gateway/result'
 import { parseTargetStreamFrames } from '@vnext-gateway/result/parse'
-import type { ProviderResponse } from '@vnext-llm/provider'
+import type { ProviderResponse } from '@vnext-llm/provider-llm'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 import { withUpstreamTelemetry } from './upstream-telemetry.ts'
 
 /**
- * Minimal shape this module reads from a `ProviderBinding`. The live
- * `ProviderBinding` (from `@vnext-llm/provider`) has:
+ * Minimal shape this module reads from a `LlmProviderBinding`. The live
+ * `LlmProviderBinding` (from `@vnext-llm/provider-llm`) has:
  *   - `upstream: string` — the upstream's name
  *   - `model: BindingModel` — `{ id, ..., cost? }`
- *   - `provider: ModelProvider` — exposes `getPricingForModelKey(k)`
+ *   - `provider: LlmModelProvider` — exposes `getPricingForModelKey(k)`
  *
  * Tests can substitute any structurally-compatible object via `as never` cast.
  */

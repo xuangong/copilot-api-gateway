@@ -11,7 +11,7 @@
  *   - Composite-model fallback (parseCompositeModelId) is reused verbatim.
  */
 import type { EndpointKey } from '@vnext-llm/protocols/common'
-import { bindingServesEndpoint, type ProviderBinding } from './binding.ts'
+import { bindingServesEndpoint, type LlmProviderBinding } from './binding.ts'
 import { listProviderBindings, type CreateProviderOptions } from '../providers/registry.ts'
 import { parseCompositeModelId } from '@vnext-llm/provider-copilot'
 
@@ -38,13 +38,13 @@ export async function resolveBinding(
   model: string,
   endpoint: EndpointKey,
   opts: ResolveBindingOptions = {},
-): Promise<ProviderBinding | null> {
+): Promise<LlmProviderBinding | null> {
   const parsed = parseModelRouting(model)
   const upstreamPin = opts.pin ?? parsed.upstreamPin
   const bareModel = parsed.bareModel
   const bindings = await listProviderBindings({ ownerId: opts.ownerId, copilot: opts.copilot })
   const candidates = bindings.filter((b) => bindingServesEndpoint(b, endpoint))
-  const matches = (b: ProviderBinding, id: string) =>
+  const matches = (b: LlmProviderBinding, id: string) =>
     b.model.id === id && (!upstreamPin || b.upstream === upstreamPin)
 
   const direct = candidates.find((b) => matches(b, bareModel))
@@ -67,7 +67,7 @@ export function pinFromPayload(
 }
 
 export function effectiveFlags(
-  binding: ProviderBinding | null | undefined,
+  binding: LlmProviderBinding | null | undefined,
 ): ReadonlySet<string> {
   return binding?.enabledFlags ?? new Set<string>()
 }
@@ -86,7 +86,7 @@ export async function resolveBindingForRequest<P extends { model?: unknown }>(
   payload: P,
   endpoint: EndpointKey,
   opts: ResolveBindingOptions = {},
-): Promise<{ binding: ProviderBinding | null; model: string }> {
+): Promise<{ binding: LlmProviderBinding | null; model: string }> {
   const rawModel = typeof payload.model === 'string' ? payload.model : ''
   const { bareModel } = parseModelRouting(rawModel)
   const binding = await resolveBinding(rawModel, endpoint, opts)

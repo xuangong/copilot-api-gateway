@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@vnext-llm/protocols": "workspace:*",
-    "@vnext-llm/provider": "workspace:*",
+    "@vnext-llm/provider-llm": "workspace:*",
     "@vnext-gateway/http": "workspace:*"
   }
 }

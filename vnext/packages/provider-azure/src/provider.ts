@@ -15,12 +15,12 @@ import type { EndpointKey, ModelPricing } from '@vnext-llm/protocols/common'
 import {
   HTTPError,
   probeViaModels,
-  type ModelProvider,
+  type LlmModelProvider,
   type ProbeResult,
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
-} from '@vnext-llm/provider'
+} from '@vnext-llm/provider-llm'
 import { fetchWithRetry, mergeHeaders, parseJsonBody, truncateBody } from '@vnext-gateway/http'
 
 export interface AzureProviderConfig {
@@ -56,7 +56,7 @@ function surfaceForEndpoint(endpoint: EndpointKey): AzureSurface | null {
   return null
 }
 
-export class AzureProvider implements ModelProvider {
+export class AzureProvider implements LlmModelProvider {
   readonly kind = 'azure' as const
   readonly name: string
   readonly supportedEndpoints: readonly EndpointKey[]

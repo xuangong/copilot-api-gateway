@@ -8,11 +8,11 @@
  *
  * Returns null when neither path can produce a provider.
  */
-import type { ProviderPlugin } from '@vnext-llm/provider'
+import type { LlmProviderPlugin } from '@vnext-llm/provider-llm'
 import type { AccountType } from '@vnext-llm/protocols/common'
 import { CopilotProvider } from './provider'
 
-export const copilotProviderPlugin: ProviderPlugin = {
+export const copilotProviderPlugin: LlmProviderPlugin = {
   kind: 'copilot',
   async createFromUpstream(upstream, ctx) {
     const config = upstream.config

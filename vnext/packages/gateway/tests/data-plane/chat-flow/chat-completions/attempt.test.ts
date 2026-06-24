@@ -31,7 +31,7 @@ const baseTelemetry: TelemetryRequestContext = {
   requestStartedAt: Date.now(),
 }
 // Minimal binding shape so attempt-helpers can build a model identity without
-// us mocking the full ProviderBinding ceremony.
+// us mocking the full LlmProviderBinding ceremony.
 const fakeBindingBase = {
   upstream: 'fake',
   model: { id: 'gpt-x' },

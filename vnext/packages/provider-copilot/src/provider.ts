@@ -20,13 +20,13 @@ import type { EndpointKey, ModelPricing } from '@vnext-llm/protocols/common'
 import type { CopilotInterceptor, Invocation, RequestContext } from "@vnext-llm/protocols/common"
 import { runInterceptors } from "@vnext-gateway/service"
 import type {
-  ModelProvider,
+  LlmModelProvider,
   ProbeResult,
   ProviderRequest,
   ProviderResponse,
   SourceApi,
-} from '@vnext-llm/provider'
-import { probeViaModels } from '@vnext-llm/provider'
+} from '@vnext-llm/provider-llm'
+import { probeViaModels } from '@vnext-llm/provider-llm'
 import { createVariantAndBetaFilteringInterceptor } from './interceptors/shared/with-variant-and-beta-filtering'
 import { withContextManagementBetaAligned } from './interceptors/shared/with-context-management-beta-aligned'
 import { withInitiatorHeader } from './interceptors/shared/with-initiator-header'
@@ -58,7 +58,7 @@ const COPILOT_SUPPORTED: readonly EndpointKey[] = [
   'embeddings',
 ]
 
-export class CopilotProvider implements ModelProvider {
+export class CopilotProvider implements LlmModelProvider {
   readonly kind = 'copilot' as const
   readonly name: string
   readonly supportedEndpoints = COPILOT_SUPPORTED

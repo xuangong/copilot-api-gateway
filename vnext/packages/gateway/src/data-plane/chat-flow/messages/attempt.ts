@@ -38,7 +38,7 @@ import {
   parseMessagesStream,
   type MessagesStreamEvent,
 } from '@vnext-llm/protocols/messages'
-import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext-llm/provider'
+import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext-llm/provider-llm'
 import {
   telemetryModelIdentity,
   upstreamPerformanceContext,

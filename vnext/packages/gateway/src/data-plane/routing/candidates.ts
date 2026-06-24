@@ -4,13 +4,13 @@
  * + chooseBackendEndpoint heuristic.
  */
 import type { EndpointKey, ModelEndpoints } from '@vnext-llm/protocols/common'
-import type { ProviderBinding } from '@vnext-llm/provider'
+import type { LlmProviderBinding } from '@vnext-llm/provider-llm'
 import { listProviderBindings, type CreateProviderOptions } from '../providers/registry.ts'
 import { parseModelRouting } from './binding-resolver.ts'
 import { parseCompositeModelId } from '@vnext-llm/provider-copilot'
 
 export interface BindingCandidate {
-  binding: ProviderBinding
+  binding: LlmProviderBinding
   targetEndpoint: EndpointKey
 }
 
@@ -32,7 +32,7 @@ export interface EnumerateResult {
  * minus the listProviderBindings I/O.
  */
 export function filterBindingCandidates(args: {
-  bindings: readonly ProviderBinding[]
+  bindings: readonly LlmProviderBinding[]
   model: string
   pickTarget: (e: ModelEndpoints) => EndpointKey | null
   pin?: string
@@ -45,7 +45,7 @@ export function filterBindingCandidates(args: {
   const composite = parseCompositeModelId(bareModel)
   const altId = composite.baseId && composite.baseId !== bareModel ? composite.baseId : null
 
-  const matches = (b: ProviderBinding): boolean => {
+  const matches = (b: LlmProviderBinding): boolean => {
     if (upstreamPin && b.upstream !== upstreamPin) return false
     return b.model.id === bareModel || (altId !== null && b.model.id === altId)
   }
