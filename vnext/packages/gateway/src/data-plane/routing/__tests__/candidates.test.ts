@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
 import { filterBindingCandidates } from '../candidates.ts'
-import type { ProviderBinding } from '@vnext/provider'
+import type { ProviderBinding } from '@vnext-llm/provider'
 
 /**
  * Stub factory for creating minimal ProviderBinding objects for testing.

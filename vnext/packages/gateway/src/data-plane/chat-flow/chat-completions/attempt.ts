@@ -19,7 +19,7 @@ import type { ChatCompletionsStreamInterceptor, Invocation, RequestContext } fro
 import { llmEventResult, llmInternalErrorResult, readUpstreamError, type LlmExecuteResult } from '@vnext-llm/protocols/common'
 import { type ProtocolFrame } from '@vnext-gateway/result'
 import { parseChatCompletionsStream, type ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
-import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext/provider'
+import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext-llm/provider'
 import {
   telemetryModelIdentity,
   upstreamPerformanceContext,

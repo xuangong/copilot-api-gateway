@@ -17,7 +17,7 @@
  * and lose review granularity. This scaffold proves the wiring; each follow-up
  * lands its concern in isolation.
  */
-import type { ModelProvider, ProviderRequest } from '@vnext/provider'
+import type { ModelProvider, ProviderRequest } from '@vnext-llm/provider'
 
 export interface OrchestratorInput {
   provider: ModelProvider

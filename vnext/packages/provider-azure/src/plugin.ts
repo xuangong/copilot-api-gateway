@@ -1,4 +1,4 @@
-import type { ProviderPlugin } from '@vnext/provider'
+import type { ProviderPlugin } from '@vnext-llm/provider'
 import { AzureProvider, type AzureProviderConfig } from './provider'
 
 export const azureProviderPlugin: ProviderPlugin = {

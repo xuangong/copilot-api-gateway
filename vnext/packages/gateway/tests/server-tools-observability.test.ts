@@ -28,7 +28,7 @@ import { generateImageViaBinding, type ImageGenerationConfig } from '../src/data
 import { handleMessagesWebSearch } from '../src/data-plane/orchestrator/server-tools/plugins/web-search/route-handler.ts'
 import { invalidateResolverCache } from '../src/data-plane/orchestrator/server-tools/plugins/web-search/resolver.ts'
 import type { ProviderBinding } from '../src/data-plane/routing/binding.ts'
-import type { ModelProvider } from '@vnext/provider'
+import type { ModelProvider } from '@vnext-llm/provider'
 
 const origFetch = globalThis.fetch
 let repo: SqliteRepo

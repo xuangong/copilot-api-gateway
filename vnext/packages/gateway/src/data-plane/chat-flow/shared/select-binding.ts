@@ -9,7 +9,7 @@
  * candidate set without depending on the live routing table.
  */
 import type { EndpointKey, ModelEndpoints } from '@vnext-llm/protocols/common'
-import type { ProviderBinding } from '@vnext/provider'
+import type { ProviderBinding } from '@vnext-llm/provider'
 import {
   enumerateBindingCandidates,
   type EnumerateResult,

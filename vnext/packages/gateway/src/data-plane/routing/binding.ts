@@ -6,7 +6,7 @@
  * dispatch to, on which endpoint, with which flags effective?"
  */
 import type { EndpointKey } from '@vnext-llm/protocols/common'
-import type { BindingModel, ProviderBinding } from '@vnext/provider'
+import type { BindingModel, ProviderBinding } from '@vnext-llm/provider'
 export type { BindingModel, ProviderBinding }
 
 export function bindingServesEndpoint(

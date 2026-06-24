@@ -20,7 +20,7 @@ import {
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
-} from '@vnext/provider'
+} from '@vnext-llm/provider'
 import { fetchWithRetry, mergeHeaders, parseJsonBody, truncateBody } from '@vnext-gateway/http'
 
 export interface AzureProviderConfig {

@@ -48,7 +48,7 @@ import {
   type ResponsesStreamEvent,
   type ResponsesResult,
 } from '@vnext-llm/protocols/responses'
-import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext/provider'
+import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext-llm/provider'
 import {
   telemetryModelIdentity,
   upstreamPerformanceContext,

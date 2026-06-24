@@ -1,4 +1,4 @@
-import type { ProviderPlugin } from '@vnext/provider'
+import type { ProviderPlugin } from '@vnext-llm/provider'
 import { SdfProvider, type SdfProviderConfig } from './provider'
 
 export const sdfProviderPlugin: ProviderPlugin = {

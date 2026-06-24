@@ -47,7 +47,7 @@ import {
   type ModelEndpoints,
 } from '@vnext-llm/protocols/common'
 import { type ProtocolFrame } from '@vnext-gateway/result'
-import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext/provider'
+import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext-llm/provider'
 import {
   upstreamPerformanceContext,
   type AttemptBindingShape,

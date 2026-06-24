@@ -20,7 +20,7 @@ import {
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
-} from '@vnext/provider'
+} from '@vnext-llm/provider'
 import { fetchWithRetry, mergeHeaders, truncateBody } from '@vnext-gateway/http'
 
 export const SDF_BASE_URL = 'https://fe-26.qas.bing.net'

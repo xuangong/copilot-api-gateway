@@ -1,7 +1,7 @@
 /**
  * ProviderPlugin — per-package factory contract.
  *
- * Each @vnext/provider-* package exports a `ProviderPlugin` instance. The
+ * Each @vnext-llm/provider-* package exports a `ProviderPlugin` instance. The
  * gateway statically imports all of them and queries by `kind`. This replaces
  * the historical if/else chain in createProviderFromUpstream.
  *

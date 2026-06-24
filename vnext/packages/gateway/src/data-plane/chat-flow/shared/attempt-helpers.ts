@@ -10,13 +10,13 @@ import {
 } from '@vnext-llm/protocols/common'
 import { type ProtocolFrame } from '@vnext-gateway/result'
 import { parseTargetStreamFrames } from '@vnext-gateway/result/parse'
-import type { ProviderResponse } from '@vnext/provider'
+import type { ProviderResponse } from '@vnext-llm/provider'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 import { withUpstreamTelemetry } from './upstream-telemetry.ts'
 
 /**
  * Minimal shape this module reads from a `ProviderBinding`. The live
- * `ProviderBinding` (from `@vnext/provider`) has:
+ * `ProviderBinding` (from `@vnext-llm/provider`) has:
  *   - `upstream: string` — the upstream's name
  *   - `model: BindingModel` — `{ id, ..., cost? }`
  *   - `provider: ModelProvider` — exposes `getPricingForModelKey(k)`

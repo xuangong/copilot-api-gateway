@@ -13,7 +13,7 @@ import {
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
-} from '@vnext/provider'
+} from '@vnext-llm/provider'
 import { fetchWithRetry, mergeHeaders, truncateBody } from '@vnext-gateway/http'
 
 export interface CustomProviderConfig {

@@ -25,8 +25,8 @@ import type {
   ProviderRequest,
   ProviderResponse,
   SourceApi,
-} from '@vnext/provider'
-import { probeViaModels } from '@vnext/provider'
+} from '@vnext-llm/provider'
+import { probeViaModels } from '@vnext-llm/provider'
 import { createVariantAndBetaFilteringInterceptor } from './interceptors/shared/with-variant-and-beta-filtering'
 import { withContextManagementBetaAligned } from './interceptors/shared/with-context-management-beta-aligned'
 import { withInitiatorHeader } from './interceptors/shared/with-initiator-header'
