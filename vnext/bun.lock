@@ -106,6 +106,7 @@
       "name": "@vnext-llm/provider",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext-gateway/upstream": "workspace:*",
         "@vnext-llm/protocols": "workspace:*",
       },
     },

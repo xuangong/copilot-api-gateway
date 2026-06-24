@@ -8,13 +8,13 @@
     "./types": "./src/types.ts",
     "./probe": "./src/probe.ts",
     "./binding": "./src/binding.ts",
-    "./errors": "./src/errors.ts",
-    "./upstream-response": "./src/upstream-response.ts"
+    "./errors": "./src/errors.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@vnext-gateway/upstream": "workspace:*",
     "@vnext-llm/protocols": "workspace:*"
   }
 }

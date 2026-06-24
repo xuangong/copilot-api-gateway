@@ -1,16 +1,14 @@
 /**
  * ProviderPlugin — per-package factory contract.
  *
- * Each @vnext-llm/provider-* package exports a `ProviderPlugin` instance. The
- * gateway statically imports all of them and queries by `kind`. This replaces
- * the historical if/else chain in createProviderFromUpstream.
- *
- * ProviderPluginContext carries Copilot-specific hooks (token cache + per-
- * request fallback). Non-Copilot plugins ignore these fields. The shape is
- * Copilot-flavored deliberately because Copilot is the only provider that
- * needs request-time secrets resolved out of the upstream row.
+ * Spec 9 Part 1: `ProviderPlugin` is now an alias of the framework
+ * `UpstreamPlugin<UpstreamRecord, ProviderPluginContext, ModelProvider>` so
+ * the kind/createFromUpstream surface is preserved. The Copilot-flavored
+ * context (token cache + per-request fallback) stays local to this package —
+ * it is LLM-business shape and follows into @vnext-llm/provider-llm in Part 2.
  */
-import type { AccountType, UpstreamKind, UpstreamRecord } from '@vnext-llm/protocols/common'
+import type { AccountType, UpstreamRecord } from '@vnext-llm/protocols/common'
+import type { UpstreamPlugin } from '@vnext-gateway/upstream'
 import type { ModelProvider } from './types'
 
 export interface ProviderPluginContext {
@@ -22,13 +20,4 @@ export interface ProviderPluginContext {
   copilotFallback?: { copilotToken: string; accountType: AccountType }
 }
 
-export interface ProviderPlugin {
-  readonly kind: UpstreamKind
-  /** Build a ModelProvider from a stored row. Return null when the row
-   *  cannot produce a provider (e.g. Copilot without githubToken AND
-   *  without copilotFallback). */
-  createFromUpstream(
-    upstream: UpstreamRecord,
-    ctx: ProviderPluginContext,
-  ): Promise<ModelProvider | null>
-}
+export type ProviderPlugin = UpstreamPlugin<UpstreamRecord, ProviderPluginContext, ModelProvider>

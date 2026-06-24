@@ -1,17 +1,6 @@
 /**
- * HTTPError — carries an upstream Response so callers can repackage it for
- * the downstream client without losing status code, headers, or raw body.
- *
- * Lives in @vnext-llm/provider so every adapter (Copilot, Azure, Custom, SDF)
- * surfaces the same error type. @vnext-llm/provider-copilot still re-exports
- * the symbol from its `lib/error.ts` for backward compatibility with
- * existing call-sites.
+ * Re-export of the framework HTTPError. The real class lives in
+ * @vnext-gateway/upstream — bridge for existing `@vnext-llm/provider/errors`
+ * import paths through Spec 9 Part 2.
  */
-export class HTTPError extends Error {
-  response: Response
-
-  constructor(message: string, response: Response) {
-    super(message)
-    this.response = response
-  }
-}
+export { HTTPError } from '@vnext-gateway/upstream'

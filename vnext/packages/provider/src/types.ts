@@ -1,30 +1,23 @@
 /**
- * Provider abstraction — generic ModelProvider contract shared by every
- * upstream adapter (Copilot, Azure, Custom).
+ * @vnext-llm/provider/types — bridge during Spec 9.
  *
- * `ProviderModelsResponse` is a minimal shim; concrete provider packages
- * (`@vnext-llm/provider-copilot` etc.) may return richer subtypes assignable to
- * this shape.
+ * Framework-side shapes (ProbeResult / ProviderModelsResponse / ProviderResponse /
+ * UpstreamAdapter) are re-exported from @vnext-gateway/upstream so consumers
+ * keep their existing import names. LLM-coupled shapes (ProviderRequest /
+ * ProviderRequestFlags / SourceApi) and the business `ModelProvider` interface
+ * stay defined here — Part 2 promotes them into @vnext-llm/provider-llm under
+ * the LlmModelProvider name.
  */
+import type {
+  ProbeResult,
+  ProviderModelsResponse,
+  ProviderResponse,
+  UpstreamAdapter,
+} from '@vnext-gateway/upstream'
 import type { EndpointKey, ModelPricing, UpstreamKind } from '@vnext-llm/protocols/common'
 
 export type { UpstreamKind }
-
-export interface ProbeResult {
-  ok: boolean
-  status?: number
-  modelCount?: number
-  models?: string[]
-  error?: string
-  hint?: string
-}
-
-/** Minimal shape every ModelProvider.getModels must satisfy. */
-export interface ProviderModelsResponse {
-  object: string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: Array<any>
-}
+export type { ProbeResult, ProviderModelsResponse, ProviderResponse }
 
 export type SourceApi = 'anthropic' | 'openai' | 'gemini'
 
@@ -51,23 +44,18 @@ export interface ProviderRequest {
   timeout?: number
 }
 
-export interface ProviderResponse {
-  status: number
-  headers: Headers
-  body: ReadableStream<Uint8Array> | null
-}
-
-export interface ModelProvider {
+/**
+ * Business adapter contract — extends framework UpstreamAdapter with the
+ * three LLM-specific fields (kind, supportedEndpoints, getPricingForModelKey)
+ * and narrows fetch to ProviderRequest. Part 2 renames this to LlmModelProvider
+ * inside @vnext-llm/provider-llm; for the duration of Part 1 the name stays
+ * `ModelProvider` so consumers compile unchanged.
+ */
+export interface ModelProvider extends UpstreamAdapter {
   readonly kind: UpstreamKind
-  readonly name: string
   readonly supportedEndpoints: readonly EndpointKey[]
-  getModels(): Promise<ProviderModelsResponse>
-  probe(): Promise<ProbeResult>
-  fetch(req: ProviderRequest): Promise<ProviderResponse>
-
-  /** Resolve pricing for the given raw upstream model id. Returns null when
-   *  this provider doesn't know the price (caller persists null unit_price). */
   getPricingForModelKey(modelKey: string): ModelPricing | null
+  fetch(req: ProviderRequest): Promise<ProviderResponse>
 }
 
 /** In-memory deterministic provider for tests + dev. Returns synthetic Responses output. */

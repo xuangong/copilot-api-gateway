@@ -3,16 +3,16 @@
  * models + a ready-to-call ModelProvider instance. The shape every routing
  * helper (`enumerateBindingCandidates`, `resolveBinding`, ...) operates on.
  *
- * Plan 2 (Task #27) cutover:
- *   - `BindingModel.endpoints: ModelEndpoints` is now the single source of
- *     truth for per-model endpoint capability.
- *   - `BindingModel.kind` is removed; consumers derive via kindForEndpoints.
- *   - `ProviderBinding.upstreamEndpoints` is removed.
+ * Spec 9 Part 1: now extends the framework `UpstreamBinding<TAdapter>` so
+ * the field that carries the adapter (`.provider`) is inherited unchanged —
+ * no consumer call site is touched. Business-only fields (kind, model)
+ * stay on the local extension and will follow `ModelProvider` into
+ * @vnext-llm/provider-llm during Part 2.
  */
+import type { UpstreamBinding } from '@vnext-gateway/upstream'
 import type { ModelEndpoints, ModelPricing, UpstreamKind } from '@vnext-llm/protocols/common'
 import type { ModelProvider } from './types'
 
-/** Per-binding model metadata. */
 export interface BindingModel {
   id: string
   displayName?: string
@@ -27,10 +27,7 @@ export interface BindingModel {
   cost?: ModelPricing
 }
 
-export interface ProviderBinding {
-  upstream: string
+export interface ProviderBinding extends UpstreamBinding<ModelProvider> {
   kind: UpstreamKind
   model: BindingModel
-  enabledFlags: ReadonlySet<string>
-  provider: ModelProvider
 }
