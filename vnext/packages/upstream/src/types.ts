@@ -2,9 +2,8 @@
  * @vnext-gateway/upstream — framework-level upstream adapter contract.
  *
  * Domain-neutral: a "general gateway/proxy" abstraction with zero LLM
- * concepts. Business overlays (e.g. @vnext-llm/provider-llm) extend
- * UpstreamAdapter with LLM-specific fields like kind/supportedEndpoints/
- * pricing and narrow `fetch`'s request type.
+ * concepts. Business overlays extend UpstreamAdapter with their
+ * domain-specific fields and narrow `fetch`'s request type.
  */
 
 export interface ProbeResult {
@@ -35,8 +34,8 @@ export interface UpstreamAdapter {
   probe(): Promise<ProbeResult>
   /**
    * Framework-level signature uses `unknown` so the framework does not
-   * pull in business request types (EndpointKey, SourceApi, ...). Business
-   * overlays narrow this to a concrete request type via interface extension.
+   * pull in business request types. Business overlays narrow this to a
+   * concrete request type via interface extension.
    */
   fetch(req: unknown): Promise<ProviderResponse>
 }
