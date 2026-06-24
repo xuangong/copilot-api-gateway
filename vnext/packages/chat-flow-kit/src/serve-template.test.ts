@@ -263,3 +263,55 @@ describe('serveTemplate — quota-gate short-circuit', () => {
     expect(calls).toEqual(['preProcess', 'runQuotaGate:k1'])
   })
 })
+
+describe('serveTemplate — AbortController linking', () => {
+  test('inbound signal abort fires the downstream signal observed by runAttempt', async () => {
+    const inbound = new AbortController()
+    let observedSignal: AbortSignal | undefined
+    let abortedDuringAttempt = false
+    const hooks = defaultHooks({
+      runAttempt: async (a) => {
+        observedSignal = a.downstreamAbortSignal
+        inbound.abort()
+        await Promise.resolve()
+        abortedDuringAttempt = a.downstreamAbortSignal.aborted
+        return { kind: 'ok', echoed: a.payload.value }
+      },
+    })
+    await serveTemplate(hooks, defaultInput({ signal: inbound.signal }), defaultDeps())
+    expect(observedSignal).toBeDefined()
+    expect(abortedDuringAttempt).toBe(true)
+  })
+
+  test('already-aborted inbound signal yields an already-aborted downstream signal', async () => {
+    const inbound = new AbortController()
+    inbound.abort()
+    let downstreamAbortedAtAttempt = false
+    const hooks = defaultHooks({
+      runAttempt: async (a) => {
+        downstreamAbortedAtAttempt = a.downstreamAbortSignal.aborted
+        return { kind: 'ok', echoed: a.payload.value }
+      },
+    })
+    await serveTemplate(hooks, defaultInput({ signal: inbound.signal }), defaultDeps())
+    expect(downstreamAbortedAtAttempt).toBe(true)
+  })
+
+  test('respond receives the same AbortController instance as runAttempt', async () => {
+    let attemptSignal: AbortSignal | undefined
+    let respondController: AbortController | undefined
+    const hooks = defaultHooks({
+      runAttempt: async (a) => {
+        attemptSignal = a.downstreamAbortSignal
+        return { kind: 'ok', echoed: a.payload.value }
+      },
+      respond: async (r, c) => {
+        respondController = c.downstreamAbortController
+        return new Response(JSON.stringify(r), { status: 200 })
+      },
+    })
+    await serveTemplate(hooks, defaultInput(), defaultDeps())
+    expect(respondController).toBeDefined()
+    expect(respondController!.signal).toBe(attemptSignal)
+  })
+})
