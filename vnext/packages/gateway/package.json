@@ -18,7 +18,7 @@
     "@vnext/responses-store": "workspace:*",
     "@vnext-gateway/service": "workspace:*",
     "@vnext-gateway/cache": "workspace:*",
-    "@vnext/translate": "workspace:*",
+    "@vnext-llm/translate": "workspace:*",
     "hono": "^4.12.23",
     "image-size": "^2.0.2",
     "zod": "^4.4.3"

@@ -1,5 +1,5 @@
 {
-  "name": "@vnext/translate",
+  "name": "@vnext-llm/translate",
   "private": true,
   "version": "0.0.0",
   "type": "module",

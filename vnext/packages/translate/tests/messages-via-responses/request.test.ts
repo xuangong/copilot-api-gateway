@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { translateMessagesToResponses } from '@vnext/translate/messages-via-responses'
+import { translateMessagesToResponses } from '@vnext-llm/translate/messages-via-responses'
 import type { MessagesPayload } from '@vnext-llm/protocols/messages'
 
 describe('messages-via-responses :: request', () => {

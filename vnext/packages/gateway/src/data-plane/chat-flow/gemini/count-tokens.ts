@@ -11,7 +11,7 @@ import { resolveBinding, stripUpstreamPin } from '../../routing/binding-resolver
 import { repackageUpstreamError } from '../../errors/repackage.ts'
 import { HTTPError } from '@vnext/provider-copilot'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'
-import { translateGeminiToMessages } from '@vnext/translate/gemini-via-messages'
+import { translateGeminiToMessages } from '@vnext-llm/translate/gemini-via-messages'
 import { reshapeMessagesCountAsGemini } from './reshape-count.ts'
 
 export interface GeminiCountTokensServeArgs {

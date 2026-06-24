@@ -3,7 +3,7 @@ import {
   citationsDeltaToUrlCitation,
   isCitationsDelta,
   blanketDropCitations,
-} from '@vnext/translate/shared/citations'
+} from '@vnext-llm/translate/shared/citations'
 
 describe('citations', () => {
   describe('isCitationsDelta', () => {

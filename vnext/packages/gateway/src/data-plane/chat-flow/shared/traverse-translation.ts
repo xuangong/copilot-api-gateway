@@ -18,7 +18,7 @@
  * lazily ONLY for streaming, while non-streaming gets the canonical
  * "hub-events → hub-JSON → translateBody" path described in spec §3.7.
  */
-import { TranslatorValidationError } from '@vnext/translate/errors'
+import { TranslatorValidationError } from '@vnext-llm/translate/errors'
 import {
   llmEventResult,
   llmInternalErrorResult,

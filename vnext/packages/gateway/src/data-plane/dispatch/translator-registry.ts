@@ -16,7 +16,7 @@
  *                           pairs (e.g. messages→embeddings) — the caller
  *                           treats null as "no pair available" (HTTP 400)
  *
- * Individual translator modules under `@vnext/translate/<pair>` export plain
+ * Individual translator modules under `@vnext-llm/translate/<pair>` export plain
  * functions whose names vary per pair (translateChatToMessages,
  * translateMessagesToResponses, …). We wrap each set into the uniform
  * PairTranslator shape here. Two pairs (messages-via-responses and
@@ -32,70 +32,70 @@ import {
   translateChatToMessages,
   translateMessagesToChatSSE,
   translateMessagesToChatBody,
-} from '@vnext/translate/chat-completions-via-messages'
+} from '@vnext-llm/translate/chat-completions-via-messages'
 
 // Pair 2: client = messages, hub = chat_completions
 import {
   translateMessagesToChat,
   translateChatSSEToMessagesEvents,
   translateChatBodyToMessages,
-} from '@vnext/translate/messages-via-chat-completions'
+} from '@vnext-llm/translate/messages-via-chat-completions'
 
 // Pair 3: client = responses, hub = messages
 import {
   translateResponsesToMessages,
   translateMessagesToResponsesEvents,
   translateMessagesToResponsesBody,
-} from '@vnext/translate/responses-via-messages'
+} from '@vnext-llm/translate/responses-via-messages'
 
 // Pair 4: client = messages, hub = responses
 import {
   translateMessagesToResponses,
   translateResponsesEventsToMessagesEvents,
   translateResponsesToMessagesBody,
-} from '@vnext/translate/messages-via-responses'
+} from '@vnext-llm/translate/messages-via-responses'
 
 // Pair 5: client = gemini, hub = messages
 import {
   translateGeminiToMessages,
   translateMessagesToGeminiEvents,
   translateMessagesToGeminiBody,
-} from '@vnext/translate/gemini-via-messages'
+} from '@vnext-llm/translate/gemini-via-messages'
 
 // Pair 6: client = messages, hub = gemini
 import {
   translateMessagesToGemini,
   translateGeminiToMessagesEvents,
   translateGeminiToMessagesBody,
-} from '@vnext/translate/messages-via-gemini'
+} from '@vnext-llm/translate/messages-via-gemini'
 
 // Pair 7: client = chat_completions, hub = responses
 import {
   translateChatToResponses,
   translateResponsesToChatSSE,
   translateResponsesToChatBody,
-} from '@vnext/translate/chat-completions-via-responses'
+} from '@vnext-llm/translate/chat-completions-via-responses'
 
 // Pair 8: client = responses, hub = chat_completions
 import {
   translateResponsesToChat,
   translateChatToResponsesEvents,
   translateChatToResponsesBody,
-} from '@vnext/translate/responses-via-chat-completions'
+} from '@vnext-llm/translate/responses-via-chat-completions'
 
 // Pair 9: client = gemini, hub = responses
 import {
   translateGeminiToResponses,
   translateResponsesToGeminiEvents,
   translateResponsesToGeminiBody,
-} from '@vnext/translate/gemini-via-responses'
+} from '@vnext-llm/translate/gemini-via-responses'
 
 // Pair 10: client = gemini, hub = chat_completions
 import {
   translateGeminiToChat,
   translateChatToGeminiEvents,
   translateChatToGeminiBody,
-} from '@vnext/translate/gemini-via-chat-completions'
+} from '@vnext-llm/translate/gemini-via-chat-completions'
 
 /** Translation context passed through both directions. */
 export interface TranslateContext {
@@ -259,7 +259,7 @@ const TABLE: Record<string, PairTranslator> = {
   'gemini->chat_completions': PAIR_GEMINI_TO_CHAT,
   // Note on Pair 6 (messages→gemini): the gateway never selects this pair
   // because messages clients prefer messages → responses → chat_completions
-  // (see PREFERENCE in pair-selector.ts). It exists in @vnext/translate for
+  // (see PREFERENCE in pair-selector.ts). It exists in @vnext-llm/translate for
   // completeness and is exercised only by translator-level unit tests.
 }
 

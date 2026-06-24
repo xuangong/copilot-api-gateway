@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { translateMessagesToChatSSE } from '@vnext/translate/chat-completions-via-messages'
+import { translateMessagesToChatSSE } from '@vnext-llm/translate/chat-completions-via-messages'
 import type { MessagesEvent } from '@vnext-llm/protocols/messages'
 
 async function collect<T>(src: AsyncIterable<T>): Promise<T[]> {

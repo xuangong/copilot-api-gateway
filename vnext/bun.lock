@@ -69,13 +69,13 @@
         "@vnext-gateway/result": "workspace:*",
         "@vnext-gateway/service": "workspace:*",
         "@vnext-llm/protocols": "workspace:*",
+        "@vnext-llm/translate": "workspace:*",
         "@vnext/provider": "workspace:*",
         "@vnext/provider-azure": "workspace:*",
         "@vnext/provider-copilot": "workspace:*",
         "@vnext/provider-custom": "workspace:*",
         "@vnext/provider-sdf": "workspace:*",
         "@vnext/responses-store": "workspace:*",
-        "@vnext/translate": "workspace:*",
         "hono": "^4.12.23",
         "image-size": "^2.0.2",
         "zod": "^4.4.3",
@@ -160,7 +160,7 @@
       "version": "0.0.0",
     },
     "packages/translate": {
-      "name": "@vnext/translate",
+      "name": "@vnext-llm/translate",
       "version": "0.0.0",
       "dependencies": {
         "@vnext-gateway/result": "workspace:*",
@@ -449,6 +449,8 @@
 
     "@vnext-llm/protocols": ["@vnext-llm/protocols@workspace:packages/protocols-llm"],
 
+    "@vnext-llm/translate": ["@vnext-llm/translate@workspace:packages/translate"],
+
     "@vnext/dashboard": ["@vnext/dashboard@workspace:apps/dashboard"],
 
     "@vnext/gateway": ["@vnext/gateway@workspace:packages/gateway"],
@@ -468,8 +470,6 @@
     "@vnext/provider-sdf": ["@vnext/provider-sdf@workspace:packages/provider-sdf"],
 
     "@vnext/responses-store": ["@vnext/responses-store@workspace:packages/responses-store"],
-
-    "@vnext/translate": ["@vnext/translate@workspace:packages/translate"],
 
     "acorn": ["acorn@8.16.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw=="],
 

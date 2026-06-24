@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { translateGeminiToMessagesBody } from '@vnext/translate/messages-via-gemini'
+import { translateGeminiToMessagesBody } from '@vnext-llm/translate/messages-via-gemini'
 
 describe('messages-via-gemini :: body', () => {
   it('translates a Gemini body with text + functionCall into Messages content[]', () => {

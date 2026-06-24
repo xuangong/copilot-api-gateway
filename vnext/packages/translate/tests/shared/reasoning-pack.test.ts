@@ -3,7 +3,7 @@ import {
   packReasoningSignature,
   unpackReasoningSignature,
   responsesReasoningToMessagesBlock,
-} from '@vnext/translate/shared/reasoning-pack'
+} from '@vnext-llm/translate/shared/reasoning-pack'
 
 describe('reasoning-pack', () => {
   describe('packReasoningSignature', () => {

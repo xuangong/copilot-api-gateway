@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { translateGeminiToMessagesEvents } from '@vnext/translate/messages-via-gemini'
+import { translateGeminiToMessagesEvents } from '@vnext-llm/translate/messages-via-gemini'
 
 interface GeminiPart {
   text?: string

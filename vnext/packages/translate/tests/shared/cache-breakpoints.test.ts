@@ -4,7 +4,7 @@ import {
   applyLastToolCacheBreakpoint,
   applyLastMessageCacheBreakpoint,
   systemWithCacheBreakpoint,
-} from '@vnext/translate/shared/cache-breakpoints'
+} from '@vnext-llm/translate/shared/cache-breakpoints'
 
 describe('cache-breakpoints', () => {
   describe('systemWithCacheBreakpoint', () => {

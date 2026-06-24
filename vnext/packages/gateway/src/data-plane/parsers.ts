@@ -6,7 +6,7 @@
  * `status` + `body` properties; the dispatcher in routes.ts surfaces
  * those via the source-specific `errorWrap`.
  *
- * Kept here (rather than inside @vnext/translate) because parsing is
+ * Kept here (rather than inside @vnext-llm/translate) because parsing is
  * request validation, not translation — the pairwise translators
  * operate on already-validated payloads.
  */

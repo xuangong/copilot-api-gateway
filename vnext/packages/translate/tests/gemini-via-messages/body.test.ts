@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { translateMessagesToGeminiBody } from '@vnext/translate/gemini-via-messages'
+import { translateMessagesToGeminiBody } from '@vnext-llm/translate/gemini-via-messages'
 
 describe('gemini-via-messages :: body', () => {
   it('collapses Anthropic content[] into a single Gemini candidate with text + functionCall parts', () => {

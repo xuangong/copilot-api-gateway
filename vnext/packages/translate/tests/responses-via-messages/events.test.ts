@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { translateMessagesToResponsesEvents } from '@vnext/translate/responses-via-messages'
+import { translateMessagesToResponsesEvents } from '@vnext-llm/translate/responses-via-messages'
 import type { MessagesEvent } from '@vnext-llm/protocols/messages'
 
 async function collect<T>(src: AsyncIterable<T>): Promise<T[]> {
