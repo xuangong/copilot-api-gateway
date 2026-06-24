@@ -1,6 +1,6 @@
 /**
  * Azure OpenAI / Azure-hosted Anthropic provider. Verbatim port of
- * src/providers/azure/provider.ts from main; uses @vnext/http
+ * src/providers/azure/provider.ts from main; uses @vnext-gateway/http
  * helpers in place of the inline transport utilities.
  *
  * Each Azure upstream is a set of named deployments. The deployment name is
@@ -21,7 +21,7 @@ import {
   type ProviderRequest,
   type ProviderResponse,
 } from '@vnext/provider'
-import { fetchWithRetry, mergeHeaders, parseJsonBody, truncateBody } from '@vnext/http'
+import { fetchWithRetry, mergeHeaders, parseJsonBody, truncateBody } from '@vnext-gateway/http'
 
 export interface AzureProviderConfig {
   name: string

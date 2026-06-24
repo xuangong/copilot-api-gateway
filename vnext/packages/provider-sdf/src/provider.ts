@@ -21,7 +21,7 @@ import {
   type ProviderRequest,
   type ProviderResponse,
 } from '@vnext/provider'
-import { fetchWithRetry, mergeHeaders, truncateBody } from '@vnext/http'
+import { fetchWithRetry, mergeHeaders, truncateBody } from '@vnext-gateway/http'
 
 export const SDF_BASE_URL = 'https://fe-26.qas.bing.net'
 /** Client-visible model id (matches OpenAI naming). */

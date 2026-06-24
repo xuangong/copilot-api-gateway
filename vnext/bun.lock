@@ -85,7 +85,7 @@
       },
     },
     "packages/http": {
-      "name": "@vnext/http",
+      "name": "@vnext-gateway/http",
       "version": "0.0.0",
     },
     "packages/platform": {
@@ -112,7 +112,7 @@
       "name": "@vnext/provider-azure",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext/http": "workspace:*",
+        "@vnext-gateway/http": "workspace:*",
         "@vnext/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
       },
@@ -121,8 +121,8 @@
       "name": "@vnext/provider-copilot",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext-gateway/http": "workspace:*",
         "@vnext-gateway/service": "workspace:*",
-        "@vnext/http": "workspace:*",
         "@vnext/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
       },
@@ -131,7 +131,7 @@
       "name": "@vnext/provider-custom",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext/http": "workspace:*",
+        "@vnext-gateway/http": "workspace:*",
         "@vnext/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
       },
@@ -140,7 +140,7 @@
       "name": "@vnext/provider-sdf",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext/http": "workspace:*",
+        "@vnext-gateway/http": "workspace:*",
         "@vnext/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
       },
@@ -434,6 +434,8 @@
 
     "@unrs/resolver-binding-win32-x64-msvc": ["@unrs/resolver-binding-win32-x64-msvc@1.12.2", "", { "os": "win32", "cpu": "x64" }, "sha512-nAB74NfSNKknqQ1RrYj6uz8FcXEomu/MATJZxh/x+BArzN2U3JbOYC0APYzUIGhVY3m5hRxA8VPNdPBoG8txlA=="],
 
+    "@vnext-gateway/http": ["@vnext-gateway/http@workspace:packages/http"],
+
     "@vnext-gateway/platform": ["@vnext-gateway/platform@workspace:packages/platform"],
 
     "@vnext-gateway/result": ["@vnext-gateway/result@workspace:packages/result"],
@@ -445,8 +447,6 @@
     "@vnext/dashboard": ["@vnext/dashboard@workspace:apps/dashboard"],
 
     "@vnext/gateway": ["@vnext/gateway@workspace:packages/gateway"],
-
-    "@vnext/http": ["@vnext/http@workspace:packages/http"],
 
     "@vnext/platform-bun": ["@vnext/platform-bun@workspace:apps/platform-bun"],
 
