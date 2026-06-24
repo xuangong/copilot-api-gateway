@@ -11,7 +11,7 @@
     "@vnext-gateway/result": "workspace:*",
     "@vnext-llm/protocols": "workspace:*",
     "@vnext-llm/provider": "workspace:*",
-    "@vnext/provider-azure": "workspace:*",
+    "@vnext-llm/provider-azure": "workspace:*",
     "@vnext-llm/provider-copilot": "workspace:*",
     "@vnext/provider-custom": "workspace:*",
     "@vnext/provider-sdf": "workspace:*",

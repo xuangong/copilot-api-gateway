@@ -39,8 +39,8 @@ import { createProviderFromUpstream } from '../../data-plane/providers/registry.
 import { clearRawModelsCache } from '@vnext-llm/provider-copilot'
 import { CustomProvider } from '@vnext/provider-custom'
 import type { CustomProviderConfig as PkgCustomConfig } from '@vnext/provider-custom'
-import { AzureProvider } from '@vnext/provider-azure'
-import type { AzureProviderConfig as PkgAzureConfig } from '@vnext/provider-azure'
+import { AzureProvider } from '@vnext-llm/provider-azure'
+import type { AzureProviderConfig as PkgAzureConfig } from '@vnext-llm/provider-azure'
 import { SdfProvider } from '@vnext/provider-sdf'
 import type { SdfProviderConfig as PkgSdfConfig } from '@vnext/provider-sdf'
 

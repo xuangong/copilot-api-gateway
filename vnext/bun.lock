@@ -70,10 +70,10 @@
         "@vnext-gateway/service": "workspace:*",
         "@vnext-llm/protocols": "workspace:*",
         "@vnext-llm/provider": "workspace:*",
+        "@vnext-llm/provider-azure": "workspace:*",
         "@vnext-llm/provider-copilot": "workspace:*",
         "@vnext-llm/responses-store": "workspace:*",
         "@vnext-llm/translate": "workspace:*",
-        "@vnext/provider-azure": "workspace:*",
         "@vnext/provider-custom": "workspace:*",
         "@vnext/provider-sdf": "workspace:*",
         "hono": "^4.12.23",
@@ -110,7 +110,7 @@
       },
     },
     "packages/provider-azure": {
-      "name": "@vnext/provider-azure",
+      "name": "@vnext-llm/provider-azure",
       "version": "0.0.0",
       "dependencies": {
         "@vnext-gateway/http": "workspace:*",
@@ -451,6 +451,8 @@
 
     "@vnext-llm/provider": ["@vnext-llm/provider@workspace:packages/provider"],
 
+    "@vnext-llm/provider-azure": ["@vnext-llm/provider-azure@workspace:packages/provider-azure"],
+
     "@vnext-llm/provider-copilot": ["@vnext-llm/provider-copilot@workspace:packages/provider-copilot"],
 
     "@vnext-llm/responses-store": ["@vnext-llm/responses-store@workspace:packages/responses-store"],
@@ -464,8 +466,6 @@
     "@vnext/platform-bun": ["@vnext/platform-bun@workspace:apps/platform-bun"],
 
     "@vnext/platform-cloudflare": ["@vnext/platform-cloudflare@workspace:apps/platform-cloudflare"],
-
-    "@vnext/provider-azure": ["@vnext/provider-azure@workspace:packages/provider-azure"],
 
     "@vnext/provider-custom": ["@vnext/provider-custom@workspace:packages/provider-custom"],
 
