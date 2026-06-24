@@ -99,3 +99,57 @@ describe('serveTemplate — skeleton order', () => {
     ])
   })
 })
+
+describe('serveTemplate — parse error path', () => {
+  test('default: parse() throw → deps.jsonErrorWrap with status+body', async () => {
+    const hooks = defaultHooks({
+      parse: () => {
+        const e = Object.assign(new Error('bad json'), {
+          status: 422,
+          body: { error: { type: 'invalid_request_error', message: 'bad json' } },
+        })
+        throw e
+      },
+    })
+    const result = await serveTemplate(hooks, defaultInput(), defaultDeps())
+    expect(result.response.status).toBe(422)
+    expect(result.extra).toBeUndefined()
+    expect(await result.response.json()).toEqual({
+      error: { type: 'invalid_request_error', message: 'bad json' },
+    })
+  })
+
+  test('default: parse() throws plain Error → 400 + message fallback', async () => {
+    const hooks = defaultHooks({
+      parse: () => {
+        throw new Error('nope')
+      },
+    })
+    const result = await serveTemplate(hooks, defaultInput(), defaultDeps())
+    expect(result.response.status).toBe(400)
+    expect(await result.response.json()).toEqual({ error: { message: 'nope' } })
+  })
+
+  test('parseErrorRender override is preferred over jsonErrorWrap', async () => {
+    const calls: string[] = []
+    const hooks = defaultHooks({
+      parse: () => {
+        throw Object.assign(new Error('x'), { status: 418, body: { teapot: true } })
+      },
+      parseErrorRender: (e) => {
+        calls.push(`render:${e.status}`)
+        return new Response('teapot', { status: 418, headers: { 'x-render': 'custom' } })
+      },
+    })
+    const deps = defaultDeps({
+      jsonErrorWrap: () => {
+        throw new Error('jsonErrorWrap must NOT be called when parseErrorRender provided')
+      },
+    })
+    const result = await serveTemplate(hooks, defaultInput(), deps)
+    expect(result.response.status).toBe(418)
+    expect(result.response.headers.get('x-render')).toBe('custom')
+    expect(await result.response.text()).toBe('teapot')
+    expect(calls).toEqual(['render:418'])
+  })
+})
