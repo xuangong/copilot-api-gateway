@@ -34,15 +34,14 @@ import { runInterceptors } from '@vnext-gateway/service'
 import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
 import { responsesInterceptors, type ResponsesInterceptor } from './interceptors'
 import {
-  eventFrame,
   llmEventResult,
   llmInternalErrorResult,
   readUpstreamError,
   type EndpointKey,
   type LlmExecuteResult,
   type ModelEndpoints,
-  type ProtocolFrame,
 } from '@vnext-llm/protocols/common'
+import { eventFrame, type ProtocolFrame } from '@vnext-gateway/result'
 import {
   parseResponsesStream,
   responsesResultToEvents,

@@ -16,7 +16,8 @@
  */
 import { runInterceptors } from '@vnext-gateway/service'
 import type { ChatCompletionsStreamInterceptor, Invocation, RequestContext } from '@vnext-llm/protocols/common'
-import { llmEventResult, llmInternalErrorResult, readUpstreamError, type LlmExecuteResult, type ProtocolFrame } from '@vnext-llm/protocols/common'
+import { llmEventResult, llmInternalErrorResult, readUpstreamError, type LlmExecuteResult } from '@vnext-llm/protocols/common'
+import { type ProtocolFrame } from '@vnext-gateway/result'
 import { parseChatCompletionsStream, type ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
 import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext/provider'
 import {

@@ -32,8 +32,8 @@ import {
   type EndpointKey,
   type LlmExecuteResult,
   type ModelEndpoints,
-  type ProtocolFrame,
 } from '@vnext-llm/protocols/common'
+import { type ProtocolFrame } from '@vnext-gateway/result'
 import {
   parseMessagesStream,
   type MessagesStreamEvent,

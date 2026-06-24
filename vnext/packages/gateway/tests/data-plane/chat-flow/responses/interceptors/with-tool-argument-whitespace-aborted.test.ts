@@ -2,12 +2,11 @@ import { test, expect } from 'bun:test'
 import { withToolArgumentWhitespaceAborted } from '../../../../../src/data-plane/chat-flow/responses/interceptors/with-tool-argument-whitespace-aborted'
 import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
 import {
-  doneFrame,
   llmEventResult,
   type LlmExecuteResult,
-  type ProtocolFrame,
   type TelemetryModelIdentity,
 } from '@vnext-llm/protocols/common'
+import { doneFrame, type ProtocolFrame } from '@vnext-gateway/result'
 import type { ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
 
 const stubIdentity: TelemetryModelIdentity = {

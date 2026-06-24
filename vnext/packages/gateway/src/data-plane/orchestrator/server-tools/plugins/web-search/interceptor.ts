@@ -10,7 +10,8 @@ import {
   recordUsage,
 } from "../../../../chat-flow/shared/respond-telemetry.ts"
 import type { TelemetryRequestContext } from "../../../../chat-flow/shared/telemetry-ctx.ts"
-import { decodeUpstreamErrorBody, type ProtocolFrame } from "@vnext-llm/protocols/common"
+import { decodeUpstreamErrorBody } from "@vnext-llm/protocols/common"
+import { type ProtocolFrame } from "@vnext-gateway/result"
 import type { MessagesStreamEvent } from "@vnext-llm/protocols/messages"
 
 import { EngineManager, type EngineManagerOptions } from "./engine-manager"

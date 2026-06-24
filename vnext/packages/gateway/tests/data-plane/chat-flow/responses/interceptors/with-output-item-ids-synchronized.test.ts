@@ -2,12 +2,11 @@ import { test, expect } from 'bun:test'
 import { withOutputItemIdsSynchronized } from '../../../../../src/data-plane/chat-flow/responses/interceptors/with-output-item-ids-synchronized'
 import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
 import {
-  doneFrame,
   llmEventResult,
   type LlmExecuteResult,
-  type ProtocolFrame,
   type TelemetryModelIdentity,
 } from '@vnext-llm/protocols/common'
+import { doneFrame, type ProtocolFrame } from '@vnext-gateway/result'
 import type { ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
 
 const stubIdentity: TelemetryModelIdentity = {

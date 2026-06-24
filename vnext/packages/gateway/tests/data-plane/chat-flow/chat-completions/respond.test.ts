@@ -4,12 +4,10 @@ import { respondChatCompletions } from '../../../../src/data-plane/chat-flow/cha
 import {
   llmEventResult,
   llmInternalErrorResult,
-  eventFrame,
-  doneFrame,
   type LlmEventResult,
-  type ProtocolFrame,
   type TelemetryModelIdentity,
 } from '@vnext-llm/protocols/common'
+import { eventFrame, doneFrame, type ProtocolFrame } from '@vnext-gateway/result'
 import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
 import type { ResponsesResult, ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
 

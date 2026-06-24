@@ -45,8 +45,8 @@ import {
   type EndpointKey,
   type LlmExecuteResult,
   type ModelEndpoints,
-  type ProtocolFrame,
 } from '@vnext-llm/protocols/common'
+import { type ProtocolFrame } from '@vnext-gateway/result'
 import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext/provider'
 import {
   upstreamPerformanceContext,

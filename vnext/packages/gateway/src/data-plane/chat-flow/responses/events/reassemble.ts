@@ -17,7 +17,7 @@ import {
   type ResponsesResult,
   type ResponsesStreamEvent,
 } from '@vnext-llm/protocols/responses'
-import type { ProtocolFrame } from '@vnext-llm/protocols/common'
+import type { ProtocolFrame } from '@vnext-gateway/result'
 
 export const collectResponsesProtocolEventsToResult = async (
   frames: AsyncIterable<ProtocolFrame<ResponsesStreamEvent>>,

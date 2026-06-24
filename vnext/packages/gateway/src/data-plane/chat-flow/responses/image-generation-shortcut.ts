@@ -28,12 +28,11 @@
  * success path produces a stream-shaped envelope from `synthImageGenerationSSE`.
  */
 import {
-  eventFrame,
   type LlmEventResult,
   type EventResultMetadata,
-  type ProtocolFrame,
   type TelemetryModelIdentity,
 } from '@vnext-llm/protocols/common'
+import { eventFrame, type ProtocolFrame } from '@vnext-gateway/result'
 import type { ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
 import {
   buildImageGenerationResponse,

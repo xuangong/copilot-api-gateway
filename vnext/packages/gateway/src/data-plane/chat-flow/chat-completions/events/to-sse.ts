@@ -1,4 +1,4 @@
-import { sseFrame, type SseFrame, type ProtocolFrame } from '@vnext-llm/protocols/common'
+import { sseFrame, type SseFrame, type ProtocolFrame } from '@vnext-gateway/result'
 import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
 
 export interface ChatCompletionsProtocolFrameToSSEFrameOptions {

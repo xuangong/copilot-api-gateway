@@ -3,14 +3,13 @@ import { withUsageStreamOptionsIncluded } from '../../../../../src/data-plane/ch
 import { chatCompletionsInterceptors } from '../../../../../src/data-plane/chat-flow/chat-completions/interceptors'
 import { runInterceptors } from '@vnext-gateway/service'
 import {
-  doneFrame,
   llmEventResult,
   type LlmExecuteResult,
   type Invocation,
-  type ProtocolFrame,
   type RequestContext,
   type TelemetryModelIdentity,
 } from '@vnext-llm/protocols/common'
+import { doneFrame, type ProtocolFrame } from '@vnext-gateway/result'
 import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
 
 const stubIdentity: TelemetryModelIdentity = {

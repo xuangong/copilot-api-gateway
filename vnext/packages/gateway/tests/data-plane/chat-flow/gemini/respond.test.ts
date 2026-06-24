@@ -20,8 +20,8 @@ import {
   llmEventResult,
   llmInternalErrorResult,
   type TelemetryModelIdentity,
-  type ProtocolFrame,
 } from '@vnext-llm/protocols/common'
+import { type ProtocolFrame } from '@vnext-gateway/result'
 import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
 import type { MessagesStreamEvent } from '@vnext-llm/protocols/messages'
 

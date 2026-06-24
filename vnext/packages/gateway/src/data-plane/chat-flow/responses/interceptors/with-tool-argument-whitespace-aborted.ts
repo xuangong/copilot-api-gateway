@@ -1,6 +1,6 @@
 import type { ResponsesInterceptor } from './types'
 import { checkWhitespaceOverflow } from '../../shared/whitespace-overflow'
-import { doneFrame, eventFrame, type ProtocolFrame } from '@vnext-llm/protocols/common'
+import { doneFrame, eventFrame, type ProtocolFrame } from '@vnext-gateway/result'
 import type { ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
 
 /**

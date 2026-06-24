@@ -1,5 +1,5 @@
 import type { MessagesInterceptor } from './types'
-import { eventFrame, type ProtocolFrame } from '@vnext-llm/protocols/common'
+import { eventFrame, type ProtocolFrame } from '@vnext-gateway/result'
 import type { MessagesStreamEvent } from '@vnext-llm/protocols/messages'
 
 /**

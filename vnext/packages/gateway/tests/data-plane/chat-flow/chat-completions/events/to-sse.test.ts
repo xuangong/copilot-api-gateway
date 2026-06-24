@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
 import { chatCompletionsProtocolFrameToSSEFrame } from '../../../../../src/data-plane/chat-flow/chat-completions/events/to-sse'
-import { eventFrame, doneFrame } from '@vnext-llm/protocols/common'
+import { eventFrame, doneFrame } from '@vnext-gateway/result'
 
 test('done frame → [DONE] sse', () => {
   const sse = chatCompletionsProtocolFrameToSSEFrame(doneFrame(), { includeUsageChunk: false })

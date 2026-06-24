@@ -2,13 +2,12 @@ import { test, expect } from 'bun:test'
 import { withContextWindowErrorRewritten } from '../../../../../src/data-plane/chat-flow/messages/interceptors/with-context-window-error-rewritten'
 import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
 import {
-  doneFrame,
   llmEventResult,
   type LlmExecuteResult,
-  type ProtocolFrame,
   type TelemetryModelIdentity,
   type UpstreamErrorResult,
 } from '@vnext-llm/protocols/common'
+import { doneFrame, type ProtocolFrame } from '@vnext-gateway/result'
 import type { MessagesStreamEvent } from '@vnext-llm/protocols/messages'
 
 const stubIdentity: TelemetryModelIdentity = {

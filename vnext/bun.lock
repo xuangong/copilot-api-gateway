@@ -66,6 +66,7 @@
       "dependencies": {
         "@vnext-gateway/cache": "workspace:*",
         "@vnext-gateway/platform": "workspace:*",
+        "@vnext-gateway/result": "workspace:*",
         "@vnext-gateway/service": "workspace:*",
         "@vnext-llm/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
@@ -122,6 +123,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@vnext-gateway/http": "workspace:*",
+        "@vnext-gateway/result": "workspace:*",
         "@vnext-gateway/service": "workspace:*",
         "@vnext-llm/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
@@ -161,6 +163,7 @@
       "name": "@vnext/translate",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext-gateway/result": "workspace:*",
         "@vnext-llm/protocols": "workspace:*",
       },
     },

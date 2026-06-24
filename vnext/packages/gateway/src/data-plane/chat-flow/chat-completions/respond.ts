@@ -19,15 +19,17 @@
 import { waitUntil } from '@vnext-gateway/platform'
 import {
   upstreamErrorToResponse,
+  type LlmEventResult,
+  type LlmExecuteResult,
+  type UpstreamErrorResult,
+} from '@vnext-llm/protocols/common'
+import {
   doneFrame,
   eventFrame,
   sseFrame,
-  type LlmEventResult,
-  type LlmExecuteResult,
   type ProtocolFrame,
   type SseFrame,
-  type UpstreamErrorResult,
-} from '@vnext-llm/protocols/common'
+} from '@vnext-gateway/result'
 import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
 import { repackageUpstreamError } from '../../errors/repackage'
 import {

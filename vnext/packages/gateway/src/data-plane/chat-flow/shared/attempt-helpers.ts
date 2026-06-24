@@ -4,12 +4,12 @@
  */
 import {
   llmEventResult,
-  parseTargetStreamFrames,
   type LlmEventResult,
   type PerformanceTelemetryContext,
-  type ProtocolFrame,
   type TelemetryModelIdentity,
 } from '@vnext-llm/protocols/common'
+import { type ProtocolFrame } from '@vnext-gateway/result'
+import { parseTargetStreamFrames } from '@vnext-gateway/result/parse'
 import type { ProviderResponse } from '@vnext/provider'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 import { withUpstreamTelemetry } from './upstream-telemetry.ts'

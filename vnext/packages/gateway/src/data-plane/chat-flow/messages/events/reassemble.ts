@@ -18,7 +18,7 @@ import type {
   MessagesStreamEvent,
   MessagesUsage,
 } from '@vnext-llm/protocols/messages'
-import type { ProtocolFrame } from '@vnext-llm/protocols/common'
+import type { ProtocolFrame } from '@vnext-gateway/result'
 
 interface PartialBlock {
   type: string

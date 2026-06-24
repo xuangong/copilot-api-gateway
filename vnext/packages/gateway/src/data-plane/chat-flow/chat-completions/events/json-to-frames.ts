@@ -19,7 +19,7 @@
  * reassembled output, fewer allocations, and the SSE writer never opens this
  * branch (serve.ts only takes JSON path when `wantsStream=false`).
  */
-import { doneFrame, eventFrame, type ProtocolFrame } from '@vnext-llm/protocols/common'
+import { doneFrame, eventFrame, type ProtocolFrame } from '@vnext-gateway/result'
 import type { ChatCompletionsStreamEvent, ChatCompletionsDelta } from '@vnext-llm/protocols/chat'
 
 // The wire shape for a non-streaming chat-completions body. We narrow only the

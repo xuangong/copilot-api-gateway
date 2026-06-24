@@ -24,8 +24,8 @@ import {
   llmInternalErrorResult,
   type LlmEventResult,
   type LlmExecuteResult,
-  type ProtocolFrame,
 } from '@vnext-llm/protocols/common'
+import { type ProtocolFrame } from '@vnext-gateway/result'
 import type { PairTranslator } from '../../dispatch/translator-registry.ts'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 

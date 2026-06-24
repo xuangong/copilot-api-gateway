@@ -29,14 +29,16 @@
 import { waitUntil } from '@vnext-gateway/platform'
 import {
   upstreamErrorToResponse,
-  eventFrame,
-  sseFrame,
   type LlmEventResult,
   type LlmExecuteResult,
-  type ProtocolFrame,
-  type SseFrame,
   type UpstreamErrorResult,
 } from '@vnext-llm/protocols/common'
+import {
+  eventFrame,
+  sseFrame,
+  type ProtocolFrame,
+  type SseFrame,
+} from '@vnext-gateway/result'
 import type { MessagesStreamEvent } from '@vnext-llm/protocols/messages'
 import { repackageUpstreamError } from '../../errors/repackage'
 import {
