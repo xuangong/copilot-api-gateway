@@ -1,4 +1,4 @@
-import { getRuntimeLocation, waitUntil } from "@vnext/platform"
+import { getRuntimeLocation, waitUntil } from "@vnext-gateway/platform"
 
 import type { CreateProviderOptions } from "../../../../providers/registry.ts"
 import { messagesAttempt } from "../../../../chat-flow/messages/attempt.ts"

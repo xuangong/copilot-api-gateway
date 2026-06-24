@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@vnext/gateway": "workspace:*",
-    "@vnext/platform": "workspace:*",
+    "@vnext-gateway/platform": "workspace:*",
     "@vnext/responses-store": "workspace:*",
     "@vnext/cache": "workspace:*"
   },

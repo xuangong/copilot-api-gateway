@@ -26,7 +26,7 @@
  *
  * Reference: copilot-gateway/packages/gateway/src/data-plane/llm/messages/respond.ts
  */
-import { waitUntil } from '@vnext/platform'
+import { waitUntil } from '@vnext-gateway/platform'
 import {
   upstreamErrorToResponse,
   eventFrame,

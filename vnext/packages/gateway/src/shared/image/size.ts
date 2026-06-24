@@ -1,4 +1,4 @@
-import type { ImageDimensions } from "@vnext/platform"
+import type { ImageDimensions } from "@vnext-gateway/platform"
 
 export interface SizeCaps {
   maxLongEdge?: number

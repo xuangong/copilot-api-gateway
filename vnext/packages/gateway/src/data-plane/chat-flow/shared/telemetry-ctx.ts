@@ -4,7 +4,7 @@
  * through attempt + respond so persistence helpers (`recordUsage`,
  * `recordPerformance`) can write usage rows without touching `RequestContext`.
  */
-import type { RuntimeLocation } from '@vnext/platform'
+import type { RuntimeLocation } from '@vnext-gateway/platform'
 
 export interface TelemetryRequestContext {
   readonly apiKeyId: string

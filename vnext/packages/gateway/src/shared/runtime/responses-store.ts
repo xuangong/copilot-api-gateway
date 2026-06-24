@@ -1,5 +1,5 @@
 import type { ResponsesSnapshotStore } from "@vnext/responses-store"
-import { __registerPlatformReset } from "@vnext/platform"
+import { __registerPlatformReset } from "@vnext-gateway/platform"
 
 let _store: ResponsesSnapshotStore | null = null
 __registerPlatformReset(() => { _store = null })

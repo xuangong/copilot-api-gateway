@@ -29,7 +29,7 @@
  *
  * Reference: chat-completions/serve.ts (Spec 2 Part 3 Task 1).
  */
-import { getRuntimeLocation } from '@vnext/platform'
+import { getRuntimeLocation } from '@vnext-gateway/platform'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseMessagesPayload } from '../../parsers.ts'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'

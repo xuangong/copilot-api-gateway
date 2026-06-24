@@ -9,7 +9,7 @@
 import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { initRepo } from '../src/shared/repo/index.ts'
-import { __resetPlatformForTests } from '@vnext/platform'
+import { __resetPlatformForTests } from '@vnext-gateway/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import { modelsRouter, type DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'

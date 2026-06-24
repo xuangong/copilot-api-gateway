@@ -1,6 +1,6 @@
 import { test, expect, afterEach } from 'bun:test'
 import { initRepo } from '../src/shared/repo/index.ts'
-import { __resetPlatformForTests } from '@vnext/platform'
+import { __resetPlatformForTests } from '@vnext-gateway/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import {
   listProviderBindings,

@@ -22,7 +22,7 @@
  *
  * Reference: copilot-gateway/packages/gateway/src/data-plane/llm/chat-completions/serve.ts
  */
-import { getRuntimeLocation } from '@vnext/platform'
+import { getRuntimeLocation } from '@vnext-gateway/platform'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseChatPayload } from '../../parsers.ts'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'

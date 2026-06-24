@@ -35,7 +35,7 @@
  *
  * Reference: messages/serve.ts.
  */
-import { getRuntimeLocation } from '@vnext/platform'
+import { getRuntimeLocation } from '@vnext-gateway/platform'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseResponsesPayload } from '../../parsers.ts'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'

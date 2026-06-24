@@ -4,7 +4,7 @@ import {
   type ImageProcessor,
   type ImageDimensions,
   type ImageSizeCalculator,
-} from "@vnext/platform"
+} from "@vnext-gateway/platform"
 
 export { initImageProcessor, getImageProcessor }
 export type { ImageProcessor, ImageDimensions, ImageSizeCalculator }

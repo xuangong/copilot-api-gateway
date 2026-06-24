@@ -32,7 +32,7 @@ import {
   __resetPlatformForTests,
   initBackground,
   initRuntimeLocation,
-} from '@vnext/platform'
+} from '@vnext-gateway/platform'
 import type { Repo, UpstreamRecord } from '../../shared/repo/types.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
 import type { DataPlaneAuthCtx } from '../models/routes.ts'

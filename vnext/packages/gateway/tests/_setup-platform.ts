@@ -6,7 +6,7 @@ import {
   initRuntimeLocation,
   initSqlDatabase,
   type SqlDatabase,
-} from '@vnext/platform'
+} from '@vnext-gateway/platform'
 import { Database } from 'bun:sqlite'
 import { MemoryCache } from '@vnext/cache'
 import { InMemoryResponsesSnapshotStore } from '@vnext/responses-store'

@@ -14,7 +14,7 @@ import {
   __resetPlatformForTests,
   initBackground,
   initRuntimeLocation,
-} from '@vnext/platform'
+} from '@vnext-gateway/platform'
 import { InMemoryResponsesSnapshotStore } from '@vnext/responses-store'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'

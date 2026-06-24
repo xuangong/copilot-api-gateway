@@ -20,7 +20,7 @@ import { resolve } from 'node:path'
 import type { Context } from 'hono'
 import { InMemoryResponsesSnapshotStore } from '@vnext/responses-store'
 import { initResponsesStore } from '../../../../src/shared/runtime/responses-store.ts'
-import { __resetPlatformForTests } from '@vnext/platform'
+import { __resetPlatformForTests } from '@vnext-gateway/platform'
 import {
   attachStreamSidecar,
   attachNonStreamSidecar,

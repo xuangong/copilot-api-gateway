@@ -24,7 +24,7 @@
  *
  * Reference: messages/respond.ts (Spec 3 Part 3 Task 2).
  */
-import { waitUntil } from '@vnext/platform'
+import { waitUntil } from '@vnext-gateway/platform'
 import {
   upstreamErrorToResponse,
   eventFrame,

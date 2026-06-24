@@ -28,7 +28,7 @@
  *
  * Reference: messages/serve.ts (Spec 3 Part 3 Task 3).
  */
-import { getRuntimeLocation } from '@vnext/platform'
+import { getRuntimeLocation } from '@vnext-gateway/platform'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseGeminiPayload } from '../../parsers.ts'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'

@@ -5,7 +5,7 @@ import {
   initEnv,
   initBackground,
   initRuntimeLocation,
-} from "@vnext/platform"
+} from "@vnext-gateway/platform"
 import { initRepo } from "@vnext/gateway/src/shared/repo/index.ts"
 import { initCache } from "@vnext/gateway/src/shared/cache/index.ts"
 import { initResponsesStore } from "@vnext/gateway/src/shared/runtime/responses-store.ts"

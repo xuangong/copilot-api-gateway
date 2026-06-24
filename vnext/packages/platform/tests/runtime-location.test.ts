@@ -3,7 +3,7 @@ import {
   __resetPlatformForTests,
   initRuntimeLocation,
   getRuntimeLocation,
-} from '@vnext/platform'
+} from '@vnext-gateway/platform'
 
 beforeEach(() => __resetPlatformForTests())
 

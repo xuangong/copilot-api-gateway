@@ -7,7 +7,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vnext/platform": "workspace:*",
+    "@vnext-gateway/platform": "workspace:*",
     "@vnext/protocols": "workspace:*",
     "@vnext/provider": "workspace:*",
     "@vnext/provider-azure": "workspace:*",

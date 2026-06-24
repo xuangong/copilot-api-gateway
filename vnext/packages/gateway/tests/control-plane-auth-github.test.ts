@@ -8,7 +8,7 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { initRepo } from '../src/shared/repo/index.ts'
-import { __resetPlatformForTests } from '@vnext/platform'
+import { __resetPlatformForTests } from '@vnext-gateway/platform'
 import type {
   GitHubAccount, Repo, UpstreamRecord,
 } from '../src/shared/repo/types.ts'

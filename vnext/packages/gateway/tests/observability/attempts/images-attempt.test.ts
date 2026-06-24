@@ -16,7 +16,7 @@ import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { BunSqliteRepo as SqliteRepo } from '@vnext/platform-bun/src/bun-sqlite-repo.ts'
 import { initRepo } from '../../../src/shared/repo/index.ts'
-import { __resetPlatformForTests } from '@vnext/platform'
+import { __resetPlatformForTests } from '@vnext-gateway/platform'
 import { runImagesAttempt } from '../../../src/data-plane/observability/attempts/images-attempt.ts'
 
 let repo: SqliteRepo

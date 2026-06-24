@@ -54,7 +54,7 @@ import {
   type EventResult as _EventResult,
 } from '../shared/respond-telemetry.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
-import { waitUntil } from '@vnext/platform'
+import { waitUntil } from '@vnext-gateway/platform'
 
 /**
  * Predicate the attempt orchestrator uses to gate the shortcut. Mirrors

@@ -9,7 +9,7 @@
  *     internal error, not a crash)
  */
 import { test, expect, beforeAll, afterAll } from 'bun:test'
-import { __resetPlatformForTests } from '@vnext/platform'
+import { __resetPlatformForTests } from '@vnext-gateway/platform'
 import { setupTestPlatform } from '../../../_setup-platform.ts'
 import { serveChatCompletions } from '../../../../src/data-plane/chat-flow/chat-completions/serve'
 import type { DataPlaneAuthCtx } from '../../../../src/data-plane/models/routes'

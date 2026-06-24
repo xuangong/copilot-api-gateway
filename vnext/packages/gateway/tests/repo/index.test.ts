@@ -1,6 +1,6 @@
 import { test, expect, beforeEach } from "bun:test"
 import { initRepo, getRepo } from "../../src/shared/repo/index.ts"
-import { __resetPlatformForTests } from "@vnext/platform"
+import { __resetPlatformForTests } from "@vnext-gateway/platform"
 import { BunSqliteRepo as SqliteRepo } from "@vnext/platform-bun/src/bun-sqlite-repo.ts"
 import { Database } from "bun:sqlite"
 

@@ -30,7 +30,7 @@
  *
  * Reference: messages/respond.ts, chat-completions/respond.ts.
  */
-import { waitUntil } from '@vnext/platform'
+import { waitUntil } from '@vnext-gateway/platform'
 import {
   upstreamErrorToResponse,
   type EventResult,

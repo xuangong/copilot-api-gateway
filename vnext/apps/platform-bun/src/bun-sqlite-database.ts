@@ -15,7 +15,7 @@ import type {
   SqlDatabase,
   SqlPreparedStatement,
   SqlResult,
-} from "@vnext/platform"
+} from "@vnext-gateway/platform"
 
 class BunSqlitePrepared implements SqlPreparedStatement {
   private binds: unknown[] = []
