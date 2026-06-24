@@ -1,65 +1,18 @@
 /**
- * @vnext-llm/provider/types — bridge during Spec 9.
- *
- * Framework-side shapes (ProbeResult / ProviderModelsResponse / ProviderResponse /
- * UpstreamAdapter) are re-exported from @vnext-gateway/upstream so consumers
- * keep their existing import names. LLM-coupled shapes (ProviderRequest /
- * ProviderRequestFlags / SourceApi) and the business `ModelProvider` interface
- * stay defined here — Part 2 promotes them into @vnext-llm/provider-llm under
- * the LlmModelProvider name.
+ * FakeProvider — in-memory deterministic LlmModelProvider for tests + dev.
+ * Returns synthetic Responses output. Extracted from types.ts during Spec 9
+ * so the types module stays interface-only.
  */
+import type { EndpointKey, ModelPricing, UpstreamKind } from '@vnext-llm/protocols/common'
 import type {
+  LlmModelProvider,
   ProbeResult,
   ProviderModelsResponse,
+  ProviderRequest,
   ProviderResponse,
-  UpstreamAdapter,
-} from '@vnext-gateway/upstream'
-import type { EndpointKey, ModelPricing, UpstreamKind } from '@vnext-llm/protocols/common'
+} from './types'
 
-export type { UpstreamKind }
-export type { ProbeResult, ProviderModelsResponse, ProviderResponse }
-
-export type SourceApi = 'anthropic' | 'openai' | 'gemini'
-
-export interface ProviderRequestFlags {
-  isStreaming: boolean
-  hasWebSearch?: boolean
-  hasImageGen?: boolean
-}
-
-export interface ProviderRequest {
-  endpoint: EndpointKey
-  /** Schema-validated JSON object. NOT a string. Interceptors mutate fields directly. */
-  payload: unknown
-  /** Mutable along the interceptor chain. Terminal HTTP reads the final state. */
-  headers: Headers
-  sourceApi: SourceApi
-  flags?: ProviderRequestFlags
-  signal?: AbortSignal
-  /** Optional log-friendly label. Defaults to `call ${endpoint}` in the provider. */
-  operationName?: string
-  /** Defaults to true. Copilot-specific: count_tokens is the only endpoint where model is optional. Other providers ignore this field. */
-  requireModel?: boolean
-  /** Per-call timeout override in ms. */
-  timeout?: number
-}
-
-/**
- * Business adapter contract — extends framework UpstreamAdapter with the
- * three LLM-specific fields (kind, supportedEndpoints, getPricingForModelKey)
- * and narrows fetch to ProviderRequest. Part 2 renames this to LlmModelProvider
- * inside @vnext-llm/provider-llm; for the duration of Part 1 the name stays
- * `ModelProvider` so consumers compile unchanged.
- */
-export interface ModelProvider extends UpstreamAdapter {
-  readonly kind: UpstreamKind
-  readonly supportedEndpoints: readonly EndpointKey[]
-  getPricingForModelKey(modelKey: string): ModelPricing | null
-  fetch(req: ProviderRequest): Promise<ProviderResponse>
-}
-
-/** In-memory deterministic provider for tests + dev. Returns synthetic Responses output. */
-export class FakeProvider implements ModelProvider {
+export class FakeProvider implements LlmModelProvider {
   readonly kind: UpstreamKind = 'custom'
   readonly name: string
   readonly supportedEndpoints: readonly EndpointKey[] = ['responses']

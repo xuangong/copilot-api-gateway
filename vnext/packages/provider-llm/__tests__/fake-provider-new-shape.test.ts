@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test'
-import { FakeProvider } from '../src/types'
+import { FakeProvider } from '../src/fake'
 
 test('FakeProvider accepts ProviderRequest', async () => {
   const fp = new FakeProvider({ text: 'hello' })

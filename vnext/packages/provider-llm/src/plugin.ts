@@ -1,15 +1,15 @@
 /**
- * ProviderPlugin — per-package factory contract.
+ * LlmProviderPlugin — per-package factory contract.
  *
- * Spec 9 Part 1: `ProviderPlugin` is now an alias of the framework
- * `UpstreamPlugin<UpstreamRecord, ProviderPluginContext, ModelProvider>` so
- * the kind/createFromUpstream surface is preserved. The Copilot-flavored
- * context (token cache + per-request fallback) stays local to this package —
- * it is LLM-business shape and follows into @vnext-llm/provider-llm in Part 2.
+ * Alias of the framework UpstreamPlugin with the third generic narrowed to
+ * LlmModelProvider so createFromUpstream returns Promise<LlmModelProvider | null>
+ * at the registry call site. ProviderPluginContext keeps its name — it's
+ * a Copilot-flavored runtime hook context, not part of the Llm* parallel
+ * rename.
  */
 import type { AccountType, UpstreamRecord } from '@vnext-llm/protocols/common'
 import type { UpstreamPlugin } from '@vnext-gateway/upstream'
-import type { ModelProvider } from './types'
+import type { LlmModelProvider } from './types'
 
 export interface ProviderPluginContext {
   /** Exchange a stored github_token for a short-lived copilot token.
@@ -20,4 +20,4 @@ export interface ProviderPluginContext {
   copilotFallback?: { copilotToken: string; accountType: AccountType }
 }
 
-export type ProviderPlugin = UpstreamPlugin<UpstreamRecord, ProviderPluginContext, ModelProvider>
+export type LlmProviderPlugin = UpstreamPlugin<UpstreamRecord, ProviderPluginContext, LlmModelProvider>
