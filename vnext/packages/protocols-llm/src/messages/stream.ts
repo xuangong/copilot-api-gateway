@@ -1,6 +1,6 @@
 // packages/protocols/src/messages/stream.ts
 import type { MessagesStreamEvent } from './events'
-import { doneFrame, eventFrame, type ProtocolFrame } from '../common/sse'
+import { doneFrame, eventFrame, type ProtocolFrame } from '@vnext-gateway/result'
 import { parseTargetStreamFrames, parseSSEStream } from '@vnext-gateway/result/parse'
 
 export interface ParseMessagesStreamOptions {

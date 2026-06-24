@@ -1,6 +1,6 @@
 import { isResponsesTerminalEvent, type ResponsesResult, type ResponsesStreamEvent } from './events'
 import { responsesResultToEvents } from './from-result'
-import { doneFrame, eventFrame, type ProtocolFrame } from '../common/sse'
+import { doneFrame, eventFrame, type ProtocolFrame } from '@vnext-gateway/result'
 import { parseTargetStreamFrames, parseSSEStream } from '@vnext-gateway/result/parse'
 
 export interface ParseResponsesStreamOptions {

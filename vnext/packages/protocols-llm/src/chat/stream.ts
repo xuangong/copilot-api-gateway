@@ -1,7 +1,7 @@
 // packages/protocols/src/chat/stream.ts
 import { chatCompletionsErrorPayloadMessage } from './errors'
 import type { ChatCompletionsStreamEvent } from './events'
-import { doneFrame, eventFrame, type ProtocolFrame } from '../common/sse'
+import { doneFrame, eventFrame, type ProtocolFrame } from '@vnext-gateway/result'
 import { parseTargetStreamFrames, parseSSEStream } from '@vnext-gateway/result/parse'
 
 export interface ParseChatCompletionsStreamOptions {

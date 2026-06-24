@@ -1,6 +1,6 @@
 import type { EndpointKey } from './index'
 import type { LlmExecuteResult } from './result'
-import type { ProtocolFrame } from './sse'
+import type { ProtocolFrame } from '@vnext-gateway/result'
 import type { ChatCompletionsStreamEvent } from '../chat'
 import type { MessagesStreamEvent } from '../messages'
 import type { ResponsesStreamEvent } from '../responses'
