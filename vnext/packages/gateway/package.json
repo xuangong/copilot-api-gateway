@@ -16,7 +16,7 @@
     "@vnext/provider-sdf": "workspace:*",
     "@vnext/responses-store": "workspace:*",
     "@vnext-gateway/service": "workspace:*",
-    "@vnext/cache": "workspace:*",
+    "@vnext-gateway/cache": "workspace:*",
     "@vnext/translate": "workspace:*",
     "hono": "^4.12.23",
     "image-size": "^2.0.2",

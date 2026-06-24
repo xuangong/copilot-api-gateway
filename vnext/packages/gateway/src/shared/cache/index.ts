@@ -1,4 +1,4 @@
-import type { Cache } from '@vnext/cache'
+import type { Cache } from '@vnext-gateway/cache'
 import { __registerPlatformReset } from '@vnext-gateway/platform'
 
 let _cache: Cache | null = null

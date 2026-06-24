@@ -11,6 +11,6 @@
     "@vnext/gateway": "workspace:*",
     "@vnext-gateway/platform": "workspace:*",
     "@vnext/responses-store": "workspace:*",
-    "@vnext/cache": "workspace:*"
+    "@vnext-gateway/cache": "workspace:*"
   }
 }

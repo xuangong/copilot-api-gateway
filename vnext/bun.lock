@@ -36,8 +36,8 @@
       "name": "@vnext/platform-bun",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext-gateway/cache": "workspace:*",
         "@vnext-gateway/platform": "workspace:*",
-        "@vnext/cache": "workspace:*",
         "@vnext/gateway": "workspace:*",
         "@vnext/responses-store": "workspace:*",
       },
@@ -46,8 +46,8 @@
       "name": "@vnext/platform-cloudflare",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext-gateway/cache": "workspace:*",
         "@vnext-gateway/platform": "workspace:*",
-        "@vnext/cache": "workspace:*",
         "@vnext/gateway": "workspace:*",
         "@vnext/responses-store": "workspace:*",
       },
@@ -57,16 +57,16 @@
       },
     },
     "packages/cache": {
-      "name": "@vnext/cache",
+      "name": "@vnext-gateway/cache",
       "version": "0.0.0",
     },
     "packages/gateway": {
       "name": "@vnext/gateway",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext-gateway/cache": "workspace:*",
         "@vnext-gateway/platform": "workspace:*",
         "@vnext-gateway/service": "workspace:*",
-        "@vnext/cache": "workspace:*",
         "@vnext/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
         "@vnext/provider-azure": "workspace:*",
@@ -434,6 +434,8 @@
 
     "@unrs/resolver-binding-win32-x64-msvc": ["@unrs/resolver-binding-win32-x64-msvc@1.12.2", "", { "os": "win32", "cpu": "x64" }, "sha512-nAB74NfSNKknqQ1RrYj6uz8FcXEomu/MATJZxh/x+BArzN2U3JbOYC0APYzUIGhVY3m5hRxA8VPNdPBoG8txlA=="],
 
+    "@vnext-gateway/cache": ["@vnext-gateway/cache@workspace:packages/cache"],
+
     "@vnext-gateway/http": ["@vnext-gateway/http@workspace:packages/http"],
 
     "@vnext-gateway/platform": ["@vnext-gateway/platform@workspace:packages/platform"],
@@ -441,8 +443,6 @@
     "@vnext-gateway/result": ["@vnext-gateway/result@workspace:packages/result"],
 
     "@vnext-gateway/service": ["@vnext-gateway/service@workspace:packages/service"],
-
-    "@vnext/cache": ["@vnext/cache@workspace:packages/cache"],
 
     "@vnext/dashboard": ["@vnext/dashboard@workspace:apps/dashboard"],
 

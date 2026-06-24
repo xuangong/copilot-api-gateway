@@ -8,7 +8,7 @@ import {
   type SqlDatabase,
 } from '@vnext-gateway/platform'
 import { Database } from 'bun:sqlite'
-import { MemoryCache } from '@vnext/cache'
+import { MemoryCache } from '@vnext-gateway/cache'
 import { InMemoryResponsesSnapshotStore } from '@vnext/responses-store'
 import { initRepo } from '../src/shared/repo/index.ts'
 import { initCache } from '../src/shared/cache/index.ts'
