@@ -54,12 +54,16 @@ extra types. The gateway adapter supplies the literals.
 ```ts
 // @vnext-gateway/chat-flow-kit/src/serve-template.ts
 
+/** Minimal auth shape the kit itself reads. Endpoint adapters pass a
+ *  richer `TAuth extends KitAuthCtx` that they shape into their
+ *  attempt's expected auth (e.g. mapping `userId → ownerId`) BEFORE
+ *  calling `serveTemplate`. The kit never casts `TAuth` — it only reads
+ *  `apiKeyId` for quota + telemetry, and forwards the whole object to
+ *  `runAttempt`. This avoids losing fields when the attempt's auth
+ *  shape differs from the inbound `DataPlaneAuthCtx`. */
 export interface KitAuthCtx {
   /** Optional per-key id used for quota lookup and telemetry tagging. */
   readonly apiKeyId?: string | null
-  /** Allow endpoint adapters to round-trip their own auth payload through
-   *  the kit without the kit reading it. */
-  readonly [extra: string]: unknown
 }
 
 export interface KitObsCtx {
@@ -69,9 +73,9 @@ export interface KitObsCtx {
   readonly [extra: string]: unknown
 }
 
-export interface ServeTemplateInput {
+export interface ServeTemplateInput<TAuth extends KitAuthCtx = KitAuthCtx> {
   readonly raw: unknown
-  readonly auth: KitAuthCtx
+  readonly auth: TAuth
   readonly obsCtx: KitObsCtx
   readonly signal?: AbortSignal
   /** Catch-all bag for endpoint-specific side inputs (gemini model/verb,
@@ -79,8 +83,8 @@ export interface ServeTemplateInput {
   readonly extras: Record<string, unknown>
 }
 
-export interface PreProcessCtx {
-  readonly auth: KitAuthCtx
+export interface PreProcessCtx<TAuth extends KitAuthCtx = KitAuthCtx> {
+  readonly auth: TAuth
 }
 
 /** preProcess returns one of two shapes: continue with a (possibly
@@ -92,40 +96,47 @@ export type PreProcessResult<TPayload, TExtra> =
   | { kind: 'continue'; payload: TPayload; extra: TExtra }
   | { kind: 'short-circuit'; response: Response; extra: TExtra }
 
-export interface RunAttemptArgs<TPayload> {
+export interface RunAttemptArgs<TPayload, TAuth, TTelemetryCtx> {
   readonly payload: TPayload
-  readonly auth: KitAuthCtx
-  readonly telemetryCtx: TelemetryRequestContext
+  readonly auth: TAuth
+  readonly telemetryCtx: TTelemetryCtx
   readonly downstreamAbortSignal: AbortSignal
   readonly requestStartedAt: number
   readonly extras: Record<string, unknown>
 }
 
-export interface RespondCtx<TPayload, TExtra> {
+export interface RespondCtx<TPayload, TExtra, TTelemetryCtx> {
   readonly payload: TPayload
   readonly extra: TExtra
   readonly wantsStream: boolean
   readonly downstreamAbortController: AbortController
-  readonly telemetryCtx: TelemetryRequestContext
+  readonly telemetryCtx: TTelemetryCtx
   readonly extras: Record<string, unknown>
 }
 
-export interface ServeTemplateHooks<TPayload, TAttemptResult, TExtra = undefined> {
-  /** Caller-supplied tag for telemetry. The kit treats this as an opaque
-   *  string and never branches on it — keeps the framework purity gate
-   *  intact (no LLM literals inside the kit). */
+export interface ServeTemplateHooks<
+  TPayload,
+  TAttemptResult,
+  TExtra = undefined,
+  TAuth extends KitAuthCtx = KitAuthCtx,
+  TTelemetryCtx = unknown,
+> {
+  /** Caller-supplied tag. The kit treats this as opaque and forwards it
+   *  to `deps.buildTelemetryCtx` (see §3.2) — that's the only consumer.
+   *  Keeps the framework purity gate intact (no LLM literals inside the
+   *  kit's own code paths). */
   readonly endpointTag: string
 
   /**
    * Parse the raw HTTP body (and any caller-supplied side inputs like
    * gemini's URL-extracted model) into the endpoint's typed payload.
    * Throws on validation failure with `{ status, body }` shape; the kit
-   * wraps that into `jsonErrorWrap`. Endpoints that need a bespoke 4xx
-   * envelope (none today) can override via `parseErrorRender`.
+   * wraps that into `deps.jsonErrorWrap`. Endpoints that need a bespoke
+   * 4xx envelope (none today) can override via `parseErrorRender`.
    */
-  parse(input: ServeTemplateInput): Promise<TPayload> | TPayload
+  parse(input: ServeTemplateInput<TAuth>): Promise<TPayload> | TPayload
 
-  /** Optional renderer for parse() failures. Default: `jsonErrorWrap`. */
+  /** Optional renderer for parse() failures. Default: `deps.jsonErrorWrap`. */
   parseErrorRender?(err: Error & { status?: number; body?: unknown }): Response
 
   /**
@@ -137,20 +148,20 @@ export interface ServeTemplateHooks<TPayload, TAttemptResult, TExtra = undefined
    * `PreviousResponseNotFoundError` → OpenAI-verbatim 400 with `code`
    * + `param`). Default: no-op continue with `extra: undefined as TExtra`.
    */
-  preProcess?(payload: TPayload, ctx: PreProcessCtx): Promise<PreProcessResult<TPayload, TExtra>>
+  preProcess?(payload: TPayload, ctx: PreProcessCtx<TAuth>): Promise<PreProcessResult<TPayload, TExtra>>
 
   /**
    * Decide stream-vs-JSON. Most endpoints read `payload.stream === true`;
    * gemini reads its URL-derived `forceStream` from `input.extras`.
    */
-  wantsStream(payload: TPayload, input: ServeTemplateInput): boolean
+  wantsStream(payload: TPayload, input: ServeTemplateInput<TAuth>): boolean
 
   /**
    * Invoke the endpoint's attempt orchestrator. The kit does not know
-   * the attempt's shape — it just forwards what attempt needs and
-   * receives back an opaque result.
+   * the attempt's shape — it forwards what attempt needs and receives
+   * back an opaque result.
    */
-  runAttempt(args: RunAttemptArgs<TPayload>): Promise<TAttemptResult>
+  runAttempt(args: RunAttemptArgs<TPayload, TAuth, TTelemetryCtx>): Promise<TAttemptResult>
 
   /**
    * Serialise the attempt result into the HTTP Response. Receives the
@@ -158,7 +169,7 @@ export interface ServeTemplateHooks<TPayload, TAttemptResult, TExtra = undefined
    * from the payload (e.g. chat_completions' `include_usage` →
    * `includeUsageChunk`) can compute them here without the kit caring.
    */
-  respond(result: TAttemptResult, ctx: RespondCtx<TPayload, TExtra>): Promise<Response>
+  respond(result: TAttemptResult, ctx: RespondCtx<TPayload, TExtra, TTelemetryCtx>): Promise<Response>
 }
 
 export interface ServeTemplateResult<TExtra> {
@@ -166,21 +177,31 @@ export interface ServeTemplateResult<TExtra> {
   readonly extra: TExtra | undefined
 }
 
-export async function serveTemplate<TPayload, TAttemptResult, TExtra = undefined>(
-  hooks: ServeTemplateHooks<TPayload, TAttemptResult, TExtra>,
-  input: ServeTemplateInput,
-  deps: ServeTemplateDeps,
+export async function serveTemplate<
+  TPayload,
+  TAttemptResult,
+  TExtra = undefined,
+  TAuth extends KitAuthCtx = KitAuthCtx,
+  TTelemetryCtx = unknown,
+>(
+  hooks: ServeTemplateHooks<TPayload, TAttemptResult, TExtra, TAuth, TTelemetryCtx>,
+  input: ServeTemplateInput<TAuth>,
+  deps: ServeTemplateDeps<TAuth, TTelemetryCtx>,
 ): Promise<ServeTemplateResult<TExtra>> { … }
 ```
 
 ### 3.2 Injected dependencies (the kit's required collaborators)
 
 To stay domain-neutral the kit takes its env-touching collaborators by
-injection instead of importing them. The gateway adapter constructs a
-singleton `ServeTemplateDeps` once and reuses it.
+injection instead of importing them. **The telemetry context type is a
+generic `TTelemetryCtx` parameter — the kit never imports any concrete
+telemetry type** (resolves the §3.2 contradiction with A3 against any
+`@vnext-llm/*` import). The gateway adapter constructs a singleton
+`ServeTemplateDeps` once and reuses it; the concrete
+`TelemetryRequestContext` flows through via the generic.
 
 ```ts
-export interface ServeTemplateDeps {
+export interface ServeTemplateDeps<TAuth extends KitAuthCtx, TTelemetryCtx> {
   /** Daily per-key quota check. Returns a 429 Response when over cap,
    *  null when allowed. Implemented by gateway (currently
    *  `runQuotaGate` in chat-flow/shared/quota-gate.ts) and injected
@@ -192,27 +213,24 @@ export interface ServeTemplateDeps {
    *  (currently `jsonErrorWrap` in chat-flow/shared/error-wrap.ts). */
   readonly jsonErrorWrap: (status: number, body: unknown) => Response
 
-  /** Constructs the per-request telemetry context. The kit hands the
-   *  raw obsCtx + auth + flags through; the implementation fills in
-   *  runtimeLocation and any other gateway-known fields. */
+  /** Constructs the per-request telemetry context. Receives the raw
+   *  obsCtx + auth + flags + the hook's `endpointTag` so adapters can
+   *  tag telemetry by endpoint. Return type is the same generic
+   *  `TTelemetryCtx` the kit threads through `runAttempt` / `respond`. */
   readonly buildTelemetryCtx: (input: {
-    auth: KitAuthCtx
+    auth: TAuth
     obsCtx: KitObsCtx
     isStreaming: boolean
     requestStartedAt: number
-  }) => TelemetryRequestContext
+    endpointTag: string
+  }) => TTelemetryCtx
 }
 ```
 
-`TelemetryRequestContext` is a plain interface and stays where it
-already lives (`@vnext-llm/gateway`'s `chat-flow/shared/telemetry-ctx.ts`)
-for Spec 10. Promoting it to a framework package is a clean follow-up
-that doesn't block this spec; the kit imports the type via a
-side-effect-free type-only import path that we'll set up during
-implementation (likely a tiny `@vnext-gateway/observability-types`
-package, or a re-export from `@vnext-gateway/service`). Whichever
-choice we land on, the runtime code in the kit never depends on the
-gateway business package.
+`TelemetryRequestContext` continues to live in `@vnext-llm/gateway`'s
+`chat-flow/shared/telemetry-ctx.ts` and never enters the kit. The
+gateway-side adapter binds `TTelemetryCtx = TelemetryRequestContext`
+when it constructs `ServeTemplateDeps`. No follow-up package needed.
 
 ### 3.3 Fixed skeleton (what `serveTemplate` does)
 
@@ -224,10 +242,10 @@ gateway business package.
    - Throws from preProcess → fall back to `deps.jsonErrorWrap` using
      the same `{status, body}` shape contract as parse.
 3. `wantsStream = hooks.wantsStream(payload, input)`.
-4. `telemetryCtx = deps.buildTelemetryCtx({ auth, obsCtx, isStreaming: wantsStream, requestStartedAt })`.
+4. `telemetryCtx = deps.buildTelemetryCtx({ auth: input.auth, obsCtx: input.obsCtx, isStreaming: wantsStream, requestStartedAt, endpointTag: hooks.endpointTag })`.
 5. `const quotaResp = await deps.runQuotaGate(input.auth.apiKeyId); if (quotaResp) return { response: quotaResp, extra }`.
 6. Create linked `AbortController` (mirror current serves).
-7. `const result = await hooks.runAttempt({ payload, auth, telemetryCtx, downstreamAbortSignal: controller.signal, requestStartedAt, extras: input.extras })`.
+7. `const result = await hooks.runAttempt({ payload, auth: input.auth, telemetryCtx, downstreamAbortSignal: controller.signal, requestStartedAt, extras: input.extras })`.
 8. `const response = await hooks.respond(result, { payload, extra, wantsStream, downstreamAbortController: controller, telemetryCtx, extras: input.extras })`.
 9. `return { response, extra }`.
 
@@ -238,12 +256,25 @@ Each endpoint's new `serve.ts` shrinks to a hook declaration + a single
 
 ```ts
 // chat-completions/serve.ts (after)
-const chatCompletionsHooks: ServeTemplateHooks<ChatCompletionsPayload, ChatCompletionsAttemptResult> = {
+//
+// We bind TAuth to ChatCompletionsAttemptAuth — the *attempt's* auth
+// shape, not the inbound DataPlaneAuthCtx. The wrapper below maps
+// DataPlaneAuthCtx → ChatCompletionsAttemptAuth (userId → ownerId,
+// pick copilot/apiKeyId) BEFORE calling serveTemplate, so the kit
+// never casts and selectBinding always sees the right ownerId.
+const chatCompletionsHooks: ServeTemplateHooks<
+  ChatCompletionsPayload,
+  ChatCompletionsAttemptResult,
+  undefined,
+  ChatCompletionsAttemptAuth,
+  TelemetryRequestContext
+> = {
   endpointTag: 'chat_completions',
   parse: ({ raw }) => parseChatCompletionsPayload(raw) as ChatCompletionsPayload,
   wantsStream: (p) => p.stream === true,
   runAttempt: async (a) => chatCompletionsAttempt.generate({
-    payload: a.payload, auth: a.auth as ChatCompletionsAttemptAuth,
+    payload: a.payload,
+    auth: a.auth,  // already attempt-shaped; no cast needed
     ctx: { downstreamAbortSignal: a.downstreamAbortSignal },
     telemetryCtx: a.telemetryCtx,
   }),
@@ -258,8 +289,15 @@ const chatCompletionsHooks: ServeTemplateHooks<ChatCompletionsPayload, ChatCompl
 }
 
 export async function serveChatCompletions(args: ChatCompletionsServeArgs): Promise<Response> {
+  // Shape DataPlaneAuthCtx → ChatCompletionsAttemptAuth here so the
+  // kit never has to know about `userId` vs `ownerId`.
+  const auth: ChatCompletionsAttemptAuth = {
+    ownerId: args.auth.userId,
+    copilot: args.auth.copilot,
+    apiKeyId: args.auth.apiKeyId,
+  }
   const { response } = await serveTemplate(chatCompletionsHooks, {
-    raw: args.raw, auth: args.auth, obsCtx: args.obsCtx, signal: args.signal,
+    raw: args.raw, auth, obsCtx: args.obsCtx, signal: args.signal,
     extras: {},
   }, kitDeps)
   return response
@@ -272,14 +310,23 @@ Notes:
   `PreviousResponseNotFoundError` it returns
   `{kind:'short-circuit', response: renderPreviousResponseNotFound(err), extra: { mergedInputItems: [] }}`
   so the OpenAI-verbatim `code: 'previous_response_not_found'` envelope
-  (with `param`) is preserved. `serveResponses` returns
-  `ServeTemplateResult<{ mergedInputItems: unknown[] }>` so
-  `responses/http.ts` keeps the same external shape.
+  (with `param`) is preserved. The wrapper maps the kit result back
+  into the existing external shape so `responses/http.ts` keeps its
+  `{ response, mergedInputItems }` destructuring unchanged:
+
+  ```ts
+  export async function serveResponses(args: ResponsesServeArgs): Promise<ResponsesServeResult> {
+    const { response, extra } = await serveTemplate(responsesHooks, { … }, kitDeps)
+    return { response, mergedInputItems: extra?.mergedInputItems ?? [] }
+  }
+  ```
 - `gemini` puts `{ model, forceStream }` into `input.extras`; its
   `wantsStream` reads `input.extras.forceStream as boolean`;
-  `runAttempt` forwards both to `geminiAttempt.generate`.
+  `runAttempt` forwards both to `geminiAttempt.generate`. Also shapes
+  `DataPlaneAuthCtx` to gemini's attempt-auth shape in the wrapper.
 - `messages` is the simplest case — no preProcess, no extras, payload
-  stream flag, plain respondMessages call.
+  stream flag, plain respondMessages call. Same auth-shaping in the
+  wrapper.
 
 ## 4. Package boundary & dependency direction
 
