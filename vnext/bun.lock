@@ -96,6 +96,7 @@
       "name": "@vnext/protocols",
       "version": "0.0.0",
       "dependencies": {
+        "@vnext-gateway/result": "workspace:*",
         "@vnext/service": "workspace:*",
         "zod": "^4.4.3",
       },
@@ -146,6 +147,10 @@
     },
     "packages/responses-store": {
       "name": "@vnext/responses-store",
+      "version": "0.0.0",
+    },
+    "packages/result": {
+      "name": "@vnext-gateway/result",
       "version": "0.0.0",
     },
     "packages/service": {
@@ -428,6 +433,8 @@
     "@unrs/resolver-binding-win32-ia32-msvc": ["@unrs/resolver-binding-win32-ia32-msvc@1.12.2", "", { "os": "win32", "cpu": "ia32" }, "sha512-WD9sY00OfpHVGfsnHZoA8jVT+esS/Bg8z8jzxp5BnDCjjwsuKsPQrzswwpFy4J1AUJbXPRfkpcX0mXrzeXW79g=="],
 
     "@unrs/resolver-binding-win32-x64-msvc": ["@unrs/resolver-binding-win32-x64-msvc@1.12.2", "", { "os": "win32", "cpu": "x64" }, "sha512-nAB74NfSNKknqQ1RrYj6uz8FcXEomu/MATJZxh/x+BArzN2U3JbOYC0APYzUIGhVY3m5hRxA8VPNdPBoG8txlA=="],
+
+    "@vnext-gateway/result": ["@vnext-gateway/result@workspace:packages/result"],
 
     "@vnext/cache": ["@vnext/cache@workspace:packages/cache"],
 
