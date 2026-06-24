@@ -7,7 +7,7 @@
  * a Copilot-flavored runtime hook context, not part of the Llm* parallel
  * rename.
  */
-import type { AccountType, UpstreamRecord } from '@vnext-llm/protocols/common'
+import type { AccountType, UpstreamKind, UpstreamRecord } from '@vnext-llm/protocols/common'
 import type { UpstreamPlugin } from '@vnext-gateway/upstream'
 import type { LlmModelProvider } from './types'
 
@@ -20,4 +20,7 @@ export interface ProviderPluginContext {
   copilotFallback?: { copilotToken: string; accountType: AccountType }
 }
 
-export type LlmProviderPlugin = UpstreamPlugin<UpstreamRecord, ProviderPluginContext, LlmModelProvider>
+export interface LlmProviderPlugin
+  extends UpstreamPlugin<UpstreamRecord, ProviderPluginContext, LlmModelProvider> {
+  readonly kind: UpstreamKind
+}
