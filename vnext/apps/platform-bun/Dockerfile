@@ -27,6 +27,7 @@ COPY packages/provider-custom/package.json packages/provider-custom/
 COPY packages/provider-sdf/package.json packages/provider-sdf/
 COPY packages/responses-store/package.json packages/responses-store/
 COPY packages/cache/package.json packages/cache/
+COPY packages/chat-flow-kit/package.json packages/chat-flow-kit/
 COPY packages/http/package.json packages/http/
 COPY packages/translate/package.json packages/translate/
 
