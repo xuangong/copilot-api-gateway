@@ -1,5 +1,5 @@
 {
-  "name": "@vnext/dashboard",
+  "name": "@vnext-llm/dashboard",
   "private": true,
   "version": "0.0.0",
   "type": "module",
