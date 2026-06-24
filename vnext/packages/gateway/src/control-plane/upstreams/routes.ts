@@ -36,7 +36,7 @@ import {
   defaultsForUpstream,
 } from '../../data-plane/flags/index.ts'
 import { createProviderFromUpstream } from '../../data-plane/providers/registry.ts'
-import { clearRawModelsCache } from '@vnext/provider-copilot'
+import { clearRawModelsCache } from '@vnext-llm/provider-copilot'
 import { CustomProvider } from '@vnext/provider-custom'
 import type { CustomProviderConfig as PkgCustomConfig } from '@vnext/provider-custom'
 import { AzureProvider } from '@vnext/provider-azure'

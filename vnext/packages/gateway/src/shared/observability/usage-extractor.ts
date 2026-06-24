@@ -14,7 +14,7 @@
  * are terminal (returning `true`). Anthropic `message_start` and
  * `message_delta` are NOT terminal — more deltas can still follow.
  */
-import { copilotPublicModelId, normalizeAnthropicVersion } from '@vnext/provider-copilot'
+import { copilotPublicModelId, normalizeAnthropicVersion } from '@vnext-llm/provider-copilot'
 import { BILLING_DIMENSIONS, type BillingDimension } from '@vnext-llm/protocols/common'
 import type { TokenUsage } from '../repo/types.ts'
 

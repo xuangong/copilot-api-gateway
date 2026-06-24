@@ -1,5 +1,5 @@
 /**
- * Public surface for @vnext/provider-copilot.
+ * Public surface for @vnext-llm/provider-copilot.
  *
  * Gateway code should depend only on what this barrel exposes; internal
  * modules (transforms/*, interceptors/*, lib/*, raw-models-cache, variants,

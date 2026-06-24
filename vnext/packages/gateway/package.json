@@ -12,7 +12,7 @@
     "@vnext-llm/protocols": "workspace:*",
     "@vnext-llm/provider": "workspace:*",
     "@vnext/provider-azure": "workspace:*",
-    "@vnext/provider-copilot": "workspace:*",
+    "@vnext-llm/provider-copilot": "workspace:*",
     "@vnext/provider-custom": "workspace:*",
     "@vnext/provider-sdf": "workspace:*",
     "@vnext-llm/responses-store": "workspace:*",

@@ -1,5 +1,5 @@
 /**
- * CopilotProvider — extracted to @vnext/provider-copilot in Plan 2c.
+ * CopilotProvider — extracted to @vnext-llm/provider-copilot in Plan 2c.
  *
  * Per-endpoint interceptor chains feed into runInterceptors, whose terminal
  * is callCopilotAPI. Cross-package contracts (@vnext-gateway/service,

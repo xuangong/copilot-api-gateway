@@ -7,7 +7,7 @@ import type { EndpointKey, ModelEndpoints } from '@vnext-llm/protocols/common'
 import type { ProviderBinding } from '@vnext-llm/provider'
 import { listProviderBindings, type CreateProviderOptions } from '../providers/registry.ts'
 import { parseModelRouting } from './binding-resolver.ts'
-import { parseCompositeModelId } from '@vnext/provider-copilot'
+import { parseCompositeModelId } from '@vnext-llm/provider-copilot'
 
 export interface BindingCandidate {
   binding: ProviderBinding

@@ -17,7 +17,7 @@ import {
 } from '@vnext-gateway/platform'
 import { BunSqliteRepo as SqliteRepo } from '@vnext/platform-bun/src/bun-sqlite-repo.ts'
 import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'
-import type { Model, ModelsResponse } from '@vnext/provider-copilot'
+import type { Model, ModelsResponse } from '@vnext-llm/provider-copilot'
 
 const env = {} as never
 

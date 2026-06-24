@@ -3,7 +3,7 @@
  * upstream adapter (Copilot, Azure, Custom).
  *
  * `ProviderModelsResponse` is a minimal shim; concrete provider packages
- * (`@vnext/provider-copilot` etc.) may return richer subtypes assignable to
+ * (`@vnext-llm/provider-copilot` etc.) may return richer subtypes assignable to
  * this shape.
  */
 import type { EndpointKey, ModelPricing, UpstreamKind } from '@vnext-llm/protocols/common'

@@ -17,7 +17,7 @@ import {
 } from '@vnext-gateway/platform'
 import { InMemoryResponsesSnapshotStore } from '@vnext-llm/responses-store'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
-import type { Model, ModelsResponse } from '@vnext/provider-copilot'
+import type { Model, ModelsResponse } from '@vnext-llm/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
 
 const env = {} as never

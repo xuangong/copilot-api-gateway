@@ -3,7 +3,7 @@ import {
   parseMessagesSSEStream,
   parseChatSSEStream,
   parseResponsesSSEStream,
-} from '@vnext/provider-copilot'
+} from '@vnext-llm/provider-copilot'
 
 export function mapSourceApiToProviderRequest(
   src: 'messages' | 'chat_completions' | 'responses' | 'gemini',

@@ -1,13 +1,13 @@
 /**
  * Body helpers shared across provider transports.
  *
- * parseJsonBody — lifted verbatim from @vnext/provider-copilot/src/provider.ts.
+ * parseJsonBody — lifted verbatim from @vnext-llm/provider-copilot/src/provider.ts.
  *   The copilot transport always sends a JSON-string body; non-string bodies
  *   (FormData, ReadableStream, etc.) are a programmer error here. Custom/Azure
  *   providers (plan2/plan3) have FormData branches and call parseJsonBody only
  *   on the JSON paths, matching that contract.
  *
- * truncateBody — extracted from @vnext/provider-copilot/src/forward.ts:85-88.
+ * truncateBody — extracted from @vnext-llm/provider-copilot/src/forward.ts:85-88.
  *   When an upstream error body isn't valid JSON, we cap it at `max` characters
  *   and append "...(truncated)" so logs/HTTPError messages stay readable.
  *   Default max=200 matches the existing inline behavior.
