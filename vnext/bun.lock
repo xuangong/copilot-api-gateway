@@ -167,6 +167,10 @@
         "@vnext-llm/protocols": "workspace:*",
       },
     },
+    "packages/upstream": {
+      "name": "@vnext-gateway/upstream",
+      "version": "0.0.0",
+    },
   },
   "packages": {
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
@@ -446,6 +450,8 @@
     "@vnext-gateway/result": ["@vnext-gateway/result@workspace:packages/result"],
 
     "@vnext-gateway/service": ["@vnext-gateway/service@workspace:packages/service"],
+
+    "@vnext-gateway/upstream": ["@vnext-gateway/upstream@workspace:packages/upstream"],
 
     "@vnext-llm/dashboard": ["@vnext-llm/dashboard@workspace:apps/dashboard"],
 
