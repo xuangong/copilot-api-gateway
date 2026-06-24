@@ -73,9 +73,9 @@
         "@vnext-llm/provider-azure": "workspace:*",
         "@vnext-llm/provider-copilot": "workspace:*",
         "@vnext-llm/provider-custom": "workspace:*",
+        "@vnext-llm/provider-sdf": "workspace:*",
         "@vnext-llm/responses-store": "workspace:*",
         "@vnext-llm/translate": "workspace:*",
-        "@vnext/provider-sdf": "workspace:*",
         "hono": "^4.12.23",
         "image-size": "^2.0.2",
         "zod": "^4.4.3",
@@ -139,7 +139,7 @@
       },
     },
     "packages/provider-sdf": {
-      "name": "@vnext/provider-sdf",
+      "name": "@vnext-llm/provider-sdf",
       "version": "0.0.0",
       "dependencies": {
         "@vnext-gateway/http": "workspace:*",
@@ -457,6 +457,8 @@
 
     "@vnext-llm/provider-custom": ["@vnext-llm/provider-custom@workspace:packages/provider-custom"],
 
+    "@vnext-llm/provider-sdf": ["@vnext-llm/provider-sdf@workspace:packages/provider-sdf"],
+
     "@vnext-llm/responses-store": ["@vnext-llm/responses-store@workspace:packages/responses-store"],
 
     "@vnext-llm/translate": ["@vnext-llm/translate@workspace:packages/translate"],
@@ -468,8 +470,6 @@
     "@vnext/platform-bun": ["@vnext/platform-bun@workspace:apps/platform-bun"],
 
     "@vnext/platform-cloudflare": ["@vnext/platform-cloudflare@workspace:apps/platform-cloudflare"],
-
-    "@vnext/provider-sdf": ["@vnext/provider-sdf@workspace:packages/provider-sdf"],
 
     "acorn": ["acorn@8.16.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw=="],
 

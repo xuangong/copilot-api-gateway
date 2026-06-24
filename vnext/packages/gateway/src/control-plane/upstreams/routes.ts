@@ -41,8 +41,8 @@ import { CustomProvider } from '@vnext-llm/provider-custom'
 import type { CustomProviderConfig as PkgCustomConfig } from '@vnext-llm/provider-custom'
 import { AzureProvider } from '@vnext-llm/provider-azure'
 import type { AzureProviderConfig as PkgAzureConfig } from '@vnext-llm/provider-azure'
-import { SdfProvider } from '@vnext/provider-sdf'
-import type { SdfProviderConfig as PkgSdfConfig } from '@vnext/provider-sdf'
+import { SdfProvider } from '@vnext-llm/provider-sdf'
+import type { SdfProviderConfig as PkgSdfConfig } from '@vnext-llm/provider-sdf'
 
 export interface AuthCtx {
   isAdmin?: boolean
