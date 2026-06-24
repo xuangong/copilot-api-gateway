@@ -315,3 +315,56 @@ describe('serveTemplate — AbortController linking', () => {
     expect(respondController!.signal).toBe(attemptSignal)
   })
 })
+
+describe('serveTemplate — respond ctx', () => {
+  test('respond receives the final payload, extra from preProcess, wantsStream, telemetryCtx, extras', async () => {
+    let observed: {
+      payload?: Payload
+      extra?: Extra
+      wantsStream?: boolean
+      telemetryCtx?: TCtx
+      extras?: Record<string, unknown>
+    } = {}
+    const hooks = defaultHooks({
+      preProcess: async (p) => ({
+        kind: 'continue',
+        payload: { ...p, value: p.value * 2 },
+        extra: { tag: 'observed' },
+      }),
+      wantsStream: () => true,
+      respond: async (_r, c) => {
+        observed = {
+          payload: c.payload,
+          extra: c.extra,
+          wantsStream: c.wantsStream,
+          telemetryCtx: c.telemetryCtx,
+          extras: c.extras,
+        }
+        return new Response('ok', { status: 200 })
+      },
+    })
+    await serveTemplate(
+      hooks,
+      defaultInput({ raw: { value: 5, stream: true }, extras: { side: 'channel' } }),
+      defaultDeps(),
+    )
+    expect(observed.payload).toEqual({ value: 10, stream: true })
+    expect(observed.extra).toEqual({ tag: 'observed' })
+    expect(observed.wantsStream).toBe(true)
+    expect(observed.telemetryCtx).toEqual({ tag: 'test_endpoint', isStreaming: true })
+    expect(observed.extras).toEqual({ side: 'channel' })
+  })
+
+  test('without preProcess, extra defaults to undefined', async () => {
+    let observedExtra: Extra | 'unset' = 'unset'
+    const hooks = defaultHooks({
+      respond: async (_r, c) => {
+        observedExtra = c.extra
+        return new Response('ok', { status: 200 })
+      },
+    })
+    const result = await serveTemplate(hooks, defaultInput(), defaultDeps())
+    expect(observedExtra).toBeUndefined()
+    expect(result.extra).toBeUndefined()
+  })
+})
