@@ -1,4 +1,4 @@
-import { app } from "@vnext/gateway/src/app.ts"
+import { app } from "@vnext-llm/gateway/src/app.ts"
 import { bootstrapCloudflarePlatform, type CloudflareEnv } from "./bootstrap.ts"
 
 export default {

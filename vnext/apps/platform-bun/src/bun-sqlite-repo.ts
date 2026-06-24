@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite"
 
-import type { Repo } from "@vnext/gateway/src/shared/repo/types.ts"
-import type { SqlExecutor } from "@vnext/gateway/src/shared/repo/shared/executor.ts"
-import { buildSharedRepo } from "@vnext/gateway/src/shared/repo/shared/repos.ts"
+import type { Repo } from "@vnext-llm/gateway/src/shared/repo/types.ts"
+import type { SqlExecutor } from "@vnext-llm/gateway/src/shared/repo/shared/executor.ts"
+import { buildSharedRepo } from "@vnext-llm/gateway/src/shared/repo/shared/repos.ts"
 
 const INIT_SQL = `
 CREATE TABLE IF NOT EXISTS api_keys (

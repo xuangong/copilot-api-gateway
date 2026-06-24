@@ -1,4 +1,4 @@
-import { app } from "@vnext/gateway/src/app.ts"
+import { app } from "@vnext-llm/gateway/src/app.ts"
 import { bootstrapBunPlatform } from "./bootstrap.ts"
 
 const dbPath = process.env.VNEXT_DB_PATH ?? ".vnext-local.sqlite"

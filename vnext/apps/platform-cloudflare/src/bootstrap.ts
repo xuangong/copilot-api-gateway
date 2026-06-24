@@ -6,9 +6,9 @@ import {
   initRuntimeLocation,
   type SqlDatabase,
 } from "@vnext-gateway/platform"
-import { initRepo } from "@vnext/gateway/src/shared/repo/index.ts"
-import { initCache } from "@vnext/gateway/src/shared/cache/index.ts"
-import { initResponsesStore } from "@vnext/gateway/src/shared/runtime/responses-store.ts"
+import { initRepo } from "@vnext-llm/gateway/src/shared/repo/index.ts"
+import { initCache } from "@vnext-llm/gateway/src/shared/cache/index.ts"
+import { initResponsesStore } from "@vnext-llm/gateway/src/shared/runtime/responses-store.ts"
 import { D1Repo } from "./d1-repo.ts"
 import {
   createCloudflareImageProcessor,

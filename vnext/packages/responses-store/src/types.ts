@@ -35,7 +35,7 @@ export interface ResponsesSnapshotStore {
 
 /**
  * Minimal SQL adapter; mirrors apps/gateway/src/shared/repo/shared/executor.ts.
- * Duplicated here so the package has no dependency on @vnext/gateway.
+ * Duplicated here so the package has no dependency on @vnext-llm/gateway.
  */
 export interface SqlExecutor {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

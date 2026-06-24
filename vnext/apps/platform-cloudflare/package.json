@@ -9,7 +9,7 @@
     "deploy:dry": "wrangler deploy --dry-run --outdir dist"
   },
   "dependencies": {
-    "@vnext/gateway": "workspace:*",
+    "@vnext-llm/gateway": "workspace:*",
     "@vnext-gateway/platform": "workspace:*",
     "@vnext-llm/responses-store": "workspace:*",
     "@vnext-gateway/cache": "workspace:*"
