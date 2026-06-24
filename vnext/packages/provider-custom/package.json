@@ -1,5 +1,5 @@
 {
-  "name": "@vnext/provider-custom",
+  "name": "@vnext-llm/provider-custom",
   "private": true,
   "version": "0.0.0",
   "type": "module",

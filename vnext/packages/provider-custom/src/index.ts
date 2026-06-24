@@ -1,5 +1,5 @@
 /**
- * Public surface for @vnext/provider-custom.
+ * Public surface for @vnext-llm/provider-custom.
  *
  * Gateway code should depend only on what this barrel exposes; the provider
  * class is the only public symbol — internal helpers (CUSTOM_PATHS,

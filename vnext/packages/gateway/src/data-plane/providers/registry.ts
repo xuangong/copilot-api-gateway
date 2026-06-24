@@ -26,7 +26,7 @@ import type { ModelProvider, ProviderBinding, ProviderPlugin } from '@vnext-llm/
 import type { EndpointKey, ModelEndpoints, UpstreamKind } from '@vnext-llm/protocols/common'
 import { CopilotProvider, copilotProviderPlugin } from '@vnext-llm/provider-copilot'
 import { azureProviderPlugin } from '@vnext-llm/provider-azure'
-import { customProviderPlugin } from '@vnext/provider-custom'
+import { customProviderPlugin } from '@vnext-llm/provider-custom'
 import { sdfProviderPlugin } from '@vnext/provider-sdf'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
 
