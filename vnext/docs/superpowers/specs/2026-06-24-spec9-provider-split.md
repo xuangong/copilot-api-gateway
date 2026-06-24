@@ -45,10 +45,13 @@ vnext/packages/
 │   package.json: @vnext-gateway/upstream
 │   dependencies: (none — pure interfaces + helpers)
 │   src/
-│     types.ts        ProviderRequest, ProviderResponse, ProviderRequestFlags,
-│                     ProviderModelsResponse, ProbeResult, SourceApi,
+│     types.ts        ProviderResponse, ProviderRequestFlags,
+│                     ProviderModelsResponse, ProbeResult,
 │                     UpstreamAdapter
-│     plugin.ts       UpstreamPlugin<TConfig, TCtx>
+│                     (NOT ProviderRequest / SourceApi — those carry
+│                      EndpointKey + 'anthropic'|'openai'|'gemini' and
+│                      stay in provider-llm)
+│     plugin.ts       UpstreamPlugin<TConfig, TCtx, TAdapter extends UpstreamAdapter = UpstreamAdapter>
 │     binding.ts      UpstreamBinding<TAdapter>
 │     probe.ts        probeViaModels, diagnoseHint
 │     errors.ts       HTTPError
@@ -58,7 +61,8 @@ vnext/packages/
     package.json: @vnext-llm/provider-llm
     dependencies: @vnext-gateway/upstream, @vnext-llm/protocols
     src/
-      types.ts        LlmModelProvider extends UpstreamAdapter
+      types.ts        LlmModelProvider extends UpstreamAdapter,
+                      ProviderRequest, SourceApi (LLM-specific request typing)
       binding.ts      LlmProviderBinding extends UpstreamBinding<LlmModelProvider>,
                       BindingModel
       plugin.ts       LlmProviderPlugin, ProviderPluginContext
@@ -75,7 +79,9 @@ vnext/packages/
 | `ModelProvider` | `UpstreamAdapter` | `LlmModelProvider extends UpstreamAdapter` |
 | `ProviderPlugin` | `UpstreamPlugin<TConfig, TCtx>` | `LlmProviderPlugin = UpstreamPlugin<UpstreamRecord, ProviderPluginContext>` |
 | `ProviderBinding` | `UpstreamBinding<TAdapter>` | `LlmProviderBinding extends UpstreamBinding<LlmModelProvider>` |
-| `ProviderRequest` / `Response` / `Flags` | same names | re-export |
+| `ProviderRequest` (carries `EndpointKey` + `SourceApi`) | — (LLM-coupled, stays in business) | keep in `provider-llm` |
+| `ProviderResponse` / `Flags` | same names | re-export |
+| `SourceApi` (`'anthropic'\|'openai'\|'gemini'`) | — | keep in `provider-llm` |
 | `ProbeResult` / `ProviderModelsResponse` | same names | re-export |
 | `HTTPError` | same name | re-export |
 | `probeViaModels` / `diagnoseHint` | same names | re-export |
@@ -93,44 +99,63 @@ export interface UpstreamAdapter {
   readonly name: string
   getModels(): Promise<ProviderModelsResponse>
   probe(): Promise<ProbeResult>
-  fetch(req: ProviderRequest): Promise<ProviderResponse>
+  // Request type is supplied by the business layer via TReq so the framework
+  // does not pull in LLM-specific EndpointKey / SourceApi.
+  fetch(req: unknown): Promise<ProviderResponse>
 }
 
 // @vnext-gateway/upstream/src/plugin.ts
-export interface UpstreamPlugin<TConfig, TCtx> {
+export interface UpstreamPlugin<
+  TConfig,
+  TCtx,
+  TAdapter extends UpstreamAdapter = UpstreamAdapter,
+> {
   readonly kind: string
-  createFromUpstream(config: TConfig, ctx: TCtx): Promise<UpstreamAdapter | null>
+  createFromUpstream(config: TConfig, ctx: TCtx): Promise<TAdapter | null>
 }
 
 // @vnext-gateway/upstream/src/binding.ts
 export interface UpstreamBinding<TAdapter extends UpstreamAdapter> {
   upstream: string
-  adapter: TAdapter
+  provider: TAdapter   // keep .provider — matches existing consumer access (registry.ts:241+)
   enabledFlags: ReadonlySet<string>
 }
 ```
 
-`kind` on `UpstreamPlugin` is a plain `string` at the framework level — the business layer narrows it to `UpstreamKind` via the `LlmProviderPlugin` alias.
+`kind` on `UpstreamPlugin` is a plain `string` at the framework level — the business layer narrows it to `UpstreamKind` via the `LlmProviderPlugin` alias. `TAdapter` defaults to `UpstreamAdapter` so framework-only callers stay unaffected. The binding field is named `.provider` (not `.adapter`) to preserve the existing call sites in `gateway/src/data-plane/providers/registry.ts:241` and `enumerateBindingCandidates`/`resolveBinding` — no runtime rename needed.
 
 ### 3.5 Business overlay signatures
 
 ```ts
 // @vnext-llm/provider-llm/src/types.ts
-import type { UpstreamAdapter } from '@vnext-gateway/upstream'
+import type { UpstreamAdapter, ProviderResponse } from '@vnext-gateway/upstream'
 import type { EndpointKey, ModelPricing, UpstreamKind } from '@vnext-llm/protocols/common'
+
+export type SourceApi = 'anthropic' | 'openai' | 'gemini'
+export interface ProviderRequest {
+  endpoint: EndpointKey
+  payload: unknown
+  headers: Headers
+  sourceApi: SourceApi
+  /* ...remaining fields unchanged from current @vnext-llm/provider... */
+}
 
 export interface LlmModelProvider extends UpstreamAdapter {
   readonly kind: UpstreamKind
   readonly supportedEndpoints: readonly EndpointKey[]
   getPricingForModelKey(modelKey: string): ModelPricing | null
+  fetch(req: ProviderRequest): Promise<ProviderResponse>   // narrows framework signature
 }
 
 // @vnext-llm/provider-llm/src/binding.ts
 export interface BindingModel {
   id: string
+  displayName?: string
+  ownedBy?: string
+  created?: number
   endpoints: ModelEndpoints
-  limits: ModelLimits
-  cost: ModelPricing
+  limits?: { maxOutputTokens?: number; maxContextWindowTokens?: number; maxPromptTokens?: number }
+  cost?: ModelPricing   // optional — modelToBindingModel does not populate it today
 }
 export interface LlmProviderBinding extends UpstreamBinding<LlmModelProvider> {
   kind: UpstreamKind
@@ -139,11 +164,13 @@ export interface LlmProviderBinding extends UpstreamBinding<LlmModelProvider> {
 
 // @vnext-llm/provider-llm/src/plugin.ts
 export interface ProviderPluginContext {
-  getCachedCopilotToken?: () => Promise<string | null>
-  copilotFallback?: { /* ... */ }
+  getCachedCopilotToken?: (githubToken: string, accountType: AccountType) => Promise<string>
+  copilotFallback?: { copilotToken: string; accountType: AccountType }
 }
-export type LlmProviderPlugin = UpstreamPlugin<UpstreamRecord, ProviderPluginContext>
+export type LlmProviderPlugin = UpstreamPlugin<UpstreamRecord, ProviderPluginContext, LlmModelProvider>
 ```
+
+`LlmProviderPlugin` passes `LlmModelProvider` as the third generic argument so `createFromUpstream` returns `Promise<LlmModelProvider | null>` — preserving the `kind` / `supportedEndpoints` / `getPricingForModelKey` guarantees at the registry call site. `BindingModel.limits` and `BindingModel.cost` stay optional; populating `cost` is out of scope for Spec 9 (would require a separate pricing-population pass).
 
 ### 3.6 Framework purity invariant
 
@@ -203,10 +230,11 @@ Each step is one commit. `bun run test` after every step (purity gate + suite). 
 
 1. **Create `vnext/packages/upstream/`** with `@vnext-gateway/upstream`.
    - Move from `packages/provider/src/`:
-     - `ProviderRequest/Response/Flags`, `ProbeResult`, `ProviderModelsResponse`, `SourceApi` → `upstream/src/types.ts`
-     - **New** `UpstreamAdapter` interface in same file (strip `kind` / `supportedEndpoints` / `getPricingForModelKey`)
-     - Generalize `ProviderPlugin` → `UpstreamPlugin<TConfig, TCtx>` in `upstream/src/plugin.ts`
-     - Generalize `ProviderBinding` → `UpstreamBinding<TAdapter>` in `upstream/src/binding.ts` (drop `kind` and `model`)
+     - `ProviderResponse`, `ProviderRequestFlags`, `ProbeResult`, `ProviderModelsResponse` → `upstream/src/types.ts`
+     - **New** `UpstreamAdapter` interface in same file. `fetch(req: unknown)` at framework level; business layer narrows to `ProviderRequest`.
+     - `ProviderRequest` and `SourceApi` **stay in `packages/provider/src/types.ts`** (LLM-coupled via `EndpointKey` and `'anthropic'|'openai'|'gemini'`).
+     - Generalize `ProviderPlugin` → `UpstreamPlugin<TConfig, TCtx, TAdapter extends UpstreamAdapter = UpstreamAdapter>` in `upstream/src/plugin.ts`
+     - Generalize `ProviderBinding` → `UpstreamBinding<TAdapter>` in `upstream/src/binding.ts`. Field is `provider: TAdapter` (not `adapter`) to preserve runtime call sites.
      - `probe.ts`, `errors.ts` copy as-is
    - `packages/provider/src/index.ts` keeps temporary re-exports so consumers still compile.
    - Run `bun install` to refresh `bun.lock`. Test.
@@ -240,7 +268,7 @@ Workspaces in `vnext/package.json` use glob `packages/*` — directory rename an
 | A1 | `bun run test` green (framework-purity gate + 981 tests) after every step |
 | A2 | `bun run typecheck` green per-package for: `upstream`, `provider-llm`, `provider-copilot`, `provider-azure`, `provider-custom`, `provider-sdf`, `gateway`, `platform-bun`, `platform-cloudflare`, `dashboard`. Pre-existing baseline errors from Spec 7 §8.1 / Spec 8 §A2 may persist; no new errors introduced. |
 | A3 | `scripts/check-framework-purity.ts` exits 0. Spot-check: `@vnext-gateway/upstream/src/**/*.ts` contains zero string occurrences of `ModelPricing`, `EndpointKey`, `UpstreamKind`, `ModelEndpoints`, `Invocation`, or `@vnext-llm/`. |
-| A4 | `grep -rn "@vnext-llm/provider'" vnext/packages vnext/apps --include='*.ts'` returns zero matches (all migrated to `provider-llm`). |
+| A4 | `rg "@vnext-llm/provider(?!-)" vnext/packages vnext/apps -g '*.ts' -g '*.tsx' -g '*.json'` returns zero matches (negative lookbehind excludes legitimate `@vnext-llm/provider-llm` / `provider-copilot` / `provider-azure` / `provider-custom` / `provider-sdf` references). Catches double-quoted imports and `package.json` `dependencies`. |
 | A5 | `docker build -f vnext/apps/platform-bun/Dockerfile vnext/` succeeds. |
 | A6 | No behavior change: chat-completions / messages / responses / gemini live calls return byte-identical output to a pre-Spec-9 baseline (manual smoke acceptable). |
 
