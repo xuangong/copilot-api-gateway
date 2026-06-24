@@ -19,7 +19,8 @@ COPY packages/platform/package.json packages/platform/
 COPY packages/protocols-llm/package.json packages/protocols-llm/
 COPY packages/result/package.json packages/result/
 COPY packages/service/package.json packages/service/
-COPY packages/provider/package.json packages/provider/
+COPY packages/upstream/package.json packages/upstream/
+COPY packages/provider-llm/package.json packages/provider-llm/
 COPY packages/provider-azure/package.json packages/provider-azure/
 COPY packages/provider-copilot/package.json packages/provider-copilot/
 COPY packages/provider-custom/package.json packages/provider-custom/
