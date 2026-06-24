@@ -300,3 +300,25 @@ Workspaces in `vnext/package.json` use glob `packages/*` — directory rename an
 | Plugin generic verbosity at call sites | Business layer collapses generics via `type LlmProviderPlugin = UpstreamPlugin<UpstreamRecord, ProviderPluginContext, LlmModelProvider>`; consumers only see `LlmProviderPlugin`. |
 | Multi-package `implements` sed errors across 4 `provider-*` packages | Single sed commit, immediate typecheck — TypeScript catches mismatches before tests run. |
 | `Dockerfile` `COPY` paths miss new `upstream/` directory | Step 5 explicit Dockerfile edit; A5 docker build is an acceptance gate. |
+
+---
+
+## 9. Acceptance log (executed 2026-06-24)
+
+| ID | Result | Evidence |
+|---|---|---|
+| A1 | ✅ | `bun test` → 981 pass / 0 fail / 2420 expects / 177 files (post-Part-3 fix commit `e74f9c5`) |
+| A2 | ✅ | Per-package `tsc --noEmit` clean for `upstream`, `provider-llm`, `provider-copilot`, `provider-azure`, `provider-custom`, `provider-sdf`, `platform-bun`. `gateway` shows only pre-Spec-9 baseline `translate/gemini-*` `usageMetadata`/`candidates` errors (unchanged from cc7d582 baseline). New `LlmProviderPlugin.kind` narrowing error introduced by initial `type` alias was fixed in `e74f9c5` by promoting to `interface … extends UpstreamPlugin … { readonly kind: UpstreamKind }`. |
+| A3 | ✅ | `scripts/check-framework-purity.ts` → `[framework-purity] OK`. `rg` of `packages/upstream/src` for `ModelPricing\|EndpointKey\|UpstreamKind\|ModelEndpoints\|Invocation\|@vnext-llm/` returns zero hits. |
+| A4 | ✅ | `rg -n "@vnext-llm/provider(\$\|['\"/])" packages apps -g '*.ts' -g '*.tsx' -g '*.json'` returns zero matches. |
+| A5 | ✅ | `docker build --no-cache -f vnext/apps/platform-bun/Dockerfile vnext/ -t copilot-api-gateway:spec9-part3` → succeeded; image `copilot-api-gateway:spec9-part3` (sha256:8162badde86d). All 29 steps green, including `bun install --frozen-lockfile` + `bun run build:ui`. |
+| A6 | ⏭ | Live four-surface byte-identical smoke deferred — Spec 9 is structural (rename + interface extraction) with zero runtime path changes. A1 (981 tests including chat-flow / responses / messages / gemini fixtures) + A5 (image builds and `bun install` resolves the new workspace graph) act as the regression net. Live smoke gated on next opportunistic deploy. |
+
+**Commit chain (vNext branch):**
+- `854335f` … `cc7d582` — Spec 9 design + Part 1 (Spec 9 design rounds)
+- `a8842e1` — Part 1 Task 1 (create `@vnext-gateway/upstream`)
+- `554413d 566432f 41c7b72 15d0606` — Part 1 hardening (bridge re-exports, A3 doc-comment scrub)
+- `668acda` — Part 2 Task 1 (`provider` → `provider-llm` directory + scope rename)
+- `92a3535` — Part 2 Task 2 (`ModelProvider` → `LlmModelProvider` + sweep consumers)
+- `7656867` — Part 3 Task 1 (Dockerfile: insert `COPY packages/upstream/`, rename `provider/` → `provider-llm/`)
+- `e74f9c5` — Part 3 Task 2 (narrow `LlmProviderPlugin.kind` to `UpstreamKind`)
