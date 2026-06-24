@@ -257,16 +257,22 @@ Each endpoint's new `serve.ts` shrinks to a hook declaration + a single
 ```ts
 // chat-completions/serve.ts (after)
 //
-// We bind TAuth to ChatCompletionsAttemptAuth — the *attempt's* auth
-// shape, not the inbound DataPlaneAuthCtx. The wrapper below maps
-// DataPlaneAuthCtx → ChatCompletionsAttemptAuth (userId → ownerId,
-// pick copilot/apiKeyId) BEFORE calling serveTemplate, so the kit
-// never casts and selectBinding always sees the right ownerId.
+// TAuth is a wrapper-local intersection: the attempt's auth shape
+// PLUS KitAuthCtx (which contributes `apiKeyId`). The current
+// `ChatCompletionsAttemptAuth` (= `SelectBindingAuth { ownerId?, pin?,
+// copilot? }`) does NOT include `apiKeyId`, so binding TAuth directly
+// to it would fail the `TAuth extends KitAuthCtx` constraint. The
+// intersection keeps the kit's quota-gate path working while leaving
+// the existing attempt auth type untouched. `runAttempt` can still
+// pass the value to attempt.generate — structural compatibility means
+// the extra `apiKeyId` field is ignored.
+type ChatCompletionsServeAuth = ChatCompletionsAttemptAuth & KitAuthCtx
+
 const chatCompletionsHooks: ServeTemplateHooks<
   ChatCompletionsPayload,
   ChatCompletionsAttemptResult,
   undefined,
-  ChatCompletionsAttemptAuth,
+  ChatCompletionsServeAuth,
   TelemetryRequestContext
 > = {
   endpointTag: 'chat_completions',
@@ -274,7 +280,7 @@ const chatCompletionsHooks: ServeTemplateHooks<
   wantsStream: (p) => p.stream === true,
   runAttempt: async (a) => chatCompletionsAttempt.generate({
     payload: a.payload,
-    auth: a.auth,  // already attempt-shaped; no cast needed
+    auth: a.auth,  // extra apiKeyId is ignored by structural typing
     ctx: { downstreamAbortSignal: a.downstreamAbortSignal },
     telemetryCtx: a.telemetryCtx,
   }),
@@ -289,9 +295,9 @@ const chatCompletionsHooks: ServeTemplateHooks<
 }
 
 export async function serveChatCompletions(args: ChatCompletionsServeArgs): Promise<Response> {
-  // Shape DataPlaneAuthCtx → ChatCompletionsAttemptAuth here so the
+  // Shape DataPlaneAuthCtx → ChatCompletionsServeAuth here so the
   // kit never has to know about `userId` vs `ownerId`.
-  const auth: ChatCompletionsAttemptAuth = {
+  const auth: ChatCompletionsServeAuth = {
     ownerId: args.auth.userId,
     copilot: args.auth.copilot,
     apiKeyId: args.auth.apiKeyId,
@@ -322,11 +328,17 @@ Notes:
   ```
 - `gemini` puts `{ model, forceStream }` into `input.extras`; its
   `wantsStream` reads `input.extras.forceStream as boolean`;
-  `runAttempt` forwards both to `geminiAttempt.generate`. Also shapes
-  `DataPlaneAuthCtx` to gemini's attempt-auth shape in the wrapper.
+  `runAttempt` forwards both to `geminiAttempt.generate`. Defines its
+  own `GeminiServeAuth = GeminiAttemptAuth & KitAuthCtx` and shapes
+  `DataPlaneAuthCtx` to it in the wrapper.
 - `messages` is the simplest case — no preProcess, no extras, payload
-  stream flag, plain respondMessages call. Same auth-shaping in the
-  wrapper.
+  stream flag, plain respondMessages call. Same
+  `MessagesServeAuth = MessagesAttemptAuth & KitAuthCtx` intersection
+  + wrapper auth-shaping.
+- `responses` likewise: `ResponsesServeAuth = ResponsesAttemptAuth &
+  KitAuthCtx`. The intersection pattern is what keeps the kit's
+  `TAuth extends KitAuthCtx` constraint satisfied without touching the
+  existing attempt-auth types.
 
 ## 4. Package boundary & dependency direction
 
@@ -359,8 +371,18 @@ A3. Framework purity gate for `@vnext-gateway/chat-flow-kit/src/**`:
      (including the `endpointTag` — it's caller-supplied; the kit must
      never compare against these strings);
    - manual `rg` to confirm both rules.
-A4. Each endpoint's `serve.ts` shrinks to < 60 lines (current floor:
-   chat-completions ~115, messages ~120, responses ~178, gemini ~128).
+A4. Each endpoint's `serve.ts` shrinks to a thin wrapper: the boilerplate
+   skeleton (parse → quota → attempt → respond glue) is gone, only a
+   hook declaration + auth shaping + one `serveTemplate(...)` call
+   remain. If a particular endpoint's hooks are large enough that
+   inlining hurts readability (responses has preProcess + the
+   `PreviousResponseNotFoundError` branch + extra remap), the hook
+   object MAY be split into a sibling `hooks.ts` so `serve.ts` stays a
+   pure wrapper — **don't** split purely to hit a line count. Current
+   floor for reference: chat-completions ~115, messages ~120, responses
+   ~178, gemini ~128; expected post-migration: chat-completions /
+   messages well under 60; responses / gemini may be larger if hooks
+   live in `serve.ts`, smaller if split into `hooks.ts`.
 A5. Kit-level unit suite covers: skeleton order (parse → preProcess →
    quotaGate → attempt → respond), parse error path (with and without
    `parseErrorRender`), preProcess short-circuit (no quota call, no
