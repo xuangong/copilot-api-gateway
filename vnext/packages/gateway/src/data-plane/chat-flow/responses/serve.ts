@@ -1,52 +1,60 @@
 // vnext/packages/gateway/src/data-plane/chat-flow/responses/serve.ts
 /**
- * /v1/responses HTTP serve layer.
+ * /v1/responses HTTP serve layer (Spec 10 — chat-flow convergence).
  *
- * Replaces the previous `dispatch(...)` delegation with the per-protocol
- * attempt → respond chain (Spec 3 Part 3 — responses-side mirror of the
- * messages migration). Steps:
- *   - validate the JSON body via `parseResponsesPayload`, surfacing the
- *     legacy 400 envelope on failure;
- *   - expand `previous_response_id` against the responses store BEFORE
- *     binding selection so the upstream payload includes the merged input
- *     history. We capture the resulting input array as `mergedInputItems`
- *     and return it alongside the final Response — http.ts threads it into
- *     the snapshot sidecar so the post-turn snapshot persists with the
- *     full input history;
- *   - derive `wantsStream = payload.stream === true` so respond.ts knows
- *     whether to stream SSE or render a JSON envelope;
- *   - hand off to `responsesAttempt.generate` for image-generation
- *     short-circuit / binding selection / translator / provider.fetch.
- *     Cross-protocol targets (`responses → messages` / `responses →
- *     chat_completions`) are NOT yet supported natively — Spec 3 Part 4
- *     deleted the legacy `dispatch()` bridge but native cross-protocol
- *     attempts are deferred to Spec 6. Attempt surfaces a 501 internal-error
- *     in that branch;
- *   - thread an `AbortController` linked to the inbound `args.signal`
- *     (Hono's `c.req.raw.signal`) so a client disconnect mid-SSE cancels
- *     `provider.fetch` + `parseResponsesStream` via the same downstream
- *     signal. respond.ts's SSE `cancel()` aborts the same controller for
- *     the reverse direction.
+ * Migrated to the framework kit (@vnext-gateway/chat-flow-kit). The legacy
+ * inline pipeline (parse → expandPreviousResponseId → telemetry → quota →
+ * controller → attempt → respond) now flows through `serveTemplate(...)`;
+ * this file declares the hooks, shapes auth, and maps the kit result back
+ * to the existing `ResponsesServeResult` shape so `responses/http.ts`
+ * keeps its `{ response, mergedInputItems } = await serveResponses(...)`
+ * destructuring unchanged.
  *
- * Telemetry context is built once per request and threaded through both
- * attempt + respond, so persistence helpers (`recordUsage`,
- * `recordPerformance`) write usage rows without leaking auth/transaction
- * state into the legacy dispatch path.
+ * Why preProcess? Responses must expand `previous_response_id` against the
+ * responses store BEFORE binding selection (the upstream payload includes
+ * the merged input history). The kit gives us a typed slot for exactly
+ * this: `preProcess` runs between parse and quota, can mutate the payload,
+ * and emits an `extra` value that threads through to `respond` AND the
+ * wrapper's return. We use `extra = { mergedInputItems }` so http.ts can
+ * persist the full input history in the snapshot sidecar.
  *
- * Reference: messages/serve.ts.
+ * Why short-circuit on PreviousResponseNotFoundError? The OpenAI-verbatim
+ * envelope (`code: 'previous_response_not_found'`, `param:
+ * 'previous_response_id'`) is preserved by delegating to
+ * `renderPreviousResponseNotFound(err)` — `jsonErrorWrap` strips those
+ * fields and would break programmatic recovery for SDKs.
+ *
+ * Why the intersection auth? `ResponsesAttemptAuth` already has an
+ * optional `apiKeyId`, but we keep the explicit intersection
+ * (`ResponsesServeAuth = ResponsesAttemptAuth & KitAuthCtx`) for symmetry
+ * with the other three endpoints and to defend against future drift if
+ * either type loses the field.
+ *
+ * Reference: Spec 10 §3.3 (preProcess), §3.4 (responses notes).
  */
-import { getRuntimeLocation } from '@vnext-gateway/platform'
+import {
+  serveTemplate,
+  type KitAuthCtx,
+  type KitObsCtx,
+  type PreProcessResult,
+  type ServeTemplateHooks,
+} from '@vnext-gateway/chat-flow-kit'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseResponsesPayload } from '../../parsers.ts'
-import { jsonErrorWrap } from '../shared/error-wrap.ts'
+import { kitDeps } from '../shared/kit-deps.ts'
 import type { DispatchObsCtx } from '../shared/obs-ctx.ts'
-import { runQuotaGate } from '../shared/quota-gate.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
-import { expandPreviousResponseId } from '../../dispatch/responses-store-bridge.ts'
-import { PreviousResponseNotFoundError } from '../../dispatch/responses-store-bridge.ts'
+import {
+  expandPreviousResponseId,
+  PreviousResponseNotFoundError,
+} from '../../dispatch/responses-store-bridge.ts'
 import { renderPreviousResponseNotFound } from '../../errors/repackage.ts'
 import { getResponsesStore } from '../../../shared/runtime/responses-store.ts'
-import { responsesAttempt } from './attempt.ts'
+import {
+  responsesAttempt,
+  type ResponsesAttemptAuth,
+  type ResponsesAttemptResult,
+} from './attempt.ts'
 import { respondResponses } from './respond.ts'
 
 export interface ResponsesServeArgs {
@@ -67,111 +75,124 @@ export interface ResponsesServeResult {
   readonly mergedInputItems: unknown[]
 }
 
-export async function serveResponses(args: ResponsesServeArgs): Promise<ResponsesServeResult> {
-  // Parse via the shared Zod schema. parseResponsesPayload throws a shaped
-  // Error (`status: 400, body: {error: {type, message}}`) — jsonErrorWrap
-  // surfaces it as the OpenAI-shaped 400 envelope clients already speak.
-  let payload: Record<string, unknown> & { model: string; stream?: boolean; input?: unknown; tools?: unknown }
-  try {
-    payload = parseResponsesPayload(args.raw) as typeof payload
-  } catch (err) {
-    const e = err as Error & { status?: number; body?: unknown }
-    return {
-      response: jsonErrorWrap(
-        e.status ?? 400,
-        e.body ?? {
-          error: { type: 'invalid_request_error', message: e.message },
-        },
-      ),
-      mergedInputItems: [],
-    }
-  }
+type ResponsesPayload = Record<string, unknown> & {
+  model: string
+  stream?: boolean
+  input?: unknown
+  tools?: unknown
+  previous_response_id?: string | null
+}
 
-  // Expand `previous_response_id` BEFORE binding selection. Mutates `payload.input`
-  // in place (legacy contract from `expandPreviousResponseId`); we then read
-  // the expanded array off `payload.input` so the snapshot sidecar can persist
-  // the full input history for the next turn.
-  let mergedInputItems: unknown[] = []
-  try {
-    const store = getResponsesStore()
-    await expandPreviousResponseId(
-      payload as { previous_response_id?: string | null; input?: unknown },
-      store,
-      args.auth.apiKeyId ?? null,
-    )
-    const expanded = (payload as { input?: unknown }).input
-    mergedInputItems = Array.isArray(expanded) ? (expanded as unknown[]) : []
-  } catch (err) {
-    // Treat expansion failures as a 400 (the typical cause is a bad
-    // previous_response_id pointing at a missing snapshot). Mirrors the
-    // legacy `dispatch()` postParse behaviour where postParse errors bubble
-    // through the standard errorWrap.
-    //
-    // PreviousResponseNotFoundError carries only `status: 400` (no `body`),
-    // so we must explicitly delegate to renderPreviousResponseNotFound to
-    // preserve the OpenAI-verbatim envelope (`code: 'previous_response_not_found'`,
-    // `param: 'previous_response_id'`) — otherwise the generic fallback below
-    // strips those fields and clients can't recover programmatically.
-    if (err instanceof PreviousResponseNotFoundError) {
-      return {
-        response: renderPreviousResponseNotFound(err),
-        mergedInputItems: [],
+type ResponsesServeAuth = ResponsesAttemptAuth & KitAuthCtx
+
+type ResponsesExtra = { readonly mergedInputItems: unknown[] }
+
+const responsesHooks: ServeTemplateHooks<
+  ResponsesPayload,
+  ResponsesAttemptResult,
+  ResponsesExtra,
+  ResponsesServeAuth,
+  TelemetryRequestContext
+> = {
+  endpointTag: 'responses',
+
+  parse: ({ raw }) => {
+    try {
+      return parseResponsesPayload(raw) as ResponsesPayload
+    } catch (err) {
+      const e = err as Error & { status?: number; body?: unknown }
+      const wrapped = new Error(e.message) as Error & { status?: number; body?: unknown }
+      wrapped.status = e.status ?? 400
+      wrapped.body = e.body ?? {
+        error: { type: 'invalid_request_error', message: e.message },
       }
+      throw wrapped
     }
-    const e = err as Error & { status?: number; body?: unknown }
-    return {
-      response: jsonErrorWrap(
-        e.status ?? 400,
-        e.body ?? {
-          error: { type: 'invalid_request_error', message: e.message },
-        },
-      ),
-      mergedInputItems: [],
+  },
+
+  preProcess: async (payload, ctx) => {
+    // Expand `previous_response_id` against the responses store. Mutates
+    // payload.input in place (legacy contract from
+    // `expandPreviousResponseId`); we read the expanded array off
+    // payload.input so the snapshot sidecar persists the full input
+    // history for the next turn.
+    try {
+      const store = getResponsesStore()
+      await expandPreviousResponseId(
+        payload as { previous_response_id?: string | null; input?: unknown },
+        store,
+        ctx.auth.apiKeyId ?? null,
+      )
+      const expanded = (payload as { input?: unknown }).input
+      const mergedInputItems = Array.isArray(expanded) ? (expanded as unknown[]) : []
+      return { kind: 'continue', payload, extra: { mergedInputItems } } satisfies PreProcessResult<
+        ResponsesPayload,
+        ResponsesExtra
+      >
+    } catch (err) {
+      // PreviousResponseNotFoundError carries only `status: 400` (no
+      // body), so we MUST delegate to renderPreviousResponseNotFound to
+      // preserve the OpenAI-verbatim envelope. Generic fallback (below)
+      // would strip `code` + `param` and break SDK programmatic recovery.
+      if (err instanceof PreviousResponseNotFoundError) {
+        return {
+          kind: 'short-circuit',
+          response: renderPreviousResponseNotFound(err),
+          extra: { mergedInputItems: [] },
+        } satisfies PreProcessResult<ResponsesPayload, ResponsesExtra>
+      }
+      // Any other expansion failure → re-throw with the {status, body}
+      // shape `deps.jsonErrorWrap` consumes (kit's preProcess fallback
+      // calls jsonErrorWrap exactly like parse).
+      const e = err as Error & { status?: number; body?: unknown }
+      const wrapped = new Error(e.message) as Error & { status?: number; body?: unknown }
+      wrapped.status = e.status ?? 400
+      wrapped.body = e.body ?? {
+        error: { type: 'invalid_request_error', message: e.message },
+      }
+      throw wrapped
     }
+  },
+
+  wantsStream: (p) => p.stream === true,
+
+  runAttempt: (a) => responsesAttempt.generate({
+    payload: a.payload,
+    auth: a.auth,
+    ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal },
+    telemetryCtx: a.telemetryCtx,
+    requestId: (a.extras.requestId as string | undefined),
+    userAgent: (a.extras.userAgent as string | undefined),
+  }),
+
+  respond: (r, c) => respondResponses(r, {
+    wantsStream: c.wantsStream,
+    downstreamAbortController: c.downstreamAbortController,
+    telemetryCtx: c.telemetryCtx,
+  }),
+}
+
+export async function serveResponses(args: ResponsesServeArgs): Promise<ResponsesServeResult> {
+  const auth: ResponsesServeAuth = {
+    ownerId: args.auth.userId,
+    copilot: args.auth.copilot,
+    apiKeyId: args.auth.apiKeyId,
   }
-
-  const wantsStream = payload.stream === true
-
-  const requestStartedAt = Date.now()
-  const telemetryCtx: TelemetryRequestContext = {
-    apiKeyId: args.obsCtx.apiKeyId ?? args.auth.apiKeyId ?? '<unknown>',
-    userAgent: args.obsCtx.userAgent ?? null,
-    requestId: args.obsCtx.requestId ?? crypto.randomUUID(),
-    isStreaming: wantsStream,
-    runtimeLocation: getRuntimeLocation(),
-    requestStartedAt,
-  }
-
-  // Daily quota gate. Legacy dispatch ran this inside runConversationAttempt;
-  // Spec 3 deletes that helper but the per-key cap is still enforced here so
-  // the public `429 + rate_limit_error` envelope is preserved for SDKs.
-  const quotaResp = await runQuotaGate(args.auth.apiKeyId)
-  if (quotaResp) return { response: quotaResp, mergedInputItems: [] }
-
-  // Linked controller — same plumbing as messages/serve.ts.
-  const controller = new AbortController()
-  if (args.signal) {
-    if (args.signal.aborted) controller.abort()
-    else args.signal.addEventListener('abort', () => controller.abort(), { once: true })
-  }
-
-  const result = await responsesAttempt.generate({
-    payload,
-    auth: {
-      ownerId: args.auth.userId,
-      copilot: args.auth.copilot,
-      apiKeyId: args.auth.apiKeyId,
+  const { response, extra } = await serveTemplate(
+    responsesHooks,
+    {
+      raw: args.raw,
+      auth,
+      obsCtx: args.obsCtx as KitObsCtx,
+      signal: args.signal,
+      // requestId / userAgent ride through extras so the image-gen
+      // shortcut inside responsesAttempt can stamp them on upstream
+      // image calls. They were dedicated args on the old serve; the
+      // kit's RunAttemptArgs only standardises payload/auth/telemetry,
+      // so per-endpoint passthroughs live in `extras`.
+      extras: { requestId: args.requestId, userAgent: args.userAgent },
     },
-    ctx: { requestStartedAt, downstreamAbortSignal: controller.signal },
-    telemetryCtx,
-    requestId: args.requestId,
-    userAgent: args.userAgent,
-  })
-
-  const response = await respondResponses(result, {
-    wantsStream,
-    downstreamAbortController: controller,
-    telemetryCtx,
-  })
-  return { response, mergedInputItems }
+    kitDeps,
+  )
+  return { response, mergedInputItems: extra?.mergedInputItems ?? [] }
 }
