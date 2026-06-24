@@ -10,9 +10,9 @@
  *
  * Direction: request = client → hub.
  */
-import type { GeminiPayload } from '@vnext/protocols/gemini'
-import type { MessagesPayload } from '@vnext/protocols/messages'
-import type { ChatPayload } from '@vnext/protocols/chat'
+import type { GeminiPayload } from '@vnext-llm/protocols/gemini'
+import type { MessagesPayload } from '@vnext-llm/protocols/messages'
+import type { ChatPayload } from '@vnext-llm/protocols/chat'
 import { translateChatToMessages } from '../chat-completions-via-messages/index.ts'
 
 export interface TranslateGeminiToMessagesOptions {

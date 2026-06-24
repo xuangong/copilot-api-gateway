@@ -23,7 +23,7 @@
  * `isError=true`.
  */
 import { runInterceptors } from '@vnext-gateway/service'
-import type { Invocation, RequestContext } from '@vnext/protocols/common'
+import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
 import { messagesInterceptors, type MessagesInterceptor } from './interceptors'
 import {
   eventResult,
@@ -33,11 +33,11 @@ import {
   type ExecuteResult,
   type ModelEndpoints,
   type ProtocolFrame,
-} from '@vnext/protocols/common'
+} from '@vnext-llm/protocols/common'
 import {
   parseMessagesStream,
   type MessagesStreamEvent,
-} from '@vnext/protocols/messages'
+} from '@vnext-llm/protocols/messages'
 import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext/provider'
 import {
   telemetryModelIdentity,

@@ -6,7 +6,7 @@ import {
   type TelemetryModelIdentity,
   type PerformanceTelemetryContext,
   type EventResultMetadata,
-} from '@vnext/protocols/common'
+} from '@vnext-llm/protocols/common'
 
 const identity = (): TelemetryModelIdentity => ({
   model: 'gpt-4',

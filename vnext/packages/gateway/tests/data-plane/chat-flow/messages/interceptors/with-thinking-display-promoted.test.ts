@@ -3,15 +3,15 @@ import {
   withThinkingDisplayPromoted,
   resolveMessagesDownstreamThinkingDisplay,
 } from '../../../../../src/data-plane/chat-flow/messages/interceptors/with-thinking-display-promoted'
-import type { Invocation, RequestContext } from '@vnext/protocols/common'
+import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
 import {
   doneFrame,
   eventResult,
   type ExecuteResult,
   type ProtocolFrame,
   type TelemetryModelIdentity,
-} from '@vnext/protocols/common'
-import type { MessagesStreamEvent } from '@vnext/protocols/messages'
+} from '@vnext-llm/protocols/common'
+import type { MessagesStreamEvent } from '@vnext-llm/protocols/messages'
 
 const stubIdentity: TelemetryModelIdentity = {
   model: '<unknown>',

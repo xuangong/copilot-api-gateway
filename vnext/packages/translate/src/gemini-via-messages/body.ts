@@ -7,7 +7,7 @@
  *
  * Direction: response = hub → client.
  */
-import type { MessagesResponse } from '@vnext/protocols/messages'
+import type { MessagesResponse } from '@vnext-llm/protocols/messages'
 import {
   translateMessagesToChatBody,
   type ChatCompletionResponse,

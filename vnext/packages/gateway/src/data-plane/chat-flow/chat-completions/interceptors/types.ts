@@ -1,5 +1,5 @@
-import type { ChatCompletionsStreamInterceptor } from '@vnext/protocols/common'
+import type { ChatCompletionsStreamInterceptor } from '@vnext-llm/protocols/common'
 
 export type ChatCompletionsInterceptor = ChatCompletionsStreamInterceptor
 
-export type { ChatCompletionsStreamInterceptor } from '@vnext/protocols/common'
+export type { ChatCompletionsStreamInterceptor } from '@vnext-llm/protocols/common'

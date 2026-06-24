@@ -3,7 +3,7 @@
  *
  * Per-endpoint interceptor chains feed into runInterceptors, whose terminal
  * is callCopilotAPI. Cross-package contracts (@vnext-gateway/service,
- * @vnext/protocols) are unchanged.
+ * @vnext-llm/protocols) are unchanged.
  *
  * After Plan B Task B2.8, the legacy `fetch(endpoint, init, opts)` overload
  * and the seven per-endpoint `call*` shim methods were retired. The provider
@@ -16,8 +16,8 @@ import { defaultsForUpstream } from './flags'
 import { callCopilotAPI } from './forward'
 import { getModels, type ModelsResponse } from './models'
 import { pricingForCopilotModelKey } from './pricing'
-import type { EndpointKey, ModelPricing } from '@vnext/protocols/common'
-import type { CopilotInterceptor, Invocation, RequestContext } from "@vnext/protocols/common"
+import type { EndpointKey, ModelPricing } from '@vnext-llm/protocols/common'
+import type { CopilotInterceptor, Invocation, RequestContext } from "@vnext-llm/protocols/common"
 import { runInterceptors } from "@vnext-gateway/service"
 import type {
   ModelProvider,

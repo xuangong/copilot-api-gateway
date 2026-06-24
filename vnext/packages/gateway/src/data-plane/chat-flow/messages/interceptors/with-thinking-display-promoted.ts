@@ -1,6 +1,6 @@
 import type { MessagesInterceptor } from './types'
-import { eventFrame, type ProtocolFrame } from '@vnext/protocols/common'
-import type { MessagesStreamEvent } from '@vnext/protocols/messages'
+import { eventFrame, type ProtocolFrame } from '@vnext-llm/protocols/common'
+import type { MessagesStreamEvent } from '@vnext-llm/protocols/messages'
 
 /**
  * `thinking.display` controls whether Copilot/Claude emits token-level

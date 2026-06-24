@@ -1,5 +1,5 @@
 import { stripCacheControl } from "../../transforms/cache-control"
-import type { CopilotInterceptor } from "@vnext/protocols/common"
+import type { CopilotInterceptor } from "@vnext-llm/protocols/common"
 
 /**
  * Strip unsupported `cache_control` sub-fields (`scope`, `ttl`) that strict

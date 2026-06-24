@@ -14,7 +14,7 @@
  *   - ProviderBinding sourced from data-plane/routing/binding.ts (not old
  *     ~/providers/binding) — provider.fetch signature is identical.
  */
-import type { EndpointKey } from '@vnext/protocols/common'
+import type { EndpointKey } from '@vnext-llm/protocols/common'
 import type { ProviderBinding } from '../../../../routing/binding.ts'
 import { runImagesAttempt } from '../../../../observability/attempts/images-attempt.ts'
 import type { ResponsesTool, ResponsesInputItem } from '../../types.ts'

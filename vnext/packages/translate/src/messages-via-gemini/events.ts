@@ -10,7 +10,7 @@
  * Cancellation: implemented as an async generator with try/finally so
  * Pair 2's underlying state is released when the consumer breaks out.
  */
-import type { MessagesEvent } from '@vnext/protocols/messages'
+import type { MessagesEvent } from '@vnext-llm/protocols/messages'
 import { translateChatSSEToMessagesEvents } from '../messages-via-chat-completions/index.ts'
 
 // ─── Gemini source-shape (subset) ───

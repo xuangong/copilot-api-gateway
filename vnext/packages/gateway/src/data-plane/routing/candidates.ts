@@ -3,7 +3,7 @@
  * specific endpoint priority chain. Replaces resolveBinding(model, endpoint)
  * + chooseBackendEndpoint heuristic.
  */
-import type { EndpointKey, ModelEndpoints } from '@vnext/protocols/common'
+import type { EndpointKey, ModelEndpoints } from '@vnext-llm/protocols/common'
 import type { ProviderBinding } from '@vnext/provider'
 import { listProviderBindings, type CreateProviderOptions } from '../providers/registry.ts'
 import { parseModelRouting } from './binding-resolver.ts'

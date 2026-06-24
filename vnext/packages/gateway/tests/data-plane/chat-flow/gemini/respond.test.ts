@@ -21,9 +21,9 @@ import {
   internalErrorResult,
   type TelemetryModelIdentity,
   type ProtocolFrame,
-} from '@vnext/protocols/common'
-import type { ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
-import type { MessagesStreamEvent } from '@vnext/protocols/messages'
+} from '@vnext-llm/protocols/common'
+import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
+import type { MessagesStreamEvent } from '@vnext-llm/protocols/messages'
 
 const stubIdentity: TelemetryModelIdentity = {
   model: '<unknown>',

@@ -2,7 +2,7 @@
  * Shared helpers for gemini-via-* translator pairs (request + events).
  *
  * Ported from copilot-gateway's `shared/gemini-via/gemini.ts`. Uses local
- * structural types (./types.ts) rather than @vnext/protocols/gemini, since
+ * structural types (./types.ts) rather than @vnext-llm/protocols/gemini, since
  * the protocols package only exports a loose zod-inferred GeminiPayload.
  */
 import type {

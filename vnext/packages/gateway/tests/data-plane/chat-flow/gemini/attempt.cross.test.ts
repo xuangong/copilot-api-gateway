@@ -10,8 +10,8 @@
 import { test, expect, mock } from 'bun:test'
 import { geminiAttempt } from '../../../../src/data-plane/chat-flow/gemini/attempt'
 import type { TelemetryRequestContext } from '../../../../src/data-plane/chat-flow/shared/telemetry-ctx'
-import type { RequestContext } from '@vnext/protocols/common'
-import { eventResult, type ProtocolFrame } from '@vnext/protocols/common'
+import type { RequestContext } from '@vnext-llm/protocols/common'
+import { eventResult, type ProtocolFrame } from '@vnext-llm/protocols/common'
 
 const baseCtx: RequestContext = { requestStartedAt: Date.now() }
 const baseAuth = { ownerId: 'o', copilot: false as const }

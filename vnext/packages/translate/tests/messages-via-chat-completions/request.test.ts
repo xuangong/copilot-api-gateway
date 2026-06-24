@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test'
 import { translateMessagesToChat } from '@vnext/translate/messages-via-chat-completions'
-import type { MessagesPayload } from '@vnext/protocols/messages'
+import type { MessagesPayload } from '@vnext-llm/protocols/messages'
 
 describe('messages-via-chat-completions :: request', () => {
   it('translates a string-only user message to a Chat user with string content', () => {

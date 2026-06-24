@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test'
 import { traverseTranslation } from './traverse-translation.ts'
 import { TranslatorValidationError } from '@vnext/translate/errors'
-import { eventResult, internalErrorResult } from '@vnext/protocols/common'
+import { eventResult, internalErrorResult } from '@vnext-llm/protocols/common'
 import type { PairTranslator } from '../../dispatch/translator-registry.ts'
 
 const fakeTelemetryCtx = {} as never

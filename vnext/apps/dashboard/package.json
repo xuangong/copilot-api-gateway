@@ -8,7 +8,7 @@
     "build": "bun ../../scripts/build-dashboard.ts"
   },
   "dependencies": {
-    "@vnext/protocols": "workspace:*",
+    "@vnext-llm/protocols": "workspace:*",
     "dompurify": "^3.4.7",
     "highlight.js": "^11.11.1",
     "marked": "^18.0.4",

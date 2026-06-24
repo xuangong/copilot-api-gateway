@@ -24,7 +24,7 @@
  * `{ target }` envelope; the registry unwraps that here so dispatch sees a
  * bare payload uniformly.
  */
-import type { EndpointKey } from '@vnext/protocols/common'
+import type { EndpointKey } from '@vnext-llm/protocols/common'
 import type { SourceApi } from './pair-selector.ts'
 
 // Pair 1: client = chat_completions, hub = messages

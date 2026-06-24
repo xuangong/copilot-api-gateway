@@ -8,7 +8,7 @@
  * The `enumerate` parameter is injectable for unit tests so tests can drive the
  * candidate set without depending on the live routing table.
  */
-import type { EndpointKey, ModelEndpoints } from '@vnext/protocols/common'
+import type { EndpointKey, ModelEndpoints } from '@vnext-llm/protocols/common'
 import type { ProviderBinding } from '@vnext/provider'
 import {
   enumerateBindingCandidates,

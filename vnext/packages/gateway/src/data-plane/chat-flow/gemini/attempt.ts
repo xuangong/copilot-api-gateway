@@ -38,7 +38,7 @@
  * Reference: messages/attempt.ts, responses/attempt.ts.
  */
 import { runInterceptors } from '@vnext-gateway/service'
-import type { Invocation, RequestContext } from '@vnext/protocols/common'
+import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
 import {
   internalErrorResult,
   readUpstreamError,
@@ -46,7 +46,7 @@ import {
   type ExecuteResult,
   type ModelEndpoints,
   type ProtocolFrame,
-} from '@vnext/protocols/common'
+} from '@vnext-llm/protocols/common'
 import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext/provider'
 import {
   upstreamPerformanceContext,

@@ -12,7 +12,7 @@
 import { test, expect, mock } from 'bun:test'
 import { responsesAttempt } from '../../../../src/data-plane/chat-flow/responses/attempt'
 import type { TelemetryRequestContext } from '../../../../src/data-plane/chat-flow/shared/telemetry-ctx'
-import type { RequestContext } from '@vnext/protocols/common'
+import type { RequestContext } from '@vnext-llm/protocols/common'
 
 type FakeProviderResponse = {
   status: number

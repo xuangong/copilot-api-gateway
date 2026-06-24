@@ -11,7 +11,7 @@ import type {
   EventResult,
   TelemetryModelIdentity,
   PerformanceTelemetryContext,
-} from '@vnext/protocols/common'
+} from '@vnext-llm/protocols/common'
 import type { Repo } from '../../../../src/shared/repo/types.ts'
 
 const identity = (modelKey = 'gpt-4'): TelemetryModelIdentity => ({

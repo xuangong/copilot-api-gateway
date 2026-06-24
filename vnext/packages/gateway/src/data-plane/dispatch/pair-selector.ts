@@ -6,7 +6,7 @@
  * at the binding's catalog metadata, model kind, or upstream provider. That
  * keeps the routing primitive pure and reusable from any dispatch site.
  */
-import type { EndpointKey, ModelEndpoints } from '@vnext/protocols/common'
+import type { EndpointKey, ModelEndpoints } from '@vnext-llm/protocols/common'
 
 export type SourceApi = 'messages' | 'chat_completions' | 'responses' | 'gemini'
 

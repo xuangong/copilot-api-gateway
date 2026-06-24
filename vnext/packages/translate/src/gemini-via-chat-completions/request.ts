@@ -10,7 +10,7 @@
  * and gemini-via-responses). `reasoning_text` / `reasoning_opaque` are
  * tolerated by the loose ChatPayload schema.
  */
-import type { ChatPayload } from '@vnext/protocols/chat'
+import type { ChatPayload } from '@vnext-llm/protocols/chat'
 import {
   geminiFunctionCallingIntent,
   geminiFunctionCallPart,

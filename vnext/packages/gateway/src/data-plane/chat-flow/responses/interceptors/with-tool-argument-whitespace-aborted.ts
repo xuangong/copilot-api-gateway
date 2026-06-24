@@ -1,7 +1,7 @@
 import type { ResponsesInterceptor } from './types'
 import { checkWhitespaceOverflow } from '../../shared/whitespace-overflow'
-import { doneFrame, eventFrame, type ProtocolFrame } from '@vnext/protocols/common'
-import type { ResponsesStreamEvent } from '@vnext/protocols/responses'
+import { doneFrame, eventFrame, type ProtocolFrame } from '@vnext-llm/protocols/common'
+import type { ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
 
 /**
  * Copilot has been observed to emit only whitespace (`\r`, `\n`, `\t`) inside

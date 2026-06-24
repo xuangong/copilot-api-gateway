@@ -6,7 +6,7 @@
  * (`@vnext/provider-copilot` etc.) may return richer subtypes assignable to
  * this shape.
  */
-import type { EndpointKey, ModelPricing, UpstreamKind } from '@vnext/protocols/common'
+import type { EndpointKey, ModelPricing, UpstreamKind } from '@vnext-llm/protocols/common'
 
 export type { UpstreamKind }
 

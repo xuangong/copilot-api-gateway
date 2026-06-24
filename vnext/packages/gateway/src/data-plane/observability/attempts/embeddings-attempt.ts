@@ -15,7 +15,7 @@
  * Caller still handles request validation (model field, JSON parse, upstream
  * pin strip) and the binding resolution; this module only wraps the call site.
  */
-import type { ModelPricing } from '@vnext/protocols/common'
+import type { ModelPricing } from '@vnext-llm/protocols/common'
 import { checkQuota } from '../../../shared/observability/quota.ts'
 import {
   recordLatency,

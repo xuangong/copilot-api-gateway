@@ -11,8 +11,8 @@
  * never produces it and the synthesised non-stream branch never emits one
  * either) so we return `null` for it defensively — same shape as messages.
  */
-import { sseFrame, type SseFrame, type ProtocolFrame } from '@vnext/protocols/common'
-import type { ResponsesStreamEvent } from '@vnext/protocols/responses'
+import { sseFrame, type SseFrame, type ProtocolFrame } from '@vnext-llm/protocols/common'
+import type { ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
 
 export const responsesProtocolFrameToSSEFrame = (
   frame: ProtocolFrame<ResponsesStreamEvent>,

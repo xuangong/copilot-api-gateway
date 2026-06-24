@@ -1,6 +1,6 @@
 import { attachMessagesCacheBreakpoints } from "../../transforms"
 import type { AnthropicMessagesPayload } from "../../transforms"
-import type { CopilotInterceptor } from "@vnext/protocols/common"
+import type { CopilotInterceptor } from "@vnext-llm/protocols/common"
 
 export const withMessagesCacheBreakpointsAttached: CopilotInterceptor = async (inv, _ctx, run) => {
   if (inv.enabledFlags.has("transform-attach-messages-cache-breakpoints")) {

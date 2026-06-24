@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import type { UpstreamRecord } from '@vnext/protocols/common'
+import type { UpstreamRecord } from '@vnext-llm/protocols/common'
 import { CustomProvider } from '../src/provider'
 import { customProviderPlugin } from '../src/plugin'
 

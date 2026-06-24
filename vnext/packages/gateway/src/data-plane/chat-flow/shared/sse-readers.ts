@@ -1,4 +1,4 @@
-import type { EndpointKey } from '@vnext/protocols/common'
+import type { EndpointKey } from '@vnext-llm/protocols/common'
 import {
   parseMessagesSSEStream,
   parseChatSSEStream,

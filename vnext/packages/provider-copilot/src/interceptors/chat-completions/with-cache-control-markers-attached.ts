@@ -1,5 +1,5 @@
 import { attachCacheControlMarkers } from "../../transforms"
-import type { CopilotInterceptor } from "@vnext/protocols/common"
+import type { CopilotInterceptor } from "@vnext-llm/protocols/common"
 
 export const withCacheControlMarkersAttached: CopilotInterceptor = async (inv, _ctx, run) => {
   if (inv.enabledFlags.has("transform-attach-cache-control-markers")) {

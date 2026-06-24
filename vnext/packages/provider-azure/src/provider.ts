@@ -11,7 +11,7 @@
  * Authentication uses the `api-key` header (Azure convention), not bearer.
  */
 
-import type { EndpointKey, ModelPricing } from '@vnext/protocols/common'
+import type { EndpointKey, ModelPricing } from '@vnext-llm/protocols/common'
 import {
   HTTPError,
   probeViaModels,

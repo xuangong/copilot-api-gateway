@@ -11,7 +11,7 @@
  * No `/models` discovery endpoint exists — `getModels()` returns the
  * single hardcoded entry.
  */
-import type { EndpointKey, ModelPricing } from '@vnext/protocols/common'
+import type { EndpointKey, ModelPricing } from '@vnext-llm/protocols/common'
 import {
   HTTPError,
   probeViaModels,

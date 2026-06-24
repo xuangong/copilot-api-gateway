@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test'
 import { translateMessagesToGeminiEvents } from '@vnext/translate/gemini-via-messages'
-import type { MessagesEvent } from '@vnext/protocols/messages'
+import type { MessagesEvent } from '@vnext-llm/protocols/messages'
 
 async function* fromArray(events: MessagesEvent[]): AsyncGenerator<MessagesEvent> {
   for (const e of events) yield e

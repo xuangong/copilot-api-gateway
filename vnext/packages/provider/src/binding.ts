@@ -9,7 +9,7 @@
  *   - `BindingModel.kind` is removed; consumers derive via kindForEndpoints.
  *   - `ProviderBinding.upstreamEndpoints` is removed.
  */
-import type { ModelEndpoints, ModelPricing, UpstreamKind } from '@vnext/protocols/common'
+import type { ModelEndpoints, ModelPricing, UpstreamKind } from '@vnext-llm/protocols/common'
 import type { ModelProvider } from './types'
 
 /** Per-binding model metadata. */

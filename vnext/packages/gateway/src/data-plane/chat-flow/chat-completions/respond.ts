@@ -27,8 +27,8 @@ import {
   type ProtocolFrame,
   type SseFrame,
   type UpstreamErrorResult,
-} from '@vnext/protocols/common'
-import type { ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
+} from '@vnext-llm/protocols/common'
+import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
 import { repackageUpstreamError } from '../../errors/repackage'
 import {
   SourceStreamState,

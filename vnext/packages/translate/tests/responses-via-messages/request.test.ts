@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test'
 import { translateResponsesToMessages } from '@vnext/translate/responses-via-messages'
-import type { ResponsesPayload } from '@vnext/protocols/responses'
+import type { ResponsesPayload } from '@vnext-llm/protocols/responses'
 
 describe('responses-via-messages :: request', () => {
   it('translates string input into a single user message', () => {

@@ -27,7 +27,7 @@
  */
 import type {
   EventResult,
-} from '@vnext/protocols/common'
+} from '@vnext-llm/protocols/common'
 import {
   SourceStreamState,
   eventResultMetadata,

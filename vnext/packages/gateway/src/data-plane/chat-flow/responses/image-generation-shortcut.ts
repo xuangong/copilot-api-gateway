@@ -33,8 +33,8 @@ import {
   type EventResultMetadata,
   type ProtocolFrame,
   type TelemetryModelIdentity,
-} from '@vnext/protocols/common'
-import type { ResponsesStreamEvent } from '@vnext/protocols/responses'
+} from '@vnext-llm/protocols/common'
+import type { ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
 import {
   buildImageGenerationResponse,
   collectImageSources,

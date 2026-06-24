@@ -1,5 +1,5 @@
-import { sseFrame, type SseFrame, type ProtocolFrame } from '@vnext/protocols/common'
-import type { ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
+import { sseFrame, type SseFrame, type ProtocolFrame } from '@vnext-llm/protocols/common'
+import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
 
 export interface ChatCompletionsProtocolFrameToSSEFrameOptions {
   readonly includeUsageChunk: boolean

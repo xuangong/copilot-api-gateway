@@ -22,7 +22,7 @@ import type {
   EventResultMetadata,
   PerformanceTelemetryContext,
   TelemetryModelIdentity,
-} from '@vnext/protocols/common'
+} from '@vnext-llm/protocols/common'
 import { detectClient } from '../../../shared/observability/client-detect.ts'
 import {
   applyStreamEvent,

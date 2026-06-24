@@ -7,7 +7,7 @@
  * apps/gateway/src/data-plane/flags/catalog.ts.
  */
 
-import type { UpstreamKind } from "@vnext/protocols/common"
+import type { UpstreamKind } from "@vnext-llm/protocols/common"
 
 export interface Flag {
   id: string

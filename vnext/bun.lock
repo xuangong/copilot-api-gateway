@@ -18,7 +18,7 @@
       "name": "@vnext/dashboard",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext/protocols": "workspace:*",
+        "@vnext-llm/protocols": "workspace:*",
         "dompurify": "^3.4.7",
         "highlight.js": "^11.11.1",
         "marked": "^18.0.4",
@@ -67,7 +67,7 @@
         "@vnext-gateway/cache": "workspace:*",
         "@vnext-gateway/platform": "workspace:*",
         "@vnext-gateway/service": "workspace:*",
-        "@vnext/protocols": "workspace:*",
+        "@vnext-llm/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
         "@vnext/provider-azure": "workspace:*",
         "@vnext/provider-copilot": "workspace:*",
@@ -92,8 +92,8 @@
       "name": "@vnext-gateway/platform",
       "version": "0.0.0",
     },
-    "packages/protocols": {
-      "name": "@vnext/protocols",
+    "packages/protocols-llm": {
+      "name": "@vnext-llm/protocols",
       "version": "0.0.0",
       "dependencies": {
         "@vnext-gateway/result": "workspace:*",
@@ -105,7 +105,7 @@
       "name": "@vnext/provider",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext/protocols": "workspace:*",
+        "@vnext-llm/protocols": "workspace:*",
       },
     },
     "packages/provider-azure": {
@@ -113,7 +113,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@vnext-gateway/http": "workspace:*",
-        "@vnext/protocols": "workspace:*",
+        "@vnext-llm/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
       },
     },
@@ -123,7 +123,7 @@
       "dependencies": {
         "@vnext-gateway/http": "workspace:*",
         "@vnext-gateway/service": "workspace:*",
-        "@vnext/protocols": "workspace:*",
+        "@vnext-llm/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
       },
     },
@@ -132,7 +132,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@vnext-gateway/http": "workspace:*",
-        "@vnext/protocols": "workspace:*",
+        "@vnext-llm/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
       },
     },
@@ -141,7 +141,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@vnext-gateway/http": "workspace:*",
-        "@vnext/protocols": "workspace:*",
+        "@vnext-llm/protocols": "workspace:*",
         "@vnext/provider": "workspace:*",
       },
     },
@@ -161,7 +161,7 @@
       "name": "@vnext/translate",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext/protocols": "workspace:*",
+        "@vnext-llm/protocols": "workspace:*",
       },
     },
   },
@@ -444,6 +444,8 @@
 
     "@vnext-gateway/service": ["@vnext-gateway/service@workspace:packages/service"],
 
+    "@vnext-llm/protocols": ["@vnext-llm/protocols@workspace:packages/protocols-llm"],
+
     "@vnext/dashboard": ["@vnext/dashboard@workspace:apps/dashboard"],
 
     "@vnext/gateway": ["@vnext/gateway@workspace:packages/gateway"],
@@ -451,8 +453,6 @@
     "@vnext/platform-bun": ["@vnext/platform-bun@workspace:apps/platform-bun"],
 
     "@vnext/platform-cloudflare": ["@vnext/platform-cloudflare@workspace:apps/platform-cloudflare"],
-
-    "@vnext/protocols": ["@vnext/protocols@workspace:packages/protocols"],
 
     "@vnext/provider": ["@vnext/provider@workspace:packages/provider"],
 

@@ -9,7 +9,7 @@
  * Returns null when neither path can produce a provider.
  */
 import type { ProviderPlugin } from '@vnext/provider'
-import type { AccountType } from '@vnext/protocols/common'
+import type { AccountType } from '@vnext-llm/protocols/common'
 import { CopilotProvider } from './provider'
 
 export const copilotProviderPlugin: ProviderPlugin = {

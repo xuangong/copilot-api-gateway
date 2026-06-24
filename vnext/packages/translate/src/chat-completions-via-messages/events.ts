@@ -7,7 +7,7 @@
  *
  * Direction: events flow hub → client (assistant tokens, tool calls, usage).
  */
-import type { MessagesEvent } from '@vnext/protocols/messages'
+import type { MessagesEvent } from '@vnext-llm/protocols/messages'
 
 export interface ChatSSEChunk {
   id: string

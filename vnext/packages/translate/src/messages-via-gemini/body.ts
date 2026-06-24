@@ -8,7 +8,7 @@
  *
  * Direction: response = hub → client.
  */
-import type { MessagesResponse } from '@vnext/protocols/messages'
+import type { MessagesResponse } from '@vnext-llm/protocols/messages'
 import { translateChatBodyToMessages, type ChatCompletionResultLike } from '../messages-via-chat-completions/body.ts'
 import type { GeminiStreamResponse, GeminiPart } from './events.ts'
 

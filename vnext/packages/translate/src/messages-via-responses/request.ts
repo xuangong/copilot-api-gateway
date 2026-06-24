@@ -10,8 +10,8 @@
  * synthesized. Server-side `web_search` is mapped to the Responses hosted
  * tool; custom tools become Responses functions with `strict: false`.
  */
-import type { MessagesPayload } from '@vnext/protocols/messages'
-import type { ResponsesPayload } from '@vnext/protocols/responses'
+import type { MessagesPayload } from '@vnext-llm/protocols/messages'
+import type { ResponsesPayload } from '@vnext-llm/protocols/responses'
 
 interface AnthropicTextBlock { type: 'text'; text: string }
 interface AnthropicImageBlock {

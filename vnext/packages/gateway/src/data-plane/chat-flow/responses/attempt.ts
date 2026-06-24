@@ -31,7 +31,7 @@
  * Reference: messages/attempt.ts.
  */
 import { runInterceptors } from '@vnext-gateway/service'
-import type { Invocation, RequestContext } from '@vnext/protocols/common'
+import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
 import { responsesInterceptors, type ResponsesInterceptor } from './interceptors'
 import {
   eventFrame,
@@ -42,13 +42,13 @@ import {
   type ExecuteResult,
   type ModelEndpoints,
   type ProtocolFrame,
-} from '@vnext/protocols/common'
+} from '@vnext-llm/protocols/common'
 import {
   parseResponsesStream,
   responsesResultToEvents,
   type ResponsesStreamEvent,
   type ResponsesResult,
-} from '@vnext/protocols/responses'
+} from '@vnext-llm/protocols/responses'
 import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext/provider'
 import {
   telemetryModelIdentity,

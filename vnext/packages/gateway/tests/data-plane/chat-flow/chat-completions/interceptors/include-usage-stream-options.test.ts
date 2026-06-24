@@ -10,8 +10,8 @@ import {
   type ProtocolFrame,
   type RequestContext,
   type TelemetryModelIdentity,
-} from '@vnext/protocols/common'
-import type { ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
+} from '@vnext-llm/protocols/common'
+import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
 
 const stubIdentity: TelemetryModelIdentity = {
   model: '<unknown>',

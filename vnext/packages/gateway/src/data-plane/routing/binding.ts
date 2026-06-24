@@ -5,7 +5,7 @@
  * A binding answers: "for this requested model, which provider should I
  * dispatch to, on which endpoint, with which flags effective?"
  */
-import type { EndpointKey } from '@vnext/protocols/common'
+import type { EndpointKey } from '@vnext-llm/protocols/common'
 import type { BindingModel, ProviderBinding } from '@vnext/provider'
 export type { BindingModel, ProviderBinding }
 

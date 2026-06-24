@@ -10,7 +10,7 @@
  *   - effectiveFlags drops the AppState path (binding.enabledFlags only).
  *   - Composite-model fallback (parseCompositeModelId) is reused verbatim.
  */
-import type { EndpointKey } from '@vnext/protocols/common'
+import type { EndpointKey } from '@vnext-llm/protocols/common'
 import { bindingServesEndpoint, type ProviderBinding } from './binding.ts'
 import { listProviderBindings, type CreateProviderOptions } from '../providers/registry.ts'
 import { parseCompositeModelId } from '@vnext/provider-copilot'

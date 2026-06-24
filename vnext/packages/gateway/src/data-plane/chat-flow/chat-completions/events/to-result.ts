@@ -1,5 +1,5 @@
-import type { ChatCompletionsStreamEvent } from '@vnext/protocols/chat'
-import type { ProtocolFrame } from '@vnext/protocols/common'
+import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
+import type { ProtocolFrame } from '@vnext-llm/protocols/common'
 import { reassembleChatCompletions, type ChatCompletionsResult } from './reassemble'
 
 export const CHAT_COMPLETIONS_MISSING_TERMINAL_MESSAGE =

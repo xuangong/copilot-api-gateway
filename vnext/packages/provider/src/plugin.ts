@@ -10,7 +10,7 @@
  * Copilot-flavored deliberately because Copilot is the only provider that
  * needs request-time secrets resolved out of the upstream row.
  */
-import type { AccountType, UpstreamKind, UpstreamRecord } from '@vnext/protocols/common'
+import type { AccountType, UpstreamKind, UpstreamRecord } from '@vnext-llm/protocols/common'
 import type { ModelProvider } from './types'
 
 export interface ProviderPluginContext {

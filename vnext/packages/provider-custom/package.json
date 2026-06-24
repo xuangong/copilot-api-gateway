@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vnext/protocols": "workspace:*",
+    "@vnext-llm/protocols": "workspace:*",
     "@vnext/provider": "workspace:*",
     "@vnext-gateway/http": "workspace:*"
   }

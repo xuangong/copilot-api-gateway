@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@vnext-gateway/platform": "workspace:*",
-    "@vnext/protocols": "workspace:*",
+    "@vnext-llm/protocols": "workspace:*",
     "@vnext/provider": "workspace:*",
     "@vnext/provider-azure": "workspace:*",
     "@vnext/provider-copilot": "workspace:*",

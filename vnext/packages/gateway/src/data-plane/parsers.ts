@@ -15,10 +15,10 @@ import {
   MessagesCountTokensPayloadSchema,
   type MessagesPayload,
   type MessagesCountTokensPayload,
-} from '@vnext/protocols/messages'
-import { ChatPayloadSchema, type ChatPayload } from '@vnext/protocols/chat'
-import { ResponsesPayloadSchema, type ResponsesPayload } from '@vnext/protocols/responses'
-import { GeminiPayloadSchema, type GeminiPayload } from '@vnext/protocols/gemini'
+} from '@vnext-llm/protocols/messages'
+import { ChatPayloadSchema, type ChatPayload } from '@vnext-llm/protocols/chat'
+import { ResponsesPayloadSchema, type ResponsesPayload } from '@vnext-llm/protocols/responses'
+import { GeminiPayloadSchema, type GeminiPayload } from '@vnext-llm/protocols/gemini'
 
 type ShapedError = Error & { status?: number; body?: unknown }
 

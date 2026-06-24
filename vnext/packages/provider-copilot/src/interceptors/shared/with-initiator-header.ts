@@ -4,7 +4,7 @@ import {
   classifyResponsesInitiator,
 } from "../../transforms"
 import type { AnthropicMessagesPayload, ResponsesPayload } from "../../transforms"
-import type { CopilotInterceptor } from "@vnext/protocols/common"
+import type { CopilotInterceptor } from "@vnext-llm/protocols/common"
 
 export const withInitiatorHeader: CopilotInterceptor = async (inv, _ctx, run) => {
   if (inv.enabledFlags.has("transform-set-initiator-header")) {

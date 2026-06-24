@@ -5,7 +5,7 @@
  * envelope (`response.completed`/`incomplete`/`failed`) carries the full
  * final body, so we just pluck the most recent `event.response` we see.
  *
- * Output matches `ResponsesResult` from `@vnext/protocols/responses`. Used
+ * Output matches `ResponsesResult` from `@vnext-llm/protocols/responses`. Used
  * by `respond.ts` in the non-streaming branch so the synthesised frame
  * sequence we generate from the upstream JSON body can drain through the
  * same `consumeWithState` + `withUpstreamTelemetry` plumbing as the SSE
@@ -16,8 +16,8 @@ import {
   responsesResultFromStreamEvent,
   type ResponsesResult,
   type ResponsesStreamEvent,
-} from '@vnext/protocols/responses'
-import type { ProtocolFrame } from '@vnext/protocols/common'
+} from '@vnext-llm/protocols/responses'
+import type { ProtocolFrame } from '@vnext-llm/protocols/common'
 
 export const collectResponsesProtocolEventsToResult = async (
   frames: AsyncIterable<ProtocolFrame<ResponsesStreamEvent>>,

@@ -9,7 +9,7 @@ import {
   _clearModelsMemoForTest,
 } from '../src/data-plane/providers/registry.ts'
 import type { Model, ModelsResponse } from '@vnext/provider-copilot'
-import type { ModelEndpoints } from '@vnext/protocols/common'
+import type { ModelEndpoints } from '@vnext-llm/protocols/common'
 import { MemoryCache } from '@vnext-gateway/cache'
 import { initCache } from '../src/shared/cache/index.ts'
 

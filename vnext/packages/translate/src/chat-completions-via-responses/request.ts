@@ -18,8 +18,8 @@
  *  - `max_tokens` (or `fallbackMaxOutputTokens` option) maps to
  *    `max_output_tokens`.
  */
-import type { ChatPayload } from '@vnext/protocols/chat'
-import type { ResponsesPayload } from '@vnext/protocols/responses'
+import type { ChatPayload } from '@vnext-llm/protocols/chat'
+import type { ResponsesPayload } from '@vnext-llm/protocols/responses'
 
 export interface TranslateChatToResponsesOptions {
   fallbackMaxOutputTokens?: number

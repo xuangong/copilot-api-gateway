@@ -34,8 +34,8 @@ import {
   type ProtocolFrame,
   type SseFrame,
   type UpstreamErrorResult,
-} from '@vnext/protocols/common'
-import type { ResponsesStreamEvent } from '@vnext/protocols/responses'
+} from '@vnext-llm/protocols/common'
+import type { ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
 import { repackageUpstreamError } from '../../errors/repackage'
 import {
   SourceStreamState,

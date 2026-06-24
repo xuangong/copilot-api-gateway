@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test'
-import type { UpstreamRecord } from '@vnext/protocols/common'
+import type { UpstreamRecord } from '@vnext-llm/protocols/common'
 import { CopilotProvider } from '../src/provider'
 import { copilotProviderPlugin } from '../src/plugin'
 

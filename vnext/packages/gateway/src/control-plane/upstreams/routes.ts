@@ -28,7 +28,7 @@
  */
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
-import type { UpstreamKind, EndpointKey } from '@vnext/protocols/common'
+import type { UpstreamKind, EndpointKey } from '@vnext-llm/protocols/common'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { UpstreamRecord } from '../../shared/repo/types.ts'
 import {

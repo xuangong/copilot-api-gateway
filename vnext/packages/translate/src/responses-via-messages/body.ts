@@ -6,7 +6,7 @@
  * `./events.ts`. Mirrors the pre-pivot reference at
  * `src/translators/responses-via-messages/response.ts`.
  */
-import type { MessagesResponse } from '@vnext/protocols/messages'
+import type { MessagesResponse } from '@vnext-llm/protocols/messages'
 
 interface AnthropicContentBlock {
   type: string

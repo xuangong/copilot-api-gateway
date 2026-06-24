@@ -10,8 +10,8 @@ import {
   recordUsage,
 } from "../../../../chat-flow/shared/respond-telemetry.ts"
 import type { TelemetryRequestContext } from "../../../../chat-flow/shared/telemetry-ctx.ts"
-import { decodeUpstreamErrorBody, type ProtocolFrame } from "@vnext/protocols/common"
-import type { MessagesStreamEvent } from "@vnext/protocols/messages"
+import { decodeUpstreamErrorBody, type ProtocolFrame } from "@vnext-llm/protocols/common"
+import type { MessagesStreamEvent } from "@vnext-llm/protocols/messages"
 
 import { EngineManager, type EngineManagerOptions } from "./engine-manager"
 import { formatSearchResults } from "./formatter"
@@ -191,7 +191,7 @@ async function* consumeFramesWithState(
 }
 
 async function persistFromEventResult(
-  result: import('@vnext/protocols/common').EventResult<ProtocolFrame<MessagesStreamEvent>>,
+  result: import('@vnext-llm/protocols/common').EventResult<ProtocolFrame<MessagesStreamEvent>>,
   state: SourceStreamState,
   telemetryCtx: TelemetryRequestContext,
 ): Promise<void> {

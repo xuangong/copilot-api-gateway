@@ -1,10 +1,9 @@
 {
-  "name": "@vnext/protocols",
+  "name": "@vnext-llm/protocols",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
     "./common": "./src/common/index.ts",
     "./messages": "./src/messages/index.ts",
     "./chat": "./src/chat/index.ts",

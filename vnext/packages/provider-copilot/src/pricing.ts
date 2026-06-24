@@ -12,7 +12,7 @@
  */
 
 import { copilotPublicModelId } from "./variants"
-import type { ModelPricing } from "@vnext/protocols/common"
+import type { ModelPricing } from "@vnext-llm/protocols/common"
 
 type PricingRule = readonly [key: string | RegExp, pricing: ModelPricing]
 

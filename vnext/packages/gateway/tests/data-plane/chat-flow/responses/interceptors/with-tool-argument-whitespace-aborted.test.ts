@@ -1,14 +1,14 @@
 import { test, expect } from 'bun:test'
 import { withToolArgumentWhitespaceAborted } from '../../../../../src/data-plane/chat-flow/responses/interceptors/with-tool-argument-whitespace-aborted'
-import type { Invocation, RequestContext } from '@vnext/protocols/common'
+import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
 import {
   doneFrame,
   eventResult,
   type ExecuteResult,
   type ProtocolFrame,
   type TelemetryModelIdentity,
-} from '@vnext/protocols/common'
-import type { ResponsesStreamEvent } from '@vnext/protocols/responses'
+} from '@vnext-llm/protocols/common'
+import type { ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
 
 const stubIdentity: TelemetryModelIdentity = {
   model: '<unknown>',

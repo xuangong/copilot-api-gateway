@@ -9,7 +9,7 @@ import {
   type PerformanceTelemetryContext,
   type ProtocolFrame,
   type TelemetryModelIdentity,
-} from '@vnext/protocols/common'
+} from '@vnext-llm/protocols/common'
 import type { ProviderResponse } from '@vnext/provider'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 import { withUpstreamTelemetry } from './upstream-telemetry.ts'

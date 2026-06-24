@@ -1,4 +1,4 @@
-import type { AccountType } from "@vnext/protocols/common"
+import type { AccountType } from "@vnext-llm/protocols/common"
 export type { AccountType }
 
 // Admin emails - these users get admin access when logging in via Google OAuth

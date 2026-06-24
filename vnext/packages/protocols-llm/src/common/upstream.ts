@@ -1,7 +1,7 @@
 /**
  * Storage shape for a configured upstream provider row.
  *
- * Lives in @vnext/protocols/common so plugin contracts (@vnext/provider's
+ * Lives in @vnext-llm/protocols/common so plugin contracts (@vnext/provider's
  * ProviderPlugin) can reference it without depending on the gateway package.
  * Gateway re-exports from src/shared/repo/types.ts to preserve old import
  * paths.

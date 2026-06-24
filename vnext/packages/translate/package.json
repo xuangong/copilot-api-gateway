@@ -21,6 +21,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vnext/protocols": "workspace:*"
+    "@vnext-llm/protocols": "workspace:*"
   }
 }

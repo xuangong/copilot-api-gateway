@@ -17,8 +17,8 @@
  *    hosted tools have no Chat analogue and are dropped).
  *  - `max_output_tokens` maps to `max_tokens`.
  */
-import type { ChatPayload } from '@vnext/protocols/chat'
-import type { ResponsesPayload } from '@vnext/protocols/responses'
+import type { ChatPayload } from '@vnext-llm/protocols/chat'
+import type { ResponsesPayload } from '@vnext-llm/protocols/responses'
 
 export interface ResponsesToChatRequestResult { target: ChatPayload }
 

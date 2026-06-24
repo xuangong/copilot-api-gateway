@@ -36,7 +36,7 @@ import {
   type EventResult,
   type ExecuteResult,
   type UpstreamErrorResult,
-} from '@vnext/protocols/common'
+} from '@vnext-llm/protocols/common'
 import { repackageUpstreamError } from '../../errors/repackage'
 import { encodeClientSSE } from '../../dispatch/sse-writers.ts'
 import { SourceStreamState, recordPerformance } from '../shared/respond-telemetry.ts'

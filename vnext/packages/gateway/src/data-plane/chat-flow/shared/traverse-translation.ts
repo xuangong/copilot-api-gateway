@@ -25,13 +25,13 @@ import {
   type EventResult,
   type ExecuteResult,
   type ProtocolFrame,
-} from '@vnext/protocols/common'
+} from '@vnext-llm/protocols/common'
 import type { PairTranslator } from '../../dispatch/translator-registry.ts'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 
 /**
  * File-local alias mirroring `result.ts`'s `TranslatorProtocol`. The
- * `@vnext/protocols/common` package does not currently export this union; we
+ * `@vnext-llm/protocols/common` package does not currently export this union; we
  * replicate it here so the helper's public signature stays narrow without
  * coupling to a re-export that doesn't yet exist.
  */

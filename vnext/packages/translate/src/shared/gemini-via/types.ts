@@ -1,7 +1,7 @@
 /**
  * Structural Gemini protocol types used by the gemini-via-* translator pairs.
  *
- * Lives alongside the helpers in `shared/gemini-via/` (not in @vnext/protocols)
+ * Lives alongside the helpers in `shared/gemini-via/` (not in @vnext-llm/protocols)
  * because the protocols package exports a loose zod-inferred GeminiPayload that
  * leaves nested shapes as `unknown`. Translator code needs concrete shapes for
  * tool/part/usage handling, so we keep them here. Mirrors copilot-gateway's

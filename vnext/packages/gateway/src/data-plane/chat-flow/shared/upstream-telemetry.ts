@@ -5,7 +5,7 @@
  *
  * No callbacks, no I/O. Replaces the Spec-2 recorder interface.
  */
-import type { ProtocolFrame } from '@vnext/protocols/common'
+import type { ProtocolFrame } from '@vnext-llm/protocols/common'
 
 export interface UpstreamTelemetryCtx {
   readonly abortSignal?: AbortSignal

@@ -1,4 +1,4 @@
-import type { CopilotInterceptor } from "@vnext/protocols/common"
+import type { CopilotInterceptor } from "@vnext-llm/protocols/common"
 
 const CONTEXT_MANAGEMENT_BETA = "context-management-2025-06-27"
 

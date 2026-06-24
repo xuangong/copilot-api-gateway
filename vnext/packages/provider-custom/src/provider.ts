@@ -4,7 +4,7 @@
  * helpers in place of the inline transport utilities.
  */
 
-import { BILLING_DIMENSIONS, type EndpointKey, type ModelPricing } from '@vnext/protocols/common'
+import { BILLING_DIMENSIONS, type EndpointKey, type ModelPricing } from '@vnext-llm/protocols/common'
 import {
   HTTPError,
   probeViaModels,

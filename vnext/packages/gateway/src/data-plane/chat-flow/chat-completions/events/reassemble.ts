@@ -1,5 +1,5 @@
-import { chatCompletionsErrorPayloadMessage } from '@vnext/protocols/chat'
-import type { ChatCompletionsStreamEvent, ChatCompletionsReasoningItem } from '@vnext/protocols/chat'
+import { chatCompletionsErrorPayloadMessage } from '@vnext-llm/protocols/chat'
+import type { ChatCompletionsStreamEvent, ChatCompletionsReasoningItem } from '@vnext-llm/protocols/chat'
 
 export interface ChatCompletionsResult {
   id: string
