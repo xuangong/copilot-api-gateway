@@ -175,16 +175,19 @@ test('POST /api/upstream-probe azure valid config → ok via probe', async () =>
   }
 })
 
-test('POST /api/upstream-probe custom missing apiKey → 400', async () => {
+test('POST /api/upstream-probe custom missing apiKey → 200 { ok:false }', async () => {
   const res = await buildApp({ isAdmin: true }).request('/api/upstream-probe', {
     method: 'POST',
     body: JSON.stringify({ kind: 'custom', config: { name: 'x', baseUrl: 'https://e.com' } }),
     headers: { 'content-type': 'application/json' },
   })
-  expect(res.status).toBe(400)
+  expect(res.status).toBe(200)
+  const body = await res.json() as { ok?: boolean; error?: string }
+  expect(body.ok).toBe(false)
+  expect(typeof body.error).toBe('string')
 })
 
-test('POST /api/upstream-probe azure missing deployment → 400', async () => {
+test('POST /api/upstream-probe azure missing deployment → 200 { ok:false }', async () => {
   const res = await buildApp({ isAdmin: true }).request('/api/upstream-probe', {
     method: 'POST',
     body: JSON.stringify({
@@ -193,7 +196,10 @@ test('POST /api/upstream-probe azure missing deployment → 400', async () => {
     }),
     headers: { 'content-type': 'application/json' },
   })
-  expect(res.status).toBe(400)
+  expect(res.status).toBe(200)
+  const body = await res.json() as { ok?: boolean; error?: string }
+  expect(body.ok).toBe(false)
+  expect(typeof body.error).toBe('string')
 })
 
 test('GET /api/upstreams non-admin → 403', async () => {

@@ -93,9 +93,9 @@ test('GET /api/copilot-quota unauthenticated → 401', async () => {
   expect(res.status).toBe(401)
 })
 
-test('GET /api/copilot-quota with no connected account → 404', async () => {
+test('GET /api/copilot-quota with no connected account → 502', async () => {
   const res = await buildApp({ userId: 'u1' }).request('/api/copilot-quota')
-  expect(res.status).toBe(404)
+  expect(res.status).toBe(502)
 })
 
 test('GET /api/copilot-quota returns quota for active account', async () => {
