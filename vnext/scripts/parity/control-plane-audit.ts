@@ -39,6 +39,7 @@ export const CONTROL_PLANE_RULES: DiffRules = {
     // owner / user / viewer identifiers (random uuids per side)
     'ownerId', 'userId', 'viewerId', 'granterId', 'githubUserId', 'apiKeyId', 'accountId',
     'owner_id', 'user_id', 'viewer_id', 'granter_id', 'github_user_id', 'api_key_id', 'account_id',
+    'keyId', 'key_id', 'assignedAt', 'assigned_at',
     // metric counters — values wobble request-to-request
     'totalRequests', 'totalTokens', 'totalCost', 'totalLatencyMs',
     'requestCount', 'tokenCount', 'latencyMs', 'latencyP50', 'latencyP95', 'latencyP99',
