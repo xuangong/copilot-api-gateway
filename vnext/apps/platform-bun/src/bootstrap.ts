@@ -13,7 +13,7 @@ import { BunSqliteDatabase } from "./bun-sqlite-database.ts"
 import { BunSqliteRepo } from "./bun-sqlite-repo.ts"
 import { createInMemoryImageProcessor } from "./memory-image-processor.ts"
 import { createBunCache } from "./cache-factory.ts"
-import { createBunResponsesStore } from "./responses-store-factory.ts"
+import { InMemoryResponsesSnapshotStore } from "@vibe-llm/responses-store"
 
 export interface BunPlatformOptions {
   dbPath: string
@@ -34,7 +34,11 @@ export function bootstrapBunPlatform(opts: BunPlatformOptions): { db: BunSqliteD
   initImageProcessor(createInMemoryImageProcessor())
   initRepo(new BunSqliteRepo(sqliteDb))
   initCache(createBunCache({ db, backend: opts.cacheBackend }))
-  initResponsesStore(createBunResponsesStore(db))
+  // In-memory snapshot store: SQLite-backed store requires responses_snapshots
+  // migration that hasn't shipped in the Bun runtime. In-memory keeps
+  // previous_response_id chains working for the current container lifetime;
+  // persistence revisited once the schema migration lands.
+  initResponsesStore(new InMemoryResponsesSnapshotStore())
   _booted = true
   return { db }
 }

@@ -27,7 +27,11 @@ export async function expandPreviousResponseId(
   if (id == null || id === '') return
   const snap = await store.load(id, apiKeyId)
   if (!snap) throw new PreviousResponseNotFoundError(id)
-  const existing = Array.isArray(payload.input) ? (payload.input as unknown[]) : []
+  const existing = Array.isArray(payload.input)
+    ? (payload.input as unknown[])
+    : typeof payload.input === 'string' && payload.input.length > 0
+      ? [{ type: 'message', role: 'user', content: payload.input } as unknown]
+      : []
   payload.input = [...snap.items, ...existing]
   delete payload.previous_response_id
 }

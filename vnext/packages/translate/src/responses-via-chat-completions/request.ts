@@ -125,8 +125,15 @@ export function translateResponsesToChat(payload: ResponsesPayload): ResponsesTo
   if (typeof payload.instructions === 'string' && payload.instructions.length > 0) {
     messages.push({ role: 'system', content: payload.instructions })
   }
-  const inputArr = (payload.input ?? []) as unknown as ResponsesInputItem[]
-  messages.push(...translateInput(inputArr))
+  // Responses spec allows `input` to be a bare string (sugar for a single
+  // user message). Translate that explicitly — falling through to the array
+  // path would iterate the string char by char and emit zero messages.
+  if (typeof payload.input === 'string') {
+    if (payload.input.length > 0) messages.push({ role: 'user', content: payload.input })
+  } else {
+    const inputArr = (payload.input ?? []) as unknown as ResponsesInputItem[]
+    messages.push(...translateInput(inputArr))
+  }
 
   const target: Record<string, unknown> = {
     model: payload.model,
