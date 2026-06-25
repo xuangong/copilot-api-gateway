@@ -28,7 +28,6 @@ export function copilotModelEndpoints(model: Model): ModelEndpoints {
   // Anthropic native path — Copilot under-reports this; force-add per workaround.
   if (id.startsWith("claude-") || family.startsWith("claude")) {
     endpoints.messages = {}
-    endpoints.messages_count_tokens = {}
   }
 
   // Reasoning families that prefer Responses API: gpt-5*, o1*, o3*, o4*.
@@ -36,8 +35,12 @@ export function copilotModelEndpoints(model: Model): ModelEndpoints {
     endpoints.responses = {}
   }
 
-  // chat_completions is universally supported by Copilot's chat type.
+  // chat_completions + messages_count_tokens are universally supported across
+  // Copilot's chat catalog (matches root project's DEFAULT_ENDPOINTS for the
+  // copilot upstream kind). count_tokens is needed by gemini → messages
+  // translator for non-claude models like `gemini-3-flash-preview`.
   endpoints.chat_completions = {}
+  endpoints.messages_count_tokens = {}
 
   return endpoints
 }

@@ -67,7 +67,7 @@ test("Claude model has messages, messages_count_tokens, and chat_completions", (
   expect(result.responses).toBeUndefined()
 })
 
-test("GPT-5 mini has responses and chat_completions, no messages", () => {
+test("GPT-5 mini has responses, chat_completions, messages_count_tokens", () => {
   const model = createModel({
     id: "gpt-5-mini",
     capabilities: {
@@ -84,11 +84,11 @@ test("GPT-5 mini has responses and chat_completions, no messages", () => {
 
   expect(result.responses).toBeDefined()
   expect(result.chat_completions).toBeDefined()
+  expect(result.messages_count_tokens).toBeDefined()
   expect(result.messages).toBeUndefined()
-  expect(result.messages_count_tokens).toBeUndefined()
 })
 
-test("o1-preview has responses and chat_completions", () => {
+test("o1-preview has responses, chat_completions, messages_count_tokens", () => {
   const model = createModel({
     id: "o1-preview",
     capabilities: {
@@ -105,11 +105,11 @@ test("o1-preview has responses and chat_completions", () => {
 
   expect(result.responses).toBeDefined()
   expect(result.chat_completions).toBeDefined()
+  expect(result.messages_count_tokens).toBeDefined()
   expect(result.messages).toBeUndefined()
-  expect(result.messages_count_tokens).toBeUndefined()
 })
 
-test("o3-mini has responses and chat_completions", () => {
+test("o3-mini has responses, chat_completions, messages_count_tokens", () => {
   const model = createModel({
     id: "o3-mini",
     capabilities: {
@@ -126,11 +126,11 @@ test("o3-mini has responses and chat_completions", () => {
 
   expect(result.responses).toBeDefined()
   expect(result.chat_completions).toBeDefined()
+  expect(result.messages_count_tokens).toBeDefined()
   expect(result.messages).toBeUndefined()
-  expect(result.messages_count_tokens).toBeUndefined()
 })
 
-test("o2-mini has only chat_completions (o2 not matched by regex)", () => {
+test("o2-mini has chat_completions + messages_count_tokens (o2 not matched by regex)", () => {
   const model = createModel({
     id: "o2-mini",
     capabilities: {
@@ -146,12 +146,12 @@ test("o2-mini has only chat_completions (o2 not matched by regex)", () => {
   const result = copilotModelEndpoints(model)
 
   expect(result.chat_completions).toBeDefined()
+  expect(result.messages_count_tokens).toBeDefined()
   expect(result.responses).toBeUndefined()
   expect(result.messages).toBeUndefined()
-  expect(result.messages_count_tokens).toBeUndefined()
 })
 
-test("gpt-4o has only chat_completions", () => {
+test("gpt-4o has chat_completions + messages_count_tokens", () => {
   const model = createModel({
     id: "gpt-4o",
     capabilities: {
@@ -167,12 +167,12 @@ test("gpt-4o has only chat_completions", () => {
   const result = copilotModelEndpoints(model)
 
   expect(result.chat_completions).toBeDefined()
+  expect(result.messages_count_tokens).toBeDefined()
   expect(result.responses).toBeUndefined()
   expect(result.messages).toBeUndefined()
-  expect(result.messages_count_tokens).toBeUndefined()
 })
 
-test("gemini-1.5-pro has only chat_completions", () => {
+test("gemini-1.5-pro has chat_completions + messages_count_tokens", () => {
   const model = createModel({
     id: "gemini-1.5-pro",
     capabilities: {
@@ -188,7 +188,7 @@ test("gemini-1.5-pro has only chat_completions", () => {
   const result = copilotModelEndpoints(model)
 
   expect(result.chat_completions).toBeDefined()
+  expect(result.messages_count_tokens).toBeDefined()
   expect(result.responses).toBeUndefined()
   expect(result.messages).toBeUndefined()
-  expect(result.messages_count_tokens).toBeUndefined()
 })

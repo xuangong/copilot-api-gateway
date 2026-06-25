@@ -1,16 +1,16 @@
 # Spec 12a — Data-Plane Parity Report
 
-**Generated:** 2026-06-25T09:45:01.096Z
+**Generated:** 2026-06-25T09:58:43.602Z
 **Fixtures:** 27
 
 ## Summary
 
 | label | count |
 |-------|-------|
-| parity | 9 |
+| parity | 10 |
 | cosmetic-diff | 0 |
-| behavior-gap | 14 |
-| route-missing | 4 |
+| behavior-gap | 17 |
+| route-missing | 0 |
 
 ## Per-fixture
 
@@ -27,14 +27,14 @@
 | `/v1/embeddings` | embeddings-array-three | **parity** | 200 | 200 | — |
 | `/v1/embeddings` | embeddings-bad-model-4xx | **parity** | 404 | 404 | — |
 | `/v1/embeddings` | embeddings-single-string | **behavior-gap** | 500 | 200 | status:behavior-gap / body:behavior-gap / body:behavior-gap |
-| `/v1beta/models/gemini-2.5-flash:countTokens` | gemini-count-tokens | **route-missing** | 200 | 404 | status:route-missing |
-| `/v1beta/models/gemini-2.5-flash:generateContent` | gemini-generate-content | **route-missing** | 200 | 404 | status:route-missing |
-| `/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse` | gemini-stream-generate-content | **route-missing** | 200 | 404 | status:route-missing |
-| `/v1beta/models/gemini-2.5-flash:generateContent` | gemini-tool-call | **route-missing** | 200 | 404 | status:route-missing |
+| `/v1beta/models/gemini-2.5-flash:countTokens` | gemini-count-tokens | **behavior-gap** | 200 | 200 | body:behavior-gap |
+| `/v1beta/models/gemini-2.5-flash:generateContent` | gemini-generate-content | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap |
+| `/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse` | gemini-stream-generate-content | **parity** | 200 | 200 | — |
+| `/v1beta/models/gemini-2.5-flash:generateContent` | gemini-tool-call | **behavior-gap** | 200 | 200 | body:behavior-gap |
 | `/v1/images/generations` | images-bad-size-4xx | **parity** | 404 | 404 | — |
 | `/v1/images/edits` | images-edits-png | **parity** | 404 | 404 | — |
 | `/v1/images/generations` | images-generations-basic | **parity** | 404 | 404 | — |
-| `/v1/messages` | messages-basic-non-stream | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap |
+| `/v1/messages` | messages-basic-non-stream | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap / body:behavior-gap |
 | `/v1/messages/count_tokens` | messages-count-tokens | **parity** | 200 | 200 | — |
 | `/v1/messages` | messages-stream | **parity** | 200 | 200 | — |
 | `/api/models` | models-api | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap / body:behavior-gap |
@@ -127,21 +127,22 @@ No diffs.
 - **body** [behavior-gap] $.data: type root=undefined vnext=object
 - **body** [behavior-gap] usage keys: onlyRoot=[] onlyVnext=[prompt_tokens,total_tokens]
 
-### gemini-count-tokens (`/v1beta/models/gemini-2.5-flash:countTokens`) — route-missing
+### gemini-count-tokens (`/v1beta/models/gemini-2.5-flash:countTokens`) — behavior-gap
 
-- **status** [route-missing] vnext returned 404 for /v1beta/models/gemini-2.5-flash:countTokens; root returned 200
+- **body** [behavior-gap] $.totalTokens: root=24 vnext=51
 
-### gemini-generate-content (`/v1beta/models/gemini-2.5-flash:generateContent`) — route-missing
+### gemini-generate-content (`/v1beta/models/gemini-2.5-flash:generateContent`) — behavior-gap
 
-- **status** [route-missing] vnext returned 404 for /v1beta/models/gemini-2.5-flash:generateContent; root returned 200
+- **body** [behavior-gap] $.usageMetadata.candidatesTokenCount: root=1 vnext=0
+- **body** [behavior-gap] $.usageMetadata.totalTokenCount: root=17 vnext=18
 
-### gemini-stream-generate-content (`/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse`) — route-missing
+### gemini-stream-generate-content (`/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse`) — parity
 
-- **status** [route-missing] vnext returned 404 for /v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse; root returned 200
+No diffs.
 
-### gemini-tool-call (`/v1beta/models/gemini-2.5-flash:generateContent`) — route-missing
+### gemini-tool-call (`/v1beta/models/gemini-2.5-flash:generateContent`) — behavior-gap
 
-- **status** [route-missing] vnext returned 404 for /v1beta/models/gemini-2.5-flash:generateContent; root returned 200
+- **body** [behavior-gap] $.usageMetadata.totalTokenCount: root=75 vnext=86
 
 ### images-bad-size-4xx (`/v1/images/generations`) — parity
 
@@ -158,6 +159,7 @@ No diffs.
 ### messages-basic-non-stream (`/v1/messages`) — behavior-gap
 
 - **body** [behavior-gap] $.copilot_usage: type root=object vnext=undefined
+- **body** [behavior-gap] $.stop_details: type root=object vnext=undefined
 - **body** [behavior-gap] usage keys: onlyRoot=[cache_creation] onlyVnext=[]
 
 ### messages-count-tokens (`/v1/messages/count_tokens`) — parity
@@ -256,7 +258,7 @@ No diffs.
 - **body** [behavior-gap] $.data[4].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[4].policy: type root=object vnext=undefined
 - **body** [behavior-gap] $.data[4].preview: root=true vnext=false
-- **body** [behavior-gap] $.data[4].supported_endpoints[0]: root="/chat/completions" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[4].supported_endpoints: array len root=1 vnext=2
 - **body** [behavior-gap] $.data[4]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[5].capabilities.family: root="gemini-3.5-flash" vnext="copilot"
 - **body** [behavior-gap] $.data[5].capabilities.limits.vision: type root=object vnext=undefined
@@ -271,7 +273,7 @@ No diffs.
 - **body** [behavior-gap] $.data[5].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[5].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[5].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[5].supported_endpoints[0]: root="/chat/completions" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[5].supported_endpoints: array len root=1 vnext=2
 - **body** [behavior-gap] $.data[5]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[6].capabilities.family: root="gpt-5.3-codex" vnext="copilot"
 - **body** [behavior-gap] $.data[6].capabilities.limits.vision: type root=object vnext=undefined
@@ -284,7 +286,7 @@ No diffs.
 - **body** [behavior-gap] $.data[6].capabilities.tokenizer: root="o200k_base" vnext="unknown"
 - **body** [behavior-gap] $.data[6].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[6].model_picker_category: type root=string vnext=undefined
-- **body** [behavior-gap] $.data[6].supported_endpoints[1]: root="ws:/responses" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[6].supported_endpoints: array len root=2 vnext=3
 - **body** [behavior-gap] $.data[6]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[7].capabilities.family: root="gpt-5.4-mini" vnext="copilot"
 - **body** [behavior-gap] $.data[7].capabilities.limits.vision: type root=object vnext=undefined
@@ -298,7 +300,7 @@ No diffs.
 - **body** [behavior-gap] $.data[7].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[7].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[7].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[7].supported_endpoints[1]: root="ws:/responses" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[7].supported_endpoints: array len root=2 vnext=3
 - **body** [behavior-gap] $.data[7]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[8].capabilities.family: root="gpt-5.4" vnext="copilot"
 - **body** [behavior-gap] $.data[8].capabilities.limits.vision: type root=object vnext=undefined
@@ -312,7 +314,8 @@ No diffs.
 - **body** [behavior-gap] $.data[8].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[8].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[8].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[8].supported_endpoints: array len root=3 vnext=2
+- **body** [behavior-gap] $.data[8].supported_endpoints[1]: root="/chat/completions" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[8].supported_endpoints[2]: root="ws:/responses" vnext="/v1/messages/count_tokens"
 - **body** [behavior-gap] $.data[8]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[9].capabilities.family: root="gpt-5.5" vnext="copilot"
 - **body** [behavior-gap] $.data[9].capabilities.limits.vision: type root=object vnext=undefined
@@ -326,7 +329,7 @@ No diffs.
 - **body** [behavior-gap] $.data[9].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[9].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[9].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[9].supported_endpoints[1]: root="ws:/responses" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[9].supported_endpoints: array len root=2 vnext=3
 - **body** [behavior-gap] $.data[9]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[10].capabilities.family: root="oswe-vscode-modelD" vnext="copilot"
 - **body** [behavior-gap] $.data[10].capabilities.supports.parallel_tool_calls: type root=boolean vnext=undefined
@@ -338,7 +341,7 @@ No diffs.
 - **body** [behavior-gap] $.data[10].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[10].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[10].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[10].supported_endpoints[0]: root="/responses" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[10].supported_endpoints: array len root=1 vnext=2
 - **body** [behavior-gap] $.data[10]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[11].capabilities.family: root="trajectory-compaction" vnext="copilot"
 - **body** [behavior-gap] $.data[11].capabilities.supports.parallel_tool_calls: type root=boolean vnext=undefined
@@ -348,7 +351,7 @@ No diffs.
 - **body** [behavior-gap] $.data[11].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[11].model_picker_enabled: root=false vnext=true
 - **body** [behavior-gap] $.data[11].preview: root=true vnext=false
-- **body** [behavior-gap] $.data[11].supported_endpoints[0]: root="/chat/completions" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[11].supported_endpoints: array len root=1 vnext=2
 - **body** [behavior-gap] $.data[11]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[12].capabilities.family: root="gpt-5-mini" vnext="copilot"
 - **body** [behavior-gap] $.data[12].capabilities.limits.vision: type root=object vnext=undefined
@@ -362,7 +365,9 @@ No diffs.
 - **body** [behavior-gap] $.data[12].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[12].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[12].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[12].supported_endpoints: array len root=3 vnext=2
+- **body** [behavior-gap] $.data[12].supported_endpoints[0]: root="/chat/completions" vnext="/responses"
+- **body** [behavior-gap] $.data[12].supported_endpoints[1]: root="/responses" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[12].supported_endpoints[2]: root="ws:/responses" vnext="/v1/messages/count_tokens"
 - **body** [behavior-gap] $.data[12]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[13].capabilities.family: root="gpt-4o-mini" vnext="copilot"
 - **body** [behavior-gap] $.data[13].capabilities.supports.parallel_tool_calls: type root=boolean vnext=undefined
@@ -703,7 +708,7 @@ No diffs.
 - **body** [behavior-gap] $.data[4].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[4].policy: type root=object vnext=undefined
 - **body** [behavior-gap] $.data[4].preview: root=true vnext=false
-- **body** [behavior-gap] $.data[4].supported_endpoints[0]: root="/chat/completions" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[4].supported_endpoints: array len root=1 vnext=2
 - **body** [behavior-gap] $.data[4]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[5].capabilities.family: root="gemini-3.5-flash" vnext="copilot"
 - **body** [behavior-gap] $.data[5].capabilities.limits.vision: type root=object vnext=undefined
@@ -718,7 +723,7 @@ No diffs.
 - **body** [behavior-gap] $.data[5].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[5].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[5].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[5].supported_endpoints[0]: root="/chat/completions" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[5].supported_endpoints: array len root=1 vnext=2
 - **body** [behavior-gap] $.data[5]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[6].capabilities.family: root="gpt-5.3-codex" vnext="copilot"
 - **body** [behavior-gap] $.data[6].capabilities.limits.vision: type root=object vnext=undefined
@@ -731,7 +736,7 @@ No diffs.
 - **body** [behavior-gap] $.data[6].capabilities.tokenizer: root="o200k_base" vnext="unknown"
 - **body** [behavior-gap] $.data[6].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[6].model_picker_category: type root=string vnext=undefined
-- **body** [behavior-gap] $.data[6].supported_endpoints[1]: root="ws:/responses" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[6].supported_endpoints: array len root=2 vnext=3
 - **body** [behavior-gap] $.data[6]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[7].capabilities.family: root="gpt-5.4-mini" vnext="copilot"
 - **body** [behavior-gap] $.data[7].capabilities.limits.vision: type root=object vnext=undefined
@@ -745,7 +750,7 @@ No diffs.
 - **body** [behavior-gap] $.data[7].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[7].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[7].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[7].supported_endpoints[1]: root="ws:/responses" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[7].supported_endpoints: array len root=2 vnext=3
 - **body** [behavior-gap] $.data[7]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[8].capabilities.family: root="gpt-5.4" vnext="copilot"
 - **body** [behavior-gap] $.data[8].capabilities.limits.vision: type root=object vnext=undefined
@@ -759,7 +764,8 @@ No diffs.
 - **body** [behavior-gap] $.data[8].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[8].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[8].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[8].supported_endpoints: array len root=3 vnext=2
+- **body** [behavior-gap] $.data[8].supported_endpoints[1]: root="/chat/completions" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[8].supported_endpoints[2]: root="ws:/responses" vnext="/v1/messages/count_tokens"
 - **body** [behavior-gap] $.data[8]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[9].capabilities.family: root="gpt-5.5" vnext="copilot"
 - **body** [behavior-gap] $.data[9].capabilities.limits.vision: type root=object vnext=undefined
@@ -773,7 +779,7 @@ No diffs.
 - **body** [behavior-gap] $.data[9].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[9].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[9].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[9].supported_endpoints[1]: root="ws:/responses" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[9].supported_endpoints: array len root=2 vnext=3
 - **body** [behavior-gap] $.data[9]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[10].capabilities.family: root="oswe-vscode-modelD" vnext="copilot"
 - **body** [behavior-gap] $.data[10].capabilities.supports.parallel_tool_calls: type root=boolean vnext=undefined
@@ -785,7 +791,7 @@ No diffs.
 - **body** [behavior-gap] $.data[10].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[10].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[10].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[10].supported_endpoints[0]: root="/responses" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[10].supported_endpoints: array len root=1 vnext=2
 - **body** [behavior-gap] $.data[10]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[11].capabilities.family: root="trajectory-compaction" vnext="copilot"
 - **body** [behavior-gap] $.data[11].capabilities.supports.parallel_tool_calls: type root=boolean vnext=undefined
@@ -795,7 +801,7 @@ No diffs.
 - **body** [behavior-gap] $.data[11].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[11].model_picker_enabled: root=false vnext=true
 - **body** [behavior-gap] $.data[11].preview: root=true vnext=false
-- **body** [behavior-gap] $.data[11].supported_endpoints[0]: root="/chat/completions" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[11].supported_endpoints: array len root=1 vnext=2
 - **body** [behavior-gap] $.data[11]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[12].capabilities.family: root="gpt-5-mini" vnext="copilot"
 - **body** [behavior-gap] $.data[12].capabilities.limits.vision: type root=object vnext=undefined
@@ -809,7 +815,9 @@ No diffs.
 - **body** [behavior-gap] $.data[12].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[12].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[12].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[12].supported_endpoints: array len root=3 vnext=2
+- **body** [behavior-gap] $.data[12].supported_endpoints[0]: root="/chat/completions" vnext="/responses"
+- **body** [behavior-gap] $.data[12].supported_endpoints[1]: root="/responses" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[12].supported_endpoints[2]: root="ws:/responses" vnext="/v1/messages/count_tokens"
 - **body** [behavior-gap] $.data[12]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[13].capabilities.family: root="gpt-4o-mini" vnext="copilot"
 - **body** [behavior-gap] $.data[13].capabilities.supports.parallel_tool_calls: type root=boolean vnext=undefined
@@ -1150,7 +1158,7 @@ No diffs.
 - **body** [behavior-gap] $.data[4].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[4].policy: type root=object vnext=undefined
 - **body** [behavior-gap] $.data[4].preview: root=true vnext=false
-- **body** [behavior-gap] $.data[4].supported_endpoints[0]: root="/chat/completions" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[4].supported_endpoints: array len root=1 vnext=2
 - **body** [behavior-gap] $.data[4]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[5].capabilities.family: root="gemini-3.5-flash" vnext="copilot"
 - **body** [behavior-gap] $.data[5].capabilities.limits.vision: type root=object vnext=undefined
@@ -1165,7 +1173,7 @@ No diffs.
 - **body** [behavior-gap] $.data[5].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[5].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[5].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[5].supported_endpoints[0]: root="/chat/completions" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[5].supported_endpoints: array len root=1 vnext=2
 - **body** [behavior-gap] $.data[5]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[6].capabilities.family: root="gpt-5.3-codex" vnext="copilot"
 - **body** [behavior-gap] $.data[6].capabilities.limits.vision: type root=object vnext=undefined
@@ -1178,7 +1186,7 @@ No diffs.
 - **body** [behavior-gap] $.data[6].capabilities.tokenizer: root="o200k_base" vnext="unknown"
 - **body** [behavior-gap] $.data[6].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[6].model_picker_category: type root=string vnext=undefined
-- **body** [behavior-gap] $.data[6].supported_endpoints[1]: root="ws:/responses" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[6].supported_endpoints: array len root=2 vnext=3
 - **body** [behavior-gap] $.data[6]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[7].capabilities.family: root="gpt-5.4-mini" vnext="copilot"
 - **body** [behavior-gap] $.data[7].capabilities.limits.vision: type root=object vnext=undefined
@@ -1192,7 +1200,7 @@ No diffs.
 - **body** [behavior-gap] $.data[7].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[7].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[7].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[7].supported_endpoints[1]: root="ws:/responses" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[7].supported_endpoints: array len root=2 vnext=3
 - **body** [behavior-gap] $.data[7]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[8].capabilities.family: root="gpt-5.4" vnext="copilot"
 - **body** [behavior-gap] $.data[8].capabilities.limits.vision: type root=object vnext=undefined
@@ -1206,7 +1214,8 @@ No diffs.
 - **body** [behavior-gap] $.data[8].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[8].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[8].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[8].supported_endpoints: array len root=3 vnext=2
+- **body** [behavior-gap] $.data[8].supported_endpoints[1]: root="/chat/completions" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[8].supported_endpoints[2]: root="ws:/responses" vnext="/v1/messages/count_tokens"
 - **body** [behavior-gap] $.data[8]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[9].capabilities.family: root="gpt-5.5" vnext="copilot"
 - **body** [behavior-gap] $.data[9].capabilities.limits.vision: type root=object vnext=undefined
@@ -1220,7 +1229,7 @@ No diffs.
 - **body** [behavior-gap] $.data[9].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[9].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[9].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[9].supported_endpoints[1]: root="ws:/responses" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[9].supported_endpoints: array len root=2 vnext=3
 - **body** [behavior-gap] $.data[9]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[10].capabilities.family: root="oswe-vscode-modelD" vnext="copilot"
 - **body** [behavior-gap] $.data[10].capabilities.supports.parallel_tool_calls: type root=boolean vnext=undefined
@@ -1232,7 +1241,7 @@ No diffs.
 - **body** [behavior-gap] $.data[10].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[10].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[10].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[10].supported_endpoints[0]: root="/responses" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[10].supported_endpoints: array len root=1 vnext=2
 - **body** [behavior-gap] $.data[10]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[11].capabilities.family: root="trajectory-compaction" vnext="copilot"
 - **body** [behavior-gap] $.data[11].capabilities.supports.parallel_tool_calls: type root=boolean vnext=undefined
@@ -1242,7 +1251,7 @@ No diffs.
 - **body** [behavior-gap] $.data[11].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[11].model_picker_enabled: root=false vnext=true
 - **body** [behavior-gap] $.data[11].preview: root=true vnext=false
-- **body** [behavior-gap] $.data[11].supported_endpoints[0]: root="/chat/completions" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[11].supported_endpoints: array len root=1 vnext=2
 - **body** [behavior-gap] $.data[11]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[12].capabilities.family: root="gpt-5-mini" vnext="copilot"
 - **body** [behavior-gap] $.data[12].capabilities.limits.vision: type root=object vnext=undefined
@@ -1256,7 +1265,9 @@ No diffs.
 - **body** [behavior-gap] $.data[12].capabilities.type: root="chat" vnext="text"
 - **body** [behavior-gap] $.data[12].model_picker_category: type root=string vnext=undefined
 - **body** [behavior-gap] $.data[12].policy: type root=object vnext=undefined
-- **body** [behavior-gap] $.data[12].supported_endpoints: array len root=3 vnext=2
+- **body** [behavior-gap] $.data[12].supported_endpoints[0]: root="/chat/completions" vnext="/responses"
+- **body** [behavior-gap] $.data[12].supported_endpoints[1]: root="/responses" vnext="/v1/chat/completions"
+- **body** [behavior-gap] $.data[12].supported_endpoints[2]: root="ws:/responses" vnext="/v1/messages/count_tokens"
 - **body** [behavior-gap] $.data[12]._upstream: root="up_copilot_00000000-0000-0000-0000-000000000001_3456821" vnext="copilot:request"
 - **body** [behavior-gap] $.data[13].capabilities.family: root="gpt-4o-mini" vnext="copilot"
 - **body** [behavior-gap] $.data[13].capabilities.supports.parallel_tool_calls: type root=boolean vnext=undefined
@@ -1539,6 +1550,6 @@ No diffs.
 
 ### responses-stateful-chain (`/v1/responses`) — behavior-gap
 
-- **body** [behavior-gap] $.error.message: root="Previous response with id 'resp_49705e06e8744d2ebd97b564' not found." vnext="no such table: responses_snapshots"
+- **body** [behavior-gap] $.error.message: root="Previous response with id 'resp_df4e71d75a3e4d8f80ff92d1' not found." vnext="no such table: responses_snapshots"
 - **body** [behavior-gap] $.error.param: type root=string vnext=undefined
 - **body** [behavior-gap] $.error.code: type root=string vnext=undefined
