@@ -379,8 +379,10 @@ upstreamMiscRouter.post('/upstream-probe', async (c) => {
       const result = await provider.probe()
       return c.json(result)
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      return jsonError(message, 400)
+      // Root behaviour: any provider validation/construction error surfaces
+      // as a ProbeResult with status 200 so the dashboard's probe UI renders
+      // the error inline instead of bailing on the request.
+      return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) })
     }
   }
   if (kind === 'sdf') {
@@ -389,8 +391,7 @@ upstreamMiscRouter.post('/upstream-probe', async (c) => {
       const result = await provider.probe()
       return c.json(result)
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      return jsonError(message, 400)
+      return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) })
     }
   }
   return jsonError(`Unknown kind: ${kind}`)
@@ -546,11 +547,19 @@ upstreamsRouter.post('/:id/test', async (c) => {
   const upstream = await getRepo().upstreams.getById(c.req.param('id'))
   if (!upstream) return jsonError('upstream not found', 404)
   if (!admin && upstream.ownerId !== userId) return jsonError('Forbidden', 403)
-  const provider = await createProviderFromUpstream(upstream)
-  if (!provider) {
-    return jsonError(`unable to construct ${upstream.provider} provider for upstream ${upstream.id}`, 502)
+  // Provider constructors validate config (Azure hostname suffix, Custom apiKey,
+  // etc.) and may throw. Probe-style contract: surface as `{ ok: false, error }`
+  // with 200 so the dashboard's "Test" button shows the failure inline rather
+  // than producing a 500 wire error. Matches root src/routes/control-plane.ts.
+  try {
+    const provider = await createProviderFromUpstream(upstream)
+    if (!provider) {
+      return c.json({ ok: false, error: `unable to construct ${upstream.provider} provider for upstream ${upstream.id}` })
+    }
+    return c.json(await provider.probe())
+  } catch (err) {
+    return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) })
   }
-  return c.json(await provider.probe())
 })
 
 upstreamsRouter.get('/:id/models', async (c) => {
@@ -560,11 +569,11 @@ upstreamsRouter.get('/:id/models', async (c) => {
   const upstream = await getRepo().upstreams.getById(c.req.param('id'))
   if (!upstream) return jsonError('upstream not found', 404)
   if (!admin && upstream.ownerId !== userId) return jsonError('Forbidden', 403)
-  const provider = await createProviderFromUpstream(upstream)
-  if (!provider) {
-    return jsonError(`unable to construct ${upstream.provider} provider for upstream ${upstream.id}`, 502)
-  }
   try {
+    const provider = await createProviderFromUpstream(upstream)
+    if (!provider) {
+      return jsonError(`unable to construct ${upstream.provider} provider for upstream ${upstream.id}`, 502)
+    }
     const models = await provider.getModels()
     const list = (models.data ?? []).map((m) => ({ id: m.id, name: m.name ?? m.id }))
     return c.json({ models: list, disabledPublicModelIds: upstream.disabledPublicModelIds })
