@@ -108,7 +108,7 @@ rg -o '@vnext-(gateway|llm)' vnext/packages vnext/apps | wc -l
 **所有命令默认在 repo root 执行。** Bun 必须显式 `(cd vnext && ...)`,否则会跑根项目脚本而不是 vnext workspace (实测 `bun run typecheck` 在 repo root 跑的是根 `bunx tsc --noEmit`)。
 
 1. 创建 baseline checkpoint:
-   - 确认当前 `(cd vnext && bun test)` 1001 pass
+   - 确认当前 `(cd vnext && bun run test)` 1001 pass
    - 记录代码层 occurrence 数:`rg -o '@vnext-(gateway|llm)' vnext/packages vnext/apps | wc -l`
    - 锁定 typecheck baseline:`(cd vnext && bun run typecheck) 2>&1 | tee /tmp/spec11-typecheck-baseline.txt`
 2. 全仓库批量替换 (代码 + 配置 + lock):
@@ -172,8 +172,8 @@ git diff -- vnext/bun.lock | rg '^[+-]' | rg -v '^(\+\+\+|---)' | rg -v '@(vnext
 
 | ID | Gate | 期望 |
 |----|------|------|
-| A1 | `bun run test` workspace-wide | 1001 pass, 0 fail |
-| A2 | `bun run typecheck` workspace-wide,与 step 1 锁定的 `/tmp/spec11-typecheck-baseline.txt` diff | 差异为空 (baseline 已涵盖:`@vibe-llm/translate` Gemini + `@vibe-llm/provider-azure/custom/sdf` BodyInit,与 Spec 8 A2 容忍范围一致) |
+| A1 | `(cd vnext && bun run test)` workspace-wide | 1001 pass, 0 fail |
+| A2 | `(cd vnext && bun run typecheck)` workspace-wide,与 step 1 锁定的 `/tmp/spec11-typecheck-baseline.txt` 做 normalized diff | 差异为空 (baseline 已涵盖:`@vibe-llm/translate` Gemini + `@vibe-llm/provider-azure/custom/sdf` BodyInit,与 Spec 8 A2 容忍范围一致) |
 | A3 | 旧名零残留 | 见上方 A3 命令,返回空 |
 | A4 | occurrence 守恒 | 见上方 A4 命令,≈ §3.3 baseline 数 (±5) |
 | A4.1 | `bun.lock` diff 限定 | 见上方 A4.1 命令,仅 workspace 名重命名,无第三方版本变更 |
@@ -196,7 +196,7 @@ git diff -- vnext/bun.lock | rg '^[+-]' | rg -v '^(\+\+\+|---)' | rg -v '@(vnext
 
 ## 8. 回滚方案
 
-单一 commit。失败时 `git reset --hard HEAD~1 && bun install` 即恢复 (lock 跟着 commit 一起回滚,无需删 `node_modules`)。
+单一 commit。失败时 `git reset --hard HEAD~1 && (cd vnext && bun install)` 即恢复 (lock 跟着 commit 一起回滚,无需删 `node_modules`)。
 
 ## 9. 后续
 
