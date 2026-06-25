@@ -243,7 +243,7 @@ version, etag, nonce, fingerprint
 | 风险 | 缓解 |
 |------|------|
 | vnext 缺 admin user seed | Task 1 前置验证;缺则 spec blocked,记入 `12b-blockers.md`;**`seed-admin-session.ts` 必须把 session token 写成 `ses_` 前缀**(root `src/local.ts:416` 和 vnext `packages/gateway/src/shared/session-auth.ts:60` 都按此前缀路由到 sessions 表,否则会被当 API key 处理 → 401) |
-| `/api/heartbeat` 需 apiKeyId 而非 session cookie | fixture `auth: api-key`,header 注入 `Authorization: Bearer ${ADMIN_API_KEY}` (chain 第 1 步 create-key 的 capture.secret) |
+| `/api/heartbeat` 需 apiKeyId 而非 session cookie | fixture `auth: api-key`,header 注入 `Authorization: Bearer ${PARITY_*_ADMIN_API_KEY}`(由 dashboard chain 首 fixture `bootstrap-heartbeat-key` 的 `capture.adminApiKey = $.key` 写入 env;独立 chain,不会被 api-keys 的 rotate/delete 撕裂) |
 | assign / share 禁止 self-target | Task 1 同时 seed target user (`parity-target@local.dev`),env `PARITY_TARGET_USER_ID` / `PARITY_TARGET_USER_EMAIL` 供 fixture 引用 |
 | 两侧 admin / target UUID 不同导致 ownerId 引用撕裂 | seed 时强制对齐 fixed UUID;不行则把 ownerId/userId 列入 ignore (已列) |
 | `POST /import` 副作用大 (写整库) | fixture 用最小 import payload (空 array);双端各自的 db 隔离,不会互污 |
