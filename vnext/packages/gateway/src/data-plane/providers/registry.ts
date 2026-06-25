@@ -139,6 +139,7 @@ function modelToBindingModel(
       maxOutputTokens: model.capabilities.limits.max_output_tokens,
       maxPromptTokens: model.capabilities.limits.max_prompt_tokens,
     } : undefined,
+    raw: model as unknown as Record<string, unknown>,
   }
 }
 
@@ -295,6 +296,19 @@ export async function listUpstreamModels(
   for (const binding of bindings) {
     if (seen.has(binding.model.id)) continue
     seen.add(binding.model.id)
+    // Provenance — non-standard, SDKs ignore.
+    const provenance = {
+      _upstream: binding.upstream,
+      _provider: binding.kind,
+    }
+    if (binding.model.raw) {
+      // Root parity (src/providers/registry.ts:listUpstreamModels): spread the
+      // upstream model JSON verbatim so vendor fields (`capabilities.family`,
+      // `supports.*`, `tokenizer`, `model_picker_category`, `policy`,
+      // `supported_endpoints`, `preview`) round-trip unchanged.
+      data.push({ ...(binding.model.raw as Record<string, unknown>), ...provenance } as Model)
+      continue
+    }
     const supportedEndpoints = Object.keys(binding.model.endpoints ?? {})
       .map((k) => ENDPOINT_PATHS[k])
       .filter((v): v is string => Boolean(v))
@@ -319,9 +333,7 @@ export async function listUpstreamModels(
         type: 'text',
       },
       supported_endpoints: supportedEndpoints,
-      // Provenance — non-standard, SDKs ignore.
-      _upstream: binding.upstream,
-      _provider: binding.kind,
+      ...provenance,
     } as Model)
   }
   return { object: 'list', data }

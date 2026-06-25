@@ -261,8 +261,11 @@ export const messagesAttempt = {
     const selectFn = args.selectBinding ?? defaultSelectBinding
     const sel = await selectFn({ model: args.payload.model, auth: args.auth })
 
-    if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
-    if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
+    // Root parity: 404 envelope uses the legacy "No messages upstream available
+    // for model: <id>. Run GET /v1/models for available ids." message so SDK
+    // error parsing and user-facing messages line up across both deployments.
+    if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`No messages upstream available for model: ${sel.bareModel}. Run GET /v1/models for available ids.`))
+    if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`No messages upstream available for model: ${sel.bareModel}. Run GET /v1/models for available ids.`))
     if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for messages → ${sel.targetEndpoint}`))
 
     if (sel.targetEndpoint !== 'messages') {

@@ -325,8 +325,12 @@ const renderExecuteResult = async (
       // (pre-binding errors per spec §6.2 deliberately omit perf rows).
       waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
     }
+    // Root parity: 4xx-class internal errors (e.g. unknown model → 404) use
+    // `invalid_request_error`; only 5xx use `api_error`. SDKs branch on
+    // error.type, so the distinction matters for user-facing handling.
+    const errType = result.status >= 400 && result.status < 500 ? 'invalid_request_error' : 'api_error'
     return Response.json(
-      { type: 'error', error: { type: 'api_error', message: result.error.message } },
+      { type: 'error', error: { type: errType, message: result.error.message } },
       { status: result.status },
     )
   }

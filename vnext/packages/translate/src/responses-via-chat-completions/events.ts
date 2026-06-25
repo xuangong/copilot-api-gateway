@@ -53,6 +53,9 @@ export async function* translateChatToResponsesEvents(
   let created = Math.floor(Date.now() / 1000)
   let createdEmitted = false
   let messageOpened = false
+  let contentPartOpened = false
+  let messageItemId = ''
+  let accumulatedText = ''
   let nextOutputIndex = 0
   let messageOutputIndex = -1
   const toolCalls = new Map<number, ToolCallState>() // chunk index → state
@@ -64,7 +67,11 @@ export async function* translateChatToResponsesEvents(
     if (raw.created && !createdEmitted) created = raw.created
 
     if (!createdEmitted) {
+      // Root parity: emit both `response.created` and `response.in_progress`
+      // back-to-back, matching the OpenAI Responses lifecycle. Status is
+      // `in_progress` for both — the discriminator is the event `type`.
       yield { type: 'response.created', response: { id, model, created_at: created, status: 'in_progress' } }
+      yield { type: 'response.in_progress', response: { id, model, created_at: created, status: 'in_progress' } }
       createdEmitted = true
     }
 
@@ -74,15 +81,30 @@ export async function* translateChatToResponsesEvents(
     if (delta.content && delta.content.length > 0) {
       if (!messageOpened) {
         messageOutputIndex = nextOutputIndex++
+        // Synthesize a stable per-message id so subsequent content_part / text
+        // events can carry `item_id` matching the opened item.
+        messageItemId = `msg_${Math.random().toString(36).slice(2, 14)}${Math.random().toString(36).slice(2, 14)}`
         yield {
           type: 'response.output_item.added',
           output_index: messageOutputIndex,
-          item: { type: 'message', role: 'assistant', content: [] },
+          item: { type: 'message', id: messageItemId, role: 'assistant', status: 'in_progress', content: [] },
         }
         messageOpened = true
       }
+      if (!contentPartOpened) {
+        yield {
+          type: 'response.content_part.added',
+          item_id: messageItemId,
+          output_index: messageOutputIndex,
+          content_index: 0,
+          part: { type: 'output_text', text: '', annotations: [] },
+        }
+        contentPartOpened = true
+      }
+      accumulatedText += delta.content
       yield {
         type: 'response.output_text.delta',
+        item_id: messageItemId,
         output_index: messageOutputIndex,
         content_index: 0,
         delta: delta.content,
@@ -126,10 +148,32 @@ export async function* translateChatToResponsesEvents(
   }
 
   if (messageOpened) {
+    if (contentPartOpened) {
+      yield {
+        type: 'response.output_text.done',
+        item_id: messageItemId,
+        output_index: messageOutputIndex,
+        content_index: 0,
+        text: accumulatedText,
+      }
+      yield {
+        type: 'response.content_part.done',
+        item_id: messageItemId,
+        output_index: messageOutputIndex,
+        content_index: 0,
+        part: { type: 'output_text', text: accumulatedText, annotations: [] },
+      }
+    }
     yield {
       type: 'response.output_item.done',
       output_index: messageOutputIndex,
-      item: { type: 'message', role: 'assistant' },
+      item: {
+        type: 'message',
+        id: messageItemId,
+        role: 'assistant',
+        status: 'completed',
+        content: [{ type: 'output_text', text: accumulatedText, annotations: [] }],
+      },
     }
   }
   for (const state of toolCalls.values()) {

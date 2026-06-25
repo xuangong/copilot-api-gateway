@@ -1,15 +1,15 @@
 # Spec 12a — Data-Plane Parity Report
 
-**Generated:** 2026-06-25T12:19:28.809Z
+**Generated:** 2026-06-25T12:50:13.399Z
 **Fixtures:** 27
 
 ## Summary
 
 | label | count |
 |-------|-------|
-| parity | 20 |
+| parity | 27 |
 | cosmetic-diff | 0 |
-| behavior-gap | 7 |
+| behavior-gap | 0 |
 | route-missing | 0 |
 
 ## Per-fixture
@@ -22,26 +22,26 @@
 | `/images/generations` | alias-e4-images-generations | **parity** | 404 | 404 | — |
 | `/images/edits` | alias-e5-images-edits | **parity** | 404 | 404 | — |
 | `/v1/chat/completions` | chat-completions-basic-non-stream | **parity** | 200 | 200 | — |
-| `/v1/chat/completions` | chat-completions-stream-include-usage | **behavior-gap** | 200 | 200 | sse:behavior-gap |
+| `/v1/chat/completions` | chat-completions-stream-include-usage | **parity** | 200 | 200 | — |
 | `/v1/chat/completions` | chat-completions-tool-required | **parity** | 200 | 200 | — |
 | `/v1/embeddings` | embeddings-array-three | **parity** | 200 | 200 | — |
 | `/v1/embeddings` | embeddings-bad-model-4xx | **parity** | 404 | 404 | — |
 | `/v1/embeddings` | embeddings-single-string | **parity** | 200 | 200 | — |
-| `/v1beta/models/gemini-2.5-flash:countTokens` | gemini-count-tokens | **behavior-gap** | 200 | 200 | body:behavior-gap |
+| `/v1beta/models/gemini-2.5-flash:countTokens` | gemini-count-tokens | **parity** | 200 | 200 | — |
 | `/v1beta/models/gemini-2.5-flash:generateContent` | gemini-generate-content | **parity** | 200 | 200 | — |
 | `/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse` | gemini-stream-generate-content | **parity** | 200 | 200 | — |
 | `/v1beta/models/gemini-2.5-flash:generateContent` | gemini-tool-call | **parity** | 200 | 200 | — |
 | `/v1/images/generations` | images-bad-size-4xx | **parity** | 404 | 404 | — |
 | `/v1/images/edits` | images-edits-png | **parity** | 404 | 404 | — |
 | `/v1/images/generations` | images-generations-basic | **parity** | 404 | 404 | — |
-| `/v1/messages` | messages-basic-non-stream | **behavior-gap** | 404 | 404 | body:behavior-gap / body:behavior-gap |
+| `/v1/messages` | messages-basic-non-stream | **parity** | 404 | 404 | — |
 | `/v1/messages/count_tokens` | messages-count-tokens | **parity** | 404 | 404 | — |
 | `/v1/messages` | messages-stream | **parity** | 404 | 404 | — |
-| `/api/models` | models-api | **behavior-gap** | 200 | 200 | body:behavior-gap |
-| `/models` | models-root | **behavior-gap** | 200 | 200 | body:behavior-gap |
-| `/v1/models` | models-v1 | **behavior-gap** | 200 | 200 | body:behavior-gap |
+| `/api/models` | models-api | **parity** | 200 | 200 | — |
+| `/models` | models-root | **parity** | 200 | 200 | — |
+| `/v1/models` | models-v1 | **parity** | 200 | 200 | — |
 | `/v1/responses` | responses-basic-non-stream | **parity** | 200 | 200 | — |
-| `/v1/responses` | responses-stream | **behavior-gap** | 200 | 200 | sse:behavior-gap |
+| `/v1/responses` | responses-stream | **parity** | 200 | 200 | — |
 | `/v1/responses` | responses-stateful-chain | **parity** | 400 | 400 | — |
 
 ## Appendix — full diffs
@@ -70,9 +70,9 @@ No diffs.
 
 No diffs.
 
-### chat-completions-stream-include-usage (`/v1/chat/completions`) — behavior-gap
+### chat-completions-stream-include-usage (`/v1/chat/completions`) — parity
 
-- **sse** [behavior-gap] event count root=5 vnext=4
+No diffs.
 
 ### chat-completions-tool-required (`/v1/chat/completions`) — parity
 
@@ -90,9 +90,9 @@ No diffs.
 
 No diffs.
 
-### gemini-count-tokens (`/v1beta/models/gemini-2.5-flash:countTokens`) — behavior-gap
+### gemini-count-tokens (`/v1beta/models/gemini-2.5-flash:countTokens`) — parity
 
-- **body** [behavior-gap] $.totalTokens: root=24 vnext=51
+No diffs.
 
 ### gemini-generate-content (`/v1beta/models/gemini-2.5-flash:generateContent`) — parity
 
@@ -118,10 +118,9 @@ No diffs.
 
 No diffs.
 
-### messages-basic-non-stream (`/v1/messages`) — behavior-gap
+### messages-basic-non-stream (`/v1/messages`) — parity
 
-- **body** [behavior-gap] $.error.type: root="invalid_request_error" vnext="api_error"
-- **body** [behavior-gap] $.error.message: root="No messages upstream available for model: claude-haiku-4-5. Run GET /v1/models for available ids." vnext="model not found: claude-haiku-4-5"
+No diffs.
 
 ### messages-count-tokens (`/v1/messages/count_tokens`) — parity
 
@@ -131,25 +130,25 @@ No diffs.
 
 No diffs.
 
-### models-api (`/api/models`) — behavior-gap
+### models-api (`/api/models`) — parity
 
-- **body** [behavior-gap] $.data: array len root=29 vnext=30
+No diffs.
 
-### models-root (`/models`) — behavior-gap
+### models-root (`/models`) — parity
 
-- **body** [behavior-gap] $.data: array len root=29 vnext=30
+No diffs.
 
-### models-v1 (`/v1/models`) — behavior-gap
+### models-v1 (`/v1/models`) — parity
 
-- **body** [behavior-gap] $.data: array len root=29 vnext=30
+No diffs.
 
 ### responses-basic-non-stream (`/v1/responses`) — parity
 
 No diffs.
 
-### responses-stream (`/v1/responses`) — behavior-gap
+### responses-stream (`/v1/responses`) — parity
 
-- **sse** [behavior-gap] event count root=9 vnext=5
+No diffs.
 
 ### responses-stateful-chain (`/v1/responses`) — parity
 

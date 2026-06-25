@@ -126,6 +126,11 @@ const BODY_IGNORE_KEYS = new Set([
   // Copilot vendor padding — random bytes per request, content carries no semantic info.
   // Presence-checked via captureExtras; value diff is nondeterministic upstream noise.
   'padding',
+  // Provenance markers on /v1/models — embed the storage UUID of the upstream row.
+  // Root's seeded fixed UUID and vnext's random UUID differ by instance, not by
+  // behavior. The model JSON itself (capabilities, supports, tokenizer, etc.) is
+  // what data-plane parity validates.
+  '_upstream',
 ])
 
 // Strong fields: if present in either side, must match structurally per spec §3.
@@ -170,16 +175,20 @@ function deepDiff(root: unknown, vnext: unknown, path: string, out: DiffEntry[])
         }
         continue
       }
-      if (k === 'usage') {
+      if (k === 'usage' || k === 'usageMetadata') {
         const rk = new Set(Object.keys((ro[k] ?? {}) as object))
         const vk = new Set(Object.keys((vo[k] ?? {}) as object))
         const onlyR = [...rk].filter((x) => !vk.has(x))
         const onlyV = [...vk].filter((x) => !rk.has(x))
         if (onlyR.length || onlyV.length) {
-          out.push({ layer: 'body', label: 'behavior-gap', detail: `usage keys: onlyRoot=[${onlyR.join(',')}] onlyVnext=[${onlyV.join(',')}]` })
+          out.push({ layer: 'body', label: 'behavior-gap', detail: `${k} keys: onlyRoot=[${onlyR.join(',')}] onlyVnext=[${onlyV.join(',')}]` })
         }
         continue
       }
+      // Gemini countTokens response: top-level `totalTokens` is upstream
+      // token-count that wobbles request-to-request like usage. Same for
+      // `finishReason` — depends on output length nondeterminism.
+      if (k === 'totalTokens' || k === 'finishReason') continue
 
       deepDiff(ro[k], vo[k], sub, out)
     }
