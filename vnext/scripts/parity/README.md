@@ -43,3 +43,24 @@ PARITY_API_KEY=<gh-token> bun run vnext/scripts/parity/data-plane-audit.ts
 See spec §3 table. Summary: status strict-equal; headers allowlist-filtered with
 value masking; JSON body deep-diff with `id/created/...` ignored; SSE structural
 (event name + order + delta type, NOT prose).
+
+## Bootstrap (spec 12b)
+
+Before running `control-plane-audit.ts`, seed both DBs and source the env:
+
+```bash
+bun vnext/scripts/parity/seed-admin-session.ts \
+  --root-db ./data/local.sqlite \
+  --vnext-db ./data-vnext/vnext.sqlite > /tmp/parity-12b-env.sh
+source /tmp/parity-12b-env.sh
+```
+
+Env vars exported:
+| name | use |
+|------|-----|
+| `PARITY_{ROOT,VNEXT}_ADMIN_TOKEN` | `ses_`-prefixed session token (Cookie header) |
+| `PARITY_{ROOT,VNEXT}_ADMIN_API_KEY` | Admin API key (Authorization: Bearer) |
+| `PARITY_ADMIN_USER_ID` / `_EMAIL` | Seeded admin (fixed UUID, both sides) |
+| `PARITY_TARGET_USER_ID` / `_EMAIL` | Second user for assign/share fixtures |
+
+Re-run the script any time tokens expire (~24h).
