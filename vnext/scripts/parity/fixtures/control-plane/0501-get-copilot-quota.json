@@ -1,0 +1,7 @@
+{
+  "name": "get-copilot-quota",
+  "endpoint": "/api/copilot-quota",
+  "method": "GET",
+  "auth": "admin-session",
+  "expect_status": 200
+}

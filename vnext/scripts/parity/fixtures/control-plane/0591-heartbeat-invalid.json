@@ -1,0 +1,10 @@
+{
+  "name": "heartbeat-invalid",
+  "endpoint": "/api/heartbeat",
+  "method": "POST",
+  "auth": "api-key",
+  "apiKeyFrom": "bootstrap-heartbeat-key",
+  "dependsOn": ["bootstrap-heartbeat-key"],
+  "body": {},
+  "expect_status": 400
+}

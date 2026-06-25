@@ -1,0 +1,9 @@
+{
+  "name": "bootstrap-heartbeat-key",
+  "endpoint": "/api/keys",
+  "method": "POST",
+  "auth": "admin-session",
+  "body": { "name": "heartbeat-bootstrap", "ownerId": null },
+  "expect_status": 200,
+  "capture": { "adminApiKey": "$.key" }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "get-token-usage",
+  "endpoint": "/api/token-usage",
+  "method": "GET",
+  "auth": "admin-session",
+  "expect_status": 200
+}

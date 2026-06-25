@@ -1,0 +1,7 @@
+{
+  "name": "get-latency",
+  "endpoint": "/api/latency",
+  "method": "GET",
+  "auth": "admin-session",
+  "expect_status": 200
+}

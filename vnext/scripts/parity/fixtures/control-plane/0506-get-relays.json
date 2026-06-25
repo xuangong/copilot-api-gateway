@@ -1,0 +1,7 @@
+{
+  "name": "get-relays",
+  "endpoint": "/api/relays",
+  "method": "GET",
+  "auth": "admin-session",
+  "expect_status": 200
+}

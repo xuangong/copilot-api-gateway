@@ -1,0 +1,7 @@
+{
+  "name": "export-data",
+  "endpoint": "/api/export?redact=1",
+  "method": "GET",
+  "auth": "admin-session",
+  "expect_status": 200
+}

@@ -1,0 +1,8 @@
+{
+  "name": "import-data",
+  "endpoint": "/api/import",
+  "method": "POST",
+  "auth": "admin-session",
+  "body": { "keys": [], "upstreams": [] },
+  "expect_status": 200
+}

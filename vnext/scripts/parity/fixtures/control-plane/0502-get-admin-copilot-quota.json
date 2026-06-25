@@ -1,0 +1,7 @@
+{
+  "name": "get-admin-copilot-quota",
+  "endpoint": "/api/admin/copilot-quota/${env.PARITY_ADMIN_USER_ID}",
+  "method": "GET",
+  "auth": "admin-session",
+  "expect_status": 200
+}

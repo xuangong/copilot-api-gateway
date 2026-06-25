@@ -1,0 +1,10 @@
+{
+  "name": "heartbeat",
+  "endpoint": "/api/heartbeat",
+  "method": "POST",
+  "auth": "api-key",
+  "apiKeyFrom": "bootstrap-heartbeat-key",
+  "dependsOn": ["bootstrap-heartbeat-key"],
+  "body": { "clientId": "parity-client", "hostname": "parity-host" },
+  "expect_status": 200
+}

@@ -1,0 +1,7 @@
+{
+  "name": "get-performance",
+  "endpoint": "/api/performance",
+  "method": "GET",
+  "auth": "admin-session",
+  "expect_status": 200
+}

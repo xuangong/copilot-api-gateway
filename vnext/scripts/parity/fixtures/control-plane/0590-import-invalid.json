@@ -1,0 +1,8 @@
+{
+  "name": "import-invalid",
+  "endpoint": "/api/import",
+  "method": "POST",
+  "auth": "admin-session",
+  "body": { "not-a-valid": "payload" },
+  "expect_status": 400
+}
