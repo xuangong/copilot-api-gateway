@@ -1,13 +1,13 @@
 # Spec 12b Control-Plane Parity Report
 
-Generated: 2026-06-25T16:14:17.089Z
+Generated: 2026-06-25T16:37:55.879Z
 
 ## Summary
-- parity: 39
+- parity: 48
 - cosmetic-diff: 0
-- behavior-gap: 7
+- behavior-gap: 0
 - route-missing: 0
-- dependency-skipped: 4
+- dependency-skipped: 2
 
 ## Per-fixture
 ### create-key — `POST /api/keys` → **parity**
@@ -24,9 +24,7 @@ Generated: 2026-06-25T16:14:17.089Z
 
 ### assign-key — `POST /api/keys/${capture.create-key.keyId}/assign` → **parity**
 
-### list-assignments — `GET /api/keys/${capture.create-key.keyId}/assignments` → **behavior-gap**
-- [body/behavior-gap] $[0].key_id: root="4c8248a9-9e0a-4d93-ba8c-cd075045b307" vnext="4b03371d-42b7-4e41-b699-8817caa6c439"
-- [body/behavior-gap] $[0].assigned_at: root="2026-06-25T16:14:17.006Z" vnext="2026-06-25T16:14:17.007Z"
+### list-assignments — `GET /api/keys/${capture.create-key.keyId}/assignments` → **parity**
 
 ### unassign-key — `DELETE /api/keys/${capture.create-key.keyId}/assign/${env.PARITY_TARGET_USER_ID}` → **parity**
 
@@ -46,8 +44,7 @@ Generated: 2026-06-25T16:14:17.089Z
 
 ### patch-key-invalid — `PATCH /api/keys/does-not-exist` → **parity**
 
-### get-upstream-flags — `GET /api/upstream-flags` → **behavior-gap**
-- [body/behavior-gap] $.defaults.sdf: type root=undefined vnext=object
+### get-upstream-flags — `GET /api/upstream-flags` → **parity**
 
 ### create-upstream — `POST /api/upstreams` → **parity**
 
@@ -55,25 +52,15 @@ Generated: 2026-06-25T16:14:17.089Z
 
 ### patch-upstream — `PATCH /api/upstreams/${capture.create-upstream.upstreamId}` → **parity**
 
-### test-upstream — `POST /api/upstreams/${capture.create-upstream.upstreamId}/test` → **behavior-gap**
-- [status/behavior-gap] root=200 vnext=500
-- [header/cosmetic-diff] content-type: root="application/json" vnext="text/plain"
-- [body/behavior-gap] $: type root=object vnext=string
+### test-upstream — `POST /api/upstreams/${capture.create-upstream.upstreamId}/test` → **parity**
 
-### list-upstream-models — `GET /api/upstreams/${capture.create-upstream.upstreamId}/models` → **behavior-gap**
-- [status/behavior-gap] root=200 vnext=500
-- [header/cosmetic-diff] content-type: root="application/json" vnext="text/plain"
-- [body/behavior-gap] $: type root=object vnext=string
+### list-upstream-models — `GET /api/upstreams/${capture.create-upstream.upstreamId}/models` → **parity**
 
-### upstream-probe — `POST /api/upstream-probe` → **behavior-gap**
-- [status/behavior-gap] root=200 vnext=400
-- [body/behavior-gap] $.ok: type root=boolean vnext=undefined
-- [body/behavior-gap] $.error: root="Was there a typo in the url or port?" vnext="Azure provider endpoint must be on *.openai.azure.com or *.services.ai.azure.com: https://parity-mock.invalid"
-- [body/behavior-gap] $.hint: type root=string vnext=undefined
+### upstream-probe — `POST /api/upstream-probe` → **parity**
 
-### delete-upstream — `DELETE /api/upstreams/${capture.create-upstream.upstreamId}` → **dependency-skipped**
+### delete-upstream — `DELETE /api/upstreams/${capture.create-upstream.upstreamId}` → **parity**
 
-### cleanup-delete-upstream-twice — `DELETE /api/upstreams/${capture.create-upstream.upstreamId}` → **dependency-skipped**
+### cleanup-delete-upstream-twice — `DELETE /api/upstreams/${capture.create-upstream.upstreamId}` → **parity**
 
 ### create-upstream-invalid — `POST /api/upstreams` → **parity**
 
@@ -93,15 +80,13 @@ Generated: 2026-06-25T16:14:17.089Z
 
 ### cleanup-delete-share-twice — `DELETE /api/observability-shares/${capture.create-share.viewerId}` → **parity**
 
-### create-share-invalid — `POST /api/observability-shares` → **behavior-gap**
-- [body/behavior-gap] $.viewerName: root="Local Admin" vnext="Dev User"
+### create-share-invalid — `POST /api/observability-shares` → **parity**
 
 ### delete-share-invalid — `DELETE /api/observability-shares/00000000-0000-0000-0000-deadbeefdead` → **parity**
 
 ### bootstrap-heartbeat-key — `POST /api/keys` → **parity**
 
-### get-copilot-quota — `GET /api/copilot-quota` → **behavior-gap**
-- [status/behavior-gap] root=502 vnext=404
+### get-copilot-quota — `GET /api/copilot-quota` → **parity**
 
 ### get-admin-copilot-quota — `GET /api/admin/copilot-quota/${env.PARITY_ADMIN_USER_ID}` → **parity**
 
