@@ -89,9 +89,9 @@ POST /v1beta/models/:modelWithMethod   (Gemini generateContent + streamGenerateC
 
 **输出:** `vnext/docs/superpowers/research/2026-06-25-spec12a-parity-report.md` (自动生成,人可读 markdown 表 + per-fixture diff 详情 appendix)
 
-## 4. Fixtures (25 条)
+## 4. Fixtures (27 条)
 
-每 endpoint family 3 条:happy non-stream / happy stream / common 4xx 或第 3 个变体。**额外加 4 条 alias-only fixture**:验证 vnext 是否挂了 root 暴露的非 v1 alias。真实 LLM 走 cheapest model。
+每 endpoint family 3 条:happy non-stream / happy stream / common 4xx 或第 3 个变体。**额外加 5 条 alias-only fixture**:验证 vnext 是否挂了 root 暴露的非 v1 alias。真实 LLM 走 cheapest model。
 
 | family | fixture 列表 |
 |--------|--------------|
@@ -102,11 +102,11 @@ POST /v1beta/models/:modelWithMethod   (Gemini generateContent + streamGenerateC
 | embeddings | (a) single string text-embedding-3-small @ `/v1/embeddings` (b) array of 3 strings @ `/v1/embeddings` (c) bad model "nonexistent" → 期 4xx |
 | images | (a) generations dall-e-2 256x256 @ `/v1/images/generations` (b) edits 用 fixed 8x8 PNG @ `/v1/images/edits` (c) bad size "1x1" → 期 4xx;若 (b) 不稳则降级为只跑 (a) + (c) |
 | models | (a) GET `/v1/models` (b) GET `/models` (c) GET `/api/models` |
-| **alias-only** | (e1) POST `/chat/completions` (无 v1 前缀) basic non-stream (e2) POST `/responses` (无 v1) basic non-stream (e3) POST `/embeddings` (无 v1) single string (e4) POST `/images/generations` (无 v1) basic |
+| **alias-only** | (e1) POST `/chat/completions` basic non-stream (e2) POST `/responses` basic non-stream (e3) POST `/embeddings` single string (e4) POST `/images/generations` basic (e5) POST `/images/edits` 用 fixed 8x8 PNG |
 
-**注:** messages family (c) 用 count_tokens 而非 tool_use,因为 tool_use 与 chat-completions (c) 重合 (两者翻译路径会汇到同一 translator);count_tokens 走独立路径更值得 audit。Gemini family 改为 4 条 (加 countTokens)。alias-only 4 条独立列出便于在 report 中突出。共 21 + 1 (gemini countTokens) + 4 (alias) - 1 (chat-completions/responses/embeddings/images 已在 family (a) 中是 v1 path,alias 是新增) = **25 条**。
+**注:** messages family (c) 用 count_tokens 而非 tool_use,因为 tool_use 与 chat-completions (c) 重合 (两者翻译路径会汇到同一 translator);count_tokens 走独立路径更值得 audit。Gemini family 改为 4 条 (加 countTokens)。alias-only 5 条独立列出便于在 report 中突出。合计:3+3+3+4+3+3+3+5 = **27 条**。
 
-**调用预算:** 25 fixtures × 2 servers = 50 calls,串行 (env 互斥时),~6 min 完成。
+**调用预算:** 27 fixtures × 2 servers = 54 calls,串行 (env 互斥时),~6-7 min 完成。
 
 ## 5. Gap 分类 & label
 
@@ -122,10 +122,10 @@ POST /v1beta/models/:modelWithMethod   (Gemini generateContent + streamGenerateC
 | ID | Gate | 期望 |
 |----|------|------|
 | A1 | 双起 health check (`GET /v1/models` 双端都 200,或 401 但同样 401) | 通过 |
-| A2 | 25 fixtures 全跑完,无 harness crash | 25/25 |
+| A2 | 27 fixtures 全跑完,无 harness crash | 27/27 |
 | A3 | report 生成,含每 fixture: endpoint + label + 关键 diff 摘要 + appendix 完整 diff | 文件存在,markdown 解析正确 |
 | A4 | report 顶部 summary 表:`parity / cosmetic-diff / behavior-gap / route-missing` 四类计数 | summary 存在 (数值本身不阻断,只看是否生成) |
-| A5 | spec + harness + fixtures + report 单 commit 入 repo `vnext/scripts/parity/` + `vnext/docs/` | commit hash 可查;允许 push vNext 远端,不 merge |
+| A5 | spec / plan / harness+fixtures / report 按 §9 四 commit 入 repo `vnext/scripts/parity/` + `vnext/docs/` (harness 与 fixtures 同 commit) | 四个 commit hash 可查;允许 push vNext 远端,不 merge |
 
 **A4 解释:** audit spec 本身不规定 "必须 0 gap" 阈值,因为 gap 数量是 audit 的 *产出* 不是 *输入*;cutover 触发条件由后续 fix-spec 决定 (例如 `behavior-gap + route-missing = 0`)。
 
@@ -134,7 +134,7 @@ POST /v1beta/models/:modelWithMethod   (Gemini generateContent + streamGenerateC
 | 风险 | 缓解 |
 |------|------|
 | root `bun run local` 起不来 (.env 缺字段 / port 占用 / sqlite 路径) | Task 1 前置验证;起不来 → spec blocked,记入 `12a-blockers.md` |
-| GH token 复用撞 quota | harness 强制 sequential;预估每 fixture ≤ 1 上游 token call,21 calls 无压力 |
+| GH token 复用撞 quota | harness 强制 sequential;预估每 fixture ≤ 1 上游 token call,27 calls 无压力 |
 | 真实 LLM 抖动 (model 偶发返回不同 finish_reason / 不同 tool 选择 / SSE 文本差异) | 强校验字段只限结构性 key (finish_reason 的存在 + role 的值 + usage key 集),不比 content 文本;SSE 同样只比 event 名 + 顺序 + delta type,不比 prose |
 | SSE chunk 边界差异噪声 | 见 §3 diff rules,structural-only |
 | 端口冲突:root 默认 41414 与 vnext 41415 仅差 1,易混淆 | §2 强制 `PORT=4141 bun run local`,harness 写死 4141/41415 |
@@ -157,7 +157,7 @@ POST /v1beta/models/:modelWithMethod   (Gemini generateContent + streamGenerateC
 | `vnext/docs/superpowers/specs/2026-06-25-spec12a-data-plane-parity-audit.md` | 本 spec | commit 1 |
 | `vnext/docs/superpowers/plans/2026-06-25-spec12a-data-plane-parity-audit.md` | plan | commit 2 |
 | `vnext/scripts/parity/data-plane-audit.ts` | harness | commit 3 |
-| `vnext/scripts/parity/fixtures/data-plane/*.json` (21 文件) | fixtures | commit 3 |
+| `vnext/scripts/parity/fixtures/data-plane/*.json` (27 文件) | fixtures | commit 3 |
 | `vnext/docs/superpowers/research/2026-06-25-spec12a-parity-report.md` | audit 输出 | commit 4 |
 | (可选) `vnext/docs/superpowers/research/2026-06-25-spec12a-blockers.md` | 若 Task 1 阻断 | commit (条件) |
 
