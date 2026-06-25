@@ -1,0 +1,8 @@
+{
+  "name": "embeddings-single-string",
+  "endpoint": "/v1/embeddings",
+  "method": "POST",
+  "headers": { "authorization": "Bearer ${API_KEY}", "content-type": "application/json" },
+  "body": { "model": "text-embedding-3-small", "input": "hello world" },
+  "expect_stream": false
+}

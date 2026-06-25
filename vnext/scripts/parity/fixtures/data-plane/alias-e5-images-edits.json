@@ -1,0 +1,23 @@
+{
+  "name": "alias-e5-images-edits",
+  "endpoint": "/images/edits",
+  "method": "POST",
+  "headers": { "authorization": "Bearer ${API_KEY}" },
+  "body": {
+    "multipart": true,
+    "fields": {
+      "model": "dall-e-2",
+      "prompt": "add a small red dot",
+      "size": "256x256",
+      "n": 1
+    },
+    "files": {
+      "image": {
+        "filename": "tiny.png",
+        "content_type": "image/png",
+        "base64": "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAFklEQVR4nGNgYGD4z8DAwMDEwMDAAAALBgEAh4VqgAAAAABJRU5ErkJggg=="
+      }
+    }
+  },
+  "expect_stream": false
+}

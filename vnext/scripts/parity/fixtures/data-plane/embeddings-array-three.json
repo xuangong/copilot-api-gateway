@@ -1,0 +1,8 @@
+{
+  "name": "embeddings-array-three",
+  "endpoint": "/v1/embeddings",
+  "method": "POST",
+  "headers": { "authorization": "Bearer ${API_KEY}", "content-type": "application/json" },
+  "body": { "model": "text-embedding-3-small", "input": ["alpha", "beta", "gamma"] },
+  "expect_stream": false
+}

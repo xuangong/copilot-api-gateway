@@ -1,0 +1,8 @@
+{
+  "name": "embeddings-bad-model-4xx",
+  "endpoint": "/v1/embeddings",
+  "method": "POST",
+  "headers": { "authorization": "Bearer ${API_KEY}", "content-type": "application/json" },
+  "body": { "model": "nonexistent-model-xyz", "input": "hello" },
+  "expect_stream": false
+}

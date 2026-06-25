@@ -1,0 +1,16 @@
+{
+  "name": "messages-basic-non-stream",
+  "endpoint": "/v1/messages",
+  "method": "POST",
+  "headers": {
+    "x-api-key": "${API_KEY}",
+    "anthropic-version": "2023-06-01",
+    "content-type": "application/json"
+  },
+  "body": {
+    "model": "claude-haiku-4-5",
+    "max_tokens": 16,
+    "messages": [{ "role": "user", "content": "Reply with exactly: ok" }]
+  },
+  "expect_stream": false
+}

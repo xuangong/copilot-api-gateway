@@ -1,0 +1,28 @@
+{
+  "name": "chat-completions-tool-required",
+  "endpoint": "/v1/chat/completions",
+  "method": "POST",
+  "headers": { "authorization": "Bearer ${API_KEY}", "content-type": "application/json" },
+  "body": {
+    "model": "gpt-4o-mini",
+    "messages": [{ "role": "user", "content": "Use the get_weather tool for Tokyo." }],
+    "stream": false,
+    "tool_choice": "required",
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "parameters": {
+            "type": "object",
+            "properties": { "city": { "type": "string" } },
+            "required": ["city"]
+          }
+        }
+      }
+    ],
+    "max_tokens": 64
+  },
+  "expect_stream": false
+}

@@ -1,0 +1,8 @@
+{
+  "name": "images-bad-size-4xx",
+  "endpoint": "/v1/images/generations",
+  "method": "POST",
+  "headers": { "authorization": "Bearer ${API_KEY}", "content-type": "application/json" },
+  "body": { "model": "dall-e-2", "prompt": "x", "size": "1x1" },
+  "expect_stream": false
+}

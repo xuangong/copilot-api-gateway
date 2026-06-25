@@ -1,0 +1,10 @@
+{
+  "name": "gemini-count-tokens",
+  "endpoint": "/v1beta/models/gemini-2.5-flash:countTokens",
+  "method": "POST",
+  "headers": { "x-goog-api-key": "${API_KEY}", "content-type": "application/json" },
+  "body": {
+    "contents": [{ "role": "user", "parts": [{ "text": "Hello world" }] }]
+  },
+  "expect_stream": false
+}

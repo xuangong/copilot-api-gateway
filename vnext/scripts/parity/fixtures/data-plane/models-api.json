@@ -1,0 +1,7 @@
+{
+  "name": "models-api",
+  "endpoint": "/api/models",
+  "method": "GET",
+  "headers": { "authorization": "Bearer ${API_KEY}" },
+  "expect_stream": false
+}

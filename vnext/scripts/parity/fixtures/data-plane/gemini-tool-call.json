@@ -1,0 +1,26 @@
+{
+  "name": "gemini-tool-call",
+  "endpoint": "/v1beta/models/gemini-2.5-flash:generateContent",
+  "method": "POST",
+  "headers": { "x-goog-api-key": "${API_KEY}", "content-type": "application/json" },
+  "body": {
+    "contents": [{ "role": "user", "parts": [{ "text": "Use get_weather for Tokyo" }] }],
+    "tools": [
+      {
+        "functionDeclarations": [
+          {
+            "name": "get_weather",
+            "description": "Get the current weather for a city",
+            "parameters": {
+              "type": "object",
+              "properties": { "city": { "type": "string" } },
+              "required": ["city"]
+            }
+          }
+        ]
+      }
+    ],
+    "generationConfig": { "maxOutputTokens": 64 }
+  },
+  "expect_stream": false
+}

@@ -1,0 +1,11 @@
+{
+  "name": "gemini-stream-generate-content",
+  "endpoint": "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+  "method": "POST",
+  "headers": { "x-goog-api-key": "${API_KEY}", "content-type": "application/json" },
+  "body": {
+    "contents": [{ "role": "user", "parts": [{ "text": "Reply with exactly: ok" }] }],
+    "generationConfig": { "maxOutputTokens": 16 }
+  },
+  "expect_stream": true
+}

@@ -1,0 +1,13 @@
+{
+  "name": "responses-basic-non-stream",
+  "endpoint": "/v1/responses",
+  "method": "POST",
+  "headers": { "authorization": "Bearer ${API_KEY}", "content-type": "application/json" },
+  "body": {
+    "model": "gpt-4o-mini",
+    "input": "Reply with exactly: ok",
+    "max_output_tokens": 16,
+    "stream": false
+  },
+  "expect_stream": false
+}

@@ -1,0 +1,8 @@
+{
+  "name": "alias-e4-images-generations",
+  "endpoint": "/images/generations",
+  "method": "POST",
+  "headers": { "authorization": "Bearer ${API_KEY}", "content-type": "application/json" },
+  "body": { "model": "dall-e-2", "prompt": "a red circle on white background", "n": 1, "size": "256x256" },
+  "expect_stream": false
+}

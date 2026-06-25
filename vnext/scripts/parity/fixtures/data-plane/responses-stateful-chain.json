@@ -1,0 +1,14 @@
+{
+  "name": "responses-stateful-chain",
+  "endpoint": "/v1/responses",
+  "method": "POST",
+  "headers": { "authorization": "Bearer ${API_KEY}", "content-type": "application/json" },
+  "body": {
+    "model": "gpt-4o-mini",
+    "input": "And now reply with exactly: ok2",
+    "previous_response_id": "${PREV_RESPONSE_ID}",
+    "max_output_tokens": 16,
+    "stream": false
+  },
+  "expect_stream": false
+}

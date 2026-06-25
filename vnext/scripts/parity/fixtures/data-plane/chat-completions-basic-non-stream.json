@@ -1,0 +1,13 @@
+{
+  "name": "chat-completions-basic-non-stream",
+  "endpoint": "/v1/chat/completions",
+  "method": "POST",
+  "headers": { "authorization": "Bearer ${API_KEY}", "content-type": "application/json" },
+  "body": {
+    "model": "gpt-4o-mini",
+    "messages": [{ "role": "user", "content": "Reply with exactly: ok" }],
+    "stream": false,
+    "max_tokens": 16
+  },
+  "expect_stream": false
+}
