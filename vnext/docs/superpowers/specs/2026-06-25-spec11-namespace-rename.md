@@ -70,7 +70,7 @@
 - `vnext/scripts/check-framework-purity.ts` (10 处字面量)
 - `vnext/tsconfig.base.json` 的 `paths` 映射 (若有)
 - `vnext/eslint.config.mjs` 等配置里字面量 (若有)
-- `vnext/docs/` 下 **living** 文档中明确引用包名的位置 (e.g. roadmap、charter、README)。历史 `docs/superpowers/specs/` 与 `docs/superpowers/research/` 作为时间戳证据保留旧名,不改
+- `vnext/docs/` 下文档:统一按"历史快照不改"处理 (`specs/` + `research/` 全部保留旧名作为时间戳证据)。下一次 roadmap / charter 更新时由后续 commit 顺带改名,不在本 spec 范围。README 类 living doc 若引用包名则跟随必改
 
 ### 3.2 不改
 
@@ -82,16 +82,17 @@
 
 ### 3.3 现状量级 (实施前 baseline)
 
-代码/配置层 baseline (不含 docs/specs/research):
+代码层 baseline (与 A4 同范围,只数 `packages` + `apps`,排除 `scripts/check-framework-purity.ts` 的 legacy detection 字面量):
 
 ```bash
-rg -l '@vnext-(gateway|llm)' vnext/packages vnext/apps vnext/scripts vnext/tsconfig.base.json vnext/eslint.config.mjs 2>/dev/null
-rg -o '@vnext-(gateway|llm)' vnext/packages vnext/apps vnext/scripts | wc -l
+rg -l '@vnext-(gateway|llm)' vnext/packages vnext/apps
+rg -o '@vnext-(gateway|llm)' vnext/packages vnext/apps | wc -l
 ```
 
 - 19 个 workspace 包
 - 1001 测试基线 (Spec 10 acceptance log)
-- 文档/spec 层另算:Spec 11 自身含 ~27 处 `@vibe-*` mention,Spec 10 acceptance log 仍含 `@vnext-*`,作为历史文档不在 zero-out 要求内
+- `vnext/scripts/` 单独有 ~13 处旧 scope 字面量,实施时 `check-framework-purity.ts` 按步骤 3 语义改 + 保留 legacy detection,不计入 A3/A4 守恒
+- 文档/spec 层另算:Spec 10 acceptance log / spec / research 等历史快照保留旧名,不改
 
 ## 4. 执行风格
 
@@ -104,7 +105,10 @@ rg -o '@vnext-(gateway|llm)' vnext/packages vnext/apps vnext/scripts | wc -l
 
 ## 5. 实施步骤 (高阶,plan 展开)
 
-1. 创建 baseline checkpoint:确认当前 `bun test` 1001 pass;记录代码层 `rg -o '@vnext-(gateway|llm)' vnext/packages vnext/apps vnext/scripts | wc -l` 的 baseline 数值
+1. 创建 baseline checkpoint:
+   - 确认当前 `bun test` 1001 pass
+   - 记录代码层 occurrence 数:`rg -o '@vnext-(gateway|llm)' vnext/packages vnext/apps | wc -l`
+   - 锁定 typecheck baseline:`cd vnext && bun run typecheck 2>&1 | tee /tmp/spec11-typecheck-baseline.txt`
 2. 全仓库批量替换 (代码 + 配置 + lock):
    ```bash
    rg -l '@vnext-gateway' vnext/packages vnext/apps vnext/scripts vnext/tsconfig.base.json vnext/eslint.config.mjs vnext/bun.lock 2>/dev/null \
@@ -121,7 +125,7 @@ rg -o '@vnext-(gateway|llm)' vnext/packages vnext/apps vnext/scripts | wc -l
 4. `bun install` (不动 `node_modules` / 不删 `bun.lock`;让 Bun 检测 workspace name 变化并刷新 lock 中相应 entry)
 5. **lock-diff 守护:** `git diff vnext/bun.lock` 仅含 `@vnext-* → @vibe-*` workspace 改名,不能出现第三方版本变更;有则回滚步骤 4 排查
 6. `bun run test` (workspace-wide,期望 1001 pass)
-7. `bun run typecheck` (期望与 Spec 10 baseline 相同的 pre-existing translate 错误,无新增)
+7. `bun run typecheck` 改完后再跑一次,与 `/tmp/spec11-typecheck-baseline.txt` diff;期望差异为空 (rename 不引入任何新错误,所有 pre-existing 错误的文件/行/类型与 baseline 完全一致;A2 的 baseline 已涵盖 translate Gemini 与 provider-azure/custom/sdf 的 BodyInit 错误)
 8. `bun run scripts/check-framework-purity.ts` (脚本已按步骤 3 改完)
 9. 从 repo root 执行 docker build (build context = `vnext/`):
    ```bash
@@ -153,15 +157,15 @@ rg '@vnext-(gateway|llm)' vnext/packages vnext/apps vnext/tsconfig.base.json vne
 rg -o '@vibe-(core|llm)' vnext/packages vnext/apps | wc -l
 # 期望: ≈ §3.3 baseline 数 (允许 ±5)
 
-# A4.1 — lock-diff 限定
-git diff vnext/bun.lock | rg -v '^[+-]\s*"?@(vnext|vibe)-'
-# 期望: 只剩 diff header / context 行,无第三方版本变更
+# A4.1 — lock-diff 限定:只看新增/删除行,且不允许任何非 workspace-rename 行
+git diff -- vnext/bun.lock | rg '^[+-](?![+-])' | rg -v '@(vnext|vibe)-'
+# 期望: 返回空 (所有 +/- 行都必须是 @vnext-* 或 @vibe-* 的 workspace 名重命名)
 ```
 
 | ID | Gate | 期望 |
 |----|------|------|
 | A1 | `bun run test` workspace-wide | 1001 pass, 0 fail |
-| A2 | `bun run typecheck` workspace-wide | 仅保留 baseline 已记录的 pre-existing 错误:`@vibe-llm/translate` Gemini 错误 + `@vibe-llm/provider-azure` / `provider-custom` / `provider-sdf` 的 BodyInit 错误 (与 Spec 8 A2 容忍范围一致),无新增 |
+| A2 | `bun run typecheck` workspace-wide,与 step 1 锁定的 `/tmp/spec11-typecheck-baseline.txt` diff | 差异为空 (baseline 已涵盖:`@vibe-llm/translate` Gemini + `@vibe-llm/provider-azure/custom/sdf` BodyInit,与 Spec 8 A2 容忍范围一致) |
 | A3 | 旧名零残留 | 见上方 A3 命令,返回空 |
 | A4 | occurrence 守恒 | 见上方 A4 命令,≈ §3.3 baseline 数 (±5) |
 | A4.1 | `bun.lock` diff 限定 | 见上方 A4.1 命令,仅 workspace 名重命名,无第三方版本变更 |
@@ -169,7 +173,7 @@ git diff vnext/bun.lock | rg -v '^[+-]\s*"?@(vnext|vibe)-'
 | A6 | local docker compose up + 四 endpoint smoke | `/v1/chat/completions` / `/v1/messages` / `/v1/responses` / `/v1beta/.../generateContent` 全 200 |
 | A7 | CFW live smoke | ⏸ 推迟到下次部署窗口 (按约束) |
 
-**A2 baseline note:** 实施第一步先跑 `cd vnext && bun run typecheck 2>&1 | tee /tmp/spec11-typecheck-baseline.txt` 锁定 pre-rename 错误清单 (文件:行:错误数),改完后再跑一次 diff,差异为空即视为 A2 通过。
+**A2 baseline note:** step 1 已 `tee /tmp/spec11-typecheck-baseline.txt`;改完后 `bun run typecheck 2>&1 | diff - /tmp/spec11-typecheck-baseline.txt` 为空即视为 A2 通过。pre-existing 错误清单 (translate Gemini + provider-azure/custom/sdf BodyInit) 自然继承,无需逐项再列。
 
 ## 7. 风险与缓解
 
