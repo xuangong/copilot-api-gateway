@@ -199,3 +199,65 @@ describe('renderReport', () => {
     expect(md).toContain('### a (`/x`) — parity')
   })
 })
+
+import { fetchSide, substitutePlaceholders, type Fixture } from './data-plane-audit'
+
+describe('substitutePlaceholders', () => {
+  test('replaces in string', () => {
+    expect(substitutePlaceholders('id=${X}', { X: 'abc' })).toBe('id=abc')
+  })
+  test('replaces nested in object/array', () => {
+    const r = substitutePlaceholders(
+      { previous_response_id: '${PREV_RESPONSE_ID}', items: ['x', '${X}'] },
+      { PREV_RESPONSE_ID: 'r_123', X: 'y' },
+    )
+    expect(r).toEqual({ previous_response_id: 'r_123', items: ['x', 'y'] })
+  })
+})
+
+describe('fetchSide multipart', () => {
+  test('builds FormData and strips content-type', async () => {
+    let captured: { url: string; init: RequestInit } | null = null
+    const fakeFetch = (async (url: string, init: RequestInit) => {
+      captured = { url, init }
+      return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as unknown as typeof fetch
+    const fx: Fixture = {
+      name: 'mp',
+      endpoint: '/v1/x',
+      method: 'POST',
+      headers: { 'authorization': 'Bearer t', 'content-type': 'application/json' },
+      body: {
+        multipart: true,
+        fields: { model: 'dall-e-2', n: 1 },
+        files: { image: { filename: 'x.png', content_type: 'image/png', base64: 'iVBORw0KGgo=' } },
+      } as unknown as Record<string, unknown>,
+      expect_stream: false,
+    }
+    const res = await fetchSide('http://x', fx, fakeFetch)
+    expect(res.status).toBe(200)
+    expect(captured).not.toBeNull()
+    expect(captured!.init.body).toBeInstanceOf(FormData)
+    const h = captured!.init.headers as Record<string, string>
+    expect(h['content-type']).toBeUndefined()
+    expect(h['authorization']).toBe('Bearer t')
+  })
+  test('json body sets content-type when missing', async () => {
+    let captured: { init: RequestInit } | null = null
+    const fakeFetch = (async (_url: string, init: RequestInit) => {
+      captured = { init }
+      return new Response('{}', { status: 200, headers: {} })
+    }) as unknown as typeof fetch
+    const fx: Fixture = {
+      name: 'j',
+      endpoint: '/x',
+      method: 'POST',
+      headers: { 'authorization': 'Bearer t' },
+      body: { hello: 'world' },
+      expect_stream: false,
+    }
+    await fetchSide('http://x', fx, fakeFetch)
+    const h = captured!.init.headers as Record<string, string>
+    expect(h['content-type']).toBe('application/json')
+  })
+})

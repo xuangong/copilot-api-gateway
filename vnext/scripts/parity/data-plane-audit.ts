@@ -274,20 +274,64 @@ export function aggregateLabel(diffs: DiffEntry[]): GapLabel {
 
 // ---------- HTTP execution ----------
 
+export interface MultipartBody {
+  multipart: true
+  fields: Record<string, string | number>
+  files: Record<string, { filename: string; content_type: string; base64: string }>
+}
+
+function isMultipart(body: unknown): body is MultipartBody {
+  return typeof body === 'object' && body !== null && (body as { multipart?: unknown }).multipart === true
+}
+
+function buildMultipart(body: MultipartBody): FormData {
+  const fd = new FormData()
+  for (const [k, v] of Object.entries(body.fields)) {
+    fd.append(k, String(v))
+  }
+  for (const [k, f] of Object.entries(body.files)) {
+    const bin = Uint8Array.from(atob(f.base64), (c) => c.charCodeAt(0))
+    fd.append(k, new Blob([bin], { type: f.content_type }), f.filename)
+  }
+  return fd
+}
+
+export function substitutePlaceholders(input: unknown, vars: Record<string, string>): unknown {
+  if (typeof input === 'string') {
+    let out = input
+    for (const [k, v] of Object.entries(vars)) {
+      out = out.split(`\${${k}}`).join(v)
+    }
+    return out
+  }
+  if (Array.isArray(input)) return input.map((x) => substitutePlaceholders(x, vars))
+  if (input && typeof input === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+      out[k] = substitutePlaceholders(v, vars)
+    }
+    return out
+  }
+  return input
+}
+
 export async function fetchSide(
   base: string,
   fx: Fixture,
   fetchImpl: typeof fetch = fetch,
 ): Promise<FetchResult> {
   const url = `${base}${fx.endpoint}`
-  const init: RequestInit = {
-    method: fx.method,
-    headers: fx.headers,
-  }
+  const init: RequestInit = { method: fx.method, headers: { ...fx.headers } }
   if (fx.method !== 'GET' && fx.body !== undefined) {
-    init.body = typeof fx.body === 'string' ? fx.body : JSON.stringify(fx.body)
-    if (!('content-type' in (fx.headers ?? {})) && !('Content-Type' in (fx.headers ?? {}))) {
-      init.headers = { ...fx.headers, 'content-type': 'application/json' }
+    if (isMultipart(fx.body)) {
+      init.body = buildMultipart(fx.body)
+      const h = init.headers as Record<string, string>
+      delete h['content-type']
+      delete h['Content-Type']
+    } else {
+      init.body = typeof fx.body === 'string' ? fx.body : JSON.stringify(fx.body)
+      const h = init.headers as Record<string, string>
+      if (!('content-type' in h) && !('Content-Type' in h)) h['content-type'] = 'application/json'
     }
   }
   const resp = await fetchImpl(url, init)
