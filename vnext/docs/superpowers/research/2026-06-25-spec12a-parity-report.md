@@ -1,14 +1,14 @@
 # Spec 12a — Data-Plane Parity Report
 
-**Generated:** 2026-06-25T09:40:35.836Z
+**Generated:** 2026-06-25T09:45:01.096Z
 **Fixtures:** 27
 
 ## Summary
 
 | label | count |
 |-------|-------|
-| parity | 8 |
-| cosmetic-diff | 1 |
+| parity | 9 |
+| cosmetic-diff | 0 |
 | behavior-gap | 14 |
 | route-missing | 4 |
 
@@ -16,15 +16,15 @@
 
 | endpoint | fixture | label | root | vnext | summary |
 |----------|---------|-------|------|-------|---------|
-| `/chat/completions` | alias-e1-chat-completions | **behavior-gap** | 200 | 200 | header:cosmetic-diff / body:behavior-gap / body:behavior-gap |
+| `/chat/completions` | alias-e1-chat-completions | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap / body:behavior-gap |
 | `/responses` | alias-e2-responses | **behavior-gap** | 200 | 400 | status:behavior-gap / body:behavior-gap / body:behavior-gap |
 | `/embeddings` | alias-e3-embeddings | **behavior-gap** | 500 | 200 | status:behavior-gap / body:behavior-gap / body:behavior-gap |
 | `/images/generations` | alias-e4-images-generations | **parity** | 404 | 404 | — |
 | `/images/edits` | alias-e5-images-edits | **parity** | 404 | 404 | — |
-| `/v1/chat/completions` | chat-completions-basic-non-stream | **behavior-gap** | 200 | 200 | header:cosmetic-diff / body:behavior-gap / body:behavior-gap |
+| `/v1/chat/completions` | chat-completions-basic-non-stream | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap / body:behavior-gap |
 | `/v1/chat/completions` | chat-completions-stream-include-usage | **behavior-gap** | 200 | 200 | sse:behavior-gap |
-| `/v1/chat/completions` | chat-completions-tool-required | **behavior-gap** | 200 | 200 | header:cosmetic-diff / body:behavior-gap / body:behavior-gap |
-| `/v1/embeddings` | embeddings-array-three | **cosmetic-diff** | 200 | 200 | header:cosmetic-diff |
+| `/v1/chat/completions` | chat-completions-tool-required | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap / body:behavior-gap |
+| `/v1/embeddings` | embeddings-array-three | **parity** | 200 | 200 | — |
 | `/v1/embeddings` | embeddings-bad-model-4xx | **parity** | 404 | 404 | — |
 | `/v1/embeddings` | embeddings-single-string | **behavior-gap** | 500 | 200 | status:behavior-gap / body:behavior-gap / body:behavior-gap |
 | `/v1beta/models/gemini-2.5-flash:countTokens` | gemini-count-tokens | **route-missing** | 200 | 404 | status:route-missing |
@@ -34,12 +34,12 @@
 | `/v1/images/generations` | images-bad-size-4xx | **parity** | 404 | 404 | — |
 | `/v1/images/edits` | images-edits-png | **parity** | 404 | 404 | — |
 | `/v1/images/generations` | images-generations-basic | **parity** | 404 | 404 | — |
-| `/v1/messages` | messages-basic-non-stream | **behavior-gap** | 200 | 200 | header:cosmetic-diff / body:behavior-gap / body:behavior-gap |
+| `/v1/messages` | messages-basic-non-stream | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap |
 | `/v1/messages/count_tokens` | messages-count-tokens | **parity** | 200 | 200 | — |
 | `/v1/messages` | messages-stream | **parity** | 200 | 200 | — |
-| `/api/models` | models-api | **behavior-gap** | 200 | 200 | header:cosmetic-diff / body:behavior-gap / body:behavior-gap |
-| `/models` | models-root | **behavior-gap** | 200 | 200 | header:cosmetic-diff / body:behavior-gap / body:behavior-gap |
-| `/v1/models` | models-v1 | **behavior-gap** | 200 | 200 | header:cosmetic-diff / body:behavior-gap / body:behavior-gap |
+| `/api/models` | models-api | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap / body:behavior-gap |
+| `/models` | models-root | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap / body:behavior-gap |
+| `/v1/models` | models-v1 | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap / body:behavior-gap |
 | `/v1/responses` | responses-basic-non-stream | **behavior-gap** | 200 | 400 | status:behavior-gap / body:behavior-gap / body:behavior-gap |
 | `/v1/responses` | responses-stream | **behavior-gap** | 200 | 400 | status:behavior-gap / header:cosmetic-diff / header:cosmetic-diff |
 | `/v1/responses` | responses-stateful-chain | **behavior-gap** | 400 | 400 | body:behavior-gap / body:behavior-gap / body:behavior-gap |
@@ -48,7 +48,6 @@
 
 ### alias-e1-chat-completions (`/chat/completions`) — behavior-gap
 
-- **header** [cosmetic-diff] content-type: root="application/json" vnext="application/json;charset=utf-<num>"
 - **body** [behavior-gap] $.choices[0].content_filter_results: type root=object vnext=undefined
 - **body** [behavior-gap] $.choices[0].message.padding: type root=string vnext=undefined
 - **body** [behavior-gap] $.prompt_filter_results: type root=object vnext=undefined
@@ -93,7 +92,6 @@ No diffs.
 
 ### chat-completions-basic-non-stream (`/v1/chat/completions`) — behavior-gap
 
-- **header** [cosmetic-diff] content-type: root="application/json" vnext="application/json;charset=utf-<num>"
 - **body** [behavior-gap] $.choices[0].content_filter_results: type root=object vnext=undefined
 - **body** [behavior-gap] $.choices[0].message.padding: type root=string vnext=undefined
 - **body** [behavior-gap] $.prompt_filter_results: type root=object vnext=undefined
@@ -107,7 +105,6 @@ No diffs.
 
 ### chat-completions-tool-required (`/v1/chat/completions`) — behavior-gap
 
-- **header** [cosmetic-diff] content-type: root="application/json" vnext="application/json;charset=utf-<num>"
 - **body** [behavior-gap] $.choices[0].content_filter_results: type root=object vnext=undefined
 - **body** [behavior-gap] $.choices[0].message.padding: type root=string vnext=undefined
 - **body** [behavior-gap] $.prompt_filter_results: type root=object vnext=undefined
@@ -115,9 +112,9 @@ No diffs.
 - **body** [behavior-gap] $.copilot_usage: type root=object vnext=undefined
 - **body** [behavior-gap] $.object: type root=undefined vnext=string
 
-### embeddings-array-three (`/v1/embeddings`) — cosmetic-diff
+### embeddings-array-three (`/v1/embeddings`) — parity
 
-- **header** [cosmetic-diff] content-type: root="application/json" vnext="application/json;charset=utf-<num>"
+No diffs.
 
 ### embeddings-bad-model-4xx (`/v1/embeddings`) — parity
 
@@ -160,7 +157,6 @@ No diffs.
 
 ### messages-basic-non-stream (`/v1/messages`) — behavior-gap
 
-- **header** [cosmetic-diff] content-type: root="application/json" vnext="application/json;charset=utf-<num>"
 - **body** [behavior-gap] $.copilot_usage: type root=object vnext=undefined
 - **body** [behavior-gap] usage keys: onlyRoot=[cache_creation] onlyVnext=[]
 
@@ -174,7 +170,6 @@ No diffs.
 
 ### models-api (`/api/models`) — behavior-gap
 
-- **header** [cosmetic-diff] content-type: root="application/json;charset=utf-<num>" vnext="application/json"
 - **body** [behavior-gap] $.data[0].capabilities.family: root="claude-opus-4.6" vnext="copilot"
 - **body** [behavior-gap] $.data[0].capabilities.limits.max_non_streaming_output_tokens: type root=number vnext=undefined
 - **body** [behavior-gap] $.data[0].capabilities.limits.vision: type root=object vnext=undefined
@@ -622,7 +617,6 @@ No diffs.
 
 ### models-root (`/models`) — behavior-gap
 
-- **header** [cosmetic-diff] content-type: root="application/json;charset=utf-<num>" vnext="application/json"
 - **body** [behavior-gap] $.data[0].capabilities.family: root="claude-opus-4.6" vnext="copilot"
 - **body** [behavior-gap] $.data[0].capabilities.limits.max_non_streaming_output_tokens: type root=number vnext=undefined
 - **body** [behavior-gap] $.data[0].capabilities.limits.vision: type root=object vnext=undefined
@@ -1070,7 +1064,6 @@ No diffs.
 
 ### models-v1 (`/v1/models`) — behavior-gap
 
-- **header** [cosmetic-diff] content-type: root="application/json;charset=utf-<num>" vnext="application/json"
 - **body** [behavior-gap] $.data[0].capabilities.family: root="claude-opus-4.6" vnext="copilot"
 - **body** [behavior-gap] $.data[0].capabilities.limits.max_non_streaming_output_tokens: type root=number vnext=undefined
 - **body** [behavior-gap] $.data[0].capabilities.limits.vision: type root=object vnext=undefined
@@ -1546,6 +1539,6 @@ No diffs.
 
 ### responses-stateful-chain (`/v1/responses`) — behavior-gap
 
-- **body** [behavior-gap] $.error.message: root="Previous response with id 'resp_0f9b1bcae4144890a85bbd4b' not found." vnext="no such table: responses_snapshots"
+- **body** [behavior-gap] $.error.message: root="Previous response with id 'resp_49705e06e8744d2ebd97b564' not found." vnext="no such table: responses_snapshots"
 - **body** [behavior-gap] $.error.param: type root=string vnext=undefined
 - **body** [behavior-gap] $.error.code: type root=string vnext=undefined

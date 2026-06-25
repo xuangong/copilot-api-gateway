@@ -41,6 +41,14 @@ app.use('*', async (c, next) => {
   }
 })
 
+app.use('*', async (c, next) => {
+  await next()
+  const ct = c.res.headers.get('content-type')
+  if (ct && ct.toLowerCase().startsWith('application/json') && /;\s*charset=/i.test(ct)) {
+    c.res.headers.set('content-type', 'application/json')
+  }
+})
+
 app.get('/health', (c) => c.json({ status: 'ok', service: 'copilot-gateway-vnext' }))
 
 app.get('/debug/db/users-count', async (c) => {

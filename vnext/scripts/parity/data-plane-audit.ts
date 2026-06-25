@@ -86,6 +86,7 @@ const HEADER_ALLOWLIST = new Set(['content-type', 'x-request-id', 'transfer-enco
 
 export function maskHeaderValue(value: string): string {
   return value
+    .replace(/;\s*charset=[^;]+/gi, '')
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<uuid>')
     .replace(/:\d{2,5}\b/g, ':<port>')
     .replace(/\b\d+\b/g, '<num>')
