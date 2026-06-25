@@ -1,0 +1,9 @@
+{
+  "name": "create-share",
+  "endpoint": "/api/observability-shares",
+  "method": "POST",
+  "auth": "admin-session",
+  "body": { "viewerEmail": "${env.PARITY_TARGET_USER_EMAIL}" },
+  "expect_status": 200,
+  "capture": { "viewerId": "$.viewerId" }
+}

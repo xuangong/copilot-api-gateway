@@ -1,0 +1,7 @@
+{
+  "name": "list-granted-to-me",
+  "endpoint": "/api/observability-shares/granted-to-me",
+  "method": "GET",
+  "auth": "admin-session",
+  "expect_status": 200
+}

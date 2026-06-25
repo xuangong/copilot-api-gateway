@@ -1,0 +1,8 @@
+{
+  "name": "delete-share",
+  "endpoint": "/api/observability-shares/${capture.create-share.viewerId}",
+  "method": "DELETE",
+  "auth": "admin-session",
+  "dependsOn": ["create-share", "list-granted-by-me"],
+  "expect_status": 200
+}

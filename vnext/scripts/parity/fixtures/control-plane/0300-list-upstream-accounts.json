@@ -1,0 +1,7 @@
+{
+  "name": "list-upstream-accounts",
+  "endpoint": "/api/upstream-accounts",
+  "method": "GET",
+  "auth": "admin-session",
+  "expect_status": 200
+}

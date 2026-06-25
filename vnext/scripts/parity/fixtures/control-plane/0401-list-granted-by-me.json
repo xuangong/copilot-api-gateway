@@ -1,0 +1,8 @@
+{
+  "name": "list-granted-by-me",
+  "endpoint": "/api/observability-shares/granted-by-me",
+  "method": "GET",
+  "auth": "admin-session",
+  "dependsOn": ["create-share"],
+  "expect_status": 200
+}

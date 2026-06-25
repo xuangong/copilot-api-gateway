@@ -1,0 +1,8 @@
+{
+  "name": "create-share-invalid",
+  "endpoint": "/api/observability-shares",
+  "method": "POST",
+  "auth": "admin-session",
+  "body": { "viewerEmail": "test@local.dev" },
+  "expect_status": 400
+}

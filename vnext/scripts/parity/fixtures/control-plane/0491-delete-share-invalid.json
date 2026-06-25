@@ -1,0 +1,7 @@
+{
+  "name": "delete-share-invalid",
+  "endpoint": "/api/observability-shares/00000000-0000-0000-0000-deadbeefdead",
+  "method": "DELETE",
+  "auth": "admin-session",
+  "expect_status": 200
+}
