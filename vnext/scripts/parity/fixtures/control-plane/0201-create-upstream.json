@@ -8,7 +8,7 @@
     "provider": "azure",
     "config": {
       "name": "parity-test-upstream",
-      "endpoint": "https://parity-mock.invalid",
+      "endpoint": "https://parity-mock.openai.azure.com",
       "apiKey": "fake-parity-key",
       "deployment": "gpt-4o",
       "apiVersion": "2024-08-01-preview"
