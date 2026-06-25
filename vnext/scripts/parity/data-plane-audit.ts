@@ -8,7 +8,7 @@
  * Spec: vnext/docs/superpowers/specs/2026-06-25-spec12a-data-plane-parity-audit.md
  */
 
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 // ---------- Types ----------
@@ -439,13 +439,85 @@ export function renderReport(reports: FixtureReport[]): string {
   return lines.join('\n')
 }
 
-// ---------- CLI entry (stub for Part 1) ----------
+// ---------- CLI entry ----------
 
 async function main(): Promise<void> {
-  console.error('[parity] harness Part 1 skeleton — real runner wired in Part 3')
-  console.error(`[parity] root=${ROOT_BASE} vnext=${VNEXT_BASE} fixtures=${FIXTURE_DIR}`)
-  console.error(`[parity] report→${REPORT_PATH}`)
-  process.exit(0)
+  if (!API_KEY) {
+    console.error('[parity] PARITY_API_KEY is required')
+    process.exit(2)
+  }
+  const fixtures = loadFixtures()
+  console.error(`[parity] loaded ${fixtures.length} fixtures from ${FIXTURE_DIR}`)
+  console.error(`[parity] root=${ROOT_BASE} vnext=${VNEXT_BASE}`)
+
+  const ordered = [...fixtures].sort((a, b) => {
+    const aChain = a.name === 'responses-stateful-chain' ? 1 : 0
+    const bChain = b.name === 'responses-stateful-chain' ? 1 : 0
+    if (aChain !== bChain) return aChain - bChain
+    return a.name.localeCompare(b.name)
+  })
+
+  const vars: Record<string, string> = {}
+  const reports: FixtureReport[] = []
+
+  for (const fxOriginal of ordered) {
+    const fx: Fixture = {
+      ...fxOriginal,
+      headers: substitutePlaceholders(fxOriginal.headers, vars) as Record<string, string>,
+      body: substitutePlaceholders(fxOriginal.body, vars),
+    }
+
+    console.error(`[parity] → ${fx.name} (${fx.method} ${fx.endpoint})`)
+
+    let root: FetchResult
+    let vnext: FetchResult
+    try {
+      root = await fetchSide(ROOT_BASE, fx)
+    } catch (err) {
+      console.error(`[parity]   root fetch failed: ${(err as Error).message}`)
+      reports.push({
+        fixture: fx.name, endpoint: fx.endpoint,
+        rootStatus: 0, vnextStatus: 0,
+        label: 'behavior-gap',
+        diffs: [{ layer: 'status', label: 'behavior-gap', detail: `root fetch error: ${(err as Error).message}` }],
+      })
+      continue
+    }
+    try {
+      vnext = await fetchSide(VNEXT_BASE, fx)
+    } catch (err) {
+      console.error(`[parity]   vnext fetch failed: ${(err as Error).message}`)
+      reports.push({
+        fixture: fx.name, endpoint: fx.endpoint,
+        rootStatus: root.status, vnextStatus: 0,
+        label: 'route-missing',
+        diffs: [{ layer: 'status', label: 'route-missing', detail: `vnext fetch error: ${(err as Error).message}` }],
+      })
+      continue
+    }
+
+    if (fx.name === 'responses-basic-non-stream' && root.status < 400) {
+      const rb = root.body as { id?: string } | undefined
+      if (rb?.id) {
+        vars.PREV_RESPONSE_ID = rb.id
+        console.error(`[parity]   captured PREV_RESPONSE_ID=${rb.id}`)
+      }
+    }
+
+    const rep = runFixture(fx, root, vnext)
+    reports.push(rep)
+    console.error(`[parity]   → ${rep.label} (root=${rep.rootStatus} vnext=${rep.vnextStatus})`)
+  }
+
+  const md = renderReport(reports)
+  writeFileSync(REPORT_PATH, md, 'utf8')
+  console.error(`[parity] wrote ${REPORT_PATH}`)
+
+  const counts = reports.reduce<Record<string, number>>((acc, r) => {
+    acc[r.label] = (acc[r.label] ?? 0) + 1
+    return acc
+  }, {})
+  console.error(`[parity] summary: ${JSON.stringify(counts)}`)
 }
 
 if (import.meta.main) {
