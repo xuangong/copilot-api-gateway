@@ -23,7 +23,11 @@ import { doneFrame, eventFrame, type ProtocolFrame } from '@vibe-core/result'
 import type { ChatCompletionsStreamEvent, ChatCompletionsDelta } from '@vibe-llm/protocols/chat'
 
 // The wire shape for a non-streaming chat-completions body. We narrow only the
-// fields we touch — everything else passes through via the `usage` field.
+// fields we touch — everything else passes through via index signatures so
+// vendor padding (content_filter_results, prompt_filter_results, service_tier,
+// copilot_usage, message.padding, etc.) survives the SSE-equivalent rebuild
+// and lands on the synthesized event for reassemble.ts → captureExtras to
+// pick up.
 interface ChatCompletionsBodyChoice {
   index: number
   message: {
@@ -36,8 +40,10 @@ interface ChatCompletionsBodyChoice {
     }>
     reasoning_text?: string | null
     reasoning_opaque?: string | null
+    [k: string]: unknown
   }
   finish_reason?: string | null
+  [k: string]: unknown
 }
 
 export interface ChatCompletionsJsonBody {
@@ -47,6 +53,26 @@ export interface ChatCompletionsJsonBody {
   model?: string
   choices: ChatCompletionsBodyChoice[]
   usage?: ChatCompletionsStreamEvent['usage']
+  [k: string]: unknown
+}
+
+// Known per-scope keys consumed by the typed synthesizer below. Anything not
+// in these sets is vendor padding and must be copied onto the synthesized
+// chunk/choice/delta so the downstream reassembler captures it.
+const KNOWN_BODY_KEYS = new Set(['id', 'object', 'created', 'model', 'choices', 'usage'])
+const KNOWN_BODY_CHOICE_KEYS = new Set(['index', 'message', 'finish_reason'])
+const KNOWN_BODY_MESSAGE_KEYS = new Set([
+  'role', 'content', 'tool_calls', 'reasoning_text', 'reasoning_opaque', 'reasoning_items',
+])
+
+const pickExtras = (source: Record<string, unknown>, known: ReadonlySet<string>): Record<string, unknown> => {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(source)) {
+    if (known.has(k)) continue
+    if (v === undefined) continue
+    out[k] = v
+  }
+  return out
 }
 
 const messageToDelta = (
@@ -84,14 +110,23 @@ export const synthesizeChatCompletionsFramesFromJson = async function* (
   const id = body.id ?? ''
   const model = body.model ?? ''
   const created = body.created ?? Math.floor(Date.now() / 1000)
-  const choices = body.choices.map((c) => ({
-    index: c.index,
-    delta: messageToDelta(c.message, c.index),
-    // `finish_reason` on a stream chunk uses the same union as a body; null is
-    // valid (mid-stream). We propagate whatever upstream sent — `stop` for the
-    // happy path, `length`/`tool_calls`/etc. for the rest.
-    finish_reason: (c.finish_reason ?? 'stop') as 'stop' | 'length' | 'tool_calls' | 'content_filter' | null,
-  }))
+  const choices = body.choices.map((c) => {
+    const delta = messageToDelta(c.message, c.index)
+    // Copy any vendor padding on `message` (e.g. message.padding) into the
+    // delta so reassemble's KNOWN_DELTA_KEYS capture pulls it into messageExtras.
+    Object.assign(delta as Record<string, unknown>, pickExtras(c.message as Record<string, unknown>, KNOWN_BODY_MESSAGE_KEYS))
+    return {
+      index: c.index,
+      delta,
+      // `finish_reason` on a stream chunk uses the same union as a body; null is
+      // valid (mid-stream). We propagate whatever upstream sent — `stop` for the
+      // happy path, `length`/`tool_calls`/etc. for the rest.
+      finish_reason: (c.finish_reason ?? 'stop') as 'stop' | 'length' | 'tool_calls' | 'content_filter' | null,
+      // Per-choice padding (content_filter_results, etc.) lifted onto the chunk's
+      // choice entry so KNOWN_CHOICE_KEYS capture flows it into choiceExtras.
+      ...pickExtras(c as unknown as Record<string, unknown>, KNOWN_BODY_CHOICE_KEYS),
+    }
+  })
   const event: ChatCompletionsStreamEvent = {
     id,
     object: 'chat.completion.chunk',
@@ -99,7 +134,11 @@ export const synthesizeChatCompletionsFramesFromJson = async function* (
     model,
     choices,
     ...(body.usage && { usage: body.usage }),
-  }
+    // Top-level padding (prompt_filter_results, service_tier, copilot_usage,
+    // system_fingerprint, etc.) lifted onto the synthesized event so
+    // KNOWN_CHUNK_KEYS capture in reassemble picks them up as chunkExtras.
+    ...pickExtras(body as unknown as Record<string, unknown>, KNOWN_BODY_KEYS),
+  } as ChatCompletionsStreamEvent
   yield eventFrame(event)
   yield doneFrame()
 }

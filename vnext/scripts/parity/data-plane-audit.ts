@@ -122,7 +122,10 @@ export function diffHeaders(rootHeaders: Record<string, string>, vnextHeaders: R
 // ---------- Diff: JSON body ----------
 
 const BODY_IGNORE_KEYS = new Set([
-  'id', 'created', 'system_fingerprint', 'x_request_id', 'response_id', 'fingerprint',
+  'id', 'created', 'created_at', 'system_fingerprint', 'x_request_id', 'response_id', 'fingerprint',
+  // Copilot vendor padding — random bytes per request, content carries no semantic info.
+  // Presence-checked via captureExtras; value diff is nondeterministic upstream noise.
+  'padding',
 ])
 
 // Strong fields: if present in either side, must match structurally per spec §3.

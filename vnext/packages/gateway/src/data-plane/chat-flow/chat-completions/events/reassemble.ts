@@ -1,9 +1,16 @@
 import { chatCompletionsErrorPayloadMessage } from '@vibe-llm/protocols/chat'
 import type { ChatCompletionsStreamEvent, ChatCompletionsReasoningItem } from '@vibe-llm/protocols/chat'
+import { captureExtras } from '../../shared/reassemble-extras.ts'
 
 export interface ChatCompletionsResult {
   id: string
-  object: 'chat.completion'
+  /**
+   * Optional — omitted when not surfaced by upstream. Root project passes the
+   * upstream JSON straight through without ever synthesizing this field, so
+   * we leave it off here to keep the parity audit green ($.object diff).
+   * captureExtras re-attaches it when upstream actually sends it.
+   */
+  object?: 'chat.completion'
   created: number
   model: string
   choices: Array<{
@@ -15,11 +22,27 @@ export interface ChatCompletionsResult {
       reasoning_text?: string
       reasoning_opaque?: string
       reasoning_items?: ChatCompletionsReasoningItem[]
+      [k: string]: unknown
     }
     finish_reason: string
+    [k: string]: unknown
   }>
   usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number; [k: string]: unknown }
+  [k: string]: unknown
 }
+
+// Known fields handled explicitly by the typed accumulators below. Anything
+// outside these sets is vendor padding (Copilot `content_filter_results`,
+// `prompt_filter_results`, `service_tier`, `copilot_usage`, `message.padding`,
+// future OpenAI/Anthropic extensions) and flows through captureExtras so it
+// reaches the client untouched. Mirrors copilot-gateway/.../reassemble.ts.
+const KNOWN_CHUNK_KEYS: ReadonlySet<string> = new Set([
+  'id', 'object', 'created', 'model', 'choices', 'usage',
+])
+const KNOWN_CHOICE_KEYS: ReadonlySet<string> = new Set(['index', 'delta', 'finish_reason'])
+const KNOWN_DELTA_KEYS: ReadonlySet<string> = new Set([
+  'content', 'role', 'reasoning_text', 'reasoning_opaque', 'reasoning_items', 'tool_calls',
+])
 
 export async function reassembleChatCompletions(
   chunks: AsyncIterable<ChatCompletionsStreamEvent>,
@@ -36,6 +59,9 @@ export async function reassembleChatCompletions(
   let lastUsage: ChatCompletionsResult['usage'] | undefined
 
   const toolCallsMap = new Map<number, { id: string; name: string; arguments: string }>()
+  const chunkExtras: Record<string, unknown> = {}
+  const choiceExtras: Record<string, unknown> = {}
+  const messageExtras: Record<string, unknown> = {}
 
   for await (const chunk of chunks) {
     const errorMessage = chatCompletionsErrorPayloadMessage(chunk)
@@ -53,12 +79,16 @@ export async function reassembleChatCompletions(
       lastUsage = (chunk as any).usage as ChatCompletionsResult['usage']
     }
 
+    captureExtras(chunk as unknown as Record<string, unknown>, KNOWN_CHUNK_KEYS, chunkExtras)
+
     const choices = (chunk as any).choices as unknown as Array<Record<string, unknown>> | undefined
     if (!choices) continue
 
     for (const choice of choices) {
+      captureExtras(choice, KNOWN_CHOICE_KEYS, choiceExtras)
       const delta = choice.delta as Record<string, unknown> | undefined
       if (!delta) continue
+      captureExtras(delta, KNOWN_DELTA_KEYS, messageExtras)
 
       if (typeof delta.content === 'string') {
         content += delta.content
@@ -119,11 +149,11 @@ export async function reassembleChatCompletions(
     ...(reasoningText && { reasoning_text: reasoningText }),
     ...(hasReasoningOpaque ? { reasoning_opaque: reasoningOpaque } : {}),
     ...(reasoningItems.length > 0 && { reasoning_items: reasoningItems }),
+    ...messageExtras,
   }
 
   const result: ChatCompletionsResult = {
     id,
-    object: 'chat.completion',
     created,
     model,
     choices: [
@@ -131,9 +161,11 @@ export async function reassembleChatCompletions(
         index: 0,
         message,
         finish_reason: finishReason,
+        ...choiceExtras,
       },
     ],
     ...(lastUsage && { usage: lastUsage }),
+    ...chunkExtras,
   }
 
   return result
