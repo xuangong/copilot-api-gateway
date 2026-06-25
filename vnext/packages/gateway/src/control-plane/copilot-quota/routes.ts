@@ -56,14 +56,20 @@ copilotQuotaRouter.get('/copilot-quota', async (c) => {
   const target = auth.effectiveUserId ?? auth.userId
   if (!target) return c.json({ error: 'Unauthorized' }, 401)
 
+  // Root's getGithubCredentials() throws when no GitHub account is connected,
+  // and the dashboard route's try/catch maps that to 502 with the thrown
+  // message. Vnext's repo lookup returns null instead of throwing, so we
+  // synthesize the same wire shape (502 + error message) here. Returning a
+  // semantically-cleaner 404 was the pre-spec12c behaviour but diverged from
+  // root and broke the parity audit.
   const repo = getRepo()
   const activeId = await repo.github.getActiveIdForUser(target)
   if (activeId == null) {
-    return c.json({ error: 'No GitHub account connected. Use /auth/github to connect.' }, 404)
+    return c.json({ error: 'No GitHub account connected. Use /auth/github to connect.' }, 502)
   }
   const account = await repo.github.getAccount(activeId, target)
   if (!account) {
-    return c.json({ error: 'No GitHub account connected. Use /auth/github to connect.' }, 404)
+    return c.json({ error: 'No GitHub account connected. Use /auth/github to connect.' }, 502)
   }
   return relayQuota(account.token)
 })
