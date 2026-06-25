@@ -82,9 +82,16 @@
 
 ### 3.3 现状量级 (实施前 baseline)
 
-- `rg "@vnext-(gateway|llm)" --type ts --type json` 命中 306 个文件
+代码/配置层 baseline (不含 docs/specs/research):
+
+```bash
+rg -l '@vnext-(gateway|llm)' vnext/packages vnext/apps vnext/scripts vnext/tsconfig.base.json vnext/eslint.config.mjs 2>/dev/null
+rg -o '@vnext-(gateway|llm)' vnext/packages vnext/apps vnext/scripts | wc -l
+```
+
 - 19 个 workspace 包
 - 1001 测试基线 (Spec 10 acceptance log)
+- 文档/spec 层另算:Spec 11 自身含 ~27 处 `@vibe-*` mention,Spec 10 acceptance log 仍含 `@vnext-*`,作为历史文档不在 zero-out 要求内
 
 ## 4. 执行风格
 
@@ -97,29 +104,48 @@
 
 ## 5. 实施步骤 (高阶,plan 展开)
 
-1. 创建 baseline checkpoint:确认当前 `bun test` 1001 pass,`rg "@vibe-(core|llm)"` 返回 0
-2. 全仓库批量替换:
-   - `rg -l "@vnext-gateway" | xargs sed -i '' 's|@vnext-gateway|@vibe-core|g'`
-   - `rg -l "@vnext-llm" | xargs sed -i '' 's|@vnext-llm|@vibe-llm|g'`
-   - 跳过 `node_modules` / `bun.lock` / `.git`
-3. `rm -rf node_modules bun.lock && bun install`
-4. `bun run test` (workspace-wide,期望 1001 pass)
-5. `bun run typecheck` (kit + gateway,期望与 Spec 10 baseline 相同的 pre-existing translate 错误,无新增)
-6. `bun run scripts/check-framework-purity.ts` (脚本本身已改完)
-7. `docker build --no-cache -f apps/platform-bun/Dockerfile -t vnext-platform-bun:spec11 .`
-8. `docker compose --env-file .env.vnext -f docker-compose.vnext.yml up -d`
-9. 跑 Spec 10 acceptance log 同款四 endpoint smoke (chat-completions / messages / responses / gemini),全部 200
-10. 单一 commit:`refactor(vnext/spec11): rename @vnext-* namespaces to @vibe-*`
+1. 创建 baseline checkpoint:确认当前 `bun test` 1001 pass;记录代码层 `rg -o '@vnext-(gateway|llm)' vnext/packages vnext/apps vnext/scripts | wc -l` 的 baseline 数值
+2. 全仓库批量替换 (代码 + 配置 + lock):
+   ```bash
+   rg -l '@vnext-gateway' vnext/packages vnext/apps vnext/scripts vnext/tsconfig.base.json vnext/eslint.config.mjs vnext/bun.lock 2>/dev/null \
+     | xargs sed -i '' 's|@vnext-gateway|@vibe-core|g'
+   rg -l '@vnext-llm' vnext/packages vnext/apps vnext/scripts vnext/tsconfig.base.json vnext/eslint.config.mjs vnext/bun.lock 2>/dev/null \
+     | xargs sed -i '' 's|@vnext-llm|@vibe-llm|g'
+   ```
+   跳过 `node_modules` / `.git` / 历史 docs (Spec 10 log 保留 `@vnext-*` 作为时间戳证据)
+3. **语义改 `vnext/scripts/check-framework-purity.ts`** (sed 无法完成):
+   - 框架前缀:`@vnext-gateway/` → `@vibe-core/`
+   - 业务前缀:`@vnext-llm/` → `@vibe-llm/`
+   - bare 禁用规则:把 `UNSCOPED_VNEXT` 改成 `UNSCOPED_VIBE = /@vibe\/[a-z0-9-]+/i` (禁用 bare `@vibe/*`,强制带 `core` 或 `llm`)
+   - 同时保留旧 `@vnext-(gateway|llm)/` / 旧 bare `@vnext/*` 的 detection,作为反 habit-revert 闸门
+4. `bun install` (不动 `node_modules` / 不删 `bun.lock`;让 Bun 检测 workspace name 变化并刷新 lock 中相应 entry)
+5. **lock-diff 守护:** `git diff vnext/bun.lock` 仅含 `@vnext-* → @vibe-*` workspace 改名,不能出现第三方版本变更;有则回滚步骤 4 排查
+6. `bun run test` (workspace-wide,期望 1001 pass)
+7. `bun run typecheck` (期望与 Spec 10 baseline 相同的 pre-existing translate 错误,无新增)
+8. `bun run scripts/check-framework-purity.ts` (脚本已按步骤 3 改完)
+9. 从 repo root 执行 docker build (build context = `vnext/`):
+   ```bash
+   docker build --no-cache -f vnext/apps/platform-bun/Dockerfile -t vnext-platform-bun:spec11 vnext
+   ```
+10. 从 repo root 起 compose:
+    ```bash
+    docker compose --env-file .env.vnext -f docker-compose.vnext.yml up -d
+    ```
+11. 跑 Spec 10 acceptance log 同款四 endpoint smoke (chat-completions / messages / responses / gemini),全部 200
+12. 单一 commit:`refactor(vnext/spec11): rename @vnext-* namespaces to @vibe-*`
 
 ## 6. 验收 (acceptance gates)
+
+A3/A4 grep 的范围限定:`vnext/packages` + `vnext/apps` + `vnext/scripts` + `vnext/tsconfig.base.json` + `vnext/eslint.config.mjs` + `vnext/bun.lock`。`vnext/docs/` 历史文档 (Spec 10 acceptance log、Spec 11 自身、CUTOVER_*.md) 不入 zero-out 范围。
 
 | ID | Gate | 期望 |
 |----|------|------|
 | A1 | `bun run test` workspace-wide | 1001 pass, 0 fail |
-| A2 | `chat-flow-kit` + `gateway` typecheck | kit 干净;gateway 仅保留 Spec 10 已记录的 `@vibe-llm/translate` (原 `@vnext-llm/translate`) Gemini 错误,无新增 |
-| A3 | `rg "@vnext-(gateway\|llm)" vnext/` | 返回空 (注释、文档全部清掉) |
-| A4 | `rg "@vibe-(core\|llm)" vnext/` 计数 | ≈ 替换前 `@vnext-*` 总数 (允许差 ±5,因可能合并行/转义差异) |
-| A5 | docker no-cache build | 通过,无 "workspace package not found" 警告 |
+| A2 | `bun run typecheck` workspace-wide | 仅保留 Spec 10 已记录的 `@vibe-llm/translate` (原 `@vnext-llm/translate`) Gemini pre-existing 错误,无新增。baseline 文件位置/数量与 Spec 10 acceptance log 一致 |
+| A3 | 代码/配置/lock 零残留 — `rg '@vnext-(gateway\|llm)' vnext/packages vnext/apps vnext/scripts vnext/tsconfig.base.json vnext/eslint.config.mjs vnext/bun.lock` | 返回空 |
+| A4 | occurrence 守恒 — `rg -o '@vibe-(core\|llm)' vnext/packages vnext/apps vnext/scripts \| wc -l` | ≈ §3.3 baseline 数 (允许 ±5) |
+| A4.1 | `bun.lock` diff 限定 | 仅含 workspace 名重命名 (`@vnext-* → @vibe-*`),无第三方版本变更 |
+| A5 | docker no-cache build (从 repo root, build context = `vnext/`) | 通过,无 "workspace package not found" 警告 |
 | A6 | local docker compose up + 四 endpoint smoke | `/v1/chat/completions` / `/v1/messages` / `/v1/responses` / `/v1beta/.../generateContent` 全 200 |
 | A7 | CFW live smoke | ⏸ 推迟到下次部署窗口 (按约束) |
 
@@ -127,14 +153,16 @@
 
 | 风险 | 缓解 |
 |------|------|
-| `bun.lock` 重建后 transitive 版本漂移 | `bun install` 不带 `--frozen-lockfile`,但跑完测试后 commit 新 lock。`bun test` 通过即视为安全 |
-| sed 替换误伤 (例如某处字符串里有 `@vnext-gateway` 是注释/log 文本) | 通过 A3 grep 确认无残留;通过 A4 计数大致守恒 |
-| 文档中残留旧名误导 | A3 显式覆盖 `vnext/docs/`;CUTOVER_*.md 也扫 |
-| Dockerfile 内 stage-2 如有 `bun install --filter @vnext-*` 字面量 | 步骤 2 sed 全仓库覆盖,Dockerfile 也跑 |
+| `bun install` 刷新 lock 时 transitive 版本漂移 | A4.1 lock-diff 守护:diff 仅允许 workspace 名重命名,任何第三方版本行变动即视为漂移,需排查 |
+| sed 替换误伤 (例如某处字符串里有 `@vnext-gateway` 是注释/log 文本) | 通过 A3 grep 确认代码层无残留;通过 A4 occurrence 计数大致守恒 |
+| `check-framework-purity.ts` 漏改导致 gate 假绿 | 步骤 3 显式语义改:framework=`@vibe-core/`,business=`@vibe-llm/`,禁 bare `@vibe/*`,保留旧 `@vnext-*` detection |
+| 文档中残留旧名误导 | A3 限定在 code/config/lock 层;`vnext/docs/` 历史文档允许保留 |
+| Dockerfile 内 stage-2 如有 `bun install --filter @vnext-*` 字面量 | 步骤 2 sed 覆盖 `vnext/apps` 即可 |
+| docker build cwd 误用 | 步骤 9 明确从 repo root 跑,`-f vnext/apps/platform-bun/Dockerfile`,context=`vnext` |
 
 ## 8. 回滚方案
 
-单一 commit。失败时 `git reset --hard HEAD~1 && rm -rf node_modules bun.lock && bun install` 即恢复。
+单一 commit。失败时 `git reset --hard HEAD~1 && bun install` 即恢复 (lock 跟着 commit 一起回滚,无需删 `node_modules`)。
 
 ## 9. 后续
 
