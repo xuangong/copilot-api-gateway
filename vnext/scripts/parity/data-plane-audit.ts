@@ -53,6 +53,8 @@ export interface FixtureReport {
 const ROOT_BASE = process.env.PARITY_ROOT_BASE ?? 'http://127.0.0.1:4141'
 const VNEXT_BASE = process.env.PARITY_VNEXT_BASE ?? 'http://127.0.0.1:41415'
 const API_KEY = process.env.PARITY_API_KEY ?? ''
+const ROOT_API_KEY = process.env.PARITY_ROOT_API_KEY ?? API_KEY
+const VNEXT_API_KEY = process.env.PARITY_VNEXT_API_KEY ?? API_KEY
 const FIXTURE_DIR = join(import.meta.dir, 'fixtures/data-plane')
 const REPORT_PATH = process.env.PARITY_REPORT_PATH
   ?? join(import.meta.dir, '../../docs/superpowers/research/2026-06-25-spec12a-parity-report.md')
@@ -63,12 +65,7 @@ export function loadFixtures(dir: string = FIXTURE_DIR): Fixture[] {
   const files = readdirSync(dir).filter((f) => f.endsWith('.json')).sort()
   return files.map((f) => {
     const raw = readFileSync(join(dir, f), 'utf8')
-    const fx = JSON.parse(raw) as Fixture
-    // Substitute ${API_KEY} in headers
-    for (const [k, v] of Object.entries(fx.headers ?? {})) {
-      fx.headers[k] = v.replace(/\$\{API_KEY\}/g, API_KEY)
-    }
-    return fx
+    return JSON.parse(raw) as Fixture
   })
 }
 
@@ -442,8 +439,8 @@ export function renderReport(reports: FixtureReport[]): string {
 // ---------- CLI entry ----------
 
 async function main(): Promise<void> {
-  if (!API_KEY) {
-    console.error('[parity] PARITY_API_KEY is required')
+  if (!ROOT_API_KEY || !VNEXT_API_KEY) {
+    console.error('[parity] PARITY_ROOT_API_KEY and PARITY_VNEXT_API_KEY (or PARITY_API_KEY) required')
     process.exit(2)
   }
   const fixtures = loadFixtures()
@@ -460,23 +457,23 @@ async function main(): Promise<void> {
   const vars: Record<string, string> = {}
   const reports: FixtureReport[] = []
 
-  for (const fxOriginal of ordered) {
-    const fx: Fixture = {
-      ...fxOriginal,
-      headers: substitutePlaceholders(fxOriginal.headers, vars) as Record<string, string>,
-      body: substitutePlaceholders(fxOriginal.body, vars),
-    }
+  const sideFx = (fx: Fixture, apiKey: string): Fixture => ({
+    ...fx,
+    headers: substitutePlaceholders(fx.headers, { ...vars, API_KEY: apiKey }) as Record<string, string>,
+    body: substitutePlaceholders(fx.body, { ...vars, API_KEY: apiKey }),
+  })
 
-    console.error(`[parity] → ${fx.name} (${fx.method} ${fx.endpoint})`)
+  for (const fxOriginal of ordered) {
+    console.error(`[parity] → ${fxOriginal.name} (${fxOriginal.method} ${fxOriginal.endpoint})`)
 
     let root: FetchResult
     let vnext: FetchResult
     try {
-      root = await fetchSide(ROOT_BASE, fx)
+      root = await fetchSide(ROOT_BASE, sideFx(fxOriginal, ROOT_API_KEY))
     } catch (err) {
       console.error(`[parity]   root fetch failed: ${(err as Error).message}`)
       reports.push({
-        fixture: fx.name, endpoint: fx.endpoint,
+        fixture: fxOriginal.name, endpoint: fxOriginal.endpoint,
         rootStatus: 0, vnextStatus: 0,
         label: 'behavior-gap',
         diffs: [{ layer: 'status', label: 'behavior-gap', detail: `root fetch error: ${(err as Error).message}` }],
@@ -484,11 +481,11 @@ async function main(): Promise<void> {
       continue
     }
     try {
-      vnext = await fetchSide(VNEXT_BASE, fx)
+      vnext = await fetchSide(VNEXT_BASE, sideFx(fxOriginal, VNEXT_API_KEY))
     } catch (err) {
       console.error(`[parity]   vnext fetch failed: ${(err as Error).message}`)
       reports.push({
-        fixture: fx.name, endpoint: fx.endpoint,
+        fixture: fxOriginal.name, endpoint: fxOriginal.endpoint,
         rootStatus: root.status, vnextStatus: 0,
         label: 'route-missing',
         diffs: [{ layer: 'status', label: 'route-missing', detail: `vnext fetch error: ${(err as Error).message}` }],
@@ -496,7 +493,7 @@ async function main(): Promise<void> {
       continue
     }
 
-    if (fx.name === 'responses-basic-non-stream' && root.status < 400) {
+    if (fxOriginal.name === 'responses-basic-non-stream' && root.status < 400) {
       const rb = root.body as { id?: string } | undefined
       if (rb?.id) {
         vars.PREV_RESPONSE_ID = rb.id
@@ -504,7 +501,7 @@ async function main(): Promise<void> {
       }
     }
 
-    const rep = runFixture(fx, root, vnext)
+    const rep = runFixture(fxOriginal, root, vnext)
     reports.push(rep)
     console.error(`[parity]   → ${rep.label} (root=${rep.rootStatus} vnext=${rep.vnextStatus})`)
   }
