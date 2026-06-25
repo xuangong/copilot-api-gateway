@@ -105,10 +105,12 @@ rg -o '@vnext-(gateway|llm)' vnext/packages vnext/apps | wc -l
 
 ## 5. 实施步骤 (高阶,plan 展开)
 
+**所有命令默认在 repo root 执行。** Bun 必须显式 `(cd vnext && ...)`,否则会跑根项目脚本而不是 vnext workspace (实测 `bun run typecheck` 在 repo root 跑的是根 `bunx tsc --noEmit`)。
+
 1. 创建 baseline checkpoint:
-   - 确认当前 `bun test` 1001 pass
+   - 确认当前 `(cd vnext && bun test)` 1001 pass
    - 记录代码层 occurrence 数:`rg -o '@vnext-(gateway|llm)' vnext/packages vnext/apps | wc -l`
-   - 锁定 typecheck baseline:`cd vnext && bun run typecheck 2>&1 | tee /tmp/spec11-typecheck-baseline.txt`
+   - 锁定 typecheck baseline:`(cd vnext && bun run typecheck) 2>&1 | tee /tmp/spec11-typecheck-baseline.txt`
 2. 全仓库批量替换 (代码 + 配置 + lock):
    ```bash
    rg -l '@vnext-gateway' vnext/packages vnext/apps vnext/scripts vnext/tsconfig.base.json vnext/eslint.config.mjs vnext/bun.lock 2>/dev/null \
@@ -122,17 +124,17 @@ rg -o '@vnext-(gateway|llm)' vnext/packages vnext/apps | wc -l
    - 业务前缀:`@vnext-llm/` → `@vibe-llm/`
    - bare 禁用规则:把 `UNSCOPED_VNEXT` 改成 `UNSCOPED_VIBE = /@vibe\/[a-z0-9-]+/i` (禁用 bare `@vibe/*`,强制带 `core` 或 `llm`)
    - 同时保留旧 `@vnext-(gateway|llm)/` / 旧 bare `@vnext/*` 的 detection,作为反 habit-revert 闸门
-4. `bun install` (不动 `node_modules` / 不删 `bun.lock`;让 Bun 检测 workspace name 变化并刷新 lock 中相应 entry)
+4. `(cd vnext && bun install)` —— 不动 `node_modules` / 不删 `bun.lock`;让 Bun 检测 workspace name 变化并刷新 lock 中相应 entry
 5. **lock-diff 守护:** `git diff vnext/bun.lock` 仅含 `@vnext-* → @vibe-*` workspace 改名,不能出现第三方版本变更;有则回滚步骤 4 排查
-6. `bun run test` (workspace-wide,期望 1001 pass)
-7. `bun run typecheck` 改完后再跑一次,与 step 1 baseline 做 **normalized diff** (把两边的 `@vibe-core` / `@vibe-llm` 折回 `@vnext-gateway` / `@vnext-llm` 后比较,消除 rename 自身在 Bun package prefix 上引入的字面差异):
+6. `(cd vnext && bun run test)` —— workspace-wide,期望 1001 pass
+7. `(cd vnext && bun run typecheck)` 改完后再跑一次,与 step 1 baseline 做 **normalized diff** (把两边的 `@vibe-core` / `@vibe-llm` 折回 `@vnext-gateway` / `@vnext-llm` 后比较,消除 rename 自身在 Bun package prefix 上引入的字面差异):
    ```bash
    normalize() { sed 's/@vibe-core/@vnext-gateway/g; s/@vibe-llm/@vnext-llm/g'; }
-   bun run typecheck 2>&1 | normalize > /tmp/spec11-typecheck-after.txt
+   (cd vnext && bun run typecheck) 2>&1 | normalize > /tmp/spec11-typecheck-after.txt
    normalize < /tmp/spec11-typecheck-baseline.txt | diff - /tmp/spec11-typecheck-after.txt
    ```
    期望 diff 为空 (rename 不引入任何新错误;pre-existing 错误的文件/行/TSxxxx 与 baseline 完全一致)
-8. `bun run scripts/check-framework-purity.ts` (脚本已按步骤 3 改完)
+8. `(cd vnext && bun run scripts/check-framework-purity.ts)` —— 脚本已按步骤 3 改完
 9. 从 repo root 执行 docker build (build context = `vnext/`):
    ```bash
    docker build --no-cache -f vnext/apps/platform-bun/Dockerfile -t vnext-platform-bun:spec11 vnext
