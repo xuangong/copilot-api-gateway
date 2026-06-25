@@ -67,7 +67,7 @@ test("Claude model has messages, messages_count_tokens, and chat_completions", (
   expect(result.responses).toBeUndefined()
 })
 
-test("GPT-5 mini has responses, chat_completions, messages_count_tokens", () => {
+test("GPT-5 mini only advertises responses + messages_count_tokens (chat_completions suppressed)", () => {
   const model = createModel({
     id: "gpt-5-mini",
     capabilities: {
@@ -83,12 +83,12 @@ test("GPT-5 mini has responses, chat_completions, messages_count_tokens", () => 
   const result = copilotModelEndpoints(model)
 
   expect(result.responses).toBeDefined()
-  expect(result.chat_completions).toBeDefined()
   expect(result.messages_count_tokens).toBeDefined()
+  expect(result.chat_completions).toBeUndefined()
   expect(result.messages).toBeUndefined()
 })
 
-test("o1-preview has responses, chat_completions, messages_count_tokens", () => {
+test("o1-preview only advertises responses + messages_count_tokens", () => {
   const model = createModel({
     id: "o1-preview",
     capabilities: {
@@ -104,12 +104,12 @@ test("o1-preview has responses, chat_completions, messages_count_tokens", () => 
   const result = copilotModelEndpoints(model)
 
   expect(result.responses).toBeDefined()
-  expect(result.chat_completions).toBeDefined()
   expect(result.messages_count_tokens).toBeDefined()
+  expect(result.chat_completions).toBeUndefined()
   expect(result.messages).toBeUndefined()
 })
 
-test("o3-mini has responses, chat_completions, messages_count_tokens", () => {
+test("o3-mini only advertises responses + messages_count_tokens", () => {
   const model = createModel({
     id: "o3-mini",
     capabilities: {
@@ -125,8 +125,8 @@ test("o3-mini has responses, chat_completions, messages_count_tokens", () => {
   const result = copilotModelEndpoints(model)
 
   expect(result.responses).toBeDefined()
-  expect(result.chat_completions).toBeDefined()
   expect(result.messages_count_tokens).toBeDefined()
+  expect(result.chat_completions).toBeUndefined()
   expect(result.messages).toBeUndefined()
 })
 

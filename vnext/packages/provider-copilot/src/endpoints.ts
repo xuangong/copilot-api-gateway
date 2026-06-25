@@ -30,16 +30,23 @@ export function copilotModelEndpoints(model: Model): ModelEndpoints {
     endpoints.messages = {}
   }
 
-  // Reasoning families that prefer Responses API: gpt-5*, o1*, o3*, o4*.
-  if (id.startsWith("gpt-5") || /^o[134](-|$)/.test(id)) {
+  // Reasoning families served via Responses upstream: gpt-5*, o1*, o3*, o4*.
+  // For gpt-5.x specifically, Copilot rejects many models on /chat/completions
+  // ("unsupported_api_for_model") or rejects the legacy `max_tokens` parameter
+  // ("Use 'max_completion_tokens' instead"). Suppressing chat_completions here
+  // forces the pair selector to fall back to responses, where the
+  // chat_completions→responses translator handles the param mapping.
+  const isReasoning = id.startsWith("gpt-5") || /^o[134](-|$)/.test(id)
+  if (isReasoning) {
     endpoints.responses = {}
   }
 
-  // chat_completions + messages_count_tokens are universally supported across
-  // Copilot's chat catalog (matches root project's DEFAULT_ENDPOINTS for the
-  // copilot upstream kind). count_tokens is needed by gemini → messages
-  // translator for non-claude models like `gemini-3-flash-preview`.
-  endpoints.chat_completions = {}
+  // chat_completions + messages_count_tokens are otherwise universally supported
+  // across Copilot's chat catalog. count_tokens is needed by the gemini →
+  // messages translator for non-claude models like `gemini-3-flash-preview`.
+  if (!isReasoning) {
+    endpoints.chat_completions = {}
+  }
   endpoints.messages_count_tokens = {}
 
   return endpoints
