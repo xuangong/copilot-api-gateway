@@ -141,3 +141,61 @@ describe('aggregateLabel', () => {
     ])).toBe('behavior-gap')
   })
 })
+
+import { renderReport, runFixture } from './data-plane-audit'
+import type { FetchResult, Fixture } from './data-plane-audit'
+
+const fx: Fixture = {
+  name: 't',
+  endpoint: '/v1/x',
+  method: 'POST',
+  headers: {},
+  body: {},
+  expect_stream: false,
+}
+
+function mkResult(status: number, body: unknown, headers: Record<string, string> = {}): FetchResult {
+  return { status, headers, body, raw: JSON.stringify(body) }
+}
+
+describe('runFixture', () => {
+  test('matching → parity', () => {
+    const r = runFixture(fx, mkResult(200, { model: 'm' }), mkResult(200, { model: 'm' }))
+    expect(r.label).toBe('parity')
+    expect(r.diffs).toEqual([])
+  })
+  test('vnext 404 vs root 200 → route-missing (short-circuits other diffs)', () => {
+    const r = runFixture(fx, mkResult(200, { model: 'm' }), mkResult(404, { error: 'no route' }))
+    expect(r.label).toBe('route-missing')
+    expect(r.diffs).toHaveLength(1)
+  })
+  test('vnext 405 vs root 200 → route-missing', () => {
+    const r = runFixture(fx, mkResult(200, {}), mkResult(405, {}))
+    expect(r.label).toBe('route-missing')
+  })
+  test('both 404 → not route-missing (root also fails, real status diff path)', () => {
+    const r = runFixture(fx, mkResult(404, {}), mkResult(404, {}))
+    expect(r.label).toBe('parity')
+  })
+  test('body strong field diff → behavior-gap', () => {
+    const r = runFixture(fx, mkResult(200, { model: 'a' }), mkResult(200, { model: 'b' }))
+    expect(r.label).toBe('behavior-gap')
+  })
+})
+
+describe('renderReport', () => {
+  test('summary table reflects counts', () => {
+    const md = renderReport([
+      { fixture: 'a', endpoint: '/x', rootStatus: 200, vnextStatus: 200, label: 'parity', diffs: [] },
+      { fixture: 'b', endpoint: '/y', rootStatus: 200, vnextStatus: 200, label: 'cosmetic-diff', diffs: [{ layer: 'header', label: 'cosmetic-diff', detail: 'ct' }] },
+      { fixture: 'c', endpoint: '/z', rootStatus: 200, vnextStatus: 500, label: 'behavior-gap', diffs: [{ layer: 'status', label: 'behavior-gap', detail: 'r=200 v=500' }] },
+      { fixture: 'd', endpoint: '/w', rootStatus: 200, vnextStatus: 404, label: 'route-missing', diffs: [{ layer: 'status', label: 'route-missing', detail: '...' }] },
+    ])
+    expect(md).toContain('| parity | 1 |')
+    expect(md).toContain('| cosmetic-diff | 1 |')
+    expect(md).toContain('| behavior-gap | 1 |')
+    expect(md).toContain('| route-missing | 1 |')
+    expect(md).toContain('## Appendix')
+    expect(md).toContain('### a (`/x`) — parity')
+  })
+})

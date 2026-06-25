@@ -272,6 +272,129 @@ export function aggregateLabel(diffs: DiffEntry[]): GapLabel {
   return 'parity'
 }
 
+// ---------- HTTP execution ----------
+
+export async function fetchSide(
+  base: string,
+  fx: Fixture,
+  fetchImpl: typeof fetch = fetch,
+): Promise<FetchResult> {
+  const url = `${base}${fx.endpoint}`
+  const init: RequestInit = {
+    method: fx.method,
+    headers: fx.headers,
+  }
+  if (fx.method !== 'GET' && fx.body !== undefined) {
+    init.body = typeof fx.body === 'string' ? fx.body : JSON.stringify(fx.body)
+    if (!('content-type' in (fx.headers ?? {})) && !('Content-Type' in (fx.headers ?? {}))) {
+      init.headers = { ...fx.headers, 'content-type': 'application/json' }
+    }
+  }
+  const resp = await fetchImpl(url, init)
+  const headers: Record<string, string> = {}
+  resp.headers.forEach((v, k) => { headers[k.toLowerCase()] = v })
+  const raw = await resp.text()
+  let body: unknown = raw
+  if (!fx.expect_stream) {
+    try { body = JSON.parse(raw) } catch { /* keep raw */ }
+  }
+  return { status: resp.status, headers, body, raw }
+}
+
+export function runFixture(
+  fx: Fixture,
+  root: FetchResult,
+  vnext: FetchResult,
+): FixtureReport {
+  const diffs: DiffEntry[] = []
+
+  // route-missing: vnext returned 404/405 while root did not
+  if ((vnext.status === 404 || vnext.status === 405) && root.status < 400) {
+    diffs.push({
+      layer: 'status',
+      label: 'route-missing',
+      detail: `vnext returned ${vnext.status} for ${fx.endpoint}; root returned ${root.status}`,
+    })
+    return {
+      fixture: fx.name,
+      endpoint: fx.endpoint,
+      rootStatus: root.status,
+      vnextStatus: vnext.status,
+      label: 'route-missing',
+      diffs,
+    }
+  }
+
+  diffs.push(...diffStatus(root.status, vnext.status))
+  diffs.push(...diffHeaders(root.headers, vnext.headers))
+  if (fx.expect_stream) {
+    diffs.push(...diffSse(root.raw, vnext.raw))
+  } else {
+    diffs.push(...diffJsonBody(root.body, vnext.body))
+  }
+
+  return {
+    fixture: fx.name,
+    endpoint: fx.endpoint,
+    rootStatus: root.status,
+    vnextStatus: vnext.status,
+    label: aggregateLabel(diffs),
+    diffs,
+  }
+}
+
+// ---------- Report writer ----------
+
+export function renderReport(reports: FixtureReport[]): string {
+  const counts: Record<GapLabel, number> = {
+    parity: 0,
+    'cosmetic-diff': 0,
+    'behavior-gap': 0,
+    'route-missing': 0,
+  }
+  for (const r of reports) counts[r.label]++
+
+  const lines: string[] = []
+  lines.push('# Spec 12a — Data-Plane Parity Report')
+  lines.push('')
+  lines.push(`**Generated:** ${new Date().toISOString()}`)
+  lines.push(`**Fixtures:** ${reports.length}`)
+  lines.push('')
+  lines.push('## Summary')
+  lines.push('')
+  lines.push('| label | count |')
+  lines.push('|-------|-------|')
+  lines.push(`| parity | ${counts.parity} |`)
+  lines.push(`| cosmetic-diff | ${counts['cosmetic-diff']} |`)
+  lines.push(`| behavior-gap | ${counts['behavior-gap']} |`)
+  lines.push(`| route-missing | ${counts['route-missing']} |`)
+  lines.push('')
+  lines.push('## Per-fixture')
+  lines.push('')
+  lines.push('| endpoint | fixture | label | root | vnext | summary |')
+  lines.push('|----------|---------|-------|------|-------|---------|')
+  for (const r of reports) {
+    const summary = r.diffs.length === 0 ? '—' : r.diffs.slice(0, 3).map((d) => `${d.layer}:${d.label}`).join(' / ')
+    lines.push(`| \`${r.endpoint}\` | ${r.fixture} | **${r.label}** | ${r.rootStatus} | ${r.vnextStatus} | ${summary} |`)
+  }
+  lines.push('')
+  lines.push('## Appendix — full diffs')
+  lines.push('')
+  for (const r of reports) {
+    lines.push(`### ${r.fixture} (\`${r.endpoint}\`) — ${r.label}`)
+    lines.push('')
+    if (r.diffs.length === 0) {
+      lines.push('No diffs.')
+    } else {
+      for (const d of r.diffs) {
+        lines.push(`- **${d.layer}** [${d.label}] ${d.detail}`)
+      }
+    }
+    lines.push('')
+  }
+  return lines.join('\n')
+}
+
 // ---------- CLI entry (stub for Part 1) ----------
 
 async function main(): Promise<void> {
