@@ -1,0 +1,9 @@
+{
+  "name": "patch-upstream",
+  "endpoint": "/api/upstreams/${capture.create-upstream.upstreamId}",
+  "method": "PATCH",
+  "auth": "admin-session",
+  "dependsOn": ["create-upstream"],
+  "body": { "name": "parity-test-upstream-renamed" },
+  "expect_status": 200
+}

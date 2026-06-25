@@ -1,0 +1,8 @@
+{
+  "name": "create-upstream-invalid",
+  "endpoint": "/api/upstreams",
+  "method": "POST",
+  "auth": "admin-session",
+  "body": { "name": "missing-kind" },
+  "expect_status": 400
+}

@@ -1,0 +1,8 @@
+{
+  "name": "upstream-probe-invalid",
+  "endpoint": "/api/upstream-probe",
+  "method": "POST",
+  "auth": "admin-session",
+  "body": {},
+  "expect_status": 400
+}

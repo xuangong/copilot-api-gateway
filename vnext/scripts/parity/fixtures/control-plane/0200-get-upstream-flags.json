@@ -1,0 +1,7 @@
+{
+  "name": "get-upstream-flags",
+  "endpoint": "/api/upstream-flags",
+  "method": "GET",
+  "auth": "admin-session",
+  "expect_status": 200
+}

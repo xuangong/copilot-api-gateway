@@ -1,0 +1,8 @@
+{
+  "name": "test-upstream",
+  "endpoint": "/api/upstreams/${capture.create-upstream.upstreamId}/test",
+  "method": "POST",
+  "auth": "admin-session",
+  "dependsOn": ["create-upstream", "patch-upstream"],
+  "expect_status": 200
+}

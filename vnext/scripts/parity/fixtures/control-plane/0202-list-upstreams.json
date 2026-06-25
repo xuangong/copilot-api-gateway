@@ -1,0 +1,8 @@
+{
+  "name": "list-upstreams",
+  "endpoint": "/api/upstreams",
+  "method": "GET",
+  "auth": "admin-session",
+  "dependsOn": ["create-upstream"],
+  "expect_status": 200
+}

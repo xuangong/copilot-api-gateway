@@ -1,0 +1,16 @@
+{
+  "name": "create-upstream",
+  "endpoint": "/api/upstreams",
+  "method": "POST",
+  "auth": "admin-session",
+  "body": {
+    "name": "parity-test-upstream",
+    "kind": "azure",
+    "endpoint": "https://parity-mock.invalid",
+    "apiKey": "fake-parity-key",
+    "deployment": "gpt-4o",
+    "apiVersion": "2024-08-01-preview"
+  },
+  "expect_status": 200,
+  "capture": { "upstreamId": "$.id" }
+}

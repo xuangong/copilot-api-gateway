@@ -1,0 +1,8 @@
+{
+  "name": "cleanup-delete-upstream-twice",
+  "endpoint": "/api/upstreams/${capture.create-upstream.upstreamId}",
+  "method": "DELETE",
+  "auth": "admin-session",
+  "dependsOn": ["delete-upstream"],
+  "expect_status": 404
+}

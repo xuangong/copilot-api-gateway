@@ -1,0 +1,8 @@
+{
+  "name": "list-upstream-models",
+  "endpoint": "/api/upstreams/${capture.create-upstream.upstreamId}/models",
+  "method": "GET",
+  "auth": "admin-session",
+  "dependsOn": ["create-upstream"],
+  "expect_status": 200
+}
