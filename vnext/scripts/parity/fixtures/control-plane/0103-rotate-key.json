@@ -1,0 +1,8 @@
+{
+  "name": "rotate-key",
+  "endpoint": "/api/keys/${capture.create-key.keyId}/rotate",
+  "method": "POST",
+  "auth": "admin-session",
+  "dependsOn": ["create-key", "patch-key"],
+  "expect_status": 200
+}

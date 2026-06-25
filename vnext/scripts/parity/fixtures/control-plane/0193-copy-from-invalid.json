@@ -1,0 +1,8 @@
+{
+  "name": "copy-from-invalid",
+  "endpoint": "/api/keys/does-not-exist/copy-web-search-from/also-not-exist",
+  "method": "POST",
+  "auth": "admin-session",
+  "body": {},
+  "expect_status": 404
+}

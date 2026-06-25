@@ -1,0 +1,8 @@
+{
+  "name": "get-web-search-usage",
+  "endpoint": "/api/keys/${capture.create-key.keyId}/web-search-usage",
+  "method": "GET",
+  "auth": "admin-session",
+  "dependsOn": ["create-key"],
+  "expect_status": 200
+}

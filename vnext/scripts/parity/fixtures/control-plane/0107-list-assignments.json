@@ -1,0 +1,8 @@
+{
+  "name": "list-assignments",
+  "endpoint": "/api/keys/${capture.create-key.keyId}/assignments",
+  "method": "GET",
+  "auth": "admin-session",
+  "dependsOn": ["assign-key"],
+  "expect_status": 200
+}

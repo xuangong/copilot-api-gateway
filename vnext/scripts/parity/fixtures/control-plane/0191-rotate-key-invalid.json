@@ -1,0 +1,7 @@
+{
+  "name": "rotate-key-invalid",
+  "endpoint": "/api/keys/does-not-exist/rotate",
+  "method": "POST",
+  "auth": "admin-session",
+  "expect_status": 404
+}

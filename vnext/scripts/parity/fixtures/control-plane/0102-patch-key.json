@@ -1,0 +1,9 @@
+{
+  "name": "patch-key",
+  "endpoint": "/api/keys/${capture.create-key.keyId}",
+  "method": "PATCH",
+  "auth": "admin-session",
+  "dependsOn": ["create-key"],
+  "body": { "name": "parity-test-key-renamed" },
+  "expect_status": 200
+}

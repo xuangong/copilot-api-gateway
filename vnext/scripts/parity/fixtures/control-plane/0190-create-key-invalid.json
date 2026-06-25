@@ -1,0 +1,8 @@
+{
+  "name": "create-key-invalid",
+  "endpoint": "/api/keys",
+  "method": "POST",
+  "auth": "admin-session",
+  "body": { "ownerId": "not-a-uuid" },
+  "expect_status": 400
+}

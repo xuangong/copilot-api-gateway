@@ -1,0 +1,9 @@
+{
+  "name": "copy-web-search-from",
+  "endpoint": "/api/keys/${capture.create-key.keyId}/copy-web-search-from/${capture.create-key.keyId}",
+  "method": "POST",
+  "auth": "admin-session",
+  "dependsOn": ["create-key", "get-web-search-usage"],
+  "expect_status": 400,
+  "body": {}
+}

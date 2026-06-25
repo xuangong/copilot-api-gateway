@@ -1,0 +1,9 @@
+{
+  "name": "create-key",
+  "endpoint": "/api/keys",
+  "method": "POST",
+  "auth": "admin-session",
+  "body": { "name": "parity-test-key", "ownerId": null },
+  "expect_status": 200,
+  "capture": { "keyId": "$.id", "key": "$.key" }
+}

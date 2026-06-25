@@ -1,0 +1,8 @@
+{
+  "name": "cleanup-delete-key-twice",
+  "endpoint": "/api/keys/${capture.create-key.keyId}",
+  "method": "DELETE",
+  "auth": "admin-session",
+  "dependsOn": ["delete-key"],
+  "expect_status": 404
+}

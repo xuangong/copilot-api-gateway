@@ -1,0 +1,8 @@
+{
+  "name": "patch-key-invalid",
+  "endpoint": "/api/keys/does-not-exist",
+  "method": "PATCH",
+  "auth": "admin-session",
+  "body": { "name": "x" },
+  "expect_status": 404
+}

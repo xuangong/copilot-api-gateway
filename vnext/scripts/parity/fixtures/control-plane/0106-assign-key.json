@@ -1,0 +1,9 @@
+{
+  "name": "assign-key",
+  "endpoint": "/api/keys/${capture.create-key.keyId}/assign",
+  "method": "POST",
+  "auth": "admin-session",
+  "dependsOn": ["create-key"],
+  "body": { "userId": "${env.PARITY_TARGET_USER_ID}" },
+  "expect_status": 200
+}
