@@ -4,6 +4,6 @@
   "method": "POST",
   "auth": "admin-session",
   "dependsOn": ["create-key"],
-  "body": { "userId": "${env.PARITY_TARGET_USER_ID}" },
+  "body": { "user_id": "${env.PARITY_TARGET_USER_ID}" },
   "expect_status": 200
 }

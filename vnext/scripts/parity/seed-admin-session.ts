@@ -4,8 +4,14 @@
  *
  * Usage:
  *   bun vnext/scripts/parity/seed-admin-session.ts \
- *     --root-db ./data/local.sqlite \
- *     --vnext-db ./data-vnext/vnext.sqlite
+ *     --root-db ./.data/copilot.db \
+ *     --vnext-db ./data-vnext/vnext.sqlite \
+ *     [--clean]
+ *
+ * --clean: before seeding, wipe rows from tables whose state confounds parity
+ * diffs (extra api-keys, observability shares, upstreams, github accounts).
+ * The seeded admin user + target user + bootstrap api-key are re-inserted
+ * after the wipe.
  *
  * Echoes 8 env exports to stdout. Pipe to a file or eval to inject into the
  * control-plane harness shell.
@@ -51,6 +57,32 @@ export function buildSeedRows(token: string): SeedRows {
   }
 }
 
+/**
+ * Wipe rows whose presence makes diffs noisy (counts, ids, names that differ
+ * by side). Leaves schema and admin user tables intact — they get repopulated
+ * by applyRows() below. Tables not present on a side are silently skipped.
+ */
+export function cleanForParity(db: Database): void {
+  const exists = (name: string): boolean => {
+    const r = db.query<{ name: string }, [string]>(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name=?`).get(name)
+    return !!r
+  }
+  // Order matters where FKs would apply; here we use plain DELETE which is fine
+  // since SQLite without foreign_keys=ON skips constraint checks.
+  const tablesToWipe = [
+    'api_keys', 'observability_shares', 'key_assignments',
+    'upstreams', 'github_accounts', 'usage', 'usage_requests',
+    'web_search_engine_usage', 'web_search_usage',
+    'latency', 'performance_summary', 'performance_latency_buckets',
+    'client_presence', 'device_codes', 'invite_codes',
+    'responses_items',
+  ]
+  for (const t of tablesToWipe) {
+    if (exists(t)) db.run(`DELETE FROM ${t}`)
+  }
+}
+
 function applyRows(db: Database, rows: SeedRows): void {
   // user_sessions / users / api_keys schemas verified against both root and vnext.
   // INSERT OR REPLACE so re-runs are idempotent.
@@ -79,25 +111,30 @@ function applyRows(db: Database, rows: SeedRows): void {
   )
 }
 
-function parseArgs(): { rootDb: string; vnextDb: string } {
+function parseArgs(): { rootDb: string; vnextDb: string; clean: boolean } {
   const argv = process.argv.slice(2)
   const map: Record<string, string> = {}
+  let clean = false
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
+    if (a === '--clean') {
+      clean = true
+      continue
+    }
     if (a.startsWith('--') && i + 1 < argv.length) {
       map[a.slice(2)] = argv[i + 1]
       i++
     }
   }
   if (!map['root-db'] || !map['vnext-db']) {
-    console.error('usage: --root-db <path> --vnext-db <path>')
+    console.error('usage: --root-db <path> --vnext-db <path> [--clean]')
     process.exit(2)
   }
-  return { rootDb: map['root-db'], vnextDb: map['vnext-db'] }
+  return { rootDb: map['root-db'], vnextDb: map['vnext-db'], clean }
 }
 
 if (import.meta.main) {
-  const { rootDb, vnextDb } = parseArgs()
+  const { rootDb, vnextDb, clean } = parseArgs()
 
   const rootRows = buildSeedRows(buildSessionToken())
   const vnextRows = buildSeedRows(buildSessionToken())
@@ -105,6 +142,10 @@ if (import.meta.main) {
   const rootHandle = new Database(rootDb)
   const vnextHandle = new Database(vnextDb)
   try {
+    if (clean) {
+      cleanForParity(rootHandle)
+      cleanForParity(vnextHandle)
+    }
     applyRows(rootHandle, rootRows)
     applyRows(vnextHandle, vnextRows)
   } finally {

@@ -5,10 +5,13 @@
   "auth": "admin-session",
   "body": {
     "kind": "azure",
-    "endpoint": "https://parity-mock.invalid",
-    "apiKey": "fake-parity-key",
-    "deployment": "gpt-4o",
-    "apiVersion": "2024-08-01-preview"
+    "config": {
+      "name": "parity-probe",
+      "endpoint": "https://parity-mock.invalid",
+      "apiKey": "fake-parity-key",
+      "deployment": "gpt-4o",
+      "apiVersion": "2024-08-01-preview"
+    }
   },
   "expect_status": 200
 }

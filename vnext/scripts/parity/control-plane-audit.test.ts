@@ -36,6 +36,26 @@ test('resolvePlaceholders walks ${capture.foo.bar} and ${env.X}', () => {
     .toEqual({ userId: 'uid_target' })
 })
 
+test('resolvePlaceholders is side-aware when per-side captures are present', () => {
+  const ctx = {
+    captures: {
+      'create-key': {
+        keyId: 'kid_root',
+        root_keyId: 'kid_root',
+        vnext_keyId: 'kid_vnext',
+      },
+    },
+    env: {},
+  }
+  expect(resolvePlaceholders('/api/keys/${capture.create-key.keyId}', ctx, 'root'))
+    .toBe('/api/keys/kid_root')
+  expect(resolvePlaceholders('/api/keys/${capture.create-key.keyId}', ctx, 'vnext'))
+    .toBe('/api/keys/kid_vnext')
+  // No side argument → falls back to the non-prefixed value (root-shaped).
+  expect(resolvePlaceholders('/api/keys/${capture.create-key.keyId}', ctx))
+    .toBe('/api/keys/kid_root')
+})
+
 test('buildAuthHeader returns cookie for admin-session and bearer for api-key', () => {
   const env = {
     PARITY_ROOT_ADMIN_TOKEN: 'ses_root',

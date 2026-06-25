@@ -30,16 +30,24 @@ export interface ControlPlaneFixture {
 
 export const CONTROL_PLANE_RULES: DiffRules = {
   ignoreKeys: new Set([
+    // identity / lifecycle timestamps (camelCase + snake_case forms)
     'id', 'createdAt', 'updatedAt', 'rotatedAt', 'lastUsedAt', 'expiresAt',
-    'secretHash', 'keyHash', 'secret', 'sessionToken', 'cookie',
+    'created_at', 'updated_at', 'rotated_at', 'last_used_at', 'expires_at',
+    'exportedAt', 'exported_at', 'timestamp_utc', 'timestampUtc',
+    // secrets (vary by-side every time a key is freshly created)
+    'secret', 'secretHash', 'key', 'keyHash', 'sessionToken', 'cookie', 'token',
+    // owner / user / viewer identifiers (random uuids per side)
     'ownerId', 'userId', 'viewerId', 'granterId', 'githubUserId', 'apiKeyId', 'accountId',
+    'owner_id', 'user_id', 'viewer_id', 'granter_id', 'github_user_id', 'api_key_id', 'account_id',
+    // metric counters — values wobble request-to-request
     'totalRequests', 'totalTokens', 'totalCost', 'totalLatencyMs',
     'requestCount', 'tokenCount', 'latencyMs', 'latencyP50', 'latencyP95', 'latencyP99',
     'avgLatency', 'avgTokens', 'count', 'sum', 'min', 'max',
+    // misc cache/versioning headers in body
     'version', 'etag', 'nonce', 'fingerprint',
   ]),
   headerAllowlist: new Set(['content-type', 'x-request-id', 'transfer-encoding', 'cache-control']),
-  strongEnumKeys: new Set(['kind', 'provider', 'status', 'enabled', 'role', 'scope']),
+  strongEnumKeys: new Set(['kind', 'provider', 'enabled', 'role']),
 }
 
 const ROOT_BASE = process.env.PARITY_ROOT_BASE ?? 'http://127.0.0.1:4141'
@@ -84,19 +92,25 @@ export interface RunContext {
 export function resolvePlaceholders(
   input: unknown,
   ctx: { captures: Record<string, Record<string, unknown>>; env: Record<string, string> },
+  side?: Side,
 ): unknown {
   if (typeof input === 'string') {
     return input.replace(/\$\{(env|capture)\.([^}]+)\}/g, (_, kind, path) => {
       if (kind === 'env') return ctx.env[path] ?? ''
       const [fname, key] = path.split('.')
       const cap = ctx.captures[fname] as Record<string, unknown> | undefined
-      return String(cap?.[key] ?? '')
+      if (!cap) return ''
+      // Per-side captures live under `${side}_${key}` (e.g. `root_keyId`, `vnext_keyId`).
+      // The non-prefixed `key` is the legacy/root value retained for backward-compat tests.
+      const sideValue = side ? cap[`${side}_${key}`] : undefined
+      const fallback = cap[key]
+      return String(sideValue ?? fallback ?? '')
     })
   }
-  if (Array.isArray(input)) return input.map((x) => resolvePlaceholders(x, ctx))
+  if (Array.isArray(input)) return input.map((x) => resolvePlaceholders(x, ctx, side))
   if (input && typeof input === 'object') {
     return Object.fromEntries(Object.entries(input as Record<string, unknown>)
-      .map(([k, v]) => [k, resolvePlaceholders(v, ctx)]))
+      .map(([k, v]) => [k, resolvePlaceholders(v, ctx, side)]))
   }
   return input
 }
@@ -138,8 +152,8 @@ async function dispatch(
   fixture: ControlPlaneFixture, side: Side, base: string,
   ctx: RunContext, sideKeys: { root?: string; vnext?: string },
 ): Promise<{ status: number; headers: Record<string, string>; body: unknown }> {
-  const endpoint = resolvePlaceholders(fixture.endpoint, ctx) as string
-  const body = fixture.body !== undefined ? resolvePlaceholders(fixture.body, ctx) : undefined
+  const endpoint = resolvePlaceholders(fixture.endpoint, ctx, side) as string
+  const body = fixture.body !== undefined ? resolvePlaceholders(fixture.body, ctx, side) : undefined
   const headers: Record<string, string> = {
     ...buildAuthHeader(fixture.auth, side, ctx.env, sideKeys),
   }
