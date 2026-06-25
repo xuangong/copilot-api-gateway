@@ -61,6 +61,11 @@ export function buildSeedRows(token: string): SeedRows {
  * Wipe rows whose presence makes diffs noisy (counts, ids, names that differ
  * by side). Leaves schema and admin user tables intact — they get repopulated
  * by applyRows() below. Tables not present on a side are silently skipped.
+ *
+ * `users` rows other than the parity-managed ones (admin + target) are also
+ * removed: stale seeds from earlier docker boots (e.g. "Dev User") share
+ * test@local.dev with the parity admin and cause findByEmail to return the
+ * wrong row, leaking non-deterministic name/id into responses.
  */
 export function cleanForParity(db: Database): void {
   const exists = (name: string): boolean => {
@@ -80,6 +85,21 @@ export function cleanForParity(db: Database): void {
   ]
   for (const t of tablesToWipe) {
     if (exists(t)) db.run(`DELETE FROM ${t}`)
+  }
+  // Remove non-parity user rows so duplicate emails don't shadow the seeded
+  // admin. user_sessions has no FK to users in vnext, but rows pointing at
+  // a deleted user are dead weight — drop them too.
+  if (exists('users')) {
+    db.run(
+      `DELETE FROM users WHERE id NOT IN (?, ?)`,
+      [PARITY_ADMIN_USER_ID, PARITY_TARGET_USER_ID],
+    )
+  }
+  if (exists('user_sessions')) {
+    db.run(
+      `DELETE FROM user_sessions WHERE user_id NOT IN (?, ?)`,
+      [PARITY_ADMIN_USER_ID, PARITY_TARGET_USER_ID],
+    )
   }
 }
 
