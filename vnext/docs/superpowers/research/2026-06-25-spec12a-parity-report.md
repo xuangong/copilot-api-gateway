@@ -1,6 +1,6 @@
 # Spec 12a — Data-Plane Parity Report
 
-**Generated:** 2026-06-25T09:20:05.284Z
+**Generated:** 2026-06-25T09:40:35.836Z
 **Fixtures:** 27
 
 ## Summary
@@ -9,15 +9,15 @@
 |-------|-------|
 | parity | 8 |
 | cosmetic-diff | 1 |
-| behavior-gap | 12 |
-| route-missing | 6 |
+| behavior-gap | 14 |
+| route-missing | 4 |
 
 ## Per-fixture
 
 | endpoint | fixture | label | root | vnext | summary |
 |----------|---------|-------|------|-------|---------|
-| `/chat/completions` | alias-e1-chat-completions | **route-missing** | 200 | 404 | status:route-missing |
-| `/responses` | alias-e2-responses | **route-missing** | 200 | 404 | status:route-missing |
+| `/chat/completions` | alias-e1-chat-completions | **behavior-gap** | 200 | 200 | header:cosmetic-diff / body:behavior-gap / body:behavior-gap |
+| `/responses` | alias-e2-responses | **behavior-gap** | 200 | 400 | status:behavior-gap / body:behavior-gap / body:behavior-gap |
 | `/embeddings` | alias-e3-embeddings | **behavior-gap** | 500 | 200 | status:behavior-gap / body:behavior-gap / body:behavior-gap |
 | `/images/generations` | alias-e4-images-generations | **parity** | 404 | 404 | — |
 | `/images/edits` | alias-e5-images-edits | **parity** | 404 | 404 | — |
@@ -46,13 +46,35 @@
 
 ## Appendix — full diffs
 
-### alias-e1-chat-completions (`/chat/completions`) — route-missing
+### alias-e1-chat-completions (`/chat/completions`) — behavior-gap
 
-- **status** [route-missing] vnext returned 404 for /chat/completions; root returned 200
+- **header** [cosmetic-diff] content-type: root="application/json" vnext="application/json;charset=utf-<num>"
+- **body** [behavior-gap] $.choices[0].content_filter_results: type root=object vnext=undefined
+- **body** [behavior-gap] $.choices[0].message.padding: type root=string vnext=undefined
+- **body** [behavior-gap] $.prompt_filter_results: type root=object vnext=undefined
+- **body** [behavior-gap] $.service_tier: type root=string vnext=undefined
+- **body** [behavior-gap] $.copilot_usage: type root=object vnext=undefined
+- **body** [behavior-gap] $.object: type root=undefined vnext=string
 
-### alias-e2-responses (`/responses`) — route-missing
+### alias-e2-responses (`/responses`) — behavior-gap
 
-- **status** [route-missing] vnext returned 404 for /responses; root returned 200
+- **status** [behavior-gap] root=200 vnext=400
+- **body** [behavior-gap] $.object: type root=string vnext=undefined
+- **body** [behavior-gap] $.created_at: type root=number vnext=undefined
+- **body** [behavior-gap] $.model: type root=string vnext=undefined
+- **body** [behavior-gap] $.output: type root=object vnext=undefined
+- **body** [behavior-gap] $.output_text: type root=string vnext=undefined
+- **body** [behavior-gap] $.status: type root=string vnext=undefined
+- **body** [behavior-gap] $.error: root=null vnext=[object Object]
+- **body** [behavior-gap] $.incomplete_details: type root=object vnext=undefined
+- **body** [behavior-gap] $.instructions: type root=object vnext=undefined
+- **body** [behavior-gap] $.metadata: type root=object vnext=undefined
+- **body** [behavior-gap] $.parallel_tool_calls: type root=boolean vnext=undefined
+- **body** [behavior-gap] $.temperature: type root=object vnext=undefined
+- **body** [behavior-gap] $.tool_choice: type root=string vnext=undefined
+- **body** [behavior-gap] $.tools: type root=object vnext=undefined
+- **body** [behavior-gap] $.top_p: type root=object vnext=undefined
+- **body** [behavior-gap] usage keys: onlyRoot=[input_tokens,input_tokens_details,output_tokens,output_tokens_details,total_tokens] onlyVnext=[]
 
 ### alias-e3-embeddings (`/embeddings`) — behavior-gap
 
@@ -140,8 +162,7 @@ No diffs.
 
 - **header** [cosmetic-diff] content-type: root="application/json" vnext="application/json;charset=utf-<num>"
 - **body** [behavior-gap] $.copilot_usage: type root=object vnext=undefined
-- **body** [behavior-gap] $.stop_details: type root=object vnext=undefined
-- **body** [behavior-gap] usage keys: onlyRoot=[cache_creation,inference_geo] onlyVnext=[]
+- **body** [behavior-gap] usage keys: onlyRoot=[cache_creation] onlyVnext=[]
 
 ### messages-count-tokens (`/v1/messages/count_tokens`) — parity
 
@@ -1525,6 +1546,6 @@ No diffs.
 
 ### responses-stateful-chain (`/v1/responses`) — behavior-gap
 
-- **body** [behavior-gap] $.error.message: root="Previous response with id 'resp_e66d692091654824892858ef' not found." vnext="no such table: responses_snapshots"
+- **body** [behavior-gap] $.error.message: root="Previous response with id 'resp_0f9b1bcae4144890a85bbd4b' not found." vnext="no such table: responses_snapshots"
 - **body** [behavior-gap] $.error.param: type root=string vnext=undefined
 - **body** [behavior-gap] $.error.code: type root=string vnext=undefined

@@ -156,3 +156,32 @@
 3. **F3 responses snapshots:** 持久化还是 in-memory 兜底?
 
 回 "继续" + 决策 (例如 "F1+F10 先做,vendor 走 pass-through") 我直接进 brainstorm/plan/exec 链。
+
+---
+
+## 决策 (2026-06-25, by user)
+
+1. **vendor padding → vnext pass-through.** 参考 sibling 项目 `/Users/zhangxian/projects/copilot-gateway`:
+   - `packages/gateway/src/data-plane/llm/chat-completions/events/reassemble.ts` 明确保留 `prompt_filter_results`
+   - `reassemble_test.ts` 有 "preserves unknown choice-level fields (content_filter_results)" 用例
+   - 结论: 这些是上游 (Azure / Copilot) 的安全审计字段,下游可能消费 → vnext transform 改 pass-through unknown 字段
+2. **F9 root 500 embeddings → 先修 root.** 不加 `root-broken` 标签;先看 root `src/routes/embeddings/handler.ts` 为何 500。
+3. **F3 responses_snapshots → in-memory store 兜底.** 先让 stateful chain 在内存里 work,持久化后置。
+
+## 执行顺序 (确定版)
+
+| seq | cluster | gap 数 | 类型 |
+|-----|---------|------|------|
+| 1 | F1 alias 路由 (`/chat/completions`、`/responses`) | 2 | trivial |
+| 2 | F10 charset header 对齐 | 1+ cosmetic | 1-line helper |
+| 3 | F2 Gemini 路由挂载 | 4 | medium |
+| 4 | F9 修 root `/v1/embeddings` 500 | 2 | root bug |
+| 5 | F3 responses in-memory store | 1 | feature |
+| 6 | F4 `/v1/responses` 400 调试 | 2 | debug (依赖 F3) |
+| 7 | F5+F6+F8 vendor padding pass-through | 5 | refactor |
+| 8 | F7 chat stream event count | 1 | trace |
+
+每个 cluster: brainstorm (small) → spec → impl → re-run audit → commit。
+
+**当前进度:** 开始 F1。
+
