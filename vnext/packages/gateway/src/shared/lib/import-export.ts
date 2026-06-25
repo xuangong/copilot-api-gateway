@@ -6,7 +6,7 @@
  * always write v2. Secrets may be redacted on export and restored from
  * live state on import via unredactWithLive().
  */
-import type { UpstreamKind } from '@vnext-llm/protocols/common'
+import type { UpstreamKind } from '@vibe-llm/protocols/common'
 import type { ApiKey, GitHubAccount, UpstreamRecord } from '../repo/types.ts'
 
 export const CONFIG_BUNDLE_VERSION = 2 as const

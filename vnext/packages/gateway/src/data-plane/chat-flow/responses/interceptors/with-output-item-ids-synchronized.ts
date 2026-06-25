@@ -1,5 +1,5 @@
 import type { ResponsesInterceptor } from './types'
-import type { ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
+import type { ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
 
 /**
  * Copilot's `/responses` stream is inconsistent about per-output-item ids:

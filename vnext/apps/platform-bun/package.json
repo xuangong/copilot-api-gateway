@@ -1,5 +1,5 @@
 {
-  "name": "@vnext-llm/platform-bun",
+  "name": "@vibe-llm/platform-bun",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,9 +8,9 @@
     "start": "bun run src/server.ts"
   },
   "dependencies": {
-    "@vnext-llm/gateway": "workspace:*",
-    "@vnext-gateway/platform": "workspace:*",
-    "@vnext-llm/responses-store": "workspace:*",
-    "@vnext-gateway/cache": "workspace:*"
+    "@vibe-llm/gateway": "workspace:*",
+    "@vibe-core/platform": "workspace:*",
+    "@vibe-llm/responses-store": "workspace:*",
+    "@vibe-core/cache": "workspace:*"
   }
 }

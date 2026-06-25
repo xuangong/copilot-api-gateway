@@ -1,5 +1,5 @@
-import type { ResponsesSnapshotStore } from "@vnext-llm/responses-store"
-import { __registerPlatformReset } from "@vnext-gateway/platform"
+import type { ResponsesSnapshotStore } from "@vibe-llm/responses-store"
+import { __registerPlatformReset } from "@vibe-core/platform"
 
 let _store: ResponsesSnapshotStore | null = null
 __registerPlatformReset(() => { _store = null })

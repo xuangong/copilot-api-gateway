@@ -1,5 +1,5 @@
 import { applyTopLevelCacheControl } from "../../transforms/apply-top-level-cache-control"
-import type { CopilotInterceptor } from "@vnext-llm/protocols/common"
+import type { CopilotInterceptor } from "@vibe-llm/protocols/common"
 
 /**
  * Port the top-level Anthropic `cache_control` field onto the last cacheable

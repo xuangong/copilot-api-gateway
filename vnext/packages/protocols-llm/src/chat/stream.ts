@@ -1,8 +1,8 @@
 // packages/protocols/src/chat/stream.ts
 import { chatCompletionsErrorPayloadMessage } from './errors'
 import type { ChatCompletionsStreamEvent } from './events'
-import { doneFrame, eventFrame, type ProtocolFrame } from '@vnext-gateway/result'
-import { parseTargetStreamFrames, parseSSEStream } from '@vnext-gateway/result/parse'
+import { doneFrame, eventFrame, type ProtocolFrame } from '@vibe-core/result'
+import { parseTargetStreamFrames, parseSSEStream } from '@vibe-core/result/parse'
 
 export interface ParseChatCompletionsStreamOptions {
   signal?: AbortSignal

@@ -22,13 +22,13 @@ import {
   __resetPlatformForTests,
   initBackground,
   initRuntimeLocation,
-} from '@vnext-gateway/platform'
-import { BunSqliteRepo as SqliteRepo } from '@vnext-llm/platform-bun/src/bun-sqlite-repo.ts'
+} from '@vibe-core/platform'
+import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
 import { generateImageViaBinding, type ImageGenerationConfig } from '../src/data-plane/orchestrator/server-tools/plugins/image-generation/core.ts'
 import { handleMessagesWebSearch } from '../src/data-plane/orchestrator/server-tools/plugins/web-search/route-handler.ts'
 import { invalidateResolverCache } from '../src/data-plane/orchestrator/server-tools/plugins/web-search/resolver.ts'
 import type { LlmProviderBinding } from '../src/data-plane/routing/binding.ts'
-import type { LlmModelProvider } from '@vnext-llm/provider-llm'
+import type { LlmModelProvider } from '@vibe-llm/provider-llm'
 
 const origFetch = globalThis.fetch
 let repo: SqliteRepo

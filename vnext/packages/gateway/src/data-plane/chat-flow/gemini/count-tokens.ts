@@ -9,9 +9,9 @@ import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseGeminiPayload } from '../../parsers.ts'
 import { resolveBinding, stripUpstreamPin } from '../../routing/binding-resolver.ts'
 import { repackageUpstreamError } from '../../errors/repackage.ts'
-import { HTTPError } from '@vnext-llm/provider-copilot'
+import { HTTPError } from '@vibe-llm/provider-copilot'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'
-import { translateGeminiToMessages } from '@vnext-llm/translate/gemini-via-messages'
+import { translateGeminiToMessages } from '@vibe-llm/translate/gemini-via-messages'
 import { reshapeMessagesCountAsGemini } from './reshape-count.ts'
 
 export interface GeminiCountTokensServeArgs {

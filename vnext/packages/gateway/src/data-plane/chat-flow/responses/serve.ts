@@ -2,7 +2,7 @@
 /**
  * /v1/responses HTTP serve layer (Spec 10 — chat-flow convergence).
  *
- * Migrated to the framework kit (@vnext-gateway/chat-flow-kit). The legacy
+ * Migrated to the framework kit (@vibe-core/chat-flow-kit). The legacy
  * inline pipeline (parse → expandPreviousResponseId → telemetry → quota →
  * controller → attempt → respond) now flows through `serveTemplate(...)`;
  * this file declares the hooks, shapes auth, and maps the kit result back
@@ -38,7 +38,7 @@ import {
   type KitObsCtx,
   type PreProcessResult,
   type ServeTemplateHooks,
-} from '@vnext-gateway/chat-flow-kit'
+} from '@vibe-core/chat-flow-kit'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseResponsesPayload } from '../../parsers.ts'
 import { kitDeps } from '../shared/kit-deps.ts'

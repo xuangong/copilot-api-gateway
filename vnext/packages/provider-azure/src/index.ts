@@ -1,5 +1,5 @@
 /**
- * Public surface for @vnext-llm/provider-azure.
+ * Public surface for @vibe-llm/provider-azure.
  *
  * Gateway code should depend only on what this barrel exposes; the provider
  * class is the only public symbol — internal helpers (OPENAI_PATHS,

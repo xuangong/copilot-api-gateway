@@ -11,7 +11,7 @@
  *     deterministic (status, body, model name in delta)
  *
  * Telemetry persistence runs through `waitUntil` (registered by serve.ts via
- * `getRuntimeLocation()` + the `initBackground` shim from `@vnext-gateway/platform`).
+ * `getRuntimeLocation()` + the `initBackground` shim from `@vibe-core/platform`).
  * To avoid races between `app.fetch()` returning and the spy seeing the row,
  * we install a tracking background executor that lets each test
  * `await pending.drain()` before asserting.
@@ -20,7 +20,7 @@ import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../../src/app.ts'
 import { initRepo } from '../../src/shared/repo/index.ts'
-import { initBackground, initRuntimeLocation, __resetPlatformForTests } from '@vnext-gateway/platform'
+import { initBackground, initRuntimeLocation, __resetPlatformForTests } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../../src/shared/repo/types.ts'
 import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'
 

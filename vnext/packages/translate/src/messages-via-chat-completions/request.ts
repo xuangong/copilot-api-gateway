@@ -8,8 +8,8 @@
  * Anthropic-specific server tools (web_search_*, computer_*) are dropped
  * because they have no Chat Completions analogue.
  */
-import type { ChatPayload } from '@vnext-llm/protocols/chat'
-import type { MessagesPayload } from '@vnext-llm/protocols/messages'
+import type { ChatPayload } from '@vibe-llm/protocols/chat'
+import type { MessagesPayload } from '@vibe-llm/protocols/messages'
 
 type ChatMessage = ChatPayload['messages'][number]
 

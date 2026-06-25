@@ -7,16 +7,16 @@ import {
   type LlmEventResult,
   type PerformanceTelemetryContext,
   type TelemetryModelIdentity,
-} from '@vnext-llm/protocols/common'
-import { type ProtocolFrame } from '@vnext-gateway/result'
-import { parseTargetStreamFrames } from '@vnext-gateway/result/parse'
-import type { ProviderResponse } from '@vnext-llm/provider-llm'
+} from '@vibe-llm/protocols/common'
+import { type ProtocolFrame } from '@vibe-core/result'
+import { parseTargetStreamFrames } from '@vibe-core/result/parse'
+import type { ProviderResponse } from '@vibe-llm/provider-llm'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 import { withUpstreamTelemetry } from './upstream-telemetry.ts'
 
 /**
  * Minimal shape this module reads from a `LlmProviderBinding`. The live
- * `LlmProviderBinding` (from `@vnext-llm/provider-llm`) has:
+ * `LlmProviderBinding` (from `@vibe-llm/provider-llm`) has:
  *   - `upstream: string` — the upstream's name
  *   - `model: BindingModel` — `{ id, ..., cost? }`
  *   - `provider: LlmModelProvider` — exposes `getPricingForModelKey(k)`

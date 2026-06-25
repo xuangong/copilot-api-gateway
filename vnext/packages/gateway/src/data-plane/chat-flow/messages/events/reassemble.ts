@@ -7,7 +7,7 @@
  * `message_delta` carries final stop_reason + delta usage, `message_stop`
  * is the terminator.
  *
- * The output shape matches `MessagesResult` from `@vnext-llm/protocols/messages`.
+ * The output shape matches `MessagesResult` from `@vibe-llm/protocols/messages`.
  * Used by `respond.ts` in the non-streaming branch so the synthesised frame
  * sequence we generate from the upstream JSON body can drain through the
  * same `consumeWithState` + `withUpstreamTelemetry` plumbing as the SSE
@@ -17,8 +17,8 @@ import type {
   MessagesResult,
   MessagesStreamEvent,
   MessagesUsage,
-} from '@vnext-llm/protocols/messages'
-import type { ProtocolFrame } from '@vnext-gateway/result'
+} from '@vibe-llm/protocols/messages'
+import type { ProtocolFrame } from '@vibe-core/result'
 
 interface PartialBlock {
   type: string

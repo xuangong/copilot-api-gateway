@@ -4,7 +4,7 @@
  *
  * Direction: response = hub → client.
  */
-import type { MessagesResponse } from '@vnext-llm/protocols/messages'
+import type { MessagesResponse } from '@vibe-llm/protocols/messages'
 
 interface ChatCompletionToolCall {
   id?: string

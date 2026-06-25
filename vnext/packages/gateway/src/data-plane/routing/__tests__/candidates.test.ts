@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
 import { filterBindingCandidates } from '../candidates.ts'
-import type { LlmProviderBinding } from '@vnext-llm/provider-llm'
+import type { LlmProviderBinding } from '@vibe-llm/provider-llm'
 
 /**
  * Stub factory for creating minimal LlmProviderBinding objects for testing.

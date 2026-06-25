@@ -1,9 +1,9 @@
-import type { EndpointKey } from '@vnext-llm/protocols/common'
+import type { EndpointKey } from '@vibe-llm/protocols/common'
 import {
   parseMessagesSSEStream,
   parseChatSSEStream,
   parseResponsesSSEStream,
-} from '@vnext-llm/provider-copilot'
+} from '@vibe-llm/provider-copilot'
 
 export function mapSourceApiToProviderRequest(
   src: 'messages' | 'chat_completions' | 'responses' | 'gemini',

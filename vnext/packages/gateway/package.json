@@ -1,5 +1,5 @@
 {
-  "name": "@vnext-llm/gateway",
+  "name": "@vibe-llm/gateway",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,25 +7,25 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vnext-gateway/cache": "workspace:*",
-    "@vnext-gateway/chat-flow-kit": "workspace:*",
-    "@vnext-gateway/platform": "workspace:*",
-    "@vnext-gateway/result": "workspace:*",
-    "@vnext-gateway/service": "workspace:*",
-    "@vnext-llm/protocols": "workspace:*",
-    "@vnext-llm/provider-llm": "workspace:*",
-    "@vnext-llm/provider-azure": "workspace:*",
-    "@vnext-llm/provider-copilot": "workspace:*",
-    "@vnext-llm/provider-custom": "workspace:*",
-    "@vnext-llm/provider-sdf": "workspace:*",
-    "@vnext-llm/responses-store": "workspace:*",
-    "@vnext-llm/translate": "workspace:*",
+    "@vibe-core/cache": "workspace:*",
+    "@vibe-core/chat-flow-kit": "workspace:*",
+    "@vibe-core/platform": "workspace:*",
+    "@vibe-core/result": "workspace:*",
+    "@vibe-core/service": "workspace:*",
+    "@vibe-llm/protocols": "workspace:*",
+    "@vibe-llm/provider-llm": "workspace:*",
+    "@vibe-llm/provider-azure": "workspace:*",
+    "@vibe-llm/provider-copilot": "workspace:*",
+    "@vibe-llm/provider-custom": "workspace:*",
+    "@vibe-llm/provider-sdf": "workspace:*",
+    "@vibe-llm/responses-store": "workspace:*",
+    "@vibe-llm/translate": "workspace:*",
     "hono": "^4.12.23",
     "image-size": "^2.0.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@vnext-llm/platform-bun": "workspace:*",
-    "@vnext-llm/platform-cloudflare": "workspace:*"
+    "@vibe-llm/platform-bun": "workspace:*",
+    "@vibe-llm/platform-cloudflare": "workspace:*"
   }
 }

@@ -5,10 +5,10 @@ import {
   initEnv,
   initBackground,
   initRuntimeLocation,
-} from "@vnext-gateway/platform"
-import { initRepo } from "@vnext-llm/gateway/src/shared/repo/index.ts"
-import { initCache } from "@vnext-llm/gateway/src/shared/cache/index.ts"
-import { initResponsesStore } from "@vnext-llm/gateway/src/shared/runtime/responses-store.ts"
+} from "@vibe-core/platform"
+import { initRepo } from "@vibe-llm/gateway/src/shared/repo/index.ts"
+import { initCache } from "@vibe-llm/gateway/src/shared/cache/index.ts"
+import { initResponsesStore } from "@vibe-llm/gateway/src/shared/runtime/responses-store.ts"
 import { BunSqliteDatabase } from "./bun-sqlite-database.ts"
 import { BunSqliteRepo } from "./bun-sqlite-repo.ts"
 import { createInMemoryImageProcessor } from "./memory-image-processor.ts"

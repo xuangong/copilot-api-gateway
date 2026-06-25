@@ -3,7 +3,7 @@ import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseMessagesCountTokensPayload } from '../../parsers.ts'
 import { resolveBinding, stripUpstreamPin } from '../../routing/binding-resolver.ts'
 import { repackageUpstreamError } from '../../errors/repackage.ts'
-import { HTTPError } from '@vnext-llm/provider-copilot'
+import { HTTPError } from '@vibe-llm/provider-copilot'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'
 
 export interface CountTokensServeArgs {

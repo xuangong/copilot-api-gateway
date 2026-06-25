@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test'
-import { translateMessagesToResponsesEvents } from '@vnext-llm/translate/responses-via-messages'
-import type { MessagesEvent } from '@vnext-llm/protocols/messages'
+import { translateMessagesToResponsesEvents } from '@vibe-llm/translate/responses-via-messages'
+import type { MessagesEvent } from '@vibe-llm/protocols/messages'
 
 async function collect<T>(src: AsyncIterable<T>): Promise<T[]> {
   const out: T[] = []

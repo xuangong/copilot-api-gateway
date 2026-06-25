@@ -39,8 +39,8 @@ import type {
 } from "../types"
 import { latencyBucketForMs } from "../../performance-histogram.ts"
 import type { SqlExecutor } from "./executor"
-import { BILLING_DIMENSIONS, unitPriceForDimension } from "@vnext-llm/protocols/common"
-import type { BillingDimension, ModelPricing } from "@vnext-llm/protocols/common"
+import { BILLING_DIMENSIONS, unitPriceForDimension } from "@vibe-llm/protocols/common"
+import type { BillingDimension, ModelPricing } from "@vibe-llm/protocols/common"
 
 const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref"
 const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at"

@@ -18,7 +18,7 @@
  * unsupported" (HTTP 400) when sawModel is true.
  */
 import { test, expect, describe } from 'bun:test'
-import type { ModelEndpoints } from '@vnext-llm/protocols/common'
+import type { ModelEndpoints } from '@vibe-llm/protocols/common'
 import { selectPair } from './pair-selector.ts'
 
 const all: ModelEndpoints = {

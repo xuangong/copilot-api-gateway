@@ -7,8 +7,8 @@
  * synthesized. Mirrors the pre-pivot reference at
  * `src/translators/responses-via-messages/request.ts`.
  */
-import type { MessagesPayload } from '@vnext-llm/protocols/messages'
-import type { ResponsesPayload } from '@vnext-llm/protocols/responses'
+import type { MessagesPayload } from '@vibe-llm/protocols/messages'
+import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
 import {
   applyLastMessageCacheBreakpoint,
   applyLastToolCacheBreakpoint,

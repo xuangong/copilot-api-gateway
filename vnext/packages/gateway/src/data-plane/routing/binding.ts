@@ -5,8 +5,8 @@
  * A binding answers: "for this requested model, which provider should I
  * dispatch to, on which endpoint, with which flags effective?"
  */
-import type { EndpointKey } from '@vnext-llm/protocols/common'
-import type { BindingModel, LlmProviderBinding } from '@vnext-llm/provider-llm'
+import type { EndpointKey } from '@vibe-llm/protocols/common'
+import type { BindingModel, LlmProviderBinding } from '@vibe-llm/provider-llm'
 export type { BindingModel, LlmProviderBinding }
 
 export function bindingServesEndpoint(

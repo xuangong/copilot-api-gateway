@@ -9,9 +9,9 @@
  *
  * Direction: request = client → hub.
  */
-import type { GeminiPayload } from '@vnext-llm/protocols/gemini'
-import type { MessagesPayload } from '@vnext-llm/protocols/messages'
-import type { ChatPayload } from '@vnext-llm/protocols/chat'
+import type { GeminiPayload } from '@vibe-llm/protocols/gemini'
+import type { MessagesPayload } from '@vibe-llm/protocols/messages'
+import type { ChatPayload } from '@vibe-llm/protocols/chat'
 import { translateMessagesToChat } from '../messages-via-chat-completions/index.ts'
 
 export interface TranslateMessagesToGeminiOptions {

@@ -1,7 +1,7 @@
 // packages/protocols/src/messages/stream.ts
 import type { MessagesStreamEvent } from './events'
-import { doneFrame, eventFrame, type ProtocolFrame } from '@vnext-gateway/result'
-import { parseTargetStreamFrames, parseSSEStream } from '@vnext-gateway/result/parse'
+import { doneFrame, eventFrame, type ProtocolFrame } from '@vibe-core/result'
+import { parseTargetStreamFrames, parseSSEStream } from '@vibe-core/result/parse'
 
 export interface ParseMessagesStreamOptions {
   signal?: AbortSignal

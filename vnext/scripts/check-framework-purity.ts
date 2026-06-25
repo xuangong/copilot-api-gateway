@@ -2,17 +2,22 @@
 /**
  * Framework-purity gate. Run before the test suite via `bun run test`.
  *
- * Rejects two classes of violation:
+ * Rejects three classes of violation:
  *
- *   1. Any package whose name starts with `@vnext-gateway/` must NOT import
- *      anything from `@vnext-llm/*` — neither in `.ts`/`.tsx` source nor in
+ *   1. Any package whose name starts with `@vibe-core/` must NOT import
+ *      anything from `@vibe-llm/*` — neither in `.ts`/`.tsx` source nor in
  *      its package.json dependencies. This enforces Charter §6 framework
  *      purity.
  *
  *   2. Any source file under `vnext/packages/*` or `vnext/apps/*` must NOT
- *      import an un-scoped `@vnext/*` specifier. After Spec 8, every package
- *      is `@vnext-gateway/*` or `@vnext-llm/*`. A bare `@vnext/foo` import
- *      is a habit-revert from the pre-rename naming and is always a bug.
+ *      import an un-scoped `@vibe/*` specifier. After Spec 11, every package
+ *      is `@vibe-core/*` or `@vibe-llm/*`. A bare `@vibe/foo` import
+ *      drops the scope and is always a bug.
+ *
+ *   3. Any source file must NOT import the legacy `@vnext-*` /
+ *      `@vnext-(gateway|llm)/*` specifiers. Spec 11 renamed everything to
+ *      `@vibe-core/*` or `@vibe-llm/*`; a stray `@vnext-*` import is an
+ *      anti-regression sentinel — a habit-revert from before the rename.
  *
  * Exit code: 0 if clean, 1 if any violation. Prints `file:line  →  matched
  * substring` for each violation so the offending import is grep-jumpable.
@@ -64,13 +69,17 @@ function scanFile(file: string, predicate: (line: string) => string | null, reas
   }
 }
 
-// Pattern 1: any source file importing an un-scoped @vnext/* specifier.
-// Matches: from '@vnext/foo', from "@vnext/foo", import('@vnext/foo'),
-// import '@vnext/foo' (side-effect), export ... from '@vnext/foo'.
-const UNSCOPED_VNEXT = /(?:from|import)\s*\(?\s*['"]@vnext\/[a-z0-9-]+/i
+// Pattern 1: any source file importing an un-scoped @vibe/* specifier.
+// Matches: from '@vibe/foo', from "@vibe/foo", import('@vibe/foo'),
+// import '@vibe/foo' (side-effect), export ... from '@vibe/foo'.
+const UNSCOPED_VIBE = /(?:from|import)\s*\(?\s*['"]@vibe\/[a-z0-9-]+/i
 
-// Pattern 2: @vnext-gateway/* package importing @vnext-llm/*.
-const LLM_IMPORT = /(?:from|import)\s*\(?\s*['"]@vnext-llm\/[a-z0-9-]+/i
+// Pattern 2: @vibe-core/* package importing @vibe-llm/*.
+const LLM_IMPORT = /(?:from|import)\s*\(?\s*['"]@vibe-llm\/[a-z0-9-]+/i
+
+// Pattern 3 (anti-regression): legacy @vnext-* / @vnext-(gateway|llm)/*
+// imports re-introduced after Spec 11. Should be zero everywhere.
+const LEGACY_VNEXT = /(?:from|import)\s*\(?\s*['"]@vnext(?:-(?:gateway|llm))?\/[a-z0-9-]+/i
 
 for (const root of PACKAGE_ROOTS) {
   for (const pkgDir of readdirSync(root)) {
@@ -85,14 +94,14 @@ for (const root of PACKAGE_ROOTS) {
       continue
     }
 
-    const isFramework = manifest.name?.startsWith('@vnext-gateway/')
+    const isFramework = manifest.name?.startsWith('@vibe-core/')
 
-    // Manifest check: framework packages must not depend on @vnext-llm/*
+    // Manifest check: framework packages must not depend on @vibe-llm/*
     if (isFramework) {
       for (const key of ['dependencies', 'devDependencies', 'peerDependencies'] as const) {
         const deps = manifest[key] ?? {}
         for (const dep of Object.keys(deps)) {
-          if (dep.startsWith('@vnext-llm/')) {
+          if (dep.startsWith('@vibe-llm/')) {
             violations.push({
               file: relative(ROOT, manifestPath),
               line: 0,
@@ -113,10 +122,19 @@ for (const root of PACKAGE_ROOTS) {
       scanFile(
         file,
         (line) => {
-          const m = line.match(UNSCOPED_VNEXT)
+          const m = line.match(UNSCOPED_VIBE)
           return m ? m[0] : null
         },
-        'un-scoped @vnext/* import (use @vnext-gateway/* or @vnext-llm/*)',
+        'un-scoped @vibe/* import (use @vibe-core/* or @vibe-llm/*)',
+      )
+
+      scanFile(
+        file,
+        (line) => {
+          const m = line.match(LEGACY_VNEXT)
+          return m ? m[0] : null
+        },
+        'legacy @vnext-* import re-introduced (Spec 11 renamed to @vibe-core/* or @vibe-llm/*)',
       )
 
       if (isFramework) {
@@ -126,7 +144,7 @@ for (const root of PACKAGE_ROOTS) {
             const m = line.match(LLM_IMPORT)
             return m ? m[0] : null
           },
-          `${manifest.name} (framework) imports @vnext-llm/* (business)`,
+          `${manifest.name} (framework) imports @vibe-llm/* (business)`,
         )
       }
     })

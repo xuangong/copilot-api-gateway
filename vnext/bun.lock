@@ -15,10 +15,10 @@
       },
     },
     "apps/dashboard": {
-      "name": "@vnext-llm/dashboard",
+      "name": "@vibe-llm/dashboard",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext-llm/protocols": "workspace:*",
+        "@vibe-llm/protocols": "workspace:*",
         "dompurify": "^3.4.7",
         "highlight.js": "^11.11.1",
         "marked": "^18.0.4",
@@ -33,23 +33,23 @@
       },
     },
     "apps/platform-bun": {
-      "name": "@vnext-llm/platform-bun",
+      "name": "@vibe-llm/platform-bun",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext-gateway/cache": "workspace:*",
-        "@vnext-gateway/platform": "workspace:*",
-        "@vnext-llm/gateway": "workspace:*",
-        "@vnext-llm/responses-store": "workspace:*",
+        "@vibe-core/cache": "workspace:*",
+        "@vibe-core/platform": "workspace:*",
+        "@vibe-llm/gateway": "workspace:*",
+        "@vibe-llm/responses-store": "workspace:*",
       },
     },
     "apps/platform-cloudflare": {
-      "name": "@vnext-llm/platform-cloudflare",
+      "name": "@vibe-llm/platform-cloudflare",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext-gateway/cache": "workspace:*",
-        "@vnext-gateway/platform": "workspace:*",
-        "@vnext-llm/gateway": "workspace:*",
-        "@vnext-llm/responses-store": "workspace:*",
+        "@vibe-core/cache": "workspace:*",
+        "@vibe-core/platform": "workspace:*",
+        "@vibe-llm/gateway": "workspace:*",
+        "@vibe-llm/responses-store": "workspace:*",
       },
       "devDependencies": {
         "@cloudflare/workers-types": "^4.20260602.1",
@@ -57,124 +57,124 @@
       },
     },
     "packages/cache": {
-      "name": "@vnext-gateway/cache",
+      "name": "@vibe-core/cache",
       "version": "0.0.0",
     },
     "packages/chat-flow-kit": {
-      "name": "@vnext-gateway/chat-flow-kit",
+      "name": "@vibe-core/chat-flow-kit",
       "version": "0.0.0",
     },
     "packages/gateway": {
-      "name": "@vnext-llm/gateway",
+      "name": "@vibe-llm/gateway",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext-gateway/cache": "workspace:*",
-        "@vnext-gateway/chat-flow-kit": "workspace:*",
-        "@vnext-gateway/platform": "workspace:*",
-        "@vnext-gateway/result": "workspace:*",
-        "@vnext-gateway/service": "workspace:*",
-        "@vnext-llm/protocols": "workspace:*",
-        "@vnext-llm/provider-azure": "workspace:*",
-        "@vnext-llm/provider-copilot": "workspace:*",
-        "@vnext-llm/provider-custom": "workspace:*",
-        "@vnext-llm/provider-llm": "workspace:*",
-        "@vnext-llm/provider-sdf": "workspace:*",
-        "@vnext-llm/responses-store": "workspace:*",
-        "@vnext-llm/translate": "workspace:*",
+        "@vibe-core/cache": "workspace:*",
+        "@vibe-core/chat-flow-kit": "workspace:*",
+        "@vibe-core/platform": "workspace:*",
+        "@vibe-core/result": "workspace:*",
+        "@vibe-core/service": "workspace:*",
+        "@vibe-llm/protocols": "workspace:*",
+        "@vibe-llm/provider-azure": "workspace:*",
+        "@vibe-llm/provider-copilot": "workspace:*",
+        "@vibe-llm/provider-custom": "workspace:*",
+        "@vibe-llm/provider-llm": "workspace:*",
+        "@vibe-llm/provider-sdf": "workspace:*",
+        "@vibe-llm/responses-store": "workspace:*",
+        "@vibe-llm/translate": "workspace:*",
         "hono": "^4.12.23",
         "image-size": "^2.0.2",
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@vnext-llm/platform-bun": "workspace:*",
-        "@vnext-llm/platform-cloudflare": "workspace:*",
+        "@vibe-llm/platform-bun": "workspace:*",
+        "@vibe-llm/platform-cloudflare": "workspace:*",
       },
     },
     "packages/http": {
-      "name": "@vnext-gateway/http",
+      "name": "@vibe-core/http",
       "version": "0.0.0",
     },
     "packages/platform": {
-      "name": "@vnext-gateway/platform",
+      "name": "@vibe-core/platform",
       "version": "0.0.0",
     },
     "packages/protocols-llm": {
-      "name": "@vnext-llm/protocols",
+      "name": "@vibe-llm/protocols",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext-gateway/result": "workspace:*",
-        "@vnext-gateway/service": "workspace:*",
+        "@vibe-core/result": "workspace:*",
+        "@vibe-core/service": "workspace:*",
         "zod": "^4.4.3",
       },
     },
     "packages/provider-azure": {
-      "name": "@vnext-llm/provider-azure",
+      "name": "@vibe-llm/provider-azure",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext-gateway/http": "workspace:*",
-        "@vnext-llm/protocols": "workspace:*",
-        "@vnext-llm/provider-llm": "workspace:*",
+        "@vibe-core/http": "workspace:*",
+        "@vibe-llm/protocols": "workspace:*",
+        "@vibe-llm/provider-llm": "workspace:*",
       },
     },
     "packages/provider-copilot": {
-      "name": "@vnext-llm/provider-copilot",
+      "name": "@vibe-llm/provider-copilot",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext-gateway/http": "workspace:*",
-        "@vnext-gateway/result": "workspace:*",
-        "@vnext-gateway/service": "workspace:*",
-        "@vnext-llm/protocols": "workspace:*",
-        "@vnext-llm/provider-llm": "workspace:*",
+        "@vibe-core/http": "workspace:*",
+        "@vibe-core/result": "workspace:*",
+        "@vibe-core/service": "workspace:*",
+        "@vibe-llm/protocols": "workspace:*",
+        "@vibe-llm/provider-llm": "workspace:*",
       },
     },
     "packages/provider-custom": {
-      "name": "@vnext-llm/provider-custom",
+      "name": "@vibe-llm/provider-custom",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext-gateway/http": "workspace:*",
-        "@vnext-llm/protocols": "workspace:*",
-        "@vnext-llm/provider-llm": "workspace:*",
+        "@vibe-core/http": "workspace:*",
+        "@vibe-llm/protocols": "workspace:*",
+        "@vibe-llm/provider-llm": "workspace:*",
       },
     },
     "packages/provider-llm": {
-      "name": "@vnext-llm/provider-llm",
+      "name": "@vibe-llm/provider-llm",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext-gateway/upstream": "workspace:*",
-        "@vnext-llm/protocols": "workspace:*",
+        "@vibe-core/upstream": "workspace:*",
+        "@vibe-llm/protocols": "workspace:*",
       },
     },
     "packages/provider-sdf": {
-      "name": "@vnext-llm/provider-sdf",
+      "name": "@vibe-llm/provider-sdf",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext-gateway/http": "workspace:*",
-        "@vnext-llm/protocols": "workspace:*",
-        "@vnext-llm/provider-llm": "workspace:*",
+        "@vibe-core/http": "workspace:*",
+        "@vibe-llm/protocols": "workspace:*",
+        "@vibe-llm/provider-llm": "workspace:*",
       },
     },
     "packages/responses-store": {
-      "name": "@vnext-llm/responses-store",
+      "name": "@vibe-llm/responses-store",
       "version": "0.0.0",
     },
     "packages/result": {
-      "name": "@vnext-gateway/result",
+      "name": "@vibe-core/result",
       "version": "0.0.0",
     },
     "packages/service": {
-      "name": "@vnext-gateway/service",
+      "name": "@vibe-core/service",
       "version": "0.0.0",
     },
     "packages/translate": {
-      "name": "@vnext-llm/translate",
+      "name": "@vibe-llm/translate",
       "version": "0.0.0",
       "dependencies": {
-        "@vnext-gateway/result": "workspace:*",
-        "@vnext-llm/protocols": "workspace:*",
+        "@vibe-core/result": "workspace:*",
+        "@vibe-llm/protocols": "workspace:*",
       },
     },
     "packages/upstream": {
-      "name": "@vnext-gateway/upstream",
+      "name": "@vibe-core/upstream",
       "version": "0.0.0",
     },
   },
@@ -447,43 +447,43 @@
 
     "@unrs/resolver-binding-win32-x64-msvc": ["@unrs/resolver-binding-win32-x64-msvc@1.12.2", "", { "os": "win32", "cpu": "x64" }, "sha512-nAB74NfSNKknqQ1RrYj6uz8FcXEomu/MATJZxh/x+BArzN2U3JbOYC0APYzUIGhVY3m5hRxA8VPNdPBoG8txlA=="],
 
-    "@vnext-gateway/cache": ["@vnext-gateway/cache@workspace:packages/cache"],
+    "@vibe-core/cache": ["@vibe-core/cache@workspace:packages/cache"],
 
-    "@vnext-gateway/chat-flow-kit": ["@vnext-gateway/chat-flow-kit@workspace:packages/chat-flow-kit"],
+    "@vibe-core/chat-flow-kit": ["@vibe-core/chat-flow-kit@workspace:packages/chat-flow-kit"],
 
-    "@vnext-gateway/http": ["@vnext-gateway/http@workspace:packages/http"],
+    "@vibe-core/http": ["@vibe-core/http@workspace:packages/http"],
 
-    "@vnext-gateway/platform": ["@vnext-gateway/platform@workspace:packages/platform"],
+    "@vibe-core/platform": ["@vibe-core/platform@workspace:packages/platform"],
 
-    "@vnext-gateway/result": ["@vnext-gateway/result@workspace:packages/result"],
+    "@vibe-core/result": ["@vibe-core/result@workspace:packages/result"],
 
-    "@vnext-gateway/service": ["@vnext-gateway/service@workspace:packages/service"],
+    "@vibe-core/service": ["@vibe-core/service@workspace:packages/service"],
 
-    "@vnext-gateway/upstream": ["@vnext-gateway/upstream@workspace:packages/upstream"],
+    "@vibe-core/upstream": ["@vibe-core/upstream@workspace:packages/upstream"],
 
-    "@vnext-llm/dashboard": ["@vnext-llm/dashboard@workspace:apps/dashboard"],
+    "@vibe-llm/dashboard": ["@vibe-llm/dashboard@workspace:apps/dashboard"],
 
-    "@vnext-llm/gateway": ["@vnext-llm/gateway@workspace:packages/gateway"],
+    "@vibe-llm/gateway": ["@vibe-llm/gateway@workspace:packages/gateway"],
 
-    "@vnext-llm/platform-bun": ["@vnext-llm/platform-bun@workspace:apps/platform-bun"],
+    "@vibe-llm/platform-bun": ["@vibe-llm/platform-bun@workspace:apps/platform-bun"],
 
-    "@vnext-llm/platform-cloudflare": ["@vnext-llm/platform-cloudflare@workspace:apps/platform-cloudflare"],
+    "@vibe-llm/platform-cloudflare": ["@vibe-llm/platform-cloudflare@workspace:apps/platform-cloudflare"],
 
-    "@vnext-llm/protocols": ["@vnext-llm/protocols@workspace:packages/protocols-llm"],
+    "@vibe-llm/protocols": ["@vibe-llm/protocols@workspace:packages/protocols-llm"],
 
-    "@vnext-llm/provider-azure": ["@vnext-llm/provider-azure@workspace:packages/provider-azure"],
+    "@vibe-llm/provider-azure": ["@vibe-llm/provider-azure@workspace:packages/provider-azure"],
 
-    "@vnext-llm/provider-copilot": ["@vnext-llm/provider-copilot@workspace:packages/provider-copilot"],
+    "@vibe-llm/provider-copilot": ["@vibe-llm/provider-copilot@workspace:packages/provider-copilot"],
 
-    "@vnext-llm/provider-custom": ["@vnext-llm/provider-custom@workspace:packages/provider-custom"],
+    "@vibe-llm/provider-custom": ["@vibe-llm/provider-custom@workspace:packages/provider-custom"],
 
-    "@vnext-llm/provider-llm": ["@vnext-llm/provider-llm@workspace:packages/provider-llm"],
+    "@vibe-llm/provider-llm": ["@vibe-llm/provider-llm@workspace:packages/provider-llm"],
 
-    "@vnext-llm/provider-sdf": ["@vnext-llm/provider-sdf@workspace:packages/provider-sdf"],
+    "@vibe-llm/provider-sdf": ["@vibe-llm/provider-sdf@workspace:packages/provider-sdf"],
 
-    "@vnext-llm/responses-store": ["@vnext-llm/responses-store@workspace:packages/responses-store"],
+    "@vibe-llm/responses-store": ["@vibe-llm/responses-store@workspace:packages/responses-store"],
 
-    "@vnext-llm/translate": ["@vnext-llm/translate@workspace:packages/translate"],
+    "@vibe-llm/translate": ["@vibe-llm/translate@workspace:packages/translate"],
 
     "acorn": ["acorn@8.16.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw=="],
 

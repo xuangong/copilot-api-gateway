@@ -6,8 +6,8 @@
  * is inherited unchanged and existing call sites (binding.provider.fetch)
  * keep working with no runtime rename.
  */
-import type { UpstreamBinding } from '@vnext-gateway/upstream'
-import type { ModelEndpoints, ModelPricing, UpstreamKind } from '@vnext-llm/protocols/common'
+import type { UpstreamBinding } from '@vibe-core/upstream'
+import type { ModelEndpoints, ModelPricing, UpstreamKind } from '@vibe-llm/protocols/common'
 import type { LlmModelProvider } from './types'
 
 export interface BindingModel {

@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
-import { runInterceptors } from "@vnext-gateway/service"
-import type { CopilotInterceptor, Invocation, RequestContext } from "@vnext-llm/protocols/common"
+import { runInterceptors } from "@vibe-core/service"
+import type { CopilotInterceptor, Invocation, RequestContext } from "@vibe-llm/protocols/common"
 
 const newInv = (): Invocation => ({
   endpoint: 'chat_completions',

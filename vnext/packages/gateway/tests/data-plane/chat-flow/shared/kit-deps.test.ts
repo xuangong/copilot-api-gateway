@@ -1,8 +1,8 @@
 // vnext/packages/gateway/tests/data-plane/chat-flow/shared/kit-deps.test.ts
 import { test, expect, beforeAll, afterAll } from 'bun:test'
-import { __resetPlatformForTests } from '@vnext-gateway/platform'
+import { __resetPlatformForTests } from '@vibe-core/platform'
 import { setupTestPlatform } from '../../../_setup-platform.ts'
-import type { KitAuthCtx, KitObsCtx } from '@vnext-gateway/chat-flow-kit'
+import type { KitAuthCtx, KitObsCtx } from '@vibe-core/chat-flow-kit'
 import { kitDeps } from '../../../../src/data-plane/chat-flow/shared/kit-deps'
 
 beforeAll(() => { setupTestPlatform() })

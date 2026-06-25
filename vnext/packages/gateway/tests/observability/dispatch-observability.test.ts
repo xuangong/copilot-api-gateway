@@ -18,10 +18,10 @@ import {
   __resetPlatformForTests,
   initBackground,
   initRuntimeLocation,
-} from '@vnext-gateway/platform'
-import { BunSqliteRepo as SqliteRepo } from '@vnext-llm/platform-bun/src/bun-sqlite-repo.ts'
+} from '@vibe-core/platform'
+import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
 import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'
-import type { Model, ModelsResponse } from '@vnext-llm/provider-copilot'
+import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 
 const env = {} as never
 const MODEL_ID = 'gpt-4'

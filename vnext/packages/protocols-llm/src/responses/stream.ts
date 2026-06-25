@@ -1,7 +1,7 @@
 import { isResponsesTerminalEvent, type ResponsesResult, type ResponsesStreamEvent } from './events'
 import { responsesResultToEvents } from './from-result'
-import { doneFrame, eventFrame, type ProtocolFrame } from '@vnext-gateway/result'
-import { parseTargetStreamFrames, parseSSEStream } from '@vnext-gateway/result/parse'
+import { doneFrame, eventFrame, type ProtocolFrame } from '@vibe-core/result'
+import { parseTargetStreamFrames, parseSSEStream } from '@vibe-core/result/parse'
 
 export interface ParseResponsesStreamOptions {
   signal?: AbortSignal

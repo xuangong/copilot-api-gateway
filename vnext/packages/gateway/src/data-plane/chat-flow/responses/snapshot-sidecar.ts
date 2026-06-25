@@ -1,6 +1,6 @@
 // packages/gateway/src/data-plane/chat-flow/responses/snapshot-sidecar.ts
 import type { Context } from 'hono'
-import { parseResponsesSSEStream } from '@vnext-llm/provider-copilot'
+import { parseResponsesSSEStream } from '@vibe-llm/provider-copilot'
 import { savePostTurnSnapshot } from '../../dispatch/responses-store-bridge.ts'
 import { getResponsesStore } from '../../../shared/runtime/responses-store.ts'
 

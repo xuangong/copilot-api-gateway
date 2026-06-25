@@ -1,5 +1,5 @@
 /**
- * Public types for @vnext-llm/responses-store.
+ * Public types for @vibe-llm/responses-store.
  *
  * A "snapshot" is the merged input + output items array from one /v1/responses
  * turn. The next turn — when the client sends previous_response_id — the
@@ -35,7 +35,7 @@ export interface ResponsesSnapshotStore {
 
 /**
  * Minimal SQL adapter; mirrors apps/gateway/src/shared/repo/shared/executor.ts.
- * Duplicated here so the package has no dependency on @vnext-llm/gateway.
+ * Duplicated here so the package has no dependency on @vibe-llm/gateway.
  */
 export interface SqlExecutor {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

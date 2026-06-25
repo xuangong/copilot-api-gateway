@@ -1,5 +1,5 @@
 {
-  "name": "@vnext-gateway/platform",
+  "name": "@vibe-core/platform",
   "private": true,
   "version": "0.0.0",
   "type": "module",

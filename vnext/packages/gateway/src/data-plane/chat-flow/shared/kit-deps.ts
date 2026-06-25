@@ -2,7 +2,7 @@
 /**
  * Singleton ServeTemplateDeps for the LLM gateway's four chat-flow endpoints.
  *
- * The kit (@vnext-gateway/chat-flow-kit) is domain-neutral and takes its
+ * The kit (@vibe-core/chat-flow-kit) is domain-neutral and takes its
  * env-touching collaborators by injection. This module is the SOLE
  * authoritative construction site — every endpoint wrapper imports the same
  * `kitDeps` value, so we never accidentally diverge on how the telemetry ctx
@@ -19,8 +19,8 @@
  *
  * Reference: Spec 10 §3.2.
  */
-import { getRuntimeLocation } from '@vnext-gateway/platform'
-import type { KitAuthCtx, ServeTemplateDeps } from '@vnext-gateway/chat-flow-kit'
+import { getRuntimeLocation } from '@vibe-core/platform'
+import type { KitAuthCtx, ServeTemplateDeps } from '@vibe-core/chat-flow-kit'
 import { jsonErrorWrap } from './error-wrap.ts'
 import { runQuotaGate } from './quota-gate.ts'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'

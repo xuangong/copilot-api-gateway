@@ -9,7 +9,7 @@
  * already used by `chat-completions-via-responses`) and the result is cast
  * to ResponsesPayload at the boundary.
  */
-import type { ResponsesPayload } from '@vnext-llm/protocols/responses'
+import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
 import {
   geminiFunctionCallingIntent,
   geminiFunctionCallPart,

@@ -1,6 +1,6 @@
 import type { MessagesInterceptor } from './types'
-import { eventFrame, type ProtocolFrame } from '@vnext-gateway/result'
-import type { MessagesStreamEvent } from '@vnext-llm/protocols/messages'
+import { eventFrame, type ProtocolFrame } from '@vibe-core/result'
+import type { MessagesStreamEvent } from '@vibe-llm/protocols/messages'
 
 /**
  * `thinking.display` controls whether Copilot/Claude emits token-level

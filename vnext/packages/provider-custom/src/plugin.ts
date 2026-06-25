@@ -1,4 +1,4 @@
-import type { LlmProviderPlugin } from '@vnext-llm/provider-llm'
+import type { LlmProviderPlugin } from '@vibe-llm/provider-llm'
 import { CustomProvider, type CustomProviderConfig } from './provider'
 
 export const customProviderPlugin: LlmProviderPlugin = {

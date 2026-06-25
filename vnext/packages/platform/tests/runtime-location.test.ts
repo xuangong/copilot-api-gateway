@@ -3,7 +3,7 @@ import {
   __resetPlatformForTests,
   initRuntimeLocation,
   getRuntimeLocation,
-} from '@vnext-gateway/platform'
+} from '@vibe-core/platform'
 
 beforeEach(() => __resetPlatformForTests())
 

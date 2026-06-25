@@ -1,4 +1,4 @@
-import type { ImageDimensions } from "@vnext-gateway/platform"
+import type { ImageDimensions } from "@vibe-core/platform"
 
 export interface SizeCaps {
   maxLongEdge?: number

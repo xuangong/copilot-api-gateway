@@ -1,5 +1,5 @@
 import { compressInlineImagesChatCompletions } from "../../transforms/compress-inline-images"
-import type { CopilotInterceptor } from "@vnext-llm/protocols/common"
+import type { CopilotInterceptor } from "@vibe-llm/protocols/common"
 
 /**
  * Recompress inline base64 images in /chat/completions payloads to WebP.

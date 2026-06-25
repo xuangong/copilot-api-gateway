@@ -37,17 +37,17 @@
  *
  * Reference: messages/attempt.ts, responses/attempt.ts.
  */
-import { runInterceptors } from '@vnext-gateway/service'
-import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
+import { runInterceptors } from '@vibe-core/service'
+import type { Invocation, RequestContext } from '@vibe-llm/protocols/common'
 import {
   llmInternalErrorResult,
   readUpstreamError,
   type EndpointKey,
   type LlmExecuteResult,
   type ModelEndpoints,
-} from '@vnext-llm/protocols/common'
-import { type ProtocolFrame } from '@vnext-gateway/result'
-import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext-llm/provider-llm'
+} from '@vibe-llm/protocols/common'
+import { type ProtocolFrame } from '@vibe-core/result'
+import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vibe-llm/provider-llm'
 import {
   upstreamPerformanceContext,
   type AttemptBindingShape,

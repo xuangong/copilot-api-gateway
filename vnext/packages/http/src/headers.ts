@@ -1,7 +1,7 @@
 /**
  * mergeHeaders — flattens an init headers value (HeadersInit) into a plain
  * Record and lets `extra` override on key collision. Lifted verbatim from
- * @vnext-llm/provider-copilot/src/provider.ts mergeHeaders helper.
+ * @vibe-llm/provider-copilot/src/provider.ts mergeHeaders helper.
  *
  * Header names are lowercased by the Headers normalization that happens
  * inside `new Headers(initHeaders)`. Callers (CopilotProvider etc.) rely on

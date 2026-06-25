@@ -5,7 +5,7 @@
  *
  * No callbacks, no I/O. Replaces the Spec-2 recorder interface.
  */
-import type { ProtocolFrame } from '@vnext-gateway/result'
+import type { ProtocolFrame } from '@vibe-core/result'
 
 export interface UpstreamTelemetryCtx {
   readonly abortSignal?: AbortSignal

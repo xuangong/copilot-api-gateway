@@ -6,7 +6,7 @@
  * `status` + `body` properties; the dispatcher in routes.ts surfaces
  * those via the source-specific `errorWrap`.
  *
- * Kept here (rather than inside @vnext-llm/translate) because parsing is
+ * Kept here (rather than inside @vibe-llm/translate) because parsing is
  * request validation, not translation — the pairwise translators
  * operate on already-validated payloads.
  */
@@ -15,10 +15,10 @@ import {
   MessagesCountTokensPayloadSchema,
   type MessagesPayload,
   type MessagesCountTokensPayload,
-} from '@vnext-llm/protocols/messages'
-import { ChatPayloadSchema, type ChatPayload } from '@vnext-llm/protocols/chat'
-import { ResponsesPayloadSchema, type ResponsesPayload } from '@vnext-llm/protocols/responses'
-import { GeminiPayloadSchema, type GeminiPayload } from '@vnext-llm/protocols/gemini'
+} from '@vibe-llm/protocols/messages'
+import { ChatPayloadSchema, type ChatPayload } from '@vibe-llm/protocols/chat'
+import { ResponsesPayloadSchema, type ResponsesPayload } from '@vibe-llm/protocols/responses'
+import { GeminiPayloadSchema, type GeminiPayload } from '@vibe-llm/protocols/gemini'
 
 type ShapedError = Error & { status?: number; body?: unknown }
 

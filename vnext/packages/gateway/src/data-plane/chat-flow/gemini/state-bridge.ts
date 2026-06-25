@@ -27,7 +27,7 @@
  */
 import type {
   LlmEventResult,
-} from '@vnext-llm/protocols/common'
+} from '@vibe-llm/protocols/common'
 import {
   SourceStreamState,
   eventResultMetadata,

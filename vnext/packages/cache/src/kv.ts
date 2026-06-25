@@ -2,7 +2,7 @@ import type { Cache } from './types.ts'
 
 /**
  * Minimal subset of Cloudflare's `KVNamespace` that we actually call. Defining
- * it here keeps `@vnext-gateway/cache` free of `@cloudflare/workers-types`
+ * it here keeps `@vibe-core/cache` free of `@cloudflare/workers-types`
  * (which would pull a dom-shaped global into every workspace consumer).
  */
 export interface KVLike {

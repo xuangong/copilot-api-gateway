@@ -1,5 +1,5 @@
 {
-  "name": "@vnext-gateway/http",
+  "name": "@vibe-core/http",
   "private": true,
   "version": "0.0.0",
   "type": "module",

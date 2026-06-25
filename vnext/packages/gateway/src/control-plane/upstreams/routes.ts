@@ -28,7 +28,7 @@
  */
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
-import type { UpstreamKind, EndpointKey } from '@vnext-llm/protocols/common'
+import type { UpstreamKind, EndpointKey } from '@vibe-llm/protocols/common'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { UpstreamRecord } from '../../shared/repo/types.ts'
 import {
@@ -36,13 +36,13 @@ import {
   defaultsForUpstream,
 } from '../../data-plane/flags/index.ts'
 import { createProviderFromUpstream } from '../../data-plane/providers/registry.ts'
-import { clearRawModelsCache } from '@vnext-llm/provider-copilot'
-import { CustomProvider } from '@vnext-llm/provider-custom'
-import type { CustomProviderConfig as PkgCustomConfig } from '@vnext-llm/provider-custom'
-import { AzureProvider } from '@vnext-llm/provider-azure'
-import type { AzureProviderConfig as PkgAzureConfig } from '@vnext-llm/provider-azure'
-import { SdfProvider } from '@vnext-llm/provider-sdf'
-import type { SdfProviderConfig as PkgSdfConfig } from '@vnext-llm/provider-sdf'
+import { clearRawModelsCache } from '@vibe-llm/provider-copilot'
+import { CustomProvider } from '@vibe-llm/provider-custom'
+import type { CustomProviderConfig as PkgCustomConfig } from '@vibe-llm/provider-custom'
+import { AzureProvider } from '@vibe-llm/provider-azure'
+import type { AzureProviderConfig as PkgAzureConfig } from '@vibe-llm/provider-azure'
+import { SdfProvider } from '@vibe-llm/provider-sdf'
+import type { SdfProviderConfig as PkgSdfConfig } from '@vibe-llm/provider-sdf'
 
 export interface AuthCtx {
   isAdmin?: boolean

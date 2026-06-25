@@ -18,20 +18,20 @@
  * lazily ONLY for streaming, while non-streaming gets the canonical
  * "hub-events → hub-JSON → translateBody" path described in spec §3.7.
  */
-import { TranslatorValidationError } from '@vnext-llm/translate/errors'
+import { TranslatorValidationError } from '@vibe-llm/translate/errors'
 import {
   llmEventResult,
   llmInternalErrorResult,
   type LlmEventResult,
   type LlmExecuteResult,
-} from '@vnext-llm/protocols/common'
-import { type ProtocolFrame } from '@vnext-gateway/result'
+} from '@vibe-llm/protocols/common'
+import { type ProtocolFrame } from '@vibe-core/result'
 import type { PairTranslator } from '../../dispatch/translator-registry.ts'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 
 /**
  * File-local alias mirroring `result.ts`'s `TranslatorProtocol`. The
- * `@vnext-llm/protocols/common` package does not currently export this union; we
+ * `@vibe-llm/protocols/common` package does not currently export this union; we
  * replicate it here so the helper's public signature stays narrow without
  * coupling to a re-export that doesn't yet exist.
  */

@@ -3,8 +3,8 @@ import {
   initResponsesStore,
   getResponsesStore,
 } from "../src/shared/runtime/responses-store.ts"
-import { __resetPlatformForTests } from "@vnext-gateway/platform"
-import { InMemoryResponsesSnapshotStore } from "@vnext-llm/responses-store"
+import { __resetPlatformForTests } from "@vibe-core/platform"
+import { InMemoryResponsesSnapshotStore } from "@vibe-llm/responses-store"
 
 beforeEach(() => __resetPlatformForTests())
 

@@ -32,9 +32,9 @@ import {
   __resetPlatformForTests,
   initBackground,
   initRuntimeLocation,
-} from '@vnext-gateway/platform'
+} from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../../shared/repo/types.ts'
-import type { Model, ModelsResponse } from '@vnext-llm/provider-copilot'
+import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import type { DataPlaneAuthCtx } from '../models/routes.ts'
 
 const env = {} as never

@@ -2,7 +2,7 @@
 /**
  * Anthropic Messages HTTP serve layer (Spec 10 — chat-flow convergence).
  *
- * Migrated to the framework kit (@vnext-gateway/chat-flow-kit). The old
+ * Migrated to the framework kit (@vibe-core/chat-flow-kit). The old
  * inline parse → telemetry → quota → AbortController → attempt → respond
  * chain now lives behind `serveTemplate(...)`; this file only declares the
  * endpoint-specific hooks and shapes the inbound DataPlaneAuthCtx into the
@@ -18,7 +18,7 @@
  *
  * Reference: Spec 10 §3.4. Pattern mirrors chat-completions/serve.ts.
  */
-import { serveTemplate, type KitAuthCtx, type KitObsCtx, type ServeTemplateHooks } from '@vnext-gateway/chat-flow-kit'
+import { serveTemplate, type KitAuthCtx, type KitObsCtx, type ServeTemplateHooks } from '@vibe-core/chat-flow-kit'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseMessagesPayload } from '../../parsers.ts'
 import { kitDeps } from '../shared/kit-deps.ts'

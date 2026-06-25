@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
 import { reassembleChatCompletions } from '../../../../../src/data-plane/chat-flow/chat-completions/events/reassemble'
-import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
+import type { ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
 
 const drainable = async function* (events: ChatCompletionsStreamEvent[]) { for (const e of events) yield e }
 

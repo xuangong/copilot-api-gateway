@@ -8,7 +8,7 @@
  * without dragging in unrelated admin/email config.
  */
 
-import type { AccountType } from "@vnext-llm/protocols/common"
+import type { AccountType } from "@vibe-llm/protocols/common"
 export type { AccountType }
 
 // Copilot API

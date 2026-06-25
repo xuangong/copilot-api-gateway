@@ -1,14 +1,14 @@
 import { test, expect } from 'bun:test'
 import { withContextWindowErrorRewritten } from '../../../../../src/data-plane/chat-flow/messages/interceptors/with-context-window-error-rewritten'
-import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
+import type { Invocation, RequestContext } from '@vibe-llm/protocols/common'
 import {
   llmEventResult,
   type LlmExecuteResult,
   type TelemetryModelIdentity,
   type UpstreamErrorResult,
-} from '@vnext-llm/protocols/common'
-import { doneFrame, type ProtocolFrame } from '@vnext-gateway/result'
-import type { MessagesStreamEvent } from '@vnext-llm/protocols/messages'
+} from '@vibe-llm/protocols/common'
+import { doneFrame, type ProtocolFrame } from '@vibe-core/result'
+import type { MessagesStreamEvent } from '@vibe-llm/protocols/messages'
 
 const stubIdentity: TelemetryModelIdentity = {
   model: '<unknown>',

@@ -2,7 +2,7 @@
 /**
  * Gemini generate/stream HTTP serve layer (Spec 10 — chat-flow convergence).
  *
- * Migrated to the framework kit (@vnext-gateway/chat-flow-kit). Differences
+ * Migrated to the framework kit (@vibe-core/chat-flow-kit). Differences
  * vs the other three endpoints:
  *   - Gemini payloads do NOT carry `model` — it's URL-derived. `model` and
  *     `forceStream` (URL verb: `generateContent` vs `streamGenerateContent`)
@@ -21,7 +21,7 @@
  *
  * Reference: Spec 10 §3.4. Pattern mirrors messages/serve.ts.
  */
-import { serveTemplate, type KitAuthCtx, type KitObsCtx, type ServeTemplateHooks } from '@vnext-gateway/chat-flow-kit'
+import { serveTemplate, type KitAuthCtx, type KitObsCtx, type ServeTemplateHooks } from '@vibe-core/chat-flow-kit'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseGeminiPayload } from '../../parsers.ts'
 import { kitDeps } from '../shared/kit-deps.ts'

@@ -1,6 +1,6 @@
 import { test, expect, afterEach } from 'bun:test'
 import { initRepo } from '../src/shared/repo/index.ts'
-import { __resetPlatformForTests } from '@vnext-gateway/platform'
+import { __resetPlatformForTests } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
 import {
   listProviderBindings,
@@ -8,9 +8,9 @@ import {
   createProviderFromUpstream,
   _clearModelsMemoForTest,
 } from '../src/data-plane/providers/registry.ts'
-import type { Model, ModelsResponse } from '@vnext-llm/provider-copilot'
-import type { ModelEndpoints } from '@vnext-llm/protocols/common'
-import { MemoryCache } from '@vnext-gateway/cache'
+import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
+import type { ModelEndpoints } from '@vibe-llm/protocols/common'
+import { MemoryCache } from '@vibe-core/cache'
 import { initCache } from '../src/shared/cache/index.ts'
 
 const stubModel = (id: string, type = 'text'): Model => ({

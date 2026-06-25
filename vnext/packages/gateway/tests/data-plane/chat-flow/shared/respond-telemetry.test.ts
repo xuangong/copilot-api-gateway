@@ -11,7 +11,7 @@ import type {
   LlmEventResult,
   TelemetryModelIdentity,
   PerformanceTelemetryContext,
-} from '@vnext-llm/protocols/common'
+} from '@vibe-llm/protocols/common'
 import type { Repo } from '../../../../src/shared/repo/types.ts'
 
 const identity = (modelKey = 'gpt-4'): TelemetryModelIdentity => ({

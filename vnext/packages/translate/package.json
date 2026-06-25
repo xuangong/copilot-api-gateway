@@ -1,5 +1,5 @@
 {
-  "name": "@vnext-llm/translate",
+  "name": "@vibe-llm/translate",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -21,7 +21,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vnext-gateway/result": "workspace:*",
-    "@vnext-llm/protocols": "workspace:*"
+    "@vibe-core/result": "workspace:*",
+    "@vibe-llm/protocols": "workspace:*"
   }
 }

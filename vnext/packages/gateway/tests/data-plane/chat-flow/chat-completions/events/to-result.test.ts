@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test'
 import { collectChatCompletionsProtocolEventsToResult, CHAT_COMPLETIONS_MISSING_TERMINAL_MESSAGE } from '../../../../../src/data-plane/chat-flow/chat-completions/events/to-result'
-import { eventFrame, doneFrame, type ProtocolFrame } from '@vnext-gateway/result'
-import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
+import { eventFrame, doneFrame, type ProtocolFrame } from '@vibe-core/result'
+import type { ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
 
 const drainable = async function* (frames: ProtocolFrame<ChatCompletionsStreamEvent>[]) { for (const f of frames) yield f }
 

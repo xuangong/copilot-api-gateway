@@ -1,5 +1,5 @@
 import { getImageProcessor } from "./index"
-import type { ImageSizeCalculator } from "@vnext-gateway/platform"
+import type { ImageSizeCalculator } from "@vibe-core/platform"
 
 const BASE64_CHUNK = 0x8000
 

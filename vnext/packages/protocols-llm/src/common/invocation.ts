@@ -1,10 +1,10 @@
 import type { EndpointKey } from './index'
 import type { LlmExecuteResult } from './result'
-import type { ProtocolFrame } from '@vnext-gateway/result'
+import type { ProtocolFrame } from '@vibe-core/result'
 import type { ChatCompletionsStreamEvent } from '../chat'
 import type { MessagesStreamEvent } from '../messages'
 import type { ResponsesStreamEvent } from '../responses'
-import type { Interceptor } from '@vnext-gateway/service'
+import type { Interceptor } from '@vibe-core/service'
 
 export interface Invocation {
   readonly endpoint: EndpointKey

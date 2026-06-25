@@ -1,4 +1,4 @@
-import type { CopilotInterceptor } from "@vnext-llm/protocols/common"
+import type { CopilotInterceptor } from "@vibe-llm/protocols/common"
 import { runCountTokensPrelude } from "../../transforms/count-tokens-prelude"
 
 export const withCountTokensPrelude: CopilotInterceptor = async (inv, _ctx, next) => {

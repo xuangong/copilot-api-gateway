@@ -8,8 +8,8 @@
  *
  * Returns null when neither path can produce a provider.
  */
-import type { LlmProviderPlugin } from '@vnext-llm/provider-llm'
-import type { AccountType } from '@vnext-llm/protocols/common'
+import type { LlmProviderPlugin } from '@vibe-llm/provider-llm'
+import type { AccountType } from '@vibe-llm/protocols/common'
 import { CopilotProvider } from './provider'
 
 export const copilotProviderPlugin: LlmProviderPlugin = {

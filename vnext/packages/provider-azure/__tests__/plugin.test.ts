@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import type { UpstreamRecord } from '@vnext-llm/protocols/common'
+import type { UpstreamRecord } from '@vibe-llm/protocols/common'
 import { AzureProvider } from '../src/provider'
 import { azureProviderPlugin } from '../src/plugin'
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'bun:test'
-import { translateChatToMessages } from '@vnext-llm/translate/chat-completions-via-messages'
-import { EPHEMERAL_CACHE_CONTROL } from '@vnext-llm/translate/shared/cache-breakpoints'
-import { TranslatorValidationError } from '@vnext-llm/translate/errors'
+import { translateChatToMessages } from '@vibe-llm/translate/chat-completions-via-messages'
+import { EPHEMERAL_CACHE_CONTROL } from '@vibe-llm/translate/shared/cache-breakpoints'
+import { TranslatorValidationError } from '@vibe-llm/translate/errors'
 
 describe('chat-completions-via-messages :: request', () => {
   it('translates a minimal text-only chat payload to a Messages payload', () => {

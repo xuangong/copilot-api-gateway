@@ -9,7 +9,7 @@
  *    `ProtocolFrame<GeminiStreamEvent>`. vNext consumes `AsyncIterable<unknown>`
  *    and yields bare `GeminiStreamEvent` (matching messages-via-responses /
  *    gemini-via-responses convention).
- *  - Chat chunk shape inlined locally (vNext `@vnext-llm/protocols/chat` does not
+ *  - Chat chunk shape inlined locally (vNext `@vibe-llm/protocols/chat` does not
  *    define a stream-event schema).
  *  - finish_reason candidates are deferred until the trailing usage chunk so
  *    the final emission carries usageMetadata together with finishReason.

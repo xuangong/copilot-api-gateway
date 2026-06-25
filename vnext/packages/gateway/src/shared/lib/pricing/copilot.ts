@@ -5,7 +5,7 @@
  * Source of truth:
  * https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing
  */
-import type { ModelPricing } from '@vnext-llm/protocols/common'
+import type { ModelPricing } from '@vibe-llm/protocols/common'
 
 type PricingRule = readonly [key: string | RegExp, pricing: ModelPricing]
 

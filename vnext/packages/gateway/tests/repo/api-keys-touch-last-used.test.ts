@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
 import { Database } from 'bun:sqlite'
-import { BunSqliteRepo as SqliteRepo } from '@vnext-llm/platform-bun/src/bun-sqlite-repo.ts'
+import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
 import type { ApiKey } from '../../src/shared/repo/types.ts'
 
 function freshRepo(): SqliteRepo {

@@ -3,11 +3,11 @@
  * specific endpoint priority chain. Replaces resolveBinding(model, endpoint)
  * + chooseBackendEndpoint heuristic.
  */
-import type { EndpointKey, ModelEndpoints } from '@vnext-llm/protocols/common'
-import type { LlmProviderBinding } from '@vnext-llm/provider-llm'
+import type { EndpointKey, ModelEndpoints } from '@vibe-llm/protocols/common'
+import type { LlmProviderBinding } from '@vibe-llm/provider-llm'
 import { listProviderBindings, type CreateProviderOptions } from '../providers/registry.ts'
 import { parseModelRouting } from './binding-resolver.ts'
-import { parseCompositeModelId } from '@vnext-llm/provider-copilot'
+import { parseCompositeModelId } from '@vibe-llm/provider-copilot'
 
 export interface BindingCandidate {
   binding: LlmProviderBinding

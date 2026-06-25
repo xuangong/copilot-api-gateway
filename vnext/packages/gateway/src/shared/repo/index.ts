@@ -1,5 +1,5 @@
 import type { Repo } from "./types"
-import { __registerPlatformReset } from "@vnext-gateway/platform"
+import { __registerPlatformReset } from "@vibe-core/platform"
 
 export type {
   Repo, ApiKey, GitHubAccount, GitHubUser, UpstreamRecord, UpstreamRepo,

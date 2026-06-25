@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
 import { withUpstreamTelemetry } from '../../../../src/data-plane/chat-flow/shared/upstream-telemetry.ts'
-import type { ProtocolFrame } from '@vnext-gateway/result'
+import type { ProtocolFrame } from '@vibe-core/result'
 
 async function* gen<T>(items: ProtocolFrame<T>[]): AsyncGenerator<ProtocolFrame<T>> {
   for (const f of items) yield f

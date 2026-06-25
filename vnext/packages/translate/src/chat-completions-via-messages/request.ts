@@ -9,8 +9,8 @@
  * through verbatim; this translator does NOT pre-fetch images to base64.
  */
 
-import type { ChatPayload } from '@vnext-llm/protocols/chat'
-import type { MessagesPayload } from '@vnext-llm/protocols/messages'
+import type { ChatPayload } from '@vibe-llm/protocols/chat'
+import type { MessagesPayload } from '@vibe-llm/protocols/messages'
 import {
   applyLastMessageCacheBreakpoint,
   applyLastToolCacheBreakpoint,

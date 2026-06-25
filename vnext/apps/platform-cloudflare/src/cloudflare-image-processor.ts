@@ -1,6 +1,6 @@
 import { imageSize } from "image-size"
 
-import type { ImageDimensions, ImageProcessor, ImageSizeCalculator } from "@vnext-gateway/platform"
+import type { ImageDimensions, ImageProcessor, ImageSizeCalculator } from "@vibe-core/platform"
 
 /**
  * Fixed WebP quality for every recompressed inline image. 82 sits above the

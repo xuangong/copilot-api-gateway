@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test'
-import { translateMessagesToResponsesBody } from '@vnext-llm/translate/responses-via-messages'
-import type { MessagesResponse } from '@vnext-llm/protocols/messages'
+import { translateMessagesToResponsesBody } from '@vibe-llm/translate/responses-via-messages'
+import type { MessagesResponse } from '@vibe-llm/protocols/messages'
 
 describe('responses-via-messages :: body', () => {
   it('expands text/thinking/tool_use into msg_/rs_/fc_ output items and accumulates output_text', () => {

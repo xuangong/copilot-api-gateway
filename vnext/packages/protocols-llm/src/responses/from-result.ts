@@ -11,7 +11,7 @@ import type {
   ResponsesStreamEvent,
 } from './events'
 import { webSearchCallLifecycleEvents } from './web-search-lifecycle'
-import { type EventFrame, eventFrame } from '@vnext-gateway/result'
+import { type EventFrame, eventFrame } from '@vibe-core/result'
 
 const getTerminalEventName = (response: ResponsesResult): 'response.failed' | 'response.incomplete' | 'response.in_progress' | 'response.completed' => {
   if (response.status === 'failed') return 'response.failed'

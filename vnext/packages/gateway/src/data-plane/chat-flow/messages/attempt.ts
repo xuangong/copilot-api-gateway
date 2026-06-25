@@ -22,8 +22,8 @@
  * decode failures) carry a `performance` ctx so `recordPerformance` writes
  * `isError=true`.
  */
-import { runInterceptors } from '@vnext-gateway/service'
-import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
+import { runInterceptors } from '@vibe-core/service'
+import type { Invocation, RequestContext } from '@vibe-llm/protocols/common'
 import { messagesInterceptors, type MessagesInterceptor } from './interceptors'
 import {
   llmEventResult,
@@ -32,13 +32,13 @@ import {
   type EndpointKey,
   type LlmExecuteResult,
   type ModelEndpoints,
-} from '@vnext-llm/protocols/common'
-import { type ProtocolFrame } from '@vnext-gateway/result'
+} from '@vibe-llm/protocols/common'
+import { type ProtocolFrame } from '@vibe-core/result'
 import {
   parseMessagesStream,
   type MessagesStreamEvent,
-} from '@vnext-llm/protocols/messages'
-import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext-llm/provider-llm'
+} from '@vibe-llm/protocols/messages'
+import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vibe-llm/provider-llm'
 import {
   telemetryModelIdentity,
   upstreamPerformanceContext,

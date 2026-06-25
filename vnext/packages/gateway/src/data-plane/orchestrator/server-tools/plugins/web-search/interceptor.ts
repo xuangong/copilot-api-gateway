@@ -1,4 +1,4 @@
-import { getRuntimeLocation, waitUntil } from "@vnext-gateway/platform"
+import { getRuntimeLocation, waitUntil } from "@vibe-core/platform"
 
 import type { CreateProviderOptions } from "../../../../providers/registry.ts"
 import { messagesAttempt } from "../../../../chat-flow/messages/attempt.ts"
@@ -10,9 +10,9 @@ import {
   recordUsage,
 } from "../../../../chat-flow/shared/respond-telemetry.ts"
 import type { TelemetryRequestContext } from "../../../../chat-flow/shared/telemetry-ctx.ts"
-import { decodeUpstreamErrorBody } from "@vnext-llm/protocols/common"
-import { type ProtocolFrame } from "@vnext-gateway/result"
-import type { MessagesStreamEvent } from "@vnext-llm/protocols/messages"
+import { decodeUpstreamErrorBody } from "@vibe-llm/protocols/common"
+import { type ProtocolFrame } from "@vibe-core/result"
+import type { MessagesStreamEvent } from "@vibe-llm/protocols/messages"
 
 import { EngineManager, type EngineManagerOptions } from "./engine-manager"
 import { formatSearchResults } from "./formatter"
@@ -192,7 +192,7 @@ async function* consumeFramesWithState(
 }
 
 async function persistFromEventResult(
-  result: import('@vnext-llm/protocols/common').LlmEventResult<ProtocolFrame<MessagesStreamEvent>>,
+  result: import('@vibe-llm/protocols/common').LlmEventResult<ProtocolFrame<MessagesStreamEvent>>,
   state: SourceStreamState,
   telemetryCtx: TelemetryRequestContext,
 ): Promise<void> {

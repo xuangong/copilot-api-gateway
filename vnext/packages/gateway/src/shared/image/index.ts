@@ -4,7 +4,7 @@ import {
   type ImageProcessor,
   type ImageDimensions,
   type ImageSizeCalculator,
-} from "@vnext-gateway/platform"
+} from "@vibe-core/platform"
 
 export { initImageProcessor, getImageProcessor }
 export type { ImageProcessor, ImageDimensions, ImageSizeCalculator }

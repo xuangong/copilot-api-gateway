@@ -11,7 +11,7 @@
  * Cancellation: implemented as an async generator with try/finally so per-
  * stream state is released when the consumer breaks out of the loop.
  */
-import type { MessagesEvent } from '@vnext-llm/protocols/messages'
+import type { MessagesEvent } from '@vibe-llm/protocols/messages'
 import { translateMessagesToChatSSE, type ChatSSEChunk } from '../chat-completions-via-messages/index.ts'
 
 export interface TranslateMessagesToGeminiEventsOptions {

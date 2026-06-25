@@ -1,13 +1,13 @@
 import { test, expect } from 'bun:test'
 import { withToolArgumentWhitespaceAborted } from '../../../../../src/data-plane/chat-flow/responses/interceptors/with-tool-argument-whitespace-aborted'
-import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
+import type { Invocation, RequestContext } from '@vibe-llm/protocols/common'
 import {
   llmEventResult,
   type LlmExecuteResult,
   type TelemetryModelIdentity,
-} from '@vnext-llm/protocols/common'
-import { doneFrame, type ProtocolFrame } from '@vnext-gateway/result'
-import type { ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
+} from '@vibe-llm/protocols/common'
+import { doneFrame, type ProtocolFrame } from '@vibe-core/result'
+import type { ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
 
 const stubIdentity: TelemetryModelIdentity = {
   model: '<unknown>',

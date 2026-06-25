@@ -1,5 +1,5 @@
 {
-  "name": "@vnext-gateway/upstream",
+  "name": "@vibe-core/upstream",
   "private": true,
   "version": "0.0.0",
   "type": "module",

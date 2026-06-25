@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { translateResponsesEventsToMessagesEvents } from '@vnext-llm/translate/messages-via-responses'
+import { translateResponsesEventsToMessagesEvents } from '@vibe-llm/translate/messages-via-responses'
 
 interface RespEv { type: string; [k: string]: unknown }
 

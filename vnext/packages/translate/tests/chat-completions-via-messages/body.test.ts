@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test'
-import { translateMessagesToChatBody } from '@vnext-llm/translate/chat-completions-via-messages'
-import type { MessagesResponse } from '@vnext-llm/protocols/messages'
+import { translateMessagesToChatBody } from '@vibe-llm/translate/chat-completions-via-messages'
+import type { MessagesResponse } from '@vibe-llm/protocols/messages'
 
 describe('chat-completions-via-messages :: body', () => {
   it('collapses text blocks into a single assistant message content', () => {

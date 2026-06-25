@@ -1,7 +1,7 @@
 /**
  * HTTPError — carries an upstream Response so callers can repackage it for
  * the downstream client without losing status code, headers, or raw body.
- * Lives in @vnext-gateway/upstream so every adapter surfaces the same error
+ * Lives in @vibe-core/upstream so every adapter surfaces the same error
  * type.
  */
 export class HTTPError extends Error {

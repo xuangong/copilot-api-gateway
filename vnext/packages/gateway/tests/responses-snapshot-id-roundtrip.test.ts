@@ -23,11 +23,11 @@ import {
   __resetPlatformForTests,
   initBackground,
   initRuntimeLocation,
-} from '@vnext-gateway/platform'
+} from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
-import type { Model } from '@vnext-llm/provider-copilot'
+import type { Model } from '@vibe-llm/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
-import { InMemoryResponsesSnapshotStore } from '@vnext-llm/responses-store'
+import { InMemoryResponsesSnapshotStore } from '@vibe-llm/responses-store'
 
 beforeEach(() => {
   initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })

@@ -19,7 +19,7 @@ import {
   type Cache,
   type CacheSqlExecutor,
   type KVLike,
-} from '@vnext-gateway/cache'
+} from '@vibe-core/cache'
 
 export interface CloudflareEnv {
   DB?: unknown

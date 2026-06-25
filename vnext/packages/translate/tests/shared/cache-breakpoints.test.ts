@@ -4,7 +4,7 @@ import {
   applyLastToolCacheBreakpoint,
   applyLastMessageCacheBreakpoint,
   systemWithCacheBreakpoint,
-} from '@vnext-llm/translate/shared/cache-breakpoints'
+} from '@vibe-llm/translate/shared/cache-breakpoints'
 
 describe('cache-breakpoints', () => {
   describe('systemWithCacheBreakpoint', () => {

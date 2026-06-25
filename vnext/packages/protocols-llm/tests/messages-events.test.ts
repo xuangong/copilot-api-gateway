@@ -3,7 +3,7 @@ import {
   MessagesThinkingBlockSchema,
   MessagesRedactedThinkingBlockSchema,
   HUB_VERSION,
-} from '@vnext-llm/protocols/messages'
+} from '@vibe-llm/protocols/messages'
 
 test('thinking block carries text + signature + id + encryptedContent', () => {
   const parsed = MessagesThinkingBlockSchema.parse({

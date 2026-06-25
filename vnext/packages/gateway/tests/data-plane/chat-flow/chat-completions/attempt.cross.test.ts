@@ -8,9 +8,9 @@
 import { test, expect, mock } from 'bun:test'
 import { chatCompletionsAttempt } from '../../../../src/data-plane/chat-flow/chat-completions/attempt'
 import type { TelemetryRequestContext } from '../../../../src/data-plane/chat-flow/shared/telemetry-ctx'
-import type { RequestContext } from '@vnext-llm/protocols/common'
-import { llmEventResult } from '@vnext-llm/protocols/common'
-import { type ProtocolFrame } from '@vnext-gateway/result'
+import type { RequestContext } from '@vibe-llm/protocols/common'
+import { llmEventResult } from '@vibe-llm/protocols/common'
+import { type ProtocolFrame } from '@vibe-core/result'
 
 const baseCtx: RequestContext = { requestStartedAt: Date.now() }
 const baseAuth = { ownerId: 'o', copilot: false }

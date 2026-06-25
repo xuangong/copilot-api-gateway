@@ -13,7 +13,7 @@
  * With no vendor flag set, behavior defaults to the OpenAI standard.
  */
 
-import type { UpstreamKind } from "@vnext-llm/protocols/common"
+import type { UpstreamKind } from "@vibe-llm/protocols/common"
 
 export interface Flag {
   id: string

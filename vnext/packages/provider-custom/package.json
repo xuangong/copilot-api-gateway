@@ -1,5 +1,5 @@
 {
-  "name": "@vnext-llm/provider-custom",
+  "name": "@vibe-llm/provider-custom",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vnext-llm/protocols": "workspace:*",
-    "@vnext-llm/provider-llm": "workspace:*",
-    "@vnext-gateway/http": "workspace:*"
+    "@vibe-llm/protocols": "workspace:*",
+    "@vibe-llm/provider-llm": "workspace:*",
+    "@vibe-core/http": "workspace:*"
   }
 }

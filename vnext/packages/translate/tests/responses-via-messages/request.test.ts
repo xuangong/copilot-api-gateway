@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test'
-import { translateResponsesToMessages } from '@vnext-llm/translate/responses-via-messages'
-import type { ResponsesPayload } from '@vnext-llm/protocols/responses'
+import { translateResponsesToMessages } from '@vibe-llm/translate/responses-via-messages'
+import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
 
 describe('responses-via-messages :: request', () => {
   it('translates string input into a single user message', () => {

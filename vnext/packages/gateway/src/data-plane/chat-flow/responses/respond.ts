@@ -24,20 +24,20 @@
  *
  * Reference: messages/respond.ts (Spec 3 Part 3 Task 2).
  */
-import { waitUntil } from '@vnext-gateway/platform'
+import { waitUntil } from '@vibe-core/platform'
 import {
   upstreamErrorToResponse,
   type LlmEventResult,
   type LlmExecuteResult,
   type UpstreamErrorResult,
-} from '@vnext-llm/protocols/common'
+} from '@vibe-llm/protocols/common'
 import {
   eventFrame,
   sseFrame,
   type ProtocolFrame,
   type SseFrame,
-} from '@vnext-gateway/result'
-import type { ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
+} from '@vibe-core/result'
+import type { ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
 import { repackageUpstreamError } from '../../errors/repackage'
 import {
   SourceStreamState,

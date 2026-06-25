@@ -10,7 +10,7 @@
  * Cancellation: implemented as an async generator with try/finally to
  * release per-stream state when the consumer breaks out of the loop.
  */
-import type { MessagesEvent } from '@vnext-llm/protocols/messages'
+import type { MessagesEvent } from '@vibe-llm/protocols/messages'
 
 interface ChatToolCallDelta {
   index: number

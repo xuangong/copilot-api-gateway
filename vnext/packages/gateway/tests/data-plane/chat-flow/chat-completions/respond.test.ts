@@ -6,10 +6,10 @@ import {
   llmInternalErrorResult,
   type LlmEventResult,
   type TelemetryModelIdentity,
-} from '@vnext-llm/protocols/common'
-import { eventFrame, doneFrame, type ProtocolFrame } from '@vnext-gateway/result'
-import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
-import type { ResponsesResult, ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
+} from '@vibe-llm/protocols/common'
+import { eventFrame, doneFrame, type ProtocolFrame } from '@vibe-core/result'
+import type { ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
+import type { ResponsesResult, ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
 
 const stubIdentity: TelemetryModelIdentity = {
   model: '<unknown>',

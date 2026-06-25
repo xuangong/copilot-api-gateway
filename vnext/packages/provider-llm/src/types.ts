@@ -1,20 +1,20 @@
 /**
- * @vnext-llm/provider-llm/types — LLM business overlay over the framework
- * UpstreamAdapter contract from @vnext-gateway/upstream.
+ * @vibe-llm/provider-llm/types — LLM business overlay over the framework
+ * UpstreamAdapter contract from @vibe-core/upstream.
  *
  * Re-exports framework transport shapes so consumers don't need a second
  * import line. Defines the LLM-coupled request shapes (ProviderRequest /
  * ProviderRequestFlags / SourceApi) that carry EndpointKey and the three
  * source APIs. Defines LlmModelProvider — the business contract every
- * @vnext-llm/provider-* package implements.
+ * @vibe-llm/provider-* package implements.
  */
 import type {
   ProbeResult,
   ProviderModelsResponse,
   ProviderResponse,
   UpstreamAdapter,
-} from '@vnext-gateway/upstream'
-import type { EndpointKey, ModelPricing, UpstreamKind } from '@vnext-llm/protocols/common'
+} from '@vibe-core/upstream'
+import type { EndpointKey, ModelPricing, UpstreamKind } from '@vibe-llm/protocols/common'
 
 export type { UpstreamKind }
 export type { ProbeResult, ProviderModelsResponse, ProviderResponse }

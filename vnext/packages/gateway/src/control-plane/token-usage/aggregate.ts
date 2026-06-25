@@ -5,11 +5,11 @@
  * table — so historical cost stays stable when pricing later changes.
  *
  * Ported from main packages/gateway/src/control-plane/token-usage/aggregate.ts
- * with the import path adjusted to the vNext `@vnext-llm/protocols/common` alias
+ * with the import path adjusted to the vNext `@vibe-llm/protocols/common` alias
  * and the shared-repo types path.
  */
 import type { UsageRecord } from '../../shared/repo/types.ts'
-import { BILLING_DIMENSIONS, unitPriceForDimension, type BillingDimension } from '@vnext-llm/protocols/common'
+import { BILLING_DIMENSIONS, unitPriceForDimension, type BillingDimension } from '@vibe-llm/protocols/common'
 
 export interface DisplayUsageRecord {
   keyId: string

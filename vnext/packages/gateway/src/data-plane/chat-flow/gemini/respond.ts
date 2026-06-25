@@ -30,13 +30,13 @@
  *
  * Reference: messages/respond.ts, chat-completions/respond.ts.
  */
-import { waitUntil } from '@vnext-gateway/platform'
+import { waitUntil } from '@vibe-core/platform'
 import {
   upstreamErrorToResponse,
   type LlmEventResult,
   type LlmExecuteResult,
   type UpstreamErrorResult,
-} from '@vnext-llm/protocols/common'
+} from '@vibe-llm/protocols/common'
 import { repackageUpstreamError } from '../../errors/repackage'
 import { encodeClientSSE } from '../../dispatch/sse-writers.ts'
 import { SourceStreamState, recordPerformance } from '../shared/respond-telemetry.ts'

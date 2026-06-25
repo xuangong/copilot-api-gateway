@@ -7,8 +7,8 @@
  * a Copilot-flavored runtime hook context, not part of the Llm* parallel
  * rename.
  */
-import type { AccountType, UpstreamKind, UpstreamRecord } from '@vnext-llm/protocols/common'
-import type { UpstreamPlugin } from '@vnext-gateway/upstream'
+import type { AccountType, UpstreamKind, UpstreamRecord } from '@vibe-llm/protocols/common'
+import type { UpstreamPlugin } from '@vibe-core/upstream'
 import type { LlmModelProvider } from './types'
 
 export interface ProviderPluginContext {

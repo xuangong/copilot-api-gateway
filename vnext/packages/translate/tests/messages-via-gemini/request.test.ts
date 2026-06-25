@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { translateMessagesToGemini } from '@vnext-llm/translate/messages-via-gemini'
+import { translateMessagesToGemini } from '@vibe-llm/translate/messages-via-gemini'
 
 describe('messages-via-gemini :: request', () => {
   it('translates a minimal Messages payload into Gemini contents', () => {

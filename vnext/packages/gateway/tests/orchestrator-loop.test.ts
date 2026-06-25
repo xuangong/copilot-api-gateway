@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
 import { runOrchestrator } from '../src/data-plane/orchestrator/loop.ts'
-import { FakeProvider } from '@vnext-llm/provider-llm'
+import { FakeProvider } from '@vibe-llm/provider-llm'
 
 test('runOrchestrator dispatches once via provider', async () => {
   const provider = new FakeProvider({ text: 'orch-test' })

@@ -1,8 +1,8 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
-import { BunSqliteRepo as SqliteRepo } from '@vnext-llm/platform-bun/src/bun-sqlite-repo.ts'
+import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
 import { initRepo } from '../../src/shared/repo/index.ts'
-import { __resetPlatformForTests } from '@vnext-gateway/platform'
+import { __resetPlatformForTests } from '@vibe-core/platform'
 import { recordLatency, startTimer } from '../../src/shared/observability/latency-tracker.ts'
 
 let repo: SqliteRepo

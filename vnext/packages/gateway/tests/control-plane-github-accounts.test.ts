@@ -10,7 +10,7 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { initRepo } from '../src/shared/repo/index.ts'
-import { __resetPlatformForTests } from '@vnext-gateway/platform'
+import { __resetPlatformForTests } from '@vibe-core/platform'
 import type { GitHubAccount, Repo } from '../src/shared/repo/types.ts'
 import {
   githubAccountsRouter,

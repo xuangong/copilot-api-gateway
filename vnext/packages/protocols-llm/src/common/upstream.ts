@@ -1,7 +1,7 @@
 /**
  * Storage shape for a configured upstream provider row.
  *
- * Lives in @vnext-llm/protocols/common so plugin contracts (@vnext-llm/provider-llm's
+ * Lives in @vibe-llm/protocols/common so plugin contracts (@vibe-llm/provider-llm's
  * LlmProviderPlugin) can reference it without depending on the gateway package.
  * Gateway re-exports from src/shared/repo/types.ts to preserve old import
  * paths.

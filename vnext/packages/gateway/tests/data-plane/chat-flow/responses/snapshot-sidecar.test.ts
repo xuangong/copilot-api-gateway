@@ -18,9 +18,9 @@ import { test, expect, afterEach } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { Context } from 'hono'
-import { InMemoryResponsesSnapshotStore } from '@vnext-llm/responses-store'
+import { InMemoryResponsesSnapshotStore } from '@vibe-llm/responses-store'
 import { initResponsesStore } from '../../../../src/shared/runtime/responses-store.ts'
-import { __resetPlatformForTests } from '@vnext-gateway/platform'
+import { __resetPlatformForTests } from '@vibe-core/platform'
 import {
   attachStreamSidecar,
   attachNonStreamSidecar,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { translateChatBodyToMessages } from '@vnext-llm/translate/messages-via-chat-completions'
+import { translateChatBodyToMessages } from '@vibe-llm/translate/messages-via-chat-completions'
 
 describe('messages-via-chat-completions :: body', () => {
   it('expands content + tool_calls + reasoning_text into Anthropic content blocks', () => {

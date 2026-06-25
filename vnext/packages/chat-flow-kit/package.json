@@ -1,5 +1,5 @@
 {
-  "name": "@vnext-gateway/chat-flow-kit",
+  "name": "@vibe-core/chat-flow-kit",
   "private": true,
   "version": "0.0.0",
   "type": "module",

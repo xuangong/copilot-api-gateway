@@ -10,10 +10,10 @@
  *   - effectiveFlags drops the AppState path (binding.enabledFlags only).
  *   - Composite-model fallback (parseCompositeModelId) is reused verbatim.
  */
-import type { EndpointKey } from '@vnext-llm/protocols/common'
+import type { EndpointKey } from '@vibe-llm/protocols/common'
 import { bindingServesEndpoint, type LlmProviderBinding } from './binding.ts'
 import { listProviderBindings, type CreateProviderOptions } from '../providers/registry.ts'
-import { parseCompositeModelId } from '@vnext-llm/provider-copilot'
+import { parseCompositeModelId } from '@vibe-llm/provider-copilot'
 
 export interface ModelRoutingHint {
   upstreamPin?: string

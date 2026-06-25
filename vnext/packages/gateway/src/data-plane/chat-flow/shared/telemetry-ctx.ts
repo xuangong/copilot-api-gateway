@@ -1,10 +1,10 @@
 /**
- * Telemetry-only request context, distinct from `@vnext-llm/protocols/common`'s
+ * Telemetry-only request context, distinct from `@vibe-llm/protocols/common`'s
  * minimal `RequestContext`. Built once per request in serve.ts and threaded
  * through attempt + respond so persistence helpers (`recordUsage`,
  * `recordPerformance`) can write usage rows without touching `RequestContext`.
  */
-import type { RuntimeLocation } from '@vnext-gateway/platform'
+import type { RuntimeLocation } from '@vibe-core/platform'
 
 export interface TelemetryRequestContext {
   readonly apiKeyId: string

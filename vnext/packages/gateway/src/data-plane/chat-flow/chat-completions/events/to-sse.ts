@@ -1,5 +1,5 @@
-import { sseFrame, type SseFrame, type ProtocolFrame } from '@vnext-gateway/result'
-import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
+import { sseFrame, type SseFrame, type ProtocolFrame } from '@vibe-core/result'
+import type { ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
 
 export interface ChatCompletionsProtocolFrameToSSEFrameOptions {
   readonly includeUsageChunk: boolean

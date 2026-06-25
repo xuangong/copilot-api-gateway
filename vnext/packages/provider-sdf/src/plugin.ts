@@ -1,4 +1,4 @@
-import type { LlmProviderPlugin } from '@vnext-llm/provider-llm'
+import type { LlmProviderPlugin } from '@vibe-llm/provider-llm'
 import { SdfProvider, type SdfProviderConfig } from './provider'
 
 export const sdfProviderPlugin: LlmProviderPlugin = {

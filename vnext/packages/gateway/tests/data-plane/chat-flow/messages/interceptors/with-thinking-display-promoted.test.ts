@@ -3,14 +3,14 @@ import {
   withThinkingDisplayPromoted,
   resolveMessagesDownstreamThinkingDisplay,
 } from '../../../../../src/data-plane/chat-flow/messages/interceptors/with-thinking-display-promoted'
-import type { Invocation, RequestContext } from '@vnext-llm/protocols/common'
+import type { Invocation, RequestContext } from '@vibe-llm/protocols/common'
 import {
   llmEventResult,
   type LlmExecuteResult,
   type TelemetryModelIdentity,
-} from '@vnext-llm/protocols/common'
-import { doneFrame, type ProtocolFrame } from '@vnext-gateway/result'
-import type { MessagesStreamEvent } from '@vnext-llm/protocols/messages'
+} from '@vibe-llm/protocols/common'
+import { doneFrame, type ProtocolFrame } from '@vibe-core/result'
+import type { MessagesStreamEvent } from '@vibe-llm/protocols/messages'
 
 const stubIdentity: TelemetryModelIdentity = {
   model: '<unknown>',

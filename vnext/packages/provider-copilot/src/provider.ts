@@ -1,9 +1,9 @@
 /**
- * CopilotProvider — extracted to @vnext-llm/provider-copilot in Plan 2c.
+ * CopilotProvider — extracted to @vibe-llm/provider-copilot in Plan 2c.
  *
  * Per-endpoint interceptor chains feed into runInterceptors, whose terminal
- * is callCopilotAPI. Cross-package contracts (@vnext-gateway/service,
- * @vnext-llm/protocols) are unchanged.
+ * is callCopilotAPI. Cross-package contracts (@vibe-core/service,
+ * @vibe-llm/protocols) are unchanged.
  *
  * After Plan B Task B2.8, the legacy `fetch(endpoint, init, opts)` overload
  * and the seven per-endpoint `call*` shim methods were retired. The provider
@@ -16,17 +16,17 @@ import { defaultsForUpstream } from './flags'
 import { callCopilotAPI } from './forward'
 import { getModels, type ModelsResponse } from './models'
 import { pricingForCopilotModelKey } from './pricing'
-import type { EndpointKey, ModelPricing } from '@vnext-llm/protocols/common'
-import type { CopilotInterceptor, Invocation, RequestContext } from "@vnext-llm/protocols/common"
-import { runInterceptors } from "@vnext-gateway/service"
+import type { EndpointKey, ModelPricing } from '@vibe-llm/protocols/common'
+import type { CopilotInterceptor, Invocation, RequestContext } from "@vibe-llm/protocols/common"
+import { runInterceptors } from "@vibe-core/service"
 import type {
   LlmModelProvider,
   ProbeResult,
   ProviderRequest,
   ProviderResponse,
   SourceApi,
-} from '@vnext-llm/provider-llm'
-import { probeViaModels } from '@vnext-llm/provider-llm'
+} from '@vibe-llm/provider-llm'
+import { probeViaModels } from '@vibe-llm/provider-llm'
 import { createVariantAndBetaFilteringInterceptor } from './interceptors/shared/with-variant-and-beta-filtering'
 import { withContextManagementBetaAligned } from './interceptors/shared/with-context-management-beta-aligned'
 import { withInitiatorHeader } from './interceptors/shared/with-initiator-header'

@@ -11,8 +11,8 @@
  * never produces it and the synthesised non-stream branch never emits one
  * either) so we return `null` for it defensively — same shape as messages.
  */
-import { sseFrame, type SseFrame, type ProtocolFrame } from '@vnext-gateway/result'
-import type { ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
+import { sseFrame, type SseFrame, type ProtocolFrame } from '@vibe-core/result'
+import type { ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
 
 export const responsesProtocolFrameToSSEFrame = (
   frame: ProtocolFrame<ResponsesStreamEvent>,

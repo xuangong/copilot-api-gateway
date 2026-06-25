@@ -1,10 +1,10 @@
 /**
  * Generic OpenAI-compatible provider. Verbatim port of
- * src/providers/custom/provider.ts from main; uses @vnext-gateway/http
+ * src/providers/custom/provider.ts from main; uses @vibe-core/http
  * helpers in place of the inline transport utilities.
  */
 
-import { BILLING_DIMENSIONS, type EndpointKey, type ModelPricing } from '@vnext-llm/protocols/common'
+import { BILLING_DIMENSIONS, type EndpointKey, type ModelPricing } from '@vibe-llm/protocols/common'
 import {
   HTTPError,
   probeViaModels,
@@ -13,8 +13,8 @@ import {
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
-} from '@vnext-llm/provider-llm'
-import { fetchWithRetry, mergeHeaders, truncateBody } from '@vnext-gateway/http'
+} from '@vibe-llm/provider-llm'
+import { fetchWithRetry, mergeHeaders, truncateBody } from '@vibe-core/http'
 
 export interface CustomProviderConfig {
   name: string

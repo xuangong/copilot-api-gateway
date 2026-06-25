@@ -1,10 +1,10 @@
 import { afterEach, expect, test } from 'bun:test'
-import { MemoryCache, KvCache, D1Cache } from '@vnext-gateway/cache'
-import { __resetPlatformForTests } from '@vnext-gateway/platform'
+import { MemoryCache, KvCache, D1Cache } from '@vibe-core/cache'
+import { __resetPlatformForTests } from '@vibe-core/platform'
 import { initCache, getCache } from '../src/shared/cache/index.ts'
-import { createCloudflareCache } from '@vnext-llm/platform-cloudflare/src/cache-factory.ts'
-import { createBunCache } from '@vnext-llm/platform-bun/src/cache-factory.ts'
-import { BunSqliteDatabase } from '@vnext-llm/platform-bun/src/bun-sqlite-database.ts'
+import { createCloudflareCache } from '@vibe-llm/platform-cloudflare/src/cache-factory.ts'
+import { createBunCache } from '@vibe-llm/platform-bun/src/cache-factory.ts'
+import { BunSqliteDatabase } from '@vibe-llm/platform-bun/src/bun-sqlite-database.ts'
 import { Database } from 'bun:sqlite'
 
 afterEach(() => { __resetPlatformForTests() })

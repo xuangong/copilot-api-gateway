@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import type { UpstreamRecord } from '@vnext-llm/protocols/common'
+import type { UpstreamRecord } from '@vibe-llm/protocols/common'
 import { SdfProvider } from '../src/provider'
 import { sdfProviderPlugin } from '../src/plugin'
 

@@ -1,4 +1,4 @@
-import type { ImageProcessor, ImageSizeCalculator } from "@vnext-gateway/platform"
+import type { ImageProcessor, ImageSizeCalculator } from "@vibe-core/platform"
 
 /**
  * In-memory image processor for tests and local dev. There is no WebP codec

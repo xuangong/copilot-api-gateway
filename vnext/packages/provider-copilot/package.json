@@ -1,5 +1,5 @@
 {
-  "name": "@vnext-llm/provider-copilot",
+  "name": "@vibe-llm/provider-copilot",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -12,10 +12,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vnext-gateway/result": "workspace:*",
-    "@vnext-llm/protocols": "workspace:*",
-    "@vnext-gateway/service": "workspace:*",
-    "@vnext-llm/provider-llm": "workspace:*",
-    "@vnext-gateway/http": "workspace:*"
+    "@vibe-core/result": "workspace:*",
+    "@vibe-llm/protocols": "workspace:*",
+    "@vibe-core/service": "workspace:*",
+    "@vibe-llm/provider-llm": "workspace:*",
+    "@vibe-core/http": "workspace:*"
   }
 }

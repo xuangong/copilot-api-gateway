@@ -14,12 +14,12 @@
  *
  * Reference: copilot-gateway/packages/gateway/src/data-plane/llm/chat-completions/attempt.ts
  */
-import { runInterceptors } from '@vnext-gateway/service'
-import type { ChatCompletionsStreamInterceptor, Invocation, RequestContext } from '@vnext-llm/protocols/common'
-import { llmEventResult, llmInternalErrorResult, readUpstreamError, type LlmExecuteResult } from '@vnext-llm/protocols/common'
-import { type ProtocolFrame } from '@vnext-gateway/result'
-import { parseChatCompletionsStream, type ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
-import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vnext-llm/provider-llm'
+import { runInterceptors } from '@vibe-core/service'
+import type { ChatCompletionsStreamInterceptor, Invocation, RequestContext } from '@vibe-llm/protocols/common'
+import { llmEventResult, llmInternalErrorResult, readUpstreamError, type LlmExecuteResult } from '@vibe-llm/protocols/common'
+import { type ProtocolFrame } from '@vibe-core/result'
+import { parseChatCompletionsStream, type ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
+import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vibe-llm/provider-llm'
 import {
   telemetryModelIdentity,
   upstreamPerformanceContext,

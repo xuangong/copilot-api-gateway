@@ -1,16 +1,16 @@
 import { test, expect } from 'bun:test'
 import { withUsageStreamOptionsIncluded } from '../../../../../src/data-plane/chat-flow/chat-completions/interceptors/include-usage-stream-options'
 import { chatCompletionsInterceptors } from '../../../../../src/data-plane/chat-flow/chat-completions/interceptors'
-import { runInterceptors } from '@vnext-gateway/service'
+import { runInterceptors } from '@vibe-core/service'
 import {
   llmEventResult,
   type LlmExecuteResult,
   type Invocation,
   type RequestContext,
   type TelemetryModelIdentity,
-} from '@vnext-llm/protocols/common'
-import { doneFrame, type ProtocolFrame } from '@vnext-gateway/result'
-import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
+} from '@vibe-llm/protocols/common'
+import { doneFrame, type ProtocolFrame } from '@vibe-core/result'
+import type { ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
 
 const stubIdentity: TelemetryModelIdentity = {
   model: '<unknown>',

@@ -9,7 +9,7 @@
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { initRepo } from '../src/shared/repo/index.ts'
-import { __resetPlatformForTests } from '@vnext-gateway/platform'
+import { __resetPlatformForTests } from '@vibe-core/platform'
 import type { Repo } from '../src/shared/repo/types.ts'
 import { handleResponsesImageGeneration } from '../src/data-plane/orchestrator/server-tools/plugins/image-generation/route-handler.ts'
 

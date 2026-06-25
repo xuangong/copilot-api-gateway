@@ -16,21 +16,21 @@
  *
  * Reference: copilot-gateway/packages/gateway/src/data-plane/llm/chat-completions/respond.ts
  */
-import { waitUntil } from '@vnext-gateway/platform'
+import { waitUntil } from '@vibe-core/platform'
 import {
   upstreamErrorToResponse,
   type LlmEventResult,
   type LlmExecuteResult,
   type UpstreamErrorResult,
-} from '@vnext-llm/protocols/common'
+} from '@vibe-llm/protocols/common'
 import {
   doneFrame,
   eventFrame,
   sseFrame,
   type ProtocolFrame,
   type SseFrame,
-} from '@vnext-gateway/result'
-import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
+} from '@vibe-core/result'
+import type { ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
 import { repackageUpstreamError } from '../../errors/repackage'
 import {
   SourceStreamState,

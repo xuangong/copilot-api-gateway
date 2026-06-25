@@ -1,5 +1,5 @@
 {
-  "name": "@vnext-llm/protocols",
+  "name": "@vibe-llm/protocols",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -14,8 +14,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vnext-gateway/result": "workspace:*",
-    "@vnext-gateway/service": "workspace:*",
+    "@vibe-core/result": "workspace:*",
+    "@vibe-core/service": "workspace:*",
     "zod": "^4.4.3"
   }
 }

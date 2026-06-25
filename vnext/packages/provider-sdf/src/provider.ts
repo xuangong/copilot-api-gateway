@@ -11,7 +11,7 @@
  * No `/models` discovery endpoint exists — `getModels()` returns the
  * single hardcoded entry.
  */
-import type { EndpointKey, ModelPricing } from '@vnext-llm/protocols/common'
+import type { EndpointKey, ModelPricing } from '@vibe-llm/protocols/common'
 import {
   HTTPError,
   probeViaModels,
@@ -20,8 +20,8 @@ import {
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
-} from '@vnext-llm/provider-llm'
-import { fetchWithRetry, mergeHeaders, truncateBody } from '@vnext-gateway/http'
+} from '@vibe-llm/provider-llm'
+import { fetchWithRetry, mergeHeaders, truncateBody } from '@vibe-core/http'
 
 export const SDF_BASE_URL = 'https://fe-26.qas.bing.net'
 /** Client-visible model id (matches OpenAI naming). */

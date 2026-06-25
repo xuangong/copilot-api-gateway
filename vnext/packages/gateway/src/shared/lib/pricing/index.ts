@@ -2,11 +2,11 @@
  * Pricing module — vNext port of src/pricing/index.ts. Resolves per-token
  * USD cost from a recorded model id. Provider-scoped tables live alongside.
  */
-import type { ModelPricing } from '@vnext-llm/protocols/common'
+import type { ModelPricing } from '@vibe-llm/protocols/common'
 import { pricingForCopilotModelKey } from './copilot.ts'
 
 export { pricingForCopilotModelKey, pricingForCopilotPublicModelId, copilotPublicModelId } from './copilot.ts'
-export type { ModelPricing } from '@vnext-llm/protocols/common'
+export type { ModelPricing } from '@vibe-llm/protocols/common'
 
 export interface CostBreakdown {
   inputUSD: number

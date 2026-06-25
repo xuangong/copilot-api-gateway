@@ -3,7 +3,7 @@
  * Returns synthetic Responses output. Extracted from types.ts during Spec 9
  * so the types module stays interface-only.
  */
-import type { EndpointKey, ModelPricing, UpstreamKind } from '@vnext-llm/protocols/common'
+import type { EndpointKey, ModelPricing, UpstreamKind } from '@vibe-llm/protocols/common'
 import type {
   LlmModelProvider,
   ProbeResult,

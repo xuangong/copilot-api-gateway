@@ -31,9 +31,9 @@ import {
   type LlmEventResult,
   type EventResultMetadata,
   type TelemetryModelIdentity,
-} from '@vnext-llm/protocols/common'
-import { eventFrame, type ProtocolFrame } from '@vnext-gateway/result'
-import type { ResponsesStreamEvent } from '@vnext-llm/protocols/responses'
+} from '@vibe-llm/protocols/common'
+import { eventFrame, type ProtocolFrame } from '@vibe-core/result'
+import type { ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
 import {
   buildImageGenerationResponse,
   collectImageSources,
@@ -53,7 +53,7 @@ import {
   type LlmEventResult as _EventResult,
 } from '../shared/respond-telemetry.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
-import { waitUntil } from '@vnext-gateway/platform'
+import { waitUntil } from '@vibe-core/platform'
 
 /**
  * Predicate the attempt orchestrator uses to gate the shortcut. Mirrors

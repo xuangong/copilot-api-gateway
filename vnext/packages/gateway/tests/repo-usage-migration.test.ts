@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
 import { Database } from 'bun:sqlite'
-import { initSqlite } from '@vnext-llm/platform-bun/src/bun-sqlite-repo.ts'
+import { initSqlite } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
 
 test('in-place migration: legacy 4-column usage rows are converted to per-dimension rows', () => {
   const db = new Database(':memory:')

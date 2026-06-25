@@ -12,7 +12,7 @@
  * historically routes Anthropic native path even though no `supported_endpoints`
  * field advertises it.
  */
-import type { ModelEndpoints } from "@vnext-llm/protocols/common"
+import type { ModelEndpoints } from "@vibe-llm/protocols/common"
 import type { Model } from "./models"
 
 export function copilotModelEndpoints(model: Model): ModelEndpoints {

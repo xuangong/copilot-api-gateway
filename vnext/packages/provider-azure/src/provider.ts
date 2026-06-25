@@ -1,6 +1,6 @@
 /**
  * Azure OpenAI / Azure-hosted Anthropic provider. Verbatim port of
- * src/providers/azure/provider.ts from main; uses @vnext-gateway/http
+ * src/providers/azure/provider.ts from main; uses @vibe-core/http
  * helpers in place of the inline transport utilities.
  *
  * Each Azure upstream is a set of named deployments. The deployment name is
@@ -11,7 +11,7 @@
  * Authentication uses the `api-key` header (Azure convention), not bearer.
  */
 
-import type { EndpointKey, ModelPricing } from '@vnext-llm/protocols/common'
+import type { EndpointKey, ModelPricing } from '@vibe-llm/protocols/common'
 import {
   HTTPError,
   probeViaModels,
@@ -20,8 +20,8 @@ import {
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
-} from '@vnext-llm/provider-llm'
-import { fetchWithRetry, mergeHeaders, parseJsonBody, truncateBody } from '@vnext-gateway/http'
+} from '@vibe-llm/provider-llm'
+import { fetchWithRetry, mergeHeaders, parseJsonBody, truncateBody } from '@vibe-core/http'
 
 export interface AzureProviderConfig {
   name: string

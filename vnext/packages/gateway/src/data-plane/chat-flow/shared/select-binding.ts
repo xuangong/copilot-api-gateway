@@ -8,8 +8,8 @@
  * The `enumerate` parameter is injectable for unit tests so tests can drive the
  * candidate set without depending on the live routing table.
  */
-import type { EndpointKey, ModelEndpoints } from '@vnext-llm/protocols/common'
-import type { LlmProviderBinding } from '@vnext-llm/provider-llm'
+import type { EndpointKey, ModelEndpoints } from '@vibe-llm/protocols/common'
+import type { LlmProviderBinding } from '@vibe-llm/provider-llm'
 import {
   enumerateBindingCandidates,
   type EnumerateResult,

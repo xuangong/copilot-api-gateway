@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { translateResponsesToMessagesBody } from '@vnext-llm/translate/messages-via-responses'
+import { translateResponsesToMessagesBody } from '@vibe-llm/translate/messages-via-responses'
 
 interface ResponsesResultLike {
   id: string

@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test'
-import { InMemoryResponsesSnapshotStore } from '@vnext-llm/responses-store'
+import { InMemoryResponsesSnapshotStore } from '@vibe-llm/responses-store'
 import {
   PreviousResponseNotFoundError,
   expandPreviousResponseId,

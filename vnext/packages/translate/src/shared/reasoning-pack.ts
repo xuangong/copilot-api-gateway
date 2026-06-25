@@ -18,7 +18,7 @@
  * visible summary). Non-empty summary → emit `thinking` with the joined text.
  */
 
-import type { MessagesThinkingBlock, MessagesRedactedThinkingBlock } from '@vnext-llm/protocols/messages'
+import type { MessagesThinkingBlock, MessagesRedactedThinkingBlock } from '@vibe-llm/protocols/messages'
 
 export function packReasoningSignature(id: string | undefined, encrypted: string | undefined): string {
   const e = encrypted ?? ''

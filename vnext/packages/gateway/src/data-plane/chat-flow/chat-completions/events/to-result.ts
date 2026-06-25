@@ -1,5 +1,5 @@
-import type { ChatCompletionsStreamEvent } from '@vnext-llm/protocols/chat'
-import type { ProtocolFrame } from '@vnext-gateway/result'
+import type { ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
+import type { ProtocolFrame } from '@vibe-core/result'
 import { reassembleChatCompletions, type ChatCompletionsResult } from './reassemble'
 
 export const CHAT_COMPLETIONS_MISSING_TERMINAL_MESSAGE =

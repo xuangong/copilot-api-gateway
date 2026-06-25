@@ -1,6 +1,6 @@
 import { compressInlineImagesResponses } from "../../transforms"
 import type { ResponsesPayload } from "../../transforms"
-import type { CopilotInterceptor } from "@vnext-llm/protocols/common"
+import type { CopilotInterceptor } from "@vibe-llm/protocols/common"
 
 /**
  * Recompress inline base64 images in /responses payloads to WebP.

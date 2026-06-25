@@ -1,5 +1,5 @@
 /**
- * @vnext-gateway/upstream — framework-level upstream adapter contract.
+ * @vibe-core/upstream — framework-level upstream adapter contract.
  *
  * Domain-neutral: a "general gateway/proxy" abstraction with zero LLM
  * concepts. Business overlays extend UpstreamAdapter with their

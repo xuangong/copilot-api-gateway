@@ -1,5 +1,5 @@
-import type { Cache } from '@vnext-gateway/cache'
-import { __registerPlatformReset } from '@vnext-gateway/platform'
+import type { Cache } from '@vibe-core/cache'
+import { __registerPlatformReset } from '@vibe-core/platform'
 
 let _cache: Cache | null = null
 

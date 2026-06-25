@@ -6,7 +6,7 @@
  * unknown shapes silently. AbortSignal is honored before each read; the
  * reader is released in a `finally` so cancellation doesn't leak the stream.
  */
-import { MessagesEventSchema, type MessagesEvent } from '@vnext-llm/protocols/messages'
+import { MessagesEventSchema, type MessagesEvent } from '@vibe-llm/protocols/messages'
 
 export async function* parseSSEStream(
   body: ReadableStream<Uint8Array> | null,

@@ -1,4 +1,4 @@
-import type { BillingDimension, ModelPricing, UpstreamKind, UpstreamRecord } from "@vnext-llm/protocols/common"
+import type { BillingDimension, ModelPricing, UpstreamKind, UpstreamRecord } from "@vibe-llm/protocols/common"
 
 export interface ApiKey {
   id: string
@@ -43,7 +43,7 @@ export interface GitHubAccount {
   updatedAt?: string
 }
 
-export type { UpstreamRecord } from '@vnext-llm/protocols/common'
+export type { UpstreamRecord } from '@vibe-llm/protocols/common'
 
 export type TokenUsage = Partial<Record<BillingDimension, number>>
 
