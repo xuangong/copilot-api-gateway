@@ -59,7 +59,7 @@
 | auth 模式 | header | 适用 fixture |
 |-----------|--------|--------------|
 | `admin-session` | `Cookie: session_token=${ADMIN_TOKEN}` | 几乎所有 control-plane CRUD |
-| `api-key` | `Authorization: Bearer ${API_KEY_SECRET}` | `POST /api/heartbeat`、其他需要 `apiKeyId` 的端点 |
+| `api-key` | `Authorization: Bearer ${PARITY_*_ADMIN_API_KEY}` | `POST /api/heartbeat`、其他需要 `apiKeyId` 的端点(body 至少含 `clientId` + `hostname`,见 `src/routes/dashboard.ts:469`) |
 
 **Bootstrap 流程 (Task 1 — 任一步失败即记 blocker 不继续):**
 
@@ -67,14 +67,15 @@
    - root: 起 server 时自动 seed `test@local.dev` (已有,`src/local.ts:347`)
    - vnext: docker entrypoint **需新增 seed**(若缺,blocker,记入 `12b-blockers.md`);写同一 fixed UUID,否则 ownerId 撕裂(已加 ignore 但 nested 引用仍污染)
 
-2. **取 session cookie — 双端各发一次 magic-link login,绕过邮件**
-   - 现状两侧都没有 `/auth/dev-login`。**先验证**:任一端缺 dev bypass → blocker
-   - 替代方案:harness 起跑前调用本地 `bun run scripts/parity/seed-admin-session.ts`(新增,Task 1 一部分),直接读 sqlite/D1 写入一行 `sessions` 并 echo token 值
+2. **取 session cookie — 直接 seed sqlite/D1**
+   - 现状两侧都没有 `/auth/dev-login`,**不依赖 dev bypass**;harness 起跑前调用本地 `bun run scripts/parity/seed-admin-session.ts`(新增,Task 1 一部分),直接读 sqlite/D1 写入一行 `sessions` 并 echo token 值
    - **强制要求:写入的 token 必须以 `ses_` 前缀开头**(root `src/local.ts:416` 和 vnext `packages/gateway/src/shared/session-auth.ts:60` 都按此前缀路由到 sessions 表;不带前缀会被当成 API key,走 `validateApiKey` 返 401)
    - 输出 env: `PARITY_ROOT_ADMIN_TOKEN` + `PARITY_VNEXT_ADMIN_TOKEN`(都形如 `ses_xxx...`)
+   - **只有当 seed script 自身失败(db 文件不存在 / schema 缺 `sessions` 表 / 写入异常)才记 blocker**
 
 3. **创建 admin API key — 留作 `api-key` 模式 fixture 使用**
-   - chain 第 1 个 fixture 是 `create-key`(默认 owner=admin),`capture.secret` 写入 env `PARITY_*_ADMIN_API_KEY`
+   - chain 的开头额外加一个独立 `bootstrap-heartbeat-key` fixture(**不参与 api-keys CRUD chain,避免被 rotate/delete 影响**),响应字段是 `key`(root `src/routes/api-keys.ts:60`、vnext `vnext/packages/gateway/src/control-plane/api-keys/routes.ts:76`,**不是 `secret`**)
+   - `capture: { "adminApiKey": "$.key" }`,harness 把它写入 env `PARITY_*_ADMIN_API_KEY`
    - 后续 fixture 若 `auth: api-key` → 用 env 注入 `Authorization: Bearer ${env.ADMIN_API_KEY}`
    - 双端各自的 key (独立 db),fixture 模板只看 status/shape
 
@@ -87,7 +88,7 @@
 
 ```jsonc
 { "name": "list-keys", "endpoint": "/api/keys", "method": "GET", "auth": "admin-session" }
-{ "name": "heartbeat", "endpoint": "/api/heartbeat", "method": "POST", "auth": "api-key", "body": {} }
+{ "name": "heartbeat", "endpoint": "/api/heartbeat", "method": "POST", "auth": "api-key", "body": { "clientId": "parity-client", "hostname": "parity-host" } }
 ```
 
 harness 根据 `auth` 字段从 env 拼对应 header。
@@ -127,7 +128,7 @@ harness 根据 `auth` 字段从 env 拼对应 header。
   "auth": "admin-session",
   "body": { "name": "parity-test-key", "ownerId": null },
   "expect_status": 200,
-  "capture": { "keyId": "$.id", "secret": "$.secret" }
+  "capture": { "keyId": "$.id", "key": "$.key" }
 }
 ```
 
@@ -198,7 +199,7 @@ version, etag, nonce, fingerprint
 
 **SSE / multipart:** control-plane 无 SSE;`POST /import` / `GET /export` 是 JSON 上传/下载,按 JSON body diff 处理。
 
-## 4. Fixtures (≈ 49 条,含 stateful chain)
+## 4. Fixtures (≈ 50 条,含 stateful chain)
 
 每个 endpoint family 都得有 GET / POST / PATCH / DELETE 完整 chain。**stateful chain 通过 capture 串联**;**assign / share 用 §2 step 4 seed 的 target user**:
 
@@ -208,12 +209,12 @@ version, etag, nonce, fingerprint
 | upstreams | get-upstream-flags → create-upstream → list-upstreams → patch-upstream → test-upstream → list-upstream-models → upstream-probe → delete-upstream | 8 |
 | upstream-accounts | list-upstream-accounts | 1 |
 | observability-shares | create-share (viewerEmail=PARITY_TARGET_USER_EMAIL) → list-granted-by-me → list-granted-to-me → delete-share | 4 |
-| dashboard | get-copilot-quota → get-admin-copilot-quota → get-token-usage → get-latency → get-performance → get-relays → export-data → import-data → heartbeat (auth=api-key) | 9 |
+| dashboard | bootstrap-heartbeat-key (capture `key`→env) → get-copilot-quota → get-admin-copilot-quota → get-token-usage → get-latency → get-performance → get-relays → export-data → import-data → heartbeat (auth=api-key, dependsOn=bootstrap-heartbeat-key) | 10 |
 | **chain 额外:** | 每 family 末尾加 `cleanup-*` 验证 idempotent (delete 已删的资源 → 404 双端同) | +4 |
 | **error 额外:** | 每个 POST 和 PATCH 各加一个 invalid body fixture (10 POST + 2 PATCH;4xx 双端同) | +12 |
-| **合计** | 33 base + 4 cleanup + 12 error | **= 49** |
+| **合计** | 34 base + 4 cleanup + 12 error | **= 50** |
 
-**调用预算:** 49 × 2 = 98 calls,串行 ~10-15 min。
+**调用预算:** 50 × 2 = 100 calls,串行 ~10-15 min。
 
 ## 5. Gap 分类 & label (沿用 12a)
 
@@ -231,7 +232,7 @@ version, etag, nonce, fingerprint
 |----|------|------|
 | A0 | shared diff lib 抽出后 12a harness re-run parity = 27/0 不变 | 通过 |
 | A1 | 双起 health check + admin token seed 成功 | 通过 |
-| A2 | 49 fixtures 全跑完,无 harness crash | 49/49 |
+| A2 | 50 fixtures 全跑完,无 harness crash | 50/50 |
 | A3 | report 生成 (同 12a 风格 markdown) | 文件存在 |
 | A4 | report summary 四类计数表 | summary 存在 |
 | A5 | spec / harness+fixtures / report / fix commits 入 repo `vnext/scripts/parity/` + `vnext/docs/` | commit hash 可查;push vNext 远端,不 merge |
@@ -268,7 +269,7 @@ version, etag, nonce, fingerprint
 | `vnext/docs/superpowers/plans/2026-06-25-spec12b-control-plane-parity-audit.md` | plan | commit 2 |
 | `vnext/scripts/parity/lib/diff.ts` | shared diff lib | commit 3 (含 12a 改 import) |
 | `vnext/scripts/parity/control-plane-audit.ts` | harness | commit 4 |
-| `vnext/scripts/parity/fixtures/control-plane/*.json` (~55 文件) | fixtures | commit 4 |
+| `vnext/scripts/parity/fixtures/control-plane/*.json` (~50 文件) | fixtures | commit 4 |
 | `vnext/docs/superpowers/research/2026-06-25-spec12b-parity-report.md` | audit 输出 | commit 5 |
 | `vnext/docs/superpowers/research/2026-06-25-spec12b-fix-backlog.md` | fix 计划 | commit 5 |
 | 每个 fix cluster | impl + re-run | commit N (按 12a 节奏) |
