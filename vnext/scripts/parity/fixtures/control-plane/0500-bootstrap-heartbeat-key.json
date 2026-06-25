@@ -5,5 +5,5 @@
   "auth": "admin-session",
   "body": { "name": "heartbeat-bootstrap", "ownerId": null },
   "expect_status": 200,
-  "capture": { "adminApiKey": "$.key" }
+  "capture": { "adminApiKey": "$.key", "bootstrapKeyId": "$.id" }
 }

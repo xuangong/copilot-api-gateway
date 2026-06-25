@@ -1,0 +1,8 @@
+{
+  "name": "cleanup-delete-bootstrap-key",
+  "endpoint": "/api/keys/${capture.bootstrap-heartbeat-key.bootstrapKeyId}",
+  "method": "DELETE",
+  "auth": "admin-session",
+  "dependsOn": ["bootstrap-heartbeat-key", "heartbeat", "heartbeat-invalid"],
+  "expect_status": 200
+}

@@ -1,0 +1,8 @@
+{
+  "name": "cleanup-delete-share-twice",
+  "endpoint": "/api/observability-shares/${capture.create-share.viewerId}",
+  "method": "DELETE",
+  "auth": "admin-session",
+  "dependsOn": ["delete-share"],
+  "expect_status": 200
+}
