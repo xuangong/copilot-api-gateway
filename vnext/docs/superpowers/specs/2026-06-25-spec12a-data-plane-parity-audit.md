@@ -13,7 +13,7 @@
 
 **只 audit,不修复任何 gap。** Gap 写入 report,后续按 fix-spec 处理。
 
-**显式范围:** 7 个 endpoint families,12 个 HTTP paths:
+**显式范围:** 7 个 endpoint families,16 个 root HTTP paths (含 alias / 双 prefix):
 
 ```
 POST /chat/completions, /v1/chat/completions
@@ -24,8 +24,12 @@ POST /embeddings, /v1/embeddings
 POST /images/generations, /v1/images/generations
 POST /images/edits, /v1/images/edits
 GET  /models, /v1/models, /api/models
-POST /v1beta/models/:modelWithMethod   (Gemini generateContent + streamGenerateContent)
+POST /v1beta/models/:modelWithMethod   (Gemini generateContent + streamGenerateContent + countTokens)
 ```
+
+**Alias 覆盖要求:** root 同时挂 `/chat/completions` 与 `/v1/chat/completions`,vnext 当前 (见 `vnext/packages/gateway/src/data-plane/routes.ts`) **只挂 v1 前缀**。audit 必须显式发 alias path,缺失 → 标 `route-missing`。embeddings / images / models 的非 v1 alias / `/api/models` 同理。
+
+**Gemini sub-method 覆盖:** `generateContent` / `streamGenerateContent` / `countTokens` 都需 fixture;root 在 `src/routes/gemini.ts` 中走单一 `:modelWithMethod` dispatch,vnext 在 `vnext/packages/gateway/src/data-plane/chat-flow/gemini/http.ts` 中处理 — 三个 sub-method 都属本 spec 范围。
 
 **显式不在范围:**
 - control-plane (api-keys / upstreams / copilot-quota / token-usage / presence / observability-shares / data-transfer) — Spec 12b
@@ -40,12 +44,14 @@ POST /v1beta/models/:modelWithMethod   (Gemini generateContent + streamGenerateC
 
 | 实例 | 启动 | URL | env |
 |------|------|-----|-----|
-| root src/ | `bun run local` (从 repo root) | `http://127.0.0.1:4141` | repo root `.env` |
+| root src/ | `PORT=4141 bun run local` (从 repo root,显式覆盖默认 41414) | `http://127.0.0.1:4141` | repo root `.env` |
 | vnext | `docker compose --env-file .env.vnext -f docker-compose.vnext.yml up -d` | `http://127.0.0.1:41415` | `.env.vnext` |
+
+**注:** `src/local.ts:628` 默认 port 是 41414;为避免与 vnext 容器 41415 接近导致混淆,统一通过 `PORT=4141` 强制 root 监听 4141。harness 配置同样用 4141。
 
 **Env 互斥前置 audit (Task 1):**
 - GH token:若两端复用同一 token,audit harness 强制 **串行** 发请求 (无 concurrency),避免 quota 撞车
-- sqlite/D1:vnext 走容器内 `/data/vnext.sqlite`,root 走本地 `tmp/copilot.sqlite`,天然隔离
+- sqlite/D1:vnext 走容器内 `/data/vnext.sqlite`,root 走本地 `.data/copilot.db` (见 `src/local.ts:48`),天然隔离
 - 若发现冲突字段 → spec 在 §7 "blocker" 中记录,audit 不启动
 
 ## 3. Harness 工具
@@ -79,27 +85,28 @@ POST /v1beta/models/:modelWithMethod   (Gemini generateContent + streamGenerateC
 | status | 严格相等 |
 | header | allowlist `[content-type, x-request-id, transfer-encoding, cache-control]`;value 模式化 (uuid → `<uuid>`,port → `<port>`,数字 → `<num>`);其余 header 忽略 |
 | JSON body | 递归 deep-diff;**忽略字段** `id / created / system_fingerprint / x_request_id / response_id / fingerprint`;**强校验字段** `model / object / choices[].finish_reason / choices[].message.role / choices[].message.content (非空判) / usage 的 key 列表 (值忽略)` |
-| SSE | 按 `event:` + `data:` 行还原成 logical message 序列;event 名严格比;data 增量按字符串 join 后比 trimmed text;时间戳/chunk 边界忽略 |
+| SSE | 按 `event:` + `data:` 行还原成 logical message 序列;**event 名严格相等且顺序严格相等**;**data delta 只比结构性属性** (delta 是否为 text / tool_use / 结束 stop_reason 等 enum 值;**不比 prose content 字面文本**);chunk 边界 / 时间戳 / 增量切分点忽略 |
 
 **输出:** `vnext/docs/superpowers/research/2026-06-25-spec12a-parity-report.md` (自动生成,人可读 markdown 表 + per-fixture diff 详情 appendix)
 
-## 4. Fixtures (21 条)
+## 4. Fixtures (25 条)
 
-每 endpoint family 3 条:happy non-stream / happy stream / common 4xx 或第 3 个变体。真实 LLM 走 cheapest model。
+每 endpoint family 3 条:happy non-stream / happy stream / common 4xx 或第 3 个变体。**额外加 4 条 alias-only fixture**:验证 vnext 是否挂了 root 暴露的非 v1 alias。真实 LLM 走 cheapest model。
 
 | family | fixture 列表 |
 |--------|--------------|
-| chat-completions | (a) basic non-stream gpt-4o-mini (b) stream w/ stream_options.include_usage (c) tool_choice="required" + 1 tool |
+| chat-completions | (a) basic non-stream gpt-4o-mini @ `/v1/chat/completions` (b) stream w/ stream_options.include_usage @ `/v1/chat/completions` (c) tool_choice="required" + 1 tool @ `/v1/chat/completions` |
 | messages | (a) basic non-stream claude-haiku-4-5 (b) stream (c) `/v1/messages/count_tokens` 单 msg 计数 |
-| responses | (a) basic non-stream gpt-4o-mini (b) stream (c) stateful: 先发一条拿 response_id,再发带 previous_response_id |
-| gemini | (a) generateContent gemini-2.5-flash (b) streamGenerateContent (c) tool 调用 (1 functionDeclaration) |
-| embeddings | (a) single string text-embedding-3-small (b) array of 3 strings (c) bad model "nonexistent" → 期 4xx |
-| images | (a) generations dall-e-2 256x256 (b) edits 用 fixed 8x8 PNG (c) bad size "1x1" → 期 4xx;若 (b) 不稳则降级为只跑 (a) + (c) |
-| models | (a) GET /v1/models (b) GET /models (c) GET /api/models |
+| responses | (a) basic non-stream gpt-4o-mini @ `/v1/responses` (b) stream @ `/v1/responses` (c) stateful: 先发一条拿 response_id,再发带 previous_response_id |
+| gemini | (a) generateContent gemini-2.5-flash (b) streamGenerateContent (c) tool 调用 (1 functionDeclaration) (d) **countTokens** single msg |
+| embeddings | (a) single string text-embedding-3-small @ `/v1/embeddings` (b) array of 3 strings @ `/v1/embeddings` (c) bad model "nonexistent" → 期 4xx |
+| images | (a) generations dall-e-2 256x256 @ `/v1/images/generations` (b) edits 用 fixed 8x8 PNG @ `/v1/images/edits` (c) bad size "1x1" → 期 4xx;若 (b) 不稳则降级为只跑 (a) + (c) |
+| models | (a) GET `/v1/models` (b) GET `/models` (c) GET `/api/models` |
+| **alias-only** | (e1) POST `/chat/completions` (无 v1 前缀) basic non-stream (e2) POST `/responses` (无 v1) basic non-stream (e3) POST `/embeddings` (无 v1) single string (e4) POST `/images/generations` (无 v1) basic |
 
-**注:** messages family (c) 用 count_tokens 而非 tool_use,因为 tool_use 与 chat-completions (c) 重合 (两者翻译路径会汇到同一 translator);count_tokens 走独立路径更值得 audit。共 21 条。
+**注:** messages family (c) 用 count_tokens 而非 tool_use,因为 tool_use 与 chat-completions (c) 重合 (两者翻译路径会汇到同一 translator);count_tokens 走独立路径更值得 audit。Gemini family 改为 4 条 (加 countTokens)。alias-only 4 条独立列出便于在 report 中突出。共 21 + 1 (gemini countTokens) + 4 (alias) - 1 (chat-completions/responses/embeddings/images 已在 family (a) 中是 v1 path,alias 是新增) = **25 条**。
 
-**调用预算:** 21 fixtures × 2 servers = 42 calls,串行 (env 互斥时),~5 min 完成。
+**调用预算:** 25 fixtures × 2 servers = 50 calls,串行 (env 互斥时),~6 min 完成。
 
 ## 5. Gap 分类 & label
 
@@ -115,7 +122,7 @@ POST /v1beta/models/:modelWithMethod   (Gemini generateContent + streamGenerateC
 | ID | Gate | 期望 |
 |----|------|------|
 | A1 | 双起 health check (`GET /v1/models` 双端都 200,或 401 但同样 401) | 通过 |
-| A2 | 21 fixtures 全跑完,无 harness crash | 21/21 |
+| A2 | 25 fixtures 全跑完,无 harness crash | 25/25 |
 | A3 | report 生成,含每 fixture: endpoint + label + 关键 diff 摘要 + appendix 完整 diff | 文件存在,markdown 解析正确 |
 | A4 | report 顶部 summary 表:`parity / cosmetic-diff / behavior-gap / route-missing` 四类计数 | summary 存在 (数值本身不阻断,只看是否生成) |
 | A5 | spec + harness + fixtures + report 单 commit 入 repo `vnext/scripts/parity/` + `vnext/docs/` | commit hash 可查;允许 push vNext 远端,不 merge |
@@ -128,10 +135,11 @@ POST /v1beta/models/:modelWithMethod   (Gemini generateContent + streamGenerateC
 |------|------|
 | root `bun run local` 起不来 (.env 缺字段 / port 占用 / sqlite 路径) | Task 1 前置验证;起不来 → spec blocked,记入 `12a-blockers.md` |
 | GH token 复用撞 quota | harness 强制 sequential;预估每 fixture ≤ 1 上游 token call,21 calls 无压力 |
-| 真实 LLM 抖动 (model 偶发返回不同 finish_reason / 不同 tool 选择) | 强校验字段只限结构性 key (finish_reason 的存在 + role 的值 + usage key 集),不比 content 文本 |
-| SSE chunk 边界差异噪声 | logical-message join 后比 trimmed text;chunk 数不比 |
+| 真实 LLM 抖动 (model 偶发返回不同 finish_reason / 不同 tool 选择 / SSE 文本差异) | 强校验字段只限结构性 key (finish_reason 的存在 + role 的值 + usage key 集),不比 content 文本;SSE 同样只比 event 名 + 顺序 + delta type,不比 prose |
+| SSE chunk 边界差异噪声 | 见 §3 diff rules,structural-only |
+| 端口冲突:root 默认 41414 与 vnext 41415 仅差 1,易混淆 | §2 强制 `PORT=4141 bun run local`,harness 写死 4141/41415 |
 | images/edits 需要 multipart upload 复杂 | 用 fixed 8x8 transparent PNG (base64 内联到 fixture);失败则该 fixture 降级 4xx-only |
-| port 4141 已被根 `bun run local` 占用,vnext 容器映射 41415 不冲突 | 默认配置就错开,无需调 |
+| port 4141 (root) 与 41415 (vnext) 不冲突,但需显式 `PORT=4141` 覆盖 root 默认 41414 | §2 已写明 |
 | .env 与 .env.vnext 中 D1/sqlite 路径互踩 | §2 已验证天然隔离 |
 
 ## 8. 显式不做
