@@ -4,7 +4,7 @@ import { useToast } from "../../state/toast"
 import * as api from "../../api/upstreams"
 import type { UpstreamRecord } from "../../api/types"
 
-type Provider = "copilot" | "azure" | "custom"
+type Provider = "copilot" | "azure" | "custom" | "sdf"
 
 interface Props {
   mode: { kind: "create"; provider: Exclude<Provider, "copilot"> } | { kind: "edit"; row: UpstreamRecord }
@@ -28,6 +28,7 @@ interface FormState {
   azureDeploymentsError: string
   flagOverrides: Record<string, boolean>
   copilotLogin: string
+  substrateToken: string
 }
 
 const EMPTY: FormState = {
@@ -44,9 +45,11 @@ const EMPTY: FormState = {
   azureDeploymentsError: "",
   flagOverrides: {},
   copilotLogin: "",
+  substrateToken: "",
 }
 
 const SERVED_ENDPOINTS = ["chat_completions", "responses", "messages", "messages_count_tokens", "embeddings"] as const
+const SDF_SERVED_ENDPOINTS = ["images_generations", "images_edits"] as const
 
 function buildInitial(mode: Props["mode"]): { provider: Provider; form: FormState } {
   if (mode.kind === "create") {
@@ -54,7 +57,12 @@ function buildInitial(mode: Props["mode"]): { provider: Provider; form: FormStat
       provider: mode.provider,
       form: {
         ...EMPTY,
-        endpoints: mode.provider === "azure" ? ["chat_completions"] : ["chat_completions", "embeddings"],
+        endpoints:
+          mode.provider === "azure"
+            ? ["chat_completions"]
+            : mode.provider === "sdf"
+              ? ["images_generations", "images_edits"]
+              : ["chat_completions", "embeddings"],
       },
     }
   }
@@ -87,12 +95,15 @@ function buildInitial(mode: Props["mode"]): { provider: Provider; form: FormStat
         ? [...cfg.endpoints]
         : u.provider === "custom"
           ? ["chat_completions", "embeddings"]
-          : ["chat_completions"],
+          : u.provider === "sdf"
+            ? ["images_generations", "images_edits"]
+            : ["chat_completions"],
       modelsText,
       azureDeployments: azureDepsText,
       azureDeploymentsError: "",
       flagOverrides: { ...(u.flagOverrides ?? {}) },
       copilotLogin: u.provider === "copilot" ? cfg.user?.login ?? "" : "",
+      substrateToken: "",
     },
   }
 }
@@ -243,6 +254,16 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           }
           const models = parseModelsText(form.modelsText)
           if (models) (config as { models: unknown }).models = models
+        } else if (provider === "sdf") {
+          if (!form.substrateToken.trim()) {
+            toast(t("dash.errSubstrateTokenRequired") || "Substrate token is required", "error")
+            return
+          }
+          config = {
+            name: form.name.trim(),
+            substrateToken: form.substrateToken.trim(),
+            endpoints: form.endpoints,
+          }
         } else {
           if (!form.endpoint.trim() || !form.azureApiKey.trim() || !form.deployment.trim()) {
             toast(t("dash.errEndpointApiKeyDeploymentRequired"), "error")
@@ -275,6 +296,11 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           ;(config as { endpoints: string[] }).endpoints = form.endpoints
           const models = parseModelsText(form.modelsText)
           ;(config as { models: unknown }).models = models ?? []
+        } else if (provider === "sdf") {
+          if (form.substrateToken.trim()) {
+            (config as { substrateToken: string }).substrateToken = form.substrateToken.trim()
+          }
+          ;(config as { endpoints: string[] }).endpoints = form.endpoints
         } else {
           if (form.endpoint.trim()) (config as { endpoint: string }).endpoint = form.endpoint.trim()
           if (form.azureApiKey.trim()) (config as { apiKey: string }).apiKey = form.azureApiKey.trim()
@@ -415,6 +441,21 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           </div>
         ) : null}
 
+        {provider === "sdf" ? (
+          <Field label="Substrate Token">
+            <input
+              value={form.substrateToken}
+              onChange={(e) => update("substrateToken", e.target.value)}
+              type="password"
+              placeholder={editing ? t("dash.leaveBlankToKeep") : "eyJ0eXAiOiJKV1QiLCJhbGciOi..."}
+              className={inputCls}
+            />
+            <span className="text-xs text-themed-dim block mt-1">
+              App-only bearer (aud=substrate.office.com). Used for gpt-image-2 generations + edits.
+            </span>
+          </Field>
+        ) : null}
+
         {provider !== "copilot" ? (
           <div className="border-t border-themed pt-3 mt-3">
             <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">{t("dash.servedEndpointsLabel")}</h4>
@@ -422,7 +463,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
               {t("dash.servedEndpointsHint")}
             </p>
             <div className="flex flex-wrap gap-3 text-xs">
-              {SERVED_ENDPOINTS.map((ep) => (
+              {(provider === "sdf" ? SDF_SERVED_ENDPOINTS : SERVED_ENDPOINTS).map((ep) => (
                 <label key={ep} className="flex items-center gap-1 cursor-pointer text-themed">
                   <input
                     type="checkbox"

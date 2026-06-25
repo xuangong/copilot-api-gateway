@@ -1,6 +1,6 @@
 # Spec 12b Control-Plane Parity Report
 
-Generated: 2026-06-25T16:37:55.879Z
+Generated: 2026-06-25T17:54:49.563Z
 
 ## Summary
 - parity: 48

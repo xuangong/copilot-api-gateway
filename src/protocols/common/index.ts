@@ -7,7 +7,7 @@
 
 export type { SSEFrame, FrameBuffer } from "~/lib/sse/parser"
 
-export type UpstreamKind = "copilot" | "custom" | "azure"
+export type UpstreamKind = "copilot" | "custom" | "azure" | "sdf"
 
 /**
  * Set of API surfaces an upstream can serve. Each key maps to a concrete

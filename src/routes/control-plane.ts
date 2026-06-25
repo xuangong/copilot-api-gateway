@@ -17,6 +17,7 @@ import { getRepo } from "~/repo"
 import type { UpstreamRecord } from "~/repo"
 import { AzureProvider, type AzureProviderConfig } from "~/providers/azure/provider"
 import { CustomProvider, type CustomProviderConfig } from "~/providers/custom/provider"
+import { SdfProvider, type SdfProviderConfig } from "~/providers/sdf/provider"
 import { createProviderFromUpstream, invalidateUpstreamListCache } from "~/providers/registry"
 import type { ProbeResult } from "~/providers/types"
 import { clearRawModelsCache } from "~/services/copilot/raw-models-cache"
@@ -26,7 +27,7 @@ interface AuthCtx {
   isAdmin?: boolean
 }
 
-const KINDS: readonly UpstreamKind[] = ["copilot", "custom", "azure"]
+const KINDS: readonly UpstreamKind[] = ["copilot", "custom", "azure", "sdf"]
 
 interface ProbeBody {
   kind?: string
@@ -116,7 +117,7 @@ function normalizeFlagOverrides(value: unknown): Record<string, boolean> {
 }
 
 function normalizeProvider(provider: unknown): UpstreamKind {
-  if (provider === "copilot" || provider === "custom" || provider === "azure") return provider
+  if (provider === "copilot" || provider === "custom" || provider === "azure" || provider === "sdf") return provider
   throw new Error(`Unknown provider: ${String(provider)}`)
 }
 
@@ -200,6 +201,15 @@ function normalizeCopilotConfig(config: Record<string, unknown>): Record<string,
   return config
 }
 
+function normalizeSdfConfig(config: Record<string, unknown>): SdfProviderConfig {
+  if (typeof config.name !== "string" || !config.name.trim()) throw new Error("sdf config.name required")
+  if (typeof config.substrateToken !== "string" || !config.substrateToken) throw new Error("sdf config.substrateToken required")
+  return {
+    name: config.name.trim(),
+    substrateToken: config.substrateToken,
+  }
+}
+
 function normalizeStringRecord(value: unknown, field: string): Record<string, string> | undefined {
   if (value === undefined) return undefined
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${field} must be an object`)
@@ -216,6 +226,7 @@ function normalizeConfig(provider: UpstreamKind, config: unknown): Record<string
   const raw = config as Record<string, unknown>
   if (provider === "custom") return normalizeCustomConfig(raw) as unknown as Record<string, unknown>
   if (provider === "azure") return normalizeAzureConfig(raw) as unknown as Record<string, unknown>
+  if (provider === "sdf") return normalizeSdfConfig(raw) as unknown as Record<string, unknown>
   return normalizeCopilotConfig(raw)
 }
 
@@ -275,6 +286,10 @@ async function probeAzure(cfg: AzureProviderConfig): Promise<ProbeResult> {
   return new AzureProvider(cfg).probe()
 }
 
+async function probeSdf(cfg: SdfProviderConfig): Promise<ProbeResult> {
+  return new SdfProvider(cfg).probe()
+}
+
 export const controlPlaneRoute = new Elysia()
   .get("/api/upstream-flags", (ctx) => {
     const denied = adminGuard(ctx)
@@ -300,6 +315,7 @@ export const controlPlaneRoute = new Elysia()
     }
     if (kind === "custom") return probeCustom(config as unknown as CustomProviderConfig)
     if (kind === "azure") return probeAzure(config as unknown as AzureProviderConfig)
+    if (kind === "sdf") return probeSdf(config as unknown as SdfProviderConfig)
     if (kind === "copilot") {
       return jsonError("Copilot probe uses /api/copilot-quota — not handled here")
     }

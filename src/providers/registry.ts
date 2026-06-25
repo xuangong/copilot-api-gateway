@@ -11,12 +11,14 @@ import type { ProviderBinding } from "./binding"
 import { AzureProvider, type AzureProviderConfig } from "./azure/provider"
 import { CopilotProvider } from "./copilot/provider"
 import { CustomProvider, type CustomProviderConfig } from "./custom/provider"
+import { SdfProvider, type SdfProviderConfig } from "./sdf/provider"
 import type { ModelProvider, UpstreamKind } from "./types"
 
 export type { ModelProvider, ProviderCallOptions, UpstreamKind } from "./types"
 export { CopilotProvider } from "./copilot/provider"
 export { CustomProvider, type CustomProviderConfig } from "./custom/provider"
 export { AzureProvider, type AzureProviderConfig } from "./azure/provider"
+export { SdfProvider, type SdfProviderConfig } from "./sdf/provider"
 
 export interface CreateProviderOptions {
   copilotToken: string
@@ -32,6 +34,7 @@ const DEFAULT_ENDPOINTS: Record<UpstreamKind, readonly EndpointKey[]> = {
   copilot: ["chat_completions", "responses", "messages", "messages_count_tokens", "embeddings"],
   custom: ["chat_completions", "embeddings"],
   azure: ["chat_completions"],
+  sdf: ["images_generations", "images_edits"],
 }
 
 /**
@@ -53,9 +56,14 @@ export function createAzureProvider(cfg: AzureProviderConfig): ModelProvider {
   return new AzureProvider(cfg)
 }
 
+export function createSdfProvider(cfg: SdfProviderConfig): ModelProvider {
+  return new SdfProvider(cfg)
+}
+
 export async function createProviderFromUpstream(upstream: UpstreamRecord, copilot?: CreateProviderOptions): Promise<ModelProvider | null> {
   if (upstream.provider === "custom") return createCustomProvider(upstream.config as unknown as CustomProviderConfig)
   if (upstream.provider === "azure") return createAzureProvider(upstream.config as unknown as AzureProviderConfig)
+  if (upstream.provider === "sdf") return createSdfProvider(upstream.config as unknown as SdfProviderConfig)
   if (upstream.provider !== "copilot") return null
   const config = upstream.config
   if (typeof config.githubToken === "string" && config.githubToken) {

@@ -47,11 +47,6 @@ export const CONTROL_PLANE_RULES: DiffRules = {
     'avgLatency', 'avgTokens', 'count', 'sum', 'min', 'max',
     // misc cache/versioning headers in body
     'version', 'etag', 'nonce', 'fingerprint',
-    // vnext-only provider taxonomy: `sdf` is exposed via @vibe-llm/provider-sdf,
-    // intentionally absent on root. Ignoring the key on the defaults map keeps
-    // upstream-flags at parity without forcing a one-sided allowance into
-    // diff.ts itself.
-    'sdf',
   ]),
   headerAllowlist: new Set(['content-type', 'x-request-id', 'transfer-encoding', 'cache-control']),
   strongEnumKeys: new Set(['kind', 'provider', 'enabled', 'role']),

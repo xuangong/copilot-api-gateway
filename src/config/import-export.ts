@@ -231,7 +231,7 @@ export function parseConfigBundle(payload: unknown): ImportResult {
         if (typeof u !== "object" || u === null) throw new ImportError("upstreams entry must be object")
         const rec = u as UpstreamRecord
         if (typeof rec.id !== "string" || !rec.id) throw new ImportError("upstreams entry missing id")
-        if (rec.provider !== "copilot" && rec.provider !== "custom" && rec.provider !== "azure") {
+        if (rec.provider !== "copilot" && rec.provider !== "custom" && rec.provider !== "azure" && rec.provider !== "sdf") {
           throw new ImportError(`upstreams entry has unsupported provider: ${String(rec.provider)}`)
         }
         if (typeof rec.name !== "string") throw new ImportError("upstreams entry missing name")
