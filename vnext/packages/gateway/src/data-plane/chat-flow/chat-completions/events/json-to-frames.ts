@@ -129,7 +129,12 @@ export const synthesizeChatCompletionsFramesFromJson = async function* (
   })
   const event: ChatCompletionsStreamEvent = {
     id,
+    // Tag synthesized event so the downstream SSE encoder sees a chunk-shape
+    // discriminator (`chat.completion.chunk`). The upstream's original
+    // `chat.completion` is conveyed out-of-band via `__upstream_object` so
+    // reassemble can echo it on the final non-streaming envelope (root parity).
     object: 'chat.completion.chunk',
+    ...(body.object === 'chat.completion' && { __upstream_object: 'chat.completion' }),
     created,
     model,
     choices,

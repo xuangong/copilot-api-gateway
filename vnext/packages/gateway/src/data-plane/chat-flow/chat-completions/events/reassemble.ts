@@ -37,7 +37,7 @@ export interface ChatCompletionsResult {
 // future OpenAI/Anthropic extensions) and flows through captureExtras so it
 // reaches the client untouched. Mirrors copilot-gateway/.../reassemble.ts.
 const KNOWN_CHUNK_KEYS: ReadonlySet<string> = new Set([
-  'id', 'object', 'created', 'model', 'choices', 'usage',
+  'id', 'object', 'created', 'model', 'choices', 'usage', '__upstream_object',
 ])
 const KNOWN_CHOICE_KEYS: ReadonlySet<string> = new Set(['index', 'delta', 'finish_reason'])
 const KNOWN_DELTA_KEYS: ReadonlySet<string> = new Set([
@@ -50,6 +50,7 @@ export async function reassembleChatCompletions(
   let id = ''
   let model = ''
   let created = 0
+  let upstreamObject: 'chat.completion' | undefined
   let content = ''
   let reasoningText = ''
   let reasoningOpaque = ''
@@ -73,6 +74,20 @@ export async function reassembleChatCompletions(
       id = (chunk as any).id as string
       model = (chunk as any).model as string
       created = (chunk as any).created as number
+    }
+    // Preserve the upstream `object` discriminator only when it's the
+    // non-streaming form. SSE chunks always carry `chat.completion.chunk` and
+    // must not become the result's object. Root passes upstream JSON through
+    // verbatim, so when the upstream actually returned `chat.completion` (via
+    // json-to-frames synthesizer) we need to echo it back to keep parity.
+    if (upstreamObject === undefined) {
+      const sidecar = (chunk as any).__upstream_object
+      if (sidecar === 'chat.completion') {
+        upstreamObject = 'chat.completion'
+      } else {
+        const candidate = (chunk as any).object
+        if (candidate === 'chat.completion') upstreamObject = 'chat.completion'
+      }
     }
 
     if ((chunk as any).usage) {
@@ -154,6 +169,7 @@ export async function reassembleChatCompletions(
 
   const result: ChatCompletionsResult = {
     id,
+    ...(upstreamObject ? { object: upstreamObject } : {}),
     created,
     model,
     choices: [

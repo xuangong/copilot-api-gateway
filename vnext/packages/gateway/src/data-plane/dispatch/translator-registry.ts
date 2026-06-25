@@ -104,6 +104,13 @@ export interface TranslateContext {
   fallbackMaxOutputTokens?: number
   /** Optional model name override (only used by Gemini pairs). */
   model?: string
+  /**
+   * Original client-side request payload. Forwarded to `translateBody` so
+   * hub→client envelope mappers can echo fields the upstream stripped (e.g.
+   * responses-via-chat needs `instructions`/`tools`/etc. from the original
+   * Responses payload to rebuild a full envelope).
+   */
+  sourcePayload?: Record<string, unknown>
 }
 
 /**
@@ -204,7 +211,7 @@ const PAIR_RESPONSES_TO_CHAT: PairTranslator = {
     return result.target
   },
   translateEvents: (events) => translateChatToResponsesEvents(events as never),
-  translateBody: (body) => translateChatToResponsesBody(body),
+  translateBody: (body, ctx) => translateChatToResponsesBody(body, { sourcePayload: ctx.sourcePayload }),
 }
 
 /** Pair 9: Gemini generateContent client → OpenAI Responses hub. */

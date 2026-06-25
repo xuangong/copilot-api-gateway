@@ -8,6 +8,15 @@
  * `incomplete_details.reason: 'max_output_tokens'`; otherwise `completed`.
  * Usage tokens are mapped (`prompt_tokens`/`completion_tokens` →
  * `input_tokens`/`output_tokens`).
+ *
+ * Envelope parity with root (src/services/responses/format-conversion.ts):
+ * we accept the original Responses-shape request payload (`sourcePayload`)
+ * so we can echo back the request-side fields the upstream Chat-Completions
+ * response never carries (`instructions`, `metadata`, `parallel_tool_calls`,
+ * `temperature`, `tool_choice`, `tools`, `top_p`) and synthesize fields the
+ * Responses API requires but the Chat shape lacks (`output_text`, per-output
+ * `id`/`status`, `annotations:[]`, `error:null`, `incomplete_details:null`,
+ * detailed `usage.{input_tokens_details,output_tokens_details,total_tokens}`).
  */
 interface ChatToolCall { id: string; type: 'function'; function: { name: string; arguments: string } }
 interface ChatMessage { role: 'assistant'; content: string | null; tool_calls?: ChatToolCall[] }
@@ -19,35 +28,88 @@ interface ChatBody {
   usage?: { prompt_tokens?: number; completion_tokens?: number }
 }
 
+interface ResponsesOutputContentPart {
+  type: 'output_text'
+  text: string
+  annotations: unknown[]
+}
 interface ResponsesOutputItem {
   type: 'message' | 'function_call'
+  id?: string
+  status?: 'completed' | 'incomplete'
   role?: 'assistant'
-  content?: Array<{ type: 'output_text'; text: string }>
+  content?: ResponsesOutputContentPart[]
   call_id?: string
   name?: string
   arguments?: string
 }
 
+interface ResponsesUsage {
+  input_tokens: number
+  input_tokens_details: { cached_tokens: number }
+  output_tokens: number
+  output_tokens_details: { reasoning_tokens: number }
+  total_tokens: number
+}
+
 interface ResponsesBody {
   id: string
   object: 'response'
-  model: string
   created_at: number
-  status: 'completed' | 'incomplete'
-  incomplete_details?: { reason: string }
+  model: string
   output: ResponsesOutputItem[]
-  usage?: { input_tokens: number; output_tokens: number }
+  output_text: string
+  status: 'completed' | 'incomplete'
+  error: null
+  incomplete_details: { reason: string } | null
+  instructions: unknown
+  metadata: unknown
+  parallel_tool_calls: boolean
+  temperature: unknown
+  tool_choice: unknown
+  tools: unknown
+  top_p: unknown
+  usage?: ResponsesUsage
 }
 
-export function translateChatToResponsesBody(body: unknown): ResponsesBody {
+interface SourcePayload {
+  instructions?: unknown
+  metadata?: unknown
+  parallel_tool_calls?: boolean
+  temperature?: unknown
+  tool_choice?: unknown
+  tools?: unknown
+  top_p?: unknown
+}
+
+let msgIdCounter = 0
+const generateMessageId = (): string => {
+  // Mirrors root's `msg_<rand>` pattern. Doesn't need cryptographic strength —
+  // just stable within a single response so clients can correlate parts.
+  msgIdCounter = (msgIdCounter + 1) & 0xffff_ffff
+  const rand = Math.random().toString(36).slice(2, 10)
+  return `msg_${Date.now().toString(36)}${rand}${msgIdCounter.toString(36)}`
+}
+
+export function translateChatToResponsesBody(
+  body: unknown,
+  ctx?: { sourcePayload?: SourcePayload },
+): ResponsesBody {
   const c = body as ChatBody
   const choice = c.choices[0]
+  const source: SourcePayload = ctx?.sourcePayload ?? {}
+
   const output: ResponsesOutputItem[] = []
+  let outputText = ''
+
   if (choice && typeof choice.message.content === 'string' && choice.message.content.length > 0) {
+    outputText = choice.message.content
     output.push({
       type: 'message',
+      id: generateMessageId(),
+      status: 'completed',
       role: 'assistant',
-      content: [{ type: 'output_text', text: choice.message.content }],
+      content: [{ type: 'output_text', text: outputText, annotations: [] }],
     })
   }
   if (choice?.message.tool_calls) {
@@ -65,16 +127,30 @@ export function translateChatToResponsesBody(body: unknown): ResponsesBody {
   const out: ResponsesBody = {
     id: c.id,
     object: 'response',
-    model: c.model ?? '',
     created_at: c.created ?? Math.floor(Date.now() / 1000),
-    status,
+    model: c.model ?? '',
     output,
+    output_text: outputText,
+    status,
+    error: null,
+    incomplete_details: status === 'incomplete' ? { reason: 'max_output_tokens' } : null,
+    instructions: source.instructions ?? null,
+    metadata: source.metadata ?? null,
+    parallel_tool_calls: source.parallel_tool_calls ?? true,
+    temperature: source.temperature ?? null,
+    tool_choice: source.tool_choice ?? 'auto',
+    tools: source.tools ?? [],
+    top_p: source.top_p ?? null,
   }
-  if (status === 'incomplete') out.incomplete_details = { reason: 'max_output_tokens' }
   if (c.usage) {
+    const inputTokens = c.usage.prompt_tokens ?? 0
+    const outputTokens = c.usage.completion_tokens ?? 0
     out.usage = {
-      input_tokens: c.usage.prompt_tokens ?? 0,
-      output_tokens: c.usage.completion_tokens ?? 0,
+      input_tokens: inputTokens,
+      input_tokens_details: { cached_tokens: 0 },
+      output_tokens: outputTokens,
+      output_tokens_details: { reasoning_tokens: 0 },
+      total_tokens: inputTokens + outputTokens,
     }
   }
   return out

@@ -135,7 +135,18 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     sourceModelIdentity,
     innerEvents.performance,
     innerEvents.finalMetadata,
-    args.translator.translateBody as LlmEventResult<ProtocolFrame<SourceFrame>>['translateBody'],
+    // Wrap translateBody so the hub→source envelope mapper sees the original
+    // client-side request payload. Required by translators (e.g.
+    // responses-via-chat-completions/body.ts) that echo back fields like
+    // `instructions`, `metadata`, `tool_choice`, `tools` which the upstream
+    // Chat-Completions response never carries.
+    ((hubJson, ctx) =>
+      args.translator.translateBody(hubJson, {
+        signal: ctx?.signal ?? new AbortController().signal,
+        fallbackMaxOutputTokens: ctx?.fallbackMaxOutputTokens,
+        model: ctx?.model,
+        sourcePayload: args.sourcePayload,
+      })) as LlmEventResult<ProtocolFrame<SourceFrame>>['translateBody'],
     // translateEvents: respond.ts streaming branch unwraps hub frames, runs
     // these through the translator, then re-wraps as source frames before SSE
     // encoding. The translator function here consumes BARE hub events (not

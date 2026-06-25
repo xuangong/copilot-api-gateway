@@ -47,6 +47,16 @@ export interface TranslateBodyContext {
   readonly signal?: AbortSignal
   readonly fallbackMaxOutputTokens?: number
   readonly model?: string
+  /**
+   * Original client-side request payload. Threaded through cross-protocol
+   * `translateBody` so the hub→client envelope mapper can echo request-side
+   * fields the upstream never returned (e.g. responses-via-chat needs
+   * `instructions`, `metadata`, `parallel_tool_calls`, `tool_choice`, `tools`,
+   * `temperature`, `top_p` — all stripped during the client→hub translation
+   * and absent from the chat-completion body the hub returns).
+   * Same-protocol attempts leave this undefined.
+   */
+  readonly sourcePayload?: Record<string, unknown>
 }
 
 export interface LlmEventResult<T> {
