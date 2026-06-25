@@ -12,8 +12,9 @@
 | A2 | `chat-flow-kit` + `gateway` typecheck | ✅ kit clean; gateway only reports pre-existing `@vnext-llm/translate` Gemini errors (not in `gateway/src/`) | Confirmed not a regression |
 | A3 | Framework purity gate | ✅ `rg @vnext-llm packages/chat-flow-kit/` returns empty | kit is domain-neutral |
 | A4 | Serve-file line audit + boilerplate scan | ✅ 107 + 102 + 116 + 198 = 523 LOC across four serves; `rg "runQuotaGate\|new AbortController\|requestStartedAt = Date.now"` returns empty | All ambient skeleton moved into kit |
-| A6 | `docker build --no-cache -f apps/platform-bun/Dockerfile -t vnext-platform-bun:spec10 .` | ⚠ Deferred — Docker Hub registry unreachable from current network (`context deadline exceeded` on `oven/bun:1-slim` after multiple retries). Dockerfile change committed (`2fac60c`); retry at next deploy window. |
-| A7 | Live CFW smoke (chat-completions / messages / responses / gemini happy path) | ⏸ Deferred per `spec8_execution_constraints.md`: no CFW deploy until vNext refactor fully polished. To be run alongside next deploy window. |
+| A6 | `docker build --no-cache -f apps/platform-bun/Dockerfile -t vnext-platform-bun:spec10 .` | ✅ Built successfully; `bun install --frozen-lockfile` resolved `@vnext-gateway/chat-flow-kit` from the new COPY line without warning. |
+| A6.5 | Local docker smoke — four endpoints happy path against `copilot-gateway-vnext` (`docker compose --env-file .env.vnext -f docker-compose.vnext.yml up -d`) | ✅ `/v1/chat/completions` (gpt-4o-mini-2024-07-18) 200; `/v1/messages` (claude-opus-4.6) 200; `/v1/responses` (gpt-5.4-mini) 200; `/v1beta/models/gemini-2.5-pro:generateContent` 200 (cross-protocol). All four kit-driven serves observed end-to-end. |
+| A7 | Live CFW smoke | ⏸ Deferred per `spec8_execution_constraints.md`: no CFW deploy until vNext refactor fully polished. To be run alongside next deploy window. |
 
 ## Commits
 
