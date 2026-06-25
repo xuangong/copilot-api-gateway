@@ -1,15 +1,15 @@
 # Spec 12a — Data-Plane Parity Report
 
-**Generated:** 2026-06-25T09:58:43.602Z
+**Generated:** 2026-06-25T10:04:26.529Z
 **Fixtures:** 27
 
 ## Summary
 
 | label | count |
 |-------|-------|
-| parity | 10 |
+| parity | 12 |
 | cosmetic-diff | 0 |
-| behavior-gap | 17 |
+| behavior-gap | 15 |
 | route-missing | 0 |
 
 ## Per-fixture
@@ -18,7 +18,7 @@
 |----------|---------|-------|------|-------|---------|
 | `/chat/completions` | alias-e1-chat-completions | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap / body:behavior-gap |
 | `/responses` | alias-e2-responses | **behavior-gap** | 200 | 400 | status:behavior-gap / body:behavior-gap / body:behavior-gap |
-| `/embeddings` | alias-e3-embeddings | **behavior-gap** | 500 | 200 | status:behavior-gap / body:behavior-gap / body:behavior-gap |
+| `/embeddings` | alias-e3-embeddings | **parity** | 200 | 200 | — |
 | `/images/generations` | alias-e4-images-generations | **parity** | 404 | 404 | — |
 | `/images/edits` | alias-e5-images-edits | **parity** | 404 | 404 | — |
 | `/v1/chat/completions` | chat-completions-basic-non-stream | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap / body:behavior-gap |
@@ -26,7 +26,7 @@
 | `/v1/chat/completions` | chat-completions-tool-required | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap / body:behavior-gap |
 | `/v1/embeddings` | embeddings-array-three | **parity** | 200 | 200 | — |
 | `/v1/embeddings` | embeddings-bad-model-4xx | **parity** | 404 | 404 | — |
-| `/v1/embeddings` | embeddings-single-string | **behavior-gap** | 500 | 200 | status:behavior-gap / body:behavior-gap / body:behavior-gap |
+| `/v1/embeddings` | embeddings-single-string | **parity** | 200 | 200 | — |
 | `/v1beta/models/gemini-2.5-flash:countTokens` | gemini-count-tokens | **behavior-gap** | 200 | 200 | body:behavior-gap |
 | `/v1beta/models/gemini-2.5-flash:generateContent` | gemini-generate-content | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap |
 | `/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse` | gemini-stream-generate-content | **parity** | 200 | 200 | — |
@@ -34,7 +34,7 @@
 | `/v1/images/generations` | images-bad-size-4xx | **parity** | 404 | 404 | — |
 | `/v1/images/edits` | images-edits-png | **parity** | 404 | 404 | — |
 | `/v1/images/generations` | images-generations-basic | **parity** | 404 | 404 | — |
-| `/v1/messages` | messages-basic-non-stream | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap / body:behavior-gap |
+| `/v1/messages` | messages-basic-non-stream | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap |
 | `/v1/messages/count_tokens` | messages-count-tokens | **parity** | 200 | 200 | — |
 | `/v1/messages` | messages-stream | **parity** | 200 | 200 | — |
 | `/api/models` | models-api | **behavior-gap** | 200 | 200 | body:behavior-gap / body:behavior-gap / body:behavior-gap |
@@ -75,12 +75,9 @@
 - **body** [behavior-gap] $.top_p: type root=object vnext=undefined
 - **body** [behavior-gap] usage keys: onlyRoot=[input_tokens,input_tokens_details,output_tokens,output_tokens_details,total_tokens] onlyVnext=[]
 
-### alias-e3-embeddings (`/embeddings`) — behavior-gap
+### alias-e3-embeddings (`/embeddings`) — parity
 
-- **status** [behavior-gap] root=500 vnext=200
-- **body** [behavior-gap] $.error: type root=string vnext=undefined
-- **body** [behavior-gap] $.data: type root=undefined vnext=object
-- **body** [behavior-gap] usage keys: onlyRoot=[] onlyVnext=[prompt_tokens,total_tokens]
+No diffs.
 
 ### alias-e4-images-generations (`/images/generations`) — parity
 
@@ -120,12 +117,9 @@ No diffs.
 
 No diffs.
 
-### embeddings-single-string (`/v1/embeddings`) — behavior-gap
+### embeddings-single-string (`/v1/embeddings`) — parity
 
-- **status** [behavior-gap] root=500 vnext=200
-- **body** [behavior-gap] $.error: type root=string vnext=undefined
-- **body** [behavior-gap] $.data: type root=undefined vnext=object
-- **body** [behavior-gap] usage keys: onlyRoot=[] onlyVnext=[prompt_tokens,total_tokens]
+No diffs.
 
 ### gemini-count-tokens (`/v1beta/models/gemini-2.5-flash:countTokens`) — behavior-gap
 
@@ -133,8 +127,8 @@ No diffs.
 
 ### gemini-generate-content (`/v1beta/models/gemini-2.5-flash:generateContent`) — behavior-gap
 
-- **body** [behavior-gap] $.usageMetadata.candidatesTokenCount: root=1 vnext=0
-- **body** [behavior-gap] $.usageMetadata.totalTokenCount: root=17 vnext=18
+- **body** [behavior-gap] $.usageMetadata.candidatesTokenCount: root=0 vnext=1
+- **body** [behavior-gap] $.usageMetadata.totalTokenCount: root=18 vnext=17
 
 ### gemini-stream-generate-content (`/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse`) — parity
 
@@ -142,7 +136,7 @@ No diffs.
 
 ### gemini-tool-call (`/v1beta/models/gemini-2.5-flash:generateContent`) — behavior-gap
 
-- **body** [behavior-gap] $.usageMetadata.totalTokenCount: root=75 vnext=86
+- **body** [behavior-gap] $.usageMetadata.totalTokenCount: root=86 vnext=46
 
 ### images-bad-size-4xx (`/v1/images/generations`) — parity
 
@@ -159,7 +153,6 @@ No diffs.
 ### messages-basic-non-stream (`/v1/messages`) — behavior-gap
 
 - **body** [behavior-gap] $.copilot_usage: type root=object vnext=undefined
-- **body** [behavior-gap] $.stop_details: type root=object vnext=undefined
 - **body** [behavior-gap] usage keys: onlyRoot=[cache_creation] onlyVnext=[]
 
 ### messages-count-tokens (`/v1/messages/count_tokens`) — parity
@@ -1550,6 +1543,6 @@ No diffs.
 
 ### responses-stateful-chain (`/v1/responses`) — behavior-gap
 
-- **body** [behavior-gap] $.error.message: root="Previous response with id 'resp_df4e71d75a3e4d8f80ff92d1' not found." vnext="no such table: responses_snapshots"
+- **body** [behavior-gap] $.error.message: root="Previous response with id 'resp_2e6d675bb00b4f1e9b603680' not found." vnext="no such table: responses_snapshots"
 - **body** [behavior-gap] $.error.param: type root=string vnext=undefined
 - **body** [behavior-gap] $.error.code: type root=string vnext=undefined

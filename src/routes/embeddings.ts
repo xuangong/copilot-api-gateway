@@ -47,6 +47,11 @@ async function handleEmbeddings(ctx: RouteContext): Promise<Response> {
   }
 
   stripUpstreamPin(body as unknown as Record<string, unknown>)
+  // Copilot upstream rejects scalar `input` with 400 Bad Request; OpenAI spec
+  // accepts both string and array, so normalize to array for upstream compat.
+  if (typeof body.input === "string") {
+    body.input = [body.input]
+  }
   const binding = await resolveBinding(state, ctx.userId, body.model, "embeddings")
   if (!binding) {
     return new Response(
