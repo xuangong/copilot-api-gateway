@@ -10,10 +10,53 @@
 
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import {
+  type DiffRules,
+  type GapLabel,
+  type DiffEntry,
+  diffStatus,
+  maskHeaderValue,
+  diffHeaders as _diffHeaders,
+  diffJsonBody as _diffJsonBody,
+  aggregateLabel,
+} from './lib/diff'
+
+// Re-export types and lib functions for external consumers (e.g. diff-engine.test.ts).
+export type { DiffRules, GapLabel, DiffEntry }
+export { maskHeaderValue, aggregateLabel, diffStatus }
+
+// ---------- Data-plane rules ----------
+
+const DATA_PLANE_RULES: DiffRules = {
+  ignoreKeys: new Set([
+    'id', 'created', 'created_at', 'system_fingerprint', 'x_request_id',
+    'response_id', 'fingerprint',
+    // Copilot vendor padding — random bytes per request, content carries no semantic info.
+    // Presence-checked via captureExtras; value diff is nondeterministic upstream noise.
+    'padding',
+    // Provenance markers on /v1/models — embed the storage UUID of the upstream row.
+    // Root's seeded fixed UUID and vnext's random UUID differ by instance, not by
+    // behavior. The model JSON itself (capabilities, supports, tokenizer, etc.) is
+    // what data-plane parity validates.
+    '_upstream',
+  ]),
+  headerAllowlist: new Set(['content-type', 'x-request-id', 'transfer-encoding', 'cache-control']),
+  // data-plane has no strong-enum keys — strong-field handling lives in deepDiff
+}
+
+// 2-arg wrapper for backward compat (diff-engine.test.ts imports these from here)
+export function diffHeaders(
+  rootHeaders: Record<string, string>,
+  vnextHeaders: Record<string, string>,
+): DiffEntry[] {
+  return _diffHeaders(rootHeaders, vnextHeaders, DATA_PLANE_RULES)
+}
+
+export function diffJsonBody(rootBody: unknown, vnextBody: unknown): DiffEntry[] {
+  return _diffJsonBody(rootBody, vnextBody, DATA_PLANE_RULES)
+}
 
 // ---------- Types ----------
-
-export type GapLabel = 'parity' | 'cosmetic-diff' | 'behavior-gap' | 'route-missing'
 
 export interface Fixture {
   name: string
@@ -31,12 +74,6 @@ export interface FetchResult {
   // For stream: raw SSE text body.
   body: unknown
   raw: string
-}
-
-export interface DiffEntry {
-  layer: 'status' | 'header' | 'body' | 'sse'
-  label: GapLabel
-  detail: string
 }
 
 export interface FixtureReport {
@@ -67,141 +104,6 @@ export function loadFixtures(dir: string = FIXTURE_DIR): Fixture[] {
     const raw = readFileSync(join(dir, f), 'utf8')
     return JSON.parse(raw) as Fixture
   })
-}
-
-// ---------- Diff: status ----------
-
-export function diffStatus(rootStatus: number, vnextStatus: number): DiffEntry[] {
-  if (rootStatus === vnextStatus) return []
-  return [{
-    layer: 'status',
-    label: 'behavior-gap',
-    detail: `root=${rootStatus} vnext=${vnextStatus}`,
-  }]
-}
-
-// ---------- Diff: header (allowlist + value masking) ----------
-
-const HEADER_ALLOWLIST = new Set(['content-type', 'x-request-id', 'transfer-encoding', 'cache-control'])
-
-export function maskHeaderValue(value: string): string {
-  return value
-    .replace(/;\s*charset=[^;]+/gi, '')
-    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<uuid>')
-    .replace(/:\d{2,5}\b/g, ':<port>')
-    .replace(/\b\d+\b/g, '<num>')
-}
-
-export function diffHeaders(rootHeaders: Record<string, string>, vnextHeaders: Record<string, string>): DiffEntry[] {
-  const out: DiffEntry[] = []
-  for (const h of HEADER_ALLOWLIST) {
-    const r = rootHeaders[h]
-    const v = vnextHeaders[h]
-    if (r === undefined && v === undefined) continue
-    if (r === undefined || v === undefined) {
-      out.push({
-        layer: 'header',
-        label: 'cosmetic-diff',
-        detail: `${h}: root=${r ?? '<absent>'} vnext=${v ?? '<absent>'}`,
-      })
-      continue
-    }
-    const rm = maskHeaderValue(r)
-    const vm = maskHeaderValue(v)
-    if (rm !== vm) {
-      out.push({
-        layer: 'header',
-        label: 'cosmetic-diff',
-        detail: `${h}: root="${rm}" vnext="${vm}"`,
-      })
-    }
-  }
-  return out
-}
-
-// ---------- Diff: JSON body ----------
-
-const BODY_IGNORE_KEYS = new Set([
-  'id', 'created', 'created_at', 'system_fingerprint', 'x_request_id', 'response_id', 'fingerprint',
-  // Copilot vendor padding — random bytes per request, content carries no semantic info.
-  // Presence-checked via captureExtras; value diff is nondeterministic upstream noise.
-  'padding',
-  // Provenance markers on /v1/models — embed the storage UUID of the upstream row.
-  // Root's seeded fixed UUID and vnext's random UUID differ by instance, not by
-  // behavior. The model JSON itself (capabilities, supports, tokenizer, etc.) is
-  // what data-plane parity validates.
-  '_upstream',
-])
-
-// Strong fields: if present in either side, must match structurally per spec §3.
-// For 'choices[].message.content' we only assert "non-empty on both" (string length > 0).
-// For 'usage' we compare KEY SETS only (values ignored — token counts wobble).
-function deepDiff(root: unknown, vnext: unknown, path: string, out: DiffEntry[]): void {
-  if (root === vnext) return
-  if (typeof root !== typeof vnext) {
-    out.push({ layer: 'body', label: 'behavior-gap', detail: `${path}: type root=${typeof root} vnext=${typeof vnext}` })
-    return
-  }
-  if (root === null || vnext === null) {
-    out.push({ layer: 'body', label: 'behavior-gap', detail: `${path}: root=${root} vnext=${vnext}` })
-    return
-  }
-  if (Array.isArray(root)) {
-    if (!Array.isArray(vnext)) {
-      out.push({ layer: 'body', label: 'behavior-gap', detail: `${path}: root=array vnext=${typeof vnext}` })
-      return
-    }
-    if (root.length !== vnext.length) {
-      out.push({ layer: 'body', label: 'behavior-gap', detail: `${path}: array len root=${root.length} vnext=${vnext.length}` })
-      return
-    }
-    for (let i = 0; i < root.length; i++) deepDiff(root[i], vnext[i], `${path}[${i}]`, out)
-    return
-  }
-  if (typeof root === 'object') {
-    const ro = root as Record<string, unknown>
-    const vo = vnext as Record<string, unknown>
-    const keys = new Set([...Object.keys(ro), ...Object.keys(vo)])
-    for (const k of keys) {
-      if (BODY_IGNORE_KEYS.has(k)) continue
-      const sub = `${path}.${k}`
-
-      // Strong-field special handling
-      if (sub.endsWith('.message.content') || sub.endsWith('.content')) {
-        const rs = typeof ro[k] === 'string' ? (ro[k] as string).length > 0 : ro[k] != null
-        const vs = typeof vo[k] === 'string' ? (vo[k] as string).length > 0 : vo[k] != null
-        if (rs !== vs) {
-          out.push({ layer: 'body', label: 'behavior-gap', detail: `${sub}: non-empty root=${rs} vnext=${vs}` })
-        }
-        continue
-      }
-      if (k === 'usage' || k === 'usageMetadata') {
-        const rk = new Set(Object.keys((ro[k] ?? {}) as object))
-        const vk = new Set(Object.keys((vo[k] ?? {}) as object))
-        const onlyR = [...rk].filter((x) => !vk.has(x))
-        const onlyV = [...vk].filter((x) => !rk.has(x))
-        if (onlyR.length || onlyV.length) {
-          out.push({ layer: 'body', label: 'behavior-gap', detail: `${k} keys: onlyRoot=[${onlyR.join(',')}] onlyVnext=[${onlyV.join(',')}]` })
-        }
-        continue
-      }
-      // Gemini countTokens response: top-level `totalTokens` is upstream
-      // token-count that wobbles request-to-request like usage. Same for
-      // `finishReason` — depends on output length nondeterminism.
-      if (k === 'totalTokens' || k === 'finishReason') continue
-
-      deepDiff(ro[k], vo[k], sub, out)
-    }
-    return
-  }
-  // primitive mismatch
-  out.push({ layer: 'body', label: 'behavior-gap', detail: `${path}: root=${JSON.stringify(root)} vnext=${JSON.stringify(vnext)}` })
-}
-
-export function diffJsonBody(rootBody: unknown, vnextBody: unknown): DiffEntry[] {
-  const out: DiffEntry[] = []
-  deepDiff(rootBody, vnextBody, '$', out)
-  return out
 }
 
 // ---------- Diff: SSE (structural-only) ----------
@@ -272,14 +174,6 @@ export function diffSse(rootRaw: string, vnextRaw: string): DiffEntry[] {
     }
   }
   return out
-}
-
-// ---------- Aggregator ----------
-
-export function aggregateLabel(diffs: DiffEntry[]): GapLabel {
-  if (diffs.some((d) => d.label === 'behavior-gap')) return 'behavior-gap'
-  if (diffs.some((d) => d.label === 'cosmetic-diff')) return 'cosmetic-diff'
-  return 'parity'
 }
 
 // ---------- HTTP execution ----------
