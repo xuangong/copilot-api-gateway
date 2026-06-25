@@ -595,7 +595,13 @@ async function createApp() {
           return { storage, state, colo }
         } catch {
           // Allow upstream-managed routes to work without a GitHub connection.
-          if (path === "/api/models" || path.startsWith("/embeddings") || path.startsWith("/v1/embeddings")) {
+          if (
+            path === "/api/models" ||
+            path.startsWith("/embeddings") ||
+            path.startsWith("/v1/embeddings") ||
+            path.startsWith("/images") ||
+            path.startsWith("/v1/images")
+          ) {
             return { storage, state: emptyState(), colo }
           }
           throw new Error("GitHub token not found. Use /auth/github to connect your account.")
