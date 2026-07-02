@@ -19,6 +19,15 @@ test("claude-sonnet-4-5 matches the variant-merged regex", () => {
   })
 })
 
+test("claude-sonnet-5 launch pricing (33% cheaper than sonnet-4.x)", () => {
+  expect(pricingForCopilotPublicModelId("claude-sonnet-5")).toEqual({
+    input: 2,
+    input_cache_read: 0.2,
+    input_cache_write: 2.5,
+    output: 10,
+  })
+})
+
 test("gpt-5.4 mini/nano differ from base 5.4", () => {
   expect(pricingForCopilotPublicModelId("gpt-5.4-mini")).toEqual({
     input: 0.75,
