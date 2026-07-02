@@ -27,7 +27,6 @@ import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'
 
 const env = {} as never
 const MODEL_ID = 'my-llm-resp'
-const IMAGE_MODEL_ID = 'gpt-image-2'
 
 // Custom upstream serving the responses endpoint natively (responses →
 // responses identity path). Using a custom provider keeps the test free of
@@ -43,29 +42,6 @@ const customResponsesUpstream = (): UpstreamRecord => ({
     baseUrl: 'https://api.example.com/v1',
     apiKey: 'sk-secret',
     endpoints: ['responses'],
-  },
-  flagOverrides: {},
-  disabledPublicModelIds: [],
-  createdAt: '2026-01-01T00:00:00Z',
-  updatedAt: '2026-01-01T00:00:00Z',
-})
-
-// Image-only upstream advertising images_generations. The model id starts
-// with `gpt-image-` so `genericModelEndpoints` infers `images_generations`
-// for the binding catalog. The image-gen shortcut resolves a binding from
-// THIS upstream when the public-model id matches, then writes the perf row
-// with `modelKey: 'gpt-image-2'`.
-const customImageUpstream = (): UpstreamRecord => ({
-  id: 'up_custom_img_tel',
-  provider: 'custom',
-  name: 'my-img',
-  enabled: true,
-  sortOrder: 1,
-  config: {
-    name: 'my-img',
-    baseUrl: 'https://img.example.com/v1',
-    apiKey: 'sk-img',
-    endpoints: ['images_generations'],
   },
   flagOverrides: {},
   disabledPublicModelIds: [],
@@ -111,34 +87,22 @@ interface FetchOpts {
   sse?: string | null
   modelInChunk?: string
   nonStreamBody?: unknown
-  imageBody?: unknown
 }
 
 /**
  * Bun's `fetch` shim. Routes:
  *   - api.example.com/v1/models           → MODEL_ID catalog
  *   - api.example.com/v1/responses        → SSE / JSON / error per opts
- *   - img.example.com/v1/models           → IMAGE_MODEL_ID catalog
- *   - img.example.com/v1/images/generations → image-gen JSON body per opts
  */
 function installFetch(opts: FetchOpts): void {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = input instanceof Request ? input : new Request(input as string, init)
     const url = new URL(req.url)
-    const isImageHost = url.host === 'img.example.com'
     if (url.pathname.endsWith('/models')) {
-      const id = isImageHost ? IMAGE_MODEL_ID : MODEL_ID
-      const owner = isImageHost ? 'my-img' : 'my-llm'
       return new Response(
-        JSON.stringify({ object: 'list', data: [{ id, object: 'model', owned_by: owner }] }),
+        JSON.stringify({ object: 'list', data: [{ id: MODEL_ID, object: 'model', owned_by: 'my-llm' }] }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
-    }
-    if (url.pathname.endsWith('/images/generations')) {
-      const body = opts.imageBody ?? { data: [{ b64_json: 'aGk=' }] }
-      return new Response(JSON.stringify(body), {
-        status: 200, headers: { 'content-type': 'application/json' },
-      })
     }
     if (url.pathname.endsWith('/responses') || url.pathname.endsWith('/v1/responses')) {
       const status = opts.status ?? 200
@@ -352,44 +316,7 @@ test('modelKey correction: upstream returns "gpt-5-corrected" → usage row carr
   expect(row.modelKey).toBe('gpt-5-corrected')
 })
 
-test('image_generation shortcut → perf row carries backend image model in `model` (usage row no-ops for zero-token)', async () => {
-  // Two upstreams: the responses one is here so the test mirrors the real
-  // gateway's usual configuration, but the shortcut RESOLVES the binding
-  // from the image-only upstream (because the public model id starts with
-  // `gpt-image-` and that upstream advertises `images_generations`).
-  const { repo, captured } = stubRepo([customResponsesUpstream(), customImageUpstream()])
-  initRepo(repo)
-  initResponsesStore(new InMemoryResponsesSnapshotStore())
-  const bg = installTrackingBackground()
-  initRuntimeLocation('bun')
-  installFetch({})
-
-  const res = await postResponses({
-    model: IMAGE_MODEL_ID,
-    stream: true,
-    input: 'a cat',
-    tools: [{ type: 'image_generation' }],
-  })
-  expect(res.status).toBe(200)
-  await drain(res)
-  await bg.drain()
-
-  // Image-gen always reports zero-token usage so `recordUsage` no-ops.
-  expect(captured.usage).toHaveLength(0)
-  // The shortcut populates `finalMetadata.performance.model = backendModel`
-  // (the BACKEND image model, defaulting to `gpt-image-2`). respond.ts's
-  // `persistFromEventResult` prefers `finalMetadata` over
-  // `result.modelIdentity` because the shortcut sets
-  // `__interceptorReplaced: true`. Successful image-gen outcomes write a
-  // single perf row (the shortcut's `if (failed)` branch doesn't fire —
-  // only respond.ts's `persistFromEventResult` runs).
-  // The persisted row's `model` field carries the backend image model;
-  // `modelKey` is NOT a column on `PerformanceRecordInput` so we don't
-  // assert it here (it travels in PerformanceTelemetryContext but the
-  // legacy wire format only stores `model`).
-  expect(captured.perf).toHaveLength(1)
-  const row = captured.perf[0] as { model: string; upstream: string | null; isError: boolean }
-  expect(row.model).toBe('gpt-image-2')
-  expect(row.upstream).toBe('image-generation')
-  expect(row.isError).toBe(false)
-})
+// image_generation server-tool shortcut removed: hosted `image_generation`
+// on the Responses route is now stripped at the Copilot provider boundary
+// (see withImageGenerationStripped). Image generation goes through
+// /v1/images/generations directly (SDF provider). See 2026-07-01-hosted-image-gen-not-supported.md.

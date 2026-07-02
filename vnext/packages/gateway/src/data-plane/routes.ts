@@ -2,10 +2,9 @@
  * Data-plane routes — Hono mount + auth bridge.
  *
  * Each chat-flow endpoint lives under `chat-flow/<endpoint>/{http,serve,attempt,respond}.ts`
- * (responses also has snapshot-sidecar.ts + image-generation-shortcut.ts;
- * messages has web-search-shortcut.ts). The per-endpoint `serve.ts` modules
- * orchestrate their own attempt → respond pipeline; there is no shared
- * dispatch module.
+ * (responses also has snapshot-sidecar.ts; messages has web-search-shortcut.ts).
+ * The per-endpoint `serve.ts` modules orchestrate their own attempt → respond
+ * pipeline; there is no shared dispatch module.
  */
 import { Hono } from 'hono'
 import type { Env } from '../app.ts'

@@ -14,13 +14,13 @@
  *     deleted the legacy `dispatch()` bridge but native cross-protocol
  *     attempts are deferred to Spec 6. We surface a 501-shaped
  *     internal-error result so the failure mode is loud and the abandoned
- *     response is fully accounted for in telemetry;
- *   - `image_generation` server-tool requests short-circuit via
- *     `runImageGenerationShortcut` BEFORE binding selection — the shortcut
- *     owns its own modelIdentity + performance via `finalMetadata` and the
- *     `__interceptorReplaced` provenance flag. The shortcut produces the
- *     same `bridged-response` sentinel for early failures (validation, no
- *     binding) so respond.ts hands them through unchanged.
+ *     response is fully accounted for in telemetry.
+ *
+ * Note: hosted `image_generation` Responses tool entries are stripped at the
+ * Copilot provider boundary (see `withImageGenerationStripped`). vNext does
+ * NOT bridge hosted image_generation through the Responses route — clients
+ * that want image generation should call `/v1/images/generations` directly
+ * (SDF provider). This matches the upstream reference project's stance.
  *
  * Pre-binding errors (model-not-found, no-eligible-binding, no-translator)
  * deliberately omit `performance` per Spec 3 §6.2 — `respond.ts` skips the
@@ -59,11 +59,6 @@ import { withUpstreamTelemetry } from '../shared/upstream-telemetry'
 import { enumerateBindingCandidates, type EnumerateOptions } from '../../routing/candidates.ts'
 import { selectPair } from '../../dispatch/pair-selector.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
-import {
-  isImageGenerationRequest,
-  runImageGenerationShortcut,
-} from './image-generation-shortcut.ts'
-import type { CreateProviderOptions } from '../../providers/registry.ts'
 import { traverseTranslation } from '../shared/traverse-translation.ts'
 import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-dispatch.ts'
 
@@ -201,24 +196,6 @@ export async function* synthesizeResponsesFramesFromJson(
 
 export const responsesAttempt = {
   generate: async (args: ResponsesAttemptArgs): Promise<ResponsesAttemptResult> => {
-    // Image-generation server-tool short-circuit: runs BEFORE binding
-    // selection because the image-gen shortcut resolves its own (image-only)
-    // binding through `images_generations` / `images_edits` endpoint keys,
-    // not the `responses` endpoint we'd pick for a regular text turn.
-    if (isImageGenerationRequest(args.payload)) {
-      return await runImageGenerationShortcut({
-        payload: args.payload as Parameters<typeof runImageGenerationShortcut>[0]['payload'],
-        auth: {
-          userId: args.auth.ownerId,
-          copilot: args.auth.copilot as CreateProviderOptions | undefined,
-          apiKeyId: args.auth.apiKeyId,
-        },
-        telemetryCtx: args.telemetryCtx,
-        requestId: args.requestId,
-        userAgent: args.userAgent,
-      })
-    }
-
     const selectFn = args.selectBinding ?? defaultSelectBinding
     const sel = await selectFn({ model: args.payload.model, auth: args.auth })
 
