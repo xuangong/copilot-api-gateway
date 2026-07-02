@@ -429,8 +429,11 @@ upstreamsRouter.post('/', async (c) => {
     const provider = normalizeProvider(body.provider)
     if (typeof body.name !== 'string' || !body.name.trim()) return jsonError('name required')
     const now = new Date().toISOString()
+    // Admin can target any owner via body.ownerId (including '' for global).
+    // When unset, default to the admin's own userId rather than '' so newly
+    // created upstreams don't silently land in the read-only "global" bucket.
     const ownerId = admin
-      ? (typeof body.ownerId === 'string' ? body.ownerId : '')
+      ? (typeof body.ownerId === 'string' ? body.ownerId : (userId ?? ''))
       : userId
     if (ownerId === undefined) return jsonError('ownerId required', 400)
     const upstream: UpstreamRecord = {
