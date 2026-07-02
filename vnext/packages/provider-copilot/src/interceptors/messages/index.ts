@@ -3,6 +3,7 @@ import { withClaudeAgentHeaders } from "./with-claude-agent-headers"
 import { withCompactHeaders } from "./with-compact-headers"
 import { withInteractionIdHeader } from "./with-interaction-id-header"
 import { withMessagesVisionHeader } from "./with-vision-header"
+import { withThinkingAdapted } from "./with-thinking-adapted"
 import { withTopLevelCacheControlApplied } from "./with-top-level-cache-control-applied"
 import { withCacheControlExtensionsStripped } from "./with-cache-control-extensions-stripped"
 import { withEagerInputStreamingStripped } from "./with-eager-input-streaming-stripped"
@@ -15,6 +16,9 @@ import { withMessagesCacheBreakpointsAttached } from "./with-cache-breakpoints-a
  * Canonical order — see reference impl (copilot-gateway
  * COPILOT_MESSAGES_BOUNDARY). Header interceptors first, then payload mutators
  * in the order:
+ *   thinkingAdapted (must run AFTER variantFiltering injects effort, before
+ *     any other payload mutators — strips output_config / converts thinking
+ *     shape per upstream model contract)
  *   topLevelCacheControl → cacheControlExtensionsStripped (must run AFTER so
  *     the auto-applied marker also gets its scope/ttl extensions cleaned)
  *   eagerInputStreamingStripped → toolStrictStripped → structuredOutputFormat
@@ -29,6 +33,7 @@ export const messagesPayloadInterceptors: readonly CopilotInterceptor[] = [
   withCompactHeaders,
   withInteractionIdHeader,
   withMessagesVisionHeader,
+  withThinkingAdapted,
   withTopLevelCacheControlApplied,
   withCacheControlExtensionsStripped,
   withEagerInputStreamingStripped,
