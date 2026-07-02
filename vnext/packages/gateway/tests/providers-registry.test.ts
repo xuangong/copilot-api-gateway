@@ -165,7 +165,8 @@ test('listProviderBindings: copilot model endpoints follow copilot heuristic', a
   const bindings = await listProviderBindings({ copilot: { copilotToken: 't', accountType: 'individual' } })
   const byId = new Map(bindings.map((b) => [b.model.id, b.model.endpoints]))
   expect(byId.get('claude-3.7-sonnet')).toMatchObject({ messages: {}, messages_count_tokens: {}, chat_completions: {} })
-  expect(byId.get('gpt-5')).toMatchObject({ responses: {}, chat_completions: {} })
+  expect(byId.get('gpt-5')).toMatchObject({ responses: {}, messages_count_tokens: {} })
+  expect((byId.get('gpt-5') as ModelEndpoints).chat_completions).toBeUndefined()
   expect(byId.get('text-embedding-3')).toEqual({ embeddings: {} })
 })
 
