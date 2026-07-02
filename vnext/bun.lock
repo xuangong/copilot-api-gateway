@@ -121,6 +121,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@vibe-core/http": "workspace:*",
+        "@vibe-core/platform": "workspace:*",
         "@vibe-core/result": "workspace:*",
         "@vibe-core/service": "workspace:*",
         "@vibe-llm/protocols": "workspace:*",

@@ -1,8 +1,7 @@
 /**
- * Image-size fitting helper — verbatim copy from
- * apps/gateway/src/shared/image/size.ts.
+ * Image-size fitting helper — pure math, no platform dependencies.
  */
-import type { ImageDimensions } from "./types"
+import type { ImageDimensions } from "@vibe-core/platform"
 
 export interface SizeCaps {
   maxLongEdge?: number

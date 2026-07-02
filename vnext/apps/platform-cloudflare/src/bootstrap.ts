@@ -1,9 +1,9 @@
 import {
   initSqlDatabase,
-  initImageProcessor,
   initEnv,
   initBackground,
   initRuntimeLocation,
+  initImageProcessor,
   type SqlDatabase,
 } from "@vibe-core/platform"
 import { initRepo } from "@vibe-llm/gateway/src/shared/repo/index.ts"

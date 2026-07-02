@@ -1,9 +1,7 @@
 /**
- * Inline base64 image helpers — verbatim copy from
- * apps/gateway/src/shared/image/inline.ts.
+ * Inline base64 image helpers — LLM-vertical, owned by this package.
  */
-import { getImageProcessor } from "./index"
-import type { ImageSizeCalculator } from "./types"
+import { getImageProcessor, type ImageSizeCalculator } from "@vibe-core/platform"
 
 const BASE64_CHUNK = 0x8000
 

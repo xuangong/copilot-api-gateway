@@ -6,10 +6,19 @@ test('fetch accepts ProviderRequest object form', async () => {
   // Patch the global fetch the forward layer uses; we just want to confirm the
   // new shape doesn't throw at the type/runtime boundary. Real network is
   // covered by integration tests.
+  //
+  // Branch on URL so the variant-filtering interceptor's `/models` lookup gets
+  // a well-formed (empty) catalog instead of falling through to the
+  // count-tokens response — otherwise `models.data.find(...)` throws inside
+  // the try/catch and pollutes stderr.
   const orig = globalThis.fetch
-  globalThis.fetch = (async () =>
-    new Response('{"input_tokens":1}', { status: 200, headers: { 'content-type': 'application/json' } })
-  ) as typeof fetch
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (url.endsWith('/models')) {
+      return new Response('{"data":[]}', { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    return new Response('{"input_tokens":1}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }) as typeof fetch
   try {
     const res = await provider.fetch({
       endpoint: 'messages_count_tokens',

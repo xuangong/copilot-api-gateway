@@ -1,10 +1,10 @@
 import { Database } from "bun:sqlite"
 import {
   initSqlDatabase,
-  initImageProcessor,
   initEnv,
   initBackground,
   initRuntimeLocation,
+  initImageProcessor,
 } from "@vibe-core/platform"
 import { initRepo } from "@vibe-llm/gateway/src/shared/repo/index.ts"
 import { initCache } from "@vibe-llm/gateway/src/shared/cache/index.ts"

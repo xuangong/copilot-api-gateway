@@ -25,12 +25,12 @@
  * apps/api/src/data-plane/providers/copilot/interceptors/image-size.ts
  */
 
+import { type ImageSizeCalculator } from "@vibe-core/platform"
 import {
   compressBase64ImageToWebp,
   compressImageDataUrlToWebp,
   fitWithin,
   isBase64ImageDataUrl,
-  type ImageSizeCalculator,
   type SizeCaps,
 } from "../image"
 

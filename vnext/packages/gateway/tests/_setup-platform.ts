@@ -1,10 +1,10 @@
 import {
   __resetPlatformForTests,
-  initImageProcessor,
   initEnv,
   initBackground,
   initRuntimeLocation,
   initSqlDatabase,
+  initImageProcessor,
   type SqlDatabase,
 } from '@vibe-core/platform'
 import { Database } from 'bun:sqlite'
