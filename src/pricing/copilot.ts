@@ -29,6 +29,8 @@ export function copilotPublicModelId(id: string): string {
 
 const COPILOT_MODEL_PRICING: readonly PricingRule[] = [
   [/^claude-opus-4-[5-8]$/, { input: 5, cache_read: 0.5, cache_write: 6.25, output: 25 }],
+  // Claude Sonnet 5 launch pricing (promo through 2026-08-31): $2 / $0.20 / $2.50 / $10.
+  [/^claude-sonnet-5(-\d)?$/, { input: 2, cache_read: 0.2, cache_write: 2.5, output: 10 }],
   [/^claude-sonnet-4(-[56])?$/, { input: 3, cache_read: 0.3, cache_write: 3.75, output: 15 }],
   ["claude-haiku-4-5", { input: 1, cache_read: 0.1, cache_write: 1.25, output: 5 }],
   ["gpt-5.5", { input: 5, cache_read: 0.5, output: 30 }],

@@ -28,6 +28,10 @@ describe("pricing lookup", () => {
     const p = pricingForCopilotPublicModelId("claude-opus-4-7")
     expect(p).toEqual({ input: 5, cache_read: 0.5, cache_write: 6.25, output: 25 })
   })
+  test("matches claude sonnet 5 launch pricing", () => {
+    const p = pricingForCopilotPublicModelId("claude-sonnet-5")
+    expect(p).toEqual({ input: 2, cache_read: 0.2, cache_write: 2.5, output: 10 })
+  })
   test("matches gpt-5.4-mini exact key", () => {
     const p = pricingForCopilotPublicModelId("gpt-5.4-mini")
     expect(p).toEqual({ input: 0.75, cache_read: 0.075, output: 4.5 })
