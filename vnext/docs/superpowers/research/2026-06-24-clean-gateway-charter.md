@@ -43,7 +43,7 @@
 | 6 | **Telemetry context per-binding**(每个 candidate 各自的 PerformanceTelemetryContext) | ExecuteResult 携带 `performance` 字段;framework 类型不知 metric 业务语义 |
 | 7 | **Type-safe streaming events**(类型化 ProtocolFrame,不透传 bytes) | Framework 提供 `ExecuteResult<ProtocolFrame<T>>` 泛型 |
 | 8 | **Translator error as terminal frame**(translate 失败生成符合源协议的 SSE error 流) | Framework 的 ExecuteResult union 支持 "upstream-error + body bytes" 与 "events" 两态 |
-| 9 | **Twin runtime**(同份业务码 Bun + CFW Workers) | @vnext/platform 已抽象 env / sql / file / background / runtime-location |
+| 9 | **Twin runtime**(同份业务码 Bun + CFW Workers) | @vnext/platform 已抽象 env / sql / file / background / runtime-location / image |
 | 10 | **Control plane 业务表**(api-keys, copilot-quota, upstreams, token-usage, web tests) | Platform 提供 sql;framework 不感知业务表 schema |
 
 ---
@@ -52,7 +52,7 @@
 
 ```
 框架层 (domain-neutral)
-  @vnext/platform        runtime 抽象 (env/sql/file/background)
+  @vnext/platform        runtime 抽象 (env/sql/file/background/image)
   @vnext/http            HTTP 工具
   @vnext/cache           通用 cache
   @vnext/result          ExecuteResult<T> / ProtocolFrame<T> / PerformanceTelemetryContext
