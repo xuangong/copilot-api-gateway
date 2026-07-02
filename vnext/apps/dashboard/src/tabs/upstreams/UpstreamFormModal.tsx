@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
+import { useAuth } from "../../state/auth"
 import * as api from "../../api/upstreams"
 import type { UpstreamRecord } from "../../api/types"
 
@@ -136,6 +137,7 @@ function parseAzureDeployments(txt: string): { name: string; model: string }[] |
 export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClose, onSaved }: Props) {
   const { push: toast } = useToast()
   const t = useT()
+  const { session } = useAuth()
   const initial = useMemo(() => buildInitial(mode), [mode])
   const [provider] = useState<Provider>(initial.provider)
   const [form, setForm] = useState<FormState>(initial.form)
@@ -284,6 +286,10 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           config,
           flagOverrides: form.flagOverrides,
           disabledPublicModelIds: disabledIds,
+          // Default new upstreams to the current user so admins don't
+          // accidentally create read-only "global" rows. Backend also
+          // defends against missing ownerId.
+          ownerId: session?.userId != null ? String(session.userId) : undefined,
         })
         toast(t("dash.toastCreated"), "success")
       } else {

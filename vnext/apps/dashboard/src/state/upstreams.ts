@@ -118,9 +118,18 @@ export function useUpstreams() {
   const remove = async (u: UpstreamRecord): Promise<boolean> => {
     if (u.provider === "copilot") {
       const userId = u.config?.user?.id
+      // Orphan copilot rows (legacy / hand-created entries with no GitHub
+      // user attached) can't go through DELETE /auth/github/:id — fall back
+      // to the generic upstream delete, which still cascade-cleans github_accounts.
       if (!userId) {
-        toast("Cannot resolve GitHub user id for this upstream.", "error")
-        return false
+        if (!confirm(`Delete upstream "${u.name}"? (No GitHub account attached.)`)) return false
+        const ok = await withBusy(u.id, async () => {
+          await api.deleteUpstream(u.id)
+          toast(`Deleted ${u.name}`, "success")
+          await reload()
+          return true
+        })
+        return ok === true
       }
       if (!confirm(`Sign out "${u.name}"? This removes the GitHub token from the gateway.`)) return false
       const ok = await withBusy(u.id, async () => {

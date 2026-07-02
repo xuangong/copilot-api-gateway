@@ -72,6 +72,7 @@ export interface CreateUpstreamBody {
   config: Record<string, unknown>
   flagOverrides?: Record<string, boolean>
   disabledPublicModelIds?: string[]
+  ownerId?: string
 }
 export function createUpstream(body: CreateUpstreamBody): Promise<UpstreamRecord> {
   return api<UpstreamRecord>("/api/upstreams", { method: "POST", body })
