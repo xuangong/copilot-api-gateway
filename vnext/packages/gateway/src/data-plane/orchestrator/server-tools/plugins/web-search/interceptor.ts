@@ -109,6 +109,7 @@ async function createMessages(
     isStreaming: false,
     runtimeLocation: getRuntimeLocation(),
     requestStartedAt,
+    sourceApi: 'messages',
   }
 
   const result = await messagesAttempt.generate({

@@ -9,10 +9,10 @@
  * The final test in this file is a **negative structural assertion** (Spec 3
  * Part 3 Task 9): it reads the source of `snapshot-sidecar.ts` and verifies
  * the strings `finalMetadata` and `__interceptorReplaced` are absent. Those
- * are owned by the new telemetry channel (see `respond-telemetry.ts` +
- * `image-generation-shortcut.ts`). If the sidecar ever starts touching
- * either field, telemetry persistence and snapshot persistence will silently
- * cross over and corrupt each other — the test fails loudly first.
+ * are owned by the telemetry channel (see `respond-telemetry.ts`). If the
+ * sidecar ever starts touching either field, telemetry persistence and
+ * snapshot persistence will silently cross over and corrupt each other — the
+ * test fails loudly first.
  */
 import { test, expect, afterEach } from 'bun:test'
 import { readFileSync } from 'node:fs'
@@ -213,8 +213,8 @@ test('attachStreamSidecar — falls back to fire-and-forget when executionCtx is
  * (`respond-telemetry.ts`). They MUST stay disjoint:
  *
  *   - The telemetry channel owns `finalMetadata` and the
- *     `__interceptorReplaced` provenance flag (set by
- *     `image-generation-shortcut.ts`'s `markInterceptorReplaced`).
+ *     `__interceptorReplaced` provenance flag (set by interceptors that
+ *     replace the upstream response, e.g. via `markInterceptorReplaced`).
  *   - The sidecar owns the post-turn `responses-store` snapshot persistence.
  *
  * If snapshot-sidecar.ts ever references either string, it has either started

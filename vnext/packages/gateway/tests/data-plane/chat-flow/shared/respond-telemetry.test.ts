@@ -160,3 +160,43 @@ test('recordPerformance writes one row carrying isError flag + durationMs', asyn
   expect(row.model).toBe('gpt-4')
   expect(row.stream).toBe(true)
 })
+
+test('recordPerformance defaults sourceApi to chat-completions when ctx omits it', async () => {
+  const calls: Record<string, unknown>[] = []
+  const stub = {
+    performance: { record: async (row: Record<string, unknown>) => { calls.push(row) } },
+  } as unknown as Repo
+  await recordPerformance(ctx, perf(), false, stub)
+  expect(calls[0]?.sourceApi).toBe('chat-completions')
+  expect(calls[0]?.targetApi).toBe('chat-completions')
+})
+
+test('recordPerformance threads sourceApi from ctx and mirrors targetApi for same-protocol', async () => {
+  const calls: Record<string, unknown>[] = []
+  const stub = {
+    performance: { record: async (row: Record<string, unknown>) => { calls.push(row) } },
+  } as unknown as Repo
+  await recordPerformance({ ...ctx, sourceApi: 'messages' }, perf(), false, stub)
+  expect(calls[0]?.sourceApi).toBe('messages')
+  expect(calls[0]?.targetApi).toBe('messages')
+})
+
+test('recordPerformance routes gemini source through chat-completions target', async () => {
+  const calls: Record<string, unknown>[] = []
+  const stub = {
+    performance: { record: async (row: Record<string, unknown>) => { calls.push(row) } },
+  } as unknown as Repo
+  await recordPerformance({ ...ctx, sourceApi: 'gemini' }, perf(), false, stub)
+  expect(calls[0]?.sourceApi).toBe('gemini')
+  expect(calls[0]?.targetApi).toBe('chat-completions')
+})
+
+test('recordPerformance honors hubOverride when translator carries a hub', async () => {
+  const calls: Record<string, unknown>[] = []
+  const stub = {
+    performance: { record: async (row: Record<string, unknown>) => { calls.push(row) } },
+  } as unknown as Repo
+  await recordPerformance({ ...ctx, sourceApi: 'responses' }, perf(), false, stub, 'chat-completions')
+  expect(calls[0]?.sourceApi).toBe('responses')
+  expect(calls[0]?.targetApi).toBe('chat-completions')
+})

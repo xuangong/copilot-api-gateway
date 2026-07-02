@@ -24,18 +24,41 @@ import type { KitAuthCtx, ServeTemplateDeps } from '@vibe-core/chat-flow-kit'
 import { jsonErrorWrap } from './error-wrap.ts'
 import { runQuotaGate } from './quota-gate.ts'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
+import type { PerformanceSourceApi } from '../../../shared/repo/types.ts'
 
 type AuthWithApiKey = KitAuthCtx & { readonly apiKeyId?: string | null }
+
+/**
+ * Map the kit's opaque `endpointTag` string to the canonical
+ * `PerformanceSourceApi` value persisted on `performance_summary.source_api`.
+ * The four chat-flow endpoints set their own tags in serve.ts; embeddings is
+ * left out because it does not go through chat-flow-kit.
+ */
+function endpointTagToSourceApi(tag: string): PerformanceSourceApi {
+  switch (tag) {
+    case 'messages':
+      return 'messages'
+    case 'responses':
+      return 'responses'
+    case 'gemini':
+      return 'gemini'
+    case 'chat_completions':
+      return 'chat-completions'
+    default:
+      return 'chat-completions'
+  }
+}
 
 export const kitDeps: ServeTemplateDeps<AuthWithApiKey, TelemetryRequestContext> = {
   runQuotaGate,
   jsonErrorWrap,
-  buildTelemetryCtx: ({ auth, obsCtx, isStreaming, requestStartedAt }) => ({
+  buildTelemetryCtx: ({ auth, obsCtx, isStreaming, requestStartedAt, endpointTag }) => ({
     apiKeyId: (obsCtx.apiKeyId as string | null | undefined) ?? auth.apiKeyId ?? '<unknown>',
     userAgent: (obsCtx.userAgent as string | null | undefined) ?? null,
     requestId: (obsCtx.requestId as string | undefined) ?? crypto.randomUUID(),
     isStreaming,
     runtimeLocation: getRuntimeLocation(),
     requestStartedAt,
+    sourceApi: endpointTagToSourceApi(endpointTag),
   }),
 }

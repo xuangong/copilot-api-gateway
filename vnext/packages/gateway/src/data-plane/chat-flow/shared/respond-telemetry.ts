@@ -32,11 +32,24 @@ import {
 import { getRepo } from '../../../shared/repo/index.ts'
 import type {
   PerformanceRecordInput,
+  PerformanceSourceApi,
+  PerformanceTargetApi,
   Repo,
   TokenUsage,
   UsageRecord,
 } from '../../../shared/repo/types.ts'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
+
+/**
+ * Map the inbound source-api to the upstream target-api the request resolves
+ * to. For same-protocol attempts they coincide; for `gemini` (which has no
+ * native upstream in Copilot) we route via chat-completions. Callers that
+ * traverse a translator can override via the optional `targetApi` arg.
+ */
+function defaultTargetApi(source: PerformanceSourceApi): PerformanceTargetApi {
+  if (source === 'gemini') return 'chat-completions'
+  return source
+}
 
 const __replacedFlag = '__interceptorReplaced'
 
@@ -150,16 +163,17 @@ export async function recordUsage(
  *
  * Wire format mirrors legacy `latency-tracker.ts.recordLatency`'s
  * performance fan-out (metricScope='request_total'). The semantic `failed`
- * flag is translated to the legacy `isError` column. `sourceApi` / `targetApi`
- * are intentionally placeholder strings here — Part 1 helpers don't yet know
- * which endpoint invoked them; subsequent parts will surface them through
- * `TelemetryRequestContext` once endpoint code starts wiring respond.ts.
+ * flag is translated to the legacy `isError` column. `sourceApi` reads from
+ * `telemetryCtx.sourceApi` (set in `kit-deps.buildTelemetryCtx` from the
+ * kit's `endpointTag`); `targetApi` mirrors the source unless the model
+ * identity carries a `translatorPair.hub` overriding it.
  */
 export async function recordPerformance(
   telemetryCtx: TelemetryRequestContext,
   performance: PerformanceTelemetryContext | undefined,
   failed: boolean,
   repo: Repo = getRepo(),
+  hubOverride?: PerformanceTargetApi,
 ): Promise<void> {
   if (!performance) {
     console.debug(
@@ -168,15 +182,16 @@ export async function recordPerformance(
     return
   }
   const durationMs = Date.now() - telemetryCtx.requestStartedAt
+  const sourceApi = telemetryCtx.sourceApi ?? 'chat-completions'
+  const targetApi = hubOverride ?? defaultTargetApi(sourceApi)
   const row: PerformanceRecordInput = {
     hour: currentHour(),
     metricScope: 'request_total',
     keyId: performance.keyId,
     model: performance.model,
     upstream: performance.upstream,
-    // Placeholders until endpoint wiring lands in Parts 2/3/4.
-    sourceApi: 'chat-completions',
-    targetApi: 'chat-completions',
+    sourceApi,
+    targetApi,
     stream: performance.stream,
     runtimeLocation: performance.runtimeLocation,
     durationMs,
