@@ -75,11 +75,16 @@ prepareActiveServerTools()          // 每 plugin.register(inv, req) → ActiveS
 - Feature flag 内部常量 `SERVER_TOOL_SHIM_ENABLED = false`(默认关),开启时走新路径
 - **验收**:新增 ~30 个 shim unit test(降级、恢复、last-wins、tool_choice demote),对齐参考项目 shim.ts 测试
 
-### Phase 13-C:web-search plugin
-- 移植 `server-tools/web-search.ts` + 测试
-- 注册到 registry
+### Phase 13-C:web-search plugin(严格 A path,决议见 §12)
+- 移植 `tools/web-search/` 全套(operations + providers + domain-normalize + search-config + fetch-page + search + usage + types + shared)到 `vnext/packages/gateway/src/data-plane/tools/web-search/`
+- 移植 `server-tools/web-search.ts` + 测试到 `vnext/packages/gateway/src/data-plane/chat-flow/responses/interceptors/server-tools/web-search.ts`
+- **保留** vNext 现有 `orchestrator/server-tools/plugins/web-search/engines/{bing,copilot,langsearch}.ts`,适配进参考项目的 `WebSearchProvider` 抽象(§12 Q1c)
+- **新增** `search_config` 表 + D1/SQLite migration + Repo 接口 + dashboard UI(§12 Q2a)
+- **跳过** alpha-search passthrough:`upstream.ts` / `execution.ts` / `relay-response.ts` 不移植;`webSearchServerTool` 里去掉 `state.executeAlpha` 分支(§12 Q3b,另立 spec)
+- 注册到 `withResponsesServerToolShim(registrations, store)`
 - `SERVER_TOOL_SHIM_ENABLED = true` 后,`/v1/responses` 声明 `{ type: 'web_search' }` 时走 ReAct
-- **验收**:参考项目 web-search_test.ts 移植 ~15 个 case;`bun run local` docker + 手工 curl 一个 "search + summarize" 请求
+- Messages 侧 `orchestrator/plugins/web-search/interceptor.ts` **保持不动**(仍是 Messages shortcut);待未来另一 spec 收敛
+- **验收**:参考项目 web-search_test.ts + providers/*_test.ts 移植;`bun run local` docker + 手工 curl 一个 "search + summarize" 请求
 
 ### Phase 13-D:image-generation plugin(替代现有 route-handler)
 - 移植 `server-tools/image-generation.ts` + 测试
@@ -249,3 +254,51 @@ type Interceptor<Ctx, Req, Result> = (req: Req, ctx: Ctx, next: () => Promise<Re
 - **13-A-3** 骨架单元测试(~15 case)
 
 进 Phase 13-A 时按 3 个 commit 分开提交,单独 review。
+
+---
+
+## 12. Phase 13-C 决议(2026-07-27,A path 严格 1:1 移植)
+
+本节记录 Phase 13-C 启动前的三个方案分歧及最终决定。审计发现 vNext 已存在一套完整的 web-search 系统(`orchestrator/server-tools/plugins/web-search/`,1527 LOC × 9 文件,EngineManager + bing/copilot/langsearch/tavily/microsoft-grounding 五引擎),目前只挂在 Messages 协议 shortcut 上;而参考项目 `tools/web-search/`(~2354 非测试 LOC)基于 `WebSearchProvider` 抽象 + tavily/jina/microsoft-grounding 三 provider,配合 blob JSON `SearchConfig` 存储。
+
+**用户决策:走 A path 严格移植参考项目栈。** 三个子分歧的解答:
+
+### Q1 引擎栈:(c) 求同存异
+
+- 移植参考项目 `WebSearchProvider` 抽象 + 三个 provider(tavily / jina / microsoft-grounding)
+- **保留** vNext 已投产的 bing / copilot / langsearch 三个引擎,把它们**适配进** `WebSearchProvider` 抽象层(实现 `search()` / `fetchPage?()` 接口)
+- 好处:vNext 已有引擎不弃投,长期两个协议可以收敛到同一抽象
+- 代价:适配层 ~150 LOC(每引擎 ~50)
+
+### Q2 Search config 存储:(a) 新建 search_config 表
+
+- 新建 `search_config` 表(单行 blob JSON,keyed by "singleton")+ D1 migration + SqliteRepo / InMemoryRepo 实现 + `searchConfig.get/save` Repo 接口
+- 参考项目 `search-config.ts` / `parseSearchConfigStrict` / `loadSearchConfig` / `saveSearchConfig` 原样移植
+- Dashboard 加 provider 选择器 + 各 provider apiKey 输入(参考项目原样 UI shape,vNext 组件重写)
+- 迁移路径:vNext 现有的每引擎独立密钥(EngineManager)与新 search_config 表短期并存;未来一次性把老密钥迁进新表,弃用 EngineManager 独立密钥读取(时间点由 Messages ReAct 化时点决定,不在本 spec)
+
+### Q3 Alpha-search passthrough:(b) 延后
+
+- 不移植 `alpha-search/{execution,upstream,relay-response}.ts` —— 需要 `enumerateModelCandidates` + `identityWrapUpstreamCall`,涉及 vNext dispatcher 抽象层改动,风险大
+- `webSearchServerTool` 里去掉 `if (searchConfig.passthroughOpenAiSearch.enabled)` 分支,只留 local-provider 路径
+- 配置字段保留(`SearchConfig.passthroughOpenAiSearch`),但运行时忽略 —— 便于未来接回
+- 另立 spec 移植时,一次性补 `enumerateModelCandidates` 等 dispatcher 抽象
+
+### Phase 13-C 拆分(执行顺序)
+
+按 review 粒度拆成 6 个 commit,每个独立可测:
+
+- **13-C-1** `search_config` Repo 接口 + 类型(`searchConfig.get/save`)+ InMemoryRepo 实现 + unit test
+- **13-C-2** D1 migration(`search_config` 表)+ SqliteRepo 实现 + integration test
+- **13-C-3** 移植 `tools/web-search/` 核心:`types.ts` / `domain-normalize.ts` / `search-config.ts` / `provider.ts` / `search.ts` / `fetch-page.ts` / `usage.ts` / `operations.ts` + 单元测试
+- **13-C-4** 移植 providers:`providers/{shared,truncate,tavily,jina,microsoft-grounding}.ts` + 各自单元测试
+- **13-C-5** 适配 vNext 现有 bing / copilot / langsearch 引擎进 `WebSearchProvider` 抽象(3 个 provider adapter + 各自单元测试),更新 `provider.ts` 的 `resolveConfiguredWebSearchProvider` 名单
+- **13-C-6** 移植 `server-tools/web-search.ts`(Responses interceptor)+ 移植 `web-search_test.ts` 测试 + 注册到 `withResponsesServerToolShim([webSearchServerTool], store)` + flip `SERVER_TOOL_SHIM_ENABLED=true`(**仅 web_search 声明时走 ReAct;image_generation 还是老 route-handler,Phase 13-D 处理**)
+- **13-C-7**(可选)Dashboard search-config UI —— 若时间紧,先出 API,UI 单开 PR
+
+**验收**:
+- 6 个 commit 每个独立测试全绿
+- 累计 635 + 新增 ~40-60 个测试通过
+- `bun run local` docker + curl 一个 `web_search` 声明的 responses 请求,拿到有效搜索结果
+- Messages 侧 EngineManager 路径无回归(Messages 冒烟一遍)
+
