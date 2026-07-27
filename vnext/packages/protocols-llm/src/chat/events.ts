@@ -16,7 +16,7 @@ export interface ChatCompletionsReasoningItem {
 export interface ChatCompletionsDelta {
   content?: string | null
   role?: string
-  tool_calls?: ChatCompletionsToolCall[]
+  tool_calls?: ChatCompletionsToolCall[] | null
   reasoning_text?: string | null
   reasoning_opaque?: string | null
   reasoning_items?: ChatCompletionsReasoningItem[] | null

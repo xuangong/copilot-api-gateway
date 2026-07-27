@@ -36,6 +36,7 @@ interface ResponsesPayloadLike {
   model: string
   input: unknown
   tools?: Array<Record<string, unknown>>
+  tool_choice?: unknown
   stream?: boolean
 }
 
@@ -100,7 +101,10 @@ export async function handleResponsesImageGeneration(
     userAgent: ctx.userAgent,
     requestId: ctx.requestId,
   })
-  const responseEnvelope = buildImageGenerationResponse(publicModel, prompt, outcome)
+  const responseEnvelope = buildImageGenerationResponse(publicModel, prompt, outcome, {
+    tools: payload.tools,
+    toolChoice: payload.tool_choice,
+  })
 
   if (payload.stream === true) {
     const sse = synthImageGenerationSSE(responseEnvelope)

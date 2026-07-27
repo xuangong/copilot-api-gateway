@@ -36,6 +36,15 @@ test('throws on upstream error payload chunk', async () => {
   ]))).rejects.toThrow(/upstream failed/)
 })
 
+test('treats a null tool_calls as carrying no call (SGLang wire compatibility)', async () => {
+  const result = await reassembleChatCompletions(drainable([
+    { id: 'cmpl_null', object: 'chat.completion.chunk', model: 'sglang-test', choices: [{ index: 0, delta: { role: 'assistant', content: null, tool_calls: null }, finish_reason: null }] } as any,
+    { id: 'cmpl_null', object: 'chat.completion.chunk', model: 'sglang-test', choices: [{ index: 0, delta: { content: 'hi', tool_calls: null }, finish_reason: 'stop' }] } as any,
+  ]))
+  expect(result.choices[0]!.message.content).toBe('hi')
+  expect(result.choices[0]!.message.tool_calls).toBeUndefined()
+})
+
 test('accumulates reasoning_text, reasoning_opaque, and reasoning_items across chunks', async () => {
   const result = await reassembleChatCompletions(drainable([
     { id: 'c1', object: 'chat.completion.chunk', model: 'm', choices: [{ index: 0, delta: { reasoning_text: 'think ' } }] } as any,

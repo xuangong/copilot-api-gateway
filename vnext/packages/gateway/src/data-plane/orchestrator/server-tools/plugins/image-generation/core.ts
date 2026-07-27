@@ -428,16 +428,43 @@ export interface ImageGenerationResponseShape {
   metadata: null
   parallel_tool_calls: false
   temperature: null
-  tool_choice: 'auto'
-  tools: []
+  tool_choice: 'auto' | Record<string, unknown>
+  tools: Array<Record<string, unknown>>
   top_p: null
   usage: { input_tokens: 0; output_tokens: 0; total_tokens: 0 }
+}
+
+// Mirror Azure/Copilot: when a request declares hosted `image_generation`
+// multiple times, dedupe-to-last — the response echoes the last complete
+// declaration in the array slot of the first, so unrelated tools keep their
+// relative order. Non-image tools pass through unchanged.
+//
+// Ported from copilot-gateway PR #172. vNext's shim is single-turn, so we
+// only need the tools/tool_choice echo half of that fix; the multi-turn
+// tool_choice-demotion-restore machinery does not apply here.
+function pickLastImageGenerationTool(
+  tools: ReadonlyArray<Record<string, unknown>> | undefined,
+): Record<string, unknown> | undefined {
+  if (!Array.isArray(tools)) return undefined
+  let last: Record<string, unknown> | undefined
+  for (const t of tools) {
+    if (t && (t as { type?: string }).type === 'image_generation') last = t
+  }
+  return last
+}
+
+function isForcedImageGenerationChoice(
+  toolChoice: unknown,
+): toolChoice is Record<string, unknown> {
+  if (toolChoice === null || typeof toolChoice !== 'object') return false
+  return (toolChoice as { type?: string }).type === 'image_generation'
 }
 
 export function buildImageGenerationResponse(
   publicModel: string,
   prompt: string,
   outcome: ImageGenerationOutcome,
+  echo?: { tools?: ReadonlyArray<Record<string, unknown>>; toolChoice?: unknown },
 ): ImageGenerationResponseShape {
   const itemId = synthesizeImageGenerationCallId()
   const item: Record<string, unknown> = outcome.ok
@@ -457,6 +484,11 @@ export function buildImageGenerationResponse(
         revised_prompt: prompt,
         error: outcome.error,
       }
+  const lastTool = pickLastImageGenerationTool(echo?.tools)
+  const echoedTools: Array<Record<string, unknown>> = lastTool ? [lastTool] : []
+  const echoedToolChoice: 'auto' | Record<string, unknown> = isForcedImageGenerationChoice(echo?.toolChoice)
+    ? (echo!.toolChoice as Record<string, unknown>)
+    : 'auto'
   return {
     id: synthesizeResponseId(),
     object: 'response',
@@ -471,8 +503,8 @@ export function buildImageGenerationResponse(
     metadata: null,
     parallel_tool_calls: false,
     temperature: null,
-    tool_choice: 'auto',
-    tools: [],
+    tool_choice: echoedToolChoice,
+    tools: echoedTools,
     top_p: null,
     usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
   }

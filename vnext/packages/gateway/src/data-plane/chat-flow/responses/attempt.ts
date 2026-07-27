@@ -203,47 +203,6 @@ export const responsesAttempt = {
     if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
     if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for responses → ${sel.targetEndpoint}`))
 
-    if (sel.targetEndpoint !== 'responses') {
-      // Cross-protocol attempt: delegate to the hub attempt via
-      // `traverseTranslation`. The translator shapes the request payload into
-      // the hub protocol, the hub attempt issues the upstream call, then the
-      // translator's event mapper rewraps the returned event stream so the
-      // responses caller still sees its native frames. See Spec 6 §3.4.
-      //
-      // Note: `requestId` and `userAgent` are responses-specific args that are
-      // forwarded through `traverseTranslation` to the hub attempt for
-      // image-gen + telemetry correlation. The image-generation shortcut already
-      // ran before this point, so these are safe to pass through.
-      const hubProtocol = sel.targetEndpoint as HubAttemptProtocol
-      const hubAttempt = (args.hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
-      return await traverseTranslation({
-        sourcePayload: args.payload as Record<string, unknown>,
-        sourceProtocol: 'responses',
-        hubProtocol,
-        translator: sel.translator,
-        innerAttempt: async (innerArgs) => {
-          return (await hubAttempt.generate({
-            payload: innerArgs.payload as never,
-            auth: innerArgs.auth as never,
-            ctx: { downstreamAbortSignal: innerArgs.signal } as never,
-            telemetryCtx: innerArgs.inheritedTelemetryCtx,
-            inheritedHeaders: innerArgs.inheritedHeaders,
-            snapshotMode: innerArgs.snapshotMode,
-            requestId: innerArgs.requestId,
-            userAgent: innerArgs.userAgent,
-          } as never)) as never
-        },
-        inheritedHeaders: args.inheritedHeaders ?? {},
-        inheritedTelemetryCtx: args.telemetryCtx,
-        auth: args.auth,
-        requestId: args.requestId,
-        userAgent: args.userAgent,
-        signal: args.ctx.downstreamAbortSignal,
-        fallbackMaxOutputTokens: (sel.binding as { upstreamMaxOutputTokens?: number }).upstreamMaxOutputTokens,
-        model: sel.bareModel,
-      })
-    }
-
     const invocation: Invocation = {
       endpoint: 'responses',
       enabledFlags: new Set(),
@@ -256,6 +215,49 @@ export const responsesAttempt = {
     let upstreamResp: ProviderResponse | undefined
 
     const terminal = async (): Promise<LlmExecuteResult<ProtocolFrame<ResponsesStreamEvent>>> => {
+      if (sel.targetEndpoint !== 'responses') {
+        // Cross-protocol attempt: delegate to the hub attempt via
+        // `traverseTranslation`. Kept inside the terminal handler (rather than a
+        // pre-`runInterceptors` early-return) so the interceptor chain uniformly
+        // wraps both identity and cross-protocol paths. This is a structural
+        // prerequisite for the ReAct server-tool shim (Spec 13 Phase 13-B),
+        // which needs to inspect and rewrite the invocation payload before
+        // dispatch regardless of the target endpoint.
+        //
+        // Note: `requestId` and `userAgent` are responses-specific args that are
+        // forwarded through `traverseTranslation` to the hub attempt for
+        // image-gen + telemetry correlation. The image-generation shortcut already
+        // ran before this point, so these are safe to pass through.
+        const hubProtocol = sel.targetEndpoint as HubAttemptProtocol
+        const hubAttempt = (args.hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
+        return await traverseTranslation({
+          sourcePayload: invocation.payload,
+          sourceProtocol: 'responses',
+          hubProtocol,
+          translator: sel.translator,
+          innerAttempt: async (innerArgs) => {
+            return (await hubAttempt.generate({
+              payload: innerArgs.payload as never,
+              auth: innerArgs.auth as never,
+              ctx: { downstreamAbortSignal: innerArgs.signal } as never,
+              telemetryCtx: innerArgs.inheritedTelemetryCtx,
+              inheritedHeaders: innerArgs.inheritedHeaders,
+              snapshotMode: innerArgs.snapshotMode,
+              requestId: innerArgs.requestId,
+              userAgent: innerArgs.userAgent,
+            } as never)) as never
+          },
+          inheritedHeaders: invocation.headers,
+          inheritedTelemetryCtx: args.telemetryCtx,
+          auth: args.auth,
+          requestId: args.requestId,
+          userAgent: args.userAgent,
+          signal: args.ctx.downstreamAbortSignal,
+          fallbackMaxOutputTokens: (sel.binding as { upstreamMaxOutputTokens?: number }).upstreamMaxOutputTokens,
+          model: sel.bareModel,
+        })
+      }
+
       const upstreamPayload = await sel.translator.translateRequest(invocation.payload, {
         signal: args.ctx.downstreamAbortSignal ?? new AbortController().signal,
       })
