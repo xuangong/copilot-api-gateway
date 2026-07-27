@@ -147,6 +147,7 @@ export class D1Repo implements Repo {
   observabilityShares: Repo["observabilityShares"]
   deviceCodes: Repo["deviceCodes"]
   responsesItems: Repo["responsesItems"]
+  searchConfig: Repo["searchConfig"]
 
   constructor(db: D1Database) {
     const shared = buildSharedRepo(new D1Executor(db))
@@ -167,5 +168,6 @@ export class D1Repo implements Repo {
     this.observabilityShares = shared.observabilityShares
     this.deviceCodes = shared.deviceCodes
     this.responsesItems = shared.responsesItems
+    this.searchConfig = shared.searchConfig
   }
 }

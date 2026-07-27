@@ -206,6 +206,18 @@ CREATE TABLE IF NOT EXISTS cache_kv (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cache_kv_expires_at ON cache_kv (expires_at);
+
+CREATE TABLE IF NOT EXISTS search_config (
+  id INTEGER PRIMARY KEY,
+  provider TEXT NOT NULL DEFAULT 'disabled',
+  tavily_api_key TEXT NOT NULL DEFAULT '',
+  microsoft_grounding_api_key TEXT NOT NULL DEFAULT '',
+  jina_api_key TEXT NOT NULL DEFAULT '',
+  passthrough_openai_search INTEGER NOT NULL DEFAULT 0,
+  alpha_search_upstream_id TEXT NOT NULL DEFAULT '',
+  alpha_search_model TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL
+);
 `
 
 function hasColumn(db: Database, table: string, column: string): boolean {
@@ -683,6 +695,7 @@ export class BunSqliteRepo implements Repo {
   observabilityShares: Repo["observabilityShares"]
   deviceCodes: Repo["deviceCodes"]
   responsesItems: Repo["responsesItems"]
+  searchConfig: Repo["searchConfig"]
 
   constructor(db: Database) {
     initSqlite(db)
@@ -704,6 +717,7 @@ export class BunSqliteRepo implements Repo {
     this.observabilityShares = shared.observabilityShares
     this.deviceCodes = shared.deviceCodes
     this.responsesItems = shared.responsesItems
+    this.searchConfig = shared.searchConfig
   }
 }
 

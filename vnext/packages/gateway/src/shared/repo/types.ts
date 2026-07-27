@@ -1,4 +1,7 @@
 import type { BillingDimension, ModelPricing, UpstreamKind, UpstreamRecord } from "@vibe-llm/protocols/common"
+import type { SearchConfig } from "../web-search-providers.ts"
+
+export type { SearchConfig, WebSearchProviderName } from "../web-search-providers.ts"
 
 export interface ApiKey {
   id: string
@@ -399,6 +402,19 @@ export interface ResponsesItemsRepo {
   deleteAll(): Promise<void>
 }
 
+/**
+ * Singleton global search config for the ported Responses server-tool shim
+ * (Phase 13-C). Blob-style: `get()` returns `null` when unset so callers can
+ * apply defaults; `save()` writes the validated shape.
+ *
+ * Ported 1:1 from copilot-gateway `SearchConfigRepo` — see repo/types.ts:255
+ * in the reference project.
+ */
+export interface SearchConfigRepo {
+  get(): Promise<SearchConfig | null>
+  save(config: SearchConfig): Promise<void>
+}
+
 export interface Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -417,4 +433,5 @@ export interface Repo {
   observabilityShares: ObservabilityShareRepo
   deviceCodes: DeviceCodeRepo
   responsesItems: ResponsesItemsRepo
+  searchConfig: SearchConfigRepo
 }

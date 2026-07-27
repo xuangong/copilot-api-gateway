@@ -26,6 +26,8 @@ import type {
   Repo,
   ResponsesItemRecord,
   ResponsesItemsRepo,
+  SearchConfig,
+  SearchConfigRepo,
   SessionRepo,
   UsageRecord,
   UsageRepo,
@@ -60,6 +62,7 @@ const DEVICE_COLS = "device_code, user_code, expires_at, user_id, session_token,
 const PERF_SUMMARY_COLS = "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, requests, errors, total_ms_sum"
 const PERF_BUCKET_COLS = "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, lower_ms, upper_ms, count"
 const RESPONSES_ITEMS_COLS = "id, api_key_id, kind, item_json, private_json, created_at, expires_at"
+const SEARCH_CONFIG_COLS = "id, provider, tavily_api_key, microsoft_grounding_api_key, jina_api_key, passthrough_openai_search, alpha_search_upstream_id, alpha_search_model, updated_at"
 
 function toApiKey(row: any): ApiKey {
   let priority: string[] | undefined
@@ -1026,6 +1029,7 @@ export function buildSharedRepo(x: SqlExecutor): Repo {
     deviceCodes: new SharedDeviceCodeRepo(x),
     observabilityShares: new SharedObservabilityShareRepo(x),
     responsesItems: new SharedResponsesItemsRepo(x),
+    searchConfig: new SharedSearchConfigRepo(x),
   }
 }
 
@@ -1080,5 +1084,64 @@ class SharedResponsesItemsRepo implements ResponsesItemsRepo {
 
   async deleteAll(): Promise<void> {
     await this.x.run("DELETE FROM responses_items", [])
+  }
+}
+
+class SharedSearchConfigRepo implements SearchConfigRepo {
+  constructor(private x: SqlExecutor) {}
+
+  async get(): Promise<SearchConfig | null> {
+    const row = await this.x.first<{
+      provider: string
+      tavily_api_key: string
+      microsoft_grounding_api_key: string
+      jina_api_key: string
+      passthrough_openai_search: number
+      alpha_search_upstream_id: string
+      alpha_search_model: string
+    }>(
+      `SELECT provider, tavily_api_key, microsoft_grounding_api_key, jina_api_key, passthrough_openai_search, alpha_search_upstream_id, alpha_search_model FROM search_config WHERE id = 1`,
+      [],
+    )
+    if (!row) return null
+    return {
+      provider: row.provider as SearchConfig["provider"],
+      tavily: { apiKey: row.tavily_api_key },
+      microsoftGrounding: { apiKey: row.microsoft_grounding_api_key },
+      jina: { apiKey: row.jina_api_key },
+      passthroughOpenAiSearch: {
+        enabled: row.passthrough_openai_search === 1,
+        upstreamId: row.alpha_search_upstream_id,
+        model: row.alpha_search_model,
+      },
+    }
+  }
+
+  async save(config: SearchConfig): Promise<void> {
+    const { provider, tavily, microsoftGrounding, jina, passthroughOpenAiSearch } = config
+    const updatedAt = new Date().toISOString()
+    await this.x.run(
+      `INSERT INTO search_config (${SEARCH_CONFIG_COLS})
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET
+         provider = excluded.provider,
+         tavily_api_key = excluded.tavily_api_key,
+         microsoft_grounding_api_key = excluded.microsoft_grounding_api_key,
+         jina_api_key = excluded.jina_api_key,
+         passthrough_openai_search = excluded.passthrough_openai_search,
+         alpha_search_upstream_id = excluded.alpha_search_upstream_id,
+         alpha_search_model = excluded.alpha_search_model,
+         updated_at = excluded.updated_at`,
+      [
+        provider,
+        tavily.apiKey,
+        microsoftGrounding.apiKey,
+        jina.apiKey,
+        passthroughOpenAiSearch.enabled ? 1 : 0,
+        passthroughOpenAiSearch.upstreamId,
+        passthroughOpenAiSearch.model,
+        updatedAt,
+      ],
+    )
   }
 }
