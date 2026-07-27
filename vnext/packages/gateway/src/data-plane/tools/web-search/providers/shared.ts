@@ -1,0 +1,127 @@
+// Ported 1:1 from copilot-gateway data-plane/tools/web-search/providers/shared.ts,
+// with isJsonObject inlined (vNext protocols don't export it).
+
+import type { WebSearchProviderResult } from '../types.ts'
+
+type JsonObject = Record<string, unknown>
+const isJsonObject = (v: unknown): v is JsonObject =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
+const MAX_WEB_SEARCH_QUERY_LENGTH = 1000
+
+export type ValidatedWebSearchQuery = { type: 'ok'; query: string } | { type: 'error'; result: WebSearchProviderResult }
+
+export const validateWebSearchQuery = (query: string): ValidatedWebSearchQuery => {
+  const normalized = query.trim()
+  if (normalized.length === 0) {
+    return {
+      type: 'error',
+      result: {
+        type: 'error',
+        errorCode: 'invalid_tool_input',
+        message: 'Search query must not be empty.',
+      },
+    }
+  }
+
+  if (normalized.length > MAX_WEB_SEARCH_QUERY_LENGTH) {
+    return {
+      type: 'error',
+      result: {
+        type: 'error',
+        errorCode: 'query_too_long',
+        message: 'Search query must be at most 1000 characters.',
+      },
+    }
+  }
+
+  return { type: 'ok', query: normalized }
+}
+
+export const toWebSearchTextBlocks = (content: unknown): Array<{ type: 'text'; text: string }> =>
+  typeof content === 'string' && content.trim().length > 0 ? [{ type: 'text', text: content.trim() }] : []
+
+// Cap the diagnostic body read at 8 KiB so a hostile or runaway
+// provider can't pin arbitrary memory before we slice it down. Streaming
+// from `response.body` stops the read at the cap regardless of
+// Content-Length.
+const MAX_PROVIDER_ERROR_BODY_BYTES = 8 * 1024
+
+const readBodyCapped = async (response: Response, maxBytes: number): Promise<string> => {
+  // Some Response shims (test doubles, oddball runtimes) leave `body`
+  // null even when `text()` works; fall back to a post-read slice.
+  if (response.body === null) {
+    return (await response.text()).slice(0, maxBytes)
+  }
+
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let totalBytes = 0
+  try {
+    while (totalBytes < maxBytes) {
+      const { value, done } = await reader.read()
+      if (done) break
+      if (value === undefined) continue
+      const remaining = maxBytes - totalBytes
+      if (value.byteLength <= remaining) {
+        chunks.push(value)
+        totalBytes += value.byteLength
+      } else {
+        chunks.push(value.subarray(0, remaining))
+        totalBytes = maxBytes
+      }
+    }
+  } finally {
+    // Drop the reader lock so cancel() can release the body; otherwise
+    // cancel() rejects.
+    reader.releaseLock()
+    await response.body.cancel().catch(() => undefined)
+  }
+
+  return new TextDecoder().decode(concatChunks(chunks, totalBytes))
+}
+
+const concatChunks = (chunks: Uint8Array[], totalBytes: number): Uint8Array => {
+  const out = new Uint8Array(totalBytes)
+  let offset = 0
+  for (const chunk of chunks) {
+    out.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return out
+}
+
+export const extractWebSearchProviderErrorMessage = async (response: Response): Promise<string | undefined> => {
+  const text = await readBodyCapped(response, MAX_PROVIDER_ERROR_BODY_BYTES)
+  if (text.length === 0) {
+    return undefined
+  }
+
+  try {
+    const parsed = JSON.parse(text)
+    if (!isJsonObject(parsed)) {
+      return text
+    }
+
+    if (typeof parsed.detail === 'string') {
+      return parsed.detail
+    }
+    if (typeof parsed.error === 'string') {
+      return parsed.error
+    }
+    if (isJsonObject(parsed.error) && typeof parsed.error.message === 'string') {
+      return parsed.error.message
+    }
+    if (typeof parsed.message === 'string') {
+      return parsed.message
+    }
+  } catch {
+    return text
+  }
+
+  return text
+}
+
+// Re-exported for providers that need their own JSON payload validation
+// without pulling their own copy of the helper.
+export { isJsonObject }
