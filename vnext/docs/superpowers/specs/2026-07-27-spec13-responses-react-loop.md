@@ -99,6 +99,13 @@ prepareActiveServerTools()          // 每 plugin.register(inv, req) → ActiveS
 - Backfill note:#172 从 "partial (fix 3b only)" → "full"
 - **验收**:588 + 新增测试全绿;docker 端到端手工 pass;Spec 8 execution constraint 满足
 
+> **[13-E 完成状态,提交 `2ad03cb`]**
+> - `SERVER_TOOL_SHIM_ENABLED` 常量已删除;`with-responses-react-loop.ts` 骨架及其单元测试已删除
+> - `interceptors/index.ts` 直接注册 `withResponsesServerToolShim([webSearchServerTool, imageGenerationServerTool], defaultPrivatePayloadStore)`,无 feature flag 分支
+> - 迭代上限由 shim 内部的 `max_tool_calls` 消费控制(旧 `DEFAULT_MAX_REACT_ITERATIONS=8` 是从未触发的死代码,一并删除)
+> - vNext gateway 测试全套:**698 pass / 0 fail** across 107 files (8.02s)
+> - 剩余待办:本地 docker 端到端冒烟测试(image_generation 真调用)
+
 ---
 
 ## 4. 关键设计决策 & 风险
@@ -294,6 +301,7 @@ type Interceptor<Ctx, Req, Result> = (req: Req, ctx: Ctx, next: () => Promise<Re
 - **13-C-4** 移植 providers:`providers/{shared,truncate,tavily,jina,microsoft-grounding}.ts` + 各自单元测试
 - **13-C-5** 适配 vNext 现有 bing / copilot / langsearch 引擎进 `WebSearchProvider` 抽象(3 个 provider adapter + 各自单元测试),更新 `provider.ts` 的 `resolveConfiguredWebSearchProvider` 名单
 - **13-C-6** 移植 `server-tools/web-search.ts`(Responses interceptor)+ 移植 `web-search_test.ts` 测试 + 注册到 `withResponsesServerToolShim([webSearchServerTool], store)` + flip `SERVER_TOOL_SHIM_ENABLED=true`(**仅 web_search 声明时走 ReAct;image_generation 还是老 route-handler,Phase 13-D 处理**)
+   > **[13-E 完成后追记]** `SERVER_TOOL_SHIM_ENABLED` 常量、`withResponsesReactLoop` 骨架及其测试均已在 13-E cutover 时删除,shim 现为默认路径。
 - **13-C-7**(可选)Dashboard search-config UI —— 若时间紧,先出 API,UI 单开 PR
 
 **验收**:
