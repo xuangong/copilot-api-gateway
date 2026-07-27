@@ -83,6 +83,7 @@
         "@vibe-llm/translate": "workspace:*",
         "hono": "^4.12.23",
         "image-size": "^2.0.2",
+        "jsonrepair": "^3.15.0",
         "zod": "^4.4.3",
       },
       "devDependencies": {
@@ -779,6 +780,8 @@
     "json-stable-stringify-without-jsonify": ["json-stable-stringify-without-jsonify@1.0.1", "", {}, "sha512-Bdboy+l7tA3OGW6FjyFHWkP5LuByj1Tk33Ljyq0axyzdk9//JSi2u3fP1QSmd1KNwq6VOKYGlAu87CisVir6Pw=="],
 
     "json5": ["json5@1.0.2", "", { "dependencies": { "minimist": "^1.2.0" }, "bin": { "json5": "lib/cli.js" } }, "sha512-g1MWMLBiz8FKi1e4w0UyVL3w+iJceWAFBAaBnnGKOpNa5f8TLktkbre1+s6oICydWAm+HRUGTmI+//xv2hvXYA=="],
+
+    "jsonrepair": ["jsonrepair@3.15.0", "https://ms-feed-2.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/jsonrepair/-/jsonrepair-3.15.0.tgz", { "bin": { "jsonrepair": "./bin/cli.js" } }, "sha1-A7TBXzE/Cm5qHMtmtt7uuFnm8Mg="],
 
     "keyv": ["keyv@4.5.4", "", { "dependencies": { "json-buffer": "3.0.1" } }, "sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw=="],
 

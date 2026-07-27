@@ -5,6 +5,7 @@ import { withResponsesReactLoop } from './with-responses-react-loop'
 
 export type { ResponsesInterceptor } from './types'
 export { withResponsesReactLoop, DEFAULT_MAX_REACT_ITERATIONS, SERVER_TOOL_SHIM_ENABLED } from './with-responses-react-loop'
+export { withResponsesServerToolShim } from './server-tool-shim'
 
 // Responses stream interceptor registry. Mirrors the chat-completions pattern.
 //

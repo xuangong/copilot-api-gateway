@@ -19,6 +19,8 @@ import {
   DEFAULT_MAX_REACT_ITERATIONS,
   SERVER_TOOL_SHIM_ENABLED,
 } from '../../../../../src/data-plane/chat-flow/responses/interceptors/with-responses-react-loop'
+import { createMergeState } from '../../../../../src/data-plane/chat-flow/responses/interceptors/server-tool-shim'
+import type { ResponsesResult } from '@vibe-llm/protocols/responses'
 import type { Invocation, RequestContext } from '@vibe-llm/protocols/common'
 import {
   llmEventResult,
@@ -82,8 +84,13 @@ test('DEFAULT_MAX_REACT_ITERATIONS is a positive integer', () => {
   expect(Number.isInteger(DEFAULT_MAX_REACT_ITERATIONS)).toBe(true)
 })
 
-test('synthesizeTerminalEnvelope is a stub in Phase 13-A (throws until Phase 13-B)', () => {
-  expect(() => synthesizeTerminalEnvelope({ kind: 'completed' })).toThrow(/not implemented/)
+test('synthesizeTerminalEnvelope (Phase 13-B) emits a response.completed event frame', () => {
+  const state = createMergeState()
+  state.lastSeenModel = 'gpt-x'
+  state.upstreamResponseSnapshot = { id: 'upstream', object: 'response', model: 'gpt-x', output: [], status: 'completed', error: null, incomplete_details: null } as unknown as ResponsesResult
+  const frame = synthesizeTerminalEnvelope(state, { kind: 'completed' }, [])
+  expect(frame.type).toBe('event')
+  if (frame.type === 'event') expect(frame.event.type).toBe('response.completed')
 })
 
 // ─── Feature-flag off: pass-through ──────────────────────────────────────
@@ -248,7 +255,7 @@ test('interceptor factory is idempotent — repeated calls return equivalent beh
 test('SynthesizedTerminal accepts completed / failed / incomplete kinds', () => {
   // Constructing all three shapes without a type error is the assertion —
   // if any variant is removed or renamed, this file stops compiling.
-  const cases: Parameters<typeof synthesizeTerminalEnvelope>[0][] = [
+  const cases: Parameters<typeof synthesizeTerminalEnvelope>[1][] = [
     { kind: 'completed' },
     { kind: 'failed', error: { code: 'server_error', message: 'boom' } },
     { kind: 'incomplete', incompleteDetails: { reason: 'max_tokens' } },

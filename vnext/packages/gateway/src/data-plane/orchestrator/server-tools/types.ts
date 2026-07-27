@@ -58,12 +58,19 @@ export type ServerToolDispatcher = (args: {
 }) => ServerToolResultSlot[]
 
 /**
- * 3-tuple — must move together. A partial declaration is a compile error
+ * 4-tuple — must move together. A partial declaration is a compile error
  * instead of a silently never-dispatching registration.
+ *
+ * `hostedTypes` powers `rewriteHostedToolChoice` (mapping a forced hosted
+ * `tool_choice` back to the injected function tool). `canonicalize` both
+ * matches an incoming raw tool AND returns the normalized hosted form the
+ * shim later re-echoes downstream. Aligned with copilot-gateway
+ * `server-tool-shim.ts` so the shim + plugin ports are 1:1.
  */
 export interface ServerToolHostedDispatch {
-  isHostedTool: (tool: ResponsesTool) => boolean
-  buildFunctionTool: (toolName: string) => ResponsesTool
+  readonly hostedTypes: readonly string[]
+  canonicalize: (raw: ResponsesTool) => ResponsesTool | undefined
+  buildFunctionTool: (canonical: ResponsesTool, toolName: string) => ResponsesTool
   dispatcher: ServerToolDispatcher
 }
 

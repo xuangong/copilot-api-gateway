@@ -100,21 +100,8 @@ export const withResponsesReactLoop = (options: ReactLoopOptions = {}): Response
 /**
  * Terminal envelope synthesis hook.
  *
- * Phase 13-A-2 exposes this as a no-op placeholder so unit tests can pin the
- * public shape now. Phase 13-B replaces the body with the real
- * `synthesizeTerminalEnvelope` (ref shim line 786): merges accumulated
- * output, echoes tools + tool_choice, stamps `response.completed` /
- * `.failed` / `.incomplete`.
+ * Phase 13-B ported the real implementation; re-exported here so callers that
+ * import from this loop skeleton continue to compile. New code should import
+ * directly from `./server-tool-shim`.
  */
-export type SynthesizedTerminal =
-  | { kind: 'completed' }
-  | { kind: 'failed'; error: { code: string; message: string } }
-  | { kind: 'incomplete'; incompleteDetails: unknown }
-
-export const synthesizeTerminalEnvelope = (
-  _kind: SynthesizedTerminal,
-): ProtocolFrame<ResponsesStreamEvent> => {
-  throw new Error(
-    'synthesizeTerminalEnvelope: not implemented — Phase 13-B ports the shim core (ref: server-tool-shim.ts:786)',
-  )
-}
+export { synthesizeTerminalEnvelope, type SynthesizedTerminal } from './server-tool-shim'

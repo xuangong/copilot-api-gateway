@@ -13,15 +13,16 @@
     "@vibe-core/result": "workspace:*",
     "@vibe-core/service": "workspace:*",
     "@vibe-llm/protocols": "workspace:*",
-    "@vibe-llm/provider-llm": "workspace:*",
     "@vibe-llm/provider-azure": "workspace:*",
     "@vibe-llm/provider-copilot": "workspace:*",
     "@vibe-llm/provider-custom": "workspace:*",
+    "@vibe-llm/provider-llm": "workspace:*",
     "@vibe-llm/provider-sdf": "workspace:*",
     "@vibe-llm/responses-store": "workspace:*",
     "@vibe-llm/translate": "workspace:*",
     "hono": "^4.12.23",
     "image-size": "^2.0.2",
+    "jsonrepair": "^3.15.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
