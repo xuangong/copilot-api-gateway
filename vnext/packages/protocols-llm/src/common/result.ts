@@ -25,6 +25,16 @@ export interface TelemetryModelIdentity {
   }
 }
 
+/**
+ * Sub-operation discriminator for performance rows. Absent (undefined) for
+ * the enclosing request row; set only when a request internally dispatches
+ * one or more sub-calls that we want to profile independently (e.g. the
+ * Responses image_generation shim fires an `image_generation` / `image_edit`
+ * sub-call per model turn). Persisted as a nullable column so legacy rows
+ * (all NULL) coexist with the new dimension.
+ */
+export type PerformanceOperation = 'image_generation' | 'image_edit'
+
 export interface PerformanceTelemetryContext {
   readonly keyId: string
   readonly model: string
@@ -32,6 +42,8 @@ export interface PerformanceTelemetryContext {
   readonly modelKey: string
   readonly stream: boolean
   readonly runtimeLocation: 'bun' | 'cloudflare'
+  /** See PerformanceOperation. Absent for request-level rows. */
+  readonly operation?: PerformanceOperation
 }
 
 export interface EventResultMetadata {

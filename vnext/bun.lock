@@ -98,6 +98,9 @@
     "packages/platform": {
       "name": "@vibe-core/platform",
       "version": "0.0.0",
+      "dependencies": {
+        "image-size": "^2.0.2",
+      },
     },
     "packages/protocols-llm": {
       "name": "@vibe-llm/protocols",

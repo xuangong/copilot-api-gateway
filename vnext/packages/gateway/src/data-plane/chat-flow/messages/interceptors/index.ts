@@ -1,5 +1,6 @@
 import type { MessagesInterceptor } from './types'
 import { withContextWindowErrorRewritten } from './with-context-window-error-rewritten'
+import { withMessagesWebSearchShim } from './with-messages-web-search-shim'
 import { withThinkingDisplayPromoted } from './with-thinking-display-promoted'
 
 export type { MessagesInterceptor } from './types'
@@ -17,7 +18,12 @@ export type { MessagesInterceptor } from './types'
 //     default), then strips thinking text after the fact while preserving
 //     every `signature` byte. Without this Claude 4.7 long-thinking turns
 //     hit a ~60s idle gap that surfaces as `Stream idle timeout`.
+//   - `withMessagesWebSearchShim` (innermost) intercepts native `web_search`
+//     tool declarations on Messages API. Ported 1:1 from the reference
+//     copilot-gateway; gated by the `messages-web-search-shim` flag on
+//     `Invocation.enabledFlags`. See file header for adaptation notes.
 export const messagesInterceptors: readonly MessagesInterceptor[] = [
   withContextWindowErrorRewritten,
   withThinkingDisplayPromoted,
+  withMessagesWebSearchShim,
 ]

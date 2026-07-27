@@ -59,10 +59,10 @@ const WS_ENGINE_COLS = "key_id, engine_id, hour, attempts, successes, failures, 
 const KEY_ASSIGN_COLS = "key_id, user_id, assigned_by, assigned_at"
 const SHARE_COLS = "owner_id, viewer_id, granted_by, granted_at"
 const DEVICE_COLS = "device_code, user_code, expires_at, user_id, session_token, created_at"
-const PERF_SUMMARY_COLS = "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, requests, errors, total_ms_sum"
-const PERF_BUCKET_COLS = "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, lower_ms, upper_ms, count"
+const PERF_SUMMARY_COLS = "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, operation, requests, errors, total_ms_sum"
+const PERF_BUCKET_COLS = "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, operation, lower_ms, upper_ms, count"
 const RESPONSES_ITEMS_COLS = "id, api_key_id, kind, item_json, private_json, created_at, expires_at"
-const SEARCH_CONFIG_COLS = "id, provider, tavily_api_key, microsoft_grounding_api_key, jina_api_key, passthrough_openai_search, alpha_search_upstream_id, alpha_search_model, updated_at"
+const SEARCH_CONFIG_COLS = "id, provider, tavily_api_key, microsoft_grounding_api_key, jina_api_key, passthrough_openai_search, alpha_search_upstream_id, alpha_search_model, bing_api_key, copilot_github_token, langsearch_api_key, updated_at"
 
 function toApiKey(row: any): ApiKey {
   let priority: string[] | undefined
@@ -933,6 +933,7 @@ function toPerformanceSummaryRecord(r: any): PerformanceSummaryRecord {
     targetApi: r.target_api,
     stream: r.stream === 1,
     runtimeLocation: r.runtime_location,
+    operation: r.operation ?? null,
     requests: r.requests,
     errors: r.errors,
     totalMsSum: r.total_ms_sum,
@@ -950,6 +951,7 @@ function toPerformanceBucketRecord(r: any): PerformanceBucketRecord {
     targetApi: r.target_api,
     stream: r.stream === 1,
     runtimeLocation: r.runtime_location,
+    operation: r.operation ?? null,
     lowerMs: r.lower_ms,
     upperMs: r.upper_ms,
     count: r.count,
@@ -964,25 +966,28 @@ class SharedPerformanceRepo implements PerformanceRepo {
     const errorInt = entry.isError ? 1 : 0
     const durationMs = Math.max(0, Math.round(entry.durationMs))
     const upstream = entry.upstream ?? null
+    const operation = entry.operation ?? null
     await this.x.run(
-      `INSERT INTO performance_summary (${PERF_SUMMARY_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-       ON CONFLICT (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location)
+      `INSERT INTO performance_summary (${PERF_SUMMARY_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+       ON CONFLICT (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, COALESCE(operation, ''))
        DO UPDATE SET requests = requests + 1, errors = errors + excluded.errors, total_ms_sum = total_ms_sum + excluded.total_ms_sum`,
       [
         entry.hour, entry.metricScope, entry.keyId, entry.model, upstream,
         entry.sourceApi, entry.targetApi, streamInt, entry.runtimeLocation,
+        operation,
         errorInt, durationMs,
       ],
     )
 
     const { lowerMs, upperMs } = latencyBucketForMs(durationMs)
     await this.x.run(
-      `INSERT INTO performance_latency_buckets (${PERF_BUCKET_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-       ON CONFLICT (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, lower_ms, upper_ms)
+      `INSERT INTO performance_latency_buckets (${PERF_BUCKET_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+       ON CONFLICT (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, COALESCE(operation, ''), lower_ms, upper_ms)
        DO UPDATE SET count = count + 1`,
       [
         entry.hour, entry.metricScope, entry.keyId, entry.model, upstream,
         entry.sourceApi, entry.targetApi, streamInt, entry.runtimeLocation,
+        operation,
         lowerMs, upperMs,
       ],
     )
@@ -1099,8 +1104,11 @@ class SharedSearchConfigRepo implements SearchConfigRepo {
       passthrough_openai_search: number
       alpha_search_upstream_id: string
       alpha_search_model: string
+      bing_api_key: string | null
+      copilot_github_token: string | null
+      langsearch_api_key: string | null
     }>(
-      `SELECT provider, tavily_api_key, microsoft_grounding_api_key, jina_api_key, passthrough_openai_search, alpha_search_upstream_id, alpha_search_model FROM search_config WHERE id = 1`,
+      `SELECT provider, tavily_api_key, microsoft_grounding_api_key, jina_api_key, passthrough_openai_search, alpha_search_upstream_id, alpha_search_model, bing_api_key, copilot_github_token, langsearch_api_key FROM search_config WHERE id = 1`,
       [],
     )
     if (!row) return null
@@ -1109,6 +1117,9 @@ class SharedSearchConfigRepo implements SearchConfigRepo {
       tavily: { apiKey: row.tavily_api_key },
       microsoftGrounding: { apiKey: row.microsoft_grounding_api_key },
       jina: { apiKey: row.jina_api_key },
+      bing: { apiKey: row.bing_api_key ?? "" },
+      copilot: { githubToken: row.copilot_github_token ?? "" },
+      langsearch: { apiKey: row.langsearch_api_key ?? "" },
       passthroughOpenAiSearch: {
         enabled: row.passthrough_openai_search === 1,
         upstreamId: row.alpha_search_upstream_id,
@@ -1118,11 +1129,11 @@ class SharedSearchConfigRepo implements SearchConfigRepo {
   }
 
   async save(config: SearchConfig): Promise<void> {
-    const { provider, tavily, microsoftGrounding, jina, passthroughOpenAiSearch } = config
+    const { provider, tavily, microsoftGrounding, jina, bing, copilot, langsearch, passthroughOpenAiSearch } = config
     const updatedAt = new Date().toISOString()
     await this.x.run(
       `INSERT INTO search_config (${SEARCH_CONFIG_COLS})
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET
          provider = excluded.provider,
          tavily_api_key = excluded.tavily_api_key,
@@ -1131,6 +1142,9 @@ class SharedSearchConfigRepo implements SearchConfigRepo {
          passthrough_openai_search = excluded.passthrough_openai_search,
          alpha_search_upstream_id = excluded.alpha_search_upstream_id,
          alpha_search_model = excluded.alpha_search_model,
+         bing_api_key = excluded.bing_api_key,
+         copilot_github_token = excluded.copilot_github_token,
+         langsearch_api_key = excluded.langsearch_api_key,
          updated_at = excluded.updated_at`,
       [
         provider,
@@ -1140,6 +1154,9 @@ class SharedSearchConfigRepo implements SearchConfigRepo {
         passthroughOpenAiSearch.enabled ? 1 : 0,
         passthroughOpenAiSearch.upstreamId,
         passthroughOpenAiSearch.model,
+        bing.apiKey,
+        copilot.githubToken,
+        langsearch.apiKey,
         updatedAt,
       ],
     )

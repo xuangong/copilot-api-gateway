@@ -94,6 +94,30 @@ export type ServerToolRegistration<TInvocation, TRequest> = (
   request: TRequest,
 ) => ServerToolPrepareResult | Promise<ServerToolPrepareResult>
 
+/**
+ * What the shim hands to each registration alongside the invocation.
+ *
+ * Ported from copilot-gateway `ChatGatewayCtx`, trimmed to the fields the
+ * plugins actually consume (`store` for private-payload round-tripping,
+ * `apiKeyId` for usage attribution, `abortSignal` for provider cancellation).
+ *
+ * `upstreamIds` — image-generation plugin pins candidate enumeration to a
+ * caller-supplied upstream set (matches reference `gatewayCtx.upstreamIds`).
+ *
+ * `backgroundScheduler` / `runtimeLocation` from reference are NOT threaded
+ * through this ctx in vNext: `@vibe-core/platform` exposes both as
+ * process-globals (`waitUntil()` / `getRuntimeLocation()`), so plugins
+ * consume them directly instead of via ctx.
+ */
+export interface ServerToolRequestCtx {
+  readonly store: import('./private-payload-store').PrivatePayloadStore
+  readonly apiKeyId: string
+  readonly abortSignal?: AbortSignal
+  /** Caller-pinned upstream id set for candidate enumeration; null / omitted
+   *  means "any upstream". Consumed by the image-generation plugin. */
+  readonly upstreamIds?: readonly string[] | null
+}
+
 /** Plugin descriptor — what the registry stores. */
 export interface ServerToolPlugin<TInvocation = unknown, TRequest = unknown> {
   name: string

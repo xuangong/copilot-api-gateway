@@ -1,10 +1,12 @@
 import type { ResponsesInterceptor } from './types'
 import { withOutputItemIdsSynchronized } from './with-output-item-ids-synchronized'
 import { withToolArgumentWhitespaceAborted } from './with-tool-argument-whitespace-aborted'
-import { withResponsesReactLoop } from './with-responses-react-loop'
+import { withResponsesServerToolShim } from './server-tool-shim'
+import { webSearchServerTool } from './server-tools/web-search'
+import { imageGenerationServerTool } from './server-tools/image-generation'
+import { defaultPrivatePayloadStore } from '../../../orchestrator/server-tools/private-payload-store'
 
 export type { ResponsesInterceptor } from './types'
-export { withResponsesReactLoop, DEFAULT_MAX_REACT_ITERATIONS, SERVER_TOOL_SHIM_ENABLED } from './with-responses-react-loop'
 export { withResponsesServerToolShim } from './server-tool-shim'
 
 // Responses stream interceptor registry. Mirrors the chat-completions pattern.
@@ -18,12 +20,10 @@ export { withResponsesServerToolShim } from './server-tool-shim'
 //     `response.function_call_arguments.delta` for runaway whitespace and
 //     aborts the stream early so a degenerate Copilot tool call cannot hang
 //     the client until `max_tokens`.
-//   - `withResponsesReactLoop` (innermost) is the ReAct multi-turn loop
-//     scaffold from Spec 13 Phase 13-A-2. Currently disabled by feature
-//     flag `SERVER_TOOL_SHIM_ENABLED`; when off it is a pure pass-through.
-//     Phase 13-B fills in the shim core; Phase 13-E flips the flag.
+//   - Innermost — the server-tool shim (ReAct multi-turn loop that hosts
+//     `web_search` and `image_generation`).
 export const responsesInterceptors: readonly ResponsesInterceptor[] = [
   withOutputItemIdsSynchronized,
   withToolArgumentWhitespaceAborted,
-  withResponsesReactLoop(),
+  withResponsesServerToolShim([webSearchServerTool, imageGenerationServerTool], defaultPrivatePayloadStore),
 ]

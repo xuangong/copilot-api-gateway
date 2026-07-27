@@ -12,6 +12,9 @@ const sampleConfig = (): SearchConfig => ({
   tavily: { apiKey: 'tv-xxx' },
   microsoftGrounding: { apiKey: 'ms-yyy' },
   jina: { apiKey: 'jn-zzz' },
+  bing: { apiKey: '' },
+  copilot: { githubToken: 'gho_abc' },
+  langsearch: { apiKey: 'ls-key' },
   passthroughOpenAiSearch: {
     enabled: true,
     upstreamId: 'up_abc',
@@ -43,6 +46,9 @@ test('save() overwrites the singleton row', async () => {
     tavily: { apiKey: '' },
     microsoftGrounding: { apiKey: '' },
     jina: { apiKey: 'jn-new' },
+    bing: { apiKey: '' },
+    copilot: { githubToken: '' },
+    langsearch: { apiKey: '' },
     passthroughOpenAiSearch: { enabled: false, upstreamId: '', model: '' },
   }
   await repo.searchConfig.save(next)
@@ -58,6 +64,9 @@ test('passthrough enabled=false stored as 0 and restored correctly', async () =>
     tavily: { apiKey: '' },
     microsoftGrounding: { apiKey: '' },
     jina: { apiKey: 'jn-only' },
+    bing: { apiKey: '' },
+    copilot: { githubToken: '' },
+    langsearch: { apiKey: '' },
     passthroughOpenAiSearch: { enabled: false, upstreamId: '', model: '' },
   }
   await repo.searchConfig.save(cfg)

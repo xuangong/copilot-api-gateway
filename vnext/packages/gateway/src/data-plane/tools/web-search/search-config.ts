@@ -14,6 +14,9 @@ export const DEFAULT_SEARCH_CONFIG: SearchConfig = {
   tavily: { apiKey: '' },
   microsoftGrounding: { apiKey: '' },
   jina: { apiKey: '' },
+  bing: { apiKey: '' },
+  copilot: { githubToken: '' },
+  langsearch: { apiKey: '' },
   passthroughOpenAiSearch: { enabled: false, upstreamId: '', model: '' },
 }
 
@@ -38,6 +41,12 @@ export const parseSearchConfigStrict = (input: unknown): SearchConfig => {
   if (typeof input.microsoftGrounding.apiKey !== 'string') throw new Error('search config microsoftGrounding.apiKey must be a string')
   if (!isJsonObject(input.jina)) throw new Error('search config jina must be an object')
   if (typeof input.jina.apiKey !== 'string') throw new Error('search config jina.apiKey must be a string')
+  if (!isJsonObject(input.bing)) throw new Error('search config bing must be an object')
+  if (typeof input.bing.apiKey !== 'string') throw new Error('search config bing.apiKey must be a string')
+  if (!isJsonObject(input.copilot)) throw new Error('search config copilot must be an object')
+  if (typeof input.copilot.githubToken !== 'string') throw new Error('search config copilot.githubToken must be a string')
+  if (!isJsonObject(input.langsearch)) throw new Error('search config langsearch must be an object')
+  if (typeof input.langsearch.apiKey !== 'string') throw new Error('search config langsearch.apiKey must be a string')
   if (!isJsonObject(input.passthroughOpenAiSearch)) throw new Error('search config passthroughOpenAiSearch must be an object')
   const passthrough = input.passthroughOpenAiSearch
   if (typeof passthrough.enabled !== 'boolean' || typeof passthrough.upstreamId !== 'string' || typeof passthrough.model !== 'string') {
@@ -53,6 +62,9 @@ export const parseSearchConfigStrict = (input: unknown): SearchConfig => {
     tavily: { apiKey: input.tavily.apiKey.trim() },
     microsoftGrounding: { apiKey: input.microsoftGrounding.apiKey.trim() },
     jina: { apiKey: input.jina.apiKey.trim() },
+    bing: { apiKey: input.bing.apiKey.trim() },
+    copilot: { githubToken: input.copilot.githubToken.trim() },
+    langsearch: { apiKey: input.langsearch.apiKey.trim() },
     passthroughOpenAiSearch: { enabled: passthrough.enabled, upstreamId, model },
   }
 }

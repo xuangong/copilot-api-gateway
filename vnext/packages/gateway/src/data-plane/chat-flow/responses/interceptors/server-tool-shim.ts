@@ -57,6 +57,7 @@ import type {
   DispatchedServerToolSlot,
   ServerToolPrepareResult,
   ServerToolRegistration,
+  ServerToolRequestCtx,
 } from '../../../orchestrator/server-tools/types'
 import { eventFrame, type ProtocolFrame } from '@vibe-core/result'
 import {
@@ -117,7 +118,9 @@ export interface TurnSummary {
   terminalStatus: UpstreamTerminal
 }
 
-export type LatestUpstreamMetadata = Pick<EventResultMetadata, 'modelIdentity' | 'performance'>
+export type LatestUpstreamMetadata = {
+  -readonly [K in 'modelIdentity' | 'performance']: EventResultMetadata[K]
+}
 
 // The terminal the shim emits downstream. Distinct from `UpstreamTerminal`
 // (what we observed) — this carries only the already-extracted error /
@@ -498,15 +501,16 @@ export const consumeTurnStreaming = async function* (
     }
     const event = frame.event
 
-    if (event.type === 'response.queued' || event.type === 'response.created') {
+    const eventType = (event as { type: string }).type
+    if (eventType === 'response.queued' || eventType === 'response.created') {
       const reportedModel = (event as { response: { model?: unknown } }).response.model
       if (typeof reportedModel === 'string' && reportedModel.length > 0) merge.lastSeenModel = reportedModel
       merge.upstreamResponseSnapshot = (event as { response: ResponsesResult }).response
       ensureModel()
       if (isFirstTurn) {
-        const status = event.type === 'response.queued' ? 'queued' : 'in_progress'
+        const status = eventType === 'response.queued' ? 'queued' : 'in_progress'
         yield stamp({
-          type: event.type,
+          type: eventType,
           response: syntheticPrologueResponse(merge, merge.synthesizedResponseId, ensureModel(), active, status),
         } as ResponsesStreamEvent)
       }
@@ -742,7 +746,7 @@ const buildErrorFromResult = (
   result: Exclude<LlmExecuteResult<unknown>, { type: 'events' }>,
 ): NonNullable<ResponsesResult['error']> => {
   if (result.type === 'internal-error') return { message: result.error.message, code: 'server_error' }
-  const decoded = new TextDecoder('utf-8', { fatal: false }).decode(result.body)
+  const decoded = new TextDecoder('utf-8', { fatal: false, ignoreBOM: false }).decode(result.body)
   let parsed: unknown = undefined
   try {
     parsed = JSON.parse(decoded)
@@ -1001,14 +1005,18 @@ async function* runMultiTurnLoop(args: {
 }
 
 export const withResponsesServerToolShim = (
-  registrations: readonly ServerToolRegistration<Invocation, Record<string, unknown>>[],
+  registrations: readonly ServerToolRegistration<Invocation, ServerToolRequestCtx>[],
   store: PrivatePayloadStore,
 ): ResponsesInterceptor => async (ctx, gatewayCtx, run) => {
-  void gatewayCtx // RequestContext currently unused; kept for signature parity with other interceptors.
+  const requestCtx: ServerToolRequestCtx = {
+    store,
+    apiKeyId: gatewayCtx.apiKeyId ?? '',
+    ...(gatewayCtx.downstreamAbortSignal !== undefined ? { abortSignal: gatewayCtx.downstreamAbortSignal } : {}),
+  }
   const active: ActiveServerTool[] = []
 
   for (const prepareServerTool of registrations) {
-    const prepared: ServerToolPrepareResult = await prepareServerTool(ctx, ctx.payload)
+    const prepared: ServerToolPrepareResult = await prepareServerTool(ctx, requestCtx)
     if (prepared.type === 'inactive') continue
     if (prepared.type === 'invalid-request') {
       return invalidRequestEnvelope(prepared.message, prepared.param, prepared.code)
@@ -1102,6 +1110,7 @@ export const withResponsesServerToolShim = (
 export type {
   ServerToolItemAlias,
   ServerToolRegistration,
+  ServerToolRequestCtx,
   ServerToolPrepareResult,
   ServerToolDispatcher,
   ServerToolHostedDispatch,

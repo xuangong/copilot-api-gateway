@@ -163,6 +163,7 @@ CREATE TABLE IF NOT EXISTS performance_summary (
   target_api TEXT NOT NULL,
   stream INTEGER NOT NULL,
   runtime_location TEXT NOT NULL DEFAULT 'unknown',
+  operation TEXT,
   requests INTEGER NOT NULL DEFAULT 0,
   errors INTEGER NOT NULL DEFAULT 0,
   total_ms_sum INTEGER NOT NULL DEFAULT 0
@@ -180,6 +181,7 @@ CREATE TABLE IF NOT EXISTS performance_latency_buckets (
   target_api TEXT NOT NULL,
   stream INTEGER NOT NULL,
   runtime_location TEXT NOT NULL DEFAULT 'unknown',
+  operation TEXT,
   lower_ms INTEGER NOT NULL,
   upper_ms INTEGER NOT NULL,
   count INTEGER NOT NULL DEFAULT 0
@@ -216,6 +218,9 @@ CREATE TABLE IF NOT EXISTS search_config (
   passthrough_openai_search INTEGER NOT NULL DEFAULT 0,
   alpha_search_upstream_id TEXT NOT NULL DEFAULT '',
   alpha_search_model TEXT NOT NULL DEFAULT '',
+  bing_api_key TEXT NOT NULL DEFAULT '',
+  copilot_github_token TEXT NOT NULL DEFAULT '',
+  langsearch_api_key TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL
 );
 `
@@ -250,15 +255,15 @@ function rewriteLegacyUpstreamIds(db: Database): void {
       : table === "usage_requests"
         ? "key_id, model, upstream, model_key, client, hour, requests"
         : table === "performance_summary"
-          ? "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, requests, errors, total_ms_sum"
-          : "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, lower_ms, upper_ms, count"
+          ? "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, operation, requests, errors, total_ms_sum"
+          : "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, operation, lower_ms, upper_ms, count"
     const conflictKey = table === "usage"
       ? "(key_id, model, COALESCE(upstream, ''), model_key, client, hour, dimension)"
       : table === "usage_requests"
         ? "(key_id, model, COALESCE(upstream, ''), model_key, client, hour)"
         : table === "performance_summary"
-          ? "(hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location)"
-          : "(hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, lower_ms, upper_ms)"
+          ? "(hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, COALESCE(operation, ''))"
+          : "(hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, COALESCE(operation, ''), lower_ms, upper_ms)"
     const setClause = table === "usage"
       ? `tokens = ${table}.tokens + excluded.tokens`
       : table === "usage_requests"
@@ -273,8 +278,8 @@ function rewriteLegacyUpstreamIds(db: Database): void {
       : table === "usage_requests"
         ? "t.key_id, t.model, MAPPED, t.model_key, t.client, t.hour, t.requests"
         : table === "performance_summary"
-          ? "t.hour, t.metric_scope, t.key_id, t.model, MAPPED, t.source_api, t.target_api, t.stream, t.runtime_location, t.requests, t.errors, t.total_ms_sum"
-          : "t.hour, t.metric_scope, t.key_id, t.model, MAPPED, t.source_api, t.target_api, t.stream, t.runtime_location, t.lower_ms, t.upper_ms, t.count"
+          ? "t.hour, t.metric_scope, t.key_id, t.model, MAPPED, t.source_api, t.target_api, t.stream, t.runtime_location, t.operation, t.requests, t.errors, t.total_ms_sum"
+          : "t.hour, t.metric_scope, t.key_id, t.model, MAPPED, t.source_api, t.target_api, t.stream, t.runtime_location, t.operation, t.lower_ms, t.upper_ms, t.count"
     const mapped = `(SELECT up.id FROM upstreams up WHERE up.provider='copilot' AND json_extract(up.config_json, '$.user.id') = CAST(substr(t.upstream, 9) AS INTEGER) LIMIT 1)`
     db.exec(`
       INSERT INTO ${table} (${cols})
@@ -641,18 +646,39 @@ function migrateSchema(db: Database): void {
   // Plan 6: same reasoning applies to usage / usage_requests — the new
   // identity uses `model_key` + `dimension` which don't exist on legacy
   // tables, so the unique index must be created post-migration.
+  // Spec 13-D-5-g (C1): perf tables gained an `operation` column (sub-call
+  // discriminator, e.g. image_generation / image_edit). Add the column on
+  // older DBs; upsert identity now includes COALESCE(operation,'').
+  if (!hasColumn(db, "performance_summary", "operation")) {
+    db.exec("ALTER TABLE performance_summary ADD COLUMN operation TEXT")
+    db.exec("DROP INDEX IF EXISTS idx_performance_summary_identity")
+  }
+  if (!hasColumn(db, "performance_latency_buckets", "operation")) {
+    db.exec("ALTER TABLE performance_latency_buckets ADD COLUMN operation TEXT")
+    db.exec("DROP INDEX IF EXISTS idx_performance_latency_buckets_identity")
+  }
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_identity
       ON usage (key_id, model, COALESCE(upstream, ''), model_key, client, hour, dimension);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_requests_identity
       ON usage_requests (key_id, model, COALESCE(upstream, ''), model_key, client, hour);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_performance_summary_identity
-      ON performance_summary (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location);
+      ON performance_summary (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, COALESCE(operation, ''));
     CREATE UNIQUE INDEX IF NOT EXISTS idx_performance_latency_buckets_identity
-      ON performance_latency_buckets (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, lower_ms, upper_ms);
+      ON performance_latency_buckets (hour, metric_scope, key_id, model, COALESCE(upstream, ''), source_api, target_api, stream, runtime_location, COALESCE(operation, ''), lower_ms, upper_ms);
   `)
   ensureUpstreams(db)
   rewriteLegacyUpstreamIds(db)
+  // Spec 13-C-5 (migration 0033): search_config new engine credential slots.
+  if (!hasColumn(db, "search_config", "bing_api_key")) {
+    db.exec("ALTER TABLE search_config ADD COLUMN bing_api_key TEXT NOT NULL DEFAULT ''")
+  }
+  if (!hasColumn(db, "search_config", "copilot_github_token")) {
+    db.exec("ALTER TABLE search_config ADD COLUMN copilot_github_token TEXT NOT NULL DEFAULT ''")
+  }
+  if (!hasColumn(db, "search_config", "langsearch_api_key")) {
+    db.exec("ALTER TABLE search_config ADD COLUMN langsearch_api_key TEXT NOT NULL DEFAULT ''")
+  }
 }
 
 export function initSqlite(db: Database): void {

@@ -6,7 +6,7 @@
 // in Phase 13-C-5 — this file must stay 1:1 with the reference so the
 // ported plugin code compiles unchanged.
 
-export const WEB_SEARCH_PROVIDER_NAMES = ['tavily', 'microsoft-grounding', 'jina'] as const
+export const WEB_SEARCH_PROVIDER_NAMES = ['tavily', 'microsoft-grounding', 'jina', 'bing', 'copilot', 'langsearch'] as const
 
 export type WebSearchProviderName = (typeof WEB_SEARCH_PROVIDER_NAMES)[number]
 
@@ -15,6 +15,12 @@ export interface SearchConfig {
   tavily: { apiKey: string }
   microsoftGrounding: { apiKey: string }
   jina: { apiKey: string }
+  // vNext-native engines (Spec 13-C-5, Q1c). `bing` has no key (public
+  // SERP scrape); `copilot` uses the user's GitHub OAuth/PAT token;
+  // `langsearch` uses a first-party API key.
+  bing: { apiKey: string }
+  copilot: { githubToken: string }
+  langsearch: { apiKey: string }
   passthroughOpenAiSearch: {
     enabled: boolean
     upstreamId: string

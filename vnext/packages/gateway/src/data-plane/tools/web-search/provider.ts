@@ -1,6 +1,9 @@
 // Ported 1:1 from copilot-gateway data-plane/tools/web-search/provider.ts.
 
+import { createBingWebSearchProvider } from './providers/bing.ts'
+import { createCopilotWebSearchProvider } from './providers/copilot.ts'
 import { createJinaWebSearchProvider } from './providers/jina.ts'
+import { createLangSearchWebSearchProvider } from './providers/langsearch.ts'
 import { createMicrosoftGroundingWebSearchProvider } from './providers/microsoft-grounding.ts'
 import { createTavilyWebSearchProvider } from './providers/tavily.ts'
 import { FIXED_SEARCH_CONFIG_TEST_QUERY } from './search-config.ts'
@@ -20,6 +23,12 @@ const PROVIDER_FACTORIES: { [N in WebSearchProviderName]: (config: SearchConfig)
   tavily: config => ({ apiKey: config.tavily.apiKey, build: createTavilyWebSearchProvider }),
   'microsoft-grounding': config => ({ apiKey: config.microsoftGrounding.apiKey, build: createMicrosoftGroundingWebSearchProvider }),
   jina: config => ({ apiKey: config.jina.apiKey, build: createJinaWebSearchProvider }),
+  // Bing SERP scrape has no first-party API key. Use a fixed sentinel so
+  // the resolver's `missing-credential` guard passes when the user opts
+  // in to the bing provider.
+  bing: _config => ({ apiKey: 'bing-public-scrape', build: createBingWebSearchProvider }),
+  copilot: config => ({ apiKey: config.copilot.githubToken, build: createCopilotWebSearchProvider }),
+  langsearch: config => ({ apiKey: config.langsearch.apiKey, build: createLangSearchWebSearchProvider }),
 }
 
 export const resolveConfiguredWebSearchProvider = (config: SearchConfig): ConfiguredWebSearchProvider => {

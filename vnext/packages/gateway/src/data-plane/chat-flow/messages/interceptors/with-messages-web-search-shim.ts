@@ -1,0 +1,952 @@
+// vnext/packages/gateway/src/data-plane/chat-flow/messages/interceptors/with-messages-web-search-shim.ts
+//
+// Port of copilot-gateway chat/messages/interceptors/web-search-shim.ts to vNext.
+//
+// Adaptations from reference:
+//   - `Invocation.enabledFlags` (vNext exposes flags directly on Invocation)
+//     replaces `providerModelOf(ctx.candidate).enabledFlags`.
+//   - No `ctx.targetApi` in vNext — this interceptor is only registered in the
+//     Messages chat-flow, so the flag check is unconditional (the reference
+//     was defensive against non-Messages targets running the same code path).
+//   - `internalErrorResult(...)` replaced by inline
+//     `{ type: 'internal-error', status, error }` shape from
+//     `LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>`.
+//   - Local loose types for `MessagesTool`, `MessagesClientTool`,
+//     `MessagesNativeWebSearchTool`, `MessagesMessage`, `MessagesUserContentBlock`
+//     — vNext's protocols-llm package doesn't yet export these.
+//   - `isJsonObject` inlined (vNext protocols don't export it — same pattern as
+//     `web-search/providers/shared.ts`).
+//   - `MessagesCountTokensInterceptor` variant (`withMessagesWebSearchRequestPrepared`)
+//     is omitted — vNext chat-flow doesn't yet expose a Messages count-tokens
+//     interceptor slot. Punt to a follow-up when count_tokens is wired.
+//   - Invalid-request synthetic errors emit as `upstream-error` (400 JSON body)
+//     matching the Responses shim's approach.
+
+import type { MessagesInterceptor } from './types.ts'
+import type { Invocation } from '@vibe-llm/protocols/common'
+import type { LlmExecuteResult } from '@vibe-llm/protocols/common'
+import { eventFrame, type ProtocolFrame } from '@vibe-core/result'
+import type {
+  MessagesAssistantContentBlock,
+  MessagesPayload,
+  MessagesSearchResultBlock,
+  MessagesStreamEvent,
+  MessagesTextCitation,
+  MessagesToolResultBlock,
+  MessagesWebSearchErrorCode,
+  MessagesWebSearchResultBlock,
+  MessagesWebSearchToolResultError,
+} from '@vibe-llm/protocols/messages'
+import { MESSAGES_WEB_SEARCH_ERROR_CODES } from '@vibe-llm/protocols/messages'
+import { decodeBase64UrlJson, encodeBase64UrlJson } from '../../../../shared/base64url-json.ts'
+import { resolveConfiguredWebSearchProvider } from '../../../tools/web-search/provider.ts'
+import { loadSearchConfig } from '../../../tools/web-search/search-config.ts'
+import { searchWebAndRecordUsage } from '../../../tools/web-search/search.ts'
+import type {
+  WebSearchProvider,
+  WebSearchProviderName,
+  WebSearchProviderRequest,
+  WebSearchProviderResult,
+} from '../../../tools/web-search/types.ts'
+
+// ── Local loose types (vNext @vibe-llm/protocols/messages doesn't export these) ──
+
+interface MessagesClientTool {
+  type?: 'custom'
+  name: string
+  description?: string
+  input_schema: Record<string, unknown>
+  strict?: boolean
+  cache_control?: unknown
+}
+
+interface MessagesNativeWebSearchTool {
+  type: 'web_search_20250305' | 'web_search_20260209' | 'web_search_20260318'
+  name?: string
+  max_uses?: number
+  allowed_domains?: string[]
+  blocked_domains?: string[]
+  user_location?: {
+    type?: 'approximate'
+    city?: string
+    region?: string
+    country?: string
+    timezone?: string
+  }
+}
+
+type MessagesTool = MessagesClientTool | MessagesNativeWebSearchTool
+
+type MessagesUserContentBlock = { type: string; [key: string]: unknown }
+
+interface MessagesMessage {
+  role: 'user' | 'assistant' | 'system'
+  content: string | Array<{ type: string; [key: string]: unknown }>
+}
+
+// ── Helpers ──
+
+type JsonObject = Record<string, unknown>
+const isJsonObject = (v: unknown): v is JsonObject =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
+const MAX_QUERY_LENGTH = 1000
+const WEB_SEARCH_TOOL_NAME = 'web_search'
+
+type SearchResultOwnership = 'owned' | 'foreign'
+
+interface ShimWebSearchResultPayload {
+  content: Array<{ type: 'text'; text: string }>
+}
+
+interface ShimWebSearchCitationPayload {
+  search_result_index: number
+  start_block_index: number
+  end_block_index: number
+}
+
+interface OwnedReplayToolResult {
+  upstreamToolResult: MessagesToolResultBlock
+  searchResultOwnership: SearchResultOwnership[]
+}
+
+interface ReplayAwareMessagesWebSearchShimState {
+  priorSearchUseCount: number
+  requestSearchResultOwnership: SearchResultOwnership[]
+}
+
+interface ActiveMessagesWebSearchProvider {
+  providerName: WebSearchProviderName
+  impl: WebSearchProvider
+  apiKeyId: string
+}
+
+export type MessagesWebSearchShimState =
+  | { mode: 'inactive' }
+  | ({ mode: 'replay_only' } & ReplayAwareMessagesWebSearchShimState)
+  | ({
+      mode: 'active'
+      toolVersion: MessagesNativeWebSearchTool['type']
+      maxUses?: number
+      allowedDomains?: string[]
+      blockedDomains?: string[]
+      userLocation?: {
+        city?: string
+        region?: string
+        country?: string
+        timezone?: string
+      }
+    } & ReplayAwareMessagesWebSearchShimState)
+
+export type PrepareMessagesWebSearchShimRequestResult =
+  | { type: 'ok'; payload: MessagesPayload; state: MessagesWebSearchShimState }
+  | { type: 'invalid-request'; message: string }
+
+const UPSTREAM_WEB_SEARCH_TOOL_DEFINITION: MessagesClientTool = {
+  name: WEB_SEARCH_TOOL_NAME,
+  description: 'The web_search tool searches the internet and returns up-to-date information from web sources.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description: 'Search query',
+      },
+    },
+    required: ['query'],
+  },
+}
+
+const normalizeNonEmptyDomainList = (domains?: string[]): string[] | undefined => {
+  const normalized = domains?.map(d => d.trim()).filter(d => d.length > 0)
+  return normalized && normalized.length > 0 ? [...new Set(normalized)] : undefined
+}
+
+const hasExactKeys = (value: Record<string, unknown>, keys: string[]): boolean => {
+  const actualKeys = Object.keys(value)
+  return actualKeys.length === keys.length && actualKeys.every(k => keys.includes(k))
+}
+
+const isNonNegativeInteger = (value: unknown): value is number =>
+  Number.isInteger(value) && (value as number) >= 0
+
+const isShimWebSearchResultPayload = (value: unknown): value is ShimWebSearchResultPayload => {
+  if (!isJsonObject(value)) return false
+  if (!hasExactKeys(value, ['content'])) return false
+  const content = value.content
+  return (
+    Array.isArray(content)
+    && content.every(b => b && typeof b === 'object' && (b as { type?: unknown }).type === 'text' && typeof (b as { text?: unknown }).text === 'string')
+  )
+}
+
+const isShimWebSearchCitationPayload = (value: unknown): value is ShimWebSearchCitationPayload => {
+  if (!isJsonObject(value)) return false
+  if (!hasExactKeys(value, ['search_result_index', 'start_block_index', 'end_block_index'])) return false
+  return (
+    isNonNegativeInteger(value.search_result_index)
+    && isNonNegativeInteger(value.start_block_index)
+    && isNonNegativeInteger(value.end_block_index)
+    && (value.end_block_index as number) >= (value.start_block_index as number)
+  )
+}
+
+export const encodeWebSearchResultPayload = (payload: ShimWebSearchResultPayload): string =>
+  encodeBase64UrlJson(payload)
+
+export const decodeWebSearchResultPayload = (value: string): ShimWebSearchResultPayload | null => {
+  const decoded = decodeBase64UrlJson(value)
+  return isShimWebSearchResultPayload(decoded) ? decoded : null
+}
+
+export const encodeWebSearchCitationPayload = (payload: ShimWebSearchCitationPayload): string =>
+  encodeBase64UrlJson(payload)
+
+export const decodeWebSearchCitationPayload = (value: string): ShimWebSearchCitationPayload | null => {
+  const decoded = decodeBase64UrlJson(value)
+  return isShimWebSearchCitationPayload(decoded) ? decoded : null
+}
+
+const isNativeWebSearchToolDefinition = (tool: MessagesTool): tool is MessagesNativeWebSearchTool =>
+  tool.type === 'web_search_20250305' || tool.type === 'web_search_20260209' || tool.type === 'web_search_20260318'
+
+const messagesWebSearchErrorCodeSet = new Set<string>(MESSAGES_WEB_SEARCH_ERROR_CODES)
+
+const isMessagesWebSearchErrorCode = (value: unknown): value is MessagesWebSearchErrorCode =>
+  typeof value === 'string' && messagesWebSearchErrorCodeSet.has(value)
+
+const isWebSearchToolResultError = (value: unknown): value is MessagesWebSearchToolResultError =>
+  isJsonObject(value)
+  && value.type === 'web_search_tool_result_error'
+  && isMessagesWebSearchErrorCode((value as { error_code?: unknown }).error_code)
+
+const toUpstreamToolUseId = (toolUseId: string): string =>
+  toolUseId.startsWith('srvtoolu_') ? `toolu_${toolUseId.slice('srvtoolu_'.length)}` : toolUseId
+
+const toNativeServerToolUseId = (toolUseId: string): string =>
+  toolUseId.startsWith('toolu_') ? `srvtoolu_${toolUseId.slice('toolu_'.length)}` : toolUseId
+
+const buildUpstreamSearchResultBlock = (
+  result: MessagesWebSearchResultBlock,
+  decoded: NonNullable<ReturnType<typeof decodeWebSearchResultPayload>>,
+): MessagesSearchResultBlock => ({
+  type: 'search_result',
+  source: result.url,
+  title: result.title,
+  content: decoded.content,
+  citations: { enabled: true },
+})
+
+const buildNativeWebSearchErrorResultBlock = (
+  toolUseId: string,
+  errorCode: MessagesWebSearchErrorCode,
+): Extract<MessagesAssistantContentBlock, { type: 'web_search_tool_result' }> => ({
+  type: 'web_search_tool_result',
+  tool_use_id: toNativeServerToolUseId(toolUseId),
+  content: { type: 'web_search_tool_result_error', error_code: errorCode },
+  caller: { type: 'direct' },
+})
+
+const buildNativeWebSearchServerToolUseBlock = (
+  toolUseId: string,
+  query: string,
+): Extract<MessagesAssistantContentBlock, { type: 'server_tool_use' }> => ({
+  type: 'server_tool_use',
+  id: toNativeServerToolUseId(toolUseId),
+  name: WEB_SEARCH_TOOL_NAME,
+  input: { query },
+})
+
+const buildNativeWebSearchResultBlock = (
+  result: Extract<WebSearchProviderResult, { type: 'ok' }>['results'][number],
+): MessagesWebSearchResultBlock => ({
+  type: 'web_search_result',
+  url: result.source,
+  title: result.title,
+  encrypted_content: encodeWebSearchResultPayload({ content: result.content }),
+  ...(result.pageAge ? { page_age: result.pageAge } : {}),
+})
+
+const collectOwnedReplayResultsByServerToolUseId = (
+  content: Array<{ type: string; [key: string]: unknown }>,
+): Map<string, OwnedReplayToolResult> => {
+  const pairedServerToolUseIds = new Set(
+    content.flatMap(block =>
+      block.type === 'server_tool_use' && (block as unknown as { name?: unknown }).name === WEB_SEARCH_TOOL_NAME
+        ? [(block as unknown as { id: string }).id]
+        : [],
+    ),
+  )
+  const ownedReplayResultsByServerToolUseId = new Map<string, OwnedReplayToolResult>()
+
+  for (const block of content) {
+    if (block.type !== 'web_search_tool_result' || !pairedServerToolUseIds.has((block as unknown as { tool_use_id: string }).tool_use_id)) {
+      continue
+    }
+    const ownedReplayResult = decodeOwnedReplayToolResult(
+      block as unknown as Extract<MessagesAssistantContentBlock, { type: 'web_search_tool_result' }>,
+    )
+    if (!ownedReplayResult) continue
+    ownedReplayResultsByServerToolUseId.set((block as unknown as { tool_use_id: string }).tool_use_id, ownedReplayResult)
+  }
+
+  return ownedReplayResultsByServerToolUseId
+}
+
+const messageHasOwnedReplayMarkers = (message: MessagesMessage): boolean => {
+  if (message.role !== 'assistant' || !Array.isArray(message.content)) return false
+
+  return (
+    collectOwnedReplayResultsByServerToolUseId(message.content).size > 0
+    || message.content.some(block => {
+      if (block.type !== 'text' || !(block as unknown as { citations?: unknown }).citations) return false
+      const citations = (block as unknown as { citations: MessagesTextCitation[] }).citations
+      return citations.some(
+        c => c.type === 'web_search_result_location'
+          && decodeWebSearchCitationPayload((c as { encrypted_index: string }).encrypted_index) !== null,
+      )
+    })
+  )
+}
+
+const decodeOwnedReplayCitation = (citation: MessagesTextCitation): MessagesTextCitation => {
+  if (citation.type !== 'web_search_result_location') return citation
+  const decoded = decodeWebSearchCitationPayload(citation.encrypted_index)
+  if (!decoded) return citation
+  return {
+    type: 'search_result_location',
+    url: citation.url,
+    title: citation.title,
+    search_result_index: decoded.search_result_index,
+    start_block_index: decoded.start_block_index,
+    end_block_index: decoded.end_block_index,
+    ...(citation.cited_text ? { cited_text: citation.cited_text } : {}),
+  }
+}
+
+const decodeOwnedReplayToolResult = (
+  block: Extract<MessagesAssistantContentBlock, { type: 'web_search_tool_result' }>,
+): OwnedReplayToolResult | null => {
+  if (Array.isArray(block.content)) {
+    const decodedResults = block.content.map(result => ({
+      result,
+      payload: decodeWebSearchResultPayload(result.encrypted_content),
+    }))
+    if (decodedResults.some(e => e.payload === null)) return null
+    return {
+      upstreamToolResult: {
+        type: 'tool_result',
+        tool_use_id: toUpstreamToolUseId(block.tool_use_id),
+        content: decodedResults.map(({ result, payload }) => buildUpstreamSearchResultBlock(result, payload!)),
+      },
+      searchResultOwnership: decodedResults.map(() => 'owned'),
+    }
+  }
+
+  if (isWebSearchToolResultError(block.content)) return null
+  return null
+}
+
+const collectForeignSearchResultOwnership = (
+  content: string | Array<{ type: string; [key: string]: unknown }>,
+): SearchResultOwnership[] => {
+  if (typeof content === 'string') return []
+  return content.flatMap(block => {
+    if (block.type !== 'tool_result' || !Array.isArray((block as unknown as { content?: unknown }).content)) return []
+    const inner = (block as unknown as { content: Array<{ type: string }> }).content
+    return inner.flatMap(cb => (cb.type === 'search_result' ? ['foreign' as const] : []))
+  })
+}
+
+interface PreparedMessagesWebSearchReplay {
+  hasOwnedReplay: boolean
+  messages: MessagesMessage[]
+  priorSearchUseCount: number
+  requestSearchResultOwnership: SearchResultOwnership[]
+}
+
+const prepareMessagesWebSearchReplay = (messages: MessagesMessage[]): PreparedMessagesWebSearchReplay => {
+  const hasOwnedReplay = messages.some(messageHasOwnedReplayMarkers)
+  const rewrittenMessages: MessagesMessage[] = []
+  const requestSearchResultOwnership: SearchResultOwnership[] = []
+  let pendingOwnedReplayToolResults: OwnedReplayToolResult[] = []
+  let priorSearchUseCount = 0
+
+  const flushPendingOwnedReplayToolResults = () => {
+    if (pendingOwnedReplayToolResults.length === 0) return
+    rewrittenMessages.push({
+      role: 'user',
+      content: pendingOwnedReplayToolResults.map(({ upstreamToolResult }) => upstreamToolResult as unknown as MessagesUserContentBlock),
+    })
+    requestSearchResultOwnership.push(
+      ...pendingOwnedReplayToolResults.flatMap(({ searchResultOwnership }) => searchResultOwnership),
+    )
+    pendingOwnedReplayToolResults = []
+  }
+
+  for (const message of messages) {
+    if (pendingOwnedReplayToolResults.length > 0 && message.role !== 'user') {
+      flushPendingOwnedReplayToolResults()
+    }
+
+    if (message.role === 'user') {
+      const foreignSearchResultOwnership = collectForeignSearchResultOwnership(message.content)
+
+      if (
+        pendingOwnedReplayToolResults.length > 0
+        && Array.isArray(message.content)
+        && message.content.some(b => b.type === 'tool_result')
+      ) {
+        const toolResults = pendingOwnedReplayToolResults.map(({ upstreamToolResult }) => upstreamToolResult as unknown as MessagesUserContentBlock)
+        rewrittenMessages.push({
+          role: 'user',
+          content: [
+            ...toolResults,
+            ...(typeof message.content === 'string'
+              ? [{ type: 'text' as const, text: message.content }]
+              : message.content),
+          ],
+        })
+        requestSearchResultOwnership.push(
+          ...pendingOwnedReplayToolResults.flatMap(({ searchResultOwnership }) => searchResultOwnership),
+          ...foreignSearchResultOwnership,
+        )
+        pendingOwnedReplayToolResults = []
+        continue
+      }
+
+      flushPendingOwnedReplayToolResults()
+      rewrittenMessages.push(message)
+      requestSearchResultOwnership.push(...foreignSearchResultOwnership)
+      continue
+    }
+
+    if (!Array.isArray(message.content)) {
+      rewrittenMessages.push(message)
+      continue
+    }
+
+    if (message.role === 'system') {
+      rewrittenMessages.push(message)
+      continue
+    }
+
+    const ownedReplayResultsByServerToolUseId = collectOwnedReplayResultsByServerToolUseId(message.content)
+
+    for (const ownedReplayResult of ownedReplayResultsByServerToolUseId.values()) {
+      priorSearchUseCount += 1
+      pendingOwnedReplayToolResults.push(ownedReplayResult)
+    }
+
+    const rewrittenContent = message.content.flatMap((block): Array<{ type: string; [key: string]: unknown }> => {
+      if (block.type === 'server_tool_use' && ownedReplayResultsByServerToolUseId.has((block as unknown as { id: string }).id)) {
+        return [
+          {
+            type: 'tool_use',
+            id: toUpstreamToolUseId((block as unknown as { id: string }).id),
+            name: (block as unknown as { name: string }).name,
+            input: (block as unknown as { input: Record<string, unknown> }).input,
+          },
+        ]
+      }
+      if (block.type === 'web_search_tool_result' && ownedReplayResultsByServerToolUseId.has((block as unknown as { tool_use_id: string }).tool_use_id)) {
+        return []
+      }
+      if (block.type !== 'text' || !(block as unknown as { citations?: unknown }).citations) return [block]
+      return [
+        {
+          type: 'text',
+          text: (block as unknown as { text: string }).text,
+          citations: (block as unknown as { citations: MessagesTextCitation[] }).citations.map(decodeOwnedReplayCitation),
+        },
+      ]
+    })
+
+    rewrittenMessages.push({ role: 'assistant', content: rewrittenContent })
+  }
+
+  flushPendingOwnedReplayToolResults()
+
+  return {
+    hasOwnedReplay,
+    messages: rewrittenMessages,
+    priorSearchUseCount,
+    requestSearchResultOwnership,
+  }
+}
+
+const validateNativeWebSearchToolDefinitions = (
+  payload: MessagesPayload,
+): { type: 'ok'; nativeTool?: MessagesNativeWebSearchTool } | { type: 'invalid-request'; message: string } => {
+  const tools = ((payload.tools ?? []) as unknown as MessagesTool[])
+  const nativeToolEntries = tools.flatMap((tool, index) =>
+    isNativeWebSearchToolDefinition(tool) ? [{ tool, index }] : [],
+  )
+
+  if (nativeToolEntries.length > 1) {
+    return { type: 'invalid-request', message: 'Only one native web search tool definition is supported per request.' }
+  }
+
+  const nativeTool = nativeToolEntries[0]?.tool
+  if (nativeTool?.name !== undefined && nativeTool.name !== WEB_SEARCH_TOOL_NAME) {
+    return {
+      type: 'invalid-request',
+      message: `tools.${nativeToolEntries[0]!.index}.${nativeTool.type}.name: Input should be '${WEB_SEARCH_TOOL_NAME}'`,
+    }
+  }
+
+  if (nativeTool && tools.some(t => !isNativeWebSearchToolDefinition(t) && (t as MessagesClientTool).name === WEB_SEARCH_TOOL_NAME)) {
+    return {
+      type: 'invalid-request',
+      message: `Native web search tool name collides with another client tool: ${WEB_SEARCH_TOOL_NAME}.`,
+    }
+  }
+
+  return { type: 'ok', nativeTool }
+}
+
+const buildMessagesWebSearchShimState = (
+  nativeTool: MessagesNativeWebSearchTool | undefined,
+  replay: PreparedMessagesWebSearchReplay,
+): MessagesWebSearchShimState => {
+  if (!nativeTool && !replay.hasOwnedReplay) return { mode: 'inactive' }
+
+  if (!nativeTool) {
+    return {
+      mode: 'replay_only',
+      priorSearchUseCount: replay.priorSearchUseCount,
+      requestSearchResultOwnership: replay.requestSearchResultOwnership,
+    }
+  }
+
+  return {
+    mode: 'active',
+    toolVersion: nativeTool.type,
+    maxUses: nativeTool.max_uses,
+    allowedDomains: normalizeNonEmptyDomainList(nativeTool.allowed_domains),
+    blockedDomains: normalizeNonEmptyDomainList(nativeTool.blocked_domains),
+    userLocation: nativeTool.user_location
+      ? {
+          city: nativeTool.user_location.city,
+          region: nativeTool.user_location.region,
+          country: nativeTool.user_location.country,
+          timezone: nativeTool.user_location.timezone,
+        }
+      : undefined,
+    priorSearchUseCount: replay.priorSearchUseCount,
+    requestSearchResultOwnership: replay.requestSearchResultOwnership,
+  }
+}
+
+export const prepareMessagesWebSearchShimRequest = (
+  payload: MessagesPayload,
+): PrepareMessagesWebSearchShimRequestResult => {
+  const validated = validateNativeWebSearchToolDefinitions(payload)
+  if (validated.type !== 'ok') return validated
+
+  const messages = (payload.messages as unknown as MessagesMessage[])
+  const replay = prepareMessagesWebSearchReplay(messages)
+  const state = buildMessagesWebSearchShimState(validated.nativeTool, replay)
+
+  if (state.mode === 'inactive') return { type: 'ok', payload, state }
+
+  const tools = payload.tools as unknown as MessagesTool[] | undefined
+  return {
+    type: 'ok',
+    payload: {
+      ...payload,
+      ...(tools
+        ? {
+            tools: validated.nativeTool
+              ? tools.map(t => (isNativeWebSearchToolDefinition(t) ? UPSTREAM_WEB_SEARCH_TOOL_DEFINITION : t)) as unknown as MessagesPayload['tools']
+              : payload.tools,
+          }
+        : {}),
+      messages: replay.messages as unknown as MessagesPayload['messages'],
+    },
+    state,
+  }
+}
+
+const rewriteResponseCitationToNative = (
+  citation: MessagesTextCitation,
+  state: MessagesWebSearchShimState,
+): MessagesTextCitation => {
+  if (state.mode === 'inactive' || citation.type !== 'search_result_location') return citation
+  if (state.requestSearchResultOwnership[citation.search_result_index] !== 'owned') return citation
+
+  return {
+    type: 'web_search_result_location',
+    url: citation.url,
+    title: citation.title,
+    encrypted_index: encodeWebSearchCitationPayload({
+      search_result_index: citation.search_result_index,
+      start_block_index: citation.start_block_index,
+      end_block_index: citation.end_block_index,
+    }),
+    ...(citation.cited_text ? { cited_text: citation.cited_text } : {}),
+  }
+}
+
+const buildNativeWebSearchResultBlockFromProviderResult = (
+  result: WebSearchProviderResult,
+  toolUseId: string,
+): Extract<MessagesAssistantContentBlock, { type: 'web_search_tool_result' }> => {
+  if (result.type === 'error') return buildNativeWebSearchErrorResultBlock(toolUseId, result.errorCode)
+
+  return {
+    type: 'web_search_tool_result',
+    tool_use_id: toNativeServerToolUseId(toolUseId),
+    content: result.results.map(buildNativeWebSearchResultBlock),
+    caller: { type: 'direct' },
+  }
+}
+
+type ActiveBlock =
+  | { kind: 'passthrough'; downstreamIndex: number }
+  | { kind: 'text'; downstreamIndex: number }
+  | {
+      kind: 'web-search-tool-use'
+      upstreamToolUseId: string
+      serverToolUseIndex: number
+      resultIndex: number
+      inputJson: string
+    }
+
+interface ShimStreamingState {
+  downstreamIndexOffset: number
+  currentSearchUseCount: number
+  executedSearchCount: number
+  interceptedSearches: number
+  hasRemainingClientToolUse: boolean
+}
+
+const rewriteContentBlockStartCitations = (
+  event: Extract<MessagesStreamEvent, { type: 'content_block_start' }>,
+  state: MessagesWebSearchShimState,
+): Extract<MessagesStreamEvent, { type: 'content_block_start' }> => {
+  if (event.content_block.type !== 'text' || !event.content_block.citations?.length) return event
+  return {
+    ...event,
+    content_block: {
+      ...event.content_block,
+      citations: event.content_block.citations.map(c => rewriteResponseCitationToNative(c, state)),
+    },
+  }
+}
+
+const rewriteContentBlockDeltaCitations = (
+  event: Extract<MessagesStreamEvent, { type: 'content_block_delta' }>,
+  state: MessagesWebSearchShimState,
+): Extract<MessagesStreamEvent, { type: 'content_block_delta' }> => {
+  if (event.delta.type === 'text_delta' && event.delta.citations?.length) {
+    return {
+      ...event,
+      delta: {
+        ...event.delta,
+        citations: event.delta.citations.map(c => rewriteResponseCitationToNative(c, state)),
+      },
+    }
+  }
+  if (event.delta.type === 'citations_delta') {
+    return {
+      ...event,
+      delta: {
+        type: 'citations_delta',
+        citation: rewriteResponseCitationToNative(event.delta.citation, state),
+      },
+    }
+  }
+  return event
+}
+
+const runWebSearchStopHandler = async function* (
+  block: Extract<ActiveBlock, { kind: 'web-search-tool-use' }>,
+  shimState: ShimStreamingState,
+  state: Extract<MessagesWebSearchShimState, { mode: 'active' }>,
+  provider: ActiveMessagesWebSearchProvider,
+): AsyncGenerator<ProtocolFrame<MessagesStreamEvent>> {
+  const parsedInput = (() => {
+    if (block.inputJson === '') return null
+    try {
+      const parsed = JSON.parse(block.inputJson)
+      return isJsonObject(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  })()
+
+  const query = parsedInput ? (typeof parsedInput.query === 'string' ? parsedInput.query.trim() : null) : null
+
+  shimState.interceptedSearches += 1
+
+  yield eventFrame({
+    type: 'content_block_start',
+    index: block.serverToolUseIndex,
+    content_block: buildNativeWebSearchServerToolUseBlock(block.upstreamToolUseId, query ?? ''),
+  })
+  yield eventFrame({ type: 'content_block_stop', index: block.serverToolUseIndex })
+
+  const resultBlock = await (async () => {
+    if (state.maxUses !== undefined && shimState.currentSearchUseCount >= state.maxUses) {
+      return buildNativeWebSearchErrorResultBlock(block.upstreamToolUseId, 'max_uses_exceeded')
+    }
+    if (!query || query.length === 0) {
+      return buildNativeWebSearchErrorResultBlock(block.upstreamToolUseId, 'invalid_tool_input')
+    }
+    if (query.length > MAX_QUERY_LENGTH) {
+      return buildNativeWebSearchErrorResultBlock(block.upstreamToolUseId, 'query_too_long')
+    }
+
+    shimState.executedSearchCount += 1
+    shimState.currentSearchUseCount += 1
+
+    try {
+      const request: WebSearchProviderRequest = {
+        query,
+        allowedDomains: state.allowedDomains,
+        blockedDomains: state.blockedDomains,
+        userLocation: state.userLocation,
+      }
+      const providerResult = await searchWebAndRecordUsage({
+        provider: provider.impl,
+        providerName: provider.providerName,
+        keyId: provider.apiKeyId,
+        request,
+      })
+      return buildNativeWebSearchResultBlockFromProviderResult(providerResult, block.upstreamToolUseId)
+    } catch {
+      return buildNativeWebSearchErrorResultBlock(block.upstreamToolUseId, 'unavailable')
+    }
+  })()
+
+  yield eventFrame({
+    type: 'content_block_start',
+    index: block.resultIndex,
+    content_block: {
+      type: 'web_search_tool_result',
+      tool_use_id: resultBlock.tool_use_id,
+      content: resultBlock.content,
+    },
+  })
+  yield eventFrame({ type: 'content_block_stop', index: block.resultIndex })
+
+  shimState.downstreamIndexOffset += 1
+}
+
+export const rewriteMessagesWebSearchEventsToNative = async function* (
+  frames: AsyncIterable<ProtocolFrame<MessagesStreamEvent>>,
+  state: MessagesWebSearchShimState,
+  provider?: ActiveMessagesWebSearchProvider,
+): AsyncGenerator<ProtocolFrame<MessagesStreamEvent>> {
+  if (state.mode === 'inactive') {
+    yield* frames
+    return
+  }
+  if (state.mode === 'active' && !provider) {
+    throw new Error('Active messages web-search rewrite requires a provider.')
+  }
+
+  const shimState: ShimStreamingState = {
+    downstreamIndexOffset: 0,
+    currentSearchUseCount: state.priorSearchUseCount,
+    executedSearchCount: 0,
+    interceptedSearches: 0,
+    hasRemainingClientToolUse: false,
+  }
+
+  let activeBlock: ActiveBlock | undefined
+
+  for await (const frame of frames) {
+    if (frame.type === 'done') {
+      yield frame
+      continue
+    }
+
+    const event = frame.event
+
+    if (event.type === 'content_block_start') {
+      if (activeBlock !== undefined) {
+        throw new Error('upstream Messages SSE interleaved content blocks; web-search shim cannot renumber.')
+      }
+      const downstreamBase = event.index + shimState.downstreamIndexOffset
+
+      if (
+        state.mode === 'active'
+        && event.content_block.type === 'tool_use'
+        && (event.content_block as { name?: string }).name === WEB_SEARCH_TOOL_NAME
+      ) {
+        activeBlock = {
+          kind: 'web-search-tool-use',
+          upstreamToolUseId: (event.content_block as { id: string }).id,
+          serverToolUseIndex: downstreamBase,
+          resultIndex: downstreamBase + 1,
+          inputJson: '',
+        }
+        continue
+      }
+
+      if (event.content_block.type === 'text') {
+        activeBlock = { kind: 'text', downstreamIndex: downstreamBase }
+        yield eventFrame({ ...rewriteContentBlockStartCitations(event, state), index: downstreamBase })
+        continue
+      }
+
+      if (event.content_block.type === 'tool_use') {
+        shimState.hasRemainingClientToolUse = true
+      }
+
+      activeBlock = { kind: 'passthrough', downstreamIndex: downstreamBase }
+      yield eventFrame({ ...event, index: downstreamBase })
+      continue
+    }
+
+    if (event.type === 'content_block_delta') {
+      if (activeBlock === undefined) {
+        throw new Error('upstream Messages SSE emitted content_block_delta without an open block.')
+      }
+      if (activeBlock.kind === 'web-search-tool-use') {
+        if (event.delta.type === 'input_json_delta') {
+          activeBlock = { ...activeBlock, inputJson: activeBlock.inputJson + event.delta.partial_json }
+        }
+        continue
+      }
+      if (activeBlock.kind === 'text') {
+        yield eventFrame({ ...rewriteContentBlockDeltaCitations(event, state), index: activeBlock.downstreamIndex })
+        continue
+      }
+      yield eventFrame({ ...event, index: activeBlock.downstreamIndex })
+      continue
+    }
+
+    if (event.type === 'content_block_stop') {
+      if (activeBlock === undefined) {
+        throw new Error('upstream Messages SSE emitted content_block_stop without an open block.')
+      }
+      if (activeBlock.kind === 'web-search-tool-use') {
+        if (state.mode !== 'active') {
+          throw new Error('web-search shim entered intercept path without active state.')
+        }
+        yield* runWebSearchStopHandler(activeBlock, shimState, state, provider!)
+        activeBlock = undefined
+        continue
+      }
+      yield eventFrame({ type: 'content_block_stop', index: activeBlock.downstreamIndex })
+      activeBlock = undefined
+      continue
+    }
+
+    if (event.type === 'message_delta') {
+      const interceptedAny = shimState.interceptedSearches > 0
+      const baseUsage = event.usage ?? { output_tokens: 0 }
+      const newUsage = shimState.executedSearchCount > 0
+        ? { ...baseUsage, server_tool_use: { web_search_requests: shimState.executedSearchCount } }
+        : baseUsage
+      yield eventFrame({
+        type: 'message_delta',
+        delta: interceptedAny
+          ? { ...event.delta, stop_reason: shimState.hasRemainingClientToolUse ? 'tool_use' : 'pause_turn' }
+          : event.delta,
+        usage: newUsage,
+      })
+      continue
+    }
+
+    if (event.type === 'error') {
+      yield frame
+      return
+    }
+
+    yield frame
+  }
+}
+
+const invalidRequestUpstreamError = (
+  message: string,
+): LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>> => ({
+  type: 'upstream-error',
+  status: 400,
+  headers: new Headers({ 'content-type': 'application/json' }),
+  body: new TextEncoder().encode(
+    JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message } }),
+  ),
+})
+
+const resolveActiveMessagesWebSearchProvider = async (
+  apiKeyId: string,
+): Promise<
+  | { type: 'ok'; provider: ActiveMessagesWebSearchProvider }
+  | LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>
+> => {
+  const searchConfig = await loadSearchConfig()
+  const configuredProvider = resolveConfiguredWebSearchProvider(searchConfig)
+
+  if (configuredProvider.type === 'enabled') {
+    return {
+      type: 'ok',
+      provider: {
+        providerName: configuredProvider.provider,
+        impl: configuredProvider.impl,
+        apiKeyId,
+      },
+    }
+  }
+
+  return {
+    type: 'internal-error',
+    status: 500,
+    error: new Error(
+      configuredProvider.type === 'disabled'
+        ? 'Native Messages web search requires an enabled search provider.'
+        : `Native Messages web search is missing the configured ${configuredProvider.provider} credential.`,
+    ),
+  }
+}
+
+type PreparedMessagesWebSearchShimState = Exclude<MessagesWebSearchShimState, { mode: 'inactive' }>
+
+type PrepareMessagesWebSearchInvocationResult =
+  | { type: 'inactive' }
+  | { type: 'invalid-request'; message: string }
+  | { type: 'prepared'; state: PreparedMessagesWebSearchShimState }
+
+const prepareMessagesWebSearchInvocation = (
+  invocation: Invocation,
+): PrepareMessagesWebSearchInvocationResult => {
+  if (!invocation.enabledFlags.has('messages-web-search-shim')) return { type: 'inactive' }
+
+  const prepared = prepareMessagesWebSearchShimRequest(invocation.payload as MessagesPayload)
+  if (prepared.type === 'invalid-request') return prepared
+  if (prepared.state.mode === 'inactive') return { type: 'inactive' }
+
+  invocation.payload = prepared.payload as unknown as Record<string, unknown>
+  return { type: 'prepared', state: prepared.state }
+}
+
+/**
+ * Anthropic exposes native `web_search_*` server tools. This shim rewrites the
+ * native tool definition into an ordinary client `web_search` tool, executes
+ * each search the model issues using the gateway's configured provider, and
+ * rewrites the response back to the Anthropic native `server_tool_use` /
+ * `web_search_tool_result` / `web_search_result_location` shape.
+ *
+ * Gated by the `messages-web-search-shim` flag on `Invocation.enabledFlags`.
+ */
+export const withMessagesWebSearchShim: MessagesInterceptor = async (invocation, ctx, run) => {
+  const prepared = prepareMessagesWebSearchInvocation(invocation)
+  if (prepared.type === 'inactive') return await run()
+  if (prepared.type === 'invalid-request') return invalidRequestUpstreamError(prepared.message)
+
+  const providerResolution = prepared.state.mode === 'active'
+    ? await resolveActiveMessagesWebSearchProvider(ctx.apiKeyId ?? '')
+    : { type: 'ok' as const, provider: undefined }
+  if (providerResolution.type !== 'ok') return providerResolution
+
+  const result = await run()
+  if (result.type !== 'events') return result
+
+  return {
+    ...result,
+    events: rewriteMessagesWebSearchEventsToNative(result.events, prepared.state, providerResolution.provider),
+  }
+}

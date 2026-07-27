@@ -12,10 +12,31 @@
  * platform.
  */
 import { __registerPlatformReset } from "./reset.ts"
+import { imageSize } from "image-size"
 
 export interface ImageDimensions {
   width: number
   height: number
+}
+
+/**
+ * Reads pixel dimensions from raster image bytes (PNG/JPEG/GIF/WebP/etc.)
+ * via the `image-size` library. Returns null when the format is
+ * unrecognised or bytes are a partial read — callers treat null as "cannot
+ * derive dims locally" and either skip the size calculator or fall back to
+ * a passthrough encode.
+ *
+ * image-size both throws on unrecognised formats and returns undefined
+ * width/height for partial reads; we collapse both into a single null.
+ */
+export const dimensionsFromBytes = (bytes: Uint8Array): ImageDimensions | null => {
+  try {
+    const { width, height } = imageSize(bytes)
+    if (width === undefined || height === undefined) return null
+    return { width, height }
+  } catch {
+    return null
+  }
 }
 
 /**

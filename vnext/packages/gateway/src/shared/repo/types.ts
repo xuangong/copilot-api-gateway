@@ -182,6 +182,9 @@ export interface LatencyRepo {
 export type PerformanceMetricScope = "request_total" | "upstream_success"
 export type PerformanceSourceApi = "messages" | "responses" | "chat-completions" | "gemini" | "embeddings"
 export type PerformanceTargetApi = "messages" | "responses" | "chat-completions" | "embeddings"
+/** Sub-operation discriminator; null for request-level rows. See
+ *  PerformanceOperation in @vibe-llm/protocols/common. */
+export type PerformanceOperation = "image_generation" | "image_edit"
 
 export interface PerformanceSummaryRecord {
   hour: string
@@ -193,6 +196,7 @@ export interface PerformanceSummaryRecord {
   targetApi: PerformanceTargetApi
   stream: boolean
   runtimeLocation: string
+  operation: PerformanceOperation | null
   requests: number
   errors: number
   totalMsSum: number
@@ -208,6 +212,7 @@ export interface PerformanceBucketRecord {
   targetApi: PerformanceTargetApi
   stream: boolean
   runtimeLocation: string
+  operation: PerformanceOperation | null
   lowerMs: number
   upperMs: number
   count: number
@@ -223,6 +228,8 @@ export interface PerformanceRecordInput {
   targetApi: PerformanceTargetApi
   stream: boolean
   runtimeLocation: string
+  /** Sub-operation discriminator; omit/null for the enclosing request row. */
+  operation?: PerformanceOperation | null
   durationMs: number
   isError: boolean
 }

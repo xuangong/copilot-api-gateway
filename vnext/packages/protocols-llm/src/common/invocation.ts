@@ -17,6 +17,11 @@ export interface Invocation {
 export interface RequestContext {
   readonly requestStartedAt: number
   readonly downstreamAbortSignal?: AbortSignal
+  // Optional caller api key id. Threaded from `attempt.ts` where the
+  // auth context is in scope so server-tool plugins (web-search,
+  // image-generation) can attribute upstream usage back to the caller
+  // without another lookup. Reference: copilot-gateway `ChatGatewayCtx.apiKeyId`.
+  readonly apiKeyId?: string
 }
 
 export type CopilotInterceptor = Interceptor<RequestContext, Invocation, Response>

@@ -8,7 +8,8 @@
     "./messages": "./src/messages/index.ts",
     "./chat": "./src/chat/index.ts",
     "./responses": "./src/responses/index.ts",
-    "./gemini": "./src/gemini/index.ts"
+    "./gemini": "./src/gemini/index.ts",
+    "./images": "./src/images/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

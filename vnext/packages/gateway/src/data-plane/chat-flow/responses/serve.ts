@@ -159,7 +159,7 @@ const responsesHooks: ServeTemplateHooks<
   runAttempt: (a) => responsesAttempt.generate({
     payload: a.payload,
     auth: a.auth,
-    ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal },
+    ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId },
     telemetryCtx: a.telemetryCtx,
     requestId: (a.extras.requestId as string | undefined),
     userAgent: (a.extras.userAgent as string | undefined),

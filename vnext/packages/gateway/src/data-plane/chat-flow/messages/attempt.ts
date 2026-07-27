@@ -304,7 +304,7 @@ export const messagesAttempt = {
     // owns the snapshot sidecar; other source protocols ignore the hint).
     const invocation: Invocation = {
       endpoint: 'messages',
-      enabledFlags: new Set(),
+      enabledFlags: new Set(['messages-web-search-shim']),
       sourceApi: 'messages',
       payload: args.payload as Record<string, unknown>,
       headers: { ...(args.inheritedHeaders ?? {}) },
