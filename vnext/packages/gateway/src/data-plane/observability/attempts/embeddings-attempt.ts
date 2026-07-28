@@ -81,7 +81,8 @@ export interface EmbeddingsAttemptInput {
   modelKey: string
   /** Pre-resolved pricing snapshot from `provider.getPricingForModelKey(modelKey)`. */
   pricing: ModelPricing | null
-  upstream: 'github_copilot'
+  /** Upstream id from the resolved binding — surfaces the real provider (custom/azure/copilot) in latency+usage rows. */
+  upstream: string
   userAgent: string | undefined
   requestId: string | undefined
   /** Wraps the upstream call. Caller builds the request body / picks the binding. */

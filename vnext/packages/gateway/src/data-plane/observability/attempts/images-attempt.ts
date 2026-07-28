@@ -25,7 +25,8 @@ import {
 export interface ImagesAttemptInput {
   apiKeyId: string | undefined
   model: string
-  upstream: 'github_copilot'
+  /** Upstream id from the resolved binding — surfaces the real provider (custom/azure/sdf/copilot) in latency rows. */
+  upstream: string
   userAgent: string | undefined
   requestId: string | undefined
   /** Wraps the upstream call. Caller builds the request body / picks the binding. */

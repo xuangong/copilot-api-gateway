@@ -72,7 +72,7 @@ async function handle(c: EmbeddingsCtx): Promise<Response> {
     model: body.model,
     modelKey: body.model,
     pricing,
-    upstream: 'github_copilot',
+    upstream: binding.upstream,
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,
     call: async () => {

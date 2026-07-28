@@ -83,7 +83,7 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
   const attempt = await runImagesAttempt({
     apiKeyId: auth.apiKeyId,
     model: payload.model,
-    upstream: 'github_copilot',
+    upstream: binding.upstream,
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,
     call: async () => {
@@ -163,7 +163,7 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
   const attempt = await runImagesAttempt({
     apiKeyId: auth.apiKeyId,
     model,
-    upstream: 'github_copilot',
+    upstream: binding.upstream,
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,
     call: async () => {
