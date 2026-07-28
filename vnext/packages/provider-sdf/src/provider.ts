@@ -42,6 +42,27 @@ export interface SdfProviderConfig {
   name: string
   /** Substrate app-only bearer token (aud=substrate.office.com, ~24h). */
   substrateToken: string
+  /**
+   * LLM API Taxonomy (aka.ms/llmapi/taxonomy). Sent as X-Taxonomy-* headers on
+   * every SDF request so traffic can be attributed for capacity, policies and
+   * Class of Service. `experience` is a fixed enum at the LLM API side;
+   * "BizChat" is the known-valid default. `trafficType` should be "Production"
+   * for prod deployments, "Test" everywhere else. All fields optional — if
+   * omitted, safe non-prod defaults are used.
+   */
+  taxonomy?: {
+    experience?: string
+    agent?: string
+    inferenceStep?: string
+    trafficType?: 'Production' | 'Test'
+  }
+}
+
+const DEFAULT_TAXONOMY = {
+  experience: 'BizChat',
+  agent: 'CopilotApiGateway',
+  inferenceStep: 'GenerateResponse',
+  trafficType: 'Test' as const,
 }
 
 export class SdfProvider implements LlmModelProvider {
@@ -49,11 +70,18 @@ export class SdfProvider implements LlmModelProvider {
   readonly name: string
   readonly supportedEndpoints: readonly EndpointKey[] = SUPPORTED_ENDPOINTS
   private readonly substrateToken: string
+  private readonly taxonomy: Required<NonNullable<SdfProviderConfig['taxonomy']>>
 
   constructor(cfg: SdfProviderConfig) {
     if (!cfg.substrateToken) throw new Error('SDF provider requires a substrateToken')
     this.name = cfg.name
     this.substrateToken = cfg.substrateToken
+    this.taxonomy = {
+      experience: cfg.taxonomy?.experience ?? DEFAULT_TAXONOMY.experience,
+      agent: cfg.taxonomy?.agent ?? DEFAULT_TAXONOMY.agent,
+      inferenceStep: cfg.taxonomy?.inferenceStep ?? DEFAULT_TAXONOMY.inferenceStep,
+      trafficType: cfg.taxonomy?.trafficType ?? DEFAULT_TAXONOMY.trafficType,
+    }
   }
 
   async getModels(): Promise<ProviderModelsResponse> {
@@ -118,6 +146,10 @@ export class SdfProvider implements LlmModelProvider {
     outHeaders.set('X-CV', `vnext.${randomShort()}`)
     outHeaders.set('X-InteractionId', cryptoUuid())
     outHeaders.set('X-ScenarioGUID', SCENARIO_GUID)
+    outHeaders.set('X-Taxonomy-Experience', this.taxonomy.experience)
+    outHeaders.set('X-Taxonomy-Agent', this.taxonomy.agent)
+    outHeaders.set('X-Taxonomy-InferenceStep', this.taxonomy.inferenceStep)
+    outHeaders.set('X-Taxonomy-TrafficType', this.taxonomy.trafficType)
     if (!bodyIsFormData) outHeaders.set('Content-Type', 'application/json')
     for (const [k, v] of Object.entries(mergeHeaders(req.headers, undefined))) {
       outHeaders.set(k, v)
