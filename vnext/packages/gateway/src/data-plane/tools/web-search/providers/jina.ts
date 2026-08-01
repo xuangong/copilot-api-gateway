@@ -64,10 +64,10 @@ const parseEnvelope = (payload: unknown): JinaEnvelope | null => {
   if (typeof payload.code !== 'number') return null
   return {
     code: payload.code,
-    status: typeof payload.status === 'number' ? payload.status : undefined,
+    ...(typeof payload.status === 'number' && { status: payload.status }),
     data: payload.data,
-    name: typeof payload.name === 'string' ? payload.name : undefined,
-    message: typeof payload.message === 'string' ? payload.message : undefined,
+    ...(typeof payload.name === 'string' && { name: payload.name }),
+    ...(typeof payload.message === 'string' && { message: payload.message }),
   }
 }
 
@@ -114,10 +114,11 @@ const normalizeSearchResult = (value: unknown): Extract<WebSearchProviderResult,
   // back to the latter — matches what Tavily and Microsoft Grounding hand
   // back as result-level `content`.
   const text = entry.content ?? entry.description ?? ''
+  const pageAge = typeof entry.publishedTime === 'string' && entry.publishedTime.trim().length > 0 ? entry.publishedTime : undefined
   return {
     source: entry.url,
     title: entry.title,
-    pageAge: typeof entry.publishedTime === 'string' && entry.publishedTime.trim().length > 0 ? entry.publishedTime : undefined,
+    pageAge,
     content: toWebSearchTextBlocks(text),
   }
 }

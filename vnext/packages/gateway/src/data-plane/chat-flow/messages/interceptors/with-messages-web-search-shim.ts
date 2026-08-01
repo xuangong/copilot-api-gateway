@@ -525,14 +525,14 @@ const buildMessagesWebSearchShimState = (
     maxUses: nativeTool.max_uses,
     allowedDomains: normalizeNonEmptyDomainList(nativeTool.allowed_domains),
     blockedDomains: normalizeNonEmptyDomainList(nativeTool.blocked_domains),
-    userLocation: nativeTool.user_location
-      ? {
-          city: nativeTool.user_location.city,
-          region: nativeTool.user_location.region,
-          country: nativeTool.user_location.country,
-          timezone: nativeTool.user_location.timezone,
-        }
-      : undefined,
+    ...(nativeTool.user_location && {
+      userLocation: {
+        city: nativeTool.user_location.city,
+        region: nativeTool.user_location.region,
+        country: nativeTool.user_location.country,
+        timezone: nativeTool.user_location.timezone,
+      },
+    }),
     priorSearchUseCount: replay.priorSearchUseCount,
     requestSearchResultOwnership: replay.requestSearchResultOwnership,
   }

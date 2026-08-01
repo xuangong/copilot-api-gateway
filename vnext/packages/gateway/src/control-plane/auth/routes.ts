@@ -9,6 +9,8 @@
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../shared/repo/index.ts'
+import type { InviteCode } from '../../shared/repo/types.ts'
+import type { InviteCodeId } from '../../shared/repo/branded-ids.ts'
 import { ADMIN_EMAILS } from '../../shared/config/constants.ts'
 import { validateApiKey } from '../../shared/lib/api-keys.ts'
 import { emailAuthRouter } from './email-routes.ts'
@@ -144,11 +146,14 @@ authRouter.post('/admin/invite-codes', async (c) => {
   if (!body.name || typeof body.name !== 'string') {
     return c.json({ error: 'name is required' }, 400)
   }
-  const code = {
-    id: crypto.randomUUID(),
+  const code: InviteCode = {
+    id: crypto.randomUUID() as InviteCodeId,
     code: generateInviteCode(),
     name: body.name,
+    email: null,
     createdAt: new Date().toISOString(),
+    usedAt: null,
+    usedBy: null,
   }
   await getRepo().inviteCodes.create(code)
   return c.json(code)

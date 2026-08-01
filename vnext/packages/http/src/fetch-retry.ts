@@ -29,9 +29,10 @@ export async function fetchWithRetry(
         timeoutId = setTimeout(() => controller!.abort(), timeout)
       }
 
+      const signal = controller?.signal ?? init?.signal
       const response = await fetch(input, {
         ...init,
-        signal: controller?.signal ?? init?.signal,
+        signal,
       }).finally(() => {
         if (timeoutId) clearTimeout(timeoutId)
       })

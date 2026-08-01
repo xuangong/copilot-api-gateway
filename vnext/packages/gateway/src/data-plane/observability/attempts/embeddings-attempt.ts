@@ -107,7 +107,7 @@ export async function runEmbeddingsAttempt(
         status: 429,
         rateLimit: {
           reason: quota.reason ?? 'Daily quota exceeded.',
-          retryAfterSeconds: quota.retryAfterSeconds ?? undefined,
+          ...(quota.retryAfterSeconds !== undefined && quota.retryAfterSeconds !== null && { retryAfterSeconds: quota.retryAfterSeconds }),
         },
       }
     }

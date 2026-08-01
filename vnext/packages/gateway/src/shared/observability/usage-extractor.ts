@@ -131,8 +131,9 @@ export function extractFromJson(json: unknown): UsageInfo | null {
   if (!u) return null
 
   if (u.input_tokens != null && (u.cache_read_input_tokens !== undefined || u.cache_creation_input_tokens !== undefined)) {
+    const model = modelFromJson(json)
     return {
-      model: modelFromJson(json),
+      model,
       tokens: compactTokens({
         input: u.input_tokens,
         output: u.output_tokens ?? 0,
@@ -146,12 +147,14 @@ export function extractFromJson(json: unknown): UsageInfo | null {
     if (hasModalitySplit) {
       const images = tokenUsageFromImagesResponse(u)
       if (images) {
-        return { model: modelFromJson(json), tokens: images }
+        const model = modelFromJson(json)
+        return { model, tokens: images }
       }
     }
     const cached = u.input_tokens_details?.cached_tokens ?? 0
+    const model = modelFromJson(json)
     return {
-      model: modelFromJson(json),
+      model,
       tokens: compactTokens({
         input: Math.max(0, u.input_tokens - cached),
         output: u.output_tokens ?? 0,
@@ -162,8 +165,9 @@ export function extractFromJson(json: unknown): UsageInfo | null {
   if (u.prompt_tokens != null) {
     const cached = u.prompt_tokens_details?.cached_tokens ?? 0
     const cacheWrite = u.prompt_tokens_details?.cache_creation_input_tokens ?? 0
+    const model = modelFromJson(json)
     return {
-      model: modelFromJson(json),
+      model,
       tokens: compactTokens({
         input: Math.max(0, u.prompt_tokens - cached - cacheWrite),
         output: u.completion_tokens ?? 0,

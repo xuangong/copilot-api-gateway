@@ -35,6 +35,7 @@
 import {
   serveTemplate,
   type KitAuthCtx,
+  type KitDumpSink,
   type KitObsCtx,
   type PreProcessResult,
   type ServeTemplateHooks,
@@ -56,6 +57,7 @@ import {
   type ResponsesAttemptResult,
 } from './attempt.ts'
 import { respondResponses } from './respond.ts'
+import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
 export interface ResponsesServeArgs {
   /** Pre-parsed JSON body from http.ts (`await c.req.json()`). */
@@ -68,6 +70,8 @@ export interface ResponsesServeArgs {
   readonly requestId?: string
   /** Optional User-Agent passthrough so attempt.ts can echo it into shortcut upstream calls. */
   readonly userAgent?: string
+  /** Opaque per-request dump sink (null when the api key has no retention). */
+  readonly dump?: KitDumpSink | null
 }
 
 export interface ResponsesServeResult {
@@ -161,14 +165,15 @@ const responsesHooks: ServeTemplateHooks<
     auth: a.auth,
     ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId },
     telemetryCtx: a.telemetryCtx,
-    requestId: (a.extras.requestId as string | undefined),
-    userAgent: (a.extras.userAgent as string | undefined),
+    requestId: a.extras.requestId as string,
+    userAgent: a.extras.userAgent as string,
   }),
 
   respond: (r, c) => respondResponses(r, {
     wantsStream: c.wantsStream,
     downstreamAbortController: c.downstreamAbortController,
     telemetryCtx: c.telemetryCtx,
+    ...(c.dump !== undefined && c.dump !== null && { dump: c.dump as DumpAccumulator }),
   }),
 }
 
@@ -191,6 +196,7 @@ export async function serveResponses(args: ResponsesServeArgs): Promise<Response
       // kit's RunAttemptArgs only standardises payload/auth/telemetry,
       // so per-endpoint passthroughs live in `extras`.
       extras: { requestId: args.requestId, userAgent: args.userAgent },
+      dump: args.dump ?? null,
     },
     kitDeps,
   )

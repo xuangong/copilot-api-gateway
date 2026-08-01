@@ -21,7 +21,7 @@
  *
  * Reference: Spec 10 §3.4. Pattern mirrors messages/serve.ts.
  */
-import { serveTemplate, type KitAuthCtx, type KitObsCtx, type ServeTemplateHooks } from '@vibe-core/chat-flow-kit'
+import { serveTemplate, type KitAuthCtx, type KitDumpSink, type KitObsCtx, type ServeTemplateHooks } from '@vibe-core/chat-flow-kit'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseGeminiPayload } from '../../parsers.ts'
 import { kitDeps } from '../shared/kit-deps.ts'
@@ -29,6 +29,7 @@ import type { DispatchObsCtx } from '../shared/obs-ctx.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import { geminiAttempt, type GeminiAttemptAuth, type GeminiAttemptResult } from './attempt.ts'
 import { respondGemini } from './respond.ts'
+import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
 export interface GeminiServeArgs {
   /** Pre-parsed JSON body from http.ts (`await c.req.json()`). */
@@ -47,6 +48,8 @@ export interface GeminiServeArgs {
   readonly auth: DataPlaneAuthCtx
   readonly obsCtx: DispatchObsCtx
   readonly signal?: AbortSignal
+  /** Opaque per-request dump sink (null when the api key has no retention). */
+  readonly dump?: KitDumpSink | null
 }
 
 type GeminiPayload = Record<string, unknown> & { stream?: boolean }
@@ -79,6 +82,10 @@ const geminiHooks: ServeTemplateHooks<
   // forceStream lives in extras (URL-derived), not on the payload body.
   wantsStream: (_payload, input) => input.extras.forceStream === true,
 
+  // Model is URL-derived (path param), not in the body. Read it back off
+  // extras so the kit's dump seam can stamp requestedModel after parse.
+  extractRequestedModel: (_p, input) => input.extras.model as string | undefined,
+
   runAttempt: (a) => geminiAttempt.generate({
     payload: a.payload,
     model: a.extras.model as string,
@@ -92,6 +99,7 @@ const geminiHooks: ServeTemplateHooks<
     wantsStream: c.wantsStream,
     downstreamAbortController: c.downstreamAbortController,
     telemetryCtx: c.telemetryCtx,
+    ...(c.dump !== undefined && c.dump !== null && { dump: c.dump as DumpAccumulator }),
   }),
 }
 
@@ -109,6 +117,7 @@ export async function serveGemini(args: GeminiServeArgs): Promise<Response> {
       obsCtx: args.obsCtx as KitObsCtx,
       signal: args.signal,
       extras: { model: args.model, forceStream: args.forceStream },
+      dump: args.dump ?? null,
     },
     kitDeps,
   )

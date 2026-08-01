@@ -18,7 +18,7 @@
  *
  * Reference: Spec 10 §3.4.
  */
-import { serveTemplate, type KitAuthCtx, type KitObsCtx, type ServeTemplateHooks } from '@vibe-core/chat-flow-kit'
+import { serveTemplate, type KitAuthCtx, type KitDumpSink, type KitObsCtx, type ServeTemplateHooks } from '@vibe-core/chat-flow-kit'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseChatPayload } from '../../parsers.ts'
 import { kitDeps } from '../shared/kit-deps.ts'
@@ -26,6 +26,7 @@ import type { DispatchObsCtx } from '../shared/gateway-ctx.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import { chatCompletionsAttempt, type ChatCompletionsAttemptAuth, type ChatCompletionsAttemptResult } from './attempt.ts'
 import { respondChatCompletions } from './respond.ts'
+import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
 export interface ChatCompletionsServeArgs {
   /** Pre-parsed JSON body from http.ts (`await c.req.json()`). */
@@ -38,6 +39,8 @@ export interface ChatCompletionsServeArgs {
    * controller the kit links internally.
    */
   readonly signal?: AbortSignal
+  /** Opaque per-request dump sink (null when the api key has no retention). */
+  readonly dump?: KitDumpSink | null
 }
 
 type ChatCompletionsPayload = Record<string, unknown> & {
@@ -89,6 +92,7 @@ const chatCompletionsHooks: ServeTemplateHooks<
     includeUsageChunk: c.payload.stream_options?.include_usage === true,
     downstreamAbortController: c.downstreamAbortController,
     telemetryCtx: c.telemetryCtx,
+    ...(c.dump !== undefined && c.dump !== null && { dump: c.dump as DumpAccumulator }),
   }),
 }
 
@@ -100,7 +104,7 @@ export async function serveChatCompletions(args: ChatCompletionsServeArgs): Prom
   }
   const { response } = await serveTemplate(
     chatCompletionsHooks,
-    { raw: args.raw, auth, obsCtx: args.obsCtx as KitObsCtx, signal: args.signal, extras: {} },
+    { raw: args.raw, auth, obsCtx: args.obsCtx as KitObsCtx, signal: args.signal, extras: {}, dump: args.dump ?? null },
     kitDeps,
   )
   return response

@@ -355,7 +355,7 @@ export const messagesAttempt = {
         const json = await readUpstreamMessagesJson(upstreamResp.body)
         frames = synthesizeMessagesFramesFromJson(json)
       } else {
-        frames = parseMessagesStream(upstreamResp.body, { signal: args.ctx.downstreamAbortSignal })
+        frames = parseMessagesStream(upstreamResp.body, args.ctx.downstreamAbortSignal !== undefined ? { signal: args.ctx.downstreamAbortSignal } : {})
       }
       const { events: decorated } = withUpstreamTelemetry(frames, {
         abortSignal: args.ctx.downstreamAbortSignal,

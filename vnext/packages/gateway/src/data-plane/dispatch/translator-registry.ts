@@ -211,7 +211,7 @@ const PAIR_RESPONSES_TO_CHAT: PairTranslator = {
     return result.target
   },
   translateEvents: (events) => translateChatToResponsesEvents(events as never),
-  translateBody: (body, ctx) => translateChatToResponsesBody(body, { sourcePayload: ctx.sourcePayload }),
+  translateBody: (body, ctx) => translateChatToResponsesBody(body, ctx.sourcePayload !== undefined ? { sourcePayload: ctx.sourcePayload } : {}),
 }
 
 /** Pair 9: Gemini generateContent client → OpenAI Responses hub. */

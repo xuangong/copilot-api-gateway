@@ -4,11 +4,16 @@ import {
   initBackground,
   initRuntimeLocation,
   initImageProcessor,
+  initFileProvider,
   type SqlDatabase,
 } from "@vibe-core/platform"
 import { initRepo } from "@vibe-llm/gateway/src/shared/repo/index.ts"
 import { initCache } from "@vibe-llm/gateway/src/shared/cache/index.ts"
 import { initResponsesStore } from "@vibe-llm/gateway/src/shared/runtime/responses-store.ts"
+import { initDumpBroker, initDumpStore } from "@vibe-llm/gateway/src/shared/dump/registry.ts"
+import { FileDumpStore } from "@vibe-llm/gateway/src/shared/repo/dump-store.ts"
+import { dumpCodec } from "@vibe-llm/gateway/src/shared/dump/codec.ts"
+import { EventTargetChannelBroker } from "@vibe-llm/gateway/src/shared/runtime/event-target-channel-broker.ts"
 import { D1Repo } from "./d1-repo.ts"
 import {
   createCloudflareImageProcessor,
@@ -17,12 +22,14 @@ import {
 } from "./cloudflare-image-processor.ts"
 import { createCloudflareCache } from "./cache-factory.ts"
 import { createD1ResponsesStore } from "./responses-store-factory.ts"
+import { R2FileProvider, type R2BucketLike } from "./r2-file-provider.ts"
 
 export interface CloudflareEnv {
   DB: D1Database
   KV: KVNamespace
   IMAGE_CACHE: KVNamespace
   IMAGES: ImagesBinding
+  FILES: R2BucketLike
   ACCOUNT_TYPE?: string
   GOOGLE_CLIENT_ID?: string
   GOOGLE_CLIENT_SECRET?: string
@@ -36,6 +43,7 @@ export function bootstrapCloudflarePlatform(env: CloudflareEnv, ctx: ExecutionCo
   if (!env.DB) throw new Error("CFW bootstrap: env.DB binding missing")
   if (!env.KV) throw new Error("CFW bootstrap: env.KV binding missing")
   if (!env.IMAGES) throw new Error("CFW bootstrap: env.IMAGES binding missing")
+  if (!env.FILES) throw new Error("CFW bootstrap: env.FILES (R2) binding missing")
 
   initSqlDatabase(env.DB as unknown as SqlDatabase)
   initEnv((name) => String((env as unknown as Record<string, unknown>)[name] ?? ""))
@@ -44,8 +52,15 @@ export function bootstrapCloudflarePlatform(env: CloudflareEnv, ctx: ExecutionCo
   initImageProcessor(
     createCloudflareImageProcessor(env.IMAGES, env.IMAGE_CACHE as unknown as ImageCacheKv),
   )
+  const files = new R2FileProvider(env.FILES)
+  initFileProvider(files)
   initRepo(new D1Repo(env.DB))
   initCache(createCloudflareCache({ DB: env.DB, KV: env.KV, CACHE_BACKEND: env.CACHE_BACKEND }))
   initResponsesStore(createD1ResponsesStore(env.DB))
+  // Dump subsystem (Spec 14). R2-backed store; broker is in-process
+  // (per-isolate). Cross-isolate replay is deferred — clients reconnect and
+  // reconcile via list().
+  initDumpStore(new FileDumpStore(env.DB as unknown as SqlDatabase, files))
+  initDumpBroker(new EventTargetChannelBroker(dumpCodec))
   _booted = true
 }

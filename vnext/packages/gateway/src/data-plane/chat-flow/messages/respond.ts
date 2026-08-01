@@ -52,6 +52,7 @@ import { collectMessagesProtocolEventsToResult } from './events/reassemble.ts'
 import { messagesProtocolFrameToSSEFrame } from './events/to-sse.ts'
 import { collectChatCompletionsProtocolEventsToResult } from '../chat-completions/events/to-result'
 import { collectResponsesProtocolEventsToResult } from '../responses/events/reassemble'
+import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
 export interface RespondMessagesOptions {
   readonly wantsStream: boolean
@@ -69,6 +70,13 @@ export interface RespondMessagesOptions {
    * client response isn't blocked). Unit tests omit this to skip persistence.
    */
   readonly telemetryCtx?: TelemetryRequestContext
+  /**
+   * Optional per-request dump accumulator. When present, respond.ts calls
+   * mid-flight hooks (`frame` per protocol frame, `success` on completion,
+   * `error` on upstream non-2xx, `failed` on internal/mid-stream errors).
+   * Kit auto-tees the terminal Response into `finalize` outside this layer.
+   */
+  readonly dump?: DumpAccumulator | null
 }
 
 /**
@@ -100,6 +108,7 @@ const encodeSseFrame = (frame: SseFrame): Uint8Array => {
 async function* consumeWithState<T>(
   events: AsyncIterable<ProtocolFrame<T>>,
   state: SourceStreamState,
+  dump?: DumpAccumulator | null,
 ): AsyncGenerator<ProtocolFrame<T>> {
   try {
     for await (const frame of events) {
@@ -112,10 +121,12 @@ async function* consumeWithState<T>(
         }
         state.rememberModelKey(evObj.model ?? evObj.response?.model ?? evObj.message?.model)
       }
+      dump?.frame(frame as ProtocolFrame<unknown>)
       yield frame
     }
   } catch (err) {
     state.failedAfter()
+    dump?.failed(err)
     throw err
   }
 }
@@ -130,14 +141,21 @@ async function* consumeWithState<T>(
 async function persistFromEventResult<T>(
   result: LlmEventResult<ProtocolFrame<T>>,
   state: SourceStreamState,
-  telemetryCtx: TelemetryRequestContext,
+  telemetryCtx: TelemetryRequestContext | undefined,
+  dump?: DumpAccumulator | null,
 ): Promise<void> {
   const md = await eventResultMetadata(result)
   const finalIdentity = result.finalMetadata
     ? md.modelIdentity
     : { ...md.modelIdentity, modelKey: state.modelKey }
-  await recordUsage(telemetryCtx, finalIdentity, state.usage.tokens)
-  await recordPerformance(telemetryCtx, md.performance, state.failed)
+  if (dump) {
+    if (state.failed) dump.failed('messages stream failed')
+    else dump.success(finalIdentity, state.usage.tokens)
+  }
+  if (telemetryCtx) {
+    await recordUsage(telemetryCtx, finalIdentity, state.usage.tokens)
+    await recordPerformance(telemetryCtx, md.performance, state.failed)
+  }
 }
 
 // Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
@@ -167,7 +185,6 @@ async function* applyTranslatorEventsForStreaming(
   }
   const ctx = {
     signal: signal ?? new AbortController().signal,
-    fallbackMaxOutputTokens: undefined,
     model,
   }
   const translated = translateEvents(unwrap(), ctx) as AsyncIterable<MessagesStreamEvent>
@@ -184,7 +201,7 @@ const renderEventsAsSSE = (
   result: LlmEventResult<ProtocolFrame<MessagesStreamEvent>>,
   options: RespondMessagesOptions,
 ): Response => {
-  const state = options.telemetryCtx
+  const state = options.telemetryCtx || options.dump
     ? new SourceStreamState(result.modelIdentity.modelKey)
     : null
   // Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
@@ -197,7 +214,7 @@ const renderEventsAsSSE = (
         result.modelIdentity.modelKey,
       )
     : result.events
-  const events = state ? consumeWithState(upstreamFrames, state) : upstreamFrames
+  const events = state ? consumeWithState(upstreamFrames, state, options.dump) : upstreamFrames
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
@@ -207,6 +224,7 @@ const renderEventsAsSSE = (
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
+        options.dump?.failed(message)
         controller.enqueue(
           encodeSseFrame(
             sseFrame(JSON.stringify({ type: 'error', error: { type: 'api_error', message } }), 'error'),
@@ -214,8 +232,8 @@ const renderEventsAsSSE = (
         )
       } finally {
         controller.close()
-        if (state && options.telemetryCtx) {
-          waitUntil(persistFromEventResult(result, state, options.telemetryCtx))
+        if (state && (options.telemetryCtx || options.dump)) {
+          waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
         }
       }
     },
@@ -250,10 +268,10 @@ const renderEventsAsJson = async (
   result: LlmEventResult<ProtocolFrame<MessagesStreamEvent>>,
   options: RespondMessagesOptions,
 ): Promise<Response> => {
-  const state = options.telemetryCtx
+  const state = options.telemetryCtx || options.dump
     ? new SourceStreamState(result.modelIdentity.modelKey)
     : null
-  const events = state ? consumeWithState(result.events, state) : result.events
+  const events = state ? consumeWithState(result.events, state, options.dump) : result.events
   try {
     // Dispatch reassembly on hub protocol — same-protocol (or absent) →
     // messages reassembler; cross-protocol → hub reassembler so the
@@ -272,18 +290,17 @@ const renderEventsAsJson = async (
     const finalBody = result.translateBody
       ? await result.translateBody(reassembled, {
           signal: options.downstreamAbortController?.signal ?? new AbortController().signal,
-          fallbackMaxOutputTokens: undefined,
           model: result.modelIdentity.modelKey,
         })
       : reassembled
-    if (state && options.telemetryCtx) {
-      waitUntil(persistFromEventResult(result, state, options.telemetryCtx))
+    if (state && (options.telemetryCtx || options.dump)) {
+      waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     }
     return Response.json(finalBody)
   } catch (err) {
     if (state) state.failedAfter()
-    if (state && options.telemetryCtx) {
-      waitUntil(persistFromEventResult(result, state, options.telemetryCtx))
+    if (state && (options.telemetryCtx || options.dump)) {
+      waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     }
     const message = err instanceof Error ? err.message : String(err)
     return Response.json(
@@ -311,6 +328,7 @@ const renderUpstreamError = async (
   if (options.telemetryCtx) {
     waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
   }
+  options.dump?.error('upstream', result.performance?.upstream ?? undefined)
   return await repackageUpstreamError(upstreamErrorToResponse(result), 'messages')
 }
 
@@ -325,6 +343,7 @@ const renderExecuteResult = async (
       // (pre-binding errors per spec §6.2 deliberately omit perf rows).
       waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
     }
+    options.dump?.failed(result.error.message)
     // Root parity: 4xx-class internal errors (e.g. unknown model → 404) use
     // `invalid_request_error`; only 5xx use `api_error`. SDKs branch on
     // error.type, so the distinction matters for user-facing handling.

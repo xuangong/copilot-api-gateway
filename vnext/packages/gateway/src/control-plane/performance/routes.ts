@@ -79,7 +79,7 @@ async function getUserKeys(userId: string): Promise<ApiKey[]> {
     repo.apiKeys.listByOwner(userId),
     repo.keyAssignments.listByUser(userId),
   ])
-  const keyMap = new Map(ownKeys.map((k) => [k.id, k]))
+  const keyMap = new Map<string, ApiKey>(ownKeys.map((k) => [k.id, k]))
   if (assignments.length > 0) {
     const assignedKeys = await Promise.all(
       assignments.filter((a) => !keyMap.has(a.keyId)).map((a) => repo.apiKeys.getById(a.keyId)),
@@ -111,7 +111,7 @@ performanceRouter.get('/latency', async (c) => {
     const ownedKeys = await repo.apiKeys.listByOwner(auth.ownerId)
     const perfResult = await repo.performance.query({ keyIds: ids, start, end, metricScope: 'request_total' })
     const records = summaryToLatencyRecords(perfResult.summary)
-    const nameMap = new Map(ownedKeys.map((k) => [k.id, k.name]))
+    const nameMap = new Map<string, string>(ownedKeys.map((k) => [k.id, k.name]))
     const enriched = records.map((r) => ({
       ...r,
       keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),
@@ -142,7 +142,7 @@ performanceRouter.get('/latency', async (c) => {
   }
   const perfResult = await repo.performance.query({ ...queryOpts, metricScope: 'request_total' })
   const records = summaryToLatencyRecords(perfResult.summary)
-  const nameMap = new Map(keys.map((k) => [k.id, k.name]))
+  const nameMap = new Map<string, string>(keys.map((k) => [k.id, k.name]))
   return c.json(
     records.map((r) => ({ ...r, keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8) })),
   )
@@ -167,7 +167,7 @@ performanceRouter.get('/performance', async (c) => {
     if (ids.length === 0) return c.json({ summary: [], buckets: [] })
     const ownedKeys = await repo.apiKeys.listByOwner(auth.ownerId)
     const result = await repo.performance.query({ keyIds: ids, start, end, metricScope })
-    const nameMap = new Map(ownedKeys.map((k) => [k.id, k.name]))
+    const nameMap = new Map<string, string>(ownedKeys.map((k) => [k.id, k.name]))
     const secret = getEnvSecret(c)
     return c.json({
       summary: result.summary.map((r) => ({
@@ -205,7 +205,7 @@ performanceRouter.get('/performance', async (c) => {
   }
 
   const result = await repo.performance.query(queryOpts)
-  const nameMap = new Map(keys.map((k) => [k.id, k.name]))
+  const nameMap = new Map<string, string>(keys.map((k) => [k.id, k.name]))
   return c.json({
     summary: result.summary.map((r) => ({
       ...r,

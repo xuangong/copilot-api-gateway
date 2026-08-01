@@ -5,24 +5,28 @@ import { resolveBinding, stripUpstreamPin } from '../../routing/binding-resolver
 import { repackageUpstreamError } from '../../errors/repackage.ts'
 import { HTTPError } from '@vibe-llm/provider-copilot'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'
+import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
 export interface CountTokensServeArgs {
   raw: unknown
   auth: DataPlaneAuthCtx
   forwardedHeaders: Record<string, string>
   signal?: AbortSignal
+  dump?: DumpAccumulator | null
 }
 
 export async function serveCountTokens(args: CountTokensServeArgs): Promise<Response> {
+  const tee = (r: Response): Response => (args.dump ? args.dump.finalize(r) : r)
   let payload
   try { payload = parseMessagesCountTokensPayload(args.raw) }
   catch (err) {
     const e = err as Error & { status?: number; body?: unknown }
-    return jsonErrorWrap(
+    return tee(jsonErrorWrap(
       e.status ?? 400,
       e.body ?? { type: 'error', error: { type: 'invalid_request_error', message: e.message } },
-    )
+    ))
   }
+  if (args.dump && typeof payload.model === 'string') args.dump.requestedModel(payload.model)
   stripUpstreamPin(payload as unknown as Record<string, unknown>)
 
   const binding = await resolveBinding(payload.model, 'messages_count_tokens', {
@@ -30,13 +34,13 @@ export async function serveCountTokens(args: CountTokensServeArgs): Promise<Resp
     copilot: args.auth.copilot,
   })
   if (!binding) {
-    return jsonErrorWrap(404, {
+    return tee(jsonErrorWrap(404, {
       type: 'error',
       error: {
         type: 'invalid_request_error',
         message: `No messages_count_tokens upstream available for model: ${payload.model}. Run GET /v1/models for available ids.`,
       },
-    })
+    }))
   }
 
   try {
@@ -53,12 +57,13 @@ export async function serveCountTokens(args: CountTokensServeArgs): Promise<Resp
     })
     const response = new Response(pr.body, { status: pr.status, headers: pr.headers })
     const json = await response.json()
-    return Response.json(json, { status: response.status })
+    return tee(Response.json(json, { status: response.status }))
   } catch (err) {
     if (err instanceof HTTPError) {
-      return await repackageUpstreamError(err.response, 'messages')
+      return tee(await repackageUpstreamError(err.response, 'messages'))
     }
     const message = err instanceof Error ? err.message : 'upstream error'
-    return jsonErrorWrap(502, { type: 'error', error: { type: 'api_error', message } })
+    return tee(jsonErrorWrap(502, { type: 'error', error: { type: 'api_error', message } }))
   }
 }
+

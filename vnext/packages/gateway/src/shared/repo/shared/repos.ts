@@ -44,7 +44,7 @@ import type { SqlExecutor } from "./executor"
 import { BILLING_DIMENSIONS, unitPriceForDimension } from "@vibe-llm/protocols/common"
 import type { BillingDimension, ModelPricing } from "@vibe-llm/protocols/common"
 
-const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref"
+const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref, dump_retention_seconds"
 const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at"
 const UPSTREAM_COLS = "id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, created_at, updated_at"
 const USAGE_DIM_COLS = "key_id, model, upstream, model_key, client, hour, dimension, tokens, unit_price"
@@ -89,6 +89,7 @@ function toApiKey(row: any): ApiKey {
     webSearchLangsearchRef: row.web_search_langsearch_ref ?? undefined,
     webSearchTavilyRef: row.web_search_tavily_ref ?? undefined,
     webSearchMsGroundingRef: row.web_search_ms_grounding_ref ?? undefined,
+    dumpRetentionSeconds: row.dump_retention_seconds ?? null,
   }
 }
 
@@ -287,8 +288,8 @@ class SharedApiKeyRepo implements ApiKeyRepo {
 
   async save(key: ApiKey): Promise<void> {
     await this.x.run(
-      `INSERT INTO api_keys (${API_KEY_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day, web_search_enabled = excluded.web_search_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key, web_search_ms_grounding_key = excluded.web_search_ms_grounding_key, web_search_priority = excluded.web_search_priority, web_search_langsearch_ref = excluded.web_search_langsearch_ref, web_search_tavily_ref = excluded.web_search_tavily_ref, web_search_ms_grounding_ref = excluded.web_search_ms_grounding_ref`,
+      `INSERT INTO api_keys (${API_KEY_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_day = excluded.quota_requests_per_day, quota_tokens_per_day = excluded.quota_tokens_per_day, web_search_enabled = excluded.web_search_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key, web_search_ms_grounding_key = excluded.web_search_ms_grounding_key, web_search_priority = excluded.web_search_priority, web_search_langsearch_ref = excluded.web_search_langsearch_ref, web_search_tavily_ref = excluded.web_search_tavily_ref, web_search_ms_grounding_ref = excluded.web_search_ms_grounding_ref, dump_retention_seconds = excluded.dump_retention_seconds`,
       [
         key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null,
         key.quotaRequestsPerDay ?? null, key.quotaTokensPerDay ?? null,
@@ -296,6 +297,7 @@ class SharedApiKeyRepo implements ApiKeyRepo {
         key.webSearchLangsearchKey ?? null, key.webSearchTavilyKey ?? null, key.webSearchMsGroundingKey ?? null,
         key.webSearchPriority ? JSON.stringify(key.webSearchPriority) : null,
         key.webSearchLangsearchRef ?? null, key.webSearchTavilyRef ?? null, key.webSearchMsGroundingRef ?? null,
+        key.dumpRetentionSeconds ?? null,
       ],
     )
   }

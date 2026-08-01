@@ -5,6 +5,7 @@ import { serveGemini } from './serve.ts'
 import { serveGeminiCountTokens } from './count-tokens.ts'
 import { invalidJsonResponse } from '../shared/error-wrap.ts'
 import { readAuth, readObsCtx } from '../shared/gateway-ctx.ts'
+import { openRequestDump, parseJsonBody } from '../shared/dump-open.ts'
 
 // Gemini→Copilot model aliasing (parity with root src/routes/gemini.ts).
 // Copilot's catalog doesn't publish gemini-2.5-* SKUs; route them to the
@@ -26,9 +27,10 @@ export async function geminiHandler(c: Context<{ Bindings: Env }>): Promise<Resp
   const [rawModel, verb] = rawParam.split(':')
   const model = remapGeminiModel(rawModel ?? '')
 
-  let raw: unknown
-  try { raw = await c.req.json() } catch { return invalidJsonResponse() }
   const auth = readAuth(c)
+  const { requestBody, dump } = await openRequestDump(c, auth, c.req.method)
+  let raw: unknown
+  try { raw = parseJsonBody(requestBody.bytes) } catch { return dump ? dump.finalize(invalidJsonResponse()) : invalidJsonResponse() }
 
   if (verb === 'countTokens') {
     return serveGeminiCountTokens({
@@ -36,6 +38,7 @@ export async function geminiHandler(c: Context<{ Bindings: Env }>): Promise<Resp
       model,
       auth,
       signal: c.req.raw.signal,
+      dump,
     })
   }
 
@@ -46,5 +49,6 @@ export async function geminiHandler(c: Context<{ Bindings: Env }>): Promise<Resp
     auth,
     obsCtx: readObsCtx(c, auth),
     signal: c.req.raw.signal,
+    dump,
   })
 }

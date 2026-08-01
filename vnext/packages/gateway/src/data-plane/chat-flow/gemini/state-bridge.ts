@@ -35,6 +35,8 @@ import {
   recordUsage,
 } from '../shared/respond-telemetry.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
+import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
+import { eventFrame, type ProtocolFrame } from '@vibe-core/result'
 
 /**
  * Drain an `AsyncIterable<unknown>` of bare gemini events while observing
@@ -44,40 +46,39 @@ import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 export async function* consumeWithState(
   events: AsyncIterable<unknown>,
   state: SourceStreamState,
+  dump?: DumpAccumulator | null,
 ): AsyncGenerator<unknown> {
   try {
     for await (const evt of events) {
       state.rememberUsage(evt)
       const e = evt as { modelVersion?: unknown; model?: unknown }
       state.rememberModelKey(e.modelVersion ?? e.model)
+      dump?.frame(eventFrame(evt) as ProtocolFrame<unknown>)
       yield evt
     }
   } catch (err) {
     state.failedAfter()
+    dump?.failed(err)
     throw err
   }
 }
 
-/**
- * Persist a usage row + performance row from a drained gemini `LlmEventResult`.
- * Prefers interceptor-replaced `finalMetadata`. Otherwise the in-stream
- * observed `modelKey` (from `modelVersion`) supersedes the binding-time guess.
- *
- * Sequencing matches messages/responses respond helpers: both writes run
- * concurrently via implicit `Promise.all`-less await pair — slightly fewer
- * I/O hops but order doesn't matter here (usage and perf are independent
- * rows). The caller wraps this whole helper in `waitUntil` so it doesn't
- * block the client response.
- */
 export async function persistFromEventResult(
   result: LlmEventResult<unknown>,
   state: SourceStreamState,
-  telemetryCtx: TelemetryRequestContext,
+  telemetryCtx: TelemetryRequestContext | undefined,
+  dump?: DumpAccumulator | null,
 ): Promise<void> {
   const md = await eventResultMetadata(result)
   const finalIdentity = result.finalMetadata
     ? md.modelIdentity
     : { ...md.modelIdentity, modelKey: state.modelKey }
-  await recordUsage(telemetryCtx, finalIdentity, state.usage.tokens)
-  await recordPerformance(telemetryCtx, md.performance, state.failed)
+  if (dump) {
+    if (state.failed) dump.failed('gemini stream failed')
+    else dump.success(finalIdentity, state.usage.tokens)
+  }
+  if (telemetryCtx) {
+    await recordUsage(telemetryCtx, finalIdentity, state.usage.tokens)
+    await recordPerformance(telemetryCtx, md.performance, state.failed)
+  }
 }

@@ -4,10 +4,13 @@ import type { Env } from '../../../app.ts'
 import { serveCountTokens } from './serve.ts'
 import { invalidJsonResponse } from '../shared/error-wrap.ts'
 import { readAuth } from '../shared/gateway-ctx.ts'
+import { openRequestDump, parseJsonBody } from '../shared/dump-open.ts'
 
 export async function countTokensHandler(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const auth = readAuth(c)
+  const { requestBody, dump } = await openRequestDump(c, auth, c.req.method)
   let raw: unknown
-  try { raw = await c.req.json() } catch { return invalidJsonResponse() }
+  try { raw = parseJsonBody(requestBody.bytes) } catch { return dump ? dump.finalize(invalidJsonResponse()) : invalidJsonResponse() }
 
   const reqHeaders = c.req.raw.headers
   const forwardedHeaders: Record<string, string> = {}
@@ -18,8 +21,9 @@ export async function countTokensHandler(c: Context<{ Bindings: Env }>): Promise
 
   return serveCountTokens({
     raw,
-    auth: readAuth(c),
+    auth,
     forwardedHeaders,
     signal: c.req.raw.signal,
+    dump,
   })
 }

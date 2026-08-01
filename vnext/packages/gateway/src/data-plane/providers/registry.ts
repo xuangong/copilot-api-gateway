@@ -134,11 +134,13 @@ function modelToBindingModel(
     displayName: model.name,
     ownedBy: model.vendor,
     endpoints,
-    limits: model.capabilities?.limits ? {
-      maxContextWindowTokens: model.capabilities.limits.max_context_window_tokens,
-      maxOutputTokens: model.capabilities.limits.max_output_tokens,
-      maxPromptTokens: model.capabilities.limits.max_prompt_tokens,
-    } : undefined,
+    ...(model.capabilities?.limits && {
+      limits: {
+        maxContextWindowTokens: model.capabilities.limits.max_context_window_tokens,
+        maxOutputTokens: model.capabilities.limits.max_output_tokens,
+        maxPromptTokens: model.capabilities.limits.max_prompt_tokens,
+      },
+    }),
     raw: model as unknown as Record<string, unknown>,
   }
 }
@@ -306,7 +308,7 @@ export async function listUpstreamModels(
       // upstream model JSON verbatim so vendor fields (`capabilities.family`,
       // `supports.*`, `tokenizer`, `model_picker_category`, `policy`,
       // `supported_endpoints`, `preview`) round-trip unchanged.
-      data.push({ ...(binding.model.raw as Record<string, unknown>), ...provenance } as Model)
+      data.push({ ...(binding.model.raw as Record<string, unknown>), ...provenance } as unknown as Model)
       continue
     }
     const supportedEndpoints = Object.keys(binding.model.endpoints ?? {})

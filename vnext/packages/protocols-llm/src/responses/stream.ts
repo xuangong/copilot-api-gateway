@@ -85,7 +85,8 @@ export const parseResponsesStream = (
       // through the per-stream sequencer so they continue the same sequence.
       for (const expanded of responsesResultToEvents((event as { response: ResponsesResult }).response)) {
         if (sentWrapperTypes.has(expanded.event.type)) continue
-        const restamped = { ...expanded.event, sequence_number: undefined } as ResponsesStreamEvent
+        const { sequence_number: _seq, ...rest } = expanded.event
+        const restamped = rest as ResponsesStreamEvent
         yield eventFrame(stamp(restamped))
       }
       sawStructured = true

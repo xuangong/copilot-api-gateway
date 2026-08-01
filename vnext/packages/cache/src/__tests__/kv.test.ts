@@ -9,7 +9,8 @@ function fakeKv(initial: Record<string, string> = {}) {
   const kv: KVLike = {
     async get(key) { calls.push({ op: 'get', key }); return data.get(key) ?? null },
     async put(key, value, opts) {
-      calls.push({ op: 'put', key, value, ttl: opts?.expirationTtl })
+      const ttl = opts?.expirationTtl
+      calls.push(ttl === undefined ? { op: 'put', key, value } : { op: 'put', key, value, ttl })
       data.set(key, value)
     },
     async delete(key) { calls.push({ op: 'delete', key }); data.delete(key) },

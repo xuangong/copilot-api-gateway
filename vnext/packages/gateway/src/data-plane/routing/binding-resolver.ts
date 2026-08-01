@@ -42,7 +42,10 @@ export async function resolveBinding(
   const parsed = parseModelRouting(model)
   const upstreamPin = opts.pin ?? parsed.upstreamPin
   const bareModel = parsed.bareModel
-  const bindings = await listProviderBindings({ ownerId: opts.ownerId, copilot: opts.copilot })
+  const bindings = await listProviderBindings({
+    ownerId: opts.ownerId,
+    copilot: opts.copilot,
+  })
   const candidates = bindings.filter((b) => bindingServesEndpoint(b, endpoint))
   const matches = (b: LlmProviderBinding, id: string) =>
     b.model.id === id && (!upstreamPin || b.upstream === upstreamPin)

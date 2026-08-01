@@ -11,6 +11,7 @@ import type {
   GitHubUser,
   UpstreamRecord,
 } from '../repo/types.ts'
+import type { UserId } from '../repo/branded-ids.ts'
 
 export type { GitHubAccount, GitHubUser }
 
@@ -72,7 +73,16 @@ export async function addGithubAccount(
   ownerId?: string,
 ): Promise<void> {
   const repo = getRepo().github
-  await repo.saveAccount(user.id, { token, accountType, user, ownerId })
+  await repo.saveAccount(user.id, {
+    token,
+    accountType,
+    user,
+    ownerId: (ownerId ?? null) as UserId | null,
+    enabled: true,
+    sortOrder: 0,
+    flagOverrides: {},
+    updatedAt: null,
+  })
   if (ownerId) {
     await repo.setActiveIdForUser(ownerId, user.id)
   } else {

@@ -12,6 +12,8 @@
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../shared/repo/index.ts'
+import type { User } from '../../shared/repo/types.ts'
+import type { SessionToken, UserId } from '../../shared/repo/branded-ids.ts'
 import { ADMIN_EMAILS } from '../../shared/config/constants.ts'
 import {
   SESSION_TTL_DAYS,
@@ -138,18 +140,20 @@ googleAuthRouter.get('/google/callback', async (c) => {
     }
     await repo.users.update(user.id, {
       lastLoginAt: new Date().toISOString(),
-      avatarUrl: googleUser.picture || undefined,
+      avatarUrl: googleUser.picture ?? null,
     })
   } else if (isAdminEmail) {
-    const userId = crypto.randomUUID()
+    const userId = crypto.randomUUID() as UserId
     user = {
       id: userId,
       name: googleUser.name || email,
       email,
-      avatarUrl: googleUser.picture || undefined,
+      avatarUrl: googleUser.picture ?? null,
       createdAt: new Date().toISOString(),
       disabled: false,
       lastLoginAt: new Date().toISOString(),
+      userKey: null,
+      passwordHash: null,
     }
     await repo.users.create(user)
   } else if (stateData.inviteCode) {
@@ -163,15 +167,17 @@ googleAuthRouter.get('/google/callback', async (c) => {
         HTML,
       )
     }
-    const userId = crypto.randomUUID()
+    const userId = crypto.randomUUID() as UserId
     user = {
       id: userId,
       name: googleUser.name || invite.name,
       email,
-      avatarUrl: googleUser.picture || undefined,
+      avatarUrl: googleUser.picture ?? null,
       createdAt: new Date().toISOString(),
       disabled: false,
       lastLoginAt: new Date().toISOString(),
+      userKey: null,
+      passwordHash: null,
     }
     await repo.users.create(user)
     await repo.inviteCodes.markUsed(invite.id, userId)
@@ -187,7 +193,7 @@ googleAuthRouter.get('/google/callback', async (c) => {
 
   const now = new Date()
   const expiresAt = new Date(now.getTime() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)
-  const sessionToken = generateSessionToken()
+  const sessionToken = generateSessionToken() as SessionToken
   await repo.sessions.create({
     token: sessionToken,
     userId: user.id,

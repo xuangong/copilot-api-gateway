@@ -29,10 +29,10 @@ export async function deriveViewContext(c: Context, auth: AuthLike): Promise<Vie
   const asUser = c.req.query('as_user')
   const callerId = auth.userId
   if (!callerId) {
-    return { effectiveUserId: undefined, isViewingShared: false, ownerId: undefined }
+    return { isViewingShared: false }
   }
   if (!asUser || asUser === callerId || auth.authKind !== 'session') {
-    return { effectiveUserId: callerId, isViewingShared: false, ownerId: undefined }
+    return { effectiveUserId: callerId, isViewingShared: false }
   }
   const granted = await getRepo().observabilityShares.isGranted(asUser, callerId)
   if (!granted) return { denied: true }

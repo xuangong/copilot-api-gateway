@@ -39,6 +39,7 @@ import {
   recordUsage,
 } from '../shared/respond-telemetry.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
+import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 import { collectChatCompletionsProtocolEventsToResult } from './events/to-result'
 import { chatCompletionsProtocolFrameToSSEFrame } from './events/to-sse'
 import { collectMessagesProtocolEventsToResult } from '../messages/events/reassemble'
@@ -63,6 +64,12 @@ export interface RespondChatCompletionsOptions {
    * client response isn't blocked). Unit tests omit this to skip persistence.
    */
   readonly telemetryCtx?: TelemetryRequestContext
+  /**
+   * Optional per-request dump accumulator. When set, respond.ts forwards
+   * every protocol frame plus the terminal outcome (success/error/failed)
+   * so the persistence layer can write the request+response pair.
+   */
+  readonly dump?: DumpAccumulator | null
 }
 
 /**
@@ -96,6 +103,7 @@ const encodeSseFrame = (frame: SseFrame): Uint8Array => {
 async function* consumeWithState<T>(
   events: AsyncIterable<ProtocolFrame<T>>,
   state: SourceStreamState,
+  dump?: DumpAccumulator | null,
 ): AsyncGenerator<ProtocolFrame<T>> {
   try {
     for await (const frame of events) {
@@ -108,10 +116,12 @@ async function* consumeWithState<T>(
         }
         state.rememberModelKey(evObj.model ?? evObj.response?.model ?? evObj.message?.model)
       }
+      dump?.frame(frame as ProtocolFrame<unknown>)
       yield frame
     }
   } catch (err) {
     state.failedAfter()
+    dump?.failed(err)
     throw err
   }
 }
@@ -127,17 +137,21 @@ async function* consumeWithState<T>(
 async function persistFromEventResult<T>(
   result: LlmEventResult<ProtocolFrame<T>>,
   state: SourceStreamState,
-  telemetryCtx: TelemetryRequestContext,
+  telemetryCtx: TelemetryRequestContext | undefined,
+  dump?: DumpAccumulator | null,
 ): Promise<void> {
   const md = await eventResultMetadata(result)
-  // Refresh pricing using the corrected modelKey observed by SourceStreamState,
-  // unless finalMetadata already supplied a corrected identity (interceptor-
-  // replaced streams already know their own identity).
   const finalIdentity = result.finalMetadata
     ? md.modelIdentity
     : { ...md.modelIdentity, modelKey: state.modelKey }
-  await recordUsage(telemetryCtx, finalIdentity, state.usage.tokens)
-  await recordPerformance(telemetryCtx, md.performance, state.failed)
+  if (dump) {
+    if (state.failed) dump.failed('chat-completions stream failed')
+    else dump.success(finalIdentity, state.usage.tokens)
+  }
+  if (telemetryCtx) {
+    await recordUsage(telemetryCtx, finalIdentity, state.usage.tokens)
+    await recordPerformance(telemetryCtx, md.performance, state.failed)
+  }
 }
 
 // Mid-stream errors must still terminate with a well-formed SSE record so the
@@ -170,7 +184,6 @@ async function* applyTranslatorEventsForStreaming(
   }
   const ctx = {
     signal: signal ?? new AbortController().signal,
-    fallbackMaxOutputTokens: undefined,
     model,
   }
   const translated = translateEvents(unwrap(), ctx) as AsyncIterable<ChatCompletionsStreamEvent>
@@ -182,7 +195,7 @@ const renderEventsAsSSE = (
   result: LlmEventResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
   options: RespondChatCompletionsOptions,
 ): Response => {
-  const state = options.telemetryCtx
+  const state = options.telemetryCtx || options.dump
     ? new SourceStreamState(result.modelIdentity.modelKey)
     : null
   // Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
@@ -195,7 +208,7 @@ const renderEventsAsSSE = (
         result.modelIdentity.modelKey,
       )
     : result.events
-  const events = state ? consumeWithState(upstreamFrames, state) : upstreamFrames
+  const events = state ? consumeWithState(upstreamFrames, state, options.dump) : upstreamFrames
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
@@ -205,11 +218,12 @@ const renderEventsAsSSE = (
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
+        options.dump?.failed(message)
         controller.enqueue(encodeSseFrame(sseFrame(JSON.stringify({ error: { message } }), 'error')))
       } finally {
         controller.close()
-        if (state && options.telemetryCtx) {
-          waitUntil(persistFromEventResult(result, state, options.telemetryCtx))
+        if (state) {
+          waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
         }
       }
     },
@@ -252,10 +266,10 @@ const renderEventsAsJson = async (
   result: LlmEventResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
   options: RespondChatCompletionsOptions,
 ): Promise<Response> => {
-  const state = options.telemetryCtx
+  const state = options.telemetryCtx || options.dump
     ? new SourceStreamState(result.modelIdentity.modelKey)
     : null
-  const events = state ? consumeWithState(result.events, state) : result.events
+  const events = state ? consumeWithState(result.events, state, options.dump) : result.events
   try {
     // Dispatch reassembly on hub protocol — same-protocol (or absent) →
     // chat-completions reassembler; cross-protocol → hub reassembler so the
@@ -277,20 +291,20 @@ const renderEventsAsJson = async (
     const finalBody = result.translateBody
       ? await result.translateBody(reassembled, {
           signal: options.downstreamAbortController?.signal ?? new AbortController().signal,
-          fallbackMaxOutputTokens: undefined,
           model: result.modelIdentity.modelKey,
         })
       : reassembled
-    if (state && options.telemetryCtx) {
-      waitUntil(persistFromEventResult(result, state, options.telemetryCtx))
+    if (state) {
+      waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     }
     return Response.json(finalBody)
   } catch (err) {
     if (state) state.failedAfter()
-    if (state && options.telemetryCtx) {
-      waitUntil(persistFromEventResult(result, state, options.telemetryCtx))
+    if (state) {
+      waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     }
     const message = err instanceof Error ? err.message : String(err)
+    options.dump?.failed(message)
     return Response.json({ error: { message } }, { status: 502 })
   }
 }
@@ -314,6 +328,7 @@ const renderUpstreamError = async (
   if (options.telemetryCtx) {
     waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
   }
+  options.dump?.error('upstream', result.performance?.upstream ?? undefined)
   return await repackageUpstreamError(upstreamErrorToResponse(result), 'chat_completions')
 }
 
@@ -328,6 +343,7 @@ const renderExecuteResult = async (
       // (pre-binding errors per spec §6.2 deliberately omit perf rows).
       waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
     }
+    options.dump?.failed(result.error.message)
     return Response.json({ error: { message: result.error.message } }, { status: result.status })
   }
   // result.type === 'events'

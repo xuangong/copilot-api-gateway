@@ -78,8 +78,8 @@ export const collectMessagesProtocolEventsToResult = async (
       const cb = ev.content_block as { type?: string; text?: string } & Record<string, unknown>
       blocks[ev.index] = {
         type: cb.type ?? 'text',
-        text: cb.type === 'text' ? (cb.text ?? '') : undefined,
-        inputJson: cb.type === 'tool_use' || cb.type === 'server_tool_use' ? '' : undefined,
+        ...(cb.type === 'text' && { text: cb.text ?? '' }),
+        ...((cb.type === 'tool_use' || cb.type === 'server_tool_use') && { inputJson: '' }),
         start: cb,
       }
     } else if (ev.type === 'content_block_delta') {

@@ -11,6 +11,7 @@ import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { ApiKey } from '../../shared/repo/types.ts'
+import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
 import {
   redactForSharedView,
   getServerSecret,
@@ -19,15 +20,15 @@ import { getOwnedKeyIdsForScope } from '../../shared/lib/view-context.ts'
 
 export interface PresenceAuthCtx {
   isAdmin?: boolean
-  userId?: string
-  apiKeyId?: string
+  userId?: UserId
+  apiKeyId?: ApiKeyId
   isViewingShared?: boolean
-  ownerId?: string
+  ownerId?: UserId
 }
 
 type Vars = { auth: PresenceAuthCtx }
 
-async function getUserKeyIds(userId: string): Promise<string[]> {
+async function getUserKeyIds(userId: UserId): Promise<string[]> {
   const repo = getRepo()
   const [ownKeys, assignments] = await Promise.all([
     repo.apiKeys.listByOwner(userId),

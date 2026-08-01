@@ -74,7 +74,10 @@ export async function eventResultMetadata<T>(
     }
     return md
   }
-  return { modelIdentity: result.modelIdentity, performance: result.performance }
+  return {
+    modelIdentity: result.modelIdentity,
+    performance: result.performance,
+  }
 }
 
 /**
@@ -90,7 +93,7 @@ export class SourceStreamState {
 
   constructor(initialModelKey: string) {
     this.modelKey = initialModelKey
-    this.usage = { model: undefined, tokens: {} }
+    this.usage = { tokens: {} }
   }
 
   rememberUsage(parsedEvent: unknown): void {

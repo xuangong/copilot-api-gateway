@@ -206,10 +206,12 @@ function parseManualModels(value: unknown): CustomProviderConfig['models'] {
       const e = entry as { id: string; name?: unknown; ownedBy?: unknown }
       const id = e.id.trim()
       if (!id) throw new Error('models[].id must be a non-empty string')
+      const name = typeof e.name === 'string' ? e.name : undefined
+      const ownedBy = typeof e.ownedBy === 'string' ? e.ownedBy : undefined
       out.push({
         id,
-        name: typeof e.name === 'string' ? e.name : undefined,
-        ownedBy: typeof e.ownedBy === 'string' ? e.ownedBy : undefined,
+        name,
+        ownedBy,
       })
       continue
     }
@@ -236,17 +238,20 @@ function normalizeCustomConfig(config: Record<string, unknown>): CustomProviderC
   if (typeof config.name !== 'string' || !config.name.trim()) throw new Error('custom config.name required')
   if (typeof config.baseUrl !== 'string' || !config.baseUrl.trim()) throw new Error('custom config.baseUrl required')
   if (typeof config.apiKey !== 'string' || !config.apiKey) throw new Error('custom config.apiKey required')
+  const modelsEndpoint =
+    typeof config.modelsEndpoint === 'string' && config.modelsEndpoint.trim()
+      ? config.modelsEndpoint.trim()
+      : undefined
+  const defaultHeaders = normalizeStringRecord(config.defaultHeaders, 'defaultHeaders')
+  const models = parseManualModels(config.models)
   return {
     name: config.name.trim(),
     baseUrl: config.baseUrl.trim().replace(/\/+$/, ''),
     apiKey: config.apiKey,
     endpoints: parseEndpoints(config.endpoints, ['chat_completions', 'embeddings']),
-    modelsEndpoint:
-      typeof config.modelsEndpoint === 'string' && config.modelsEndpoint.trim()
-        ? config.modelsEndpoint.trim()
-        : undefined,
-    defaultHeaders: normalizeStringRecord(config.defaultHeaders, 'defaultHeaders'),
-    models: parseManualModels(config.models),
+    modelsEndpoint,
+    defaultHeaders,
+    models,
   }
 }
 
@@ -260,6 +265,8 @@ function normalizeAzureConfig(config: Record<string, unknown>): AzureProviderCon
   if (typeof config.apiVersion !== 'string' || !config.apiVersion.trim()) {
     throw new Error('azure config.apiVersion required')
   }
+  const defaultHeaders = normalizeStringRecord(config.defaultHeaders, 'defaultHeaders')
+  const deployments = parseAzureDeployments(config.deployments)
   return {
     name: config.name.trim(),
     endpoint: config.endpoint.trim().replace(/\/+$/, ''),
@@ -267,8 +274,8 @@ function normalizeAzureConfig(config: Record<string, unknown>): AzureProviderCon
     deployment: config.deployment.trim(),
     apiVersion: config.apiVersion.trim(),
     endpoints: parseEndpoints(config.endpoints, ['chat_completions']),
-    defaultHeaders: normalizeStringRecord(config.defaultHeaders, 'defaultHeaders'),
-    deployments: parseAzureDeployments(config.deployments),
+    defaultHeaders,
+    deployments,
   }
 }
 
@@ -496,9 +503,10 @@ upstreamsRouter.patch('/:id', async (c) => {
       }
       mergedConfig = merged
     }
+    const nextOwnerId = admin && typeof body.ownerId === 'string' && body.ownerId ? body.ownerId : existing.ownerId
     const next: UpstreamRecord = {
       ...existing,
-      ownerId: admin && typeof body.ownerId === 'string' && body.ownerId ? body.ownerId : existing.ownerId,
+      ownerId: nextOwnerId,
       name: typeof body.name === 'string' ? body.name.trim() : existing.name,
       enabled: typeof body.enabled === 'boolean' ? body.enabled : existing.enabled,
       sortOrder: Number.isFinite(body.sortOrder) ? Number(body.sortOrder) : existing.sortOrder,

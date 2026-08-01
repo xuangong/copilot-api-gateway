@@ -12,6 +12,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../shared/repo/index.ts'
+import type { DeviceCodeToken, SessionToken, UserId } from '../../shared/repo/branded-ids.ts'
 import { SESSION_TTL_DAYS, generateSessionToken } from './utils.ts'
 import type { AuthCtx } from './routes.ts'
 
@@ -23,7 +24,7 @@ deviceAuthRouter.post('/device/code', async (c) => {
   const repo = getRepo()
   await repo.deviceCodes.deleteExpired()
 
-  const deviceCode = crypto.randomUUID()
+  const deviceCode = crypto.randomUUID() as DeviceCodeToken
   const bytes = new Uint8Array(4)
   crypto.getRandomValues(bytes)
   const raw = Array.from(bytes, (b) =>
@@ -41,6 +42,8 @@ deviceAuthRouter.post('/device/code', async (c) => {
     userCode,
     expiresAt: expiresAt.toISOString(),
     createdAt: now.toISOString(),
+    userId: null,
+    sessionToken: null,
   })
 
   return c.json({
@@ -71,14 +74,15 @@ deviceAuthRouter.post('/device/verify', async (c) => {
 
   const now = new Date()
   const expiresAt = new Date(now.getTime() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)
-  const sessionToken = generateSessionToken()
+  const sessionToken = generateSessionToken() as SessionToken
+  const brandedUserId = userId as UserId
   await repo.sessions.create({
     token: sessionToken,
-    userId,
+    userId: brandedUserId,
     createdAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
   })
-  await repo.deviceCodes.verify(dc.deviceCode, userId, sessionToken)
+  await repo.deviceCodes.verify(dc.deviceCode, brandedUserId, sessionToken)
   return c.json({ ok: true })
 })
 

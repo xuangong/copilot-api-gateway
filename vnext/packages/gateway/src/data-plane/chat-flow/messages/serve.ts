@@ -18,7 +18,7 @@
  *
  * Reference: Spec 10 §3.4. Pattern mirrors chat-completions/serve.ts.
  */
-import { serveTemplate, type KitAuthCtx, type KitObsCtx, type ServeTemplateHooks } from '@vibe-core/chat-flow-kit'
+import { serveTemplate, type KitAuthCtx, type KitDumpSink, type KitObsCtx, type ServeTemplateHooks } from '@vibe-core/chat-flow-kit'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseMessagesPayload } from '../../parsers.ts'
 import { kitDeps } from '../shared/kit-deps.ts'
@@ -26,6 +26,7 @@ import type { DispatchObsCtx } from '../shared/obs-ctx.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import { messagesAttempt, type MessagesAttemptAuth, type MessagesAttemptResult } from './attempt.ts'
 import { respondMessages } from './respond.ts'
+import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
 export interface MessagesServeArgs {
   /** Pre-parsed JSON body from http.ts (`await c.req.json()`). */
@@ -38,6 +39,8 @@ export interface MessagesServeArgs {
    * cancels provider.fetch + parseMessagesStream.
    */
   readonly signal?: AbortSignal
+  /** Opaque per-request dump sink (null when the api key has no retention). */
+  readonly dump?: KitDumpSink | null
 }
 
 type MessagesPayload = Record<string, unknown> & { model: string; stream?: boolean }
@@ -84,6 +87,7 @@ const messagesHooks: ServeTemplateHooks<
     wantsStream: c.wantsStream,
     downstreamAbortController: c.downstreamAbortController,
     telemetryCtx: c.telemetryCtx,
+    ...(c.dump !== undefined && c.dump !== null && { dump: c.dump as DumpAccumulator }),
   }),
 }
 
@@ -95,7 +99,7 @@ export async function serveMessages(args: MessagesServeArgs): Promise<Response> 
   }
   const { response } = await serveTemplate(
     messagesHooks,
-    { raw: args.raw, auth, obsCtx: args.obsCtx as KitObsCtx, signal: args.signal, extras: {} },
+    { raw: args.raw, auth, obsCtx: args.obsCtx as KitObsCtx, signal: args.signal, extras: {}, dump: args.dump ?? null },
     kitDeps,
   )
   return response

@@ -12,6 +12,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../shared/repo/index.ts'
+import type { SessionToken, UserId } from '../../shared/repo/branded-ids.ts'
 import { sendVerificationCode } from '../../shared/lib/email.ts'
 import { hashPassword, verifyPassword } from '../../shared/lib/password.ts'
 import {
@@ -89,15 +90,17 @@ emailAuthRouter.post('/email/verify', async (c) => {
     return c.json({ error: 'Invite code no longer valid' }, 400)
   }
 
-  const userId = crypto.randomUUID()
+  const userId = crypto.randomUUID() as UserId
   const pwHash = await hashPassword(stored.password)
   await repo.users.create({
     id: userId,
     name: stored.name,
     email: normalizedEmail,
+    avatarUrl: null,
     createdAt: new Date().toISOString(),
     disabled: false,
     lastLoginAt: new Date().toISOString(),
+    userKey: null,
     passwordHash: pwHash,
   })
   await repo.inviteCodes.markUsed(invite.id, userId)
@@ -105,7 +108,7 @@ emailAuthRouter.post('/email/verify', async (c) => {
   const url = new URL(c.req.url)
   const now = new Date()
   const expiresAt = new Date(now.getTime() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)
-  const sessionToken = generateSessionToken()
+  const sessionToken = generateSessionToken() as SessionToken
   await repo.sessions.create({
     token: sessionToken,
     userId,
@@ -148,7 +151,7 @@ emailAuthRouter.post('/email/login', async (c) => {
   const url = new URL(c.req.url)
   const now = new Date()
   const expiresAt = new Date(now.getTime() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)
-  const sessionToken = generateSessionToken()
+  const sessionToken = generateSessionToken() as SessionToken
   await repo.sessions.create({
     token: sessionToken,
     userId: user.id,
@@ -225,7 +228,7 @@ emailAuthRouter.get('/email/magic', async (c) => {
 
   const now = new Date()
   const expiresAt = new Date(now.getTime() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)
-  const sessionToken = generateSessionToken()
+  const sessionToken = generateSessionToken() as SessionToken
   await repo.sessions.create({
     token: sessionToken,
     userId: user.id,

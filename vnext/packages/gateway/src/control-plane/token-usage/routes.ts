@@ -39,7 +39,7 @@ async function getUserKeys(userId: string): Promise<ApiKey[]> {
     repo.apiKeys.listByOwner(userId),
     repo.keyAssignments.listByUser(userId),
   ])
-  const keyMap = new Map(ownKeys.map((k) => [k.id, k]))
+  const keyMap = new Map<string, ApiKey>(ownKeys.map((k) => [k.id, k]))
   if (assignments.length > 0) {
     const assignedKeys = await Promise.all(
       assignments.filter((a) => !keyMap.has(a.keyId)).map((a) => repo.apiKeys.getById(a.keyId)),
@@ -84,7 +84,7 @@ tokenUsageRouter.get('/token-usage', async (c) => {
     if (ids.length === 0) return c.json([])
     const ownedKeys = await repo.apiKeys.listByOwner(auth.ownerId)
     const records = await repo.usage.query({ keyIds: ids, start, end })
-    const nameMap = new Map(ownedKeys.map((k) => [k.id, k.name]))
+    const nameMap = new Map<string, string>(ownedKeys.map((k) => [k.id, k.name]))
     const enriched = enrichWithKeyName(aggregateUsageForDisplay(records), nameMap)
     return c.json(
       redactForSharedView({
@@ -113,11 +113,11 @@ tokenUsageRouter.get('/token-usage', async (c) => {
   }
 
   const records = await repo.usage.query(queryOpts)
-  const nameMap = new Map(keys.map((k) => [k.id, k.name]))
+  const nameMap = new Map<string, string>(keys.map((k) => [k.id, k.name]))
   const display = aggregateUsageForDisplay(records)
 
   if (auth.isAdmin) {
-    const ownerIdMap = new Map(keys.map((k) => [k.id, k.ownerId]))
+    const ownerIdMap = new Map<string, string | null>(keys.map((k) => [k.id, k.ownerId]))
     const userIds = new Set(keys.map((k) => k.ownerId).filter(Boolean) as string[])
     const users = await Promise.all([...userIds].map((id) => repo.users.getById(id)))
     const userNameMap = new Map<string, string>()

@@ -1000,7 +1000,10 @@ async function* runMultiTurnLoop(args: {
       active,
     )
   } finally {
-    if (midStreamError === undefined) resolveFinalMetadata(metadata)
+    if (midStreamError === undefined) resolveFinalMetadata({
+      modelIdentity: metadata.modelIdentity,
+      performance: metadata.performance,
+    })
   }
 }
 

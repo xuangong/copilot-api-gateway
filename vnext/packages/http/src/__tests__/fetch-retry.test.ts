@@ -11,7 +11,7 @@ describe('fetchWithRetry', () => {
     calls = []
     responses = []
     globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-      calls.push({ url: String(input), init })
+      calls.push(init === undefined ? { url: String(input) } : { url: String(input), init })
       const i = calls.length - 1
       const factory = responses[i]
       if (!factory) throw new Error(`unexpected fetch #${i + 1}`)

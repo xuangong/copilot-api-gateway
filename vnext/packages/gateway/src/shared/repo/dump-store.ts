@@ -1,0 +1,340 @@
+// Ported from copilot-gateway/src/repo/dump-store.ts.
+//
+// vNext adjustments:
+//   - No `deleted_at` on api_keys — vNext api_keys table has no soft-delete
+//     column, so the JOIN drops the `AND k.deleted_at IS NULL` clause; the
+//     "inactive" branch of `deleteExpiredBatch` is removed for the same
+//     reason (a key row cannot be "logically deleted but still present").
+//   - No `color` column on upstreams — `hydrateUpstream` no longer reads or
+//     validates a color; `DumpUpstreamRef` has no color field.
+//   - `provider` (not `kind`) is the vNext upstreams column name. The type is
+//     `UpstreamKind` from protocols-llm/common ('copilot'|'custom'|'azure'|
+//     'sdf'); anything else in the row is a schema slip and coerces to
+//     'custom' (the vNext catch-all).
+
+import { DUMP_FILE_PREFIX, SPILLED_FILE_STAGE_GRACE_MS } from "../dump/spilled-files-policy.ts"
+import type { DumpListOptions, DumpStore } from "../dump/store-contract.ts"
+import type {
+  DumpMetadata,
+  DumpRecordId,
+  DumpStreamEvent,
+  DumpUpstreamRef,
+  DumpWriteRecord,
+  PreparedDumpRequestBody,
+  StoredDumpRecord,
+  StoredDumpRequest,
+  StoredDumpResponse,
+  StoredDumpResponseBody,
+} from "../dump/types.ts"
+import type { FileProvider, SqlDatabase } from "@vibe-core/platform"
+import type { UpstreamKind } from "@vibe-llm/protocols/common"
+import type { UpstreamId } from "./branded-ids.ts"
+
+const HOUR_MS = 60 * 60 * 1000
+
+interface BodyDescriptor {
+  key: string
+  type: "bytes" | "events"
+}
+
+interface DumpRow {
+  upstream_id: string | null
+  upstream_name: string | null
+  upstream_provider: string | null
+  meta_json: string
+  request_headers_json: string
+  response_headers_json: string | null
+  request_body_descriptor: string | null
+  response_body_descriptor: string | null
+}
+
+const KNOWN_UPSTREAM_KINDS: ReadonlySet<UpstreamKind> = new Set(["copilot", "custom", "azure", "sdf"])
+
+// A null `upstream_id` means no upstream was identified at capture time
+// (auth/validation reject, no candidate matched); a non-null id with a null
+// joined `upstream_name` means the referenced upstream was since deleted.
+// Any provider value the schema doesn't recognize falls through to 'custom'
+// so a bad row doesn't poison every read.
+const hydrateUpstream = (row: Pick<DumpRow, "upstream_id" | "upstream_name" | "upstream_provider">): DumpUpstreamRef | null => {
+  if (row.upstream_id === null || row.upstream_name === null) return null
+  const kind: UpstreamKind = row.upstream_provider !== null && KNOWN_UPSTREAM_KINDS.has(row.upstream_provider as UpstreamKind)
+    ? (row.upstream_provider as UpstreamKind)
+    : "custom"
+  return { id: row.upstream_id as UpstreamId, name: row.upstream_name, kind }
+}
+
+const hourBucket = (ms: number): string => {
+  const date = new Date(Math.floor(ms / HOUR_MS) * HOUR_MS)
+  const y = date.getUTCFullYear().toString().padStart(4, "0")
+  const m = (date.getUTCMonth() + 1).toString().padStart(2, "0")
+  const d = date.getUTCDate().toString().padStart(2, "0")
+  const h = date.getUTCHours().toString().padStart(2, "0")
+  return `${y}${m}${d}${h}`
+}
+
+const bodyPath = (keyId: string, bucket: string, recordId: string, side: "req" | "resp"): string =>
+  `${DUMP_FILE_PREFIX}${keyId}/${bucket}/${recordId}-${crypto.randomUUID()}.${side}.gz`
+
+// gzip/gunzip via Bun's native helpers (Bun 1.3 does not expose
+// CompressionStream globally). Cloudflare Workers do expose CompressionStream;
+// when this runs there we'd wrap that instead — for the Bun runtime we take
+// the direct route.
+const gzip = async (bytes: Uint8Array): Promise<Uint8Array> => {
+  if (typeof (globalThis as any).CompressionStream !== "undefined") {
+    const stream = new Response(new Blob([bytes as BlobPart]).stream().pipeThrough(new (globalThis as any).CompressionStream("gzip")))
+    return new Uint8Array(await stream.arrayBuffer())
+  }
+  return Bun.gzipSync(bytes)
+}
+
+const gunzip = async (bytes: Uint8Array): Promise<Uint8Array> => {
+  if (typeof (globalThis as any).DecompressionStream !== "undefined") {
+    const stream = new Response(new Blob([bytes as BlobPart]).stream().pipeThrough(new (globalThis as any).DecompressionStream("gzip")))
+    return new Uint8Array(await stream.arrayBuffer())
+  }
+  return Bun.gunzipSync(bytes)
+}
+
+const putRawBody = async (
+  files: FileProvider,
+  key: string,
+  rawBytes: Uint8Array,
+  type: "bytes" | "events",
+): Promise<BodyDescriptor> => {
+  const gz = await gzip(rawBytes)
+  await files.put(key, gz)
+  return { key, type }
+}
+
+const putPreparedBody = async (
+  files: FileProvider,
+  key: string,
+  prepared: PreparedDumpRequestBody,
+): Promise<BodyDescriptor> => {
+  const gz = prepared.encoding === "gzip" ? prepared.bytes : await gzip(prepared.bytes)
+  await files.put(key, gz)
+  return { key, type: "bytes" }
+}
+
+const fetchBody = async (files: FileProvider, descriptor: BodyDescriptor): Promise<Uint8Array> => {
+  const got = await files.get(descriptor.key)
+  if (!got) throw new Error(`dump body missing for key=${descriptor.key}`)
+  const gz = new Uint8Array(await new Response(got.body).arrayBuffer())
+  return await gunzip(gz)
+}
+
+export class FileDumpStore implements DumpStore {
+  constructor(private readonly db: SqlDatabase, private readonly files: FileProvider) {}
+
+  async prepareRequestBody(body: Uint8Array): Promise<PreparedDumpRequestBody> {
+    return {
+      encoding: "gzip",
+      bytes: await gzip(body),
+      decodedByteLength: body.byteLength,
+    }
+  }
+
+  async put(keyId: string, record: DumpWriteRecord): Promise<void> {
+    const bucket = hourBucket(record.meta.completedAt)
+    const requestFileKey = record.request.body.decodedByteLength === 0
+      ? null
+      : bodyPath(keyId, bucket, record.meta.id, "req")
+    const responseFileKey = record.response.body.type === "bytes" && record.response.body.body.byteLength === 0
+      ? null
+      : record.response.body.type === "none"
+        ? null
+        : bodyPath(keyId, bucket, record.meta.id, "resp")
+    const staged = [
+      ...(requestFileKey === null ? [] : [{ fileKey: requestFileKey, ownerKind: "dump-request" }]),
+      ...(responseFileKey === null ? [] : [{ fileKey: responseFileKey, ownerKind: "dump-response" }]),
+    ]
+    if (staged.length > 0) {
+      await this.db
+        .prepare(
+          `INSERT INTO spilled_files (file_key, owner_kind, owner_key, state, collect_after)
+           SELECT
+             json_extract(value, '$.fileKey'),
+             json_extract(value, '$.ownerKind'),
+             json_array(?, ?),
+             'staged',
+             ?
+           FROM json_each(?)`,
+        )
+        .bind(keyId, record.meta.id, Date.now() + SPILLED_FILE_STAGE_GRACE_MS, JSON.stringify(staged))
+        .run()
+    }
+    const requestDescriptor = record.request.body.decodedByteLength === 0
+      ? null
+      : await putPreparedBody(this.files, requestFileKey!, record.request.body)
+
+    let responseDescriptor: BodyDescriptor | null = null
+    if (record.response.body.type === "bytes") {
+      if (record.response.body.body.byteLength > 0) {
+        responseDescriptor = await putRawBody(this.files, responseFileKey!, record.response.body.body, "bytes")
+      }
+    } else if (record.response.body.type === "stream") {
+      responseDescriptor = await putRawBody(this.files, responseFileKey!, new TextEncoder().encode(JSON.stringify(record.response.body.events)), "events")
+    }
+
+    // Strip the in-memory `upstream` field; the ref is rebuilt from the join
+    // at read time so renames and deletes are honored on historical rows.
+    const { upstream: _upstream, ...metaToStore } = record.meta
+
+    // Files before row — a partial failure leaves orphan files the sweep
+    // collects, never an orphan row whose detail fetch would 404.
+    await this.db.prepare(
+      `INSERT INTO dump_records
+       (key_id, id, created_at, upstream_id, meta_json, request_headers_json, response_headers_json, request_body_descriptor, response_body_descriptor)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      keyId,
+      record.meta.id,
+      record.meta.completedAt,
+      record.meta.upstream?.id ?? null,
+      JSON.stringify(metaToStore),
+      JSON.stringify(record.request.headers),
+      record.response.body.type === "none" ? null : JSON.stringify(record.response.headers),
+      requestDescriptor === null ? null : JSON.stringify(requestDescriptor),
+      responseDescriptor === null ? null : JSON.stringify(responseDescriptor),
+    ).run()
+  }
+
+  async list(keyId: string, opts: DumpListOptions): Promise<DumpMetadata[]> {
+    const beforeId = opts.before ?? null
+    const beforeRow = beforeId !== null
+      ? await this.db.prepare(
+        "SELECT created_at FROM dump_records WHERE key_id = ? AND id = ?",
+      ).bind(keyId, beforeId).first<{ created_at: number }>()
+      : null
+    if (beforeId !== null && beforeRow === null) return []
+    const beforeTs = beforeRow?.created_at ?? null
+
+    // Newest-first with a compound (created_at, id) cursor so rows sharing a
+    // millisecond still page deterministically — ULID lex order matches
+    // creation order within the ms.
+    const select
+      = "SELECT d.meta_json, d.upstream_id, u.name AS upstream_name, u.provider AS upstream_provider "
+      + "FROM dump_records d LEFT JOIN upstreams u ON u.id = d.upstream_id "
+      + "JOIN api_keys k ON k.id = d.key_id AND k.dump_retention_seconds IS NOT NULL "
+    const visible = "d.key_id = ? AND d.created_at >= ? - k.dump_retention_seconds * 1000"
+    const sql = beforeTs === null
+      ? `${select} WHERE ${visible} ORDER BY d.created_at DESC, d.id DESC LIMIT ?`
+      : `${select} WHERE ${visible} AND (d.created_at < ? OR (d.created_at = ? AND d.id < ?)) ORDER BY d.created_at DESC, d.id DESC LIMIT ?`
+    const now = Date.now()
+    const stmt = beforeTs === null
+      ? this.db.prepare(sql).bind(keyId, now, opts.limit)
+      : this.db.prepare(sql).bind(keyId, now, beforeTs, beforeTs, beforeId, opts.limit)
+    const { results } = await stmt.all<Pick<DumpRow, "meta_json" | "upstream_id" | "upstream_name" | "upstream_provider">>()
+    return results.map(row => ({
+      ...JSON.parse(row.meta_json) as Omit<DumpMetadata, "upstream">,
+      upstream: hydrateUpstream(row),
+    }))
+  }
+
+  async get(keyId: string, recordId: DumpRecordId): Promise<StoredDumpRecord | null> {
+    const row = await this.db.prepare(
+      "SELECT d.upstream_id, u.name AS upstream_name, u.provider AS upstream_provider, "
+      + "d.meta_json, d.request_headers_json, d.response_headers_json, d.request_body_descriptor, d.response_body_descriptor "
+      + "FROM dump_records d LEFT JOIN upstreams u ON u.id = d.upstream_id "
+      + "JOIN api_keys k ON k.id = d.key_id AND k.dump_retention_seconds IS NOT NULL "
+      + "WHERE d.key_id = ? AND d.id = ? AND d.created_at >= ? - k.dump_retention_seconds * 1000",
+    ).bind(keyId, recordId, Date.now()).first<DumpRow>()
+    if (!row) return null
+
+    const meta: DumpMetadata = {
+      ...JSON.parse(row.meta_json) as Omit<DumpMetadata, "upstream">,
+      upstream: hydrateUpstream(row),
+    }
+    const requestHeaders = JSON.parse(row.request_headers_json) as Array<[string, string]>
+    const requestDescriptor = row.request_body_descriptor ? JSON.parse(row.request_body_descriptor) as BodyDescriptor : null
+    const responseHeaders = row.response_headers_json ? JSON.parse(row.response_headers_json) as Array<[string, string]> : null
+    const responseDescriptor = row.response_body_descriptor ? JSON.parse(row.response_body_descriptor) as BodyDescriptor : null
+
+    const request: StoredDumpRequest = {
+      method: meta.method,
+      path: meta.path,
+      headers: requestHeaders,
+      body: requestDescriptor ? await fetchBody(this.files, requestDescriptor) : new Uint8Array(),
+    }
+
+    // Headers null iff `type: 'none'`; a null descriptor with headers is a
+    // legitimate empty-body `bytes` response (nothing to gzip), reconstructed
+    // here from a zero-length buffer so the discriminator round-trips.
+    let responseBody: StoredDumpResponseBody
+    if (responseHeaders === null) {
+      responseBody = { type: "none" }
+    } else if (responseDescriptor === null) {
+      responseBody = { type: "bytes", body: new Uint8Array() }
+    } else if (responseDescriptor.type === "events") {
+      const parsed = JSON.parse(new TextDecoder().decode(await fetchBody(this.files, responseDescriptor))) as unknown
+      if (!Array.isArray(parsed)) throw new Error(`dump events payload not an array at key=${responseDescriptor.key}`)
+      responseBody = { type: "stream", events: parsed as DumpStreamEvent[] }
+    } else {
+      responseBody = { type: "bytes", body: await fetchBody(this.files, responseDescriptor) }
+    }
+
+    const response: StoredDumpResponse = {
+      status: meta.status,
+      headers: responseHeaders ?? [],
+      body: responseBody,
+    }
+    return { meta, request, response }
+  }
+
+  // vNext has no `api_keys.deleted_at`, so unlike the reference impl there is
+  // no "inactive/orphan-key" branch to sweep — a missing api_keys row means
+  // the key was hard-deleted and the sweep should still clean up trailing
+  // dump_records via the second branch below.
+  //
+  // Counting uses `RETURNING id` rather than `changes` because bun:sqlite's
+  // `changes` field aggregates trigger-driven row updates (each dump_records
+  // DELETE fires two spilled_files UPDATE triggers), so a plain change count
+  // would over-report by 3x.
+  async deleteExpiredBatch(keyId: string, now: number, limit: number): Promise<number> {
+    const active = await this.db
+      .prepare(
+        `DELETE FROM dump_records WHERE rowid IN (
+           SELECT records.rowid
+           FROM api_keys
+           CROSS JOIN dump_records AS records
+           WHERE api_keys.id = ?
+             AND api_keys.dump_retention_seconds IS NOT NULL
+             AND records.key_id = api_keys.id
+             AND records.created_at < ? - api_keys.dump_retention_seconds * 1000
+           ORDER BY records.created_at, records.rowid
+           LIMIT ?
+         ) RETURNING id`,
+      )
+      .bind(keyId, now, limit)
+      .all<{ id: string }>()
+    const activeDeleted = active.results.length
+    if (activeDeleted >= limit) return activeDeleted
+    // Orphans (key hard-deleted / retention cleared to NULL): sweep all rows
+    // still tied to `keyId` when the api_keys row no longer opts in.
+    const inactive = await this.db
+      .prepare(
+        `DELETE FROM dump_records WHERE rowid IN (
+           SELECT records.rowid FROM dump_records AS records
+           WHERE records.key_id = ?
+             AND NOT EXISTS (
+               SELECT 1 FROM api_keys
+               WHERE api_keys.id = records.key_id
+                 AND api_keys.dump_retention_seconds IS NOT NULL
+             )
+           ORDER BY records.created_at, records.rowid
+           LIMIT ?
+         ) RETURNING id`,
+      )
+      .bind(keyId, limit - activeDeleted)
+      .all<{ id: string }>()
+    return activeDeleted + inactive.results.length
+  }
+
+  async findOldestCreatedAt(keyId: string): Promise<number | null> {
+    const row = await this.db
+      .prepare("SELECT created_at FROM dump_records WHERE key_id = ? ORDER BY created_at LIMIT 1")
+      .bind(keyId)
+      .first<{ created_at: number }>()
+    return row?.created_at ?? null
+  }
+}

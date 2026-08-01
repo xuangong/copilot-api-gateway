@@ -41,6 +41,7 @@ import { repackageUpstreamError } from '../../errors/repackage'
 import { encodeClientSSE } from '../../dispatch/sse-writers.ts'
 import { SourceStreamState, recordPerformance } from '../shared/respond-telemetry.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
+import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 import { consumeWithState, persistFromEventResult } from './state-bridge.ts'
 import { collectChatCompletionsProtocolEventsToResult } from '../chat-completions/events/to-result'
 import { collectMessagesProtocolEventsToResult } from '../messages/events/reassemble'
@@ -66,6 +67,8 @@ export interface RespondGeminiOptions {
    * tests omit this to skip persistence.
    */
   readonly telemetryCtx?: TelemetryRequestContext
+  /** Optional per-request dump accumulator. */
+  readonly dump?: DumpAccumulator | null
 }
 
 // Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
@@ -96,7 +99,6 @@ async function* applyTranslatorEventsForStreaming(
   }
   const ctx = {
     signal: signal ?? new AbortController().signal,
-    fallbackMaxOutputTokens: undefined,
     model,
   }
   const translated = translateEvents(unwrap(), ctx) as AsyncIterable<unknown>
@@ -123,7 +125,7 @@ const renderEventsAsSSE = (
   result: LlmEventResult<unknown>,
   options: RespondGeminiOptions,
 ): Response => {
-  const state = options.telemetryCtx
+  const state = options.telemetryCtx || options.dump
     ? new SourceStreamState(result.modelIdentity.modelKey)
     : null
   // Cross-protocol streaming: apply translator at SSE-time so encodeClientSSE
@@ -137,7 +139,7 @@ const renderEventsAsSSE = (
         result.modelIdentity.modelKey,
       )
     : result.events
-  const events = state ? consumeWithState(upstreamEvents, state) : upstreamEvents
+  const events = state ? consumeWithState(upstreamEvents, state, options.dump) : upstreamEvents
   const inner = encodeClientSSE('gemini', events)
   const reader = inner.getReader()
   const body = new ReadableStream<Uint8Array>({
@@ -145,8 +147,8 @@ const renderEventsAsSSE = (
       const { value, done } = await reader.read()
       if (done) {
         controller.close()
-        if (state && options.telemetryCtx) {
-          waitUntil(persistFromEventResult(result, state, options.telemetryCtx))
+        if (state) {
+          waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
         }
         return
       }
@@ -155,8 +157,8 @@ const renderEventsAsSSE = (
     async cancel(_reason) {
       try { await reader.cancel() } catch { /* swallow */ }
       options.downstreamAbortController?.abort()
-      if (state && options.telemetryCtx) {
-        waitUntil(persistFromEventResult(result, state, options.telemetryCtx))
+      if (state) {
+        waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
       }
     },
   })
@@ -315,10 +317,10 @@ const renderEventsAsJson = async (
   result: LlmEventResult<unknown>,
   options: RespondGeminiOptions,
 ): Promise<Response> => {
-  const state = options.telemetryCtx
+  const state = options.telemetryCtx || options.dump
     ? new SourceStreamState(result.modelIdentity.modelKey)
     : null
-  const events = state ? consumeWithState(result.events, state) : result.events
+  const events = state ? consumeWithState(result.events, state, options.dump) : result.events
   try {
     // Dispatch reassembly on hub protocol.
     // Gemini has no native hub, so all production bindings are cross-protocol
@@ -342,20 +344,20 @@ const renderEventsAsJson = async (
     const finalBody = result.translateBody
       ? await result.translateBody(reassembled, {
           signal: options.downstreamAbortController?.signal ?? new AbortController().signal,
-          fallbackMaxOutputTokens: undefined,
           model: result.modelIdentity.modelKey,
         })
       : reassembled
-    if (state && options.telemetryCtx) {
-      waitUntil(persistFromEventResult(result, state, options.telemetryCtx))
+    if (state) {
+      waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     }
     return Response.json(finalBody)
   } catch (err) {
     if (state) state.failedAfter()
-    if (state && options.telemetryCtx) {
-      waitUntil(persistFromEventResult(result, state, options.telemetryCtx))
+    if (state) {
+      waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     }
     const message = err instanceof Error ? err.message : String(err)
+    options.dump?.failed(message)
     return Response.json({ error: { message } }, { status: 502 })
   }
 }
@@ -373,6 +375,7 @@ const renderUpstreamError = async (
   if (options.telemetryCtx) {
     waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
   }
+  options.dump?.error('upstream', result.performance?.upstream ?? undefined)
   return await repackageUpstreamError(upstreamErrorToResponse(result), 'gemini')
 }
 
@@ -387,6 +390,7 @@ const renderExecuteResult = async (
       // (pre-binding errors per spec §6.2 deliberately omit perf rows).
       waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
     }
+    options.dump?.failed(result.error.message)
     return Response.json(
       { error: { message: result.error.message } },
       { status: result.status },

@@ -8,11 +8,14 @@
  * with backend image-model `modelKey` on `finalMetadata`).
  *
  * The flow:
- *   1. Parse raw body; reject malformed JSON with the legacy 400 envelope.
- *   2. Hand off to `serveResponses` (attempt → respond chain). It returns a
- *      fully-rendered `Response` plus the `mergedInputItems` array we need
- *      for the snapshot sidecar to persist the post-turn input history.
- *   3. For 2xx Responses (SSE or JSON), tee/clone the body via
+ *   1. Open the per-request dump seam (buffers the body once so parser and
+ *      dump accumulator share the exact bytes).
+ *   2. Parse raw body; reject malformed JSON with the legacy 400 envelope
+ *      (routed through the dump finalize seam so error rows land too).
+ *   3. Hand off to `serveResponses`. The kit auto-tees the terminal Response
+ *      into the dump BEFORE it comes back here, so the snapshot sidecar
+ *      layered below sees the already-tee'd body.
+ *   4. For 2xx Responses (SSE or JSON), tee/clone the body via
  *      `attachStreamSidecar` / `attachNonStreamSidecar` so the post-turn
  *      snapshot lands without contaminating the new telemetry channel.
  *      The sidecar must NOT touch `finalMetadata` or
@@ -25,11 +28,13 @@ import { serveResponses } from './serve.ts'
 import { attachStreamSidecar, attachNonStreamSidecar } from './snapshot-sidecar.ts'
 import { invalidJsonResponse } from '../shared/error-wrap.ts'
 import { readAuth, readObsCtx } from '../shared/gateway-ctx.ts'
+import { openRequestDump, parseJsonBody } from '../shared/dump-open.ts'
 
 export async function responsesHandler(c: Context<{ Bindings: Env }>): Promise<Response> {
-  let raw: unknown
-  try { raw = await c.req.json() } catch { return invalidJsonResponse() }
   const auth = readAuth(c)
+  const { requestBody, dump } = await openRequestDump(c, auth, c.req.method)
+  let raw: unknown
+  try { raw = parseJsonBody(requestBody.bytes) } catch { return dump ? dump.finalize(invalidJsonResponse()) : invalidJsonResponse() }
   const obsCtx = readObsCtx(c, auth)
   const { response, mergedInputItems } = await serveResponses({
     raw,
@@ -38,6 +43,7 @@ export async function responsesHandler(c: Context<{ Bindings: Env }>): Promise<R
     signal: c.req.raw.signal,
     requestId: obsCtx.requestId,
     userAgent: obsCtx.userAgent,
+    dump,
   })
   if (response.status !== 200) return response
   const ct = response.headers.get('content-type') ?? ''

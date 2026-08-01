@@ -23,11 +23,9 @@ export type SseWritableFrame = SseFrame | SseCommentFrame
 
 export type ProtocolFrame<TEvent> = EventFrame<TEvent> | DoneFrame
 
-export const sseFrame = (data: string, event?: string): SseFrame => ({
-  type: 'sse',
-  event,
-  data,
-})
+export const sseFrame = (data: string, event?: string): SseFrame => (
+  event === undefined ? { type: 'sse', data } : { type: 'sse', event, data }
+)
 
 export const sseCommentFrame = (comment: string): SseCommentFrame => ({
   type: 'sse-comment',

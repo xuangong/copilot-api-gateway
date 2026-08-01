@@ -26,6 +26,22 @@ export interface KitObsCtx {
   readonly [extra: string]: unknown
 }
 
+/**
+ * Opaque per-request sink for the request-dump pipeline (Spec 14). The kit
+ * knows nothing about dump internals — it only invokes the two lifecycle
+ * hooks it owns: `requestedModel` (stamped after `parse` succeeds so an
+ * outright-error turn still carries model attribution) and `finalize`
+ * (auto-tee'd on the returned Response so every endpoint gets the same
+ * exit seam). All mid-flight calls (`frame`, `success`, `error`, `failed`,
+ * `recordSentPayloadBytes`) are the respond hook's responsibility — it
+ * receives the same object via `RespondCtx.dump` and can cast to the
+ * concrete accumulator type it imported.
+ */
+export interface KitDumpSink {
+  requestedModel(model: string): void
+  finalize(response: Response): Response
+}
+
 export interface ServeTemplateInput<TAuth extends KitAuthCtx = KitAuthCtx> {
   readonly raw: unknown
   readonly auth: TAuth
@@ -34,6 +50,11 @@ export interface ServeTemplateInput<TAuth extends KitAuthCtx = KitAuthCtx> {
   /** Catch-all bag for endpoint-specific side inputs (e.g. URL-derived
    *  model name + verb, or per-request passthrough fields). Opaque to the kit. */
   readonly extras: Record<string, unknown>
+  /** Opaque request-dump sink. When present, the kit calls
+   *  `requestedModel` after `parse` and `finalize` on the returned
+   *  Response; respond hooks pick it up off `RespondCtx.dump`. Null when
+   *  the api key has no retention configured. */
+  readonly dump?: KitDumpSink | null
 }
 
 export interface PreProcessCtx<TAuth extends KitAuthCtx = KitAuthCtx> {
@@ -64,6 +85,10 @@ export interface RespondCtx<TPayload, TExtra, TTelemetryCtx> {
   readonly downstreamAbortController: AbortController
   readonly telemetryCtx: TTelemetryCtx
   readonly extras: Record<string, unknown>
+  /** Opaque dump sink threaded from `ServeTemplateInput.dump`. Respond
+   *  hooks cast this to the concrete accumulator type they imported and
+   *  call `frame`/`success`/`error`/`recordSentPayloadBytes` in-flight. */
+  readonly dump?: KitDumpSink | null
 }
 
 export interface ServeTemplateHooks<
@@ -78,6 +103,12 @@ export interface ServeTemplateHooks<
   readonly endpointTag: string
 
   parse(input: ServeTemplateInput<TAuth>): Promise<TPayload> | TPayload
+
+  /** Optional: extract the requested model id from the parsed payload so
+   *  the kit can stamp it onto the dump sink immediately after `parse`.
+   *  Endpoints that carry the model in the URL (Gemini) or on a different
+   *  field can override; default (unspecified) is to read `.model`. */
+  extractRequestedModel?(payload: TPayload, input: ServeTemplateInput<TAuth>): string | undefined
 
   /** Optional renderer for parse() failures. Default: `deps.jsonErrorWrap`. */
   parseErrorRender?(err: Error & { status?: number; body?: unknown }): Response
@@ -134,7 +165,17 @@ export async function serveTemplate<
   } catch (err) {
     const e = err as Error & { status?: number; body?: unknown }
     const render = hooks.parseErrorRender ?? ((x: typeof e) => deps.jsonErrorWrap(x.status ?? 400, x.body ?? { error: { message: x.message } }))
-    return { response: render(e), extra: undefined }
+    const errResp = render(e)
+    return { response: input.dump ? input.dump.finalize(errResp) : errResp, extra: undefined }
+  }
+
+  // 1b. Stamp the requested model onto the dump sink as soon as parse
+  //     succeeds, so a downstream error still carries model attribution.
+  if (input.dump) {
+    const model = hooks.extractRequestedModel
+      ? hooks.extractRequestedModel(payload, input)
+      : (payload as { model?: unknown } | null)?.model
+    if (typeof model === 'string' && model.length > 0) input.dump.requestedModel(model)
   }
 
   // 2. preProcess (optional).
@@ -145,13 +186,14 @@ export async function serveTemplate<
       pre = await hooks.preProcess(payload, { auth: input.auth })
     } catch (err) {
       const e = err as Error & { status?: number; body?: unknown }
+      const errResp = deps.jsonErrorWrap(e.status ?? 400, e.body ?? { error: { message: e.message } })
       return {
-        response: deps.jsonErrorWrap(e.status ?? 400, e.body ?? { error: { message: e.message } }),
+        response: input.dump ? input.dump.finalize(errResp) : errResp,
         extra: undefined,
       }
     }
     if (pre.kind === 'short-circuit') {
-      return { response: pre.response, extra: pre.extra }
+      return { response: input.dump ? input.dump.finalize(pre.response) : pre.response, extra: pre.extra }
     }
     payload = pre.payload
     extra = pre.extra
@@ -171,7 +213,7 @@ export async function serveTemplate<
 
   // 5. quota gate.
   const quotaResp = await deps.runQuotaGate(input.auth.apiKeyId)
-  if (quotaResp) return { response: quotaResp, extra }
+  if (quotaResp) return { response: input.dump ? input.dump.finalize(quotaResp) : quotaResp, extra }
 
   // 6. Linked AbortController.
   const controller = new AbortController()
@@ -198,8 +240,14 @@ export async function serveTemplate<
     downstreamAbortController: controller,
     telemetryCtx,
     extras: input.extras,
+    dump: input.dump ?? null,
   })
 
-  // 9. return.
-  return { response, extra }
+  // 9. Auto-tee the terminal Response into the dump sink so every
+  //    endpoint gets the same exit seam. Respond hooks handle the
+  //    mid-flight frame/success/error calls themselves.
+  const finalResponse = input.dump ? input.dump.finalize(response) : response
+
+  // 10. return.
+  return { response: finalResponse, extra }
 }
