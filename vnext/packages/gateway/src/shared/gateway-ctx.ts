@@ -58,7 +58,7 @@ function currentHour(): string {
  * different pair, promote them to parameters.
  */
 export async function recordImagePerformance(args: {
-  apiKeyId: string
+  apiKeyId: ApiKeyId
   attempt: AttemptState
   model: string
   upstream: string | null
@@ -76,7 +76,7 @@ export async function recordImagePerformance(args: {
   const row: PerformanceRecordInput = {
     hour: currentHour(),
     metricScope: 'request_total',
-    keyId: args.apiKeyId as ApiKeyId,
+    keyId: args.apiKeyId,
     model: args.model,
     upstream: args.upstream,
     sourceApi: args.sourceApi ?? 'responses',

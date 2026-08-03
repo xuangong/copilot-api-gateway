@@ -27,6 +27,12 @@ import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 import type { PerformanceSourceApi } from '../../../shared/repo/types.ts'
 import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
 
+// Kit contract is protocol-agnostic and types apiKeyId as `string | null`.
+// The gateway passes richer `<Endpoint>AttemptAuth & KitAuthCtx` shapes whose
+// attempt-side already declares `apiKeyId?: ApiKeyId`. That intersection
+// resolves to plain `string` on read (kit's shape wins), so we do ONE cast
+// here at the kit boundary — down-stream consumers (runQuotaGate,
+// buildTelemetryCtx) see the brand.
 type AuthWithApiKey = KitAuthCtx & { readonly apiKeyId?: string | null }
 
 /**

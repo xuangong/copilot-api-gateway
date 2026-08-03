@@ -16,6 +16,7 @@ import {
   type EnumerateOptions,
 } from '../../routing/candidates.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
+import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,7 @@ export interface SelectBindingAuth {
   readonly ownerId?: string
   readonly pin?: string
   readonly copilot?: EnumerateOptions['copilot']
+  readonly apiKeyId?: ApiKeyId
 }
 
 type EnumerateFn = (args: {

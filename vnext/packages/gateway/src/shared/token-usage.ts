@@ -124,7 +124,7 @@ const currentHour = (): string => new Date().toISOString().slice(0, 13)
  * image_generation server-tool shim. No-op when usage is empty or unparseable.
  */
 export const recordTokenUsage = async (
-  apiKeyId: string,
+  apiKeyId: ApiKeyId,
   modelIdentity: ImageUsageModelIdentity,
   usage: TokenUsage | null,
   repo: Repo = getRepo(),
@@ -133,7 +133,7 @@ export const recordTokenUsage = async (
   const tokens = tokenUsage(usage)
   if (!nonZero(tokens)) return
   const row: UsageRecord = {
-    keyId: apiKeyId as ApiKeyId,
+    keyId: apiKeyId,
     model: modelIdentity.model,
     modelKey: modelIdentity.modelKey,
     upstream: modelIdentity.upstream,

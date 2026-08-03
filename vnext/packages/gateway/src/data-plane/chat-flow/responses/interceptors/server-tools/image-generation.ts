@@ -32,6 +32,7 @@
  *     original size via an identity calculator `d => d`.
  */
 import type { ResponsesTool, ResponsesInputItem } from '../../../../orchestrator/server-tools/types.ts'
+import type { ApiKeyId } from '../../../../../shared/repo/branded-ids.ts'
 import type { ResponsesInputImage } from '@vibe-llm/protocols/responses'
 import { getImageProcessor, dimensionsFromBytes } from '@vibe-core/platform'
 import { createRandomResponsesItemId } from '@vibe-llm/protocols/responses'
@@ -1013,7 +1014,7 @@ const errorFromBody = (body: string, status: number): { type?: string; code: str
 // from `@vibe-core/platform` (see file-header adaptation notes).
 export interface ShimState {
   config: MaterializedImageGenerationConfig
-  apiKeyId: string
+  apiKeyId: ApiKeyId
   upstreamIds: readonly string[] | null
   downstreamAbortSignal: AbortSignal | undefined
   imageDispatchCount: number

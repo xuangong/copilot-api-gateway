@@ -45,6 +45,7 @@ import {
   type AttemptBindingShape,
 } from '../shared/attempt-helpers.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
+import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
 import { withUpstreamTelemetry } from '../shared/upstream-telemetry'
 import { enumerateBindingCandidates, type EnumerateOptions } from '../../routing/candidates.ts'
 import { selectPair } from '../../dispatch/pair-selector.ts'
@@ -60,6 +61,7 @@ export interface MessagesAttemptAuth {
   readonly ownerId?: string
   readonly pin?: string
   readonly copilot?: EnumerateOptions['copilot']
+  readonly apiKeyId?: ApiKeyId
 }
 
 /**
