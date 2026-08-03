@@ -80,16 +80,16 @@ const bodyPath = (keyId: string, bucket: string, recordId: string, side: "req" |
 // when this runs there we'd wrap that instead — for the Bun runtime we take
 // the direct route.
 const gzip = async (bytes: Uint8Array): Promise<Uint8Array> => {
-  if (typeof (globalThis as any).CompressionStream !== "undefined") {
-    const stream = new Response(new Blob([bytes as any]).stream().pipeThrough(new (globalThis as any).CompressionStream("gzip")))
+  if (typeof CompressionStream !== "undefined") {
+    const stream = new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip")))
     return new Uint8Array(await stream.arrayBuffer())
   }
   return Bun.gzipSync(bytes as Uint8Array<ArrayBuffer>)
 }
 
 const gunzip = async (bytes: Uint8Array): Promise<Uint8Array> => {
-  if (typeof (globalThis as any).DecompressionStream !== "undefined") {
-    const stream = new Response(new Blob([bytes as any]).stream().pipeThrough(new (globalThis as any).DecompressionStream("gzip")))
+  if (typeof DecompressionStream !== "undefined") {
+    const stream = new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip")))
     return new Uint8Array(await stream.arrayBuffer())
   }
   return Bun.gunzipSync(bytes as Uint8Array<ArrayBuffer>)
