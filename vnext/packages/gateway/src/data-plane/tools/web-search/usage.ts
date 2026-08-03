@@ -26,7 +26,7 @@ const currentHour = (): string => new Date().toISOString().slice(0, 13)
  */
 export const recordSearchUsage = async (args: {
   provider: WebSearchProviderName
-  keyId: string
+  keyId: ApiKeyId
   action: SearchUsageAction
   requests?: number
 }): Promise<void> => {
@@ -34,9 +34,9 @@ export const recordSearchUsage = async (args: {
   const repo = getRepo()
 
   if (args.action === 'search') {
-    await repo.webSearchUsage.record(args.keyId as ApiKeyId, hour, true)
+    await repo.webSearchUsage.record(args.keyId, hour, true)
   }
-  await repo.webSearchEngineUsage.record(args.keyId as ApiKeyId, args.provider, hour, {
+  await repo.webSearchEngineUsage.record(args.keyId, args.provider, hour, {
     ok: true,
     resultCount: 0,
     durationMs: 0,

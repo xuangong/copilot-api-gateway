@@ -12,6 +12,8 @@
  * stable while protocol typing evolves.
  */
 
+import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+
 export type ResponsesTool = { type: string; [key: string]: unknown }
 export type ResponsesInputItem = { type: string; [key: string]: unknown }
 export type ResponsesOutputItem = { type: string; id?: string; [key: string]: unknown }
@@ -111,7 +113,7 @@ export type ServerToolRegistration<TInvocation, TRequest> = (
  */
 export interface ServerToolRequestCtx {
   readonly store: import('./private-payload-store').PrivatePayloadStore
-  readonly apiKeyId: string
+  readonly apiKeyId: ApiKeyId
   readonly abortSignal?: AbortSignal
   /** Caller-pinned upstream id set for candidate enumeration; null / omitted
    *  means "any upstream". Consumed by the image-generation plugin. */

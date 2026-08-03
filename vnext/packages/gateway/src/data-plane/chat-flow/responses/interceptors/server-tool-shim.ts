@@ -42,6 +42,7 @@ import { jsonrepair } from 'jsonrepair'
 import type { ResponsesInterceptor } from './types'
 import { truncatePreservingCodePoints } from '../../shared/text'
 import type { PrivatePayloadStore } from '../../../orchestrator/server-tools/private-payload-store'
+import type { ApiKeyId } from '../../../../shared/repo/branded-ids.ts'
 import type {
   ResponsesTool,
   ResponsesInputItem,
@@ -1013,7 +1014,7 @@ export const withResponsesServerToolShim = (
 ): ResponsesInterceptor => async (ctx, gatewayCtx, run) => {
   const requestCtx: ServerToolRequestCtx = {
     store,
-    apiKeyId: gatewayCtx.apiKeyId ?? '',
+    apiKeyId: (gatewayCtx.apiKeyId ?? '') as ApiKeyId,
     ...(gatewayCtx.downstreamAbortSignal !== undefined ? { abortSignal: gatewayCtx.downstreamAbortSignal } : {}),
   }
   const active: ActiveServerTool[] = []

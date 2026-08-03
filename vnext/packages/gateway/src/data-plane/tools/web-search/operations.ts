@@ -17,6 +17,7 @@ import type { ConfiguredWebSearchProvider, WebSearchProvider, WebSearchProviderN
 import { truncatePreservingCodePoints } from '../../chat-flow/shared/text.ts'
 import type { ResponsesWebSearchAction, ResponsesWebSearchResult } from '@vibe-llm/protocols/responses'
 import { isAbortError } from '../../../shared/abort.ts'
+import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
 
 // Search-context-size → result-count mapping. Approximates the ~40 results
 // native hosted web_search returns regardless of search_context_size;
@@ -225,7 +226,7 @@ interface PageCacheEntry {
 export interface WebSearchExecutionSession {
   getProvider: () => Promise<ConfiguredWebSearchProvider>
   filters: WebSearchFilters
-  apiKeyId: string
+  apiKeyId: ApiKeyId
   pageCache: Map<string, PageCacheEntry>
   includeSearchActionSources: boolean
   signal?: AbortSignal

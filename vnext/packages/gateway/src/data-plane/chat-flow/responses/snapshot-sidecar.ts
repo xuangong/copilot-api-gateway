@@ -3,6 +3,7 @@ import type { Context } from 'hono'
 import { parseResponsesSSEStream } from '@vibe-llm/provider-copilot'
 import { savePostTurnSnapshot } from '../../dispatch/responses-store-bridge.ts'
 import { getResponsesStore } from '../../../shared/runtime/responses-store.ts'
+import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
 
 /**
  * Sidecar snapshot writers for /v1/responses.
@@ -22,7 +23,7 @@ interface SidecarArgs {
   c: Context
   response: Response
   fallbackModel: string
-  apiKeyId: string | null
+  apiKeyId: ApiKeyId | null
   requestId: string | null
   mergedInputItems: unknown[]
 }

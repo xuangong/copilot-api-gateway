@@ -22,9 +22,9 @@ function secondsUntilNextUtcDay(now: Date): number {
   return Math.max(1, Math.ceil((next.getTime() - now.getTime()) / 1000))
 }
 
-export async function checkQuota(apiKeyId: string): Promise<QuotaResult> {
+export async function checkQuota(apiKeyId: ApiKeyId): Promise<QuotaResult> {
   const repo = getRepo()
-  const key = await repo.apiKeys.getById(apiKeyId as ApiKeyId)
+  const key = await repo.apiKeys.getById(apiKeyId)
   if (!key) return { allowed: true }
 
   const hasReqQuota = key.quotaRequestsPerDay != null
@@ -35,7 +35,7 @@ export async function checkQuota(apiKeyId: string): Promise<QuotaResult> {
   const todayStart = now.toISOString().slice(0, 10) + 'T00'
   const tomorrowStart = new Date(now.getTime() + 86400000).toISOString().slice(0, 10) + 'T00'
 
-  const records = await repo.usage.query({ keyId: apiKeyId as ApiKeyId, start: todayStart, end: tomorrowStart })
+  const records = await repo.usage.query({ keyId: apiKeyId, start: todayStart, end: tomorrowStart })
 
   let totalRequests = 0
   let totalWeightedTokens = 0

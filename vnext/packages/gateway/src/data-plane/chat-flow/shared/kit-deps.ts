@@ -51,10 +51,10 @@ function endpointTagToSourceApi(tag: string): PerformanceSourceApi {
 }
 
 export const kitDeps: ServeTemplateDeps<AuthWithApiKey, TelemetryRequestContext> = {
-  runQuotaGate,
+  runQuotaGate: (apiKeyId) => runQuotaGate(apiKeyId as ApiKeyId | null | undefined),
   jsonErrorWrap,
   buildTelemetryCtx: ({ auth, obsCtx, isStreaming, requestStartedAt, endpointTag }) => ({
-    apiKeyId: (((obsCtx.apiKeyId as string | null | undefined) ?? auth.apiKeyId ?? '<unknown>') as ApiKeyId),
+    apiKeyId: (obsCtx.apiKeyId ?? auth.apiKeyId ?? '<unknown>') as ApiKeyId,
     userAgent: (obsCtx.userAgent as string | null | undefined) ?? null,
     requestId: (obsCtx.requestId as string | undefined) ?? crypto.randomUUID(),
     isStreaming,

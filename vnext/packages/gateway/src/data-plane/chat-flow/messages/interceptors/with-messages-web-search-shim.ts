@@ -39,6 +39,7 @@ import type {
 } from '@vibe-llm/protocols/messages'
 import { MESSAGES_WEB_SEARCH_ERROR_CODES } from '@vibe-llm/protocols/messages'
 import { decodeBase64UrlJson, encodeBase64UrlJson } from '../../../../shared/base64url-json.ts'
+import type { ApiKeyId } from '../../../../shared/repo/branded-ids.ts'
 import { resolveConfiguredWebSearchProvider } from '../../../tools/web-search/provider.ts'
 import { loadSearchConfig } from '../../../tools/web-search/search-config.ts'
 import { searchWebAndRecordUsage } from '../../../tools/web-search/search.ts'
@@ -118,7 +119,7 @@ interface ReplayAwareMessagesWebSearchShimState {
 interface ActiveMessagesWebSearchProvider {
   providerName: WebSearchProviderName
   impl: WebSearchProvider
-  apiKeyId: string
+  apiKeyId: ApiKeyId
 }
 
 export type MessagesWebSearchShimState =
@@ -873,7 +874,7 @@ const invalidRequestUpstreamError = (
 })
 
 const resolveActiveMessagesWebSearchProvider = async (
-  apiKeyId: string,
+  apiKeyId: ApiKeyId,
 ): Promise<
   | { type: 'ok'; provider: ActiveMessagesWebSearchProvider }
   | LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>
@@ -938,7 +939,7 @@ export const withMessagesWebSearchShim: MessagesInterceptor = async (invocation,
   if (prepared.type === 'invalid-request') return invalidRequestUpstreamError(prepared.message)
 
   const providerResolution = prepared.state.mode === 'active'
-    ? await resolveActiveMessagesWebSearchProvider(ctx.apiKeyId ?? '')
+    ? await resolveActiveMessagesWebSearchProvider((ctx.apiKeyId ?? '') as ApiKeyId)
     : { type: 'ok' as const, provider: undefined }
   if (providerResolution.type !== 'ok') return providerResolution
 

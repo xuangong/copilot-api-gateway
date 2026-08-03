@@ -45,6 +45,7 @@ import { parseResponsesPayload } from '../../parsers.ts'
 import { kitDeps } from '../shared/kit-deps.ts'
 import type { DispatchObsCtx } from '../shared/obs-ctx.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
+import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
 import {
   expandPreviousResponseId,
   PreviousResponseNotFoundError,
@@ -125,7 +126,7 @@ const responsesHooks: ServeTemplateHooks<
       await expandPreviousResponseId(
         payload as { previous_response_id?: string | null; input?: unknown },
         store,
-        ctx.auth.apiKeyId ?? null,
+        (ctx.auth.apiKeyId ?? null) as ApiKeyId | null,
       )
       const expanded = (payload as { input?: unknown }).input
       const mergedInputItems = Array.isArray(expanded) ? (expanded as unknown[]) : []

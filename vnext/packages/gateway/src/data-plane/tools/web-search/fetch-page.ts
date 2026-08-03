@@ -2,11 +2,12 @@
 
 import type { WebSearchFetchPageRequest, WebSearchFetchPageResult, WebSearchProvider, WebSearchProviderName } from './types.ts'
 import { recordSearchUsage } from './usage.ts'
+import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
 
 export const fetchPageAndRecordUsage = async (args: {
   provider: WebSearchProvider
   providerName: WebSearchProviderName
-  keyId: string
+  keyId: ApiKeyId
   request: WebSearchFetchPageRequest
 }): Promise<WebSearchFetchPageResult> => {
   try {

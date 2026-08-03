@@ -7,6 +7,7 @@
  * sees it. `savePostTurnSnapshot` is the post-turn writer.
  */
 import type { ResponsesSnapshotStore } from '@vibe-llm/responses-store'
+import type { ApiKeyId } from '../../shared/repo/branded-ids.ts'
 
 const DEFAULT_TTL_MS = 24 * 3600_000
 
@@ -21,7 +22,7 @@ export class PreviousResponseNotFoundError extends Error {
 export async function expandPreviousResponseId(
   payload: { previous_response_id?: string | null; input?: unknown },
   store: ResponsesSnapshotStore,
-  apiKeyId: string | null,
+  apiKeyId: ApiKeyId | null,
 ): Promise<void> {
   const id = payload.previous_response_id
   if (id == null || id === '') return
@@ -40,7 +41,7 @@ export async function savePostTurnSnapshot(
   store: ResponsesSnapshotStore,
   args: {
     responseId: string
-    apiKeyId: string | null
+    apiKeyId: ApiKeyId | null
     model: string
     inputItems: unknown[]
     outputItems: unknown[]

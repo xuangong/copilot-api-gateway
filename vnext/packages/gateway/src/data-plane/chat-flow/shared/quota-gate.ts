@@ -16,6 +16,7 @@
  * preserve that here.
  */
 import { checkQuota } from '../../../shared/observability/quota.ts'
+import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
 
 /**
  * Run the daily quota gate for the given apiKeyId. Returns:
@@ -33,7 +34,7 @@ import { checkQuota } from '../../../shared/observability/quota.ts'
  * `dispatch()` had the same fail-open posture — quota enforcement should
  * never crash the data-plane path; it can only deny it.
  */
-export async function runQuotaGate(apiKeyId: string | null | undefined): Promise<Response | null> {
+export async function runQuotaGate(apiKeyId: ApiKeyId | null | undefined): Promise<Response | null> {
   if (!apiKeyId) return null
   let quota: Awaited<ReturnType<typeof checkQuota>>
   try {
