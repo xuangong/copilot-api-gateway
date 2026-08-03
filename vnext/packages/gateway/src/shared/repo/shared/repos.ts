@@ -39,6 +39,7 @@ import type {
   WebSearchUsageRecord,
   WebSearchUsageRepo,
 } from "../types"
+import type { ApiKeyId, UserId } from "../branded-ids.ts"
 import { latencyBucketForMs } from "../../performance-histogram.ts"
 import type { SqlExecutor } from "./executor"
 import { BILLING_DIMENSIONS, unitPriceForDimension } from "@vibe-llm/protocols/common"
@@ -73,12 +74,12 @@ function toApiKey(row: any): ApiKey {
     } catch {}
   }
   return {
-    id: row.id,
+    id: row.id as ApiKeyId,
     name: row.name,
     key: row.key,
     createdAt: row.created_at,
     lastUsedAt: row.last_used_at ?? undefined,
-    ownerId: row.owner_id ?? undefined,
+    ownerId: row.owner_id ? (row.owner_id as UserId) : undefined,
     quotaRequestsPerDay: row.quota_requests_per_day ?? undefined,
     quotaTokensPerDay: row.quota_tokens_per_day ?? undefined,
     webSearchEnabled: row.web_search_enabled === 1,
@@ -109,7 +110,7 @@ function toGitHubAccount(row: any): GitHubAccount {
   return {
     token: row.token,
     accountType: row.account_type,
-    ownerId: row.owner_id ?? undefined,
+    ownerId: row.owner_id ? (row.owner_id as UserId) : undefined,
     user: { id: row.user_id, login: row.login, name: row.name, avatar_url: row.avatar_url },
     enabled: row.enabled === undefined ? undefined : row.enabled === 1,
     sortOrder: row.sort_order ?? undefined,
@@ -181,7 +182,7 @@ function toUpstreamRecord(row: any): UpstreamRecord {
 
 function toLatencyRecord(r: any): LatencyRecord {
   return {
-    keyId: r.key_id,
+    keyId: r.key_id as ApiKeyId,
     model: r.model,
     hour: r.hour,
     colo: r.colo,
@@ -196,7 +197,7 @@ function toLatencyRecord(r: any): LatencyRecord {
 
 function toUser(row: any): User {
   return {
-    id: row.id,
+    id: row.id as UserId,
     name: row.name,
     email: row.email ?? undefined,
     avatarUrl: row.avatar_url ?? undefined,
@@ -216,7 +217,7 @@ function toInviteCode(row: any): InviteCode {
     email: row.email ?? undefined,
     createdAt: row.created_at,
     usedAt: row.used_at ?? undefined,
-    usedBy: row.used_by ?? undefined,
+    usedBy: row.used_by ? (row.used_by as UserId) : undefined,
   }
 }
 
@@ -224,9 +225,9 @@ function toPresence(row: any): ClientPresence {
   return {
     clientId: row.client_id,
     clientName: row.client_name,
-    keyId: row.key_id ?? null,
+    keyId: row.key_id ? (row.key_id as ApiKeyId) : null,
     keyName: row.key_name ?? null,
-    ownerId: row.owner_id ?? null,
+    ownerId: row.owner_id ? (row.owner_id as UserId) : null,
     gatewayUrl: row.gateway_url ?? null,
     lastSeenAt: row.last_seen_at,
   }
@@ -237,7 +238,7 @@ function toDeviceCode(row: any): DeviceCode {
     deviceCode: row.device_code,
     userCode: row.user_code,
     expiresAt: row.expires_at,
-    userId: row.user_id ?? undefined,
+    userId: row.user_id ? (row.user_id as UserId) : undefined,
     sessionToken: row.session_token ?? undefined,
     createdAt: row.created_at,
   }
@@ -245,7 +246,7 @@ function toDeviceCode(row: any): DeviceCode {
 
 // Build the WHERE clause + binds for the keyIds / keyId / none branch shared
 // by usage.query, latency.query, web_search_usage.query, web_search_engine_usage.query.
-function buildKeyIdRangeQuery(table: string, cols: string, opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): { sql: string; binds: unknown[] } {
+function buildKeyIdRangeQuery(table: string, cols: string, opts: { keyId?: ApiKeyId; keyIds?: ApiKeyId[]; start: string; end: string }): { sql: string; binds: unknown[] } {
   if (opts.keyIds && opts.keyIds.length > 0) {
     const placeholders = opts.keyIds.map(() => "?").join(",")
     return {
@@ -272,7 +273,7 @@ class SharedApiKeyRepo implements ApiKeyRepo {
     return (await this.x.all(`SELECT ${API_KEY_COLS} FROM api_keys ORDER BY created_at`, [])).map(toApiKey)
   }
 
-  async listByOwner(ownerId: string): Promise<ApiKey[]> {
+  async listByOwner(ownerId: UserId): Promise<ApiKey[]> {
     return (await this.x.all(`SELECT ${API_KEY_COLS} FROM api_keys WHERE owner_id = ? ORDER BY created_at`, [ownerId])).map(toApiKey)
   }
 
@@ -281,7 +282,7 @@ class SharedApiKeyRepo implements ApiKeyRepo {
     return row ? toApiKey(row) : null
   }
 
-  async getById(id: string): Promise<ApiKey | null> {
+  async getById(id: ApiKeyId): Promise<ApiKey | null> {
     const row = await this.x.first(`SELECT ${API_KEY_COLS} FROM api_keys WHERE id = ?`, [id])
     return row ? toApiKey(row) : null
   }
@@ -302,7 +303,7 @@ class SharedApiKeyRepo implements ApiKeyRepo {
     )
   }
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: ApiKeyId): Promise<boolean> {
     const r = await this.x.run("DELETE FROM api_keys WHERE id = ?", [id])
     return r.changes > 0
   }
@@ -311,7 +312,7 @@ class SharedApiKeyRepo implements ApiKeyRepo {
     await this.x.run("DELETE FROM api_keys", [])
   }
 
-  async touchLastUsed(id: string): Promise<void> {
+  async touchLastUsed(id: ApiKeyId): Promise<void> {
     await this.x.run(
       `UPDATE api_keys SET last_used_at = ? WHERE id = ?`,
       [new Date().toISOString(), id],
@@ -326,11 +327,11 @@ class SharedGitHubRepo implements GitHubRepo {
     return (await this.x.all(`SELECT ${GITHUB_COLS} FROM github_accounts`, [])).map(toGitHubAccount)
   }
 
-  async listAccountsByOwner(ownerId: string): Promise<GitHubAccount[]> {
+  async listAccountsByOwner(ownerId: UserId): Promise<GitHubAccount[]> {
     return (await this.x.all(`SELECT ${GITHUB_COLS} FROM github_accounts WHERE owner_id = ?`, [ownerId])).map(toGitHubAccount)
   }
 
-  async getAccount(userId: number, ownerId?: string): Promise<GitHubAccount | null> {
+  async getAccount(userId: number, ownerId?: UserId): Promise<GitHubAccount | null> {
     const row = await this.x.first(`SELECT ${GITHUB_COLS} FROM github_accounts WHERE user_id = ? AND owner_id = ?`, [userId, ownerId ?? ""])
     return row ? toGitHubAccount(row) : null
   }
@@ -351,7 +352,7 @@ class SharedGitHubRepo implements GitHubRepo {
     )
   }
 
-  async deleteAccount(userId: number, ownerId?: string): Promise<void> {
+  async deleteAccount(userId: number, ownerId?: UserId): Promise<void> {
     if (ownerId !== undefined) {
       await this.x.run("DELETE FROM github_accounts WHERE user_id = ? AND owner_id = ?", [userId, ownerId])
     } else {
@@ -377,16 +378,16 @@ class SharedGitHubRepo implements GitHubRepo {
     await this.x.run("DELETE FROM config WHERE key = ?", ["active_github_account"])
   }
 
-  async getActiveIdForUser(ownerId: string): Promise<number | null> {
+  async getActiveIdForUser(ownerId: UserId): Promise<number | null> {
     const row = await this.x.first<{ value: string }>("SELECT value FROM config WHERE key = ?", [`active_github_account:${ownerId}`])
     return row ? Number(row.value) : null
   }
 
-  async setActiveIdForUser(ownerId: string, userId: number): Promise<void> {
+  async setActiveIdForUser(ownerId: UserId, userId: number): Promise<void> {
     await this.x.run("INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", [`active_github_account:${ownerId}`, String(userId)])
   }
 
-  async clearActiveIdForUser(ownerId: string): Promise<void> {
+  async clearActiveIdForUser(ownerId: UserId): Promise<void> {
     await this.x.run("DELETE FROM config WHERE key = ?", [`active_github_account:${ownerId}`])
   }
 }
@@ -394,7 +395,7 @@ class SharedGitHubRepo implements GitHubRepo {
 class SharedUpstreamRepo implements UpstreamRepo {
   constructor(private x: SqlExecutor) {}
 
-  async list(opts: { ownerId?: string; includeDisabled?: boolean } = {}): Promise<UpstreamRecord[]> {
+  async list(opts: { ownerId?: UserId; includeDisabled?: boolean } = {}): Promise<UpstreamRecord[]> {
     const where: string[] = []
     const binds: unknown[] = []
     if (opts.ownerId !== undefined) {
@@ -486,7 +487,7 @@ function assembleUsageRecords(dimensions: readonly UsageDimensionRow[], requests
     let record = byBucket.get(key)
     if (!record) {
       record = {
-        keyId: row.key_id,
+        keyId: row.key_id as ApiKeyId,
         model: row.model,
         upstream: row.upstream ?? null,
         modelKey: row.model_key,
@@ -568,7 +569,7 @@ class SharedUsageRepo implements UsageRepo {
     )
   }
 
-  async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<UsageRecord[]> {
+  async query(opts: { keyId?: ApiKeyId; keyIds?: ApiKeyId[]; start: string; end: string }): Promise<UsageRecord[]> {
     const dimQuery = buildKeyIdRangeQuery("usage", USAGE_DIM_COLS, opts)
     const reqQuery = buildKeyIdRangeQuery("usage_requests", USAGE_REQ_COLS, opts)
     const [dimensions, requests] = await Promise.all([
@@ -612,7 +613,7 @@ class SharedCacheRepo implements CacheRepo {
 class SharedLatencyRepo implements LatencyRepo {
   constructor(private x: SqlExecutor) {}
 
-  async record(entry: { keyId: string; model: string; hour: string; colo: string; stream: boolean; totalMs: number; upstreamMs: number; ttfbMs: number; tokenMiss: boolean }): Promise<void> {
+  async record(entry: { keyId: ApiKeyId; model: string; hour: string; colo: string; stream: boolean; totalMs: number; upstreamMs: number; ttfbMs: number; tokenMiss: boolean }): Promise<void> {
     await this.x.run(
       `INSERT INTO latency (${LATENCY_COLS}) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
        ON CONFLICT (key_id, model, hour, colo, stream) DO UPDATE SET requests = requests + 1, total_ms = total_ms + excluded.total_ms, upstream_ms = upstream_ms + excluded.upstream_ms, ttfb_ms = ttfb_ms + excluded.ttfb_ms, token_miss = token_miss + excluded.token_miss`,
@@ -620,7 +621,7 @@ class SharedLatencyRepo implements LatencyRepo {
     )
   }
 
-  async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<LatencyRecord[]> {
+  async query(opts: { keyId?: ApiKeyId; keyIds?: ApiKeyId[]; start: string; end: string }): Promise<LatencyRecord[]> {
     const { sql, binds } = buildKeyIdRangeQuery("latency", LATENCY_COLS, opts)
     return (await this.x.all(sql, binds)).map(toLatencyRecord)
   }
@@ -640,7 +641,7 @@ class SharedUserRepo implements UserRepo {
     )
   }
 
-  async getById(id: string): Promise<User | null> {
+  async getById(id: UserId): Promise<User | null> {
     const row = await this.x.first(`SELECT ${USER_COLS} FROM users WHERE id = ?`, [id])
     return row ? toUser(row) : null
   }
@@ -659,7 +660,7 @@ class SharedUserRepo implements UserRepo {
     return (await this.x.all(`SELECT ${USER_COLS} FROM users ORDER BY created_at`, [])).map(toUser)
   }
 
-  async update(id: string, fields: Partial<Pick<User, "name" | "email" | "avatarUrl" | "disabled" | "lastLoginAt" | "userKey" | "passwordHash">>): Promise<void> {
+  async update(id: UserId, fields: Partial<Pick<User, "name" | "email" | "avatarUrl" | "disabled" | "lastLoginAt" | "userKey" | "passwordHash">>): Promise<void> {
     const sets: string[] = []
     const binds: unknown[] = []
     if (fields.name !== undefined) { sets.push("name = ?"); binds.push(fields.name) }
@@ -674,7 +675,7 @@ class SharedUserRepo implements UserRepo {
     await this.x.run(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`, binds)
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: UserId): Promise<void> {
     await this.x.run("DELETE FROM users WHERE id = ?", [id])
   }
 }
@@ -698,11 +699,11 @@ class SharedInviteCodeRepo implements InviteCodeRepo {
     return (await this.x.all(`SELECT ${INVITE_COLS} FROM invite_codes ORDER BY created_at DESC`, [])).map(toInviteCode)
   }
 
-  async markUsed(id: string, userId: string): Promise<void> {
+  async markUsed(id: string, userId: UserId): Promise<void> {
     await this.x.run("UPDATE invite_codes SET used_at = ?, used_by = ? WHERE id = ?", [new Date().toISOString(), userId, id])
   }
 
-  async clearUsedBy(userId: string): Promise<void> {
+  async clearUsedBy(userId: UserId): Promise<void> {
     await this.x.run("UPDATE invite_codes SET used_by = NULL WHERE used_by = ?", [userId])
   }
 
@@ -720,10 +721,10 @@ class SharedSessionRepo implements SessionRepo {
 
   async findByToken(token: string): Promise<UserSession | null> {
     const row = await this.x.first<any>(`SELECT ${SESSION_COLS} FROM user_sessions WHERE token = ?`, [token])
-    return row ? { token: row.token, userId: row.user_id, createdAt: row.created_at, expiresAt: row.expires_at } : null
+    return row ? { token: row.token, userId: row.user_id as UserId, createdAt: row.created_at, expiresAt: row.expires_at } : null
   }
 
-  async deleteByUserId(userId: string): Promise<void> {
+  async deleteByUserId(userId: UserId): Promise<void> {
     await this.x.run("DELETE FROM user_sessions WHERE user_id = ?", [userId])
   }
 
@@ -747,11 +748,11 @@ class SharedClientPresenceRepo implements ClientPresenceRepo {
     return (await this.x.all(`SELECT ${PRESENCE_COLS} FROM client_presence ORDER BY last_seen_at DESC`, [])).map(toPresence)
   }
 
-  async listByOwner(ownerId: string): Promise<ClientPresence[]> {
+  async listByOwner(ownerId: UserId): Promise<ClientPresence[]> {
     return (await this.x.all(`SELECT ${PRESENCE_COLS} FROM client_presence WHERE owner_id = ? ORDER BY last_seen_at DESC`, [ownerId])).map(toPresence)
   }
 
-  async listByKeyIds(keyIds: string[]): Promise<ClientPresence[]> {
+  async listByKeyIds(keyIds: ApiKeyId[]): Promise<ClientPresence[]> {
     if (keyIds.length === 0) return []
     const placeholders = keyIds.map(() => "?").join(",")
     return (await this.x.all(`SELECT ${PRESENCE_COLS} FROM client_presence WHERE key_id IN (${placeholders}) ORDER BY last_seen_at DESC`, keyIds)).map(toPresence)
@@ -766,7 +767,7 @@ class SharedClientPresenceRepo implements ClientPresenceRepo {
 class SharedWebSearchUsageRepo implements WebSearchUsageRepo {
   constructor(private x: SqlExecutor) {}
 
-  async record(keyId: string, hour: string, success: boolean): Promise<void> {
+  async record(keyId: ApiKeyId, hour: string, success: boolean): Promise<void> {
     if (success) {
       await this.x.run(
         `INSERT INTO web_search_usage (${WS_USAGE_COLS}) VALUES (?, ?, 1, 1, 0)
@@ -782,10 +783,10 @@ class SharedWebSearchUsageRepo implements WebSearchUsageRepo {
     }
   }
 
-  async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<WebSearchUsageRecord[]> {
+  async query(opts: { keyId?: ApiKeyId; keyIds?: ApiKeyId[]; start: string; end: string }): Promise<WebSearchUsageRecord[]> {
     const { sql, binds } = buildKeyIdRangeQuery("web_search_usage", WS_USAGE_COLS, opts)
     const rows = await this.x.all<any>(sql, binds)
-    return rows.map((r) => ({ keyId: r.key_id, hour: r.hour, searches: r.searches, successes: r.successes, failures: r.failures }))
+    return rows.map((r) => ({ keyId: r.key_id as ApiKeyId, hour: r.hour, searches: r.searches, successes: r.successes, failures: r.failures }))
   }
 
   async deleteAll(): Promise<void> {
@@ -796,7 +797,7 @@ class SharedWebSearchUsageRepo implements WebSearchUsageRepo {
 class SharedWebSearchEngineUsageRepo implements WebSearchEngineUsageRepo {
   constructor(private x: SqlExecutor) {}
 
-  async record(keyId: string, engineId: string, hour: string, attempt: { ok: boolean; resultCount: number; durationMs: number }): Promise<void> {
+  async record(keyId: ApiKeyId, engineId: string, hour: string, attempt: { ok: boolean; resultCount: number; durationMs: number }): Promise<void> {
     const successInc = attempt.ok ? 1 : 0
     const failureInc = attempt.ok ? 0 : 1
     const emptyInc = attempt.ok && attempt.resultCount === 0 ? 1 : 0
@@ -813,11 +814,11 @@ class SharedWebSearchEngineUsageRepo implements WebSearchEngineUsageRepo {
     )
   }
 
-  async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string }): Promise<WebSearchEngineUsageRecord[]> {
+  async query(opts: { keyId?: ApiKeyId; keyIds?: ApiKeyId[]; start: string; end: string }): Promise<WebSearchEngineUsageRecord[]> {
     const { sql, binds } = buildKeyIdRangeQuery("web_search_engine_usage", WS_ENGINE_COLS, opts)
     const rows = await this.x.all<any>(sql, binds)
     return rows.map((r) => ({
-      keyId: r.key_id, engineId: r.engine_id, hour: r.hour,
+      keyId: r.key_id as ApiKeyId, engineId: r.engine_id, hour: r.hour,
       attempts: r.attempts, successes: r.successes, failures: r.failures,
       emptyResults: r.empty_results, totalResults: r.total_results,
       successDurationMs: r.success_duration_ms, failureDurationMs: r.failure_duration_ms,
@@ -832,29 +833,29 @@ class SharedWebSearchEngineUsageRepo implements WebSearchEngineUsageRepo {
 class SharedKeyAssignmentRepo implements KeyAssignmentRepo {
   constructor(private x: SqlExecutor) {}
 
-  async assign(keyId: string, userId: string, assignedBy: string): Promise<void> {
+  async assign(keyId: ApiKeyId, userId: UserId, assignedBy: UserId): Promise<void> {
     await this.x.run(`INSERT OR REPLACE INTO key_assignments (${KEY_ASSIGN_COLS}) VALUES (?, ?, ?, ?)`, [keyId, userId, assignedBy, new Date().toISOString()])
   }
 
-  async unassign(keyId: string, userId: string): Promise<void> {
+  async unassign(keyId: ApiKeyId, userId: UserId): Promise<void> {
     await this.x.run("DELETE FROM key_assignments WHERE key_id = ? AND user_id = ?", [keyId, userId])
   }
 
-  async listByUser(userId: string): Promise<KeyAssignment[]> {
+  async listByUser(userId: UserId): Promise<KeyAssignment[]> {
     const rows = await this.x.all<any>(`SELECT ${KEY_ASSIGN_COLS} FROM key_assignments WHERE user_id = ?`, [userId])
-    return rows.map((r) => ({ keyId: r.key_id, userId: r.user_id, assignedBy: r.assigned_by, assignedAt: r.assigned_at }))
+    return rows.map((r) => ({ keyId: r.key_id as ApiKeyId, userId: r.user_id as UserId, assignedBy: r.assigned_by as UserId, assignedAt: r.assigned_at }))
   }
 
-  async listByKey(keyId: string): Promise<KeyAssignment[]> {
+  async listByKey(keyId: ApiKeyId): Promise<KeyAssignment[]> {
     const rows = await this.x.all<any>(`SELECT ${KEY_ASSIGN_COLS} FROM key_assignments WHERE key_id = ?`, [keyId])
-    return rows.map((r) => ({ keyId: r.key_id, userId: r.user_id, assignedBy: r.assigned_by, assignedAt: r.assigned_at }))
+    return rows.map((r) => ({ keyId: r.key_id as ApiKeyId, userId: r.user_id as UserId, assignedBy: r.assigned_by as UserId, assignedAt: r.assigned_at }))
   }
 
-  async deleteByKey(keyId: string): Promise<void> {
+  async deleteByKey(keyId: ApiKeyId): Promise<void> {
     await this.x.run("DELETE FROM key_assignments WHERE key_id = ?", [keyId])
   }
 
-  async deleteByUser(userId: string): Promise<void> {
+  async deleteByUser(userId: UserId): Promise<void> {
     await this.x.run("DELETE FROM key_assignments WHERE user_id = ?", [userId])
   }
 }
@@ -862,34 +863,34 @@ class SharedKeyAssignmentRepo implements KeyAssignmentRepo {
 class SharedObservabilityShareRepo implements ObservabilityShareRepo {
   constructor(private x: SqlExecutor) {}
 
-  async share(ownerId: string, viewerId: string, grantedBy: string): Promise<void> {
+  async share(ownerId: UserId, viewerId: UserId, grantedBy: UserId): Promise<void> {
     await this.x.run(`INSERT OR REPLACE INTO observability_shares (${SHARE_COLS}) VALUES (?, ?, ?, ?)`, [ownerId, viewerId, grantedBy, new Date().toISOString()])
   }
 
-  async unshare(ownerId: string, viewerId: string): Promise<void> {
+  async unshare(ownerId: UserId, viewerId: UserId): Promise<void> {
     await this.x.run("DELETE FROM observability_shares WHERE owner_id = ? AND viewer_id = ?", [ownerId, viewerId])
   }
 
-  async listByOwner(ownerId: string): Promise<ObservabilityShare[]> {
+  async listByOwner(ownerId: UserId): Promise<ObservabilityShare[]> {
     const rows = await this.x.all<any>(`SELECT ${SHARE_COLS} FROM observability_shares WHERE owner_id = ?`, [ownerId])
-    return rows.map((r) => ({ ownerId: r.owner_id, viewerId: r.viewer_id, grantedBy: r.granted_by, grantedAt: r.granted_at }))
+    return rows.map((r) => ({ ownerId: r.owner_id as UserId, viewerId: r.viewer_id as UserId, grantedBy: r.granted_by as UserId, grantedAt: r.granted_at }))
   }
 
-  async listByViewer(viewerId: string): Promise<ObservabilityShare[]> {
+  async listByViewer(viewerId: UserId): Promise<ObservabilityShare[]> {
     const rows = await this.x.all<any>(`SELECT ${SHARE_COLS} FROM observability_shares WHERE viewer_id = ?`, [viewerId])
-    return rows.map((r) => ({ ownerId: r.owner_id, viewerId: r.viewer_id, grantedBy: r.granted_by, grantedAt: r.granted_at }))
+    return rows.map((r) => ({ ownerId: r.owner_id as UserId, viewerId: r.viewer_id as UserId, grantedBy: r.granted_by as UserId, grantedAt: r.granted_at }))
   }
 
-  async isGranted(ownerId: string, viewerId: string): Promise<boolean> {
+  async isGranted(ownerId: UserId, viewerId: UserId): Promise<boolean> {
     const row = await this.x.first("SELECT 1 AS one FROM observability_shares WHERE owner_id = ? AND viewer_id = ? LIMIT 1", [ownerId, viewerId])
     return !!row
   }
 
-  async deleteByOwner(ownerId: string): Promise<void> {
+  async deleteByOwner(ownerId: UserId): Promise<void> {
     await this.x.run("DELETE FROM observability_shares WHERE owner_id = ?", [ownerId])
   }
 
-  async deleteByViewer(viewerId: string): Promise<void> {
+  async deleteByViewer(viewerId: UserId): Promise<void> {
     await this.x.run("DELETE FROM observability_shares WHERE viewer_id = ?", [viewerId])
   }
 }
@@ -911,7 +912,7 @@ class SharedDeviceCodeRepo implements DeviceCodeRepo {
     return row ? toDeviceCode(row) : null
   }
 
-  async verify(deviceCode: string, userId: string, sessionToken: string): Promise<void> {
+  async verify(deviceCode: string, userId: UserId, sessionToken: string): Promise<void> {
     await this.x.run("UPDATE device_codes SET user_id = ?, session_token = ? WHERE device_code = ?", [userId, sessionToken, deviceCode])
   }
 
@@ -928,7 +929,7 @@ function toPerformanceSummaryRecord(r: any): PerformanceSummaryRecord {
   return {
     hour: r.hour,
     metricScope: r.metric_scope,
-    keyId: r.key_id,
+    keyId: r.key_id as ApiKeyId,
     model: r.model,
     upstream: r.upstream ?? null,
     sourceApi: r.source_api,
@@ -946,7 +947,7 @@ function toPerformanceBucketRecord(r: any): PerformanceBucketRecord {
   return {
     hour: r.hour,
     metricScope: r.metric_scope,
-    keyId: r.key_id,
+    keyId: r.key_id as ApiKeyId,
     model: r.model,
     upstream: r.upstream ?? null,
     sourceApi: r.source_api,
@@ -995,7 +996,7 @@ class SharedPerformanceRepo implements PerformanceRepo {
     )
   }
 
-  async query(opts: { keyId?: string; keyIds?: string[]; start: string; end: string; metricScope?: PerformanceMetricScope }): Promise<{ summary: PerformanceSummaryRecord[]; buckets: PerformanceBucketRecord[] }> {
+  async query(opts: { keyId?: ApiKeyId; keyIds?: ApiKeyId[]; start: string; end: string; metricScope?: PerformanceMetricScope }): Promise<{ summary: PerformanceSummaryRecord[]; buckets: PerformanceBucketRecord[] }> {
     const summary = await this.queryTable("performance_summary", PERF_SUMMARY_COLS, opts)
     const buckets = await this.queryTable("performance_latency_buckets", PERF_BUCKET_COLS, opts)
     return {
@@ -1004,7 +1005,7 @@ class SharedPerformanceRepo implements PerformanceRepo {
     }
   }
 
-  private async queryTable(table: string, cols: string, opts: { keyId?: string; keyIds?: string[]; start: string; end: string; metricScope?: PerformanceMetricScope }): Promise<any[]> {
+  private async queryTable(table: string, cols: string, opts: { keyId?: ApiKeyId; keyIds?: ApiKeyId[]; start: string; end: string; metricScope?: PerformanceMetricScope }): Promise<any[]> {
     const { sql, binds } = buildKeyIdRangeQuery(table, cols, opts)
     if (!opts.metricScope) return this.x.all(sql, binds)
     const scopedSql = sql.replace("ORDER BY hour", "AND metric_scope = ? ORDER BY hour")
@@ -1043,7 +1044,7 @@ export function buildSharedRepo(x: SqlExecutor): Repo {
 function toResponsesItemRecord(r: any): ResponsesItemRecord {
   return {
     id: r.id,
-    apiKeyId: r.api_key_id ?? null,
+    apiKeyId: r.api_key_id ? (r.api_key_id as ApiKeyId) : null,
     kind: r.kind,
     itemJson: r.item_json,
     privateJson: r.private_json ?? null,
@@ -1072,7 +1073,7 @@ class SharedResponsesItemsRepo implements ResponsesItemsRepo {
     }
   }
 
-  async lookupMany(ids: string[], apiKeyId?: string): Promise<ResponsesItemRecord[]> {
+  async lookupMany(ids: string[], apiKeyId?: ApiKeyId): Promise<ResponsesItemRecord[]> {
     if (ids.length === 0) return []
     const placeholders = ids.map(() => "?").join(", ")
     const where = apiKeyId !== undefined ? ` AND api_key_id = ?` : ""
