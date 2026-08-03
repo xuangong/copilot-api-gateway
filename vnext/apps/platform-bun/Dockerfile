@@ -31,7 +31,7 @@ COPY packages/chat-flow-kit/package.json packages/chat-flow-kit/
 COPY packages/http/package.json packages/http/
 COPY packages/translate/package.json packages/translate/
 
-RUN bun install --frozen-lockfile
+RUN --mount=type=secret,id=npmrc,target=/root/.npmrc bun install --frozen-lockfile
 
 # Source
 COPY tsconfig.base.json tailwind.config.ts ./
