@@ -136,6 +136,7 @@ export async function translateResponsesToGeminiBody(
   let usageMetadata: GeminiUsageMetadata | undefined
 
   for await (const ge of translateResponsesToGeminiEvents(events, { model: options.model })) {
+    if ('error' in ge) continue
     const candidate = ge.candidates?.[0]
     if (candidate?.content?.parts) parts.push(...candidate.content.parts)
     if (candidate?.finishReason !== undefined) finishReason = candidate.finishReason

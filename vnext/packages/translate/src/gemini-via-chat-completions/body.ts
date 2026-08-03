@@ -134,6 +134,7 @@ export async function translateChatToGeminiBody(
   let usageMetadata: GeminiUsageMetadata | undefined
 
   for await (const ge of translateChatToGeminiEvents(events, { model: options.model })) {
+    if ('error' in ge) continue
     if (ge.usageMetadata !== undefined) usageMetadata = ge.usageMetadata
     for (const candidate of ge.candidates ?? []) {
       const idx = candidate.index ?? 0
