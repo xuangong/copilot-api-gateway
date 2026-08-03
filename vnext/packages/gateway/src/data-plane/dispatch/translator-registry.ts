@@ -116,21 +116,34 @@ export interface TranslateContext {
 /**
  * Uniform pair translator.
  *
- * - translateRequest: client payload → hub payload (sync or async)
- * - translateEvents:  hub event stream → client event stream
- * - translateBody:    hub non-streaming JSON → client non-streaming JSON
+ * Type parameters (all default to `unknown` so the registry can hand out a
+ * shape-agnostic `PairTranslator` from `getTranslator()` — dispatch consumes
+ * it uniformly). Concrete PAIR_X consts below specialize the parameters,
+ * which lets each impl body see real types instead of `unknown` and drops
+ * the `as never` casts that used to be scattered here.
+ *
+ * - TSrcReq / THubReq   : client → hub request payloads
+ * - TSrcEvt / THubEvt   : client ← hub streaming event shapes
+ * - TSrcBody / THubBody : client ← hub non-streaming JSON body shapes
  *
  * `translateRequest` may be async because some translators (and future
  * Gemini → Messages path) may need to pre-fetch resources; the registry
  * keeps the signature flexible.
  */
-export interface PairTranslator {
-  translateRequest(payload: unknown, ctx: TranslateContext): unknown | Promise<unknown>
+export interface PairTranslator<
+  TSrcReq = unknown,
+  THubReq = unknown,
+  TSrcEvt = unknown,
+  THubEvt = unknown,
+  TSrcBody = unknown,
+  THubBody = unknown,
+> {
+  translateRequest(payload: TSrcReq, ctx: TranslateContext): THubReq | Promise<THubReq>
   translateEvents(
-    events: AsyncIterable<unknown>,
+    events: AsyncIterable<THubEvt>,
     ctx: TranslateContext,
-  ): AsyncIterable<unknown>
-  translateBody(body: unknown, ctx: TranslateContext): unknown | Promise<unknown>
+  ): AsyncIterable<TSrcEvt>
+  translateBody(body: THubBody, ctx: TranslateContext): TSrcBody | Promise<TSrcBody>
 }
 
 /** messages→messages fast path: pass everything through verbatim. */
@@ -140,104 +153,170 @@ export const IDENTITY_TRANSLATOR: PairTranslator = {
   translateBody: (body) => body,
 }
 
+// ─── Type helpers ─────────────────────────────────────────────────────────
+// Derive concrete pair generics from the underlying translator function
+// signatures. Keeps us honest — if a `@vibe-llm/translate` export changes
+// shape, the PAIR_X declaration errors instead of silently drifting.
+type Arg0<F> = F extends (arg: infer A, ...rest: never[]) => unknown ? A : never
+type Ret<F> = F extends (...args: never[]) => infer R ? R : never
+type AwaitedRet<F> = Awaited<Ret<F>>
+type YieldOf<F> = F extends (...args: never[]) => AsyncIterable<infer Y> ? Y : never
+type IterYield<T> = T extends AsyncIterable<infer Y> ? Y : never
+
 // ─── Per-pair wrappers ───────────────────────────────────────────────────
 
 /** Pair 1: OpenAI Chat Completions client → Anthropic Messages hub. */
-const PAIR_CHAT_TO_MESSAGES: PairTranslator = {
+const PAIR_CHAT_TO_MESSAGES: PairTranslator<
+  Arg0<typeof translateChatToMessages>,
+  Ret<typeof translateChatToMessages>,
+  YieldOf<typeof translateMessagesToChatSSE>,
+  IterYield<Arg0<typeof translateMessagesToChatSSE>>,
+  AwaitedRet<typeof translateMessagesToChatBody>,
+  Arg0<typeof translateMessagesToChatBody>
+> = {
   translateRequest: (payload, ctx) =>
-    translateChatToMessages(payload as never, {
+    translateChatToMessages(payload, {
       fallbackMaxOutputTokens: ctx.fallbackMaxOutputTokens,
     }),
-  translateEvents: (events) => translateMessagesToChatSSE(events as never),
-  translateBody: (body) => translateMessagesToChatBody(body as never),
+  translateEvents: (events) => translateMessagesToChatSSE(events),
+  translateBody: (body) => translateMessagesToChatBody(body),
 }
 
 /** Pair 2: Anthropic Messages client → OpenAI Chat Completions hub. */
-const PAIR_MESSAGES_TO_CHAT: PairTranslator = {
-  translateRequest: (payload) => translateMessagesToChat(payload as never),
-  translateEvents: (events) => translateChatSSEToMessagesEvents(events as never),
-  translateBody: (body) => translateChatBodyToMessages(body as never),
+const PAIR_MESSAGES_TO_CHAT: PairTranslator<
+  Arg0<typeof translateMessagesToChat>,
+  Ret<typeof translateMessagesToChat>,
+  YieldOf<typeof translateChatSSEToMessagesEvents>,
+  IterYield<Arg0<typeof translateChatSSEToMessagesEvents>>,
+  AwaitedRet<typeof translateChatBodyToMessages>,
+  Arg0<typeof translateChatBodyToMessages>
+> = {
+  translateRequest: (payload) => translateMessagesToChat(payload),
+  translateEvents: (events) => translateChatSSEToMessagesEvents(events),
+  translateBody: (body) => translateChatBodyToMessages(body),
 }
 
 /** Pair 3: OpenAI Responses client → Anthropic Messages hub. */
-const PAIR_RESPONSES_TO_MESSAGES: PairTranslator = {
-  translateRequest: (payload) => {
-    const result = translateResponsesToMessages(payload as never)
-    return result.target
-  },
-  translateEvents: (events) => translateMessagesToResponsesEvents(events as never),
-  translateBody: (body) => translateMessagesToResponsesBody(body as never),
+const PAIR_RESPONSES_TO_MESSAGES: PairTranslator<
+  Arg0<typeof translateResponsesToMessages>,
+  Ret<typeof translateResponsesToMessages>['target'],
+  YieldOf<typeof translateMessagesToResponsesEvents>,
+  IterYield<Arg0<typeof translateMessagesToResponsesEvents>>,
+  AwaitedRet<typeof translateMessagesToResponsesBody>,
+  Arg0<typeof translateMessagesToResponsesBody>
+> = {
+  translateRequest: (payload) => translateResponsesToMessages(payload).target,
+  translateEvents: (events) => translateMessagesToResponsesEvents(events),
+  translateBody: (body) => translateMessagesToResponsesBody(body),
 }
 
 /** Pair 4: Anthropic Messages client → OpenAI Responses hub. */
-const PAIR_MESSAGES_TO_RESPONSES: PairTranslator = {
-  translateRequest: (payload) => {
-    const result = translateMessagesToResponses(payload as never)
-    return result.target
-  },
-  translateEvents: (events) => translateResponsesEventsToMessagesEvents(events as never),
-  translateBody: (body) => translateResponsesToMessagesBody(body as never),
+const PAIR_MESSAGES_TO_RESPONSES: PairTranslator<
+  Arg0<typeof translateMessagesToResponses>,
+  Ret<typeof translateMessagesToResponses>['target'],
+  YieldOf<typeof translateResponsesEventsToMessagesEvents>,
+  IterYield<Arg0<typeof translateResponsesEventsToMessagesEvents>>,
+  AwaitedRet<typeof translateResponsesToMessagesBody>,
+  Arg0<typeof translateResponsesToMessagesBody>
+> = {
+  translateRequest: (payload) => translateMessagesToResponses(payload).target,
+  translateEvents: (events) => translateResponsesEventsToMessagesEvents(events),
+  translateBody: (body) => translateResponsesToMessagesBody(body),
 }
 
 /** Pair 5: Gemini generateContent client → Anthropic Messages hub. */
-const PAIR_GEMINI_TO_MESSAGES: PairTranslator = {
+const PAIR_GEMINI_TO_MESSAGES: PairTranslator<
+  Arg0<typeof translateGeminiToMessages>,
+  Ret<typeof translateGeminiToMessages>,
+  YieldOf<typeof translateMessagesToGeminiEvents>,
+  IterYield<Arg0<typeof translateMessagesToGeminiEvents>>,
+  AwaitedRet<typeof translateMessagesToGeminiBody>,
+  Arg0<typeof translateMessagesToGeminiBody>
+> = {
   translateRequest: (payload, ctx) =>
-    translateGeminiToMessages(payload as never, {
+    translateGeminiToMessages(payload, {
       model: ctx.model ?? '',
       fallbackMaxOutputTokens: ctx.fallbackMaxOutputTokens,
     }),
   translateEvents: (events, ctx) =>
-    translateMessagesToGeminiEvents(events as never, { model: ctx.model ?? '' }),
+    translateMessagesToGeminiEvents(events, { model: ctx.model ?? '' }),
   translateBody: (body, ctx) =>
-    translateMessagesToGeminiBody(body as never, { model: ctx.model ?? '' }),
+    translateMessagesToGeminiBody(body, { model: ctx.model ?? '' }),
 }
 
 /** Pair 7: Chat Completions client → Responses hub. */
-const PAIR_CHAT_TO_RESPONSES: PairTranslator = {
-  translateRequest: (payload, ctx) => {
-    const result = translateChatToResponses(payload as never, {
+const PAIR_CHAT_TO_RESPONSES: PairTranslator<
+  Arg0<typeof translateChatToResponses>,
+  Ret<typeof translateChatToResponses>['target'],
+  YieldOf<typeof translateResponsesToChatSSE>,
+  IterYield<Arg0<typeof translateResponsesToChatSSE>>,
+  AwaitedRet<typeof translateResponsesToChatBody>,
+  Arg0<typeof translateResponsesToChatBody>
+> = {
+  translateRequest: (payload, ctx) =>
+    translateChatToResponses(payload, {
       fallbackMaxOutputTokens: ctx.fallbackMaxOutputTokens,
-    })
-    return result.target
-  },
-  translateEvents: (events) => translateResponsesToChatSSE(events as never),
+    }).target,
+  translateEvents: (events) => translateResponsesToChatSSE(events),
   translateBody: (body) => translateResponsesToChatBody(body),
 }
 
 /** Pair 8: Responses client → Chat Completions hub. */
-const PAIR_RESPONSES_TO_CHAT: PairTranslator = {
-  translateRequest: (payload) => {
-    const result = translateResponsesToChat(payload as never)
-    return result.target
-  },
-  translateEvents: (events) => translateChatToResponsesEvents(events as never),
-  translateBody: (body, ctx) => translateChatToResponsesBody(body, ctx.sourcePayload !== undefined ? { sourcePayload: ctx.sourcePayload } : {}),
+const PAIR_RESPONSES_TO_CHAT: PairTranslator<
+  Arg0<typeof translateResponsesToChat>,
+  Ret<typeof translateResponsesToChat>['target'],
+  YieldOf<typeof translateChatToResponsesEvents>,
+  IterYield<Arg0<typeof translateChatToResponsesEvents>>,
+  AwaitedRet<typeof translateChatToResponsesBody>,
+  Arg0<typeof translateChatToResponsesBody>
+> = {
+  translateRequest: (payload) => translateResponsesToChat(payload).target,
+  translateEvents: (events) => translateChatToResponsesEvents(events),
+  translateBody: (body, ctx) =>
+    translateChatToResponsesBody(
+      body,
+      ctx.sourcePayload !== undefined ? { sourcePayload: ctx.sourcePayload } : {},
+    ),
 }
 
 /** Pair 9: Gemini generateContent client → OpenAI Responses hub. */
-const PAIR_GEMINI_TO_RESPONSES: PairTranslator = {
+const PAIR_GEMINI_TO_RESPONSES: PairTranslator<
+  Arg0<typeof translateGeminiToResponses>,
+  Ret<typeof translateGeminiToResponses>,
+  YieldOf<typeof translateResponsesToGeminiEvents>,
+  IterYield<Arg0<typeof translateResponsesToGeminiEvents>>,
+  AwaitedRet<typeof translateResponsesToGeminiBody>,
+  Arg0<typeof translateResponsesToGeminiBody>
+> = {
   translateRequest: (payload, ctx) =>
-    translateGeminiToResponses(payload as never, {
+    translateGeminiToResponses(payload, {
       model: ctx.model ?? '',
       fallbackMaxOutputTokens: ctx.fallbackMaxOutputTokens,
     }),
   translateEvents: (events, ctx) =>
     translateResponsesToGeminiEvents(events, { model: ctx.model ?? '' }),
   translateBody: (body, ctx) =>
-    translateResponsesToGeminiBody(body as never, { model: ctx.model ?? '' }),
+    translateResponsesToGeminiBody(body, { model: ctx.model ?? '' }),
 }
 
 /** Pair 10: Gemini generateContent client → OpenAI Chat Completions hub. */
-const PAIR_GEMINI_TO_CHAT: PairTranslator = {
+const PAIR_GEMINI_TO_CHAT: PairTranslator<
+  Arg0<typeof translateGeminiToChat>,
+  Ret<typeof translateGeminiToChat>,
+  YieldOf<typeof translateChatToGeminiEvents>,
+  IterYield<Arg0<typeof translateChatToGeminiEvents>>,
+  AwaitedRet<typeof translateChatToGeminiBody>,
+  Arg0<typeof translateChatToGeminiBody>
+> = {
   translateRequest: (payload, ctx) =>
-    translateGeminiToChat(payload as never, {
+    translateGeminiToChat(payload, {
       model: ctx.model ?? '',
       fallbackMaxOutputTokens: ctx.fallbackMaxOutputTokens,
     }),
   translateEvents: (events, ctx) =>
     translateChatToGeminiEvents(events, { model: ctx.model ?? '' }),
   translateBody: (body, ctx) =>
-    translateChatToGeminiBody(body as never, { model: ctx.model ?? '' }),
+    translateChatToGeminiBody(body, { model: ctx.model ?? '' }),
 }
 
 /**
