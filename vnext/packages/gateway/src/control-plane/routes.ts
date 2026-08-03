@@ -26,12 +26,15 @@ import { tokenUsageRouter } from './token-usage/routes.ts'
 import { performanceRouter } from './performance/routes.ts'
 import { presenceRouter } from './presence/routes.ts'
 import { dataTransferRouter } from './data-transfer/routes.ts'
+import { dumpRoutes } from './dump/routes.ts'
 
 export const controlPlane = new Hono<{ Bindings: Env }>()
 
 controlPlane.route('/api/upstreams', upstreamsRouter)
 controlPlane.route('/api', upstreamMiscRouter)
 controlPlane.route('/api/keys', apiKeysRouter)
+// /api/keys/:keyId/records, /:keyId/records/:recordId, /:keyId/stream
+controlPlane.route('/api/keys', dumpRoutes)
 controlPlane.route('/api/observability-shares', observabilitySharesRouter)
 // Old dashboard hits /auth/login etc. (no /api prefix). Keep both mounts:
 // /api/auth for vNext-internal alignment, /auth for byte-identical dashboard contract.
