@@ -44,6 +44,11 @@ const KNOWN_DELTA_KEYS: ReadonlySet<string> = new Set([
   'content', 'role', 'reasoning_text', 'reasoning_opaque', 'reasoning_items', 'tool_calls',
 ])
 
+// SSE chunks always carry `object: 'chat.completion.chunk'`. When the upstream
+// was actually non-streaming, json-to-frames stamps `__upstream_object` on the
+// synthesized chunk so we can echo the correct `object` back to the client.
+type ChunkWithSidecar = ChatCompletionsStreamEvent & { __upstream_object?: 'chat.completion' }
+
 export async function reassembleChatCompletions(
   chunks: AsyncIterable<ChatCompletionsStreamEvent>,
 ): Promise<ChatCompletionsResult> {
@@ -64,16 +69,17 @@ export async function reassembleChatCompletions(
   const choiceExtras: Record<string, unknown> = {}
   const messageExtras: Record<string, unknown> = {}
 
-  for await (const chunk of chunks) {
+  for await (const rawChunk of chunks) {
+    const chunk = rawChunk as ChunkWithSidecar
     const errorMessage = chatCompletionsErrorPayloadMessage(chunk)
     if (errorMessage) {
       throw new Error(`Upstream Chat Completions SSE error: ${errorMessage}`)
     }
 
-    if (!id && (chunk as any).id) {
-      id = (chunk as any).id as string
-      model = (chunk as any).model as string
-      created = (chunk as any).created as number
+    if (!id && chunk.id) {
+      id = chunk.id
+      model = chunk.model
+      created = chunk.created
     }
     // Preserve the upstream `object` discriminator only when it's the
     // non-streaming form. SSE chunks always carry `chat.completion.chunk` and
@@ -81,22 +87,20 @@ export async function reassembleChatCompletions(
     // verbatim, so when the upstream actually returned `chat.completion` (via
     // json-to-frames synthesizer) we need to echo it back to keep parity.
     if (upstreamObject === undefined) {
-      const sidecar = (chunk as any).__upstream_object
-      if (sidecar === 'chat.completion') {
+      if (chunk.__upstream_object === 'chat.completion') {
         upstreamObject = 'chat.completion'
-      } else {
-        const candidate = (chunk as any).object
-        if (candidate === 'chat.completion') upstreamObject = 'chat.completion'
+      } else if ((chunk.object as string) === 'chat.completion') {
+        upstreamObject = 'chat.completion'
       }
     }
 
-    if ((chunk as any).usage) {
-      lastUsage = (chunk as any).usage as ChatCompletionsResult['usage']
+    if (chunk.usage) {
+      lastUsage = chunk.usage as ChatCompletionsResult['usage']
     }
 
     captureExtras(chunk as unknown as Record<string, unknown>, KNOWN_CHUNK_KEYS, chunkExtras)
 
-    const choices = (chunk as any).choices as unknown as Array<Record<string, unknown>> | undefined
+    const choices = chunk.choices as unknown as Array<Record<string, unknown>> | undefined
     if (!choices) continue
 
     for (const choice of choices) {
