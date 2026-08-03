@@ -2,7 +2,7 @@ import type { AccountType } from "@vibe-llm/protocols/common"
 export type { AccountType }
 
 // Admin emails - these users get admin access when logging in via Google OAuth
-export const ADMIN_EMAILS = ["zhangxian1124@gmail.com", "test@local.dev"]
+export const ADMIN_EMAILS: readonly string[] = ["zhangxian1124@gmail.com", "test@local.dev"] as const
 
 // GitHub OAuth
 export const GITHUB_BASE_URL = "https://github.com"

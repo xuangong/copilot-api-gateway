@@ -56,10 +56,10 @@ export function createCopilotProvider(opts: CreateProviderOptions): LlmModelProv
  * deployment/etc. Callers wanting HTTP 4xx must wrap in try/catch
  * (see control-plane upstream-probe).
  */
-const PROVIDER_PLUGINS: ReadonlyMap<UpstreamKind, LlmProviderPlugin> = new Map(
+const PROVIDER_PLUGINS = new Map(
   [copilotProviderPlugin, azureProviderPlugin, customProviderPlugin, sdfProviderPlugin]
     .map((p) => [p.kind, p] as const),
-)
+) satisfies ReadonlyMap<UpstreamKind, LlmProviderPlugin>
 
 export async function createProviderFromUpstream(
   upstream: UpstreamRecord,

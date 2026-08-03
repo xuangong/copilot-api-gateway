@@ -19,7 +19,7 @@ const toPreviewText = (content: Array<{ type: 'text'; text: string }>): string =
 // that provider and constructs the impl. Keeps `resolveConfiguredWeb...`
 // data-driven so adding a fourth provider is one entry, not another
 // if-branch.
-const PROVIDER_FACTORIES: { [N in WebSearchProviderName]: (config: SearchConfig) => { apiKey: string; build: (apiKey: string) => WebSearchProvider } } = {
+const PROVIDER_FACTORIES = {
   tavily: config => ({ apiKey: config.tavily.apiKey, build: createTavilyWebSearchProvider }),
   'microsoft-grounding': config => ({ apiKey: config.microsoftGrounding.apiKey, build: createMicrosoftGroundingWebSearchProvider }),
   jina: config => ({ apiKey: config.jina.apiKey, build: createJinaWebSearchProvider }),
@@ -29,7 +29,7 @@ const PROVIDER_FACTORIES: { [N in WebSearchProviderName]: (config: SearchConfig)
   bing: _config => ({ apiKey: 'bing-public-scrape', build: createBingWebSearchProvider }),
   copilot: config => ({ apiKey: config.copilot.githubToken, build: createCopilotWebSearchProvider }),
   langsearch: config => ({ apiKey: config.langsearch.apiKey, build: createLangSearchWebSearchProvider }),
-}
+} satisfies { [N in WebSearchProviderName]: (config: SearchConfig) => { apiKey: string; build: (apiKey: string) => WebSearchProvider } }
 
 export const resolveConfiguredWebSearchProvider = (config: SearchConfig): ConfiguredWebSearchProvider => {
   if (config.provider === 'disabled') {

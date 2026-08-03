@@ -55,7 +55,7 @@ export interface AuthCtx {
 
 type Vars = { auth: AuthCtx }
 
-const KINDS: readonly UpstreamKind[] = ['copilot', 'custom', 'azure', 'sdf']
+const KINDS = ['copilot', 'custom', 'azure', 'sdf'] as const satisfies readonly UpstreamKind[]
 
 const ENDPOINTS = new Set<EndpointKey>([
   'chat_completions',
@@ -65,7 +65,7 @@ const ENDPOINTS = new Set<EndpointKey>([
   'embeddings',
   'images_generations',
   'images_edits',
-])
+] as const satisfies readonly EndpointKey[])
 
 // Zod schemas for probe + CRUD bodies. Deliberately lenient — the extensive
 // per-provider config validation lives in normalize*Config helpers so we can
