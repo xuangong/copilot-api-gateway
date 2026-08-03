@@ -1,6 +1,6 @@
 import type { BillingDimension, ModelPricing, UpstreamKind, UpstreamRecord } from "@vibe-llm/protocols/common"
 import type { SearchConfig } from "../web-search-providers.ts"
-import type { ApiKeyId, UpstreamId, UserId } from "./branded-ids.ts"
+import type { ApiKeyId, ResponsesItemId, UpstreamId, UserId } from "./branded-ids.ts"
 
 export type { SearchConfig, WebSearchProviderName } from "../web-search-providers.ts"
 
@@ -390,7 +390,7 @@ export interface DeviceCodeRepo {
  * pair on the next turn.
  */
 export interface ResponsesItemRecord {
-  id: string
+  id: ResponsesItemId
   apiKeyId: ApiKeyId | null
   kind: string
   itemJson: string
@@ -407,7 +407,7 @@ export interface ResponsesItemsRepo {
    * minted under a different key (or items whose owner is null) are filtered
    * out. Omit to read across all owners (admin / migration paths only).
    */
-  lookupMany(ids: string[], apiKeyId?: ApiKeyId): Promise<ResponsesItemRecord[]>
+  lookupMany(ids: ResponsesItemId[], apiKeyId?: ApiKeyId): Promise<ResponsesItemRecord[]>
   deleteExpired(now: string): Promise<void>
   deleteAll(): Promise<void>
 }

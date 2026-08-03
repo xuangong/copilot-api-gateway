@@ -39,7 +39,7 @@ import type {
   WebSearchUsageRecord,
   WebSearchUsageRepo,
 } from "../types"
-import type { ApiKeyId, UpstreamId, UserId } from "../branded-ids.ts"
+import type { ApiKeyId, ResponsesItemId, UpstreamId, UserId } from "../branded-ids.ts"
 import { latencyBucketForMs } from "../../performance-histogram.ts"
 import type { SqlExecutor } from "./executor"
 import { BILLING_DIMENSIONS, unitPriceForDimension } from "@vibe-llm/protocols/common"
@@ -1043,7 +1043,7 @@ export function buildSharedRepo(x: SqlExecutor): Repo {
 
 function toResponsesItemRecord(r: any): ResponsesItemRecord {
   return {
-    id: r.id,
+    id: r.id as ResponsesItemId,
     apiKeyId: r.api_key_id ? (r.api_key_id as ApiKeyId) : null,
     kind: r.kind,
     itemJson: r.item_json,
@@ -1073,7 +1073,7 @@ class SharedResponsesItemsRepo implements ResponsesItemsRepo {
     }
   }
 
-  async lookupMany(ids: string[], apiKeyId?: ApiKeyId): Promise<ResponsesItemRecord[]> {
+  async lookupMany(ids: ResponsesItemId[], apiKeyId?: ApiKeyId): Promise<ResponsesItemRecord[]> {
     if (ids.length === 0) return []
     const placeholders = ids.map(() => "?").join(", ")
     const where = apiKeyId !== undefined ? ` AND api_key_id = ?` : ""
