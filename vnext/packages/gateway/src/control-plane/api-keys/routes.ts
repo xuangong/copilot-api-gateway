@@ -16,6 +16,7 @@
  *     equivalent: admin OR same owner OR key-assignment grant.
  */
 import { Hono } from 'hono'
+import { z } from 'zod'
 import type { Env } from '../../app.ts'
 import {
   createApiKey,
@@ -28,6 +29,7 @@ import {
 } from '../../shared/lib/api-keys.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
+import { zValidator } from '../../shared/middleware/zod-validator.ts'
 
 export interface AuthCtx {
   isAdmin?: boolean
@@ -237,14 +239,18 @@ apiKeysRouter.get('/', async (c) => {
   return c.json([])
 })
 
+// Zod schemas — colocated. `create` and `assign` bodies are small; `patch` has
+// enough XOR business logic that we keep it as free-form validation post-parse.
+const createKeyBody = z.object({ name: z.string().min(1, 'name is required') })
+const assignKeyBody = z.object({
+  user_id: z.string().optional(),
+  email: z.string().optional(),
+})
+
 // POST / — create
-apiKeysRouter.post('/', async (c) => {
+apiKeysRouter.post('/', zValidator('json', createKeyBody), async (c) => {
   const auth = c.get('auth') ?? {}
-  const body = await c.req.json().catch(() => ({})) as { name?: string }
-  const { name } = body
-  if (!name || typeof name !== 'string') {
-    return c.json({ error: 'name is required' }, 400)
-  }
+  const { name } = c.req.valid('json')
   const ownerId = auth.isUser && auth.userId ? auth.userId : undefined
   const key = await createApiKey(name, ownerId)
   return c.json(keyToJson(key, undefined, true, new Map()))
@@ -401,15 +407,14 @@ apiKeysRouter.get('/:id/web-search-usage', async (c) => {
 })
 
 // POST /:id/assign
-apiKeysRouter.post('/:id/assign', async (c) => {
+apiKeysRouter.post('/:id/assign', zValidator('json', assignKeyBody), async (c) => {
   const auth = c.get('auth') ?? {}
   const id = c.req.param('id') as ApiKeyId
   const key = await getApiKeyById(id)
   if (!key) return c.json({ error: 'Key not found' }, 404)
   const isOwner = !!auth.userId && key.ownerId === auth.userId
   if (!auth.isAdmin && !isOwner) return c.json({ error: 'Forbidden' }, 403)
-  const body = await c.req.json().catch(() => ({})) as { user_id?: string; email?: string }
-  const { user_id, email } = body
+  const { user_id, email } = c.req.valid('json')
   if (!user_id && !email) return c.json({ error: 'user_id or email is required' }, 400)
   const repo = getRepo()
   let targetUser = null as Awaited<ReturnType<typeof repo.users.getById>>

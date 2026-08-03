@@ -7,12 +7,14 @@
  * filling c.set('auth', AuthCtx) for admin routes.
  */
 import { Hono } from 'hono'
+import { z } from 'zod'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { InviteCode } from '../../shared/repo/types.ts'
 import type { InviteCodeId, SessionToken, UserId } from '../../shared/repo/branded-ids.ts'
 import { ADMIN_EMAILS } from '../../shared/config/constants.ts'
 import { validateApiKey } from '../../shared/lib/api-keys.ts'
+import { zValidator } from '../../shared/middleware/zod-validator.ts'
 import { emailAuthRouter } from './email-routes.ts'
 import { deviceAuthRouter } from './device-routes.ts'
 import { githubAuthRouter } from './github-routes.ts'
@@ -36,6 +38,12 @@ function generateInviteCode(): string {
 
 export const authRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
 
+// Zod schemas colocated with routes — z.infer<> feeds the handler ctx via
+// zValidator so c.req.valid('json') is fully typed.
+const loginBody = z.object({ key: z.string().optional() })
+const validateInviteBody = z.object({ code: z.string().min(1, 'code is required') })
+const createInviteBody = z.object({ name: z.string().min(1, 'name is required') })
+
 authRouter.route('/', emailAuthRouter)
 authRouter.route('/', deviceAuthRouter)
 authRouter.route('/', githubAuthRouter)
@@ -44,8 +52,8 @@ authRouter.route('/', googleAuthRouter)
 authRouter.get('/_health', (c) => c.json({ scope: 'control-plane:auth', status: 'scaffold' }))
 
 // POST /login — validate session token from body or cookie; fall back to API key.
-authRouter.post('/login', async (c) => {
-  const body = await c.req.json().catch(() => ({})) as { key?: string }
+authRouter.post('/login', zValidator('json', loginBody), async (c) => {
+  const body = c.req.valid('json')
   let sessionToken = body.key
   if (!sessionToken) {
     const cookieHeader = c.req.header('cookie') ?? ''
@@ -125,10 +133,9 @@ authRouter.post('/logout', (c) => {
   return c.json({ ok: true })
 })
 
-authRouter.post('/validate-invite', async (c) => {
-  const body = await c.req.json().catch(() => ({})) as { code?: string }
-  if (!body.code) return c.json({ error: 'code is required' }, 400)
-  const invite = await getRepo().inviteCodes.findByCode(body.code)
+authRouter.post('/validate-invite', zValidator('json', validateInviteBody), async (c) => {
+  const { code } = c.req.valid('json')
+  const invite = await getRepo().inviteCodes.findByCode(code)
   if (!invite || invite.usedAt) return c.json({ valid: false })
   return c.json({ valid: true, name: invite.name })
 })
@@ -140,16 +147,13 @@ authRouter.get('/admin/invite-codes', async (c) => {
   return c.json(await getRepo().inviteCodes.list())
 })
 
-authRouter.post('/admin/invite-codes', async (c) => {
+authRouter.post('/admin/invite-codes', zValidator('json', createInviteBody), async (c) => {
   if (!c.get('auth')?.isAdmin) return c.json({ error: 'Admin only' }, 403)
-  const body = await c.req.json().catch(() => ({})) as { name?: string }
-  if (!body.name || typeof body.name !== 'string') {
-    return c.json({ error: 'name is required' }, 400)
-  }
+  const { name } = c.req.valid('json')
   const code: InviteCode = {
     id: crypto.randomUUID() as InviteCodeId,
     code: generateInviteCode(),
-    name: body.name,
+    name,
     email: undefined,
     createdAt: new Date().toISOString(),
     usedAt: undefined,

@@ -27,8 +27,10 @@
  *     caches (upstream-list, copilot-token) are not in vnext yet.
  */
 import { Hono } from 'hono'
+import { z } from 'zod'
 import type { Env } from '../../app.ts'
 import type { UpstreamKind, EndpointKey } from '@vibe-llm/protocols/common'
+import { zValidator } from '../../shared/middleware/zod-validator.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { UpstreamRecord } from '../../shared/repo/types.ts'
 import type { GitHubAccountId, UpstreamId, UserId } from '../../shared/repo/branded-ids.ts'
@@ -65,21 +67,25 @@ const ENDPOINTS = new Set<EndpointKey>([
   'images_edits',
 ])
 
-interface ProbeBody {
-  kind?: string
-  config?: Record<string, unknown>
-}
+// Zod schemas for probe + CRUD bodies. Deliberately lenient — the extensive
+// per-provider config validation lives in normalize*Config helpers so we can
+// keep detailed, user-facing error messages; zod just gives us shape + typed
+// c.req.valid('json') for the trivial top-level fields.
+const probeBody = z.object({
+  kind: z.string().optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
+})
 
-interface UpstreamBody {
-  ownerId?: string
-  provider?: string
-  name?: string
-  enabled?: boolean
-  sortOrder?: number
-  config?: Record<string, unknown>
-  flagOverrides?: Record<string, unknown>
-  disabledPublicModelIds?: unknown
-}
+const upstreamBody = z.object({
+  ownerId: z.string().optional(),
+  provider: z.string().optional(),
+  name: z.string().optional(),
+  enabled: z.boolean().optional(),
+  sortOrder: z.number().optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
+  flagOverrides: z.record(z.string(), z.unknown()).optional(),
+  disabledPublicModelIds: z.unknown().optional(),
+})
 
 interface CustomProviderConfig {
   name: string
@@ -363,14 +369,9 @@ upstreamMiscRouter.get('/upstream-flags', (c) => {
   return c.json({ catalog, defaults })
 })
 
-upstreamMiscRouter.post('/upstream-probe', async (c) => {
+upstreamMiscRouter.post('/upstream-probe', zValidator('json', probeBody), async (c) => {
   if (!isAdmin(c)) return jsonError('Forbidden', 403)
-  let body: ProbeBody
-  try {
-    body = (await c.req.json()) as ProbeBody
-  } catch {
-    body = {}
-  }
+  const body = c.req.valid('json')
   const kind = body.kind
   const config = body.config
   if (typeof kind !== 'string' || !config) {
@@ -423,17 +424,12 @@ upstreamsRouter.get('/', async (c) => {
   return c.json({ upstreams: upstreams.map(serializeUpstream) })
 })
 
-upstreamsRouter.post('/', async (c) => {
+upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
   const admin = isAdmin(c)
   const userId = authUserId(c)
   if (!admin && !userId) return jsonError('Forbidden', 403)
   try {
-    let body: UpstreamBody
-    try {
-      body = (await c.req.json()) as UpstreamBody
-    } catch {
-      body = {}
-    }
+    const body = c.req.valid('json')
     const provider = normalizeProvider(body.provider)
     if (typeof body.name !== 'string' || !body.name.trim()) return jsonError('name required')
     const now = new Date().toISOString()
@@ -468,7 +464,7 @@ upstreamsRouter.post('/', async (c) => {
   }
 })
 
-upstreamsRouter.patch('/:id', async (c) => {
+upstreamsRouter.patch('/:id', zValidator('json', upstreamBody), async (c) => {
   const admin = isAdmin(c)
   const userId = authUserId(c)
   if (!admin && !userId) return jsonError('Forbidden', 403)
@@ -477,12 +473,7 @@ upstreamsRouter.patch('/:id', async (c) => {
   if (!existing) return jsonError('upstream not found', 404)
   if (!admin && existing.ownerId !== userId) return jsonError('Forbidden', 403)
   try {
-    let body: UpstreamBody
-    try {
-      body = (await c.req.json()) as UpstreamBody
-    } catch {
-      body = {}
-    }
+    const body = c.req.valid('json')
     if (body.provider !== undefined && body.provider !== existing.provider) {
       return jsonError('provider cannot be changed')
     }
