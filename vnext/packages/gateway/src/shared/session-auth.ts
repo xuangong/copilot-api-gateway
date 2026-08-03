@@ -15,12 +15,13 @@ import { getRepo } from './repo/index.ts'
 import { ADMIN_EMAILS, type AccountType } from './config/constants.ts'
 import { validateApiKey } from './lib/api-keys.ts'
 import { getCachedCopilotToken } from './copilot-token-cache.ts'
+import type { ApiKeyId, UserId } from './repo/branded-ids.ts'
 
 interface FullAuthCtx {
-  userId?: string
+  userId?: UserId
   isAdmin?: boolean
   isUser?: boolean
-  apiKeyId?: string
+  apiKeyId?: ApiKeyId
   authKind?: 'public' | 'session' | 'apiKey'
   copilot?: { copilotToken: string; accountType: AccountType }
   githubToken?: string
@@ -54,7 +55,7 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
     await next()
     return
   }
-  let resolvedUserId: string | undefined
+  let resolvedUserId: UserId | undefined
   let ctx: FullAuthCtx | undefined
   try {
     if (key.startsWith('ses_')) {

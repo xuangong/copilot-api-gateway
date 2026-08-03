@@ -16,6 +16,7 @@ import {
   createGithubHeaders,
   type AccountType,
 } from './config/constants.ts'
+import type { UserId } from './repo/branded-ids.ts'
 
 interface CopilotTokenResponse {
   expires_at: number
@@ -85,7 +86,7 @@ export const devAuthMiddleware: MiddlewareHandler = async (c: Context, next) => 
     const copilotToken = await getCopilotToken()
     if (copilotToken) {
       c.set('auth' as never, {
-        userId: process.env.VNEXT_DEV_USER_ID || 'dev-user',
+        userId: (process.env.VNEXT_DEV_USER_ID || 'dev-user') as UserId,
         copilot: { copilotToken, accountType: devAccountType() },
         githubToken: process.env.VNEXT_DEV_GITHUB_TOKEN,
       } as never)
