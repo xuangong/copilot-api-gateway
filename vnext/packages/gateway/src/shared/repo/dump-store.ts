@@ -28,7 +28,7 @@ import type {
 } from "../dump/types.ts"
 import type { FileProvider, SqlDatabase } from "@vibe-core/platform"
 import type { UpstreamKind } from "@vibe-llm/protocols/common"
-import type { UpstreamId } from "./branded-ids.ts"
+import type { UpstreamId, ApiKeyId } from "./branded-ids.ts"
 
 const HOUR_MS = 60 * 60 * 1000
 
@@ -134,7 +134,7 @@ export class FileDumpStore implements DumpStore {
     }
   }
 
-  async put(keyId: string, record: DumpWriteRecord): Promise<void> {
+  async put(keyId: ApiKeyId, record: DumpWriteRecord): Promise<void> {
     const bucket = hourBucket(record.meta.completedAt)
     const requestFileKey = record.request.body.decodedByteLength === 0
       ? null
@@ -199,7 +199,7 @@ export class FileDumpStore implements DumpStore {
     ).run()
   }
 
-  async list(keyId: string, opts: DumpListOptions): Promise<DumpMetadata[]> {
+  async list(keyId: ApiKeyId, opts: DumpListOptions): Promise<DumpMetadata[]> {
     const beforeId = opts.before ?? null
     const beforeRow = beforeId !== null
       ? await this.db.prepare(
@@ -231,7 +231,7 @@ export class FileDumpStore implements DumpStore {
     }))
   }
 
-  async get(keyId: string, recordId: DumpRecordId): Promise<StoredDumpRecord | null> {
+  async get(keyId: ApiKeyId, recordId: DumpRecordId): Promise<StoredDumpRecord | null> {
     const row = await this.db.prepare(
       "SELECT d.upstream_id, u.name AS upstream_name, u.provider AS upstream_provider, "
       + "d.meta_json, d.request_headers_json, d.response_headers_json, d.request_body_descriptor, d.response_body_descriptor "
@@ -290,7 +290,7 @@ export class FileDumpStore implements DumpStore {
   // `changes` field aggregates trigger-driven row updates (each dump_records
   // DELETE fires two spilled_files UPDATE triggers), so a plain change count
   // would over-report by 3x.
-  async deleteExpiredBatch(keyId: string, now: number, limit: number): Promise<number> {
+  async deleteExpiredBatch(keyId: ApiKeyId, now: number, limit: number): Promise<number> {
     const active = await this.db
       .prepare(
         `DELETE FROM dump_records WHERE rowid IN (
@@ -330,7 +330,7 @@ export class FileDumpStore implements DumpStore {
     return activeDeleted + inactive.results.length
   }
 
-  async findOldestCreatedAt(keyId: string): Promise<number | null> {
+  async findOldestCreatedAt(keyId: ApiKeyId): Promise<number | null> {
     const row = await this.db
       .prepare("SELECT created_at FROM dump_records WHERE key_id = ? ORDER BY created_at LIMIT 1")
       .bind(keyId)

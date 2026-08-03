@@ -1,5 +1,6 @@
 import { DUMP_DISABLED_REASON, type DumpBroker } from "./broker.ts"
 import type { DumpStore } from "./store-contract.ts"
+import type { ApiKeyId } from "../repo/branded-ids.ts"
 
 let _store: DumpStore | null = null
 let _broker: DumpBroker | null = null
@@ -30,7 +31,7 @@ export const resetDumpRegistryForTests = (): void => {
 
 // Best-effort by contract: a broker outage must never fail the surrounding
 // write, since clients reconcile on the next reconnect/refetch.
-export const notifyDisabledBestEffort = async (keyId: string, where: string): Promise<void> => {
+export const notifyDisabledBestEffort = async (keyId: ApiKeyId, where: string): Promise<void> => {
   try {
     await getDumpBroker().closeChannel(keyId, DUMP_DISABLED_REASON)
   } catch (err) {

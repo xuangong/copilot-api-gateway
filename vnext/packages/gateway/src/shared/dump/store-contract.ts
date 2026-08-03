@@ -1,4 +1,5 @@
 import type { DumpMetadata, DumpRecordId, DumpWriteRecord, PreparedDumpRequestBody, StoredDumpRecord } from "./types.ts"
+import type { ApiKeyId } from "../repo/branded-ids.ts"
 
 // Per-API-key request dump storage contract: metadata in SQL, bodies in the
 // FileProvider. Request bytes are prepared before the terminal write; reads
@@ -17,14 +18,14 @@ export interface DumpStore {
 
   // Write body files BEFORE the metadata row so a partial failure leaves
   // orphan files (sweep-collectable), not orphan rows (broken records).
-  put(keyId: string, record: DumpWriteRecord): Promise<void>
+  put(keyId: ApiKeyId, record: DumpWriteRecord): Promise<void>
 
   // Newest-first, paginated by ULID cursor. Reads enforce the API key's
   // current rolling retention even before queued physical deletion runs.
-  list(keyId: string, opts: DumpListOptions): Promise<DumpMetadata[]>
+  list(keyId: ApiKeyId, opts: DumpListOptions): Promise<DumpMetadata[]>
 
-  get(keyId: string, recordId: DumpRecordId): Promise<StoredDumpRecord | null>
+  get(keyId: ApiKeyId, recordId: DumpRecordId): Promise<StoredDumpRecord | null>
 
-  deleteExpiredBatch(keyId: string, now: number, limit: number): Promise<number>
-  findOldestCreatedAt(keyId: string): Promise<number | null>
+  deleteExpiredBatch(keyId: ApiKeyId, now: number, limit: number): Promise<number>
+  findOldestCreatedAt(keyId: ApiKeyId): Promise<number | null>
 }
