@@ -76,7 +76,7 @@ const headerPairs = (headers: Headers): Array<[string, string]> => {
 
 const resolveUpstreamRef = async (id: string | null): Promise<DumpUpstreamRef | null> => {
   if (!id) return null
-  const upstream = await getRepo().upstreams.getById(id)
+  const upstream = await getRepo().upstreams.getById(id as UpstreamId)
   if (!upstream) return null
   return { id: upstream.id as UpstreamId, name: upstream.name, kind: upstream.provider }
 }

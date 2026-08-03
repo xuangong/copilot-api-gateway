@@ -31,7 +31,7 @@ import type { Env } from '../../app.ts'
 import type { UpstreamKind, EndpointKey } from '@vibe-llm/protocols/common'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { UpstreamRecord } from '../../shared/repo/types.ts'
-import type { UserId } from '../../shared/repo/branded-ids.ts'
+import type { UpstreamId, UserId } from '../../shared/repo/branded-ids.ts'
 import {
   getFlagCatalog,
   defaultsForUpstream,
@@ -472,7 +472,7 @@ upstreamsRouter.patch('/:id', async (c) => {
   const admin = isAdmin(c)
   const userId = authUserId(c)
   if (!admin && !userId) return jsonError('Forbidden', 403)
-  const id = c.req.param('id')
+  const id = c.req.param('id') as UpstreamId
   const existing = await getRepo().upstreams.getById(id)
   if (!existing) return jsonError('upstream not found', 404)
   if (!admin && existing.ownerId !== userId) return jsonError('Forbidden', 403)
@@ -533,7 +533,7 @@ upstreamsRouter.delete('/:id', async (c) => {
   const admin = isAdmin(c)
   const userId = authUserId(c)
   if (!admin && !userId) return jsonError('Forbidden', 403)
-  const id = c.req.param('id')
+  const id = c.req.param('id') as UpstreamId
   const existing = await getRepo().upstreams.getById(id)
   if (existing && !admin && existing.ownerId !== userId) return jsonError('Forbidden', 403)
   // For copilot upstreams, cascade-delete the github_accounts row so the
@@ -556,7 +556,7 @@ upstreamsRouter.post('/:id/test', async (c) => {
   const admin = isAdmin(c)
   const userId = authUserId(c)
   if (!admin && !userId) return jsonError('Forbidden', 403)
-  const upstream = await getRepo().upstreams.getById(c.req.param('id'))
+  const upstream = await getRepo().upstreams.getById(c.req.param('id') as UpstreamId)
   if (!upstream) return jsonError('upstream not found', 404)
   if (!admin && upstream.ownerId !== userId) return jsonError('Forbidden', 403)
   // Provider constructors validate config (Azure hostname suffix, Custom apiKey,
@@ -578,7 +578,7 @@ upstreamsRouter.get('/:id/models', async (c) => {
   const admin = isAdmin(c)
   const userId = authUserId(c)
   if (!admin && !userId) return jsonError('Forbidden', 403)
-  const upstream = await getRepo().upstreams.getById(c.req.param('id'))
+  const upstream = await getRepo().upstreams.getById(c.req.param('id') as UpstreamId)
   if (!upstream) return jsonError('upstream not found', 404)
   if (!admin && upstream.ownerId !== userId) return jsonError('Forbidden', 403)
   try {

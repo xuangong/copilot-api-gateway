@@ -39,7 +39,7 @@ import type {
   WebSearchUsageRecord,
   WebSearchUsageRepo,
 } from "../types"
-import type { ApiKeyId, UserId } from "../branded-ids.ts"
+import type { ApiKeyId, UpstreamId, UserId } from "../branded-ids.ts"
 import { latencyBucketForMs } from "../../performance-histogram.ts"
 import type { SqlExecutor } from "./executor"
 import { BILLING_DIMENSIONS, unitPriceForDimension } from "@vibe-llm/protocols/common"
@@ -407,7 +407,7 @@ class SharedUpstreamRepo implements UpstreamRepo {
     return (await this.x.all(sql, binds)).map(toUpstreamRecord)
   }
 
-  async getById(id: string): Promise<UpstreamRecord | null> {
+  async getById(id: UpstreamId): Promise<UpstreamRecord | null> {
     const row = await this.x.first(`SELECT ${UPSTREAM_COLS} FROM upstreams WHERE id = ?`, [id])
     return row ? toUpstreamRecord(row) : null
   }
@@ -432,7 +432,7 @@ class SharedUpstreamRepo implements UpstreamRepo {
     )
   }
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: UpstreamId): Promise<boolean> {
     const r = await this.x.run("DELETE FROM upstreams WHERE id = ?", [id])
     return r.changes > 0
   }

@@ -11,7 +11,7 @@ import type {
   GitHubUser,
   UpstreamRecord,
 } from '../repo/types.ts'
-import type { UserId } from '../repo/branded-ids.ts'
+import type { UpstreamId, UserId } from '../repo/branded-ids.ts'
 
 export type { GitHubAccount, GitHubUser }
 
@@ -22,8 +22,8 @@ export interface GithubCredentials {
   flagOverrides?: Record<string, boolean>
 }
 
-export function copilotUpstreamRowId(ownerId: UserId | '', userId: number): string {
-  return `up_copilot_${ownerId || 'global'}_${userId}`.replace(/[^a-zA-Z0-9_-]/g, '_')
+export function copilotUpstreamRowId(ownerId: UserId | '', userId: number): UpstreamId {
+  return `up_copilot_${ownerId || 'global'}_${userId}`.replace(/[^a-zA-Z0-9_-]/g, '_') as UpstreamId
 }
 
 async function mirrorCopilotUpstream(

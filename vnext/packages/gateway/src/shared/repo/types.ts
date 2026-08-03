@@ -1,6 +1,6 @@
 import type { BillingDimension, ModelPricing, UpstreamKind, UpstreamRecord } from "@vibe-llm/protocols/common"
 import type { SearchConfig } from "../web-search-providers.ts"
-import type { ApiKeyId, UserId } from "./branded-ids.ts"
+import type { ApiKeyId, UpstreamId, UserId } from "./branded-ids.ts"
 
 export type { SearchConfig, WebSearchProviderName } from "../web-search-providers.ts"
 
@@ -130,9 +130,9 @@ export interface GitHubRepo {
 
 export interface UpstreamRepo {
   list(opts?: { ownerId?: UserId; includeDisabled?: boolean }): Promise<UpstreamRecord[]>
-  getById(id: string): Promise<UpstreamRecord | null>
+  getById(id: UpstreamId): Promise<UpstreamRecord | null>
   save(upstream: UpstreamRecord): Promise<void>
-  delete(id: string): Promise<boolean>
+  delete(id: UpstreamId): Promise<boolean>
   deleteAll(): Promise<void>
 }
 
