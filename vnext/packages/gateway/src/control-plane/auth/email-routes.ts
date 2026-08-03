@@ -10,7 +10,9 @@
  * header without a /api/auth/login round-trip.
  */
 import { Hono } from 'hono'
+import { z } from 'zod'
 import type { Env } from '../../app.ts'
+import { zValidator } from '../../shared/middleware/zod-validator.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { SessionToken, UserId } from '../../shared/repo/branded-ids.ts'
 import { sendVerificationCode } from '../../shared/lib/email.ts'
@@ -25,6 +27,25 @@ import { saveEmailCode, getEmailCode, getMagicToken } from './stores.ts'
 
 export const emailAuthRouter = new Hono<{ Bindings: Env }>()
 
+const registerBody = z.object({
+  email: z.string().min(1, 'email, invite_code, name, and password are required'),
+  invite_code: z.string().min(1, 'email, invite_code, name, and password are required'),
+  name: z.string().min(1, 'email, invite_code, name, and password are required'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+})
+const verifyBody = z.object({
+  email: z.string().min(1, 'email and code are required'),
+  code: z.string().min(1, 'email and code are required'),
+})
+const loginBody = z.object({
+  email: z.string().min(1, 'email and password are required'),
+  password: z.string().min(1, 'email and password are required'),
+})
+const changePasswordBody = z.object({
+  old_password: z.string().min(1, 'old_password and new_password are required'),
+  new_password: z.string().min(6, 'Password must be at least 6 characters'),
+})
+
 function cookieFlagsForUrl(url: URL, httpOnly: boolean): string {
   const isSecure = url.protocol === 'https:'
   const securePart = isSecure ? '; Secure' : ''
@@ -32,20 +53,8 @@ function cookieFlagsForUrl(url: URL, httpOnly: boolean): string {
   return `Path=/${httpOnlyPart}; SameSite=Lax; Max-Age=${SESSION_TTL_DAYS * 24 * 60 * 60}${securePart}`
 }
 
-emailAuthRouter.post('/email/register', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as {
-    email?: string
-    invite_code?: string
-    name?: string
-    password?: string
-  }
-  const { email, invite_code, name, password } = body
-  if (!email || !invite_code || !name || !password) {
-    return c.json({ error: 'email, invite_code, name, and password are required' }, 400)
-  }
-  if (password.length < 6) {
-    return c.json({ error: 'Password must be at least 6 characters' }, 400)
-  }
+emailAuthRouter.post('/email/register', zValidator('json', registerBody), async (c) => {
+  const { email, invite_code, name, password } = c.req.valid('json')
   const normalizedEmail = email.toLowerCase().trim()
 
   const repo = getRepo()
@@ -68,12 +77,8 @@ emailAuthRouter.post('/email/register', async (c) => {
   return c.json({ ok: true, message: 'Verification code sent' })
 })
 
-emailAuthRouter.post('/email/verify', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { email?: string; code?: string }
-  const { email, code } = body
-  if (!email || !code) {
-    return c.json({ error: 'email and code are required' }, 400)
-  }
+emailAuthRouter.post('/email/verify', zValidator('json', verifyBody), async (c) => {
+  const { email, code } = c.req.valid('json')
   const normalizedEmail = email.toLowerCase().trim()
 
   const stored = await getEmailCode(normalizedEmail)
@@ -123,12 +128,8 @@ emailAuthRouter.post('/email/verify', async (c) => {
   return c.json({ ok: true, redirect: '/dashboard' })
 })
 
-emailAuthRouter.post('/email/login', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { email?: string; password?: string }
-  const { email, password } = body
-  if (!email || !password) {
-    return c.json({ error: 'email and password are required' }, 400)
-  }
+emailAuthRouter.post('/email/login', zValidator('json', loginBody), async (c) => {
+  const { email, password } = c.req.valid('json')
   const normalizedEmail = email.toLowerCase().trim()
 
   const repo = getRepo()
@@ -169,13 +170,22 @@ emailAuthRouter.post('/email/login', async (c) => {
   return c.json({ ok: true, redirect: '/dashboard' })
 })
 
-emailAuthRouter.post('/email/change-password', async (c) => {
-  const cookieHeader = c.req.header('cookie') ?? ''
-  const match = cookieHeader.match(/(?:^|;\s*)session_token=([^\s;]+)/)
-  const sessionToken = match?.[1]
-  if (!sessionToken || !sessionToken.startsWith('ses_')) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
+emailAuthRouter.post(
+  '/email/change-password',
+  async (c, next) => {
+    const cookieHeader = c.req.header('cookie') ?? ''
+    const match = cookieHeader.match(/(?:^|;\s*)session_token=([^\s;]+)/)
+    const sessionToken = match?.[1]
+    if (!sessionToken || !sessionToken.startsWith('ses_')) {
+      return c.json({ error: 'Unauthorized' }, 401)
+    }
+    await next()
+  },
+  zValidator('json', changePasswordBody),
+  async (c) => {
+    const cookieHeader = c.req.header('cookie') ?? ''
+    const match = cookieHeader.match(/(?:^|;\s*)session_token=([^\s;]+)/)
+    const sessionToken = match![1]!
   const repo = getRepo()
   const session = await repo.sessions.findByToken(sessionToken as SessionToken)
   if (!session || new Date(session.expiresAt) <= new Date()) {
@@ -184,17 +194,7 @@ emailAuthRouter.post('/email/change-password', async (c) => {
   const user = await repo.users.getById(session.userId)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
 
-  const body = (await c.req.json().catch(() => ({}))) as {
-    old_password?: string
-    new_password?: string
-  }
-  const { old_password, new_password } = body
-  if (!old_password || !new_password) {
-    return c.json({ error: 'old_password and new_password are required' }, 400)
-  }
-  if (new_password.length < 6) {
-    return c.json({ error: 'Password must be at least 6 characters' }, 400)
-  }
+  const { old_password, new_password } = c.req.valid('json')
   if (!user.passwordHash) {
     return c.json({ error: 'This account uses OAuth sign-in' }, 400)
   }

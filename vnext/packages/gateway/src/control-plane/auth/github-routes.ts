@@ -13,7 +13,9 @@
  * without `mock.module()` (see bun_mock_module_unrestorable memory).
  */
 import { Hono } from 'hono'
+import { z } from 'zod'
 import type { Env } from '../../app.ts'
+import { zValidator } from '../../shared/middleware/zod-validator.ts'
 import {
   addGithubAccount,
   listGithubAccounts,
@@ -41,6 +43,9 @@ export function setOAuthFetcherForTest(f: Fetcher | null) {
 
 export const githubAuthRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
 
+const pollBody = z.object({ device_code: z.string().min(1, 'device_code is required') })
+const switchBody = z.object({ user_id: z.number({ message: 'user_id is required' }) })
+
 githubAuthRouter.get('/github', async (c) => {
   const resp = await fetcher('https://github.com/login/device/code', {
     method: 'POST',
@@ -57,11 +62,9 @@ githubAuthRouter.get('/github', async (c) => {
   return c.json(await resp.json() as Record<string, unknown>)
 })
 
-githubAuthRouter.post('/github/poll', async (c) => {
+githubAuthRouter.post('/github/poll', zValidator('json', pollBody), async (c) => {
   const userId = c.get('auth')?.userId
-  const body = (await c.req.json().catch(() => ({}))) as { device_code?: string }
-  const { device_code } = body
-  if (!device_code) return c.json({ error: 'device_code is required' }, 400)
+  const { device_code } = c.req.valid('json')
 
   const resp = await fetcher('https://github.com/login/oauth/access_token', {
     method: 'POST',
@@ -143,10 +146,9 @@ githubAuthRouter.delete('/github/:id', async (c) => {
   return c.json({ ok: true })
 })
 
-githubAuthRouter.post('/github/switch', async (c) => {
+githubAuthRouter.post('/github/switch', zValidator('json', switchBody), async (c) => {
   const userId = c.get('auth')?.userId
-  const body = (await c.req.json().catch(() => ({}))) as { user_id?: number }
-  if (!body.user_id) return c.json({ error: 'user_id is required' }, 400)
+  const body = c.req.valid('json')
   const ok = await setActiveGithubAccount(body.user_id as GitHubAccountId, userId as UserId | undefined)
   if (!ok) return c.json({ error: 'Account not found' }, 404)
   return c.json({ ok: true })

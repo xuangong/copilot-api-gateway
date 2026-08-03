@@ -8,7 +8,9 @@
  *   Enriches each row with isOnline (lastSeen<3min) + isActive (usage in last 2h).
  */
 import { Hono } from 'hono'
+import { z } from 'zod'
 import type { Env } from '../../app.ts'
+import { zValidator } from '../../shared/middleware/zod-validator.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { ApiKey } from '../../shared/repo/types.ts'
 import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
@@ -45,21 +47,19 @@ function getEnvSecret(c: { env: unknown }): string {
 
 export const presenceRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
 
-presenceRouter.post('/heartbeat', async (c) => {
+const heartbeatBody = z.object({
+  clientId: z.string().min(1, 'clientId and hostname are required'),
+  clientName: z.string().optional(),
+  hostname: z.string().min(1, 'clientId and hostname are required'),
+  gatewayUrl: z.string().optional(),
+})
+
+presenceRouter.post('/heartbeat', zValidator('json', heartbeatBody), async (c) => {
   const auth = c.get('auth') ?? {}
   if (!auth.apiKeyId) {
     return c.json({ error: 'API key required for heartbeat' }, 401)
   }
-  const body = (await c.req.json().catch(() => ({}))) as {
-    clientId?: string
-    clientName?: string
-    hostname?: string
-    gatewayUrl?: string
-  }
-  const { clientId, clientName, hostname, gatewayUrl } = body
-  if (!clientId || !hostname) {
-    return c.json({ error: 'clientId and hostname are required' }, 400)
-  }
+  const { clientId, clientName, hostname, gatewayUrl } = c.req.valid('json')
   const ip =
     c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ??
     c.req.header('cf-connecting-ip') ??

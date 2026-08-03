@@ -10,7 +10,9 @@
  *    mode deletes-all first, then upserts.
  */
 import { Hono } from 'hono'
+import { z } from 'zod'
 import type { Env } from '../../app.ts'
+import { zValidator } from '../../shared/middleware/zod-validator.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import {
   exportConfig,
@@ -41,17 +43,17 @@ dataTransferRouter.get('/export', async (c) => {
   return c.json(exportConfig({ apiKeys, githubAccounts, upstreams }, { redactSecrets }))
 })
 
-dataTransferRouter.post('/import', async (c) => {
+const importBody = z.object({
+  mode: z.enum(['merge', 'replace'], { message: "mode must be 'merge' or 'replace'" }),
+  bundle: z.unknown(),
+})
+
+dataTransferRouter.post('/import', zValidator('json', importBody), async (c) => {
   const auth = c.get('auth') ?? {}
   if (!auth.isAdmin) {
     return c.json({ error: 'Admin only' }, 403)
   }
-  const body = (await c.req.json().catch(() => ({}))) as { mode?: string; bundle?: unknown }
-  const { mode, bundle } = body
-
-  if (mode !== 'merge' && mode !== 'replace') {
-    return c.json({ error: "mode must be 'merge' or 'replace'" }, 400)
-  }
+  const { mode, bundle } = c.req.valid('json')
 
   let parsed
   try {

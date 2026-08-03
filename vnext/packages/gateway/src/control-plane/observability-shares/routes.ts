@@ -10,7 +10,9 @@
  * ported in vnext; tests inject auth via a pre-middleware.
  */
 import { Hono } from 'hono'
+import { z } from 'zod'
 import type { Env } from '../../app.ts'
+import { zValidator } from '../../shared/middleware/zod-validator.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { UserId } from '../../shared/repo/branded-ids.ts'
 
@@ -33,12 +35,20 @@ function requireSession(c: { get: (k: 'auth') => AuthCtx | undefined }): { userI
   return { userId: auth.userId }
 }
 
-observabilitySharesRouter.post('/', async (c) => {
-  const sess = requireSession(c)
-  if (!sess) return c.json({ error: 'Forbidden' }, 403)
-  const body = await c.req.json().catch(() => ({})) as { viewerEmail?: string }
-  const viewerEmail = body.viewerEmail
-  if (!viewerEmail) return c.json({ error: 'viewerEmail is required' }, 400)
+const shareBody = z.object({
+  viewerEmail: z.string().min(1, 'viewerEmail is required'),
+})
+
+observabilitySharesRouter.post(
+  '/',
+  async (c, next) => {
+    if (!requireSession(c)) return c.json({ error: 'Forbidden' }, 403)
+    await next()
+  },
+  zValidator('json', shareBody),
+  async (c) => {
+    const sess = requireSession(c)!
+    const { viewerEmail } = c.req.valid('json')
   const repo = getRepo()
   const viewer = await repo.users.findByEmail(viewerEmail.toLowerCase())
   if (!viewer) return c.json({ error: 'viewer email not found' }, 404)
@@ -50,7 +60,8 @@ observabilitySharesRouter.post('/', async (c) => {
     viewerEmail: viewer.email,
     viewerName: viewer.name,
   })
-})
+  },
+)
 
 observabilitySharesRouter.delete('/:viewerId', async (c) => {
   const sess = requireSession(c)

@@ -10,7 +10,9 @@
  * the parent control-plane middleware (same pattern as admin routes).
  */
 import { Hono } from 'hono'
+import { z } from 'zod'
 import type { Env } from '../../app.ts'
+import { zValidator } from '../../shared/middleware/zod-validator.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { DeviceCodeToken, SessionToken, UserId } from '../../shared/repo/branded-ids.ts'
 import { SESSION_TTL_DAYS, generateSessionToken } from './utils.ts'
@@ -19,6 +21,9 @@ import type { AuthCtx } from './routes.ts'
 type Vars = { auth: AuthCtx }
 
 export const deviceAuthRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
+
+const verifyBody = z.object({ user_code: z.string().min(1, 'user_code is required') })
+const pollBody = z.object({ device_code: z.string().min(1, 'device_code is required') })
 
 deviceAuthRouter.post('/device/code', async (c) => {
   const repo = getRepo()
@@ -54,14 +59,12 @@ deviceAuthRouter.post('/device/code', async (c) => {
   })
 })
 
-deviceAuthRouter.post('/device/verify', async (c) => {
+deviceAuthRouter.post('/device/verify', zValidator('json', verifyBody), async (c) => {
   const userId = c.get('auth')?.userId
   if (!userId) {
     return c.json({ error: 'You must be logged in to verify a device' }, 401)
   }
-  const body = (await c.req.json().catch(() => ({}))) as { user_code?: string }
-  const { user_code } = body
-  if (!user_code) return c.json({ error: 'user_code is required' }, 400)
+  const { user_code } = c.req.valid('json')
 
   const repo = getRepo()
   const dc = await repo.deviceCodes.findByUserCode(user_code.toUpperCase())
@@ -86,10 +89,8 @@ deviceAuthRouter.post('/device/verify', async (c) => {
   return c.json({ ok: true })
 })
 
-deviceAuthRouter.post('/device/poll', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { device_code?: string }
-  const { device_code } = body
-  if (!device_code) return c.json({ error: 'device_code is required' }, 400)
+deviceAuthRouter.post('/device/poll', zValidator('json', pollBody), async (c) => {
+  const { device_code } = c.req.valid('json')
 
   const repo = getRepo()
   const dc = await repo.deviceCodes.findByDeviceCode(device_code as DeviceCodeToken)
