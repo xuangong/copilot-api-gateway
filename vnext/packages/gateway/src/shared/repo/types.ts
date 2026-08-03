@@ -1,6 +1,6 @@
 import type { BillingDimension, ModelPricing, UpstreamKind, UpstreamRecord } from "@vibe-llm/protocols/common"
 import type { SearchConfig } from "../web-search-providers.ts"
-import type { ApiKeyId, GitHubAccountId, ResponsesItemId, UpstreamId, UserId } from "./branded-ids.ts"
+import type { ApiKeyId, DeviceCodeToken, GitHubAccountId, InviteCodeId, ResponsesItemId, SessionToken, UpstreamId, UserId } from "./branded-ids.ts"
 
 export type { SearchConfig, WebSearchProviderName } from "../web-search-providers.ts"
 
@@ -85,7 +85,7 @@ export interface User {
 }
 
 export interface InviteCode {
-  id: string
+  id: InviteCodeId
   code: string
   name: string
   email?: string
@@ -95,7 +95,7 @@ export interface InviteCode {
 }
 
 export interface UserSession {
-  token: string
+  token: SessionToken
   userId: UserId
   createdAt: string
   expiresAt: string
@@ -263,14 +263,14 @@ export interface InviteCodeRepo {
   create(code: InviteCode): Promise<void>
   findByCode(code: string): Promise<InviteCode | null>
   list(): Promise<InviteCode[]>
-  markUsed(id: string, userId: UserId): Promise<void>
+  markUsed(id: InviteCodeId, userId: UserId): Promise<void>
   clearUsedBy(userId: UserId): Promise<void>
-  delete(id: string): Promise<void>
+  delete(id: InviteCodeId): Promise<void>
 }
 
 export interface SessionRepo {
   create(session: UserSession): Promise<void>
-  findByToken(token: string): Promise<UserSession | null>
+  findByToken(token: SessionToken): Promise<UserSession | null>
   deleteByUserId(userId: UserId): Promise<void>
   deleteExpired(): Promise<void>
 }
@@ -360,21 +360,21 @@ export interface ObservabilityShareRepo {
 }
 
 export interface DeviceCode {
-  deviceCode: string
+  deviceCode: DeviceCodeToken
   userCode: string
   expiresAt: string
   userId?: UserId
-  sessionToken?: string
+  sessionToken?: SessionToken
   createdAt: string
 }
 
 export interface DeviceCodeRepo {
   create(code: DeviceCode): Promise<void>
-  findByDeviceCode(deviceCode: string): Promise<DeviceCode | null>
+  findByDeviceCode(deviceCode: DeviceCodeToken): Promise<DeviceCode | null>
   findByUserCode(userCode: string): Promise<DeviceCode | null>
-  verify(deviceCode: string, userId: UserId, sessionToken: string): Promise<void>
+  verify(deviceCode: DeviceCodeToken, userId: UserId, sessionToken: SessionToken): Promise<void>
   deleteExpired(): Promise<void>
-  delete(deviceCode: string): Promise<void>
+  delete(deviceCode: DeviceCodeToken): Promise<void>
 }
 
 /**

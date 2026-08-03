@@ -39,7 +39,7 @@ import type {
   WebSearchUsageRecord,
   WebSearchUsageRepo,
 } from "../types"
-import type { ApiKeyId, GitHubAccountId, ResponsesItemId, UpstreamId, UserId } from "../branded-ids.ts"
+import type { ApiKeyId, DeviceCodeToken, GitHubAccountId, InviteCodeId, ResponsesItemId, SessionToken, UpstreamId, UserId } from "../branded-ids.ts"
 import { latencyBucketForMs } from "../../performance-histogram.ts"
 import type { SqlExecutor } from "./executor"
 import { BILLING_DIMENSIONS, unitPriceForDimension } from "@vibe-llm/protocols/common"
@@ -211,7 +211,7 @@ function toUser(row: any): User {
 
 function toInviteCode(row: any): InviteCode {
   return {
-    id: row.id,
+    id: row.id as InviteCodeId,
     code: row.code,
     name: row.name,
     email: row.email ?? undefined,
@@ -235,11 +235,11 @@ function toPresence(row: any): ClientPresence {
 
 function toDeviceCode(row: any): DeviceCode {
   return {
-    deviceCode: row.device_code,
+    deviceCode: row.device_code as DeviceCodeToken,
     userCode: row.user_code,
     expiresAt: row.expires_at,
     userId: row.user_id ? (row.user_id as UserId) : undefined,
-    sessionToken: row.session_token ?? undefined,
+    sessionToken: row.session_token ? (row.session_token as SessionToken) : undefined,
     createdAt: row.created_at,
   }
 }
@@ -699,7 +699,7 @@ class SharedInviteCodeRepo implements InviteCodeRepo {
     return (await this.x.all(`SELECT ${INVITE_COLS} FROM invite_codes ORDER BY created_at DESC`, [])).map(toInviteCode)
   }
 
-  async markUsed(id: string, userId: UserId): Promise<void> {
+  async markUsed(id: InviteCodeId, userId: UserId): Promise<void> {
     await this.x.run("UPDATE invite_codes SET used_at = ?, used_by = ? WHERE id = ?", [new Date().toISOString(), userId, id])
   }
 
@@ -707,7 +707,7 @@ class SharedInviteCodeRepo implements InviteCodeRepo {
     await this.x.run("UPDATE invite_codes SET used_by = NULL WHERE used_by = ?", [userId])
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: InviteCodeId): Promise<void> {
     await this.x.run("DELETE FROM invite_codes WHERE id = ?", [id])
   }
 }
@@ -719,9 +719,9 @@ class SharedSessionRepo implements SessionRepo {
     await this.x.run(`INSERT INTO user_sessions (${SESSION_COLS}) VALUES (?, ?, ?, ?)`, [session.token, session.userId, session.createdAt, session.expiresAt])
   }
 
-  async findByToken(token: string): Promise<UserSession | null> {
+  async findByToken(token: SessionToken): Promise<UserSession | null> {
     const row = await this.x.first<any>(`SELECT ${SESSION_COLS} FROM user_sessions WHERE token = ?`, [token])
-    return row ? { token: row.token, userId: row.user_id as UserId, createdAt: row.created_at, expiresAt: row.expires_at } : null
+    return row ? { token: row.token as SessionToken, userId: row.user_id as UserId, createdAt: row.created_at, expiresAt: row.expires_at } : null
   }
 
   async deleteByUserId(userId: UserId): Promise<void> {
@@ -902,7 +902,7 @@ class SharedDeviceCodeRepo implements DeviceCodeRepo {
     await this.x.run(`INSERT INTO device_codes (${DEVICE_COLS}) VALUES (?, ?, ?, ?, ?, ?)`, [code.deviceCode, code.userCode, code.expiresAt, code.userId ?? null, code.sessionToken ?? null, code.createdAt])
   }
 
-  async findByDeviceCode(deviceCode: string): Promise<DeviceCode | null> {
+  async findByDeviceCode(deviceCode: DeviceCodeToken): Promise<DeviceCode | null> {
     const row = await this.x.first(`SELECT ${DEVICE_COLS} FROM device_codes WHERE device_code = ?`, [deviceCode])
     return row ? toDeviceCode(row) : null
   }
@@ -912,7 +912,7 @@ class SharedDeviceCodeRepo implements DeviceCodeRepo {
     return row ? toDeviceCode(row) : null
   }
 
-  async verify(deviceCode: string, userId: UserId, sessionToken: string): Promise<void> {
+  async verify(deviceCode: DeviceCodeToken, userId: UserId, sessionToken: SessionToken): Promise<void> {
     await this.x.run("UPDATE device_codes SET user_id = ?, session_token = ? WHERE device_code = ?", [userId, sessionToken, deviceCode])
   }
 
@@ -920,7 +920,7 @@ class SharedDeviceCodeRepo implements DeviceCodeRepo {
     await this.x.run("DELETE FROM device_codes WHERE expires_at < ?", [new Date().toISOString()])
   }
 
-  async delete(deviceCode: string): Promise<void> {
+  async delete(deviceCode: DeviceCodeToken): Promise<void> {
     await this.x.run("DELETE FROM device_codes WHERE device_code = ?", [deviceCode])
   }
 }

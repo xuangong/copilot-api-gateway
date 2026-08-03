@@ -92,7 +92,7 @@ deviceAuthRouter.post('/device/poll', async (c) => {
   if (!device_code) return c.json({ error: 'device_code is required' }, 400)
 
   const repo = getRepo()
-  const dc = await repo.deviceCodes.findByDeviceCode(device_code)
+  const dc = await repo.deviceCodes.findByDeviceCode(device_code as DeviceCodeToken)
   if (!dc) {
     return c.json({ error: 'Invalid device code', status: 'expired' }, 404)
   }

@@ -177,7 +177,7 @@ emailAuthRouter.post('/email/change-password', async (c) => {
     return c.json({ error: 'Unauthorized' }, 401)
   }
   const repo = getRepo()
-  const session = await repo.sessions.findByToken(sessionToken)
+  const session = await repo.sessions.findByToken(sessionToken as SessionToken)
   if (!session || new Date(session.expiresAt) <= new Date()) {
     return c.json({ error: 'Unauthorized' }, 401)
   }

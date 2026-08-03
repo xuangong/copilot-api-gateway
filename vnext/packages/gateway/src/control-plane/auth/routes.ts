@@ -10,7 +10,7 @@ import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { InviteCode } from '../../shared/repo/types.ts'
-import type { InviteCodeId, UserId } from '../../shared/repo/branded-ids.ts'
+import type { InviteCodeId, SessionToken, UserId } from '../../shared/repo/branded-ids.ts'
 import { ADMIN_EMAILS } from '../../shared/config/constants.ts'
 import { validateApiKey } from '../../shared/lib/api-keys.ts'
 import { emailAuthRouter } from './email-routes.ts'
@@ -57,7 +57,7 @@ authRouter.post('/login', async (c) => {
 
   if (sessionToken.startsWith('ses_')) {
     const repo = getRepo()
-    const session = await repo.sessions.findByToken(sessionToken)
+    const session = await repo.sessions.findByToken(sessionToken as SessionToken)
     if (session && new Date(session.expiresAt) > new Date()) {
       const user = await repo.users.getById(session.userId)
       if (user) {
@@ -161,7 +161,7 @@ authRouter.post('/admin/invite-codes', async (c) => {
 
 authRouter.delete('/admin/invite-codes/:id', async (c) => {
   if (!c.get('auth')?.isAdmin) return c.json({ error: 'Admin only' }, 403)
-  await getRepo().inviteCodes.delete(c.req.param('id'))
+  await getRepo().inviteCodes.delete(c.req.param('id') as InviteCodeId)
   return c.json({ ok: true })
 })
 

@@ -15,7 +15,7 @@ import { getRepo } from './repo/index.ts'
 import { ADMIN_EMAILS, type AccountType } from './config/constants.ts'
 import { validateApiKey } from './lib/api-keys.ts'
 import { getCachedCopilotToken } from './copilot-token-cache.ts'
-import type { ApiKeyId, UserId } from './repo/branded-ids.ts'
+import type { ApiKeyId, SessionToken, UserId } from './repo/branded-ids.ts'
 
 interface FullAuthCtx {
   userId?: UserId
@@ -60,7 +60,7 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
   try {
     if (key.startsWith('ses_')) {
       const repo = getRepo()
-      const session = await repo.sessions.findByToken(key)
+      const session = await repo.sessions.findByToken(key as SessionToken)
       if (session && new Date(session.expiresAt) > new Date()) {
         const user = await repo.users.getById(session.userId)
         if (user && !user.disabled) {
