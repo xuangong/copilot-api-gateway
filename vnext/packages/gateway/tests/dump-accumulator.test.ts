@@ -314,9 +314,33 @@ test("finalize(response) with null body falls back to (status, headers) path", a
   // Response with null body (e.g. 204).
   const resp = new Response(null, { status: 204 })
   const returned = acc.finalize(resp)
-  expect(returned).toBe(resp)
+  expect(returned.status).toBe(204)
+  expect(returned.headers.get('x-dump-record-id')).toBe(acc.recordId)
+  expect(returned.headers.get('x-dump-key-id')).toBe('k1')
   await ctx.drain()
 
   const [meta] = await ctx.store.list("k1", { limit: 10 })
   expect(meta!.status).toBe(204)
+})
+
+test("finalize(response) stamps X-Dump-Record-Id + X-Dump-Key-Id headers", async () => {
+  const ctx = await setupCtx(3600)
+  const c = await makeContext("/v1/chat/completions")
+  const acc = openDumpAccumulator(c, "POST", apiKey(3600), {
+    bytes: new TextEncoder().encode("req"),
+    streamError: null,
+  })!
+  const resp = new Response('{"ok":true}', {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
+  const returned = acc.finalize(resp)
+  expect(returned.headers.get('x-dump-record-id')).toBe(acc.recordId)
+  expect(returned.headers.get('x-dump-key-id')).toBe('k1')
+  // Header from source must be preserved.
+  expect(returned.headers.get('content-type')).toBe('application/json')
+  // Client-visible id must match the row that gets persisted.
+  await ctx.drain()
+  const [meta] = await ctx.store.list("k1", { limit: 10 })
+  expect(meta!.id).toBe(acc.recordId)
 })

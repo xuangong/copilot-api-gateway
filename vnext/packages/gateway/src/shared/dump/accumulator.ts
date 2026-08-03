@@ -90,6 +90,10 @@ export class DumpAccumulator {
   private outputTokens: number | null = null
   private errorMeta: DumpErrorMeta | null = null
   private readonly preparedRequestBody: Promise<PreparedDumpRequestBody>
+  // Pre-allocated at construction so `finalize(Response)` can echo it as an
+  // `X-Dump-Record-Id` header before the write completes. The write path
+  // uses this same id to persist the dump row.
+  readonly recordId: DumpRecordId
 
   constructor(
     private readonly apiKey: ApiKey,
@@ -97,6 +101,7 @@ export class DumpAccumulator {
     requestBody: Uint8Array,
     private readonly startedAt: number,
   ) {
+    this.recordId = ulid(startedAt) as DumpRecordId
     this.preparedRequestBody = getDumpStore().prepareRequestBody(requestBody)
     // Preparation starts eagerly and is awaited at terminal persistence. Mark
     // a rejection handled immediately so a long upstream wait cannot surface
@@ -108,6 +113,13 @@ export class DumpAccumulator {
 
   requestedModel(model: string): void {
     this.model = model
+  }
+
+  // Exposed so http-layer wrappers can look up the api key id (typed as
+  // string here since ApiKey.id is not branded yet) without piercing
+  // encapsulation.
+  get keyId(): string {
+    return this.apiKey.id
   }
 
   error(kind: "upstream" | "gateway", upstream?: string): void {
@@ -172,7 +184,11 @@ export class DumpAccumulator {
 
     if (response.body === null) {
       this.finalize(responseStatus, responseHeaders)
-      return response
+      return new Response(null, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: this.withDumpHeaders(response.headers),
+      })
     }
 
     const isStream = (response.headers.get("content-type") ?? "").startsWith("text/event-stream")
@@ -208,17 +224,29 @@ export class DumpAccumulator {
     return new Response(forClient, {
       status: response.status,
       statusText: response.statusText,
-      headers: response.headers,
+      headers: this.withDumpHeaders(response.headers),
     })
+  }
+
+  // Copy the response headers and stamp X-Dump-* so the client can look up
+  // its own dump record via the control plane. Only emitted when a dump
+  // will actually be written (i.e. the accumulator was opened, which only
+  // happens for keys with retention configured).
+  private withDumpHeaders(source: Headers): Headers {
+    const out = new Headers(source)
+    out.set('x-dump-record-id', this.recordId)
+    out.set('x-dump-key-id', this.apiKey.id)
+    return out
   }
 
   // --- private: persist ---
 
   private async write(response: ResponseSnapshot): Promise<void> {
-    // ULID-from-completedAt keeps ids increasing with row creation time; the
-    // random tail provides the deterministic tie-breaker for one millisecond.
+    // Use the record id allocated at ctx construction so the
+    // `X-Dump-Record-Id` header the client already received matches the row
+    // this write persists.
     const completedAt = Date.now()
-    const recordId = ulid(completedAt)
+    const recordId = this.recordId
 
     // Prefer the accumulator's frame log so dumps reflect the gateway's
     // frame sequence regardless of negotiated wire shape; passthrough
