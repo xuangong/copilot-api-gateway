@@ -5,12 +5,13 @@ import { captureExtras } from '../../shared/reassemble-extras.ts'
 export interface ChatCompletionsResult {
   id: string
   /**
-   * Optional — omitted when not surfaced by upstream. Root project passes the
-   * upstream JSON straight through without ever synthesizing this field, so
-   * we leave it off here to keep the parity audit green ($.object diff).
-   * captureExtras re-attaches it when upstream actually sends it.
+   * Always `'chat.completion'` — this is the static discriminator of the
+   * OpenAI Chat Completions non-streaming envelope. The OpenAI SDK relies on
+   * it to type-narrow the response, so we synthesize it unconditionally even
+   * when upstream (Copilot's Azure) omits it. Matches
+   * `copilot-gateway/packages/protocols/src/chat-completions/reassemble.ts`.
    */
-  object?: 'chat.completion'
+  object: 'chat.completion'
   created: number
   model: string
   choices: Array<{
@@ -44,9 +45,10 @@ const KNOWN_DELTA_KEYS: ReadonlySet<string> = new Set([
   'content', 'role', 'reasoning_text', 'reasoning_opaque', 'reasoning_items', 'tool_calls',
 ])
 
-// SSE chunks always carry `object: 'chat.completion.chunk'`. When the upstream
-// was actually non-streaming, json-to-frames stamps `__upstream_object` on the
-// synthesized chunk so we can echo the correct `object` back to the client.
+// SSE chunks always carry `object: 'chat.completion.chunk'`. The synthesized
+// `chat.completion` envelope's `object` field is stamped unconditionally in
+// the final result (see below), so we don't need to track upstream's variant
+// here — the `__upstream_object` sidecar from json-to-frames is ignored.
 type ChunkWithSidecar = ChatCompletionsStreamEvent & { __upstream_object?: 'chat.completion' }
 
 export async function reassembleChatCompletions(
@@ -55,7 +57,6 @@ export async function reassembleChatCompletions(
   let id = ''
   let model = ''
   let created = 0
-  let upstreamObject: 'chat.completion' | undefined
   let content = ''
   let reasoningText = ''
   let reasoningOpaque = ''
@@ -80,18 +81,6 @@ export async function reassembleChatCompletions(
       id = chunk.id
       model = chunk.model
       created = chunk.created
-    }
-    // Preserve the upstream `object` discriminator only when it's the
-    // non-streaming form. SSE chunks always carry `chat.completion.chunk` and
-    // must not become the result's object. Root passes upstream JSON through
-    // verbatim, so when the upstream actually returned `chat.completion` (via
-    // json-to-frames synthesizer) we need to echo it back to keep parity.
-    if (upstreamObject === undefined) {
-      if (chunk.__upstream_object === 'chat.completion') {
-        upstreamObject = 'chat.completion'
-      } else if ((chunk.object as string) === 'chat.completion') {
-        upstreamObject = 'chat.completion'
-      }
     }
 
     if (chunk.usage) {
@@ -173,7 +162,7 @@ export async function reassembleChatCompletions(
 
   const result: ChatCompletionsResult = {
     id,
-    ...(upstreamObject ? { object: upstreamObject } : {}),
+    object: 'chat.completion',
     created,
     model,
     choices: [
