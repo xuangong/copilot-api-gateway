@@ -309,15 +309,7 @@ export const responsesAttempt = {
 
     try {
       if (chain.length === 0) return await terminal()
-      // Adapter: runInterceptors expects a `ChatCompletionsStreamInterceptor`-
-      // shaped chain. We don't have any responses interceptors yet, so this
-      // branch is reachable only via tests injecting `args.interceptors`.
-      return await runInterceptors(
-        invocation,
-        args.ctx,
-        chain as never,
-        terminal as never,
-      )
+      return await runInterceptors(invocation, args.ctx, chain, terminal)
     } catch (err) {
       if (upstreamResp?.body) void upstreamResp.body.cancel().catch(() => {})
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape

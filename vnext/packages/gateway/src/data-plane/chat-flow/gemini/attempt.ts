@@ -59,6 +59,7 @@ import { selectPair } from '../../dispatch/pair-selector.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
 import { traverseTranslation } from '../shared/traverse-translation.ts'
 import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-dispatch.ts'
+import type { LlmInterceptor } from '../shared/interceptor-types.ts'
 
 // ─── Public types ─────────────────────────────────────────────────────────
 
@@ -113,11 +114,7 @@ export interface GeminiAttemptArgs {
 
 // Stream-interceptor stub mirrors messages/responses — Spec 3 keeps the
 // minimum scope. No gemini-specific interceptors are registered yet.
-export type GeminiInterceptor = (
-  inv: Invocation,
-  ctx: RequestContext,
-  next: (inv: Invocation, ctx: RequestContext) => Promise<LlmExecuteResult<ProtocolFrame<unknown>>>,
-) => Promise<LlmExecuteResult<ProtocolFrame<unknown>>>
+export type GeminiInterceptor = LlmInterceptor<LlmExecuteResult<ProtocolFrame<unknown>>>
 
 // ─── Binding selection ───────────────────────────────────────────────────
 
@@ -214,15 +211,7 @@ export const geminiAttempt = {
 
     try {
       if (chain.length === 0) return await terminal()
-      // Adapter: runInterceptors expects a `ChatCompletionsStreamInterceptor`-
-      // shaped chain. No gemini interceptors are registered yet — this
-      // branch is reachable only via tests injecting `args.interceptors`.
-      return await runInterceptors(
-        invocation,
-        args.ctx,
-        chain as never,
-        terminal as never,
-      )
+      return await runInterceptors(invocation, args.ctx, chain, terminal)
     } catch (err) {
       const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
       // HTTPError is the legacy provider contract for upstream non-2xx; the

@@ -372,15 +372,7 @@ export const messagesAttempt = {
       // signature is kept aligned with chat-completions so future stream
       // interceptors plug in without re-shuffling attempt.ts.
       if (chain.length === 0) return await terminal()
-      // Adapter: runInterceptors expects a `ChatCompletionsStreamInterceptor`-
-      // shaped chain. We don't have any messages interceptors yet, so this
-      // branch is reachable only via tests injecting `args.interceptors`.
-      return await runInterceptors(
-        invocation,
-        args.ctx,
-        chain as never,
-        terminal as never,
-      )
+      return await runInterceptors(invocation, args.ctx, chain, terminal)
     } catch (err) {
       if (upstreamResp?.body) void upstreamResp.body.cancel().catch(() => {})
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
