@@ -16,12 +16,13 @@
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { listUpstreamModels, type CreateProviderOptions } from '../providers/registry.ts'
+import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
 
 export interface DataPlaneAuthCtx {
-  userId?: string
+  userId?: UserId
   copilot?: CreateProviderOptions
   /** API-key id authenticated for this request; required for per-key web-search/quota lookups. */
-  apiKeyId?: string
+  apiKeyId?: ApiKeyId
   /** GitHub OAuth token attached to the request (used by Copilot web-search engine). */
   githubToken?: string
   /** Env-derived Microsoft Grounding key, surfaced via auth ctx so handlers don't reach into env directly. */

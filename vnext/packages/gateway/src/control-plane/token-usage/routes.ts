@@ -23,17 +23,18 @@ import {
   getServerSecret,
 } from '../../shared/lib/redact-shared-view.ts'
 import { getOwnedKeyIdsForScope } from '../../shared/lib/view-context.ts'
+import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
 
 export interface TokenUsageAuthCtx {
   isAdmin?: boolean
-  userId?: string
+  userId?: UserId
   isViewingShared?: boolean
-  ownerId?: string
+  ownerId?: UserId
 }
 
 type Vars = { auth: TokenUsageAuthCtx }
 
-async function getUserKeys(userId: string): Promise<ApiKey[]> {
+async function getUserKeys(userId: UserId): Promise<ApiKey[]> {
   const repo = getRepo()
   const [ownKeys, assignments] = await Promise.all([
     repo.apiKeys.listByOwner(userId),
@@ -65,7 +66,7 @@ export const tokenUsageRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
 
 tokenUsageRouter.get('/token-usage', async (c) => {
   const auth = c.get('auth') ?? {}
-  const keyId = c.req.query('key_id') || undefined
+  const keyId = (c.req.query('key_id') || undefined) as ApiKeyId | undefined
   const start = c.req.query('start') ?? ''
   const end = c.req.query('end') ?? ''
 
@@ -83,7 +84,7 @@ tokenUsageRouter.get('/token-usage', async (c) => {
     const ids = await getOwnedKeyIdsForScope(auth.ownerId)
     if (ids.length === 0) return c.json([])
     const ownedKeys = await repo.apiKeys.listByOwner(auth.ownerId)
-    const records = await repo.usage.query({ keyIds: ids, start, end })
+    const records = await repo.usage.query({ keyIds: ids as ApiKeyId[], start, end })
     const nameMap = new Map<string, string>(ownedKeys.map((k) => [k.id, k.name]))
     const enriched = enrichWithKeyName(aggregateUsageForDisplay(records), nameMap)
     return c.json(
@@ -96,7 +97,7 @@ tokenUsageRouter.get('/token-usage', async (c) => {
     )
   }
 
-  let queryOpts: { keyId?: string; keyIds?: string[]; start: string; end: string }
+  let queryOpts: { keyId?: ApiKeyId; keyIds?: ApiKeyId[]; start: string; end: string }
   let keys: ApiKey[]
 
   if (auth.isAdmin) {
@@ -117,8 +118,8 @@ tokenUsageRouter.get('/token-usage', async (c) => {
   const display = aggregateUsageForDisplay(records)
 
   if (auth.isAdmin) {
-    const ownerIdMap = new Map<string, string | null>(keys.map((k) => [k.id, k.ownerId]))
-    const userIds = new Set(keys.map((k) => k.ownerId).filter(Boolean) as string[])
+    const ownerIdMap = new Map<string, UserId | undefined>(keys.map((k) => [k.id, k.ownerId]))
+    const userIds = new Set(keys.map((k) => k.ownerId).filter(Boolean) as UserId[])
     const users = await Promise.all([...userIds].map((id) => repo.users.getById(id)))
     const userNameMap = new Map<string, string>()
     for (const u of users) {

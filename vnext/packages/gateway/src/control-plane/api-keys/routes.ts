@@ -27,12 +27,13 @@ import {
   type ApiKey,
 } from '../../shared/lib/api-keys.ts'
 import { getRepo } from '../../shared/repo/index.ts'
+import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
 
 export interface AuthCtx {
   isAdmin?: boolean
   isUser?: boolean
-  apiKeyId?: string
-  userId?: string
+  apiKeyId?: ApiKeyId
+  userId?: UserId
 }
 
 type Vars = { auth: AuthCtx }
@@ -60,7 +61,7 @@ async function loadSourceMapForKey(k: ApiKey): Promise<Map<string, ApiKey>> {
   const map = new Map<string, ApiKey>()
   for (const refId of [k.webSearchLangsearchRef, k.webSearchTavilyRef, k.webSearchMsGroundingRef]) {
     if (refId) {
-      const s = await getApiKeyById(refId)
+      const s = await getApiKeyById(refId as ApiKeyId)
       if (s) map.set(refId, s)
     }
   }
@@ -89,7 +90,7 @@ function keyToJson(k: ApiKey, ownerName?: string, isOwner?: boolean, sourceMap?:
   }
 }
 
-async function checkOwnership(keyId: string, ctx: AuthCtx): Promise<boolean> {
+async function checkOwnership(keyId: ApiKeyId, ctx: AuthCtx): Promise<boolean> {
   if (ctx.isAdmin) return true
   if (!ctx.userId) return false
   const key = await getApiKeyById(keyId)
@@ -103,7 +104,7 @@ async function checkOwnership(keyId: string, ctx: AuthCtx): Promise<boolean> {
  * when web-search resolver is fully ported.
  */
 async function checkRefVisible(refSourceId: string, ctx: AuthCtx): Promise<{ ok: boolean; reason?: string; status: number }> {
-  const src = await getApiKeyById(refSourceId)
+  const src = await getApiKeyById(refSourceId as ApiKeyId)
   if (!src) return { ok: false, reason: 'Source key not found', status: 404 }
   if (ctx.isAdmin) return { ok: true, status: 200 }
   if (!ctx.userId) return { ok: false, reason: 'Forbidden', status: 403 }
@@ -132,7 +133,7 @@ apiKeysRouter.get('/', async (c) => {
     const ownerIds = [...new Set(keys.map((k) => k.ownerId).filter(Boolean))] as string[]
     const ownerMap = new Map<string, string>()
     await Promise.all(ownerIds.map(async (id) => {
-      const user = await repo.users.getById(id)
+      const user = await repo.users.getById(id as UserId)
       if (user) ownerMap.set(id, user.name)
     }))
     const allAssignments = await Promise.all(keys.map((k) => repo.keyAssignments.listByKey(k.id)))
@@ -140,7 +141,7 @@ apiKeysRouter.get('/', async (c) => {
     for (const aList of allAssignments) for (const a of aList) assigneeUserIds.add(a.userId)
     const assigneeNameMap = new Map<string, string>()
     if (assigneeUserIds.size > 0) {
-      const assigneeUsers = await Promise.all([...assigneeUserIds].map((id) => repo.users.getById(id)))
+      const assigneeUsers = await Promise.all([...assigneeUserIds].map((id) => repo.users.getById(id as UserId)))
       for (const u of assigneeUsers) if (u) assigneeNameMap.set(u.id, u.name)
     }
     const refIds = new Set<string>()
@@ -151,7 +152,7 @@ apiKeysRouter.get('/', async (c) => {
     }
     const sourceMap = new Map<string, ApiKey>()
     await Promise.all([...refIds].map(async (id) => {
-      const src = await getApiKeyById(id)
+      const src = await getApiKeyById(id as ApiKeyId)
       if (src) sourceMap.set(id, src)
     }))
     return c.json(keys.map((k, i) => {
@@ -174,7 +175,7 @@ apiKeysRouter.get('/', async (c) => {
     for (const aList of ownKeyAssignments) for (const a of aList) assigneeUserIds.add(a.userId)
     const assigneeNameMap = new Map<string, string>()
     if (assigneeUserIds.size > 0) {
-      const assigneeUsers = await Promise.all([...assigneeUserIds].map((id) => repo.users.getById(id)))
+      const assigneeUsers = await Promise.all([...assigneeUserIds].map((id) => repo.users.getById(id as UserId)))
       for (const u of assigneeUsers) if (u) assigneeNameMap.set(u.id, u.name)
     }
     const ownRefIds = new Set<string>()
@@ -185,7 +186,7 @@ apiKeysRouter.get('/', async (c) => {
     }
     const ownSourceMap = new Map<string, ApiKey>()
     await Promise.all([...ownRefIds].map(async (id) => {
-      const src = await getApiKeyById(id)
+      const src = await getApiKeyById(id as ApiKeyId)
       if (src) ownSourceMap.set(id, src)
     }))
     const result = ownKeys.map((k, i) => {
@@ -202,7 +203,7 @@ apiKeysRouter.get('/', async (c) => {
       const ownerIds = [...new Set(assignedKeys.filter(Boolean).map((k) => k!.ownerId).filter(Boolean))] as string[]
       const ownerMap = new Map<string, string>()
       await Promise.all(ownerIds.map(async (id) => {
-        const user = await repo.users.getById(id)
+        const user = await repo.users.getById(id as UserId)
         if (user) ownerMap.set(id, user.name)
       }))
       const assignedRefIds = new Set<string>()
@@ -214,7 +215,7 @@ apiKeysRouter.get('/', async (c) => {
       }
       const assignedSourceMap = new Map<string, ApiKey>()
       await Promise.all([...assignedRefIds].map(async (id) => {
-        const src = await getApiKeyById(id)
+        const src = await getApiKeyById(id as ApiKeyId)
         if (src) assignedSourceMap.set(id, src)
       }))
       for (const k of assignedKeys) {
@@ -252,7 +253,7 @@ apiKeysRouter.post('/', async (c) => {
 // GET /:id
 apiKeysRouter.get('/:id', async (c) => {
   const auth = c.get('auth') ?? {}
-  const id = c.req.param('id')
+  const id = c.req.param('id') as ApiKeyId
   const key = await getApiKeyById(id)
   if (!key) return c.json({ error: 'Key not found' }, 404)
   if (!auth.isAdmin && key.ownerId !== auth.userId) {
@@ -265,7 +266,7 @@ apiKeysRouter.get('/:id', async (c) => {
 // PATCH /:id — rename + quota + web_search (XOR literal vs ref)
 apiKeysRouter.patch('/:id', async (c) => {
   const auth = c.get('auth') ?? {}
-  const id = c.req.param('id')
+  const id = c.req.param('id') as ApiKeyId
   if (!(await checkOwnership(id, auth))) {
     return c.json({ error: 'Forbidden' }, 403)
   }
@@ -341,7 +342,7 @@ apiKeysRouter.patch('/:id', async (c) => {
 // POST /:id/rotate
 apiKeysRouter.post('/:id/rotate', async (c) => {
   const auth = c.get('auth') ?? {}
-  const id = c.req.param('id')
+  const id = c.req.param('id') as ApiKeyId
   if (!(await checkOwnership(id, auth))) return c.json({ error: 'Forbidden' }, 403)
   const key = await rotateApiKey(id)
   if (!key) return c.json({ error: 'Key not found' }, 404)
@@ -352,7 +353,7 @@ apiKeysRouter.post('/:id/rotate', async (c) => {
 // DELETE /:id
 apiKeysRouter.delete('/:id', async (c) => {
   const auth = c.get('auth') ?? {}
-  const id = c.req.param('id')
+  const id = c.req.param('id') as ApiKeyId
   if (!(await checkOwnership(id, auth))) return c.json({ error: 'Forbidden' }, 403)
   const deleted = await deleteApiKey(id)
   if (!deleted) return c.json({ error: 'Key not found' }, 404)
@@ -363,7 +364,7 @@ apiKeysRouter.delete('/:id', async (c) => {
 // GET /:id/web-search-usage
 apiKeysRouter.get('/:id/web-search-usage', async (c) => {
   const auth = c.get('auth') ?? {}
-  const id = c.req.param('id')
+  const id = c.req.param('id') as ApiKeyId
   if (!(await checkOwnership(id, auth))) return c.json({ error: 'Forbidden' }, 403)
   const rangeRaw = c.req.query('range') ?? '1d'
   const days = rangeRaw === '30d' ? 30 : rangeRaw === '7d' ? 7 : 1
@@ -402,7 +403,7 @@ apiKeysRouter.get('/:id/web-search-usage', async (c) => {
 // POST /:id/assign
 apiKeysRouter.post('/:id/assign', async (c) => {
   const auth = c.get('auth') ?? {}
-  const id = c.req.param('id')
+  const id = c.req.param('id') as ApiKeyId
   const key = await getApiKeyById(id)
   if (!key) return c.json({ error: 'Key not found' }, 404)
   const isOwner = !!auth.userId && key.ownerId === auth.userId
@@ -413,7 +414,7 @@ apiKeysRouter.post('/:id/assign', async (c) => {
   const repo = getRepo()
   let targetUser = null as Awaited<ReturnType<typeof repo.users.getById>>
   if (user_id) {
-    targetUser = await repo.users.getById(user_id)
+    targetUser = await repo.users.getById(user_id as UserId)
     if (!targetUser) return c.json({ error: 'User not found' }, 404)
   } else if (email) {
     targetUser = await repo.users.findByEmail(email.trim().toLowerCase())
@@ -423,15 +424,15 @@ apiKeysRouter.post('/:id/assign', async (c) => {
   if (targetUser.id === key.ownerId) return c.json({ error: 'Cannot share key with yourself' }, 400)
   const existing = await repo.keyAssignments.listByKey(id)
   if (existing.some((a) => a.userId === targetUser!.id)) return c.json({ error: 'Already shared with this user' }, 409)
-  await repo.keyAssignments.assign(id, targetUser.id, auth.userId || 'admin')
+  await repo.keyAssignments.assign(id, targetUser.id, auth.userId ?? ('admin' as UserId))
   return c.json({ ok: true })
 })
 
 // DELETE /:id/assign/:userId
 apiKeysRouter.delete('/:id/assign/:userId', async (c) => {
   const auth = c.get('auth') ?? {}
-  const id = c.req.param('id')
-  const userIdParam = c.req.param('userId')
+  const id = c.req.param('id') as ApiKeyId
+  const userIdParam = c.req.param('userId') as UserId
   const key = await getApiKeyById(id)
   if (!key) return c.json({ error: 'Key not found' }, 404)
   const isOwner = !!auth.userId && key.ownerId === auth.userId
@@ -443,7 +444,7 @@ apiKeysRouter.delete('/:id/assign/:userId', async (c) => {
 // GET /:id/assignments
 apiKeysRouter.get('/:id/assignments', async (c) => {
   const auth = c.get('auth') ?? {}
-  const id = c.req.param('id')
+  const id = c.req.param('id') as ApiKeyId
   if (!auth.isAdmin) {
     if (!auth.userId) return c.json({ error: 'Forbidden' }, 403)
     const key = await getApiKeyById(id)
@@ -464,8 +465,8 @@ apiKeysRouter.get('/:id/assignments', async (c) => {
 // POST /:id/copy-web-search-from/:sourceId
 apiKeysRouter.post('/:id/copy-web-search-from/:sourceId', async (c) => {
   const auth = c.get('auth') ?? {}
-  const id = c.req.param('id')
-  const sourceId = c.req.param('sourceId')
+  const id = c.req.param('id') as ApiKeyId
+  const sourceId = c.req.param('sourceId') as ApiKeyId
   if (!(await checkOwnership(id, auth))) return c.json({ error: 'Forbidden' }, 403)
   if (!(await checkOwnership(sourceId, auth))) return c.json({ error: 'Forbidden: no access to source key' }, 403)
   const target = await getApiKeyById(id)

@@ -25,6 +25,7 @@ import { detectClient } from '../../../shared/observability/client-detect.ts'
 import { extractFromJson, pickUsageModelId } from '../../../shared/observability/usage-extractor.ts'
 import { getRepo } from '../../../shared/repo/index.ts'
 import type { TokenUsage, UsageRecord } from '../../../shared/repo/types.ts'
+import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
 
 const currentHour = (): string => new Date().toISOString().slice(0, 13)
 
@@ -46,7 +47,7 @@ const hasAnyTokens = (usage: TokenUsage): boolean => {
  */
 async function trackNonStreamingUsage(
   json: unknown,
-  keyId: string,
+  keyId: ApiKeyId,
   model: string,
   client: string,
   upstream: string | null,
@@ -75,7 +76,7 @@ async function trackNonStreamingUsage(
 }
 
 export interface EmbeddingsAttemptInput {
-  apiKeyId: string | undefined
+  apiKeyId: ApiKeyId | undefined
   model: string
   /** Raw upstream model id — same value handed to provider for pricing lookup. */
   modelKey: string

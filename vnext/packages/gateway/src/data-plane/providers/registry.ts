@@ -17,6 +17,7 @@
 import type { AccountType } from '../../shared/config/constants.ts'
 import { defaultsForUpstream, resolveEffectiveFlags } from '../flags/index.ts'
 import type { UpstreamRecord } from '../../shared/repo/types.ts'
+import type { UserId } from '../../shared/repo/branded-ids.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import { __registerPlatformReset } from '@vibe-core/platform'
 import { getCache } from '../../shared/cache/index.ts'
@@ -209,16 +210,16 @@ function sortUpstreams(upstreams: UpstreamRecord[]): UpstreamRecord[] {
   )
 }
 
-async function listVisibleUpstreams(ownerId?: string): Promise<UpstreamRecord[]> {
+async function listVisibleUpstreams(ownerId?: UserId): Promise<UpstreamRecord[]> {
   if (ownerId !== undefined) {
     const [globalUpstreams, ownerUpstreams] = await Promise.all([
-      getRepo().upstreams.list({ ownerId: '' }),
+      getRepo().upstreams.list({ ownerId: '' as UserId }),
       getRepo().upstreams.list({ ownerId }),
     ])
     const byId = new Map([...globalUpstreams, ...ownerUpstreams].map((u) => [u.id, u]))
     return sortUpstreams([...byId.values()])
   }
-  return getRepo().upstreams.list({ ownerId: '' })
+  return getRepo().upstreams.list({ ownerId: '' as UserId })
 }
 
 export async function listProviderBindings(
@@ -226,7 +227,7 @@ export async function listProviderBindings(
 ): Promise<LlmProviderBinding[]> {
   let upstreams: UpstreamRecord[]
   try {
-    upstreams = await listVisibleUpstreams(opts.ownerId)
+    upstreams = await listVisibleUpstreams(opts.ownerId as UserId | undefined)
   } catch {
     upstreams = []
   }

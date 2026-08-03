@@ -15,6 +15,7 @@
  */
 import { getRepo } from '../repo/index.ts'
 import type { PerformanceSourceApi, PerformanceTargetApi } from '../repo/types.ts'
+import type { ApiKeyId } from '../repo/branded-ids.ts'
 
 export interface LatencyTimings {
   totalMs: number
@@ -65,7 +66,7 @@ export function startTimer(): () => number {
 }
 
 export async function recordLatency(
-  keyId: string,
+  keyId: ApiKeyId,
   model: string,
   colo: string,
   timings: LatencyTimings,

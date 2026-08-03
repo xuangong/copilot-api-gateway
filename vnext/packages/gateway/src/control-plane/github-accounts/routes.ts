@@ -18,14 +18,15 @@ import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import { createGithubHeaders } from '../../shared/config/constants.ts'
+import type { UserId } from '../../shared/repo/branded-ids.ts'
 
 export interface ViewCtx {
-  userId?: string
+  userId?: UserId
   isAdmin?: boolean
   authKind?: 'public' | 'session' | 'apiKey'
-  effectiveUserId?: string
+  effectiveUserId?: UserId
   isViewingShared?: boolean
-  ownerId?: string
+  ownerId?: UserId
 }
 
 type Vars = { auth: ViewCtx }

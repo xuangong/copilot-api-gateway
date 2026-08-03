@@ -15,6 +15,7 @@ import { getRepo } from '../../shared/repo/index.ts'
 import { getDumpBroker, getDumpStore } from '../../shared/dump/registry.ts'
 import { dumpRecordToWire } from '../../shared/dump/wire.ts'
 import type { DumpRecordId } from '../../shared/dump/types.ts'
+import type { ApiKeyId } from '../../shared/repo/branded-ids.ts'
 
 const LIST_LIMIT_DEFAULT = 100
 const LIST_LIMIT_MAX = 200
@@ -24,9 +25,9 @@ const LIST_LIMIT_MAX = 200
 //   - a Response (404 / 403) otherwise
 //
 // Admin passthrough matches other control-plane routes (see api-keys/routes.ts).
-const ownedDumpKey = async (c: Context): Promise<string | Response> => {
+const ownedDumpKey = async (c: Context): Promise<ApiKeyId | Response> => {
   const auth = c.get('auth') ?? {}
-  const keyId = c.req.param('keyId')!
+  const keyId = c.req.param('keyId')! as ApiKeyId
   const key = await getRepo().apiKeys.getById(keyId)
   if (!key) return c.json({ error: 'Key not found' }, 404)
   if (!auth.isAdmin && key.ownerId !== auth.userId) {

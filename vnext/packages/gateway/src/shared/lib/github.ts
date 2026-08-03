@@ -22,7 +22,7 @@ export interface GithubCredentials {
   flagOverrides?: Record<string, boolean>
 }
 
-export function copilotUpstreamRowId(ownerId: string, userId: number): string {
+export function copilotUpstreamRowId(ownerId: UserId | '', userId: number): string {
   return `up_copilot_${ownerId || 'global'}_${userId}`.replace(/[^a-zA-Z0-9_-]/g, '_')
 }
 
@@ -30,14 +30,14 @@ async function mirrorCopilotUpstream(
   token: string,
   user: GitHubUser,
   accountType: string,
-  ownerId: string,
+  ownerId: UserId | '',
 ): Promise<void> {
   const id = copilotUpstreamRowId(ownerId, user.id)
   const existing = await getRepo().upstreams.getById(id)
   const now = new Date().toISOString()
   const record: UpstreamRecord = {
     id,
-    ownerId,
+    ownerId: ownerId || undefined,
     provider: 'copilot',
     name: existing?.name ?? user.login ?? `Copilot ${user.id}`,
     enabled: existing?.enabled ?? true,
@@ -70,18 +70,18 @@ export async function addGithubAccount(
   token: string,
   user: GitHubUser,
   accountType: string,
-  ownerId?: string,
+  ownerId?: UserId,
 ): Promise<void> {
   const repo = getRepo().github
   await repo.saveAccount(user.id, {
     token,
     accountType,
     user,
-    ownerId: (ownerId ?? null) as UserId | null,
+    ownerId,
     enabled: true,
     sortOrder: 0,
     flagOverrides: {},
-    updatedAt: null,
+    updatedAt: undefined,
   })
   if (ownerId) {
     await repo.setActiveIdForUser(ownerId, user.id)
@@ -93,10 +93,10 @@ export async function addGithubAccount(
 
 export async function removeGithubAccount(
   userId: number,
-  ownerId?: string,
+  ownerId?: UserId,
 ): Promise<void> {
   const repo = getRepo().github
-  await repo.deleteAccount(userId, ownerId ?? '')
+  await repo.deleteAccount(userId, ownerId)
   await getRepo().upstreams.delete(copilotUpstreamRowId(ownerId ?? '', userId))
   if (ownerId) {
     const activeId = await repo.getActiveIdForUser(ownerId)
@@ -109,10 +109,10 @@ export async function removeGithubAccount(
 
 export async function setActiveGithubAccount(
   userId: number,
-  ownerId?: string,
+  ownerId?: UserId,
 ): Promise<boolean> {
   const repo = getRepo().github
-  const account = await repo.getAccount(userId, ownerId ?? '')
+  const account = await repo.getAccount(userId, ownerId)
   if (!account) return false
   if (ownerId) {
     await repo.setActiveIdForUser(ownerId, userId)
@@ -123,7 +123,7 @@ export async function setActiveGithubAccount(
 }
 
 export function listGithubAccountsForUser(
-  ownerId: string,
+  ownerId: UserId,
 ): Promise<GitHubAccount[]> {
   return getRepo().github.listAccountsByOwner(ownerId)
 }

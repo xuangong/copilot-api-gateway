@@ -22,12 +22,13 @@ import {
   sharedKeyRef,
 } from '../../shared/lib/redact-shared-view.ts'
 import { getOwnedKeyIdsForScope } from '../../shared/lib/view-context.ts'
+import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
 
 export interface PerformanceAuthCtx {
   isAdmin?: boolean
-  userId?: string
+  userId?: UserId
   isViewingShared?: boolean
-  ownerId?: string
+  ownerId?: UserId
 }
 
 type Vars = { auth: PerformanceAuthCtx }
@@ -73,7 +74,7 @@ function summaryToLatencyRecords(rows: PerformanceSummaryRecord[]): LatencyRecor
   return [...buckets.values()]
 }
 
-async function getUserKeys(userId: string): Promise<ApiKey[]> {
+async function getUserKeys(userId: UserId): Promise<ApiKey[]> {
   const repo = getRepo()
   const [ownKeys, assignments] = await Promise.all([
     repo.apiKeys.listByOwner(userId),
@@ -97,7 +98,7 @@ export const performanceRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
 
 performanceRouter.get('/latency', async (c) => {
   const auth = c.get('auth') ?? {}
-  const keyId = c.req.query('key_id') || undefined
+  const keyId = (c.req.query('key_id') || undefined) as ApiKeyId | undefined
   const start = c.req.query('start') ?? ''
   const end = c.req.query('end') ?? ''
   if (!start || !end) {
@@ -109,7 +110,7 @@ performanceRouter.get('/latency', async (c) => {
     const ids = await getOwnedKeyIdsForScope(auth.ownerId)
     if (ids.length === 0) return c.json([])
     const ownedKeys = await repo.apiKeys.listByOwner(auth.ownerId)
-    const perfResult = await repo.performance.query({ keyIds: ids, start, end, metricScope: 'request_total' })
+    const perfResult = await repo.performance.query({ keyIds: ids as ApiKeyId[], start, end, metricScope: 'request_total' })
     const records = summaryToLatencyRecords(perfResult.summary)
     const nameMap = new Map<string, string>(ownedKeys.map((k) => [k.id, k.name]))
     const enriched = records.map((r) => ({
@@ -126,7 +127,7 @@ performanceRouter.get('/latency', async (c) => {
     )
   }
 
-  let queryOpts: { keyId?: string; keyIds?: string[]; start: string; end: string }
+  let queryOpts: { keyId?: ApiKeyId; keyIds?: ApiKeyId[]; start: string; end: string }
   let keys: ApiKey[]
   if (auth.isAdmin) {
     queryOpts = { keyId, start, end }
@@ -150,7 +151,7 @@ performanceRouter.get('/latency', async (c) => {
 
 performanceRouter.get('/performance', async (c) => {
   const auth = c.get('auth') ?? {}
-  const keyId = c.req.query('key_id') || undefined
+  const keyId = (c.req.query('key_id') || undefined) as ApiKeyId | undefined
   const start = c.req.query('start') ?? ''
   const end = c.req.query('end') ?? ''
   const metricScopeRaw = c.req.query('metric_scope') ?? 'request_total'
@@ -166,7 +167,7 @@ performanceRouter.get('/performance', async (c) => {
     const ids = await getOwnedKeyIdsForScope(auth.ownerId)
     if (ids.length === 0) return c.json({ summary: [], buckets: [] })
     const ownedKeys = await repo.apiKeys.listByOwner(auth.ownerId)
-    const result = await repo.performance.query({ keyIds: ids, start, end, metricScope })
+    const result = await repo.performance.query({ keyIds: ids as ApiKeyId[], start, end, metricScope })
     const nameMap = new Map<string, string>(ownedKeys.map((k) => [k.id, k.name]))
     const secret = getEnvSecret(c)
     return c.json({
@@ -184,8 +185,8 @@ performanceRouter.get('/performance', async (c) => {
   }
 
   let queryOpts: {
-    keyId?: string
-    keyIds?: string[]
+    keyId?: ApiKeyId
+    keyIds?: ApiKeyId[]
     start: string
     end: string
     metricScope: PerformanceMetricScope

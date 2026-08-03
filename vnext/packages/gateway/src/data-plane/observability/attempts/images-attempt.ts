@@ -21,9 +21,10 @@ import {
   recordLatency,
   startTimer,
 } from '../../../shared/observability/latency-tracker.ts'
+import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
 
 export interface ImagesAttemptInput {
-  apiKeyId: string | undefined
+  apiKeyId: ApiKeyId | undefined
   model: string
   /** Upstream id from the resolved binding — surfaces the real provider (custom/azure/sdf/copilot) in latency rows. */
   upstream: string

@@ -6,9 +6,10 @@
  */
 import type { RuntimeLocation } from '@vibe-core/platform'
 import type { PerformanceSourceApi } from '../../../shared/repo/types.ts'
+import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
 
 export interface TelemetryRequestContext {
-  readonly apiKeyId: string
+  readonly apiKeyId: ApiKeyId
   /** Matches legacy DispatchObsCtx — null when the inbound `User-Agent` header is absent. */
   readonly userAgent: string | null
   readonly requestId: string

@@ -7,6 +7,7 @@
  */
 import { getRepo } from '../repo/index.ts'
 import { computeWeightedTokens } from './quota-math.ts'
+import type { ApiKeyId } from '../repo/branded-ids.ts'
 
 export { computeWeightedTokens }
 
@@ -23,7 +24,7 @@ function secondsUntilNextUtcDay(now: Date): number {
 
 export async function checkQuota(apiKeyId: string): Promise<QuotaResult> {
   const repo = getRepo()
-  const key = await repo.apiKeys.getById(apiKeyId)
+  const key = await repo.apiKeys.getById(apiKeyId as ApiKeyId)
   if (!key) return { allowed: true }
 
   const hasReqQuota = key.quotaRequestsPerDay != null
@@ -34,7 +35,7 @@ export async function checkQuota(apiKeyId: string): Promise<QuotaResult> {
   const todayStart = now.toISOString().slice(0, 10) + 'T00'
   const tomorrowStart = new Date(now.getTime() + 86400000).toISOString().slice(0, 10) + 'T00'
 
-  const records = await repo.usage.query({ keyId: apiKeyId, start: todayStart, end: tomorrowStart })
+  const records = await repo.usage.query({ keyId: apiKeyId as ApiKeyId, start: todayStart, end: tomorrowStart })
 
   let totalRequests = 0
   let totalWeightedTokens = 0

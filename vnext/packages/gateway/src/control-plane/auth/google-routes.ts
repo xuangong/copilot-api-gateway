@@ -140,7 +140,7 @@ googleAuthRouter.get('/google/callback', async (c) => {
     }
     await repo.users.update(user.id, {
       lastLoginAt: new Date().toISOString(),
-      avatarUrl: googleUser.picture ?? null,
+      avatarUrl: googleUser.picture ?? undefined,
     })
   } else if (isAdminEmail) {
     const userId = crypto.randomUUID() as UserId
@@ -148,12 +148,12 @@ googleAuthRouter.get('/google/callback', async (c) => {
       id: userId,
       name: googleUser.name || email,
       email,
-      avatarUrl: googleUser.picture ?? null,
+      avatarUrl: googleUser.picture ?? undefined,
       createdAt: new Date().toISOString(),
       disabled: false,
       lastLoginAt: new Date().toISOString(),
-      userKey: null,
-      passwordHash: null,
+      userKey: undefined,
+      passwordHash: undefined,
     }
     await repo.users.create(user)
   } else if (stateData.inviteCode) {
@@ -172,12 +172,12 @@ googleAuthRouter.get('/google/callback', async (c) => {
       id: userId,
       name: googleUser.name || invite.name,
       email,
-      avatarUrl: googleUser.picture ?? null,
+      avatarUrl: googleUser.picture ?? undefined,
       createdAt: new Date().toISOString(),
       disabled: false,
       lastLoginAt: new Date().toISOString(),
-      userKey: null,
-      passwordHash: null,
+      userKey: undefined,
+      passwordHash: undefined,
     }
     await repo.users.create(user)
     await repo.inviteCodes.markUsed(invite.id, userId)
@@ -196,7 +196,7 @@ googleAuthRouter.get('/google/callback', async (c) => {
   const sessionToken = generateSessionToken() as SessionToken
   await repo.sessions.create({
     token: sessionToken,
-    userId: user.id,
+    userId: user!.id,
     createdAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
   })

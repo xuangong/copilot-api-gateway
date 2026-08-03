@@ -25,6 +25,7 @@ import { jsonErrorWrap } from './error-wrap.ts'
 import { runQuotaGate } from './quota-gate.ts'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 import type { PerformanceSourceApi } from '../../../shared/repo/types.ts'
+import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
 
 type AuthWithApiKey = KitAuthCtx & { readonly apiKeyId?: string | null }
 
@@ -53,7 +54,7 @@ export const kitDeps: ServeTemplateDeps<AuthWithApiKey, TelemetryRequestContext>
   runQuotaGate,
   jsonErrorWrap,
   buildTelemetryCtx: ({ auth, obsCtx, isStreaming, requestStartedAt, endpointTag }) => ({
-    apiKeyId: (obsCtx.apiKeyId as string | null | undefined) ?? auth.apiKeyId ?? '<unknown>',
+    apiKeyId: (((obsCtx.apiKeyId as string | null | undefined) ?? auth.apiKeyId ?? '<unknown>') as ApiKeyId),
     userAgent: (obsCtx.userAgent as string | null | undefined) ?? null,
     requestId: (obsCtx.requestId as string | undefined) ?? crypto.randomUUID(),
     isStreaming,

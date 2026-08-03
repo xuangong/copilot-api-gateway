@@ -12,9 +12,10 @@
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../shared/repo/index.ts'
+import type { UserId } from '../../shared/repo/branded-ids.ts'
 
 export interface AuthCtx {
-  userId?: string
+  userId?: UserId
   authKind?: 'public' | 'session' | 'apiKey'
 }
 
@@ -26,7 +27,7 @@ observabilitySharesRouter.get('/_health', (c) =>
   c.json({ scope: 'control-plane:observability-shares', status: 'scaffold' }),
 )
 
-function requireSession(c: { get: (k: 'auth') => AuthCtx | undefined }): { userId: string } | null {
+function requireSession(c: { get: (k: 'auth') => AuthCtx | undefined }): { userId: UserId } | null {
   const auth = c.get('auth') ?? {}
   if (auth.authKind !== 'session' || !auth.userId) return null
   return { userId: auth.userId }
@@ -54,7 +55,7 @@ observabilitySharesRouter.post('/', async (c) => {
 observabilitySharesRouter.delete('/:viewerId', async (c) => {
   const sess = requireSession(c)
   if (!sess) return c.json({ error: 'Forbidden' }, 403)
-  const viewerId = c.req.param('viewerId')
+  const viewerId = c.req.param('viewerId') as UserId
   await getRepo().observabilityShares.unshare(sess.userId, viewerId)
   return c.json({ ok: true })
 })

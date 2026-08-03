@@ -39,6 +39,7 @@ import type {
   UsageRecord,
 } from '../../../shared/repo/types.ts'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
+import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
 
 /**
  * Map the inbound source-api to the upstream target-api the request resolves
@@ -190,7 +191,7 @@ export async function recordPerformance(
   const row: PerformanceRecordInput = {
     hour: currentHour(),
     metricScope: 'request_total',
-    keyId: performance.keyId,
+    keyId: performance.keyId as ApiKeyId,
     model: performance.model,
     upstream: performance.upstream,
     sourceApi,

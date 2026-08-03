@@ -28,13 +28,13 @@ export interface PresenceAuthCtx {
 
 type Vars = { auth: PresenceAuthCtx }
 
-async function getUserKeyIds(userId: UserId): Promise<string[]> {
+async function getUserKeyIds(userId: UserId): Promise<ApiKeyId[]> {
   const repo = getRepo()
   const [ownKeys, assignments] = await Promise.all([
     repo.apiKeys.listByOwner(userId),
     repo.keyAssignments.listByUser(userId),
   ])
-  const ids = new Set<string>(ownKeys.map((k: ApiKey) => k.id))
+  const ids = new Set<ApiKeyId>(ownKeys.map((k: ApiKey) => k.id))
   for (const a of assignments) ids.add(a.keyId)
   return [...ids]
 }
@@ -94,7 +94,7 @@ presenceRouter.get('/relays', async (c) => {
   } else if (auth.isViewingShared && auth.ownerId) {
     const ids = await getOwnedKeyIdsForScope(auth.ownerId)
     if (ids.length === 0) return c.json([])
-    clients = await repo.presence.listByKeyIds(ids)
+    clients = await repo.presence.listByKeyIds(ids as ApiKeyId[])
   } else if (auth.userId) {
     const userKeyIds = await getUserKeyIds(auth.userId)
     clients = await repo.presence.listByKeyIds(userKeyIds)
@@ -109,7 +109,7 @@ presenceRouter.get('/relays', async (c) => {
     .slice(0, 13)
   const endHour = new Date(now + 3600 * 1000).toISOString().slice(0, 13)
 
-  const keyIds = [...new Set(clients.map((c) => c.keyId).filter(Boolean) as string[])]
+  const keyIds = [...new Set(clients.map((c) => c.keyId).filter(Boolean) as ApiKeyId[])]
   const activeKeyIds = new Set<string>()
   if (keyIds.length > 0) {
     try {
@@ -124,7 +124,7 @@ presenceRouter.get('/relays', async (c) => {
   if (auth.isAdmin) {
     const ownerIds = [...new Set(clients.map((c) => c.ownerId).filter(Boolean) as string[])]
     if (ownerIds.length > 0) {
-      const users = await Promise.all(ownerIds.map((id) => repo.users.getById(id)))
+      const users = await Promise.all(ownerIds.map((id) => repo.users.getById(id as UserId)))
       for (const u of users) {
         if (u) ownerNameMap.set(u.id, u.name)
       }

@@ -11,6 +11,7 @@
 
 import type { WebSearchProviderName } from './types.ts'
 import { getRepo } from '../../../shared/repo/index.ts'
+import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
 
 export type SearchUsageAction = 'search' | 'fetch_page'
 
@@ -33,9 +34,9 @@ export const recordSearchUsage = async (args: {
   const repo = getRepo()
 
   if (args.action === 'search') {
-    await repo.webSearchUsage.record(args.keyId, hour, true)
+    await repo.webSearchUsage.record(args.keyId as ApiKeyId, hour, true)
   }
-  await repo.webSearchEngineUsage.record(args.keyId, args.provider, hour, {
+  await repo.webSearchEngineUsage.record(args.keyId as ApiKeyId, args.provider, hour, {
     ok: true,
     resultCount: 0,
     durationMs: 0,

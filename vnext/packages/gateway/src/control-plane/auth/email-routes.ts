@@ -96,11 +96,11 @@ emailAuthRouter.post('/email/verify', async (c) => {
     id: userId,
     name: stored.name,
     email: normalizedEmail,
-    avatarUrl: null,
+    avatarUrl: undefined,
     createdAt: new Date().toISOString(),
     disabled: false,
     lastLoginAt: new Date().toISOString(),
-    userKey: null,
+    userKey: undefined,
     passwordHash: pwHash,
   })
   await repo.inviteCodes.markUsed(invite.id, userId)

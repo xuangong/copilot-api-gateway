@@ -31,6 +31,7 @@ import type { Env } from '../../app.ts'
 import type { UpstreamKind, EndpointKey } from '@vibe-llm/protocols/common'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { UpstreamRecord } from '../../shared/repo/types.ts'
+import type { UserId } from '../../shared/repo/branded-ids.ts'
 import {
   getFlagCatalog,
   defaultsForUpstream,
@@ -47,7 +48,7 @@ import type { SdfProviderConfig as PkgSdfConfig } from '@vibe-llm/provider-sdf'
 export interface AuthCtx {
   isAdmin?: boolean
   isUser?: boolean
-  userId?: string
+  userId?: UserId
 }
 
 type Vars = { auth: AuthCtx }
@@ -110,7 +111,7 @@ function isAdmin(c: { get: (k: 'auth') => AuthCtx | undefined }): boolean {
   return !!c.get('auth')?.isAdmin
 }
 
-function authUserId(c: { get: (k: 'auth') => AuthCtx | undefined }): string | undefined {
+function authUserId(c: { get: (k: 'auth') => AuthCtx | undefined }): UserId | undefined {
   return c.get('auth')?.userId
 }
 
@@ -416,7 +417,7 @@ upstreamsRouter.get('/', async (c) => {
   const userId = authUserId(c)
   if (!admin && !userId) return jsonError('Forbidden', 403)
   const url = new URL(c.req.url)
-  const ownerId = admin ? (url.searchParams.get('ownerId') ?? undefined) : userId
+  const ownerId = admin ? ((url.searchParams.get('ownerId') ?? undefined) as UserId | undefined) : userId
   const includeDisabled = url.searchParams.get('includeDisabled') === '1'
   const upstreams = await getRepo().upstreams.list({ ownerId, includeDisabled })
   return c.json({ upstreams: upstreams.map(serializeUpstream) })
@@ -541,7 +542,7 @@ upstreamsRouter.delete('/:id', async (c) => {
     const userId = (existing.config as { user?: { id?: number } } | undefined)?.user?.id
     if (typeof userId === 'number') {
       try {
-        await getRepo().github.deleteAccount(userId, existing.ownerId ?? '')
+        await getRepo().github.deleteAccount(userId, (existing.ownerId ?? '') as UserId)
       } catch {}
     }
   }

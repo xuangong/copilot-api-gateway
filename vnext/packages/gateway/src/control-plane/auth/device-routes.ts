@@ -42,8 +42,8 @@ deviceAuthRouter.post('/device/code', async (c) => {
     userCode,
     expiresAt: expiresAt.toISOString(),
     createdAt: now.toISOString(),
-    userId: null,
-    sessionToken: null,
+    userId: undefined,
+    sessionToken: undefined,
   })
 
   return c.json({

@@ -12,21 +12,22 @@
  */
 import type { Context, MiddlewareHandler } from 'hono'
 import { getRepo } from '../repo/index.ts'
+import type { UserId } from '../repo/branded-ids.ts'
 
 export interface ViewContext {
-  effectiveUserId?: string
+  effectiveUserId?: UserId
   isViewingShared: boolean
-  ownerId?: string
+  ownerId?: UserId
 }
 
 interface AuthLike {
-  userId?: string
+  userId?: UserId
   authKind?: 'public' | 'session' | 'apiKey'
 }
 
 /** Resolve view context from auth + ?as_user= for a single request. */
 export async function deriveViewContext(c: Context, auth: AuthLike): Promise<ViewContext | { denied: true }> {
-  const asUser = c.req.query('as_user')
+  const asUser = c.req.query('as_user') as UserId | undefined
   const callerId = auth.userId
   if (!callerId) {
     return { isViewingShared: false }
@@ -57,7 +58,7 @@ export const resolveViewContextMiddleware: MiddlewareHandler = async (c, next) =
  * Owned-only key scoping for shared mode. Returns ONLY keys whose
  * ownerId === userId — excludes keys assigned-to userId.
  */
-export async function getOwnedKeyIdsForScope(userId: string): Promise<string[]> {
+export async function getOwnedKeyIdsForScope(userId: UserId): Promise<string[]> {
   const owned = await getRepo().apiKeys.listByOwner(userId)
   return owned.map((k) => k.id)
 }

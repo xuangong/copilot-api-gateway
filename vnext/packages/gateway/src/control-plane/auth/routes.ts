@@ -10,7 +10,7 @@ import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { InviteCode } from '../../shared/repo/types.ts'
-import type { InviteCodeId } from '../../shared/repo/branded-ids.ts'
+import type { InviteCodeId, UserId } from '../../shared/repo/branded-ids.ts'
 import { ADMIN_EMAILS } from '../../shared/config/constants.ts'
 import { validateApiKey } from '../../shared/lib/api-keys.ts'
 import { emailAuthRouter } from './email-routes.ts'
@@ -150,10 +150,10 @@ authRouter.post('/admin/invite-codes', async (c) => {
     id: crypto.randomUUID() as InviteCodeId,
     code: generateInviteCode(),
     name: body.name,
-    email: null,
+    email: undefined,
     createdAt: new Date().toISOString(),
-    usedAt: null,
-    usedBy: null,
+    usedAt: undefined,
+    usedBy: undefined,
   }
   await getRepo().inviteCodes.create(code)
   return c.json(code)
@@ -194,20 +194,20 @@ authRouter.get('/admin/users', async (c) => {
 
 authRouter.post('/admin/users/:id/disable', async (c) => {
   if (!c.get('auth')?.isAdmin) return c.json({ error: 'Admin only' }, 403)
-  await getRepo().users.update(c.req.param('id'), { disabled: true })
+  await getRepo().users.update(c.req.param('id') as UserId, { disabled: true })
   return c.json({ ok: true })
 })
 
 authRouter.post('/admin/users/:id/enable', async (c) => {
   if (!c.get('auth')?.isAdmin) return c.json({ error: 'Admin only' }, 403)
-  await getRepo().users.update(c.req.param('id'), { disabled: false })
+  await getRepo().users.update(c.req.param('id') as UserId, { disabled: false })
   return c.json({ ok: true })
 })
 
 authRouter.delete('/admin/users/:id', async (c) => {
   if (!c.get('auth')?.isAdmin) return c.json({ error: 'Admin only' }, 403)
   const repo = getRepo()
-  const userId = c.req.param('id')
+  const userId = c.req.param('id') as UserId
 
   await repo.sessions.deleteByUserId(userId)
   await repo.inviteCodes.clearUsedBy(userId)

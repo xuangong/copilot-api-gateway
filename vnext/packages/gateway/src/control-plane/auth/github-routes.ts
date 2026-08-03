@@ -25,6 +25,7 @@ import {
 import { GITHUB_CLIENT_ID } from '../../shared/config/constants.ts'
 import { detectAccountType, GITHUB_SCOPES } from './utils.ts'
 import type { AuthCtx } from './routes.ts'
+import type { UserId } from '../../shared/repo/branded-ids.ts'
 
 type Vars = { auth: AuthCtx }
 
@@ -108,7 +109,7 @@ githubAuthRouter.post('/github/poll', async (c) => {
     }
     const user = (await userResp.json()) as GitHubUser
     const accountType = await detectAccountType(data.access_token)
-    await addGithubAccount(data.access_token, user, accountType, userId)
+    await addGithubAccount(data.access_token, user, accountType, userId as UserId | undefined)
     return c.json({ status: 'complete', user })
   }
 
@@ -122,7 +123,7 @@ githubAuthRouter.get('/me', async (c) => {
     const all = await listGithubAccounts()
     githubConnected = all.length > 0
   } else if (userId) {
-    const own = await listGithubAccountsForUser(userId)
+    const own = await listGithubAccountsForUser(userId as UserId)
     githubConnected = own.length > 0
   }
   return c.json({
@@ -138,7 +139,7 @@ githubAuthRouter.delete('/github/:id', async (c) => {
   if (!ghUserId || isNaN(ghUserId)) {
     return c.json({ error: 'Invalid user ID' }, 400)
   }
-  await removeGithubAccount(ghUserId, isAdmin ? undefined : userId)
+  await removeGithubAccount(ghUserId, isAdmin ? undefined : (userId as UserId | undefined))
   return c.json({ ok: true })
 })
 
@@ -146,7 +147,7 @@ githubAuthRouter.post('/github/switch', async (c) => {
   const userId = c.get('auth')?.userId
   const body = (await c.req.json().catch(() => ({}))) as { user_id?: number }
   if (!body.user_id) return c.json({ error: 'user_id is required' }, 400)
-  const ok = await setActiveGithubAccount(body.user_id, userId)
+  const ok = await setActiveGithubAccount(body.user_id, userId as UserId | undefined)
   if (!ok) return c.json({ error: 'Account not found' }, 404)
   return c.json({ ok: true })
 })

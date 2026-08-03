@@ -9,11 +9,12 @@ import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import { createGithubHeaders } from '../../shared/config/constants.ts'
+import type { UserId } from '../../shared/repo/branded-ids.ts'
 
 export interface CopilotQuotaAuthCtx {
   isAdmin?: boolean
-  userId?: string
-  effectiveUserId?: string
+  userId?: UserId
+  effectiveUserId?: UserId
 }
 
 type Vars = { auth: CopilotQuotaAuthCtx }

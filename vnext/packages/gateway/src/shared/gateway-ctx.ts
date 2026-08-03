@@ -11,6 +11,7 @@
  */
 import type { PerformanceTelemetryContext } from '@vibe-llm/protocols/common'
 import { getRepo } from './repo/index.ts'
+import type { ApiKeyId } from './repo/branded-ids.ts'
 import type {
   PerformanceOperation,
   PerformanceRecordInput,
@@ -75,7 +76,7 @@ export async function recordImagePerformance(args: {
   const row: PerformanceRecordInput = {
     hour: currentHour(),
     metricScope: 'request_total',
-    keyId: args.apiKeyId,
+    keyId: args.apiKeyId as ApiKeyId,
     model: args.model,
     upstream: args.upstream,
     sourceApi: args.sourceApi ?? 'responses',

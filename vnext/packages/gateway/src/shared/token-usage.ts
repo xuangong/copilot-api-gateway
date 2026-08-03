@@ -22,6 +22,7 @@
 import type { ModelPricing } from '@vibe-llm/protocols/common'
 import { getRepo } from './repo/index.ts'
 import type { Repo, TokenUsage, UsageRecord } from './repo/types.ts'
+import type { ApiKeyId } from './repo/branded-ids.ts'
 
 const TOKEN_USAGE_KEYS = [
   'input',
@@ -132,7 +133,7 @@ export const recordTokenUsage = async (
   const tokens = tokenUsage(usage)
   if (!nonZero(tokens)) return
   const row: UsageRecord = {
-    keyId: apiKeyId,
+    keyId: apiKeyId as ApiKeyId,
     model: modelIdentity.model,
     modelKey: modelIdentity.modelKey,
     upstream: modelIdentity.upstream,
