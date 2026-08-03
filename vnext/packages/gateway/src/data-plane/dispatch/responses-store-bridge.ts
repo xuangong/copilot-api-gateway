@@ -7,13 +7,13 @@
  * sees it. `savePostTurnSnapshot` is the post-turn writer.
  */
 import type { ResponsesSnapshotStore } from '@vibe-llm/responses-store'
-import type { ApiKeyId } from '../../shared/repo/branded-ids.ts'
+import type { ApiKeyId, ResponsesItemId } from '../../shared/repo/branded-ids.ts'
 
 const DEFAULT_TTL_MS = 24 * 3600_000
 
 export class PreviousResponseNotFoundError extends Error {
   readonly status = 400
-  constructor(readonly responseId: string) {
+  constructor(readonly responseId: ResponsesItemId) {
     super(`Previous response with id '${responseId}' not found.`)
     this.name = 'PreviousResponseNotFoundError'
   }
@@ -24,8 +24,11 @@ export async function expandPreviousResponseId(
   store: ResponsesSnapshotStore,
   apiKeyId: ApiKeyId | null,
 ): Promise<void> {
-  const id = payload.previous_response_id
-  if (id == null || id === '') return
+  const raw = payload.previous_response_id
+  if (raw == null || raw === '') return
+  // Intake boundary: brand the untrusted string from the parsed payload
+  // once here so downstream code operates on ResponsesItemId.
+  const id = raw as ResponsesItemId
   const snap = await store.load(id, apiKeyId)
   if (!snap) throw new PreviousResponseNotFoundError(id)
   const existing = Array.isArray(payload.input)
@@ -40,7 +43,7 @@ export async function expandPreviousResponseId(
 export async function savePostTurnSnapshot(
   store: ResponsesSnapshotStore,
   args: {
-    responseId: string
+    responseId: ResponsesItemId
     apiKeyId: ApiKeyId | null
     model: string
     inputItems: unknown[]

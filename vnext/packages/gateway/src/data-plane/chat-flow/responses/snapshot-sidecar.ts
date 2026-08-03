@@ -3,7 +3,7 @@ import type { Context } from 'hono'
 import { parseResponsesSSEStream } from '@vibe-llm/provider-copilot'
 import { savePostTurnSnapshot } from '../../dispatch/responses-store-bridge.ts'
 import { getResponsesStore } from '../../../shared/runtime/responses-store.ts'
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import type { ApiKeyId, ResponsesItemId } from '../../../shared/repo/branded-ids.ts'
 
 /**
  * Sidecar snapshot writers for /v1/responses.
@@ -53,7 +53,7 @@ export function attachStreamSidecar(args: SidecarArgs): Response {
       }
       if (responseId) {
         await savePostTurnSnapshot(store, {
-          responseId,
+          responseId: responseId as ResponsesItemId,
           apiKeyId,
           model,
           inputItems: mergedInputItems,
@@ -90,7 +90,7 @@ export function attachNonStreamSidecar(args: SidecarArgs): Response {
       }
       if (typeof json.id === 'string' && Array.isArray(json.output)) {
         await savePostTurnSnapshot(store, {
-          responseId: json.id,
+          responseId: json.id as ResponsesItemId,
           apiKeyId,
           model: typeof json.model === 'string' ? json.model : fallbackModel,
           inputItems: mergedInputItems,
