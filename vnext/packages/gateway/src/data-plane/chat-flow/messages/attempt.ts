@@ -45,9 +45,9 @@ import {
   type AttemptBindingShape,
 } from '../shared/attempt-helpers.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import type { SelectBindingAuth } from '../shared/select-binding.ts'
 import { withUpstreamTelemetry } from '../shared/upstream-telemetry'
-import { enumerateBindingCandidates, type EnumerateOptions } from '../../routing/candidates.ts'
+import { enumerateBindingCandidates } from '../../routing/candidates.ts'
 import { selectPair } from '../../dispatch/pair-selector.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
 import { traverseTranslation } from '../shared/traverse-translation.ts'
@@ -57,12 +57,11 @@ import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-d
 
 export type MessagesAttemptResult = LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>
 
-export interface MessagesAttemptAuth {
-  readonly ownerId?: string
-  readonly pin?: string
-  readonly copilot?: EnumerateOptions['copilot']
-  readonly apiKeyId?: ApiKeyId
-}
+// Empty extension keeps the local type name for readability and gives us a
+// forward-compatible slot if messages ever needs auth fields the shared
+// SelectBindingAuth doesn't carry. The 4 fields (ownerId/pin/copilot/apiKeyId)
+// live on SelectBindingAuth.
+export type MessagesAttemptAuth = SelectBindingAuth
 
 /**
  * NonStreamPayload is the messages-specific JSON envelope produced when the

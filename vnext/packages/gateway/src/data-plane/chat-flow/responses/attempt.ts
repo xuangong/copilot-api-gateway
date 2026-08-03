@@ -55,9 +55,9 @@ import {
   type AttemptBindingShape,
 } from '../shared/attempt-helpers.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import type { SelectBindingAuth } from '../shared/select-binding.ts'
 import { withUpstreamTelemetry } from '../shared/upstream-telemetry'
-import { enumerateBindingCandidates, type EnumerateOptions } from '../../routing/candidates.ts'
+import { enumerateBindingCandidates } from '../../routing/candidates.ts'
 import { selectPair } from '../../dispatch/pair-selector.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
 import { traverseTranslation } from '../shared/traverse-translation.ts'
@@ -69,12 +69,7 @@ export type ResponsesAttemptResult =
   | LlmExecuteResult<ProtocolFrame<ResponsesStreamEvent>>
   | { readonly kind: 'bridged-response'; readonly response: Response }
 
-export interface ResponsesAttemptAuth {
-  readonly ownerId?: string
-  readonly pin?: string
-  readonly copilot?: EnumerateOptions['copilot']
-  readonly apiKeyId?: ApiKeyId
-}
+export type ResponsesAttemptAuth = SelectBindingAuth
 
 export interface ResponsesAttemptArgs {
   readonly payload: Record<string, unknown> & { model: string; stream?: boolean; input?: unknown; tools?: unknown }
