@@ -11,18 +11,18 @@ import type {
   GitHubUser,
   UpstreamRecord,
 } from '../repo/types.ts'
-import type { UpstreamId, UserId } from '../repo/branded-ids.ts'
+import type { GitHubAccountId, UpstreamId, UserId } from '../repo/branded-ids.ts'
 
 export type { GitHubAccount, GitHubUser }
 
 export interface GithubCredentials {
   token: string
   accountType: string
-  userId: number
+  userId: GitHubAccountId
   flagOverrides?: Record<string, boolean>
 }
 
-export function copilotUpstreamRowId(ownerId: UserId | '', userId: number): UpstreamId {
+export function copilotUpstreamRowId(ownerId: UserId | '', userId: GitHubAccountId): UpstreamId {
   return `up_copilot_${ownerId || 'global'}_${userId}`.replace(/[^a-zA-Z0-9_-]/g, '_') as UpstreamId
 }
 
@@ -92,7 +92,7 @@ export async function addGithubAccount(
 }
 
 export async function removeGithubAccount(
-  userId: number,
+  userId: GitHubAccountId,
   ownerId?: UserId,
 ): Promise<void> {
   const repo = getRepo().github
@@ -108,7 +108,7 @@ export async function removeGithubAccount(
 }
 
 export async function setActiveGithubAccount(
-  userId: number,
+  userId: GitHubAccountId,
   ownerId?: UserId,
 ): Promise<boolean> {
   const repo = getRepo().github

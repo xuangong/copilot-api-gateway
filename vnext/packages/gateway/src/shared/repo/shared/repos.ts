@@ -39,7 +39,7 @@ import type {
   WebSearchUsageRecord,
   WebSearchUsageRepo,
 } from "../types"
-import type { ApiKeyId, ResponsesItemId, UpstreamId, UserId } from "../branded-ids.ts"
+import type { ApiKeyId, GitHubAccountId, ResponsesItemId, UpstreamId, UserId } from "../branded-ids.ts"
 import { latencyBucketForMs } from "../../performance-histogram.ts"
 import type { SqlExecutor } from "./executor"
 import { BILLING_DIMENSIONS, unitPriceForDimension } from "@vibe-llm/protocols/common"
@@ -111,7 +111,7 @@ function toGitHubAccount(row: any): GitHubAccount {
     token: row.token,
     accountType: row.account_type,
     ownerId: row.owner_id ? (row.owner_id as UserId) : undefined,
-    user: { id: row.user_id, login: row.login, name: row.name, avatar_url: row.avatar_url },
+    user: { id: row.user_id as GitHubAccountId, login: row.login, name: row.name, avatar_url: row.avatar_url },
     enabled: row.enabled === undefined ? undefined : row.enabled === 1,
     sortOrder: row.sort_order ?? undefined,
     flagOverrides,
@@ -331,12 +331,12 @@ class SharedGitHubRepo implements GitHubRepo {
     return (await this.x.all(`SELECT ${GITHUB_COLS} FROM github_accounts WHERE owner_id = ?`, [ownerId])).map(toGitHubAccount)
   }
 
-  async getAccount(userId: number, ownerId?: UserId): Promise<GitHubAccount | null> {
+  async getAccount(userId: GitHubAccountId, ownerId?: UserId): Promise<GitHubAccount | null> {
     const row = await this.x.first(`SELECT ${GITHUB_COLS} FROM github_accounts WHERE user_id = ? AND owner_id = ?`, [userId, ownerId ?? ""])
     return row ? toGitHubAccount(row) : null
   }
 
-  async saveAccount(userId: number, account: GitHubAccount): Promise<void> {
+  async saveAccount(userId: GitHubAccountId, account: GitHubAccount): Promise<void> {
     const flagOverridesJson = account.flagOverrides ? JSON.stringify(account.flagOverrides) : "{}"
     const updatedAt = account.updatedAt ?? new Date().toISOString()
     await this.x.run(
@@ -352,7 +352,7 @@ class SharedGitHubRepo implements GitHubRepo {
     )
   }
 
-  async deleteAccount(userId: number, ownerId?: UserId): Promise<void> {
+  async deleteAccount(userId: GitHubAccountId, ownerId?: UserId): Promise<void> {
     if (ownerId !== undefined) {
       await this.x.run("DELETE FROM github_accounts WHERE user_id = ? AND owner_id = ?", [userId, ownerId])
     } else {
@@ -365,12 +365,12 @@ class SharedGitHubRepo implements GitHubRepo {
     await this.clearActiveId()
   }
 
-  async getActiveId(): Promise<number | null> {
+  async getActiveId(): Promise<GitHubAccountId | null> {
     const row = await this.x.first<{ value: string }>("SELECT value FROM config WHERE key = ?", ["active_github_account"])
-    return row ? Number(row.value) : null
+    return row ? (Number(row.value) as GitHubAccountId) : null
   }
 
-  async setActiveId(userId: number): Promise<void> {
+  async setActiveId(userId: GitHubAccountId): Promise<void> {
     await this.x.run("INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", ["active_github_account", String(userId)])
   }
 
@@ -378,12 +378,12 @@ class SharedGitHubRepo implements GitHubRepo {
     await this.x.run("DELETE FROM config WHERE key = ?", ["active_github_account"])
   }
 
-  async getActiveIdForUser(ownerId: UserId): Promise<number | null> {
+  async getActiveIdForUser(ownerId: UserId): Promise<GitHubAccountId | null> {
     const row = await this.x.first<{ value: string }>("SELECT value FROM config WHERE key = ?", [`active_github_account:${ownerId}`])
-    return row ? Number(row.value) : null
+    return row ? (Number(row.value) as GitHubAccountId) : null
   }
 
-  async setActiveIdForUser(ownerId: UserId, userId: number): Promise<void> {
+  async setActiveIdForUser(ownerId: UserId, userId: GitHubAccountId): Promise<void> {
     await this.x.run("INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", [`active_github_account:${ownerId}`, String(userId)])
   }
 

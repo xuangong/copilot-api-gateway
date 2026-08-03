@@ -31,7 +31,7 @@ import type { Env } from '../../app.ts'
 import type { UpstreamKind, EndpointKey } from '@vibe-llm/protocols/common'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { UpstreamRecord } from '../../shared/repo/types.ts'
-import type { UpstreamId, UserId } from '../../shared/repo/branded-ids.ts'
+import type { GitHubAccountId, UpstreamId, UserId } from '../../shared/repo/branded-ids.ts'
 import {
   getFlagCatalog,
   defaultsForUpstream,
@@ -542,7 +542,7 @@ upstreamsRouter.delete('/:id', async (c) => {
     const userId = (existing.config as { user?: { id?: number } } | undefined)?.user?.id
     if (typeof userId === 'number') {
       try {
-        await getRepo().github.deleteAccount(userId, (existing.ownerId ?? '') as UserId)
+        await getRepo().github.deleteAccount(userId as GitHubAccountId, (existing.ownerId ?? '') as UserId)
       } catch {}
     }
   }

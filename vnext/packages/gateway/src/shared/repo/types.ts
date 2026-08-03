@@ -1,6 +1,6 @@
 import type { BillingDimension, ModelPricing, UpstreamKind, UpstreamRecord } from "@vibe-llm/protocols/common"
 import type { SearchConfig } from "../web-search-providers.ts"
-import type { ApiKeyId, ResponsesItemId, UpstreamId, UserId } from "./branded-ids.ts"
+import type { ApiKeyId, GitHubAccountId, ResponsesItemId, UpstreamId, UserId } from "./branded-ids.ts"
 
 export type { SearchConfig, WebSearchProviderName } from "../web-search-providers.ts"
 
@@ -31,7 +31,7 @@ export interface ApiKey {
 }
 
 export interface GitHubUser {
-  id: number
+  id: GitHubAccountId
   login: string
   name: string | null
   avatar_url: string
@@ -116,15 +116,15 @@ export interface ApiKeyRepo {
 export interface GitHubRepo {
   listAccounts(): Promise<GitHubAccount[]>
   listAccountsByOwner(ownerId: UserId): Promise<GitHubAccount[]>
-  getAccount(userId: number, ownerId?: UserId): Promise<GitHubAccount | null>
-  saveAccount(userId: number, account: GitHubAccount): Promise<void>
-  deleteAccount(userId: number, ownerId?: UserId): Promise<void>
+  getAccount(userId: GitHubAccountId, ownerId?: UserId): Promise<GitHubAccount | null>
+  saveAccount(userId: GitHubAccountId, account: GitHubAccount): Promise<void>
+  deleteAccount(userId: GitHubAccountId, ownerId?: UserId): Promise<void>
   deleteAllAccounts(): Promise<void>
-  getActiveId(): Promise<number | null>
-  setActiveId(userId: number): Promise<void>
+  getActiveId(): Promise<GitHubAccountId | null>
+  setActiveId(userId: GitHubAccountId): Promise<void>
   clearActiveId(): Promise<void>
-  getActiveIdForUser(ownerId: UserId): Promise<number | null>
-  setActiveIdForUser(ownerId: UserId, userId: number): Promise<void>
+  getActiveIdForUser(ownerId: UserId): Promise<GitHubAccountId | null>
+  setActiveIdForUser(ownerId: UserId, userId: GitHubAccountId): Promise<void>
   clearActiveIdForUser(ownerId: UserId): Promise<void>
 }
 
