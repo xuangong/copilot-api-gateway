@@ -100,10 +100,13 @@ const upstreamJson = {
 }
 
 function makeUpstreamSSE(): Response {
+  const item = { type: 'message', id: 'msg_upstream_1', role: 'assistant', content: [] as unknown[] }
   const body = [
     `event: response.created\ndata: ${JSON.stringify({ type: 'response.created', response: { id: 'resp_upstream_1' } })}\n\n`,
-    `event: response.output_text.delta\ndata: ${JSON.stringify({ type: 'response.output_text.delta', delta: 'Hello from upstream' })}\n\n`,
-    `event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed', response: { id: 'resp_upstream_1', usage: { input_tokens: 5, output_tokens: 7 }, finish_reason: 'stop' } })}\n\n`,
+    `event: response.output_item.added\ndata: ${JSON.stringify({ type: 'response.output_item.added', output_index: 0, item })}\n\n`,
+    `event: response.output_text.delta\ndata: ${JSON.stringify({ type: 'response.output_text.delta', item_id: 'msg_upstream_1', output_index: 0, delta: 'Hello from upstream' })}\n\n`,
+    `event: response.output_item.done\ndata: ${JSON.stringify({ type: 'response.output_item.done', output_index: 0, item })}\n\n`,
+    `event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed', response: { id: 'resp_upstream_1', output: [item], usage: { input_tokens: 5, output_tokens: 7 }, finish_reason: 'stop' } })}\n\n`,
   ].join('')
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }

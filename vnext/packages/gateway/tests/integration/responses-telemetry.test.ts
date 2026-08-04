@@ -122,6 +122,7 @@ function installFetch(opts: FetchOpts): void {
         return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       const m = opts.modelInChunk ?? MODEL_ID
+      const messageItem = { type: 'message', id: 'msg_tel_1', role: 'assistant', content: [] as unknown[] }
       const sse = opts.sse ?? [
         `event: response.created\ndata: ${JSON.stringify({
           type: 'response.created',
@@ -139,18 +140,21 @@ function installFetch(opts: FetchOpts): void {
           },
           sequence_number: 1,
         })}\n\n`,
+        `event: response.output_item.added\ndata: ${JSON.stringify({
+          type: 'response.output_item.added', output_index: 0, item: messageItem, sequence_number: 2,
+        })}\n\n`,
         `event: response.output_text.delta\ndata: ${JSON.stringify({
-          type: 'response.output_text.delta', delta: 'ok', sequence_number: 2,
+          type: 'response.output_text.delta', item_id: 'msg_tel_1', output_index: 0, delta: 'ok', sequence_number: 3,
         })}\n\n`,
         `event: response.completed\ndata: ${JSON.stringify({
           type: 'response.completed',
           response: {
             id: 'resp_tel_1', object: 'response', model: m,
             status: 'completed',
-            output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'ok' }] }],
+            output: [{ type: 'message', id: 'msg_tel_1', role: 'assistant', content: [{ type: 'output_text', text: 'ok' }] }],
             usage: { input_tokens: 3, output_tokens: 5, total_tokens: 8 },
           },
-          sequence_number: 3,
+          sequence_number: 4,
         })}\n\n`,
       ].join('')
       return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } })

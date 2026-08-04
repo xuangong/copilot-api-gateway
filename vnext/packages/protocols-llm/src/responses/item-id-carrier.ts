@@ -28,7 +28,7 @@ export type DecodedCopilotItemIdCarrier =
   | ({ kind: 'owned'; value: string } & CopilotItemIdData)
 
 const textEncoder = new TextEncoder()
-const fatalTextDecoder = new TextDecoder('utf-8', { fatal: true })
+const fatalTextDecoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false })
 
 const parseData = (value: unknown): CopilotItemIdData | null => {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
