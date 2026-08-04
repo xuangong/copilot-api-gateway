@@ -47,7 +47,7 @@ import type { BillingDimension, ModelPricing } from "@vibe-llm/protocols/common"
 
 const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref, dump_retention_seconds"
 const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at"
-const UPSTREAM_COLS = "id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, created_at, updated_at"
+const UPSTREAM_COLS = "id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, state_json, created_at, updated_at"
 const USAGE_DIM_COLS = "key_id, model, upstream, model_key, client, hour, dimension, tokens, unit_price"
 const USAGE_REQ_COLS = "key_id, model, upstream, model_key, client, hour, requests"
 const LATENCY_COLS = "key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss"
@@ -164,7 +164,17 @@ function parseStringArray(raw: unknown): string[] {
   }
 }
 
-function toUpstreamRecord(row: any): UpstreamRecord {
+function parseState(raw: unknown): unknown {
+  if (raw === null || raw === undefined) return null
+  if (typeof raw !== "string" || raw.length === 0) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+function toUpstreamRecord(row: any): UpstreamRecord<unknown> {
   return {
     id: row.id,
     ownerId: row.owner_id || undefined,
@@ -175,6 +185,7 @@ function toUpstreamRecord(row: any): UpstreamRecord {
     config: parseObject(row.config_json),
     flagOverrides: parseBooleanRecord(row.flag_overrides),
     disabledPublicModelIds: parseStringArray(row.disabled_public_model_ids),
+    state: parseState(row.state_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -395,7 +406,7 @@ class SharedGitHubRepo implements GitHubRepo {
 class SharedUpstreamRepo implements UpstreamRepo {
   constructor(private x: SqlExecutor) {}
 
-  async list(opts: { ownerId?: UserId; includeDisabled?: boolean } = {}): Promise<UpstreamRecord[]> {
+  async list(opts: { ownerId?: UserId; includeDisabled?: boolean } = {}): Promise<UpstreamRecord<unknown>[]> {
     const where: string[] = []
     const binds: unknown[] = []
     if (opts.ownerId !== undefined) {
@@ -407,15 +418,15 @@ class SharedUpstreamRepo implements UpstreamRepo {
     return (await this.x.all(sql, binds)).map(toUpstreamRecord)
   }
 
-  async getById(id: UpstreamId): Promise<UpstreamRecord | null> {
+  async getById<TState = unknown>(id: UpstreamId): Promise<UpstreamRecord<TState> | null> {
     const row = await this.x.first(`SELECT ${UPSTREAM_COLS} FROM upstreams WHERE id = ?`, [id])
-    return row ? toUpstreamRecord(row) : null
+    return row ? (toUpstreamRecord(row) as UpstreamRecord<TState>) : null
   }
 
-  async save(upstream: UpstreamRecord): Promise<void> {
+  async save(upstream: UpstreamRecord<unknown>): Promise<void> {
     await this.x.run(
-      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET owner_id = excluded.owner_id, provider = excluded.provider, name = excluded.name, enabled = excluded.enabled, sort_order = excluded.sort_order, config_json = excluded.config_json, flag_overrides = excluded.flag_overrides, disabled_public_model_ids = excluded.disabled_public_model_ids, updated_at = excluded.updated_at`,
+      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET owner_id = excluded.owner_id, provider = excluded.provider, name = excluded.name, enabled = excluded.enabled, sort_order = excluded.sort_order, config_json = excluded.config_json, flag_overrides = excluded.flag_overrides, disabled_public_model_ids = excluded.disabled_public_model_ids, state_json = excluded.state_json, updated_at = excluded.updated_at`,
       [
         upstream.id,
         upstream.ownerId ?? "",
@@ -426,6 +437,7 @@ class SharedUpstreamRepo implements UpstreamRepo {
         JSON.stringify(upstream.config ?? {}),
         JSON.stringify(upstream.flagOverrides ?? {}),
         JSON.stringify(upstream.disabledPublicModelIds ?? []),
+        upstream.state === null || upstream.state === undefined ? null : JSON.stringify(upstream.state),
         upstream.createdAt,
         upstream.updatedAt,
       ],
@@ -439,6 +451,24 @@ class SharedUpstreamRepo implements UpstreamRepo {
 
   async deleteAll(): Promise<void> {
     await this.x.run("DELETE FROM upstreams", [])
+  }
+
+  async saveState<TState>(id: UpstreamId, updater: (current: TState) => TState): Promise<void> {
+    // Serial read-modify-write: SqlExecutor has no tx primitive, so concurrent
+    // rotations are last-write-wins. Codex OAuth rotation is bounded by a single
+    // refresh call in-flight per upstream, so contention is negligible.
+    const row = await this.x.first<{ state_json: string | null }>(
+      "SELECT state_json FROM upstreams WHERE id = ?",
+      [id],
+    )
+    if (!row) throw new Error(`upstream ${id} not found`)
+    const current = parseState(row.state_json) as TState
+    const next = updater(current)
+    const nextJson = next === null || next === undefined ? null : JSON.stringify(next)
+    await this.x.run(
+      "UPDATE upstreams SET state_json = ?, updated_at = ? WHERE id = ?",
+      [nextJson, new Date().toISOString(), id],
+    )
   }
 }
 

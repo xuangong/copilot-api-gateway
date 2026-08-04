@@ -88,7 +88,7 @@ const stubChatModel = (id: string): Model => ({
   },
 })
 
-const stubUpstream = (): UpstreamRecord => ({
+const stubUpstream = (): UpstreamRecord<unknown> => ({
   id: 'copilot:u1',
   provider: 'copilot',
   name: 'u1',
@@ -97,11 +97,12 @@ const stubUpstream = (): UpstreamRecord => ({
   config: { githubToken: 'ghp_test' },
   flagOverrides: {},
   disabledPublicModelIds: [],
+  state: null,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 })
 
-const stubRepo = (upstreams: UpstreamRecord[]): Repo => ({
+const stubRepo = (upstreams: UpstreamRecord<unknown>[]): Repo => ({
   upstreams: { list: async () => upstreams },
 } as unknown as Repo)
 

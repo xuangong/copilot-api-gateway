@@ -62,7 +62,7 @@ const PROVIDER_PLUGINS = new Map(
 ) satisfies ReadonlyMap<UpstreamKind, LlmProviderPlugin>
 
 export async function createProviderFromUpstream(
-  upstream: UpstreamRecord,
+  upstream: UpstreamRecord<unknown>,
   copilot?: CreateProviderOptions,
 ): Promise<LlmModelProvider | null> {
   const plugin = PROVIDER_PLUGINS.get(upstream.provider)
@@ -160,7 +160,7 @@ const MODELS_L2_TTL_SEC = 120
 const modelsMemo = new Map<string, { expiresAt: number; models: ModelsResponse }>()
 
 async function getCachedModels(
-  upstream: UpstreamRecord,
+  upstream: UpstreamRecord<unknown>,
   provider: LlmModelProvider,
 ): Promise<ModelsResponse> {
   const key = `models:${upstream.id}@${upstream.updatedAt}`
@@ -204,13 +204,13 @@ export function _clearModelsMemoForTest(): void {
 // previous test can't bleed into the next one.
 __registerPlatformReset(() => modelsMemo.clear())
 
-function sortUpstreams(upstreams: UpstreamRecord[]): UpstreamRecord[] {
+function sortUpstreams(upstreams: UpstreamRecord<unknown>[]): UpstreamRecord<unknown>[] {
   return upstreams.sort((a, b) =>
     a.sortOrder - b.sortOrder || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
   )
 }
 
-async function listVisibleUpstreams(ownerId?: UserId): Promise<UpstreamRecord[]> {
+async function listVisibleUpstreams(ownerId?: UserId): Promise<UpstreamRecord<unknown>[]> {
   if (ownerId !== undefined) {
     const [globalUpstreams, ownerUpstreams] = await Promise.all([
       getRepo().upstreams.list({ ownerId: '' as UserId }),
@@ -225,7 +225,7 @@ async function listVisibleUpstreams(ownerId?: UserId): Promise<UpstreamRecord[]>
 export async function listProviderBindings(
   opts: ListUpstreamModelsOptions = {},
 ): Promise<LlmProviderBinding[]> {
-  let upstreams: UpstreamRecord[]
+  let upstreams: UpstreamRecord<unknown>[]
   try {
     upstreams = await listVisibleUpstreams(opts.ownerId as UserId | undefined)
   } catch {

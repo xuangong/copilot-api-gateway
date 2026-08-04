@@ -306,6 +306,7 @@ function ensureUpstreams(db: Database): void {
       config_json TEXT NOT NULL DEFAULT '{}',
       flag_overrides TEXT NOT NULL DEFAULT '{}',
       disabled_public_model_ids TEXT NOT NULL DEFAULT '[]',
+      state_json TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -564,6 +565,10 @@ function migrateSchema(db: Database): void {
   // 0028: upstream disabled_public_model_ids
   if (!hasColumn(db, "upstreams", "disabled_public_model_ids")) {
     db.exec("ALTER TABLE upstreams ADD COLUMN disabled_public_model_ids TEXT NOT NULL DEFAULT '[]'")
+  }
+  // 0037: upstream state_json for per-provider mutable state (codex OAuth refresh_token rotation, terminal states)
+  if (!hasColumn(db, "upstreams", "state_json")) {
+    db.exec("ALTER TABLE upstreams ADD COLUMN state_json TEXT")
   }
   // 0025: upstream identity + cost snapshot on usage/perf tables. Rebuild
   // each table when the column is missing so the unique index includes the

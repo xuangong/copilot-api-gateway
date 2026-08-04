@@ -330,8 +330,8 @@ function redactConfig(value: unknown): unknown {
 }
 
 function serializeUpstream(
-  upstream: UpstreamRecord,
-): Omit<UpstreamRecord, 'config'> & { config: Record<string, unknown> } {
+  upstream: UpstreamRecord<unknown>,
+): Omit<UpstreamRecord<unknown>, 'config'> & { config: Record<string, unknown> } {
   return { ...upstream, config: redactConfig(upstream.config) as Record<string, unknown> }
 }
 
@@ -342,8 +342,8 @@ function serializeUpstream(
  * wired here once they land.
  */
 async function invalidateUpstreamCaches(
-  _before: UpstreamRecord | null,
-  _after: UpstreamRecord | null,
+  _before: UpstreamRecord<unknown> | null,
+  _after: UpstreamRecord<unknown> | null,
 ): Promise<void> {
   clearRawModelsCache()
   // TODO(Week 5+): invalidateUpstreamListCache() once registry adds a list cache.
@@ -440,7 +440,7 @@ upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
       ? (typeof body.ownerId === 'string' ? body.ownerId : (userId ?? ''))
       : userId
     if (ownerId === undefined) return jsonError('ownerId required', 400)
-    const upstream: UpstreamRecord = {
+    const upstream: UpstreamRecord<unknown> = {
       id: upstreamId(provider, body.name),
       ownerId,
       provider,
@@ -450,6 +450,7 @@ upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
       config: normalizeConfig(provider, body.config),
       flagOverrides: normalizeFlagOverrides(body.flagOverrides),
       disabledPublicModelIds: normalizeDisabledPublicModelIds(body.disabledPublicModelIds),
+      state: null,
       createdAt: now,
       updatedAt: now,
     }
@@ -496,7 +497,7 @@ upstreamsRouter.patch('/:id', zValidator('json', upstreamBody), async (c) => {
       mergedConfig = merged
     }
     const nextOwnerId = admin && typeof body.ownerId === 'string' && body.ownerId ? body.ownerId : existing.ownerId
-    const next: UpstreamRecord = {
+    const next: UpstreamRecord<unknown> = {
       ...existing,
       ownerId: nextOwnerId,
       name: typeof body.name === 'string' ? body.name.trim() : existing.name,

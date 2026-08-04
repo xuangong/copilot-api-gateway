@@ -129,11 +129,19 @@ export interface GitHubRepo {
 }
 
 export interface UpstreamRepo {
-  list(opts?: { ownerId?: UserId; includeDisabled?: boolean }): Promise<UpstreamRecord[]>
-  getById(id: UpstreamId): Promise<UpstreamRecord | null>
-  save(upstream: UpstreamRecord): Promise<void>
+  list(opts?: { ownerId?: UserId; includeDisabled?: boolean }): Promise<UpstreamRecord<unknown>[]>
+  /** TState defaults to `unknown` — non-typed callers get an `unknown` state
+   *  they must narrow themselves (usually via a provider-side assertion).
+   *  Typed callers pin the shape, e.g. `getById<CodexUpstreamState>(id)`. */
+  getById<TState = unknown>(id: UpstreamId): Promise<UpstreamRecord<TState> | null>
+  save(upstream: UpstreamRecord<unknown>): Promise<void>
   delete(id: UpstreamId): Promise<boolean>
   deleteAll(): Promise<void>
+  /** Atomic read-modify-write of the `state` column. The updater sees the
+   *  current state coerced to TState; the return value replaces it. Backends
+   *  implement this in a single transaction so concurrent rotations don't
+   *  clobber each other. Throws if no row exists for `id`. */
+  saveState<TState>(id: UpstreamId, updater: (current: TState) => TState): Promise<void>
 }
 
 export interface UsageRepo {

@@ -19,7 +19,7 @@ export interface ConfigBundle {
   exportedAt: string
   apiKeys: ApiKey[]
   githubAccounts: GitHubAccount[]
-  upstreams: UpstreamRecord[]
+  upstreams: UpstreamRecord<unknown>[]
   flagOverrides?: Partial<Record<UpstreamKind, FlagOverrides>>
 }
 
@@ -31,7 +31,7 @@ export interface ExportOptions {
 interface BundleInput {
   apiKeys: readonly ApiKey[]
   githubAccounts: readonly GitHubAccount[]
-  upstreams?: readonly UpstreamRecord[]
+  upstreams?: readonly UpstreamRecord<unknown>[]
   flagOverrides?: ConfigBundle['flagOverrides']
 }
 
@@ -67,7 +67,7 @@ function redactConfigBlob(value: unknown): unknown {
   return out
 }
 
-function redactUpstream(u: UpstreamRecord): UpstreamRecord {
+function redactUpstream(u: UpstreamRecord<unknown>): UpstreamRecord<unknown> {
   return { ...u, config: redactConfigBlob(u.config) as Record<string, unknown> }
 }
 
@@ -167,14 +167,14 @@ export function parseConfigBundle(payload: unknown): ImportResult {
     if ((a as GitHubAccount).token === REDACTED) redactedCount++
   }
 
-  let upstreams: UpstreamRecord[] = []
+  let upstreams: UpstreamRecord<unknown>[] = []
   if (sourceVersion === 2) {
     const raw = obj.upstreams
     if (raw !== undefined) {
       if (!Array.isArray(raw)) throw new ImportError('`upstreams` must be an array')
       for (const u of raw) {
         if (typeof u !== 'object' || u === null) throw new ImportError('upstreams entry must be object')
-        const rec = u as UpstreamRecord
+        const rec = u as UpstreamRecord<unknown>
         if (typeof rec.id !== 'string' || !rec.id) throw new ImportError('upstreams entry missing id')
         if (rec.provider !== 'copilot' && rec.provider !== 'custom' && rec.provider !== 'azure') {
           throw new ImportError(`upstreams entry has unsupported provider: ${String(rec.provider)}`)
@@ -185,7 +185,7 @@ export function parseConfigBundle(payload: unknown): ImportResult {
         }
         redactedCount += countRedactedInBlob(rec.config)
       }
-      upstreams = raw as UpstreamRecord[]
+      upstreams = raw as UpstreamRecord<unknown>[]
     }
   }
 
@@ -214,7 +214,7 @@ export function unredactWithLive(
   live: {
     apiKeys: readonly ApiKey[]
     githubAccounts: readonly GitHubAccount[]
-    upstreams?: readonly UpstreamRecord[]
+    upstreams?: readonly UpstreamRecord<unknown>[]
   },
 ): ConfigBundle {
   const liveKeysById = new Map(live.apiKeys.map((k) => [k.id, k]))

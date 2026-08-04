@@ -35,7 +35,7 @@ async function mirrorCopilotUpstream(
   const id = copilotUpstreamRowId(ownerId, user.id)
   const existing = await getRepo().upstreams.getById(id)
   const now = new Date().toISOString()
-  const record: UpstreamRecord = {
+  const record: UpstreamRecord<unknown> = {
     id,
     ownerId: ownerId || undefined,
     provider: 'copilot',
@@ -54,6 +54,7 @@ async function mirrorCopilotUpstream(
     },
     flagOverrides: existing?.flagOverrides ?? {},
     disabledPublicModelIds: existing?.disabledPublicModelIds ?? [],
+    state: null,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }

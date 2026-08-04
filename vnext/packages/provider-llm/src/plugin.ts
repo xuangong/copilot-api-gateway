@@ -21,6 +21,6 @@ export interface ProviderPluginContext {
 }
 
 export interface LlmProviderPlugin
-  extends UpstreamPlugin<UpstreamRecord, ProviderPluginContext, LlmModelProvider> {
+  extends UpstreamPlugin<UpstreamRecord<unknown>, ProviderPluginContext, LlmModelProvider> {
   readonly kind: UpstreamKind
 }
