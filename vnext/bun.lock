@@ -77,6 +77,7 @@
         "@vibe-core/upstream-repo": "workspace:*",
         "@vibe-llm/protocols": "workspace:*",
         "@vibe-llm/provider-azure": "workspace:*",
+        "@vibe-llm/provider-codex": "workspace:*",
         "@vibe-llm/provider-copilot": "workspace:*",
         "@vibe-llm/provider-custom": "workspace:*",
         "@vibe-llm/provider-llm": "workspace:*",

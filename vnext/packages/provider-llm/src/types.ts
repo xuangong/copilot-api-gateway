@@ -42,6 +42,14 @@ export interface ProviderRequest {
   requireModel?: boolean
   /** Per-call timeout override in ms. */
   timeout?: number
+  /**
+   * Semantic verb forwarded from `Invocation.action`. Providers that expose a
+   * distinct compaction wire (codex `/responses/compact`) dispatch on this;
+   * providers that don't (copilot / openai-style) ignore it — the compact-shim
+   * has already rewritten the payload into a plain generate turn before
+   * reaching the provider. `undefined` ≡ `'generate'`.
+   */
+  action?: 'generate' | 'compact'
 }
 
 /**

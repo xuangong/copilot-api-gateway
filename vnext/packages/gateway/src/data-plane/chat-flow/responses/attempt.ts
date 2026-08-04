@@ -274,6 +274,7 @@ export const responsesAttempt = {
         sourceApi: 'openai',
         flags: { isStreaming: invocation.payload.stream === true },
         signal: args.ctx.downstreamAbortSignal,
+        action: invocation.action,
       }
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       upstreamResp = await sel.binding.provider.fetch(providerReq)

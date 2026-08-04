@@ -1,4 +1,4 @@
-// F1 skeleton + F2 auth + F3a data-layer. Provider factory + fetch flow are ported in F3b.
+// F1 skeleton + F2 auth + F3a data-layer + F3b fetch/provider/plugin.
 export * from './constants'
 export * from './config'
 export * from './state'
@@ -8,6 +8,9 @@ export * from './fetcher'
 export * from './pricing'
 export * from './access-token'
 export * from './models'
+export * from './fetch'
+export * from './provider'
+export * from './plugin'
 export * from './auth/jwt'
 export * from './auth/oauth'
 export * from './auth/import'
