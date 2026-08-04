@@ -17,7 +17,7 @@ import {
   type MessagesCountTokensPayload,
 } from '@vibe-llm/protocols/messages'
 import { ChatPayloadSchema, type ChatPayload } from '@vibe-llm/protocols/chat'
-import { ResponsesPayloadSchema, type ResponsesPayload } from '@vibe-llm/protocols/responses'
+import { ResponsesPayloadSchema, canonicalizeResponsesPayload, type CanonicalResponsesPayload } from '@vibe-llm/protocols/responses'
 import { GeminiPayloadSchema, type GeminiPayload } from '@vibe-llm/protocols/gemini'
 
 type ShapedError = Error & { status?: number; body?: unknown }
@@ -61,14 +61,18 @@ export function parseChatPayload(raw: unknown): ChatPayload {
   return r.data
 }
 
-export function parseResponsesPayload(raw: unknown): ResponsesPayload {
+export function parseResponsesPayload(raw: unknown): CanonicalResponsesPayload {
   const r = ResponsesPayloadSchema.safeParse(raw)
   if (!r.success) {
     throw shape(r.error.message, {
       error: { message: r.error.message, type: 'invalid_request_error' },
     })
   }
-  return r.data
+  // Post-schema canonicalize: lift `input: string` and EasyInputMessage
+  // shorthand into the discriminated `ResponsesInputItem[]` shape so
+  // internal code narrows without cast. Throws a shaped 400 when input is
+  // structurally invalid.
+  return canonicalizeResponsesPayload(r.data)
 }
 
 export function parseGeminiPayload(raw: unknown): GeminiPayload {

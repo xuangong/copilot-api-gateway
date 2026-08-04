@@ -130,3 +130,5 @@ export { responsesResultToEvents } from './from-result.ts'
 export { parseResponsesStream, type ParseResponsesStreamOptions } from './stream.ts'
 
 export { createRandomResponsesItemId, type GeneratedResponsesItemType } from './item-id.ts'
+
+export { canonicalizeResponsesPayload, type CanonicalizeInputError } from './canonicalize.ts'
