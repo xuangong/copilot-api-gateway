@@ -22,14 +22,22 @@ import {
   startTimer,
 } from '../../../shared/observability/latency-tracker.ts'
 import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import type { ModelPricing } from '@vibe-llm/protocols/common'
+import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
 export interface ImagesAttemptInput {
   apiKeyId: ApiKeyId | undefined
   model: string
+  /** Raw upstream model id — same value handed to provider for pricing lookup. */
+  modelKey: string
+  /** Pre-resolved pricing snapshot from `provider.getPricingForModelKey(modelKey)`. */
+  pricing: ModelPricing | null
   /** Upstream id from the resolved binding — surfaces the real provider (custom/azure/sdf/copilot) in latency rows. */
   upstream: string
   userAgent: string | undefined
   requestId: string | undefined
+  /** Per-request dump sink; null when the api key has no retention. */
+  dump: DumpAccumulator | null
   /** Wraps the upstream call. Caller builds the request body / picks the binding. */
   call: () => Promise<Response>
 }
@@ -45,6 +53,8 @@ export async function runImagesAttempt(
   if (input.apiKeyId) {
     const quota = await checkQuota(input.apiKeyId)
     if (!quota.allowed) {
+      input.dump?.error('gateway')
+      input.dump?.failed(quota.reason ?? 'Daily quota exceeded.')
       return {
         ok: false,
         status: 429,
@@ -64,6 +74,8 @@ export async function runImagesAttempt(
     res = await input.call()
   } catch (err) {
     const upstreamMs = Date.now() - upstreamStart
+    input.dump?.error('upstream', input.upstream)
+    input.dump?.failed(err)
     if (input.apiKeyId) {
       await recordLatency(
         input.apiKeyId,
@@ -90,7 +102,17 @@ export async function runImagesAttempt(
   }
 
   if (!res.ok) {
+    input.dump?.error('upstream', input.upstream)
     return { ok: false, status: res.status, response: res }
   }
+  input.dump?.success(
+    {
+      model: input.model,
+      upstream: input.upstream,
+      modelKey: input.modelKey,
+      cost: input.pricing,
+    },
+    null,
+  )
   return { ok: true, status: res.status, response: res }
 }

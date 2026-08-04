@@ -19,6 +19,8 @@ import type { Env } from '../../app.ts'
 import { resolveBinding, stripUpstreamPin } from '../routing/binding-resolver.ts'
 import type { DataPlaneAuthCtx } from '../models/routes.ts'
 import { runEmbeddingsAttempt } from '../observability/attempts/embeddings-attempt.ts'
+import { openRequestDump, parseJsonBody } from '../chat-flow/shared/dump-open.ts'
+import type { DumpAccumulator } from '../../shared/dump/accumulator.ts'
 
 type Vars = { auth: DataPlaneAuthCtx }
 
@@ -34,17 +36,25 @@ export const embeddingsRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
 
 type EmbeddingsCtx = Context<{ Bindings: Env; Variables: Vars }>
 
+const wrapResponse = (dump: DumpAccumulator | null, response: Response): Response =>
+  dump ? dump.finalize(response) : response
+
 async function handle(c: EmbeddingsCtx): Promise<Response> {
   const auth = c.get('auth') ?? {}
+  const { requestBody, dump } = await openRequestDump(c, auth, c.req.method)
+
   let body: EmbeddingsPayload
   try {
-    body = (await c.req.json()) as EmbeddingsPayload
+    body = parseJsonBody(requestBody.bytes) as EmbeddingsPayload
   } catch {
-    return c.json({ error: { type: 'invalid_request_error', message: 'invalid JSON' } }, 400)
+    dump?.failed('invalid JSON')
+    return wrapResponse(dump, c.json({ error: { type: 'invalid_request_error', message: 'invalid JSON' } }, 400))
   }
   if (!body || typeof body.model !== 'string') {
-    return c.json({ error: { type: 'invalid_request_error', message: 'model is required' } }, 400)
+    dump?.failed('model is required')
+    return wrapResponse(dump, c.json({ error: { type: 'invalid_request_error', message: 'model is required' } }, 400))
   }
+  dump?.requestedModel(body.model)
 
   stripUpstreamPin(body as unknown as Record<string, unknown>)
   // Copilot upstream rejects scalar `input` with 400 Bad Request; OpenAI spec
@@ -57,10 +67,11 @@ async function handle(c: EmbeddingsCtx): Promise<Response> {
     copilot: auth.copilot,
   })
   if (!binding) {
-    return c.json(
+    dump?.failed(`no embeddings upstream for model ${body.model}`)
+    return wrapResponse(dump, c.json(
       { error: { type: 'invalid_request_error', message: `No embeddings upstream available for model: ${body.model}. Run GET /v1/models for available ids.` } },
       404,
-    )
+    ))
   }
 
   // Pricing lookup uses the post-pin-strip model id (same value handed to the
@@ -75,6 +86,7 @@ async function handle(c: EmbeddingsCtx): Promise<Response> {
     upstream: binding.upstream,
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,
+    dump,
     call: async () => {
       const pr = await binding.provider.fetch({
         endpoint: 'embeddings',
@@ -89,7 +101,7 @@ async function handle(c: EmbeddingsCtx): Promise<Response> {
   })
 
   if (!attempt.ok && 'rateLimit' in attempt) {
-    return c.json({
+    return wrapResponse(dump, c.json({
       error: {
         type: 'rate_limit_error',
         message: attempt.rateLimit.reason,
@@ -97,17 +109,17 @@ async function handle(c: EmbeddingsCtx): Promise<Response> {
           ? { retry_after_seconds: attempt.rateLimit.retryAfterSeconds }
           : {}),
       },
-    }, 429)
+    }, 429))
   }
 
   if (!attempt.ok) {
     // Forward the upstream JSON verbatim (matches the pre-refactor behavior:
     // the old handler always returned `Response.json(json, { status })`).
     const json = await attempt.response.json().catch(() => null)
-    return Response.json(json, { status: attempt.status })
+    return wrapResponse(dump, Response.json(json, { status: attempt.status }))
   }
 
-  return Response.json(attempt.json, { status: attempt.status })
+  return wrapResponse(dump, Response.json(attempt.json, { status: attempt.status }))
 }
 
 embeddingsRouter.post('/embeddings', handle)

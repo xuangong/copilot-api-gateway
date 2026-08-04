@@ -23,6 +23,10 @@ import type { Env } from '../../app.ts'
 import { resolveBinding, stripUpstreamPin } from '../routing/binding-resolver.ts'
 import type { DataPlaneAuthCtx } from '../models/routes.ts'
 import { runImagesAttempt } from '../observability/attempts/images-attempt.ts'
+import { openRequestDump, parseJsonBody } from '../chat-flow/shared/dump-open.ts'
+import { readRequestBody } from '../../shared/dump/request-body.ts'
+import { openDumpAccumulator, type DumpAccumulator } from '../../shared/dump/accumulator.ts'
+import { getRepo } from '../../shared/repo/index.ts'
 
 type Vars = { auth: DataPlaneAuthCtx }
 
@@ -56,17 +60,25 @@ function forwardUpstream(response: Response): Response {
   })
 }
 
+const wrapResponse = (dump: DumpAccumulator | null, response: Response): Response =>
+  dump ? dump.finalize(response) : response
+
 async function handleGenerations(c: ImagesCtx): Promise<Response> {
   const auth = c.get('auth') ?? {}
+  const { requestBody, dump } = await openRequestDump(c, auth, c.req.method)
+
   let payload: GenerationsPayload
   try {
-    payload = (await c.req.json()) as GenerationsPayload
+    payload = parseJsonBody(requestBody.bytes) as GenerationsPayload
   } catch {
-    return c.json({ error: { type: 'invalid_request_error', message: 'invalid JSON' } }, 400)
+    dump?.failed('invalid JSON')
+    return wrapResponse(dump, c.json({ error: { type: 'invalid_request_error', message: 'invalid JSON' } }, 400))
   }
   if (!payload || typeof payload.model !== 'string') {
-    return c.json({ error: { type: 'invalid_request_error', message: 'model is required' } }, 400)
+    dump?.failed('model is required')
+    return wrapResponse(dump, c.json({ error: { type: 'invalid_request_error', message: 'model is required' } }, 400))
   }
+  dump?.requestedModel(payload.model)
 
   stripUpstreamPin(payload as unknown as Record<string, unknown>)
   const binding = await resolveBinding(payload.model, 'images_generations', {
@@ -74,18 +86,23 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
     copilot: auth.copilot,
   })
   if (!binding) {
-    return c.json(
+    dump?.failed(`no images_generations upstream for model ${payload.model}`)
+    return wrapResponse(dump, c.json(
       { error: { type: 'invalid_request_error', message: `No images_generations upstream available for model: ${payload.model}. Run GET /v1/models for available ids.` } },
       404,
-    )
+    ))
   }
 
+  const pricing = binding.provider.getPricingForModelKey(payload.model)
   const attempt = await runImagesAttempt({
     apiKeyId: auth.apiKeyId,
     model: payload.model,
+    modelKey: payload.model,
+    pricing,
     upstream: binding.upstream,
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,
+    dump,
     call: async () => {
       const pr = await binding.provider.fetch({
         endpoint: 'images_generations',
@@ -100,52 +117,77 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
   })
 
   if (!attempt.ok && 'rateLimit' in attempt) {
-    return rateLimitResponse(c, attempt.rateLimit)
+    return wrapResponse(dump, rateLimitResponse(c, attempt.rateLimit))
   }
 
   // Both success and non-2xx fall through here — the route has always
   // forwarded the upstream body verbatim regardless of status code.
-  return forwardUpstream(attempt.response)
+  return wrapResponse(dump, forwardUpstream(attempt.response))
 }
 
 async function handleEdits(c: ImagesCtx): Promise<Response> {
   const auth = c.get('auth') ?? {}
   const contentType = c.req.header('content-type') ?? ''
+
+  // Multipart bodies aren't JSON — open the dump seam manually so we still
+  // record the raw request bytes (up to retention limits) and can call the
+  // mid-flight hooks on error paths.
+  const requestBody = await readRequestBody(c)
+  let dump: DumpAccumulator | null = null
+  if (auth.apiKeyId) {
+    try {
+      const apiKey = await getRepo().apiKeys.getById(auth.apiKeyId)
+      if (apiKey) dump = openDumpAccumulator(c, c.req.method, apiKey, requestBody)
+    } catch { /* best-effort */ }
+  }
+
   if (!contentType.toLowerCase().startsWith('multipart/form-data')) {
-    return c.json(
+    dump?.failed('/images/edits requires multipart/form-data')
+    return wrapResponse(dump, c.json(
       { error: { type: 'invalid_request_error', message: '/images/edits requires multipart/form-data' } },
       400,
-    )
+    ))
   }
 
   let form: FormData
   try {
-    form = await c.req.formData()
+    // Rebuild a Request over the buffered bytes so Hono's formData() parser
+    // can consume them (we already drained the original stream via readRequestBody).
+    const rebuilt = new Request(c.req.url, {
+      method: c.req.method,
+      headers: c.req.raw.headers,
+      body: requestBody.bytes,
+    })
+    form = await rebuilt.formData()
   } catch {
-    return c.json(
+    dump?.failed('failed to parse multipart body')
+    return wrapResponse(dump, c.json(
       { error: { type: 'invalid_request_error', message: 'failed to parse multipart body' } },
       400,
-    )
+    ))
   }
 
   const modelField = form.get('model')
   const model = typeof modelField === 'string' ? modelField : null
   if (!model) {
-    return c.json(
+    dump?.failed('model field is required in multipart body')
+    return wrapResponse(dump, c.json(
       { error: { type: 'invalid_request_error', message: 'model field is required in multipart body' } },
       400,
-    )
+    ))
   }
+  dump?.requestedModel(model)
 
   const binding = await resolveBinding(model, 'images_edits', {
     ownerId: auth.userId,
     copilot: auth.copilot,
   })
   if (!binding) {
-    return c.json(
+    dump?.failed(`no images_edits upstream for model ${model}`)
+    return wrapResponse(dump, c.json(
       { error: { type: 'invalid_request_error', message: `No images_edits upstream available for model: ${model}. Run GET /v1/models for available ids.` } },
       404,
-    )
+    ))
   }
 
   // Rebuild FormData so upstream sees File/Blob verbatim. Hono's formData() returns
@@ -160,12 +202,16 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
     }
   }
 
+  const pricing = binding.provider.getPricingForModelKey(model)
   const attempt = await runImagesAttempt({
     apiKeyId: auth.apiKeyId,
     model,
+    modelKey: model,
+    pricing,
     upstream: binding.upstream,
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,
+    dump,
     call: async () => {
       const pr = await binding.provider.fetch({
         endpoint: 'images_edits',
@@ -180,10 +226,10 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
   })
 
   if (!attempt.ok && 'rateLimit' in attempt) {
-    return rateLimitResponse(c, attempt.rateLimit)
+    return wrapResponse(dump, rateLimitResponse(c, attempt.rateLimit))
   }
 
-  return forwardUpstream(attempt.response)
+  return wrapResponse(dump, forwardUpstream(attempt.response))
 }
 
 imagesRouter.post('/images/generations', handleGenerations)

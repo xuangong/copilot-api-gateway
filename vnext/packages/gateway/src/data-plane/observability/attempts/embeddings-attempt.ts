@@ -26,6 +26,7 @@ import { extractFromJson, pickUsageModelId } from '../../../shared/observability
 import { getRepo } from '../../../shared/repo/index.ts'
 import type { TokenUsage, UsageRecord } from '../../../shared/repo/types.ts'
 import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
 const currentHour = (): string => new Date().toISOString().slice(0, 13)
 
@@ -86,6 +87,8 @@ export interface EmbeddingsAttemptInput {
   upstream: string
   userAgent: string | undefined
   requestId: string | undefined
+  /** Per-request dump sink; null when the api key has no retention. */
+  dump: DumpAccumulator | null
   /** Wraps the upstream call. Caller builds the request body / picks the binding. */
   call: () => Promise<Response>
 }
@@ -103,6 +106,8 @@ export async function runEmbeddingsAttempt(
   if (input.apiKeyId) {
     const quota = await checkQuota(input.apiKeyId)
     if (!quota.allowed) {
+      input.dump?.error('gateway')
+      input.dump?.failed(quota.reason ?? 'Daily quota exceeded.')
       return {
         ok: false,
         status: 429,
@@ -122,6 +127,8 @@ export async function runEmbeddingsAttempt(
     res = await input.call()
   } catch (err) {
     const upstreamMs = Date.now() - upstreamStart
+    input.dump?.error('upstream', input.upstream)
+    input.dump?.failed(err)
     if (input.apiKeyId) {
       await recordLatency(
         input.apiKeyId,
@@ -137,6 +144,7 @@ export async function runEmbeddingsAttempt(
   const upstreamMs = Date.now() - upstreamStart
 
   if (!res.ok) {
+    input.dump?.error('upstream', input.upstream)
     if (input.apiKeyId) {
       await recordLatency(
         input.apiKeyId,
@@ -153,6 +161,16 @@ export async function runEmbeddingsAttempt(
   // Success path — parse body once so the caller can forward verbatim and we
   // can extract usage from the same JSON.
   const json = await res.json()
+  const usageInfo = extractFromJson(json)
+  input.dump?.success(
+    {
+      model: input.model,
+      upstream: input.upstream,
+      modelKey: input.modelKey,
+      cost: input.pricing,
+    },
+    usageInfo?.tokens ?? null,
+  )
   if (input.apiKeyId) {
     await trackNonStreamingUsage(json, input.apiKeyId, input.model, client, input.upstream, input.modelKey, input.pricing)
     await recordLatency(
