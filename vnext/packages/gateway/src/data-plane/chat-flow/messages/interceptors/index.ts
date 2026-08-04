@@ -2,6 +2,7 @@ import type { MessagesInterceptor } from './types'
 import { withBillingAttributionStripped } from './with-billing-attribution-stripped'
 import { withContextWindowErrorRewritten } from './with-context-window-error-rewritten'
 import { withMessagesWebSearchShim } from './with-messages-web-search-shim'
+import { withReasoningDisabledOnForcedToolChoice } from './with-reasoning-disabled-on-forced-tool-choice'
 import { withRoleCompatibilityApplied } from './with-role-compatibility-applied'
 import { withSpeedFast } from './with-speed-fast'
 import { withThinkingDisplayPromoted } from './with-thinking-display-promoted'
@@ -51,4 +52,5 @@ export const messagesInterceptors: readonly MessagesInterceptor[] = [
   withBillingAttributionStripped,
   withMessagesWebSearchShim,
   withRoleCompatibilityApplied,
+  withReasoningDisabledOnForcedToolChoice,
 ]

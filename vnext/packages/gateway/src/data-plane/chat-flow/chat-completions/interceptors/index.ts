@@ -2,6 +2,7 @@ import type { ChatCompletionsInterceptor } from './types'
 import { withUsageStreamOptionsIncluded } from './include-usage-stream-options'
 import { withToolArgumentWhitespaceAborted } from './with-tool-argument-whitespace-aborted'
 import { withPromptCacheKeyStripped } from './with-prompt-cache-key-stripped'
+import { withReasoningDisabledOnForcedToolChoice } from './with-reasoning-disabled-on-forced-tool-choice'
 import { withRoleCompatibilityApplied } from './with-role-compatibility-applied'
 import { withVendorDeepSeekChatCompletionsNormalize } from './with-vendor-deepseek-normalized'
 import { withVendorQwenChatCompletionsNormalize } from './with-vendor-qwen-normalized'
@@ -41,6 +42,7 @@ export const chatCompletionsInterceptors: readonly ChatCompletionsInterceptor[] 
   withToolArgumentWhitespaceAborted,
   withPromptCacheKeyStripped,
   withRoleCompatibilityApplied,
+  withReasoningDisabledOnForcedToolChoice,
   withVendorDeepSeekChatCompletionsNormalize,
   withVendorQwenChatCompletionsNormalize,
   withVendorKimiChatCompletionsNormalize,
