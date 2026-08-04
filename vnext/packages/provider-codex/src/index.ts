@@ -1,10 +1,13 @@
-// F1 skeleton + F2 auth. Provider factory + fetch flow are ported in F3.
+// F1 skeleton + F2 auth + F3a data-layer. Provider factory + fetch flow are ported in F3b.
 export * from './constants'
 export * from './config'
 export * from './state'
 export * from './quota'
 export * from './ids'
 export * from './fetcher'
+export * from './pricing'
+export * from './access-token'
+export * from './models'
 export * from './auth/jwt'
 export * from './auth/oauth'
 export * from './auth/import'
