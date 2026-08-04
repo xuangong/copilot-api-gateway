@@ -15,6 +15,22 @@ import type { MessagesStreamEvent } from '@vibe-llm/protocols/messages'
  * text/deltas after the fact (preserving every `signature` byte — tampering
  * with signatures makes the next Messages request fail with 400).
  *
+ * Equivalence with reference: copilot-gateway ships this as a provider-copilot
+ * boundary interceptor (`packages/provider-copilot/src/interceptors/messages/
+ * promote-thinking-display.ts`). vNext moves it up to the gateway Messages
+ * interceptor chain because provider-copilot returns raw `Response` here (see
+ * `messages/interceptors/index.ts` header). Observable behavior matches the
+ * reference 1:1 across every branch: activation gate
+ * (`hasActiveThinking && display !== undefined && display !== 'full'`),
+ * `shouldExposeOmitted` (`hasActiveThinking && display === 'omitted'`), frame
+ * rewrites (`content_block_start.thinking` blanked, `thinking_delta` dropped,
+ * signature bytes untouched), and `result.type === 'events'` gate.
+ * `copilotRawModelId` here inlines the reference helper and additionally
+ * pre-strips date `-YYYYMMDD` and variant `-high|xhigh|1m|1m-internal`
+ * suffixes; the reference relies on `CLAUDE_VERSION_PATTERN`'s `(?=-|$)`
+ * lookahead to skip them — either path produces the same version tuple, so
+ * `isClaudeVersionAtLeast` returns identical results.
+ *
  * References:
  * - https://github.com/ericc-ch/copilot-api/issues/223
  * - https://github.com/anthropics/claude-code/issues/46987
