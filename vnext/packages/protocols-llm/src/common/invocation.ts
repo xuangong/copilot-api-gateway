@@ -10,6 +10,14 @@ export interface Invocation {
   readonly endpoint: EndpointKey
   readonly enabledFlags: ReadonlySet<string>
   readonly sourceApi?: 'messages' | 'chat_completions' | 'responses' | 'gemini'
+  // Semantic verb the request performs against `endpoint`. `undefined`
+  // ≡ `'generate'`. Set to `'compact'` by the `/v1/responses/compact`
+  // route so the Responses compact-shim (see chat-flow/responses/
+  // interceptors/with-responses-compact-shim.ts) can detect compact-shaped
+  // requests without inspecting payload internals; interceptors may
+  // mutate this field to pivot semantics (e.g. shim pivots to 'generate'
+  // to route the summarization turn through the standard generate wire).
+  action?: 'generate' | 'compact'
   payload: Record<string, unknown>
   headers: Record<string, string>
 }
@@ -22,6 +30,12 @@ export interface RequestContext {
   // image-generation) can attribute upstream usage back to the caller
   // without another lookup. Reference: copilot-gateway `ChatGatewayCtx.apiKeyId`.
   readonly apiKeyId?: string
+  // Selected target endpoint for this attempt. Injected by attempt.ts
+  // just before `runInterceptors` so structurally-required interceptors
+  // (e.g. Responses compact-shim on non-Responses upstreams) can detect
+  // engagement without re-running binding selection. Optional to preserve
+  // legacy test constructors that build a bare RequestContext.
+  readonly targetEndpoint?: EndpointKey
 }
 
 export type CopilotInterceptor = Interceptor<RequestContext, Invocation, Response>

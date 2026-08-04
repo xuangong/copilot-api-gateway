@@ -309,7 +309,8 @@ export const responsesAttempt = {
 
     try {
       if (chain.length === 0) return await terminal()
-      return await runInterceptors(invocation, args.ctx, chain, terminal)
+      const chainCtx: RequestContext = { ...args.ctx, targetEndpoint: sel.targetEndpoint }
+      return await runInterceptors(invocation, chainCtx, chain, terminal)
     } catch (err) {
       if (upstreamResp?.body) void upstreamResp.body.cancel().catch(() => {})
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape

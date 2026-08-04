@@ -204,7 +204,8 @@ export const chatCompletionsAttempt = {
     }
 
     try {
-      return await runInterceptors(invocation, args.ctx, chain, terminal)
+      const chainCtx: RequestContext = { ...args.ctx, targetEndpoint: sel.targetEndpoint }
+      return await runInterceptors(invocation, chainCtx, chain, terminal)
     } catch (err) {
       // If terminal opened an upstream body but a wrapping interceptor threw
       // before anyone could consume it, cancel to release the connection.

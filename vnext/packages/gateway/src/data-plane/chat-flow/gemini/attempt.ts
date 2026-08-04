@@ -212,7 +212,8 @@ export const geminiAttempt = {
 
     try {
       if (chain.length === 0) return await terminal()
-      return await runInterceptors(invocation, args.ctx, chain, terminal)
+      const chainCtx: RequestContext = { ...args.ctx, targetEndpoint: sel.targetEndpoint }
+      return await runInterceptors(invocation, chainCtx, chain, terminal)
     } catch (err) {
       const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
       // HTTPError is the legacy provider contract for upstream non-2xx; the
