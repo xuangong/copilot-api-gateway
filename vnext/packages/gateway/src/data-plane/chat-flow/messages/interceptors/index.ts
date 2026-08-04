@@ -1,6 +1,7 @@
 import type { MessagesInterceptor } from './types'
 import { withBillingAttributionStripped } from './with-billing-attribution-stripped'
 import { withContextWindowErrorRewritten } from './with-context-window-error-rewritten'
+import { withEagerInputStreamingStripped } from './with-eager-input-streaming-stripped'
 import { withMessagesWebSearchShim } from './with-messages-web-search-shim'
 import { withReasoningDisabledOnForcedToolChoice } from './with-reasoning-disabled-on-forced-tool-choice'
 import { withRoleCompatibilityApplied } from './with-role-compatibility-applied'
@@ -45,11 +46,17 @@ export type { MessagesInterceptor } from './types'
 //     Flag-gated by `demote-interleaved-system-to-user`. Positioned innermost
 //     (after billing-attribution + web-search shim) so the rewrite is the
 //     final payload mutation before terminal dispatch.
+//   - `withEagerInputStreamingStripped` drops the per-tool
+//     `eager_input_streaming` property under the
+//     `strip-eager-input-streaming` flag (defaults on for `copilot`).
+//     Positioned next to billing-attribution — both are simple payload
+//     cleanups with no ordering coupling to other interceptors.
 export const messagesInterceptors: readonly MessagesInterceptor[] = [
   withContextWindowErrorRewritten,
   withSpeedFast,
   withThinkingDisplayPromoted,
   withBillingAttributionStripped,
+  withEagerInputStreamingStripped,
   withMessagesWebSearchShim,
   withRoleCompatibilityApplied,
   withReasoningDisabledOnForcedToolChoice,

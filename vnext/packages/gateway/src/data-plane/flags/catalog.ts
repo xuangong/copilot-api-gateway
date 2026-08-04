@@ -55,6 +55,12 @@ export const OPTIONAL_FLAGS = [
     defaultFor: ["copilot", "azure"],
   },
   {
+    id: "strip-eager-input-streaming",
+    label: "Strip Messages `eager_input_streaming`",
+    description: "Strip the per-tool `eager_input_streaming` property from outbound Messages payloads. Copilot's native Messages target rejects it with `tools.N.custom.eager_input_streaming: Extra inputs are not permitted`. Leaves other providers untouched when the flag is off.",
+    defaultFor: ["copilot"],
+  },
+  {
     id: "responses-image-generation-shim",
     label: "Responses image generation shim",
     description: "Execute the Responses `image_generation` hosted tool through the gateway's image-capable upstream (gpt-image-*) instead of forwarding it to a Responses upstream. The orchestrator model calls a generated function tool; the shim drives the standalone /images/{generations,edits} backend and synthesizes the native image_generation_call lifecycle. When a Responses request is routed to a non-Responses backend, the shim always runs regardless of this flag because those targets cannot carry the hosted image_generation tool.",
