@@ -29,6 +29,7 @@ export interface AttemptBindingShape {
   readonly provider: {
     readonly getPricingForModelKey: (k: string) => unknown | null
   }
+  readonly enabledFlags?: ReadonlySet<string>
 }
 
 export function telemetryModelIdentity(

@@ -132,7 +132,7 @@ export const chatCompletionsAttempt = {
 
     const invocation: Invocation = {
       endpoint: 'chat_completions',
-      enabledFlags: new Set(),
+      enabledFlags: new Set(sel.binding.enabledFlags ?? []),
       sourceApi: 'chat_completions',
       payload: args.payload as Record<string, unknown>,
       headers: { ...(args.inheritedHeaders ?? {}) },

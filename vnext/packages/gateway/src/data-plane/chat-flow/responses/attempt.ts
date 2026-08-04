@@ -201,7 +201,7 @@ export const responsesAttempt = {
 
     const invocation: Invocation = {
       endpoint: 'responses',
-      enabledFlags: new Set(),
+      enabledFlags: new Set(sel.binding.enabledFlags ?? []),
       sourceApi: 'responses',
       payload: args.payload as Record<string, unknown>,
       headers: { ...(args.inheritedHeaders ?? {}) },

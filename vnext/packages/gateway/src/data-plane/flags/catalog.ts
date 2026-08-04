@@ -61,6 +61,12 @@ export const OPTIONAL_FLAGS = [
     defaultFor: ["copilot", "azure", "custom"],
   },
   {
+    id: "responses-compact-shim",
+    label: "Responses compact shim",
+    description: "Simulate a `response.compaction` envelope against upstreams that have no native compaction wire. Runs the summarization turn through the upstream's standard /responses generate wire under the vendored openai/codex SUMMARIZATION_PROMPT, then packs the summary into a synthetic `response.compaction` output item. Structurally required (always engages, ignoring this flag) on non-Responses target endpoints because those translators cannot carry the `compaction_trigger` / `compaction` item variants.",
+    defaultFor: [],
+  },
+  {
     id: "deepseek-reasoning-dialect",
     label: "DeepSeek reasoning dialect",
     description: "On Chat Completions, use DeepSeek's legacy reasoning_content field instead of OpenAI's reasoning_text.",

@@ -176,7 +176,7 @@ export const geminiAttempt = {
 
     const invocation: Invocation = {
       endpoint: sel.targetEndpoint,
-      enabledFlags: new Set(),
+      enabledFlags: new Set(sel.binding.enabledFlags ?? []),
       sourceApi: 'gemini',
       payload: args.payload as Record<string, unknown>,
       headers: {},

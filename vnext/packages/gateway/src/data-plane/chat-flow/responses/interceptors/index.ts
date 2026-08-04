@@ -10,6 +10,7 @@ import { defaultPrivatePayloadStore } from '../../../orchestrator/server-tools/p
 import { withRoleCompatibilityApplied } from './with-role-compatibility-applied'
 import { withVendorDeepSeekResponsesNormalize } from './with-vendor-deepseek-normalized'
 import { withVendorQwenResponsesNormalize } from './with-vendor-qwen-normalized'
+import { withResponsesCompactShim } from './with-responses-compact-shim'
 
 export type { ResponsesInterceptor } from './types'
 export { withResponsesServerToolShim } from './server-tool-shim'
@@ -17,6 +18,11 @@ export { withResponsesServerToolShim } from './server-tool-shim'
 // Responses stream interceptor registry. Mirrors the chat-completions pattern.
 //
 // Order (outermost → innermost; first listed wraps last):
+//   - `withResponsesCompactShim` owns the `action` pivot and needs to be
+//     outermost so it sees the untouched request payload and can rewrite
+//     it before any downstream interceptor runs. Engages under either the
+//     `responses-compact-shim` flag or structurally when the target
+//     endpoint is not Responses.
 //   - `withItemIdMembrane` restores upstream Copilot ids on inbound input items
 //     (unwrapping the opaque-value trailer carrier) and wraps upstream ids
 //     inside stable client-facing ids on outbound stream events, so multi-turn
@@ -48,6 +54,7 @@ export { withResponsesServerToolShim } from './server-tool-shim'
 //     final mutation before terminal dispatch, including for each ReAct
 //     iteration produced by the shim above.
 export const responsesInterceptors: readonly ResponsesInterceptor[] = [
+  withResponsesCompactShim,
   withItemIdMembrane,
   withToolArgumentWhitespaceAborted,
   withPromptCacheKeyStripped,
