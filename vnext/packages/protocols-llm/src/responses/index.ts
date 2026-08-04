@@ -132,3 +132,9 @@ export { parseResponsesStream, type ParseResponsesStreamOptions } from './stream
 export { createRandomResponsesItemId, type GeneratedResponsesItemType } from './item-id.ts'
 
 export { canonicalizeResponsesPayload, type CanonicalizeInputError } from './canonicalize.ts'
+
+export {
+  wrapCopilotItemId,
+  unwrapCopilotItemId,
+  type DecodedCopilotItemIdCarrier,
+} from './item-id-carrier.ts'
