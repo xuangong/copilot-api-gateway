@@ -6,6 +6,7 @@ import { withResponsesServerToolShim } from './server-tool-shim'
 import { webSearchServerTool } from './server-tools/web-search'
 import { imageGenerationServerTool } from './server-tools/image-generation'
 import { defaultPrivatePayloadStore } from '../../../orchestrator/server-tools/private-payload-store'
+import { withRoleCompatibilityApplied } from './with-role-compatibility-applied'
 import { withVendorDeepSeekResponsesNormalize } from './with-vendor-deepseek-normalized'
 import { withVendorQwenResponsesNormalize } from './with-vendor-qwen-normalized'
 
@@ -29,6 +30,12 @@ export { withResponsesServerToolShim } from './server-tool-shim'
 //     request arguments (Azure DeepSeek, etc.) don't 400.
 //   - `withResponsesServerToolShim` — ReAct multi-turn loop that hosts
 //     `web_search` and `image_generation`.
+//   - `withRoleCompatibilityApplied` applies system↔developer role rewrites
+//     and demotes interleaved system messages to user on Responses
+//     `input[]` message items. Flag-gated (`promote-system-to-developer` /
+//     `demote-developer-to-system` / `demote-interleaved-system-to-user`);
+//     defaults OFF. Positioned before vendor normalizers so the rewrite
+//     happens on the OpenAI-canonical shape.
 //   - Innermost — `withVendorDeepSeekResponsesNormalize` /
 //     `withVendorQwenResponsesNormalize` translate the gateway's canonical
 //     `reasoning.effort:'none'` sentinel into each vendor's Responses wire
@@ -44,6 +51,7 @@ export const responsesInterceptors: readonly ResponsesInterceptor[] = [
   withToolArgumentWhitespaceAborted,
   withPromptCacheKeyStripped,
   withResponsesServerToolShim([webSearchServerTool, imageGenerationServerTool], defaultPrivatePayloadStore),
+  withRoleCompatibilityApplied,
   withVendorDeepSeekResponsesNormalize,
   withVendorQwenResponsesNormalize,
 ]

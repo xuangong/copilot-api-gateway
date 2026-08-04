@@ -2,6 +2,7 @@ import type { ChatCompletionsInterceptor } from './types'
 import { withUsageStreamOptionsIncluded } from './include-usage-stream-options'
 import { withToolArgumentWhitespaceAborted } from './with-tool-argument-whitespace-aborted'
 import { withPromptCacheKeyStripped } from './with-prompt-cache-key-stripped'
+import { withRoleCompatibilityApplied } from './with-role-compatibility-applied'
 import { withVendorDeepSeekChatCompletionsNormalize } from './with-vendor-deepseek-normalized'
 import { withVendorQwenChatCompletionsNormalize } from './with-vendor-qwen-normalized'
 import { withVendorKimiChatCompletionsNormalize } from './with-vendor-kimi-normalized'
@@ -19,6 +20,12 @@ import { withVendorKimiChatCompletionsNormalize } from './with-vendor-kimi-norma
 //   - `withPromptCacheKeyStripped` drops top-level `prompt_cache_key` under
 //     the `strip-prompt-cache-key` flag so upstreams that reject unknown
 //     request arguments (Azure DeepSeek, etc.) don't 400.
+//   - `withRoleCompatibilityApplied` applies system↔developer role rewrites
+//     and demotes interleaved system messages to user. Flag-gated
+//     (`promote-system-to-developer` / `demote-developer-to-system` /
+//     `demote-interleaved-system-to-user`); defaults OFF. Positioned before
+//     vendor normalizers so the rewrite happens on the OpenAI-canonical
+//     shape and vendor normalizers see the final roles.
 //   - `withVendorDeepSeekChatCompletionsNormalize` /
 //     `withVendorQwenChatCompletionsNormalize` /
 //     `withVendorKimiChatCompletionsNormalize` are innermost — they translate
@@ -33,6 +40,7 @@ export const chatCompletionsInterceptors: readonly ChatCompletionsInterceptor[] 
   withUsageStreamOptionsIncluded,
   withToolArgumentWhitespaceAborted,
   withPromptCacheKeyStripped,
+  withRoleCompatibilityApplied,
   withVendorDeepSeekChatCompletionsNormalize,
   withVendorQwenChatCompletionsNormalize,
   withVendorKimiChatCompletionsNormalize,

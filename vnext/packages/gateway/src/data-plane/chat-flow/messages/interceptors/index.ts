@@ -2,6 +2,7 @@ import type { MessagesInterceptor } from './types'
 import { withBillingAttributionStripped } from './with-billing-attribution-stripped'
 import { withContextWindowErrorRewritten } from './with-context-window-error-rewritten'
 import { withMessagesWebSearchShim } from './with-messages-web-search-shim'
+import { withRoleCompatibilityApplied } from './with-role-compatibility-applied'
 import { withSpeedFast } from './with-speed-fast'
 import { withThinkingDisplayPromoted } from './with-thinking-display-promoted'
 
@@ -38,10 +39,16 @@ export type { MessagesInterceptor } from './types'
 //     tool declarations on Messages API. Ported 1:1 from the reference
 //     copilot-gateway; gated by the `messages-web-search-shim` flag on
 //     `Invocation.enabledFlags`. See file header for adaptation notes.
+//   - `withRoleCompatibilityApplied` demotes any interleaved `role:'system'`
+//     message that appears after the leading system run into `role:'user'`.
+//     Flag-gated by `demote-interleaved-system-to-user`. Positioned innermost
+//     (after billing-attribution + web-search shim) so the rewrite is the
+//     final payload mutation before terminal dispatch.
 export const messagesInterceptors: readonly MessagesInterceptor[] = [
   withContextWindowErrorRewritten,
   withSpeedFast,
   withThinkingDisplayPromoted,
   withBillingAttributionStripped,
   withMessagesWebSearchShim,
+  withRoleCompatibilityApplied,
 ]

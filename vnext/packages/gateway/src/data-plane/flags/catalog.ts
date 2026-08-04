@@ -78,6 +78,25 @@ export const OPTIONAL_FLAGS = [
     description: "Wrap Anthropic thinking blocks in display-only formatting so clients that strip reasoning still surface the chain-of-thought.",
     defaultFor: [],
   },
+  // ── Role compatibility ──────────────────────────────────────────────
+  {
+    id: "promote-system-to-developer",
+    label: "Promote system role to developer",
+    description: "Rewrite `role:'system'` to `role:'developer'` on Chat Completions messages and Responses input items. Used for OpenAI o-series and upstreams that only accept `developer` at the system slot.",
+    defaultFor: [],
+  },
+  {
+    id: "demote-developer-to-system",
+    label: "Demote developer role to system",
+    description: "Rewrite `role:'developer'` to `role:'system'` on Chat Completions messages and Responses input items. Used for upstreams that don't know about the `developer` role yet.",
+    defaultFor: [],
+  },
+  {
+    id: "demote-interleaved-system-to-user",
+    label: "Demote interleaved system messages to user",
+    description: "Any `role:'system'` message that appears after the leading system run is rewritten to `role:'user'`. Applies to Messages, Chat Completions, and Responses. Used for upstreams that reject interleaved system messages mid-conversation.",
+    defaultFor: [],
+  },
   // ── Transform toggles ────────────────────────────────────────────────
   // Every entry below defaults ON for copilot (the upstream that needs
   // these compatibility patches). Admins can opt OUT per-upstream when an
