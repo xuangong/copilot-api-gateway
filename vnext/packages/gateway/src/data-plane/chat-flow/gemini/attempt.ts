@@ -59,7 +59,7 @@ import { selectPair } from '../../dispatch/pair-selector.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
 import { traverseTranslation } from '../shared/traverse-translation.ts'
 import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-dispatch.ts'
-import type { LlmInterceptor } from '../shared/interceptor-types.ts'
+import { geminiInterceptors, type GeminiInterceptor } from './interceptors/index.ts'
 
 // ─── Public types ─────────────────────────────────────────────────────────
 
@@ -112,9 +112,10 @@ export interface GeminiAttemptArgs {
   readonly hubAttemptOverride?: (p: HubAttemptProtocol) => { generate: (a: never) => Promise<never> }
 }
 
-// Stream-interceptor stub mirrors messages/responses — Spec 3 keeps the
-// minimum scope. No gemini-specific interceptors are registered yet.
-export type GeminiInterceptor = LlmInterceptor<LlmExecuteResult<ProtocolFrame<unknown>>>
+// GeminiInterceptor moved to `./interceptors/types.ts` (re-exported above via
+// `./interceptors/index.ts`). The default chain `geminiInterceptors` applies
+// four mandatory payload cleanups + post-stream thought suppression — see the
+// interceptors module for details.
 
 // ─── Binding selection ───────────────────────────────────────────────────
 
@@ -180,7 +181,7 @@ export const geminiAttempt = {
       payload: args.payload as Record<string, unknown>,
       headers: {},
     }
-    const chain: ReadonlyArray<GeminiInterceptor> = args.interceptors ?? []
+    const chain: ReadonlyArray<GeminiInterceptor> = args.interceptors ?? geminiInterceptors
 
     const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
 
