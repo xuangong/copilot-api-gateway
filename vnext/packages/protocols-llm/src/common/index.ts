@@ -104,3 +104,16 @@ export {
 } from './result'
 
 export * from './invocation'
+
+export {
+  decodeOpaqueValue,
+  encodeOpaqueValue,
+  appendOpaqueTrailer,
+  splitOpaqueTrailer,
+  concatBytes,
+  uint16be,
+  MAX_OPAQUE_TRAILER_BYTES,
+  type OpaqueValueOrigin,
+  type DecodedOpaqueValue,
+  type SplitOpaqueTrailer,
+} from './opaque-value'
