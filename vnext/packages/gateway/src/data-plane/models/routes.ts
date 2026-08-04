@@ -20,6 +20,67 @@ import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
 import { isCodexUserAgent } from '../codex/catalog.ts'
 import { loadCodexCatalog } from '../codex/models.ts'
 
+// Claude Code CLI (`claude-code/x.y.z (...)`) hits `/v1/models` to populate its
+// `/model` picker. It expects the Anthropic-shape catalog
+// (`{data:[ModelInfo,...], first_id, has_more, last_id}`), NOT OpenAI's
+// `{object:'list', data:[...]}`. Additionally, Claude Code's 1M-context switch
+// requires the discovered model id to itself carry a `[1m]` suffix — the CLI
+// strips it before sending inference requests and pairs it with the
+// `anthropic-beta: context-1m-2025-08-07` header. Any model whose
+// `max_context_window_tokens >= 1_000_000` gets the suffix appended so the
+// picker exposes both the standard and 1M variants under distinct ids.
+//
+// Reference: copilot-gateway `data-plane/models/http.ts` (`toClaudeCodeCatalog`,
+// `isClaudeCodeUserAgent`). vNext delta: reference reads from a rich
+// `PublicModelsResponse` (`display_name`, `created_at`, `limits.*`); vNext's
+// `listUpstreamModels().data` publishes the flatter OpenAI-shape row
+// (`id`, `name?`, `capabilities.limits.*`), so `display_name` falls back to
+// `name ?? id` and `created_at` is stamped as the frozen unknown sentinel.
+const CREATED_AT_UNKNOWN = '1970-01-01T00:00:00Z'
+
+const isClaudeCodeUserAgent = (userAgent: string | undefined): boolean =>
+  userAgent?.startsWith('claude-code/') ?? false
+
+interface ClaudeCodeModel {
+  id: string
+  type: 'model'
+  display_name: string
+  created_at: string
+  max_input_tokens: number | null
+  max_tokens: number | null
+  capabilities: null
+}
+
+interface ClaudeCodeCatalog {
+  data: ClaudeCodeModel[]
+  first_id: string | null
+  has_more: false
+  last_id: string | null
+}
+
+function toClaudeCodeCatalog(models: readonly OpenAIShapedModel[]): ClaudeCodeCatalog {
+  const data: ClaudeCodeModel[] = models.filter(isChatModel).map((m) => {
+    const limits = m.capabilities?.limits ?? {}
+    const maxInput = limits.max_prompt_tokens ?? limits.max_context_window_tokens
+    const suffixed = maxInput !== undefined && maxInput >= 1_000_000 ? `${m.id}[1m]` : m.id
+    return {
+      id: suffixed,
+      type: 'model' as const,
+      display_name: m.name ?? m.id,
+      created_at: CREATED_AT_UNKNOWN,
+      max_input_tokens: maxInput ?? null,
+      max_tokens: limits.max_output_tokens ?? null,
+      capabilities: null,
+    }
+  })
+  return {
+    data,
+    first_id: data[0]?.id ?? null,
+    has_more: false as const,
+    last_id: data[data.length - 1]?.id ?? null,
+  }
+}
+
 export interface DataPlaneAuthCtx {
   userId?: UserId
   copilot?: CreateProviderOptions
@@ -63,6 +124,16 @@ async function handleModelsRequest(c: {
 }) {
   const auth = c.get('auth') ?? {}
   const ua = c.req.header('user-agent')
+  if (isClaudeCodeUserAgent(ua)) {
+    const list = await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot })
+    if (!list.data.length && !auth.copilot?.copilotToken) {
+      return c.json(
+        { error: { type: 'invalid_request_error', message: 'GitHub token not found. Use /auth/github to connect your account.' } },
+        404,
+      )
+    }
+    return c.json(toClaudeCodeCatalog(list.data as OpenAIShapedModel[]))
+  }
   if (isCodexUserAgent(ua)) {
     const list = await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot })
     if (!list.data.length && !auth.copilot?.copilotToken) {
