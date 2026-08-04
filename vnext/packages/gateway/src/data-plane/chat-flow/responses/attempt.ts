@@ -87,6 +87,13 @@ export interface ResponsesAttemptArgs {
   readonly inheritedHeaders?: Record<string, string>
   readonly snapshotMode?: 'none'
   /**
+   * Semantic verb for the request; forwarded onto `Invocation.action` so
+   * the compact-shim can detect compact-shaped requests without inspecting
+   * payload internals. `undefined` ≡ `'generate'`. See
+   * `Invocation.action` docstring.
+   */
+  readonly action?: 'generate' | 'compact'
+  /**
    * Test seam for cross-protocol dispatch. When the resolved binding routes to
    * a non-`responses` hub, the attempt looks up the hub attempt via this
    * override (if provided) or {@link pickHubAttempt} otherwise. Production
@@ -203,6 +210,7 @@ export const responsesAttempt = {
       endpoint: 'responses',
       enabledFlags: new Set(sel.binding.enabledFlags ?? []),
       sourceApi: 'responses',
+      action: args.action,
       payload: args.payload as Record<string, unknown>,
       headers: { ...(args.inheritedHeaders ?? {}) },
     }

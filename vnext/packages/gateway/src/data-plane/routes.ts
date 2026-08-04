@@ -13,7 +13,7 @@ import { embeddingsRouter } from './embeddings/routes.ts'
 import { imagesRouter } from './images/routes.ts'
 import { messagesHandler } from './chat-flow/messages/http.ts'
 import { chatCompletionsHandler } from './chat-flow/chat-completions/http.ts'
-import { responsesHandler } from './chat-flow/responses/http.ts'
+import { responsesHandler, responsesCompactHandler } from './chat-flow/responses/http.ts'
 import { geminiHandler } from './chat-flow/gemini/http.ts'
 import { countTokensHandler } from './chat-flow/count-tokens/http.ts'
 
@@ -38,4 +38,6 @@ dataPlane.post('/v1/chat/completions', chatCompletionsHandler)
 dataPlane.post('/chat/completions', chatCompletionsHandler)
 dataPlane.post('/v1/responses', responsesHandler)
 dataPlane.post('/responses', responsesHandler)
+dataPlane.post('/v1/responses/compact', responsesCompactHandler)
+dataPlane.post('/responses/compact', responsesCompactHandler)
 dataPlane.post('/v1beta/models/:model{.+}', geminiHandler)

@@ -31,6 +31,26 @@ import { readAuth, readObsCtx } from '../shared/gateway-ctx.ts'
 import { openRequestDump, parseJsonBody } from '../shared/dump-open.ts'
 
 export async function responsesHandler(c: Context<{ Bindings: Env }>): Promise<Response> {
+  return responsesHandlerCore(c, undefined)
+}
+
+/**
+ * `POST /v1/responses/compact` — synchronous compact wire.
+ *
+ * Stamps `action: 'compact'` onto the invocation so the Responses
+ * compact-shim engages (see `interceptors/with-responses-compact-shim.ts`
+ * for engagement + payload rewrite). The wire is always non-streaming: the
+ * shim reassembles the summarization turn into a single
+ * `response.compaction` envelope and `respond.ts` renders it as JSON.
+ */
+export async function responsesCompactHandler(c: Context<{ Bindings: Env }>): Promise<Response> {
+  return responsesHandlerCore(c, 'compact')
+}
+
+async function responsesHandlerCore(
+  c: Context<{ Bindings: Env }>,
+  action: 'generate' | 'compact' | undefined,
+): Promise<Response> {
   const auth = readAuth(c)
   const { requestBody, dump } = await openRequestDump(c, auth, c.req.method)
   let raw: unknown
@@ -44,6 +64,7 @@ export async function responsesHandler(c: Context<{ Bindings: Env }>): Promise<R
     requestId: obsCtx.requestId,
     userAgent: obsCtx.userAgent,
     dump,
+    action,
   })
   if (response.status !== 200) return response
   const ct = response.headers.get('content-type') ?? ''

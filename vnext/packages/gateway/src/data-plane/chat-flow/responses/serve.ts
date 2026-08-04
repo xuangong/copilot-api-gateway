@@ -73,6 +73,15 @@ export interface ResponsesServeArgs {
   readonly userAgent?: string
   /** Opaque per-request dump sink (null when the api key has no retention). */
   readonly dump?: KitDumpSink | null
+  /**
+   * Semantic verb for the request. `undefined` ≡ `'generate'`. Set to
+   * `'compact'` by the `/v1/responses/compact` route so the Responses
+   * compact-shim (see `interceptors/with-responses-compact-shim.ts`) detects
+   * compact-shape without inspecting payload internals. When `'compact'`,
+   * `wantsStream` is forced to `false` — the compact wire is synchronous
+   * request/response and always renders the terminal envelope as JSON.
+   */
+  readonly action?: 'generate' | 'compact'
 }
 
 export interface ResponsesServeResult {
@@ -159,7 +168,9 @@ const responsesHooks: ServeTemplateHooks<
     }
   },
 
-  wantsStream: (p) => p.stream === true,
+  wantsStream: (p, input) =>
+    // Compact wire is synchronous: force JSON regardless of caller's `stream`.
+    (input.extras.action as 'generate' | 'compact' | undefined) === 'compact' ? false : p.stream === true,
 
   runAttempt: (a) => responsesAttempt.generate({
     payload: a.payload,
@@ -168,6 +179,7 @@ const responsesHooks: ServeTemplateHooks<
     telemetryCtx: a.telemetryCtx,
     requestId: a.extras.requestId as string,
     userAgent: a.extras.userAgent as string,
+    action: a.extras.action as 'generate' | 'compact' | undefined,
   }),
 
   respond: (r, c) => respondResponses(r, {
@@ -196,7 +208,7 @@ export async function serveResponses(args: ResponsesServeArgs): Promise<Response
       // image calls. They were dedicated args on the old serve; the
       // kit's RunAttemptArgs only standardises payload/auth/telemetry,
       // so per-endpoint passthroughs live in `extras`.
-      extras: { requestId: args.requestId, userAgent: args.userAgent },
+      extras: { requestId: args.requestId, userAgent: args.userAgent, action: args.action },
       dump: args.dump ?? null,
     },
     kitDeps,
