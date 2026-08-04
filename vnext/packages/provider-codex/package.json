@@ -1,0 +1,20 @@
+{
+  "name": "@vibe-llm/provider-codex",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vibe-core/result": "workspace:*",
+    "@vibe-llm/protocols": "workspace:*",
+    "@vibe-core/service": "workspace:*",
+    "@vibe-llm/provider-llm": "workspace:*",
+    "@vibe-core/http": "workspace:*",
+    "@vibe-core/platform": "workspace:*"
+  }
+}

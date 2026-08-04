@@ -121,6 +121,18 @@
         "@vibe-llm/provider-llm": "workspace:*",
       },
     },
+    "packages/provider-codex": {
+      "name": "@vibe-llm/provider-codex",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vibe-core/http": "workspace:*",
+        "@vibe-core/platform": "workspace:*",
+        "@vibe-core/result": "workspace:*",
+        "@vibe-core/service": "workspace:*",
+        "@vibe-llm/protocols": "workspace:*",
+        "@vibe-llm/provider-llm": "workspace:*",
+      },
+    },
     "packages/provider-copilot": {
       "name": "@vibe-llm/provider-copilot",
       "version": "0.0.0",
@@ -480,6 +492,8 @@
     "@vibe-llm/protocols": ["@vibe-llm/protocols@workspace:packages/protocols-llm"],
 
     "@vibe-llm/provider-azure": ["@vibe-llm/provider-azure@workspace:packages/provider-azure"],
+
+    "@vibe-llm/provider-codex": ["@vibe-llm/provider-codex@workspace:packages/provider-codex"],
 
     "@vibe-llm/provider-copilot": ["@vibe-llm/provider-copilot@workspace:packages/provider-copilot"],
 

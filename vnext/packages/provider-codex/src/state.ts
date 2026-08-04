@@ -1,0 +1,231 @@
+// Gateway-managed Codex credential state, persisted in upstreams.state_json.
+// Writes happen via UpstreamRepo.saveState, which read-modify-writes the row
+// and replays the mutator whenever a concurrent writer wins.
+
+import type { CodexQuotaSnapshot } from './quota'
+
+export type CodexAccountCredentialHealth = 'active' | 'session_terminated' | 'refresh_failed'
+
+// Short-lived OAuth access token minted by exchanging the stored refresh_token
+// against /oauth/token. The refresh_token itself stays on CodexAccountCredential
+// so a KV/cache wipe never forces operator re-import; only the minted token
+// (and its expiry) belong in state alongside it.
+export interface CodexAccessTokenEntry {
+  token: string
+  expiresAt: number       // unix ms
+  refreshedAt: string     // ISO 8601
+}
+
+// Most recent quota observation derived from upstream response headers.
+// `fetchedAt` is unix ms; `data` is the parsed snapshot, validated by quota.ts
+// at the boundary where it's read for dashboard display.
+export interface CodexQuotaSnapshotEntry {
+  fetchedAt: number
+  data: CodexQuotaSnapshot
+}
+
+export type CodexQuotaSnapshotEntryMap = Record<string, CodexQuotaSnapshotEntry>
+
+// One account's autonomous credential state, joined back to its identity in
+// CodexUpstreamConfig.accounts via `chatgptAccountId`.
+export interface CodexAccountCredential {
+  chatgptAccountId: string
+  // OpenAI rotates refresh_token on every /oauth/token call. Stored in the
+  // upstreams row (not KV) so KV eviction never forces operator re-import.
+  refresh_token: string
+  state: CodexAccountCredentialHealth
+  state_message?: string
+  // ISO 8601, written on every state transition (initial import, rotation,
+  // terminal-state flip).
+  state_updated_at: string
+  // Stable per-account installation id, surfaced to the Codex upstream as
+  // `client_metadata['x-codex-installation-id']` so per-account requests look
+  // like a single persisted device rather than rotating per call.
+  openaiDeviceId: string
+  // accessToken / quotaSnapshot were added after the initial schema; absent on
+  // pre-existing rows. `readCodexUpstreamState` normalizes absent → `null`.
+  accessToken: CodexAccessTokenEntry | null
+  quotaSnapshot: CodexQuotaSnapshotEntryMap | null
+}
+
+// Account-pool state. v1 always carries exactly one entry; the asserter
+// enforces that, mirroring the same invariant on CodexUpstreamConfig.
+export interface CodexUpstreamState {
+  accounts: CodexAccountCredential[]
+}
+
+export const findCodexAccountIndex = (state: CodexUpstreamState, accountId: string): number =>
+  state.accounts.findIndex((account) => account.chatgptAccountId === accountId)
+
+export const replaceCodexAccount = (
+  state: CodexUpstreamState,
+  index: number,
+  patch: (account: CodexAccountCredential) => CodexAccountCredential,
+): CodexUpstreamState => ({
+  ...state,
+  accounts: state.accounts.map((account, currentIndex) =>
+    currentIndex === index ? patch(account) : account,
+  ),
+})
+
+const ALLOWED_CREDENTIAL_KEYS_MAP: Record<keyof CodexAccountCredential, true> = {
+  chatgptAccountId: true,
+  refresh_token: true,
+  state: true,
+  state_message: true,
+  state_updated_at: true,
+  openaiDeviceId: true,
+  accessToken: true,
+  quotaSnapshot: true,
+}
+
+const ALLOWED_STATE_KEYS_MAP: Record<keyof CodexUpstreamState, true> = {
+  accounts: true,
+}
+
+const ALLOWED_ACCESS_TOKEN_KEYS_MAP: Record<keyof CodexAccessTokenEntry, true> = {
+  token: true,
+  expiresAt: true,
+  refreshedAt: true,
+}
+
+const ALLOWED_QUOTA_SNAPSHOT_KEYS_MAP: Record<keyof CodexQuotaSnapshotEntry, true> = {
+  fetchedAt: true,
+  data: true,
+}
+
+const assertCodexAccessTokenEntry = (value: unknown, where: string): void => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new TypeError(`${where} must be a plain object`)
+  }
+  const obj = value as Record<string, unknown>
+  for (const key of Object.keys(obj)) {
+    if (!Object.hasOwn(ALLOWED_ACCESS_TOKEN_KEYS_MAP, key)) {
+      throw new TypeError(`${where} has unexpected key '${key}'`)
+    }
+  }
+  if (typeof obj.token !== 'string' || obj.token === '') {
+    throw new TypeError(`${where}.token must be a non-empty string`)
+  }
+  if (typeof obj.expiresAt !== 'number' || !Number.isFinite(obj.expiresAt)) {
+    throw new TypeError(`${where}.expiresAt must be a finite number`)
+  }
+  if (typeof obj.refreshedAt !== 'string' || obj.refreshedAt === '') {
+    throw new TypeError(`${where}.refreshedAt must be a non-empty string`)
+  }
+}
+
+// Deeper validation of the snapshot's `data` payload lives in quota.ts.
+const assertCodexQuotaSnapshotEntry = (value: unknown, where: string): void => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new TypeError(`${where} must be a plain object`)
+  }
+  const obj = value as Record<string, unknown>
+  for (const key of Object.keys(obj)) {
+    if (!Object.hasOwn(ALLOWED_QUOTA_SNAPSHOT_KEYS_MAP, key)) {
+      throw new TypeError(`${where} has unexpected key '${key}'`)
+    }
+  }
+  if (typeof obj.fetchedAt !== 'number' || !Number.isFinite(obj.fetchedAt)) {
+    throw new TypeError(`${where}.fetchedAt must be a finite number`)
+  }
+  if (typeof obj.data !== 'object' || obj.data === null || Array.isArray(obj.data)) {
+    throw new TypeError(`${where}.data must be a plain object`)
+  }
+}
+
+const isUnsafeMapKey = (key: string): boolean =>
+  key === '' || key === '__proto__' || key === 'constructor' || key === 'prototype'
+
+const assertCodexQuotaSnapshotEntryMap = (value: unknown, where: string): void => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new TypeError(`${where} must be a plain object`)
+  }
+  const obj = value as Record<string, unknown>
+  for (const key of Object.keys(obj)) {
+    if (isUnsafeMapKey(key)) {
+      throw new TypeError(`${where} has invalid active limit key '${key}'`)
+    }
+    assertCodexQuotaSnapshotEntry(obj[key], `${where}.${key}`)
+  }
+}
+
+const assertCodexAccountCredential = (value: unknown, where: string): void => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new TypeError(`${where} must be a plain object`)
+  }
+  const obj = value as Record<string, unknown>
+  for (const key of Object.keys(obj)) {
+    if (!Object.hasOwn(ALLOWED_CREDENTIAL_KEYS_MAP, key)) {
+      throw new TypeError(`${where} has unexpected key '${key}'`)
+    }
+  }
+  if (typeof obj.chatgptAccountId !== 'string' || obj.chatgptAccountId === '') {
+    throw new TypeError(`${where}.chatgptAccountId must be a non-empty string`)
+  }
+  if (typeof obj.refresh_token !== 'string' || obj.refresh_token === '') {
+    throw new TypeError(`${where}.refresh_token must be a non-empty string`)
+  }
+  if (
+    obj.state !== 'active' &&
+    obj.state !== 'session_terminated' &&
+    obj.state !== 'refresh_failed'
+  ) {
+    throw new TypeError(
+      `${where}.state must be one of 'active' | 'session_terminated' | 'refresh_failed', got ${String(obj.state)}`,
+    )
+  }
+  if (obj.state_message !== undefined && typeof obj.state_message !== 'string') {
+    throw new TypeError(`${where}.state_message must be a string when present`)
+  }
+  if (typeof obj.state_updated_at !== 'string' || obj.state_updated_at === '') {
+    throw new TypeError(`${where}.state_updated_at must be a non-empty ISO string`)
+  }
+  if (typeof obj.openaiDeviceId !== 'string' || obj.openaiDeviceId === '') {
+    throw new TypeError(`${where}.openaiDeviceId must be a non-empty string`)
+  }
+  if (obj.accessToken !== undefined && obj.accessToken !== null) {
+    assertCodexAccessTokenEntry(obj.accessToken, `${where}.accessToken`)
+  }
+  if (obj.quotaSnapshot !== undefined && obj.quotaSnapshot !== null) {
+    assertCodexQuotaSnapshotEntryMap(obj.quotaSnapshot, `${where}.quotaSnapshot`)
+  }
+}
+
+export function assertCodexUpstreamState(value: unknown): asserts value is CodexUpstreamState {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new TypeError('CodexUpstreamState must be a plain object')
+  }
+  const obj = value as Record<string, unknown>
+  for (const key of Object.keys(obj)) {
+    if (!Object.hasOwn(ALLOWED_STATE_KEYS_MAP, key)) {
+      throw new TypeError(`CodexUpstreamState has unexpected key '${key}'`)
+    }
+  }
+  if (!Array.isArray(obj.accounts)) {
+    throw new TypeError('CodexUpstreamState.accounts must be an array')
+  }
+  if (obj.accounts.length !== 1) {
+    throw new TypeError(
+      `CodexUpstreamState.accounts must hold exactly one account (got ${obj.accounts.length})`,
+    )
+  }
+  for (let i = 0; i < obj.accounts.length; i++) {
+    assertCodexAccountCredential(obj.accounts[i], `CodexUpstreamState.accounts[${i}]`)
+  }
+}
+
+// Boundary normalization: legacy rows may carry no `accessToken` /
+// `quotaSnapshot` key; the typed contract promises `null` rather than
+// `undefined`.
+export const readCodexUpstreamState = (raw: unknown): CodexUpstreamState => {
+  assertCodexUpstreamState(raw)
+  return {
+    ...raw,
+    accounts: raw.accounts.map((account) => ({
+      ...account,
+      accessToken: account.accessToken ?? null,
+      quotaSnapshot: account.quotaSnapshot ?? null,
+    })),
+  }
+}

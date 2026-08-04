@@ -95,7 +95,7 @@ export const OPTIONAL_FLAGS = [
     id: "promote-system-to-developer",
     label: "Promote system role to developer",
     description: "Rewrite `role:'system'` to `role:'developer'` on Chat Completions messages and Responses input items. Used for OpenAI o-series and upstreams that only accept `developer` at the system slot.",
-    defaultFor: [],
+    defaultFor: ["codex"],
   },
   {
     id: "demote-developer-to-system",
@@ -183,7 +183,7 @@ export const OPTIONAL_FLAGS = [
     id: "strip-billing-attribution",
     label: "Strip Claude Code billing-attribution block from /v1/messages system",
     description: "Remove Claude Code's `x-anthropic-billing-header` line and per-turn `cch=<hash>` from `payload.system` before forwarding. The hash flips every turn, so leaving it in destroys upstream prompt-cache hit rate on every non-claude-code upstream. Must remain OFF for a claude-code subscription upstream (that endpoint reads the block to bill against the user's plan).",
-    defaultFor: ["copilot", "azure", "custom"],
+    defaultFor: ["copilot", "azure", "custom", "codex"],
   },
 ] as const satisfies readonly Flag[]
 
