@@ -1,4 +1,5 @@
 import type { MessagesInterceptor } from './types'
+import { withBillingAttributionStripped } from './with-billing-attribution-stripped'
 import { withContextWindowErrorRewritten } from './with-context-window-error-rewritten'
 import { withMessagesWebSearchShim } from './with-messages-web-search-shim'
 import { withSpeedFast } from './with-speed-fast'
@@ -26,6 +27,13 @@ export type { MessagesInterceptor } from './types'
 //     default), then strips thinking text after the fact while preserving
 //     every `signature` byte. Without this Claude 4.7 long-thinking turns
 //     hit a ~60s idle gap that surfaces as `Stream idle timeout`.
+//   - `withBillingAttributionStripped` removes Claude Code's per-turn
+//     `x-anthropic-billing-header` + `cch=<hash>` from `payload.system` so
+//     non-claude-code upstreams' prompt caches are not busted every turn.
+//     Positioned INSIDE `withThinkingDisplayPromoted` (which only cares
+//     about thinking blocks, not system) so both can freely mutate the
+//     payload without ordering coupling; positioned OUTSIDE the web-search
+//     shim so the shim sees the already-cleaned system.
 //   - `withMessagesWebSearchShim` (innermost) intercepts native `web_search`
 //     tool declarations on Messages API. Ported 1:1 from the reference
 //     copilot-gateway; gated by the `messages-web-search-shim` flag on
@@ -34,5 +42,6 @@ export const messagesInterceptors: readonly MessagesInterceptor[] = [
   withContextWindowErrorRewritten,
   withSpeedFast,
   withThinkingDisplayPromoted,
+  withBillingAttributionStripped,
   withMessagesWebSearchShim,
 ]
