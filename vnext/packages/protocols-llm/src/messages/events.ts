@@ -202,6 +202,12 @@ export interface MessagesUsage {
   cache_creation_input_tokens?: number
   cache_read_input_tokens?: number
   service_tier?: 'standard' | 'priority' | 'batch'
+  // Anthropic Fast Mode marker echoed back in `usage.speed`. Upstream Copilot
+  // never emits this — the `withSpeedFast` gateway interceptor stamps it when
+  // the caller requested `speed: 'fast'` on the outbound payload so downstream
+  // billing (tier='fast') and Anthropic-compatible clients see the marker.
+  // Reference: copilot-gateway `protocols/messages/usage.ts`.
+  speed?: 'standard' | 'fast' | (string & {})
   server_tool_use?: MessagesUsageServerToolUse
 }
 
@@ -277,6 +283,8 @@ export interface MessagesMessageDeltaEvent {
     cache_creation_input_tokens?: number
     cache_read_input_tokens?: number
     server_tool_use?: MessagesUsageServerToolUse
+    // See MessagesUsage.speed — Fast Mode marker also stamped on message_delta.
+    speed?: 'standard' | 'fast' | (string & {})
   }
 }
 

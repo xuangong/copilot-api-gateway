@@ -1,6 +1,7 @@
 import type { MessagesInterceptor } from './types'
 import { withContextWindowErrorRewritten } from './with-context-window-error-rewritten'
 import { withMessagesWebSearchShim } from './with-messages-web-search-shim'
+import { withSpeedFast } from './with-speed-fast'
 import { withThinkingDisplayPromoted } from './with-thinking-display-promoted'
 
 export type { MessagesInterceptor } from './types'
@@ -13,6 +14,13 @@ export type { MessagesInterceptor } from './types'
 //     gets reshaped into a Messages-shaped `invalid_request_error` before
 //     downstream consumers see it (Claude Code uses this shape to trigger
 //     compaction).
+//   - `withSpeedFast` strips `speed: 'fast' | 'standard'` from the outbound
+//     payload (Copilot rejects unknown fields) and stamps `usage.speed='fast'`
+//     onto `message_start` / `message_delta` frames when the caller asked for
+//     Fast Mode. Runs OUTSIDE `withThinkingDisplayPromoted` so its usage
+//     stamping happens after thinking-omit frame filtering; runs INSIDE
+//     `withContextWindowErrorRewritten` so error rewrites still see the
+//     original event stream.
 //   - `withThinkingDisplayPromoted` upgrades `thinking.display` to
 //     `summarized` upstream when the downstream wanted `omitted` (Claude 4.7
 //     default), then strips thinking text after the fact while preserving
@@ -24,6 +32,7 @@ export type { MessagesInterceptor } from './types'
 //     `Invocation.enabledFlags`. See file header for adaptation notes.
 export const messagesInterceptors: readonly MessagesInterceptor[] = [
   withContextWindowErrorRewritten,
+  withSpeedFast,
   withThinkingDisplayPromoted,
   withMessagesWebSearchShim,
 ]
