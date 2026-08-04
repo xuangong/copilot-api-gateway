@@ -136,7 +136,165 @@ export interface ResponsesMcpApprovalResponseItem extends ResponsesPermissiveIte
   output?: unknown
 }
 
+// ── Programmatic Tool Calling & Agent Message items ──
+// Ported from copilot-gateway/packages/protocols/src/responses/index.ts.
+// These carry Copilot-owned opaque state (`fingerprint`, `encrypted_content`)
+// that the item-id membrane must wrap/unwrap for multi-turn round-trip.
+
+// OpenAI Responses Programmatic Tool Calling caller shape.
+export type ResponsesToolCaller =
+  | { type: 'direct' }
+  | { type: 'program'; caller_id: string }
+
+export interface ResponsesProgramItem {
+  type: 'program'
+  id: string
+  call_id: string
+  code: string
+  fingerprint: string
+}
+
+export interface ResponsesProgramOutputItem {
+  type: 'program_output'
+  id: string
+  call_id: string
+  result: string
+  status: 'completed' | 'incomplete'
+}
+
+// OpenAI beta Responses multi-agent item shapes.
+export type ResponsesAgentMessageContent =
+  | ResponsesInputText
+  | ResponsesInputImage
+  | { type: 'text' | 'summary_text' | 'reasoning_text'; text: string }
+  | { type: 'refusal'; refusal: string }
+  | { type: 'encrypted_content'; encrypted_content: string }
+  | (Record<string, unknown> & { type: string })
+
+export interface ResponsesInputAgentMessageItem {
+  type: 'agent_message'
+  author: string
+  recipient: string
+  content: ResponsesAgentMessageContent[]
+  id?: string | null
+  agent?: { agent_name: string } | null
+}
+
+// ── Wire EasyInputMessage + canonical/request input union ──
+// The Responses request schema's EasyInputMessage makes the constant
+// `type: "message"` discriminator optional. Wire-facing payloads accept that
+// shorthand; canonicalize normalizes it before internal item processing so
+// the canonical union remains explicitly discriminated.
+export interface ResponsesEasyInputMessage {
+  content: string | ResponsesInputContent[]
+  role: 'user' | 'assistant' | 'system' | 'developer'
+  type?: 'message'
+}
+
+export interface ResponsesInputMessage {
+  type: 'message'
+  id?: string
+  status?: string
+  role: 'user' | 'assistant' | 'system' | 'developer'
+  content: string | ResponsesInputContent[]
+}
+
+export interface ResponsesFunctionCallItem {
+  type: 'function_call'
+  id?: string
+  call_id: string
+  name: string
+  arguments: string
+  status?: 'completed' | 'in_progress' | 'incomplete'
+  caller?: ResponsesToolCaller | null
+}
+
+export interface ResponsesCustomToolCallItem {
+  type: 'custom_tool_call'
+  call_id: string
+  name: string
+  input: string
+  id?: string
+  namespace?: string
+  status?: string
+  caller?: ResponsesToolCaller | null
+}
+
+export interface ResponsesItemReference {
+  type: 'item_reference'
+  id: string
+}
+
+export interface ResponsesInputWebSearchCall {
+  type: 'web_search_call'
+  id?: string
+  status?: 'completed' | 'in_progress' | 'searching' | 'failed'
+  action?: ResponsesWebSearchAction
+  results?: ResponsesWebSearchResult[]
+}
+
+export interface ResponsesInputImageGenerationCall {
+  type: 'image_generation_call'
+  id?: string
+  status?: 'in_progress' | 'generating' | 'completed' | 'failed'
+  result?: string
+  revised_prompt?: string
+}
+
+// Canonical union of every item shape the gateway internals may see on the
+// input side of a Responses payload. `ResponsesEasyInputMessage` is NOT in
+// this union — canonicalize lifts it to `ResponsesInputMessage` at wire
+// boundary so post-canonicalize code always sees the explicit discriminator.
+export type ResponsesInputItem =
+  | ResponsesInputMessage
+  | ResponsesFunctionCallItem
+  | ResponsesFunctionCallOutputItem
+  | ResponsesCustomToolCallItem
+  | ResponsesCustomToolCallOutputItem
+  | ResponsesInputReasoning
+  | ResponsesItemReference
+  | ResponsesInputWebSearchCall
+  | ResponsesInputImageGenerationCall
+  | ResponsesFileSearchCallItem
+  | ResponsesComputerCallItem
+  | ResponsesComputerCallOutputItem
+  | ResponsesToolSearchCallItem
+  | ResponsesToolSearchOutputItem
+  | ResponsesProgramItem
+  | ResponsesProgramOutputItem
+  | ResponsesInputAgentMessageItem
+  | ResponsesCompactionItem
+  | ResponsesCodeInterpreterCallItem
+  | ResponsesLocalShellCallItem
+  | ResponsesLocalShellCallOutputItem
+  | ResponsesShellCallItem
+  | ResponsesShellCallOutputItem
+  | ResponsesApplyPatchCallItem
+  | ResponsesApplyPatchCallOutputItem
+  | ResponsesMcpCallItem
+  | ResponsesMcpListToolsItem
+  | ResponsesMcpApprovalRequestItem
+  | ResponsesMcpApprovalResponseItem
+
+// Wire-side request input union: accepts EasyInputMessage shorthand and every
+// canonical item shape. Consumed only by canonicalize + wire-facing schemas.
+export type ResponsesRequestInputItem =
+  | ResponsesEasyInputMessage
+  | ResponsesInputItem
+
 // ── Response result + output items ──
+
+// Result body returned by the `/responses/compact` endpoint. Strict subset of
+// `ResponsesResult`: no `status`, `model`, `error`, `incomplete_details`.
+// `created_at` and `usage` stay optional so upstream shapes without them still
+// pass through.
+export interface ResponsesCompactionResult {
+  id: string
+  object: string
+  output: ResponsesOutputItem[]
+  created_at?: number
+  usage?: ResponsesResult['usage']
+}
 
 export interface ResponsesResult {
   id: string
@@ -182,6 +340,9 @@ export type ResponsesOutputItem =
   | ResponsesMcpApprovalRequestItem
   | ResponsesMcpApprovalResponseItem
   | ResponsesOutputImageGenerationCall
+  | ResponsesProgramItem
+  | ResponsesProgramOutputItem
+  | ResponsesInputAgentMessageItem
 
 export interface ResponsesOutputMessage {
   type: 'message'

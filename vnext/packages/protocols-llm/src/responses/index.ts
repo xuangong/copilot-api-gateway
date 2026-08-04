@@ -48,6 +48,23 @@ export const ResponsesPayloadSchema = z.object({
 
 export type ResponsesPayload = z.infer<typeof ResponsesPayloadSchema>
 
+import type { ResponsesInputItem, ResponsesRequestInputItem } from './events.ts'
+
+// Post-canonicalize payload shape. `input` is always an array of explicitly-
+// discriminated items; EasyInputMessage shorthand has been lifted at wire
+// boundary. Internal code (interceptors, translators, membrane) reads this
+// shape so TS narrowing works without cast.
+export type CanonicalResponsesPayload = Omit<ResponsesPayload, 'input'> & {
+  input: ResponsesInputItem[]
+}
+
+// Wire-facing request payload shape. Accepts `string` shorthand and the
+// EasyInputMessage variant that omits `type: 'message'`. Only canonicalize
+// and wire-facing schemas consume this shape.
+export type ResponsesRequestPayload = Omit<ResponsesPayload, 'input'> & {
+  input: string | ResponsesRequestInputItem[]
+}
+
 export type {
   ResponsesStreamEvent,
   ResponsesStreamEventVariant,
@@ -89,6 +106,22 @@ export type {
   ResponsesMcpListToolsItem,
   ResponsesMcpApprovalRequestItem,
   ResponsesMcpApprovalResponseItem,
+  // Input-side item shapes (added for item-id membrane + canonicalize)
+  ResponsesInputItem,
+  ResponsesRequestInputItem,
+  ResponsesEasyInputMessage,
+  ResponsesInputMessage,
+  ResponsesFunctionCallItem,
+  ResponsesCustomToolCallItem,
+  ResponsesItemReference,
+  ResponsesInputWebSearchCall,
+  ResponsesInputImageGenerationCall,
+  ResponsesProgramItem,
+  ResponsesProgramOutputItem,
+  ResponsesAgentMessageContent,
+  ResponsesInputAgentMessageItem,
+  ResponsesToolCaller,
+  ResponsesCompactionResult,
 } from './events.ts'
 export { isResponsesTerminalEvent, responsesResultFromStreamEvent } from './events.ts'
 
