@@ -17,6 +17,8 @@ import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { listUpstreamModels, type CreateProviderOptions } from '../providers/registry.ts'
 import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
+import { isCodexUserAgent } from '../codex/catalog.ts'
+import { loadCodexCatalog } from '../codex/models.ts'
 
 export interface DataPlaneAuthCtx {
   userId?: UserId
@@ -46,8 +48,33 @@ async function handleList(auth: DataPlaneAuthCtx) {
   return { ok: true, models } as const
 }
 
-modelsRouter.get('/models', async (c) => {
-  const result = await handleList(c.get('auth') ?? {})
+// Codex CLI (all originators: `codex-tui`, `codex_cli_rs`, `codex_exec`,
+// Desktop, IDE) issues `/models` with a User-Agent like
+// `codex-tui/0.144.1 (…)`. When we recognize that UA we serve Codex's own
+// `ModelsResponse` shape (`{models: [ModelInfo,...]}`) instead of the OpenAI
+// public catalog — Codex reads this shape via `OpenAiModelsManager::list_models`
+// and replaces its bundled catalog when auth is Chatgpt / AgentIdentity.
+// Any other UA (including OpenAI public SDKs) keeps the historic OpenAI-shape
+// response so existing SDK consumers see byte-identical output.
+async function handleModelsRequest(c: {
+  req: { header: (name: string) => string | undefined }
+  get: (key: 'auth') => DataPlaneAuthCtx | undefined
+  json: (body: unknown, status?: 200 | 404) => Response
+}) {
+  const auth = c.get('auth') ?? {}
+  const ua = c.req.header('user-agent')
+  if (isCodexUserAgent(ua)) {
+    const list = await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot })
+    if (!list.data.length && !auth.copilot?.copilotToken) {
+      return c.json(
+        { error: { type: 'invalid_request_error', message: 'GitHub token not found. Use /auth/github to connect your account.' } },
+        404,
+      )
+    }
+    const catalog = await loadCodexCatalog(ua, list.data as unknown as { id: string; name?: string; capabilities?: { type?: string; limits?: { max_context_window_tokens?: number } } }[])
+    return c.json(catalog)
+  }
+  const result = await handleList(auth)
   if (!result.ok) {
     return c.json(
       { error: { type: 'invalid_request_error', message: 'GitHub token not found. Use /auth/github to connect your account.' } },
@@ -55,18 +82,10 @@ modelsRouter.get('/models', async (c) => {
     )
   }
   return c.json(result.models)
-})
+}
 
-modelsRouter.get('/v1/models', async (c) => {
-  const result = await handleList(c.get('auth') ?? {})
-  if (!result.ok) {
-    return c.json(
-      { error: { type: 'invalid_request_error', message: 'GitHub token not found. Use /auth/github to connect your account.' } },
-      404,
-    )
-  }
-  return c.json(result.models)
-})
+modelsRouter.get('/models', (c) => handleModelsRequest(c as never))
+modelsRouter.get('/v1/models', (c) => handleModelsRequest(c as never))
 
 // Gemini list/get: SDKs (`@google/genai`) hit `/v1beta/models` on init and
 // `/v1beta/models/:modelId` to resolve default model metadata. Both return
