@@ -4,7 +4,7 @@
  * until the old code is retired (shared D1 means schema drift is dangerous).
  */
 
-export type UpstreamKind = 'copilot' | 'custom' | 'azure' | 'sdf' | 'codex'
+export type UpstreamKind = 'copilot' | 'custom' | 'azure' | 'sdf' | 'codex' | 'claude-code'
 
 export type EndpointKey =
   | 'chat_completions'

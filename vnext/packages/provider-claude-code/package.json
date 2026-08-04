@@ -1,0 +1,22 @@
+{
+  "name": "@vibe-llm/provider-claude-code",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.5.0",
+    "@vibe-core/result": "workspace:*",
+    "@vibe-llm/protocols": "workspace:*",
+    "@vibe-core/service": "workspace:*",
+    "@vibe-llm/provider-llm": "workspace:*",
+    "@vibe-core/http": "workspace:*",
+    "@vibe-core/platform": "workspace:*",
+    "@vibe-core/upstream-repo": "workspace:*"
+  }
+}

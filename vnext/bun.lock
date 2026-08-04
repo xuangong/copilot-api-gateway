@@ -123,6 +123,20 @@
         "@vibe-llm/provider-llm": "workspace:*",
       },
     },
+    "packages/provider-claude-code": {
+      "name": "@vibe-llm/provider-claude-code",
+      "version": "0.0.0",
+      "dependencies": {
+        "@noble/hashes": "^1.5.0",
+        "@vibe-core/http": "workspace:*",
+        "@vibe-core/platform": "workspace:*",
+        "@vibe-core/result": "workspace:*",
+        "@vibe-core/service": "workspace:*",
+        "@vibe-core/upstream-repo": "workspace:*",
+        "@vibe-llm/protocols": "workspace:*",
+        "@vibe-llm/provider-llm": "workspace:*",
+      },
+    },
     "packages/provider-codex": {
       "name": "@vibe-llm/provider-codex",
       "version": "0.0.0",
@@ -376,6 +390,8 @@
 
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.1.4", "", { "dependencies": { "@tybys/wasm-util": "^0.10.1" }, "peerDependencies": { "@emnapi/core": "^1.7.1", "@emnapi/runtime": "^1.7.1" } }, "sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow=="],
 
+    "@noble/hashes": ["@noble/hashes@1.8.0", "https://ms-feed-2.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/@noble/hashes/-/hashes-1.8.0.tgz", {}, "sha1-zuQ9gB/O+WRLEbgZSFdpWs1fgVo="],
+
     "@nodelib/fs.scandir": ["@nodelib/fs.scandir@2.1.5", "", { "dependencies": { "@nodelib/fs.stat": "2.0.5", "run-parallel": "^1.1.9" } }, "sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g=="],
 
     "@nodelib/fs.stat": ["@nodelib/fs.stat@2.0.5", "", {}, "sha512-RkhPPp2zrqDAQA/2jNhnztcPAlv64XdhIp7a7454A5ovI7Bukxgt7MX7udwAu3zg1DcpPU0rz3VV1SeaqvY4+A=="],
@@ -505,6 +521,8 @@
     "@vibe-llm/protocols": ["@vibe-llm/protocols@workspace:packages/protocols-llm"],
 
     "@vibe-llm/provider-azure": ["@vibe-llm/provider-azure@workspace:packages/provider-azure"],
+
+    "@vibe-llm/provider-claude-code": ["@vibe-llm/provider-claude-code@workspace:packages/provider-claude-code"],
 
     "@vibe-llm/provider-codex": ["@vibe-llm/provider-codex@workspace:packages/provider-codex"],
 
