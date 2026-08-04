@@ -2,6 +2,9 @@ import type { ChatCompletionsInterceptor } from './types'
 import { withUsageStreamOptionsIncluded } from './include-usage-stream-options'
 import { withToolArgumentWhitespaceAborted } from './with-tool-argument-whitespace-aborted'
 import { withPromptCacheKeyStripped } from './with-prompt-cache-key-stripped'
+import { withVendorDeepSeekChatCompletionsNormalize } from './with-vendor-deepseek-normalized'
+import { withVendorQwenChatCompletionsNormalize } from './with-vendor-qwen-normalized'
+import { withVendorKimiChatCompletionsNormalize } from './with-vendor-kimi-normalized'
 
 // Unified Chat Completions interceptor registry.
 //
@@ -16,8 +19,21 @@ import { withPromptCacheKeyStripped } from './with-prompt-cache-key-stripped'
 //   - `withPromptCacheKeyStripped` drops top-level `prompt_cache_key` under
 //     the `strip-prompt-cache-key` flag so upstreams that reject unknown
 //     request arguments (Azure DeepSeek, etc.) don't 400.
+//   - `withVendorDeepSeekChatCompletionsNormalize` /
+//     `withVendorQwenChatCompletionsNormalize` /
+//     `withVendorKimiChatCompletionsNormalize` are innermost — they translate
+//     between the gateway's OpenAI-canonical wire body and each vendor's
+//     wire dialect. Flag-gated (`vendor-deepseek` / `vendor-qwen` /
+//     `vendor-kimi`); defaults OFF and toggled per-upstream by admins on
+//     `custom` upstreams pointed at those vendors' OpenAI-compatible
+//     endpoints. Positioned last so the outbound rewrite is the final
+//     mutation before terminal dispatch and the inbound rewrite is the
+//     first mutation on the stream.
 export const chatCompletionsInterceptors: readonly ChatCompletionsInterceptor[] = [
   withUsageStreamOptionsIncluded,
   withToolArgumentWhitespaceAborted,
   withPromptCacheKeyStripped,
+  withVendorDeepSeekChatCompletionsNormalize,
+  withVendorQwenChatCompletionsNormalize,
+  withVendorKimiChatCompletionsNormalize,
 ]

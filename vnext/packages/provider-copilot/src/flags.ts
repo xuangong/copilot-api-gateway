@@ -31,6 +31,12 @@ export const OPTIONAL_FLAGS = [
     defaultFor: [],
   },
   {
+    id: "vendor-kimi",
+    label: "Vendor: Kimi style",
+    description: "Marks this upstream as Kimi (Moonshot) OpenAI-compatible. Normalizes Kimi's flat `usage.cached_tokens` field into OpenAI's `prompt_tokens_details.cached_tokens`.",
+    defaultFor: [],
+  },
+  {
     id: "retry-cyber-policy",
     label: "Retry on upstream cyber-policy block",
     description: "Retry cyber_policy 4xx errors from the upstream (up to 10 attempts).",
@@ -129,6 +135,12 @@ export const OPTIONAL_FLAGS = [
     label: "Transform: compress inline base64 images to WebP",
     description: "Recompress base64 data-URL images in the payload to WebP via the Cloudflare Images binding before forwarding upstream. Cuts bandwidth and avoids the lossy multi-pass re-encode Copilot/Anthropic do server-side. No-op when no Images binding is configured.",
     defaultFor: ["copilot"],
+  },
+  {
+    id: "strip-billing-attribution",
+    label: "Strip Claude Code billing-attribution block from /v1/messages system",
+    description: "Remove Claude Code's `x-anthropic-billing-header` line and per-turn `cch=<hash>` from `payload.system` before forwarding. The hash flips every turn, so leaving it in destroys upstream prompt-cache hit rate on every non-claude-code upstream. Must remain OFF for a claude-code subscription upstream (that endpoint reads the block to bill against the user's plan).",
+    defaultFor: ["copilot", "azure", "custom"],
   },
 ] as const satisfies readonly Flag[]
 

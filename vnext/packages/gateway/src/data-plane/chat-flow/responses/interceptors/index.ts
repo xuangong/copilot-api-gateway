@@ -6,6 +6,8 @@ import { withResponsesServerToolShim } from './server-tool-shim'
 import { webSearchServerTool } from './server-tools/web-search'
 import { imageGenerationServerTool } from './server-tools/image-generation'
 import { defaultPrivatePayloadStore } from '../../../orchestrator/server-tools/private-payload-store'
+import { withVendorDeepSeekResponsesNormalize } from './with-vendor-deepseek-normalized'
+import { withVendorQwenResponsesNormalize } from './with-vendor-qwen-normalized'
 
 export type { ResponsesInterceptor } from './types'
 export { withResponsesServerToolShim } from './server-tool-shim'
@@ -25,11 +27,23 @@ export { withResponsesServerToolShim } from './server-tool-shim'
 //   - `withPromptCacheKeyStripped` drops top-level `prompt_cache_key` under
 //     the `strip-prompt-cache-key` flag so upstreams that reject unknown
 //     request arguments (Azure DeepSeek, etc.) don't 400.
-//   - Innermost — the server-tool shim (ReAct multi-turn loop that hosts
-//     `web_search` and `image_generation`).
+//   - `withResponsesServerToolShim` — ReAct multi-turn loop that hosts
+//     `web_search` and `image_generation`.
+//   - Innermost — `withVendorDeepSeekResponsesNormalize` /
+//     `withVendorQwenResponsesNormalize` translate the gateway's canonical
+//     `reasoning.effort:'none'` sentinel into each vendor's Responses wire
+//     form (DeepSeek `thinking:{type:'disabled'}`, Qwen
+//     `enable_thinking:false`). Flag-gated (`vendor-deepseek` /
+//     `vendor-qwen`); defaults OFF and toggled per-upstream by admins on
+//     `custom` upstreams pointed at those vendors' OpenAI-compatible
+//     Responses endpoints. Positioned last so the outbound rewrite is the
+//     final mutation before terminal dispatch, including for each ReAct
+//     iteration produced by the shim above.
 export const responsesInterceptors: readonly ResponsesInterceptor[] = [
   withItemIdMembrane,
   withToolArgumentWhitespaceAborted,
   withPromptCacheKeyStripped,
   withResponsesServerToolShim([webSearchServerTool, imageGenerationServerTool], defaultPrivatePayloadStore),
+  withVendorDeepSeekResponsesNormalize,
+  withVendorQwenResponsesNormalize,
 ]
