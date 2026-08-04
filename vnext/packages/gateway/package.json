@@ -13,6 +13,7 @@
     "@vibe-core/platform": "workspace:*",
     "@vibe-core/result": "workspace:*",
     "@vibe-core/service": "workspace:*",
+    "@vibe-core/upstream-repo": "workspace:*",
     "@vibe-llm/protocols": "workspace:*",
     "@vibe-llm/provider-azure": "workspace:*",
     "@vibe-llm/provider-copilot": "workspace:*",

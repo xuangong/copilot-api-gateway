@@ -74,6 +74,7 @@
         "@vibe-core/platform": "workspace:*",
         "@vibe-core/result": "workspace:*",
         "@vibe-core/service": "workspace:*",
+        "@vibe-core/upstream-repo": "workspace:*",
         "@vibe-llm/protocols": "workspace:*",
         "@vibe-llm/provider-azure": "workspace:*",
         "@vibe-llm/provider-copilot": "workspace:*",
@@ -129,6 +130,7 @@
         "@vibe-core/platform": "workspace:*",
         "@vibe-core/result": "workspace:*",
         "@vibe-core/service": "workspace:*",
+        "@vibe-core/upstream-repo": "workspace:*",
         "@vibe-llm/protocols": "workspace:*",
         "@vibe-llm/provider-llm": "workspace:*",
       },
@@ -194,6 +196,14 @@
     "packages/upstream": {
       "name": "@vibe-core/upstream",
       "version": "0.0.0",
+    },
+    "packages/upstream-repo": {
+      "name": "@vibe-core/upstream-repo",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vibe-core/platform": "workspace:*",
+        "@vibe-llm/protocols": "workspace:*",
+      },
     },
   },
   "packages": {
@@ -480,6 +490,8 @@
     "@vibe-core/service": ["@vibe-core/service@workspace:packages/service"],
 
     "@vibe-core/upstream": ["@vibe-core/upstream@workspace:packages/upstream"],
+
+    "@vibe-core/upstream-repo": ["@vibe-core/upstream-repo@workspace:packages/upstream-repo"],
 
     "@vibe-llm/dashboard": ["@vibe-llm/dashboard@workspace:apps/dashboard"],
 

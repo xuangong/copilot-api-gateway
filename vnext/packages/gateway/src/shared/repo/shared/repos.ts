@@ -44,6 +44,7 @@ import { latencyBucketForMs } from "../../performance-histogram.ts"
 import type { SqlExecutor } from "./executor"
 import { BILLING_DIMENSIONS, unitPriceForDimension } from "@vibe-llm/protocols/common"
 import type { BillingDimension, ModelPricing } from "@vibe-llm/protocols/common"
+import { UpstreamGoneError } from "@vibe-core/upstream-repo"
 
 const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref, dump_retention_seconds"
 const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at"
@@ -461,7 +462,7 @@ class SharedUpstreamRepo implements UpstreamRepo {
       "SELECT state_json FROM upstreams WHERE id = ?",
       [id],
     )
-    if (!row) throw new Error(`upstream ${id} not found`)
+    if (!row) throw new UpstreamGoneError(id)
     const current = parseState(row.state_json) as TState
     const next = updater(current)
     const nextJson = next === null || next === undefined ? null : JSON.stringify(next)
