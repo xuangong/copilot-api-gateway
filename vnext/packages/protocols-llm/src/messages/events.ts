@@ -91,11 +91,21 @@ export interface MessagesWebSearchResultLocation {
 
 export type MessagesTextCitation = MessagesSearchResultLocationCitation | MessagesWebSearchResultLocation
 
+// `cache_control` shape carried on every cache-anchored block. The default
+// upstream cache TTL is 5 minutes; an explicit `ttl` switches between the
+// two TTL tiers Anthropic supports under the `extended-cache-ttl-2025-04-11`
+// beta. Senders that don't carry that beta should omit the field and accept
+// the default.
+export interface MessagesCacheControl {
+  type: 'ephemeral'
+  ttl?: '5m' | '1h'
+}
+
 export interface MessagesTextBlock {
   type: 'text'
   text: string
   citations?: MessagesTextCitation[]
-  cache_control?: { type: 'ephemeral' }
+  cache_control?: MessagesCacheControl
 }
 
 export interface MessagesImageBlock {
@@ -105,7 +115,7 @@ export interface MessagesImageBlock {
     media_type: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
     data: string
   }
-  cache_control?: { type: 'ephemeral' }
+  cache_control?: MessagesCacheControl
 }
 
 export interface MessagesSearchResultBlock {
@@ -131,7 +141,7 @@ export interface MessagesToolResultBlock {
   tool_use_id: string
   content: string | MessagesToolResultContentBlock[]
   is_error?: boolean
-  cache_control?: { type: 'ephemeral' }
+  cache_control?: MessagesCacheControl
 }
 
 export interface MessagesToolUseBlock {
@@ -140,7 +150,7 @@ export interface MessagesToolUseBlock {
   name: string
   input: Record<string, unknown>
   caller?: { type: 'direct' }
-  cache_control?: { type: 'ephemeral' }
+  cache_control?: MessagesCacheControl
 }
 
 export interface MessagesServerToolUseBlock {

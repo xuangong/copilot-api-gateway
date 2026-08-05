@@ -63,7 +63,7 @@ export interface ClaudeCodeProviderModel {
   display_name: string
   owned_by: 'anthropic'
   kind: 'chat'
-  limits: { max_context_window_tokens: number }
+  limits: { max_context_window_tokens: number; max_output_tokens?: number }
   endpoints: { messages: Record<string, never> }
   providerData: ClaudeCodeProviderData
   pricing?: ModelPricing

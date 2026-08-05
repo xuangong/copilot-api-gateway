@@ -14,12 +14,17 @@ import { assertClaudeCodeUpstreamRecord, type ClaudeCodeUpstreamConfig } from '.
 import { callClaudeCodeMessages } from './fetch'
 import { directFetcher, type Fetcher } from './fetcher'
 import {
+  CLAUDE_CODE_MESSAGES_BOUNDARY,
+  type MessagesBoundaryCtx,
+} from './interceptors/messages'
+import {
   buildClaudeCodeCatalog,
   fetchClaudeCodeModelsList,
   type ClaudeCodeProviderModel,
 } from './models'
 import { pricingForClaudeCodeModelKey } from './pricing'
 import { assertClaudeCodeUpstreamState } from './state'
+import { runInterceptors } from '@vibe-core/service'
 import type { EndpointKey, ModelPricing, UpstreamRecord } from '@vibe-llm/protocols/common'
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
 import {
@@ -87,13 +92,28 @@ export class ClaudeCodeProvider implements LlmModelProvider {
       const model = await this.resolveModel(req.payload)
       const { model: _ignored, ...wireBody } = req.payload as MessagesPayload
 
-      const upstreamResp = await callClaudeCodeMessages({
-        upstreamId: this.upstreamId,
+      // Boundary ctx carries mutable `payload` (interceptors overwrite it
+      // in place) plus read-only model + upstreamId (needed by
+      // synthesize-metadata-user-id to derive deterministic device/session
+      // ids and by backfill for `limits.max_output_tokens`).
+      const bctx: MessagesBoundaryCtx = {
+        payload: wireBody as MessagesPayload,
         model,
-        body: wireBody,
-        signal: req.signal,
-        fetcher: this.fetcher,
-      })
+        upstreamId: this.upstreamId,
+      }
+      const upstreamResp = await runInterceptors<MessagesBoundaryCtx, object, Response>(
+        {},
+        bctx,
+        CLAUDE_CODE_MESSAGES_BOUNDARY,
+        () =>
+          callClaudeCodeMessages({
+            upstreamId: this.upstreamId,
+            model,
+            body: bctx.payload,
+            signal: req.signal,
+            fetcher: this.fetcher,
+          }),
+      )
 
       return {
         status: upstreamResp.status,

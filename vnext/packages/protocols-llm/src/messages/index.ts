@@ -115,3 +115,10 @@ export type MessagesResponse = z.infer<typeof MessagesResponseSchema>
 export { HUB_VERSION } from './version.ts'
 export * from './events.ts'
 export { parseMessagesStream, type ParseMessagesStreamOptions } from './stream.ts'
+
+// Fallback `max_tokens` value when the caller omits it and the model catalog
+// doesn't advertise `limits.max_output_tokens`. 8192 matches the sub2api
+// hard-cap for Claude Code CLI and the Anthropic Messages default cap for
+// mid-tier models. Reference:
+// copilot-gateway/packages/protocols/src/messages/index.ts.
+export const MESSAGES_FALLBACK_MAX_TOKENS = 8192
