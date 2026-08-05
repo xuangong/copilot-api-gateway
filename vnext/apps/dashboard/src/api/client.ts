@@ -28,7 +28,7 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
   }
 
   const headers: Record<string, string> = {}
-  let init: RequestInit = { method, credentials: "include", signal }
+  const init: RequestInit = { method, credentials: "include", signal }
   if (body !== undefined) {
     headers["Content-Type"] = "application/json"
     init.body = JSON.stringify(body)

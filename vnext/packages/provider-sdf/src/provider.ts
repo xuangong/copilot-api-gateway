@@ -132,7 +132,7 @@ export class SdfProvider implements LlmModelProvider {
     // bypass JSON serialization so multipart boundaries are preserved;
     // JSON payloads get model rewritten to the SDF upstream id.
     const bodyIsFormData = req.payload instanceof FormData
-    const rewrittenBody: BodyInit = req.payload instanceof FormData
+    const rewrittenBody: NonNullable<RequestInit['body']> = req.payload instanceof FormData
       ? rewriteFormDataModel(req.payload)
       : (rewriteJsonModel(JSON.stringify(req.payload ?? {})) as string)
 

@@ -134,7 +134,7 @@ export class AzureProvider implements LlmModelProvider {
     // bypass JSON serialization so multipart boundaries are preserved;
     // send() owns the auth + content-type layering so callers don't have to
     // worry about case-sensitivity collisions on the way down.
-    const body: BodyInit = req.payload instanceof FormData
+    const body: NonNullable<RequestInit['body']> = req.payload instanceof FormData
       ? req.payload
       : JSON.stringify(req.payload ?? {})
     const res = await this.send(

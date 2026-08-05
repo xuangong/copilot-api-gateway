@@ -38,9 +38,9 @@ export interface ResponsesSnapshotStore {
  * Duplicated here so the package has no dependency on @vibe-llm/gateway.
  */
 export interface SqlExecutor {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   all<T = any>(sql: string, binds: unknown[]): Promise<T[]>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   first<T = any>(sql: string, binds: unknown[]): Promise<T | null>
   run(sql: string, binds: unknown[]): Promise<{ changes: number }>
 }

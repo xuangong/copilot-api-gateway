@@ -153,7 +153,7 @@ export class CustomProvider implements LlmModelProvider {
     // bypass JSON serialization so multipart boundaries are preserved;
     // send() is responsible for layering auth + content-type so callers
     // never have to think about case-sensitivity collisions on the way down.
-    const body: BodyInit = req.payload instanceof FormData
+    const body: NonNullable<RequestInit['body']> = req.payload instanceof FormData
       ? req.payload
       : JSON.stringify(req.payload ?? {})
     const res = await this.send(

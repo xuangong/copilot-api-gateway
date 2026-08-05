@@ -95,7 +95,10 @@ const multipartBody = (request: ImagesEditsRequest, model: string): FormData | n
   return form
 }
 
-export const serializeOpenAIImagesEditsRequest = async (request: ImagesEditsRequest, model: string): Promise<BodyInit> => {
+export const serializeOpenAIImagesEditsRequest = async (
+  request: ImagesEditsRequest,
+  model: string,
+): Promise<NonNullable<RequestInit['body']>> => {
   const multipart = multipartBody(request, model)
   if (multipart !== null) return multipart
   return JSON.stringify({ ...await jsonBody(request), model })

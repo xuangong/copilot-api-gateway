@@ -18,7 +18,7 @@ export interface ProbeResult {
 /** Minimal shape every UpstreamAdapter.getModels must satisfy. */
 export interface ProviderModelsResponse {
   object: string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   data: Array<any>
 }
 

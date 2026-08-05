@@ -1,6 +1,7 @@
 import js from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import importPlugin from 'eslint-plugin-import'
+import reactHooks from 'eslint-plugin-react-hooks'
 import globals from 'globals'
 
 export default tseslint.config(
@@ -11,7 +12,7 @@ export default tseslint.config(
     languageOptions: {
       globals: { ...globals.node, ...globals.browser },
     },
-    plugins: { import: importPlugin },
+    plugins: { import: importPlugin, 'react-hooks': reactHooks },
     settings: {
       'import/resolver': {
         typescript: { project: ['apps/*/tsconfig.json', 'packages/*/tsconfig.json'] },
@@ -32,6 +33,12 @@ export default tseslint.config(
       }],
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'off',
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+      'no-empty': ['error', { allowEmptyCatch: true }],
+      'no-useless-assignment': 'warn',
+      'preserve-caught-error': 'warn',
+      'require-yield': 'warn',
     },
   },
 )

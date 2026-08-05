@@ -35,7 +35,7 @@ test('D1Cache get returns null on miss', async () => {
 
 test('D1Cache round-trips typed values', async () => {
   const db = makeDb()
-  let now = 1_000_000
+  const now = 1_000_000
   const c = new D1Cache(sqliteExecutor(db), () => now, 0) // 0% GC for determinism
   await c.set('k', { a: 1 }, 60)
   expect(await c.get<{ a: number }>('k')).toEqual({ a: 1 })
