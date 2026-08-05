@@ -17,6 +17,7 @@
   "dependencies": {
     "@vibe-core/result": "workspace:*",
     "@vibe-core/service": "workspace:*",
+    "@vibe-core/upstream": "workspace:*",
     "zod": "^4.4.3"
   }
 }

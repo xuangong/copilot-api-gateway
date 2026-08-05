@@ -28,6 +28,27 @@ export interface ProviderResponse {
   body: ReadableStream<Uint8Array> | null
 }
 
+/**
+ * Runtime-neutral storage shape for a configured upstream row.
+ *
+ * Business packages narrow `TProvider` to their provider-kind union while
+ * credential-bearing providers narrow `TState` to their persisted state.
+ */
+export interface UpstreamRecord<TProvider extends string = string, TState = null> {
+  id: string
+  ownerId?: string
+  provider: TProvider
+  name: string
+  enabled: boolean
+  sortOrder: number
+  config: Record<string, unknown>
+  flagOverrides: Record<string, boolean>
+  disabledPublicModelIds: string[]
+  state: TState
+  createdAt: string
+  updatedAt: string
+}
+
 export interface UpstreamAdapter {
   readonly name: string
   getModels(): Promise<ProviderModelsResponse>

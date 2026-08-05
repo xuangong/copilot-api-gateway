@@ -11,6 +11,6 @@
   },
   "dependencies": {
     "@vibe-core/platform": "workspace:*",
-    "@vibe-llm/protocols": "workspace:*"
+    "@vibe-core/upstream": "workspace:*"
   }
 }

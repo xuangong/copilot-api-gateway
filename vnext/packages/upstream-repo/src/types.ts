@@ -1,4 +1,4 @@
-import type { UpstreamRecord } from '@vibe-llm/protocols/common'
+import type { UpstreamRecord } from '@vibe-core/upstream'
 
 /**
  * Provider-facing upstream repo surface.
@@ -19,7 +19,7 @@ export interface UpstreamRepo {
    * they must narrow (usually via a provider-side assertion). Typed callers
    * pin the shape, e.g. `getById<CodexUpstreamState>(id)`.
    */
-  getById<TState = unknown>(id: string): Promise<UpstreamRecord<TState> | null>
+  getById<TState = unknown>(id: string): Promise<UpstreamRecord<string, TState> | null>
   /**
    * Atomic read-modify-write of the `state` column. The updater sees the
    * current state coerced to `TState`; the return value replaces it. Backends
