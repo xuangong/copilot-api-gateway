@@ -7,9 +7,11 @@
 //     into `ProviderResponse { status, headers, body }` — no stream/JSON
 //     parsing at this boundary (attempt.ts owns the SSE + JSON decoding).
 //   - `opts.call.fetcher` → `opts.fetcher` (Fetcher passed in directly).
-//   - `opts.call.wrapUpstreamCall(fn)` → inline `await fn()`.
-//   - `opts.call.waitUntil(p)` → `p.catch(() => {})` fire-and-forget. Platform
-//     runtime `waitUntil` integration lands in a later circle.
+//   - `opts.call.wrapUpstreamCall(fn)` → inline `await fn()` (TTFT timing lands
+//     with the telemetry circle; see CUTOVER TODO).
+//   - `opts.call.waitUntil(p)` → module-level `waitUntil` from
+//     `@vibe-core/platform`; platform bootstrap owns the Node vs workerd
+//     implementation, providers just publish the promise.
 //   - `alpha_search` endpoint intentionally dropped (out of F3 scope).
 //   - `CanonicalResponsesCompactPayload` + `toCompactPayloadShape` inlined
 //     from copilot-gateway/packages/protocols/src/responses/compact.ts —
@@ -41,6 +43,7 @@ import type {
   ResponsesOutputItem,
   ResponsesResult,
 } from '@vibe-llm/protocols/responses'
+import { waitUntil } from '@vibe-core/platform'
 
 // ─── Inlined compact wire shape ────────────────────────────────────────────
 // See copilot-gateway/packages/protocols/src/responses/compact.ts for prov-
@@ -425,7 +428,7 @@ const dispatchCodexHttpCall = async (
       now: responseNow,
       isRateLimited: false,
     })
-    registerBackgroundWrite(
+    waitUntil(
       putCodexQuota(opts.upstreamId, opts.account.chatgptAccountId, snapshot),
     )
     return response
@@ -437,7 +440,7 @@ const dispatchCodexHttpCall = async (
       now: responseNow,
       isRateLimited: true,
     })
-    registerBackgroundWrite(
+    waitUntil(
       putCodexQuota(opts.upstreamId, opts.account.chatgptAccountId, snapshot),
     )
     return response
@@ -465,7 +468,7 @@ const refreshAccessTokenForRetry = async (
   await invalidateCodexAccessToken(opts.upstreamId, opts.account.chatgptAccountId)
   try {
     const minted = await mintAccessToken(opts, opts.account.refresh_token)
-    registerBackgroundWrite(
+    waitUntil(
       putCodexAccessToken(opts.upstreamId, opts.account.chatgptAccountId, minted),
     )
     return { ok: true, accessToken: minted.token }
@@ -605,9 +608,3 @@ const ensureSseContentType = (response: Response): Response => {
   })
 }
 
-// Fire-and-forget background persistence. The platform-runtime `waitUntil`
-// wrapper lands in a later circle; for now we swallow rejections so a
-// transient storage error can't fail the in-flight request.
-const registerBackgroundWrite = (write: Promise<void>): void => {
-  void write.catch(() => {})
-}

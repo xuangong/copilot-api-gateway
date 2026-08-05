@@ -26,6 +26,7 @@ import { CodexProvider } from '../provider'
 import type { CodexUpstreamState } from '../state'
 import type { UpstreamRepo } from '@vibe-core/upstream-repo'
 import { initUpstreamRepo, UpstreamGoneError } from '@vibe-core/upstream-repo'
+import { __resetPlatformForTests, initBackground } from '@vibe-core/platform'
 import type { UpstreamRecord } from '@vibe-llm/protocols/common'
 import type { ProviderRequest } from '@vibe-llm/provider-llm'
 
@@ -138,7 +139,7 @@ const makeHarness = (onResponses: FetcherHarness['onResponses']): FetcherHarness
   let responsesAttempt = 0
   const fetcher: Fetcher = async (url, init) => {
     const method = init?.method ?? 'GET'
-    const headers = new Headers(init?.headers as HeadersInit)
+    const headers = new Headers(init?.headers as ConstructorParameters<typeof Headers>[0])
     const record: Recorded = {
       url: url.toString(),
       method,
@@ -177,11 +178,13 @@ let repo: InMemoryUpstreamRepo
 beforeEach(() => {
   repo = new InMemoryUpstreamRepo()
   initUpstreamRepo(() => repo)
+  initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
 })
 
 afterEach(() => {
   // Reset the accessor between tests so a stale repo can't leak.
   initUpstreamRepo(() => { throw new Error('UpstreamRepo torn down') })
+  __resetPlatformForTests()
 })
 
 // ─── Helpers ───────────────────────────────────────────────────────────────

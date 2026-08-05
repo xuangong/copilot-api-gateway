@@ -4,7 +4,8 @@
 // vNext adaptations vs reference (~469 LOC → ~180 LOC):
 //   - Return raw `Response`; provider.ts wraps into `ProviderResponse`.
 //   - Fetcher passed directly (no `opts.call.fetcher`).
-//   - waitUntil replaced with `.catch(() => {})` fire-and-forget.
+//   - Background writes go through `waitUntil` from `@vibe-core/platform`;
+//     platform bootstrap owns Node vs workerd semantics.
 //   - Shaped-passthrough / re-mimicry fork removed — every call ships the
 //     pinned mimicry surface (`pickClaudeCodeHeaders`). The gateway boundary
 //     hands us a canonical body; if a caller sends verbatim CC traffic later,
@@ -27,6 +28,7 @@ import type { ClaudeCodeProviderModel } from './models'
 import { parseClaudeCodeQuotaHeaders, putClaudeCodeQuota } from './quota'
 import { readClaudeCodeUpstreamState } from './state'
 import { getUpstreamRepo } from '@vibe-core/upstream-repo'
+import { waitUntil } from '@vibe-core/platform'
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
 const ANTHROPIC_MESSAGES_ENDPOINT = 'https://api.anthropic.com/v1/messages?beta=true'
 
@@ -106,7 +108,7 @@ const performStreamingMessagesCall = async (
   if (response.ok || response.status === 429) {
     const snapshot = parseClaudeCodeQuotaHeaders(response.headers)
     if (Object.keys(snapshot.raw).length > 0) {
-      registerBackgroundWrite(putClaudeCodeQuota(opts.upstreamId, snapshot))
+      waitUntil(putClaudeCodeQuota(opts.upstreamId, snapshot))
     }
   }
 
@@ -133,10 +135,3 @@ const synthetic503 = (message: string): Response =>
     JSON.stringify({ error: { type: 'claude_code_upstream_unavailable', message } }),
     { status: 503, headers: { 'content-type': 'application/json' } },
   )
-
-// Fire-and-forget background persistence. Platform-runtime waitUntil wrapper
-// lands in a later circle; for now we swallow rejections so a transient
-// storage error can't fail the in-flight request.
-const registerBackgroundWrite = (write: Promise<void>): void => {
-  void write.catch(() => {})
-}

@@ -19,6 +19,7 @@ import { ClaudeCodeProvider } from '../provider'
 import type { ClaudeCodeUpstreamState } from '../state'
 import type { UpstreamRepo } from '@vibe-core/upstream-repo'
 import { initUpstreamRepo, UpstreamGoneError } from '@vibe-core/upstream-repo'
+import { __resetPlatformForTests, initBackground } from '@vibe-core/platform'
 import type { UpstreamRecord } from '@vibe-llm/protocols/common'
 import type { ProviderRequest } from '@vibe-llm/provider-llm'
 
@@ -181,12 +182,14 @@ let repo: InMemoryUpstreamRepo
 beforeEach(() => {
   repo = new InMemoryUpstreamRepo()
   initUpstreamRepo(() => repo)
+  initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
 })
 
 afterEach(() => {
   initUpstreamRepo(() => {
     throw new Error('UpstreamRepo torn down')
   })
+  __resetPlatformForTests()
 })
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
