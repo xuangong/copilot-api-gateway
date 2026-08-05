@@ -1,0 +1,147 @@
+name: vNext Remote Compat (manual)
+
+# Manually-triggered SDK dual-run + parity fixtures against a running
+# gateway. Requires secrets — if any are missing, the workflow emits an
+# explicit "skipped" summary rather than reporting a false pass.
+#
+# Required secrets (per SDK you want to exercise):
+#   VNEXT_BASE_URL       — e.g. https://vnext.example.workers.dev
+#   ROOT_BASE_URL        — legacy baseline, e.g. https://root.example.workers.dev
+#   TEST_API_KEY         — proxy API key accepted by both bases
+#
+# Optional dual-smoke secrets:
+#   ROOT_API_KEY / VNEXT_API_KEY — override per side if they differ
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_sdk_compat:
+        description: 'Run Anthropic + OpenAI + Gemini SDK compatibility tests'
+        type: boolean
+        default: true
+      run_dual_smoke:
+        description: 'Run vNext parity dual-smoke script'
+        type: boolean
+        default: true
+
+jobs:
+  remote-compat:
+    name: SDK dual-run + parity fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.0
+
+      - name: Install root (legacy) deps
+        run: bun install --frozen-lockfile
+
+      - name: Install vNext deps
+        working-directory: vnext
+        run: bun install --frozen-lockfile
+
+      - name: Detect secrets
+        id: gate
+        env:
+          VNEXT_BASE_URL: ${{ secrets.VNEXT_BASE_URL }}
+          ROOT_BASE_URL: ${{ secrets.ROOT_BASE_URL }}
+          TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+        run: |
+          have_vnext=0; have_root=0; have_key=0
+          [ -n "$VNEXT_BASE_URL" ] && have_vnext=1
+          [ -n "$ROOT_BASE_URL" ] && have_root=1
+          [ -n "$TEST_API_KEY" ] && have_key=1
+          echo "have_vnext=$have_vnext" >> "$GITHUB_OUTPUT"
+          echo "have_root=$have_root" >> "$GITHUB_OUTPUT"
+          echo "have_key=$have_key" >> "$GITHUB_OUTPUT"
+
+      - name: SDK compat — Anthropic (vNext)
+        if: ${{ inputs.run_sdk_compat && steps.gate.outputs.have_vnext == '1' && steps.gate.outputs.have_key == '1' }}
+        env:
+          TEST_API_BASE_URL: ${{ secrets.VNEXT_BASE_URL }}
+          TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+        run: bun run test:integration:anthropic
+
+      - name: SDK compat — OpenAI (vNext)
+        if: ${{ inputs.run_sdk_compat && steps.gate.outputs.have_vnext == '1' && steps.gate.outputs.have_key == '1' }}
+        env:
+          TEST_API_BASE_URL: ${{ secrets.VNEXT_BASE_URL }}
+          TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+        run: bun run test:integration:openai
+
+      - name: SDK compat — Gemini (vNext)
+        if: ${{ inputs.run_sdk_compat && steps.gate.outputs.have_vnext == '1' && steps.gate.outputs.have_key == '1' }}
+        env:
+          TEST_API_BASE_URL: ${{ secrets.VNEXT_BASE_URL }}
+          TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+        run: bun run test:integration:gemini
+
+      - name: SDK compat — Anthropic (root baseline)
+        if: ${{ inputs.run_sdk_compat && steps.gate.outputs.have_root == '1' && steps.gate.outputs.have_key == '1' }}
+        env:
+          TEST_API_BASE_URL: ${{ secrets.ROOT_BASE_URL }}
+          TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+        run: bun run test:integration:anthropic
+
+      - name: SDK compat — OpenAI (root baseline)
+        if: ${{ inputs.run_sdk_compat && steps.gate.outputs.have_root == '1' && steps.gate.outputs.have_key == '1' }}
+        env:
+          TEST_API_BASE_URL: ${{ secrets.ROOT_BASE_URL }}
+          TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+        run: bun run test:integration:openai
+
+      - name: SDK compat — Gemini (root baseline)
+        if: ${{ inputs.run_sdk_compat && steps.gate.outputs.have_root == '1' && steps.gate.outputs.have_key == '1' }}
+        env:
+          TEST_API_BASE_URL: ${{ secrets.ROOT_BASE_URL }}
+          TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+        run: bun run test:integration:gemini
+
+      - name: Parity dual-smoke
+        if: ${{ inputs.run_dual_smoke && steps.gate.outputs.have_vnext == '1' && steps.gate.outputs.have_root == '1' }}
+        working-directory: vnext
+        env:
+          VNEXT_URL: ${{ secrets.VNEXT_BASE_URL }}
+          ROOT_URL: ${{ secrets.ROOT_BASE_URL }}
+          VNEXT_API_KEY: ${{ secrets.VNEXT_API_KEY || secrets.TEST_API_KEY }}
+          ROOT_API_KEY: ${{ secrets.ROOT_API_KEY || secrets.TEST_API_KEY }}
+        run: bun run scripts/parity/dual-smoke.ts --out dual-smoke.md
+
+      - name: Upload parity reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-compat-reports
+          path: |
+            vnext/dual-smoke.md
+            vnext/scripts/parity/**/*.md
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Summary — skipped steps
+        if: always()
+        run: |
+          {
+            echo "## vNext Remote Compat run"
+            echo ""
+            echo "| Gate            | Present |"
+            echo "| --------------- | ------- |"
+            echo "| VNEXT_BASE_URL  | ${{ steps.gate.outputs.have_vnext }} |"
+            echo "| ROOT_BASE_URL   | ${{ steps.gate.outputs.have_root }}  |"
+            echo "| TEST_API_KEY    | ${{ steps.gate.outputs.have_key }}   |"
+            echo ""
+            if [ "${{ steps.gate.outputs.have_vnext }}" != "1" ] || [ "${{ steps.gate.outputs.have_key }}" != "1" ]; then
+              echo "⚠️  SDK compat against vNext skipped — secrets missing."
+            fi
+            if [ "${{ steps.gate.outputs.have_root }}" != "1" ] || [ "${{ steps.gate.outputs.have_key }}" != "1" ]; then
+              echo "⚠️  SDK compat against root baseline skipped — secrets missing."
+            fi
+            if [ "${{ steps.gate.outputs.have_vnext }}" != "1" ] || [ "${{ steps.gate.outputs.have_root }}" != "1" ]; then
+              echo "⚠️  Parity dual-smoke skipped — need both VNEXT_BASE_URL and ROOT_BASE_URL."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,71 @@
+name: vNext CI (local gate)
+
+# Runs the same gate as `cd vnext && bun run ci:local`:
+#   framework-purity → typecheck → tests → lint → dashboard build → CFW dry-run
+#
+# No repository secrets are required — the Cloudflare dry-run uses
+# `wrangler deploy --dry-run` which does not authenticate.
+
+on:
+  push:
+    branches: [main, vNext]
+    paths:
+      - 'vnext/**'
+      - '.github/workflows/vnext-ci.yml'
+  pull_request:
+    branches: [main, vNext]
+    paths:
+      - 'vnext/**'
+      - '.github/workflows/vnext-ci.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: vnext-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-gate:
+    name: bun run ci:local
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: vnext
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.0
+
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+
+      - name: Framework purity
+        run: bun run scripts/check-framework-purity.ts
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Tests
+        run: bun test
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Dashboard build
+        run: bun run build:ui
+
+      - name: Cloudflare dry-run
+        run: bun run --filter '@vibe-llm/platform-cloudflare' deploy:dry
+
+      - name: Upload dashboard build artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-dist
+          path: vnext/packages/gateway/src/shared/edge/ui-pages/dashboard-app/dist/
+          if-no-files-found: ignore
+          retention-days: 7
