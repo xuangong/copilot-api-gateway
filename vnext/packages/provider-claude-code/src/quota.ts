@@ -1,6 +1,12 @@
-// `anthropic-ratelimit-unified-*` types + assertion helpers. G0-prep exposes
-// only the type shape and the deep asserter; the header parser + persist
-// helpers land in Ga.
+// `anthropic-ratelimit-unified-*` types + assertion helpers + persist helpers.
+// Ported in Ga; parser + type shape landed in G0-prep.
+
+import { getUpstreamRepo } from '@vibe-core/upstream-repo'
+import {
+  readClaudeCodeUpstreamState,
+  replaceSoleAccount,
+  type ClaudeCodeUpstreamState,
+} from './state'
 
 const HEADER_PREFIX = 'anthropic-ratelimit-'
 
@@ -168,4 +174,57 @@ export function assertClaudeCodeQuotaSnapshot(
   if (typeof obj.raw !== 'object' || obj.raw === null || Array.isArray(obj.raw)) {
     throw new TypeError(`${where}.raw must be a plain object`)
   }
+}
+
+const TTL_FLOOR_MS = 24 * 60 * 60 * 1000
+
+// Bound TTL by the furthest reset horizon (unified, 5h, 7d, overage) so a hot
+// account's snapshot survives its window; floor at 24h so dashboard reads
+// survive quiet periods between bursts.
+export const computeClaudeCodeQuotaTtlMs = (
+  snapshot: ClaudeCodeQuotaSnapshot,
+  now: Date,
+): number => {
+  const horizons = [
+    snapshot.reset,
+    snapshot.fiveHour?.reset ?? null,
+    snapshot.sevenDay?.reset ?? null,
+    snapshot.overage?.reset ?? null,
+  ]
+    .map((s) => (s ? new Date(s).getTime() - now.getTime() : 0))
+    .filter((ms) => ms > 0)
+  return Math.max(TTL_FLOOR_MS, ...horizons)
+}
+
+// Claude Code state carries one account with a single `quotaSnapshot` slot
+// (unlike codex's keyed active-limit map). Freshness gated inline by
+// computeClaudeCodeQuotaTtlMs; stale reads as absent.
+export const getClaudeCodeQuota = async (
+  upstreamId: string,
+): Promise<ClaudeCodeQuotaSnapshot | null> => {
+  const fresh = await getUpstreamRepo().getById(upstreamId)
+  if (!fresh) return null
+  const state = readClaudeCodeUpstreamState(fresh.state)
+  const account = state.accounts[0]
+  if (!account?.quotaSnapshot) return null
+  const now = new Date()
+  const ttlMs = computeClaudeCodeQuotaTtlMs(account.quotaSnapshot.data, now)
+  if (now.getTime() - account.quotaSnapshot.fetchedAt > ttlMs) return null
+  return account.quotaSnapshot.data
+}
+
+export const putClaudeCodeQuota = async (
+  upstreamId: string,
+  snapshot: ClaudeCodeQuotaSnapshot,
+): Promise<void> => {
+  // Stamped before the write so a replay against a winning sibling produces
+  // the same document rather than a later `fetchedAt`.
+  const fetchedAt = Date.now()
+  await getUpstreamRepo().saveState<ClaudeCodeUpstreamState>(upstreamId, (current) => {
+    const state = readClaudeCodeUpstreamState(current)
+    return replaceSoleAccount(state, (account) => ({
+      ...account,
+      quotaSnapshot: { fetchedAt, data: snapshot },
+    }))
+  })
 }
