@@ -1,22 +1,27 @@
 import { useEffect, useRef, useState } from "react"
+import {
+  Chart,
+  LineController,
+  LineElement,
+  PointElement,
+  LinearScale,
+  CategoryScale,
+  Tooltip,
+  Legend,
+  Filler,
+  type ChartDataset as CJDataset,
+} from "chart.js"
 
-// Chart.js is loaded via <script src="/cdn/chart.js"> in page.ts and exposed
-// as window.Chart. We avoid bundling it; this typedef just prevents `any`.
-declare global {
-  interface Window {
-    Chart?: ChartCtor
-    __currentTheme?: "dark" | "light"
-  }
-}
-
-interface ChartCtor {
-  new (canvas: HTMLCanvasElement, cfg: unknown): ChartInstance
-}
-interface ChartInstance {
-  destroy(): void
-  stop(): void
-  update(): void
-}
+Chart.register(
+  LineController,
+  LineElement,
+  PointElement,
+  LinearScale,
+  CategoryScale,
+  Tooltip,
+  Legend,
+  Filler,
+)
 
 const PALETTE_LIGHT = ["#4E6CF5","#2CA87A","#D88A2E","#8058C8","#C85878","#1E98A0","#9B60B8","#2E9080","#5078C0","#5A9850"]
 const PALETTE_DARK  = ["#7B90FF","#50D48A","#F0B050","#A880F0","#F07898","#50C5D0","#C098E0","#58CCB0","#7098E0","#90C880"]
@@ -37,9 +42,7 @@ interface Props {
   labels: string[]
   datasets: ChartDataset[]
   height?: number
-  /** tooltip suffix per value, e.g. " tokens" / " ms" / " req" */
   unitLabel?: string
-  /** y-tick formatter; if omitted uses K/M abbreviations */
   yTickFormat?: (v: number) => string
 }
 
@@ -59,139 +62,100 @@ function defaultYTick(v: number): string {
   return String(v)
 }
 
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace("#", "")
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h
+  const n = parseInt(full, 16)
+  const r = (n >> 16) & 0xff
+  const g = (n >> 8) & 0xff
+  const b = n & 0xff
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+/**
+ * Chart.js-backed time-series chart. Bundled — no CDN.
+ * Dark-mode aware via `theme-changed` window event.
+ */
 export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = "", yTickFormat }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const chartRef = useRef<ChartInstance | null>(null)
+  const chartRef = useRef<Chart | null>(null)
   const [themeTick, setThemeTick] = useState(0)
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const Chart = window.Chart
-    if (!Chart) return
 
-    // Destroy previous instance before re-creating.
     if (chartRef.current) {
-      try { chartRef.current.stop() } catch {}
-      try { chartRef.current.destroy() } catch {}
+      chartRef.current.destroy()
       chartRef.current = null
     }
 
     const dark = isDarkTheme()
-    const gridC = cssVar("--grid-color")
-    const tickC = cssVar("--tick-color")
-    const ttBg = dark ? "rgba(22, 25, 34, 0.95)" : "rgba(255, 255, 255, 0.98)"
-    const ttBorder = dark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)"
-    const ttText = dark ? "#f3f4f6" : "#111827"
-    const ttText2 = dark ? "#d1d5db" : "#374151"
-    const ptBg = dark ? "#161922" : "#ffffff"
-    const fillAlpha = dark ? "20" : "30"
+    const gridC = cssVar("--grid-color") || (dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)")
+    const tickC = cssVar("--tick-color") || (dark ? "#9ca3af" : "#4b5563")
     const tickFmt = yTickFormat ?? defaultYTick
+    const fillAlpha = dark ? 0.12 : 0.18
 
-    const cfg = {
+    const cjDatasets: CJDataset<"line", number[]>[] = datasets.map((d) => ({
+      label: d.label,
+      data: d.data,
+      borderColor: d.color,
+      backgroundColor: d.fill === false ? "transparent" : hexToRgba(d.color, fillAlpha),
+      borderWidth: d.dashed ? 1.5 : 2,
+      borderDash: d.dashed ? [4, 4] : undefined,
+      fill: d.fill !== false,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      tension: 0.25,
+    }))
+
+    chartRef.current = new Chart(canvas, {
       type: "line",
-      data: {
-        labels,
-        datasets: datasets.map((d) => ({
-          label: d.label,
-          data: d.data,
-          borderColor: d.color,
-          backgroundColor: d.fill === false ? "transparent" : d.color + fillAlpha,
-          borderWidth: d.dashed ? 1.5 : 2,
-          borderDash: d.dashed ? [4, 4] : undefined,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          pointHoverBorderWidth: 2,
-          pointHoverBackgroundColor: ptBg,
-          pointHoverBorderColor: d.color,
-          tension: 0.4,
-          fill: d.fill !== false,
-          borderCapStyle: "round",
-          borderJoinStyle: "round",
-        })),
-      },
+      data: { labels, datasets: cjDatasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: { duration: 400, easing: "easeOutQuart" },
         interaction: { mode: "index", intersect: false },
         plugins: {
           legend: {
-            position: "bottom",
-            labels: {
-              color: tickC,
-              font: { size: 11, family: "'Outfit', sans-serif", weight: "400" },
-              boxWidth: 8, boxHeight: 8, padding: 20,
-              usePointStyle: true, pointStyle: "circle",
-            },
+            display: true,
+            labels: { color: tickC, font: { family: "Outfit, sans-serif", size: 11 } },
           },
           tooltip: {
-            backgroundColor: ttBg, borderColor: ttBorder, borderWidth: 1, cornerRadius: 8,
-            titleColor: ttText,
-            titleFont: { family: "'Outfit', sans-serif", size: 12, weight: "500" },
-            bodyColor: ttText2,
-            bodyFont: { family: "'IBM Plex Mono', monospace", size: 11 },
-            padding: { top: 10, bottom: 10, left: 14, right: 14 },
-            boxPadding: 6, usePointStyle: true,
             callbacks: {
-              label: (ctx: { dataset: { label: string }; parsed: { y: number } }) =>
-                " " + ctx.dataset.label + "  " + ctx.parsed.y.toLocaleString() + unitLabel,
+              label: (ctx) => `${ctx.dataset.label}: ${Number(ctx.parsed.y).toLocaleString()}${unitLabel}`,
             },
           },
         },
         scales: {
           x: {
+            ticks: { color: tickC, font: { family: "Outfit, sans-serif", size: 10 } },
             grid: { display: false },
-            ticks: { color: tickC, font: { size: 10, family: "'Outfit', sans-serif" }, maxRotation: 0, padding: 8 },
-            border: { display: false },
           },
           y: {
-            beginAtZero: true,
-            grid: { color: gridC, lineWidth: 0.5, drawTicks: false },
-            ticks: {
-              color: tickC,
-              font: { size: 10, family: "'IBM Plex Mono', monospace" },
-              padding: 12,
-              callback: tickFmt,
-            },
-            border: { display: false },
+            ticks: { color: tickC, font: { family: "IBM Plex Mono, monospace", size: 10 }, callback: (v) => tickFmt(Number(v)) },
+            grid: { color: gridC },
           },
         },
       },
-    }
-
-    try {
-      chartRef.current = new Chart(canvas, cfg)
-    } catch {
-      // double-init guard
-    }
+    })
 
     return () => {
       if (chartRef.current) {
-        try { chartRef.current.stop() } catch {}
-        try { chartRef.current.destroy() } catch {}
+        chartRef.current.destroy()
         chartRef.current = null
       }
     }
-  }, [labels, datasets, unitLabel, yTickFormat, themeTick])
+  }, [labels, datasets, height, unitLabel, yTickFormat, themeTick])
 
-  // Re-render on theme toggle so colors track the theme.
   useEffect(() => {
     const handler = () => setThemeTick((n) => n + 1)
     window.addEventListener("theme-changed", handler)
     return () => window.removeEventListener("theme-changed", handler)
   }, [])
 
-  if (typeof window !== "undefined" && !window.Chart) {
-    return (
-      <div className="flex items-center justify-center text-themed-dim text-xs" style={{ height }}>
-        Chart.js failed to load
-      </div>
-    )
-  }
-
   return (
-    <div style={{ height, position: "relative" }}>
+    <div style={{ height, width: "100%" }}>
       <canvas ref={canvasRef} />
     </div>
   )
@@ -212,11 +176,8 @@ export function localDateKey(d: Date): string {
 export type TimeBucketRange = "today" | "week" | "7d" | "30d"
 
 export interface TimeBuckets {
-  /** ordered bucket keys (local-time) */
   keys: string[]
-  /** human labels parallel to keys */
   labels: string[]
-  /** true if buckets are days (vs hours) */
   isDaily: boolean
 }
 
@@ -262,7 +223,6 @@ export function buildTimeBuckets(range: TimeBucketRange, weekOffset: number): Ti
   return { keys, labels, isDaily }
 }
 
-/** Convert a "YYYY-MM-DDTHH" UTC-hour string to local bucket key. */
 export function utcHourToBucketKey(utcHour: string, isDaily: boolean): string {
   const d = new Date(utcHour + ":00:00Z")
   return isDaily ? localDateKey(d) : localHourKey(d)

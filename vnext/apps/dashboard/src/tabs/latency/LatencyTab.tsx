@@ -90,8 +90,6 @@ export function LatencyTab() {
           ) : null}
         </div>
 
-        {/* TODO: chart — legacy Alpine version rendered a Chart.js line chart of
-            avg total ms by Stream/Sync over time. Not ported (no chart deps). */}
         <div className="mt-2">
           <TimeSeriesChart
             labels={s.chart.labels}

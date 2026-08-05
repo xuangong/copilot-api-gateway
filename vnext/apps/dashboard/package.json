@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@vibe-llm/protocols": "workspace:*",
+    "chart.js": "^4.5.1",
     "dompurify": "^3.4.7",
     "highlight.js": "^11.11.1",
     "marked": "^18.0.4",

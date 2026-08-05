@@ -20,6 +20,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@vibe-llm/protocols": "workspace:*",
+        "chart.js": "^4.5.1",
         "dompurify": "^3.4.7",
         "highlight.js": "^11.11.1",
         "marked": "^18.0.4",
@@ -425,6 +426,8 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
+    "@kurkle/color": ["@kurkle/color@0.3.4", "https://ms-feed-25.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/@kurkle/color/-/color-0.3.4.tgz", {}, "sha1-TU/2d+FgkhT8ccWAEl3d3Yaryr8="],
+
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.1.4", "", { "dependencies": { "@tybys/wasm-util": "^0.10.1" }, "peerDependencies": { "@emnapi/core": "^1.7.1", "@emnapi/runtime": "^1.7.1" } }, "sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow=="],
 
     "@noble/hashes": ["@noble/hashes@1.8.0", "https://ms-feed-2.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/@noble/hashes/-/hashes-1.8.0.tgz", {}, "sha1-zuQ9gB/O+WRLEbgZSFdpWs1fgVo="],
@@ -636,6 +639,8 @@
     "caniuse-lite": ["caniuse-lite@1.0.30001806", "https://ms-feed-17.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/caniuse-lite/-/caniuse-lite-1.0.30001806.tgz", {}, "sha1-G8jlArcj+jk0Vd++3VzOwMKbt04="],
 
     "chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
+
+    "chart.js": ["chart.js@4.5.1", "https://ms-feed-12.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/chart.js/-/chart.js-4.5.1.tgz", { "dependencies": { "@kurkle/color": "^0.3.0" } }, "sha1-Gd0amjhqP2OXaRZyIxy1/JwFLDU="],
 
     "chokidar": ["chokidar@3.6.0", "", { "dependencies": { "anymatch": "~3.1.2", "braces": "~3.0.2", "glob-parent": "~5.1.2", "is-binary-path": "~2.1.0", "is-glob": "~4.0.1", "normalize-path": "~3.0.0", "readdirp": "~3.6.0" }, "optionalDependencies": { "fsevents": "~2.3.2" } }, "sha512-7VT13fmjotKpGipCW9JEQAusEPE+Ei8nl6/g4FBAmIm0GOOLMua9NDDo/DWp0ZAxCr3cPq5ZpBqmPAQgDda2Pw=="],
 

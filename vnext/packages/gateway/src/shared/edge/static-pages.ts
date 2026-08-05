@@ -11,7 +11,6 @@ import { GuidePage } from './ui-pages/guide'
 const CDN_MAP: Record<string, string> = {
   'tailwind.js': 'https://cdn.tailwindcss.com/3.4.17',
   'alpine.js': 'https://unpkg.com/alpinejs@3/dist/cdn.min.js',
-  'chart.js': 'https://unpkg.com/chart.js@4/dist/chart.umd.min.js',
   'prism.css': 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-okaidia.min.css',
   'prism.js': 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js',
   'prism-bash.js': 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js',

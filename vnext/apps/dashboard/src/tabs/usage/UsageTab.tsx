@@ -111,11 +111,6 @@ export function UsageTab() {
           />
         </div>
 
-        {/* TODO: chart — legacy renders a Chart.js line series of usage.metric
-            over time, optionally grouped by the first un-filtered dimension
-            (user > key > client > model). Not migrated to avoid adding
-            chart dependencies; numeric summary + per-dimension tables below
-            already convey the data. */}
         <div className="mt-2">
           <TimeSeriesChart
             labels={usage.chart.labels}
