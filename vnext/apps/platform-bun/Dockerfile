@@ -20,9 +20,12 @@ COPY packages/protocols-llm/package.json packages/protocols-llm/
 COPY packages/result/package.json packages/result/
 COPY packages/service/package.json packages/service/
 COPY packages/upstream/package.json packages/upstream/
+COPY packages/upstream-repo/package.json packages/upstream-repo/
 COPY packages/provider-llm/package.json packages/provider-llm/
 COPY packages/provider-azure/package.json packages/provider-azure/
 COPY packages/provider-copilot/package.json packages/provider-copilot/
+COPY packages/provider-claude-code/package.json packages/provider-claude-code/
+COPY packages/provider-codex/package.json packages/provider-codex/
 COPY packages/provider-custom/package.json packages/provider-custom/
 COPY packages/provider-sdf/package.json packages/provider-sdf/
 COPY packages/responses-store/package.json packages/responses-store/
@@ -31,7 +34,7 @@ COPY packages/chat-flow-kit/package.json packages/chat-flow-kit/
 COPY packages/http/package.json packages/http/
 COPY packages/translate/package.json packages/translate/
 
-RUN --mount=type=secret,id=npmrc,target=/root/.npmrc bun install --frozen-lockfile
+RUN --mount=type=secret,id=npmrc,target=/root/.npmrc NODE_TLS_REJECT_UNAUTHORIZED=0 bun install --frozen-lockfile
 
 # Source
 COPY tsconfig.base.json tailwind.config.ts ./
