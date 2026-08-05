@@ -2,7 +2,7 @@
 
 将 GitHub Copilot API 转换为标准 AI SDK 接口的网关代理。让 **Claude Code**、**Codex CLI**、**Gemini CLI** 三大 AI 编程工具直接使用你的 GitHub Copilot 订阅，无需额外 API 费用。
 
-基于 **Hono + Bun** 构建，支持部署到 **Cloudflare Workers**（D1 + KV）或通过 **Docker** 自托管。代码位于 `vnext/`（Bun workspace，14 个 package + 3 个 app）。
+基于 **Hono + Bun** 构建，支持部署到 **Cloudflare Workers**（D1 + KV）或通过 **Docker** 自托管。代码位于 `vnext/`（Bun workspace，19 个 package + 3 个 app）。
 
 ## 特性
 

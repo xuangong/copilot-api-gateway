@@ -1,43 +1,87 @@
 # vNext
 
-下一代网关重构，与根目录 `src/` 旧项目并存。
+下一代网关重构。旧 `src/` 已下线,vNext 承担生产流量。
 
 ## 结构
 
 ```
 vnext/
 ├── apps/
-│   ├── gateway/      # Hono on Cloudflare Workers + Bun（待引入）
-│   └── dashboard/    # React 19 + Vite（待引入）
-└── packages/
-    ├── protocols/    # 纯类型 + Zod schemas（无运行时副作用）
-    └── translate/    # 协议翻译器（纯函数）
+│   ├── platform-bun/         # Bun/Docker 入口 (bootstrapBunPlatform)
+│   ├── platform-cloudflare/  # Cloudflare Workers 入口 (wrangler)
+│   └── dashboard/            # React 19 dashboard(嵌入 gateway 的 UI)
+└── packages/                 # 19 个包
+    ├── protocols-llm/        # LLM 协议 schemas + 类型 (纯)
+    ├── translate/            # 协议翻译器 (纯函数)
+    ├── result/               # ProtocolFrame + 结果代数 (纯)
+    ├── service/              # Interceptor 中间件 (纯)
+    ├── chat-flow-kit/        # 数据面组装工具 (纯)
+    ├── upstream/             # UpstreamRecord 泛型 (纯)
+    ├── upstream-repo/        # UpstreamRepo 抽象 + 惰性访问器
+    ├── responses-store/      # /v1/responses previous_response_id 存储
+    ├── cache/                # KV / D1 缓存抽象
+    ├── http/                 # 出向 HTTP + fetchWithRetry
+    ├── platform/             # 运行时 singleton (waitUntil / DB / files)
+    ├── provider-llm/         # LlmModelProvider 契约
+    ├── provider-copilot/     # GitHub Copilot upstream
+    ├── provider-azure/       # Azure OpenAI upstream
+    ├── provider-custom/      # OpenAI 兼容自定义 upstream
+    ├── provider-sdf/         # SDF upstream
+    ├── provider-codex/       # ChatGPT Codex upstream (Responses 原生 + compact)
+    ├── provider-claude-code/ # Claude Code subscription upstream (Messages 原生)
+    └── gateway/              # 数据面路由 + attempt.ts + boundary chain
 ```
 
-## 依赖方向（不可违反）
+## 依赖方向(核心不可违反)
 
 ```
-protocols  ← translate  ← gateway
-                       ↖ dashboard
+result ← service ← protocols-llm ← translate
+                        ↑
+                        └── provider-llm ← provider-* ← gateway
+                        └── upstream ← upstream-repo
 ```
 
-- `protocols` 不依赖任何包
-- `translate` 仅依赖 `protocols`
-- `gateway`、`dashboard` 都可依赖 `protocols` 与 `translate`
-- 反向依赖一律禁止；后续靠 ESLint `no-restricted-paths` 强制
+- `@vibe-core/*` 是运行时无关内核 —— **不得**依赖 `@vibe-llm/protocols`(由 `scripts/check-framework-purity.ts` 校验)
+- provider 之间不互相依赖;都实现 `LlmModelProvider`
+- gateway 是唯一装配点
 
-## 安装
+## 常用命令
 
 ```sh
-cd vnext && bun install
+cd vnext
+
+# 依赖
+bun install
+
+# 单项 gate
+bun run typecheck        # 全部 workspace 的 tsc --noEmit
+bun test                 # 全部 bun:test(含 framework-purity 前置)
+bun run lint             # eslint .
+bun run build:ui         # 构建 dashboard,产物落到 gateway/shared/edge/ui-pages/
+bun run --filter '@vibe-llm/platform-cloudflare' deploy:dry
+                         # wrangler dry-run,不上线
+
+# 一键本地 CI
+bun run ci:local         # purity + typecheck + test + lint + build:ui + wrangler dry-run
 ```
 
-## 类型检查
+## 入口
 
-```sh
-bun run typecheck   # 触发所有 workspace 的 tsc --noEmit
-```
+- **Bun / Docker**:`apps/platform-bun` — `bootstrapBunPlatform()` 装配 SQLite + local file provider + `waitUntil` no-op
+- **Cloudflare Workers**:`apps/platform-cloudflare` — `bootstrapCloudflarePlatform(env, ctx)` 装配 D1 + KV file provider + `ctx.waitUntil`
+
+Gateway 代码从 `@vibe-core/platform` 消费 singleton,业务层不感知平台差异。
+
+## 客户端 SDK 兼容
+
+Gateway 接受下列 client shapes(与 upstream 类型正交):
+
+- OpenAI SDK (`/v1/chat/completions`, `/v1/responses`, `/v1/responses/compact`, `/v1/embeddings`, `/v1/models`)
+- Anthropic SDK (`/v1/messages`, `/v1/messages/count_tokens`)
+- Google Gemini SDK (`/v1beta/models/*:generateContent`, `:streamGenerateContent`)
+
+Upstream(provider) kind 与 client protocol 由数据面 attempt.ts 翻译打通。
 
 ## 状态
 
-骨架阶段：所有包仅有 `export {}` 占位，逐步迁入业务代码。旧 `src/` 继续承担生产流量，互不干扰。
+**2026-08-05**:vNext 承担全部生产流量,`ci:local` 全绿(1391 tests / 0 fail)。CFW 部署走 `apps/platform-cloudflare` 的 wrangler;Docker 走 `apps/platform-bun`。当前 CFW 部署由用户手动触发,GitHub Actions 未启用。
