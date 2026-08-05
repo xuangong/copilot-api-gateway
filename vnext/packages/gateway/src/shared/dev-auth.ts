@@ -92,7 +92,7 @@ export const devAuthMiddleware: MiddlewareHandler = async (c: Context, next) => 
       } as never)
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
+     
     console.error('[dev-auth] token exchange failed:', err)
   }
   await next()

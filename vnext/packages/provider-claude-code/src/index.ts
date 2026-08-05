@@ -1,5 +1,6 @@
 // G0-prep: skeleton + auth (oauth + setup-token).
 // Ga: pricing + quota persist + access-token + models + headers.
+// Gb: fetch dispatch + ClaudeCodeProvider + plugin.
 export * from './constants'
 export * from './config'
 export * from './state'
@@ -13,3 +14,6 @@ export * from './headers'
 export * from './pricing'
 export * from './access-token'
 export * from './models'
+export * from './fetch'
+export * from './provider'
+export * from './plugin'

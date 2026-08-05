@@ -48,7 +48,7 @@ test('messages: message_delta usage gets accumulated', async () => {
     { type: 'event', event: { type: 'message_stop' } },
   ]
   const { events, finalMetadata } = withUpstreamTelemetry(gen(frames), { protocol: 'messages' })
-  for await (const _ of events) {}
+  for await (const frame of events) void frame
   const md = await finalMetadata
   expect(md.failed).toBe(false)
 })
@@ -58,7 +58,7 @@ test('eof without terminal frame → failed=true', async () => {
     { type: 'event', event: { choices: [{ delta: { content: 'partial' } }] } },
   ]
   const { events, finalMetadata } = withUpstreamTelemetry(gen(frames), { protocol: 'chat_completions' })
-  for await (const _ of events) {}
+  for await (const frame of events) void frame
   const md = await finalMetadata
   expect(md.failed).toBe(true)
 })

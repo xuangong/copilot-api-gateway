@@ -28,6 +28,7 @@ import type { EndpointKey, ModelEndpoints, UpstreamKind } from '@vibe-llm/protoc
 import { CopilotProvider, copilotProviderPlugin } from '@vibe-llm/provider-copilot'
 import { azureProviderPlugin } from '@vibe-llm/provider-azure'
 import { codexProviderPlugin } from '@vibe-llm/provider-codex'
+import { claudeCodeProviderPlugin } from '@vibe-llm/provider-claude-code'
 import { customProviderPlugin } from '@vibe-llm/provider-custom'
 import { sdfProviderPlugin } from '@vibe-llm/provider-sdf'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
@@ -58,7 +59,7 @@ export function createCopilotProvider(opts: CreateProviderOptions): LlmModelProv
  * (see control-plane upstream-probe).
  */
 const PROVIDER_PLUGINS = new Map(
-  [copilotProviderPlugin, azureProviderPlugin, codexProviderPlugin, customProviderPlugin, sdfProviderPlugin]
+  [copilotProviderPlugin, azureProviderPlugin, codexProviderPlugin, claudeCodeProviderPlugin, customProviderPlugin, sdfProviderPlugin]
     .map((p) => [p.kind, p] as const),
 ) satisfies ReadonlyMap<UpstreamKind, LlmProviderPlugin>
 
