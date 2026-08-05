@@ -23,6 +23,7 @@ import { ensureCodexAccessToken, mintCodexAccessToken } from './access-token'
 import { CodexOAuthSessionTerminatedError } from './auth/oauth'
 import { assertCodexUpstreamRecord, type CodexUpstreamConfig } from './config'
 import {
+  callCodexAlphaSearch,
   callCodexResponses,
   callCodexResponsesCompact,
   toCompactPayloadShape,
@@ -65,7 +66,7 @@ import {
 } from '@vibe-llm/provider-llm'
 import type { CanonicalResponsesPayload } from '@vibe-llm/protocols/responses'
 
-const CODEX_SUPPORTED: readonly EndpointKey[] = ['responses']
+const CODEX_SUPPORTED: readonly EndpointKey[] = ['responses', 'alpha_search']
 
 export class CodexProvider implements LlmModelProvider {
   readonly kind = 'codex' as const
@@ -184,6 +185,9 @@ export class CodexProvider implements LlmModelProvider {
   }
 
   async fetch(req: ProviderRequest): Promise<ProviderResponse> {
+    if (req.endpoint === 'alpha_search') {
+      return await this.callAlphaSearch(req)
+    }
     if (req.endpoint !== 'responses') {
       throw new Error(`CodexProvider does not support endpoint: ${req.endpoint}`)
     }
@@ -255,6 +259,29 @@ export class CodexProvider implements LlmModelProvider {
     const hit = this.catalogCache?.find((m) => m.id === modelId)
     if (!hit) throw new Error(`CodexProvider: unknown model '${modelId}'`)
     return hit
+  }
+
+  // Alpha search skips interceptors — the codex CLI SearchRequest shape is
+  // passed through opaquely; the fetch layer injects the account model + id.
+  private async callAlphaSearch(req: ProviderRequest): Promise<ProviderResponse> {
+    const model = await this.resolveModel(req.payload)
+    const account = await this.readActiveAccount()
+    const { model: _ignored, ...body } = req.payload as Record<string, unknown>
+    const upstreamResp = await callCodexAlphaSearch({
+      upstreamId: this.upstreamId,
+      account,
+      model,
+      headers: new Headers(req.headers),
+      signal: req.signal,
+      effects: this.effects,
+      fetcher: this.fetcher,
+      body,
+    })
+    return {
+      status: upstreamResp.status,
+      headers: upstreamResp.headers,
+      body: upstreamResp.body,
+    }
   }
 }
 

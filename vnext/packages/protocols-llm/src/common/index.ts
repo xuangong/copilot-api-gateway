@@ -14,6 +14,7 @@ export type EndpointKey =
   | 'embeddings'
   | 'images_generations'
   | 'images_edits'
+  | 'alpha_search'
 
 export const ALL_ENDPOINT_KEYS = [
   'chat_completions',
@@ -23,6 +24,7 @@ export const ALL_ENDPOINT_KEYS = [
   'embeddings',
   'images_generations',
   'images_edits',
+  'alpha_search',
 ] as const satisfies readonly EndpointKey[]
 
 export type ModelKind = 'chat' | 'embedding' | 'image'
@@ -30,7 +32,7 @@ export type ModelKind = 'chat' | 'embedding' | 'image'
 export const ALL_MODEL_KINDS = ['chat', 'embedding', 'image'] as const satisfies readonly ModelKind[]
 
 export const ENDPOINTS_BY_MODEL_KIND: Record<ModelKind, readonly EndpointKey[]> = {
-  chat: ['chat_completions', 'responses', 'messages', 'messages_count_tokens'],
+  chat: ['chat_completions', 'responses', 'messages', 'messages_count_tokens', 'alpha_search'],
   embedding: ['embeddings'],
   image: ['images_generations', 'images_edits'],
 }

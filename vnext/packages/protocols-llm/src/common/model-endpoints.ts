@@ -15,6 +15,7 @@ export interface ModelEndpoints {
   embeddings?: Record<string, never>
   images_generations?: Record<string, never>
   images_edits?: Record<string, never>
+  alpha_search?: Record<string, never>
 }
 
 /**

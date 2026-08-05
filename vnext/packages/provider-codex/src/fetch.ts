@@ -26,6 +26,7 @@ import {
 } from './access-token'
 import { CodexOAuthSessionTerminatedError } from './auth/oauth'
 import {
+  CODEX_ALPHA_SEARCH_PATH,
   CODEX_BACKEND_BASE,
   CODEX_ORIGINATOR,
   CODEX_RESPONSES_COMPACT_PATH,
@@ -122,6 +123,10 @@ export interface CallCodexResponsesCompactOptions extends CodexBackendCallBase {
   body: Omit<CanonicalResponsesCompactPayload, 'model' | 'store'>
 }
 
+export interface CallCodexAlphaSearchOptions extends CodexBackendCallBase {
+  body: Record<string, unknown>
+}
+
 type CodexResponsesBody =
   | CallCodexResponsesOptions['body']
   | CallCodexResponsesCompactOptions['body']
@@ -140,6 +145,19 @@ export const callCodexResponsesCompact = async (
   const ready = await prepareCodexCall(opts)
   if (!ready.ok) return ready.response
   return await performUnaryCompactCall(opts, ready.accessToken, false)
+}
+
+export const callCodexAlphaSearch = async (
+  opts: CallCodexAlphaSearchOptions,
+): Promise<Response> => {
+  const requestId = stringField(opts.body, 'id') ?? uuidV7()
+  const normalized: CallCodexAlphaSearchOptions = {
+    ...opts,
+    body: { ...opts.body, id: requestId },
+  }
+  const ready = await prepareCodexCall(normalized)
+  if (!ready.ok) return ready.response
+  return await performAlphaSearchCall(normalized, ready.accessToken, false)
 }
 
 // ─── Pre-fetch gates + initial access-token mint ───────────────────────────
@@ -558,6 +576,45 @@ const performUnaryCompactCall = async (
     const fresh = await refreshAccessTokenForRetry(opts)
     if (!fresh.ok) return fresh.response
     return await performUnaryCompactCall(opts, fresh.accessToken, true)
+  }
+
+  return response
+}
+
+// ─── Alpha search call ─────────────────────────────────────────────────────
+
+const performAlphaSearchCall = async (
+  opts: CallCodexAlphaSearchOptions,
+  accessToken: string,
+  alreadyRetried: boolean,
+): Promise<Response> => {
+  const requestId = stringField(opts.body, 'id')
+  if (requestId === null) {
+    throw new Error('Normalized Codex alpha search request is missing id')
+  }
+  const identity: CodexRequestIdentity = {
+    installationId: opts.account.openaiDeviceId,
+    sessionId: requestId,
+    threadId: requestId,
+    clientRequestId: requestId,
+    turnId: uuidV7(),
+    windowId: `${requestId}:0`,
+  }
+  const turnMetadataJson = trimHeader(opts.headers, 'x-codex-turn-metadata')
+  const response = await dispatchCodexHttpCall(
+    opts,
+    accessToken,
+    CODEX_ALPHA_SEARCH_PATH,
+    'application/json',
+    { ...opts.body, model: opts.model.id },
+    identity,
+    turnMetadataJson,
+  )
+
+  if (response.status === 401 && !alreadyRetried) {
+    const fresh = await refreshAccessTokenForRetry(opts)
+    if (!fresh.ok) return fresh.response
+    return await performAlphaSearchCall(opts, fresh.accessToken, true)
   }
 
   return response

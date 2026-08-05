@@ -15,6 +15,7 @@
 
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import {
+  CODEX_ALPHA_SEARCH_PATH,
   CODEX_BACKEND_BASE,
   CODEX_MODELS_PATH,
   CODEX_OAUTH_TOKEN_URL,
@@ -161,7 +162,8 @@ const makeHarness = (onResponses: FetcherHarness['onResponses']): FetcherHarness
     }
     if (
       u === `${CODEX_BACKEND_BASE}${CODEX_RESPONSES_PATH}` ||
-      u === `${CODEX_BACKEND_BASE}${CODEX_RESPONSES_COMPACT_PATH}`
+      u === `${CODEX_BACKEND_BASE}${CODEX_RESPONSES_COMPACT_PATH}` ||
+      u === `${CODEX_BACKEND_BASE}${CODEX_ALPHA_SEARCH_PATH}`
     ) {
       responsesAttempt++
       return onResponses(record, responsesAttempt)
@@ -200,6 +202,17 @@ const makeRequest = (action?: 'generate' | 'compact'): ProviderRequest => ({
   headers: new Headers(),
   sourceApi: 'openai',
   ...(action !== undefined ? { action } : {}),
+})
+
+const makeAlphaSearchRequest = (): ProviderRequest => ({
+  endpoint: 'alpha_search',
+  payload: {
+    model: 'gpt-5',
+    id: 'req_alpha_1',
+    commands: { search_query: [{ query: 'foo' }] },
+  },
+  headers: new Headers(),
+  sourceApi: 'openai',
 })
 
 // Give registerBackgroundWrite's fire-and-forget promise a tick to land in
@@ -320,4 +333,65 @@ test('compact action → hits /codex/responses/compact', async () => {
     c.url.endsWith(CODEX_RESPONSES_COMPACT_PATH),
   )
   expect(compactCalls).toHaveLength(1)
+})
+
+test('alpha_search 200 → hits /codex/alpha/search and passes body through', async () => {
+  repo.put(baseRecord())
+  const harness = makeHarness(() =>
+    okJson({ encrypted_output: 'enc', output: 'ok', results: [] }),
+  )
+  const provider = new CodexProvider(baseRecord(), harness.fetcher)
+  const resp = await provider.fetch(makeAlphaSearchRequest())
+
+  expect(resp.status).toBe(200)
+
+  const alphaCalls = harness.calls.filter((c) =>
+    c.url.endsWith(CODEX_ALPHA_SEARCH_PATH),
+  )
+  expect(alphaCalls).toHaveLength(1)
+  const wireBody = JSON.parse(alphaCalls[0]!.bodyText!) as Record<string, unknown>
+  expect(wireBody.model).toBe('gpt-5')
+  expect(wireBody.id).toBe('req_alpha_1')
+  expect(wireBody.commands).toEqual({ search_query: [{ query: 'foo' }] })
+})
+
+test('alpha_search 401 → refresh + retry once → 200', async () => {
+  repo.put(baseRecord())
+  const harness = makeHarness((_call, attempt) => {
+    if (attempt === 1) {
+      return new Response(JSON.stringify({ error: { code: 'expired_token', message: 'stale' } }), {
+        status: 401,
+      })
+    }
+    return okJson({ encrypted_output: null, output: 'ok' })
+  })
+  const provider = new CodexProvider(baseRecord(), harness.fetcher)
+  const resp = await provider.fetch(makeAlphaSearchRequest())
+
+  expect(resp.status).toBe(200)
+
+  const alphaCalls = harness.calls.filter((c) =>
+    c.url.endsWith(CODEX_ALPHA_SEARCH_PATH),
+  )
+  expect(alphaCalls).toHaveLength(2)
+  expect(alphaCalls[0]!.authorization).toBe('Bearer at_initial')
+  expect(alphaCalls[1]!.authorization).toBe('Bearer at_refreshed')
+})
+
+test('alpha_search 401 twice → propagated to caller', async () => {
+  repo.put(baseRecord())
+  const harness = makeHarness(() =>
+    new Response(JSON.stringify({ error: { code: 'expired_token', message: 'stale' } }), {
+      status: 401,
+    }),
+  )
+  const provider = new CodexProvider(baseRecord(), harness.fetcher)
+  const resp = await provider.fetch(makeAlphaSearchRequest())
+
+  expect(resp.status).toBe(401)
+
+  const alphaCalls = harness.calls.filter((c) =>
+    c.url.endsWith(CODEX_ALPHA_SEARCH_PATH),
+  )
+  expect(alphaCalls).toHaveLength(2) // original + one retry, no third
 })

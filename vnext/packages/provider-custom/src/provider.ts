@@ -40,6 +40,7 @@ const CUSTOM_PATHS: Record<EndpointKey, string> = {
   embeddings: '/embeddings',
   images_generations: '/images/generations',
   images_edits: '/images/edits',
+  alpha_search: '/alpha/search',
 }
 
 export class CustomProvider implements LlmModelProvider {
