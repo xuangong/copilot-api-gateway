@@ -57,6 +57,49 @@ export interface WebSearchFilters {
   maxResults?: number
 }
 
+// ── Local capability gate (alpha_search) ──
+// Alpha-search's request DTO admits every OpenAI SearchCommand + nested
+// parameter. Passthrough mode ships the raw body upstream; local mode has to
+// translate to Tavily/Jina/MS Web IQ, which only implement the
+// search_query/open/find text subset. This gate rejects any command or
+// nested parameter the local engine can't honor — the alpha-search route
+// converts the throw into a `{ encrypted_output: null, output: <message> }`
+// text response so no request field disappears silently.
+const LOCAL_SUPPORTED_COMMAND_FIELDS: Readonly<Record<'search_query' | 'open' | 'find', ReadonlySet<string>>> = {
+  search_query: new Set(['q']),
+  open: new Set(['ref_id']),
+  find: new Set(['ref_id', 'pattern']),
+}
+
+export const UNSUPPORTED_LOCAL_WEB_SEARCH_FEATURE_ERROR_NAME = 'UnsupportedLocalWebSearchFeatureError'
+
+export class UnsupportedLocalWebSearchFeatureError extends Error {
+  constructor(path: string) {
+    super(`The configured web search provider does not implement OpenAI search feature \`${path}\`.`)
+    this.name = UNSUPPORTED_LOCAL_WEB_SEARCH_FEATURE_ERROR_NAME
+  }
+}
+
+const assertObjectHasOnly = (value: unknown, allowed: ReadonlySet<string>, path: string): void => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) throw new UnsupportedLocalWebSearchFeatureError(`${path}.${key}`)
+  }
+}
+
+const LOCAL_SUPPORTED_COMMAND_KEYS: ReadonlySet<string> = new Set(['search_query', 'open', 'find'])
+
+export const assertLocalWebSearchSupport = (commands: Record<string, unknown>): void => {
+  for (const [key, value] of Object.entries(commands)) {
+    if (!LOCAL_SUPPORTED_COMMAND_KEYS.has(key)) throw new UnsupportedLocalWebSearchFeatureError(`commands.${key}`)
+    if (!Array.isArray(value)) continue
+    const allowed = LOCAL_SUPPORTED_COMMAND_FIELDS[key as keyof typeof LOCAL_SUPPORTED_COMMAND_FIELDS]
+    for (let index = 0; index < value.length; index++) {
+      assertObjectHasOnly(value[index], allowed, `commands.${key}[${index}]`)
+    }
+  }
+}
+
 // ── Command parsing ──
 // One logical operation parsed out of a `{ search_query, open, find, … }`
 // command object. The three implemented kinds (`search`, `open`, `find`)

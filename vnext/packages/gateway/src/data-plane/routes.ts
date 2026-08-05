@@ -16,6 +16,7 @@ import { chatCompletionsHandler } from './chat-flow/chat-completions/http.ts'
 import { responsesHandler, responsesCompactHandler } from './chat-flow/responses/http.ts'
 import { geminiHandler } from './chat-flow/gemini/http.ts'
 import { countTokensHandler } from './chat-flow/count-tokens/http.ts'
+import { alphaSearchHandler } from './alpha-search/routes.ts'
 
 export const dataPlane = new Hono<{ Bindings: Env }>()
 
@@ -41,3 +42,5 @@ dataPlane.post('/responses', responsesHandler)
 dataPlane.post('/v1/responses/compact', responsesCompactHandler)
 dataPlane.post('/responses/compact', responsesCompactHandler)
 dataPlane.post('/v1beta/models/:model{.+}', geminiHandler)
+dataPlane.post('/v1/alpha/search', alphaSearchHandler)
+dataPlane.post('/alpha/search', alphaSearchHandler)

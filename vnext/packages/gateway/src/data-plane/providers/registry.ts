@@ -120,6 +120,7 @@ function genericModelEndpoints(
   if (supported.includes('responses')) out.responses = {}
   if (supported.includes('messages')) out.messages = {}
   if (supported.includes('embeddings')) out.embeddings = {}
+  if (supported.includes('alpha_search')) out.alpha_search = {}
   if (Object.keys(out).length === 0) out.chat_completions = {}
   return out
 }
