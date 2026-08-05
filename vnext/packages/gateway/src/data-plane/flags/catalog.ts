@@ -70,7 +70,7 @@ export const OPTIONAL_FLAGS = [
     id: "responses-compact-shim",
     label: "Responses compact shim",
     description: "Simulate a `response.compaction` envelope against upstreams that have no native compaction wire. Runs the summarization turn through the upstream's standard /responses generate wire under the vendored openai/codex SUMMARIZATION_PROMPT, then packs the summary into a synthetic `response.compaction` output item. Structurally required (always engages, ignoring this flag) on non-Responses target endpoints because those translators cannot carry the `compaction_trigger` / `compaction` item variants.",
-    defaultFor: [],
+    defaultFor: ["claude-code"],
   },
   {
     id: "deepseek-reasoning-dialect",

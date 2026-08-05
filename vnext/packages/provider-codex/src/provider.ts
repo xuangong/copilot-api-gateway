@@ -30,6 +30,7 @@ import {
   type CodexCallEffects,
 } from './fetch'
 import { directFetcher, type Fetcher } from './fetcher'
+import { codexResponsesBoundary } from './interceptors/responses'
 import {
   codexRawToProviderModel,
   fetchCodexCatalog,
@@ -44,8 +45,15 @@ import {
   type CodexAccountCredential,
   type CodexUpstreamState,
 } from './state'
+import { runInterceptors } from '@vibe-core/service'
 import { getUpstreamRepo, UpstreamGoneError } from '@vibe-core/upstream-repo'
-import type { EndpointKey, ModelPricing, UpstreamRecord } from '@vibe-llm/protocols/common'
+import type {
+  EndpointKey,
+  Invocation,
+  ModelPricing,
+  RequestContext,
+  UpstreamRecord,
+} from '@vibe-llm/protocols/common'
 import {
   probeViaModels,
   type LlmModelProvider,
@@ -53,6 +61,7 @@ import {
   type ProviderRequest,
   type ProviderResponse,
   type ProviderModelsResponse,
+  type SourceApi,
 } from '@vibe-llm/provider-llm'
 import type { CanonicalResponsesPayload } from '@vibe-llm/protocols/responses'
 
@@ -178,30 +187,53 @@ export class CodexProvider implements LlmModelProvider {
     if (req.endpoint !== 'responses') {
       throw new Error(`CodexProvider does not support endpoint: ${req.endpoint}`)
     }
-    const account = await this.readActiveAccount()
     const model = await this.resolveModel(req.payload)
-    const { model: _ignored, ...wireBody } = req.payload as CanonicalResponsesPayload
 
-    const backendCallBase = {
-      upstreamId: this.upstreamId,
-      account,
-      model,
-      headers: req.headers,
-      signal: req.signal,
-      effects: this.effects,
-      fetcher: this.fetcher,
+    // Boundary chain: strip unsupported fields + inject default instructions.
+    // Interceptors mutate `inv.payload` in place; the terminal reads the
+    // mutated payload before dispatching to the wire.
+    const headerRecord: Record<string, string> = {}
+    req.headers.forEach((v, k) => {
+      headerRecord[k] = v
+    })
+    const inv: Invocation = {
+      endpoint: 'responses',
+      enabledFlags: new Set<string>(),
+      sourceApi: mapSourceApi(req.sourceApi),
+      action: req.action,
+      payload: { ...(req.payload as Record<string, unknown>), model: model.id } as Record<
+        string,
+        unknown
+      >,
+      headers: headerRecord,
+    }
+    const ctx: RequestContext = {
+      requestStartedAt: Date.now(),
+      downstreamAbortSignal: req.signal,
     }
 
-    const upstreamResp =
-      req.action === 'compact'
+    const upstreamResp = await runInterceptors(inv, ctx, codexResponsesBoundary, async () => {
+      const account = await this.readActiveAccount()
+      const { model: _ignored, ...wireBody } = inv.payload as Record<string, unknown>
+      const backendCallBase = {
+        upstreamId: this.upstreamId,
+        account,
+        model,
+        headers: new Headers(inv.headers),
+        signal: req.signal,
+        effects: this.effects,
+        fetcher: this.fetcher,
+      }
+      return inv.action === 'compact'
         ? await callCodexResponsesCompact({
             ...backendCallBase,
-            body: toCompactPayloadShape(wireBody) as Omit<
+            body: toCompactPayloadShape(wireBody as never) as Omit<
               CanonicalResponsesCompactPayload,
               'model' | 'store'
             >,
           })
-        : await callCodexResponses({ ...backendCallBase, body: wireBody })
+        : await callCodexResponses({ ...backendCallBase, body: wireBody as never })
+    })
 
     return {
       status: upstreamResp.status,
@@ -224,4 +256,10 @@ export class CodexProvider implements LlmModelProvider {
     if (!hit) throw new Error(`CodexProvider: unknown model '${modelId}'`)
     return hit
   }
+}
+
+function mapSourceApi(src: SourceApi): 'messages' | 'chat_completions' | 'responses' | 'gemini' {
+  if (src === 'anthropic') return 'messages'
+  if (src === 'openai') return 'chat_completions'
+  return src
 }
