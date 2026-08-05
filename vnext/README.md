@@ -84,4 +84,6 @@ Upstream(provider) kind 与 client protocol 由数据面 attempt.ts 翻译打通
 
 ## 状态
 
-**2026-08-05**:vNext 承担全部生产流量,`ci:local` 全绿(1391 tests / 0 fail)。CFW 部署走 `apps/platform-cloudflare` 的 wrangler;Docker 走 `apps/platform-bun`。当前 CFW 部署由用户手动触发,GitHub Actions 未启用。
+**2026-08-05**:vNext 承担全部生产流量,`ci:local` 全绿。CFW 部署走 `apps/platform-cloudflare` 的 wrangler;Docker 走 `apps/platform-bun`。GitHub Actions:
+- `.github/workflows/vnext-ci.yml` —— push / PR 自动跑本地 gate(purity + typecheck + test + lint + build:ui + wrangler dry-run),无需 secrets。
+- `.github/workflows/vnext-remote-compat.yml` —— 手动 `workflow_dispatch`,凭 `VNEXT_BASE_URL` / `ROOT_BASE_URL` / `TEST_API_KEY` 跑 Anthropic + OpenAI + Gemini SDK 双跑 + 数据面 parity dual-smoke;缺 secret 时输出显式 skipped summary,不伪造 pass。CFW 生产上线仍由用户手动触发。

@@ -56,7 +56,10 @@ bun run ci:local
 
 ## Pending(未在本次审计通过)
 
-1. **SDK 集成测试双跑** —— 需 `bun run local` + `tests/sdk-{anthropic,openai,gemini}.test.ts`。本地凭据齐时用户手动执行。
-2. **Codex `/v1/alpha-search`** —— web-search 端点未移植,留独立 circle。
-3. **GitHub Actions workflow** —— 用户明确不启用;本地 `bun run ci:local` 为唯一 gate。
-4. **CFW 生产部署** —— 用户要求在更多 local Docker 测试通过之前不动 CFW。
+1. **SDK 集成测试双跑** —— 需 `bun run local` + `tests/sdk-{anthropic,openai,gemini}.test.ts`,或走 `.github/workflows/vnext-remote-compat.yml` 手动 dispatch(需 `VNEXT_BASE_URL` / `ROOT_BASE_URL` / `TEST_API_KEY` secrets)。本仓库当前尚未运行 remote workflow,证据待补。
+2. **CFW 生产部署** —— 用户要求在更多 local Docker 测试通过之前不动 CFW。
+
+## Completed since 2026-08-05
+
+- **Codex `/v1/alpha/search`** —— web-search 端点已移植(commit ea7f626),passthrough + local 双模式落 `data-plane/alpha-search/routes.ts`。
+- **GitHub Actions 本地 gate** —— `.github/workflows/vnext-ci.yml` 已启用(push + PR to main/vNext,paths=vnext/**),镜像 `bun run ci:local`;`.github/workflows/vnext-remote-compat.yml` 走 workflow_dispatch,凭据缺失时输出显式 skipped summary。

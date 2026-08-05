@@ -14,7 +14,7 @@
 cd vnext && bun run ci:local
 ```
 
-跑过 = purity + typecheck + test + lint + build:ui + wrangler dry-run 全绿。
+跑过 = purity + typecheck + test + lint + build:ui + wrangler dry-run 全绿。等价 GitHub Actions workflow:`.github/workflows/vnext-ci.yml`(push / PR 自动触发,paths=`vnext/**`)。
 
 ---
 
@@ -47,7 +47,13 @@ Wrangler config:`apps/platform-cloudflare/wrangler.jsonc`。生产切流不在�
 
 ## SDK 集成测试(灰度 / 回归 双跑)
 
-需要真实凭据 —— 默认不在 `ci:local` 内。
+需要真实凭据 —— 默认不在 `ci:local` 内。可选两条路径:
+
+**A. 手动 workflow**(推荐,证据自动归档为 artifact):
+
+  在 GitHub Actions 上 dispatch `.github/workflows/vnext-remote-compat.yml`,配置 `VNEXT_BASE_URL` / `ROOT_BASE_URL` / `TEST_API_KEY`(可选 `VNEXT_API_KEY` / `ROOT_API_KEY` per side)。缺 secret 时 workflow 输出显式 skipped summary,不当作 pass。
+
+**B. 本地手动**:
 
 ```bash
 # 旧 worker
