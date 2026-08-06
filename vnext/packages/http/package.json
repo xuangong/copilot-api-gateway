@@ -11,5 +11,11 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.8.0",
+    "@peculiar/asn1-cms": "^2.3.14",
+    "@peculiar/asn1-rsa": "^2.3.14",
+    "@reclaimprotocol/tls": "0.1.2"
   }
 }
