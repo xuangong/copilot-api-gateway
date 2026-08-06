@@ -2,6 +2,7 @@ import { getCopilotBaseUrl, type AccountType } from "./account-type"
 import { copilotHeaders } from "./headers"
 import { HTTPError } from "./lib/error"
 import { fetchWithRetry, truncateBody } from "@vibe-core/http"
+import type { Fetcher } from "@vibe-core/upstream"
 
 interface CallCopilotAPIOptions {
   endpoint: string
@@ -12,6 +13,7 @@ interface CallCopilotAPIOptions {
   requireModel?: boolean
   timeout?: number // Request timeout in milliseconds
   extraHeaders?: Record<string, string>
+  fetcher?: Fetcher
 }
 
 /**
@@ -26,6 +28,7 @@ export async function callCopilotAPI({
   requireModel = true,
   timeout,
   extraHeaders,
+  fetcher,
 }: CallCopilotAPIOptions): Promise<Response> {
   if (!copilotToken) {
     throw new Error("Copilot token not found")
@@ -62,6 +65,7 @@ export async function callCopilotAPI({
       headers: { ...copilotHeaders(copilotToken), ...(extraHeaders ?? {}) },
       body: JSON.stringify(payload),
       timeout,
+      fetcher,
     })
   } catch (error) {
     if (!isStreaming && endpoint === "/v1/messages") {

@@ -17,6 +17,7 @@
     "@vibe-llm/provider-llm": "workspace:*",
     "@vibe-core/http": "workspace:*",
     "@vibe-core/platform": "workspace:*",
-    "@vibe-core/upstream-repo": "workspace:*"
+    "@vibe-core/upstream-repo": "workspace:*",
+    "@vibe-core/upstream": "workspace:*"
   }
 }

@@ -5,6 +5,7 @@ import {
   initRuntimeLocation,
   initImageProcessor,
   initFileProvider,
+  initSocketDial,
   type SqlDatabase,
 } from "@vibe-core/platform"
 import { initRepo } from "@vibe-llm/gateway/src/shared/repo/index.ts"
@@ -23,6 +24,7 @@ import {
 import { createCloudflareCache } from "./cache-factory.ts"
 import { createD1ResponsesStore } from "./responses-store-factory.ts"
 import { R2FileProvider, type R2BucketLike } from "./r2-file-provider.ts"
+import { cloudflareSocketDial } from "./cfw-socket-dial.ts"
 
 export interface CloudflareEnv {
   DB: D1Database
@@ -52,6 +54,7 @@ export function bootstrapCloudflarePlatform(env: CloudflareEnv, ctx: ExecutionCo
   initImageProcessor(
     createCloudflareImageProcessor(env.IMAGES, env.IMAGE_CACHE as unknown as ImageCacheKv),
   )
+  initSocketDial(cloudflareSocketDial)
   const files = new R2FileProvider(env.FILES)
   initFileProvider(files)
   initRepo(new D1Repo(env.DB))

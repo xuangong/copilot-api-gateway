@@ -6,7 +6,9 @@ import {
   initRuntimeLocation,
   initImageProcessor,
   initFileProvider,
+  initSocketDial,
 } from "@vibe-core/platform"
+import { bunSocketDial } from "./bun-socket-dial.ts"
 import { initRepo } from "@vibe-llm/gateway/src/shared/repo/index.ts"
 import { initCache } from "@vibe-llm/gateway/src/shared/cache/index.ts"
 import { initResponsesStore } from "@vibe-llm/gateway/src/shared/runtime/responses-store.ts"
@@ -40,6 +42,7 @@ export function bootstrapBunPlatform(opts: BunPlatformOptions): { db: BunSqliteD
   initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
   initRuntimeLocation('bun')
   initImageProcessor(createInMemoryImageProcessor())
+  initSocketDial(bunSocketDial)
   const files = new FsFileProvider(opts.filesRoot ?? './data/files')
   initFileProvider(files)
   initRepo(new BunSqliteRepo(sqliteDb))

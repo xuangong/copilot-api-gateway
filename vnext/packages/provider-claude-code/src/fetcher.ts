@@ -1,4 +1,4 @@
-// Claude-code-local Fetcher type. Mirrors provider-codex's shape.
-export type Fetcher = (url: string, init: RequestInit) => Promise<Response>
-
-export const directFetcher: Fetcher = (url, init) => fetch(url, init)
+// Re-export from @vibe-core/upstream. Stage C unified the Fetcher alias so
+// all providers share one type. Keep this re-export so existing imports of
+// `./fetcher` from within provider-claude-code continue to work.
+export { directFetcher, type Fetcher } from "@vibe-core/upstream"

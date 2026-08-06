@@ -4,11 +4,18 @@
  * (which itself was lifted from apps/gateway/src/shared/lib/fetch-retry.ts).
  *
  * Behavior, retry curve, timeout semantics: unchanged.
+ *
+ * Stage C added the optional `fetcher` param so callers (providers) can inject
+ * a fallback-aware fetch. Default is the runtime `fetch`, so no behaviour
+ * change for existing call sites.
  */
+export type FetchLike = (url: string | URL, init?: RequestInit) => Promise<Response>
+
 export interface FetchOptions extends RequestInit {
   maxRetries?: number
   retryDelay?: number
   timeout?: number
+  fetcher?: FetchLike
 }
 
 export async function fetchWithRetry(
@@ -18,6 +25,7 @@ export async function fetchWithRetry(
   const maxRetries = init?.maxRetries ?? 3
   const retryDelay = init?.retryDelay ?? 1000
   const timeout = init?.timeout
+  const fetchImpl: FetchLike = init?.fetcher ?? fetch
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -30,7 +38,7 @@ export async function fetchWithRetry(
       }
 
       const signal = controller?.signal ?? init?.signal
-      const response = await fetch(input, {
+      const response = await fetchImpl(input, {
         ...init,
         signal,
       }).finally(() => {

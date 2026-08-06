@@ -27,6 +27,7 @@ import type {
   SourceApi,
 } from '@vibe-llm/provider-llm'
 import { probeViaModels } from '@vibe-llm/provider-llm'
+import { directFetcher, type Fetcher } from '@vibe-core/upstream'
 import { createVariantAndBetaFilteringInterceptor } from './interceptors/shared/with-variant-and-beta-filtering'
 import { withContextManagementBetaAligned } from './interceptors/shared/with-context-management-beta-aligned'
 import { withInitiatorHeader } from './interceptors/shared/with-initiator-header'
@@ -64,16 +65,18 @@ export class CopilotProvider implements LlmModelProvider {
   readonly supportedEndpoints = COPILOT_SUPPORTED
   private readonly copilotToken: string
   private readonly accountType: AccountType
+  private readonly fetcher: Fetcher
   private readonly messagesChain: readonly CopilotInterceptor[]
   private readonly messagesCountTokensChain: readonly CopilotInterceptor[]
   private readonly responsesChain: readonly CopilotInterceptor[]
   private readonly chatCompletionsChain: readonly CopilotInterceptor[]
   private readonly embeddingsChain: readonly CopilotInterceptor[]
 
-  constructor(cfg: CopilotProviderConfig) {
+  constructor(cfg: CopilotProviderConfig, fetcher: Fetcher = directFetcher) {
     this.copilotToken = cfg.copilotToken
     this.accountType = cfg.accountType
     this.name = cfg.name ?? 'copilot'
+    this.fetcher = fetcher
 
     const variantFiltering = createVariantAndBetaFilteringInterceptor(this.copilotToken, this.accountType)
     this.messagesChain = [variantFiltering, withContextManagementBetaAligned, withInitiatorHeader, ...messagesPayloadInterceptors]
@@ -127,6 +130,7 @@ export class CopilotProvider implements LlmModelProvider {
         timeout: req.timeout,
         extraHeaders: inv.headers,
         requireModel,
+        fetcher: this.fetcher,
       }),
     )
     return { status: response.status, headers: response.headers, body: response.body }
