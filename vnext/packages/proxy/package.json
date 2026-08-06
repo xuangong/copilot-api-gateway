@@ -1,0 +1,22 @@
+{
+  "name": "@vibe-core/proxy",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./constants": "./src/constants.ts",
+    "./url": "./src/url.ts",
+    "./url-kind": "./src/url-kind.ts",
+    "./proxy-config": "./src/proxy-config.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vibe-core/http": "workspace:*",
+    "@noble/ciphers": "^2.2.0",
+    "@noble/hashes": "^1.8.0",
+    "@reclaimprotocol/tls": "0.1.2"
+  }
+}
