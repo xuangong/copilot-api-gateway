@@ -48,8 +48,9 @@ export interface Model {
 export async function getRawModels(
   copilotToken: string,
   accountType: AccountType,
+  baseUrlOverride?: string,
 ): Promise<ModelsResponse> {
-  const baseUrl = getCopilotBaseUrl(accountType)
+  const baseUrl = baseUrlOverride ?? getCopilotBaseUrl(accountType)
   const response = await fetch(`${baseUrl}/models`, {
     headers: copilotHeaders(copilotToken),
   })
@@ -62,6 +63,7 @@ export async function getRawModels(
 export async function getModels(
   copilotToken: string,
   accountType: AccountType,
+  baseUrlOverride?: string,
 ): Promise<ModelsResponse> {
-  return getRawModels(copilotToken, accountType)
+  return getRawModels(copilotToken, accountType, baseUrlOverride)
 }

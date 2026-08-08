@@ -10,6 +10,11 @@ interface CallCopilotAPIOptions {
   operationName: string
   copilotToken: string
   accountType: AccountType
+  /** Override the base URL derived from accountType. When set, the request
+   *  goes to `${baseUrl}${endpoint}` instead of getCopilotBaseUrl(accountType).
+   *  Used by GHE-with-data-residency tenants that advertise a per-tenant
+   *  Copilot host (e.g. https://copilot-api.msft.ghe.com). */
+  baseUrl?: string
   requireModel?: boolean
   timeout?: number // Request timeout in milliseconds
   extraHeaders?: Record<string, string>
@@ -25,6 +30,7 @@ export async function callCopilotAPI({
   operationName,
   copilotToken,
   accountType,
+  baseUrl: baseUrlOverride,
   requireModel = true,
   timeout,
   extraHeaders,
@@ -49,7 +55,7 @@ export async function callCopilotAPI({
     )
   }
 
-  const baseUrl = getCopilotBaseUrl(accountType)
+  const baseUrl = baseUrlOverride ?? getCopilotBaseUrl(accountType)
   const isStreaming = payload.stream === true
   const requestId = crypto.randomUUID().slice(0, 8)
 

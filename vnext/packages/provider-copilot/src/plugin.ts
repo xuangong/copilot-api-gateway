@@ -3,7 +3,10 @@
  *
  * Two construction paths:
  *   1. upstream.config.githubToken present → exchange via ctx hook
- *      (ctx.getCachedCopilotToken). On any failure, fall through.
+ *      (ctx.getCachedCopilotToken). Passes upstream.config.githubHost so
+ *      GHE-with-data-residency tenants exchange against their tenant API
+ *      host and inherit endpoints.api from the response. On any failure,
+ *      fall through.
  *   2. ctx.copilotFallback present → construct from per-request token.
  *
  * Returns null when neither path can produce a provider.
@@ -18,10 +21,15 @@ export const copilotProviderPlugin: LlmProviderPlugin = {
     const config = upstream.config
     const accountType = (config.accountType as AccountType | undefined) ?? 'individual'
     const githubToken = config.githubToken
+    const githubHost = typeof config.githubHost === 'string' ? config.githubHost : undefined
     if (typeof githubToken === 'string' && githubToken && ctx.getCachedCopilotToken) {
       try {
-        const copilotToken = await ctx.getCachedCopilotToken(githubToken, accountType)
-        return new CopilotProvider({ copilotToken, accountType })
+        const session = await ctx.getCachedCopilotToken(githubToken, accountType, githubHost)
+        return new CopilotProvider({
+          copilotToken: session.token,
+          accountType,
+          baseUrl: session.apiEndpoint,
+        })
       } catch {
         // fall through to fallback
       }

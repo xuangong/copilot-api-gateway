@@ -30,7 +30,7 @@ test('createFromUpstream — githubToken path uses ctx.getCachedCopilotToken', a
       called = true
       expect(gh).toBe('gh_xxx')
       expect(at).toBe('business')
-      return 'tid_aaa'
+      return { token: 'tid_aaa', apiEndpoint: 'https://api.business.githubcopilot.com' }
     },
   })
   expect(called).toBe(true)
@@ -43,10 +43,22 @@ test('createFromUpstream — defaults accountType to "individual" when unset', a
   await copilotProviderPlugin.createFromUpstream(upstream, {
     getCachedCopilotToken: async (_gh, at) => {
       seenAccountType = at
-      return 'tid_aaa'
+      return { token: 'tid_aaa', apiEndpoint: 'https://api.githubcopilot.com' }
     },
   })
   expect(seenAccountType).toBe('individual')
+})
+
+test('createFromUpstream — passes githubHost to ctx.getCachedCopilotToken', async () => {
+  const upstream = makeUpstream({ githubToken: 'gh_xxx', accountType: 'business', githubHost: 'msft.ghe.com' })
+  let seenHost: string | undefined
+  await copilotProviderPlugin.createFromUpstream(upstream, {
+    getCachedCopilotToken: async (_gh, _at, host) => {
+      seenHost = host
+      return { token: 'tid_aaa', apiEndpoint: 'https://copilot-api.msft.ghe.com' }
+    },
+  })
+  expect(seenHost).toBe('msft.ghe.com')
 })
 
 test('createFromUpstream — falls back when token exchange throws', async () => {

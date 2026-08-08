@@ -41,6 +41,10 @@ export interface CopilotProviderConfig {
   copilotToken: string
   accountType: AccountType
   name?: string
+  /** Override the Copilot API base URL. When present, replaces the accountType-
+   *  derived default. Set by the token cache when a tenant advertises a
+   *  per-tenant Copilot host (e.g. copilot-api.msft.ghe.com). */
+  baseUrl?: string
 }
 
 const COPILOT_PATHS: Partial<Record<EndpointKey, string>> = {
@@ -65,6 +69,7 @@ export class CopilotProvider implements LlmModelProvider {
   readonly supportedEndpoints = COPILOT_SUPPORTED
   private readonly copilotToken: string
   private readonly accountType: AccountType
+  private readonly baseUrl?: string
   private readonly fetcher: Fetcher
   private readonly messagesChain: readonly CopilotInterceptor[]
   private readonly messagesCountTokensChain: readonly CopilotInterceptor[]
@@ -75,6 +80,7 @@ export class CopilotProvider implements LlmModelProvider {
   constructor(cfg: CopilotProviderConfig, fetcher: Fetcher = directFetcher) {
     this.copilotToken = cfg.copilotToken
     this.accountType = cfg.accountType
+    this.baseUrl = cfg.baseUrl
     this.name = cfg.name ?? 'copilot'
     this.fetcher = fetcher
 
@@ -87,7 +93,7 @@ export class CopilotProvider implements LlmModelProvider {
   }
 
   getModels(): Promise<ModelsResponse> {
-    return getModels(this.copilotToken, this.accountType)
+    return getModels(this.copilotToken, this.accountType, this.baseUrl)
   }
 
   probe(): Promise<ProbeResult> {
@@ -127,6 +133,7 @@ export class CopilotProvider implements LlmModelProvider {
         operationName: req.operationName ?? `call ${req.endpoint}`,
         copilotToken: this.copilotToken,
         accountType: this.accountType,
+        baseUrl: this.baseUrl,
         timeout: req.timeout,
         extraHeaders: inv.headers,
         requireModel,
