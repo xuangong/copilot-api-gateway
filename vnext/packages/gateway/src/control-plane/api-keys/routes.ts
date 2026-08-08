@@ -75,6 +75,11 @@ function keyToJson(k: ApiKey, ownerName?: string, isOwner?: boolean, sourceMap?:
   const langsearchRef = k.webSearchLangsearchRef ? refDescriptor(k.webSearchLangsearchRef, map) : null
   const tavilyRef = k.webSearchTavilyRef ? refDescriptor(k.webSearchTavilyRef, map) : null
   const msGroundingRef = k.webSearchMsGroundingRef ? refDescriptor(k.webSearchMsGroundingRef, map) : null
+  // Response is dual-cased: snake_case fields are the historical shape (kept
+  // for the dashboard + any snake_case consumer); camelCase aliases exist so
+  // llm-relay's Rust `ApiKey` struct (which has #[serde(rename_all = "camelCase")])
+  // can deserialize createdAt/lastUsedAt/ownerId/ownerName without a client
+  // update. Adding new fields → add both variants.
   return {
     id: k.id, name: k.name, key: k.key, created_at: k.createdAt,
     last_used_at: k.lastUsedAt ?? null, owner_id: k.ownerId ?? null,
@@ -89,6 +94,11 @@ function keyToJson(k: ApiKey, ownerName?: string, isOwner?: boolean, sourceMap?:
     web_search_ms_grounding_key: msGroundingRef ? null : maskKey(k.webSearchMsGroundingKey),
     web_search_ms_grounding_ref: msGroundingRef,
     web_search_priority: k.webSearchPriority ?? null,
+    // camelCase aliases for llm-relay compatibility.
+    createdAt: k.createdAt,
+    lastUsedAt: k.lastUsedAt ?? null,
+    ownerId: k.ownerId ?? null,
+    ownerName: ownerName ?? null,
   }
 }
 

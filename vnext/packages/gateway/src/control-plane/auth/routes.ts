@@ -76,6 +76,14 @@ authRouter.post('/login', zValidator('json', loginBody), async (c) => {
           userId: user.id, userName: user.name, email: user.email,
           avatarUrl: user.avatarUrl, sessionToken,
           disabled: user.disabled, hasPassword: !!user.passwordHash,
+          // snake_case aliases for older llm-relay clients whose LoginResult
+          // struct lacks #[serde(rename_all = "camelCase")]. Keep both so
+          // future client fixes (adding rename_all or per-field aliases) also
+          // continue to work without another gateway change.
+          is_admin: isAdmin, is_user: true,
+          user_id: user.id, user_name: user.name,
+          avatar_url: user.avatarUrl, session_token: sessionToken,
+          has_password: !!user.passwordHash,
         }
 
         // Backfill avatar/name cookies for legacy sessions.
@@ -106,6 +114,13 @@ authRouter.post('/login', zValidator('json', loginBody), async (c) => {
       keyId: result.id,
       keyName: result.name,
       keyHint: sessionToken.slice(-4),
+      // snake_case aliases — see comment in the session branch above.
+      is_admin: false,
+      is_user: !!result.ownerId,
+      user_id: result.ownerId,
+      key_id: result.id,
+      key_name: result.name,
+      key_hint: sessionToken.slice(-4),
     })
   }
 
@@ -122,6 +137,12 @@ authRouter.post('/login', zValidator('json', loginBody), async (c) => {
       userName: user.name,
       email: user.email,
       avatarUrl: user.avatarUrl,
+      // snake_case aliases — see comment in the session branch above.
+      is_admin: isAdmin,
+      is_user: true,
+      user_id: user.id,
+      user_name: user.name,
+      avatar_url: user.avatarUrl,
     })
   }
 
