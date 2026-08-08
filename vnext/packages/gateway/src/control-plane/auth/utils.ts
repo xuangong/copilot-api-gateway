@@ -5,6 +5,7 @@
  * email magic links + OAuth callbacks. Pure functions; no I/O.
  */
 import { createGithubHeaders } from '../../shared/config/constants.ts'
+import { githubApiOrigin, GITHUB_DOTCOM_HOST } from '../../shared/config/github-host.ts'
 
 export const GITHUB_SCOPES = 'read:user'
 export const SESSION_TTL_DAYS = 30
@@ -68,9 +69,12 @@ a{display:inline-block;padding:.5rem 1.5rem;background:#1a73e8;color:#fff;border
 <body><div class="card"><h2>Error</h2><p>${message}</p><a href="/">Back to Login</a></div></body></html>`
 }
 
-export async function detectAccountType(githubToken: string): Promise<string> {
+export async function detectAccountType(
+  githubToken: string,
+  githubHost: string = GITHUB_DOTCOM_HOST,
+): Promise<string> {
   try {
-    const resp = await fetch('https://api.github.com/copilot_internal/user', {
+    const resp = await fetch(`${githubApiOrigin(githubHost)}/copilot_internal/user`, {
       headers: createGithubHeaders(githubToken),
     })
     if (!resp.ok) return 'individual'

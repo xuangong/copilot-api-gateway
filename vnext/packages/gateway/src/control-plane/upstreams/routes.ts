@@ -451,6 +451,7 @@ upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
       flagOverrides: normalizeFlagOverrides(body.flagOverrides),
       disabledPublicModelIds: normalizeDisabledPublicModelIds(body.disabledPublicModelIds),
       state: null,
+      proxyFallbackList: [],
       createdAt: now,
       updatedAt: now,
     }

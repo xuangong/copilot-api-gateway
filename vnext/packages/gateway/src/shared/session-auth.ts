@@ -110,11 +110,11 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
     try {
       const upstreams = await getRepo().upstreams.list({ ownerId: resolvedUserId })
       const copilot = upstreams.find((u) => u.provider === 'copilot' && u.enabled !== false)
-      const cfg = copilot?.config as { githubToken?: string; accountType?: AccountType } | undefined
+      const cfg = copilot?.config as { githubToken?: string; accountType?: AccountType; githubHost?: string } | undefined
       if (cfg?.githubToken) {
         const accountType: AccountType = cfg.accountType ?? 'individual'
-        const copilotToken = await getCachedCopilotToken(cfg.githubToken, accountType)
-        ctx.copilot = { copilotToken, accountType }
+        const session = await getCachedCopilotToken(cfg.githubToken, accountType, cfg.githubHost)
+        ctx.copilot = { copilotToken: session.token, accountType }
         ctx.githubToken = cfg.githubToken
       }
     } catch {

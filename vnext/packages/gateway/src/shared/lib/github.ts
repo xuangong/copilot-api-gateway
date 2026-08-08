@@ -31,6 +31,7 @@ async function mirrorCopilotUpstream(
   user: GitHubUser,
   accountType: string,
   ownerId: UserId | '',
+  opts: { githubHost?: string; source?: 'device-flow' | 'paste'; copilotApiEndpoint?: string } = {},
 ): Promise<void> {
   const id = copilotUpstreamRowId(ownerId, user.id)
   const existing = await getRepo().upstreams.getById(id)
@@ -51,10 +52,15 @@ async function mirrorCopilotUpstream(
         name: user.name,
         avatar_url: user.avatar_url,
       },
+      ...(opts.githubHost ? { githubHost: opts.githubHost } : {}),
+      ...(opts.source ? { source: opts.source } : {}),
     },
     flagOverrides: existing?.flagOverrides ?? {},
     disabledPublicModelIds: existing?.disabledPublicModelIds ?? [],
-    state: null,
+    state: opts.copilotApiEndpoint
+      ? { ...((existing?.state as Record<string, unknown> | null) ?? {}), copilotApiEndpoint: opts.copilotApiEndpoint }
+      : (existing?.state ?? null),
+    proxyFallbackList: existing?.proxyFallbackList ?? [],
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
@@ -72,6 +78,7 @@ export async function addGithubAccount(
   user: GitHubUser,
   accountType: string,
   ownerId?: UserId,
+  opts: { githubHost?: string; source?: 'device-flow' | 'paste'; copilotApiEndpoint?: string } = {},
 ): Promise<void> {
   const repo = getRepo().github
   await repo.saveAccount(user.id, {
@@ -83,13 +90,15 @@ export async function addGithubAccount(
     sortOrder: 0,
     flagOverrides: {},
     updatedAt: undefined,
+    githubHost: opts.githubHost,
+    source: opts.source,
   })
   if (ownerId) {
     await repo.setActiveIdForUser(ownerId, user.id)
   } else {
     await repo.setActiveId(user.id)
   }
-  await mirrorCopilotUpstream(token, user, accountType, ownerId ?? '')
+  await mirrorCopilotUpstream(token, user, accountType, ownerId ?? '', opts)
 }
 
 export async function removeGithubAccount(

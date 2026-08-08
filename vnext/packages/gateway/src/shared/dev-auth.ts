@@ -64,6 +64,11 @@ function devAccountType(): AccountType {
 }
 
 export function isDevAuthEnabled(): boolean {
+  // Belt-and-suspenders: never activate the dev bypass in production, even if
+  // an operator (or a malicious env leak) sets VNEXT_DEV_GITHUB_TOKEN. The
+  // dev path hardcodes GITHUB_API_BASE_URL (github.com) and stores tokens
+  // in a global slot without user attribution — unsafe outside local dev.
+  if (process.env.NODE_ENV === 'production') return false
   return Boolean(process.env.VNEXT_DEV_GITHUB_TOKEN || process.env.VNEXT_DEV_COPILOT_TOKEN)
 }
 
