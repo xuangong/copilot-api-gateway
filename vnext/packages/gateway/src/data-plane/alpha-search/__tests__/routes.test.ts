@@ -63,6 +63,7 @@ const customUpstream = (id: string, apiKey = 'sk-test'): UpstreamRecord<unknown>
   flagOverrides: {},
   disabledPublicModelIds: [],
   state: null,
+  proxyFallbackList: [],
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 })
@@ -77,6 +78,7 @@ const copilotUpstream = (): UpstreamRecord<unknown> => ({
   flagOverrides: {},
   disabledPublicModelIds: [],
   state: null,
+  proxyFallbackList: [],
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 })
