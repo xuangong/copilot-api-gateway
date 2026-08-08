@@ -11,6 +11,7 @@
     "@vibe-core/cache": "workspace:*",
     "@vibe-core/chat-flow-kit": "workspace:*",
     "@vibe-core/platform": "workspace:*",
+    "@vibe-core/proxy-repo": "workspace:*",
     "@vibe-core/result": "workspace:*",
     "@vibe-core/service": "workspace:*",
     "@vibe-core/upstream-repo": "workspace:*",

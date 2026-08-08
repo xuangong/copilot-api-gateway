@@ -74,6 +74,7 @@
         "@vibe-core/cache": "workspace:*",
         "@vibe-core/chat-flow-kit": "workspace:*",
         "@vibe-core/platform": "workspace:*",
+        "@vibe-core/proxy-repo": "workspace:*",
         "@vibe-core/result": "workspace:*",
         "@vibe-core/service": "workspace:*",
         "@vibe-core/upstream-repo": "workspace:*",
@@ -211,6 +212,14 @@
         "@vibe-core/http": "workspace:*",
       },
     },
+    "packages/proxy-repo": {
+      "name": "@vibe-core/proxy-repo",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vibe-core/platform": "workspace:*",
+        "@vibe-core/proxy": "workspace:*",
+      },
+    },
     "packages/responses-store": {
       "name": "@vibe-llm/responses-store",
       "version": "0.0.0",
@@ -234,6 +243,9 @@
     "packages/upstream": {
       "name": "@vibe-core/upstream",
       "version": "0.0.0",
+      "dependencies": {
+        "@vibe-core/proxy-repo": "workspace:*",
+      },
     },
     "packages/upstream-repo": {
       "name": "@vibe-core/upstream-repo",
@@ -592,6 +604,8 @@
     "@vibe-core/platform": ["@vibe-core/platform@workspace:packages/platform"],
 
     "@vibe-core/proxy": ["@vibe-core/proxy@workspace:packages/proxy"],
+
+    "@vibe-core/proxy-repo": ["@vibe-core/proxy-repo@workspace:packages/proxy-repo"],
 
     "@vibe-core/result": ["@vibe-core/result@workspace:packages/result"],
 

@@ -1,5 +1,5 @@
 {
-  "name": "@vibe-core/upstream",
+  "name": "@vibe-core/proxy-repo",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vibe-core/proxy-repo": "workspace:*"
+    "@vibe-core/platform": "workspace:*",
+    "@vibe-core/proxy": "workspace:*"
   }
 }

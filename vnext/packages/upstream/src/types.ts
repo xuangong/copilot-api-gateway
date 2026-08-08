@@ -6,6 +6,8 @@
  * domain-specific fields and narrow `fetch`'s request type.
  */
 
+import type { ProxyFallbackEntry } from '@vibe-core/proxy-repo'
+
 export interface ProbeResult {
   ok: boolean
   status?: number
@@ -47,6 +49,13 @@ export interface UpstreamRecord<TProvider extends string = string, TState = null
   state: TState
   createdAt: string
   updatedAt: string
+  /**
+   * Ordered proxy fallback list — dispatcher tries entries in order after
+   * (or instead of) direct runtime fetch. Empty array means "runtime fetch
+   * only". Special IDs `direct_fetch` / `direct_connect` are recognised by
+   * the dispatcher and do not resolve through the proxies table.
+   */
+  proxyFallbackList: ProxyFallbackEntry[]
 }
 
 export interface UpstreamAdapter {
