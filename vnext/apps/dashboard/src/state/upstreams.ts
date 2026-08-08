@@ -75,21 +75,35 @@ export function useUpstreams() {
 
   const reorder = (id: string, direction: "up" | "down") =>
     withBusy(id, async () => {
-      const idx = upstreams.findIndex((u) => u.id === id)
+      const target = upstreams.find((u) => u.id === id)
+      if (!target) return
+      // Reorder within the same owner-group only — the UI groups by owner
+      // and the global list mixes them, so cross-group neighbors give wrong
+      // sortOrder values.
+      const group = sortUpstreams(upstreams.filter((u) => (u.ownerId ?? "") === (target.ownerId ?? "")))
+      const idx = group.findIndex((u) => u.id === id)
       if (idx === -1) return
       let newSort: number
       if (direction === "up") {
         if (idx === 0) return
-        const above = upstreams[idx - 1]
-        const aboveAbove = idx >= 2 ? upstreams[idx - 2] : null
-        if (!above) return
-        newSort = aboveAbove ? (above.sortOrder + aboveAbove.sortOrder) / 2 : above.sortOrder - 1
+        const above = group[idx - 1]
+        const aboveAbove = idx >= 2 ? group[idx - 2] : null
+        // If neighbor has same sortOrder, force a strictly smaller value so
+        // the row actually moves (avoids the "(0+0)/2 = 0" no-op).
+        if (aboveAbove && aboveAbove.sortOrder !== above.sortOrder) {
+          newSort = (above.sortOrder + aboveAbove.sortOrder) / 2
+        } else {
+          newSort = above.sortOrder - 1
+        }
       } else {
-        if (idx === upstreams.length - 1) return
-        const below = upstreams[idx + 1]
-        const belowBelow = idx + 2 < upstreams.length ? upstreams[idx + 2] : null
-        if (!below) return
-        newSort = belowBelow ? (below.sortOrder + belowBelow.sortOrder) / 2 : below.sortOrder + 1
+        if (idx === group.length - 1) return
+        const below = group[idx + 1]
+        const belowBelow = idx + 2 < group.length ? group[idx + 2] : null
+        if (belowBelow && belowBelow.sortOrder !== below.sortOrder) {
+          newSort = (below.sortOrder + belowBelow.sortOrder) / 2
+        } else {
+          newSort = below.sortOrder + 1
+        }
       }
       await api.patchUpstream(id, { sortOrder: newSort })
       await reload()

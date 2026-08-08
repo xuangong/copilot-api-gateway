@@ -110,6 +110,20 @@ export function pollGithubDeviceFlow(deviceCode: string): Promise<DeviceFlowPoll
   return api<DeviceFlowPoll>("/auth/github/poll", { method: "POST", body: { device_code: deviceCode } })
 }
 
+export interface PasteTokenResult {
+  status: "complete" | "error"
+  user?: { login: string; id: number }
+  github_host?: string
+  account_type?: string
+  error?: string
+}
+export function pasteGithubToken(github_token: string, github_host: string): Promise<PasteTokenResult> {
+  return api<PasteTokenResult>("/auth/github/paste-token", {
+    method: "POST",
+    body: { github_token, github_host },
+  })
+}
+
 export interface UpstreamCatalog {
   models: { id: string; name: string }[]
   disabledPublicModelIds: string[]
