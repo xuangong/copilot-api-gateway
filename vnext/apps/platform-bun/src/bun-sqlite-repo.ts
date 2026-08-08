@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS github_accounts (
   sort_order INTEGER NOT NULL DEFAULT 0,
   flag_overrides TEXT NOT NULL DEFAULT '{}',
   updated_at TEXT,
+  github_host TEXT NOT NULL DEFAULT 'github.com',
+  source TEXT,
   PRIMARY KEY (user_id, owner_id)
 );
 
@@ -44,6 +46,7 @@ CREATE TABLE IF NOT EXISTS upstreams (
   config_json TEXT NOT NULL DEFAULT '{}',
   flag_overrides TEXT NOT NULL DEFAULT '{}',
   disabled_public_model_ids TEXT NOT NULL DEFAULT '[]',
+  proxy_fallback_list_json TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -223,6 +226,27 @@ CREATE TABLE IF NOT EXISTS search_config (
   langsearch_api_key TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS proxies (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  url TEXT NOT NULL,
+  dial_timeout_seconds INTEGER,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS proxy_upstream_backoffs (
+  proxy_id TEXT NOT NULL,
+  upstream_id TEXT NOT NULL,
+  fail_count INTEGER NOT NULL DEFAULT 0,
+  expires_at INTEGER NOT NULL,
+  last_error TEXT,
+  last_error_at INTEGER,
+  PRIMARY KEY (proxy_id, upstream_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_proxy_backoffs_upstream ON proxy_upstream_backoffs (upstream_id);
 `
 
 function hasColumn(db: Database, table: string, column: string): boolean {
@@ -365,6 +389,9 @@ function migrateSchema(db: Database): void {
   }
   if (!hasColumn(db, "api_keys", "owner_id")) {
     db.exec("ALTER TABLE api_keys ADD COLUMN owner_id TEXT")
+  }
+  if (!hasColumn(db, "upstreams", "proxy_fallback_list_json")) {
+    db.exec("ALTER TABLE upstreams ADD COLUMN proxy_fallback_list_json TEXT NOT NULL DEFAULT '[]'")
   }
   if (!hasColumn(db, "latency", "stream")) {
     db.exec(`
@@ -561,6 +588,13 @@ function migrateSchema(db: Database): void {
   }
   if (!hasColumn(db, "github_accounts", "updated_at")) {
     db.exec("ALTER TABLE github_accounts ADD COLUMN updated_at TEXT")
+  }
+  // 0039: path-B (VS Code token paste) — tenant host + acquisition source
+  if (!hasColumn(db, "github_accounts", "github_host")) {
+    db.exec("ALTER TABLE github_accounts ADD COLUMN github_host TEXT NOT NULL DEFAULT 'github.com'")
+  }
+  if (!hasColumn(db, "github_accounts", "source")) {
+    db.exec("ALTER TABLE github_accounts ADD COLUMN source TEXT")
   }
   // 0028: upstream disabled_public_model_ids
   if (!hasColumn(db, "upstreams", "disabled_public_model_ids")) {

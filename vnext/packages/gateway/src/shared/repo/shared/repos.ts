@@ -45,10 +45,11 @@ import type { SqlExecutor } from "./executor"
 import { BILLING_DIMENSIONS, unitPriceForDimension } from "@vibe-llm/protocols/common"
 import type { BillingDimension, ModelPricing } from "@vibe-llm/protocols/common"
 import { UpstreamGoneError } from "@vibe-core/upstream-repo"
+import type { BackoffRow, ProxyBackoffRepo, ProxyFallbackEntry, ProxyRecord, ProxyRepo } from "@vibe-core/proxy-repo"
 
 const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_day, quota_tokens_per_day, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref, dump_retention_seconds"
-const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at"
-const UPSTREAM_COLS = "id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, state_json, created_at, updated_at"
+const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at, github_host, source"
+const UPSTREAM_COLS = "id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, state_json, proxy_fallback_list_json, created_at, updated_at"
 const USAGE_DIM_COLS = "key_id, model, upstream, model_key, client, hour, dimension, tokens, unit_price"
 const USAGE_REQ_COLS = "key_id, model, upstream, model_key, client, hour, requests"
 const LATENCY_COLS = "key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss"
@@ -117,6 +118,8 @@ function toGitHubAccount(row: any): GitHubAccount {
     sortOrder: row.sort_order ?? undefined,
     flagOverrides,
     updatedAt: row.updated_at ?? undefined,
+    githubHost: row.github_host ?? undefined,
+    source: (row.source === "device-flow" || row.source === "paste") ? row.source : undefined,
   }
 }
 
@@ -187,8 +190,30 @@ function toUpstreamRecord(row: any): UpstreamRecord<unknown> {
     flagOverrides: parseBooleanRecord(row.flag_overrides),
     disabledPublicModelIds: parseStringArray(row.disabled_public_model_ids),
     state: parseState(row.state_json),
+    proxyFallbackList: parseProxyFallbackList(row.proxy_fallback_list_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  }
+}
+
+function parseProxyFallbackList(json: unknown): ProxyFallbackEntry[] {
+  if (typeof json !== "string" || json.length === 0) return []
+  try {
+    const parsed = JSON.parse(json)
+    if (!Array.isArray(parsed)) return []
+    const out: ProxyFallbackEntry[] = []
+    for (const raw of parsed) {
+      if (typeof raw !== "object" || raw === null || typeof raw.id !== "string") continue
+      const entry: ProxyFallbackEntry = { id: raw.id }
+      if (Array.isArray(raw.colos)) {
+        const colos = raw.colos.filter((v: unknown): v is string => typeof v === "string")
+        if (colos.length > 0) entry.colos = colos
+      }
+      out.push(entry)
+    }
+    return out
+  } catch {
+    return []
   }
 }
 
@@ -352,14 +377,16 @@ class SharedGitHubRepo implements GitHubRepo {
     const flagOverridesJson = account.flagOverrides ? JSON.stringify(account.flagOverrides) : "{}"
     const updatedAt = account.updatedAt ?? new Date().toISOString()
     await this.x.run(
-      `INSERT INTO github_accounts (${GITHUB_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (user_id, owner_id) DO UPDATE SET token = excluded.token, account_type = excluded.account_type, login = excluded.login, name = excluded.name, avatar_url = excluded.avatar_url, enabled = excluded.enabled, sort_order = excluded.sort_order, flag_overrides = excluded.flag_overrides, updated_at = excluded.updated_at`,
+      `INSERT INTO github_accounts (${GITHUB_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (user_id, owner_id) DO UPDATE SET token = excluded.token, account_type = excluded.account_type, login = excluded.login, name = excluded.name, avatar_url = excluded.avatar_url, enabled = excluded.enabled, sort_order = excluded.sort_order, flag_overrides = excluded.flag_overrides, updated_at = excluded.updated_at, github_host = excluded.github_host, source = excluded.source`,
       [
         userId, account.token, account.accountType, account.user.login, account.user.name, account.user.avatar_url, account.ownerId ?? "",
         account.enabled === false ? 0 : 1,
         account.sortOrder ?? 0,
         flagOverridesJson,
         updatedAt,
+        account.githubHost ?? "github.com",
+        account.source ?? null,
       ],
     )
   }
@@ -426,8 +453,8 @@ class SharedUpstreamRepo implements UpstreamRepo {
 
   async save(upstream: UpstreamRecord<unknown>): Promise<void> {
     await this.x.run(
-      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET owner_id = excluded.owner_id, provider = excluded.provider, name = excluded.name, enabled = excluded.enabled, sort_order = excluded.sort_order, config_json = excluded.config_json, flag_overrides = excluded.flag_overrides, disabled_public_model_ids = excluded.disabled_public_model_ids, state_json = excluded.state_json, updated_at = excluded.updated_at`,
+      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET owner_id = excluded.owner_id, provider = excluded.provider, name = excluded.name, enabled = excluded.enabled, sort_order = excluded.sort_order, config_json = excluded.config_json, flag_overrides = excluded.flag_overrides, disabled_public_model_ids = excluded.disabled_public_model_ids, state_json = excluded.state_json, proxy_fallback_list_json = excluded.proxy_fallback_list_json, updated_at = excluded.updated_at`,
       [
         upstream.id,
         upstream.ownerId ?? "",
@@ -439,6 +466,7 @@ class SharedUpstreamRepo implements UpstreamRepo {
         JSON.stringify(upstream.flagOverrides ?? {}),
         JSON.stringify(upstream.disabledPublicModelIds ?? []),
         upstream.state === null || upstream.state === undefined ? null : JSON.stringify(upstream.state),
+        JSON.stringify(upstream.proxyFallbackList ?? []),
         upstream.createdAt,
         upstream.updatedAt,
       ],
@@ -1069,6 +1097,8 @@ export function buildSharedRepo(x: SqlExecutor): Repo {
     observabilityShares: new SharedObservabilityShareRepo(x),
     responsesItems: new SharedResponsesItemsRepo(x),
     searchConfig: new SharedSearchConfigRepo(x),
+    proxies: new SharedProxyRepo(x),
+    proxyBackoffs: new SharedProxyBackoffRepo(x),
   }
 }
 
@@ -1194,5 +1224,240 @@ class SharedSearchConfigRepo implements SearchConfigRepo {
         updatedAt,
       ],
     )
+  }
+}
+
+const PROXY_COLS = "id, name, url, created_at, updated_at, dial_timeout_seconds"
+
+interface ProxyRow {
+  id: string
+  name: string
+  url: string
+  created_at: string
+  updated_at: string
+  dial_timeout_seconds: number | null
+}
+
+const toProxyRecord = (row: ProxyRow): ProxyRecord => ({
+  id: row.id,
+  name: row.name,
+  url: row.url,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  dialTimeoutSeconds: row.dial_timeout_seconds,
+})
+
+class SharedProxyRepo implements ProxyRepo {
+  constructor(private x: SqlExecutor) {}
+
+  async list(): Promise<ProxyRecord[]> {
+    const rows = await this.x.all<ProxyRow>(
+      `SELECT ${PROXY_COLS} FROM proxies ORDER BY created_at`,
+      [],
+    )
+    return rows.map(toProxyRecord)
+  }
+
+  async getById(id: string): Promise<ProxyRecord | null> {
+    const row = await this.x.first<ProxyRow>(
+      `SELECT ${PROXY_COLS} FROM proxies WHERE id = ?`,
+      [id],
+    )
+    return row ? toProxyRecord(row) : null
+  }
+
+  async insert(input: {
+    id: string
+    name: string
+    url: string
+    dialTimeoutSeconds: number | null
+  }): Promise<ProxyRecord> {
+    const now = new Date().toISOString()
+    await this.x.run(
+      `INSERT INTO proxies (${PROXY_COLS}) VALUES (?, ?, ?, ?, ?, ?)`,
+      [input.id, input.name, input.url, now, now, input.dialTimeoutSeconds],
+    )
+    return {
+      id: input.id,
+      name: input.name,
+      url: input.url,
+      createdAt: now,
+      updatedAt: now,
+      dialTimeoutSeconds: input.dialTimeoutSeconds,
+    }
+  }
+
+  async patch(
+    id: string,
+    patch: { name?: string; url?: string; dialTimeoutSeconds?: number | null },
+  ): Promise<{ record: ProxyRecord; urlChanged: boolean } | null> {
+    const existing = await this.getById(id)
+    if (!existing) return null
+
+    const nextName = patch.name ?? existing.name
+    const nextUrl = patch.url ?? existing.url
+    // dialTimeoutSeconds is nullable, so distinguish "not in patch" from
+    // "set to null" by hasOwn — `??` would collapse a deliberate clear.
+    const nextDialTimeout = Object.hasOwn(patch, "dialTimeoutSeconds")
+      ? patch.dialTimeoutSeconds!
+      : existing.dialTimeoutSeconds
+    const urlChanged = patch.url !== undefined && patch.url !== existing.url
+    const updatedAt = new Date().toISOString()
+
+    await this.x.run(
+      "UPDATE proxies SET name = ?, url = ?, dial_timeout_seconds = ?, updated_at = ? WHERE id = ?",
+      [nextName, nextUrl, nextDialTimeout, updatedAt, id],
+    )
+
+    return {
+      record: {
+        ...existing,
+        name: nextName,
+        url: nextUrl,
+        dialTimeoutSeconds: nextDialTimeout,
+        updatedAt,
+      },
+      urlChanged,
+    }
+  }
+
+  async save(record: {
+    id: string
+    name: string
+    url: string
+    dialTimeoutSeconds: number | null
+  }): Promise<void> {
+    const now = new Date().toISOString()
+    await this.x.run(
+      `INSERT INTO proxies (${PROXY_COLS}) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET
+         name = excluded.name,
+         url = excluded.url,
+         updated_at = excluded.updated_at,
+         dial_timeout_seconds = excluded.dial_timeout_seconds`,
+      [record.id, record.name, record.url, now, now, record.dialTimeoutSeconds],
+    )
+  }
+
+  async delete(id: string): Promise<boolean> {
+    // Conditional delete: refuse to drop a row currently referenced by any
+    // upstream's fallback list. Folding the predicate into the DELETE closes
+    // the TOCTOU window where an admin PATCHes an upstream to add the
+    // reference between findUpstreamsReferencing and this DELETE.
+    const r = await this.x.run(
+      `DELETE FROM proxies
+       WHERE id = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM upstreams u, json_each(u.proxy_fallback_list_json) j
+           WHERE json_extract(j.value, '$.id') = proxies.id
+         )`,
+      [id],
+    )
+    return r.changes > 0
+  }
+
+  async deleteAll(): Promise<void> {
+    await this.x.run("DELETE FROM proxies", [])
+  }
+
+  async findUpstreamsReferencing(proxyId: string): Promise<string[]> {
+    const rows = await this.x.all<{ id: string }>(
+      "SELECT DISTINCT u.id FROM upstreams u, json_each(u.proxy_fallback_list_json) j WHERE json_extract(j.value, '$.id') = ?",
+      [proxyId],
+    )
+    return rows.map((r) => r.id)
+  }
+}
+
+interface BackoffRowDb {
+  proxy_id: string
+  upstream_id: string
+  fail_count: number
+  expires_at: number
+  last_error: string | null
+  last_error_at: number | null
+}
+
+const toBackoffRow = (row: BackoffRowDb): BackoffRow => ({
+  proxyId: row.proxy_id,
+  upstreamId: row.upstream_id,
+  failCount: row.fail_count,
+  expiresAt: row.expires_at,
+  lastError: row.last_error,
+  lastErrorAt: row.last_error_at,
+})
+
+class SharedProxyBackoffRepo implements ProxyBackoffRepo {
+  constructor(private x: SqlExecutor) {}
+
+  async recordDialFailure(proxyId: string, upstreamId: string, errorMessage: string): Promise<void> {
+    const now = Math.floor(Date.now() / 1000)
+    // SQLite reads RHS column references at the start of the UPDATE, before
+    // the increment is applied. So `1 << fail_count` resolves against the
+    // pre-increment value, yielding 60 * 2^(n-1) on the n-th failure. The
+    // exponent is clamped at 6 because larger values already saturate at
+    // the 3600s cap; capping keeps the shift bounded regardless of how
+    // long a runaway proxy has been failing.
+    await this.x.run(
+      `INSERT INTO proxy_upstream_backoffs
+         (proxy_id, upstream_id, fail_count, expires_at, last_error, last_error_at)
+       VALUES (?, ?, 1, ? + 60, ?, ?)
+       ON CONFLICT (proxy_id, upstream_id) DO UPDATE SET
+         fail_count = fail_count + 1,
+         expires_at = ? + min(60 * (1 << min(fail_count, 6)), 3600),
+         last_error = excluded.last_error,
+         last_error_at = excluded.last_error_at`,
+      [proxyId, upstreamId, now, errorMessage, now, now],
+    )
+  }
+
+  async recordDialSuccess(proxyId: string, upstreamId: string): Promise<void> {
+    await this.x.run(
+      "DELETE FROM proxy_upstream_backoffs WHERE proxy_id = ? AND upstream_id = ?",
+      [proxyId, upstreamId],
+    )
+  }
+
+  async listForUpstream(upstreamId: string): Promise<BackoffRow[]> {
+    const rows = await this.x.all<BackoffRowDb>(
+      "SELECT proxy_id, upstream_id, fail_count, expires_at, last_error, last_error_at FROM proxy_upstream_backoffs WHERE upstream_id = ?",
+      [upstreamId],
+    )
+    return rows.map(toBackoffRow)
+  }
+
+  async listForProxy(proxyId: string): Promise<BackoffRow[]> {
+    const rows = await this.x.all<BackoffRowDb>(
+      "SELECT proxy_id, upstream_id, fail_count, expires_at, last_error, last_error_at FROM proxy_upstream_backoffs WHERE proxy_id = ?",
+      [proxyId],
+    )
+    return rows.map(toBackoffRow)
+  }
+
+  async listAll(): Promise<BackoffRow[]> {
+    const rows = await this.x.all<BackoffRowDb>(
+      "SELECT proxy_id, upstream_id, fail_count, expires_at, last_error, last_error_at FROM proxy_upstream_backoffs",
+      [],
+    )
+    return rows.map(toBackoffRow)
+  }
+
+  async resetForProxy(proxyId: string): Promise<void> {
+    await this.x.run("DELETE FROM proxy_upstream_backoffs WHERE proxy_id = ?", [proxyId])
+  }
+
+  async resetForUpstream(upstreamId: string): Promise<void> {
+    await this.x.run("DELETE FROM proxy_upstream_backoffs WHERE upstream_id = ?", [upstreamId])
+  }
+
+  async reset(proxyId: string, upstreamId: string): Promise<void> {
+    await this.x.run(
+      "DELETE FROM proxy_upstream_backoffs WHERE proxy_id = ? AND upstream_id = ?",
+      [proxyId, upstreamId],
+    )
+  }
+
+  async deleteAll(): Promise<void> {
+    await this.x.run("DELETE FROM proxy_upstream_backoffs", [])
   }
 }

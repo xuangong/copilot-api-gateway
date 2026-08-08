@@ -1,8 +1,10 @@
 import type { BillingDimension, ModelPricing, UpstreamKind, UpstreamRecord } from "@vibe-llm/protocols/common"
+import type { ProxyRepo, ProxyBackoffRepo } from "@vibe-core/proxy-repo"
 import type { SearchConfig } from "../web-search-providers.ts"
 import type { ApiKeyId, DeviceCodeToken, GitHubAccountId, InviteCodeId, ResponsesItemId, SessionToken, UpstreamId, UserId } from "./branded-ids.ts"
 
 export type { SearchConfig, WebSearchProviderName } from "../web-search-providers.ts"
+export type { ProxyRepo, ProxyBackoffRepo, ProxyRecord, ProxyFallbackEntry, BackoffRow } from "@vibe-core/proxy-repo"
 
 export interface ApiKey {
   id: ApiKeyId
@@ -47,6 +49,12 @@ export interface GitHubAccount {
   /** JSON object {flagId: bool} — per-upstream feature gate overrides. */
   flagOverrides?: Record<string, boolean>
   updatedAt?: string
+  /** GitHub host: "github.com" or a "<tenant>.ghe.com" tenant. Defaults to
+   *  "github.com" when absent (device-flow rows imported before Path-B). */
+  githubHost?: string
+  /** How this account was obtained. "device-flow" is the classic OAuth flow;
+   *  "paste" is Path-B (user pasted a gho_ token extracted from VS Code). */
+  source?: "device-flow" | "paste"
 }
 
 export type { UpstreamRecord } from '@vibe-llm/protocols/common'
@@ -452,4 +460,6 @@ export interface Repo {
   deviceCodes: DeviceCodeRepo
   responsesItems: ResponsesItemsRepo
   searchConfig: SearchConfigRepo
+  proxies: ProxyRepo
+  proxyBackoffs: ProxyBackoffRepo
 }

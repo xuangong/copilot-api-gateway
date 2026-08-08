@@ -148,6 +148,8 @@ export class D1Repo implements Repo {
   deviceCodes: Repo["deviceCodes"]
   responsesItems: Repo["responsesItems"]
   searchConfig: Repo["searchConfig"]
+  proxies: Repo["proxies"]
+  proxyBackoffs: Repo["proxyBackoffs"]
 
   constructor(db: D1Database) {
     const shared = buildSharedRepo(new D1Executor(db))
@@ -169,5 +171,7 @@ export class D1Repo implements Repo {
     this.deviceCodes = shared.deviceCodes
     this.responsesItems = shared.responsesItems
     this.searchConfig = shared.searchConfig
+    this.proxies = shared.proxies
+    this.proxyBackoffs = shared.proxyBackoffs
   }
 }
