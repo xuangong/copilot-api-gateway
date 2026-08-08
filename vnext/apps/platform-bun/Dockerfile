@@ -32,6 +32,8 @@ COPY packages/responses-store/package.json packages/responses-store/
 COPY packages/cache/package.json packages/cache/
 COPY packages/chat-flow-kit/package.json packages/chat-flow-kit/
 COPY packages/http/package.json packages/http/
+COPY packages/proxy/package.json packages/proxy/
+COPY packages/proxy-repo/package.json packages/proxy-repo/
 COPY packages/translate/package.json packages/translate/
 
 RUN --mount=type=secret,id=npmrc,target=/root/.npmrc NODE_TLS_REJECT_UNAUTHORIZED=0 bun install --frozen-lockfile

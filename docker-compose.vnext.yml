@@ -3,6 +3,8 @@ services:
     build:
       context: ./vnext
       dockerfile: apps/platform-bun/Dockerfile
+      secrets:
+        - npmrc
     container_name: copilot-gateway-vnext
     ports:
       - "${VNEXT_PORT:-41415}:41415"
@@ -23,3 +25,7 @@ services:
       # Persist vnext sqlite separately from the prod gateway's .data dir.
       - ./data-vnext:/data
     restart: unless-stopped
+
+secrets:
+  npmrc:
+    file: ${HOME}/.npmrc
