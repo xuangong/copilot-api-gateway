@@ -98,7 +98,9 @@ const stubUpstream = (): UpstreamRecord<unknown> => ({
   flagOverrides: {},
   disabledPublicModelIds: [],
   state: null,
-  proxyFallbackList: [],
+  // These tests assert against a stubbed `globalThis.fetch`, and an empty list
+  // now resolves to raw-socket egress, which never reaches that stub.
+  proxyFallbackList: [{ id: 'direct_fetch' }],
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 })

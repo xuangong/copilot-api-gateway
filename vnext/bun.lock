@@ -66,6 +66,17 @@
       "name": "@vibe-core/chat-flow-kit",
       "version": "0.0.0",
     },
+    "packages/dial": {
+      "name": "@vibe-core/dial",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vibe-core/http": "workspace:*",
+        "@vibe-core/platform": "workspace:*",
+        "@vibe-core/proxy": "workspace:*",
+        "@vibe-core/proxy-repo": "workspace:*",
+        "@vibe-core/upstream": "workspace:*",
+      },
+    },
     "packages/gateway": {
       "name": "@vibe-llm/gateway",
       "version": "0.0.0",
@@ -73,10 +84,13 @@
         "@hono/zod-validator": "^0.9.0",
         "@vibe-core/cache": "workspace:*",
         "@vibe-core/chat-flow-kit": "workspace:*",
+        "@vibe-core/dial": "workspace:*",
         "@vibe-core/platform": "workspace:*",
+        "@vibe-core/proxy": "workspace:*",
         "@vibe-core/proxy-repo": "workspace:*",
         "@vibe-core/result": "workspace:*",
         "@vibe-core/service": "workspace:*",
+        "@vibe-core/upstream": "workspace:*",
         "@vibe-core/upstream-repo": "workspace:*",
         "@vibe-llm/protocols": "workspace:*",
         "@vibe-llm/provider-azure": "workspace:*",
@@ -598,6 +612,8 @@
     "@vibe-core/cache": ["@vibe-core/cache@workspace:packages/cache"],
 
     "@vibe-core/chat-flow-kit": ["@vibe-core/chat-flow-kit@workspace:packages/chat-flow-kit"],
+
+    "@vibe-core/dial": ["@vibe-core/dial@workspace:packages/dial"],
 
     "@vibe-core/http": ["@vibe-core/http@workspace:packages/http"],
 

@@ -8,7 +8,7 @@
  * rename.
  */
 import type { AccountType, UpstreamKind, UpstreamRecord } from '@vibe-llm/protocols/common'
-import type { UpstreamPlugin } from '@vibe-core/upstream'
+import type { Fetcher, UpstreamPlugin } from '@vibe-core/upstream'
 import type { LlmModelProvider } from './types'
 
 export interface ProviderPluginContext {
@@ -25,6 +25,9 @@ export interface ProviderPluginContext {
   /** Per-request token + accountType supplied by the caller. Used when the
    *  upstream row has no githubToken or token exchange fails. Copilot only. */
   copilotFallback?: { copilotToken: string; accountType: AccountType }
+  /** Egress transport for this upstream, resolved from its proxy fallback
+   *  list. Absent means the provider keeps its `directFetcher` default. */
+  fetcherForUpstream?: (upstreamId: string) => Fetcher
 }
 
 export interface LlmProviderPlugin

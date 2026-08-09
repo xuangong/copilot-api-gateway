@@ -19,7 +19,7 @@ import { defaultsForUpstream, resolveEffectiveFlags } from '../flags/index.ts'
 import type { UpstreamRecord } from '../../shared/repo/types.ts'
 import type { UserId } from '../../shared/repo/branded-ids.ts'
 import { getRepo } from '../../shared/repo/index.ts'
-import { __registerPlatformReset } from '@vibe-core/platform'
+import { __registerPlatformReset, getRuntimeLocation } from '@vibe-core/platform'
 import { getCache } from '../../shared/cache/index.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import { copilotModelEndpoints } from '@vibe-llm/provider-copilot'
@@ -32,6 +32,8 @@ import { claudeCodeProviderPlugin } from '@vibe-llm/provider-claude-code'
 import { customProviderPlugin } from '@vibe-llm/provider-custom'
 import { sdfProviderPlugin } from '@vibe-llm/provider-sdf'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
+import { createPerRequestFetcher } from '../dial/per-request.ts'
+import type { Fetcher } from '@vibe-core/upstream'
 
 export interface CreateProviderOptions {
   copilotToken: string
@@ -66,12 +68,14 @@ const PROVIDER_PLUGINS = new Map(
 export async function createProviderFromUpstream(
   upstream: UpstreamRecord<unknown>,
   copilot?: CreateProviderOptions,
+  fetcherForUpstream?: (upstreamId: string) => Fetcher,
 ): Promise<LlmModelProvider | null> {
   const plugin = PROVIDER_PLUGINS.get(upstream.provider)
   if (!plugin) return null
   return plugin.createFromUpstream(upstream, {
     getCachedCopilotToken,
     copilotFallback: copilot,
+    fetcherForUpstream,
   })
 }
 
@@ -235,10 +239,20 @@ export async function listProviderBindings(
     upstreams = []
   }
 
+  // Built once from the already-loaded rows so each provider dials through its
+  // own proxy fallback list. A failure here must not take down /v1/models, so
+  // fall back to leaving providers on their `directFetcher` default.
+  let fetcherForUpstream: ((upstreamId: string) => Fetcher) | undefined
+  try {
+    fetcherForUpstream = await createPerRequestFetcher(getRuntimeLocation(), upstreams)
+  } catch {
+    fetcherForUpstream = undefined
+  }
+
   const bindings: LlmProviderBinding[] = []
   for (const upstream of upstreams) {
     try {
-      const provider = await createProviderFromUpstream(upstream, opts.copilot)
+      const provider = await createProviderFromUpstream(upstream, opts.copilot, fetcherForUpstream)
       if (!provider) continue
       const models = await getCachedModels(upstream, provider)
       const enabledFlags = resolveEffectiveFlags(defaultsForUpstream(upstream.provider), [upstream.flagOverrides])

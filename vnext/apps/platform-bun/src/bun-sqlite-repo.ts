@@ -847,6 +847,8 @@ export class BunSqliteRepo implements Repo {
   deviceCodes: Repo["deviceCodes"]
   responsesItems: Repo["responsesItems"]
   searchConfig: Repo["searchConfig"]
+  proxies: Repo["proxies"]
+  proxyBackoffs: Repo["proxyBackoffs"]
 
   constructor(db: Database) {
     initSqlite(db)
@@ -869,6 +871,8 @@ export class BunSqliteRepo implements Repo {
     this.deviceCodes = shared.deviceCodes
     this.responsesItems = shared.responsesItems
     this.searchConfig = shared.searchConfig
+    this.proxies = shared.proxies
+    this.proxyBackoffs = shared.proxyBackoffs
   }
 }
 

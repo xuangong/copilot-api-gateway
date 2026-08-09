@@ -22,20 +22,24 @@ export const copilotProviderPlugin: LlmProviderPlugin = {
     const accountType = (config.accountType as AccountType | undefined) ?? 'individual'
     const githubToken = config.githubToken
     const githubHost = typeof config.githubHost === 'string' ? config.githubHost : undefined
+    const fetcher = ctx.fetcherForUpstream?.(upstream.id)
     if (typeof githubToken === 'string' && githubToken && ctx.getCachedCopilotToken) {
       try {
         const session = await ctx.getCachedCopilotToken(githubToken, accountType, githubHost)
-        return new CopilotProvider({
-          copilotToken: session.token,
-          accountType,
-          baseUrl: session.apiEndpoint,
-        })
+        return new CopilotProvider(
+          {
+            copilotToken: session.token,
+            accountType,
+            baseUrl: session.apiEndpoint,
+          },
+          fetcher,
+        )
       } catch {
         // fall through to fallback
       }
     }
     if (ctx.copilotFallback) {
-      return new CopilotProvider(ctx.copilotFallback)
+      return new CopilotProvider(ctx.copilotFallback, fetcher)
     }
     return null
   },

@@ -10,7 +10,7 @@ import { ClaudeCodeProvider } from './provider'
 
 export const claudeCodeProviderPlugin: LlmProviderPlugin = {
   kind: 'claude-code',
-  async createFromUpstream(upstream) {
-    return new ClaudeCodeProvider(upstream)
+  async createFromUpstream(upstream, ctx) {
+    return new ClaudeCodeProvider(upstream, ctx.fetcherForUpstream?.(upstream.id))
   },
 }

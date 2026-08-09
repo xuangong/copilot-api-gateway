@@ -112,6 +112,9 @@ test('streaming SSE dispatch writes 1 usage + 1 perf row', async () => {
     config: { githubToken: 'ghp_test' },
     flagOverrides: {},
     disabledPublicModelIds: [],
+    // Stubbed `globalThis.fetch` is only reachable via explicit direct-fetch
+    // egress; an empty list now resolves to a raw socket.
+    proxyFallbackList: [{ id: "direct_fetch" }],
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
   })
@@ -221,6 +224,9 @@ test('non-streaming dispatch persists pricing snapshot from provider.getPricingF
     config: { githubToken: 'ghp_test' },
     flagOverrides: {},
     disabledPublicModelIds: [],
+    // Stubbed `globalThis.fetch` is only reachable via explicit direct-fetch
+    // egress; an empty list now resolves to a raw socket.
+    proxyFallbackList: [{ id: "direct_fetch" }],
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
   })

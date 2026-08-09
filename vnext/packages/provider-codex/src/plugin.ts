@@ -10,7 +10,7 @@ import { CodexProvider } from './provider'
 
 export const codexProviderPlugin: LlmProviderPlugin = {
   kind: 'codex',
-  async createFromUpstream(upstream) {
-    return new CodexProvider(upstream)
+  async createFromUpstream(upstream, ctx) {
+    return new CodexProvider(upstream, ctx.fetcherForUpstream?.(upstream.id))
   },
 }
