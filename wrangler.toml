@@ -17,10 +17,9 @@ type = "Text"
 globs = ["**/*.txt"]
 fallthrough = true
 
-# Custom domain
-routes = [
-  { pattern = "token.xianliao.de5.net", custom_domain = true }
-]
+# Custom domain — now served by the vNext worker
+# (vnext/apps/platform-cloudflare/wrangler.jsonc). A custom domain binds to one
+# worker at a time, so this stays unset while vNext owns it.
 
 # KV Namespace binding
 [[kv_namespaces]]

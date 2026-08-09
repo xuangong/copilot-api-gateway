@@ -5,6 +5,9 @@
   "compatibility_date": "2025-06-01",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "routes": [
+    { "pattern": "token.xianliao.de5.net", "custom_domain": true }
+  ],
   "placement": { "mode": "smart" },
   "rules": [
     { "type": "Text", "globs": ["**/*.txt"], "fallthrough": true }
@@ -14,6 +17,9 @@
     { "binding": "IMAGE_CACHE", "id": "613f7f5754bc4be887b74cb97874f6a9" }
   ],
   "images": { "binding": "IMAGES" },
+  "r2_buckets": [
+    { "binding": "FILES", "bucket_name": "copilot-vnext-files" }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
