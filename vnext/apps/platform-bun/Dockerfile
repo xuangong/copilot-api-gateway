@@ -32,6 +32,7 @@ COPY packages/responses-store/package.json packages/responses-store/
 COPY packages/cache/package.json packages/cache/
 COPY packages/chat-flow-kit/package.json packages/chat-flow-kit/
 COPY packages/http/package.json packages/http/
+COPY packages/dial/package.json packages/dial/
 COPY packages/proxy/package.json packages/proxy/
 COPY packages/proxy-repo/package.json packages/proxy-repo/
 COPY packages/translate/package.json packages/translate/
