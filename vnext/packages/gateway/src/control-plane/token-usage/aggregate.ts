@@ -1,12 +1,13 @@
 /**
- * Per-(key, model, hour) and per-(user, model, hour) usage aggregator. Cost is
- * recomputed at read time from each row's frozen `cost` (per-dimension unit
- * price snapshot) and disjoint token counts — never from any global pricing
- * table — so historical cost stays stable when pricing later changes.
+ * Per-(key, model, client, hour) and per-(user, model, hour) usage aggregator.
+ * Cost is recomputed at read time from each row's frozen `cost` (per-dimension
+ * unit price snapshot) and disjoint token counts — never from any global
+ * pricing table — so historical cost stays stable when pricing later changes.
  *
  * Ported from main packages/gateway/src/control-plane/token-usage/aggregate.ts
  * with the import path adjusted to the vNext `@vibe-llm/protocols/common` alias
- * and the shared-repo types path.
+ * and the shared-repo types path. vNext delta: `client` is a grouping dimension
+ * so the dashboard's by-client breakdown has something to group on.
  */
 import type { UsageRecord } from '../../shared/repo/types.ts'
 import { BILLING_DIMENSIONS, unitPriceForDimension, type BillingDimension } from '@vibe-llm/protocols/common'
@@ -14,6 +15,8 @@ import { BILLING_DIMENSIONS, unitPriceForDimension, type BillingDimension } from
 export interface DisplayUsageRecord {
   keyId: string
   model: string
+  /** SDK/client distinguisher (`claude-cli`, `codex-tui`, …); '' when unknown. */
+  client: string
   hour: string
   requests: number
   /** Disjoint per-dimension token counts. Absent dimensions are zero. */
@@ -63,16 +66,16 @@ export function aggregateUsageForDisplay(records: readonly UsageRecord[]): Displ
   const byKey = new Map<string, DisplayUsageRecord>()
 
   for (const record of records) {
-    const key = `${record.keyId}\0${record.model}\0${record.hour}`
+    const key = `${record.keyId}\0${record.model}\0${record.client}\0${record.hour}`
     let existing = byKey.get(key)
     if (!existing) {
-      existing = { keyId: record.keyId, model: record.model, hour: record.hour, requests: 0, tokens: {}, cost: 0 }
+      existing = { keyId: record.keyId, model: record.model, client: record.client, hour: record.hour, requests: 0, tokens: {}, cost: 0 }
       byKey.set(key, existing)
     }
     accumulate(existing, record)
   }
 
-  return [...byKey.values()].sort((a, b) => a.hour.localeCompare(b.hour) || a.keyId.localeCompare(b.keyId) || a.model.localeCompare(b.model))
+  return [...byKey.values()].sort((a, b) => a.hour.localeCompare(b.hour) || a.keyId.localeCompare(b.keyId) || a.model.localeCompare(b.model) || a.client.localeCompare(b.client))
 }
 
 // Aggregates per-key UsageRecords into per-(user, model, hour) rows. Records

@@ -37,3 +37,15 @@ test('aggregateUsageForDisplay: input_image falls back to input price', () => {
   ])
   expect(out[0].cost).toBeCloseTo(3, 6)
 })
+
+test('aggregateUsageForDisplay: client is a grouping dimension, not collapsed', () => {
+  const out = aggregateUsageForDisplay([
+    rec({ client: 'claude-cli', tokens: { input: 10 } }),
+    rec({ client: 'claude-cli', tokens: { input: 5 } }),
+    rec({ client: 'codex-tui', tokens: { input: 7 } }),
+  ])
+  expect(out.map((r) => [r.client, r.tokens.input])).toEqual([
+    ['claude-cli', 15],
+    ['codex-tui', 7],
+  ])
+})
