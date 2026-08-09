@@ -83,6 +83,8 @@ function toClaudeCodeCatalog(models: readonly OpenAIShapedModel[]): ClaudeCodeCa
 
 export interface DataPlaneAuthCtx {
   userId?: UserId
+  /** True when the session user's email is in ADMIN_EMAILS; set by sessionAuthMiddleware. */
+  isAdmin?: boolean
   copilot?: CreateProviderOptions
   /** API-key id authenticated for this request; required for per-key web-search/quota lookups. */
   apiKeyId?: ApiKeyId
@@ -101,7 +103,12 @@ modelsRouter.get('/api/models', async (c) => {
   // `?dedupe=0` returns the full per-upstream mapping (same model id may appear
   // under several upstreams). SDK-facing routes below never pass this.
   const dedupe = c.req.query('dedupe') !== '0'
-  return c.json(await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot, dedupe }))
+  // `?allOwners=1` drops owner scoping so the dashboard's upstream cards can show
+  // models for upstreams belonging to other users. Silently ignored for non-admins.
+  const allOwners = c.req.query('allOwners') === '1' && auth.isAdmin === true
+  return c.json(
+    await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot, dedupe, allOwners }),
+  )
 })
 
 async function handleList(auth: DataPlaneAuthCtx) {

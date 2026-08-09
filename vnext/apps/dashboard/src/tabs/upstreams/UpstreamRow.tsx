@@ -43,29 +43,10 @@ export function UpstreamRow({
     ? ghUser.avatar_url || `https://avatars.githubusercontent.com/u/${ghUser.id}?v=4`
     : null
   const [expanded, setExpanded] = useState(false)
-  const [mode, setMode] = useState<"grouped" | "direct">("grouped")
-  const [direct, setDirect] = useState<api.UpstreamModelEntry[] | null>(null)
-  const [directError, setDirectError] = useState<string | null>(null)
-  const [loadingDirect, setLoadingDirect] = useState(false)
   const { push: toast } = useToast()
   const t = useT()
-  const modelList = mode === "direct" ? (direct ?? []) : (models ?? [])
+  const modelList = models ?? []
   const shown = expanded ? modelList : modelList.slice(0, 8)
-
-  const switchMode = async (next: "grouped" | "direct") => {
-    setMode(next)
-    if (next !== "direct" || direct !== null || loadingDirect) return
-    setLoadingDirect(true)
-    setDirectError(null)
-    try {
-      const r = await api.getUpstreamModels(u.id)
-      setDirect(r.models ?? [])
-    } catch (e) {
-      setDirectError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoadingDirect(false)
-    }
-  }
 
   const copy = async (text: string) => {
     try {
@@ -132,19 +113,6 @@ export function UpstreamRow({
         <div className="flex items-center justify-between mb-1.5">
           <div className="text-themed-dim">{t("dash.modelsServedHeader", { n: modelList.length })}</div>
           <div className="flex items-center gap-1">
-            <div className="flex rounded overflow-hidden border border-surface-600" title={t("dash.modelsModeTip")}>
-              {(["grouped", "direct"] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => void switchMode(m)}
-                  className={`text-[11px] px-2 py-0.5 transition-colors ${
-                    mode === m ? "bg-surface-600 text-themed" : "text-themed-dim hover:bg-surface-700"
-                  }`}
-                >
-                  {m === "grouped" ? t("dash.modelsModeGrouped") : t("dash.modelsModeDirect")}
-                </button>
-              ))}
-            </div>
             {modelList.length > 8 ? (
               <button
                 onClick={() => setExpanded((v) => !v)}
@@ -155,10 +123,6 @@ export function UpstreamRow({
             ) : null}
           </div>
         </div>
-        {loadingDirect ? <div className="text-themed-dim">…</div> : null}
-        {directError ? (
-          <div className="text-accent-red">{t("dash.modelsDirectFailed", { err: directError })}</div>
-        ) : null}
         <div className="flex flex-wrap gap-1">
           {shown.map((m) => (
             <button

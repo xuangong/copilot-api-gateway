@@ -121,6 +121,38 @@ test('listUpstreamModels with dedupe:false keeps one entry per upstream', async 
   ])
 })
 
+test('listUpstreamModels allOwners ignores owner scoping', async () => {
+  const mine = stubUpstream({ id: 'copilot:mine', name: 'mine', ownerId: 'usr_a' as UpstreamRecord['ownerId'] })
+  const theirs = stubUpstream({ id: 'copilot:theirs', name: 'theirs', sortOrder: 1, ownerId: 'usr_b' as UpstreamRecord['ownerId'] })
+  const ownerAware = {
+    upstreams: {
+      list: async (opts: { ownerId?: string } = {}) =>
+        opts.ownerId === undefined ? [mine, theirs] : [mine, theirs].filter((u) => u.ownerId === opts.ownerId),
+    },
+  } as unknown as Repo
+
+  initRepo(ownerAware)
+  stubFetch([stubModel('gpt-4o')])
+  const scoped = await listUpstreamModels({
+    ownerId: 'usr_a',
+    copilot: { copilotToken: 'tkn', accountType: 'individual' },
+    dedupe: false,
+  })
+  expect(scoped.data.map((m) => (m as Model & { _upstream: string })._upstream)).toEqual(['copilot:mine'])
+
+  _clearModelsMemoForTest()
+  const all = await listUpstreamModels({
+    ownerId: 'usr_a',
+    copilot: { copilotToken: 'tkn', accountType: 'individual' },
+    dedupe: false,
+    allOwners: true,
+  })
+  expect(all.data.map((m) => (m as Model & { _upstream: string })._upstream)).toEqual([
+    'copilot:mine',
+    'copilot:theirs',
+  ])
+})
+
 const customUpstream = (overrides: Partial<UpstreamRecord> = {}): UpstreamRecord => ({
   id: 'up_custom_a',
   provider: 'custom',

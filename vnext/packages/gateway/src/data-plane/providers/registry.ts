@@ -49,6 +49,12 @@ export interface ListUpstreamModelsOptions {
    * mapping so every upstream can show what it actually serves.
    */
   dedupe?: boolean
+  /**
+   * Ignore owner scoping and include every enabled upstream (default false).
+   * Admin-only, and only for the dashboard's per-upstream mapping — SDK-facing
+   * catalogs must never leak another owner's models.
+   */
+  allOwners?: boolean
 }
 
 export function createCopilotProvider(opts: CreateProviderOptions): LlmModelProvider {
@@ -223,7 +229,8 @@ function sortUpstreams(upstreams: UpstreamRecord<unknown>[]): UpstreamRecord<unk
   )
 }
 
-async function listVisibleUpstreams(ownerId?: UserId): Promise<UpstreamRecord<unknown>[]> {
+async function listVisibleUpstreams(ownerId?: UserId, allOwners = false): Promise<UpstreamRecord<unknown>[]> {
+  if (allOwners) return sortUpstreams(await getRepo().upstreams.list({}))
   if (ownerId !== undefined) {
     const [globalUpstreams, ownerUpstreams] = await Promise.all([
       getRepo().upstreams.list({ ownerId: '' as UserId }),
@@ -240,7 +247,7 @@ export async function listProviderBindings(
 ): Promise<LlmProviderBinding[]> {
   let upstreams: UpstreamRecord<unknown>[]
   try {
-    upstreams = await listVisibleUpstreams(opts.ownerId as UserId | undefined)
+    upstreams = await listVisibleUpstreams(opts.ownerId as UserId | undefined, opts.allOwners)
   } catch {
     upstreams = []
   }
