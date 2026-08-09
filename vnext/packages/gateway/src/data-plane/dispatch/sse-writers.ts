@@ -23,6 +23,11 @@
  * see error frames in their native wire format.
  */
 import type { SourceApi } from './pair-selector.ts'
+import {
+  COMMENT_KEEPALIVE_FRAME,
+  MESSAGES_KEEPALIVE_FRAME,
+  startSseKeepalive,
+} from '../chat-flow/shared/sse-keepalive.ts'
 
 const ENC = new TextEncoder()
 
@@ -56,6 +61,10 @@ export function encodeClientSSE(
 ): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     async start(controller) {
+      const keepalive = startSseKeepalive(
+        controller,
+        source === 'messages' ? MESSAGES_KEEPALIVE_FRAME : COMMENT_KEEPALIVE_FRAME,
+      )
       try {
         for await (const evt of events) {
           if (source === 'messages' || source === 'responses') {
@@ -65,6 +74,7 @@ export function encodeClientSSE(
             // chat_completions / gemini: data-only
             controller.enqueue(ENC.encode(sseEvent(null, evt)))
           }
+          keepalive.touch()
         }
         if (source === 'chat_completions') {
           controller.enqueue(ENC.encode('data: [DONE]\n\n'))
@@ -73,6 +83,7 @@ export function encodeClientSSE(
         const msg = err instanceof Error ? err.message : String(err)
         controller.enqueue(ENC.encode(errorFrame(source, msg)))
       } finally {
+        keepalive.stop()
         controller.close()
       }
     },

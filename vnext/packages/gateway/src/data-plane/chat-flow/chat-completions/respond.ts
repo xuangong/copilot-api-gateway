@@ -42,6 +42,7 @@ import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 import { collectChatCompletionsProtocolEventsToResult } from './events/to-result'
 import { chatCompletionsProtocolFrameToSSEFrame } from './events/to-sse'
+import { COMMENT_KEEPALIVE_FRAME, startSseKeepalive } from '../shared/sse-keepalive.ts'
 import { collectMessagesProtocolEventsToResult } from '../messages/events/reassemble'
 import { collectResponsesProtocolEventsToResult } from '../responses/events/reassemble'
 
@@ -211,16 +212,19 @@ const renderEventsAsSSE = (
   const events = state ? consumeWithState(upstreamFrames, state, options.dump) : upstreamFrames
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const keepalive = startSseKeepalive(controller, COMMENT_KEEPALIVE_FRAME)
       try {
         for await (const frame of events) {
           const sse = chatCompletionsProtocolFrameToSSEFrame(frame, { includeUsageChunk: options.includeUsageChunk })
           if (sse !== null) controller.enqueue(encodeSseFrame(sse))
+          keepalive.touch()
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         options.dump?.failed(message)
         controller.enqueue(encodeSseFrame(sseFrame(JSON.stringify({ error: { message } }), 'error')))
       } finally {
+        keepalive.stop()
         controller.close()
         if (state) {
           waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
