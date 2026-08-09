@@ -99,6 +99,28 @@ test('listUpstreamModels dedupes by model id and attaches provenance', async () 
   expect((resp.data[0] as Model & { _upstream: string })._upstream).toBe('copilot:u1')
 })
 
+test('listUpstreamModels with dedupe:false keeps one entry per upstream', async () => {
+  initRepo(
+    stubRepo([
+      stubUpstream({ id: 'copilot:u1', name: 'u1' }),
+      stubUpstream({ id: 'copilot:u2', name: 'u2' }),
+    ]),
+  )
+  stubFetch([stubModel('gpt-4o')])
+  const deduped = await listUpstreamModels({ copilot: { copilotToken: 'tkn', accountType: 'individual' } })
+  expect(deduped.data.map((m) => (m as Model & { _upstream: string })._upstream)).toEqual(['copilot:u1'])
+
+  _clearModelsMemoForTest()
+  const full = await listUpstreamModels({
+    copilot: { copilotToken: 'tkn', accountType: 'individual' },
+    dedupe: false,
+  })
+  expect(full.data.map((m) => (m as Model & { _upstream: string })._upstream)).toEqual([
+    'copilot:u1',
+    'copilot:u2',
+  ])
+})
+
 const customUpstream = (overrides: Partial<UpstreamRecord> = {}): UpstreamRecord => ({
   id: 'up_custom_a',
   provider: 'custom',

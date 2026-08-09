@@ -25,15 +25,24 @@ const hashToken = (token: string): string => {
   return (hash >>> 0).toString(16)
 }
 
+// baseUrl is part of the key: the same token resolves to a different catalog on
+// a GHE data-residency tenant than on the accountType-derived public host.
+const rawModelsCacheKey = (
+  copilotToken: string,
+  accountType: AccountType,
+  baseUrlOverride?: string,
+): string => `${accountType}:${baseUrlOverride ?? ""}:${hashToken(copilotToken)}`
+
 export async function getCachedRawModels(
   copilotToken: string,
   accountType: AccountType,
+  baseUrlOverride?: string,
 ): Promise<ModelsResponse> {
-  const key = `${accountType}:${hashToken(copilotToken)}`
+  const key = rawModelsCacheKey(copilotToken, accountType, baseUrlOverride)
   const now = Date.now()
   const hit = cache.get(key)
   if (hit && now - hit.fetchedAt < TTL_MS) return hit.data
-  const data = await getRawModels(copilotToken, accountType)
+  const data = await getRawModels(copilotToken, accountType, baseUrlOverride)
   cache.set(key, { fetchedAt: now, data })
   return data
 }
@@ -55,6 +64,7 @@ export function clearRawModelsCache(): void {
 export function invalidateRawModelsForToken(
   copilotToken: string,
   accountType: AccountType,
+  baseUrlOverride?: string,
 ): void {
-  cache.delete(`${accountType}:${hashToken(copilotToken)}`)
+  cache.delete(rawModelsCacheKey(copilotToken, accountType, baseUrlOverride))
 }

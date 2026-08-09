@@ -98,7 +98,10 @@ export const modelsRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
 
 modelsRouter.get('/api/models', async (c) => {
   const auth = c.get('auth') ?? {}
-  return c.json(await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot }))
+  // `?dedupe=0` returns the full per-upstream mapping (same model id may appear
+  // under several upstreams). SDK-facing routes below never pass this.
+  const dedupe = c.req.query('dedupe') !== '0'
+  return c.json(await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot, dedupe }))
 })
 
 async function handleList(auth: DataPlaneAuthCtx) {

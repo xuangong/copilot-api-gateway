@@ -43,6 +43,12 @@ export interface CreateProviderOptions {
 export interface ListUpstreamModelsOptions {
   ownerId?: string
   copilot?: CreateProviderOptions
+  /**
+   * Collapse duplicate model ids across upstreams (default true). SDK-facing
+   * catalogs must stay deduped; the dashboard needs the full per-upstream
+   * mapping so every upstream can show what it actually serves.
+   */
+  dedupe?: boolean
 }
 
 export function createCopilotProvider(opts: CreateProviderOptions): LlmModelProvider {
@@ -267,7 +273,11 @@ export async function listProviderBindings(
           provider,
         })
       }
-    } catch {
+    } catch (err) {
+      console.warn(
+        `[registry] upstream ${upstream.id} (${upstream.provider}) contributed no models:`,
+        err instanceof Error ? err.message : String(err),
+      )
       continue
     }
   }
@@ -313,8 +323,9 @@ export async function listUpstreamModels(
     embeddings: '/v1/embeddings',
     images_generations: '/v1/images/generations',
   }
+  const dedupe = opts.dedupe !== false
   for (const binding of bindings) {
-    if (seen.has(binding.model.id)) continue
+    if (dedupe && seen.has(binding.model.id)) continue
     seen.add(binding.model.id)
     // Provenance — non-standard, SDKs ignore.
     const provenance = {

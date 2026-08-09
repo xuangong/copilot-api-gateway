@@ -40,7 +40,7 @@ interface RawModel {
   _provider?: string
 }
 export async function listModelsByUpstream(): Promise<Map<string, UpstreamModelEntry[]>> {
-  const r = await api<{ data: RawModel[] }>("/api/models")
+  const r = await api<{ data: RawModel[] }>("/api/models", { query: { dedupe: "0" } })
   const map = new Map<string, UpstreamModelEntry[]>()
   for (const m of r.data ?? []) {
     const up = m._upstream ?? "(unmanaged)"
@@ -48,6 +48,15 @@ export async function listModelsByUpstream(): Promise<Map<string, UpstreamModelE
     map.get(up)!.push({ id: m.id, name: m.name ?? m.id })
   }
   return map
+}
+
+/** Queries one upstream directly instead of reading the gateway's aggregated catalog. */
+export function getUpstreamModels(
+  id: string,
+): Promise<{ models: UpstreamModelEntry[]; disabledPublicModelIds?: string[] }> {
+  return api<{ models: UpstreamModelEntry[]; disabledPublicModelIds?: string[] }>(
+    `/api/upstreams/${encodeURIComponent(id)}/models`,
+  )
 }
 
 export function getFlagCatalog(): Promise<FlagCatalog> {

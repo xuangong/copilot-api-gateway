@@ -84,7 +84,7 @@ export class CopilotProvider implements LlmModelProvider {
     this.name = cfg.name ?? 'copilot'
     this.fetcher = fetcher
 
-    const variantFiltering = createVariantAndBetaFilteringInterceptor(this.copilotToken, this.accountType)
+    const variantFiltering = createVariantAndBetaFilteringInterceptor(this.copilotToken, this.accountType, this.baseUrl)
     this.messagesChain = [variantFiltering, withContextManagementBetaAligned, withInitiatorHeader, ...messagesPayloadInterceptors]
     this.messagesCountTokensChain = [variantFiltering, withContextManagementBetaAligned, withInitiatorHeader, ...messagesCountTokensPayloadInterceptors]
     this.responsesChain = [variantFiltering, withInitiatorHeader, ...responsesPayloadInterceptors]
