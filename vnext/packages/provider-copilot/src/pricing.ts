@@ -63,10 +63,17 @@ const COPILOT_MODEL_PRICING: readonly PricingRule[] = [
   ["text-embedding-ada-002", { input: 0.1, output: 0 }],
 ]
 
+// OpenAI ids carry an ISO snapshot date (`gpt-5.5-2026-04-23`) that
+// `copilotPublicModelId` leaves alone — it only collapses Claude ids. A dated
+// snapshot always prices the same as its base model, so retry without it.
+const ISO_DATE_SUFFIX = /-\d{4}-\d{2}-\d{2}$/
+
 const matchPricing = (publicName: string): ModelPricing | null => {
   for (const [key, pricing] of COPILOT_MODEL_PRICING) {
     if (typeof key === "string" ? publicName === key : key.test(publicName)) return pricing
   }
+  const dateless = publicName.replace(ISO_DATE_SUFFIX, "")
+  if (dateless !== publicName) return matchPricing(dateless)
   return null
 }
 
