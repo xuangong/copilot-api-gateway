@@ -22,13 +22,14 @@ export default tseslint.config(
       'import/no-cycle': ['error', { maxDepth: 10 }],
       'import/no-restricted-paths': ['error', {
         zones: [
-          // data-plane ⊥ control-plane
-          { target: './apps/gateway/src/data-plane', from: './apps/gateway/src/control-plane' },
-          { target: './apps/gateway/src/control-plane', from: './apps/gateway/src/data-plane' },
-          // packages 单向依赖：protocols ← translate ← apps
-          { target: './packages/protocols/src', from: './packages/translate/src' },
-          { target: './packages/protocols/src', from: './apps' },
-          { target: './packages/translate/src', from: './apps' },
+          // 单向：data-plane 永远不得 import control-plane。反向是允许的 ——
+          // 控制面的 upstream 探活 / 列模型端点必须能构造 provider，那是数据面
+          // 的 registry。禁止反向只会逼出一层没有第二个调用方的中转接口。
+          { target: './packages/gateway/src/data-plane', from: './packages/gateway/src/control-plane' },
+          // packages 单向依赖：protocols-llm ← translate ← gateway
+          { target: './packages/protocols-llm/src', from: './packages/translate/src' },
+          { target: './packages/protocols-llm/src', from: './packages/gateway/src' },
+          { target: './packages/translate/src', from: './packages/gateway/src' },
         ],
       }],
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
