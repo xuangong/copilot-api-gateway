@@ -91,7 +91,7 @@ function buildCatalog(data: RawModel[]): ModelCatalog {
 
 const EMPTY: ModelCatalog = { claudeBig: [], claudeSmall: [], codex: [], gemini: [], byUpstream: [] }
 
-export function useModelCatalog() {
+export function useModelCatalog(keyId?: string) {
   const [catalog, setCatalog] = useState<ModelCatalog>(EMPTY)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -102,14 +102,17 @@ export function useModelCatalog() {
     setLoading(true)
     setError(null)
     try {
-      const r = await api<{ data: RawModel[] }>("/api/models")
+      // Upstreams belong to the key's owner, not the viewer, so a shared key
+      // needs its own id here or the catalog comes back empty.
+      const path = keyId ? `/api/models?keyId=${encodeURIComponent(keyId)}` : "/api/models"
+      const r = await api<{ data: RawModel[] }>(path)
       setCatalog(buildCatalog(r.data ?? []))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [keyId])
 
   useEffect(() => {
     refresh()

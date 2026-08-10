@@ -80,7 +80,7 @@ function CodeBlock({ language, text, onCopy, copied }: CodeBlockProps) {
 
 export function ConfigurationPanel({ keyRow }: Props) {
   const { push: toast } = useToast()
-  const { catalog, loading } = useModelCatalog()
+  const { catalog, loading } = useModelCatalog(keyRow.id)
   const t = useT()
   const [tab, setTab] = useState<ConfigTab>("claude")
   const [claudeBig, setClaudeBig] = useState<string>("")

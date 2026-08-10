@@ -17,6 +17,7 @@ import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { listUpstreamModels, type CreateProviderOptions } from '../providers/registry.ts'
 import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
+import { getRepo } from '../../shared/repo/index.ts'
 import { isCodexUserAgent } from '../codex/catalog.ts'
 import { loadCodexCatalog } from '../codex/models.ts'
 
@@ -98,6 +99,25 @@ type Vars = { auth: DataPlaneAuthCtx }
 
 export const modelsRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
 
+/**
+ * Owner whose upstreams back `keyId`, or null when the caller may not see it.
+ *
+ * Upstreams belong to the key's owner, but a dashboard request carries the
+ * viewer's session — for a shared key those are different people, and scoping
+ * to the viewer yields an empty catalog for a key that answers /v1/* fine.
+ * Same visibility rule the control plane uses: admin, owner, or an explicit
+ * assignment grant. The owner id is resolved server-side on purpose; taking it
+ * from the client would let anyone enumerate another user's models.
+ */
+async function keyOwnerVisibleTo(keyId: ApiKeyId, auth: DataPlaneAuthCtx): Promise<UserId | null> {
+  const key = await getRepo().apiKeys.getById(keyId)
+  if (!key?.ownerId) return null
+  if (auth.isAdmin || key.ownerId === auth.userId) return key.ownerId
+  if (!auth.userId) return null
+  const grants = await getRepo().keyAssignments.listByUser(auth.userId)
+  return grants.some((g) => g.keyId === key.id) ? key.ownerId : null
+}
+
 modelsRouter.get('/api/models', async (c) => {
   const auth = c.get('auth') ?? {}
   // `?dedupe=0` returns the full per-upstream mapping (same model id may appear
@@ -106,8 +126,19 @@ modelsRouter.get('/api/models', async (c) => {
   // `?allOwners=1` drops owner scoping so the dashboard's upstream cards can show
   // models for upstreams belonging to other users. Silently ignored for non-admins.
   const allOwners = c.req.query('allOwners') === '1' && auth.isAdmin === true
+
+  // `?keyId=` asks for the catalog the given key can actually reach, which is
+  // what the dashboard's per-key config snippets need.
+  let ownerId = auth.userId
+  const keyId = c.req.query('keyId')
+  if (keyId && !allOwners) {
+    const owner = await keyOwnerVisibleTo(keyId as ApiKeyId, auth)
+    if (!owner) return c.json({ error: 'Key not visible' }, 403)
+    ownerId = owner
+  }
+
   return c.json(
-    await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot, dedupe, allOwners }),
+    await listUpstreamModels({ ownerId, copilot: auth.copilot, dedupe, allOwners }),
   )
 })
 

@@ -181,3 +181,97 @@ test('POST /v1/images/edits 400 when model field missing', async () => {
   })
   expect(res.status).toBe(400)
 })
+
+// ── /api/models?keyId= — shared-key scoping ──────────────────────────────────
+//
+// Upstreams are owned by whoever created them, but the dashboard authenticates
+// with the *viewer's* session. For a key shared to another user those are
+// different ids, so scoping the catalog to the viewer returned nothing for a
+// key that answers /v1/* perfectly well. `?keyId=` re-scopes to the key's
+// owner after checking the viewer is allowed to see that key.
+
+const OWNER = 'user-owner'
+const ASSIGNEE = 'user-assignee'
+const STRANGER = 'user-stranger'
+const SHARED_KEY = 'key-shared'
+
+/** Honours the ownerId filter so a wrong scope shows up as an empty catalog. */
+const scopedRepo = (): Repo => {
+  const owned = stubUpstream({ id: 'copilot:owner-u1', ownerId: OWNER } as Partial<UpstreamRecord>)
+  return {
+    upstreams: {
+      list: async (f: { ownerId?: string } = {}) =>
+        f.ownerId === OWNER ? [owned] : [],
+    },
+    apiKeys: {
+      getById: async (id: string) =>
+        id === SHARED_KEY ? { id: SHARED_KEY, name: 'shared', ownerId: OWNER } : null,
+    },
+    keyAssignments: {
+      listByUser: async (userId: string) =>
+        userId === ASSIGNEE ? [{ keyId: SHARED_KEY, userId: ASSIGNEE }] : [],
+    },
+  } as unknown as Repo
+}
+
+// Answers the githubToken→copilotToken exchange as well as /models so the
+// upstream resolves on its own credentials. Handing the router a copilot
+// fallback through auth instead would let a binding exist without the upstream
+// being listed, which is exactly the scoping these tests are measuring.
+const serveOneModel = () => installFetch(async (req) => {
+  if (new URL(req.url).pathname.endsWith('/copilot_internal/v2/token')) {
+    return new Response(
+      JSON.stringify({ token: 'ct', expires_at: Math.floor(Date.now() / 1000) + 3600 }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )
+  }
+  return new Response(
+    JSON.stringify({ object: 'list', data: [stubModel('gpt-4o')] } satisfies ModelsResponse),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  )
+})
+
+const modelIds = async (res: Response) =>
+  ((await res.json()) as { data: Array<{ id: string }> }).data.map((m) => m.id)
+
+test('GET /api/models?keyId= lets an assignee see the key owner\'s models', async () => {
+  initRepo(scopedRepo())
+  serveOneModel()
+  const res = await buildApp(modelsRouter, { userId: ASSIGNEE as never })
+    .request(`/api/models?keyId=${SHARED_KEY}`)
+  expect(res.status).toBe(200)
+  expect(await modelIds(res)).toEqual(['gpt-4o'])
+})
+
+test('GET /api/models without keyId still scopes to the caller (the old bug)', async () => {
+  initRepo(scopedRepo())
+  serveOneModel()
+  const res = await buildApp(modelsRouter, { userId: ASSIGNEE as never }).request('/api/models')
+  expect(res.status).toBe(200)
+  expect(await modelIds(res)).toEqual([])
+})
+
+test('GET /api/models?keyId= 403 for a user with no claim on the key', async () => {
+  initRepo(scopedRepo())
+  serveOneModel()
+  const res = await buildApp(modelsRouter, { userId: STRANGER as never })
+    .request(`/api/models?keyId=${SHARED_KEY}`)
+  expect(res.status).toBe(403)
+})
+
+test('GET /api/models?keyId= 403 for an unknown key', async () => {
+  initRepo(scopedRepo())
+  serveOneModel()
+  const res = await buildApp(modelsRouter, { userId: OWNER as never })
+    .request('/api/models?keyId=key-does-not-exist')
+  expect(res.status).toBe(403)
+})
+
+test('GET /api/models?keyId= works for the owner too', async () => {
+  initRepo(scopedRepo())
+  serveOneModel()
+  const res = await buildApp(modelsRouter, { userId: OWNER as never })
+    .request(`/api/models?keyId=${SHARED_KEY}`)
+  expect(res.status).toBe(200)
+  expect(await modelIds(res)).toEqual(['gpt-4o'])
+})
