@@ -12,11 +12,7 @@ import { initRepo } from "@vibe-llm/gateway/repo"
 import {
   initCache,
   initResponsesStore,
-  initDumpBroker,
-  initDumpStore,
-  FileDumpStore,
-  dumpCodec,
-  EventTargetChannelBroker,
+  initDumpSubsystem,
 } from "@vibe-llm/gateway/bootstrap"
 import { D1Repo } from "./d1-repo.ts"
 import {
@@ -63,10 +59,9 @@ export function bootstrapCloudflarePlatform(env: CloudflareEnv, ctx: ExecutionCo
   initRepo(new D1Repo(env.DB))
   initCache(createCloudflareCache({ DB: env.DB, KV: env.KV, CACHE_BACKEND: env.CACHE_BACKEND }))
   initResponsesStore(createD1ResponsesStore(env.DB))
-  // Dump subsystem (Spec 14). R2-backed store; broker is in-process
-  // (per-isolate). Cross-isolate replay is deferred — clients reconnect and
-  // reconcile via list().
-  initDumpStore(new FileDumpStore(env.DB as unknown as SqlDatabase, files))
-  initDumpBroker(new EventTargetChannelBroker(dumpCodec))
+  // Dump subsystem (Spec 14) — reads the SqlDatabase + FileProvider wired
+  // above. Broker is per-isolate; cross-isolate replay is deferred, clients
+  // reconnect and reconcile via list().
+  initDumpSubsystem()
   _booted = true
 }

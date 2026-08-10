@@ -13,11 +13,7 @@ import { initRepo } from "@vibe-llm/gateway/repo"
 import {
   initCache,
   initResponsesStore,
-  initDumpBroker,
-  initDumpStore,
-  FileDumpStore,
-  dumpCodec,
-  EventTargetChannelBroker,
+  initDumpSubsystem,
 } from "@vibe-llm/gateway/bootstrap"
 import { BunSqliteDatabase } from "./bun-sqlite-database.ts"
 import { BunSqliteRepo } from "./bun-sqlite-repo.ts"
@@ -55,11 +51,9 @@ export function bootstrapBunPlatform(opts: BunPlatformOptions): { db: BunSqliteD
   // previous_response_id chains working for the current container lifetime;
   // persistence revisited once the schema migration lands.
   initResponsesStore(new InMemoryResponsesSnapshotStore())
-  // Dump subsystem (Spec 14). FileDumpStore reads from SqlDatabase +
-  // FileProvider (both just initialized); broker is in-process, one worker
-  // per container per Bun deploy.
-  initDumpStore(new FileDumpStore(db, files))
-  initDumpBroker(new EventTargetChannelBroker(dumpCodec))
+  // Dump subsystem (Spec 14) — reads the SqlDatabase + FileProvider wired
+  // above, so it has to come after them.
+  initDumpSubsystem()
   _booted = true
   return { db }
 }
