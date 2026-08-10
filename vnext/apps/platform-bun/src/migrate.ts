@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import type { Database } from "bun:sqlite"
-import { migrationsDir } from "@vibe-llm/gateway/src/migrations-dir.ts"
+import { migrationsDir } from "@vibe-llm/gateway/migrations"
 
 const LEDGER = "_migrations"
 

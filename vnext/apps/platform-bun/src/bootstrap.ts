@@ -9,13 +9,16 @@ import {
   initSocketDial,
 } from "@vibe-core/platform"
 import { bunSocketDial } from "./bun-socket-dial.ts"
-import { initRepo } from "@vibe-llm/gateway/src/repo/index.ts"
-import { initCache } from "@vibe-llm/gateway/src/data-plane/cache/index.ts"
-import { initResponsesStore } from "@vibe-llm/gateway/src/data-plane/runtime/responses-store.ts"
-import { initDumpBroker, initDumpStore } from "@vibe-llm/gateway/src/shared/dump/registry.ts"
-import { FileDumpStore } from "@vibe-llm/gateway/src/repo/dump-store.ts"
-import { dumpCodec } from "@vibe-llm/gateway/src/shared/dump/codec.ts"
-import { EventTargetChannelBroker } from "@vibe-llm/gateway/src/shared/runtime/event-target-channel-broker.ts"
+import { initRepo } from "@vibe-llm/gateway/repo"
+import {
+  initCache,
+  initResponsesStore,
+  initDumpBroker,
+  initDumpStore,
+  FileDumpStore,
+  dumpCodec,
+  EventTargetChannelBroker,
+} from "@vibe-llm/gateway/bootstrap"
 import { BunSqliteDatabase } from "./bun-sqlite-database.ts"
 import { BunSqliteRepo } from "./bun-sqlite-repo.ts"
 import { createInMemoryImageProcessor } from "./memory-image-processor.ts"

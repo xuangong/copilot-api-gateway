@@ -1,8 +1,7 @@
 import { Database } from "bun:sqlite"
 
-import type { Repo } from "@vibe-llm/gateway/src/repo/types.ts"
-import type { SqlExecutor } from "@vibe-llm/gateway/src/repo/shared/executor.ts"
-import { buildSharedRepo } from "@vibe-llm/gateway/src/repo/shared/repos.ts"
+import type { Repo, SqlExecutor } from "@vibe-llm/gateway/repo"
+import { buildSharedRepo } from "@vibe-llm/gateway/repo"
 import { applyMigrations } from "./migrate.ts"
 
 /**

@@ -1,4 +1,4 @@
-import { app } from "@vibe-llm/gateway/src/app.ts"
+import { app } from "@vibe-llm/gateway"
 import { bootstrapCloudflarePlatform, type CloudflareEnv } from "./bootstrap.ts"
 
 export default {

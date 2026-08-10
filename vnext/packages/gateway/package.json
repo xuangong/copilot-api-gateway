@@ -3,6 +3,12 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "exports": {
+    ".": "./src/app.ts",
+    "./repo": "./src/repo/public.ts",
+    "./bootstrap": "./src/bootstrap.ts",
+    "./migrations": "./src/migrations-dir.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },

@@ -67,4 +67,18 @@ export default tseslint.config(
       }],
     },
   },
+  {
+    // apps/ 是装配点，可以依赖任意 package —— 但只能走包名与 exports 声明的
+    // 子路径。gateway 现在有四个公开子路径（"."/repo/bootstrap/migrations）,
+    // 深导入 src/ 会绕过这份契约，让内部搬家再次穿透到宿主。
+    // tests/ 不受约束：网关测试要拿真实适配器（见 tests/_setup-platform.ts）。
+    files: ['apps/*/src/**/*.ts', 'apps/*/src/**/*.tsx'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          { group: ['@vibe-llm/*/src/*', '@vibe-core/*/src/*'], message: '宿主只能从包名或 exports 子路径导入，不得深入 packages 的 src/。' },
+        ],
+      }],
+    },
+  },
 )
