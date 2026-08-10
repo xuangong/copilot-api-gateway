@@ -291,3 +291,22 @@ test('callback no invite + non-admin → 403 html', async () => {
   const res = await buildApp().request('/auth/google/callback?code=c&state=st8')
   expect(res.status).toBe(403)
 })
+
+// Bun.serve never populates c.env, so the router must not dereference it.
+// Every other test here injects c.env through middleware, which is why this
+// path reached production as a 500 on the Bun deployment.
+test('GET /google reads process.env when c.env is absent', async () => {
+  const prev = process.env.GOOGLE_CLIENT_ID
+  process.env.GOOGLE_CLIENT_ID = 'from-process-env'
+  try {
+    const bare = new Hono()
+    bare.route('/auth', authRouter)
+    const res = await bare.request('/auth/google', { redirect: 'manual' })
+    expect(res.status).toBe(302)
+    expect(new URL(res.headers.get('location') ?? '').searchParams.get('client_id'))
+      .toBe('from-process-env')
+  } finally {
+    if (prev === undefined) delete process.env.GOOGLE_CLIENT_ID
+    else process.env.GOOGLE_CLIENT_ID = prev
+  }
+})
