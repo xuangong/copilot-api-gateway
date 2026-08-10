@@ -20,16 +20,37 @@ const snapshot = (db: Database) =>
     .map((r) => `${r.type}\t${r.name}\t${normalize(r.sql ?? "")}`)
     .join("\n")
 
+const listSql = () => readdirSync(dir).filter((f) => f.endsWith(".sql"))
+
 describe("migration corpus", () => {
   test("every filename carries a unique 4-digit prefix", () => {
-    const prefixes = readdirSync(dir)
-      .filter((f) => f.endsWith(".sql"))
-      .map((f) => {
-        const m = /^(\d{4})_/.exec(f)
-        expect(m, `${f} must start with a 4-digit prefix`).not.toBeNull()
-        return m![1]!
-      })
+    const prefixes = listSql().map((f) => {
+      const m = /^(\d{4})_/.exec(f)
+      expect(m, `${f} must start with a 4-digit prefix`).not.toBeNull()
+      return m![1]!
+    })
     expect(new Set(prefixes).size).toBe(prefixes.length)
+  })
+
+  // The Bun bootstrap and D1 built six tables with different column orders, so
+  // positional column references resolve differently on each runtime. A 12-step
+  // table rebuild written with `INSERT INTO new SELECT * FROM old` would migrate
+  // one of them into mismatched columns without raising an error.
+  test("no migration relies on column position", () => {
+    const strip = (sql: string) => sql.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "")
+    const offenders: string[] = []
+
+    for (const file of listSql()) {
+      const sql = strip(readFileSync(`${dir}/${file}`, "utf8"))
+      if (/\bselect\s+(distinct\s+)?\*/i.test(sql)) offenders.push(`${file}: SELECT * — name every column`)
+      // `INSERT INTO t SELECT ...` / `INSERT INTO t VALUES ...` with no column
+      // list. `AFTER INSERT ON t` in a trigger header has no INTO and is fine.
+      if (/\binsert\s+(or\s+\w+\s+)?into\s+["`[]?\w+["`\]]?\s*(select|values|default)\b/i.test(sql)) {
+        offenders.push(`${file}: INSERT without a column list`)
+      }
+    }
+
+    expect(offenders).toEqual([])
   })
 
   // Guards against the failure this corpus already suffered once: schema
