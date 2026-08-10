@@ -30,6 +30,7 @@ import {
 import { getRepo } from '../../shared/repo/index.ts'
 import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
 import { zValidator } from '../../shared/middleware/zod-validator.ts'
+import { loadOwned } from '../shared/ownership.ts'
 
 export interface AuthCtx {
   isAdmin?: boolean
@@ -102,11 +103,12 @@ function keyToJson(k: ApiKey, ownerName?: string, isOwner?: boolean, sourceMap?:
   }
 }
 
+async function ownedKey(keyId: ApiKeyId, ctx: AuthCtx): Promise<ApiKey | null> {
+  return loadOwned(ctx, () => getApiKeyById(keyId))
+}
+
 async function checkOwnership(keyId: ApiKeyId, ctx: AuthCtx): Promise<boolean> {
-  if (ctx.isAdmin) return true
-  if (!ctx.userId) return false
-  const key = await getApiKeyById(keyId)
-  return key?.ownerId === ctx.userId
+  return (await ownedKey(keyId, ctx)) !== null
 }
 
 /**
@@ -267,14 +269,13 @@ apiKeysRouter.post('/', zValidator('json', createKeyBody), async (c) => {
 })
 
 // GET /:id
+// Answers 403 for "no such key" as well as "not your key". The two must be
+// indistinguishable, otherwise the status code alone enumerates key ids.
 apiKeysRouter.get('/:id', async (c) => {
   const auth = c.get('auth') ?? {}
   const id = c.req.param('id') as ApiKeyId
-  const key = await getApiKeyById(id)
-  if (!key) return c.json({ error: 'Key not found' }, 404)
-  if (!auth.isAdmin && key.ownerId !== auth.userId) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
+  const key = await ownedKey(id, auth)
+  if (!key) return c.json({ error: 'Forbidden' }, 403)
   const sourceMap = await loadSourceMapForKey(key)
   return c.json(keyToJson(key, undefined, true, sourceMap))
 })

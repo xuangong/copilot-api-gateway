@@ -31,6 +31,7 @@ import { z } from 'zod'
 import type { Env } from '../../app.ts'
 import type { UpstreamKind, EndpointKey } from '@vibe-llm/protocols/common'
 import { zValidator } from '../../shared/middleware/zod-validator.ts'
+import { loadOwned } from '../shared/ownership.ts'
 import { getRepo } from '../../shared/repo/index.ts'
 import type { UpstreamRecord } from '../../shared/repo/types.ts'
 import type { GitHubAccountId, UpstreamId, UserId } from '../../shared/repo/branded-ids.ts'
@@ -468,12 +469,9 @@ upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
 
 upstreamsRouter.patch('/:id', zValidator('json', upstreamBody), async (c) => {
   const admin = isAdmin(c)
-  const userId = authUserId(c)
-  if (!admin && !userId) return jsonError('Forbidden', 403)
   const id = c.req.param('id') as UpstreamId
-  const existing = await getRepo().upstreams.getById(id)
+  const existing = await loadOwned(c.get('auth'), () => getRepo().upstreams.getById(id))
   if (!existing) return jsonError('upstream not found', 404)
-  if (!admin && existing.ownerId !== userId) return jsonError('Forbidden', 403)
   try {
     const body = c.req.valid('json')
     if (body.provider !== undefined && body.provider !== existing.provider) {
@@ -523,19 +521,16 @@ upstreamsRouter.patch('/:id', zValidator('json', upstreamBody), async (c) => {
 })
 
 upstreamsRouter.delete('/:id', async (c) => {
-  const admin = isAdmin(c)
-  const userId = authUserId(c)
-  if (!admin && !userId) return jsonError('Forbidden', 403)
   const id = c.req.param('id') as UpstreamId
-  const existing = await getRepo().upstreams.getById(id)
-  if (existing && !admin && existing.ownerId !== userId) return jsonError('Forbidden', 403)
+  const existing = await loadOwned(c.get('auth'), () => getRepo().upstreams.getById(id))
+  if (!existing) return jsonError('upstream not found', 404)
   // For copilot upstreams, cascade-delete the github_accounts row so the
   // legacy token store doesn't keep a now-orphan account around.
-  if (existing?.provider === 'copilot') {
-    const userId = (existing.config as { user?: { id?: number } } | undefined)?.user?.id
-    if (typeof userId === 'number') {
+  if (existing.provider === 'copilot') {
+    const accountUserId = (existing.config as { user?: { id?: number } } | undefined)?.user?.id
+    if (typeof accountUserId === 'number') {
       try {
-        await getRepo().github.deleteAccount(userId as GitHubAccountId, (existing.ownerId ?? '') as UserId)
+        await getRepo().github.deleteAccount(accountUserId as GitHubAccountId, (existing.ownerId ?? '') as UserId)
       } catch {}
     }
   }
@@ -546,12 +541,10 @@ upstreamsRouter.delete('/:id', async (c) => {
 })
 
 upstreamsRouter.post('/:id/test', async (c) => {
-  const admin = isAdmin(c)
-  const userId = authUserId(c)
-  if (!admin && !userId) return jsonError('Forbidden', 403)
-  const upstream = await getRepo().upstreams.getById(c.req.param('id') as UpstreamId)
+  const upstream = await loadOwned(c.get('auth'), () =>
+    getRepo().upstreams.getById(c.req.param('id') as UpstreamId),
+  )
   if (!upstream) return jsonError('upstream not found', 404)
-  if (!admin && upstream.ownerId !== userId) return jsonError('Forbidden', 403)
   // Provider constructors validate config (Azure hostname suffix, Custom apiKey,
   // etc.) and may throw. Probe-style contract: surface as `{ ok: false, error }`
   // with 200 so the dashboard's "Test" button shows the failure inline rather
@@ -568,12 +561,10 @@ upstreamsRouter.post('/:id/test', async (c) => {
 })
 
 upstreamsRouter.get('/:id/models', async (c) => {
-  const admin = isAdmin(c)
-  const userId = authUserId(c)
-  if (!admin && !userId) return jsonError('Forbidden', 403)
-  const upstream = await getRepo().upstreams.getById(c.req.param('id') as UpstreamId)
+  const upstream = await loadOwned(c.get('auth'), () =>
+    getRepo().upstreams.getById(c.req.param('id') as UpstreamId),
+  )
   if (!upstream) return jsonError('upstream not found', 404)
-  if (!admin && upstream.ownerId !== userId) return jsonError('Forbidden', 403)
   try {
     const provider = await createProviderFromUpstream(upstream)
     if (!provider) {

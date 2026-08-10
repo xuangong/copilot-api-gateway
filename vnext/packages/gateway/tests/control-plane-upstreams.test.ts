@@ -404,3 +404,43 @@ test('GET /api/upstreams/:id/models missing → 404', async () => {
   const res = await buildApp({ isAdmin: true }).request('/api/upstreams/nope/models')
   expect(res.status).toBe(404)
 })
+
+// Cross-tenant regression for the four owner-scoped upstream routes, which now
+// share loadOwned instead of each re-deriving the comparison. A foreign upstream
+// and a nonexistent one must be answered identically; otherwise the status code
+// alone reveals which upstream ids exist under other owners.
+const FOREIGN_ROUTES: Array<{ name: string; path: (id: string) => string; init?: RequestInit }> = [
+  {
+    name: 'PATCH /:id',
+    path: (id) => `/api/upstreams/${id}`,
+    init: { method: 'PATCH', body: JSON.stringify({ name: 'hijacked' }), headers: { 'content-type': 'application/json' } },
+  },
+  { name: 'DELETE /:id', path: (id) => `/api/upstreams/${id}`, init: { method: 'DELETE' } },
+  { name: 'POST /:id/test', path: (id) => `/api/upstreams/${id}/test`, init: { method: 'POST' } },
+  { name: 'GET /:id/models', path: (id) => `/api/upstreams/${id}/models` },
+]
+
+for (const route of FOREIGN_ROUTES) {
+  test(`${route.name} refuses another user's upstream, indistinguishably from a missing one`, async () => {
+    const victim = copilotUpstream({ ownerId: 'u1' })
+    await store.repo.upstreams.save(victim)
+    const attacker = buildApp({ isUser: true, userId: 'u2' })
+
+    const foreign = await attacker.request(route.path(victim.id), route.init)
+    const missing = await attacker.request(route.path('up_does_not_exist'), route.init)
+
+    expect(foreign.status).toBe(404)
+    expect(missing.status).toBe(foreign.status)
+    // Neither the record nor its cascade target may have been touched.
+    expect(await store.repo.upstreams.getById(victim.id)).not.toBeNull()
+    expect(store.deletedGithub).toHaveLength(0)
+    expect((await store.repo.upstreams.getById(victim.id))?.name).toBe(victim.name)
+  })
+}
+
+test('an anonymous caller (no admin, no user) is refused an existing upstream', async () => {
+  const victim = copilotUpstream({ ownerId: 'u1' })
+  await store.repo.upstreams.save(victim)
+  const res = await buildApp({}).request(`/api/upstreams/${victim.id}/models`)
+  expect(res.status).toBe(404)
+})

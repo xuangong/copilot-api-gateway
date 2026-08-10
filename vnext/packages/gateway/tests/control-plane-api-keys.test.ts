@@ -272,3 +272,39 @@ test('GET /:id/web-search-usage returns aggregated zeros when no data', async ()
   const body = await res.json() as any
   expect(body).toMatchObject({ range: '7d', days: 7, searches: 0, successes: 0, failures: 0 })
 })
+
+// Cross-tenant regression. Every one of these routes used to spell the owner
+// comparison itself; they now share loadOwned. The pair of assertions per route
+// matters as much as the status: a foreign key and a nonexistent key must be
+// answered identically, or the status code enumerates other users' key ids.
+const FOREIGN_ROUTES: Array<{ name: string; path: (id: string) => string; init?: RequestInit }> = [
+  { name: 'GET /:id', path: (id) => `/api/keys/${id}` },
+  {
+    name: 'PATCH /:id',
+    path: (id) => `/api/keys/${id}`,
+    init: { method: 'PATCH', body: JSON.stringify({ name: 'x' }), headers: { 'content-type': 'application/json' } },
+  },
+  { name: 'POST /:id/rotate', path: (id) => `/api/keys/${id}/rotate`, init: { method: 'POST' } },
+  { name: 'DELETE /:id', path: (id) => `/api/keys/${id}`, init: { method: 'DELETE' } },
+]
+
+for (const route of FOREIGN_ROUTES) {
+  test(`${route.name} refuses another user's key, indistinguishably from a missing one`, async () => {
+    const victim = await createApiKey('victim', 'u1')
+    const attacker = buildApp({ isUser: true, userId: 'u2' })
+
+    const foreign = await attacker.request(route.path(victim.id), route.init)
+    const missing = await attacker.request(route.path('key_does_not_exist'), route.init)
+
+    expect(foreign.status).toBe(403)
+    expect(missing.status).toBe(foreign.status)
+    // The victim's key must survive the refused DELETE / PATCH.
+    expect(await store.repo.apiKeys.getById(victim.id)).not.toBeNull()
+  })
+}
+
+test('an anonymous caller (no admin, no user) is refused an existing key', async () => {
+  const victim = await createApiKey('victim', 'u1')
+  const res = await buildApp({}).request(`/api/keys/${victim.id}`)
+  expect(res.status).toBe(403)
+})
