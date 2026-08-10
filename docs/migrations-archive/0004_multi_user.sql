@@ -28,9 +28,13 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON user_sessions(user_id);
 
--- Add owner_id to existing tables (safe: ignore if already exists)
--- ALTER TABLE api_keys ADD COLUMN owner_id TEXT REFERENCES users(id);
--- ALTER TABLE github_accounts ADD COLUMN owner_id TEXT REFERENCES users(id);
+-- These two ALTERs were commented out and run by hand against the live
+-- databases instead, which left the migration corpus unable to rebuild the
+-- production schema (fresh replays failed on the two indexes below). Both
+-- existing databases already record 0004 as applied, so restoring them here
+-- only affects fresh installs.
+ALTER TABLE api_keys ADD COLUMN owner_id TEXT REFERENCES users(id);
+ALTER TABLE github_accounts ADD COLUMN owner_id TEXT REFERENCES users(id);
 
 CREATE INDEX IF NOT EXISTS idx_api_keys_owner ON api_keys(owner_id);
 CREATE INDEX IF NOT EXISTS idx_github_accounts_owner ON github_accounts(owner_id);

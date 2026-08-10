@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "db:migrate": "wrangler d1 migrations apply copilot-db --remote",
+    "db:migrate:local": "wrangler d1 migrations apply copilot-db --local",
     "deploy": "wrangler deploy",
+    "deploy:full": "bun run db:migrate && wrangler deploy",
     "deploy:dry": "wrangler deploy --dry-run --outdir dist"
   },
   "dependencies": {

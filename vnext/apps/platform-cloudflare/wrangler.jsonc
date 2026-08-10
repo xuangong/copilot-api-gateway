@@ -25,7 +25,7 @@
       "binding": "DB",
       "database_name": "copilot-db",
       "database_id": "9a81ab21-8c45-4fce-bf32-95796e574b16",
-      "migrations_dir": "../../migrations"
+      "migrations_dir": "../../packages/gateway/migrations"
     }
   ],
   "vars": {
