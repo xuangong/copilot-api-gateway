@@ -79,20 +79,24 @@ const bodyPath = (keyId: string, bucket: string, recordId: string, side: "req" |
 // CompressionStream globally). Cloudflare Workers do expose CompressionStream;
 // when this runs there we'd wrap that instead — for the Bun runtime we take
 // the direct route.
-const gzip = async (bytes: Uint8Array): Promise<Uint8Array> => {
+const gzip = async (input: Uint8Array): Promise<Uint8Array> => {
+  // Both sinks below reject a SharedArrayBuffer-backed view; nothing in the
+  // gateway ever produces one, so narrow once here instead of at each call.
+  const bytes = input as Uint8Array<ArrayBuffer>
   if (typeof CompressionStream !== "undefined") {
     const stream = new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip")))
     return new Uint8Array(await stream.arrayBuffer())
   }
-  return Bun.gzipSync(bytes as Uint8Array<ArrayBuffer>)
+  return Bun.gzipSync(bytes)
 }
 
-const gunzip = async (bytes: Uint8Array): Promise<Uint8Array> => {
+const gunzip = async (input: Uint8Array): Promise<Uint8Array> => {
+  const bytes = input as Uint8Array<ArrayBuffer>
   if (typeof DecompressionStream !== "undefined") {
     const stream = new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip")))
     return new Uint8Array(await stream.arrayBuffer())
   }
-  return Bun.gunzipSync(bytes as Uint8Array<ArrayBuffer>)
+  return Bun.gunzipSync(bytes)
 }
 
 const putRawBody = async (

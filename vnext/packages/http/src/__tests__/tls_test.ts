@@ -54,7 +54,7 @@ describe('userspaceTls — ClientHello on the wire', () => {
     // for TLS 1.3 ClientHellos (RFC 8446 §5.1).
     expect(written[0]).toBe(0x16);
     expect(written[1]).toBe(0x03);
-    expect([0x01, 0x03]).toContain(written[2]); // 0x01 if reclaim emits TLS 1.0 framing, 0x03 for TLS 1.2 framing.
+    expect([0x01, 0x03]).toContain(written[2]!); // 0x01 if reclaim emits TLS 1.0 framing, 0x03 for TLS 1.2 framing.
     // First handshake message is ClientHello (msg_type 0x01).
     expect(written[5]).toBe(0x01);
 
@@ -217,6 +217,6 @@ describe('addTrustedRootCAs', () => {
     const g = globalThis as unknown as TrustGlobals;
     delete g.TLS_ADDITIONAL_ROOT_CA_LIST;
     addTrustedRootCAs(['pem-a']);
-    expect(g.TLS_ADDITIONAL_ROOT_CA_LIST).toEqual(['pem-a']);
+    expect(g.TLS_ADDITIONAL_ROOT_CA_LIST as string[] | undefined).toEqual(['pem-a']);
   });
 });

@@ -6,7 +6,9 @@
 import type { Context } from "hono"
 
 export interface RequestBody {
-  bytes: Uint8Array
+  // Narrowed to an ArrayBuffer-backed view (never SharedArrayBuffer) so the
+  // bytes can be handed straight to `new Request(..., { body })` / `Blob`.
+  bytes: Uint8Array<ArrayBuffer>
   readonly streamError: string | null
 }
 

@@ -167,7 +167,7 @@ const encryptFrame = (cipher: Aead, payload: Uint8Array, baseNonce: bigint): Uin
 export const evpBytesToKey = (password: string, keyLen: number): Uint8Array<ArrayBuffer> => {
   const pw = utf8Bytes(password);
   const out = new Uint8Array(keyLen);
-  let prev = new Uint8Array(0);
+  let prev: Uint8Array = new Uint8Array(0);
   let off = 0;
   while (off < keyLen) {
     const buf = concat(prev, pw);

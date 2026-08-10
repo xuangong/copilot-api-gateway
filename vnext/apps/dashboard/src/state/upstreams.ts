@@ -87,6 +87,7 @@ export function useUpstreams() {
       if (direction === "up") {
         if (idx === 0) return
         const above = group[idx - 1]
+        if (!above) return
         const aboveAbove = idx >= 2 ? group[idx - 2] : null
         // If neighbor has same sortOrder, force a strictly smaller value so
         // the row actually moves (avoids the "(0+0)/2 = 0" no-op).
@@ -98,6 +99,7 @@ export function useUpstreams() {
       } else {
         if (idx === group.length - 1) return
         const below = group[idx + 1]
+        if (!below) return
         const belowBelow = idx + 2 < group.length ? group[idx + 2] : null
         if (belowBelow && belowBelow.sortOrder !== below.sortOrder) {
           newSort = (below.sortOrder + belowBelow.sortOrder) / 2

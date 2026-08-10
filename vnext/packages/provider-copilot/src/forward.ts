@@ -71,7 +71,7 @@ export async function callCopilotAPI({
       headers: { ...copilotHeaders(copilotToken), ...(extraHeaders ?? {}) },
       body: JSON.stringify(payload),
       timeout,
-      fetcher,
+      fetchImpl: fetcher,
     })
   } catch (error) {
     if (!isStreaming && endpoint === "/v1/messages") {

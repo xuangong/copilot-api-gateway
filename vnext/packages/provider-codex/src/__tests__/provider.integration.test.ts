@@ -78,6 +78,7 @@ const baseRecord = (): UpstreamRecord<CodexUpstreamState> => ({
   },
   flagOverrides: {},
   disabledPublicModelIds: [],
+  proxyFallbackList: [],
   state: {
     accounts: [
       {

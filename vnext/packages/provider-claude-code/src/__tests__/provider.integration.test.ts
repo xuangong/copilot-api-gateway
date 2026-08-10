@@ -76,6 +76,7 @@ const baseRecord = (
   },
   flagOverrides: {},
   disabledPublicModelIds: [],
+  proxyFallbackList: [],
   state: {
     accounts: [
       {

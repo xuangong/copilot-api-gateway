@@ -10,6 +10,8 @@
 // instead of each declaring their own (provider-codex and provider-claude-code
 // had duplicated copies before this stage).
 
+// The signature deliberately mirrors `FetchLike` in @vibe-core/http so a
+// Fetcher can be handed to fetchWithRetry without a cast; keep the two in sync.
 export type Fetcher = (url: string, init: RequestInit) => Promise<Response>
 
 export const directFetcher: Fetcher = (url, init) => fetch(url, init)

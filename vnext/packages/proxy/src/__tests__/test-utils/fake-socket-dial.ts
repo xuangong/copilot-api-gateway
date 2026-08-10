@@ -6,7 +6,7 @@
 // sequences and feed crafted server responses (including malformed framing)
 // to exercise dial-side error handling.
 
-import type { DialedSocket, SocketDial } from '../../src/types.ts';
+import type { DialedSocket, SocketDial } from '../../types.ts';
 
 export interface FakeServer {
   /**

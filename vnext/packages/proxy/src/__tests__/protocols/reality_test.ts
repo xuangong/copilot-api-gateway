@@ -462,7 +462,7 @@ describe('verifyRealityLeaf', () => {
     const rawPub = new Uint8Array(32).fill(0x24);
     const tag = hmac(sha512, authKey, rawPub);
     const flipped = new Uint8Array(tag);
-    flipped[0] ^= 0x01;
+    flipped[0]! ^= 0x01;
     expect(() => verifyRealityLeaf(authKey, buildLeafDer(flipped), buildSpki(rawPub)))
       .toThrow(/HMAC-SHA512.*did not match/);
   });

@@ -71,7 +71,7 @@ export const bunSocketDial: SocketDial = {
     })
 
     // net.Socket recycles emitted Buffers from a shared pool; copy on the way out.
-    const rawReadable = Readable.toWeb(socket) as ReadableStream<Uint8Array>
+    const rawReadable = Readable.toWeb(socket) as unknown as ReadableStream<Uint8Array>
     const readable = rawReadable.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
         const owned = new Uint8Array(chunk.byteLength)

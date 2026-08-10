@@ -9,23 +9,28 @@
  * a fallback-aware fetch. Default is the runtime `fetch`, so no behaviour
  * change for existing call sites.
  */
-export type FetchLike = (url: string | URL, init?: RequestInit) => Promise<Response>
+// Matches `Fetcher` in @vibe-core/upstream exactly, so the gateway's
+// fallback-aware fetcher can be injected here without a cast. `url` is a
+// string (not string | URL) because that is what every implementation of it
+// accepts; fetchWithRetry normalises before calling.
+export type FetchLike = (url: string, init: RequestInit) => Promise<Response>
 
 export interface FetchOptions extends RequestInit {
   maxRetries?: number
   retryDelay?: number
   timeout?: number
-  fetcher?: FetchLike
+  // Named `fetchImpl`, not `fetcher`: Cloudflare's RequestInit already declares
+  // a `fetcher` field (a service binding), and this object used to be spread
+  // straight into fetch(), so on Workers the runtime saw our retry helper where
+  // it expected a binding.
+  fetchImpl?: FetchLike
 }
 
 export async function fetchWithRetry(
   input: string | URL,
   init?: FetchOptions,
 ): Promise<Response> {
-  const maxRetries = init?.maxRetries ?? 3
-  const retryDelay = init?.retryDelay ?? 1000
-  const timeout = init?.timeout
-  const fetchImpl: FetchLike = init?.fetcher ?? fetch
+  const { maxRetries = 3, retryDelay = 1000, timeout, fetchImpl = fetch, ...requestInit } = init ?? {}
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -38,8 +43,8 @@ export async function fetchWithRetry(
       }
 
       const signal = controller?.signal ?? init?.signal
-      const response = await fetchImpl(input, {
-        ...init,
+      const response = await fetchImpl(String(input), {
+        ...requestInit,
         signal,
       }).finally(() => {
         if (timeoutId) clearTimeout(timeoutId)
