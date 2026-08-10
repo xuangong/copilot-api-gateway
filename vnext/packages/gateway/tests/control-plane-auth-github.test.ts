@@ -7,14 +7,14 @@
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/repo/index.ts'
 import { __resetPlatformForTests } from '@vibe-core/platform'
 import type {
   GitHubAccount, Repo, UpstreamRecord,
-} from '../src/shared/repo/types.ts'
+} from '../src/repo/types.ts'
 import { authRouter, type AuthCtx } from '../src/control-plane/auth/routes.ts'
 import { setOAuthFetcherForTest } from '../src/control-plane/auth/github-routes.ts'
-import { copilotUpstreamRowId } from '../src/shared/lib/github.ts'
+import { copilotUpstreamRowId } from '../src/control-plane/lib/github.ts'
 
 interface GhStore {
   accountsByOwner: Map<string, Map<number, GitHubAccount>>

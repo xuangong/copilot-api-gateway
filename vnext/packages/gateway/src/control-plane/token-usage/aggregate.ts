@@ -9,7 +9,7 @@
  * and the shared-repo types path. vNext delta: `client` is a grouping dimension
  * so the dashboard's by-client breakdown has something to group on.
  */
-import type { UsageRecord } from '../../shared/repo/types.ts'
+import type { UsageRecord } from '../../repo/types.ts'
 import { BILLING_DIMENSIONS, unitPriceForDimension, type BillingDimension } from '@vibe-llm/protocols/common'
 
 export interface DisplayUsageRecord {

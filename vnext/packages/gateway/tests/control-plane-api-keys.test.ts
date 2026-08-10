@@ -7,7 +7,7 @@
  */
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/repo/index.ts'
 import type {
   ApiKey,
   KeyAssignment,
@@ -15,9 +15,9 @@ import type {
   User,
   WebSearchUsageRecord,
   WebSearchEngineUsageRecord,
-} from '../src/shared/repo/types.ts'
+} from '../src/repo/types.ts'
 import { apiKeysRouter, type AuthCtx } from '../src/control-plane/api-keys/routes.ts'
-import { createApiKey } from '../src/shared/lib/api-keys.ts'
+import { createApiKey } from '../src/control-plane/lib/api-keys.ts'
 
 function inMemoryRepo() {
   const keys = new Map<string, ApiKey>()

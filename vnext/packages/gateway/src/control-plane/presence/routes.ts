@@ -10,15 +10,15 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { Env } from '../../app.ts'
-import { zValidator } from '../../shared/middleware/zod-validator.ts'
-import { getRepo } from '../../shared/repo/index.ts'
-import type { ApiKey } from '../../shared/repo/types.ts'
-import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
+import { zValidator } from '../middleware/zod-validator.ts'
+import { getRepo } from '../../repo/index.ts'
+import type { ApiKey } from '../../repo/types.ts'
+import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 import {
   redactForSharedView,
   getServerSecret,
-} from '../../shared/lib/redact-shared-view.ts'
-import { getOwnedKeyIdsForScope } from '../../shared/lib/view-context.ts'
+} from '../lib/redact-shared-view.ts'
+import { getOwnedKeyIdsForScope } from '../lib/view-context.ts'
 
 export interface PresenceAuthCtx {
   isAdmin?: boolean

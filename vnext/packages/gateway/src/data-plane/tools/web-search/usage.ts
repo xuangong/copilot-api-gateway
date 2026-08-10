@@ -10,8 +10,8 @@
 // the dashboards already wired against those tables.
 
 import type { WebSearchProviderName } from './types.ts'
-import { getRepo } from '../../../shared/repo/index.ts'
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import { getRepo } from '../../../repo/index.ts'
+import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 export type SearchUsageAction = 'search' | 'fetch_page'
 

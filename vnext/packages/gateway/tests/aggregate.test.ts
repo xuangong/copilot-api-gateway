@@ -5,7 +5,7 @@
  */
 import { test, expect } from 'bun:test'
 import { aggregateUsageForDisplay } from '../src/control-plane/token-usage/aggregate.ts'
-import type { UsageRecord } from '../src/shared/repo/types.ts'
+import type { UsageRecord } from '../src/repo/types.ts'
 
 const rec = (over: Partial<UsageRecord> = {}): UsageRecord => ({
   keyId: 'k', model: 'm', modelKey: 'm', upstream: null, client: '',

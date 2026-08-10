@@ -15,7 +15,7 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
-import { initRepo } from '../../../src/shared/repo/index.ts'
+import { initRepo } from '../../../src/repo/index.ts'
 import { __resetPlatformForTests } from '@vibe-core/platform'
 import { runImagesAttempt } from '../../../src/data-plane/observability/attempts/images-attempt.ts'
 

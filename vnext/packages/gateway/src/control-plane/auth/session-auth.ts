@@ -11,11 +11,11 @@
  * working while still attaching auth context where present.
  */
 import type { Context, MiddlewareHandler } from 'hono'
-import { getRepo } from './repo/index.ts'
-import { ADMIN_EMAILS, type AccountType } from './config/constants.ts'
-import { validateApiKey } from './lib/api-keys.ts'
-import { getCachedCopilotToken } from './copilot-token-cache.ts'
-import type { ApiKeyId, SessionToken, UserId } from './repo/branded-ids.ts'
+import { getRepo } from '../../repo/index.ts'
+import { ADMIN_EMAILS, type AccountType } from '../../shared/config/constants.ts'
+import { validateApiKey } from '../lib/api-keys.ts'
+import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
+import type { ApiKeyId, SessionToken, UserId } from '../../repo/branded-ids.ts'
 
 interface FullAuthCtx {
   userId?: UserId

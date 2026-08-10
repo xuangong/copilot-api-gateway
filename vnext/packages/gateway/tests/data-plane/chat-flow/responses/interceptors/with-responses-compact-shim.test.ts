@@ -5,7 +5,7 @@ import {
   containsCompactionTrigger,
   SUMMARY_PREFIX,
 } from '../../../../../src/data-plane/chat-flow/responses/interceptors/with-responses-compact-shim'
-import { encodeBase64UrlJson } from '../../../../../src/shared/base64url-json'
+import { encodeBase64UrlJson } from '../../../../../src/data-plane/shared/base64url-json.ts'
 import type { Invocation, RequestContext, TelemetryModelIdentity } from '@vibe-llm/protocols/common'
 import { llmEventResult } from '@vibe-llm/protocols/common'
 import type { ProtocolFrame } from '@vibe-core/result'

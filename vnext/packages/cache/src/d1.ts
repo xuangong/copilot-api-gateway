@@ -2,7 +2,7 @@ import type { Cache } from './types.ts'
 
 /**
  * The subset of `SqlExecutor` we need. We redeclare it here (instead of
- * importing from `apps/gateway/src/shared/repo/shared/executor.ts`) so this
+ * importing from `packages/gateway/src/repo/shared/executor.ts`) so this
  * package stays repo-shape-agnostic and can be reused by other workspaces.
  * The gateway bootstrap adapts its existing executors to this shape.
  */

@@ -20,9 +20,9 @@
 import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../../src/app.ts'
-import { initRepo } from '../../src/shared/repo/index.ts'
+import { initRepo } from '../../src/repo/index.ts'
 import { initBackground, initRuntimeLocation, __resetPlatformForTests } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../../src/shared/repo/types.ts'
+import type { Repo, UpstreamRecord } from '../../src/repo/types.ts'
 import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'
 
 const env = {} as never

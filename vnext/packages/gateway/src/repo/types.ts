@@ -1,9 +1,9 @@
 import type { BillingDimension, ModelPricing, UpstreamKind, UpstreamRecord } from "@vibe-llm/protocols/common"
 import type { ProxyRepo, ProxyBackoffRepo } from "@vibe-core/proxy-repo"
-import type { SearchConfig } from "../web-search-providers.ts"
+import type { SearchConfig } from "../shared/web-search-providers.ts"
 import type { ApiKeyId, DeviceCodeToken, GitHubAccountId, InviteCodeId, ResponsesItemId, SessionToken, UpstreamId, UserId } from "./branded-ids.ts"
 
-export type { SearchConfig, WebSearchProviderName } from "../web-search-providers.ts"
+export type { SearchConfig, WebSearchProviderName } from "../shared/web-search-providers.ts"
 export type { ProxyRepo, ProxyBackoffRepo, ProxyRecord, ProxyFallbackEntry, BackoffRow } from "@vibe-core/proxy-repo"
 
 export interface ApiKey {

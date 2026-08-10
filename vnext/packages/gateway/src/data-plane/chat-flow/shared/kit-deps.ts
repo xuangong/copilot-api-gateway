@@ -24,8 +24,8 @@ import type { KitAuthCtx, ServeTemplateDeps } from '@vibe-core/chat-flow-kit'
 import { jsonErrorWrap } from './error-wrap.ts'
 import { runQuotaGate } from './quota-gate.ts'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
-import type { PerformanceSourceApi } from '../../../shared/repo/types.ts'
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import type { PerformanceSourceApi } from '../../../repo/types.ts'
+import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 // Kit contract is protocol-agnostic and types apiKeyId as `string | null`.
 // The gateway passes richer `<Endpoint>AttemptAuth & KitAuthCtx` shapes whose

@@ -5,11 +5,11 @@
  */
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/repo/index.ts'
 import { __resetPlatformForTests } from '@vibe-core/platform'
 import type {
   DeviceCode, Repo, User, UserSession,
-} from '../src/shared/repo/types.ts'
+} from '../src/repo/types.ts'
 import { authRouter, type AuthCtx } from '../src/control-plane/auth/routes.ts'
 
 function inMemoryRepo() {

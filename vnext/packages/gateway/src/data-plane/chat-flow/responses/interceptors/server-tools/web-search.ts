@@ -21,7 +21,7 @@
  *     `planShimSlots` `executeAlpha` fast path) are removed rather than left
  *     dormant behind a flag.
  */
-import { shortId } from '../../../../../shared/short-id.ts'
+import { shortId } from '../../../../../data-plane/shared/short-id.ts'
 import { normalizeDomainEntry } from '../../../../tools/web-search/domain-normalize.ts'
 import {
   actionSearchQueries,

@@ -28,9 +28,9 @@ import type {
   PreparedDumpRequestBody,
   StoredDumpResponseBody,
 } from "./types.ts"
-import { getRepo } from "../repo/index.ts"
-import type { ApiKey, TokenUsage } from "../repo/types.ts"
-import type { DumpRecordId, UpstreamId } from "../repo/branded-ids.ts"
+import { getRepo } from "../../repo/index.ts"
+import type { ApiKey, TokenUsage } from "../../repo/types.ts"
+import type { DumpRecordId, UpstreamId } from "../../repo/branded-ids.ts"
 import { ulid } from "../ulid.ts"
 
 // Frozen at ctx construction so `finalize` never has to re-read a stream

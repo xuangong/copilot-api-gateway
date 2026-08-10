@@ -13,9 +13,9 @@
  * the dispatcher's SourceApi type from errors/repackage.ts uses underscore
  * form ('chat_completions'). This module is the single translation point.
  */
-import { getRepo } from '../repo/index.ts'
-import type { PerformanceSourceApi, PerformanceTargetApi } from '../repo/types.ts'
-import type { ApiKeyId } from '../repo/branded-ids.ts'
+import { getRepo } from '../../repo/index.ts'
+import type { PerformanceSourceApi, PerformanceTargetApi } from '../../repo/types.ts'
+import type { ApiKeyId } from '../../repo/branded-ids.ts'
 
 export interface LatencyTimings {
   totalMs: number

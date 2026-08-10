@@ -7,19 +7,19 @@
  */
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/repo/index.ts'
 import { __resetPlatformForTests } from '@vibe-core/platform'
 import type {
   ApiKey, GitHubAccount, InviteCode, KeyAssignment,
   Repo, User, UserSession,
-} from '../src/shared/repo/types.ts'
+} from '../src/repo/types.ts'
 import { authRouter } from '../src/control-plane/auth/routes.ts'
-import { setEmailSenderForTest, type EmailSender } from '../src/shared/lib/email.ts'
+import { setEmailSenderForTest, type EmailSender } from '../src/control-plane/lib/email.ts'
 import {
   resetAuthStoresForTest,
   saveMagicToken,
 } from '../src/control-plane/auth/stores.ts'
-import { hashPassword } from '../src/shared/lib/password.ts'
+import { hashPassword } from '../src/control-plane/lib/password.ts'
 
 function inMemoryRepo() {
   const users = new Map<string, User>()

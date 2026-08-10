@@ -12,8 +12,8 @@
 //     'sdf'); anything else in the row is a schema slip and coerces to
 //     'custom' (the vNext catch-all).
 
-import { DUMP_FILE_PREFIX, SPILLED_FILE_STAGE_GRACE_MS } from "../dump/spilled-files-policy.ts"
-import type { DumpListOptions, DumpStore } from "../dump/store-contract.ts"
+import { DUMP_FILE_PREFIX, SPILLED_FILE_STAGE_GRACE_MS } from "../shared/dump/spilled-files-policy.ts"
+import type { DumpListOptions, DumpStore } from "../shared/dump/store-contract.ts"
 import type {
   DumpMetadata,
   DumpRecordId,
@@ -25,7 +25,7 @@ import type {
   StoredDumpRequest,
   StoredDumpResponse,
   StoredDumpResponseBody,
-} from "../dump/types.ts"
+} from "../shared/dump/types.ts"
 import type { FileProvider, SqlDatabase } from "@vibe-core/platform"
 import type { UpstreamKind } from "@vibe-llm/protocols/common"
 import type { UpstreamId, ApiKeyId } from "./branded-ids.ts"

@@ -12,9 +12,9 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { Env } from '../../app.ts'
-import { zValidator } from '../../shared/middleware/zod-validator.ts'
-import { getRepo } from '../../shared/repo/index.ts'
-import type { UserId } from '../../shared/repo/branded-ids.ts'
+import { zValidator } from '../middleware/zod-validator.ts'
+import { getRepo } from '../../repo/index.ts'
+import type { UserId } from '../../repo/branded-ids.ts'
 
 export interface AuthCtx {
   userId?: UserId

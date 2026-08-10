@@ -10,15 +10,15 @@
  * dial timing without contaminating the enclosing request's stats.
  */
 import type { PerformanceTelemetryContext } from '@vibe-llm/protocols/common'
-import { getRepo } from './repo/index.ts'
-import type { ApiKeyId } from './repo/branded-ids.ts'
+import { getRepo } from '../../repo/index.ts'
+import type { ApiKeyId } from '../../repo/branded-ids.ts'
 import type {
   PerformanceOperation,
   PerformanceRecordInput,
   PerformanceSourceApi,
   PerformanceTargetApi,
   Repo,
-} from './repo/types.ts'
+} from '../../repo/types.ts'
 
 // Per-attempt performance state. Reset at the start of every image
 // operation so a retry cannot inherit the prior attempt's slots. Numeric

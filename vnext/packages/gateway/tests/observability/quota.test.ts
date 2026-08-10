@@ -1,9 +1,9 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
-import { initRepo } from '../../src/shared/repo/index.ts'
+import { initRepo } from '../../src/repo/index.ts'
 import { __resetPlatformForTests } from '@vibe-core/platform'
-import { checkQuota, computeWeightedTokens } from '../../src/shared/observability/quota.ts'
+import { checkQuota, computeWeightedTokens } from '../../src/data-plane/observability/quota.ts'
 
 let repo: SqliteRepo
 

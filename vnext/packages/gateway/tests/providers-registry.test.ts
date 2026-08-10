@@ -1,7 +1,7 @@
 import { test, expect, afterEach } from 'bun:test'
-import { initRepo } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/repo/index.ts'
 import { __resetPlatformForTests } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
+import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
 import {
   listProviderBindings,
   listUpstreamModels,
@@ -11,7 +11,7 @@ import {
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import type { ModelEndpoints } from '@vibe-llm/protocols/common'
 import { MemoryCache } from '@vibe-core/cache'
-import { initCache } from '../src/shared/cache/index.ts'
+import { initCache } from '../src/data-plane/cache/index.ts'
 
 const stubModel = (id: string, type = 'text'): Model => ({
   id,

@@ -16,8 +16,8 @@
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { listUpstreamModels, type CreateProviderOptions } from '../providers/registry.ts'
-import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
-import { getRepo } from '../../shared/repo/index.ts'
+import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
+import { getRepo } from '../../repo/index.ts'
 import { isCodexUserAgent } from '../codex/catalog.ts'
 import { loadCodexCatalog } from '../codex/models.ts'
 

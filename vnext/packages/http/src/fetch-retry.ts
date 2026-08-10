@@ -1,7 +1,7 @@
 /**
  * fetchWithRetry — exponential backoff retry on 429/5xx, AbortController-based
  * timeout. Lifted verbatim from @vibe-llm/provider-copilot/src/lib/fetch-retry.ts
- * (which itself was lifted from apps/gateway/src/shared/lib/fetch-retry.ts).
+ * (which itself was lifted from packages/gateway/src/control-plane/lib/fetch-retry.ts).
  *
  * Behavior, retry curve, timeout semantics: unchanged.
  *

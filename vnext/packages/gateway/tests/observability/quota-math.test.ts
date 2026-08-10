@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test'
-import { computeWeightedTokens } from '../../src/shared/observability/quota-math.ts'
+import { computeWeightedTokens } from '../../src/data-plane/observability/quota-math.ts'
 
 test('computeWeightedTokens: formula = cache*0.1 + input*1 + output*5', () => {
   expect(computeWeightedTokens(0, 0, 0)).toBe(0)

@@ -15,8 +15,8 @@ import {
   GITHUB_API_BASE_URL,
   createGithubHeaders,
   type AccountType,
-} from './config/constants.ts'
-import type { UserId } from './repo/branded-ids.ts'
+} from '../../shared/config/constants.ts'
+import type { UserId } from '../../repo/branded-ids.ts'
 
 interface CopilotTokenResponse {
   expires_at: number

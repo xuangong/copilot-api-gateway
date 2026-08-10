@@ -1,4 +1,4 @@
-// Ported 1:1 from copilot-gateway packages/gateway/src/shared/short-id.ts.
+// Ported 1:1 from copilot-gateway packages/gateway/src/data-plane/shared/short-id.ts.
 //
 // Random short id with a typed prefix. Strip dashes so the result stays
 // URL- and SQL-safe; take a 24-char tail — wider than the random subspace

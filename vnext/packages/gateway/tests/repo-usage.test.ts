@@ -1,7 +1,7 @@
 import { test, expect, beforeEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
-import type { Repo, UsageRecord } from '../src/shared/repo/types.ts'
+import type { Repo, UsageRecord } from '../src/repo/types.ts'
 
 let db: Database
 let repo: Repo

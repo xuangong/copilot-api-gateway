@@ -6,12 +6,12 @@
  */
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/repo/index.ts'
 import { __resetPlatformForTests } from '@vibe-core/platform'
 import type {
   ApiKey, GitHubAccount, InviteCode, KeyAssignment,
   Repo, User, UserSession,
-} from '../src/shared/repo/types.ts'
+} from '../src/repo/types.ts'
 import {
   authRouter,
   type AuthCtx,

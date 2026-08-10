@@ -1,5 +1,5 @@
 import { test, expect, beforeEach } from "bun:test"
-import { initRepo, getRepo } from "../../src/shared/repo/index.ts"
+import { initRepo, getRepo } from "../../src/repo/index.ts"
 import { __resetPlatformForTests } from "@vibe-core/platform"
 import { BunSqliteRepo as SqliteRepo } from "@vibe-llm/platform-bun/src/bun-sqlite-repo.ts"
 import { Database } from "bun:sqlite"

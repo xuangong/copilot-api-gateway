@@ -26,6 +26,13 @@ export default tseslint.config(
           // 控制面的 upstream 探活 / 列模型端点必须能构造 provider，那是数据面
           // 的 registry。禁止反向只会逼出一层没有第二个调用方的中转接口。
           { target: './packages/gateway/src/data-plane', from: './packages/gateway/src/control-plane' },
+          // repo/ 是两个平面共同的底座，它自己不得知道任何一个平面的存在。
+          { target: './packages/gateway/src/repo', from: './packages/gateway/src/data-plane' },
+          { target: './packages/gateway/src/repo', from: './packages/gateway/src/control-plane' },
+          // shared/ 现在只剩 7 项，全部是双平面或 app 级公用物。它同样不得
+          // 反向依赖任一平面 —— 这条规则是上一轮 shared/ 膨胀成豁免区的解药。
+          { target: './packages/gateway/src/shared', from: './packages/gateway/src/data-plane' },
+          { target: './packages/gateway/src/shared', from: './packages/gateway/src/control-plane' },
           // packages 单向依赖：protocols-llm ← translate ← gateway
           { target: './packages/protocols-llm/src', from: './packages/translate/src' },
           { target: './packages/protocols-llm/src', from: './packages/gateway/src' },
@@ -40,6 +47,24 @@ export default tseslint.config(
       'no-useless-assignment': 'warn',
       'preserve-caught-error': 'warn',
       'require-yield': 'warn',
+    },
+  },
+  {
+    // 库不得反向依赖宿主。packages/ 是可移植的库，apps/ 是把它绑到某个运行时
+    // 上的宿主；源码里出现 platform-bun / platform-cloudflare 就意味着某段逻辑
+    // 只能在一个运行时上跑。今天零违例，这条规则是防回归的哨兵。
+    //
+    // 深导入同理：包与包之间只走包名入口。今天 packages/*/src 之间零深导入,
+    // 规则把这个状态钉住。apps/ 与 tests/ 不受约束 —— 前者是最终装配点，
+    // 后者需要真实适配器（见 tests/_setup-platform.ts）而非 mock。
+    files: ['packages/*/src/**/*.ts', 'packages/*/src/**/*.tsx'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          { group: ['@vibe-llm/platform-*'], message: 'packages/ 是运行时无关的库层，不得依赖 apps/ 里的宿主适配器。' },
+          { group: ['@vibe-llm/*/src/*', '@vibe-core/*/src/*'], message: '跨包只允许从包名入口导入，不得深入他人 src/。' },
+        ],
+      }],
     },
   },
 )

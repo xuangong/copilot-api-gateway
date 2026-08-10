@@ -11,11 +11,11 @@ import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import type { Context } from 'hono'
 import type { Env } from '../../app.ts'
-import { getRepo } from '../../shared/repo/index.ts'
+import { getRepo } from '../../repo/index.ts'
 import { getDumpBroker, getDumpStore } from '../../shared/dump/registry.ts'
 import { dumpRecordToWire } from '../../shared/dump/wire.ts'
 import type { DumpRecordId } from '../../shared/dump/types.ts'
-import type { ApiKeyId } from '../../shared/repo/branded-ids.ts'
+import type { ApiKeyId } from '../../repo/branded-ids.ts'
 
 const LIST_LIMIT_DEFAULT = 100
 const LIST_LIMIT_MAX = 200

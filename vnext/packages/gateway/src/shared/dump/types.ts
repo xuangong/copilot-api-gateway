@@ -18,9 +18,9 @@
 
 import type { ProtocolFrame } from "@vibe-core/result"
 import type { UpstreamKind } from "@vibe-llm/protocols/common"
-import type { DumpRecordId, UpstreamId } from "../repo/branded-ids.ts"
+import type { DumpRecordId, UpstreamId } from "../../repo/branded-ids.ts"
 
-export type { DumpRecordId } from "../repo/branded-ids.ts"
+export type { DumpRecordId } from "../../repo/branded-ids.ts"
 
 export interface DumpUpstreamRef {
   id: UpstreamId

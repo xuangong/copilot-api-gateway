@@ -26,10 +26,10 @@ import {
   rotateApiKey,
   deleteApiKey,
   type ApiKey,
-} from '../../shared/lib/api-keys.ts'
-import { getRepo } from '../../shared/repo/index.ts'
-import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
-import { zValidator } from '../../shared/middleware/zod-validator.ts'
+} from '../lib/api-keys.ts'
+import { getRepo } from '../../repo/index.ts'
+import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
+import { zValidator } from '../middleware/zod-validator.ts'
 import { loadOwned } from '../shared/ownership.ts'
 
 export interface AuthCtx {

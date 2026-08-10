@@ -1,7 +1,7 @@
 import { test, expect, beforeEach } from 'bun:test'
-import { initRepo } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/repo/index.ts'
 import { __resetPlatformForTests } from '@vibe-core/platform'
-import type { ApiKey, Repo } from '../src/shared/repo/types.ts'
+import type { ApiKey, Repo } from '../src/repo/types.ts'
 import {
   createApiKey,
   listApiKeys,
@@ -12,7 +12,7 @@ import {
   deleteApiKey,
   validateApiKey,
   touchApiKeyLastUsed,
-} from '../src/shared/lib/api-keys.ts'
+} from '../src/control-plane/lib/api-keys.ts'
 
 function inMemoryApiKeyRepo() {
   const store = new Map<string, ApiKey>()

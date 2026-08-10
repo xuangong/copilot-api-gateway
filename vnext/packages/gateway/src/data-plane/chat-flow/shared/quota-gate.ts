@@ -15,8 +15,8 @@
  * already deviate from spec for parity reasons in the legacy chain, and we
  * preserve that here.
  */
-import { checkQuota } from '../../../shared/observability/quota.ts'
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import { checkQuota } from '../../../data-plane/observability/quota.ts'
+import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 /**
  * Run the daily quota gate for the given apiKeyId. Returns:

@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
-import { recordTokenUsage, tokenUsageFromImagesBody } from '../../src/shared/token-usage.ts'
-import type { Repo, UsageRecord } from '../../src/shared/repo/types.ts'
+import { recordTokenUsage, tokenUsageFromImagesBody } from '../../src/data-plane/shared/token-usage.ts'
+import type { Repo, UsageRecord } from '../../src/repo/types.ts'
 
 test('tokenUsageFromImagesBody returns null for non-usage bodies', () => {
   expect(tokenUsageFromImagesBody(null)).toBeNull()

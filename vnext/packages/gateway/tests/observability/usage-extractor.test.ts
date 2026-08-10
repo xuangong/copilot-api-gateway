@@ -5,7 +5,7 @@ import {
   pickUsageModelId,
   tokenUsageFromImagesResponse,
   type UsageInfo,
-} from '../../src/shared/observability/usage-extractor.ts'
+} from '../../src/data-plane/observability/usage-extractor.ts'
 
 test('extractFromJson: Anthropic Messages with cache fields', () => {
   const out = extractFromJson({

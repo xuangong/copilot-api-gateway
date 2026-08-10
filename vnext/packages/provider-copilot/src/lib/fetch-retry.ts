@@ -1,5 +1,5 @@
 /**
- * fetchWithRetry — verbatim copy from apps/gateway/src/shared/lib/fetch-retry.ts.
+ * fetchWithRetry — verbatim copy from packages/gateway/src/control-plane/lib/fetch-retry.ts.
  *
  * Drops the gateway's `fetchJSON` helper (not used by the Copilot data plane).
  * Behavior, retry curve, and timeout semantics unchanged.

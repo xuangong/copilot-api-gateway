@@ -16,16 +16,16 @@
  * pin strip) and the binding resolution; this module only wraps the call site.
  */
 import type { ModelPricing } from '@vibe-llm/protocols/common'
-import { checkQuota } from '../../../shared/observability/quota.ts'
+import { checkQuota } from '../../../data-plane/observability/quota.ts'
 import {
   recordLatency,
   startTimer,
-} from '../../../shared/observability/latency-tracker.ts'
-import { detectClient } from '../../../shared/observability/client-detect.ts'
-import { extractFromJson, pickUsageModelId } from '../../../shared/observability/usage-extractor.ts'
-import { getRepo } from '../../../shared/repo/index.ts'
-import type { TokenUsage, UsageRecord } from '../../../shared/repo/types.ts'
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+} from '../../../data-plane/observability/latency-tracker.ts'
+import { detectClient } from '../../../data-plane/observability/client-detect.ts'
+import { extractFromJson, pickUsageModelId } from '../../../data-plane/observability/usage-extractor.ts'
+import { getRepo } from '../../../repo/index.ts'
+import type { TokenUsage, UsageRecord } from '../../../repo/types.ts'
+import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
 const currentHour = (): string => new Date().toISOString().slice(0, 13)
@@ -38,7 +38,7 @@ const hasAnyTokens = (usage: TokenUsage): boolean => {
 }
 
 /**
- * Inlined from the deleted `shared/observability/usage-tracker.ts` (Spec 3
+ * Inlined from the deleted `observability/usage-tracker.ts` (Spec 3
  * Part 4). Embeddings is the last consumer of the legacy non-streaming usage
  * writer — Spec 3 migrated chat-flow off this helper into
  * `chat-flow/shared/respond-telemetry.ts`. We keep the same wire shape here

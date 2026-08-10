@@ -20,9 +20,9 @@
  *     touch would just add a redundant write.
  */
 import type { ModelPricing } from '@vibe-llm/protocols/common'
-import { getRepo } from './repo/index.ts'
-import type { Repo, TokenUsage, UsageRecord } from './repo/types.ts'
-import type { ApiKeyId } from './repo/branded-ids.ts'
+import { getRepo } from '../../repo/index.ts'
+import type { Repo, TokenUsage, UsageRecord } from '../../repo/types.ts'
+import type { ApiKeyId } from '../../repo/branded-ids.ts'
 
 const TOKEN_USAGE_KEYS = [
   'input',

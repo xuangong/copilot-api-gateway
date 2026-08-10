@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { Context } from 'hono'
 import { InMemoryResponsesSnapshotStore } from '@vibe-llm/responses-store'
-import { initResponsesStore } from '../../../../src/shared/runtime/responses-store.ts'
+import { initResponsesStore } from '../../../../src/data-plane/runtime/responses-store.ts'
 import { __resetPlatformForTests } from '@vibe-core/platform'
 import {
   attachStreamSidecar,

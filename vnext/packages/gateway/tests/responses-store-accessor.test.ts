@@ -2,7 +2,7 @@ import { test, expect, beforeEach } from "bun:test"
 import {
   initResponsesStore,
   getResponsesStore,
-} from "../src/shared/runtime/responses-store.ts"
+} from "../src/data-plane/runtime/responses-store.ts"
 import { __resetPlatformForTests } from "@vibe-core/platform"
 import { InMemoryResponsesSnapshotStore } from "@vibe-llm/responses-store"
 

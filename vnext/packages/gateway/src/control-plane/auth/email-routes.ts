@@ -12,11 +12,11 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { Env } from '../../app.ts'
-import { zValidator } from '../../shared/middleware/zod-validator.ts'
-import { getRepo } from '../../shared/repo/index.ts'
-import type { SessionToken, UserId } from '../../shared/repo/branded-ids.ts'
-import { sendVerificationCode } from '../../shared/lib/email.ts'
-import { hashPassword, verifyPassword } from '../../shared/lib/password.ts'
+import { zValidator } from '../middleware/zod-validator.ts'
+import { getRepo } from '../../repo/index.ts'
+import type { SessionToken, UserId } from '../../repo/branded-ids.ts'
+import { sendVerificationCode } from '../lib/email.ts'
+import { hashPassword, verifyPassword } from '../lib/password.ts'
 import {
   SESSION_TTL_DAYS,
   errorPage,

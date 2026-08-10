@@ -548,7 +548,7 @@ Bun / D1 两个实现都必须遵循这个契约,repo 单元测试用同一份 s
 
 ### 8.2 Dev Auth(本地绕过)
 
-`packages/gateway/src/shared/dev-auth.ts` 检查:
+`packages/gateway/src/control-plane/auth/dev-auth.ts` 检查:
 
 - `VNEXT_DEV_GITHUB_TOKEN` — 直接注入 github oauth token
 - `VNEXT_DEV_COPILOT_TOKEN` — 直接注入 copilot access token

@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test'
-import { createExternalImageFetcher } from '../../src/shared/external-image-loader.ts'
+import { createExternalImageFetcher } from '../../src/data-plane/shared/external-image-loader.ts'
 
 test('follows relative redirects and memoizes a single request chain', async () => {
   const requested: string[] = []

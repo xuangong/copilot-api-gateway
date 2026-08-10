@@ -30,11 +30,11 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import type { Env } from '../../app.ts'
 import type { UpstreamKind, EndpointKey } from '@vibe-llm/protocols/common'
-import { zValidator } from '../../shared/middleware/zod-validator.ts'
+import { zValidator } from '../middleware/zod-validator.ts'
 import { loadOwned } from '../shared/ownership.ts'
-import { getRepo } from '../../shared/repo/index.ts'
-import type { UpstreamRecord } from '../../shared/repo/types.ts'
-import type { GitHubAccountId, UpstreamId, UserId } from '../../shared/repo/branded-ids.ts'
+import { getRepo } from '../../repo/index.ts'
+import type { UpstreamRecord } from '../../repo/types.ts'
+import type { GitHubAccountId, UpstreamId, UserId } from '../../repo/branded-ids.ts'
 import {
   getFlagCatalog,
   defaultsForUpstream,

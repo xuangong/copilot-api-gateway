@@ -23,13 +23,13 @@ import type {
   PerformanceTelemetryContext,
   TelemetryModelIdentity,
 } from '@vibe-llm/protocols/common'
-import { detectClient } from '../../../shared/observability/client-detect.ts'
+import { detectClient } from '../../../data-plane/observability/client-detect.ts'
 import {
   applyStreamEvent,
   extractFromJson,
   type UsageInfo,
-} from '../../../shared/observability/usage-extractor.ts'
-import { getRepo } from '../../../shared/repo/index.ts'
+} from '../../../data-plane/observability/usage-extractor.ts'
+import { getRepo } from '../../../repo/index.ts'
 import type {
   PerformanceRecordInput,
   PerformanceSourceApi,
@@ -37,9 +37,9 @@ import type {
   Repo,
   TokenUsage,
   UsageRecord,
-} from '../../../shared/repo/types.ts'
+} from '../../../repo/types.ts'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 /**
  * Map the inbound source-api to the upstream target-api the request resolves

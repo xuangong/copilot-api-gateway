@@ -15,7 +15,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { Env } from '../../app.ts'
-import { zValidator } from '../../shared/middleware/zod-validator.ts'
+import { zValidator } from '../middleware/zod-validator.ts'
 import {
   addGithubAccount,
   listGithubAccounts,
@@ -23,7 +23,7 @@ import {
   removeGithubAccount,
   setActiveGithubAccount,
   type GitHubUser,
-} from '../../shared/lib/github.ts'
+} from '../lib/github.ts'
 import { GITHUB_CLIENT_ID } from '../../shared/config/constants.ts'
 import {
   githubApiOrigin,
@@ -33,7 +33,7 @@ import {
 import { exchangeGithubToken } from '../../shared/copilot-token-cache.ts'
 import { detectAccountType, GITHUB_SCOPES } from './utils.ts'
 import type { AuthCtx } from './routes.ts'
-import type { GitHubAccountId, UserId } from '../../shared/repo/branded-ids.ts'
+import type { GitHubAccountId, UserId } from '../../repo/branded-ids.ts'
 
 type Vars = { auth: AuthCtx }
 

@@ -32,14 +32,14 @@
  *     original size via an identity calculator `d => d`.
  */
 import type { ResponsesTool, ResponsesInputItem } from '../../../../orchestrator/server-tools/types.ts'
-import type { ApiKeyId } from '../../../../../shared/repo/branded-ids.ts'
+import type { ApiKeyId } from '../../../../../repo/branded-ids.ts'
 import type { ResponsesInputImage } from '@vibe-llm/protocols/responses'
 import { getImageProcessor, dimensionsFromBytes } from '@vibe-core/platform'
 import { createRandomResponsesItemId } from '@vibe-llm/protocols/responses'
 import {
   createExternalImageFetcher,
   type ExternalImageFetchResult,
-} from '../../../../../shared/external-image-loader.ts'
+} from '../../../../../data-plane/shared/external-image-loader.ts'
 
 // vNext protocols do not narrow the function-tool shape; alias a loose
 // structural type over ResponsesTool (same pattern as web-search.ts).
@@ -936,10 +936,10 @@ import {
   type ProviderResponse,
 } from '@vibe-llm/provider-llm'
 import { waitUntil } from '@vibe-core/platform'
-import { sleep } from '../../../../../shared/sleep.ts'
-import { appendFailedUpstreams } from '../../../../../shared/failed-upstreams.ts'
-import { recordTokenUsage, tokenUsageFromImagesBody } from '../../../../../shared/token-usage.ts'
-import { stampUpstreamCallStart, type AttemptState } from '../../../../../shared/gateway-ctx.ts'
+import { sleep } from '../../../../../data-plane/shared/sleep.ts'
+import { appendFailedUpstreams } from '../../../../../data-plane/shared/failed-upstreams.ts'
+import { recordTokenUsage, tokenUsageFromImagesBody } from '../../../../../data-plane/shared/token-usage.ts'
+import { stampUpstreamCallStart, type AttemptState } from '../../../../../data-plane/shared/gateway-ctx.ts'
 import { enumerateBindingCandidates, type BindingCandidate } from '../../../../routing/candidates.ts'
 
 // Standalone image backend error, normalized across HTTP transport /
@@ -1297,7 +1297,7 @@ import type {
 } from '@vibe-llm/protocols/responses'
 import { parseSSEStream } from '@vibe-core/result/parse'
 import { getRuntimeLocation } from '@vibe-core/platform'
-import { recordImagePerformance } from '../../../../../shared/gateway-ctx.ts'
+import { recordImagePerformance } from '../../../../../data-plane/shared/gateway-ctx.ts'
 
 // Terminal image_generation_call item + its close event. `id` is left off so
 // the orchestrator can mint one (matching the deferred-slot lifecycle contract

@@ -7,7 +7,7 @@
  * sees it. `savePostTurnSnapshot` is the post-turn writer.
  */
 import type { ResponsesSnapshotStore } from '@vibe-llm/responses-store'
-import type { ApiKeyId, ResponsesItemId } from '../../shared/repo/branded-ids.ts'
+import type { ApiKeyId, ResponsesItemId } from '../../repo/branded-ids.ts'
 
 const DEFAULT_TTL_MS = 24 * 3600_000
 

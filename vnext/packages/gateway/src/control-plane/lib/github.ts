@@ -5,13 +5,13 @@
  * so device-flow-added accounts appear in the unified upstream list immediately
  * without a server restart.
  */
-import { getRepo } from '../repo/index.ts'
+import { getRepo } from '../../repo/index.ts'
 import type {
   GitHubAccount,
   GitHubUser,
   UpstreamRecord,
-} from '../repo/types.ts'
-import type { GitHubAccountId, UpstreamId, UserId } from '../repo/branded-ids.ts'
+} from '../../repo/types.ts'
+import type { GitHubAccountId, UpstreamId, UserId } from '../../repo/branded-ids.ts'
 
 export type { GitHubAccount, GitHubUser }
 

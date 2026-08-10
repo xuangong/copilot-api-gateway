@@ -20,7 +20,7 @@ import type { Context, ValidationTargets } from 'hono'
 import type { z, ZodType } from 'zod'
 
 import type { Env } from '../../app.ts'
-import type { AuthCtx } from '../../control-plane/auth/routes.ts'
+import type { AuthCtx } from '../auth/routes.ts'
 
 type Vars = { auth: AuthCtx }
 

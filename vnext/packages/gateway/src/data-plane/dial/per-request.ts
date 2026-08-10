@@ -13,7 +13,7 @@
  * `preFetchedUpstreams` lets a caller reuse a list it already loaded on this
  * request instead of paying a second `upstreams.list()` round-trip.
  */
-import { getRepo } from '../../shared/repo/index.ts'
+import { getRepo } from '../../repo/index.ts'
 import { createFetcher, loadProxyCatalog } from '@vibe-core/dial'
 import { getSocketDial } from '@vibe-core/platform'
 import { isDirectFallbackId } from '@vibe-core/proxy-repo'

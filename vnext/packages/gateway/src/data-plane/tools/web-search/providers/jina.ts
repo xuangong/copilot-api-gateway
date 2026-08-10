@@ -1,10 +1,10 @@
 // Ported 1:1 from copilot-gateway data-plane/tools/web-search/providers/jina.ts,
 // with isJsonObject imported from shared.ts (vNext protocols don't export it)
-// and sleep pulled from vNext's newly-added shared/sleep.ts.
+// and sleep pulled from vNext's newly-added data-plane/shared/sleep.ts.
 
 import { extractWebSearchProviderErrorMessage, isJsonObject, toWebSearchTextBlocks, validateWebSearchQuery } from './shared.ts'
 import { truncateUtf8 } from './truncate.ts'
-import { sleep } from '../../../../shared/sleep.ts'
+import { sleep } from '../../../../data-plane/shared/sleep.ts'
 import { normalizeDomainList } from '../domain-normalize.ts'
 import {
   DEFAULT_WEB_SEARCH_RESULT_COUNT,

@@ -12,7 +12,7 @@
  * stable while protocol typing evolves.
  */
 
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 export type ResponsesTool = { type: string; [key: string]: unknown }
 export type ResponsesInputItem = { type: string; [key: string]: unknown }

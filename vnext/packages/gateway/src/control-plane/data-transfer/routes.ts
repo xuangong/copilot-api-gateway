@@ -2,7 +2,7 @@
  * data-transfer control-plane router — Week 5b port of
  * src/routes/dashboard.ts (GET /export, POST /import).
  *
- * Admin only. Wraps shared/lib/import-export.ts:
+ * Admin only. Wraps control-plane/lib/import-export.ts:
  *  - GET /export?redact=1 — serialize apiKeys + githubAccounts + upstreams,
  *    optionally redact secrets to REDACTED sentinel.
  *  - POST /import — body { mode: 'merge'|'replace', bundle }. parseConfigBundle
@@ -12,13 +12,13 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { Env } from '../../app.ts'
-import { zValidator } from '../../shared/middleware/zod-validator.ts'
-import { getRepo } from '../../shared/repo/index.ts'
+import { zValidator } from '../middleware/zod-validator.ts'
+import { getRepo } from '../../repo/index.ts'
 import {
   exportConfig,
   parseConfigBundle,
   unredactWithLive,
-} from '../../shared/lib/import-export.ts'
+} from '../lib/import-export.ts'
 
 export interface DataTransferAuthCtx {
   isAdmin?: boolean

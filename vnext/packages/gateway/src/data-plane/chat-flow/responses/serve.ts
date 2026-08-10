@@ -45,13 +45,13 @@ import { parseResponsesPayload } from '../../parsers.ts'
 import { kitDeps } from '../shared/kit-deps.ts'
 import type { DispatchObsCtx } from '../shared/obs-ctx.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 import {
   expandPreviousResponseId,
   PreviousResponseNotFoundError,
 } from '../../dispatch/responses-store-bridge.ts'
 import { renderPreviousResponseNotFound } from '../../errors/repackage.ts'
-import { getResponsesStore } from '../../../shared/runtime/responses-store.ts'
+import { getResponsesStore } from '../../../data-plane/runtime/responses-store.ts'
 import {
   responsesAttempt,
   type ResponsesAttemptAuth,

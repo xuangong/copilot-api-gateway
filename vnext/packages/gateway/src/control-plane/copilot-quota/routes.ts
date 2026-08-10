@@ -7,9 +7,9 @@
  */
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
-import { getRepo } from '../../shared/repo/index.ts'
+import { getRepo } from '../../repo/index.ts'
 import { createGithubHeaders } from '../../shared/config/constants.ts'
-import type { UserId } from '../../shared/repo/branded-ids.ts'
+import type { UserId } from '../../repo/branded-ids.ts'
 
 export interface CopilotQuotaAuthCtx {
   isAdmin?: boolean

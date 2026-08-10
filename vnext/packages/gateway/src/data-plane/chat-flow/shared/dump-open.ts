@@ -11,7 +11,7 @@
 // already resolved and validated the credential and stashed the id on
 // `auth.apiKeyId`. Repo miss → treated as no-retention (best-effort).
 import type { Context } from 'hono'
-import { getRepo } from '../../../shared/repo/index.ts'
+import { getRepo } from '../../../repo/index.ts'
 import { openDumpAccumulator, type DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 import { readRequestBody, type RequestBody } from '../../../shared/dump/request-body.ts'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'

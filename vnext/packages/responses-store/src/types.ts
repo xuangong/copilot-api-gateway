@@ -34,7 +34,7 @@ export interface ResponsesSnapshotStore {
 }
 
 /**
- * Minimal SQL adapter; mirrors apps/gateway/src/shared/repo/shared/executor.ts.
+ * Minimal SQL adapter; mirrors packages/gateway/src/repo/shared/executor.ts.
  * Duplicated here so the package has no dependency on @vibe-llm/gateway.
  */
 export interface SqlExecutor {

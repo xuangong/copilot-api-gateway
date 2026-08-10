@@ -10,7 +10,7 @@
  *   - `userAgent` / `requestId` are undefined when the inbound headers are
  *     absent. Persistence helpers normalise them to '<unknown>' / a fresh UUID.
  */
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 export interface DispatchObsCtx {
   apiKeyId: ApiKeyId | undefined

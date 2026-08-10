@@ -26,7 +26,7 @@ import { runImagesAttempt } from '../observability/attempts/images-attempt.ts'
 import { openRequestDump, parseJsonBody } from '../chat-flow/shared/dump-open.ts'
 import { readRequestBody } from '../../shared/dump/request-body.ts'
 import { openDumpAccumulator, type DumpAccumulator } from '../../shared/dump/accumulator.ts'
-import { getRepo } from '../../shared/repo/index.ts'
+import { getRepo } from '../../repo/index.ts'
 
 type Vars = { auth: DataPlaneAuthCtx }
 

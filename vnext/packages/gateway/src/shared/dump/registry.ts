@@ -1,6 +1,6 @@
 import { DUMP_DISABLED_REASON, type DumpBroker } from "./broker.ts"
 import type { DumpStore } from "./store-contract.ts"
-import type { ApiKeyId } from "../repo/branded-ids.ts"
+import type { ApiKeyId } from "../../repo/branded-ids.ts"
 
 let _store: DumpStore | null = null
 let _broker: DumpBroker | null = null

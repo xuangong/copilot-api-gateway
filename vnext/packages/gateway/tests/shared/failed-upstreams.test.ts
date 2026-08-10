@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test'
-import { appendFailedUpstreams } from '../../src/shared/failed-upstreams.ts'
+import { appendFailedUpstreams } from '../../src/data-plane/shared/failed-upstreams.ts'
 
 test('returns the message unchanged when no upstream failed', () => {
   expect(appendFailedUpstreams('Model X is not available.', [])).toBe('Model X is not available.')

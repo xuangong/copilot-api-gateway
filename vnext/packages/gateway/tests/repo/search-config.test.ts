@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
-import type { SearchConfig } from '../../src/shared/repo/types.ts'
+import type { SearchConfig } from '../../src/repo/types.ts'
 
 function freshRepo(): SqliteRepo {
   return new SqliteRepo(new Database(':memory:'))

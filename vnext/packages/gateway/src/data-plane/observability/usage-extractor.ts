@@ -16,7 +16,7 @@
  */
 import { copilotPublicModelId, normalizeAnthropicVersion } from '@vibe-llm/provider-copilot'
 import { BILLING_DIMENSIONS, type BillingDimension } from '@vibe-llm/protocols/common'
-import type { TokenUsage } from '../repo/types.ts'
+import type { TokenUsage } from '../../repo/types.ts'
 
 export interface UsageInfo {
   model?: string

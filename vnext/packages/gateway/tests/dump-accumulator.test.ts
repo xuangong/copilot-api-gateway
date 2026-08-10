@@ -24,22 +24,22 @@ import { BunSqliteDatabase } from "@vibe-llm/platform-bun/src/bun-sqlite-databas
 import { createInMemoryImageProcessor } from "@vibe-llm/platform-bun/src/memory-image-processor.ts"
 import type { FileProvider, FileGetResult } from "@vibe-core/platform"
 
-import { initRepo } from "../src/shared/repo/index.ts"
-import { initCache } from "../src/shared/cache/index.ts"
-import { initResponsesStore } from "../src/shared/runtime/responses-store.ts"
+import { initRepo } from "../src/repo/index.ts"
+import { initCache } from "../src/data-plane/cache/index.ts"
+import { initResponsesStore } from "../src/data-plane/runtime/responses-store.ts"
 import {
   initDumpBroker,
   initDumpStore,
   resetDumpRegistryForTests,
 } from "../src/shared/dump/registry.ts"
-import { FileDumpStore } from "../src/shared/repo/dump-store.ts"
+import { FileDumpStore } from "../src/repo/dump-store.ts"
 import { EventTargetChannelBroker } from "../src/shared/runtime/event-target-channel-broker.ts"
 import { dumpCodec } from "../src/shared/dump/codec.ts"
 import {
   DumpAccumulator,
   openDumpAccumulator,
 } from "../src/shared/dump/accumulator.ts"
-import type { ApiKey } from "../src/shared/repo/types.ts"
+import type { ApiKey } from "../src/repo/types.ts"
 import type { ProtocolFrame } from "@vibe-core/result"
 
 // In-memory FileProvider fake.

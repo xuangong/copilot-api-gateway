@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
-import type { ApiKey } from '../../src/shared/repo/types.ts'
+import type { ApiKey } from '../../src/repo/types.ts'
 
 function freshRepo(): SqliteRepo {
   const db = new Database(':memory:')

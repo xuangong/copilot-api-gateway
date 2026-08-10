@@ -4,7 +4,7 @@
  * Module-level state so the gateway entry can `initResend(env.RESEND_API_KEY)`
  * once at boot. Tests inject via setEmailSenderForTest to avoid live HTTP.
  */
-import { RESEND_FROM_EMAIL } from '../config/constants.ts'
+import { RESEND_FROM_EMAIL } from '../../shared/config/constants.ts'
 
 let resendApiKey: string | null = null
 

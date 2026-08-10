@@ -2,8 +2,8 @@
 import type { Context } from 'hono'
 import { parseResponsesSSEStream } from '@vibe-llm/provider-copilot'
 import { savePostTurnSnapshot } from '../../dispatch/responses-store-bridge.ts'
-import { getResponsesStore } from '../../../shared/runtime/responses-store.ts'
-import type { ApiKeyId, ResponsesItemId } from '../../../shared/repo/branded-ids.ts'
+import { getResponsesStore } from '../../../data-plane/runtime/responses-store.ts'
+import type { ApiKeyId, ResponsesItemId } from '../../../repo/branded-ids.ts'
 
 /**
  * Sidecar snapshot writers for /v1/responses.

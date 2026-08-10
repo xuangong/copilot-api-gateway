@@ -2,9 +2,9 @@ import { Hono } from 'hono'
 import { dataPlane } from './data-plane/routes.ts'
 import { controlPlane } from './control-plane/routes.ts'
 import { staticPages } from './shared/edge/static-pages.ts'
-import { getRepo } from './shared/repo/index.ts'
-import { devAuthMiddleware } from './shared/dev-auth.ts'
-import { sessionAuthMiddleware } from './shared/session-auth.ts'
+import { getRepo } from './repo/index.ts'
+import { devAuthMiddleware } from './control-plane/auth/dev-auth.ts'
+import { sessionAuthMiddleware } from './control-plane/auth/session-auth.ts'
 
 export interface Env {
   ACCOUNT_TYPE?: string

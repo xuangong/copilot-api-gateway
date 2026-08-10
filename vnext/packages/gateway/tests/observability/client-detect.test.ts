@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test'
-import { detectClient } from '../../src/shared/observability/client-detect.ts'
+import { detectClient } from '../../src/data-plane/observability/client-detect.ts'
 
 test('detectClient: known clients', () => {
   expect(detectClient('claude-cli/1.0 (claude-code)')).toBe('claude-code')

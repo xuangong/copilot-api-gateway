@@ -12,7 +12,7 @@
  * without rebasing app.ts each time.
  *
  * Strict boundary (enforced by ESLint no-restricted-paths in plan): no
- * import from data-plane/. Control-plane only touches shared/repo + shared/lib.
+ * import from data-plane/. Control-plane only touches repo/ + control-plane/lib.
  */
 import { Hono } from 'hono'
 import type { Env } from '../app.ts'

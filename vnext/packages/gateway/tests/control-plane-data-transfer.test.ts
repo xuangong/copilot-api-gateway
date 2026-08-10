@@ -7,19 +7,19 @@
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/repo/index.ts'
 import { __resetPlatformForTests } from '@vibe-core/platform'
 import type {
   ApiKey,
   GitHubAccount,
   Repo,
   UpstreamRecord,
-} from '../src/shared/repo/types.ts'
+} from '../src/repo/types.ts'
 import {
   dataTransferRouter,
   type DataTransferAuthCtx,
 } from '../src/control-plane/data-transfer/routes.ts'
-import { REDACTED } from '../src/shared/lib/import-export.ts'
+import { REDACTED } from '../src/control-plane/lib/import-export.ts'
 
 function inMemoryRepo() {
   const apiKeys = new Map<string, ApiKey>()

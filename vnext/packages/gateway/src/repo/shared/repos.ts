@@ -40,7 +40,7 @@ import type {
   WebSearchUsageRepo,
 } from "../types"
 import type { ApiKeyId, DeviceCodeToken, GitHubAccountId, InviteCodeId, ResponsesItemId, SessionToken, UpstreamId, UserId } from "../branded-ids.ts"
-import { latencyBucketForMs } from "../../performance-histogram.ts"
+import { latencyBucketForMs } from "../../repo/performance-histogram.ts"
 import type { SqlExecutor } from "./executor"
 import { BILLING_DIMENSIONS, unitPriceForDimension } from "@vibe-llm/protocols/common"
 import type { BillingDimension, ModelPricing } from "@vibe-llm/protocols/common"

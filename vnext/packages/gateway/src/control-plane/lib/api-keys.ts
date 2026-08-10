@@ -6,9 +6,9 @@
  * creation time to match the legacy default — control-plane PATCH flips it
  * off when an admin disables web search for a given key.
  */
-import { getRepo } from '../../shared/repo/index.ts'
-import type { ApiKey } from '../../shared/repo/types.ts'
-import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
+import { getRepo } from '../../repo/index.ts'
+import type { ApiKey } from '../../repo/types.ts'
+import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 
 export type { ApiKey }
 

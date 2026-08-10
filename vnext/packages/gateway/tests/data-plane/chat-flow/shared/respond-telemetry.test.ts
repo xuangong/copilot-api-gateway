@@ -12,7 +12,7 @@ import type {
   TelemetryModelIdentity,
   PerformanceTelemetryContext,
 } from '@vibe-llm/protocols/common'
-import type { Repo } from '../../../../src/shared/repo/types.ts'
+import type { Repo } from '../../../../src/repo/types.ts'
 
 const identity = (modelKey = 'gpt-4'): TelemetryModelIdentity => ({
   model: 'gpt-4',

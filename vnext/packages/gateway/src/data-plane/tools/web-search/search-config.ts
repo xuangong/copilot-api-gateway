@@ -2,7 +2,7 @@
 // with the isJsonObject helper inlined (vNext protocols don't export it).
 
 import type { SearchConfig } from './types.ts'
-import { getRepo } from '../../../shared/repo/index.ts'
+import { getRepo } from '../../../repo/index.ts'
 import { WEB_SEARCH_PROVIDER_NAMES, isWebSearchProviderName } from '../../../shared/web-search-providers.ts'
 
 type JsonObject = Record<string, unknown>

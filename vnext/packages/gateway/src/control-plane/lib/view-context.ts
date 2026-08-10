@@ -11,8 +11,8 @@
  * keys so a shared viewer doesn't transitively see third-party shares.
  */
 import type { Context, MiddlewareHandler } from 'hono'
-import { getRepo } from '../repo/index.ts'
-import type { UserId } from '../repo/branded-ids.ts'
+import { getRepo } from '../../repo/index.ts'
+import type { UserId } from '../../repo/branded-ids.ts'
 
 export interface ViewContext {
   effectiveUserId?: UserId

@@ -20,7 +20,7 @@ import { test, expect } from 'bun:test'
 import {
   applyStreamEvent,
   type UsageInfo,
-} from '../../src/shared/observability/usage-extractor.ts'
+} from '../../src/data-plane/observability/usage-extractor.ts'
 
 test('applyStreamEvent: gemini usageMetadata branch sets input/output/cache_read and is terminal', () => {
   const latest: UsageInfo = { tokens: {} }

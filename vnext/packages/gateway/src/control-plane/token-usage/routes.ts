@@ -15,15 +15,15 @@
  */
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
-import { getRepo } from '../../shared/repo/index.ts'
-import type { ApiKey } from '../../shared/repo/types.ts'
+import { getRepo } from '../../repo/index.ts'
+import type { ApiKey } from '../../repo/types.ts'
 import { aggregateUsageForDisplay, type DisplayUsageRecord } from './aggregate.ts'
 import {
   redactForSharedView,
   getServerSecret,
-} from '../../shared/lib/redact-shared-view.ts'
-import { getOwnedKeyIdsForScope } from '../../shared/lib/view-context.ts'
-import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
+} from '../lib/redact-shared-view.ts'
+import { getOwnedKeyIdsForScope } from '../lib/view-context.ts'
+import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 
 export interface TokenUsageAuthCtx {
   isAdmin?: boolean

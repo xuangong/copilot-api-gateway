@@ -42,7 +42,7 @@ import { jsonrepair } from 'jsonrepair'
 import type { ResponsesInterceptor } from './types'
 import { truncatePreservingCodePoints } from '../../shared/text'
 import type { PrivatePayloadStore } from '../../../orchestrator/server-tools/private-payload-store'
-import type { ApiKeyId } from '../../../../shared/repo/branded-ids.ts'
+import type { ApiKeyId } from '../../../../repo/branded-ids.ts'
 import type {
   ResponsesTool,
   ResponsesInputItem,

@@ -9,20 +9,20 @@
  */
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
-import { getRepo } from '../../shared/repo/index.ts'
+import { getRepo } from '../../repo/index.ts'
 import type {
   ApiKey,
   LatencyRecord,
   PerformanceMetricScope,
   PerformanceSummaryRecord,
-} from '../../shared/repo/types.ts'
+} from '../../repo/types.ts'
 import {
   redactForSharedView,
   getServerSecret,
   sharedKeyRef,
-} from '../../shared/lib/redact-shared-view.ts'
-import { getOwnedKeyIdsForScope } from '../../shared/lib/view-context.ts'
-import type { ApiKeyId, UserId } from '../../shared/repo/branded-ids.ts'
+} from '../lib/redact-shared-view.ts'
+import { getOwnedKeyIdsForScope } from '../lib/view-context.ts'
+import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 
 export interface PerformanceAuthCtx {
   isAdmin?: boolean

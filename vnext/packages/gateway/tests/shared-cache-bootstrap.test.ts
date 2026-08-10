@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test'
 import { MemoryCache, KvCache, D1Cache } from '@vibe-core/cache'
 import { __resetPlatformForTests } from '@vibe-core/platform'
-import { initCache, getCache } from '../src/shared/cache/index.ts'
+import { initCache, getCache } from '../src/data-plane/cache/index.ts'
 import { createCloudflareCache } from '@vibe-llm/platform-cloudflare/src/cache-factory.ts'
 import { createBunCache } from '@vibe-llm/platform-bun/src/cache-factory.ts'
 import { BunSqliteDatabase } from '@vibe-llm/platform-bun/src/bun-sqlite-database.ts'

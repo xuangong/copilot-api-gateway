@@ -5,8 +5,8 @@
  * `recordPerformance`) can write usage rows without touching `RequestContext`.
  */
 import type { RuntimeLocation } from '@vibe-core/platform'
-import type { PerformanceSourceApi } from '../../../shared/repo/types.ts'
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import type { PerformanceSourceApi } from '../../../repo/types.ts'
+import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 export interface TelemetryRequestContext {
   readonly apiKeyId: ApiKeyId

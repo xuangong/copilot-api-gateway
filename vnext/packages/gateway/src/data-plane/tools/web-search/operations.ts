@@ -1,7 +1,7 @@
 // Ported 1:1 from copilot-gateway data-plane/tools/web-search/operations.ts,
 // with import path adaptations for vNext:
 //   - truncatePreservingCodePoints → chat-flow (not chat) sub-tree
-//   - isAbortError → local shared/abort.ts (vNext has no @floway-dev/provider package)
+//   - isAbortError → local data-plane/shared/abort.ts (vNext has no @floway-dev/provider package)
 //   - protocol types → @vibe-llm/protocols/responses
 //
 // Shared parser, local-provider executor, and Responses web-search IR.
@@ -16,8 +16,8 @@ import { searchWebAndRecordUsage } from './search.ts'
 import type { ConfiguredWebSearchProvider, WebSearchProvider, WebSearchProviderName } from './types.ts'
 import { truncatePreservingCodePoints } from '../../chat-flow/shared/text.ts'
 import type { ResponsesWebSearchAction, ResponsesWebSearchResult } from '@vibe-llm/protocols/responses'
-import { isAbortError } from '../../../shared/abort.ts'
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import { isAbortError } from '../../../data-plane/shared/abort.ts'
+import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 // Search-context-size → result-count mapping. Approximates the ~40 results
 // native hosted web_search returns regardless of search_context_size;

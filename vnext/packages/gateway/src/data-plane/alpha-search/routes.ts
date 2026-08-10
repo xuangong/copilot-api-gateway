@@ -19,7 +19,7 @@
 import type { Context } from 'hono'
 import { z } from 'zod'
 import type { Env } from '../../app.ts'
-import type { ApiKeyId } from '../../shared/repo/branded-ids.ts'
+import type { ApiKeyId } from '../../repo/branded-ids.ts'
 import { readAuth } from '../chat-flow/shared/gateway-ctx.ts'
 import { loadSearchConfig } from '../tools/web-search/search-config.ts'
 import { resolveConfiguredWebSearchProvider } from '../tools/web-search/provider.ts'

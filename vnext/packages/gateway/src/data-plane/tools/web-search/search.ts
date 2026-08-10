@@ -2,7 +2,7 @@
 
 import type { WebSearchProvider, WebSearchProviderName, WebSearchProviderRequest, WebSearchProviderResult } from './types.ts'
 import { recordSearchUsage } from './usage.ts'
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 export const searchWebAndRecordUsage = async (opts: {
   provider: WebSearchProvider

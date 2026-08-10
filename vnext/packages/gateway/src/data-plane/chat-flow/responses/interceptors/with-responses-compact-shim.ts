@@ -44,7 +44,7 @@
 // untouched, so the operator can selectively turn the flag off for the
 // codex / copilot / azure / custom upstreams that answer compact themselves.
 import type { ResponsesInterceptor } from './types'
-import { decodeBase64UrlJson, encodeBase64UrlJson } from '../../../../shared/base64url-json.ts'
+import { decodeBase64UrlJson, encodeBase64UrlJson } from '../../../../data-plane/shared/base64url-json.ts'
 import { isJsonObject } from '../../shared/json-helpers'
 import {
   createRandomResponsesItemId,

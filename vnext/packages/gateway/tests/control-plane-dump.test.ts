@@ -1,9 +1,9 @@
 // Control-plane dump routes — list/detail/SSE with in-memory DumpStore + DumpBroker fakes.
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/repo/index.ts'
 import { initDumpStore, initDumpBroker, resetDumpRegistryForTests } from '../src/shared/dump/registry.ts'
-import type { ApiKey, Repo } from '../src/shared/repo/types.ts'
+import type { ApiKey, Repo } from '../src/repo/types.ts'
 import type {
   DumpStore,
   DumpListOptions,

@@ -1,5 +1,5 @@
 import type { DumpMetadata, DumpRecordId, DumpWriteRecord, PreparedDumpRequestBody, StoredDumpRecord } from "./types.ts"
-import type { ApiKeyId } from "../repo/branded-ids.ts"
+import type { ApiKeyId } from "../../repo/branded-ids.ts"
 
 // Per-API-key request dump storage contract: metadata in SQL, bodies in the
 // FileProvider. Request bytes are prepared before the terminal write; reads

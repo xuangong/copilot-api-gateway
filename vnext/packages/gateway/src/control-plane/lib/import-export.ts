@@ -7,7 +7,7 @@
  * live state on import via unredactWithLive().
  */
 import type { UpstreamKind } from '@vibe-llm/protocols/common'
-import type { ApiKey, GitHubAccount, UpstreamRecord } from '../repo/types.ts'
+import type { ApiKey, GitHubAccount, UpstreamRecord } from '../../repo/types.ts'
 
 export const CONFIG_BUNDLE_VERSION = 2 as const
 export const REDACTED = '__REDACTED__'

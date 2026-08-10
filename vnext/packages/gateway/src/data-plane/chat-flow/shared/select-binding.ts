@@ -16,7 +16,7 @@ import {
   type EnumerateOptions,
 } from '../../routing/candidates.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

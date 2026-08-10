@@ -2,14 +2,14 @@
 import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
-import { initRepo } from '../src/shared/repo/index.ts'
-import { initResponsesStore } from '../src/shared/runtime/responses-store.ts'
+import { initRepo } from '../src/repo/index.ts'
+import { initResponsesStore } from '../src/data-plane/runtime/responses-store.ts'
 import {
   __resetPlatformForTests,
   initBackground,
   initRuntimeLocation,
 } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../src/shared/repo/types.ts'
+import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
 import type { Model } from '@vibe-llm/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
 import { InMemoryResponsesSnapshotStore } from '@vibe-llm/responses-store'

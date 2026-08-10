@@ -8,7 +8,7 @@ import { Database } from "bun:sqlite"
 import { BunSqliteRepo as SqliteRepo } from "@vibe-llm/platform-bun/src/bun-sqlite-repo.ts"
 import { BunSqliteDatabase } from "@vibe-llm/platform-bun/src/bun-sqlite-database.ts"
 import type { FileProvider, FileGetResult } from "@vibe-core/platform"
-import { FileDumpStore } from "../src/shared/repo/dump-store.ts"
+import { FileDumpStore } from "../src/repo/dump-store.ts"
 import type { DumpMetadata, DumpWriteRecord, PreparedDumpRequestBody } from "../src/shared/dump/types.ts"
 import type { ProtocolFrame } from "@vibe-core/result"
 

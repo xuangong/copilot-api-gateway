@@ -16,12 +16,12 @@
  *   - No usage tracking.
  *   - apiKeyId undefined → all observability skipped, upstream still fires.
  */
-import { checkQuota } from '../../../shared/observability/quota.ts'
+import { checkQuota } from '../../../data-plane/observability/quota.ts'
 import {
   recordLatency,
   startTimer,
-} from '../../../shared/observability/latency-tracker.ts'
-import type { ApiKeyId } from '../../../shared/repo/branded-ids.ts'
+} from '../../../data-plane/observability/latency-tracker.ts'
+import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 import type { ModelPricing } from '@vibe-llm/protocols/common'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 

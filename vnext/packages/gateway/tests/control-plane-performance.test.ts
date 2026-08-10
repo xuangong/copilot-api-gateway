@@ -6,7 +6,7 @@
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/shared/repo/index.ts'
+import { initRepo } from '../src/repo/index.ts'
 import { __resetPlatformForTests } from '@vibe-core/platform'
 import type {
   ApiKey,
@@ -15,7 +15,7 @@ import type {
   PerformanceBucketRecord,
   PerformanceSummaryRecord,
   Repo,
-} from '../src/shared/repo/types.ts'
+} from '../src/repo/types.ts'
 import {
   performanceRouter,
   type PerformanceAuthCtx,

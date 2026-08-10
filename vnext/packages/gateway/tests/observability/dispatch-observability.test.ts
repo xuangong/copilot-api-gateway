@@ -13,7 +13,7 @@ import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { Hono } from 'hono'
 import { app as innerApp } from '../../src/app.ts'
-import { initRepo } from '../../src/shared/repo/index.ts'
+import { initRepo } from '../../src/repo/index.ts'
 import {
   __resetPlatformForTests,
   initBackground,

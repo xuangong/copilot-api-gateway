@@ -11,9 +11,9 @@
  */
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
-import { getRepo } from '../../shared/repo/index.ts'
-import type { User } from '../../shared/repo/types.ts'
-import type { SessionToken, UserId } from '../../shared/repo/branded-ids.ts'
+import { getRepo } from '../../repo/index.ts'
+import type { User } from '../../repo/types.ts'
+import type { SessionToken, UserId } from '../../repo/branded-ids.ts'
 import { ADMIN_EMAILS } from '../../shared/config/constants.ts'
 import {
   SESSION_TTL_DAYS,

@@ -38,8 +38,8 @@ import type {
   MessagesWebSearchToolResultError,
 } from '@vibe-llm/protocols/messages'
 import { MESSAGES_WEB_SEARCH_ERROR_CODES } from '@vibe-llm/protocols/messages'
-import { decodeBase64UrlJson, encodeBase64UrlJson } from '../../../../shared/base64url-json.ts'
-import type { ApiKeyId } from '../../../../shared/repo/branded-ids.ts'
+import { decodeBase64UrlJson, encodeBase64UrlJson } from '../../../../data-plane/shared/base64url-json.ts'
+import type { ApiKeyId } from '../../../../repo/branded-ids.ts'
 import { resolveConfiguredWebSearchProvider } from '../../../tools/web-search/provider.ts'
 import { loadSearchConfig } from '../../../tools/web-search/search-config.ts'
 import { searchWebAndRecordUsage } from '../../../tools/web-search/search.ts'
