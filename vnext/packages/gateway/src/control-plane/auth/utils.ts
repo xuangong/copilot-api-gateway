@@ -60,13 +60,27 @@ export function generateMagicLinkToken(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+}
+
+export function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch]!)
+}
+
+// `message` reaches here from OAuth callback query params and raw upstream
+// response bodies, so it is attacker-influenced and must be escaped.
 export function errorPage(message: string): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Error</title><style>body{font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f5f5f5}
 .card{background:#fff;border-radius:12px;padding:2rem;max-width:400px;box-shadow:0 2px 8px rgba(0,0,0,.1);text-align:center}
 h2{color:#d32f2f;margin:0 0 1rem}p{color:#666;margin:0 0 1.5rem}
 a{display:inline-block;padding:.5rem 1.5rem;background:#1a73e8;color:#fff;border-radius:6px;text-decoration:none}</style></head>
-<body><div class="card"><h2>Error</h2><p>${message}</p><a href="/">Back to Login</a></div></body></html>`
+<body><div class="card"><h2>Error</h2><p>${escapeHtml(message)}</p><a href="/">Back to Login</a></div></body></html>`
 }
 
 export async function detectAccountType(

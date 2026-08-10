@@ -138,6 +138,19 @@ test('callback oauth error param → 400 html', async () => {
   expect(res.status).toBe(400)
 })
 
+// The `error` query param is fully attacker-controlled and lands in the error
+// page body, so it must arrive escaped rather than as live markup.
+test('callback reflects the oauth error param escaped, not as markup', async () => {
+  const payload = '<script>alert(1)</script>'
+  const res = await buildApp().request(
+    `/auth/google/callback?error=${encodeURIComponent(payload)}`,
+  )
+  expect(res.status).toBe(400)
+  const html = await res.text()
+  expect(html).not.toContain(payload)
+  expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
+})
+
 test('callback missing code/state → 400', async () => {
   const res = await buildApp().request('/auth/google/callback')
   expect(res.status).toBe(400)
