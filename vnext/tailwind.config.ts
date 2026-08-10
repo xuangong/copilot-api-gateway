@@ -1,5 +1,7 @@
 import type { Config } from "tailwindcss"
 
+// build-dashboard.ts overrides this with an absolute --content glob; tailwind
+// loads this file through jiti as CJS, so it cannot compute one itself.
 export default {
   content: ["./apps/dashboard/src/**/*.{ts,tsx}"],
   theme: {

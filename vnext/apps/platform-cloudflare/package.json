@@ -7,9 +7,10 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "wrangler d1 migrations apply copilot-db --remote",
     "db:migrate:local": "wrangler d1 migrations apply copilot-db --local",
-    "deploy": "wrangler deploy",
-    "deploy:full": "bun run db:migrate && wrangler deploy",
-    "deploy:dry": "wrangler deploy --dry-run --outdir dist"
+    "build:ui": "bun ../../scripts/build-dashboard.ts",
+    "deploy": "bun run build:ui && wrangler deploy",
+    "deploy:full": "bun run build:ui && bun run db:migrate && wrangler deploy",
+    "deploy:dry": "bun run build:ui && wrangler deploy --dry-run --outdir dist"
   },
   "dependencies": {
     "@vibe-llm/gateway": "workspace:*",

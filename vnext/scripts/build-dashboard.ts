@@ -21,7 +21,15 @@ await Bun.build({
 
 await Bun.write(`${out}/dashboard.js.txt`, Bun.file(`${out}/dashboard.js`))
 
-await $`bunx tailwindcss -c ${root}/tailwind.config.ts -i ${src}/styles.css -o ${out}/dashboard.css --minify`.quiet()
-await Bun.write(`${out}/dashboard.css.txt`, Bun.file(`${out}/dashboard.css`))
+// The content glob is passed absolute: tailwind resolves a relative one against
+// the caller's cwd, and a glob that matches nothing yields a preflight-only
+// stylesheet with every utility purged — a silent, ship-shaped failure. It is
+// interpolated as a single value so Bun's shell hands it to tailwind intact
+// rather than expanding it itself.
+const contentGlob = `${src}/**/*.{ts,tsx}`
+await $`bunx tailwindcss -c ${root}/tailwind.config.ts --content ${contentGlob} -i ${src}/styles.css -o ${out}/dashboard.css --minify`.quiet()
+const css = await Bun.file(`${out}/dashboard.css`).text()
+if (css.length < 30_000) throw new Error(`dashboard.css is ${css.length} bytes — the content scan matched nothing`)
+await Bun.write(`${out}/dashboard.css.txt`, css)
 
 console.log("[build-dashboard] wrote", `${out}/dashboard.js`, "and dashboard.css")

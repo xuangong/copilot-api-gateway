@@ -1,4 +1,5 @@
-# Dashboard placeholders so that fresh clones can run `bun test` without first
-# building apps/dashboard. Real build artifacts overwrite these locally.
-!apps/gateway/src/shared/edge/ui-pages/dashboard-app/dist/
-!apps/gateway/src/shared/edge/ui-pages/dashboard-app/dist/*.txt
+# The dashboard bundle is a build artifact, never a checked-in file: page.ts
+# imports ./dashboard-app/dist/dashboard.{js,css}.txt as text, and a stale copy
+# in git silently ships an old UI. Every consumer builds it — the Bun image via
+# `RUN bun run build:ui`, and the CFW deploy and test scripts via the same.
+packages/gateway/src/shared/edge/ui-pages/dashboard-app/dist/
