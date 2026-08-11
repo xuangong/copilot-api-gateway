@@ -22,6 +22,7 @@ import {
   type ProviderResponse,
 } from '@vibe-llm/provider-llm'
 import { fetchWithRetry, mergeHeaders, truncateBody } from '@vibe-core/http'
+import { getPassport } from './passport'
 
 export const SDF_BASE_URL = 'https://fe-26.qas.bing.net'
 /** Client-visible model id (matches OpenAI naming). */
@@ -45,10 +46,13 @@ export interface SdfProviderConfig {
   /**
    * LLM API Taxonomy (aka.ms/llmapi/taxonomy). Sent as X-Taxonomy-* headers on
    * every SDF request so traffic can be attributed for capacity, policies and
-   * Class of Service. `experience` is a fixed enum at the LLM API side;
-   * "BizChat" is the known-valid default. `trafficType` should be "Production"
-   * for prod deployments, "Test" everywhere else. All fields optional — if
-   * omitted, safe non-prod defaults are used.
+   * Class of Service.
+   *
+   * The (experience, agent, inferenceStep, trafficType) tuple must be
+   * *registered* at aka.ms/llmapi/cos — an unregistered combination is
+   * rejected with "Taxonomy Metadata info not registered", so these are not
+   * free-form labels. The defaults name Societas deliberately: that is the
+   * registered onboarding this gateway's traffic is attributed to.
    */
   taxonomy?: {
     experience?: string
@@ -56,14 +60,28 @@ export interface SdfProviderConfig {
     inferenceStep?: string
     trafficType?: 'Production' | 'Test'
   }
+  /** Class of Service (aka.ms/llmapi/cos). */
+  cos?: {
+    /** One of: async, async-express, flex, default, priority. */
+    serviceTier?: string
+  }
+  passport?: {
+    /** Set false only to isolate a passport outage; upstream will then 400. */
+    enabled?: boolean
+    /** Ring root: sdf.passport.microsoft.net (dev/test) or passport.microsoft.net (prod). */
+    apiBase?: string
+  }
 }
 
 const DEFAULT_TAXONOMY = {
   experience: 'BizChat',
-  agent: 'CopilotApiGateway',
+  agent: 'Societas',
   inferenceStep: 'GenerateResponse',
-  trafficType: 'Test' as const,
+  trafficType: 'Production' as const,
 }
+
+const DEFAULT_SERVICE_TIER = 'default'
+const DEFAULT_PASSPORT_API_BASE = 'https://sdf.passport.microsoft.net'
 
 export class SdfProvider implements LlmModelProvider {
   readonly kind = 'sdf' as const
@@ -71,6 +89,10 @@ export class SdfProvider implements LlmModelProvider {
   readonly supportedEndpoints: readonly EndpointKey[] = SUPPORTED_ENDPOINTS
   private readonly substrateToken: string
   private readonly taxonomy: Required<NonNullable<SdfProviderConfig['taxonomy']>>
+  private readonly serviceTier: string
+  private readonly passportEnabled: boolean
+  private readonly passportApiBase: string
+  private readonly tenantId: string
 
   constructor(cfg: SdfProviderConfig) {
     if (!cfg.substrateToken) throw new Error('SDF provider requires a substrateToken')
@@ -82,6 +104,10 @@ export class SdfProvider implements LlmModelProvider {
       inferenceStep: cfg.taxonomy?.inferenceStep ?? DEFAULT_TAXONOMY.inferenceStep,
       trafficType: cfg.taxonomy?.trafficType ?? DEFAULT_TAXONOMY.trafficType,
     }
+    this.serviceTier = cfg.cos?.serviceTier ?? DEFAULT_SERVICE_TIER
+    this.passportEnabled = cfg.passport?.enabled ?? true
+    this.passportApiBase = cfg.passport?.apiBase ?? DEFAULT_PASSPORT_API_BASE
+    this.tenantId = tenantIdFromToken(cfg.substrateToken)
   }
 
   async getModels(): Promise<ProviderModelsResponse> {
@@ -141,15 +167,32 @@ export class SdfProvider implements LlmModelProvider {
     // `Content-Type`) collapse to a single normalized entry instead of
     // racing on last-key-wins in a plain Record.
     const outHeaders = new Headers()
+    const interactionId = cryptoUuid()
     outHeaders.set('Authorization', `Bearer ${this.substrateToken}`)
     outHeaders.set('X-ModelType', SDF_UPSTREAM_MODEL_ID)
     outHeaders.set('X-CV', `vnext.${randomShort()}`)
-    outHeaders.set('X-InteractionId', cryptoUuid())
+    outHeaders.set('X-InteractionId', interactionId)
+    // No conversation concept on the image endpoints, so the interaction id
+    // doubles as the session id — same fallback the reference client uses.
+    outHeaders.set('X-SessionId', req.headers?.get('x-session-id') ?? interactionId)
     outHeaders.set('X-ScenarioGUID', SCENARIO_GUID)
     outHeaders.set('X-Taxonomy-Experience', this.taxonomy.experience)
     outHeaders.set('X-Taxonomy-Agent', this.taxonomy.agent)
     outHeaders.set('X-Taxonomy-InferenceStep', this.taxonomy.inferenceStep)
     outHeaders.set('X-Taxonomy-TrafficType', this.taxonomy.trafficType)
+    outHeaders.set('x-llm-service-tier', this.serviceTier)
+    outHeaders.set('x-llm-models', SDF_UPSTREAM_MODEL_ID)
+    outHeaders.set('x-metadata-tenant-id', this.tenantId)
+    // fetchWithRetry runs with maxRetries 0, so every call is attempt zero.
+    outHeaders.set('x-retry-attempt', '0')
+    // Required to be present, but an empty value is valid. Sticky routing
+    // only pays off when successive calls share a KV cache; image generation
+    // has none, so we never round-trip a ticket back from the response.
+    outHeaders.set('x-sticky-route-session-ticket', '')
+    if (this.passportEnabled) {
+      const passport = await getPassport(this.substrateToken, this.passportApiBase)
+      if (passport) outHeaders.set('x-metadata-passport', passport)
+    }
     if (!bodyIsFormData) outHeaders.set('Content-Type', 'application/json')
     for (const [k, v] of Object.entries(mergeHeaders(req.headers, undefined))) {
       outHeaders.set(k, v)
@@ -228,4 +271,23 @@ function cryptoUuid(): string {
 
 function randomShort(): string {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 8)
+}
+
+/**
+ * Read the `tid` claim out of the Substrate bearer for `x-metadata-tenant-id`.
+ * Decode only — the token is already trusted (it came from our own config) and
+ * the header is attribution metadata, not an authorization decision, so
+ * verifying the signature would buy nothing and cost a JWKS fetch.
+ */
+function tenantIdFromToken(token: string): string {
+  try {
+    const payload = token.split('.')[1]
+    if (!payload) return 'unknown'
+    const claims = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as {
+      tid?: unknown
+    }
+    return typeof claims.tid === 'string' && claims.tid ? claims.tid : 'unknown'
+  } catch {
+    return 'unknown'
+  }
 }

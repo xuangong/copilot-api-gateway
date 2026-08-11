@@ -444,3 +444,54 @@ test('an anonymous caller (no admin, no user) is refused an existing upstream', 
   const res = await buildApp({}).request(`/api/upstreams/${victim.id}/models`)
   expect(res.status).toBe(404)
 })
+
+// --- sdf config validation -------------------------------------------------
+// The taxonomy/CoS enums are fixed at the LLM API side; a typo should fail at
+// save time rather than on the first image request.
+
+async function createSdf(config: Record<string, unknown>) {
+  return buildApp({ isAdmin: true, userId: 'u1' }).request('/api/upstreams', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ provider: 'sdf', name: 'img', config }),
+  })
+}
+
+const BASE_SDF = { name: 'img', substrateToken: 'tok' }
+
+test('POST /api/upstreams accepts a full sdf tuning block', async () => {
+  const res = await createSdf({
+    ...BASE_SDF,
+    taxonomy: { experience: 'BizChat', agent: 'Societas', inferenceStep: 'GenerateResponse', trafficType: 'Production' },
+    cos: { serviceTier: 'default' },
+    passport: { enabled: true, apiBase: 'https://sdf.passport.microsoft.net' },
+  })
+  expect(res.status).toBe(201)
+  const saved = [...store.upstreams.values()][0]
+  const cfg = saved?.config as any
+  expect(cfg.taxonomy.agent).toBe('Societas')
+  expect(cfg.cos.serviceTier).toBe('default')
+  expect(cfg.passport.apiBase).toBe('https://sdf.passport.microsoft.net')
+})
+
+test('POST /api/upstreams omits empty sdf sub-objects rather than persisting {}', async () => {
+  const res = await createSdf({ ...BASE_SDF, taxonomy: {}, cos: {}, passport: {} })
+  expect(res.status).toBe(201)
+  const cfg = [...store.upstreams.values()][0]?.config as any
+  expect(cfg.taxonomy).toBeUndefined()
+  expect(cfg.cos).toBeUndefined()
+  expect(cfg.passport).toBeUndefined()
+})
+
+for (const bad of [
+  { label: 'experience', config: { taxonomy: { experience: 'Designer' } } },
+  { label: 'trafficType', config: { taxonomy: { trafficType: 'Staging' } } },
+  { label: 'serviceTier', config: { cos: { serviceTier: 'Standard' } } },
+  { label: 'passport apiBase scheme', config: { passport: { apiBase: 'http://passport.microsoft.net' } } },
+]) {
+  test(`POST /api/upstreams rejects an invalid sdf ${bad.label}`, async () => {
+    const res = await createSdf({ ...BASE_SDF, ...bad.config })
+    expect(res.status).toBe(400)
+    expect(store.upstreams.size).toBe(0)
+  })
+}

@@ -30,7 +30,29 @@ interface FormState {
   flagOverrides: Record<string, boolean>
   copilotLogin: string
   substrateToken: string
+  sdfExperience: string
+  sdfAgent: string
+  sdfInferenceStep: string
+  sdfTrafficType: string
+  sdfServiceTier: string
+  sdfPassportEnabled: boolean
+  sdfPassportApiBase: string
 }
+
+// Mirrors the provider-side defaults. The form always sends these explicitly
+// so the card shows exactly what goes on the wire rather than "(default)".
+const SDF_DEFAULTS = {
+  experience: "BizChat",
+  agent: "Societas",
+  inferenceStep: "GenerateResponse",
+  trafficType: "Production",
+  serviceTier: "default",
+  passportApiBase: "https://sdf.passport.microsoft.net",
+}
+
+const SDF_EXPERIENCES = ["BizChat", "WXPOAgents", "AppCopilots", "Cowork", "Scout", "WorkIQ"]
+const SDF_SERVICE_TIERS = ["async", "async-express", "flex", "default", "priority"]
+const SDF_TRAFFIC_TYPES = ["Production", "Test"]
 
 const EMPTY: FormState = {
   name: "",
@@ -47,6 +69,13 @@ const EMPTY: FormState = {
   flagOverrides: {},
   copilotLogin: "",
   substrateToken: "",
+  sdfExperience: SDF_DEFAULTS.experience,
+  sdfAgent: SDF_DEFAULTS.agent,
+  sdfInferenceStep: SDF_DEFAULTS.inferenceStep,
+  sdfTrafficType: SDF_DEFAULTS.trafficType,
+  sdfServiceTier: SDF_DEFAULTS.serviceTier,
+  sdfPassportEnabled: true,
+  sdfPassportApiBase: SDF_DEFAULTS.passportApiBase,
 }
 
 const SERVED_ENDPOINTS = ["chat_completions", "responses", "messages", "messages_count_tokens", "embeddings"] as const
@@ -68,6 +97,11 @@ function buildInitial(mode: Props["mode"]): { provider: Provider; form: FormStat
   }
   const u = mode.row
   const cfg = u.config ?? {}
+  const sdf = cfg as {
+    taxonomy?: { experience?: string; agent?: string; inferenceStep?: string; trafficType?: string }
+    cos?: { serviceTier?: string }
+    passport?: { enabled?: boolean; apiBase?: string }
+  }
   type ModelEntry = string | { id: string; name?: string }
   const modelsList: ModelEntry[] = Array.isArray((cfg as { models?: ModelEntry[] }).models)
     ? (cfg as { models: ModelEntry[] }).models
@@ -104,12 +138,38 @@ function buildInitial(mode: Props["mode"]): { provider: Provider; form: FormStat
       flagOverrides: { ...(u.flagOverrides ?? {}) },
       copilotLogin: u.provider === "copilot" ? cfg.user?.login ?? "" : "",
       substrateToken: "",
+      sdfExperience: sdf.taxonomy?.experience ?? SDF_DEFAULTS.experience,
+      sdfAgent: sdf.taxonomy?.agent ?? SDF_DEFAULTS.agent,
+      sdfInferenceStep: sdf.taxonomy?.inferenceStep ?? SDF_DEFAULTS.inferenceStep,
+      sdfTrafficType: sdf.taxonomy?.trafficType ?? SDF_DEFAULTS.trafficType,
+      sdfServiceTier: sdf.cos?.serviceTier ?? SDF_DEFAULTS.serviceTier,
+      sdfPassportEnabled: sdf.passport?.enabled ?? true,
+      sdfPassportApiBase: sdf.passport?.apiBase ?? SDF_DEFAULTS.passportApiBase,
     },
   }
 }
 
-function parseModelsText(txt: string): (string | { id: string; name: string })[] | undefined {
-  if (!txt.trim()) return undefined
+/**
+ * The PATCH merge is shallow at the top level, so these sub-objects have to be
+ * sent whole on every save — a partial `taxonomy` would replace, not merge.
+ */
+function sdfTuning(form: FormState) {
+  return {
+    taxonomy: {
+      experience: form.sdfExperience,
+      agent: form.sdfAgent.trim() || SDF_DEFAULTS.agent,
+      inferenceStep: form.sdfInferenceStep.trim() || SDF_DEFAULTS.inferenceStep,
+      trafficType: form.sdfTrafficType,
+    },
+    cos: { serviceTier: form.sdfServiceTier },
+    passport: {
+      enabled: form.sdfPassportEnabled,
+      apiBase: form.sdfPassportApiBase.trim() || SDF_DEFAULTS.passportApiBase,
+    },
+  }
+}
+
+function parseModelsText(txt: string): (string | { id: string; name: string })[] | undefined {  if (!txt.trim()) return undefined
   return txt
     .split(/\r?\n/)
     .map((s) => s.trim())
@@ -265,6 +325,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           config = {
             name: form.name.trim(),
             substrateToken: form.substrateToken.trim(),
+            ...sdfTuning(form),
           }
         } else {
           if (!form.endpoint.trim() || !form.azureApiKey.trim() || !form.deployment.trim()) {
@@ -306,6 +367,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           if (form.substrateToken.trim()) {
             (config as { substrateToken: string }).substrateToken = form.substrateToken.trim()
           }
+          Object.assign(config, sdfTuning(form))
         } else {
           if (form.endpoint.trim()) (config as { endpoint: string }).endpoint = form.endpoint.trim()
           if (form.azureApiKey.trim()) (config as { apiKey: string }).apiKey = form.azureApiKey.trim()
@@ -448,6 +510,80 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
               />
             </Field>
             <p className="text-xs text-themed-dim">{t("dash.substrateTokenHint")}</p>
+
+            <div className="border-t border-themed pt-3 mt-3 space-y-3">
+              <div>
+                <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-1">
+                  {t("dash.sdfTaxonomyLabel")}
+                </h4>
+                <p className="text-xs text-themed-dim">{t("dash.sdfTaxonomyHint")}</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label={t("dash.sdfExperienceLabel")}>
+                  <select
+                    value={form.sdfExperience}
+                    onChange={(e) => update("sdfExperience", e.target.value)}
+                    className={inputCls}
+                  >
+                    {SDF_EXPERIENCES.map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={t("dash.sdfAgentLabel")}>
+                  <input
+                    value={form.sdfAgent}
+                    onChange={(e) => update("sdfAgent", e.target.value)}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label={t("dash.sdfInferenceStepLabel")}>
+                  <input
+                    value={form.sdfInferenceStep}
+                    onChange={(e) => update("sdfInferenceStep", e.target.value)}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label={t("dash.sdfTrafficTypeLabel")}>
+                  <select
+                    value={form.sdfTrafficType}
+                    onChange={(e) => update("sdfTrafficType", e.target.value)}
+                    className={inputCls}
+                  >
+                    {SDF_TRAFFIC_TYPES.map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={t("dash.sdfServiceTierLabel")}>
+                  <select
+                    value={form.sdfServiceTier}
+                    onChange={(e) => update("sdfServiceTier", e.target.value)}
+                    className={inputCls}
+                  >
+                    {SDF_SERVICE_TIERS.map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={t("dash.sdfPassportApiBaseLabel")}>
+                  <input
+                    value={form.sdfPassportApiBase}
+                    onChange={(e) => update("sdfPassportApiBase", e.target.value)}
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-themed cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.sdfPassportEnabled}
+                  onChange={(e) => update("sdfPassportEnabled", e.target.checked)}
+                />
+                <span>{t("dash.sdfPassportEnabledLabel")}</span>
+              </label>
+              <p className="text-xs text-themed-dim">{t("dash.sdfPassportHint")}</p>
+            </div>
           </>
         ) : null}
 
