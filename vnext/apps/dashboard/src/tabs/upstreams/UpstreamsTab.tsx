@@ -156,18 +156,20 @@ export function UpstreamsTab() {
                             await store.remove(u)
                           }}
                         />
-                        <Expand open={editingId === u.id && g.isMine}>
-                          <UpstreamFormModal
-                            mode={{ kind: "edit", row: u }}
-                            flagCatalog={store.flagCatalog}
-                            ensureFlagCatalog={store.ensureFlagCatalog}
-                            onClose={() => setEditingId(null)}
-                            onSaved={() => {
-                              setEditingId(null)
-                              store.reload()
-                            }}
-                          />
-                        </Expand>
+                        {editingId === u.id && g.isMine ? (
+                          <Expand>
+                            <UpstreamFormModal
+                              mode={{ kind: "edit", row: u }}
+                              flagCatalog={store.flagCatalog}
+                              ensureFlagCatalog={store.ensureFlagCatalog}
+                              onClose={() => setEditingId(null)}
+                              onSaved={() => {
+                                setEditingId(null)
+                                store.reload()
+                              }}
+                            />
+                          </Expand>
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -192,14 +194,12 @@ export function UpstreamsTab() {
 }
 
 // Expand: simple grid-rows animation. Uses [grid-template-rows:0fr] → 1fr
-// trick so the panel can animate to its natural height.
-function Expand({ open = true, children }: { open?: boolean; children: React.ReactNode }) {
+// trick so the panel can animate to its natural height. Mounted only while
+// open — keeping it mounted-but-collapsed made every row run the form's
+// catalog fetch on every render of the list.
+function Expand({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className={`grid transition-[grid-template-rows] duration-200 ease-out ${
-        open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-      }`}
-    >
+    <div className="grid transition-[grid-template-rows] duration-200 ease-out grid-rows-[1fr]">
       <div className="overflow-hidden">{children}</div>
     </div>
   )

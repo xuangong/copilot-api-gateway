@@ -157,9 +157,9 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
   }, [ensureFlagCatalog, toast])
 
   useEffect(() => {
-    if (mode.kind !== "edit") return
+    if (!editingId) return
     let cancelled = false
-    api.getUpstreamCatalog(mode.row.id).then(
+    api.getUpstreamCatalog(editingId).then(
       (c) => {
         if (!cancelled) setCatalog(c.models)
       },
@@ -170,7 +170,9 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
     return () => {
       cancelled = true
     }
-  }, [mode])
+    // Keyed on the id, not on `mode`: the parent builds that object inline, so
+    // depending on it refetches the catalog on every render of the list.
+  }, [editingId])
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }))

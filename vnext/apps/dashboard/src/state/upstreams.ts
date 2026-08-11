@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useToast } from "./toast"
 import * as api from "../api/upstreams"
 import type { UpstreamRecord } from "../api/types"
@@ -45,12 +45,26 @@ export function useUpstreams() {
     reload()
   }, [reload])
 
+  // The `flagCatalog` state guard can't stop concurrent first callers — they
+  // all read null before any of them has set it. Hold the in-flight promise so
+  // they share one request, and keep the callback identity stable so mounting
+  // a form doesn't re-run its effect.
+  const flagCatalogPromise = useRef<Promise<api.FlagCatalog> | null>(null)
   const ensureFlagCatalog = useCallback(async () => {
-    if (flagCatalog) return flagCatalog
-    const c = await api.getFlagCatalog()
-    setFlagCatalog(c)
-    return c
-  }, [flagCatalog])
+    if (!flagCatalogPromise.current) {
+      flagCatalogPromise.current = api.getFlagCatalog().then(
+        (c) => {
+          setFlagCatalog(c)
+          return c
+        },
+        (e) => {
+          flagCatalogPromise.current = null
+          throw e
+        },
+      )
+    }
+    return flagCatalogPromise.current
+  }, [])
 
   const withBusy = async <T,>(id: string, fn: () => Promise<T>): Promise<T | null> => {
     setBusy((b) => ({ ...b, [id]: true }))
