@@ -52,6 +52,7 @@
         "@vibe-core/platform": "workspace:*",
         "@vibe-llm/gateway": "workspace:*",
         "@vibe-llm/responses-store": "workspace:*",
+        "image-size": "^2.0.2",
       },
       "devDependencies": {
         "@cloudflare/workers-types": "^4.20260602.1",

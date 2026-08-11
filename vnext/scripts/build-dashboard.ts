@@ -26,8 +26,13 @@ await Bun.write(`${out}/dashboard.js.txt`, Bun.file(`${out}/dashboard.js`))
 // stylesheet with every utility purged — a silent, ship-shaped failure. It is
 // interpolated as a single value so Bun's shell hands it to tailwind intact
 // rather than expanding it itself.
+//
+// The binary is addressed by path for the same reason: `bunx tailwindcss` from
+// a cwd that can't see the dashboard's node_modules falls through to fetching
+// tailwind v4 from the registry, which ships no CLI at all.
 const contentGlob = `${src}/**/*.{ts,tsx}`
-await $`bunx tailwindcss -c ${root}/tailwind.config.ts --content ${contentGlob} -i ${src}/styles.css -o ${out}/dashboard.css --minify`.quiet()
+const tailwindBin = `${root}/apps/dashboard/node_modules/.bin/tailwindcss`
+await $`${tailwindBin} -c ${root}/tailwind.config.ts --content ${contentGlob} -i ${src}/styles.css -o ${out}/dashboard.css --minify`.quiet()
 const css = await Bun.file(`${out}/dashboard.css`).text()
 if (css.length < 30_000) throw new Error(`dashboard.css is ${css.length} bytes — the content scan matched nothing`)
 await Bun.write(`${out}/dashboard.css.txt`, css)
