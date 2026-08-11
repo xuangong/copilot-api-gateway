@@ -74,7 +74,9 @@ export function UpstreamsTab() {
               {t("dash.managedUpstreamsDesc")}
             </p>
           </div>
-          <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
+          {/* The negative margin lets the strip scroll edge-to-edge inside the
+              card's p-4 padding instead of clipping mid-button. */}
+          <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>button]:shrink-0">
             <button onClick={() => setDeviceFlowOpen(true)} className="btn-primary text-sm">{t("dash.addCopilot")}</button>
             <button onClick={() => openCreate("custom")} className="btn-ghost text-sm">{t("dash.addCustom")}</button>
             <button onClick={() => openCreate("azure")} className="btn-ghost text-sm">{t("dash.addAzure")}</button>
