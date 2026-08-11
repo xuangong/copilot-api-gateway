@@ -29,9 +29,14 @@ await Bun.write(`${out}/dashboard.js.txt`, Bun.file(`${out}/dashboard.js`))
 //
 // The binary is addressed by path for the same reason: `bunx tailwindcss` from
 // a cwd that can't see the dashboard's node_modules falls through to fetching
-// tailwind v4 from the registry, which ships no CLI at all.
+// tailwind v4 from the registry, which ships no CLI at all. Which node_modules
+// holds the bin depends on how bun hoisted it, so try both.
 const contentGlob = `${src}/**/*.{ts,tsx}`
-const tailwindBin = `${root}/apps/dashboard/node_modules/.bin/tailwindcss`
+const tailwindBin = await (async () => {
+  const candidates = [`${root}/apps/dashboard/node_modules/.bin/tailwindcss`, `${root}/node_modules/.bin/tailwindcss`]
+  for (const c of candidates) if (await Bun.file(c).exists()) return c
+  throw new Error(`tailwindcss CLI not found in any of: ${candidates.join(", ")}`)
+})()
 await $`${tailwindBin} -c ${root}/tailwind.config.ts --content ${contentGlob} -i ${src}/styles.css -o ${out}/dashboard.css --minify`.quiet()
 const css = await Bun.file(`${out}/dashboard.css`).text()
 if (css.length < 30_000) throw new Error(`dashboard.css is ${css.length} bytes — the content scan matched nothing`)
