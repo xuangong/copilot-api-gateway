@@ -1,3 +1,4 @@
+import { useState } from "react"
 import type { UpstreamRecord } from "../../api/types"
 
 type Provider = UpstreamRecord["provider"]
@@ -44,11 +45,24 @@ interface Props {
 }
 
 export function ProviderAvatar({ provider, avatarUrl, title }: Props) {
+  // A GHE upstream's avatar_url points at the enterprise host, which the
+  // browser usually can't reach. Remember the URL that failed so the letter
+  // frame takes over instead of a broken-image icon, and so a later avatarUrl
+  // still gets its own attempt.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  const showImage = !!avatarUrl && avatarUrl !== failedUrl
+
   return (
     <div className="relative shrink-0" title={title ?? FULL_LABEL[provider]}>
       <div className={`w-10 h-10 rounded-lg ring-1 ${RING[provider]} overflow-hidden bg-surface-800 flex items-center justify-center`}>
-        {avatarUrl ? (
-          <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+        {showImage ? (
+          <img
+            src={avatarUrl}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="w-full h-full object-cover"
+            onError={() => setFailedUrl(avatarUrl)}
+          />
         ) : (
           <span className={`w-full h-full flex items-center justify-center text-sm font-semibold ${FRAME_FALLBACK[provider]}`}>
             {LETTER[provider]}

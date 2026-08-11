@@ -23,6 +23,7 @@ export function UserMenu({ onNavigate, canNavigateSettings }: Props) {
   const [open, setOpen] = useState(false)
   const [sharingOpen, setSharingOpen] = useState(false)
   const [pwdOpen, setPwdOpen] = useState(false)
+  const [failedAvatar, setFailedAvatar] = useState<string | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -46,8 +47,14 @@ export function UserMenu({ onNavigate, canNavigateSettings }: Props) {
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2 rounded-full hover:opacity-80 transition-opacity cursor-pointer bg-transparent border-0 p-0"
       >
-        {session.avatarUrl ? (
-          <img src={session.avatarUrl} alt="" className="w-8 h-8 rounded-full" referrerPolicy="no-referrer" />
+        {session.avatarUrl && session.avatarUrl !== failedAvatar ? (
+          <img
+            src={session.avatarUrl}
+            alt=""
+            className="w-8 h-8 rounded-full"
+            referrerPolicy="no-referrer"
+            onError={() => setFailedAvatar(session.avatarUrl ?? null)}
+          />
         ) : (
           <div className="w-8 h-8 rounded-full bg-accent-violet/20 flex items-center justify-center text-accent-violet text-xs font-medium">
             {initial}
