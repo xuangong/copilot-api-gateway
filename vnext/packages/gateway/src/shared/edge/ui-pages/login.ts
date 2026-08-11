@@ -92,7 +92,10 @@ export function LoginPage(): string {
             </div>
           </div>
 
-          <div class="text-center mt-6 animate-in delay-2">
+          <div class="text-center mt-6 animate-in delay-2 space-y-2">
+            <p>
+              <a href="/guide" class="text-xs text-accent-violet hover:underline" x-text="t('common.guideLink')"></a>
+            </p>
             <p class="text-xs text-themed-dim" x-text="t('common.poweredBy')">
             </p>
           </div>
