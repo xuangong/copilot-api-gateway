@@ -111,3 +111,26 @@ export const pricingForCopilotPublicModelId = (publicName: string): ModelPricing
 
 export const pricingForCopilotModelKey = (modelKey: string): ModelPricing | null =>
   matchPricing(copilotPublicModelId(modelKey))
+
+/** A catalog row: a model the docs page lists, with its tiers. */
+export interface CopilotCatalogModel {
+  readonly displayName: string
+  readonly tiers: readonly PricingTier[]
+}
+
+export interface CopilotPricingCatalog {
+  readonly source: typeof COPILOT_PRICING_SOURCE
+  readonly models: readonly CopilotCatalogModel[]
+}
+
+/**
+ * The subset of the table that mirrors the docs page: entries carrying a
+ * `displayName`. Billing-only entries (legacy and internal models the page no
+ * longer lists) are filtered out. Regex matchers are never exposed.
+ */
+export const copilotPricingCatalog = (): CopilotPricingCatalog => ({
+  source: COPILOT_PRICING_SOURCE,
+  models: COPILOT_MODEL_PRICING.filter(
+    (m): m is CopilotModelPricing & { displayName: string } => Boolean(m.displayName),
+  ).map((m) => ({ displayName: m.displayName, tiers: m.tiers })),
+})

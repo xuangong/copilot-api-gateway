@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test"
-import { pricingForCopilotModelKey, pricingForCopilotPublicModelId } from "../pricing"
+import { pricingForCopilotModelKey, pricingForCopilotPublicModelId, copilotPricingCatalog, COPILOT_PRICING_SOURCE } from "../pricing"
 
 test("claude-opus-4-7 → 6-dim pricing with cache columns", () => {
   expect(pricingForCopilotPublicModelId("claude-opus-4-7")).toEqual({
@@ -66,4 +66,36 @@ test("embedding models map to input-only pricing", () => {
     input: 0.02,
     output: 0,
   })
+})
+
+test("the default tier never carries a context threshold", () => {
+  // A threshold on tiers[0] would make billing silently charge the
+  // long-context rate for every request.
+  for (const model of copilotPricingCatalog().models) {
+    expect(model.tiers[0]?.contextThreshold).toBeUndefined()
+  }
+})
+
+test("every catalog entry has at least one tier", () => {
+  for (const model of copilotPricingCatalog().models) {
+    expect(model.tiers.length).toBeGreaterThan(0)
+  }
+})
+
+test("display names are unique so no two rows render identically", () => {
+  const names = copilotPricingCatalog().models.map((m) => m.displayName)
+  expect(new Set(names).size).toBe(names.length)
+})
+
+test("the catalog exposes only documented models", () => {
+  for (const model of copilotPricingCatalog().models) {
+    expect(typeof model.displayName).toBe("string")
+    expect(model.displayName.length).toBeGreaterThan(0)
+  }
+})
+
+test("the catalog carries its source url and verification date", () => {
+  const { source } = copilotPricingCatalog()
+  expect(source.url).toBe(COPILOT_PRICING_SOURCE.url)
+  expect(source.verifiedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/)
 })
