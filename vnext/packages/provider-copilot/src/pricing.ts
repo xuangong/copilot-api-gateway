@@ -49,7 +49,8 @@ const only = (pricing: ModelPricing): readonly PricingTier[] => [{ label: "Defau
 const OPUS_4X_5: ModelPricing = { input: 5, input_cache_read: 0.5, input_cache_write: 6.25, output: 25 }
 const SONNET_4X: ModelPricing = { input: 3, input_cache_read: 0.3, input_cache_write: 3.75, output: 15 }
 
-const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
+/** Exported for tests only: invariants must cover billing-only entries too. */
+export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
   // ── Anthropic ────────────────────────────────────────────────────────────
   // Claude ids may appear in either dot form (`claude-opus-4.7`, Copilot raw)
   // or dash form (`claude-opus-4-7`, Anthropic public id), so the matchers

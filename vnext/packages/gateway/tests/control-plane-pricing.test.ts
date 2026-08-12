@@ -1,16 +1,27 @@
 /**
  * pricing control-plane tests. The endpoint is static — no repo, no upstream
- * I/O — so the test only asserts the response contract.
+ * I/O — so the tests only assert the response contract and the auth gate.
  */
 import { test, expect } from 'bun:test'
 import { Hono } from 'hono'
 import { pricingRouter } from '../src/control-plane/pricing/routes.ts'
 
-function app() {
+function app(auth: Record<string, unknown> | null = { userId: 'usr_test' }) {
   const a = new Hono()
+  if (auth) {
+    a.use('*', async (c, next) => {
+      c.set('auth' as never, auth as never)
+      await next()
+    })
+  }
   a.route('/api', pricingRouter)
   return a
 }
+
+test('GET /api/pricing rejects callers with no resolved identity', async () => {
+  const res = await app(null).request('/api/pricing')
+  expect(res.status).toBe(401)
+})
 
 test('GET /api/pricing returns the copilot provider with its source', async () => {
   const res = await app().request('/api/pricing')

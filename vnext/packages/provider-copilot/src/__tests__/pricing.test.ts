@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test"
-import { pricingForCopilotModelKey, pricingForCopilotPublicModelId, copilotPricingCatalog, COPILOT_PRICING_SOURCE } from "../pricing"
+import { pricingForCopilotModelKey, pricingForCopilotPublicModelId, copilotPricingCatalog, COPILOT_PRICING_SOURCE, COPILOT_MODEL_PRICING } from "../pricing"
 
 test("claude-opus-4-7 → 6-dim pricing with cache columns", () => {
   expect(pricingForCopilotPublicModelId("claude-opus-4-7")).toEqual({
@@ -71,13 +71,15 @@ test("embedding models map to input-only pricing", () => {
 test("the default tier never carries a context threshold", () => {
   // A threshold on tiers[0] would make billing silently charge the
   // long-context rate for every request.
-  for (const model of copilotPricingCatalog().models) {
+  for (const model of COPILOT_MODEL_PRICING) {
     expect(model.tiers[0]?.contextThreshold).toBeUndefined()
   }
 })
 
-test("every catalog entry has at least one tier", () => {
-  for (const model of copilotPricingCatalog().models) {
+test("every entry has at least one tier", () => {
+  // Covers billing-only entries too: an empty `tiers` makes matchPricing
+  // return null on a hit, silently zero-costing the model.
+  for (const model of COPILOT_MODEL_PRICING) {
     expect(model.tiers.length).toBeGreaterThan(0)
   }
 })
@@ -88,8 +90,8 @@ test("display names are unique so no two rows render identically", () => {
 })
 
 test("the catalog exposes only documented models", () => {
+  expect(copilotPricingCatalog().models.length).toBeLessThan(COPILOT_MODEL_PRICING.length)
   for (const model of copilotPricingCatalog().models) {
-    expect(typeof model.displayName).toBe("string")
     expect(model.displayName.length).toBeGreaterThan(0)
   }
 })
