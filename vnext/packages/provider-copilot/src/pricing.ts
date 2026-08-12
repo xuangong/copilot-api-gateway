@@ -11,6 +11,9 @@
  * tiers are the long-context bands GitHub publishes; they are displayed by the
  * dashboard Pricing tab but are not yet billed (see the design spec).
  *
+ * The entry list is order-sensitive: the first matcher that hits wins, so a
+ * specific id must precede any prefix regex that would also match it.
+ *
  * Source of truth for Copilot pricing updates: COPILOT_PRICING_SOURCE below.
  */
 
@@ -38,7 +41,6 @@ export interface CopilotModelPricing {
   readonly displayName?: string
   /** Matcher against the public model id. */
   readonly match: string | RegExp
-  /** tiers[0] is the default tier and is what billing uses. */
   readonly tiers: readonly PricingTier[]
 }
 
@@ -97,7 +99,7 @@ const matchPricing = (publicName: string): ModelPricing | null => {
   for (const entry of COPILOT_MODEL_PRICING) {
     const hit =
       typeof entry.match === "string" ? publicName === entry.match : entry.match.test(publicName)
-    if (hit) return entry.tiers[0]!.pricing
+    if (hit) return entry.tiers[0]?.pricing ?? null
   }
   const dateless = publicName.replace(ISO_DATE_SUFFIX, "")
   if (dateless !== publicName) return matchPricing(dateless)
