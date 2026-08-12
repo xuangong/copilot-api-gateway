@@ -12,6 +12,7 @@ import { ClientsTab } from "./tabs/clients/ClientsTab"
 import { LatencyTab } from "./tabs/latency/LatencyTab"
 import { UsageTab } from "./tabs/usage/UsageTab"
 import { ModelsTab } from "./tabs/models/ModelsTab"
+import { PricingTab } from "./tabs/pricing/PricingTab"
 import { useT } from "./state/i18n"
 
 interface TabDef {
@@ -27,6 +28,7 @@ const ALL_TABS: ReadonlyArray<TabDef> = [
   { id: "users", labelKey: "dash.users", fallback: "Users", adminOnly: true },
   { id: "keys", labelKey: "dash.apiKeys", fallback: "API Keys", userOk: true },
   { id: "models", labelKey: "dash.models", fallback: "Models", userOk: true },
+  { id: "pricing", labelKey: "dash.pricing", fallback: "Pricing", userOk: true },
   { id: "usage", labelKey: "dash.usage", fallback: "Usage", userOk: true },
   { id: "latency", labelKey: "dash.latency", fallback: "Latency", userOk: true },
   { id: "clients", labelKey: "dash.relays", fallback: "Clients", userOk: true },
@@ -81,6 +83,8 @@ function TabBody({ tab }: { tab: string }) {
       return <KeysTab />
     case "models":
       return <ModelsTab />
+    case "pricing":
+      return <PricingTab />
     case "usage":
       return <UsageTab />
     case "latency":
