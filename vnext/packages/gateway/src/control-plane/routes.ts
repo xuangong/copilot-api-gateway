@@ -27,6 +27,7 @@ import { performanceRouter } from './performance/routes.ts'
 import { presenceRouter } from './presence/routes.ts'
 import { dataTransferRouter } from './data-transfer/routes.ts'
 import { dumpRoutes } from './dump/routes.ts'
+import { pricingRouter } from './pricing/routes.ts'
 
 export const controlPlane = new Hono<{ Bindings: Env }>()
 
@@ -54,3 +55,5 @@ controlPlane.route('/api', performanceRouter)
 controlPlane.route('/api', presenceRouter)
 // /api/export + /api/import
 controlPlane.route('/api', dataTransferRouter)
+// /api/pricing
+controlPlane.route('/api', pricingRouter)
