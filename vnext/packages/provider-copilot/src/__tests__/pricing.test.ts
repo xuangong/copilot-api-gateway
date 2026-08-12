@@ -99,3 +99,96 @@ test("the catalog carries its source url and verification date", () => {
   expect(source.url).toBe(COPILOT_PRICING_SOURCE.url)
   expect(source.verifiedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/)
 })
+
+function catalogRow(displayName: string) {
+  const row = copilotPricingCatalog().models.find((m) => m.displayName === displayName)
+  if (!row) throw new Error(`no catalog row for ${displayName}`)
+  return row
+}
+
+test("GPT-5.5 carries both published bands", () => {
+  const row = catalogRow("GPT-5.5")
+  expect(row.tiers).toEqual([
+    { label: "Default", pricing: { input: 5, input_cache_read: 0.5, output: 30 } },
+    {
+      label: "Long context",
+      contextThreshold: 272_000,
+      pricing: { input: 10, input_cache_read: 1, output: 45 },
+    },
+  ])
+})
+
+test("GPT-5.6 Luna's long-context band starts at 200K, not 272K", () => {
+  expect(catalogRow("GPT-5.6 Luna").tiers[1]).toEqual({
+    label: "Long context",
+    contextThreshold: 200_000,
+    pricing: { input: 0.4, input_cache_read: 0.04, input_cache_write: 0.5, output: 1.8 },
+  })
+})
+
+test("Grok 4.5 and Gemini 3.1 Pro also have long-context bands", () => {
+  expect(catalogRow("Grok 4.5").tiers[1]).toEqual({
+    label: "Long context",
+    contextThreshold: 200_000,
+    pricing: { input: 4, input_cache_read: 1, output: 12 },
+  })
+  expect(catalogRow("Gemini 3.1 Pro").tiers[1]).toEqual({
+    label: "Long context",
+    contextThreshold: 200_000,
+    pricing: { input: 4, input_cache_read: 0.4, output: 18 },
+  })
+})
+
+test("the merged claude matchers are split into one row per docs row", () => {
+  const names = copilotPricingCatalog().models.map((m) => m.displayName)
+  for (const n of [
+    "Claude Opus 4.5",
+    "Claude Opus 4.6",
+    "Claude Opus 4.7",
+    "Claude Opus 4.8",
+    "Claude Sonnet 4",
+    "Claude Sonnet 4.5",
+    "Claude Sonnet 4.6",
+  ]) {
+    expect(names).toContain(n)
+  }
+})
+
+test("splitting the claude matchers did not change what they price", () => {
+  const opus = { input: 5, input_cache_read: 0.5, input_cache_write: 6.25, output: 25 }
+  for (const id of ["claude-opus-4-5", "claude-opus-4.6", "claude-opus-4-7", "claude-opus-4.8"]) {
+    expect(pricingForCopilotPublicModelId(id)).toEqual(opus)
+  }
+  const sonnet = { input: 3, input_cache_read: 0.3, input_cache_write: 3.75, output: 15 }
+  for (const id of ["claude-sonnet-4", "claude-sonnet-4-5", "claude-sonnet-4.6"]) {
+    expect(pricingForCopilotPublicModelId(id)).toEqual(sonnet)
+  }
+})
+
+test("MAI-Code-1.1-Flash is priced separately from MAI-Code-1-Flash", () => {
+  expect(pricingForCopilotPublicModelId("mai-code-1.1-flash")).toEqual({
+    input: 0.2,
+    input_cache_read: 0.02,
+    output: 1.2,
+  })
+  expect(pricingForCopilotPublicModelId("mai-code-1-flash")).toEqual({
+    input: 0.75,
+    input_cache_read: 0.075,
+    output: 4.5,
+  })
+})
+
+test("legacy and internal models stay out of the catalog", () => {
+  const names = copilotPricingCatalog().models.map((m) => m.displayName)
+  for (const n of ["goldeneye", "gpt-3.5-turbo", "gpt-4o", "minimax-m2.5"]) {
+    expect(names).not.toContain(n)
+  }
+  // ...but they still price.
+  expect(pricingForCopilotPublicModelId("goldeneye")).not.toBeNull()
+  expect(pricingForCopilotPublicModelId("gpt-3.5-turbo")).not.toBeNull()
+})
+
+test("the catalog has one row per documented model", () => {
+  // 11 Anthropic + 9 OpenAI + 3 Google + 1 xAI + 2 Microsoft + 2 Moonshot + 1 fine-tuned
+  expect(copilotPricingCatalog().models.length).toBe(29)
+})
