@@ -57,7 +57,11 @@ const ContentBlock = z.union([
 ])
 
 const Message = z.object({
-  role: z.union([z.literal('user'), z.literal('assistant')]),
+  // The Anthropic Messages role enum is user | assistant | system. The docs
+  // prose still claims there is no system role for input messages, but the
+  // schema and live backend accept it, and Claude Code 2.1.154+ emits
+  // interleaved system messages.
+  role: z.union([z.literal('user'), z.literal('assistant'), z.literal('system')]),
   content: z.union([z.string(), z.array(ContentBlock)]),
 }).loose()
 

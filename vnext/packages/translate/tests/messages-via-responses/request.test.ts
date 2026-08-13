@@ -182,4 +182,36 @@ describe('messages-via-responses :: request', () => {
     expect(out.target.metadata).toEqual({ user_id: 'u1' } as never)
     expect(out.target.stream).toBe(true)
   })
+
+  it('translates an interleaved role=system message into a system input item', () => {
+    const p = {
+      model: 'm', max_tokens: 1,
+      messages: [
+        { role: 'user', content: 'hi' },
+        { role: 'system', content: 'be terse' },
+      ],
+    } as unknown as MessagesPayload
+    const out = translateMessagesToResponses(p)
+    const input = out.target.input as Array<Record<string, unknown>>
+    expect(input.length).toBe(2)
+    expect(input[1]).toEqual({ type: 'message', role: 'system', content: 'be terse' } as never)
+  })
+
+  it('joins text blocks of a role=system message', () => {
+    const p = {
+      model: 'm', max_tokens: 1,
+      messages: [{ role: 'system', content: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] }],
+    } as unknown as MessagesPayload
+    const out = translateMessagesToResponses(p)
+    const input = out.target.input as Array<Record<string, unknown>>
+    expect(input[0]).toEqual({ type: 'message', role: 'system', content: 'a\n\nb' } as never)
+  })
+
+  it('throws on an unsupported message role instead of silently dropping it', () => {
+    const p = {
+      model: 'm', max_tokens: 1,
+      messages: [{ role: 'tool', content: 'x' }],
+    } as unknown as MessagesPayload
+    expect(() => translateMessagesToResponses(p)).toThrow(/role/)
+  })
 })

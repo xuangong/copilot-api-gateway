@@ -10,6 +10,7 @@
  */
 import type { ChatPayload } from '@vibe-llm/protocols/chat'
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
+import { TranslatorValidationError } from '../errors.ts'
 
 type ChatMessage = ChatPayload['messages'][number]
 
@@ -165,6 +166,11 @@ function translateAssistantMessage(content: string | ContentBlock[]): ChatMessag
   return out
 }
 
+function joinTextBlocks(content: string | ContentBlock[]): string {
+  if (typeof content === 'string') return content
+  return (content as Array<{ text?: string }>).map((b) => b.text ?? '').join('\n\n')
+}
+
 function translateInput(messages: MessagesPayload['messages'], system: MessagesPayload['system']): ChatMessage[] {
   const sys: ChatMessage[] = []
   if (system) {
@@ -175,13 +181,24 @@ function translateInput(messages: MessagesPayload['messages'], system: MessagesP
     if (text) sys.push({ role: 'system', content: text } as ChatMessage)
   }
   const out: ChatMessage[] = [...sys]
-  for (const m of messages) {
-    if (m.role === 'user') {
-      out.push(...translateUserMessage('user', m.content as string | ContentBlock[]))
-    } else if (m.role === 'assistant') {
-      out.push(...translateAssistantMessage(m.content as string | ContentBlock[]))
+  messages.forEach((m, i) => {
+    switch (m.role) {
+      case 'user':
+        out.push(...translateUserMessage('user', m.content as string | ContentBlock[]))
+        break
+      case 'assistant':
+        out.push(...translateAssistantMessage(m.content as string | ContentBlock[]))
+        break
+      case 'system':
+        out.push({ role: 'system', content: joinTextBlocks(m.content as string | ContentBlock[]) } as ChatMessage)
+        break
+      default:
+        throw new TranslatorValidationError(
+          `messages.${i}.role: role '${(m as { role: string }).role}' is not supported on this model`,
+          `messages.${i}.role`,
+        )
     }
-  }
+  })
   return out
 }
 

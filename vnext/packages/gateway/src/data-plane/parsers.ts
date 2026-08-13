@@ -22,6 +22,35 @@ import { GeminiPayloadSchema, type GeminiPayload } from '@vibe-llm/protocols/gem
 
 type ShapedError = Error & { status?: number; body?: unknown }
 
+/**
+ * Zod's `error.message` is a raw JSON issue dump that names the failing path
+ * but never the value that failed — a client seeing `messages.1.role:
+ * invalid_union` cannot tell which role it sent. Echo the received value for
+ * enum-ish leaves only (role/type/status), never for content, so no prompt
+ * text reaches the error body or the logs.
+ */
+const ECHOABLE_LEAVES = new Set(['role', 'type', 'status'])
+
+function valueAt(raw: unknown, path: readonly PropertyKey[]): unknown {
+  let cur = raw
+  for (const key of path) {
+    if (cur === null || typeof cur !== 'object') return undefined
+    cur = (cur as Record<PropertyKey, unknown>)[key]
+  }
+  return cur
+}
+
+function describeIssues(err: { issues: ReadonlyArray<{ path: readonly PropertyKey[]; message: string }> }, raw: unknown): string {
+  const lines = err.issues.map((issue) => {
+    const path = issue.path.join('.')
+    const leaf = issue.path[issue.path.length - 1]
+    const received = typeof leaf === 'string' && ECHOABLE_LEAVES.has(leaf) ? valueAt(raw, issue.path) : undefined
+    const suffix = typeof received === 'string' && received.length <= 64 ? ` (received '${received}')` : ''
+    return `${path || '<root>'}: ${issue.message}${suffix}`
+  })
+  return lines.join('; ')
+}
+
 function shape(message: string, body: unknown): ShapedError {
   const err = new Error(message) as ShapedError
   err.status = 400
@@ -32,9 +61,10 @@ function shape(message: string, body: unknown): ShapedError {
 export function parseMessagesPayload(raw: unknown): MessagesPayload {
   const r = MessagesPayloadSchema.safeParse(raw)
   if (!r.success) {
-    throw shape(r.error.message, {
+    const message = describeIssues(r.error, raw)
+    throw shape(message, {
       type: 'error',
-      error: { type: 'invalid_request_error', message: r.error.message },
+      error: { type: 'invalid_request_error', message },
     })
   }
   return r.data
@@ -43,9 +73,10 @@ export function parseMessagesPayload(raw: unknown): MessagesPayload {
 export function parseMessagesCountTokensPayload(raw: unknown): MessagesCountTokensPayload {
   const r = MessagesCountTokensPayloadSchema.safeParse(raw)
   if (!r.success) {
-    throw shape(r.error.message, {
+    const message = describeIssues(r.error, raw)
+    throw shape(message, {
       type: 'error',
-      error: { type: 'invalid_request_error', message: r.error.message },
+      error: { type: 'invalid_request_error', message },
     })
   }
   return r.data
@@ -54,8 +85,9 @@ export function parseMessagesCountTokensPayload(raw: unknown): MessagesCountToke
 export function parseChatPayload(raw: unknown): ChatPayload {
   const r = ChatPayloadSchema.safeParse(raw)
   if (!r.success) {
-    throw shape(r.error.message, {
-      error: { message: r.error.message, type: 'invalid_request_error' },
+    const message = describeIssues(r.error, raw)
+    throw shape(message, {
+      error: { message: message, type: 'invalid_request_error' },
     })
   }
   return r.data
@@ -64,8 +96,9 @@ export function parseChatPayload(raw: unknown): ChatPayload {
 export function parseResponsesPayload(raw: unknown): CanonicalResponsesPayload {
   const r = ResponsesPayloadSchema.safeParse(raw)
   if (!r.success) {
-    throw shape(r.error.message, {
-      error: { message: r.error.message, type: 'invalid_request_error' },
+    const message = describeIssues(r.error, raw)
+    throw shape(message, {
+      error: { message: message, type: 'invalid_request_error' },
     })
   }
   // Post-schema canonicalize: lift `input: string` and EasyInputMessage
@@ -78,8 +111,9 @@ export function parseResponsesPayload(raw: unknown): CanonicalResponsesPayload {
 export function parseGeminiPayload(raw: unknown): GeminiPayload {
   const r = GeminiPayloadSchema.safeParse(raw)
   if (!r.success) {
-    throw shape(r.error.message, {
-      error: { code: 400, message: r.error.message, status: 'INVALID_ARGUMENT' },
+    const message = describeIssues(r.error, raw)
+    throw shape(message, {
+      error: { code: 400, message, status: 'INVALID_ARGUMENT' },
     })
   }
   return r.data

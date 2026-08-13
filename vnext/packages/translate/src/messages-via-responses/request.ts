@@ -12,6 +12,7 @@
  */
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
 import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
+import { TranslatorValidationError } from '../errors.ts'
 
 interface AnthropicTextBlock { type: 'text'; text: string }
 interface AnthropicImageBlock {
@@ -33,7 +34,7 @@ type ContentBlock =
   | AnthropicThinkingBlock
 
 interface MessageLike {
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'system'
   content: string | ContentBlock[]
 }
 
@@ -41,7 +42,7 @@ interface MessagesTool { name: string; description?: string; input_schema?: unkn
 interface AnthropicToolChoice { type?: 'auto' | 'any' | 'tool' | 'none'; name?: string }
 
 type ResponseInputItem =
-  | { type: 'message'; role: 'user' | 'assistant'; content: string | Array<Record<string, unknown>> }
+  | { type: 'message'; role: 'user' | 'assistant' | 'system'; content: string | Array<Record<string, unknown>> }
   | { type: 'function_call'; call_id: string; name: string; arguments: string }
   | { type: 'function_call_output'; call_id: string; output: string }
 
@@ -152,12 +153,34 @@ function translateAssistantMessage(message: MessageLike): ResponseInputItem[] {
   return out
 }
 
+function translateSystemMessage(message: MessageLike): ResponseInputItem[] {
+  const content =
+    typeof message.content === 'string'
+      ? message.content
+      : (message.content as Array<{ text?: string }>).map((b) => b.text ?? '').join('\n\n')
+  return [{ type: 'message', role: 'system', content }]
+}
+
 function translateInput(messages: MessageLike[]): ResponseInputItem[] {
   const out: ResponseInputItem[] = []
-  for (const m of messages) {
-    if (m.role === 'user') out.push(...translateUserMessage(m))
-    else if (m.role === 'assistant') out.push(...translateAssistantMessage(m))
-  }
+  messages.forEach((m, i) => {
+    switch (m.role) {
+      case 'user':
+        out.push(...translateUserMessage(m))
+        break
+      case 'assistant':
+        out.push(...translateAssistantMessage(m))
+        break
+      case 'system':
+        out.push(...translateSystemMessage(m))
+        break
+      default:
+        throw new TranslatorValidationError(
+          `messages.${i}.role: role '${(m as { role: string }).role}' is not supported on this model`,
+          `messages.${i}.role`,
+        )
+    }
+  })
   return out
 }
 

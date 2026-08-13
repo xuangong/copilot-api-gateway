@@ -131,4 +131,38 @@ describe('messages-via-chat-completions :: request', () => {
     expect(out.temperature).toBe(0.4)
     expect(out.top_p).toBe(0.9)
   })
+
+  it('translates an interleaved role=system message into a Chat system message', () => {
+    const p = {
+      model: 'gpt', max_tokens: 1,
+      messages: [
+        { role: 'user', content: 'hi' },
+        { role: 'system', content: 'be terse' },
+        { role: 'assistant', content: 'ok' },
+      ],
+    } as unknown as MessagesPayload
+    const out = translateMessagesToChat(p)
+    expect(out.messages).toEqual([
+      { role: 'user', content: 'hi' },
+      { role: 'system', content: 'be terse' },
+      { role: 'assistant', content: 'ok' },
+    ] as never)
+  })
+
+  it('joins text blocks of a role=system message', () => {
+    const p = {
+      model: 'gpt', max_tokens: 1,
+      messages: [{ role: 'system', content: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] }],
+    } as unknown as MessagesPayload
+    const out = translateMessagesToChat(p)
+    expect(out.messages).toEqual([{ role: 'system', content: 'a\n\nb' }] as never)
+  })
+
+  it('throws on an unsupported message role instead of silently dropping it', () => {
+    const p = {
+      model: 'gpt', max_tokens: 1,
+      messages: [{ role: 'tool', content: 'x' }],
+    } as unknown as MessagesPayload
+    expect(() => translateMessagesToChat(p)).toThrow(/role/)
+  })
 })
