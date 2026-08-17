@@ -40,6 +40,9 @@ import {
   defaultsForUpstream,
 } from '../../data-plane/flags/index.ts'
 import { createProviderFromUpstream } from '../../data-plane/providers/registry.ts'
+import { createPerRequestFetcher } from '../../data-plane/dial/per-request.ts'
+import { getRuntimeLocation } from '@vibe-core/platform'
+import type { Fetcher } from '@vibe-core/upstream'
 import { clearRawModelsCache } from '@vibe-llm/provider-copilot'
 import { CustomProvider } from '@vibe-llm/provider-custom'
 import type { CustomProviderConfig as PkgCustomConfig } from '@vibe-llm/provider-custom'
@@ -417,6 +420,24 @@ async function invalidateUpstreamCaches(
   //                copilot-token-cache module is ported.
 }
 
+/**
+ * Egress fetcher for the single-upstream admin routes (test / models).
+ *
+ * Without it these routes dial direct while real traffic goes through the
+ * upstream's proxy chain, so "Test" fails on a gateway whose only egress is a
+ * proxy even though inference works. Returns undefined on failure so a broken
+ * proxy row degrades to a direct dial instead of hiding the provider error.
+ */
+async function adminFetcher(
+  upstream: UpstreamRecord<unknown>,
+): Promise<((upstreamId: string) => Fetcher) | undefined> {
+  try {
+    return await createPerRequestFetcher(getRuntimeLocation(), [upstream])
+  } catch {
+    return undefined
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Router 1: upstream-flags / upstream-probe (mounted at controlPlane root)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -615,7 +636,7 @@ upstreamsRouter.post('/:id/test', async (c) => {
   // with 200 so the dashboard's "Test" button shows the failure inline rather
   // than producing a 500 wire error. Matches root src/routes/control-plane.ts.
   try {
-    const provider = await createProviderFromUpstream(upstream)
+    const provider = await createProviderFromUpstream(upstream, undefined, await adminFetcher(upstream))
     if (!provider) {
       return c.json({ ok: false, error: `unable to construct ${upstream.provider} provider for upstream ${upstream.id}` })
     }
@@ -631,7 +652,7 @@ upstreamsRouter.get('/:id/models', async (c) => {
   )
   if (!upstream) return jsonError('upstream not found', 404)
   try {
-    const provider = await createProviderFromUpstream(upstream)
+    const provider = await createProviderFromUpstream(upstream, undefined, await adminFetcher(upstream))
     if (!provider) {
       return jsonError(`unable to construct ${upstream.provider} provider for upstream ${upstream.id}`, 502)
     }

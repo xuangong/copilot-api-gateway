@@ -5,8 +5,10 @@
  *   1. upstream.config.githubToken present → exchange via ctx hook
  *      (ctx.getCachedCopilotToken). Passes upstream.config.githubHost so
  *      GHE-with-data-residency tenants exchange against their tenant API
- *      host and inherit endpoints.api from the response. On any failure,
- *      fall through.
+ *      host and inherit endpoints.api from the response. On failure, fall
+ *      through to the fallback if one exists, else rethrow — a swallowed
+ *      exchange error surfaces as a bare "unable to construct provider",
+ *      hiding whether GitHub returned 401 (dead token) or 5xx (outage).
  *   2. ctx.copilotFallback present → construct from per-request token.
  *
  * Returns null when neither path can produce a provider.
@@ -34,8 +36,8 @@ export const copilotProviderPlugin: LlmProviderPlugin = {
           },
           fetcher,
         )
-      } catch {
-        // fall through to fallback
+      } catch (err) {
+        if (!ctx.copilotFallback) throw err
       }
     }
     if (ctx.copilotFallback) {

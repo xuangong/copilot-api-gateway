@@ -84,10 +84,11 @@ test('createFromUpstream — returns null without githubToken AND without fallba
   expect(provider).toBeNull()
 })
 
-test('createFromUpstream — returns null when token exchange throws AND no fallback', async () => {
+test('createFromUpstream — rethrows exchange error when there is no fallback', async () => {
   const upstream = makeUpstream({ githubToken: 'gh_xxx' })
-  const provider = await copilotProviderPlugin.createFromUpstream(upstream, {
-    getCachedCopilotToken: async () => { throw new Error('boom') },
-  })
-  expect(provider).toBeNull()
+  await expect(
+    copilotProviderPlugin.createFromUpstream(upstream, {
+      getCachedCopilotToken: async () => { throw new Error('Failed to exchange GitHub token (503)') },
+    }),
+  ).rejects.toThrow('Failed to exchange GitHub token (503)')
 })
