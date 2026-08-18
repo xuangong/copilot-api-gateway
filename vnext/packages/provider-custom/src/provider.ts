@@ -43,6 +43,7 @@ export class CustomProvider implements LlmModelProvider {
   private readonly baseUrl: string
   private readonly apiKey: string
   private readonly defaultHeaders: Record<string, string>
+  private readonly pathOverrides: Partial<Record<CustomPathOverrideKey, string>>
   private readonly modelsEndpoint: string
   private readonly manualModels?: ReadonlyArray<{ id: string; name?: string; ownedBy?: string }>
   private readonly manualPricing: Map<string, ModelPricing>
@@ -55,6 +56,7 @@ export class CustomProvider implements LlmModelProvider {
     this.baseUrl = cfg.baseUrl.replace(/\/+$/, '')
     this.apiKey = cfg.apiKey
     this.defaultHeaders = mergeHeaders(cfg.defaultHeaders, undefined)
+    this.pathOverrides = { ...cfg.pathOverrides }
     this.supportedEndpoints = cfg.endpoints ?? DEFAULT_ENDPOINTS
     this.modelsEndpoint = cfg.modelsEndpoint ?? `${this.baseUrl}/models`
     // Split cfg.models: display entries (string | {id,...}) feed manualModels;
@@ -139,8 +141,7 @@ export class CustomProvider implements LlmModelProvider {
   }
 
   async fetch(req: ProviderRequest): Promise<ProviderResponse> {
-    const path = CUSTOM_PATHS[req.endpoint]
-    if (!path) throw new Error(`CustomProvider does not support endpoint: ${req.endpoint}`)
+    const path = this.resolvePath(req.endpoint)
     // Wrap into a Request once. Custom has no interceptor chain, so headers
     // and payload pass straight through. FormData payloads (images_edits)
     // bypass JSON serialization so multipart boundaries are preserved;
@@ -156,6 +157,22 @@ export class CustomProvider implements LlmModelProvider {
       `call ${req.endpoint}`,
     )
     return { status: res.status, headers: res.headers, body: res.body }
+  }
+
+  /**
+   * `messages_count_tokens` derives from `messages` rather than carrying its
+   * own override, so an upstream that serves Anthropic under a non-default
+   * prefix gets both endpoints moved in lockstep.
+   */
+  private resolvePath(endpoint: EndpointKey): string {
+    if (endpoint === 'messages_count_tokens') {
+      return `${this.resolvePath('messages')}/count_tokens`
+    }
+    const override = this.pathOverrides[endpoint as CustomPathOverrideKey]
+    if (override) return override
+    const path = CUSTOM_PATHS[endpoint]
+    if (!path) throw new Error(`CustomProvider does not support endpoint: ${endpoint}`)
+    return path
   }
 
   private authHeaders(

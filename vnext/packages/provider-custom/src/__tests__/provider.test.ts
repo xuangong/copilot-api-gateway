@@ -363,6 +363,46 @@ describe('CustomProvider.fetch', () => {
   })
 })
 
+describe('CustomProvider.resolvePath', () => {
+  const resolve = (p: CustomProvider, endpoint: string): string =>
+    (p as unknown as { resolvePath: (e: string) => string }).resolvePath(endpoint)
+
+  test('falls back to the built-in path table when no override is set', () => {
+    const p = new CustomProvider({ name: 'x', baseUrl: 'https://x/v1', apiKey: 'k' })
+    expect(resolve(p, 'messages')).toBe('/messages')
+    expect(resolve(p, 'chat_completions')).toBe('/chat/completions')
+  })
+
+  test('an override replaces the built-in path', () => {
+    const p = new CustomProvider({
+      name: 'x', baseUrl: 'https://x', apiKey: 'k',
+      pathOverrides: { messages: '/anthropic/v1/messages' },
+    })
+    expect(resolve(p, 'messages')).toBe('/anthropic/v1/messages')
+  })
+
+  test('an override on one endpoint leaves the others alone', () => {
+    const p = new CustomProvider({
+      name: 'x', baseUrl: 'https://x/v1', apiKey: 'k',
+      pathOverrides: { messages: '/anthropic/v1/messages' },
+    })
+    expect(resolve(p, 'chat_completions')).toBe('/chat/completions')
+  })
+
+  test('count_tokens derives from the resolved messages path', () => {
+    const p = new CustomProvider({
+      name: 'x', baseUrl: 'https://x', apiKey: 'k',
+      pathOverrides: { messages: '/anthropic/v1/messages' },
+    })
+    expect(resolve(p, 'messages_count_tokens')).toBe('/anthropic/v1/messages/count_tokens')
+  })
+
+  test('count_tokens falls back to the default messages path', () => {
+    const p = new CustomProvider({ name: 'x', baseUrl: 'https://x/v1', apiKey: 'k' })
+    expect(resolve(p, 'messages_count_tokens')).toBe('/messages/count_tokens')
+  })
+})
+
 describe('CustomProvider.probe', () => {
   const realFetch = globalThis.fetch
 
