@@ -1,5 +1,6 @@
 import { useState } from "react"
 import type { ApiKeyDetail } from "../../api/keys"
+import { WEIGHTED_FORMULA_PARTS, formatWeight } from "../../components/weighted-formula"
 import { useT } from "../../state/i18n"
 import type { QuotaUsage } from "../../state/keys"
 
@@ -8,7 +9,7 @@ interface Props {
   usage: QuotaUsage
   canEdit: boolean
   busy: boolean
-  onSave: (req: number | null, token: number | null) => Promise<boolean>
+  onSave: (req: number | null, token: number | null, cost: number | null) => Promise<boolean>
 }
 
 function progressClass(percent: number): string {
@@ -29,20 +30,25 @@ export function QuotaEditor({ keyRow, usage, canEdit, busy, onSave }: Props) {
   const [editing, setEditing] = useState(false)
   const [reqInput, setReqInput] = useState<string>("")
   const [tokenInput, setTokenInput] = useState<string>("")
+  const [costInput, setCostInput] = useState<string>("")
   const t = useT()
 
   const startEdit = () => {
     setReqInput(keyRow.quota_requests_per_month ? String(keyRow.quota_requests_per_month) : "")
     setTokenInput(keyRow.quota_tokens_per_month ? String(keyRow.quota_tokens_per_month) : "")
+    setCostInput(keyRow.quota_cost_per_month ? String(keyRow.quota_cost_per_month) : "")
     setEditing(true)
   }
 
+  // Blank / zero / non-numeric all mean "unlimited" — the server stores NULL.
+  const positiveOrNull = (raw: string): number | null => {
+    if (raw.trim() === "") return null
+    const n = Number(raw)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+
   const save = async () => {
-    const reqNum = reqInput.trim() === "" ? null : Number(reqInput)
-    const tokenNum = tokenInput.trim() === "" ? null : Number(tokenInput)
-    const reqVal = typeof reqNum === "number" && Number.isFinite(reqNum) && reqNum > 0 ? reqNum : null
-    const tokenVal = typeof tokenNum === "number" && Number.isFinite(tokenNum) && tokenNum > 0 ? tokenNum : null
-    const ok = await onSave(reqVal, tokenVal)
+    const ok = await onSave(positiveOrNull(reqInput), positiveOrNull(tokenInput), positiveOrNull(costInput))
     if (ok) setEditing(false)
   }
 
@@ -75,7 +81,7 @@ export function QuotaEditor({ keyRow, usage, canEdit, busy, onSave }: Props) {
       </div>
 
       {editing ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
           <div>
             <label className="text-xs text-themed-dim block mb-1">{t("dash.requestsPerMonthLabel")}</label>
             <input
@@ -96,6 +102,19 @@ export function QuotaEditor({ keyRow, usage, canEdit, busy, onSave }: Props) {
               placeholder={t("dash.placeholderUnlimited")}
               value={tokenInput}
               onChange={(e) => setTokenInput(e.target.value)}
+              className="w-full mt-1 text-sm"
+            />
+            <p className="text-[10px] text-themed-dim mt-1">{t("dash.leaveEmptyForUnlimited")}</p>
+          </div>
+          <div>
+            <label className="text-xs text-themed-dim block mb-1">{t("dash.costPerMonthLabel")}</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder={t("dash.placeholderUnlimited")}
+              value={costInput}
+              onChange={(e) => setCostInput(e.target.value)}
               className="w-full mt-1 text-sm"
             />
             <p className="text-[10px] text-themed-dim mt-1">{t("dash.leaveEmptyForUnlimited")}</p>
@@ -183,13 +202,56 @@ export function QuotaEditor({ keyRow, usage, canEdit, busy, onSave }: Props) {
         )}
       </div>
 
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-themed-secondary">{t("dash.costPerMonthLabel")}</span>
+          <span className={`text-xs font-mono ${usage.costLimit ? "text-themed" : "text-themed-dim"}`}>
+            {usage.costLimit
+              ? `$${usage.costUsed.toFixed(4)} / $${usage.costLimit}`
+              : `$${usage.costUsed.toFixed(4)} / ∞`}
+          </span>
+        </div>
+        {usage.costLimit ? (
+          <>
+            <div className="progress-track">
+              <div
+                className={`progress-fill ${progressClass(usage.costPercent)}`}
+                style={{ width: `${Math.min(usage.costPercent, 100)}%` }}
+              />
+            </div>
+            <p className="text-[10px] text-themed-dim mt-1">
+              ${Math.max(0, usage.costLimit - usage.costUsed).toFixed(4)} {t("dash.remaining")}
+              {usage.costPercent >= 100 ? (
+                <span className="text-accent-red font-medium ml-1">{t("dash.quotaExceeded")}</span>
+              ) : null}
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="progress-track">
+              <div
+                className="progress-fill bg-gradient-to-r from-accent-violet/40 to-accent-teal/40"
+                style={{ width: `${unlimitedFillPercent(usage.costUsed)}%` }}
+              />
+            </div>
+            <p className="text-[10px] text-themed-dim mt-1">
+              {t("dash.unlimitedUsedThisMonth", { n: `$${usage.costUsed.toFixed(4)}` })}
+            </p>
+          </>
+        )}
+      </div>
+
       <div className="rounded-lg bg-surface-800/60 border border-white/[0.04] p-3">
         <p className="text-[10px] text-themed-dim leading-relaxed">
           <span className="text-themed-secondary font-medium">{t("dash.tokenQuotaFormulaLabel")}</span>
-          <code className="text-accent-violet ml-1">Cache Read × 10%</code> +{" "}
-          <code className="text-accent-cyan">Cache Creation × 125%</code> +{" "}
-          <code className="text-accent-teal">Uncached Input × 100%</code> +{" "}
-          <code className="text-accent-amber">Output × 500%</code>
+          {WEIGHTED_FORMULA_PARTS.map((part, i) => (
+            <span key={part.labelKey}>
+              {i > 0 ? " + " : " "}
+              <code className={part.colorClass}>
+                {t(part.labelKey)} {formatWeight(part.weight)}
+              </code>
+            </span>
+          ))}
         </p>
       </div>
     </div>

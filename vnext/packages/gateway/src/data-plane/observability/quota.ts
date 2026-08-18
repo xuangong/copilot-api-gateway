@@ -12,6 +12,7 @@
  * auth path (`apiKeyId === 'dev-user'`, no row in `api_keys`).
  */
 import { getRepo } from '../../repo/index.ts'
+import { recordCostUsd } from '../../shared/usage-cost.ts'
 import { computeWeightedTokens } from './quota-math.ts'
 import type { ApiKeyId } from '../../repo/branded-ids.ts'
 
@@ -41,7 +42,8 @@ export async function checkQuota(apiKeyId: ApiKeyId): Promise<QuotaResult> {
 
   const hasReqQuota = key.quotaRequestsPerMonth != null
   const hasTokenQuota = key.quotaTokensPerMonth != null
-  if (!hasReqQuota && !hasTokenQuota) return { allowed: true }
+  const hasCostQuota = key.quotaCostPerMonth != null
+  if (!hasReqQuota && !hasTokenQuota && !hasCostQuota) return { allowed: true }
 
   const now = new Date()
   const monthStart = utcMonthStartHour(now, 0)
@@ -51,6 +53,7 @@ export async function checkQuota(apiKeyId: ApiKeyId): Promise<QuotaResult> {
 
   let totalRequests = 0
   let totalWeightedTokens = 0
+  let totalCostUsd = 0
   for (const r of records) {
     totalRequests += r.requests
     const cacheRead = r.tokens.input_cache_read ?? 0
@@ -58,6 +61,7 @@ export async function checkQuota(apiKeyId: ApiKeyId): Promise<QuotaResult> {
     const input = (r.tokens.input ?? 0) + (r.tokens.input_image ?? 0)
     const output = (r.tokens.output ?? 0) + (r.tokens.output_image ?? 0)
     totalWeightedTokens += computeWeightedTokens(cacheRead, cacheWrite, input, output)
+    totalCostUsd += recordCostUsd(r)
   }
 
   const retryAfterSeconds = secondsUntilNextUtcMonth(now)
@@ -66,6 +70,9 @@ export async function checkQuota(apiKeyId: ApiKeyId): Promise<QuotaResult> {
   }
   if (hasTokenQuota && totalWeightedTokens >= key.quotaTokensPerMonth!) {
     return { allowed: false, reason: `Monthly token quota exceeded (${Math.round(totalWeightedTokens)}/${key.quotaTokensPerMonth}). Resets at the start of the next UTC month.`, retryAfterSeconds }
+  }
+  if (hasCostQuota && totalCostUsd >= key.quotaCostPerMonth!) {
+    return { allowed: false, reason: `Monthly cost quota exceeded ($${totalCostUsd.toFixed(4)}/$${key.quotaCostPerMonth}). Resets at the start of the next UTC month.`, retryAfterSeconds }
   }
 
   return { allowed: true }

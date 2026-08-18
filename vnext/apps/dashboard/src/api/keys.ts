@@ -25,6 +25,7 @@ export interface ApiKeyDetail {
   is_owner: boolean
   quota_requests_per_month: number | null
   quota_tokens_per_month: number | null
+  quota_cost_per_month: number | null
   web_search_enabled: boolean
   web_search_langsearch_key: string | null
   web_search_langsearch_ref: KeyRefDescriptor | null
@@ -40,6 +41,7 @@ export interface KeyPatchBody {
   name?: string
   quota_requests_per_month?: number | null
   quota_tokens_per_month?: number | null
+  quota_cost_per_month?: number | null
   web_search_enabled?: boolean
   web_search_langsearch_key?: string | null
   web_search_tavily_key?: string | null
@@ -80,6 +82,7 @@ export interface TokenUsageRecord {
   cacheCreationTokens?: number
   inputTokens?: number
   outputTokens?: number
+  cost?: { totalUSD?: number } | null
 }
 
 export type WebSearchRange = "1d" | "7d" | "30d"

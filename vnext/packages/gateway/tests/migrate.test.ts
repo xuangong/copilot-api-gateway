@@ -58,9 +58,11 @@ describe("applyMigrations", () => {
     db.exec("DROP TABLE responses_snapshots")
     db.exec("DROP TABLE _migrations")
     // A ledger-less database predates every migration, so its quota columns
-    // still carry the daily names 0003 renames away.
+    // still carry the daily names 0003 renames away, and 0004's cost column
+    // does not exist yet.
     db.exec("ALTER TABLE api_keys RENAME COLUMN quota_requests_per_month TO quota_requests_per_day")
     db.exec("ALTER TABLE api_keys RENAME COLUMN quota_tokens_per_month TO quota_tokens_per_day")
+    db.exec("ALTER TABLE api_keys DROP COLUMN quota_cost_per_month")
     db.exec("INSERT INTO users (id, name, created_at) VALUES ('u1', 'someone', '2026-01-01')")
 
     applyMigrations(db)

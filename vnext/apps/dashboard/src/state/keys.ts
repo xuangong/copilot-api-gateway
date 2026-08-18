@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { computeWeightedTokens } from "@vibe-llm/protocols/quota"
 import { useToast } from "./toast"
 import * as api from "../api/keys"
 import type { ApiKeyDetail, WebSearchRange, WebSearchUsage } from "../api/keys"
@@ -10,6 +11,9 @@ export interface QuotaUsage {
   tokenLimit: number | null
   tokenUsed: number
   tokenPercent: number
+  costLimit: number | null
+  costUsed: number
+  costPercent: number
 }
 
 const ZERO_QUOTA: QuotaUsage = {
@@ -19,6 +23,9 @@ const ZERO_QUOTA: QuotaUsage = {
   tokenLimit: null,
   tokenUsed: 0,
   tokenPercent: 0,
+  costLimit: null,
+  costUsed: 0,
+  costPercent: 0,
 }
 
 const ZERO_WS_USAGE: WebSearchUsage = {
@@ -202,19 +209,23 @@ export function useKeys() {
     }
     const reqLimit = selectedKey.quota_requests_per_month ?? null
     const tokenLimit = selectedKey.quota_tokens_per_month ?? null
+    const costLimit = selectedKey.quota_cost_per_month ?? null
     api
       .getMonthTokenUsage(selectedKey.id)
       .then((records) => {
         if (cancelled) return
         let reqUsed = 0
         let weightedTokens = 0
+        let costUsed = 0
         for (const r of records) {
           reqUsed += r.requests
-          weightedTokens +=
-            (r.cacheReadTokens ?? 0) * 0.1 +
-            (r.cacheCreationTokens ?? 0) * 1.25 +
-            (r.inputTokens ?? 0) * 1.0 +
-            (r.outputTokens ?? 0) * 5.0
+          weightedTokens += computeWeightedTokens(
+            r.cacheReadTokens ?? 0,
+            r.cacheCreationTokens ?? 0,
+            r.inputTokens ?? 0,
+            r.outputTokens ?? 0,
+          )
+          costUsed += r.cost?.totalUSD ?? 0
         }
         setQuotaUsage({
           reqLimit,
@@ -223,6 +234,9 @@ export function useKeys() {
           tokenLimit,
           tokenUsed: weightedTokens,
           tokenPercent: tokenLimit ? Math.round((weightedTokens / tokenLimit) * 100) : 0,
+          costLimit,
+          costUsed,
+          costPercent: costLimit ? Math.round((costUsed / costLimit) * 100) : 0,
         })
       })
       .catch(() => {
@@ -234,6 +248,9 @@ export function useKeys() {
             tokenLimit,
             tokenUsed: 0,
             tokenPercent: 0,
+            costLimit,
+            costUsed: 0,
+            costPercent: 0,
           })
         }
       })

@@ -10,7 +10,8 @@
     "./chat": "./src/chat/index.ts",
     "./responses": "./src/responses/index.ts",
     "./gemini": "./src/gemini/index.ts",
-    "./images": "./src/images/index.ts"
+    "./images": "./src/images/index.ts",
+    "./quota": "./src/quota/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

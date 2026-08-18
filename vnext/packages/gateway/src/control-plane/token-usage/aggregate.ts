@@ -10,7 +10,8 @@
  * so the dashboard's by-client breakdown has something to group on.
  */
 import type { UsageRecord } from '../../repo/types.ts'
-import { BILLING_DIMENSIONS, unitPriceForDimension, type BillingDimension } from '@vibe-llm/protocols/common'
+import { recordCostUsd } from '../../shared/usage-cost.ts'
+import { BILLING_DIMENSIONS, type BillingDimension } from '@vibe-llm/protocols/common'
 
 export interface DisplayUsageRecord {
   keyId: string
@@ -36,19 +37,7 @@ export interface DisplayUsageByUserRecord {
   cost: number
 }
 
-// Cost is pure addition over the dimension rows: Σ tokens × unit_price / 1e6.
-// No subtraction is needed because the counts are disjoint and each dimension
-// already carries its own resolved unit price snapshot.
-const recordCostUsd = (record: UsageRecord): number => {
-  let total = 0
-  for (const dimension of BILLING_DIMENSIONS) {
-    const tokens = record.tokens[dimension] ?? 0
-    if (tokens === 0) continue
-    const unitPrice = unitPriceForDimension(record.cost, dimension)
-    if (unitPrice !== null) total += tokens * unitPrice
-  }
-  return total / 1e6
-}
+// Cost is pure addition over the dimension rows; see shared/usage-cost.ts.
 
 const accumulate = (
   bucket: { requests: number; cost: number; tokens: Partial<Record<BillingDimension, number>> },

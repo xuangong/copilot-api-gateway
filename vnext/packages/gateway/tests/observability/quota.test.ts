@@ -13,7 +13,7 @@ beforeEach(() => {
 })
 afterEach(() => __resetPlatformForTests())
 
-const baseKey = (over: Partial<{ quotaRequestsPerMonth: number | null; quotaTokensPerMonth: number | null }> = {}) => ({
+const baseKey = (over: Partial<{ quotaRequestsPerMonth: number | null; quotaTokensPerMonth: number | null; quotaCostPerMonth: number | null }> = {}) => ({
   id: 'k1',
   name: 'k1',
   key: 'sk-k1',
@@ -22,6 +22,7 @@ const baseKey = (over: Partial<{ quotaRequestsPerMonth: number | null; quotaToke
   ownerId: 'o1',
   quotaRequestsPerMonth: null,
   quotaTokensPerMonth: null,
+  quotaCostPerMonth: null,
   webSearchEnabled: false,
   webSearchLangsearchKey: null, webSearchTavilyKey: null, webSearchMsGroundingKey: null,
   webSearchPriority: null,
@@ -93,8 +94,7 @@ test('checkQuota: usage below quota allowed', async () => {
   expect(r.allowed).toBe(true)
 })
 
-test('checkQuota: last month usage does not count against this month', async () => {
-  await repo.apiKeys.save(baseKey({ quotaRequestsPerMonth: 2 }))
+test('checkQuota: last month usage does not count against this month', async () => {  await repo.apiKeys.save(baseKey({ quotaRequestsPerMonth: 2 }))
   const now = new Date()
   const lastMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15))
   await repo.usage.record({
@@ -104,4 +104,30 @@ test('checkQuota: last month usage does not count against this month', async () 
   })
   const r = await checkQuota('k1')
   expect(r.allowed).toBe(true)
+})
+
+test('checkQuota: cost quota exceeded denies', async () => {
+  await repo.apiKeys.save(baseKey({ quotaCostPerMonth: 1 }))
+  await repo.usage.record({
+    keyId: 'k1', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
+    hour: thisMonthHour(), requests: 1, tokens: { input: 1_000_000 },
+    cost: { input: 3 },
+  })
+  const r = await checkQuota('k1')
+  expect(r.allowed).toBe(false)
+  expect(r.reason).toMatch(/cost quota exceeded \(\$3\.0000\/\$1\)/)
+  expect(r.retryAfterSeconds).toBeGreaterThan(0)
+})
+
+// Rows whose price was never synced contribute $0, so a cost-only gate would
+// let an unpriced model run unlimited. The weighted-token gate is the backstop.
+test('checkQuota: unpriced usage escapes the cost gate but still hits the token gate', async () => {
+  await repo.apiKeys.save(baseKey({ quotaCostPerMonth: 1, quotaTokensPerMonth: 1000 }))
+  await repo.usage.record({
+    keyId: 'k1', model: 'brand-new', modelKey: 'brand-new', upstream: null, client: '',
+    hour: thisMonthHour(), requests: 1, tokens: { input: 5000 }, cost: null,
+  })
+  const r = await checkQuota('k1')
+  expect(r.allowed).toBe(false)
+  expect(r.reason).toMatch(/token quota exceeded \(5000\/1000\)/)
 })

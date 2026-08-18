@@ -168,6 +168,28 @@ test('PATCH rename and quota fields', async () => {
   expect(body.quota_requests_per_month).toBe(100)
 })
 
+test('PATCH cost quota round-trips through GET', async () => {
+  const k = await createApiKey('k1', 'u1')
+  const app = buildApp({ isAdmin: true })
+  const patched = await app.request(`/api/keys/${k.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ quota_cost_per_month: 12.5 }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(patched.status).toBe(200)
+  expect((await patched.json() as any).quota_cost_per_month).toBe(12.5)
+
+  const listed = await (await app.request('/api/keys')).json() as any[]
+  expect(listed.find((r) => r.id === k.id).quota_cost_per_month).toBe(12.5)
+
+  const cleared = await app.request(`/api/keys/${k.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ quota_cost_per_month: null }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect((await cleared.json() as any).quota_cost_per_month).toBeNull()
+})
+
 test('PATCH non-owner → 403', async () => {
   const k = await createApiKey('k1', 'u1')
   const res = await buildApp({ isUser: true, userId: 'other' }).request(`/api/keys/${k.id}`, {

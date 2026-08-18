@@ -15,6 +15,8 @@ export interface ApiKey {
   ownerId?: UserId
   quotaRequestsPerMonth?: number
   quotaTokensPerMonth?: number
+  /** Monthly spend cap in USD. Parallel to the two above: any one exceeded denies. */
+  quotaCostPerMonth?: number
   webSearchEnabled?: boolean
   webSearchLangsearchKey?: string
   webSearchTavilyKey?: string

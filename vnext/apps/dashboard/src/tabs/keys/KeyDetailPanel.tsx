@@ -52,8 +52,12 @@ export function KeyDetailPanel({
         usage={quotaUsage}
         canEdit={canManage}
         busy={busy}
-        onSave={async (req, token) =>
-          onPatch({ quota_requests_per_month: req, quota_tokens_per_month: token })
+        onSave={async (req, token, cost) =>
+          onPatch({
+            quota_requests_per_month: req,
+            quota_tokens_per_month: token,
+            quota_cost_per_month: cost,
+          })
         }
       />
 

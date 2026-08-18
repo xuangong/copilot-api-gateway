@@ -46,7 +46,9 @@ export function UsageTab() {
 
   return (
     <div>
-      <div className="glass-card p-4 sm:p-6 animate-in">
+      {/* z-10: the cards below build their own stacking contexts (backdrop-filter),
+          so without this the summary's hover popup paints underneath them. */}
+      <div className="glass-card p-4 sm:p-6 animate-in relative z-10">
         <div className="flex flex-col gap-4 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
