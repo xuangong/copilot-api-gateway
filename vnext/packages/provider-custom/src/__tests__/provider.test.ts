@@ -435,6 +435,64 @@ describe('CustomProvider.resolvePath', () => {
   })
 })
 
+describe('CustomProvider auth styles', () => {
+  const headers = (p: CustomProvider): Record<string, string> =>
+    (p as unknown as { authHeaders: () => Record<string, string> }).authHeaders()
+
+  test('defaults to bearer', () => {
+    const p = new CustomProvider({ name: 'x', baseUrl: 'https://x', apiKey: 'sk-1' })
+    const h = headers(p)
+    expect(h['Authorization']).toBe('Bearer sk-1')
+    expect(h['x-api-key']).toBeUndefined()
+  })
+
+  test('anthropic style sends x-api-key and a version header', () => {
+    const p = new CustomProvider({
+      name: 'x', baseUrl: 'https://x', apiKey: 'sk-1', authStyle: 'anthropic',
+    })
+    const h = headers(p)
+    expect(h['x-api-key']).toBe('sk-1')
+    expect(h['anthropic-version']).toBe('2023-06-01')
+    expect(h['Authorization']).toBeUndefined()
+  })
+
+  test('none style sends no credential at all', () => {
+    const p = new CustomProvider({ name: 'x', baseUrl: 'https://x', authStyle: 'none' })
+    const h = headers(p)
+    expect(h['Authorization']).toBeUndefined()
+    expect(h['x-api-key']).toBeUndefined()
+  })
+
+  test('none style does not require an apiKey', () => {
+    expect(() => new CustomProvider({
+      name: 'x', baseUrl: 'https://x', authStyle: 'none',
+    })).not.toThrow()
+  })
+
+  test('bearer style still requires an apiKey', () => {
+    expect(() => new CustomProvider({
+      name: 'x', baseUrl: 'https://x', authStyle: 'bearer',
+    })).toThrow(/apiKey/)
+  })
+
+  test('anthropic style still requires an apiKey', () => {
+    expect(() => new CustomProvider({
+      name: 'x', baseUrl: 'https://x', authStyle: 'anthropic',
+    })).toThrow(/apiKey/)
+  })
+
+  // Deliberate divergence from copilot-gateway, which guards built-in headers
+  // with `if (!headers.has(...))`. vNext keeps last-write-wins so an operator
+  // can pin a different anthropic-version. Do not "fix" this back.
+  test('defaultHeaders can override the built-in anthropic-version', () => {
+    const p = new CustomProvider({
+      name: 'x', baseUrl: 'https://x', apiKey: 'sk-1', authStyle: 'anthropic',
+      defaultHeaders: { 'anthropic-version': '2024-01-01' },
+    })
+    expect(headers(p)['anthropic-version']).toBe('2024-01-01')
+  })
+})
+
 describe('CustomProvider.probe', () => {
   const realFetch = globalThis.fetch
 

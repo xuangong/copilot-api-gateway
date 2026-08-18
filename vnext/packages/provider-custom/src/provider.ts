@@ -42,6 +42,7 @@ export class CustomProvider implements LlmModelProvider {
   readonly supportedEndpoints: readonly EndpointKey[]
   private readonly baseUrl: string
   private readonly apiKey: string
+  private readonly authStyle: CustomAuthStyle
   private readonly defaultHeaders: Record<string, string>
   private readonly pathOverrides: Partial<Record<CustomPathOverrideKey, string>>
   private readonly modelsEndpoint: string
@@ -50,11 +51,15 @@ export class CustomProvider implements LlmModelProvider {
   private autoPricing: Map<string, ModelPricing> = new Map()
 
   constructor(cfg: CustomProviderConfig) {
-    if (!cfg.apiKey) throw new Error('Custom provider requires an apiKey')
+    const authStyle = cfg.authStyle ?? 'bearer'
+    if (authStyle !== 'none' && !cfg.apiKey) {
+      throw new Error('Custom provider requires an apiKey')
+    }
+    this.authStyle = authStyle
     if (!cfg.baseUrl) throw new Error('Custom provider requires a baseUrl')
     this.name = cfg.name
     this.baseUrl = cfg.baseUrl.replace(/\/+$/, '')
-    this.apiKey = cfg.apiKey
+    this.apiKey = cfg.apiKey ?? ''
     this.defaultHeaders = mergeHeaders(cfg.defaultHeaders, undefined)
     this.pathOverrides = { ...cfg.pathOverrides }
     this.supportedEndpoints = cfg.endpoints ?? DEFAULT_ENDPOINTS
@@ -179,11 +184,14 @@ export class CustomProvider implements LlmModelProvider {
     extra: Record<string, string> = {},
     opts: { includeJsonContentType?: boolean } = {},
   ): Record<string, string> {
-    const base: Record<string, string> = {
-      'Authorization': `Bearer ${this.apiKey}`,
-      ...this.defaultHeaders,
-      ...extra,
+    const base: Record<string, string> = {}
+    if (this.authStyle === 'bearer') {
+      base['Authorization'] = `Bearer ${this.apiKey}`
+    } else if (this.authStyle === 'anthropic') {
+      base['x-api-key'] = this.apiKey
+      base['anthropic-version'] = '2023-06-01'
     }
+    Object.assign(base, this.defaultHeaders, extra)
     if (opts.includeJsonContentType !== false) {
       base['Content-Type'] = 'application/json'
     }
