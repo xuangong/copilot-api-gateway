@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "../../state/auth"
 import { useT } from "../../state/i18n"
 import { useUpstreams } from "../../state/upstreams"
@@ -26,6 +26,25 @@ export function UpstreamsTab() {
   const [deviceFlowOpen, setDeviceFlowOpen] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [presetMenuOpen, setPresetMenuOpen] = useState(false)
+
+  // A menu that only closes by picking something strands the user on mobile,
+  // where the toggle can scroll out of reach.
+  useEffect(() => {
+    if (!presetMenuOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPresetMenuOpen(false)
+    }
+    const onPointer = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null
+      if (!el?.closest("[data-preset-menu]")) setPresetMenuOpen(false)
+    }
+    document.addEventListener("keydown", onKey)
+    document.addEventListener("mousedown", onPointer)
+    return () => {
+      document.removeEventListener("keydown", onKey)
+      document.removeEventListener("mousedown", onPointer)
+    }
+  }, [presetMenuOpen])
 
   const openCreate = (provider: "custom" | "azure" | "sdf", presetId?: string) => {
     setEditingId(null)
@@ -86,7 +105,9 @@ export function UpstreamsTab() {
             <button
               onClick={() => setPresetMenuOpen((v) => !v)}
               className="btn-ghost text-sm"
+              data-preset-menu
               aria-haspopup="menu"
+              aria-controls="preset-menu"
               aria-expanded={presetMenuOpen}
             >
               {t("dash.addCustom")} ▾
@@ -102,6 +123,8 @@ export function UpstreamsTab() {
         {presetMenuOpen ? (
           <div
             role="menu"
+            id="preset-menu"
+            data-preset-menu
             className="rounded-lg py-1 mb-4"
             style={{ background: "var(--surface-800)", border: "1px solid var(--border-color)" }}
           >

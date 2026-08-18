@@ -43,7 +43,9 @@ export const VENDOR_PRESETS: readonly VendorPreset[] = [
       messages: "/anthropic/v1/messages",
     },
     modelsEndpoint: "https://api.deepseek.com/v1/models",
-    flagOverrides: { "vendor-deepseek": true },
+    // `vendor-deepseek` already implies the dialect, but setting it
+    // explicitly keeps the checkbox honest about what is actually running.
+    flagOverrides: { "vendor-deepseek": true, "reasoning-content-dialect": true },
     modelsText: "",
   },
   {
