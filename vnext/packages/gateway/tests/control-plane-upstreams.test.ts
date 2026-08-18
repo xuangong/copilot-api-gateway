@@ -495,3 +495,77 @@ for (const bad of [
     expect(store.upstreams.size).toBe(0)
   })
 }
+
+test('POST /api/upstreams custom with pathOverrides + authStyle → 201', async () => {
+  const res = await buildApp({ isAdmin: true }).request('/api/upstreams', {
+    method: 'POST',
+    body: JSON.stringify({
+      provider: 'custom',
+      name: 'deepseek',
+      config: {
+        name: 'deepseek',
+        baseUrl: 'https://api.deepseek.com/v1',
+        apiKey: 'sk-secret',
+        authStyle: 'anthropic',
+        endpoints: ['chat_completions', 'messages'],
+        pathOverrides: { messages: '/anthropic/v1/messages' },
+      },
+    }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(res.status).toBe(201)
+  const body = await res.json() as any
+  expect(body.upstream.config.authStyle).toBe('anthropic')
+  // pathOverrides is not secret-shaped, so it round-trips unredacted for the form
+  expect(body.upstream.config.pathOverrides).toEqual({ messages: '/anthropic/v1/messages' })
+  expect(body.upstream.config.apiKey).toBe('***')
+})
+
+test('POST /api/upstreams custom with a traversal path override → 400', async () => {
+  const res = await buildApp({ isAdmin: true }).request('/api/upstreams', {
+    method: 'POST',
+    body: JSON.stringify({
+      provider: 'custom',
+      name: 'evil',
+      config: {
+        name: 'evil',
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'sk-1',
+        pathOverrides: { messages: '/../../admin' },
+      },
+    }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(res.status).toBe(400)
+  const body = await res.json() as any
+  expect(body.error).toMatch(/must not contain/)
+})
+
+test('PATCH /api/upstreams/:id clears pathOverrides with an empty object', async () => {
+  const created = await buildApp({ isAdmin: true }).request('/api/upstreams', {
+    method: 'POST',
+    body: JSON.stringify({
+      provider: 'custom',
+      name: 'ds',
+      config: {
+        name: 'ds',
+        baseUrl: 'https://api.deepseek.com/v1',
+        apiKey: 'sk-1',
+        pathOverrides: { messages: '/anthropic/v1/messages' },
+      },
+    }),
+    headers: { 'content-type': 'application/json' },
+  })
+  const id = ((await created.json()) as any).upstream.id
+
+  const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ config: { pathOverrides: {} } }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(res.status).toBe(200)
+  const body = await res.json() as any
+  expect(body.upstream.config.pathOverrides).toBeUndefined()
+  // the shallow merge preserved everything the PATCH did not mention
+  expect(body.upstream.config.baseUrl).toBe('https://api.deepseek.com/v1')
+})
