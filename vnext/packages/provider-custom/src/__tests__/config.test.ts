@@ -159,9 +159,9 @@ describe('normalizeCustomConfig', () => {
     expect(normalizeCustomConfig({ ...base, pathOverrides: {} }).pathOverrides).toBeUndefined()
   })
 
-  test('rejects an unknown pathOverrides key', () => {
+  test('rejects an unknown pathOverrides key and lists the valid ones', () => {
     expect(() => normalizeCustomConfig({ ...base, pathOverrides: { bogus: '/x' } }))
-      .toThrow(/unknown pathOverrides key: bogus/)
+      .toThrow(/unknown pathOverrides key: bogus \(expected one of chat_completions, responses, messages, embeddings, images_generations, images_edits, alpha_search\)/)
   })
 
   test('rejects messages_count_tokens and explains the derivation', () => {
@@ -184,5 +184,94 @@ describe('normalizeCustomConfig', () => {
   test('coerces manual models from both string and object form', () => {
     const out = normalizeCustomConfig({ ...base, models: ['m1', { id: 'm2', name: 'Two' }] })
     expect(out.models).toEqual([{ id: 'm1' }, { id: 'm2', name: 'Two', ownedBy: undefined }])
+  })
+
+  test('accepts pricing-only model entries', () => {
+    const out = normalizeCustomConfig({
+      ...base,
+      models: [{ upstreamModelId: 'deepseek-chat', cost: { input: 0.27, output: 1.1 } }],
+    })
+    expect(out.models).toEqual([
+      { upstreamModelId: 'deepseek-chat', cost: { input: 0.27, output: 1.1 } },
+    ])
+  })
+
+  test('accepts a pricing-only entry without a cost', () => {
+    const out = normalizeCustomConfig({ ...base, models: [{ upstreamModelId: 'm' }] })
+    expect(out.models).toEqual([{ upstreamModelId: 'm', cost: undefined }])
+  })
+
+  test('rejects an unknown billing dimension in cost', () => {
+    expect(() => normalizeCustomConfig({
+      ...base,
+      models: [{ upstreamModelId: 'm', cost: { bogus: 1 } }],
+    })).toThrow(/unknown cost dimension: bogus/)
+  })
+
+  test('rejects a negative price', () => {
+    expect(() => normalizeCustomConfig({
+      ...base,
+      models: [{ upstreamModelId: 'm', cost: { input: -1 } }],
+    })).toThrow(/must be a non-negative number/)
+  })
+})
+
+describe('normalizeCustomConfig baseUrl validation', () => {
+  const base = { name: 'ds', apiKey: 'sk-1' }
+
+  test('rejects a non-URL baseUrl', () => {
+    expect(() => normalizeCustomConfig({ ...base, baseUrl: 'api.deepseek.com' }))
+      .toThrow(/baseUrl must be an absolute http\(s\) URL/)
+  })
+
+  test('rejects a non-http scheme', () => {
+    expect(() => normalizeCustomConfig({ ...base, baseUrl: 'file:///etc/passwd' }))
+      .toThrow(/baseUrl must use http: or https:/)
+  })
+
+  // new URL() silently collapses /v1/.. to /, so the request would leave the
+  // operator's intended prefix without any error surfacing.
+  test('rejects a traversal segment in baseUrl', () => {
+    expect(() => normalizeCustomConfig({ ...base, baseUrl: 'https://api.x.com/v1/../..' }))
+      .toThrow(/baseUrl must not contain/)
+  })
+
+  // A query string turns the appended path into part of the query value.
+  test('rejects a query string in baseUrl', () => {
+    expect(() => normalizeCustomConfig({ ...base, baseUrl: 'https://api.x.com/v1?k=1' }))
+      .toThrow(/baseUrl must not contain a query string or fragment/)
+  })
+
+  test('rejects a fragment in baseUrl', () => {
+    expect(() => normalizeCustomConfig({ ...base, baseUrl: 'https://api.x.com/v1#f' }))
+      .toThrow(/baseUrl must not contain a query string or fragment/)
+  })
+
+  test('accepts a plain http baseUrl', () => {
+    expect(normalizeCustomConfig({ ...base, baseUrl: 'http://localhost:8080/v1' }).baseUrl)
+      .toBe('http://localhost:8080/v1')
+  })
+})
+
+describe('normalizeCustomConfig modelsEndpoint validation', () => {
+  const base = { name: 'ds', baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-1' }
+
+  test('accepts an absolute http(s) URL', () => {
+    const out = normalizeCustomConfig({ ...base, modelsEndpoint: 'https://models.x.com/list' })
+    expect(out.modelsEndpoint).toBe('https://models.x.com/list')
+  })
+
+  test('rejects a relative modelsEndpoint', () => {
+    expect(() => normalizeCustomConfig({ ...base, modelsEndpoint: '/models' }))
+      .toThrow(/modelsEndpoint must be an absolute http\(s\) URL/)
+  })
+
+  test('rejects a non-http scheme', () => {
+    expect(() => normalizeCustomConfig({ ...base, modelsEndpoint: 'ftp://x/models' }))
+      .toThrow(/modelsEndpoint must use http: or https:/)
+  })
+
+  test('leaves modelsEndpoint undefined when blank', () => {
+    expect(normalizeCustomConfig({ ...base, modelsEndpoint: '  ' }).modelsEndpoint).toBeUndefined()
   })
 })

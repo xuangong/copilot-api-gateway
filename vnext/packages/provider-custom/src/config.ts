@@ -7,6 +7,7 @@
  */
 
 import type { EndpointKey, ModelPricing } from '@vibe-llm/protocols/common'
+import { BILLING_DIMENSIONS } from '@vibe-llm/protocols/common'
 import { parseEndpoints, normalizeStringRecord } from '@vibe-llm/provider-llm'
 
 export type CustomAuthStyle = 'bearer' | 'anthropic' | 'none'
@@ -89,13 +90,68 @@ export function validateUpstreamPath(value: unknown, field: string): string {
 
 const AUTH_STYLE_SET = new Set<string>(CUSTOM_AUTH_STYLES)
 const PATH_OVERRIDE_KEY_SET = new Set<string>(CUSTOM_PATH_OVERRIDE_KEYS)
+const BILLING_DIMENSION_SET = new Set<string>(BILLING_DIMENSIONS)
+
+function parseHttpUrl(value: string, field: string): URL {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error(`${field} must be an absolute http(s) URL`)
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`${field} must use http: or https:`)
+  }
+  return url
+}
+
+/**
+ * Validate the upstream origin+prefix that every resolved path is appended to.
+ *
+ * The dot-segment check runs against the raw string rather than `url.pathname`
+ * because `new URL()` has already collapsed `/v1/..` to `/` by parse time — the
+ * request would silently leave the operator's intended prefix. A query string
+ * or fragment is rejected for the same reason: concatenating `/chat/completions`
+ * onto `https://host/v1?k=1` buries the path inside the query value.
+ */
+function validateUpstreamBaseUrl(value: string): string {
+  const raw = value.trim()
+  const url = parseHttpUrl(raw, 'custom config.baseUrl')
+  if (url.search || url.hash) {
+    throw new Error('custom config.baseUrl must not contain a query string or fragment')
+  }
+  if (/\/\.\.?(?:\/|$)/.test(raw)) {
+    throw new Error('custom config.baseUrl must not contain /./ or /../')
+  }
+  return raw.replace(/\/+$/, '')
+}
+
+function parseCost(value: unknown): ModelPricing | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('models[].cost must be an object')
+  }
+  const out: Record<string, number> = {}
+  for (const [k, v] of Object.entries(value)) {
+    if (!BILLING_DIMENSION_SET.has(k)) {
+      throw new Error(`unknown cost dimension: ${k} (expected one of ${BILLING_DIMENSIONS.join(', ')})`)
+    }
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) {
+      throw new Error(`models[].cost.${k} must be a non-negative number`)
+    }
+    out[k] = v
+  }
+  return out as ModelPricing
+}
 
 function parseManualModels(value: unknown): CustomProviderConfig['models'] {
   if (value === undefined || value === null) return undefined
   if (!Array.isArray(value)) {
     throw new Error('models must be an array of strings or { id, name?, ownedBy? }')
   }
-  const out: Array<{ id: string; name?: string; ownedBy?: string }> = []
+  const out: Array<
+    { id: string; name?: string; ownedBy?: string } | { upstreamModelId: string; cost?: ModelPricing }
+  > = []
   for (const entry of value) {
     if (typeof entry === 'string') {
       const id = entry.trim()
@@ -112,7 +168,22 @@ function parseManualModels(value: unknown): CustomProviderConfig['models'] {
       out.push({ id, name, ownedBy })
       continue
     }
-    throw new Error('models[] entry must be a string or { id, name?, ownedBy? } object')
+    // Pricing-only entry: carries no display metadata, it only attaches a cost
+    // table to a model id that the upstream's own /models call returns.
+    if (
+      entry &&
+      typeof entry === 'object' &&
+      typeof (entry as { upstreamModelId?: unknown }).upstreamModelId === 'string'
+    ) {
+      const e = entry as { upstreamModelId: string; cost?: unknown }
+      const upstreamModelId = e.upstreamModelId.trim()
+      if (!upstreamModelId) throw new Error('models[].upstreamModelId must be a non-empty string')
+      out.push({ upstreamModelId, cost: parseCost(e.cost) })
+      continue
+    }
+    throw new Error(
+      'models[] entry must be a string, { id, name?, ownedBy? }, or { upstreamModelId, cost? }',
+    )
   }
   return out.length > 0 ? out : undefined
 }
@@ -139,7 +210,11 @@ function parsePathOverrides(
         'pathOverrides.messages_count_tokens is not settable — it is derived from the messages path',
       )
     }
-    if (!PATH_OVERRIDE_KEY_SET.has(k)) throw new Error(`unknown pathOverrides key: ${k}`)
+    if (!PATH_OVERRIDE_KEY_SET.has(k)) {
+      throw new Error(
+        `unknown pathOverrides key: ${k} (expected one of ${CUSTOM_PATH_OVERRIDE_KEYS.join(', ')})`,
+      )
+    }
     out[k as CustomPathOverrideKey] = validateUpstreamPath(v, `pathOverrides.${k}`)
   }
   return Object.keys(out).length > 0 ? out : undefined
@@ -161,11 +236,11 @@ export function normalizeCustomConfig(config: Record<string, unknown>): CustomPr
   if (authStyle !== 'none' && !apiKey) throw new Error('custom config.apiKey required')
   const modelsEndpoint =
     typeof config.modelsEndpoint === 'string' && config.modelsEndpoint.trim()
-      ? config.modelsEndpoint.trim()
+      ? parseHttpUrl(config.modelsEndpoint.trim(), 'custom config.modelsEndpoint').toString()
       : undefined
   return {
     name: config.name.trim(),
-    baseUrl: config.baseUrl.trim().replace(/\/+$/, ''),
+    baseUrl: validateUpstreamBaseUrl(config.baseUrl),
     apiKey,
     authStyle,
     pathOverrides: parsePathOverrides(config.pathOverrides),
