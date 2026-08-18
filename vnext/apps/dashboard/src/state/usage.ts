@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useToast } from "./toast"
 import * as api from "../api/usage"
 import type { UsageRow } from "../api/usage"
-import { buildTimeBuckets, utcHourToBucketKey } from "../components/TimeSeriesChart"
+import { buildTimeBuckets, localMonthStart, utcHourToBucketKey } from "../components/TimeSeriesChart"
 
-export type UsageRange = "today" | "week" | "7d" | "30d"
+export type UsageRange = "today" | "week" | "7d" | "30d" | "month"
 export type UsageMetric = "tokens" | "requests"
 
 export interface UsageSummary {
@@ -35,19 +35,24 @@ export interface UsageFilters {
 
 // Compute UTC-hour bounds for the query, mirroring computeTimeRange in
 // src/ui/dashboard/client.ts. Result strings are sliced to "YYYY-MM-DDTHH".
-export function computeTimeRange(range: UsageRange, weekOffset: number): api.UsageRangeQuery {
+// "week" and "month" are calendar windows in *local* time, shifted back by
+// `periodOffset` whole periods; the rest are trailing windows ending now.
+export function computeTimeRange(range: UsageRange, periodOffset: number): api.UsageRangeQuery {
   const now = new Date()
   let start: Date
   let end: Date
   if (range === "week") {
     const ref = new Date(now)
-    ref.setDate(ref.getDate() + weekOffset * 7)
+    ref.setDate(ref.getDate() + periodOffset * 7)
     const day = ref.getDay()
     const monday = new Date(ref)
     monday.setDate(ref.getDate() - ((day + 6) % 7))
     monday.setHours(0, 0, 0, 0)
     start = monday
     end = new Date(monday.getTime() + 7 * 86400000)
+  } else if (range === "month") {
+    start = localMonthStart(now, periodOffset)
+    end = localMonthStart(now, periodOffset + 1)
   } else {
     const todayLocal = new Date(now)
     todayLocal.setHours(0, 0, 0, 0)
@@ -63,10 +68,10 @@ export function computeTimeRange(range: UsageRange, weekOffset: number): api.Usa
   return { start: start.toISOString().slice(0, 13), end: end.toISOString().slice(0, 13) }
 }
 
-export function formatWeekLabel(weekOffset: number): string {
+export function formatWeekLabel(periodOffset: number): string {
   const now = new Date()
   const ref = new Date(now)
-  ref.setDate(ref.getDate() + weekOffset * 7)
+  ref.setDate(ref.getDate() + periodOffset * 7)
   const day = ref.getDay()
   const monday = new Date(ref)
   monday.setDate(ref.getDate() - ((day + 6) % 7))
@@ -74,9 +79,17 @@ export function formatWeekLabel(weekOffset: number): string {
   const sunday = new Date(monday.getTime() + 6 * 86400000)
   const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
   const range = `${fmt(monday)} – ${fmt(sunday)}`
-  if (weekOffset === 0) return `This week (${range})`
-  if (weekOffset === -1) return `Last week (${range})`
+  if (periodOffset === 0) return `This week (${range})`
+  if (periodOffset === -1) return `Last week (${range})`
   return range
+}
+
+export function formatMonthLabel(periodOffset: number): string {
+  const first = localMonthStart(new Date(), periodOffset)
+  const name = first.toLocaleDateString("en-US", { month: "long", year: "numeric" })
+  if (periodOffset === 0) return `This month (${name})`
+  if (periodOffset === -1) return `Last month (${name})`
+  return name
 }
 
 function buildDistribution(
@@ -139,7 +152,7 @@ const EMPTY_SUMMARY: UsageSummary = {
 export function useUsage(isAdmin: boolean) {
   const { push: toast } = useToast()
   const [range, setRange] = useState<UsageRange>("today")
-  const [weekOffset, setWeekOffset] = useState(0)
+  const [periodOffset, setPeriodOffset] = useState(0)
   const [metric, setMetric] = useState<UsageMetric>("tokens")
   const [filters, setFilters] = useState<UsageFilters>({ user: "", key: "", client: "", model: "" })
   const [data, setData] = useState<UsageRow[]>([])
@@ -148,7 +161,7 @@ export function useUsage(isAdmin: boolean) {
   const reload = useCallback(async () => {
     setLoading(true)
     try {
-      const q = computeTimeRange(range, weekOffset)
+      const q = computeTimeRange(range, periodOffset)
       const rows = await api.fetchTokenUsage(q)
       setData(rows)
     } catch (e) {
@@ -156,7 +169,7 @@ export function useUsage(isAdmin: boolean) {
     } finally {
       setLoading(false)
     }
-  }, [range, weekOffset, toast])
+  }, [range, periodOffset, toast])
 
   useEffect(() => {
     reload()
@@ -240,7 +253,7 @@ export function useUsage(isAdmin: boolean) {
   // Chart series: group by the first un-filtered dimension (user > key > client > model).
   // When the metric is tokens, also emit a separate "Cache" line (dashed) showing cache traffic.
   const chart = useMemo(() => {
-    const { keys, labels, isDaily } = buildTimeBuckets(range, weekOffset)
+    const { keys, labels, isDaily } = buildTimeBuckets(range, periodOffset)
     const keyNameMap = new Map<string, string>()
     for (const r of data) keyNameMap.set(r.keyId, r.keyName ?? r.keyId.slice(0, 8))
 
@@ -292,7 +305,7 @@ export function useUsage(isAdmin: boolean) {
     const cacheHasData = metric === "tokens" && cacheData.some((v) => v > 0)
 
     return { labels, series, cacheData: cacheHasData ? cacheData : null }
-  }, [filtered, data, range, weekOffset, metric, filters, isAdmin])
+  }, [filtered, data, range, periodOffset, metric, filters, isAdmin])
 
   const updateFilter = useCallback((patch: Partial<UsageFilters>) => {
     setFilters((cur) => ({ ...cur, ...patch }))
@@ -302,13 +315,15 @@ export function useUsage(isAdmin: boolean) {
     setFilters({ user: "", key: "", client: "", model: "" })
   }, [])
 
+  // The offset only means something for the calendar ranges, and a week offset
+  // is not a month offset — reset whenever we leave or switch between them.
   const switchRange = useCallback((r: UsageRange) => {
+    if (r !== range) setPeriodOffset(0)
     setRange(r)
-    if (r !== "week") setWeekOffset(0)
-  }, [])
+  }, [range])
 
-  const shiftWeek = useCallback((delta: number) => {
-    setWeekOffset((cur) => {
+  const shiftPeriod = useCallback((delta: number) => {
+    setPeriodOffset((cur) => {
       const next = cur + delta
       return next > 0 ? 0 : next
     })
@@ -316,7 +331,7 @@ export function useUsage(isAdmin: boolean) {
 
   return {
     range,
-    weekOffset,
+    periodOffset,
     metric,
     filters,
     data,
@@ -328,7 +343,7 @@ export function useUsage(isAdmin: boolean) {
     reload,
     setMetric,
     switchRange,
-    shiftWeek,
+    shiftPeriod,
     updateFilter,
     clearFilters,
   }

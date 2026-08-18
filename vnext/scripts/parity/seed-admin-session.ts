@@ -122,7 +122,7 @@ function applyRows(db: Database, rows: SeedRows): void {
   db.run(
     `INSERT OR REPLACE INTO api_keys
      (id, name, key, created_at, last_used_at, owner_id,
-      quota_requests_per_day, quota_tokens_per_day,
+      quota_requests_per_month, quota_tokens_per_month,
       web_search_enabled, web_search_langsearch_key, web_search_tavily_key,
       web_search_ms_grounding_key, web_search_priority,
       web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref)

@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import { useAuth } from "../../state/auth"
-import { formatWeekLabel, useUsage, type UsageMetric, type UsageRange } from "../../state/usage"
+import { formatMonthLabel, formatWeekLabel, useUsage, type UsageMetric, type UsageRange } from "../../state/usage"
 import { UsageFiltersBar } from "./UsageFilters"
 import { UsageSummaryCards } from "./UsageSummary"
 import { UsageDistributionTable } from "./UsageDistributionTable"
@@ -15,6 +15,7 @@ export function UsageTab() {
   const RANGE_OPTIONS: Array<{ id: UsageRange; label: string }> = [
     { id: "today", label: t("dash.today") },
     { id: "week", label: t("dash.week") },
+    { id: "month", label: t("dash.month") },
     { id: "7d", label: t("dash.sevenDays") },
     { id: "30d", label: t("dash.thirtyDays") },
   ]
@@ -66,27 +67,29 @@ export function UsageTab() {
             </div>
           </div>
 
-          {usage.range === "week" ? (
+          {usage.range === "week" || usage.range === "month" ? (
             <div className="flex items-center gap-3 ml-1">
               <button
-                onClick={() => usage.shiftWeek(-1)}
+                onClick={() => usage.shiftPeriod(-1)}
                 className="p-1 rounded hover:bg-surface-600 text-themed-dim hover:text-themed transition-all"
-                title="Previous week"
+                title={usage.range === "week" ? "Previous week" : "Previous month"}
               >
                 ‹
               </button>
               <span className="text-xs text-themed-secondary font-medium min-w-[180px] text-center">
-                {formatWeekLabel(usage.weekOffset)}
+                {usage.range === "week"
+                  ? formatWeekLabel(usage.periodOffset)
+                  : formatMonthLabel(usage.periodOffset)}
               </span>
               <button
-                onClick={() => usage.shiftWeek(1)}
-                disabled={usage.weekOffset >= 0}
+                onClick={() => usage.shiftPeriod(1)}
+                disabled={usage.periodOffset >= 0}
                 className={`p-1 rounded transition-all ${
-                  usage.weekOffset >= 0
+                  usage.periodOffset >= 0
                     ? "text-themed-dim/30 cursor-not-allowed"
                     : "hover:bg-surface-600 text-themed-dim hover:text-themed"
                 }`}
-                title="Next week"
+                title={usage.range === "week" ? "Next week" : "Next month"}
               >
                 ›
               </button>

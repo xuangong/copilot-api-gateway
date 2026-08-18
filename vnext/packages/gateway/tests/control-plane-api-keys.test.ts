@@ -159,13 +159,13 @@ test('PATCH rename and quota fields', async () => {
   const k = await createApiKey('original', 'u1')
   const res = await buildApp({ isAdmin: true }).request(`/api/keys/${k.id}`, {
     method: 'PATCH',
-    body: JSON.stringify({ name: 'renamed', quota_requests_per_day: 100 }),
+    body: JSON.stringify({ name: 'renamed', quota_requests_per_month: 100 }),
     headers: { 'content-type': 'application/json' },
   })
   expect(res.status).toBe(200)
   const body = await res.json() as any
   expect(body.name).toBe('renamed')
-  expect(body.quota_requests_per_day).toBe(100)
+  expect(body.quota_requests_per_month).toBe(100)
 })
 
 test('PATCH non-owner → 403', async () => {

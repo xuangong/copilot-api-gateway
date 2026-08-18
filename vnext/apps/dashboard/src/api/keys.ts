@@ -22,8 +22,8 @@ export interface ApiKeyDetail {
   owner_id: string | null
   owner_name: string | null
   is_owner: boolean
-  quota_requests_per_day: number | null
-  quota_tokens_per_day: number | null
+  quota_requests_per_month: number | null
+  quota_tokens_per_month: number | null
   web_search_enabled: boolean
   web_search_langsearch_key: string | null
   web_search_langsearch_ref: KeyRefDescriptor | null
@@ -37,8 +37,8 @@ export interface ApiKeyDetail {
 
 export interface KeyPatchBody {
   name?: string
-  quota_requests_per_day?: number | null
-  quota_tokens_per_day?: number | null
+  quota_requests_per_month?: number | null
+  quota_tokens_per_month?: number | null
   web_search_enabled?: boolean
   web_search_langsearch_key?: string | null
   web_search_tavily_key?: string | null
@@ -126,12 +126,14 @@ export function unassignKey(id: string, userId: string): Promise<{ ok: true }> {
   })
 }
 
-// Quota usage = today's token-usage records for the key, weighted.
-export function getTodayTokenUsage(keyId: string): Promise<TokenUsageRecord[]> {
+// Quota usage = this UTC calendar month's token-usage records for the key,
+// weighted. UTC month, not local: it must match the gateway's quota gate
+// (data-plane/observability/quota.ts), which cannot know the caller's timezone.
+export function getMonthTokenUsage(keyId: string): Promise<TokenUsageRecord[]> {
   const now = new Date()
-  const todayStart = now.toISOString().slice(0, 10) + "T00"
-  const tomorrowStart = new Date(now.getTime() + 86400000).toISOString().slice(0, 10) + "T00"
+  const monthStartHour = (delta: number) =>
+    new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + delta, 1)).toISOString().slice(0, 10) + "T00"
   return api<TokenUsageRecord[]>("/api/token-usage", {
-    query: { start: todayStart, end: tomorrowStart, key_id: keyId },
+    query: { start: monthStartHour(0), end: monthStartHour(1), key_id: keyId },
   })
 }

@@ -32,8 +32,8 @@ export function QuotaEditor({ keyRow, usage, canEdit, busy, onSave }: Props) {
   const t = useT()
 
   const startEdit = () => {
-    setReqInput(keyRow.quota_requests_per_day ? String(keyRow.quota_requests_per_day) : "")
-    setTokenInput(keyRow.quota_tokens_per_day ? String(keyRow.quota_tokens_per_day) : "")
+    setReqInput(keyRow.quota_requests_per_month ? String(keyRow.quota_requests_per_month) : "")
+    setTokenInput(keyRow.quota_tokens_per_month ? String(keyRow.quota_tokens_per_month) : "")
     setEditing(true)
   }
 
@@ -49,7 +49,7 @@ export function QuotaEditor({ keyRow, usage, canEdit, busy, onSave }: Props) {
   return (
     <div className="glass-card p-4 sm:p-6 mb-6 animate-in delay-1">
       <div className="flex items-center justify-between mb-4">
-        <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">{t("dash.dailyQuotaLabel")}</span>
+        <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">{t("dash.monthlyQuotaLabel")}</span>
         <div className="flex items-center gap-2">
           {!editing && canEdit ? (
             <button type="button" onClick={startEdit} className="btn-ghost text-xs">
@@ -77,7 +77,7 @@ export function QuotaEditor({ keyRow, usage, canEdit, busy, onSave }: Props) {
       {editing ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <div>
-            <label className="text-xs text-themed-dim block mb-1">{t("dash.requestsPerDayLabel")}</label>
+            <label className="text-xs text-themed-dim block mb-1">{t("dash.requestsPerMonthLabel")}</label>
             <input
               type="number"
               min="0"
@@ -89,7 +89,7 @@ export function QuotaEditor({ keyRow, usage, canEdit, busy, onSave }: Props) {
             <p className="text-[10px] text-themed-dim mt-1">{t("dash.leaveEmptyForUnlimited")}</p>
           </div>
           <div>
-            <label className="text-xs text-themed-dim block mb-1">{t("dash.weightedTokensPerDayLabel")}</label>
+            <label className="text-xs text-themed-dim block mb-1">{t("dash.weightedTokensPerMonthLabel")}</label>
             <input
               type="number"
               min="0"
@@ -105,7 +105,7 @@ export function QuotaEditor({ keyRow, usage, canEdit, busy, onSave }: Props) {
 
       <div className="mb-5">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-themed-secondary">{t("dash.requestsPerDayLabel")}</span>
+          <span className="text-xs text-themed-secondary">{t("dash.requestsPerMonthLabel")}</span>
           <span
             className={`text-xs font-mono ${usage.reqLimit ? "text-themed" : "text-themed-dim"}`}
           >
@@ -137,14 +137,14 @@ export function QuotaEditor({ keyRow, usage, canEdit, busy, onSave }: Props) {
                 style={{ width: `${unlimitedFillPercent(usage.reqUsed)}%` }}
               />
             </div>
-            <p className="text-[10px] text-themed-dim mt-1">{t("dash.unlimitedUsedToday", { n: usage.reqUsed.toLocaleString() })}</p>
+            <p className="text-[10px] text-themed-dim mt-1">{t("dash.unlimitedUsedThisMonth", { n: usage.reqUsed.toLocaleString() })}</p>
           </>
         )}
       </div>
 
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-themed-secondary">{t("dash.weightedTokensPerDayLabel")}</span>
+          <span className="text-xs text-themed-secondary">{t("dash.weightedTokensPerMonthLabel")}</span>
           <span
             className={`text-xs font-mono ${usage.tokenLimit ? "text-themed" : "text-themed-dim"}`}
           >
@@ -177,7 +177,7 @@ export function QuotaEditor({ keyRow, usage, canEdit, busy, onSave }: Props) {
               />
             </div>
             <p className="text-[10px] text-themed-dim mt-1">
-              {t("dash.unlimitedUsedToday", { n: Math.round(usage.tokenUsed).toLocaleString() })}
+              {t("dash.unlimitedUsedThisMonth", { n: Math.round(usage.tokenUsed).toLocaleString() })}
             </p>
           </>
         )}

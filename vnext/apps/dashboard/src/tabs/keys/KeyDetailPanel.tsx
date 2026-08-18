@@ -53,7 +53,7 @@ export function KeyDetailPanel({
         canEdit={canManage}
         busy={busy}
         onSave={async (req, token) =>
-          onPatch({ quota_requests_per_day: req, quota_tokens_per_day: token })
+          onPatch({ quota_requests_per_month: req, quota_tokens_per_month: token })
         }
       />
 

@@ -173,7 +173,12 @@ export function localDateKey(d: Date): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
-export type TimeBucketRange = "today" | "week" | "7d" | "30d"
+/** Local midnight on the 1st of the month containing `ref`, offset by whole months. */
+export function localMonthStart(ref: Date, monthDelta: number): Date {
+  return new Date(ref.getFullYear(), ref.getMonth() + monthDelta, 1, 0, 0, 0, 0)
+}
+
+export type TimeBucketRange = "today" | "week" | "7d" | "30d" | "month"
 
 export interface TimeBuckets {
   keys: string[]
@@ -181,7 +186,11 @@ export interface TimeBuckets {
   isDaily: boolean
 }
 
-export function buildTimeBuckets(range: TimeBucketRange, weekOffset: number): TimeBuckets {
+/**
+ * `periodOffset` shifts the window backwards for the two calendar ranges:
+ * whole weeks for "week", whole months for "month". Ignored by the rest.
+ */
+export function buildTimeBuckets(range: TimeBucketRange, periodOffset: number): TimeBuckets {
   const now = new Date()
   const keys: string[] = []
   const labels: string[] = []
@@ -197,7 +206,7 @@ export function buildTimeBuckets(range: TimeBucketRange, weekOffset: number): Ti
     }
   } else if (range === "week") {
     const ref = new Date(now)
-    ref.setDate(ref.getDate() + weekOffset * 7)
+    ref.setDate(ref.getDate() + periodOffset * 7)
     const day = ref.getDay()
     const monday = new Date(ref)
     monday.setDate(ref.getDate() - ((day + 6) % 7))
@@ -208,6 +217,13 @@ export function buildTimeBuckets(range: TimeBucketRange, weekOffset: number): Ti
       d.setDate(monday.getDate() + i)
       keys.push(localDateKey(d))
       labels.push(`${weekdays[i]} ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`)
+    }
+  } else if (range === "month") {
+    const first = localMonthStart(now, periodOffset)
+    const nextFirst = localMonthStart(now, periodOffset + 1)
+    for (const d = new Date(first); d < nextFirst; d.setDate(d.getDate() + 1)) {
+      keys.push(localDateKey(d))
+      labels.push(d.toLocaleDateString("en-US", { month: "short", day: "numeric" }))
     }
   } else {
     const days = range === "7d" ? 7 : 30

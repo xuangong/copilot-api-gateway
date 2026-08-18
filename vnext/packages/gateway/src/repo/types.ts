@@ -13,8 +13,8 @@ export interface ApiKey {
   createdAt: string
   lastUsedAt?: string
   ownerId?: UserId
-  quotaRequestsPerDay?: number
-  quotaTokensPerDay?: number
+  quotaRequestsPerMonth?: number
+  quotaTokensPerMonth?: number
   webSearchEnabled?: boolean
   webSearchLangsearchKey?: string
   webSearchTavilyKey?: string

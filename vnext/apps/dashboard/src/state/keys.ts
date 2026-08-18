@@ -200,10 +200,10 @@ export function useKeys() {
       setQuotaUsage(ZERO_QUOTA)
       return
     }
-    const reqLimit = selectedKey.quota_requests_per_day ?? null
-    const tokenLimit = selectedKey.quota_tokens_per_day ?? null
+    const reqLimit = selectedKey.quota_requests_per_month ?? null
+    const tokenLimit = selectedKey.quota_tokens_per_month ?? null
     api
-      .getTodayTokenUsage(selectedKey.id)
+      .getMonthTokenUsage(selectedKey.id)
       .then((records) => {
         if (cancelled) return
         let reqUsed = 0

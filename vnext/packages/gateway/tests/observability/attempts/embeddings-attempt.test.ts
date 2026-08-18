@@ -31,7 +31,7 @@ afterEach(() => __resetPlatformForTests())
 const dayStart = () => new Date().toISOString().slice(0, 10) + 'T00'
 const dayEnd = () => new Date().toISOString().slice(0, 10) + 'T24'
 
-async function seedKey(id: string, opts: { quotaTokensPerDay?: number } = {}) {
+async function seedKey(id: string, opts: { quotaTokensPerMonth?: number } = {}) {
   await repo.apiKeys.save({
     id,
     name: id,
@@ -173,7 +173,7 @@ test('embeddings persists pricing snapshot when caller supplies it', async () =>
 })
 
 test('embeddings quota exceeded: 429 short-circuit, no upstream call', async () => {
-  await seedKey('e-q', { quotaTokensPerDay: 50 })
+  await seedKey('e-q', { quotaTokensPerMonth: 50 })
   const todayHour = new Date().toISOString().slice(0, 13)
   await repo.usage.record({
     keyId: 'e-q',

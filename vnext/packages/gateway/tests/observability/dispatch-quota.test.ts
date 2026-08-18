@@ -77,13 +77,13 @@ test('dispatch returns 429 when token quota exceeded', async () => {
   const db = new Database(':memory:')
   const repo = new SqliteRepo(db)
 
-  // Save an api key with quotaTokensPerDay: 100
+  // Save an api key with quotaTokensPerMonth: 100
   await repo.apiKeys.save({
     id: 'k1',
     name: 'k',
     key: 'sk-test',
     createdAt: new Date().toISOString(),
-    quotaTokensPerDay: 100,
+    quotaTokensPerMonth: 100,
   })
 
   // Pre-fill usage so weighted tokens exceed 100

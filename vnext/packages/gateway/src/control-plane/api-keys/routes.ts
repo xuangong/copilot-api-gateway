@@ -85,8 +85,8 @@ function keyToJson(k: ApiKey, ownerName?: string, isOwner?: boolean, sourceMap?:
     id: k.id, name: k.name, key: k.key, created_at: k.createdAt,
     last_used_at: k.lastUsedAt ?? null, owner_id: k.ownerId ?? null,
     owner_name: ownerName ?? null, is_owner: isOwner ?? true,
-    quota_requests_per_day: k.quotaRequestsPerDay ?? null,
-    quota_tokens_per_day: k.quotaTokensPerDay ?? null,
+    quota_requests_per_month: k.quotaRequestsPerMonth ?? null,
+    quota_tokens_per_month: k.quotaTokensPerMonth ?? null,
     web_search_enabled: k.webSearchEnabled ?? false,
     web_search_langsearch_key: langsearchRef ? null : maskKey(k.webSearchLangsearchKey),
     web_search_langsearch_ref: langsearchRef,
@@ -289,8 +289,8 @@ apiKeysRouter.patch('/:id', async (c) => {
   }
   const body = await c.req.json().catch(() => ({})) as {
     name?: string
-    quota_requests_per_day?: number | null
-    quota_tokens_per_day?: number | null
+    quota_requests_per_month?: number | null
+    quota_tokens_per_month?: number | null
     web_search_enabled?: boolean
     web_search_langsearch_key?: string | null
     web_search_tavily_key?: string | null
@@ -309,11 +309,11 @@ apiKeysRouter.patch('/:id', async (c) => {
     }
     updated.name = body.name
   }
-  if (body.quota_requests_per_day !== undefined) {
-    updated.quotaRequestsPerDay = body.quota_requests_per_day === null ? undefined : body.quota_requests_per_day
+  if (body.quota_requests_per_month !== undefined) {
+    updated.quotaRequestsPerMonth = body.quota_requests_per_month === null ? undefined : body.quota_requests_per_month
   }
-  if (body.quota_tokens_per_day !== undefined) {
-    updated.quotaTokensPerDay = body.quota_tokens_per_day === null ? undefined : body.quota_tokens_per_day
+  if (body.quota_tokens_per_month !== undefined) {
+    updated.quotaTokensPerMonth = body.quota_tokens_per_month === null ? undefined : body.quota_tokens_per_month
   }
   if (body.web_search_enabled !== undefined) {
     updated.webSearchEnabled = body.web_search_enabled

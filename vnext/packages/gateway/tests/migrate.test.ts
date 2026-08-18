@@ -57,12 +57,19 @@ describe("applyMigrations", () => {
     applyMigrations(db)
     db.exec("DROP TABLE responses_snapshots")
     db.exec("DROP TABLE _migrations")
+    // A ledger-less database predates every migration, so its quota columns
+    // still carry the daily names 0003 renames away.
+    db.exec("ALTER TABLE api_keys RENAME COLUMN quota_requests_per_month TO quota_requests_per_day")
+    db.exec("ALTER TABLE api_keys RENAME COLUMN quota_tokens_per_month TO quota_tokens_per_day")
     db.exec("INSERT INTO users (id, name, created_at) VALUES ('u1', 'someone', '2026-01-01')")
 
     applyMigrations(db)
 
     expect(tables(db)).toContain("responses_snapshots")
     expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM users").get()!.n).toBe(1)
+    expect(
+      db.query<{ name: string }, []>("SELECT name FROM pragma_table_info('api_keys')").all().map((r) => r.name),
+    ).toContain("quota_requests_per_month")
   })
 
   test("a failing file rolls back entirely and records nothing", () => {

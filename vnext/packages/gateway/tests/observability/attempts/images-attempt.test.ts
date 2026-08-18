@@ -33,7 +33,7 @@ afterEach(() => __resetPlatformForTests())
 const dayStart = () => new Date().toISOString().slice(0, 10) + 'T00'
 const dayEnd = () => new Date().toISOString().slice(0, 10) + 'T24'
 
-async function seedKey(id: string, opts: { quotaTokensPerDay?: number } = {}) {
+async function seedKey(id: string, opts: { quotaTokensPerMonth?: number } = {}) {
   await repo.apiKeys.save({
     id,
     name: id,
@@ -123,7 +123,7 @@ test('images throw: rethrows after recording error latency', async () => {
 })
 
 test('images quota exceeded: 429 envelope, no upstream call, no latency', async () => {
-  await seedKey('i-q', { quotaTokensPerDay: 10 })
+  await seedKey('i-q', { quotaTokensPerMonth: 10 })
   const todayHour = new Date().toISOString().slice(0, 13)
   await repo.usage.record({
     keyId: 'i-q',
