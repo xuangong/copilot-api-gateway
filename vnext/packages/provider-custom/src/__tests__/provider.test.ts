@@ -442,7 +442,7 @@ describe('CustomProvider auth styles', () => {
   test('defaults to bearer', () => {
     const p = new CustomProvider({ name: 'x', baseUrl: 'https://x', apiKey: 'sk-1' })
     const h = headers(p)
-    expect(h['Authorization']).toBe('Bearer sk-1')
+    expect(h['authorization']).toBe('Bearer sk-1')
     expect(h['x-api-key']).toBeUndefined()
   })
 
@@ -453,14 +453,15 @@ describe('CustomProvider auth styles', () => {
     const h = headers(p)
     expect(h['x-api-key']).toBe('sk-1')
     expect(h['anthropic-version']).toBe('2023-06-01')
-    expect(h['Authorization']).toBeUndefined()
+    expect(h['authorization']).toBeUndefined()
   })
 
   test('none style sends no credential at all', () => {
     const p = new CustomProvider({ name: 'x', baseUrl: 'https://x', authStyle: 'none' })
     const h = headers(p)
-    expect(h['Authorization']).toBeUndefined()
+    expect(h['authorization']).toBeUndefined()
     expect(h['x-api-key']).toBeUndefined()
+    expect(h['anthropic-version']).toBeUndefined()
   })
 
   test('none style does not require an apiKey', () => {
@@ -490,6 +491,16 @@ describe('CustomProvider auth styles', () => {
       defaultHeaders: { 'anthropic-version': '2024-01-01' },
     })
     expect(headers(p)['anthropic-version']).toBe('2024-01-01')
+  })
+
+  test('a capitalized defaultHeaders Authorization replaces the built-in one', () => {
+    const p = new CustomProvider({
+      name: 'x', baseUrl: 'https://x', apiKey: 'sk-1',
+      defaultHeaders: { Authorization: 'Bearer operator' },
+    })
+    const h = headers(p)
+    expect(h['authorization']).toBe('Bearer operator')
+    expect(Object.keys(h).filter((k) => k.toLowerCase() === 'authorization')).toHaveLength(1)
   })
 })
 

@@ -184,16 +184,20 @@ export class CustomProvider implements LlmModelProvider {
     extra: Record<string, string> = {},
     opts: { includeJsonContentType?: boolean } = {},
   ): Record<string, string> {
+    // Built-in keys stay lowercase to match mergeHeaders' normalization of
+    // defaultHeaders. A capitalized key would sit beside an operator's
+    // lowercase one rather than being replaced by it, and listModels hands
+    // this Record to fetch unnormalized, where the pair would concatenate.
     const base: Record<string, string> = {}
     if (this.authStyle === 'bearer') {
-      base['Authorization'] = `Bearer ${this.apiKey}`
+      base['authorization'] = `Bearer ${this.apiKey}`
     } else if (this.authStyle === 'anthropic') {
       base['x-api-key'] = this.apiKey
       base['anthropic-version'] = '2023-06-01'
     }
     Object.assign(base, this.defaultHeaders, extra)
     if (opts.includeJsonContentType !== false) {
-      base['Content-Type'] = 'application/json'
+      base['content-type'] = 'application/json'
     }
     return base
   }
