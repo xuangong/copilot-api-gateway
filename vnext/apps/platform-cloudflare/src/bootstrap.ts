@@ -13,6 +13,8 @@ import {
   initCache,
   initResponsesStore,
   initDumpSubsystem,
+  initResend,
+  initOAuthKV,
 } from "@vibe-llm/gateway/bootstrap"
 import { D1Repo } from "./d1-repo.ts"
 import {
@@ -34,6 +36,7 @@ export interface CloudflareEnv {
   ACCOUNT_TYPE?: string
   GOOGLE_CLIENT_ID?: string
   GOOGLE_CLIENT_SECRET?: string
+  RESEND_API_KEY?: string
   CACHE_BACKEND?: string
 }
 
@@ -59,6 +62,11 @@ export function bootstrapCloudflarePlatform(env: CloudflareEnv, ctx: ExecutionCo
   initRepo(new D1Repo(env.DB))
   initCache(createCloudflareCache({ DB: env.DB, KV: env.KV, CACHE_BACKEND: env.CACHE_BACKEND }))
   initResponsesStore(createD1ResponsesStore(env.DB))
+  // Email verification codes and OAuth state must live in KV, not the
+  // per-isolate Map fallback: the isolate that issues a code is rarely the
+  // one that verifies it.
+  initOAuthKV(env.KV)
+  if (env.RESEND_API_KEY) initResend(env.RESEND_API_KEY)
   // Dump subsystem (Spec 14) — reads the SqlDatabase + FileProvider wired
   // above. Broker is per-isolate; cross-isolate replay is deferred, clients
   // reconnect and reconcile via list().

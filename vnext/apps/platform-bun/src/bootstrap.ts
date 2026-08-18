@@ -14,6 +14,7 @@ import {
   initCache,
   initResponsesStore,
   initDumpSubsystem,
+  initResend,
 } from "@vibe-llm/gateway/bootstrap"
 import { BunSqliteDatabase } from "./bun-sqlite-database.ts"
 import { BunSqliteRepo } from "./bun-sqlite-repo.ts"
@@ -51,6 +52,9 @@ export function bootstrapBunPlatform(opts: BunPlatformOptions): { db: BunSqliteD
   // previous_response_id chains working for the current container lifetime;
   // persistence revisited once the schema migration lands.
   initResponsesStore(new InMemoryResponsesSnapshotStore())
+  // No initOAuthKV here: a single Bun process shares the module-level Map, so
+  // the KV fallback is already correct.
+  if (process.env.RESEND_API_KEY) initResend(process.env.RESEND_API_KEY)
   // Dump subsystem (Spec 14) — reads the SqlDatabase + FileProvider wired
   // above, so it has to come after them.
   initDumpSubsystem()

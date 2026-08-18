@@ -13,6 +13,8 @@ import { EventTargetChannelBroker } from './shared/runtime/event-target-channel-
 
 export { initCache } from './data-plane/cache/index.ts'
 export { initResponsesStore } from './data-plane/runtime/responses-store.ts'
+export { initResend } from './control-plane/lib/email.ts'
+export { initOAuthKV } from './control-plane/auth/stores.ts'
 
 /**
  * 装配 dump 子系统（Spec 14）。存储走 SqlDatabase + FileProvider，broker 是

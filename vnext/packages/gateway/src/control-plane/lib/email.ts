@@ -23,8 +23,15 @@ export function setEmailSenderForTest(sender: EmailSender | null) {
   overrideSender = sender
 }
 
+// Every failure here surfaces to the caller as an identical generic 500, so
+// without logging a missing key and a rejected key are indistinguishable. The
+// unwired-key case shipped undetected for a whole release exactly because this
+// returned false in silence.
 async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
-  if (!resendApiKey) return false
+  if (!resendApiKey) {
+    console.error('[email] RESEND_API_KEY not configured — initResend was never called')
+    return false
+  }
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -34,8 +41,12 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
       },
       body: JSON.stringify({ from: RESEND_FROM_EMAIL, to: [to], subject, html }),
     })
+    if (!res.ok) {
+      console.error(`[email] resend rejected: ${res.status} ${await res.text().catch(() => '')}`)
+    }
     return res.ok
-  } catch {
+  } catch (err) {
+    console.error('[email] resend request failed:', err)
     return false
   }
 }
