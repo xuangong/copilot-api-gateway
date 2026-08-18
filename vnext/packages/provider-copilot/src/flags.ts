@@ -61,12 +61,6 @@ export const OPTIONAL_FLAGS = [
     defaultFor: [],
   },
   {
-    id: "deepseek-reasoning-dialect",
-    label: "DeepSeek reasoning dialect",
-    description: "On Chat Completions, use DeepSeek's legacy reasoning_content field instead of OpenAI's reasoning_text.",
-    defaultFor: [],
-  },
-  {
     id: "disable-reasoning-on-forced-tool-choice",
     label: "Disable reasoning when caller forces a tool",
     description: "Disable reasoning in the outbound request when the caller forces a specific tool. Combine with a vendor flag to also emit that vendor's disable signal.",
