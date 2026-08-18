@@ -15,20 +15,13 @@ import {
   type ProviderResponse,
 } from '@vibe-llm/provider-llm'
 import { fetchWithRetry, mergeHeaders, truncateBody } from '@vibe-core/http'
+import {
+  type CustomAuthStyle,
+  type CustomPathOverrideKey,
+  type CustomProviderConfig,
+} from './config.ts'
 
-export interface CustomProviderConfig {
-  name: string
-  baseUrl: string
-  apiKey: string
-  defaultHeaders?: Record<string, string>
-  endpoints?: readonly EndpointKey[]
-  modelsEndpoint?: string
-  models?: ReadonlyArray<
-    | string
-    | { id: string; name?: string; ownedBy?: string }
-    | { upstreamModelId: string; cost?: ModelPricing }
-  >
-}
+export type { CustomProviderConfig } from './config.ts'
 
 const DEFAULT_ENDPOINTS: readonly EndpointKey[] = ['chat_completions', 'embeddings']
 

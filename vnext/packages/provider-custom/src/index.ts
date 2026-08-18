@@ -7,5 +7,10 @@
  */
 
 export { CustomProvider } from './provider'
-export type { CustomProviderConfig } from './provider'
+export type {
+  CustomAuthStyle,
+  CustomPathOverrideKey,
+  CustomProviderConfig,
+} from './config'
+export { CUSTOM_AUTH_STYLES, CUSTOM_PATH_OVERRIDE_KEYS, validateUpstreamPath } from './config'
 export { customProviderPlugin } from './plugin'
