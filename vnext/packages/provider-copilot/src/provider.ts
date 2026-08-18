@@ -12,7 +12,7 @@
  * directly; the terminal HTTP call serializes the final state.
  */
 import type { AccountType } from './account-type'
-import { defaultsForUpstream } from './flags'
+import { defaultsForUpstream } from '@vibe-llm/protocols/flags'
 import { callCopilotAPI } from './forward'
 import { getModels, type ModelsResponse } from './models'
 import { pricingForCopilotModelKey } from './pricing'

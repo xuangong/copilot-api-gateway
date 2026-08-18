@@ -1,13 +1,23 @@
 /**
- * Flag helpers used by the Copilot provider / interceptors.
+ * Flag catalog — single source of truth for every admin-toggleable
+ * per-upstream behavior flag.
  *
- * Verbatim copy of the `defaultsForUpstream` helper plus the full
- * `OPTIONAL_FLAGS` catalog literal it iterates over (the union of flag IDs
- * is part of the contract — bit-exact reproduction only). Mirrors
- * apps/gateway/src/data-plane/flags/catalog.ts.
+ * Lives in @vibe-llm/protocols because both the gateway and the provider
+ * packages need it, and gateway already depends on the providers (so the
+ * dependency cannot go the other way).
+ *
+ * Interceptors and translators reference a flag by id; the dependency
+ * always goes interceptor → flag, never the reverse. This keeps the
+ * catalog free of runtime closures and makes "one flag drives many
+ * interceptors" straightforward.
+ *
+ * Vendor-style flags (e.g. `vendor-deepseek`) are data-only — they have
+ * no interceptor of their own. Other interceptors read effective flags
+ * and dispatch on these to choose vendor-specific protocol behavior.
+ * With no vendor flag set, behavior defaults to the OpenAI standard.
  */
 
-import type { UpstreamKind } from "@vibe-llm/protocols/common"
+import type { UpstreamKind } from '../common/index'
 
 export interface Flag {
   id: string
@@ -55,10 +65,16 @@ export const OPTIONAL_FLAGS = [
     defaultFor: ["copilot"],
   },
   {
+    id: "responses-image-generation-shim",
+    label: "Responses image generation shim",
+    description: "Execute the Responses `image_generation` hosted tool through the gateway's image-capable upstream (gpt-image-*) instead of forwarding it to a Responses upstream. The orchestrator model calls a generated function tool; the shim drives the standalone /images/{generations,edits} backend and synthesizes the native image_generation_call lifecycle. When a Responses request is routed to a non-Responses backend, the shim always runs regardless of this flag because those targets cannot carry the hosted image_generation tool.",
+    defaultFor: ["copilot", "azure", "custom"],
+  },
+  {
     id: "responses-compact-shim",
     label: "Responses compact shim",
     description: "Simulate a `response.compaction` envelope against upstreams that have no native compaction wire. Runs the summarization turn through the upstream's standard /responses generate wire under the vendored openai/codex SUMMARIZATION_PROMPT, then packs the summary into a synthetic `response.compaction` output item. Structurally required (always engages, ignoring this flag) on non-Responses target endpoints because those translators cannot carry the `compaction_trigger` / `compaction` item variants.",
-    defaultFor: [],
+    defaultFor: ["claude-code"],
   },
   {
     id: "disable-reasoning-on-forced-tool-choice",
@@ -77,7 +93,7 @@ export const OPTIONAL_FLAGS = [
     id: "promote-system-to-developer",
     label: "Promote system role to developer",
     description: "Rewrite `role:'system'` to `role:'developer'` on Chat Completions messages and Responses input items. Used for OpenAI o-series and upstreams that only accept `developer` at the system slot.",
-    defaultFor: [],
+    defaultFor: ["codex"],
   },
   {
     id: "demote-developer-to-system",
@@ -165,9 +181,11 @@ export const OPTIONAL_FLAGS = [
     id: "strip-billing-attribution",
     label: "Strip Claude Code billing-attribution block from /v1/messages system",
     description: "Remove Claude Code's `x-anthropic-billing-header` line and per-turn `cch=<hash>` from `payload.system` before forwarding. The hash flips every turn, so leaving it in destroys upstream prompt-cache hit rate on every non-claude-code upstream. Must remain OFF for a claude-code subscription upstream (that endpoint reads the block to bill against the user's plan).",
-    defaultFor: ["copilot", "azure", "custom"],
+    defaultFor: ["copilot", "azure", "custom", "codex"],
   },
 ] as const satisfies readonly Flag[]
+
+export type OptionalFlagId = (typeof OPTIONAL_FLAGS)[number]["id"]
 
 /**
  * Provider-default flag set, computed from the catalog's `defaultFor`.
