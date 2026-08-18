@@ -267,6 +267,14 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
       endpoints: f.endpoints.includes(ep) ? f.endpoints.filter((x) => x !== ep) : [...f.endpoints, ep],
     }))
 
+  const setPathOverride = (key: string, value: string) =>
+    setForm((f) => {
+      const next = { ...f.pathOverrides }
+      if (value.trim()) next[key] = value
+      else delete next[key]
+      return { ...f, pathOverrides: next }
+    })
+
   const flagOverrideState = (id: string): "inherit" | "on" | "off" => {
     const v = form.flagOverrides[id]
     return v === undefined ? "inherit" : v ? "on" : "off"
@@ -670,6 +678,28 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
               className={`${inputCls} font-mono text-xs`}
             />
           </div>
+        ) : null}
+
+        {provider === "custom" ? (
+          <details className="border-t border-themed pt-3 mt-3">
+            <summary className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2 cursor-pointer">
+              {t("dash.pathOverridesLabel")}
+            </summary>
+            <p className="text-xs text-themed-dim mb-2">{t("dash.pathOverridesHint")}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {PATH_OVERRIDE_KEYS.map(([key, fallback]) => (
+                <Field key={key} label={key}>
+                  <input
+                    value={form.pathOverrides[key] ?? ""}
+                    onChange={(e) => setPathOverride(key, e.target.value)}
+                    onBlur={(e) => setPathOverride(key, e.target.value.trim())}
+                    placeholder={fallback}
+                    className={`${inputCls} font-mono text-xs`}
+                  />
+                </Field>
+              ))}
+            </div>
+          </details>
         ) : null}
 
         {provider !== "copilot" && provider !== "sdf" && (
