@@ -50,73 +50,6 @@ const collect = async (
 
 // ── Outbound ─────────────────────────────────────────────────────
 
-test('deepseek: renames outbound reasoning_text → reasoning_content on assistant messages', async () => {
-  const i = inv({
-    model: 'deepseek-reasoner',
-    messages: [
-      { role: 'user', content: 'first turn' },
-      {
-        role: 'assistant',
-        content: null,
-        reasoning_text: 'let me check the docs',
-        reasoning_opaque: 'opaque-blob',
-        reasoning_items: [{ type: 'reasoning', summary: [] }],
-        tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'lookup', arguments: '{}' } }],
-      },
-    ],
-  })
-  await withVendorDeepSeekChatCompletionsNormalize(i, baseCtx, okRun)
-  const assistant = (i.payload.messages as Record<string, unknown>[])[1]!
-  expect(assistant.reasoning_content).toBe('let me check the docs')
-  expect(assistant.reasoning_text).toBeUndefined()
-  expect(assistant.reasoning_opaque).toBeUndefined()
-  expect(assistant.reasoning_items).toBeUndefined()
-  expect((assistant.tool_calls as unknown[]).length).toBe(1)
-})
-
-test('deepseek: synthesizes reasoning_content from reasoning_items.summary', async () => {
-  const i = inv({
-    model: 'deepseek-reasoner',
-    messages: [
-      { role: 'user', content: 'first' },
-      {
-        role: 'assistant',
-        content: null,
-        reasoning_items: [
-          {
-            type: 'reasoning',
-            id: 'rs_1',
-            summary: [
-              { type: 'summary_text', text: 'step one. ' },
-              { type: 'summary_text', text: 'step two.' },
-            ],
-          },
-        ],
-      },
-    ],
-  })
-  await withVendorDeepSeekChatCompletionsNormalize(i, baseCtx, okRun)
-  const assistant = (i.payload.messages as Record<string, unknown>[])[1]!
-  expect(assistant.reasoning_content).toBe('step one. step two.')
-  expect(assistant.reasoning_items).toBeUndefined()
-})
-
-test('deepseek: strips reasoning_items even when no summaries produce text', async () => {
-  const i = inv({
-    model: 'deepseek-reasoner',
-    messages: [
-      { role: 'user', content: 'a' },
-      { role: 'assistant', content: 'answer', reasoning_items: [{ type: 'reasoning' }], reasoning_opaque: 'x' },
-    ],
-  })
-  await withVendorDeepSeekChatCompletionsNormalize(i, baseCtx, okRun)
-  const assistant = (i.payload.messages as Record<string, unknown>[])[1]!
-  expect(assistant.reasoning_content).toBeUndefined()
-  expect(assistant.reasoning_items).toBeUndefined()
-  expect(assistant.reasoning_opaque).toBeUndefined()
-  expect(assistant.content).toBe('answer')
-})
-
 test('deepseek: reasoning_effort:"none" → thinking:{type:"disabled"}', async () => {
   const i = inv({
     model: 'deepseek-reasoner',
@@ -163,40 +96,6 @@ test('deepseek: leaves already-json_object response_format alone', async () => {
 })
 
 // ── Inbound ─────────────────────────────────────────────────────
-
-test('deepseek: renames inbound delta reasoning_content → reasoning_text', async () => {
-  const i = inv({ model: 'deepseek-reasoner', messages: [] })
-  const chunk: ChatCompletionsStreamEvent = {
-    id: 'c1',
-    object: 'chat.completion.chunk',
-    created: 1,
-    model: 'deepseek-reasoner',
-    choices: [
-      {
-        index: 0,
-        delta: { reasoning_content: 'thinking...' } as ChatCompletionsStreamEvent['choices'][number]['delta'],
-        finish_reason: null,
-      },
-    ],
-  }
-  const result = await withVendorDeepSeekChatCompletionsNormalize(i, baseCtx, () =>
-    Promise.resolve(
-      llmEventResult(
-        (async function* () {
-          yield eventFrame(chunk)
-        })() as AsyncIterable<ProtocolFrame<ChatCompletionsStreamEvent>>,
-        stubIdentity,
-      ),
-    ),
-  )
-  const frames = await collect(result)
-  expect(frames.length).toBe(1)
-  const f = frames[0]!
-  if (f.type !== 'event') throw new Error('expected event')
-  const delta = f.event.choices[0]!.delta as Record<string, unknown>
-  expect(delta.reasoning_text).toBe('thinking...')
-  expect(delta.reasoning_content).toBeUndefined()
-})
 
 test('deepseek: rewrites usage prompt_cache_hit/miss into prompt_tokens_details.cached_tokens', async () => {
   const i = inv({ model: 'deepseek-reasoner', messages: [] })

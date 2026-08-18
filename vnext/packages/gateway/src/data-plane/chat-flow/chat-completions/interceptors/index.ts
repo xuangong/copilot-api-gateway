@@ -7,6 +7,7 @@ import { withRoleCompatibilityApplied } from './with-role-compatibility-applied'
 import { withVendorDeepSeekChatCompletionsNormalize } from './with-vendor-deepseek-normalized'
 import { withVendorQwenChatCompletionsNormalize } from './with-vendor-qwen-normalized'
 import { withVendorKimiChatCompletionsNormalize } from './with-vendor-kimi-normalized'
+import { withReasoningContentDialect } from './with-reasoning-content-dialect'
 
 // Unified Chat Completions interceptor registry.
 //
@@ -37,6 +38,11 @@ import { withVendorKimiChatCompletionsNormalize } from './with-vendor-kimi-norma
 //     endpoints. Positioned last so the outbound rewrite is the final
 //     mutation before terminal dispatch and the inbound rewrite is the
 //     first mutation on the stream.
+//   - `withReasoningContentDialect` sits innermost of all. DeepSeek, Kimi
+//     and Qwen share the flat `reasoning_content` reasoning field, so the
+//     translation is one interceptor gated by `reasoning-content-dialect`
+//     (implied by `vendor-deepseek` for back-compat) rather than repeated
+//     per vendor.
 export const chatCompletionsInterceptors: readonly ChatCompletionsInterceptor[] = [
   withUsageStreamOptionsIncluded,
   withToolArgumentWhitespaceAborted,
@@ -46,4 +52,5 @@ export const chatCompletionsInterceptors: readonly ChatCompletionsInterceptor[] 
   withVendorDeepSeekChatCompletionsNormalize,
   withVendorQwenChatCompletionsNormalize,
   withVendorKimiChatCompletionsNormalize,
+  withReasoningContentDialect,
 ]

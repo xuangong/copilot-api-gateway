@@ -47,6 +47,12 @@ export const OPTIONAL_FLAGS = [
     defaultFor: [],
   },
   {
+    id: "reasoning-content-dialect",
+    label: "Reasoning field: `reasoning_content` dialect",
+    description: "Translate assistant reasoning between the gateway's canonical `reasoning_text` and the flat `reasoning_content` field used by DeepSeek, Kimi and Qwen. Translating both directions is what lets preserved thinking survive a round trip. Implied by `vendor-deepseek`, which carried this behavior before it was shared.",
+    defaultFor: [],
+  },
+  {
     id: "retry-cyber-policy",
     label: "Retry on upstream cyber-policy block",
     description: "Retry cyber_policy 4xx errors from the upstream (up to 10 attempts).",

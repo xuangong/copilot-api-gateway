@@ -5,14 +5,15 @@
  *
  * Outbound:
  * - `reasoning_effort: 'none'` → strip + emit `thinking: { type: 'disabled' }`
- * - assistant `reasoning_text` / `reasoning_items.summary` → `reasoning_content`
- *   (drop `reasoning_opaque` — DeepSeek doesn't accept it)
  * - `response_format: { type: 'json_schema' }` → `{ type: 'json_object' }`
  *
  * Inbound stream:
- * - delta `reasoning_content` → `reasoning_text`
  * - usage `prompt_cache_hit_tokens` → `prompt_tokens_details.cached_tokens`
  *   (drop `prompt_cache_miss_tokens`)
+ *
+ * The `reasoning_content` translation lives in
+ * `with-reasoning-content-dialect.ts` — Kimi and Qwen speak the same
+ * dialect, so it is shared rather than DeepSeek-specific.
  *
  * References:
  * - https://api-docs.deepseek.com/zh-cn/guides/thinking_mode
@@ -21,34 +22,8 @@
  */
 import type { ChatCompletionsInterceptor } from './types'
 import { asJsonObject, readJsonNumber, type JsonObject } from '../../shared/json-helpers'
-import type {
-  ChatCompletionsReasoningItem,
-  ChatCompletionsStreamEvent,
-} from '@vibe-llm/protocols/chat'
+import type { ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
 import { eventFrame } from '@vibe-core/result'
-
-const synthesizeFromItems = (
-  items: ChatCompletionsReasoningItem[] | null | undefined,
-): string | undefined => {
-  if (!items?.length) return undefined
-  const parts = items.flatMap((item) => item.summary?.map((s) => s.text) ?? [])
-  return parts.length > 0 ? parts.join('') : undefined
-}
-
-const rewriteOutboundMessage = (message: JsonObject): JsonObject => {
-  const {
-    reasoning_text,
-    reasoning_opaque: _opaque,
-    reasoning_items,
-    ...rest
-  } = message
-  const text =
-    typeof reasoning_text === 'string'
-      ? reasoning_text
-      : synthesizeFromItems(reasoning_items as ChatCompletionsReasoningItem[] | null | undefined)
-  if (text === undefined) return rest
-  return { ...rest, reasoning_content: text }
-}
 
 const stripCanonicalReasoningSentinel = (payload: JsonObject): JsonObject => {
   if (payload.reasoning_effort !== 'none') return payload
@@ -62,39 +37,8 @@ const downgradeJsonSchemaResponseFormat = (payload: JsonObject): JsonObject => {
   return { ...payload, response_format: { type: 'json_object' } }
 }
 
-const rewriteOutboundPayload = (payload: JsonObject): JsonObject => {
-  const withDisable = stripCanonicalReasoningSentinel(payload)
-  const withResponseFormat = downgradeJsonSchemaResponseFormat(withDisable)
-  const messages = withResponseFormat.messages
-  if (!Array.isArray(messages)) return withResponseFormat
-  return {
-    ...withResponseFormat,
-    messages: messages.map((m) => {
-      const obj = asJsonObject(m)
-      return obj ? rewriteOutboundMessage(obj) : m
-    }),
-  }
-}
-
-const rewriteInboundDeltas = (chunk: ChatCompletionsStreamEvent): ChatCompletionsStreamEvent => {
-  let changed = false
-  const choices = chunk.choices.map((choice) => {
-    const delta = choice.delta as ChatCompletionsStreamEvent['choices'][number]['delta'] & {
-      reasoning_content?: unknown
-    }
-    if (typeof delta.reasoning_content !== 'string') return choice
-    const { reasoning_content, ...rest } = delta
-    changed = true
-    return {
-      ...choice,
-      delta: {
-        ...rest,
-        ...(delta.reasoning_text === undefined ? { reasoning_text: reasoning_content } : {}),
-      },
-    }
-  })
-  return changed ? { ...chunk, choices } : chunk
-}
+const rewriteOutboundPayload = (payload: JsonObject): JsonObject =>
+  downgradeJsonSchemaResponseFormat(stripCanonicalReasoningSentinel(payload))
 
 const VENDOR_CACHE_FIELDS = ['prompt_cache_hit_tokens', 'prompt_cache_miss_tokens'] as const
 
@@ -135,7 +79,7 @@ export const withVendorDeepSeekChatCompletionsNormalize: ChatCompletionsIntercep
           yield frame
           continue
         }
-        const event = rewriteInboundUsage(rewriteInboundDeltas(frame.event))
+        const event = rewriteInboundUsage(frame.event)
         yield event === frame.event ? frame : eventFrame(event)
       }
     })(),
