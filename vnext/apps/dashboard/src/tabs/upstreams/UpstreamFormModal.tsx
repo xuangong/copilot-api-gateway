@@ -4,11 +4,14 @@ import { useToast } from "../../state/toast"
 import { useAuth } from "../../state/auth"
 import * as api from "../../api/upstreams"
 import type { UpstreamRecord } from "../../api/types"
+import { findPreset } from "./vendorPresets"
 
 type Provider = "copilot" | "azure" | "custom" | "sdf"
 
 interface Props {
-  mode: { kind: "create"; provider: Exclude<Provider, "copilot"> } | { kind: "edit"; row: UpstreamRecord }
+  mode:
+    | { kind: "create"; provider: Exclude<Provider, "copilot">; presetId?: string }
+    | { kind: "edit"; row: UpstreamRecord }
   flagCatalog: api.FlagCatalog | null
   ensureFlagCatalog: () => Promise<api.FlagCatalog>
   onClose: () => void
@@ -26,6 +29,7 @@ interface FormState {
   endpoints: string[]
   authStyle: string
   pathOverrides: Record<string, string>
+  modelsEndpoint: string
   modelsText: string
   azureDeployments: string
   azureDeploymentsError: string
@@ -67,6 +71,7 @@ const EMPTY: FormState = {
   endpoints: ["chat_completions", "embeddings"],
   authStyle: "bearer",
   pathOverrides: {},
+  modelsEndpoint: "",
   modelsText: "",
   azureDeployments: "",
   azureDeploymentsError: "",
@@ -109,6 +114,22 @@ const PATH_OVERRIDE_KEYS = [
 
 function buildInitial(mode: Props["mode"]): { provider: Provider; form: FormState } {
   if (mode.kind === "create") {
+    const preset = mode.provider === "custom" ? findPreset(mode.presetId) : undefined
+    if (preset) {
+      return {
+        provider: mode.provider,
+        form: {
+          ...EMPTY,
+          name: preset.name,
+          baseUrl: preset.baseUrl,
+          endpoints: [...preset.endpoints],
+          pathOverrides: { ...preset.pathOverrides },
+          modelsEndpoint: preset.modelsEndpoint,
+          modelsText: preset.modelsText,
+          flagOverrides: { ...preset.flagOverrides },
+        },
+      }
+    }
     return {
       provider: mode.provider,
       form: {
@@ -167,6 +188,8 @@ function buildInitial(mode: Props["mode"]): { provider: Provider; form: FormStat
         u.provider === "custom" && (cfg as { pathOverrides?: Record<string, string> }).pathOverrides
           ? { ...(cfg as { pathOverrides: Record<string, string> }).pathOverrides }
           : {},
+      modelsEndpoint:
+        u.provider === "custom" ? (cfg as { modelsEndpoint?: string }).modelsEndpoint ?? "" : "",
       modelsText,
       azureDeployments: azureDepsText,
       azureDeploymentsError: "",
@@ -239,6 +262,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
   const [saving, setSaving] = useState(false)
   const editing = mode.kind === "edit"
   const editingId = editing ? mode.row.id : null
+  const preset = mode.kind === "create" ? findPreset(mode.presetId) : undefined
 
   const [catalog, setCatalog] = useState<{ id: string; name: string }[] | null>(null)
   const [catalogError, setCatalogError] = useState<string | null>(null)
@@ -361,6 +385,9 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
             pathOverrides: form.pathOverrides,
           }
           if (form.apiKey.trim()) (config as { apiKey: string }).apiKey = form.apiKey.trim()
+          if (form.modelsEndpoint.trim()) {
+            (config as { modelsEndpoint: string }).modelsEndpoint = form.modelsEndpoint.trim()
+          }
           const models = parseModelsText(form.modelsText)
           if (models) (config as { models: unknown }).models = models
         } else if (provider === "sdf") {
@@ -411,6 +438,9 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           // Top-level merge is shallow, so this replaces rather than merges —
           // an empty object is how the user clears every override.
           ;(config as { pathOverrides: Record<string, string> }).pathOverrides = form.pathOverrides
+          // Blank normalizes back to undefined upstream, which is how the user
+          // reverts to probing `${baseUrl}/models`.
+          ;(config as { modelsEndpoint: string }).modelsEndpoint = form.modelsEndpoint.trim()
           const models = parseModelsText(form.modelsText)
           ;(config as { models: unknown }).models = models ?? []
         } else if (provider === "sdf") {
@@ -465,6 +495,14 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
         </button>
       </div>
       <div className="space-y-3">
+        {preset?.noteKey ? (
+          <p
+            className="text-xs text-themed rounded p-2"
+            style={{ background: "var(--surface-700)", border: "1px solid var(--border-color)" }}
+          >
+            {t(preset.noteKey)}
+          </p>
+        ) : null}
         <Field label={t("dash.nameLabel")}>
           <input
             value={form.name}
@@ -695,6 +733,18 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
               placeholder={"deepseek-chat\ndeepseek-coder # DeepSeek Coder"}
               className={`${inputCls} font-mono text-xs`}
             />
+            <div className="mt-3">
+              <Field label={t("dash.modelsEndpointLabel")}>
+                <input
+                  value={form.modelsEndpoint}
+                  onChange={(e) => update("modelsEndpoint", e.target.value)}
+                  onBlur={(e) => update("modelsEndpoint", e.target.value.trim())}
+                  placeholder={form.baseUrl ? `${form.baseUrl}/models` : "https://api.example.com/v1/models"}
+                  className={`${inputCls} font-mono text-xs`}
+                />
+                <span className="text-xs text-themed-dim block mt-1">{t("dash.modelsEndpointHint")}</span>
+              </Field>
+            </div>
           </div>
         ) : null}
 

@@ -5,9 +5,10 @@ import { useUpstreams } from "../../state/upstreams"
 import { UpstreamRow } from "./UpstreamRow"
 import { UpstreamFormModal } from "./UpstreamFormModal"
 import { DeviceFlowModal } from "./DeviceFlowModal"
+import { VENDOR_PRESETS } from "./vendorPresets"
 import type { UpstreamRecord } from "../../api/types"
 
-type CreateMode = { kind: "create"; provider: "custom" | "azure" | "sdf" }
+type CreateMode = { kind: "create"; provider: "custom" | "azure" | "sdf"; presetId?: string }
 
 interface OwnerGroup {
   ownerId: string
@@ -24,10 +25,14 @@ export function UpstreamsTab() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deviceFlowOpen, setDeviceFlowOpen] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [presetMenuOpen, setPresetMenuOpen] = useState(false)
 
-  const openCreate = (provider: "custom" | "azure" | "sdf") => {
+  const openCreate = (provider: "custom" | "azure" | "sdf", presetId?: string) => {
     setEditingId(null)
-    setCreateMode({ kind: "create", provider })
+    setPresetMenuOpen(false)
+    // Remount the form when the preset changes, otherwise `useMemo` on `mode`
+    // keeps the previously seeded state.
+    setCreateMode({ kind: "create", provider, presetId })
   }
   const openEdit = async (row: UpstreamRecord) => {
     setCreateMode(null)
@@ -78,16 +83,56 @@ export function UpstreamsTab() {
               card's p-4 padding instead of clipping mid-button. */}
           <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>button]:shrink-0">
             <button onClick={() => setDeviceFlowOpen(true)} className="btn-primary text-sm">{t("dash.addCopilot")}</button>
-            <button onClick={() => openCreate("custom")} className="btn-ghost text-sm">{t("dash.addCustom")}</button>
+            <button
+              onClick={() => setPresetMenuOpen((v) => !v)}
+              className="btn-ghost text-sm"
+              aria-haspopup="menu"
+              aria-expanded={presetMenuOpen}
+            >
+              {t("dash.addCustom")} ▾
+            </button>
             <button onClick={() => openCreate("azure")} className="btn-ghost text-sm">{t("dash.addAzure")}</button>
             <button onClick={() => openCreate("sdf")} className="btn-ghost text-sm">{t("dash.addSdf")}</button>
             <button onClick={store.reload} disabled={store.loading} className="btn-ghost text-sm" title="Refresh">↻</button>
           </div>
         </div>
 
+        {/* Rendered outside the button strip: that strip scrolls horizontally on
+            mobile, which would clip an absolutely-positioned menu. */}
+        {presetMenuOpen ? (
+          <div
+            role="menu"
+            className="rounded-lg py-1 mb-4"
+            style={{ background: "var(--surface-800)", border: "1px solid var(--border-color)" }}
+          >
+            <div className="px-3 py-1 text-[11px] uppercase tracking-wider text-themed-dim">
+              {t("dash.presetMenuTitle")}
+            </div>
+            {VENDOR_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                role="menuitem"
+                onClick={() => openCreate("custom", p.id)}
+                className="block w-full text-left px-3 py-1.5 text-sm text-themed hover:bg-surface-700/60"
+              >
+                {p.label}
+              </button>
+            ))}
+            <div className="my-1 border-t border-themed" />
+            <button
+              role="menuitem"
+              onClick={() => openCreate("custom")}
+              className="block w-full text-left px-3 py-1.5 text-sm text-themed-dim hover:bg-surface-700/60"
+            >
+              {t("dash.addCustomBlank")}
+            </button>
+          </div>
+        ) : null}
+
         {createMode ? (
           <Expand>
             <UpstreamFormModal
+              key={createMode.presetId ?? createMode.provider}
               mode={createMode}
               flagCatalog={store.flagCatalog}
               ensureFlagCatalog={store.ensureFlagCatalog}
