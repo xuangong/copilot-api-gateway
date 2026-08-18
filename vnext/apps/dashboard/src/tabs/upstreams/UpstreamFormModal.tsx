@@ -337,16 +337,19 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
       let config: Record<string, unknown>
       if (!editingId) {
         if (provider === "custom") {
-          if (!form.baseUrl.trim() || !form.apiKey.trim()) {
+          const needsKey = form.authStyle !== "none"
+          if (!form.baseUrl.trim() || (needsKey && !form.apiKey.trim())) {
             toast(t("dash.errBaseUrlApiKeyRequired"), "error")
             return
           }
           config = {
             name: form.name.trim(),
             baseUrl: form.baseUrl.trim(),
-            apiKey: form.apiKey.trim(),
             endpoints: form.endpoints,
+            authStyle: form.authStyle,
+            pathOverrides: form.pathOverrides,
           }
+          if (form.apiKey.trim()) (config as { apiKey: string }).apiKey = form.apiKey.trim()
           const models = parseModelsText(form.modelsText)
           if (models) (config as { models: unknown }).models = models
         } else if (provider === "sdf") {
@@ -393,6 +396,10 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           if (form.baseUrl.trim()) (config as { baseUrl: string }).baseUrl = form.baseUrl.trim()
           if (form.apiKey.trim()) (config as { apiKey: string }).apiKey = form.apiKey.trim()
           ;(config as { endpoints: string[] }).endpoints = form.endpoints
+          ;(config as { authStyle: string }).authStyle = form.authStyle
+          // Top-level merge is shallow, so this replaces rather than merges —
+          // an empty object is how the user clears every override.
+          ;(config as { pathOverrides: Record<string, string> }).pathOverrides = form.pathOverrides
           const models = parseModelsText(form.modelsText)
           ;(config as { models: unknown }).models = models ?? []
         } else if (provider === "sdf") {
