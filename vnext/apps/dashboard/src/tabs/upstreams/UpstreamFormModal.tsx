@@ -24,6 +24,8 @@ interface FormState {
   deployment: string
   apiVersion: string
   endpoints: string[]
+  authStyle: string
+  pathOverrides: Record<string, string>
   modelsText: string
   azureDeployments: string
   azureDeploymentsError: string
@@ -63,6 +65,8 @@ const EMPTY: FormState = {
   deployment: "",
   apiVersion: "2024-08-01-preview",
   endpoints: ["chat_completions", "embeddings"],
+  authStyle: "bearer",
+  pathOverrides: {},
   modelsText: "",
   azureDeployments: "",
   azureDeploymentsError: "",
@@ -79,6 +83,18 @@ const EMPTY: FormState = {
 }
 
 const SERVED_ENDPOINTS = ["chat_completions", "responses", "messages", "messages_count_tokens", "embeddings"] as const
+
+// The 7 override-able endpoint keys and their provider-side defaults.
+// messages_count_tokens is absent on purpose — it derives from messages.
+const PATH_OVERRIDE_KEYS = [
+  ["chat_completions", "/chat/completions"],
+  ["responses", "/responses"],
+  ["messages", "/messages"],
+  ["embeddings", "/embeddings"],
+  ["images_generations", "/images/generations"],
+  ["images_edits", "/images/edits"],
+  ["alpha_search", "/alpha/search"],
+] as const
 
 function buildInitial(mode: Props["mode"]): { provider: Provider; form: FormState } {
   if (mode.kind === "create") {
@@ -132,6 +148,14 @@ function buildInitial(mode: Props["mode"]): { provider: Provider; form: FormStat
           : u.provider === "sdf"
             ? ["images_generations", "images_edits"]
             : ["chat_completions"],
+      authStyle:
+        u.provider === "custom" && typeof (cfg as { authStyle?: string }).authStyle === "string"
+          ? (cfg as { authStyle: string }).authStyle
+          : "bearer",
+      pathOverrides:
+        u.provider === "custom" && (cfg as { pathOverrides?: Record<string, string> }).pathOverrides
+          ? { ...(cfg as { pathOverrides: Record<string, string> }).pathOverrides }
+          : {},
       modelsText,
       azureDeployments: azureDepsText,
       azureDeploymentsError: "",
@@ -443,6 +467,18 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
                 placeholder={editing ? t("dash.leaveBlankToKeep") : "sk-..."}
                 className={inputCls}
               />
+            </Field>
+            <Field label={t("dash.authStyleLabel")}>
+              <select
+                value={form.authStyle}
+                onChange={(e) => update("authStyle", e.target.value)}
+                className={inputCls}
+              >
+                <option value="bearer">{t("dash.authStyleBearer")}</option>
+                <option value="anthropic">{t("dash.authStyleAnthropic")}</option>
+                <option value="none">{t("dash.authStyleNone")}</option>
+              </select>
+              <span className="text-xs text-themed-dim block mt-1">{t("dash.authStyleHint")}</span>
             </Field>
           </>
         ) : null}
