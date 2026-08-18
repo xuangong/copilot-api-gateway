@@ -211,7 +211,10 @@ export function useKeys() {
         for (const r of records) {
           reqUsed += r.requests
           weightedTokens +=
-            (r.cacheReadTokens ?? 0) * 0.1 + (r.inputTokens ?? 0) * 1.0 + (r.outputTokens ?? 0) * 5.0
+            (r.cacheReadTokens ?? 0) * 0.1 +
+            (r.cacheCreationTokens ?? 0) * 1.25 +
+            (r.inputTokens ?? 0) * 1.0 +
+            (r.outputTokens ?? 0) * 5.0
         }
         setQuotaUsage({
           reqLimit,

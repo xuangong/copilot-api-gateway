@@ -1,4 +1,5 @@
 import { api } from "./client"
+import { adaptUsageRow, type ServerUsageRow } from "./usage"
 
 // Shape returned by GET /api/keys (see src/routes/api-keys.ts keyToJson()).
 export interface KeyRefDescriptor {
@@ -76,6 +77,7 @@ export interface TokenUsageRecord {
   hourKey?: string
   requests: number
   cacheReadTokens?: number
+  cacheCreationTokens?: number
   inputTokens?: number
   outputTokens?: number
 }
@@ -129,11 +131,14 @@ export function unassignKey(id: string, userId: string): Promise<{ ok: true }> {
 // Quota usage = this UTC calendar month's token-usage records for the key,
 // weighted. UTC month, not local: it must match the gateway's quota gate
 // (data-plane/observability/quota.ts), which cannot know the caller's timezone.
-export function getMonthTokenUsage(keyId: string): Promise<TokenUsageRecord[]> {
+// The server answers in the per-dimension `tokens: {...}` shape, so the rows go
+// through the same adapter the usage tab uses.
+export async function getMonthTokenUsage(keyId: string): Promise<TokenUsageRecord[]> {
   const now = new Date()
   const monthStartHour = (delta: number) =>
     new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + delta, 1)).toISOString().slice(0, 10) + "T00"
-  return api<TokenUsageRecord[]>("/api/token-usage", {
+  const rows = await api<ServerUsageRow[]>("/api/token-usage", {
     query: { start: monthStartHour(0), end: monthStartHour(1), key_id: keyId },
   })
+  return rows.map(adaptUsageRow)
 }

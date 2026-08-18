@@ -187,6 +187,7 @@ export function QuotaEditor({ keyRow, usage, canEdit, busy, onSave }: Props) {
         <p className="text-[10px] text-themed-dim leading-relaxed">
           <span className="text-themed-secondary font-medium">{t("dash.tokenQuotaFormulaLabel")}</span>
           <code className="text-accent-violet ml-1">Cache Read × 10%</code> +{" "}
+          <code className="text-accent-cyan">Cache Creation × 125%</code> +{" "}
           <code className="text-accent-teal">Uncached Input × 100%</code> +{" "}
           <code className="text-accent-amber">Output × 500%</code>
         </p>

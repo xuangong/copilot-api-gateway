@@ -54,9 +54,10 @@ export async function checkQuota(apiKeyId: ApiKeyId): Promise<QuotaResult> {
   for (const r of records) {
     totalRequests += r.requests
     const cacheRead = r.tokens.input_cache_read ?? 0
+    const cacheWrite = r.tokens.input_cache_write ?? 0
     const input = (r.tokens.input ?? 0) + (r.tokens.input_image ?? 0)
     const output = (r.tokens.output ?? 0) + (r.tokens.output_image ?? 0)
-    totalWeightedTokens += computeWeightedTokens(cacheRead, input, output)
+    totalWeightedTokens += computeWeightedTokens(cacheRead, cacheWrite, input, output)
   }
 
   const retryAfterSeconds = secondsUntilNextUtcMonth(now)

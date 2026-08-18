@@ -22,7 +22,7 @@ export interface UsageRow {
 //   { tokens: { input?, output?, input_cache_read?, input_cache_write?, ... }, cost: number, ... }
 // The dashboard was originally written against the main repo's flat shape, so
 // we adapt at the API boundary instead of touching every reducer.
-interface ServerUsageRow {
+export interface ServerUsageRow {
   hour: string
   keyId: string
   keyName?: string
@@ -42,7 +42,7 @@ interface ServerUsageRow {
   cost?: number | { totalUSD?: number } | null
 }
 
-function adaptRow(r: ServerUsageRow): UsageRow {
+export function adaptUsageRow(r: ServerUsageRow): UsageRow {
   const t = r.tokens ?? {}
   const input = (t.input ?? 0) + (t.input_image ?? 0)
   const output = (t.output ?? 0) + (t.output_image ?? 0)
@@ -75,5 +75,5 @@ export interface UsageRangeQuery {
 
 export async function fetchTokenUsage(range: UsageRangeQuery): Promise<UsageRow[]> {
   const rows = await api<ServerUsageRow[]>("/api/token-usage", { query: { start: range.start, end: range.end } })
-  return rows.map(adaptRow)
+  return rows.map(adaptUsageRow)
 }

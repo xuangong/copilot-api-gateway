@@ -32,7 +32,20 @@ const baseKey = (over: Partial<{ quotaRequestsPerMonth: number | null; quotaToke
 const thisMonthHour = () => new Date().toISOString().slice(0, 10) + 'T00'
 
 test('checkQuota: re-exports formula', () => {
-  expect(computeWeightedTokens(100, 0, 0)).toBeCloseTo(10)
+  expect(computeWeightedTokens(100, 0, 0, 0)).toBeCloseTo(10)
+})
+
+// Cache writes are the priciest input class upstream; leaving them out of the
+// gate let a cache-heavy key burn quota for free.
+test('checkQuota: cache-creation tokens count toward the token quota', async () => {
+  await repo.apiKeys.save(baseKey({ quotaTokensPerMonth: 100 }))
+  await repo.usage.record({
+    keyId: 'k1', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
+    hour: thisMonthHour(), requests: 1, tokens: { input_cache_write: 100 }, cost: null,
+  })
+  const r = await checkQuota('k1')
+  expect(r.allowed).toBe(false)
+  expect(r.reason).toMatch(/token quota exceeded \(125\/100\)/)
 })
 
 test('checkQuota: unknown key id allowed', async () => {
