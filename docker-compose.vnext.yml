@@ -13,6 +13,7 @@ services:
       - ACCOUNT_TYPE=${ACCOUNT_TYPE:-individual}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=localhost,127.0.0.1
