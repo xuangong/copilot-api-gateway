@@ -44,8 +44,8 @@ import { createPerRequestFetcher } from '../../data-plane/dial/per-request.ts'
 import { getRuntimeLocation } from '@vibe-core/platform'
 import type { Fetcher } from '@vibe-core/upstream'
 import { clearRawModelsCache } from '@vibe-llm/provider-copilot'
-import { CustomProvider } from '@vibe-llm/provider-custom'
-import type { CustomProviderConfig as PkgCustomConfig } from '@vibe-llm/provider-custom'
+import { CustomProvider, normalizeCustomConfig } from '@vibe-llm/provider-custom'
+import { parseEndpoints, normalizeStringRecord } from '@vibe-llm/provider-llm'
 import { AzureProvider } from '@vibe-llm/provider-azure'
 import type { AzureProviderConfig as PkgAzureConfig } from '@vibe-llm/provider-azure'
 import { SdfProvider } from '@vibe-llm/provider-sdf'
@@ -60,16 +60,6 @@ export interface AuthCtx {
 type Vars = { auth: AuthCtx }
 
 const KINDS = ['copilot', 'custom', 'azure', 'sdf'] as const satisfies readonly UpstreamKind[]
-
-const ENDPOINTS = new Set<EndpointKey>([
-  'chat_completions',
-  'responses',
-  'messages',
-  'messages_count_tokens',
-  'embeddings',
-  'images_generations',
-  'images_edits',
-] as const satisfies readonly EndpointKey[])
 
 // Zod schemas for probe + CRUD bodies. Deliberately lenient — the extensive
 // per-provider config validation lives in normalize*Config helpers so we can
@@ -90,16 +80,6 @@ const upstreamBody = z.object({
   flagOverrides: z.record(z.string(), z.unknown()).optional(),
   disabledPublicModelIds: z.unknown().optional(),
 })
-
-interface CustomProviderConfig {
-  name: string
-  baseUrl: string
-  apiKey: string
-  endpoints: EndpointKey[]
-  modelsEndpoint?: string
-  defaultHeaders?: Record<string, string>
-  models?: Array<{ id: string; name?: string; ownedBy?: string }>
-}
 
 interface AzureProviderConfig {
   name: string
@@ -143,18 +123,6 @@ function upstreamId(provider: UpstreamKind, name: string): string {
   return `up_${provider}_${sanitizeIdPart(name)}_${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`
 }
 
-function parseEndpoints(value: unknown, fallback: readonly EndpointKey[]): EndpointKey[] {
-  if (value === undefined) return [...fallback]
-  if (!Array.isArray(value)) throw new Error('endpoints must be an array')
-  const endpoints = value.map((v) => {
-    if (typeof v !== 'string' || !ENDPOINTS.has(v as EndpointKey)) {
-      throw new Error(`unknown endpoint: ${String(v)}`)
-    }
-    return v as EndpointKey
-  })
-  return [...new Set(endpoints)]
-}
-
 function normalizeDisabledPublicModelIds(value: unknown): string[] {
   if (value === undefined || value === null) return []
   if (!Array.isArray(value)) throw new Error('disabledPublicModelIds must be an array of strings')
@@ -190,50 +158,6 @@ function normalizeProvider(provider: unknown): UpstreamKind {
   throw new Error(`Unknown provider: ${String(provider)}`)
 }
 
-function normalizeStringRecord(value: unknown, field: string): Record<string, string> | undefined {
-  if (value === undefined) return undefined
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`${field} must be an object`)
-  }
-  const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(value)) {
-    if (typeof v !== 'string') throw new Error(`${field}.${k} must be a string`)
-    out[k] = v
-  }
-  return out
-}
-
-function parseManualModels(value: unknown): CustomProviderConfig['models'] {
-  if (value === undefined || value === null) return undefined
-  if (!Array.isArray(value)) {
-    throw new Error('models must be an array of strings or { id, name?, ownedBy? }')
-  }
-  const out: Array<{ id: string; name?: string; ownedBy?: string }> = []
-  for (const entry of value) {
-    if (typeof entry === 'string') {
-      const id = entry.trim()
-      if (!id) throw new Error('models[] entry must be a non-empty string')
-      out.push({ id })
-      continue
-    }
-    if (entry && typeof entry === 'object' && typeof (entry as { id?: unknown }).id === 'string') {
-      const e = entry as { id: string; name?: unknown; ownedBy?: unknown }
-      const id = e.id.trim()
-      if (!id) throw new Error('models[].id must be a non-empty string')
-      const name = typeof e.name === 'string' ? e.name : undefined
-      const ownedBy = typeof e.ownedBy === 'string' ? e.ownedBy : undefined
-      out.push({
-        id,
-        name,
-        ownedBy,
-      })
-      continue
-    }
-    throw new Error('models[] entry must be a string or { id, name?, ownedBy? } object')
-  }
-  return out.length > 0 ? out : undefined
-}
-
 function parseAzureDeployments(value: unknown): AzureProviderConfig['deployments'] {
   if (value === undefined || value === null) return undefined
   if (!Array.isArray(value)) throw new Error('deployments must be an array of { name, model }')
@@ -246,27 +170,6 @@ function parseAzureDeployments(value: unknown): AzureProviderConfig['deployments
     out.push({ name: e.name.trim(), model: e.model.trim() })
   }
   return out.length > 0 ? out : undefined
-}
-
-function normalizeCustomConfig(config: Record<string, unknown>): CustomProviderConfig {
-  if (typeof config.name !== 'string' || !config.name.trim()) throw new Error('custom config.name required')
-  if (typeof config.baseUrl !== 'string' || !config.baseUrl.trim()) throw new Error('custom config.baseUrl required')
-  if (typeof config.apiKey !== 'string' || !config.apiKey) throw new Error('custom config.apiKey required')
-  const modelsEndpoint =
-    typeof config.modelsEndpoint === 'string' && config.modelsEndpoint.trim()
-      ? config.modelsEndpoint.trim()
-      : undefined
-  const defaultHeaders = normalizeStringRecord(config.defaultHeaders, 'defaultHeaders')
-  const models = parseManualModels(config.models)
-  return {
-    name: config.name.trim(),
-    baseUrl: config.baseUrl.trim().replace(/\/+$/, ''),
-    apiKey: config.apiKey,
-    endpoints: parseEndpoints(config.endpoints, ['chat_completions', 'embeddings']),
-    modelsEndpoint,
-    defaultHeaders,
-    models,
-  }
 }
 
 function normalizeAzureConfig(config: Record<string, unknown>): AzureProviderConfig {
@@ -470,7 +373,7 @@ upstreamMiscRouter.post('/upstream-probe', zValidator('json', probeBody), async 
   if (kind === 'custom' || kind === 'azure') {
     try {
       const provider = kind === 'custom'
-        ? new CustomProvider(normalizeCustomConfig(config as Record<string, unknown>) as PkgCustomConfig)
+        ? new CustomProvider(normalizeCustomConfig(config as Record<string, unknown>))
         : new AzureProvider(normalizeAzureConfig(config as Record<string, unknown>) as PkgAzureConfig)
       const result = await provider.probe()
       return c.json(result)
