@@ -361,6 +361,38 @@ describe('CustomProvider.fetch', () => {
       expect((caught as { response?: Response }).response?.status).toBe(502)
     } finally { globalThis.fetch = realFetch }
   })
+
+  test('pathOverrides: fetch uses overridden path for messages, default path for chat_completions', async () => {
+    const p = new CustomProvider({
+      name: 'ds-anth', baseUrl: 'https://x', apiKey: 'k',
+      pathOverrides: { messages: '/anthropic/v1/messages' },
+      endpoints: ['messages', 'chat_completions'],
+    })
+
+    // messages endpoint should use the overridden path
+    const { calls: msgCalls, restore: restoreMsg } = captureFetch(() => Response.json({ ok: true }))
+    try {
+      await p.fetch({
+        endpoint: 'messages',
+        payload: {},
+        headers: new Headers(),
+        sourceApi: 'anthropic',
+      })
+      expect(msgCalls[0]!.url).toBe('https://x/anthropic/v1/messages')
+    } finally { restoreMsg() }
+
+    // chat_completions endpoint should use the default (unoverridden) path
+    const { calls: chatCalls, restore: restoreChat } = captureFetch(() => Response.json({ ok: true }))
+    try {
+      await p.fetch({
+        endpoint: 'chat_completions',
+        payload: {},
+        headers: new Headers(),
+        sourceApi: 'openai',
+      })
+      expect(chatCalls[0]!.url).toBe('https://x/chat/completions')
+    } finally { restoreChat() }
+  })
 })
 
 describe('CustomProvider.resolvePath', () => {
