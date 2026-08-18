@@ -73,7 +73,7 @@ export function validateUpstreamPath(value: unknown, field: string): string {
   if (!path) throw new Error(`${field} must not be empty`)
   if (!path.startsWith('/')) throw new Error(`${field} must start with /`)
   if (path.length > MAX_PATH_LENGTH) throw new Error(`${field} is too long`)
-  if (path.includes('//') || path.includes('/./') || path.includes('/../')) {
+  if (path.includes('//') || /\/\.\.?(?:\/|$)/.test(path)) {
     throw new Error(`${field} must not contain //, /./ or /../`)
   }
   return path

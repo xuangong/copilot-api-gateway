@@ -66,4 +66,33 @@ describe('validateUpstreamPath', () => {
   test('rejects traversal — this is the security boundary', () => {
     expect(() => validateUpstreamPath('/../../admin', 'p')).toThrow(/must not contain/)
   })
+
+  // --- trailing-segment bypass cases (Critical fix) ---
+  test('rejects trailing /.. (no trailing slash)', () => {
+    expect(() => validateUpstreamPath('/foo/..', 'p')).toThrow(/must not contain/)
+  })
+
+  test('rejects trailing /. (no trailing slash)', () => {
+    expect(() => validateUpstreamPath('/foo/.', 'p')).toThrow(/must not contain/)
+  })
+
+  // --- boundary-value pass case (Important fix) ---
+  test('accepts a path of exactly 256 characters', () => {
+    const path = '/' + 'a'.repeat(255)
+    expect(path.length).toBe(256)
+    expect(validateUpstreamPath(path, 'p')).toBe(path)
+  })
+
+  // --- must NOT mis-reject legitimate paths ---
+  test('accepts /v1/models.json', () => {
+    expect(validateUpstreamPath('/v1/models.json', 'p')).toBe('/v1/models.json')
+  })
+
+  test('accepts /a.b/c', () => {
+    expect(validateUpstreamPath('/a.b/c', 'p')).toBe('/a.b/c')
+  })
+
+  test('accepts /anthropic/v1/messages', () => {
+    expect(validateUpstreamPath('/anthropic/v1/messages', 'p')).toBe('/anthropic/v1/messages')
+  })
 })
