@@ -82,7 +82,18 @@ const EMPTY: FormState = {
   sdfPassportApiBase: SDF_DEFAULTS.passportApiBase,
 }
 
-const SERVED_ENDPOINTS = ["chat_completions", "responses", "messages", "messages_count_tokens", "embeddings"] as const
+// Azure has no `/alpha/search` surface, so it gets one fewer checkbox.
+const CUSTOM_SERVED_ENDPOINTS = [
+  "chat_completions",
+  "responses",
+  "messages",
+  "messages_count_tokens",
+  "embeddings",
+  "images_generations",
+  "images_edits",
+  "alpha_search",
+] as const
+const AZURE_SERVED_ENDPOINTS = CUSTOM_SERVED_ENDPOINTS.filter((ep) => ep !== "alpha_search")
 
 // The 7 override-able endpoint keys and their provider-side defaults.
 // messages_count_tokens is absent on purpose — it derives from messages.
@@ -655,7 +666,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
               {t("dash.servedEndpointsHint")}
             </p>
             <div className="flex flex-wrap gap-3 text-xs">
-              {SERVED_ENDPOINTS.map((ep) => (
+              {(provider === "azure" ? AZURE_SERVED_ENDPOINTS : CUSTOM_SERVED_ENDPOINTS).map((ep) => (
                 <label key={ep} className="flex items-center gap-1 cursor-pointer text-themed">
                   <input
                     type="checkbox"
