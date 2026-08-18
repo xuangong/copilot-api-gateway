@@ -77,6 +77,12 @@ export const OPTIONAL_FLAGS = [
     defaultFor: ["copilot", "azure", "custom"],
   },
   {
+    id: "responses-web-search-shim",
+    label: "Responses web search shim",
+    description: "Execute the Responses `web_search` hosted tool through the gateway's configured search provider instead of forwarding it to a Responses upstream. The orchestrator model calls a generated function tool; the shim runs the search and synthesizes the native web_search_call lifecycle.",
+    defaultFor: ["copilot", "azure", "custom"],
+  },
+  {
     id: "responses-compact-shim",
     label: "Responses compact shim",
     description: "Simulate a `response.compaction` envelope against upstreams that have no native compaction wire. Runs the summarization turn through the upstream's standard /responses generate wire under the vendored openai/codex SUMMARIZATION_PROMPT, then packs the summary into a synthetic `response.compaction` output item. Structurally required (always engages, ignoring this flag) on non-Responses target endpoints because those translators cannot carry the `compaction_trigger` / `compaction` item variants.",
@@ -89,9 +95,9 @@ export const OPTIONAL_FLAGS = [
     defaultFor: [],
   },
   {
-    id: "promote-thinking-display",
-    label: "Promote thinking blocks to visible display",
-    description: "Wrap Anthropic thinking blocks in display-only formatting so clients that strip reasoning still surface the chain-of-thought.",
+    id: "strip-prompt-cache-key",
+    label: "Strip `prompt_cache_key` from /responses",
+    description: "Drop the top-level `prompt_cache_key` request argument before it reaches the upstream. OpenAI-native and truly OpenAI-compatible Responses upstreams accept it for prefix-cache attribution; upstreams that validate unknown arguments strictly (Azure DeepSeek, etc.) answer 400. Opt-in.",
     defaultFor: [],
   },
   // ── Role compatibility ──────────────────────────────────────────────

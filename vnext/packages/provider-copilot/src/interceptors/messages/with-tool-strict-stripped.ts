@@ -11,6 +11,7 @@ import type { CopilotInterceptor } from "@vibe-llm/protocols/common"
  * gone.
  */
 export const withToolStrictStripped: CopilotInterceptor = async (inv, _ctx, run) => {
+  if (!inv.enabledFlags.has("transform-strip-tool-strict")) return run()
   const tools = (inv.payload as Record<string, unknown>).tools
   if (Array.isArray(tools)) {
     for (const tool of tools as Record<string, unknown>[]) {
