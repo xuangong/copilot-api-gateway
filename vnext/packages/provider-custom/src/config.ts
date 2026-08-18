@@ -76,5 +76,12 @@ export function validateUpstreamPath(value: unknown, field: string): string {
   if (path.includes('//') || /\/\.\.?(?:\/|$)/.test(path)) {
     throw new Error(`${field} must not contain //, /./ or /../`)
   }
+  // Percent-encoding must be rejected outright: fetch's new URL() normalises
+  // %2e%2e → .. and %2f → / before resolving, so encoded sequences bypass the
+  // literal traversal check above.  Legitimate upstream paths (/chat/completions,
+  // /anthropic/v1/messages, etc.) never need percent-encoding.
+  if (path.includes('%')) {
+    throw new Error(`${field} must not contain percent-encoding`)
+  }
   return path
 }

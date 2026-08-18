@@ -95,4 +95,13 @@ describe('validateUpstreamPath', () => {
   test('accepts /anthropic/v1/messages', () => {
     expect(validateUpstreamPath('/anthropic/v1/messages', 'p')).toBe('/anthropic/v1/messages')
   })
+
+  // --- percent-encoding bypass cases ---
+  test('rejects percent-encoded dot-dot (%2e%2e)', () => {
+    expect(() => validateUpstreamPath('/api/%2e%2e/admin', 'p')).toThrow(/must not contain percent-encoding/)
+  })
+
+  test('rejects percent-encoded slash (%2f)', () => {
+    expect(() => validateUpstreamPath('/a%2fb', 'p')).toThrow(/must not contain percent-encoding/)
+  })
 })
