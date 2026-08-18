@@ -22,7 +22,7 @@ import type { ModelPricing } from "@vibe-llm/protocols/common"
 
 export const COPILOT_PRICING_SOURCE = {
   url: "https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing",
-  verifiedOn: "2026-08-12",
+  verifiedOn: "2026-08-19",
 } as const
 
 export interface PricingTier {
@@ -48,6 +48,15 @@ const only = (pricing: ModelPricing): readonly PricingTier[] => [{ label: "Defau
 
 const OPUS_4X_5: ModelPricing = { input: 5, input_cache_read: 0.5, input_cache_write: 6.25, output: 25 }
 const SONNET_4X: ModelPricing = { input: 3, input_cache_read: 0.3, input_cache_write: 3.75, output: 15 }
+const GEMINI_FLASH_PROMO: ModelPricing = { input: 0.75, input_cache_read: 0.075, output: 3.75 }
+const GROK_4X: readonly PricingTier[] = [
+  { label: "Default", pricing: { input: 2, input_cache_read: 0.5, output: 6 } },
+  {
+    label: "Long context",
+    contextThreshold: 200_000,
+    pricing: { input: 4, input_cache_read: 1, output: 12 },
+  },
+]
 
 /** Exported for tests only: invariants must cover billing-only entries too. */
 export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
@@ -195,26 +204,23 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
     match: "gemini-3.5-flash",
     tiers: only({ input: 1.5, input_cache_read: 0.15, output: 9 }),
   },
+  // Both flash rows carry a promotion GitHub says expires 2026-12-31; the
+  // standard rate is undisclosed, so they need re-checking after that date.
   {
     displayName: "Gemini 3.6 Flash",
     match: "gemini-3.6-flash",
-    tiers: only({ input: 1.5, input_cache_read: 0.15, output: 7.5 }),
+    tiers: only(GEMINI_FLASH_PROMO),
+  },
+  {
+    displayName: "Gemini 3.7 Flash",
+    match: "gemini-3.7-flash",
+    tiers: only(GEMINI_FLASH_PROMO),
   },
 
   // ── xAI ──────────────────────────────────────────────────────────────────
   { match: /^grok-code-fast/, tiers: only({ input: 0.2, output: 1.5 }) },
-  {
-    displayName: "Grok 4.5",
-    match: /^grok-4[.]5/,
-    tiers: [
-      { label: "Default", pricing: { input: 2, input_cache_read: 0.5, output: 6 } },
-      {
-        label: "Long context",
-        contextThreshold: 200_000,
-        pricing: { input: 4, input_cache_read: 1, output: 12 },
-      },
-    ],
-  },
+  { displayName: "Grok 4.5", match: /^grok-4[.]5/, tiers: GROK_4X },
+  { displayName: "Grok 4.6", match: /^grok-4[.]6/, tiers: GROK_4X },
 
   // ── Microsoft ────────────────────────────────────────────────────────────
   {

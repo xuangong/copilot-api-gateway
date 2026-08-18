@@ -191,6 +191,25 @@ test("legacy and internal models stay out of the catalog", () => {
 })
 
 test("the catalog has one row per documented model", () => {
-  // 11 Anthropic + 9 OpenAI + 3 Google + 1 xAI + 2 Microsoft + 2 Moonshot + 1 fine-tuned
-  expect(copilotPricingCatalog().models.length).toBe(29)
+  // 11 Anthropic + 9 OpenAI + 4 Google + 2 xAI + 2 Microsoft + 2 Moonshot + 1 fine-tuned
+  expect(copilotPricingCatalog().models.length).toBe(31)
+})
+
+test("both promo-priced Gemini flash rows share the promotional rate", () => {
+  for (const id of ["gemini-3.6-flash", "gemini-3.7-flash"]) {
+    expect(pricingForCopilotPublicModelId(id)).toEqual({
+      input: 0.75,
+      input_cache_read: 0.075,
+      output: 3.75,
+    })
+  }
+})
+
+test("Grok 4.6 prices identically to 4.5, bands included", () => {
+  expect(catalogRow("Grok 4.6").tiers).toEqual(catalogRow("Grok 4.5").tiers)
+  expect(pricingForCopilotPublicModelId("grok-4.6")).toEqual({
+    input: 2,
+    input_cache_read: 0.5,
+    output: 6,
+  })
 })
