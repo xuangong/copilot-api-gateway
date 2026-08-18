@@ -12,5 +12,10 @@ export type {
   CustomPathOverrideKey,
   CustomProviderConfig,
 } from './config'
-export { CUSTOM_AUTH_STYLES, CUSTOM_PATH_OVERRIDE_KEYS, validateUpstreamPath } from './config'
+export {
+  CUSTOM_AUTH_STYLES,
+  CUSTOM_PATH_OVERRIDE_KEYS,
+  normalizeCustomConfig,
+  validateUpstreamPath,
+} from './config'
 export { customProviderPlugin } from './plugin'
