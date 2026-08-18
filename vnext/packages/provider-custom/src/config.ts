@@ -126,6 +126,16 @@ function validateUpstreamBaseUrl(value: string): string {
   return raw.replace(/\/+$/, '')
 }
 
+/**
+ * Validate the models-list URL. Returns the input unchanged rather than
+ * `url.toString()`: canonicalization would silently rewrite a stored config
+ * (an origin-only value gains a trailing slash) on every save.
+ */
+function validateModelsEndpoint(value: string): string {
+  parseHttpUrl(value, 'custom config.modelsEndpoint')
+  return value
+}
+
 function parseCost(value: unknown): ModelPricing | undefined {
   if (value === undefined || value === null) return undefined
   if (typeof value !== 'object' || Array.isArray(value)) {
@@ -236,7 +246,7 @@ export function normalizeCustomConfig(config: Record<string, unknown>): CustomPr
   if (authStyle !== 'none' && !apiKey) throw new Error('custom config.apiKey required')
   const modelsEndpoint =
     typeof config.modelsEndpoint === 'string' && config.modelsEndpoint.trim()
-      ? parseHttpUrl(config.modelsEndpoint.trim(), 'custom config.modelsEndpoint').toString()
+      ? validateModelsEndpoint(config.modelsEndpoint.trim())
       : undefined
   return {
     name: config.name.trim(),
