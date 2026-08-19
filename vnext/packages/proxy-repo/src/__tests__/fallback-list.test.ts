@@ -1,7 +1,10 @@
 /**
- * `normalizeProxyFallbackList` — the single gate every fallback chain passes
- * through before storage and before dial. These cases pin its *current*
- * behaviour, including one surprise called out inline (colo casing).
+ * `normalizeProxyFallbackList` — the gate every fallback chain passes through
+ * on its way into storage (`control-plane/upstreams/routes.ts`,
+ * `control-plane/lib/github.ts`). It is *not* on the read path: `packages/dial`
+ * never calls it, so whatever is stored reaches the dialer as-is. These cases
+ * pin its *current* behaviour, including one surprise called out inline (colo
+ * casing).
  */
 import { test, expect } from 'bun:test'
 import {
@@ -28,9 +31,12 @@ test('ids are trimmed', () => {
   expect(normalizeProxyFallbackList([{ id: '  px_a\t' }])).toEqual([{ id: 'px_a' }])
 })
 
-// A blank id can reach here from the dashboard's free-form row editor and from
-// a stored row: the repo's JSON parser keeps any entry whose `id` is a string,
-// so '' and '   ' survive persistence and are dropped only here.
+// No application path produces a blank id — every write normalizes first, and
+// the dashboard editor picks ids from a `<select>`. The drop still matters
+// because the repo layer does not enforce it: `save` stringifies whatever it is
+// handed and `parseProxyFallbackList` keeps any entry whose `id` is a string.
+// So a blank id from older data or a direct DB write round-trips intact and is
+// discarded only here.
 test('ids that are empty or whitespace-only are dropped', () => {
   expect(normalizeProxyFallbackList([{ id: '' }, { id: '   ' }, { id: 'px_a' }])).toEqual([
     { id: 'px_a' },
@@ -148,7 +154,10 @@ test('the input list and its entries are not mutated', () => {
  * describes a `getRuntimeLocation` that uppercases its inputs; that is stale.
  *
  * The practical consequence is that a `colos` whitelist excludes the entry on
- * every current runtime unless the operator types the location in uppercase.
+ * every current runtime, with no way for the operator to opt out: normalization
+ * uppercases whatever they type, and the value it is compared against is always
+ * lowercase. Typing the location in uppercase is not an escape hatch — it
+ * produces the same stored value as lowercase does.
  */
 test('uppercased colos do not match the lowercase runtime locations (known wart)', () => {
   const [entry] = normalizeProxyFallbackList([{ id: 'px_a', colos: ['bun'] }])
