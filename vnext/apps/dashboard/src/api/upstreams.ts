@@ -105,6 +105,13 @@ export interface DeviceFlowStart {
 // POST, not GET: the request carries the draft proxy chain, and a GET has
 // nowhere to put a body. Always sends at least `{}` so the server's zod
 // validator sees a parseable JSON body.
+// An empty chain drops `proxy_fallback_list` from the body entirely instead of
+// sending `[]` — the two are not interchangeable on the server. See
+// `AddGithubAccountOpts.proxyFallbackList` in
+// packages/gateway/src/control-plane/lib/github.ts: absent means keep whatever
+// chain the upstream row already has, while `[]` means the user deliberately
+// chose direct and overwrites it. Collapsing them would wipe an existing chain
+// on every re-login.
 export function startGithubDeviceFlow(
   proxyFallbackList?: ProxyFallbackEntry[],
 ): Promise<DeviceFlowStart> {
