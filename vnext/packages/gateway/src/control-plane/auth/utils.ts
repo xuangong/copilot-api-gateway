@@ -112,10 +112,14 @@ export async function detectAccountType(
     // provider-copilot/plugin.ts). The session-auth fallback drops
     // apiEndpoint (session-auth.ts:117, registry.ts:61), so there a
     // misclassified tenant keeps the wrong base URL until it is re-added.
-    // Once a caller passes `fetcher` (Task 6 wires the GitHub auth routes), a
-    // proxy-only host will stop misclassifying a business tenant as
-    // individual; until then both call sites take the default global fetch
-    // and this swallow still hides that transport failure.
+    // Both production call sites — the device-flow poll and the paste-token
+    // route in github-routes.ts — now pass the request's resolved fetcher, so
+    // on a proxy-only host the probe reaches GitHub instead of failing here.
+    // The `fetcher = fetch` default is left reachable only from tests
+    // (control-plane-auth-utils.test.ts). What this swallow still hides is a
+    // failure of the passed fetcher itself: a dead proxy chain yields
+    // 'individual', so a business tenant is still misclassified whenever the
+    // egress it was given is broken.
     return 'individual'
   }
 }

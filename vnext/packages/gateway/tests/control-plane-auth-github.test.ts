@@ -2,19 +2,20 @@
  * GitHub OAuth router tests — Week 5b.
  *
  * Covers /github, /github/poll, /me, DELETE /github/:id, /github/switch
- * ported from old src/routes/auth/github.ts. Uses in-memory repo + fetcher
- * override seam (no mock.module — see bun_mock_module_unrestorable memory).
+ * ported from old src/routes/auth/github.ts. Uses an in-memory repo and stubs
+ * `globalThis.fetch` for every outbound call (no mock.module — see
+ * bun_mock_module_unrestorable memory).
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests } from '@vibe-core/platform'
+import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
 import type {
   GitHubAccount, Repo, UpstreamRecord,
 } from '../src/repo/types.ts'
 import { authRouter, type AuthCtx } from '../src/control-plane/auth/routes.ts'
-import { setOAuthFetcherForTest } from '../src/control-plane/auth/github-routes.ts'
 import { copilotUpstreamRowId } from '../src/control-plane/lib/github.ts'
+import { realFetch, stubGlobalFetch } from './_stub-global-fetch.ts'
 
 interface GhStore {
   accountsByOwner: Map<string, Map<number, GitHubAccount>>
@@ -123,37 +124,44 @@ function jsonResp(body: unknown, status = 200): Response {
 const J = { 'content-type': 'application/json' }
 
 let store: ReturnType<typeof inMemoryRepo>
-const originalFetch = globalThis.fetch
 
 beforeEach(() => {
+  // initRuntimeLocation writes process-global state that Bun carries across
+  // test files in one process; reset first so this file neither inherits nor
+  // leaks a platform singleton. The reset has to run before the init below,
+  // or it would clear what we just set.
+  __resetPlatformForTests()
   store = inMemoryRepo()
   initRepo(store.repo)
-  // detectAccountType uses raw fetch; stub it to avoid real network.
-  globalThis.fetch = (async () => jsonResp({ copilot_plan: 'individual' })) as typeof fetch
+  // resolveControlPlaneFetcher reads the runtime location, which throws until
+  // a platform bootstrap has run. Tests have no bootstrap, so set it here.
+  initRuntimeLocation('bun')
+  // Default stub so no test reaches the real network; individual tests
+  // replace it with a stub shaped for the calls they exercise.
+  stubGlobalFetch(async () => jsonResp({ copilot_plan: 'individual' }))
 })
 
 afterEach(() => {
-  setOAuthFetcherForTest(null)
-  globalThis.fetch = originalFetch
+  globalThis.fetch = realFetch
 })
 
-// --- GET /github ---
+// --- POST /github ---
 
-test('GET /github returns device code payload', async () => {
-  setOAuthFetcherForTest(async () => jsonResp({
+test('POST /github returns device code payload', async () => {
+  stubGlobalFetch(async () => jsonResp({
     device_code: 'dev123', user_code: 'ABCD-EFGH', verification_uri: 'https://github.com/login/device',
     expires_in: 900, interval: 5,
   }))
-  const res = await buildApp().request('/auth/github')
+  const res = await buildApp().request('/auth/github', { method: 'POST' })
   expect(res.status).toBe(200)
   const body = await res.json() as any
   expect(body.device_code).toBe('dev123')
   expect(body.user_code).toBe('ABCD-EFGH')
 })
 
-test('GET /github upstream error → 502', async () => {
-  setOAuthFetcherForTest(async () => new Response('boom', { status: 500 }))
-  const res = await buildApp().request('/auth/github')
+test('POST /github upstream error → 502', async () => {
+  stubGlobalFetch(async () => new Response('boom', { status: 500 }))
+  const res = await buildApp().request('/auth/github', { method: 'POST' })
   expect(res.status).toBe(502)
 })
 
@@ -167,7 +175,7 @@ test('POST /github/poll missing device_code → 400', async () => {
 })
 
 test('POST /github/poll authorization_pending', async () => {
-  setOAuthFetcherForTest(async () => jsonResp({ error: 'authorization_pending' }))
+  stubGlobalFetch(async () => jsonResp({ error: 'authorization_pending' }))
   const res = await buildApp().request('/auth/github/poll', {
     method: 'POST', body: JSON.stringify({ device_code: 'd1' }), headers: J,
   })
@@ -175,7 +183,7 @@ test('POST /github/poll authorization_pending', async () => {
 })
 
 test('POST /github/poll slow_down returns interval', async () => {
-  setOAuthFetcherForTest(async () => jsonResp({ error: 'slow_down', interval: 10 }))
+  stubGlobalFetch(async () => jsonResp({ error: 'slow_down', interval: 10 }))
   const res = await buildApp().request('/auth/github/poll', {
     method: 'POST', body: JSON.stringify({ device_code: 'd1' }), headers: J,
   })
@@ -183,7 +191,7 @@ test('POST /github/poll slow_down returns interval', async () => {
 })
 
 test('POST /github/poll error returns 400', async () => {
-  setOAuthFetcherForTest(async () => jsonResp({
+  stubGlobalFetch(async () => jsonResp({
     error: 'access_denied', error_description: 'user said no',
   }))
   const res = await buildApp().request('/auth/github/poll', {
@@ -197,7 +205,11 @@ test('POST /github/poll error returns 400', async () => {
 
 test('POST /github/poll complete saves account + mirrors upstream', async () => {
   let call = 0
-  setOAuthFetcherForTest(async (input) => {
+  // The `/user` branch also answers detectAccountType's
+  // /copilot_internal/user probe; that payload carries no `copilot_plan`, so
+  // detectAccountType falls back to 'individual' — the same account type the
+  // previous two-seam setup produced.
+  stubGlobalFetch(async (input) => {
     call += 1
     const url = typeof input === 'string' ? input : input.toString()
     if (url.includes('/oauth/access_token')) {
@@ -208,9 +220,6 @@ test('POST /github/poll complete saves account + mirrors upstream', async () => 
         id: 42, login: 'octo', name: 'Octo Cat',
         avatar_url: 'https://avatars/octo.png',
       })
-    }
-    if (url.includes('/copilot_internal/v2/token')) {
-      return jsonResp({ token: 'tok' })
     }
     return jsonResp({}, 404)
   })
@@ -324,4 +333,114 @@ test('POST /github/switch sets active id', async () => {
   })
   expect(res.status).toBe(200)
   expect(store.gh.activeByOwner.get('u1')).toBe(7)
+})
+
+// --- draft proxy chain ---
+
+/** Real SqliteRepo — these cases read the proxies table and the saved row.
+ *  The runtime location these cases need is set in `beforeEach`. */
+async function realRepo() {
+  const { Database } = await import('bun:sqlite')
+  const { BunSqliteRepo } = await import('@vibe-llm/platform-bun/src/bun-sqlite-repo.ts')
+  const r = new BunSqliteRepo(new Database(':memory:'))
+  initRepo(r)
+  return r
+}
+
+test('POST /github with an unknown proxy id → 400 naming the id but not the url', async () => {
+  await realRepo()
+  const res = await buildApp().request('/auth/github', {
+    method: 'POST',
+    headers: J,
+    body: JSON.stringify({ proxy_fallback_list: [{ id: 'px_missing' }] }),
+  })
+  expect(res.status).toBe(400)
+  const body = (await res.json()) as { error?: string }
+  expect(body.error).toContain('px_missing')
+  expect(body.error).not.toContain('trojan://')
+})
+
+test('POST /github with a malformed proxy → 400 without leaking the url', async () => {
+  const r = await realRepo()
+  await r.proxies.save({
+    id: 'px_bad', name: 'bad', url: 'not-a-proxy-uri', dialTimeoutSeconds: null,
+  })
+  const res = await buildApp().request('/auth/github', {
+    method: 'POST',
+    headers: J,
+    body: JSON.stringify({ proxy_fallback_list: [{ id: 'px_bad' }] }),
+  })
+  expect(res.status).toBe(400)
+  const body = (await res.json()) as { error?: string }
+  expect(body.error).toContain('px_bad')
+  expect(body.error).not.toContain('not-a-proxy-uri')
+})
+
+test('POST /github/poll routes all three outbound calls through the resolved fetcher', async () => {
+  const r = await realRepo()
+  await r.proxies.save({
+    id: 'px_ok', name: 'ok', url: 'trojan://pw@node.example.com:443', dialTimeoutSeconds: null,
+  })
+
+  // The chain resolves, so the route must NOT reach globalThis.fetch at all.
+  // Counting direct-fetch calls is the assertion: 0 means every outbound call
+  // went through the proxy fetcher.
+  let direct = 0
+  stubGlobalFetch(async () => { direct += 1; return jsonResp({}, 500) })
+
+  const res = await buildApp({ userId: 'u1' }).request('/auth/github/poll', {
+    method: 'POST',
+    headers: J,
+    body: JSON.stringify({ device_code: 'd1', proxy_fallback_list: [{ id: 'px_ok' }] }),
+  })
+
+  // The chain resolves, so the first outbound call enters the proxy dial
+  // instead of globalThis.fetch. No socket dial is registered here — the file
+  // only sets the runtime location — so getSocketDial() throws
+  // "SocketDial not initialized" before any connection is attempted, and that
+  // exception escapes the handler as a 500. The hostname is never resolved, so
+  // it plays no part in the failure. What the case asserts is *where* it
+  // failed: a non-2xx plus direct === 0 proves the resolved fetcher was used.
+  expect(res.status).toBeGreaterThanOrEqual(400)
+  expect(direct).toBe(0)
+})
+
+test('POST /github/paste-token rejects an unknown proxy id before touching GitHub', async () => {
+  await realRepo()
+  let direct = 0
+  stubGlobalFetch(async () => { direct += 1; return jsonResp({}) })
+
+  const res = await buildApp({ userId: 'u1' }).request('/auth/github/paste-token', {
+    method: 'POST',
+    headers: J,
+    body: JSON.stringify({ github_token: 'gho_x', proxy_fallback_list: [{ id: 'px_missing' }] }),
+  })
+  expect(res.status).toBe(400)
+  expect(direct).toBe(0)
+})
+
+test('a successful device-flow login persists the submitted chain', async () => {
+  const r = await realRepo()
+  stubGlobalFetch(async (input) => {
+    const url = String(input)
+    if (url.includes('/oauth/access_token')) return jsonResp({ access_token: 'gho_abc' })
+    if (url.includes('/copilot_internal')) return jsonResp({ token: 'tok' })
+    if (url.includes('/user')) {
+      return jsonResp({ id: 42, login: 'octo', name: 'Octo Cat', avatar_url: 'https://a/o.png' })
+    }
+    return jsonResp({}, 404)
+  })
+
+  // An empty chain resolves to `undefined`, so the route keeps globalThis.fetch
+  // and the stub above answers — which is what lets this case assert on
+  // persistence without needing a reachable proxy.
+  const res = await buildApp({ userId: 'u1' }).request('/auth/github/poll', {
+    method: 'POST',
+    headers: J,
+    body: JSON.stringify({ device_code: 'd1', proxy_fallback_list: [] }),
+  })
+  expect(res.status).toBe(200)
+
+  const row = await r.upstreams.getById('up_copilot_u1_42')
+  expect(row?.proxyFallbackList).toEqual([])
 })

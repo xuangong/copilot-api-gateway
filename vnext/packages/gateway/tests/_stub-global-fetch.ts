@@ -8,7 +8,10 @@
 export const realFetch = globalThis.fetch
 
 /** Replace the global fetch with `impl`, keeping the non-call members of the
- *  runtime's fetch (e.g. `preconnect`) so no cast is needed. */
-export function stubGlobalFetch(impl: () => Promise<Response>): void {
+ *  runtime's fetch (e.g. `preconnect`) so no cast is needed. `impl` may ignore
+ *  its arguments, or read the URL when it has to answer several endpoints. */
+export function stubGlobalFetch(
+  impl: (input: URL | RequestInfo, init?: RequestInit) => Promise<Response>,
+): void {
   globalThis.fetch = Object.assign(impl, realFetch)
 }

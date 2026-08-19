@@ -2,15 +2,20 @@
  * GitHub OAuth router — Week 5b port of src/routes/auth/github.ts.
  *
  * Endpoints:
- *   GET    /github          — start device-flow, return GitHub device-code payload
- *   POST   /github/poll     — poll GitHub for device-flow completion
- *   GET    /me              — minimal identity + github_connected probe
- *   DELETE /github/:id      — disconnect a connected GitHub account
- *   POST   /github/switch   — switch active account
+ *   POST   /github              — start device-flow, return GitHub device-code payload
+ *   POST   /github/poll         — poll GitHub for device-flow completion
+ *   POST   /github/paste-token  — register a pasted GitHub token (Path B)
+ *   GET    /me                  — minimal identity + github_connected probe
+ *   DELETE /github/:id          — disconnect a connected GitHub account
+ *   POST   /github/switch       — switch active account
  *
- * The two outbound fetches (device-code init + token exchange + user info)
- * are routed through a swappable `fetcher` so tests can inject responses
- * without `mock.module()` (see bun_mock_module_unrestorable memory).
+ * Every outbound call is routed through a fetcher resolved per request from
+ * the caller-submitted `proxy_fallback_list` — a Copilot upstream row id embeds
+ * the GitHub user id, which is unknown until login succeeds, so there is no
+ * persisted row to read an egress policy from at this point. When no chain is
+ * submitted the global `fetch` is used, which is the pre-existing behaviour.
+ * Tests stub `globalThis.fetch`; `mock.module()` is unusable here (it leaks
+ * across files in Bun 1.3 — see the bun_mock_module_unrestorable memory).
  */
 import { Hono } from 'hono'
 import { z } from 'zod'
@@ -34,30 +39,85 @@ import { exchangeGithubToken } from '../../shared/copilot-token-cache.ts'
 import { detectAccountType, GITHUB_SCOPES } from './utils.ts'
 import type { AuthCtx } from './routes.ts'
 import type { GitHubAccountId, UserId } from '../../repo/branded-ids.ts'
+import { resolveControlPlaneFetcher } from '../upstreams/proxy-resolution.ts'
+import { getRuntimeLocation } from '@vibe-core/platform'
+import type { ProxyFallbackEntry } from '@vibe-core/proxy-repo'
+import type { Fetcher } from '@vibe-core/upstream'
 
 type Vars = { auth: AuthCtx }
 
-type Fetcher = (
-  input: URL | RequestInfo,
-  init?: RequestInit,
-) => Promise<Response>
-let fetcher: Fetcher = (input, init) => fetch(input as RequestInfo, init)
-
-export function setOAuthFetcherForTest(f: Fetcher | null) {
-  fetcher = f ?? ((input, init) => fetch(input as RequestInfo, init))
-}
-
 export const githubAuthRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
 
-const pollBody = z.object({ device_code: z.string().min(1, 'device_code is required') })
+/**
+ * Resolve the egress fetcher for one auth request.
+ *
+ * Returns `undefined` when no chain was submitted, and also when the submitted
+ * chain normalizes to empty (`[]` — see proxy-resolution.ts, which treats an
+ * empty effective chain as "the caller keeps its default global fetch"). The
+ * caller then uses the global `fetch`, which is the pre-existing behaviour.
+ * A submitted chain that cannot resolve throws; callers map that to 400 rather
+ * than degrading, since on a proxy-only host a silent degrade reports "GitHub
+ * unreachable" when the real cause is a misconfigured chain.
+ */
+async function egressFetcher(
+  list: ProxyFallbackEntry[] | undefined,
+): Promise<Fetcher | undefined> {
+  if (list === undefined) return undefined
+  return await resolveControlPlaneFetcher({
+    override: list,
+    runtimeLocation: getRuntimeLocation(),
+  })
+}
+
+/**
+ * Names the operation so a bare driver message does not reach the client as
+ * the whole response body. The sibling `proxyChainError` in
+ * upstreams/routes.ts also names the upstream; here the chain is a draft with
+ * no row and therefore no id to name.
+ *
+ * This matters more here than on the sibling path: `POST /github` and
+ * `POST /github/poll` are reachable unauthenticated — auth/routes.ts mounts
+ * this router with no middleware, and unlike paste-token neither handler has
+ * its own guard — and `egressFetcher` can throw far more than the resolver's
+ * own id-only errors: an uninitialized runtime location, an uninitialized
+ * repo, or a raw storage error such as "D1_ERROR: no such table: proxies".
+ *
+ * Carries the cause's text but never a proxy URL: the resolver reports proxy
+ * ids only, and deliberately drops a parse error's message because it echoes
+ * the URI, which carries the proxy password. Nothing is interpolated here
+ * beyond that text, and no `cause` is attached, for the same reason.
+ */
+function proxyChainError(err: unknown): string {
+  return `failed to resolve the submitted proxy chain: ${err instanceof Error ? err.message : String(err)}`
+}
+
+const proxyFallbackListSchema = z.array(
+  z.object({ id: z.string().min(1), colos: z.array(z.string()).optional() }),
+)
+const proxyChainField = { proxy_fallback_list: proxyFallbackListSchema.optional() }
+
+const startBody = z.object({ ...proxyChainField })
+const pollBody = z.object({
+  device_code: z.string().min(1, 'device_code is required'),
+  ...proxyChainField,
+})
 const switchBody = z.object({ user_id: z.number({ message: 'user_id is required' }) })
 const pasteTokenBody = z.object({
   github_token: z.string().min(1, 'github_token is required'),
   github_host: z.string().optional(),
+  ...proxyChainField,
 })
 
-githubAuthRouter.get('/github', async (c) => {
-  const resp = await fetcher('https://github.com/login/device/code', {
+githubAuthRouter.post('/github', zValidator('json', startBody), async (c) => {
+  const { proxy_fallback_list } = c.req.valid('json')
+  let doFetch: Fetcher
+  try {
+    doFetch = (await egressFetcher(proxy_fallback_list)) ?? fetch
+  } catch (e) {
+    return c.json({ error: proxyChainError(e) }, 400)
+  }
+
+  const resp = await doFetch('https://github.com/login/device/code', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -74,9 +134,15 @@ githubAuthRouter.get('/github', async (c) => {
 
 githubAuthRouter.post('/github/poll', zValidator('json', pollBody), async (c) => {
   const userId = c.get('auth')?.userId
-  const { device_code } = c.req.valid('json')
+  const { device_code, proxy_fallback_list } = c.req.valid('json')
+  let doFetch: Fetcher
+  try {
+    doFetch = (await egressFetcher(proxy_fallback_list)) ?? fetch
+  } catch (e) {
+    return c.json({ status: 'error', error: proxyChainError(e) }, 400)
+  }
 
-  const resp = await fetcher('https://github.com/login/oauth/access_token', {
+  const resp = await doFetch('https://github.com/login/oauth/access_token', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -107,7 +173,7 @@ githubAuthRouter.post('/github/poll', zValidator('json', pollBody), async (c) =>
   }
 
   if (data.access_token) {
-    const userResp = await fetcher('https://api.github.com/user', {
+    const userResp = await doFetch('https://api.github.com/user', {
       headers: {
         authorization: `token ${data.access_token}`,
         accept: 'application/json',
@@ -121,10 +187,13 @@ githubAuthRouter.post('/github/poll', zValidator('json', pollBody), async (c) =>
       )
     }
     const user = (await userResp.json()) as GitHubUser
-    const accountType = await detectAccountType(data.access_token)
+    const accountType = await detectAccountType(data.access_token, GITHUB_DOTCOM_HOST, doFetch)
     await addGithubAccount(data.access_token, user, accountType, userId as UserId | undefined, {
       githubHost: GITHUB_DOTCOM_HOST,
       source: 'device-flow',
+      // Passed through as-is, not `?? []`: absent means "keep whatever chain
+      // the row already has", so a re-login cannot wipe a later edit.
+      proxyFallbackList: proxy_fallback_list,
     })
     return c.json({ status: 'complete', user })
   }
@@ -154,11 +223,19 @@ githubAuthRouter.post('/github/paste-token', zValidator('json', pasteTokenBody),
   if (!userId && !auth?.isAdmin) {
     return c.json({ status: 'error', error: 'Authentication required to paste a GitHub token' }, 401)
   }
-  const { github_token, github_host } = c.req.valid('json')
+  const { github_token, github_host, proxy_fallback_list } = c.req.valid('json')
   const host = normalizeGitHubHost(github_host ?? GITHUB_DOTCOM_HOST)
+  // Resolved before the first outbound call so a bad chain costs zero GitHub
+  // round-trips.
+  let doFetch: Fetcher
+  try {
+    doFetch = (await egressFetcher(proxy_fallback_list)) ?? fetch
+  } catch (e) {
+    return c.json({ status: 'error', error: proxyChainError(e) }, 400)
+  }
 
   // Validate the token against the correct API host + resolve the GitHub user.
-  const userResp = await fetcher(`${githubApiOrigin(host)}/user`, {
+  const userResp = await doFetch(`${githubApiOrigin(host)}/user`, {
     headers: {
       authorization: `token ${github_token}`,
       accept: 'application/json',
@@ -174,14 +251,14 @@ githubAuthRouter.post('/github/paste-token', zValidator('json', pasteTokenBody),
   const user = (await userResp.json()) as GitHubUser
 
   // Discover Copilot plan (falls back to "individual" on failure).
-  const accountType = await detectAccountType(github_token, host)
+  const accountType = await detectAccountType(github_token, host, doFetch)
 
   // Exchange the GitHub token for a Copilot session so we can capture the
   // tenant-advertised endpoints.api (e.g. copilot-api.msft.ghe.com) and
   // fail fast if the token lacks Copilot access.
   let copilotApiEndpoint: string | undefined
   try {
-    const session = await exchangeGithubToken(github_token, host)
+    const session = await exchangeGithubToken(github_token, host, doFetch)
     copilotApiEndpoint = session.endpoints?.api
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -204,6 +281,9 @@ githubAuthRouter.post('/github/paste-token', zValidator('json', pasteTokenBody),
     githubHost: host,
     source: 'paste',
     copilotApiEndpoint,
+    // Passed through as-is, not `?? []`: absent means "keep whatever chain
+    // the row already has", so a re-paste cannot wipe a later edit.
+    proxyFallbackList: proxy_fallback_list,
   })
   return c.json({ status: 'complete', user, github_host: host, account_type: accountType })
 })
