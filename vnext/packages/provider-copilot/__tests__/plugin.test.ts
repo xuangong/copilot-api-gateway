@@ -92,3 +92,35 @@ test('createFromUpstream — rethrows exchange error when there is no fallback',
     }),
   ).rejects.toThrow('Failed to exchange GitHub token (503)')
 })
+
+test('createFromUpstream — forwards the per-upstream fetcher to the token exchange', async () => {
+  const upstream = makeUpstream({ githubToken: 'gh_xxx' })
+  const perUpstream = async () => new Response('{}')
+  let seenFetcher: unknown = 'unset'
+  await copilotProviderPlugin.createFromUpstream(upstream, {
+    getCachedCopilotToken: async (_gh, _at, _host, fetcher) => {
+      seenFetcher = fetcher
+      return { token: 'tid_aaa', apiEndpoint: 'https://api.githubcopilot.com' }
+    },
+    fetcherForUpstream: () => perUpstream,
+  })
+  expect(seenFetcher).toBe(perUpstream)
+})
+
+test('createFromUpstream — omits the exchange fetcher when ctx has no fetcherForUpstream', async () => {
+  // Covers the control-plane admin path (Test / Models buttons):
+  // `upstreamFetcher` in control-plane/upstreams/routes.ts returns undefined
+  // for an upstream with no chain, so the cache falls back to its own default.
+  // This is NOT the data-plane story: there, every listed upstream gets a
+  // fetcher from createPerRequestFetcher, and a chain-less one collapses to
+  // `direct_connect` (a raw socket dial) rather than to globalThis.fetch.
+  const upstream = makeUpstream({ githubToken: 'gh_xxx' })
+  let seenFetcher: unknown = 'unset'
+  await copilotProviderPlugin.createFromUpstream(upstream, {
+    getCachedCopilotToken: async (_gh, _at, _host, fetcher) => {
+      seenFetcher = fetcher
+      return { token: 'tid_aaa', apiEndpoint: 'https://api.githubcopilot.com' }
+    },
+  })
+  expect(seenFetcher).toBeUndefined()
+})

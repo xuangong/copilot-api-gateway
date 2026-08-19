@@ -21,6 +21,10 @@ export interface ProviderPluginContext {
     githubToken: string,
     accountType: AccountType,
     githubHost?: string,
+    /** Egress transport for the exchange itself. Without this, a proxy-only
+     *  host routes inference through the proxy but refreshes the session token
+     *  direct — so inference dies when the token expires, not at startup. */
+    fetcher?: Fetcher,
   ) => Promise<{ token: string; apiEndpoint: string }>
   /** Per-request token + accountType supplied by the caller. Used when the
    *  upstream row has no githubToken or token exchange fails. Copilot only. */

@@ -11,6 +11,7 @@
  * per-tenant Copilot API host (e.g. copilot-api.msft.ghe.com) instead of
  * the api.githubcopilot.com family used by github.com accounts.
  */
+import type { Fetcher } from '@vibe-core/upstream'
 import { createGithubHeaders, type AccountType } from './config/constants.ts'
 import { githubApiOrigin, GITHUB_DOTCOM_HOST } from './config/github-host.ts'
 
@@ -59,8 +60,13 @@ function defaultApiEndpoint(accountType: AccountType): string {
 export async function exchangeGithubToken(
   githubToken: string,
   githubHost: string = GITHUB_DOTCOM_HOST,
+  // Optional so the three call sites — data-plane/providers/registry.ts,
+  // control-plane/auth/session-auth.ts and control-plane/auth/github-routes.ts
+  // — can migrate independently. Defaulting to the global fetch keeps
+  // "no proxy configured" meaning direct egress.
+  fetcher: Fetcher = fetch,
 ): Promise<CopilotTokenResponse> {
-  const resp = await fetch(`${githubApiOrigin(githubHost)}/copilot_internal/v2/token`, {
+  const resp = await fetcher(`${githubApiOrigin(githubHost)}/copilot_internal/v2/token`, {
     headers: createGithubHeaders(githubToken),
   })
   if (!resp.ok) {
@@ -74,14 +80,19 @@ export async function getCachedCopilotToken(
   githubToken: string,
   accountType: AccountType,
   githubHost: string = GITHUB_DOTCOM_HOST,
+  fetcher: Fetcher = fetch,
 ): Promise<CopilotSession> {
+  // The key deliberately excludes the fetcher and any upstream id. A session
+  // token's validity depends on the GitHub token and tenant, not on the egress
+  // IP used to obtain it; keying on egress would make every upstream sharing
+  // one GitHub token re-exchange needlessly.
   const cacheKey = await sha256Hex(`${githubHost}:${accountType}:${githubToken}`)
   const nowSec = Math.floor(Date.now() / 1000)
 
   const mem = memCache.get(cacheKey)
   if (isFresh(mem, nowSec)) return { token: mem!.token, apiEndpoint: mem!.apiEndpoint }
 
-  const fresh = await exchangeGithubToken(githubToken, githubHost)
+  const fresh = await exchangeGithubToken(githubToken, githubHost, fetcher)
   if (typeof fresh.token !== 'string' || !fresh.token || typeof fresh.expires_at !== 'number') {
     throw new Error('Malformed Copilot token exchange response')
   }
