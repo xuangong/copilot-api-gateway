@@ -28,6 +28,7 @@ import { presenceRouter } from './presence/routes.ts'
 import { dataTransferRouter } from './data-transfer/routes.ts'
 import { dumpRoutes } from './dump/routes.ts'
 import { pricingRouter } from './pricing/routes.ts'
+import { proxiesRouter } from './proxies/routes.ts'
 
 export const controlPlane = new Hono<{ Bindings: Env }>()
 
@@ -57,3 +58,5 @@ controlPlane.route('/api', presenceRouter)
 controlPlane.route('/api', dataTransferRouter)
 // /api/pricing
 controlPlane.route('/api', pricingRouter)
+// /api/proxies — admin-only proxy node pool + backoff inspection
+controlPlane.route('/api/proxies', proxiesRouter)
