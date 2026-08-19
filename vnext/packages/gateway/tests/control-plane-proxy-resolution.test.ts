@@ -9,11 +9,12 @@
 import { test, expect, beforeEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
-import { initRepo } from '../src/repo/index.ts'
+import { initRepo, type UpstreamRecord } from '../src/repo/index.ts'
 import { resolveControlPlaneFetcher } from '../src/control-plane/upstreams/proxy-resolution.ts'
 
 const LOC = 'test-colo'
 const NOW = '2026-01-01T00:00:00.000Z'
+const TROJAN_URL = 'trojan://pw@node.example.com:443'
 
 let repo: SqliteRepo
 
@@ -21,6 +22,43 @@ beforeEach(() => {
   repo = new SqliteRepo(new Database(':memory:'))
   initRepo(repo)
 })
+
+function upstreamRow(over: Partial<UpstreamRecord> = {}): UpstreamRecord {
+  return {
+    id: 'up_test',
+    provider: 'custom',
+    name: 'test',
+    enabled: true,
+    sortOrder: 0,
+    config: {},
+    flagOverrides: {},
+    disabledPublicModelIds: [],
+    state: null,
+    proxyFallbackList: [],
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...over,
+  }
+}
+
+/**
+ * Chain-specific probe. A fetcher built over a materialized transport (proxy
+ * or direct_connect) refuses a ReadableStream body, because the two-pass dial
+ * can replay a request and a stream is single-shot. `directFetcher` and any
+ * plain stub would happily accept one, so this distinguishes a real
+ * chain-backed fetcher from "some function". Fully offline — the rejection
+ * happens before any dial.
+ */
+async function expectChainBackedFetcher(fetcher: unknown): Promise<void> {
+  expect(typeof fetcher).toBe('function')
+  const call = (fetcher as (url: string, init: RequestInit) => Promise<Response>)(
+    'https://example.com',
+    { method: 'POST', body: new ReadableStream() },
+  )
+  await expect(call).rejects.toThrow(
+    'streaming request bodies are not replayable through direct-connect or proxy transports',
+  )
+}
 
 test('no override and no upstreamId leaves the caller on global fetch', async () => {
   const fetcher = await resolveControlPlaneFetcher({ runtimeLocation: LOC })
@@ -36,14 +74,25 @@ test('override referencing a known proxy resolves', async () => {
   await repo.proxies.save({
     id: 'px_known',
     name: 'known',
-    url: 'trojan://pw@node.example.com:443',
+    url: TROJAN_URL,
     dialTimeoutSeconds: null,
   })
   const fetcher = await resolveControlPlaneFetcher({
     override: [{ id: 'px_known' }],
     runtimeLocation: LOC,
   })
-  expect(typeof fetcher).toBe('function')
+  await expectChainBackedFetcher(fetcher)
+})
+
+// A direct-only chain never touches the proxy catalog — loadProxyCatalog early
+// -returns on an empty referenced set. Pins the isDirectFallbackId guards: a
+// regression in either would surface here as "unknown proxy id".
+test('a direct-only override resolves without consulting the proxy catalog', async () => {
+  const fetcher = await resolveControlPlaneFetcher({
+    override: [{ id: 'direct_connect' }],
+    runtimeLocation: LOC,
+  })
+  await expectChainBackedFetcher(fetcher)
 })
 
 test('override referencing an unknown proxy throws naming the id', async () => {
@@ -75,37 +124,42 @@ test('an upstream with a chain resolves to the per-request fetcher', async () =>
   await repo.proxies.save({
     id: 'px_up',
     name: 'up',
-    url: 'trojan://pw@node.example.com:443',
+    url: TROJAN_URL,
     dialTimeoutSeconds: null,
   })
-  await repo.upstreams.save({
-    id: 'up_proxied',
-    provider: 'custom',
-    name: 'proxied',
-    enabled: true,
-    sortOrder: 0,
-    createdAt: NOW,
-    updatedAt: NOW,
-    proxyFallbackList: [{ id: 'px_up' }],
-  } as never)
+  await repo.upstreams.save(
+    upstreamRow({ id: 'up_proxied', proxyFallbackList: [{ id: 'px_up' }] }),
+  )
   const fetcher = await resolveControlPlaneFetcher({
     upstreamId: 'up_proxied',
     runtimeLocation: LOC,
   })
-  expect(typeof fetcher).toBe('function')
+  await expectChainBackedFetcher(fetcher)
+})
+
+// The row is handed straight to createPerRequestFetcher, so a disabled
+// upstream resolves like any other. Letting that factory load its own list
+// would filter `enabled = 1` and make this throw — reachable from the normal
+// admin loop of disable → fix → Test before re-enabling.
+test('a disabled upstream with a chain still resolves', async () => {
+  await repo.proxies.save({
+    id: 'px_off',
+    name: 'off',
+    url: TROJAN_URL,
+    dialTimeoutSeconds: null,
+  })
+  await repo.upstreams.save(
+    upstreamRow({ id: 'up_off', enabled: false, proxyFallbackList: [{ id: 'px_off' }] }),
+  )
+  const fetcher = await resolveControlPlaneFetcher({
+    upstreamId: 'up_off',
+    runtimeLocation: LOC,
+  })
+  await expectChainBackedFetcher(fetcher)
 })
 
 test('an upstream with no chain leaves the caller on global fetch', async () => {
-  await repo.upstreams.save({
-    id: 'up_direct',
-    provider: 'custom',
-    name: 'direct',
-    enabled: true,
-    sortOrder: 0,
-    createdAt: NOW,
-    updatedAt: NOW,
-    proxyFallbackList: [],
-  } as never)
+  await repo.upstreams.save(upstreamRow({ id: 'up_direct', proxyFallbackList: [] }))
   const fetcher = await resolveControlPlaneFetcher({
     upstreamId: 'up_direct',
     runtimeLocation: LOC,

@@ -37,6 +37,12 @@ export async function resolveControlPlaneFetcher(opts: {
   if (opts.override !== undefined) {
     const list = normalizeProxyFallbackList(opts.override)
     if (list.length === 0) return undefined
+    // A draft flow has no upstream id yet, so every concurrent draft shares one
+    // literal `draft` backoff key. Deliberate and bounded: `runFallbacks`' pass
+    // 2 retries exactly the entries pass 1 skipped for backoff, so one admin's
+    // failed dial never stops another's draft from reaching the proxy — it only
+    // costs that draft the pass-1 latency. The cost is cosmetic: operators see
+    // a `draft` row in the dashboard backoff panel matching no upstream.
     return await buildOverrideFetcher(list, opts.upstreamId ?? 'draft', opts.runtimeLocation)
   }
   if (opts.upstreamId !== undefined) {
@@ -47,7 +53,14 @@ export async function resolveControlPlaneFetcher(opts: {
     if (normalizeProxyFallbackList(row.proxyFallbackList ?? []).length === 0) {
       return undefined
     }
-    return (await createPerRequestFetcher(opts.runtimeLocation))(opts.upstreamId)
+    // Hand the row we already loaded to the per-request factory. Letting it
+    // load its own list would filter `enabled = 1`, so a DISABLED upstream
+    // with a chain would hit its fail-loud "unknown upstream id" throw — a
+    // third behaviour beyond the two rules above, and reachable from the
+    // normal admin loop (disable a flaky upstream, fix it, hit Test before
+    // re-enabling). Passing `[row]` also skips a full `upstreams.list()` plus
+    // a catalog load spanning every other upstream's proxy refs.
+    return (await createPerRequestFetcher(opts.runtimeLocation, [row]))(opts.upstreamId)
   }
   return undefined
 }
