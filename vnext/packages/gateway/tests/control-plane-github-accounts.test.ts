@@ -10,8 +10,9 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests } from '@vibe-core/platform'
-import type { GitHubAccount, Repo } from '../src/repo/types.ts'
+import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
+import type { GitHubAccount, Repo, UpstreamRecord } from '../src/repo/types.ts'
+import type { UserId } from '../src/repo/branded-ids.ts'
 import {
   githubAccountsRouter,
   type ViewCtx,
@@ -37,6 +38,14 @@ function inMemoryRepo() {
       getActiveIdForUser: async (ownerId: string) => activeByUser.get(ownerId) ?? null,
       setActiveIdForUser: async (ownerId: string, id: number) => { activeByUser.set(ownerId, id) },
       clearActiveIdForUser: async (ownerId: string) => { activeByUser.delete(ownerId) },
+    },
+    // The enrichment loop looks the account's mirrored Copilot upstream row up
+    // to decide whether a chain is configured. This stub always misses, so
+    // every test that keeps it enriches through globalThis.fetch. The last test
+    // in this file re-calls initRepo with a `getById` that does return a row,
+    // to reach the chain path.
+    upstreams: {
+      getById: async () => null,
     },
   } as unknown as Repo
 
@@ -70,8 +79,14 @@ let store: ReturnType<typeof inMemoryRepo>
 let originalFetch: typeof fetch
 
 beforeEach(() => {
+  // initRepo and initRuntimeLocation both write process-global state that Bun
+  // carries across test files in one process; reset first so this file neither
+  // inherits nor leaks a platform singleton. The enrichment loop resolves an
+  // egress fetcher, which reads the runtime location, so set one for every test.
+  __resetPlatformForTests()
   store = inMemoryRepo()
   initRepo(store.repo)
+  initRuntimeLocation('bun')
   originalFetch = globalThis.fetch
   // Shim: /user → 200 (token valid), /copilot_internal/user → quota json
   globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -90,6 +105,7 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch
+  __resetPlatformForTests()
 })
 
 test('GET /api/upstream-accounts unauthenticated → 401', async () => {
@@ -161,4 +177,42 @@ test('token_valid is false when GitHub returns 401', async () => {
   const body = await res.json() as any[]
   expect(body[0].token_valid).toBe(false)
   expect(body[0].quota).toBeNull()
+})
+
+test('GET / with an unresolvable chain → 502, not token_valid:false', async () => {
+  const now = new Date().toISOString()
+  const chained: UpstreamRecord = {
+    id: 'up_copilot_u1_42',
+    provider: 'copilot',
+    name: 'chained',
+    enabled: true,
+    sortOrder: 0,
+    config: {},
+    flagOverrides: {},
+    disabledPublicModelIds: [],
+    state: null,
+    createdAt: now,
+    updatedAt: now,
+    proxyFallbackList: [{ id: 'px_gone' }],
+  }
+
+  // Replace the inert `getById: () => null` stub with a row that DOES carry a
+  // chain, pointing at a proxy id the (empty) proxies table cannot resolve.
+  // `proxies.list` is what loadProxyCatalog reads to discover that miss.
+  initRepo({
+    ...store.repo,
+    upstreams: {
+      ...store.repo.upstreams,
+      getById: async (id: string) => (id === chained.id ? chained : null),
+    },
+    proxies: { ...store.repo.proxies, list: async () => [] },
+  })
+
+  await store.repo.github.saveAccount(42, ghAccount({ userId: 42, ownerId: 'u1' as UserId }))
+
+  const res = await buildApp({ authKind: 'session', userId: 'u1' as UserId })
+    .request('/api/upstream-accounts')
+  expect(res.status).toBe(502)
+  const body = (await res.json()) as { error: string }
+  expect(body.error).toContain('px_gone')
 })

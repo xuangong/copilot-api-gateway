@@ -1,10 +1,28 @@
 /**
  * Fetcher resolution for control-plane operations.
  *
- * Two shapes of caller exist. A dashboard *add* flow has no persisted row yet
- * — a Copilot upstream id embeds the GitHub user id, which is only known after
- * login — so it submits the chain it picked as an `override`. Everything that
- * already has a row passes `upstreamId` and reuses the per-request fetcher the
+ * Which argument a caller passes is a choice about *when* a bad chain is
+ * reported, not about whether the caller has a persisted row. `override`
+ * validates the chain's proxy ids before returning and throws; `upstreamId`
+ * loads the row's chain and never validates it, deferring every chain failure
+ * to dial time, inside the fetcher that comes back.
+ *
+ * Pass `override` when chain-content errors must surface eagerly. Two callers
+ * do. `egressFetcher` (control-plane/auth/github-routes.ts) has no persisted
+ * row yet — a Copilot upstream id embeds the GitHub user id, which is only
+ * known after login — so a submitted draft chain is all it has. `accountFetcher`
+ * (control-plane/github-accounts/routes.ts) does have a row, and still reads
+ * that row's chain itself and re-submits it here as an `override`: its two
+ * outbound helpers swallow every dial-time failure into `quota: null` /
+ * `token_valid: false`, so a deferred chain error would reach the operator as
+ * "your token is dead". It passes `upstreamId` alongside — see the backoff-key
+ * note below.
+ *
+ * Pass `upstreamId` when deferring to dial time is acceptable, i.e. the caller
+ * turns a dial failure into an error rather than into data: `quotaFetcher`
+ * (control-plane/copilot-quota/routes.ts), whose `relayQuota` maps a throw to
+ * 502, and `upstreamFetcher` (control-plane/upstreams/routes.ts) behind the
+ * admin Test / Models buttons. That branch reuses the per-request fetcher the
  * data plane builds.
  *
  * The override path validates ids against the proxy catalog and throws on
@@ -37,12 +55,18 @@ export async function resolveControlPlaneFetcher(opts: {
   if (opts.override !== undefined) {
     const list = normalizeProxyFallbackList(opts.override)
     if (list.length === 0) return undefined
-    // A draft flow has no upstream id yet, so every concurrent draft shares one
+    // `draft` is only the fallback for an override caller that has no upstream
+    // id. A draft flow is that caller, so every concurrent draft shares one
     // literal `draft` backoff key. Deliberate and bounded: `runFallbacks`' pass
     // 2 retries exactly the entries pass 1 skipped for backoff, so one admin's
     // failed dial never stops another's draft from reaching the proxy — it only
     // costs that draft the pass-1 latency. The cost is cosmetic: operators see
     // a `draft` row in the dashboard backoff panel matching no upstream.
+    //
+    // An override caller that does have an id passes it and keeps backoff keyed
+    // per-upstream; `accountFetcher` in control-plane/github-accounts/routes.ts
+    // is one. Hard-coding `draft` here would read as a simplification and would
+    // silently pool that route's backoff state with every draft's.
     return await buildOverrideFetcher(list, opts.upstreamId ?? 'draft', opts.runtimeLocation)
   }
   if (opts.upstreamId !== undefined) {
