@@ -55,11 +55,11 @@ export async function createPerRequestFetcher(
     }
     const badRef = list.find((entry) => parseErrors.has(entry.id))
     if (badRef !== undefined) {
-      const err = parseErrors.get(badRef.id)!
       return async () => {
-        throw new Error(
-          `upstream ${upstreamId} references malformed proxy ${badRef.id}: ${err.message}`,
-        )
+        // Report the id only, never the parse error's message — a ProxyUriError
+        // echoes the offending URI and a trojan url embeds its password. This
+        // message reaches 5xx response bodies and logs.
+        throw new Error(`upstream ${upstreamId} references malformed proxy ${badRef.id}`)
       }
     }
     return createFetcher({
