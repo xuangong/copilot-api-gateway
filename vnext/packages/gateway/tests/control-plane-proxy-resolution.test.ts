@@ -70,6 +70,41 @@ test('an empty override leaves the caller on global fetch', async () => {
   expect(fetcher).toBeUndefined()
 })
 
+// The emptiness test runs on the NORMALIZED list, so a chain whose entries all
+// drop out (blank / whitespace-only ids) is as empty as `[]`. Checking
+// `opts.override.length` instead would build a fetcher over a zero-entry list,
+// which `createFetcher` collapses to `direct_connect` — a real socket dial
+// rather than the global fetch this returns undefined to preserve.
+test('an override that normalizes to empty leaves the caller on global fetch', async () => {
+  const fetcher = await resolveControlPlaneFetcher({
+    override: [{ id: '   ' }, { id: '' }],
+    runtimeLocation: LOC,
+  })
+  expect(fetcher).toBeUndefined()
+})
+
+// An empty override is still an override: it answers "direct" on its own and
+// never falls through to the upstreamId branch, so a caller that passes both
+// (accountFetcher passes `upstreamId` only to key backoff) cannot have the
+// row's stored chain silently reinstated behind a chain it explicitly cleared.
+test('an empty override wins over a stored chain on the same call', async () => {
+  await repo.proxies.save({
+    id: 'px_stored',
+    name: 'stored',
+    url: TROJAN_URL,
+    dialTimeoutSeconds: null,
+  })
+  await repo.upstreams.save(
+    upstreamRow({ id: 'up_both', proxyFallbackList: [{ id: 'px_stored' }] }),
+  )
+  const fetcher = await resolveControlPlaneFetcher({
+    override: [],
+    upstreamId: 'up_both',
+    runtimeLocation: LOC,
+  })
+  expect(fetcher).toBeUndefined()
+})
+
 test('override referencing a known proxy resolves', async () => {
   await repo.proxies.save({
     id: 'px_known',
@@ -162,6 +197,21 @@ test('an upstream with no chain leaves the caller on global fetch', async () => 
   await repo.upstreams.save(upstreamRow({ id: 'up_direct', proxyFallbackList: [] }))
   const fetcher = await resolveControlPlaneFetcher({
     upstreamId: 'up_direct',
+    runtimeLocation: LOC,
+  })
+  expect(fetcher).toBeUndefined()
+})
+
+// Same normalization rule on the stored side: `parseProxyFallbackList` in
+// repo/shared/repos.ts keeps any entry whose `id` is a string, so a blank id
+// survives the round-trip and only `normalizeProxyFallbackList` drops it.
+// Reading the row's raw length here would build a direct_connect fetcher.
+test('an upstream whose stored chain normalizes to empty leaves the caller on global fetch', async () => {
+  await repo.upstreams.save(
+    upstreamRow({ id: 'up_blank', proxyFallbackList: [{ id: '  ' }] }),
+  )
+  const fetcher = await resolveControlPlaneFetcher({
+    upstreamId: 'up_blank',
     runtimeLocation: LOC,
   })
   expect(fetcher).toBeUndefined()
