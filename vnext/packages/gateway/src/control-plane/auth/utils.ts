@@ -6,6 +6,7 @@
  */
 import { createGithubHeaders } from '../../shared/config/constants.ts'
 import { githubApiOrigin, GITHUB_DOTCOM_HOST } from '../../shared/config/github-host.ts'
+import type { Fetcher } from '@vibe-core/upstream'
 
 export const GITHUB_SCOPES = 'read:user'
 export const SESSION_TTL_DAYS = 30
@@ -86,9 +87,10 @@ a{display:inline-block;padding:.5rem 1.5rem;background:#1a73e8;color:#fff;border
 export async function detectAccountType(
   githubToken: string,
   githubHost: string = GITHUB_DOTCOM_HOST,
+  fetcher: Fetcher = fetch,
 ): Promise<string> {
   try {
-    const resp = await fetch(`${githubApiOrigin(githubHost)}/copilot_internal/user`, {
+    const resp = await fetcher(`${githubApiOrigin(githubHost)}/copilot_internal/user`, {
       headers: createGithubHeaders(githubToken),
     })
     if (!resp.ok) return 'individual'
@@ -101,6 +103,19 @@ export async function detectAccountType(
     }
     return 'individual'
   } catch {
+    // Deliberately swallowed, unlike the other proxy-egress paths in this
+    // work item, which fail loud. copilot_internal/user is best-effort
+    // metadata: a wrong value only changes the derived default base URL.
+    // But it is written once when the account is added and never recomputed,
+    // and endpoints.api only overrides the derived default where the session
+    // is built from the upstream token exchange (copilot-token-cache.ts:99 →
+    // provider-copilot/plugin.ts). The session-auth fallback drops
+    // apiEndpoint (session-auth.ts:117, registry.ts:61), so there a
+    // misclassified tenant keeps the wrong base URL until it is re-added.
+    // Once a caller passes `fetcher` (Task 6 wires the GitHub auth routes), a
+    // proxy-only host will stop misclassifying a business tenant as
+    // individual; until then both call sites take the default global fetch
+    // and this swallow still hides that transport failure.
     return 'individual'
   }
 }

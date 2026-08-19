@@ -18,18 +18,11 @@ import {
   exchangeGithubToken,
   getCachedCopilotToken,
 } from '../src/shared/copilot-token-cache.ts'
-
-const realFetch = globalThis.fetch
+import { realFetch, stubGlobalFetch } from './_stub-global-fetch.ts'
 
 afterEach(() => {
   globalThis.fetch = realFetch
 })
-
-/** Replace the global fetch with `impl`, keeping the non-call members of the
- *  runtime's fetch (e.g. `preconnect`) so no cast is needed. */
-function stubGlobalFetch(impl: () => Promise<Response>): void {
-  globalThis.fetch = Object.assign(impl, realFetch)
-}
 
 function tokenResponse() {
   return new Response(
