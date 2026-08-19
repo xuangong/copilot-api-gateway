@@ -9,9 +9,11 @@ import { getRepo } from '../../repo/index.ts'
 import type {
   GitHubAccount,
   GitHubUser,
+  ProxyFallbackEntry,
   UpstreamRecord,
 } from '../../repo/types.ts'
 import type { GitHubAccountId, UpstreamId, UserId } from '../../repo/branded-ids.ts'
+import { normalizeProxyFallbackList } from '@vibe-core/proxy-repo'
 
 export type { GitHubAccount, GitHubUser }
 
@@ -20,6 +22,20 @@ export interface GithubCredentials {
   accountType: string
   userId: GitHubAccountId
   flagOverrides?: Record<string, boolean>
+}
+
+export interface AddGithubAccountOpts {
+  githubHost?: string
+  source?: 'device-flow' | 'paste'
+  copilotApiEndpoint?: string
+  /**
+   * Chain to store on the mirrored upstream row. Absent = keep whatever the
+   * row already has (a re-login must not wipe a later edit); present-but-empty
+   * = the user deliberately chose direct. A present list is run through
+   * `normalizeProxyFallbackList` before storage, so colo codes reach the row
+   * uppercased and duplicate ids are dropped.
+   */
+  proxyFallbackList?: ProxyFallbackEntry[]
 }
 
 export function copilotUpstreamRowId(ownerId: UserId | '', userId: GitHubAccountId): UpstreamId {
@@ -31,7 +47,7 @@ async function mirrorCopilotUpstream(
   user: GitHubUser,
   accountType: string,
   ownerId: UserId | '',
-  opts: { githubHost?: string; source?: 'device-flow' | 'paste'; copilotApiEndpoint?: string } = {},
+  opts: AddGithubAccountOpts = {},
 ): Promise<void> {
   const id = copilotUpstreamRowId(ownerId, user.id)
   const existing = await getRepo().upstreams.getById(id)
@@ -60,7 +76,10 @@ async function mirrorCopilotUpstream(
     state: opts.copilotApiEndpoint
       ? { ...((existing?.state as Record<string, unknown> | null) ?? {}), copilotApiEndpoint: opts.copilotApiEndpoint }
       : (existing?.state ?? null),
-    proxyFallbackList: existing?.proxyFallbackList ?? [],
+    proxyFallbackList:
+      opts.proxyFallbackList === undefined
+        ? (existing?.proxyFallbackList ?? [])
+        : normalizeProxyFallbackList(opts.proxyFallbackList),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
@@ -78,7 +97,7 @@ export async function addGithubAccount(
   user: GitHubUser,
   accountType: string,
   ownerId?: UserId,
-  opts: { githubHost?: string; source?: 'device-flow' | 'paste'; copilotApiEndpoint?: string } = {},
+  opts: AddGithubAccountOpts = {},
 ): Promise<void> {
   const repo = getRepo().github
   await repo.saveAccount(user.id, {
