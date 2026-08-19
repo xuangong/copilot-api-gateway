@@ -152,7 +152,7 @@ test('POST /github returns device code payload', async () => {
     device_code: 'dev123', user_code: 'ABCD-EFGH', verification_uri: 'https://github.com/login/device',
     expires_in: 900, interval: 5,
   }))
-  const res = await buildApp().request('/auth/github', { method: 'POST' })
+  const res = await buildApp({ userId: 'u1' }).request('/auth/github', { method: 'POST' })
   expect(res.status).toBe(200)
   const body = await res.json() as any
   expect(body.device_code).toBe('dev123')
@@ -161,14 +161,14 @@ test('POST /github returns device code payload', async () => {
 
 test('POST /github upstream error → 502', async () => {
   stubGlobalFetch(async () => new Response('boom', { status: 500 }))
-  const res = await buildApp().request('/auth/github', { method: 'POST' })
+  const res = await buildApp({ userId: 'u1' }).request('/auth/github', { method: 'POST' })
   expect(res.status).toBe(502)
 })
 
 // --- POST /github/poll ---
 
 test('POST /github/poll missing device_code → 400', async () => {
-  const res = await buildApp().request('/auth/github/poll', {
+  const res = await buildApp({ userId: 'u1' }).request('/auth/github/poll', {
     method: 'POST', body: '{}', headers: J,
   })
   expect(res.status).toBe(400)
@@ -176,7 +176,7 @@ test('POST /github/poll missing device_code → 400', async () => {
 
 test('POST /github/poll authorization_pending', async () => {
   stubGlobalFetch(async () => jsonResp({ error: 'authorization_pending' }))
-  const res = await buildApp().request('/auth/github/poll', {
+  const res = await buildApp({ userId: 'u1' }).request('/auth/github/poll', {
     method: 'POST', body: JSON.stringify({ device_code: 'd1' }), headers: J,
   })
   expect(await res.json()).toEqual({ status: 'pending' })
@@ -184,7 +184,7 @@ test('POST /github/poll authorization_pending', async () => {
 
 test('POST /github/poll slow_down returns interval', async () => {
   stubGlobalFetch(async () => jsonResp({ error: 'slow_down', interval: 10 }))
-  const res = await buildApp().request('/auth/github/poll', {
+  const res = await buildApp({ userId: 'u1' }).request('/auth/github/poll', {
     method: 'POST', body: JSON.stringify({ device_code: 'd1' }), headers: J,
   })
   expect(await res.json()).toEqual({ status: 'slow_down', interval: 10 })
@@ -194,7 +194,7 @@ test('POST /github/poll error returns 400', async () => {
   stubGlobalFetch(async () => jsonResp({
     error: 'access_denied', error_description: 'user said no',
   }))
-  const res = await buildApp().request('/auth/github/poll', {
+  const res = await buildApp({ userId: 'u1' }).request('/auth/github/poll', {
     method: 'POST', body: JSON.stringify({ device_code: 'd1' }), headers: J,
   })
   expect(res.status).toBe(400)
@@ -244,6 +244,38 @@ test('POST /github/poll complete saves account + mirrors upstream', async () => 
   expect(up).toBeDefined()
   expect(up?.provider).toBe('copilot')
   expect(up?.name).toBe('octo')
+})
+
+// --- auth guard on the device-flow routes ---
+
+test('POST /github unauthenticated → 401 without any outbound call', async () => {
+  let direct = 0
+  stubGlobalFetch(async () => { direct += 1; return jsonResp({}) })
+  const res = await buildApp().request('/auth/github', {
+    method: 'POST',
+    headers: J,
+    body: JSON.stringify({ proxy_fallback_list: [{ id: 'px_missing' }] }),
+  })
+  expect(res.status).toBe(401)
+  const body = (await res.json()) as { error?: string }
+  expect(body.error).toBeTruthy()
+  // Zero dials is the point: the guard runs before the chain resolves, so an
+  // anonymous caller learns nothing about which proxy ids exist.
+  expect(direct).toBe(0)
+})
+
+test('POST /github/poll unauthenticated → 401 without any outbound call', async () => {
+  let direct = 0
+  stubGlobalFetch(async () => { direct += 1; return jsonResp({}) })
+  const res = await buildApp().request('/auth/github/poll', {
+    method: 'POST',
+    headers: J,
+    body: JSON.stringify({ device_code: 'd1', proxy_fallback_list: [{ id: 'px_missing' }] }),
+  })
+  expect(res.status).toBe(401)
+  const body = (await res.json()) as { status?: string, error?: string }
+  expect(body.status).toBe('error')
+  expect(direct).toBe(0)
 })
 
 // --- GET /me ---
@@ -349,7 +381,7 @@ async function realRepo() {
 
 test('POST /github with an unknown proxy id → 400 naming the id but not the url', async () => {
   await realRepo()
-  const res = await buildApp().request('/auth/github', {
+  const res = await buildApp({ userId: 'u1' }).request('/auth/github', {
     method: 'POST',
     headers: J,
     body: JSON.stringify({ proxy_fallback_list: [{ id: 'px_missing' }] }),
@@ -365,7 +397,7 @@ test('POST /github with a malformed proxy → 400 without leaking the url', asyn
   await r.proxies.save({
     id: 'px_bad', name: 'bad', url: 'not-a-proxy-uri', dialTimeoutSeconds: null,
   })
-  const res = await buildApp().request('/auth/github', {
+  const res = await buildApp({ userId: 'u1' }).request('/auth/github', {
     method: 'POST',
     headers: J,
     body: JSON.stringify({ proxy_fallback_list: [{ id: 'px_bad' }] }),

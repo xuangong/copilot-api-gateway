@@ -75,12 +75,13 @@ async function egressFetcher(
  * upstreams/routes.ts also names the upstream; here the chain is a draft with
  * no row and therefore no id to name.
  *
- * This matters more here than on the sibling path: `POST /github` and
- * `POST /github/poll` are reachable unauthenticated — auth/routes.ts mounts
- * this router with no middleware, and unlike paste-token neither handler has
- * its own guard — and `egressFetcher` can throw far more than the resolver's
- * own id-only errors: an uninitialized runtime location, an uninitialized
- * repo, or a raw storage error such as "D1_ERROR: no such table: proxies".
+ * This matters more here than on the sibling path: `egressFetcher` can throw
+ * far more than the resolver's own id-only errors — an uninitialized runtime
+ * location, an uninitialized repo, or a raw storage error such as
+ * "D1_ERROR: no such table: proxies". Every route that reaches it now requires
+ * an authenticated caller, so the audience is a signed-in operator rather than
+ * an anonymous one, but a bare driver message still must not become the whole
+ * response body.
  *
  * Carries the cause's text but never a proxy URL: the resolver reports proxy
  * ids only, and deliberately drops a parse error's message because it echoes
@@ -109,6 +110,13 @@ const pasteTokenBody = z.object({
 })
 
 githubAuthRouter.post('/github', zValidator('json', startBody), async (c) => {
+  const auth = c.get('auth')
+  // Guard before the chain resolves and before the first outbound call: an
+  // anonymous caller must not be able to probe proxy ids for existence, nor
+  // force the gateway to dial through admin-configured proxies.
+  if (!auth?.userId && !auth?.isAdmin) {
+    return c.json({ error: 'Authentication required to start a GitHub login' }, 401)
+  }
   const { proxy_fallback_list } = c.req.valid('json')
   let doFetch: Fetcher
   try {
@@ -133,7 +141,14 @@ githubAuthRouter.post('/github', zValidator('json', startBody), async (c) => {
 })
 
 githubAuthRouter.post('/github/poll', zValidator('json', pollBody), async (c) => {
-  const userId = c.get('auth')?.userId
+  const auth = c.get('auth')
+  const userId = auth?.userId
+  // Same guard as POST /github, and for one extra reason: a completed poll
+  // calls addGithubAccount, so an anonymous caller would write a global
+  // account row and make it default-active.
+  if (!userId && !auth?.isAdmin) {
+    return c.json({ status: 'error', error: 'Authentication required to complete a GitHub login' }, 401)
+  }
   const { device_code, proxy_fallback_list } = c.req.valid('json')
   let doFetch: Fetcher
   try {
