@@ -81,7 +81,7 @@ Cloudflare Workers **能跑这些协议**：`apps/platform-cloudflare/src/cfw-so
 |---|---|
 | `GET /api/proxies` | 返回全部节点行 |
 | `POST /api/proxies` | 建节点；先用 `parseProxyUri`（`packages/proxy/src/url.ts:59`）验 url，解析失败 400 带原因 |
-| `PATCH /api/proxies/:id` | 改 `name` / `url` / `dialTimeoutSeconds` |
+| `PATCH /api/proxies/:id` | 改 `name` / `url` / `dialTimeoutSeconds`。**不做 `'***'` 哨兵** —— 路由已是 admin-only，`GET` 返回完整 url，编辑框里就是真值，没有「留空即保持」的场景 |
 | `DELETE /api/proxies/:id` | `ProxyRepo.delete()` 返回 false 时 409，附 `findUpstreamsReferencing(id)` 的结果 |
 | `GET /api/proxies/backoffs` | `listAll()`，一次拿全部冷却行 |
 | `DELETE /api/proxies/:id/backoffs` | `resetForProxy(id)` |
@@ -112,7 +112,9 @@ Cloudflare Workers **能跑这些协议**：`apps/platform-cloudflare/src/cfw-so
 
 `App.tsx:26` 的 `ALL_TABS` 加 `{ id: "proxies", labelKey: "dash.proxies", fallback: "Proxies", adminOnly: true }`。
 
-节点表，每行：名称 / url（默认掩码，点击展开）/ 拨号超时 / 编辑 / 删除。
+节点表，每行：名称 / url / 拨号超时 / 编辑 / 删除。
+
+url 默认以掩码形式渲染（保留协议和 host，隐去密码），点一下展开成真值。**这是纯前端的防窥屏措施，不是接口脱敏** —— 路由已经是 admin-only，`GET /api/proxies` 返回完整 url。
 
 行可展开显示 **backoff 面板**：该节点对哪些 upstream 处于冷却、失败次数、冷却到期时间、最后一次错误。错误串带 `[stage]` 前缀（`fetcher.ts:240` 写入），能区分 tcp-connect 被拒和 inner-tls 证书不匹配。带「重置」按钮。
 
