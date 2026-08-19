@@ -42,6 +42,7 @@ import {
 import { createProviderFromUpstream } from '../../data-plane/providers/registry.ts'
 import { createPerRequestFetcher } from '../../data-plane/dial/per-request.ts'
 import { getRuntimeLocation } from '@vibe-core/platform'
+import { normalizeProxyFallbackList } from '@vibe-core/proxy-repo'
 import type { Fetcher } from '@vibe-core/upstream'
 import { clearRawModelsCache } from '@vibe-llm/provider-copilot'
 import { CustomProvider, normalizeCustomConfig } from '@vibe-llm/provider-custom'
@@ -79,6 +80,9 @@ const upstreamBody = z.object({
   config: z.record(z.string(), z.unknown()).optional(),
   flagOverrides: z.record(z.string(), z.unknown()).optional(),
   disabledPublicModelIds: z.unknown().optional(),
+  proxyFallbackList: z
+    .array(z.object({ id: z.string(), colos: z.array(z.string()).optional() }))
+    .optional(),
 })
 
 interface AzureProviderConfig {
@@ -441,7 +445,7 @@ upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
       flagOverrides: normalizeFlagOverrides(body.flagOverrides),
       disabledPublicModelIds: normalizeDisabledPublicModelIds(body.disabledPublicModelIds),
       state: null,
-      proxyFallbackList: [],
+      proxyFallbackList: normalizeProxyFallbackList(body.proxyFallbackList ?? []),
       createdAt: now,
       updatedAt: now,
     }
@@ -498,6 +502,10 @@ upstreamsRouter.patch('/:id', zValidator('json', upstreamBody), async (c) => {
         body.disabledPublicModelIds === undefined
           ? existing.disabledPublicModelIds
           : normalizeDisabledPublicModelIds(body.disabledPublicModelIds),
+      proxyFallbackList:
+        body.proxyFallbackList === undefined
+          ? existing.proxyFallbackList
+          : normalizeProxyFallbackList(body.proxyFallbackList),
       updatedAt: new Date().toISOString(),
     }
     if (!next.name) return jsonError('name required')

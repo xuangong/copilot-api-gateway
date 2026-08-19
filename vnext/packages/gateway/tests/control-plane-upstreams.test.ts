@@ -569,3 +569,108 @@ test('PATCH /api/upstreams/:id clears pathOverrides with an empty object', async
   // the shallow merge preserved everything the PATCH did not mention
   expect(body.upstream.config.baseUrl).toBe('https://api.deepseek.com/v1')
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// proxyFallbackList round-trip
+// ─────────────────────────────────────────────────────────────────────────────
+
+const customConfig = { name: 'x', baseUrl: 'https://api.example.com/v1', apiKey: 'sk-x' }
+
+test('POST /api/upstreams persists proxyFallbackList, deduping ids and uppercasing colos', async () => {
+  const res = await buildApp({ isAdmin: true }).request('/api/upstreams', {
+    method: 'POST',
+    body: JSON.stringify({
+      provider: 'custom',
+      name: 'with-chain',
+      config: customConfig,
+      proxyFallbackList: [
+        { id: 'p1', colos: ['hkg'] },
+        { id: 'p1', colos: ['lax'] },
+        { id: 'direct_connect' },
+      ],
+    }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(res.status).toBe(201)
+  const body = await res.json() as any
+  expect(body.upstream.proxyFallbackList).toEqual([
+    { id: 'p1', colos: ['HKG'] },
+    { id: 'direct_connect' },
+  ])
+  const stored = await store.repo.upstreams.getById(body.upstream.id)
+  expect(stored?.proxyFallbackList).toEqual([{ id: 'p1', colos: ['HKG'] }, { id: 'direct_connect' }])
+})
+
+test('POST /api/upstreams without proxyFallbackList defaults to []', async () => {
+  const res = await buildApp({ isAdmin: true }).request('/api/upstreams', {
+    method: 'POST',
+    body: JSON.stringify({ provider: 'custom', name: 'no-chain', config: customConfig }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(res.status).toBe(201)
+  const body = await res.json() as any
+  expect(body.upstream.proxyFallbackList).toEqual([])
+})
+
+test('PATCH with only proxyFallbackList replaces the chain and leaves name alone', async () => {
+  const created = await (await buildApp({ isAdmin: true }).request('/api/upstreams', {
+    method: 'POST',
+    body: JSON.stringify({ provider: 'custom', name: 'keepme', config: customConfig }),
+    headers: { 'content-type': 'application/json' },
+  })).json() as any
+
+  const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${created.upstream.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ proxyFallbackList: [{ id: 'p9' }] }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(res.status).toBe(200)
+  const body = await res.json() as any
+  expect(body.upstream.proxyFallbackList).toEqual([{ id: 'p9' }])
+  expect(body.upstream.name).toBe('keepme')
+})
+
+test('PATCH without proxyFallbackList preserves the existing chain', async () => {
+  const created = await (await buildApp({ isAdmin: true }).request('/api/upstreams', {
+    method: 'POST',
+    body: JSON.stringify({
+      provider: 'custom',
+      name: 'keep-chain',
+      config: customConfig,
+      proxyFallbackList: [{ id: 'p1' }],
+    }),
+    headers: { 'content-type': 'application/json' },
+  })).json() as any
+
+  const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${created.upstream.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name: 'renamed' }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(res.status).toBe(200)
+  const body = await res.json() as any
+  expect(body.upstream.proxyFallbackList).toEqual([{ id: 'p1' }])
+  expect(body.upstream.name).toBe('renamed')
+})
+
+test('PATCH with an empty proxyFallbackList clears the chain', async () => {
+  const created = await (await buildApp({ isAdmin: true }).request('/api/upstreams', {
+    method: 'POST',
+    body: JSON.stringify({
+      provider: 'custom',
+      name: 'clear-chain',
+      config: customConfig,
+      proxyFallbackList: [{ id: 'p1' }],
+    }),
+    headers: { 'content-type': 'application/json' },
+  })).json() as any
+
+  const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${created.upstream.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ proxyFallbackList: [] }),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(res.status).toBe(200)
+  const body = await res.json() as any
+  expect(body.upstream.proxyFallbackList).toEqual([])
+})
