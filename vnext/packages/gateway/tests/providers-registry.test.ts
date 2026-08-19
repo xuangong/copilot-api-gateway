@@ -1,6 +1,6 @@
-import { test, expect, afterEach } from 'bun:test'
+import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests } from '@vibe-core/platform'
+import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
 import {
   listProviderBindings,
@@ -40,6 +40,8 @@ const stubUpstream = (overrides: Partial<UpstreamRecord> = {}): UpstreamRecord =
   config: { githubToken: 'ghp_test' },
   flagOverrides: {},
   disabledPublicModelIds: [],
+  state: null,
+  proxyFallbackList: [{ id: 'direct_fetch' }],
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
   ...overrides,
@@ -60,6 +62,12 @@ function stubFetch(models: Model[]) {
     headers: { 'content-type': 'application/json' },
   })) as typeof fetch
 }
+
+beforeEach(() => {
+  // Building each upstream's egress chain needs the runtime location for
+  // the per-entry colo filter.
+  initRuntimeLocation('bun')
+})
 
 afterEach(() => {
   globalThis.fetch = originalFetch
@@ -167,6 +175,8 @@ const customUpstream = (overrides: Partial<UpstreamRecord> = {}): UpstreamRecord
   },
   flagOverrides: {},
   disabledPublicModelIds: [],
+  state: null,
+  proxyFallbackList: [{ id: 'direct_fetch' }],
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
   ...overrides,
@@ -188,6 +198,8 @@ const azureUpstream = (overrides: Partial<UpstreamRecord> = {}): UpstreamRecord 
   },
   flagOverrides: {},
   disabledPublicModelIds: [],
+  state: null,
+  proxyFallbackList: [{ id: 'direct_fetch' }],
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
   ...overrides,

@@ -253,14 +253,12 @@ export async function listProviderBindings(
   }
 
   // Built once from the already-loaded rows so each provider dials through its
-  // own proxy fallback list. A failure here must not take down /v1/models, so
-  // fall back to leaving providers on their `directFetcher` default.
-  let fetcherForUpstream: ((upstreamId: string) => Fetcher) | undefined
-  try {
-    fetcherForUpstream = await createPerRequestFetcher(getRuntimeLocation(), upstreams)
-  } catch {
-    fetcherForUpstream = undefined
-  }
+  // own proxy fallback list. Deliberately uncaught: without a fetcher every
+  // provider below falls back to `directFetcher`, which on a proxy-only host
+  // sends the whole batch out over a direct connection instead of failing.
+  // The trade-off is accepted — /v1/models is a caller of this function, so it
+  // now surfaces an error rather than a silently direct-dialing catalog.
+  const fetcherForUpstream = await createPerRequestFetcher(getRuntimeLocation(), upstreams)
 
   const bindings: LlmProviderBinding[] = []
   for (const upstream of upstreams) {

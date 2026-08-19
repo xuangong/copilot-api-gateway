@@ -10,11 +10,11 @@
  * images are covered separately at the router level in
  * `data-plane-models-embeddings-images.test.ts`.
  */
-import { test, expect, afterEach } from 'bun:test'
+import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
 import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests } from '@vibe-core/platform'
+import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
 
@@ -23,6 +23,12 @@ const env = {} as never
 const stubRepo = (upstreams: UpstreamRecord[]): Repo => ({
   upstreams: { list: async () => upstreams },
 } as unknown as Repo)
+
+beforeEach(() => {
+  // Building each upstream's egress chain needs the runtime location for
+  // the per-entry colo filter.
+  initRuntimeLocation('bun')
+})
 
 afterEach(() => {
   __resetPlatformForTests()

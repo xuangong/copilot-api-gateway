@@ -60,6 +60,8 @@ const stubUpstream = (): UpstreamRecord => ({
   // Compact-shim is opt-in on Responses target; turn it on for this upstream.
   flagOverrides: { 'responses-compact-shim': true },
   disabledPublicModelIds: [],
+  state: null,
+  proxyFallbackList: [{ id: 'direct_fetch' }],
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 })

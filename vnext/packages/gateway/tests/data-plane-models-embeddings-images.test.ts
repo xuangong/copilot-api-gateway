@@ -6,10 +6,10 @@
  * the Copilot /models and endpoint URLs. The router builds a real CopilotProvider,
  * so we exercise the full resolveBinding → provider.fetch path.
  */
-import { test, expect, afterEach } from 'bun:test'
+import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
 import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests } from '@vibe-core/platform'
+import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import { modelsRouter, type DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
@@ -43,6 +43,8 @@ const stubUpstream = (overrides: Partial<UpstreamRecord> = {}): UpstreamRecord =
   config: { githubToken: 'ghp_test' },
   flagOverrides: {},
   disabledPublicModelIds: [],
+  state: null,
+  proxyFallbackList: [{ id: 'direct_fetch' }],
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
   ...overrides,
@@ -60,6 +62,12 @@ function installFetch(handler: FetchHandler) {
     return Promise.resolve(handler(req))
   }) as typeof fetch
 }
+
+beforeEach(() => {
+  // Building each upstream's egress chain needs the runtime location for
+  // the per-entry colo filter.
+  initRuntimeLocation('bun')
+})
 
 afterEach(() => {
   globalThis.fetch = originalFetch
