@@ -1,11 +1,18 @@
 /**
- * Control-plane proxies router tests.
+ * Control-plane proxies router tests — covers both routers exported from
+ * src/control-plane/proxies/routes.ts: the admin-only `proxiesRouter` (CRUD +
+ * backoffs) and the label-only `proxyOptionsRouter`, which any authenticated
+ * user may read.
  *
  * Backed by a real in-memory SQLite repo rather than a hand-written fake: the
  * delete guard lives entirely in a SQL predicate (`NOT EXISTS ... json_each`),
  * so a TypeScript fake re-implementing it would prove nothing about the
  * behaviour under test. A pre-middleware injects `c.set('auth', ...)`,
  * matching the harness in control-plane-upstreams.test.ts.
+ *
+ * The /options case mounts the real `controlPlane` router rather than the two
+ * sub-routers by hand, so that the mount order in src/control-plane/routes.ts
+ * is what is under test — see that test's own comment.
  */
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
@@ -14,9 +21,9 @@ import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqli
 import { initRepo } from '../src/repo/index.ts'
 import {
   proxiesRouter,
-  proxyOptionsRouter,
   type ProxyAuthCtx,
 } from '../src/control-plane/proxies/routes.ts'
+import { controlPlane } from '../src/control-plane/routes.ts'
 import type { UserId } from '../src/repo/branded-ids.ts'
 
 const TROJAN_URL = 'trojan://password@node1.example.com:443'
@@ -171,13 +178,16 @@ test('DELETE /api/proxies/:id referenced by an upstream → 409 with upstreamIds
 test('GET /api/proxies/options as a non-admin returns id+name only', async () => {
   await createProxy({ name: 'node-1', url: TROJAN_URL })
 
+  // Mount the real `controlPlane`, not the two sub-routers by hand: the
+  // ordering of its two `route('/api/proxies…')` calls is load-bearing. If
+  // `proxiesRouter` were mounted first, its `use('*')` admin gate would match
+  // /api/proxies/options too and this non-admin request would get 403.
   const app = new Hono()
   app.use('*', (c, next) => {
     c.set('auth', { userId: 'u1' as UserId })   // authenticated, not admin
     return next()
   })
-  app.route('/api/proxies/options', proxyOptionsRouter)
-  app.route('/api/proxies', proxiesRouter)
+  app.route('/', controlPlane)
 
   const res = await app.request('/api/proxies/options')
   expect(res.status).toBe(200)
