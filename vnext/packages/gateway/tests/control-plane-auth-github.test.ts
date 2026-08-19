@@ -4,8 +4,9 @@
  * Covers /github, /github/poll, /github/paste-token, /me, DELETE /github/:id,
  * /github/switch ported from old src/routes/auth/github.ts, plus the auth
  * guard on the two device-flow routes. Most cases use an in-memory repo; the
- * seven that exercise a proxy chain use a real BunSqliteRepo, so the proxies
- * table actually exists (see `realRepo`). Every case stubs `globalThis.fetch`
+ * seven that submit a proxy chain use a real BunSqliteRepo, so the proxies
+ * table exists and chains round-trip the real column plumbing (see
+ * `realRepo`). Every case stubs `globalThis.fetch`
  * for every outbound call (no mock.module — see
  * bun_mock_module_unrestorable memory).
  */
@@ -258,7 +259,7 @@ test('POST /github/poll complete saves account + mirrors upstream', async () => 
  * comes back "failed to resolve the submitted proxy chain: undefined is not an
  * object (evaluating 'proxies.list')", which never contains the submitted id.
  * The status assertion still discriminates under the fixture — remove the
- * guard and the request 400s instead of 401ing — but the two body assertions
+ * guard and the request 400s instead of 401ing — but the body assertions
  * and the `direct` assertion carry no signal there, because an id that never
  * reaches the resolver can neither be echoed nor dialled. With the real repo
  * the proxies table exists and is empty, so were the guard removed the request
