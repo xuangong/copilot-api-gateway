@@ -247,9 +247,10 @@ function copilotRow(chain: UpstreamRecord['proxyFallbackList']): UpstreamRecord 
  * backoff surfaces the dial path reads: `proxies.list` feeds `loadProxyCatalog`
  * (packages/dial/src/proxy-catalog.ts), and `proxyBackoffs.listForUpstream` is
  * read by `runFallbacks`' first pass whenever the chain holds a non-builtin id
- * (packages/dial/src/fetcher.ts). `recordDialFailure` is what that dialer calls
- * after a ProxyDialError; a missing stub would only `console.warn`, but the
- * write is real behaviour so it is stubbed rather than left to throw.
+ * (packages/dial/src/fetcher.ts). `recordDialFailure` and `recordDialSuccess`
+ * are what that dialer calls on the two outcomes; a missing stub would only
+ * `console.warn`, but the write is real behaviour so both are stubbed rather
+ * than left to throw.
  */
 function useChainedRow(row: UpstreamRecord, proxies: ProxyRecord[]) {
   initRepo({
@@ -292,10 +293,11 @@ function useChainedRow(row: UpstreamRecord, proxies: ProxyRecord[]) {
 test('a saved chain sends the enrichment calls through the resolved fetcher', async () => {
   const dials: Array<{ host: string; port: number }> = []
   // The dialer obtains this via `getSocketDial()` at attempt time; the platform
-  // reset in afterEach clears it again. `connectOrDialError` (packages/proxy/
-  // src/dialer.ts) turns this throw into a ProxyDialError, which the fetcher
-  // treats as a failed entry — and with a one-entry chain it rethrows that
-  // single error rather than an AggregateError.
+  // reset in afterEach clears it again. `connectOrDialError`
+  // (packages/proxy/src/dial-target.ts, reached here from
+  // protocols/http-connect.ts) turns this throw into a ProxyDialError, which
+  // the fetcher treats as a failed entry — and with a one-entry chain it
+  // rethrows that single error rather than an AggregateError.
   initSocketDial({
     connect: async (host: string, port: number) => {
       dials.push({ host, port })
