@@ -2074,9 +2074,16 @@ a non-admin sees.
 **Mounting order matters.** `/api/proxies/options` also matches
 `proxiesRouter`'s `use('*')`. Hono runs handlers in registration order, and a
 handler that returns a `Response` without calling `next()` ends the chain — so
-the options router must be mounted **before** `proxiesRouter`. Step 4's
-non-admin test is what keeps that ordering honest; if someone reorders the two
-lines, that test goes red rather than the endpoint silently becoming admin-only.
+the options router must be mounted **before** `proxiesRouter`.
+
+Correction, verified after implementation: the Step 1 test does **not** guard
+that ordering. It builds its own inline Hono app and mounts the two routers
+itself, so it proves Hono's registration-order semantics, not the production
+mount. Swapping the two real lines in `control-plane/routes.ts` leaves the
+suite fully green while `/api/proxies/options` silently becomes admin-only and
+the Task 13 wizard breaks. Closing this needs the test to exercise the real
+`controlPlane` (`app.route('/', controlPlane)`); it is deferred to the batched
+test-coverage pass after Task 15.
 
 - [ ] **Step 1: Write the failing test**
 
