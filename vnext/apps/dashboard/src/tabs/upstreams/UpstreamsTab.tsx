@@ -4,7 +4,7 @@ import { useT } from "../../state/i18n"
 import { useUpstreams } from "../../state/upstreams"
 import { UpstreamRow } from "./UpstreamRow"
 import { UpstreamFormModal } from "./UpstreamFormModal"
-import { ProxyChainEditor } from "./ProxyChainEditor"
+import { ProxyChainModal } from "./ProxyChainModal"
 import { DeviceFlowModal } from "./DeviceFlowModal"
 import { VENDOR_PRESETS } from "./vendorPresets"
 import type { UpstreamRecord } from "../../api/types"
@@ -248,7 +248,7 @@ export function UpstreamsTab() {
                         ) : null}
                         {proxyId === u.id ? (
                           <Expand>
-                            <ProxyChainEditor
+                            <ProxyChainModal
                               upstreamId={u.id}
                               initialChain={u.proxyFallbackList ?? []}
                               onSaved={() => {
