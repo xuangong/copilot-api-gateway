@@ -11,10 +11,12 @@
  * working while still attaching auth context where present.
  */
 import type { Context, MiddlewareHandler } from 'hono'
+import { getRuntimeLocation } from '@vibe-core/platform'
 import { getRepo } from '../../repo/index.ts'
 import { ADMIN_EMAILS, type AccountType } from '../../shared/config/constants.ts'
 import { validateApiKey } from '../lib/api-keys.ts'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
+import { resolveControlPlaneFetcher } from '../upstreams/proxy-resolution.ts'
 import type { ApiKeyId, SessionToken, UserId } from '../../repo/branded-ids.ts'
 
 interface FullAuthCtx {
@@ -111,14 +113,27 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
       const upstreams = await getRepo().upstreams.list({ ownerId: resolvedUserId })
       const copilot = upstreams.find((u) => u.provider === 'copilot' && u.enabled !== false)
       const cfg = copilot?.config as { githubToken?: string; accountType?: AccountType; githubHost?: string } | undefined
-      if (cfg?.githubToken) {
+      if (cfg?.githubToken && copilot) {
         const accountType: AccountType = cfg.accountType ?? 'individual'
-        const session = await getCachedCopilotToken(cfg.githubToken, accountType, cfg.githubHost)
+        const fetcher = await resolveControlPlaneFetcher({
+          upstreamId: copilot.id,
+          runtimeLocation: getRuntimeLocation(),
+        })
+        const session = await getCachedCopilotToken(
+          cfg.githubToken,
+          accountType,
+          cfg.githubHost,
+          fetcher,
+        )
         ctx.copilot = { copilotToken: session.token, accountType }
         ctx.githubToken = cfg.githubToken
       }
     } catch {
-      // Best-effort; missing copilot creds simply means web-search will 401.
+      // Best-effort by design: this is auth middleware on every request, so one
+      // user's broken config must not fail the gateway. The resolver's
+      // `upstreamId` branch does not validate chain contents, so proxy failures
+      // land here too — thrown at dial time inside getCachedCopilotToken, and
+      // only when it misses cache (copilot-token-cache.ts:93 returns first).
     }
     c.set('auth' as never, ctx as never)
   }
