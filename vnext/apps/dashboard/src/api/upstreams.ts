@@ -1,5 +1,5 @@
 import { api } from "./client"
-import type { UpstreamRecord } from "./types"
+import type { UpstreamRecord, ProxyFallbackEntry } from "./types"
 
 export interface FlagDef {
   id: string
@@ -64,6 +64,7 @@ export interface UpstreamPatch {
   sortOrder?: number
   flagOverrides?: Record<string, boolean>
   disabledPublicModelIds?: string[]
+  proxyFallbackList?: ProxyFallbackEntry[]
   config?: Record<string, unknown>
 }
 export function patchUpstream(id: string, body: UpstreamPatch): Promise<UpstreamRecord> {

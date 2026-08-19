@@ -12,6 +12,11 @@ export interface SessionInfo {
   hasPassword?: boolean
 }
 
+export interface ProxyFallbackEntry {
+  id: string
+  colos?: string[]
+}
+
 export interface UpstreamRecord {
   id: string
   ownerId: string
@@ -35,6 +40,7 @@ export interface UpstreamRecord {
   }
   flagOverrides?: Record<string, boolean>
   disabledPublicModelIds: string[]
+  proxyFallbackList?: ProxyFallbackEntry[]
   createdAt: string
   updatedAt: string
 }
