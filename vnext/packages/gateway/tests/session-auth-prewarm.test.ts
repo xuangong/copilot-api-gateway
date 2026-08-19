@@ -153,16 +153,20 @@ function request(app: Hono<{ Variables: ProbeVars }>): Promise<Response> {
  *
  * The oracle is the SocketDial stub, because the middleware itself tells us
  * nothing: the whole pre-warm block sits in a `try { } catch { }` that swallows
- * every failure, so status and body are identical either way. Two independent
- * observations, both only reachable through the resolved fetcher:
- *   - `dials` is non-empty — nothing else on this request opens a socket; the
- *     global fetch here is a stub that returns a Response without dialling.
+ * every failure, so status and body are identical either way. Three independent
+ * observations, all only explicable by the exchange having gone through the
+ * resolved fetcher:
+ *   - `dials` is non-empty, at the proxy's address — nothing else on this
+ *     request opens a socket; the global fetch here is a stub that returns a
+ *     Response without dialling.
+ *   - `globalFetchUrls` is empty — that stub records every URL it is asked for.
  *   - `copilotToken` is null — that stub answers the exchange with a valid
  *     session, so a call that reached it would populate ctx.copilot.
  *
  * Verified by mutation: dropping the `fetcher` argument from the
  * `getCachedCopilotToken(...)` call in session-auth.ts fails this test, and
- * each of the two assertion groups below detects it on its own.
+ * each of the three assertions below detects it on its own (checked separately,
+ * one at a time).
  */
 test('a saved chain sends the copilot pre-warm exchange through the resolved fetcher', async () => {
   // `insert` is the ProxyRepo's own writer, so the row is genuine SQLite state
@@ -189,14 +193,20 @@ test('a saved chain sends the copilot pre-warm exchange through the resolved fet
 
 /**
  * The complement: with no chain, `resolveControlPlaneFetcher` returns undefined
- * ("keep the caller's default"), `getCachedCopilotToken`'s `fetcher` parameter
- * defaults to the global fetch, and the exchange succeeds against the stub.
+ * ("keep the caller's default"), and the exchange succeeds against the stub.
  *
- * This case does not discriminate the fetcher argument from its default — with
- * no chain the two are the same function — so it is not the mutation's killer.
- * What it pins is that the pre-warm block genuinely runs and populates
- * ctx.copilot for this fixture, which is what stops the first test's
- * `copilotToken === null` from passing vacuously.
+ * This case does not discriminate the fetcher argument from its absence —
+ * session-auth.ts passes the resolver's return value straight through, so with
+ * no chain the argument *is* `undefined`, and it is `getCachedCopilotToken`'s
+ * own parameter default (`fetcher: Fetcher = fetch`, copilot-token-cache.ts)
+ * that supplies the global fetch either way. So it is not that mutation's
+ * killer. What it pins is the empty-chain branch of the resolver itself:
+ * collapsing an empty chain to a built-in transport (as packages/dial/src/
+ * fetcher.ts does for its own empty `fallbackList`) would dial through the
+ * refusing stub instead of reaching the global fetch. Verified by mutation:
+ * returning `buildOverrideFetcher([{ id: 'direct_connect' }], …)` instead of
+ * `undefined` from that branch (proxy-resolution.ts) fails this test on
+ * `copilotToken` (received null), while the first test still passes.
  */
 test('an upstream without a chain pre-warms over the global fetch (no dial)', async () => {
   await saveCopilotUpstream('gh_token_direct', [])
