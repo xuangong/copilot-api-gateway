@@ -3,8 +3,10 @@
  *
  * Covers /github, /github/poll, /github/paste-token, /me, DELETE /github/:id,
  * /github/switch ported from old src/routes/auth/github.ts, plus the auth
- * guard on the two device-flow routes. Uses an in-memory repo and stubs
- * `globalThis.fetch` for every outbound call (no mock.module — see
+ * guard on the two device-flow routes. Most cases use an in-memory repo; the
+ * seven that exercise a proxy chain use a real BunSqliteRepo, so the proxies
+ * table actually exists (see `realRepo`). Every case stubs `globalThis.fetch`
+ * for every outbound call (no mock.module — see
  * bun_mock_module_unrestorable memory).
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
@@ -251,10 +253,15 @@ test('POST /github/poll complete saves account + mirrors upstream', async () => 
 
 /*
  * Both guard cases run against the real SqliteRepo (see `realRepo` below), not
- * the in-memory fixture: the fixture has no `proxies` accessor, so resolving
- * any id would throw a TypeError before the resolver could report on it, and
- * the case would pass with or without the guard. With the real repo the
- * proxies table exists and is empty, so were the guard removed the request
+ * the in-memory fixture. The fixture has no `proxies` accessor, so resolving
+ * any id throws a TypeError before the resolver can report on it: the body
+ * comes back "failed to resolve the submitted proxy chain: undefined is not an
+ * object (evaluating 'proxies.list')", which never contains the submitted id.
+ * The status assertion still discriminates under the fixture — remove the
+ * guard and the request 400s instead of 401ing — but the two body assertions
+ * and the `direct` assertion carry no signal there, because an id that never
+ * reaches the resolver can neither be echoed nor dialled. With the real repo
+ * the proxies table exists and is empty, so were the guard removed the request
  * would reach the resolver and come back 400 with
  * "unknown proxy id in fallback list: px_missing" — the very oracle the guard
  * closes. That is what the body assertions below discriminate against.
