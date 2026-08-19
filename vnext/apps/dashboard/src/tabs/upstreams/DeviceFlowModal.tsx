@@ -3,6 +3,8 @@ import { Modal } from "../../components/Modal"
 import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
 import * as api from "../../api/upstreams"
+import type { ProxyFallbackEntry } from "../../api/types"
+import { ProxyChainEditor } from "./ProxyChainEditor"
 
 interface Props {
   onComplete: () => void
@@ -15,24 +17,49 @@ type Step = "pick" | "device" | "paste"
 export function DeviceFlowModal({ onComplete, onClose }: Props) {
   const t = useT()
   const [step, setStep] = useState<Step>("pick")
+  // Lives here, not in HostPicker, so a "← Back" from either branch keeps the
+  // user's selection.
+  const [chain, setChain] = useState<ProxyFallbackEntry[]>([])
 
   return (
     <Modal open onClose={onClose} title={t("dash.connectCopilotTitle")} size="sm">
       {step === "pick" ? (
         <HostPicker
+          chain={chain}
+          onChainChange={setChain}
           onPick={(k) => setStep(k === "github.com" ? "device" : "paste")}
           onCancel={onClose}
         />
       ) : step === "device" ? (
-        <DeviceFlowStep onComplete={onComplete} onClose={onClose} onBack={() => setStep("pick")} />
+        <DeviceFlowStep
+          chain={chain}
+          onComplete={onComplete}
+          onClose={onClose}
+          onBack={() => setStep("pick")}
+        />
       ) : (
-        <PasteTokenStep onComplete={onComplete} onClose={onClose} onBack={() => setStep("pick")} />
+        <PasteTokenStep
+          chain={chain}
+          onComplete={onComplete}
+          onClose={onClose}
+          onBack={() => setStep("pick")}
+        />
       )}
     </Modal>
   )
 }
 
-function HostPicker({ onPick, onCancel }: { onPick: (k: HostKind) => void; onCancel: () => void }) {
+function HostPicker({
+  chain,
+  onChainChange,
+  onPick,
+  onCancel,
+}: {
+  chain: ProxyFallbackEntry[]
+  onChainChange: (next: ProxyFallbackEntry[]) => void
+  onPick: (k: HostKind) => void
+  onCancel: () => void
+}) {
   const t = useT()
   return (
     <div className="space-y-3">
@@ -51,6 +78,16 @@ function HostPicker({ onPick, onCancel }: { onPick: (k: HostKind) => void; onCan
         <div className="font-medium text-themed">{t("dash.hostGhe")}</div>
         <div className="text-xs text-themed-dim mt-0.5">{t("dash.hostGheDesc")}</div>
       </button>
+      <details className="rounded border border-themed bg-surface-800/60 p-2">
+        <summary className="text-xs text-themed-dim cursor-pointer select-none">
+          {t("dash.egressProxyOptional")}
+          {chain.length > 0 ? ` (${chain.length})` : null}
+        </summary>
+        <div className="mt-2 space-y-2">
+          <div className="text-xs text-themed-dim">{t("dash.egressProxyHint")}</div>
+          <ProxyChainEditor value={chain} onChange={onChainChange} />
+        </div>
+      </details>
       <div className="flex justify-end pt-1">
         <button onClick={onCancel} className="btn-ghost text-sm">
           {t("dash.cancel")}
@@ -61,10 +98,12 @@ function HostPicker({ onPick, onCancel }: { onPick: (k: HostKind) => void; onCan
 }
 
 function DeviceFlowStep({
+  chain,
   onComplete,
   onClose,
   onBack,
 }: {
+  chain: ProxyFallbackEntry[]
   onComplete: () => void
   onClose: () => void
   onBack: () => void
@@ -84,7 +123,7 @@ function DeviceFlowStep({
 
     const start = async () => {
       try {
-        const d = await api.startGithubDeviceFlow()
+        const d = await api.startGithubDeviceFlow(chain)
         if (cancelledRef.current) return
         setFlow(d)
         setStatus("waiting")
@@ -109,7 +148,7 @@ function DeviceFlowStep({
     const poll = async (deviceCode: string, interval: number) => {
       if (cancelledRef.current) return
       try {
-        const r = await api.pollGithubDeviceFlow(deviceCode)
+        const r = await api.pollGithubDeviceFlow(deviceCode, chain)
         if (cancelledRef.current) return
         if (r.status === "complete") {
           setStatus("complete")
@@ -176,10 +215,12 @@ function DeviceFlowStep({
 }
 
 function PasteTokenStep({
+  chain,
   onComplete,
   onClose,
   onBack,
 }: {
+  chain: ProxyFallbackEntry[]
   onComplete: () => void
   onClose: () => void
   onBack: () => void
@@ -196,7 +237,7 @@ function PasteTokenStep({
     if (!host.trim() || !token.trim()) return
     setPending(true)
     try {
-      const r = await api.pasteGithubToken(token.trim(), host.trim())
+      const r = await api.pasteGithubToken(token.trim(), host.trim(), chain)
       if (r.status === "complete") {
         toast(t("dash.pasteTokenSuccess"), "success")
         onComplete()

@@ -102,8 +102,16 @@ export interface DeviceFlowStart {
   device_code: string
   interval?: number
 }
-export function startGithubDeviceFlow(): Promise<DeviceFlowStart> {
-  return api<DeviceFlowStart>("/auth/github")
+// POST, not GET: the request carries the draft proxy chain, and a GET has
+// nowhere to put a body. Always sends at least `{}` so the server's zod
+// validator sees a parseable JSON body.
+export function startGithubDeviceFlow(
+  proxyFallbackList?: ProxyFallbackEntry[],
+): Promise<DeviceFlowStart> {
+  return api<DeviceFlowStart>("/auth/github", {
+    method: "POST",
+    body: proxyFallbackList?.length ? { proxy_fallback_list: proxyFallbackList } : {},
+  })
 }
 
 export interface DeviceFlowPoll {
@@ -111,8 +119,16 @@ export interface DeviceFlowPoll {
   interval?: number
   error?: string
 }
-export function pollGithubDeviceFlow(deviceCode: string): Promise<DeviceFlowPoll> {
-  return api<DeviceFlowPoll>("/auth/github/poll", { method: "POST", body: { device_code: deviceCode } })
+export function pollGithubDeviceFlow(
+  deviceCode: string,
+  proxyFallbackList?: ProxyFallbackEntry[],
+): Promise<DeviceFlowPoll> {
+  return api<DeviceFlowPoll>("/auth/github/poll", {
+    method: "POST",
+    body: proxyFallbackList?.length
+      ? { device_code: deviceCode, proxy_fallback_list: proxyFallbackList }
+      : { device_code: deviceCode },
+  })
 }
 
 export interface PasteTokenResult {
@@ -122,10 +138,16 @@ export interface PasteTokenResult {
   account_type?: string
   error?: string
 }
-export function pasteGithubToken(github_token: string, github_host: string): Promise<PasteTokenResult> {
+export function pasteGithubToken(
+  github_token: string,
+  github_host: string,
+  proxyFallbackList?: ProxyFallbackEntry[],
+): Promise<PasteTokenResult> {
   return api<PasteTokenResult>("/auth/github/paste-token", {
     method: "POST",
-    body: { github_token, github_host },
+    body: proxyFallbackList?.length
+      ? { github_token, github_host, proxy_fallback_list: proxyFallbackList }
+      : { github_token, github_host },
   })
 }
 
