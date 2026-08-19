@@ -7,8 +7,9 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests } from '@vibe-core/platform'
-import type { GitHubAccount, Repo } from '../src/repo/types.ts'
+import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
+import type { GitHubAccount, Repo, UpstreamRecord } from '../src/repo/types.ts'
+import type { UserId } from '../src/repo/branded-ids.ts'
 import {
   copilotQuotaRouter,
   type CopilotQuotaAuthCtx,
@@ -38,6 +39,12 @@ function inMemoryRepo() {
       getActiveIdForUser: async (ownerId: string) => activeByUser.get(ownerId) ?? null,
       setActiveIdForUser: async (ownerId: string, id: number) => { activeByUser.set(ownerId, id) },
       clearActiveIdForUser: async (ownerId: string) => { activeByUser.delete(ownerId) },
+    },
+    // resolveControlPlaneFetcher looks the row up to decide whether a chain is
+    // configured. These tests never create one, so every lookup misses and the
+    // relay keeps using globalThis.fetch.
+    upstreams: {
+      getById: async () => null,
     },
   } as unknown as Repo
 
@@ -69,8 +76,14 @@ let store: ReturnType<typeof inMemoryRepo>
 let originalFetch: typeof fetch
 
 beforeEach(() => {
+  // initRepo and initRuntimeLocation both write process-global state that Bun
+  // carries across test files in one process; reset first so this file neither
+  // inherits nor leaks a platform singleton. The relay resolves an egress
+  // fetcher, which reads the runtime location, so set one for every test.
+  __resetPlatformForTests()
   store = inMemoryRepo()
   initRepo(store.repo)
+  initRuntimeLocation('bun')
   originalFetch = globalThis.fetch
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
@@ -139,9 +152,49 @@ test('GET /api/admin/copilot-quota/:id returns 404 when account missing', async 
 
 test('GET /api/admin/copilot-quota/:id returns quota for any account', async () => {
   await store.repo.github.saveAccount(7, ghAccount(7, 'u2'))
-  const res = await buildApp({ userId: 'admin', isAdmin: true })
+  const res = await buildApp({ userId: 'admin' as UserId, isAdmin: true })
     .request('/api/admin/copilot-quota/7')
   expect(res.status).toBe(200)
   const body = await res.json() as { remaining: number }
   expect(body.remaining).toBe(999)
+})
+
+test('GET /api/copilot-quota with an unresolvable chain → 502 naming the proxy id', async () => {
+  const now = new Date().toISOString()
+  const chained: UpstreamRecord = {
+    id: 'up_copilot_u1_42',
+    provider: 'copilot',
+    name: 'chained',
+    enabled: true,
+    sortOrder: 0,
+    config: {},
+    flagOverrides: {},
+    disabledPublicModelIds: [],
+    state: null,
+    createdAt: now,
+    updatedAt: now,
+    proxyFallbackList: [{ id: 'px_gone' }],
+  }
+
+  // Replace the inert `getById: () => null` stub with a row that DOES carry a
+  // chain, pointing at a proxy id the (empty) proxies table cannot resolve.
+  // `proxies.list` feeds loadProxyCatalog; `proxyBackoffs.listForUpstream` is
+  // read by the dialer's first pass because the chain holds a non-direct id.
+  initRepo({
+    ...store.repo,
+    upstreams: {
+      ...store.repo.upstreams,
+      getById: async (id: string) => (id === chained.id ? chained : null),
+    },
+    proxies: { ...store.repo.proxies, list: async () => [] },
+    proxyBackoffs: { ...store.repo.proxyBackoffs, listForUpstream: async () => [] },
+  })
+
+  await store.repo.github.saveAccount(42, ghAccount(42, 'u1'))
+  store.activeByUser.set('u1', 42)
+
+  const res = await buildApp({ userId: 'u1' as UserId }).request('/api/copilot-quota')
+  expect(res.status).toBe(502)
+  const body = (await res.json()) as { error: string }
+  expect(body.error).toContain('px_gone')
 })
