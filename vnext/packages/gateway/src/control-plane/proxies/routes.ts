@@ -8,6 +8,8 @@
  * needing a redaction layer.
  */
 import { Hono } from 'hono'
+import { z } from 'zod'
+import { parseProxyUri } from '@vibe-core/proxy/url'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../repo/index.ts'
 import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
@@ -37,4 +39,79 @@ proxiesRouter.get('/', async (c) => {
 proxiesRouter.get('/backoffs', async (c) => {
   const backoffs = await getRepo().proxyBackoffs.listAll()
   return c.json({ backoffs })
+})
+
+const createBody = z.object({
+  name: z.string().min(1),
+  url: z.string().min(1),
+  dialTimeoutSeconds: z.number().int().positive().nullable().optional(),
+})
+
+const patchBody = z.object({
+  name: z.string().min(1).optional(),
+  url: z.string().min(1).optional(),
+  dialTimeoutSeconds: z.number().int().positive().nullable().optional(),
+})
+
+/** Validate a proxy URI, returning the parse error message on failure. */
+function urlError(url: string): string | null {
+  try {
+    parseProxyUri(url)
+    return null
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err)
+  }
+}
+
+proxiesRouter.post('/', async (c) => {
+  const parsed = createBody.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400)
+
+  const err = urlError(parsed.data.url)
+  if (err) return c.json({ error: err }, 400)
+
+  const proxy = await getRepo().proxies.insert({
+    id: crypto.randomUUID(),
+    name: parsed.data.name.trim(),
+    url: parsed.data.url.trim(),
+    dialTimeoutSeconds: parsed.data.dialTimeoutSeconds ?? null,
+  })
+  return c.json({ proxy }, 201)
+})
+
+proxiesRouter.patch('/:id', async (c) => {
+  const parsed = patchBody.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400)
+
+  if (parsed.data.url !== undefined) {
+    const err = urlError(parsed.data.url)
+    if (err) return c.json({ error: err }, 400)
+  }
+
+  const result = await getRepo().proxies.patch(c.req.param('id'), parsed.data)
+  if (!result) return c.json({ error: 'Not found' }, 404)
+  return c.json({ proxy: result.record })
+})
+
+proxiesRouter.delete('/:id', async (c) => {
+  const id = c.req.param('id')
+  const repo = getRepo()
+  // `ProxyRepo.delete` returns false for BOTH "missing" and "still
+  // referenced" — the reference predicate is folded into the DELETE to close
+  // a TOCTOU window. Probe first so the caller gets 404 vs 409, not one
+  // ambiguous status.
+  const existing = await repo.proxies.getById(id)
+  if (!existing) return c.json({ error: 'Not found' }, 404)
+
+  const deleted = await repo.proxies.delete(id)
+  if (!deleted) {
+    const upstreamIds = await repo.proxies.findUpstreamsReferencing(id)
+    return c.json({ error: 'Proxy is still referenced', upstreamIds }, 409)
+  }
+  return c.json({ ok: true })
+})
+
+proxiesRouter.delete('/:id/backoffs', async (c) => {
+  await getRepo().proxyBackoffs.resetForProxy(c.req.param('id'))
+  return c.json({ ok: true })
 })
