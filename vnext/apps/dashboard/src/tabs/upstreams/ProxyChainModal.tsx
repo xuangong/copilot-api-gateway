@@ -1,7 +1,11 @@
 /**
- * Saving wrapper around the controlled ProxyChainEditor. Keeps the props the
- * Upstreams tab already passes (upstreamId / initialChain / onSaved / onClose)
- * so that call site is unchanged, and owns the PATCH the editor used to do.
+ * Saving wrapper around the controlled ProxyChainEditor: holds the chain state
+ * and owns the PATCH the editor used to do. The four props (upstreamId /
+ * initialChain / onSaved / onClose) are unchanged from what the Upstreams tab
+ * already passed — only its import line and element name moved.
+ *
+ * Despite the `Modal` name this renders as an inline expanding card inside the
+ * upstream row (`<Expand>`): no overlay, no portal, no focus trap.
  */
 import { useState } from "react"
 import { useT } from "../../state/i18n"

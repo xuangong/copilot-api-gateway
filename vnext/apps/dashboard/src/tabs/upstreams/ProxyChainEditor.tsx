@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
 import type { ProxyFallbackEntry } from "../../api/types"
@@ -6,7 +6,11 @@ import { createProxy, listProxyOptions, type ProxyOption } from "../../api/proxi
 import { DIRECT_CONNECT_ID, DIRECT_FETCH_ID } from "./proxy-constants"
 
 interface Props {
-  /** Controlled chain. The parent owns persistence — this component never saves. */
+  /**
+   * Controlled chain. The parent owns chain persistence — this component never
+   * PATCHes the chain. It does still POST a new proxy node to the global pool
+   * when `allowCreate` is on; that is a different resource.
+   */
   value: ProxyFallbackEntry[]
   onChange: (next: ProxyFallbackEntry[]) => void
   /**
@@ -23,6 +27,12 @@ export function ProxyChainEditor({ value, onChange, allowCreate = false }: Props
   const [pool, setPool] = useState<ProxyOption[]>([])
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState({ name: "", url: "", dialTimeoutSeconds: "" })
+
+  // `value` in this render's closure goes stale across the `await` in
+  // submitNewNode, so appends there read through a ref instead. The old
+  // uncontrolled editor got this for free from setChain's updater form.
+  const valueRef = useRef(value)
+  valueRef.current = value
 
   useEffect(() => {
     let cancelled = false
@@ -69,7 +79,7 @@ export function ProxyChainEditor({ value, onChange, allowCreate = false }: Props
         dialTimeoutSeconds: secs ? Number(secs) : null,
       })
       setPool((p) => [...p, { id: proxy.id, name: proxy.name }])
-      onChange([...value, { id: proxy.id }])
+      onChange([...valueRef.current, { id: proxy.id }])
       setDraft({ name: "", url: "", dialTimeoutSeconds: "" })
       setCreating(false)
     } catch (e) {
