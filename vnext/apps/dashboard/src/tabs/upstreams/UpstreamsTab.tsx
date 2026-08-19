@@ -4,6 +4,7 @@ import { useT } from "../../state/i18n"
 import { useUpstreams } from "../../state/upstreams"
 import { UpstreamRow } from "./UpstreamRow"
 import { UpstreamFormModal } from "./UpstreamFormModal"
+import { ProxyChainEditor } from "./ProxyChainEditor"
 import { DeviceFlowModal } from "./DeviceFlowModal"
 import { VENDOR_PRESETS } from "./vendorPresets"
 import type { UpstreamRecord } from "../../api/types"
@@ -23,6 +24,7 @@ export function UpstreamsTab() {
   const t = useT()
   const [createMode, setCreateMode] = useState<CreateMode | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [proxyId, setProxyId] = useState<string | null>(null)
   const [deviceFlowOpen, setDeviceFlowOpen] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [presetMenuOpen, setPresetMenuOpen] = useState(false)
@@ -60,6 +62,7 @@ export function UpstreamsTab() {
   }
 
   const myOwnerId = session?.userId != null ? String(session.userId) : ""
+  const isAdmin = !!session?.isAdmin
 
   const groups: OwnerGroup[] = useMemo(() => {
     const map = new Map<string, OwnerGroup>()
@@ -217,6 +220,9 @@ export function UpstreamsTab() {
                           models={store.modelsByUpstream.get(u.id)}
                           editing={editingId === u.id}
                           readOnly={!g.isMine}
+                          showProxy={isAdmin}
+                          proxyOpen={proxyId === u.id}
+                          onToggleProxy={() => setProxyId((v) => (v === u.id ? null : u.id))}
                           onToggleEnabled={() => store.toggleEnabled(u)}
                           onReorder={(d) => store.reorder(u.id, d)}
                           onEdit={() => openEdit(u)}
@@ -237,6 +243,19 @@ export function UpstreamsTab() {
                                 setEditingId(null)
                                 store.reload()
                               }}
+                            />
+                          </Expand>
+                        ) : null}
+                        {proxyId === u.id ? (
+                          <Expand>
+                            <ProxyChainEditor
+                              upstreamId={u.id}
+                              initialChain={u.proxyFallbackList ?? []}
+                              onSaved={() => {
+                                setProxyId(null)
+                                store.reload()
+                              }}
+                              onClose={() => setProxyId(null)}
                             />
                           </Expand>
                         ) : null}

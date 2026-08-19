@@ -13,6 +13,9 @@ interface Props {
   models?: api.UpstreamModelEntry[]
   editing?: boolean
   readOnly?: boolean
+  showProxy?: boolean
+  proxyOpen?: boolean
+  onToggleProxy?: () => void
   onToggleEnabled: () => void
   onReorder: (dir: "up" | "down") => void
   onEdit: () => void
@@ -29,6 +32,9 @@ export function UpstreamRow({
   models,
   editing,
   readOnly = false,
+  showProxy = false,
+  proxyOpen = false,
+  onToggleProxy,
   onToggleEnabled,
   onReorder,
   onEdit,
@@ -98,6 +104,15 @@ export function UpstreamRow({
           </button>
           {u.provider === "copilot" ? (
             <button onClick={onReauth} disabled={locked} className="btn-ghost text-xs px-2 py-1 disabled:opacity-50" title={t("dash.reauthTip")}>{t("dash.reauthBtn")}</button>
+          ) : null}
+          {showProxy ? (
+            <button
+              onClick={onToggleProxy}
+              className="btn-ghost text-xs px-2 py-1"
+              title={t("dash.proxyChainTitle")}
+            >
+              {proxyOpen ? t("dash.closeBtn") : t("dash.proxyBtn")}
+            </button>
           ) : null}
           <button
             onClick={onDelete}
