@@ -1,8 +1,8 @@
 /**
  * Control-plane proxies router tests — covers both routers exported from
- * src/control-plane/proxies/routes.ts: the admin-only `proxiesRouter` (CRUD +
- * backoffs) and the label-only `proxyOptionsRouter`, which any authenticated
- * user may read.
+ * src/control-plane/proxies/routes.ts: the admin-only `proxiesRouter` (CRUD
+ * only here — its /backoffs read/reset surface is currently untested) and the
+ * label-only `proxyOptionsRouter`, which any authenticated user may read.
  *
  * Backed by a real in-memory SQLite repo rather than a hand-written fake: the
  * delete guard lives entirely in a SQL predicate (`NOT EXISTS ... json_each`),
