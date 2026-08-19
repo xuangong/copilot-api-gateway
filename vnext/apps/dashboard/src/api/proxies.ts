@@ -1,4 +1,6 @@
-// Admin-only proxy node pool + backoff inspection.
+// Proxy node pool + backoff inspection. Everything here is admin-only except
+// listProxyOptions, which is a label-only view readable by any authenticated
+// user (no URLs — those embed the proxy credential).
 // Keep in sync with packages/gateway/src/control-plane/proxies/routes.ts
 // (shapes mirror packages/proxy-repo/src/types.ts field-for-field).
 import { api } from "./client"
@@ -60,4 +62,14 @@ export function resetBackoffs(proxyId: string): Promise<{ ok: true }> {
   return api<{ ok: true }>(`/api/proxies/${encodeURIComponent(proxyId)}/backoffs`, {
     method: "DELETE",
   })
+}
+
+/** Label-only pool, readable by any authenticated user (no URLs). */
+export interface ProxyOption {
+  id: string
+  name: string
+}
+
+export function listProxyOptions(): Promise<{ proxies: ProxyOption[] }> {
+  return api<{ proxies: ProxyOption[] }>("/api/proxies/options")
 }

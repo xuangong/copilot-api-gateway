@@ -28,7 +28,7 @@ import { presenceRouter } from './presence/routes.ts'
 import { dataTransferRouter } from './data-transfer/routes.ts'
 import { dumpRoutes } from './dump/routes.ts'
 import { pricingRouter } from './pricing/routes.ts'
-import { proxiesRouter } from './proxies/routes.ts'
+import { proxiesRouter, proxyOptionsRouter } from './proxies/routes.ts'
 
 export const controlPlane = new Hono<{ Bindings: Env }>()
 
@@ -58,5 +58,9 @@ controlPlane.route('/api', presenceRouter)
 controlPlane.route('/api', dataTransferRouter)
 // /api/pricing
 controlPlane.route('/api', pricingRouter)
+// /api/proxies/options — label-only, any authenticated user. MUST be mounted
+// before proxiesRouter: that router's `use('*')` admin gate also matches this
+// path, and Hono runs handlers in registration order.
+controlPlane.route('/api/proxies/options', proxyOptionsRouter)
 // /api/proxies — admin-only proxy node pool + backoff inspection
 controlPlane.route('/api/proxies', proxiesRouter)

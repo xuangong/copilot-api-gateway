@@ -12,7 +12,12 @@ import { Hono } from 'hono'
 import { Database } from 'bun:sqlite'
 import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
 import { initRepo } from '../src/repo/index.ts'
-import { proxiesRouter, type ProxyAuthCtx } from '../src/control-plane/proxies/routes.ts'
+import {
+  proxiesRouter,
+  proxyOptionsRouter,
+  type ProxyAuthCtx,
+} from '../src/control-plane/proxies/routes.ts'
+import type { UserId } from '../src/repo/branded-ids.ts'
 
 const TROJAN_URL = 'trojan://password@node1.example.com:443'
 
@@ -161,4 +166,24 @@ test('DELETE /api/proxies/:id referenced by an upstream → 409 with upstreamIds
   // The node must survive the refused delete.
   const listRes = await buildApp({ isAdmin: true }).request('/api/proxies')
   expect(((await listRes.json()) as any).proxies).toHaveLength(1)
+})
+
+test('GET /api/proxies/options as a non-admin returns id+name only', async () => {
+  await createProxy({ name: 'node-1', url: TROJAN_URL })
+
+  const app = new Hono()
+  app.use('*', (c, next) => {
+    c.set('auth', { userId: 'u1' as UserId })   // authenticated, not admin
+    return next()
+  })
+  app.route('/api/proxies/options', proxyOptionsRouter)
+  app.route('/api/proxies', proxiesRouter)
+
+  const res = await app.request('/api/proxies/options')
+  expect(res.status).toBe(200)
+  const body = (await res.json()) as { proxies: Record<string, unknown>[] }
+  expect(body.proxies).toHaveLength(1)
+  // Assert the whole key set, not just the absence of `url`: a future field
+  // carrying a credential would slip past `expect(p.url).toBeUndefined()`.
+  expect(Object.keys(body.proxies[0]!).sort()).toEqual(['id', 'name'])
 })
