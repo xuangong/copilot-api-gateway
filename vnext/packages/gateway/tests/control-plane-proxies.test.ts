@@ -129,3 +129,36 @@ test('DELETE /api/proxies/:id on an unknown id → 404', async () => {
   const res = await buildApp({ isAdmin: true }).request('/api/proxies/nope', { method: 'DELETE' })
   expect(res.status).toBe(404)
 })
+
+test('DELETE /api/proxies/:id referenced by an upstream → 409 with upstreamIds', async () => {
+  const created = await createProxy({ name: 'node-1', url: TROJAN_URL })
+  const proxyId = created.body.proxy.id as string
+
+  const now = new Date().toISOString()
+  await repo.upstreams.save({
+    id: 'ups-1',
+    provider: 'copilot',
+    name: 'ups-1',
+    ownerId: 'u1',
+    enabled: true,
+    sortOrder: 0,
+    config: {},
+    flagOverrides: {},
+    disabledPublicModelIds: [],
+    state: null,
+    proxyFallbackList: [{ id: proxyId }],
+    createdAt: now,
+    updatedAt: now,
+  })
+
+  const res = await buildApp({ isAdmin: true }).request(`/api/proxies/${proxyId}`, {
+    method: 'DELETE',
+  })
+  expect(res.status).toBe(409)
+  const body = await res.json() as any
+  expect(body.upstreamIds).toEqual(['ups-1'])
+
+  // The node must survive the refused delete.
+  const listRes = await buildApp({ isAdmin: true }).request('/api/proxies')
+  expect(((await listRes.json()) as any).proxies).toHaveLength(1)
+})
