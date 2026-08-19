@@ -5,6 +5,7 @@ import { useHashTab } from "./state/router"
 import { Layout } from "./components/Layout"
 import { PlaceholderTab } from "./components/PlaceholderTab"
 import { UpstreamsTab } from "./tabs/upstreams/UpstreamsTab"
+import { ProxiesTab } from "./tabs/proxies/ProxiesTab"
 import { KeysTab } from "./tabs/keys/KeysTab"
 import { UsersTab } from "./tabs/users/UsersTab"
 import { SettingsTab } from "./tabs/settings/SettingsTab"
@@ -25,6 +26,7 @@ interface TabDef {
 
 const ALL_TABS: ReadonlyArray<TabDef> = [
   { id: "upstreams", labelKey: "dash.upstream", fallback: "Upstreams", userOk: true },
+  { id: "proxies", labelKey: "dash.proxies", fallback: "Proxies", adminOnly: true },
   { id: "users", labelKey: "dash.users", fallback: "Users", adminOnly: true },
   { id: "keys", labelKey: "dash.apiKeys", fallback: "API Keys", userOk: true },
   { id: "models", labelKey: "dash.models", fallback: "Models", userOk: true },
@@ -77,6 +79,8 @@ function TabBody({ tab }: { tab: string }) {
   switch (tab) {
     case "upstreams":
       return <UpstreamsTab />
+    case "proxies":
+      return <ProxiesTab />
     case "users":
       return <UsersTab />
     case "keys":
