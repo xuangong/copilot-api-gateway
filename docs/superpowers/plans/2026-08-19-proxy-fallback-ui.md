@@ -1497,7 +1497,7 @@ git commit -m "feat(i18n): add proxy chain and proxies tab strings"
 
 ## Task 12: Full verification
 
-- [ ] **Step 1: Whole test suite**
+- [x] **Step 1: Whole test suite**
 
 ```bash
 cd vnext/packages/gateway && bun test
@@ -1505,7 +1505,7 @@ cd vnext/packages/gateway && bun test
 
 Expected: all green.
 
-- [ ] **Step 2: Dashboard typecheck + build**
+- [x] **Step 2: Dashboard typecheck + build**
 
 ```bash
 cd vnext/apps/dashboard && bun run typecheck && bun run build
@@ -1513,7 +1513,7 @@ cd vnext/apps/dashboard && bun run typecheck && bun run build
 
 Expected: clean. The build throws if the emitted CSS is under 30,000 bytes — that guard exists because a wrong build cwd silently ships an unstyled UI.
 
-- [ ] **Step 3: Local Docker verification**
+- [x] **Step 3: Local Docker verification**
 
 Build and run the container, then open `/dashboard` (NOT `/`) and walk through:
 
