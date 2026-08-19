@@ -79,9 +79,9 @@ async function egressFetcher(
  * far more than the resolver's own id-only errors — an uninitialized runtime
  * location, an uninitialized repo, or a raw storage error such as
  * "D1_ERROR: no such table: proxies". Every route that reaches it now requires
- * an authenticated caller, so the audience is a signed-in operator rather than
- * an anonymous one, but a bare driver message still must not become the whole
- * response body.
+ * an authenticated caller, so the audience is a signed-in caller rather than an
+ * anonymous one — not necessarily an admin — but a bare driver message still
+ * must not become the whole response body.
  *
  * Carries the cause's text but never a proxy URL: the resolver reports proxy
  * ids only, and deliberately drops a parse error's message because it echoes

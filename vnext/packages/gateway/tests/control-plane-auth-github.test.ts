@@ -1,8 +1,9 @@
 /**
  * GitHub OAuth router tests — Week 5b.
  *
- * Covers /github, /github/poll, /me, DELETE /github/:id, /github/switch
- * ported from old src/routes/auth/github.ts. Uses an in-memory repo and stubs
+ * Covers /github, /github/poll, /github/paste-token, /me, DELETE /github/:id,
+ * /github/switch ported from old src/routes/auth/github.ts, plus the auth
+ * guard on the two device-flow routes. Uses an in-memory repo and stubs
  * `globalThis.fetch` for every outbound call (no mock.module — see
  * bun_mock_module_unrestorable memory).
  */
@@ -248,7 +249,19 @@ test('POST /github/poll complete saves account + mirrors upstream', async () => 
 
 // --- auth guard on the device-flow routes ---
 
-test('POST /github unauthenticated → 401 without any outbound call', async () => {
+/*
+ * Both guard cases run against the real SqliteRepo (see `realRepo` below), not
+ * the in-memory fixture: the fixture has no `proxies` accessor, so resolving
+ * any id would throw a TypeError before the resolver could report on it, and
+ * the case would pass with or without the guard. With the real repo the
+ * proxies table exists and is empty, so were the guard removed the request
+ * would reach the resolver and come back 400 with
+ * "unknown proxy id in fallback list: px_missing" — the very oracle the guard
+ * closes. That is what the body assertions below discriminate against.
+ */
+
+test('POST /github unauthenticated → 401 that does not confirm or deny the proxy id', async () => {
+  await realRepo()
   let direct = 0
   stubGlobalFetch(async () => { direct += 1; return jsonResp({}) })
   const res = await buildApp().request('/auth/github', {
@@ -259,12 +272,17 @@ test('POST /github unauthenticated → 401 without any outbound call', async () 
   expect(res.status).toBe(401)
   const body = (await res.json()) as { error?: string }
   expect(body.error).toBeTruthy()
-  // Zero dials is the point: the guard runs before the chain resolves, so an
-  // anonymous caller learns nothing about which proxy ids exist.
+  // The oracle assertion: the 401 must not echo the submitted id, so the
+  // caller cannot tell an existing proxy id from a missing one.
+  expect(body.error).not.toContain('px_missing')
+  // Backstop for the guard's other job — no dial through an admin-configured
+  // proxy. Weaker than the assertion above, since an unresolvable id would not
+  // reach a dial anyway; it holds the line for ids that would resolve.
   expect(direct).toBe(0)
 })
 
-test('POST /github/poll unauthenticated → 401 without any outbound call', async () => {
+test('POST /github/poll unauthenticated → 401 that does not confirm or deny the proxy id', async () => {
+  await realRepo()
   let direct = 0
   stubGlobalFetch(async () => { direct += 1; return jsonResp({}) })
   const res = await buildApp().request('/auth/github/poll', {
@@ -275,6 +293,8 @@ test('POST /github/poll unauthenticated → 401 without any outbound call', asyn
   expect(res.status).toBe(401)
   const body = (await res.json()) as { status?: string, error?: string }
   expect(body.status).toBe('error')
+  expect(body.error).toBeTruthy()
+  expect(body.error).not.toContain('px_missing')
   expect(direct).toBe(0)
 })
 
