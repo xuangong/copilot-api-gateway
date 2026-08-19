@@ -40,7 +40,7 @@ import {
   defaultsForUpstream,
 } from '../../data-plane/flags/index.ts'
 import { createProviderFromUpstream } from '../../data-plane/providers/registry.ts'
-import { createPerRequestFetcher } from '../../data-plane/dial/per-request.ts'
+import { resolveControlPlaneFetcher } from './proxy-resolution.ts'
 import { getRuntimeLocation } from '@vibe-core/platform'
 import { normalizeProxyFallbackList } from '@vibe-core/proxy-repo'
 import type { Fetcher } from '@vibe-core/upstream'
@@ -332,17 +332,34 @@ async function invalidateUpstreamCaches(
  *
  * Without it these routes dial direct while real traffic goes through the
  * upstream's proxy chain, so "Test" fails on a gateway whose only egress is a
- * proxy even though inference works. Returns undefined on failure so a broken
- * proxy row degrades to a direct dial instead of hiding the provider error.
+ * proxy even though inference works.
+ *
+ * Adapter: createProviderFromUpstream wants `(upstreamId) => Fetcher`, but a
+ * control-plane call site already knows exactly which upstream it is acting
+ * on, so it resolves one fetcher and ignores the argument. `undefined` (no
+ * chain configured) is passed straight through — the provider then uses its
+ * own default fetch, which is today's behaviour.
+ *
+ * Deliberately not wrapped in try/catch. A chain that cannot resolve must
+ * surface as an error on the Test / Models buttons; degrading to a direct
+ * connection here would report "upstream unreachable" on a host whose only
+ * working egress is the proxy the operator just misconfigured.
  */
-async function adminFetcher(
+async function upstreamFetcher(
   upstream: UpstreamRecord<unknown>,
 ): Promise<((upstreamId: string) => Fetcher) | undefined> {
-  try {
-    return await createPerRequestFetcher(getRuntimeLocation(), [upstream])
-  } catch {
-    return undefined
-  }
+  const fetcher = await resolveControlPlaneFetcher({
+    upstreamId: upstream.id,
+    runtimeLocation: getRuntimeLocation(),
+  })
+  return fetcher ? () => fetcher : undefined
+}
+
+/** Names the operation and the upstream, so a bare driver error ("no such
+ *  table: proxies") does not reach the dashboard as the whole message. Carries
+ *  the cause's text but never a proxy URL — the resolver reports ids only. */
+function proxyChainError(upstreamId: string, err: unknown): string {
+  return `failed to resolve proxy chain for upstream ${upstreamId}: ${err instanceof Error ? err.message : String(err)}`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -542,12 +559,26 @@ upstreamsRouter.post('/:id/test', async (c) => {
     getRepo().upstreams.getById(c.req.param('id') as UpstreamId),
   )
   if (!upstream) return jsonError('upstream not found', 404)
+  // Failing to *build* the egress fetcher is not a probe result: a dangling or
+  // malformed proxy ref is deferred to dial time by the per-request path, so
+  // what reaches this catch is an infrastructure fault (proxy table read,
+  // uninitialised runtime location). Raw driver text — `D1_ERROR: no such
+  // table: proxies` — is rethrown verbatim by the dashboard api() client, so
+  // prefix it with what was being attempted and for which upstream. Scoped to
+  // this call alone so a genuine dial failure below still lands in the
+  // probe-style contract.
+  let fetcherFor: ((upstreamId: string) => Fetcher) | undefined
+  try {
+    fetcherFor = await upstreamFetcher(upstream)
+  } catch (err) {
+    return jsonError(proxyChainError(upstream.id, err), 400)
+  }
   // Provider constructors validate config (Azure hostname suffix, Custom apiKey,
   // etc.) and may throw. Probe-style contract: surface as `{ ok: false, error }`
   // with 200 so the dashboard's "Test" button shows the failure inline rather
   // than producing a 500 wire error. Matches root src/routes/control-plane.ts.
   try {
-    const provider = await createProviderFromUpstream(upstream, undefined, await adminFetcher(upstream))
+    const provider = await createProviderFromUpstream(upstream, undefined, fetcherFor)
     if (!provider) {
       return c.json({ ok: false, error: `unable to construct ${upstream.provider} provider for upstream ${upstream.id}` })
     }
@@ -562,8 +593,17 @@ upstreamsRouter.get('/:id/models', async (c) => {
     getRepo().upstreams.getById(c.req.param('id') as UpstreamId),
   )
   if (!upstream) return jsonError('upstream not found', 404)
+  // Same split as /:id/test — a fetcher that cannot be built is an
+  // infrastructure fault reported with its own context, not the 502 "failed to
+  // list models" the catch below reports for a real dial.
+  let fetcherFor: ((upstreamId: string) => Fetcher) | undefined
   try {
-    const provider = await createProviderFromUpstream(upstream, undefined, await adminFetcher(upstream))
+    fetcherFor = await upstreamFetcher(upstream)
+  } catch (err) {
+    return jsonError(proxyChainError(upstream.id, err), 400)
+  }
+  try {
+    const provider = await createProviderFromUpstream(upstream, undefined, fetcherFor)
     if (!provider) {
       return jsonError(`unable to construct ${upstream.provider} provider for upstream ${upstream.id}`, 502)
     }

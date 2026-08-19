@@ -7,7 +7,7 @@
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
 import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests } from '@vibe-core/platform'
+import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord, GitHubAccount } from '../src/repo/types.ts'
 import {
   upstreamsRouter,
@@ -86,8 +86,16 @@ function copilotUpstream(over: Partial<UpstreamRecord> = {}): UpstreamRecord {
 let store: ReturnType<typeof inMemoryRepo>
 
 beforeEach(() => {
+  // Both initRepo and initRuntimeLocation write process-global state that Bun
+  // carries across test files in one process; reset first so this file neither
+  // inherits nor leaks a platform singleton.
+  __resetPlatformForTests()
   store = inMemoryRepo()
   initRepo(store.repo)
+  // The test / models routes resolve an egress fetcher, which reads the runtime
+  // location. Production always has one from bootstrap; tests have no bootstrap,
+  // so set it here rather than leaving every route one throw away from a 400.
+  initRuntimeLocation('bun')
 })
 
 test('GET /api/upstream-flags as admin returns catalog', async () => {
@@ -673,4 +681,158 @@ test('PATCH with an empty proxyFallbackList clears the chain', async () => {
   expect(res.status).toBe(200)
   const body = await res.json() as any
   expect(body.upstream.proxyFallbackList).toEqual([])
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Proxy chain on the single-upstream admin routes (test / models)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The routes used to swallow every fetcher-build failure and dial direct. On a
+ * host whose only working egress is the proxy the operator just misconfigured,
+ * that turns a config error into a plausible-looking success (below) or into a
+ * misleading "upstream unreachable". A stubbed global fetch that always
+ * succeeds stands in for that direct egress: if the swallow came back, the
+ * assertions flip to `ok: true` / 200.
+ */
+function repoWithBrokenProxyStore(): Repo {
+  return {
+    ...store.repo,
+    proxies: {
+      ...store.repo.proxies,
+      list: async () => { throw new Error('proxy store unavailable') },
+      getById: async () => { throw new Error('proxy store unavailable') },
+    },
+  }
+}
+
+async function withStubbedDirectFetch<T>(body: unknown, fn: () => Promise<T>): Promise<T> {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify(body), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    })) as typeof fetch
+  try {
+    return await fn()
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+}
+
+function chainedCustomUpstream(): UpstreamRecord {
+  const now = new Date().toISOString()
+  return {
+    id: 'up_custom_chain_aaaaaaaa',
+    provider: 'custom',
+    name: 'chained',
+    enabled: true,
+    sortOrder: 0,
+    config: {
+      name: 'chained', baseUrl: 'https://api.example.com/v1', apiKey: 'sk-x',
+      endpoints: ['chat_completions'],
+    },
+    flagOverrides: {},
+    disabledPublicModelIds: [],
+    proxyFallbackList: [{ id: 'px_unresolvable' }],
+    createdAt: now, updatedAt: now,
+  }
+}
+
+test('POST /:id/test reports a chain it cannot resolve instead of degrading to direct', async () => {
+  const upstream = chainedCustomUpstream()
+  await store.repo.upstreams.save(upstream)
+  initRepo(repoWithBrokenProxyStore())
+
+  const res = await withStubbedDirectFetch(
+    { object: 'list', data: [{ id: 'm1' }] },
+    () => buildApp({ isAdmin: true }).request(`/api/upstreams/${upstream.id}/test`, { method: 'POST' }),
+  )
+
+  expect(res.status).toBe(400)
+  const body = await res.json() as { error?: string; ok?: boolean }
+  expect(body.ok).toBeUndefined()
+  expect(body.error).toContain(`failed to resolve proxy chain for upstream ${upstream.id}`)
+  expect(body.error).toContain('proxy store unavailable')
+})
+
+test('GET /:id/models reports a chain it cannot resolve instead of degrading to direct', async () => {
+  const upstream = chainedCustomUpstream()
+  await store.repo.upstreams.save(upstream)
+  initRepo(repoWithBrokenProxyStore())
+
+  const res = await withStubbedDirectFetch(
+    { object: 'list', data: [{ id: 'm1' }] },
+    () => buildApp({ isAdmin: true }).request(`/api/upstreams/${upstream.id}/models`),
+  )
+
+  expect(res.status).toBe(400)
+  const body = await res.json() as { error?: string; models?: unknown }
+  expect(body.models).toBeUndefined()
+  expect(body.error).toContain(`failed to resolve proxy chain for upstream ${upstream.id}`)
+  expect(body.error).toContain('proxy store unavailable')
+})
+
+/**
+ * Wiring pin, independent of the swallow above: these routes must hand the
+ * upstream's chain to the provider. claude-code is used because its models
+ * call actually threads the injected fetcher (custom/copilot probe on the
+ * runtime's fetch), so a regression that drops the fetcher argument shows up
+ * here as the stubbed direct fetch quietly succeeding.
+ *
+ * A dangling proxy id is reported by id — never by URL, which for a trojan
+ * entry would carry its password.
+ */
+test('the admin routes dial through the upstream chain and name a dangling proxy by id', async () => {
+  const { Database } = await import('bun:sqlite')
+  const { BunSqliteRepo } = await import('@vibe-llm/platform-bun/src/bun-sqlite-repo.ts')
+  const sqlRepo = new BunSqliteRepo(new Database(':memory:'))
+  initRepo(sqlRepo)
+
+  const now = '2026-01-01T00:00:00.000Z'
+  const accountUuid = '00000000-0000-4000-8000-000000000001'
+  const upstream: UpstreamRecord = {
+    id: 'up_cc_chain_aaaaaaaa',
+    provider: 'claude-code',
+    name: 'cc',
+    enabled: true,
+    sortOrder: 0,
+    config: {
+      accounts: [{
+        email: 'a@example.com', accountUuid, organizationUuid: null,
+        subscriptionType: 'max', rateLimitTier: null,
+      }],
+    },
+    flagOverrides: {},
+    disabledPublicModelIds: [],
+    proxyFallbackList: [{ id: 'px_dangling' }],
+    state: {
+      accounts: [{
+        accountUuid, tokenKind: 'oauth', refreshToken: 'rt', state: 'active',
+        stateUpdatedAt: now,
+        accessToken: { token: 'at', expiresAt: Date.now() + 3_600_000, refreshedAt: now },
+        quotaSnapshot: null, usageProbeSnapshot: null,
+      }],
+    },
+    createdAt: now, updatedAt: now,
+  }
+  await sqlRepo.upstreams.save(upstream)
+
+  const { testBody, modelsRes, modelsBody } = await withStubbedDirectFetch(
+    { data: [{ id: 'claude-opus-4-7', display_name: 'x', max_input_tokens: 100 }] },
+    async () => {
+      const app = buildApp({ isAdmin: true })
+      const testRes = await app.request(`/api/upstreams/${upstream.id}/test`, { method: 'POST' })
+      const modelsRes = await app.request(`/api/upstreams/${upstream.id}/models`)
+      return {
+        testBody: await testRes.json() as { ok?: boolean; error?: string },
+        modelsRes,
+        modelsBody: await modelsRes.json() as { error?: string },
+      }
+    },
+  )
+
+  expect(testBody.ok).toBe(false)
+  expect(testBody.error).toContain('px_dangling')
+  expect(modelsRes.status).toBe(502)
+  expect(modelsBody.error).toContain('px_dangling')
 })
