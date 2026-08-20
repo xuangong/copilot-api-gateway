@@ -70,3 +70,34 @@ test('a proxy catalog read failure rejects instead of yielding direct-dialing bi
 
   await expect(listProviderBindings({ ownerId: OWNER })).rejects.toThrow(STORAGE_FAILURE)
 })
+
+/**
+ * The other two ways the fetcher build can fail. Both are startup-order bugs
+ * rather than data problems, and both must reject for the same reason as the
+ * catalog read above: a build that does not happen leaves every plugin without
+ * `ctx.fetcherForUpstream`, i.e. direct egress on a proxy-only host.
+ *
+ * `beforeEach` initializes both singletons, so each case resets and re-inits
+ * only the one it is not testing.
+ */
+test('an uninitialized runtime location rejects rather than yielding bindings', async () => {
+  __resetPlatformForTests()
+  initRepo(repo)
+  // No initRuntimeLocation: `getRuntimeLocation()` throws while evaluating the
+  // argument to createPerRequestFetcher, before the fetcher exists at all.
+  await expect(listProviderBindings({ ownerId: OWNER })).rejects.toThrow(
+    /Runtime location not initialized/,
+  )
+})
+
+test('an uninitialized repo rejects rather than yielding bindings', async () => {
+  __resetPlatformForTests()
+  initRuntimeLocation('bun')
+  // Reaching the throw at all is the point: `listVisibleUpstreams`'s own
+  // `getRepo()` fails first and registry.ts swallows that into an empty list,
+  // so this pins that the swallow stops there and does not cover the
+  // `getRepo()` inside createPerRequestFetcher (per-request.ts:35).
+  await expect(listProviderBindings({ ownerId: OWNER })).rejects.toThrow(
+    /Repo not initialized/,
+  )
+})

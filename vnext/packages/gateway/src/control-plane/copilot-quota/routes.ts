@@ -46,11 +46,12 @@ async function fetchQuota(token: string, doFetch: Fetcher): Promise<Response> {
  *     chain and the walk ends without a usable hop;
  *   - a row that exists but whose URL does not parse: proxy-catalog.ts:39
  *     collects the parse error instead of throwing, and per-request.ts:56-63
- *     hands back a fetcher that throws on call. That message embeds the full
- *     proxy URI (packages/proxy/src/url.ts:64), password included, so this
- *     shape can put a proxy URL in the 502 body. Pre-existing data-plane
- *     behaviour, called out here so `proxyChainError`'s URL-safety is not read
- *     as a guarantee for the whole route.
+ *     hands back a fetcher that throws on call, naming the proxy id only. The
+ *     parse error itself is deliberately not relayed: several of its shapes echo
+ *     the offending URI or userinfo (packages/proxy/src/url.ts:100, :114, :197),
+ *     which for a trojan url is its password.
+ * Both shapes therefore reach the 502 body as an id, matching what
+ * `proxyChainError` produces on the draft path.
  *
  * What can throw *here* is the surrounding machinery — an uninitialized runtime
  * location or repo, or a storage failure reading the upstream/proxy rows — so

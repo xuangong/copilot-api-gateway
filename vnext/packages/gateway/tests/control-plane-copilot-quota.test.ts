@@ -198,3 +198,51 @@ test('GET /api/copilot-quota with an unresolvable chain → 502 naming the proxy
   const body = (await res.json()) as { error: string }
   expect(body.error).toContain('px_gone')
 })
+
+/**
+ * The admin route resolves the chain of the *account's* owner, not the
+ * caller's. The chained row below is keyed `up_copilot_u2_7` — what
+ * `copilotUpstreamRowId(account.ownerId, 7)` builds — so reaching it proves the
+ * ownerId was carried through.
+ *
+ * Verified by mutation: dropping `account.ownerId ?? ''` to a bare `''` builds
+ * `up_copilot_global_7`, which this stub answers with null, and the route then
+ * relays over the ambient fetch and 200s. Every other admin case in this file
+ * survives that mutation, because they all leave `getById` returning null for
+ * both ids.
+ */
+test('GET /api/admin/copilot-quota/:id resolves the chain of the account owner', async () => {
+  const now = new Date().toISOString()
+  const chained: UpstreamRecord = {
+    id: 'up_copilot_u2_7',
+    provider: 'copilot',
+    name: 'chained',
+    enabled: true,
+    sortOrder: 0,
+    config: {},
+    flagOverrides: {},
+    disabledPublicModelIds: [],
+    state: null,
+    createdAt: now,
+    updatedAt: now,
+    proxyFallbackList: [{ id: 'px_gone' }],
+  }
+
+  initRepo({
+    ...store.repo,
+    upstreams: {
+      ...store.repo.upstreams,
+      getById: async (id: string) => (id === chained.id ? chained : null),
+    },
+    proxies: { ...store.repo.proxies, list: async () => [] },
+    proxyBackoffs: { ...store.repo.proxyBackoffs, listForUpstream: async () => [] },
+  })
+
+  await store.repo.github.saveAccount(7, ghAccount(7, 'u2'))
+
+  const res = await buildApp({ userId: 'admin' as UserId, isAdmin: true })
+    .request('/api/admin/copilot-quota/7')
+  expect(res.status).toBe(502)
+  const body = (await res.json()) as { error: string }
+  expect(body.error).toContain('px_gone')
+})
