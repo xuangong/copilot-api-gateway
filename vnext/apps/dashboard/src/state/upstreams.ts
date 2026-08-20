@@ -134,7 +134,11 @@ export function useUpstreams() {
         setProbeResults((p) => ({ ...p, [id]: r }))
         if (r.ok) {
           toast(`${name}: ${r.modelCount ?? 0} models`, "success")
-          loadModels()
+          // Awaited so the row's busy state covers the list refresh too: the
+          // probe route repopulates the server-side models cache before
+          // answering, so this re-read is what makes "Models served (N)" agree
+          // with the count in the toast.
+          await loadModels()
         } else {
           toast(`${name}: ${r.error ?? "probe failed"}${r.hint ? ` — ${r.hint}` : ""}`, "error")
         }

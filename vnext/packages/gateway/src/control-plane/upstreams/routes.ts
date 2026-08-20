@@ -39,7 +39,7 @@ import {
   getFlagCatalog,
   defaultsForUpstream,
 } from '../../data-plane/flags/index.ts'
-import { createProviderFromUpstream } from '../../data-plane/providers/registry.ts'
+import { createProviderFromUpstream, refreshModelsCache } from '../../data-plane/providers/registry.ts'
 import { resolveControlPlaneFetcher } from './proxy-resolution.ts'
 import { getRuntimeLocation } from '@vibe-core/platform'
 import { normalizeProxyFallbackList } from '@vibe-core/proxy-repo'
@@ -582,7 +582,28 @@ upstreamsRouter.post('/:id/test', async (c) => {
     if (!provider) {
       return c.json({ ok: false, error: `unable to construct ${upstream.provider} provider for upstream ${upstream.id}` })
     }
-    return c.json(await provider.probe())
+    const result = await provider.probe()
+    // The probe read the upstream live, but GET /api/models is served from a
+    // 120s memo keyed by `upstream.updatedAt` — and a probe saves nothing, so
+    // that key does not change. Without this refresh the dashboard's "Models
+    // served (N)" keeps showing the pre-probe count for up to two minutes
+    // while the probe's own toast reports the live one.
+    //
+    // Deliberately a second fetch rather than reusing the probe's response:
+    // AzureProvider.probe lists deployments rather than models
+    // (provider-azure/src/provider.ts:117), so its response is not a model
+    // list. Azure's getModels is synthesized from config without an HTTP call,
+    // so the extra fetch costs nothing on that provider.
+    //
+    // A failure here must not flip a successful probe into an error — the
+    // upstream is demonstrably reachable, and the fallout is the stale list we
+    // would have served anyway.
+    if (result.ok) {
+      try {
+        await refreshModelsCache(upstream, provider)
+      } catch {}
+    }
+    return c.json(result)
   } catch (err) {
     return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) })
   }

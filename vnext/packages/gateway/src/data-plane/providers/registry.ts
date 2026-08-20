@@ -178,11 +178,38 @@ const MODELS_MEMO_TTL_MS = 120_000
 const MODELS_L2_TTL_SEC = 120
 const modelsMemo = new Map<string, { expiresAt: number; models: ModelsResponse }>()
 
+const modelsCacheKey = (upstream: UpstreamRecord<unknown>): string =>
+  `models:${upstream.id}@${upstream.updatedAt}`
+
+/**
+ * Fetches the upstream's model list and writes it to both layers, replacing
+ * whatever they held. `getCachedModels` uses it for its miss path.
+ *
+ * Exported for the control plane's probe route: a probe saves nothing, so
+ * `updatedAt` — and with it the key above — is unchanged, and the dashboard's
+ * model list would keep serving the pre-probe entry for up to 120s while the
+ * probe's own toast reported the live count.
+ */
+export async function refreshModelsCache(
+  upstream: UpstreamRecord<unknown>,
+  provider: LlmModelProvider,
+): Promise<ModelsResponse> {
+  const key = modelsCacheKey(upstream)
+  const models = await provider.getModels()
+  modelsMemo.set(key, { expiresAt: Date.now() + MODELS_MEMO_TTL_MS, models })
+  try {
+    await getCache().set(key, models, MODELS_L2_TTL_SEC)
+  } catch {
+    // L2 write failure is non-fatal; L1 still serves this isolate.
+  }
+  return models
+}
+
 async function getCachedModels(
   upstream: UpstreamRecord<unknown>,
   provider: LlmModelProvider,
 ): Promise<ModelsResponse> {
-  const key = `models:${upstream.id}@${upstream.updatedAt}`
+  const key = modelsCacheKey(upstream)
   const now = Date.now()
 
   // L1: in-process memo (Map). Fast, isolate-local.
@@ -204,14 +231,7 @@ async function getCachedModels(
   }
 
   // Both miss: fetch upstream + write both layers.
-  const models = await provider.getModels()
-  modelsMemo.set(key, { expiresAt: now + MODELS_MEMO_TTL_MS, models })
-  try {
-    await getCache().set(key, models, MODELS_L2_TTL_SEC)
-  } catch {
-    // L2 write failure is non-fatal; L1 still serves this isolate.
-  }
-  return models
+  return refreshModelsCache(upstream, provider)
 }
 
 /** Clears the in-process /models memo. Test-only. */

@@ -14,6 +14,7 @@ import {
   upstreamMiscRouter,
   type AuthCtx,
 } from '../src/control-plane/upstreams/routes.ts'
+import { listUpstreamModels } from '../src/data-plane/providers/registry.ts'
 
 function inMemoryRepo() {
   const upstreams = new Map<string, UpstreamRecord>()
@@ -373,6 +374,70 @@ test('POST /api/upstreams/:id/test custom → 200 via probe', async () => {
     expect(res.status).toBe(200)
     const body = await res.json() as { ok?: boolean }
     expect(body.ok).toBe(true)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+/**
+ * A probe saves nothing, so `upstream.updatedAt` — the key of the 120s models
+ * memo behind GET /api/models — is the same before and after it. Without the
+ * refresh in the route, the dashboard's "Models served (N)" would keep serving
+ * the pre-probe entry for up to two minutes while the probe's own toast
+ * reported the live count.
+ *
+ * The middle assertion is the load-bearing one: it proves the memo really is
+ * stale at that point, so the final assertion can only pass because the route
+ * refreshed it rather than because the memo happened to have expired.
+ *
+ * L1 only — this file never calls initCache, and both cache layers' L2 access
+ * is wrapped in try/catch, so the distributed layer behaves as a permanent
+ * miss here.
+ */
+test('POST /api/upstreams/:id/test refreshes the models cache that GET /api/models reads', async () => {
+  const originalFetch = globalThis.fetch
+  let served: Array<{ id: string }> = [{ id: 'm1' }]
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ object: 'list', data: served }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    })) as typeof fetch
+  try {
+    const now = new Date().toISOString()
+    const u: UpstreamRecord = {
+      id: 'up_custom_b_bbbbbbbb',
+      provider: 'custom',
+      name: 'b',
+      enabled: true,
+      sortOrder: 0,
+      config: { name: 'b', baseUrl: 'https://api.example.com/v1', apiKey: 'sk-x', endpoints: ['chat_completions'] },
+      flagOverrides: {},
+      disabledPublicModelIds: [],
+      // An empty chain means "raw socket", and no SocketDial is bootstrapped in
+      // this file; `direct_fetch` routes egress through the stubbed
+      // globalThis.fetch above.
+      proxyFallbackList: [{ id: 'direct_fetch' }],
+      createdAt: now, updatedAt: now,
+    }
+    await store.repo.upstreams.save(u)
+
+    // allOwners mirrors the dashboard's own call (GET /api/models?dedupe=0&allOwners=1);
+    // the default owner-scoped walk filters on `ownerId === ''`, which this
+    // fixture leaves unset.
+    const ids = async () => (await listUpstreamModels({ allOwners: true })).data?.map((m) => m.id)
+
+    // Prime the memo with the pre-change list.
+    expect(await ids()).toEqual(['m1'])
+
+    // The upstream gains a model. Nothing writes the row, so the memo key is
+    // unchanged and the entry primed above still answers.
+    served = [{ id: 'm1' }, { id: 'm2' }]
+    expect(await ids()).toEqual(['m1'])
+
+    const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${u.id}/test`, { method: 'POST' })
+    expect(res.status).toBe(200)
+    expect((await res.json() as { modelCount?: number }).modelCount).toBe(2)
+
+    expect(await ids()).toEqual(['m1', 'm2'])
   } finally {
     globalThis.fetch = originalFetch
   }
