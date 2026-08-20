@@ -616,7 +616,7 @@ GET /dashboard  →  200 text/html
 | 维度 | Bun 本地(docker) | Cloudflare Workers |
 |---|---|---|
 | 入口 | `apps/platform-bun/src/bootstrap.ts` | `apps/platform-cloudflare/src/bootstrap.ts` |
-| 部署单元 | `docker-compose.vnext.yml`(端口 41415) | `wrangler deploy` |
+| 部署单元 | `docker-compose.vnext.yml`(端口 41414) | `wrangler deploy` |
 | 存储 | `bun:sqlite` + 本地 fs | D1 + KV + R2 |
 | 进程模型 | 长驻 Bun 进程 | 每请求隔离 worker 实例 |
 | 冷启动 | 无(容器常驻) | 有(V8 isolate 启动 ~5ms) |
@@ -632,7 +632,7 @@ GET /dashboard  →  200 text/html
 services:
   vnext:
     build: { context: ., dockerfile: vnext/apps/platform-bun/Dockerfile }
-    ports: ["41415:41415"]
+    ports: ["41414:41414"]
     volumes: ["./data-vnext:/data"]
     environment:
       VNEXT_DEV_GITHUB_TOKEN: ${VNEXT_DEV_GITHUB_TOKEN:-}

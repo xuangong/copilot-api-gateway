@@ -9,7 +9,7 @@
 ```sh
 # 全量本地(带热更新)
 cd vnext/apps/platform-bun
-bun --hot src/server.ts        # 监听 41415
+bun --hot src/server.ts        # 监听 8788(PORT 未设时的兜底);docker 里是 41414
 
 # Docker(和生产同拓扑)—— 从仓库根跑
 cd /Users/zhangxian/projects/copilot-api-gateway
@@ -56,8 +56,8 @@ Client ID/Secret 从 [Google Cloud Console → APIs & Services → Credentials](
 
 1. **OAuth consent screen**:User Type 选 External;把要登录的 Google 邮箱加进 Test users。
 2. **Authorized redirect URIs**:必须精确匹配后端拼出来的 URI(`google-routes.ts` 里 `${publicOrigin}/auth/google/callback`)。至少加这几条:
-   - `http://localhost:41415/auth/google/callback`
-   - 你远程 lab 的公网访问 URL,如 `http://20.193.231.97:41415/auth/google/callback`
+   - `http://localhost:41414/auth/google/callback`
+   - 你远程 lab 的公网访问 URL,如 `http://20.193.231.97:41414/auth/google/callback`
    - CFW 域名的 `https://.../auth/google/callback`
 
 漏了会看到 **"Access blocked: This app's request is invalid"** —— 100% 是这里没配对。

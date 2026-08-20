@@ -56,7 +56,7 @@ RUN bun run build:ui
 RUN mkdir -p /data
 ENV VNEXT_DB_PATH=/data/vnext.sqlite
 
-EXPOSE 41415
+EXPOSE 41414
 
 WORKDIR /app/apps/platform-bun
 CMD ["bun", "run", "src/server.ts"]

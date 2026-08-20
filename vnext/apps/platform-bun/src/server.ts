@@ -7,7 +7,7 @@ bootstrapBunPlatform({
   cacheBackend: process.env.CACHE_BACKEND,
 })
 
-// Docker compose sets PORT=41415; bare local runs fall back to 8788.
+// Docker compose sets PORT=41414; bare local runs fall back to 8788.
 const port = Number(process.env.PORT ?? 8788)
 Bun.serve({
   port,

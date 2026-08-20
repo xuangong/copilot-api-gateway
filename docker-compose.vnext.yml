@@ -7,9 +7,11 @@ services:
         - npmrc
     container_name: copilot-gateway-vnext
     ports:
-      - "${VNEXT_PORT:-41415}:41415"
+      # 41414 on both sides, and on both the local and the SSH host, so one URL
+      # and one set of smoke-test commands work everywhere.
+      - "${VNEXT_PORT:-41414}:41414"
     environment:
-      - PORT=41415
+      - PORT=41414
       - ACCOUNT_TYPE=${ACCOUNT_TYPE:-individual}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}

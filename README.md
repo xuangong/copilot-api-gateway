@@ -55,7 +55,7 @@ bun run deploy
 ### Docker 部署
 
 ```bash
-# 使用 vNext 专用 compose（端口 41415，数据卷 ./data-vnext）
+# 使用 vNext 专用 compose（端口 41414，数据卷 ./data-vnext）
 ADMIN_KEY=your_admin_key docker compose -f docker-compose.vnext.yml up -d
 ```
 
@@ -65,7 +65,7 @@ ADMIN_KEY=your_admin_key docker compose -f docker-compose.vnext.yml up -d
 
 ```bash
 cd vnext && bun install
-cd apps/platform-bun && bun run start    # Bun + Hono 本地服务器，端口 41415
+cd apps/platform-bun && bun run start    # Bun + Hono 本地服务器，端口 41414
 
 # 类型检查（在 vnext 根目录）
 cd vnext && bun run typecheck
@@ -370,7 +370,7 @@ Dashboard 由 React 19 + Vite + Tailwind 构建（`vnext/apps/dashboard/`），�
 ├── vnext/
 │   ├── apps/
 │   │   ├── dashboard/              # React 19 + Vite + Tailwind 管理面板
-│   │   ├── platform-bun/           # Bun + Hono 本地/Docker 服务器（端口 41415）
+│   │   ├── platform-bun/           # Bun + Hono 本地/Docker 服务器（端口 41414）
 │   │   └── platform-cloudflare/    # Cloudflare Workers 入口（wrangler.jsonc）
 │   ├── packages/
 │   │   ├── gateway/                # 核心：control-plane + data-plane 路由、observability
@@ -397,7 +397,7 @@ Dashboard 由 React 19 + Vite + Tailwind 构建（`vnext/apps/dashboard/`），�
 │   └── docs/                       # 设计 spec 与实现 plan
 ├── migrations/                     # D1 / SQLite schema 迁移（wrangler 与 bun-sqlite 共用）
 ├── tests/                          # SDK 集成测试
-└── docker-compose.vnext.yml        # Docker 编排（端口 41415，卷 ./data-vnext）
+└── docker-compose.vnext.yml        # Docker 编排（端口 41414，卷 ./data-vnext）
 ```
 
 ## 测试
