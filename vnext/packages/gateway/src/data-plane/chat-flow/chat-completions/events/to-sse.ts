@@ -1,4 +1,5 @@
 import { sseFrame, type SseFrame, type ProtocolFrame } from '@vibe-core/result'
+import { isOpenAIUsageOnlyEventShape } from '@vibe-llm/protocols/common'
 import type { ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
 
 export interface ChatCompletionsProtocolFrameToSSEFrameOptions {
@@ -15,8 +16,10 @@ export const chatCompletionsProtocolFrameToSSEFrame = (
   }
   if (frame.type === 'done') return sseFrame('[DONE]')
   const ev = frame.event as { object?: unknown; choices?: unknown[]; usage?: unknown }
-  // Drop usage-only chunks unless includeUsageChunk is set
-  if (!options.includeUsageChunk && Array.isArray(ev.choices) && ev.choices.length === 0 && ev.usage !== undefined) return null
+  // Drop usage-only chunks unless includeUsageChunk is set. The predicate also
+  // matches the Zhipu/GLM vLLM fork's `choices: [{ index: 0 }]` placeholder,
+  // which a bare length check would forward to a client that never asked.
+  if (!options.includeUsageChunk && isOpenAIUsageOnlyEventShape(ev)) return null
   // Ensure each emitted chunk has the canonical `object` discriminator. Azure-
   // fronted Copilot upstream omits it on every frame; the OpenAI SDK rejects
   // chunks without it. Cheap fixup: synthesize when missing. Root parity:

@@ -19,6 +19,20 @@ test('chat_completions: [DONE] is terminal, success', async () => {
   expect(md.usage).toMatchObject({ prompt_tokens: 1, completion_tokens: 2 })
 })
 
+test('chat_completions: usage is accumulated from the Zhipu/GLM vLLM fork shape', async () => {
+  // The fork closes the stream with a placeholder choice instead of `choices: []`.
+  const frames: ProtocolFrame<unknown>[] = [
+    { type: 'event', event: { choices: [{ index: 0, delta: { content: 'hi' } }] } },
+    { type: 'event', event: { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] } },
+    { type: 'event', event: { choices: [{ index: 0 }], usage: { prompt_tokens: 8, completion_tokens: 9 } } },
+    { type: 'done' },
+  ]
+  const { events, finalMetadata } = withUpstreamTelemetry(gen(frames), { protocol: 'chat_completions' })
+  for await (const _ of events) { /* drain */ }
+  const md = await finalMetadata
+  expect(md.usage).toMatchObject({ prompt_tokens: 8, completion_tokens: 9 })
+})
+
 test('messages: error event marks failed', async () => {
   const frames: ProtocolFrame<unknown>[] = [
     { type: 'event', event: { type: 'error', message: 'boom' } },

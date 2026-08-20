@@ -119,3 +119,5 @@ export {
   type DecodedOpaqueValue,
   type SplitOpaqueTrailer,
 } from './opaque-value'
+
+export { isOpenAIUsageOnlyEventShape } from './openai-stream'

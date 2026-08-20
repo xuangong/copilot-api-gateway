@@ -6,6 +6,7 @@
  * No callbacks, no I/O. Replaces the Spec-2 recorder interface.
  */
 import type { ProtocolFrame } from '@vibe-core/result'
+import { isOpenAIUsageOnlyEventShape } from '@vibe-llm/protocols/common'
 
 export interface UpstreamTelemetryCtx {
   readonly abortSignal?: AbortSignal
@@ -50,7 +51,11 @@ const extractUsage = <T>(frame: ProtocolFrame<T>): unknown => {
     response?: { usage?: unknown }
     message?: { usage?: unknown }
   }
-  if (Array.isArray(ev.choices) && ev.choices.length === 0 && ev.usage) return ev.usage
+  // chat_completions carries usage on a trailing content-free chunk. The
+  // predicate accepts both the `choices: []` shape and the Zhipu/GLM vLLM
+  // fork's `choices: [{ index: 0 }]` placeholder; the fork's shape used to
+  // match no branch here at all, leaving `usage` empty for the whole stream.
+  if (isOpenAIUsageOnlyEventShape(ev)) return ev.usage
   if (ev.response?.usage) return ev.response.usage
   if (ev.message?.usage) return ev.message.usage
   if (ev.usage && (ev.type === 'message_delta' || ev.type === 'message_start')) return ev.usage

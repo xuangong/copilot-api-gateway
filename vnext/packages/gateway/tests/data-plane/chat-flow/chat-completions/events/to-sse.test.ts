@@ -19,6 +19,19 @@ test('filters usage-only chunk when includeUsageChunk=false', () => {
   expect(sse).toBeNull()
 })
 
+test('filters the Zhipu/GLM vLLM fork usage chunk, which uses a placeholder choice', () => {
+  const ev = { id: 'x', object: 'chat.completion.chunk', choices: [{ index: 0 }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } } as any
+  const sse = chatCompletionsProtocolFrameToSSEFrame(eventFrame(ev), { includeUsageChunk: false })
+  expect(sse).toBeNull()
+})
+
+test('preserves the Azure prompt_filter_results frame, which has empty choices but no usage', () => {
+  const ev = { id: 'x', choices: [], prompt_filter_results: [{ prompt_index: 0 }] } as any
+  const sse = chatCompletionsProtocolFrameToSSEFrame(eventFrame(ev), { includeUsageChunk: false })
+  expect(sse).not.toBeNull()
+  expect(JSON.parse(sse!.data).prompt_filter_results).toEqual([{ prompt_index: 0 }])
+})
+
 test('passes usage-only chunk when includeUsageChunk=true', () => {
   const ev = { id: 'x', object: 'chat.completion.chunk', choices: [], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } } as any
   const sse = chatCompletionsProtocolFrameToSSEFrame(eventFrame(ev), { includeUsageChunk: true })
