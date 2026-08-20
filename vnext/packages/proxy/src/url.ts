@@ -15,8 +15,9 @@
 //
 // Round-trip guarantee: `parseProxyUri(formatProxyUri(c))` deep-equals `c`
 // for every supported variant. The serialized string is canonical-shaped
-// but not byte-for-byte identical with arbitrary inputs — query order,
-// percent-encoding, and SS-2022 base64 padding may vary.
+// but not byte-for-byte identical with arbitrary inputs — query order and
+// percent-encoding may vary, and SS-2018 userinfo is re-emitted as unpadded
+// base64url.
 
 import { base64UrlDecodeBytes, base64UrlEncodeBytes, utf8Bytes } from './bytes.ts';
 import { ProxyUriError } from './errors.ts';
@@ -332,14 +333,16 @@ const formatAuthority = (
   host: string,
   port: number,
 ): string => {
-  let userinfo = '';
-  if (username !== undefined && username !== '') {
-    userinfo = encodeURIComponent(username);
-    if (password !== undefined && password !== '') {
-      userinfo += `:${encodeURIComponent(password)}`;
-    }
-    userinfo += '@';
-  }
+  // A password with no username is legal userinfo (`scheme://:pw@host`) and
+  // parses back into `{ password }` alone, so it must not be dropped: the
+  // dashboard renders username and password as two independent optional
+  // fields, and re-serializing an edited node would otherwise silently strip
+  // the credential.
+  const user = username === undefined ? '' : encodeURIComponent(username);
+  const pass = password === undefined || password === ''
+    ? ''
+    : `:${encodeURIComponent(password)}`;
+  const userinfo = user === '' && pass === '' ? '' : `${user}${pass}@`;
   return `${scheme}://${userinfo}${host}:${port}`;
 };
 
@@ -388,10 +391,12 @@ const formatSs = (config: ShadowsocksProxyConfig): string => {
 };
 
 const formatSs2022 = (config: Shadowsocks2022ProxyConfig): string => {
-  // SS-2022 keeps userinfo as plaintext `method:base64key`. We emit the
-  // base64 padding (`=`) raw — `parseProxyUri` decodes via
-  // `decodeURIComponent`, which accepts both raw and percent-encoded `=`.
-  return `ss://${config.method}:${config.passwordBase64}`
+  // SS-2022 keeps userinfo as plaintext `method:base64key`. The key is
+  // standard base64, whose alphabet includes `/` — left raw, the URL parser
+  // would read it as the start of the path and the authority would fall
+  // apart. Percent-encode the whole key (`/`, `+` and `=` all become escapes)
+  // and let `pctDecode` on the parse side hand back the exact original.
+  return `ss://${config.method}:${encodeURIComponent(config.passwordBase64)}`
     + `@${config.host}:${config.port}${
       formatFragment(config.name, config.host, config.port)}`;
 };

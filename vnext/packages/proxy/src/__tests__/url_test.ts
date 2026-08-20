@@ -293,3 +293,35 @@ test('ss:// userinfo 解出来没有冒号时抛 ProxyUriError', () => {
   const userinfo = btoa('no-colon-here');
   expect(() => parseProxyUri(`ss://${userinfo}@h:8388`)).toThrow(ProxyUriError);
 });
+
+test('ss2022:// PSK 含 base64 的 / 与 + 时仍能往返', () => {
+  // 标准 base64 字母表含 '/'，直接拼进 authority 会被 URL 解析器当作 path
+  // 起点，整个 authority 就断了。`openssl rand -base64 32` 产出的 PSK 大约
+  // 一半含 '/'，所以这不是边角情况。
+  const config = {
+    kind: 'ss2022',
+    method: '2022-blake3-aes-256-gcm',
+    passwordBase64: 'ab/cd+ef=',
+    host: 'h.example.com',
+    port: 8388,
+    name: 'n',
+  } as const;
+  const uri = formatProxyUri(config);
+  expect(uri).not.toContain('/cd');
+  expect(parseProxyUri(uri)).toEqual(config);
+});
+
+test('只填密码不填用户名的 authority 不会被静默丢弃', () => {
+  // `scheme://:pw@host` 是合法 userinfo，解析回来就是单独一个 password。
+  // 表单把用户名和密码做成两个各自可选的框，所以这条路径可达；旧实现
+  // 在用户名为空时整段跳过 userinfo，等于"打开旧节点、什么都没改、点保存"
+  // 就把凭据抹了。
+  for (const config of [
+    { kind: 'socks5', password: 'pw', host: 'h.com', port: 1080, name: 'n' },
+    { kind: 'http', tls: false, password: 'pw', host: 'h.com', port: 8080, name: 'n' },
+  ] as const) {
+    const uri = formatProxyUri(config);
+    expect(uri).toContain(':pw@');
+    expect(parseProxyUri(uri)).toEqual(config);
+  }
+});
