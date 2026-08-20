@@ -9,9 +9,20 @@ import {
   patchProxy,
   deleteProxy,
   resetBackoffs,
+  testProxy,
   type ProxyRecord,
   type ProxyBackoffRow,
+  type ProxyTestAnchor,
+  type ProxyTestResult,
 } from "../../api/proxies"
+import { ProxyForm } from "./ProxyForm"
+import {
+  type ProxyDraft,
+  defaultsFor,
+  draftIsValid,
+  draftUrl,
+  parseProxyUriSafe,
+} from "./proxy-form-config"
 
 /**
  * Hide the credential in the URL so a screen-share does not leak it. The
@@ -22,7 +33,15 @@ function maskUrl(url: string): string {
   return url.replace(/\/\/([^@/]+)@/, "//••••@")
 }
 
-const EMPTY_DRAFT = { name: "", url: "", dialTimeoutSeconds: "" }
+const ANCHORS: ProxyTestAnchor[] = ["ipify", "aws", "ident.me-v6"]
+
+const EMPTY_DRAFT: ProxyDraft = {
+  name: "",
+  // 新建时默认落在 trojan —— 这是本部署里最常用的形态。
+  config: defaultsFor("trojan", { host: "", port: 443, name: "" }),
+  url: null,
+  dialTimeoutSeconds: "",
+}
 
 export function ProxiesTab() {
   const t = useT()
@@ -32,8 +51,11 @@ export function ProxiesTab() {
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [draft, setDraft] = useState(EMPTY_DRAFT)
+  const [draft, setDraft] = useState<ProxyDraft>(EMPTY_DRAFT)
   const [creating, setCreating] = useState(false)
+  const [anchor, setAnchor] = useState<ProxyTestAnchor>("ipify")
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<ProxyTestResult | null>(null)
 
   const reload = useCallback(async () => {
     try {
@@ -52,29 +74,59 @@ export function ProxiesTab() {
   const startEdit = (p: ProxyRecord) => {
     setEditingId(p.id)
     setCreating(false)
+    setTestResult(null)
+    const parsed = parseProxyUriSafe(p.url)
     setDraft({
       name: p.name,
-      url: p.url,
+      // 存量行的 URL 理应都能解析（写入时 POST/PATCH 校验过），但历史数据
+      // 或手工改库可能留下解析不了的行 —— 那种情况退回纯 URL 编辑模式，
+      // 让管理员至少能看到并修正它，而不是被空表单挡住。
+      config: parsed ?? EMPTY_DRAFT.config,
+      url: parsed ? null : p.url,
       dialTimeoutSeconds: p.dialTimeoutSeconds == null ? "" : String(p.dialTimeoutSeconds),
     })
+  }
+
+  const closeForm = () => {
+    setCreating(false)
+    setEditingId(null)
+    setDraft(EMPTY_DRAFT)
+    setTestResult(null)
   }
 
   const submit = async () => {
     const secs = draft.dialTimeoutSeconds.trim()
     const body = {
       name: draft.name.trim(),
-      url: draft.url.trim(),
+      url: draftUrl(draft).trim(),
       dialTimeoutSeconds: secs ? Number(secs) : null,
     }
     try {
       if (editingId) await patchProxy(editingId, body)
       else await createProxy(body)
-      setEditingId(null)
-      setCreating(false)
-      setDraft(EMPTY_DRAFT)
+      closeForm()
       await reload()
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "error")
+    }
+  }
+
+  const runTest = async () => {
+    const secs = draft.dialTimeoutSeconds.trim()
+    setTesting(true)
+    setTestResult(null)
+    try {
+      setTestResult(
+        await testProxy({
+          url: draftUrl(draft).trim(),
+          dialTimeoutSeconds: secs ? Number(secs) : null,
+          anchor,
+        }),
+      )
+    } catch (e) {
+      setTestResult({ ok: false, error: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setTesting(false)
     }
   }
 
@@ -116,6 +168,7 @@ export function ProxiesTab() {
             setCreating(true)
             setEditingId(null)
             setDraft(EMPTY_DRAFT)
+            setTestResult(null)
           }}
           className="btn-primary !text-xs !py-1 !px-3 shrink-0"
         >
@@ -125,40 +178,53 @@ export function ProxiesTab() {
 
       {creating || editingId ? (
         <div className="bg-surface-900 border border-surface-600 rounded-lg p-3 space-y-2">
-          <input
-            value={draft.name}
-            onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-            placeholder={t("dash.proxyNameLabel")}
-            className="w-full text-xs !py-1.5 !px-2"
-          />
-          <input
-            value={draft.url}
-            onChange={(e) => setDraft((d) => ({ ...d, url: e.target.value }))}
-            placeholder="trojan://password@host:443"
-            className="w-full text-xs font-mono !py-1.5 !px-2"
-          />
-          <input
-            value={draft.dialTimeoutSeconds}
-            onChange={(e) => setDraft((d) => ({ ...d, dialTimeoutSeconds: e.target.value }))}
-            placeholder={t("dash.proxyDialTimeoutLabel")}
-            inputMode="numeric"
-            className="w-full text-xs !py-1.5 !px-2"
-          />
-          <div className="flex gap-2">
-            <button onClick={submit} className="btn-primary !text-xs !py-1 !px-3">
+          <ProxyForm draft={draft} onChange={setDraft} />
+
+          <div className="flex gap-2 items-center flex-wrap">
+            <button
+              onClick={submit}
+              disabled={!draftIsValid(draft)}
+              className="btn-primary !text-xs !py-1 !px-3 disabled:opacity-40"
+            >
               {t("dash.save")}
             </button>
             <button
-              onClick={() => {
-                setCreating(false)
-                setEditingId(null)
-                setDraft(EMPTY_DRAFT)
-              }}
-              className="btn-ghost !text-xs !py-1 !px-3"
+              onClick={runTest}
+              disabled={testing || !draftIsValid(draft)}
+              className="btn-ghost !text-xs !py-1 !px-3 disabled:opacity-40"
             >
+              {testing ? t("dash.proxyTestRunning") : t("dash.proxyTestBtn")}
+            </button>
+            <select
+              value={anchor}
+              onChange={(e) => {
+                // find() 把 string 收窄回 ProxyTestAnchor —— 守卫而非断言。
+                const a = ANCHORS.find((x) => x === e.target.value)
+                if (a) setAnchor(a)
+              }}
+              title={t("dash.proxyAnchorLabel")}
+              className="bg-surface-800 border border-surface-600 rounded px-2 py-1 text-xs"
+            >
+              {ANCHORS.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+            <button onClick={closeForm} className="btn-ghost !text-xs !py-1 !px-3">
               {t("dash.closeBtn")}
             </button>
           </div>
+
+          {testResult ? (
+            <div
+              className={`text-xs font-mono break-all ${
+                testResult.ok ? "text-themed" : "text-accent-red"
+              }`}
+            >
+              {testResult.ok
+                ? t("dash.proxyTestOk", { ip: testResult.egressIp })
+                : t("dash.proxyTestFail", { err: testResult.error })}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

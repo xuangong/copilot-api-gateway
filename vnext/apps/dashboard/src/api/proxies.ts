@@ -64,6 +64,29 @@ export function resetBackoffs(proxyId: string): Promise<{ ok: true }> {
   })
 }
 
+/** 出口探针的锚点。与 gateway 的 ANCHORS 表一一对应。 */
+export type ProxyTestAnchor = "ipify" | "aws" | "ident.me-v6"
+
+export type ProxyTestResult = { ok: true; egressIp: string } | { ok: false; error: string }
+
+/**
+ * 通过该代理去请求一个外部锚点，回显它看到的出口 IP。
+ *
+ * 认证错了不会在这一步静默通过：trojan 服务端对错密码会返回伪装网站，
+ * TCP/TLS/握手全都"成功"，只有响应体是不是一个合法 IP 能区分。所以
+ * 后端校验的是响应内容，前端只需展示结果。
+ *
+ * 200 与失败共用同一个 body 形状（`ok: false` 也是 200），失败信息在
+ * `error` 里；因此这里不靠 HTTP 状态码判断成败。
+ */
+export function testProxy(body: {
+  url: string
+  dialTimeoutSeconds?: number | null
+  anchor?: ProxyTestAnchor
+}): Promise<ProxyTestResult> {
+  return api<ProxyTestResult>("/api/proxies/test", { method: "POST", body })
+}
+
 /** Label-only pool, readable by any authenticated user (no URLs). */
 export interface ProxyOption {
   id: string
