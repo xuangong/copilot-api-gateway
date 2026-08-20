@@ -17,7 +17,7 @@ import { z } from 'zod'
 import { parseProxyUri } from '@vibe-core/proxy/url'
 import { ProxyDialError, runProxiedRequest } from '@vibe-core/proxy'
 import { getSocketDial } from '@vibe-core/platform'
-import { ANCHORS, isIpV4, isIpV6, type AnchorName } from './egress-probe.ts'
+import { ANCHORS, isExpectedEgressIp, type AnchorName } from './egress-probe.ts'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../repo/index.ts'
 import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
@@ -66,16 +66,6 @@ proxiesRouter.get('/backoffs', async (c) => {
   const backoffs = await getRepo().proxyBackoffs.listAll()
   return c.json({ backoffs })
 })
-
-/**
- * 锚点回显的正文是否是一个可接受的出口 IP。v6 专用锚点必须回 v6 —— 回了
- * v4 说明流量根本没到那个锚点。
- *
- * 单独导出是为了让这条判定能被直接钉住：路由自身走到这一步要先完成一次
- * 到锚点的真实 userspace TLS 握手，用字节脚本假冒不了。
- */
-export const isExpectedEgressIp = (anchor: AnchorName, text: string): boolean =>
-  anchor === 'ident.me-v6' ? isIpV6(text) : isIpV4(text) || isIpV6(text)
 
 const testBody = z.object({
   url: z.string().min(1),

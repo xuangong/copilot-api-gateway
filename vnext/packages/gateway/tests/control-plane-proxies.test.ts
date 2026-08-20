@@ -21,7 +21,6 @@ import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqli
 import { initRepo } from '../src/repo/index.ts'
 import {
   proxiesRouter,
-  isExpectedEgressIp,
   type ProxyAuthCtx,
 } from '../src/control-plane/proxies/routes.ts'
 import { controlPlane } from '../src/control-plane/routes.ts'
@@ -308,21 +307,4 @@ test('POST /api/proxies/test 报错不得回显 proxy URI（密码泄漏）', as
   initSocketDial(failingSocketDial('ECONNREFUSED'))
   const { body } = await postTest({ url: 'trojan://sup3rs3cret@node1.example.com:443' })
   expect(JSON.stringify(body)).not.toMatch(/sup3rs3cret/)
-})
-
-/**
- * 出口 IP 判定。这是整个连通性测试的判据：trojan 服务端在密码错误时按设计
- * 返回一个假网站，TCP / TLS / 握手三段全部成功，只有"响应体不是 IP"能把
- * 认证失败和真正连通区分开。所以"响应体是 HTML"必须是一条独立用例。
- */
-test.each([
-  ['ipify', '203.0.113.7', true],
-  ['ipify', '2001:db8::1', true],
-  ['ipify', '<html><body>Welcome</body></html>', false],
-  ['ipify', '', false],
-  // v6 专用锚点回了 v4：流量根本没到那个锚点。
-  ['ident.me-v6', '203.0.113.7', false],
-  ['ident.me-v6', '2001:db8::1', true],
-] as const)('isExpectedEgressIp(%s, %s) → %s', (anchor, text, expected) => {
-  expect(isExpectedEgressIp(anchor, text)).toBe(expected)
 })

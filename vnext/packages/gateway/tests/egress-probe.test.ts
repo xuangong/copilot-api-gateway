@@ -7,7 +7,12 @@
  * HTML 片段会把坏密码报成 ok，误杀一个合法 IPv6 会把好节点报成坏。
  */
 import { test, expect } from 'bun:test'
-import { ANCHORS, isIpV4, isIpV6 } from '../src/control-plane/proxies/egress-probe.ts'
+import {
+  ANCHORS,
+  isExpectedEgressIp,
+  isIpV4,
+  isIpV6,
+} from '../src/control-plane/proxies/egress-probe.ts'
 
 const V4_OK = ['1.2.3.4', '0.0.0.0', '255.255.255.255', '8.8.8.8']
 const V4_BAD = [
@@ -56,4 +61,24 @@ test('ANCHORS 三个锚点齐备且都走 443', () => {
     expect(a.path.startsWith('/')).toBe(true)
     expect(a.host.length).toBeGreaterThan(0)
   }
+})
+
+/**
+ * 出口 IP 判定。这是整个连通性测试的判据：trojan 服务端在密码错误时按设计
+ * 返回一个假网站，TCP / TLS / 握手三段全部成功，只有"响应体不是 IP"能把
+ * 认证失败和真正连通区分开。所以"响应体是 HTML"必须是一条独立用例。
+ *
+ * 这一层是唯一能钉住它的地方：走路由的话，请求到锚点要先完成一次真实的
+ * userspace TLS 握手，字节脚本假冒不了，永远到不了这个分支。
+ */
+test.each([
+  ['ipify', '203.0.113.7', true],
+  ['ipify', '2001:db8::1', true],
+  ['ipify', '<html><body>Welcome</body></html>', false],
+  ['ipify', '', false],
+  // v6 专用锚点回了 v4：流量根本没到那个锚点。
+  ['ident.me-v6', '203.0.113.7', false],
+  ['ident.me-v6', '2001:db8::1', true],
+] as const)('isExpectedEgressIp(%s, %s) → %s', (anchor, text, expected) => {
+  expect(isExpectedEgressIp(anchor, text)).toBe(expected)
 })

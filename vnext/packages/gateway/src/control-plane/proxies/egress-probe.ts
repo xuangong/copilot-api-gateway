@@ -62,3 +62,13 @@ export const isIpV6 = (s: string): boolean => {
   const total = groups.length + tailGroups
   return compressed ? total <= 7 : total === 8
 }
+
+/**
+ * 锚点回显的正文是否是一个可接受的出口 IP。v6 专用锚点必须回 v6 —— 回了
+ * v4 说明流量根本没到那个锚点。
+ *
+ * 这条判定单独成函数，是因为路由自身走到这一步要先完成一次到锚点的真实
+ * userspace TLS 握手，用字节脚本假冒不了，只能在这一层直接钉住。
+ */
+export const isExpectedEgressIp = (anchor: AnchorName, text: string): boolean =>
+  anchor === 'ident.me-v6' ? isIpV6(text) : isIpV4(text) || isIpV6(text)
