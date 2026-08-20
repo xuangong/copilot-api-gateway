@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, test } from 'bun:test';
 
 import { ProxyUriError } from '../errors.ts';
 import { formatProxyUri, parseProxyUri } from '../url.ts';
@@ -211,7 +211,7 @@ describe('parseProxyUri', () => {
       'http://example.com',
       'vless://u@h:443?type=tcp&security=reality&sni=s',
       'vless://u@h:443?type=quic&security=tls',
-      'ss://invalid-base64@h:443',
+      'ss://!!!@h:443',
       // `new URL` failure: bare string with no scheme. Wrapped so callers
       // never have to special-case TypeError from the URL constructor.
       'not-a-url',
@@ -250,4 +250,46 @@ describe('formatProxyUri', () => {
     const formatted = formatProxyUri(config);
     expect(parseProxyUri(formatted)).toEqual(config);
   });
+});
+
+test('ss:// 接受 base64url 无填充的 userinfo', () => {
+  // 标准 base64 是 "YWVzLTEyOC1nY206YWJjZA=="；野生链接常写成无填充形态。
+  const config = parseProxyUri('ss://YWVzLTEyOC1nY206YWJjZA@1.2.3.4:8388#tag');
+  expect(config).toEqual({
+    kind: 'ss',
+    method: 'aes-128-gcm',
+    password: 'abcd',
+    host: '1.2.3.4',
+    port: 8388,
+    name: 'tag',
+  });
+});
+
+test('ss:// 接受 base64url 字母表（- 与 _）', () => {
+  // "aes-256-gcm:ab>cd?" 的标准 base64 是 "YWVzLTI1Ni1nY206YWI+Y2Q/"，同时含
+  // '+' 与 '/'，base64url 写作 '-' 与 '_'。裸 `atob` 对后者会抛
+  // InvalidCharacterError，所以这条用例确实压住了字母表放宽这件事。
+  const std = btoa('aes-256-gcm:ab>cd?');
+  const urlSafe = std.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  expect(urlSafe).toBe('YWVzLTI1Ni1nY206YWI-Y2Q_');
+  const config = parseProxyUri(`ss://${urlSafe}@1.2.3.4:8388#tag`);
+  expect(config).toMatchObject({ kind: 'ss', method: 'aes-256-gcm', password: 'ab>cd?' });
+});
+
+test('ss:// 密码可含多字节 UTF-8 并往返', () => {
+  const config = {
+    kind: 'ss',
+    method: 'aes-256-gcm',
+    password: '密码pässwörd',
+    host: '1.2.3.4',
+    port: 8388,
+    name: 'tag',
+  } as const;
+  expect(parseProxyUri(formatProxyUri(config))).toEqual(config);
+});
+
+test('ss:// userinfo 解出来没有冒号时抛 ProxyUriError', () => {
+  // "no-colon-here" 的 base64，解码成功但不含分隔符。
+  const userinfo = btoa('no-colon-here');
+  expect(() => parseProxyUri(`ss://${userinfo}@h:8388`)).toThrow(ProxyUriError);
 });

@@ -18,6 +18,7 @@
 // but not byte-for-byte identical with arbitrary inputs — query order,
 // percent-encoding, and SS-2022 base64 padding may vary.
 
+import { base64UrlDecodeBytes, base64UrlEncodeBytes, utf8Bytes } from './bytes.ts';
 import { ProxyUriError } from './errors.ts';
 import {
   type HttpProxyConfig,
@@ -186,10 +187,14 @@ const parseSs = (
   // alphabet contains no ':' so the URL parser leaves the whole blob in
   // url.username and never splits it across username/password. Decode
   // through the pctDecoded `username` so `=` padding (which the WHATWG
-  // URL constructor percent-encodes inside userinfo) reaches `atob` raw.
+  // URL constructor percent-encodes inside userinfo) reaches the decoder
+  // raw. `base64UrlDecodeBytes` accepts both standard and url-safe
+  // alphabets with optional padding, matching what wild-caught ss:// links
+  // actually contain; the bytes are UTF-8 (not Latin-1) so multi-byte
+  // passwords round-trip.
   let decoded: string;
   try {
-    decoded = atob(username);
+    decoded = new TextDecoder().decode(base64UrlDecodeBytes(username));
   } catch (cause) {
     throw new ProxyUriError('malformed ss userinfo (invalid base64)', { cause });
   }
@@ -373,10 +378,11 @@ const formatSocks5 = (config: Socks5ProxyConfig): string => {
 };
 
 const formatSs = (config: ShadowsocksProxyConfig): string => {
-  // Legacy SS userinfo is the entire base64-encoded `method:password`;
-  // `btoa` handles only Latin-1 input, which matches every byte SS allows
-  // in either field.
-  const userinfo = btoa(`${config.method}:${config.password}`);
+  // Legacy SS userinfo is the entire base64-encoded `method:password`. We emit
+  // unpadded base64url over UTF-8 bytes: `=` would need percent-escaping in
+  // userinfo position, and UTF-8 (rather than `btoa`'s Latin-1) is what every
+  // mainstream client uses, so non-Latin-1 passwords survive the round trip.
+  const userinfo = base64UrlEncodeBytes(utf8Bytes(`${config.method}:${config.password}`));
   return `ss://${userinfo}@${config.host}:${config.port}${
     formatFragment(config.name, config.host, config.port)}`;
 };
