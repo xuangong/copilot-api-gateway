@@ -9,6 +9,7 @@
  */
 
 import type { AccountType } from "./account-type"
+import type { Fetcher } from "@vibe-core/upstream"
 
 import { getRawModels, type ModelsResponse } from "./models"
 
@@ -27,6 +28,9 @@ const hashToken = (token: string): string => {
 
 // baseUrl is part of the key: the same token resolves to a different catalog on
 // a GHE data-residency tenant than on the accountType-derived public host.
+// The fetcher is deliberately NOT part of the key — it only decides how the
+// bytes leave this host, not which catalog comes back, and the token already
+// scopes the entry to one tenant.
 const rawModelsCacheKey = (
   copilotToken: string,
   accountType: AccountType,
@@ -37,12 +41,13 @@ export async function getCachedRawModels(
   copilotToken: string,
   accountType: AccountType,
   baseUrlOverride?: string,
+  fetcher?: Fetcher,
 ): Promise<ModelsResponse> {
   const key = rawModelsCacheKey(copilotToken, accountType, baseUrlOverride)
   const now = Date.now()
   const hit = cache.get(key)
   if (hit && now - hit.fetchedAt < TTL_MS) return hit.data
-  const data = await getRawModels(copilotToken, accountType, baseUrlOverride)
+  const data = await getRawModels(copilotToken, accountType, baseUrlOverride, fetcher)
   cache.set(key, { fetchedAt: now, data })
   return data
 }

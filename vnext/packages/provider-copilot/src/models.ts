@@ -1,6 +1,7 @@
 import { getCopilotBaseUrl, type AccountType } from "./account-type"
 import { copilotHeaders } from "./headers"
 import { HTTPError } from "./lib/error"
+import { directFetcher, type Fetcher } from "@vibe-core/upstream"
 
 export interface ModelsResponse {
   data: Array<Model>
@@ -45,13 +46,21 @@ export interface Model {
   available_combinations?: Array<{ context1m: boolean; effort?: string }>
 }
 
+/**
+ * The `fetcher` carries the upstream's egress proxy chain. It defaults to
+ * `directFetcher` to match CopilotProvider's constructor default, so a caller
+ * with no proxy configured needs no argument — but a proxied upstream MUST
+ * pass its fetcher, or the /models hop leaves the host directly while the
+ * token-exchange hop went through the proxy.
+ */
 export async function getRawModels(
   copilotToken: string,
   accountType: AccountType,
   baseUrlOverride?: string,
+  fetcher: Fetcher = directFetcher,
 ): Promise<ModelsResponse> {
   const baseUrl = baseUrlOverride ?? getCopilotBaseUrl(accountType)
-  const response = await fetch(`${baseUrl}/models`, {
+  const response = await fetcher(`${baseUrl}/models`, {
     headers: copilotHeaders(copilotToken),
   })
 
@@ -64,6 +73,7 @@ export async function getModels(
   copilotToken: string,
   accountType: AccountType,
   baseUrlOverride?: string,
+  fetcher: Fetcher = directFetcher,
 ): Promise<ModelsResponse> {
-  return getRawModels(copilotToken, accountType, baseUrlOverride)
+  return getRawModels(copilotToken, accountType, baseUrlOverride, fetcher)
 }

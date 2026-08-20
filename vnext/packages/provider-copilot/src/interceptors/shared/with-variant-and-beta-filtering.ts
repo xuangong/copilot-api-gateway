@@ -9,6 +9,7 @@ import {
   resolveCopilotRawModel,
 } from "../../variants"
 import type { CopilotInterceptor, Invocation } from "@vibe-llm/protocols/common"
+import type { Fetcher } from "@vibe-core/upstream"
 
 type VariantKind = "messages" | "chat_completions" | "responses"
 
@@ -27,8 +28,10 @@ const KIND_BY_ENDPOINT: Record<string, VariantKind | null> = {
  * id (e.g. claude-opus-4.7 → claude-opus-4.7-1m-internal) and filters the
  * anthropic-beta header through Copilot's allowlist.
  *
- * Factory closure: copilotToken + accountType + baseUrl are CopilotProvider
- * instance state that the interceptor needs for getCachedRawModels(). Keeping
+ * Factory closure: copilotToken + accountType + baseUrl + fetcher are
+ * CopilotProvider instance state that the interceptor needs for
+ * getCachedRawModels(). The fetcher carries the upstream's egress proxy chain,
+ * so variant resolution leaves the host the same way inference does. Keeping
  * them out of the Invocation contract preserves portability — other providers
  * don't need to know Copilot's variant catalog exists.
  */
@@ -36,11 +39,12 @@ export const createVariantAndBetaFilteringInterceptor = (
   copilotToken: string,
   accountType: AccountType,
   baseUrl?: string,
+  fetcher?: Fetcher,
 ): CopilotInterceptor => {
   return async (inv, _ctx, run) => {
     const kind = KIND_BY_ENDPOINT[inv.endpoint]
     if (kind !== null && kind !== undefined) {
-      await applyVariantAndBetaFiltering(inv, kind, copilotToken, accountType, baseUrl)
+      await applyVariantAndBetaFiltering(inv, kind, copilotToken, accountType, baseUrl, fetcher)
     }
     return run()
   }
@@ -52,6 +56,7 @@ const applyVariantAndBetaFiltering = async (
   copilotToken: string,
   accountType: AccountType,
   baseUrl?: string,
+  fetcher?: Fetcher,
 ): Promise<void> => {
   const { payload, headers } = inv
   const rawModelId = typeof payload.model === "string" ? payload.model : undefined
@@ -79,7 +84,7 @@ const applyVariantAndBetaFiltering = async (
 
   if (modelId?.startsWith("claude-") && copilotToken) {
     try {
-      const rawModels = await getCachedRawModels(copilotToken, accountType, baseUrl)
+      const rawModels = await getCachedRawModels(copilotToken, accountType, baseUrl, fetcher)
       const resolved = resolveCopilotRawModel(rawModels, modelId, {
         context1m: wantContext1m,
         reasoningEffort: effectiveEffort,
