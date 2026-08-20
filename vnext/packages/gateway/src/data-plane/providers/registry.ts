@@ -254,11 +254,11 @@ export async function listProviderBindings(
 
   // Built once from the already-loaded rows so each provider dials through its
   // own proxy fallback list. Deliberately uncaught: swallowing it would leave
-  // the copilot / codex / claude-code plugins with no fetcher, i.e. direct
-  // egress on a proxy-only host (provider-copilot :27, provider-codex :14,
-  // provider-claude-code :14, each src/plugin.ts). custom / azure / sdf take
-  // no fetcher at all, so this does not cover them. Throwing 5xxes the
-  // per-request binding path (routing/candidates.ts:73,
+  // every plugin with no fetcher, i.e. direct egress on a proxy-only host.
+  // All six take one via `ctx.fetcherForUpstream` (provider-copilot :27,
+  // provider-codex :14, provider-claude-code :14, provider-azure :9,
+  // provider-custom :9, provider-sdf :9, each src/plugin.ts). Throwing 5xxes
+  // the per-request binding path (routing/candidates.ts:73,
   // routing/binding-resolver.ts:45), not only /v1/models — that is intended.
   const fetcherForUpstream = await createPerRequestFetcher(getRuntimeLocation(), upstreams)
 

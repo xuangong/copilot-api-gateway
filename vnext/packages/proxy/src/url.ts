@@ -61,7 +61,15 @@ export const parseProxyUri = (uri: string): ProxyConfig => {
   try {
     url = new URL(uri);
   } catch (cause) {
-    throw new ProxyUriError(`malformed proxy URI: ${uri}`, { cause });
+    // The URI is never echoed: a proxy URI carries its credential in the
+    // userinfo (trojan/ss password, vless id), and this message reaches logs
+    // and error paths. Only a syntactically valid leading scheme is reported —
+    // enough to tell a typo'd scheme from a mangled authority, and it cannot
+    // contain userinfo, which starts after `://`. `cause` is attached for
+    // local debugging; do not serialize it into anything user-visible, since
+    // its shape is runtime-specific.
+    const scheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.exec(uri)?.[0] ?? '<none>';
+    throw new ProxyUriError(`malformed proxy URI (scheme: ${scheme})`, { cause });
   }
   const host = url.hostname;
   const port = resolvePort(url, uri);

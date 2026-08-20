@@ -322,6 +322,13 @@ githubAuthRouter.get('/me', async (c) => {
 
 githubAuthRouter.delete('/github/:id', async (c) => {
   const { userId } = c.get('auth') ?? {}
+  // session-auth.ts:108 only sets the auth ctx when it resolved a userId, so a
+  // missing userId means the caller is unauthenticated — every logged-in path
+  // (session, admin session, owner-scoped API key) carries one. Without this
+  // guard the undefined ownerId falls through to the unscoped
+  // `DELETE FROM github_accounts WHERE user_id = ?` (repo/shared/repos.ts:399),
+  // letting anyone drop any owner's account row.
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401)
   const ghUserId = Number(c.req.param('id'))
   if (!ghUserId || isNaN(ghUserId)) {
     return c.json({ error: 'Invalid user ID' }, 400)
@@ -329,14 +336,18 @@ githubAuthRouter.delete('/github/:id', async (c) => {
   // Always scope to the caller's ownerId — the Sign-out button targets a
   // specific upstream row (`up_copilot_{ownerId}_{ghUserId}`), and dropping
   // ownerId here would build the wrong row id and silently skip the delete.
-  await removeGithubAccount(ghUserId as GitHubAccountId, userId as UserId | undefined)
+  await removeGithubAccount(ghUserId as GitHubAccountId, userId as UserId)
   return c.json({ ok: true })
 })
 
 githubAuthRouter.post('/github/switch', zValidator('json', switchBody), async (c) => {
   const userId = c.get('auth')?.userId
+  // Same reasoning as DELETE /github/:id above: an undefined ownerId would
+  // write the global `active_github_account` config key
+  // (lib/github.ts:149 → repo/shared/repos.ts setActiveId).
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401)
   const body = c.req.valid('json')
-  const ok = await setActiveGithubAccount(body.user_id as GitHubAccountId, userId as UserId | undefined)
+  const ok = await setActiveGithubAccount(body.user_id as GitHubAccountId, userId as UserId)
   if (!ok) return c.json({ error: 'Account not found' }, 404)
   return c.json({ ok: true })
 })

@@ -368,6 +368,41 @@ test('DELETE /github/:id removes account', async () => {
 
 // --- POST /github/switch ---
 
+// buildApp() with no argument mounts no auth middleware, which is exactly what
+// session-auth.ts does for an unauthenticated caller: it leaves `auth` unset
+// rather than setting a userId-less context (session-auth.ts:108).
+
+test('DELETE /github/:id without auth → 401 and the account survives', async () => {
+  await store.repo.github.saveAccount(42, {
+    token: 't', accountType: 'individual',
+    user: { id: 42, login: 'me', name: null, avatar_url: '' },
+    ownerId: 'u1',
+  })
+  const res = await buildApp().request('/auth/github/42', { method: 'DELETE' })
+  expect(res.status).toBe(401)
+  // Without the guard the undefined ownerId reaches the unscoped DELETE, so
+  // asserting the row is still there is what actually pins the fix.
+  expect(store.gh.accountsByOwner.get('u1')?.has(42)).toBe(true)
+})
+
+test('DELETE /github/:id checks auth before the id shape', async () => {
+  // An unauthenticated caller must not learn whether the id parsed.
+  const res = await buildApp().request('/auth/github/abc', { method: 'DELETE' })
+  expect(res.status).toBe(401)
+})
+
+test('POST /github/switch without auth → 401 and no global active id is set', async () => {
+  await store.repo.github.saveAccount(7, {
+    token: 't', accountType: 'individual',
+    user: { id: 7, login: 'me', name: null, avatar_url: '' },
+  })
+  const res = await buildApp().request('/auth/github/switch', {
+    method: 'POST', body: JSON.stringify({ user_id: 7 }), headers: J,
+  })
+  expect(res.status).toBe(401)
+  expect(store.gh.globalActive.id).toBe(null)
+})
+
 test('POST /github/switch missing user_id → 400', async () => {
   const res = await buildApp({ userId: 'u1' }).request('/auth/github/switch', {
     method: 'POST', body: '{}', headers: J,
