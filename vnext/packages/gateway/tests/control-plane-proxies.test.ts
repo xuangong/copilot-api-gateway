@@ -21,10 +21,12 @@ import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqli
 import { initRepo } from '../src/repo/index.ts'
 import {
   proxiesRouter,
+  isExpectedEgressIp,
   type ProxyAuthCtx,
 } from '../src/control-plane/proxies/routes.ts'
 import { controlPlane } from '../src/control-plane/routes.ts'
 import type { UserId } from '../src/repo/branded-ids.ts'
+import { initSocketDial } from '@vibe-core/platform'
 
 const TROJAN_URL = 'trojan://password@node1.example.com:443'
 
@@ -196,4 +198,131 @@ test('GET /api/proxies/options as a non-admin returns id+name only', async () =>
   // Assert the whole key set, not just the absence of `url`: a future field
   // carrying a credential would slip past `expect(p.url).toBeUndefined()`.
   expect(Object.keys(body.proxies[0]!).sort()).toEqual(['id', 'name'])
+})
+
+/**
+ * POST /api/proxies/test —— 连通性测试。
+ *
+ * 用一个假的 SocketDial 顶掉真实网络。注意这个假 dial 能覆盖的边界：路由向
+ * 锚点发请求时 `target.tls` 为 true，`runProxiedRequest` 会在代理握手之后再
+ * 跑一次到锚点的 userspace TLS 握手，而那需要真实的 ServerHello + 证书链 ——
+ * 一段字节脚本假冒不了。所以经由路由能钉住的是：鉴权、URI 解析、失败分级、
+ * 以及"TLS 没谈成时绝不报成功"。
+ *
+ * "响应体是不是 IP" 这条判定 —— 也就是唯一能识破 trojan 密码错误时那个假
+ * 网站的一步 —— 改为直接钉 `isExpectedEgressIp`，见文件末尾那组用例。
+ */
+
+/** 组装一段完整的 HTTP/1.1 响应字节流。 */
+function httpResponse(body: string): Uint8Array {
+  const bytes = new TextEncoder().encode(body)
+  const head = `HTTP/1.1 200 OK\r\ncontent-length: ${bytes.byteLength}\r\nconnection: close\r\n\r\n`
+  const headBytes = new TextEncoder().encode(head)
+  const out = new Uint8Array(headBytes.byteLength + bytes.byteLength)
+  out.set(headBytes, 0)
+  out.set(bytes, headBytes.byteLength)
+  return out
+}
+
+/**
+ * 一个只会回放固定字节的 SocketDial。写入的字节被丢弃 —— 本组用例测的是
+ * 路由如何处置这条连接，不是握手的字节格式（那由 packages/proxy 覆盖）。
+ */
+function scriptedSocketDial(responseBytes: Uint8Array) {
+  return {
+    connect: async () => ({
+      readable: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(responseBytes)
+          controller.close()
+        },
+      }),
+      writable: new WritableStream<Uint8Array>({ write() {} }),
+      close: async () => {},
+    }),
+  }
+}
+
+/** 一个 connect 就抛错的 SocketDial。 */
+function failingSocketDial(message: string) {
+  return {
+    connect: async (): Promise<never> => {
+      throw new Error(message)
+    },
+  }
+}
+
+async function postTest(body: Record<string, unknown>, auth: ProxyAuthCtx = { isAdmin: true }) {
+  const res = await buildApp(auth).request('/api/proxies/test', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return { res, body: (await res.json()) as any }
+}
+
+// HTTP CONNECT 代理是这组用例里最省事的载体：它的"握手"就是明文的
+// `HTTP/1.1 200`，可以和随后的字节拼在同一段脚本里。
+const HTTP_PROXY_URL = 'http://proxy.example.com:8080'
+const CONNECT_OK = new TextEncoder().encode('HTTP/1.1 200 Connection Established\r\n\r\n')
+
+function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const out = new Uint8Array(a.byteLength + b.byteLength)
+  out.set(a, 0)
+  out.set(b, a.byteLength)
+  return out
+}
+
+test('POST /api/proxies/test 非管理员 → 403', async () => {
+  const { res } = await postTest({ url: HTTP_PROXY_URL }, {})
+  expect(res.status).toBe(403)
+})
+
+test('POST /api/proxies/test 无法解析的 URI → 400', async () => {
+  const { res, body } = await postTest({ url: 'gopher://nope:1080' })
+  expect(res.status).toBe(400)
+  expect(body.error).toMatch(/gopher/)
+})
+
+test('POST /api/proxies/test 代理握手成功但锚点回明文 → ok:false，不报成功', async () => {
+  // 代理把 CONNECT 应答得漂漂亮亮，随后的字节却是明文 HTTP 而不是 TLS ——
+  // 一个只会伪装握手的中间人正是这个形状。到锚点的 TLS 谈不成，就绝不能
+  // 有 egressIp 回给前端。
+  initSocketDial(scriptedSocketDial(concatBytes(CONNECT_OK, httpResponse('203.0.113.7\n'))))
+  const { res, body } = await postTest({ url: HTTP_PROXY_URL })
+  expect(res.status).toBe(200)
+  expect(body.ok).toBe(false)
+  expect(body.egressIp).toBeUndefined()
+  expect(body.error).toMatch(/^\[inner-tls\]/)
+})
+
+test('POST /api/proxies/test 拨号失败 → ok:false 且错误带 stage 前缀', async () => {
+  initSocketDial(failingSocketDial('ECONNREFUSED'))
+  const { res, body } = await postTest({ url: HTTP_PROXY_URL })
+  expect(res.status).toBe(200)
+  expect(body.ok).toBe(false)
+  expect(body.error).toMatch(/^\[(config|tcp-connect|outer-tls|proxy-handshake|inner-tls)\]/)
+})
+
+test('POST /api/proxies/test 报错不得回显 proxy URI（密码泄漏）', async () => {
+  initSocketDial(failingSocketDial('ECONNREFUSED'))
+  const { body } = await postTest({ url: 'trojan://sup3rs3cret@node1.example.com:443' })
+  expect(JSON.stringify(body)).not.toMatch(/sup3rs3cret/)
+})
+
+/**
+ * 出口 IP 判定。这是整个连通性测试的判据：trojan 服务端在密码错误时按设计
+ * 返回一个假网站，TCP / TLS / 握手三段全部成功，只有"响应体不是 IP"能把
+ * 认证失败和真正连通区分开。所以"响应体是 HTML"必须是一条独立用例。
+ */
+test.each([
+  ['ipify', '203.0.113.7', true],
+  ['ipify', '2001:db8::1', true],
+  ['ipify', '<html><body>Welcome</body></html>', false],
+  ['ipify', '', false],
+  // v6 专用锚点回了 v4：流量根本没到那个锚点。
+  ['ident.me-v6', '203.0.113.7', false],
+  ['ident.me-v6', '2001:db8::1', true],
+] as const)('isExpectedEgressIp(%s, %s) → %s', (anchor, text, expected) => {
+  expect(isExpectedEgressIp(anchor, text)).toBe(expected)
 })

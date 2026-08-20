@@ -15,6 +15,9 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { parseProxyUri } from '@vibe-core/proxy/url'
+import { ProxyDialError, runProxiedRequest } from '@vibe-core/proxy'
+import { getSocketDial } from '@vibe-core/platform'
+import { ANCHORS, isIpV4, isIpV6, type AnchorName } from './egress-probe.ts'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../repo/index.ts'
 import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
@@ -62,6 +65,79 @@ proxiesRouter.get('/', async (c) => {
 proxiesRouter.get('/backoffs', async (c) => {
   const backoffs = await getRepo().proxyBackoffs.listAll()
   return c.json({ backoffs })
+})
+
+/**
+ * 锚点回显的正文是否是一个可接受的出口 IP。v6 专用锚点必须回 v6 —— 回了
+ * v4 说明流量根本没到那个锚点。
+ *
+ * 单独导出是为了让这条判定能被直接钉住：路由自身走到这一步要先完成一次
+ * 到锚点的真实 userspace TLS 握手，用字节脚本假冒不了。
+ */
+export const isExpectedEgressIp = (anchor: AnchorName, text: string): boolean =>
+  anchor === 'ident.me-v6' ? isIpV6(text) : isIpV4(text) || isIpV6(text)
+
+const testBody = z.object({
+  url: z.string().min(1),
+  dialTimeoutSeconds: z.number().int().positive().nullish(),
+  anchor: z.enum(['ipify', 'aws', 'ident.me-v6']).optional(),
+})
+
+/**
+ * 连通性测试：走真实隧道向一个外部锚点发 GET，把响应体当作出口 IP 回显。
+ *
+ * 判定标准刻意是"响应体是一个合法 IP"而不是"连上了" —— trojan 服务端在
+ * 密码错误时按设计返回一个假网站，TCP / TLS / 握手三段全部成功，只有校验
+ * 响应体形状能把认证失败和真正连通区分开。
+ *
+ * 接受完整 URI 而不是 proxy id，这样 dashboard 上尚未保存的草稿也能测。
+ */
+proxiesRouter.post('/test', async (c) => {
+  const parsed = testBody.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400)
+
+  let config
+  try {
+    config = parseProxyUri(parsed.data.url.trim())
+  } catch (err) {
+    // ProxyUriError 的 message 会回显冒犯的 URI，而 trojan URI 里带密码。
+    // 只有 scheme 是安全可回显的，其余一律折叠成一句通用文案。
+    const scheme = parsed.data.url.trim().split(':')[0] ?? ''
+    void err
+    return c.json({ error: `unsupported or malformed proxy URI (scheme: ${scheme})` }, 400)
+  }
+
+  const anchorName: AnchorName = parsed.data.anchor ?? 'ipify'
+  const anchor = ANCHORS[anchorName]
+  const dialTimeoutMs = parsed.data.dialTimeoutSeconds
+    ? parsed.data.dialTimeoutSeconds * 1000
+    : undefined
+
+  try {
+    const res = await runProxiedRequest(
+      config,
+      { host: anchor.host, port: anchor.port, tls: true },
+      {
+        method: 'GET',
+        path: anchor.path,
+        headers: { host: anchor.host, 'user-agent': 'vibe-proxy-test/1', connection: 'close' },
+      },
+      { socketDial: getSocketDial(), ...(dialTimeoutMs === undefined ? {} : { dialTimeoutMs }) },
+    )
+    // 截断到 256 字符再判定：合法锚点只回一行 IP，而假网站的正文可以任意
+    // 长，截断把它挡在后续判定之外。（正文此时已整段读入 —— 这里不省内存。）
+    const text = (await res.text()).slice(0, 256).trim()
+    if (!isExpectedEgressIp(anchorName, text)) {
+      // 不回显 text 本身 —— 它可能是攻击者控制的任意内容。
+      return c.json({ ok: false, error: 'anchor did not return an IP address' })
+    }
+    return c.json({ ok: true, egressIp: text })
+  } catch (err) {
+    if (err instanceof ProxyDialError) {
+      return c.json({ ok: false, error: `[${err.stage}] ${err.message}` })
+    }
+    throw err
+  }
 })
 
 const createBody = z.object({
