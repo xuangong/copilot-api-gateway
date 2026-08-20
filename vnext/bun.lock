@@ -44,6 +44,9 @@
         "@vibe-llm/gateway": "workspace:*",
         "@vibe-llm/responses-store": "workspace:*",
       },
+      "devDependencies": {
+        "@cloudflare/workers-types": "^4.20260602.1",
+      },
     },
     "apps/platform-cloudflare": {
       "name": "@vibe-llm/platform-cloudflare",

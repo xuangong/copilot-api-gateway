@@ -12,5 +12,8 @@
     "@vibe-core/platform": "workspace:*",
     "@vibe-llm/responses-store": "workspace:*",
     "@vibe-core/cache": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260602.1"
   }
 }
