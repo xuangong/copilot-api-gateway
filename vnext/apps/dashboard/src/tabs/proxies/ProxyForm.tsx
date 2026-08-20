@@ -30,7 +30,10 @@ const SS2022_METHODS: readonly Ss2022Method[] = [
   '2022-blake3-chacha20-poly1305',
 ]
 
-/** 可选字段清空时要写回 `undefined`，写 `''` 会让 URL 里多出空参数。 */
+/**
+ * 可选字段清空时写回 `undefined` 而不是 `''`：`formatProxyUri` 只跳过
+ * `undefined`，留着空串会格式化出 `?sni=`、`host=` 这类空查询参数。
+ */
 const orUndefined = (v: string): string | undefined => (v === '' ? undefined : v)
 
 function Field(props: {
