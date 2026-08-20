@@ -90,11 +90,11 @@ proxiesRouter.post('/test', async (c) => {
   try {
     config = parseProxyUri(parsed.data.url.trim())
   } catch (err) {
-    // ProxyUriError 的 message 会回显冒犯的 URI，而 trojan URI 里带密码。
-    // 只有 scheme 是安全可回显的，其余一律折叠成一句通用文案。
-    const scheme = parsed.data.url.trim().split(':')[0] ?? ''
+    // ProxyUriError 的 message 在部分分支里会带上整条 URI 或 userinfo，而代理
+    // URI 里带密码。折叠成只含 scheme 的通用文案 —— 与 POST / 和 PATCH 同一
+    // 条路径。
     void err
-    return c.json({ error: `unsupported or malformed proxy URI (scheme: ${scheme})` }, 400)
+    return c.json({ error: badUriMessage(parsed.data.url) }, 400)
   }
 
   const anchorName: AnchorName = parsed.data.anchor ?? 'ipify'
@@ -114,9 +114,11 @@ proxiesRouter.post('/test', async (c) => {
       },
       { socketDial: getSocketDial(), ...(dialTimeoutMs === undefined ? {} : { dialTimeoutMs }) },
     )
-    // 截断到 256 字符再判定：合法锚点只回一行 IP，而假网站的正文可以任意
-    // 长，截断把它挡在后续判定之外。（正文此时已整段读入 —— 这里不省内存。）
-    const text = (await res.text()).slice(0, 256).trim()
+    // 先 trim 再截断：合法锚点回的是一行 IP，可能带尾随换行。截断本身不提供
+    // 任何防护（正文早已整段读入），只是给 `egressIp` 的回显封个顶 —— 顺序反
+    // 过来的话，"IP + 大量空白 + 假网站正文"会被 trim 前的截断切成一个合法
+    // IP，认证失败就报成了 ok。
+    const text = (await res.text()).trim().slice(0, 256)
     if (!isExpectedEgressIp(anchorName, text)) {
       // 不回显 text 本身 —— 它可能是攻击者控制的任意内容。
       return c.json({ ok: false, error: 'anchor did not return an IP address' })
@@ -142,13 +144,25 @@ const patchBody = z.object({
   dialTimeoutSeconds: z.number().int().positive().nullable().optional(),
 })
 
-/** Validate a proxy URI, returning the parse error message on failure. */
+/**
+ * The only safe-to-echo description of a bad proxy URI.
+ *
+ * `ProxyUriError.message` embeds the offending URI or userinfo in several
+ * branches (`port required: <uri>`, `malformed ss userinfo: <method:password>`),
+ * so it must never reach the client — a proxy URI carries the credential.
+ * Only the scheme survives.
+ */
+function badUriMessage(url: string): string {
+  return `unsupported or malformed proxy URI (scheme: ${url.trim().split(':')[0] ?? ''})`
+}
+
+/** Validate a proxy URI, returning `badUriMessage` on failure. */
 function urlError(url: string): string | null {
   try {
     parseProxyUri(url)
     return null
-  } catch (err) {
-    return err instanceof Error ? err.message : String(err)
+  } catch {
+    return badUriMessage(url)
   }
 }
 

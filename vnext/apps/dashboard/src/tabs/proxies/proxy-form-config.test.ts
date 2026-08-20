@@ -11,6 +11,8 @@ import {
   DEFAULT_PORTS,
   FORM_KINDS,
   defaultsFor,
+  draftIsTestable,
+  draftIsValid,
   draftIssues,
   draftUrl,
   formKindOf,
@@ -151,4 +153,62 @@ test('draftIssues: dialTimeoutSeconds 非正整数时报错，留空则放行', 
   expect(of('-3').dialTimeout).toBe('dash.proxyErrDialTimeout')
   expect(of('abc').dialTimeout).toBe('dash.proxyErrDialTimeout')
   expect(of('1.5').dialTimeout).toBe('dash.proxyErrDialTimeout')
+})
+
+test('draftIssues: url 为 null 时校验的是推导出的那一串', () => {
+  // 「每个字段各自合法、拼起来不是合法 URI」的组合必须在前端就拦下，
+  // 否则用户看到的是一个亮着的保存按钮加一句后端通用 400。
+  // host 里带空格是最容易撞上的一种：字段级校验只看非空。
+  const of = (host: string) => draftIssues({
+    name: 'n',
+    config: defaultsFor('trojan', { host, port: 443, name: '' }),
+    url: null,
+    dialTimeoutSeconds: '',
+  })
+  expect(of('h .example.com').config.host).toBeUndefined()   // 字段级校验放行
+  expect(of('h .example.com').url).toBe('dash.proxyErrUrl')  // 整体形态没放行
+  expect(of('h.example.com').url).toBeUndefined()            // 差别只在那个空格上
+})
+
+test('draftIssues: host 为空时只报 host，不重复报 url', () => {
+  // host 空时 `draftUrl` 返回空串（不推导半成品），此时再报一次 url
+  // 只是同一个问题的两条红字。
+  const issues = draftIssues({
+    name: 'n',
+    config: defaultsFor('trojan', { host: '', port: 443, name: '' }),
+    url: null,
+    dialTimeoutSeconds: '',
+  })
+  expect(issues.config.host).toBe('dash.proxyErrHost')
+  expect(issues.url).toBeUndefined()
+})
+
+test('draftIsValid / draftIsTestable：测试的门槛只低在名称这一项上', () => {
+  const ok = {
+    name: 'n',
+    config: defaultsFor('trojan', { host: 'h.example.com', port: 443, name: '' }),
+    url: null,
+    dialTimeoutSeconds: '',
+  } as const
+  const withPassword = { ...ok, config: { ...ok.config, password: 'pw' } }
+
+  expect(draftIsValid(withPassword)).toBe(true)
+  expect(draftIsTestable(withPassword)).toBe(true)
+
+  // 名称为空：不能保存，但可以测试 —— 测试只拨号，不落库。
+  const unnamed = { ...withPassword, name: '  ' }
+  expect(draftIsValid(unnamed)).toBe(false)
+  expect(draftIsTestable(unnamed)).toBe(true)
+
+  // 其余每一类问题都同时挡住两者。
+  for (const bad of [
+    { ...withPassword, config: { ...withPassword.config, password: '' } },
+    { ...withPassword, config: { ...withPassword.config, host: '' } },
+    { ...withPassword, config: { ...withPassword.config, port: 0 } },
+    { ...withPassword, dialTimeoutSeconds: 'abc' },
+    { ...withPassword, url: 'gopher://nope:1' },
+  ]) {
+    expect(draftIsValid(bad)).toBe(false)
+    expect(draftIsTestable(bad)).toBe(false)
+  }
 })

@@ -66,6 +66,10 @@ export function ProxyForm(props: {
 }) {
   const t = useT()
   const { draft, onChange } = props
+  // 红字一开始就显示。设计稿写的是"第一次点保存后才显示"，但保存按钮在草稿
+  // 不合法时是禁用的 —— 那条路径永远走不到，只会留下一个点不动、也不说为什么
+  // 的按钮。要真按设计稿来，得把保存改成常亮、点击时再决定提交还是亮红字，
+  // 那是另一次改动。
   const issues = draftIssues(draft)
   const kind = formKindOf(draft.config)
 

@@ -109,9 +109,12 @@ export const draftIssues = (d: ProxyDraft): DraftIssues => {
 
   if (!d.name.trim()) issues.name = 'dash.proxyErrName'
 
-  if (d.url !== null && d.url.trim()) {
-    if (!parseProxyUriSafe(d.url.trim())) issues.url = 'dash.proxyErrUrl'
-  }
+  // URL 框有内容时校验用户输入的原文；`url === null` 时校验由字段推导出的
+  // 那一串 —— 提交和测试发出去的正是它。少了后半条，"每个字段各自合法但拼
+  // 起来不是合法 URI" 的组合会穿过前端门禁，只在后端炸成一句通用 400。
+  // host 为空时 `draftUrl` 返回空串，此时已有 host 的报错，不必再报一次。
+  const url = d.url !== null ? d.url.trim() : draftUrl(d)
+  if (url && !parseProxyUriSafe(url)) issues.url = 'dash.proxyErrUrl'
 
   const t = d.dialTimeoutSeconds.trim()
   if (t && !/^[1-9]\d*$/.test(t)) issues.dialTimeout = 'dash.proxyErrDialTimeout'
@@ -152,8 +155,15 @@ export const draftIssues = (d: ProxyDraft): DraftIssues => {
   return issues
 }
 
-/** 草稿是否可提交 / 可测试。 */
-export const draftIsValid = (d: ProxyDraft): boolean => {
+/**
+ * 草稿是否可测试。门槛比"可提交"低一格：名称可以为空 —— 测试只拨号，不落库，
+ * 名称对拨号没有任何影响，先试通再起名是很自然的顺序。
+ */
+export const draftIsTestable = (d: ProxyDraft): boolean => {
   const i = draftIssues(d)
-  return !i.name && !i.url && !i.dialTimeout && Object.keys(i.config).length === 0
+  return !i.url && !i.dialTimeout && Object.keys(i.config).length === 0
 }
+
+/** 草稿是否可提交：在"可测试"之上再要求名称非空。 */
+export const draftIsValid = (d: ProxyDraft): boolean =>
+  !draftIssues(d).name && draftIsTestable(d)

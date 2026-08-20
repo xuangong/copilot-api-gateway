@@ -93,6 +93,18 @@ test('POST /api/proxies with an unsupported scheme → 400', async () => {
   expect(body.error).toMatch(/gopher/)
 })
 
+test('POST /api/proxies 的 400 不回显 URI 里的密码', async () => {
+  // 缺端口这条分支的 ProxyUriError.message 是 `port required: <整条 URI>`，
+  // 而代理 URI 的 userinfo 就是密码本身。路由只能回显 scheme。
+  const { res, body } = await createProxy({
+    name: 'bad',
+    url: 'trojan://sup3rsecret@node1.example.com',
+  })
+  expect(res.status).toBe(400)
+  expect(body.error).not.toContain('sup3rsecret')
+  expect(body.error).toContain('trojan')
+})
+
 test('POST /api/proxies non-admin → 403', async () => {
   const res = await buildApp({}).request('/api/proxies', {
     method: 'POST',

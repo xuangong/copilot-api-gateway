@@ -19,6 +19,7 @@ import { ProxyForm } from "./ProxyForm"
 import {
   type ProxyDraft,
   defaultsFor,
+  draftIsTestable,
   draftIsValid,
   draftUrl,
   parseProxyUriSafe,
@@ -190,7 +191,7 @@ export function ProxiesTab() {
             </button>
             <button
               onClick={runTest}
-              disabled={testing || !draftIsValid(draft)}
+              disabled={testing || !draftIsTestable(draft)}
               className="btn-ghost !text-xs !py-1 !px-3 disabled:opacity-40"
             >
               {testing ? t("dash.proxyTestRunning") : t("dash.proxyTestBtn")}
