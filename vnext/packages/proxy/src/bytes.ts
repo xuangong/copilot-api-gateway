@@ -125,6 +125,23 @@ export const base64DecodeBytes = (s: string): Uint8Array<ArrayBuffer> => {
 };
 
 /**
+ * 解码 base64url。为兼容野生 URI，字母表和填充都放宽：`-`/`_` 会被映射回
+ * `+`/`/`，缺失的 `=` 会补齐，因此标准 base64 也能原样吃下。非法字符仍由
+ * 底层 `atob` 抛错。
+ */
+export const base64UrlDecodeBytes = (s: string): Uint8Array<ArrayBuffer> => {
+  const std = s.replace(/-/g, '+').replace(/_/g, '/');
+  return base64DecodeBytes(std.padEnd(std.length + ((4 - (std.length % 4)) % 4), '='));
+};
+
+/**
+ * 编码为无填充的 base64url —— 这是写进 URI 的规范形态，`=` 在 query/userinfo
+ * 位置需要百分号转义，去掉它可以让往返后的字符串保持稳定。
+ */
+export const base64UrlEncodeBytes = (bytes: Uint8Array): string =>
+  base64EncodeBytes(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+/**
  * Parse an IPv4 dotted-quad literal into 4 octets, or return null if `s`
  * isn't a literal IPv4. Strict: each component must be a decimal in
  * 0..255 with no leading zeros (the "no leading zeros" rule prevents
