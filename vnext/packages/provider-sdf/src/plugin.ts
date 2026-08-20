@@ -3,7 +3,10 @@ import { SdfProvider, type SdfProviderConfig } from './provider'
 
 export const sdfProviderPlugin: LlmProviderPlugin = {
   kind: 'sdf',
-  async createFromUpstream(upstream) {
-    return new SdfProvider(upstream.config as unknown as SdfProviderConfig)
+  async createFromUpstream(upstream, ctx) {
+    return new SdfProvider(
+      upstream.config as unknown as SdfProviderConfig,
+      ctx.fetcherForUpstream?.(upstream.id),
+    )
   },
 }

@@ -145,6 +145,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@vibe-core/http": "workspace:*",
+        "@vibe-core/upstream": "workspace:*",
         "@vibe-llm/protocols": "workspace:*",
         "@vibe-llm/provider-llm": "workspace:*",
       },
@@ -196,6 +197,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@vibe-core/http": "workspace:*",
+        "@vibe-core/upstream": "workspace:*",
         "@vibe-llm/protocols": "workspace:*",
         "@vibe-llm/provider-llm": "workspace:*",
       },
@@ -213,6 +215,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@vibe-core/http": "workspace:*",
+        "@vibe-core/upstream": "workspace:*",
         "@vibe-llm/protocols": "workspace:*",
         "@vibe-llm/provider-llm": "workspace:*",
       },

@@ -3,7 +3,10 @@ import { CustomProvider, type CustomProviderConfig } from './provider'
 
 export const customProviderPlugin: LlmProviderPlugin = {
   kind: 'custom',
-  async createFromUpstream(upstream) {
-    return new CustomProvider(upstream.config as unknown as CustomProviderConfig)
+  async createFromUpstream(upstream, ctx) {
+    return new CustomProvider(
+      upstream.config as unknown as CustomProviderConfig,
+      ctx.fetcherForUpstream?.(upstream.id),
+    )
   },
 }

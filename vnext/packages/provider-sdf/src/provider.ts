@@ -22,6 +22,7 @@ import {
   type ProviderResponse,
 } from '@vibe-llm/provider-llm'
 import { fetchWithRetry, mergeHeaders, truncateBody } from '@vibe-core/http'
+import { directFetcher, type Fetcher } from '@vibe-core/upstream'
 import { getPassport } from './passport'
 
 export const SDF_BASE_URL = 'https://fe-26.qas.bing.net'
@@ -93,8 +94,16 @@ export class SdfProvider implements LlmModelProvider {
   private readonly passportEnabled: boolean
   private readonly passportApiBase: string
   private readonly tenantId: string
+  /**
+   * Carries the upstream's egress proxy chain. Defaults to `directFetcher` so
+   * an upstream with no proxy configured behaves exactly as before; when a
+   * chain is configured, both SDF egress points — the passport hop and the
+   * image call — leave the host through it. getModels()/probe() need no
+   * fetcher: the catalogue is hardcoded and they never reach the network.
+   */
+  private readonly fetcher: Fetcher
 
-  constructor(cfg: SdfProviderConfig) {
+  constructor(cfg: SdfProviderConfig, fetcher: Fetcher = directFetcher) {
     if (!cfg.substrateToken) throw new Error('SDF provider requires a substrateToken')
     this.name = cfg.name
     this.substrateToken = cfg.substrateToken
@@ -108,6 +117,7 @@ export class SdfProvider implements LlmModelProvider {
     this.passportEnabled = cfg.passport?.enabled ?? true
     this.passportApiBase = cfg.passport?.apiBase ?? DEFAULT_PASSPORT_API_BASE
     this.tenantId = tenantIdFromToken(cfg.substrateToken)
+    this.fetcher = fetcher
   }
 
   async getModels(): Promise<ProviderModelsResponse> {
@@ -190,7 +200,7 @@ export class SdfProvider implements LlmModelProvider {
     // has none, so we never round-trip a ticket back from the response.
     outHeaders.set('x-sticky-route-session-ticket', '')
     if (this.passportEnabled) {
-      const passport = await getPassport(this.substrateToken, this.passportApiBase)
+      const passport = await getPassport(this.substrateToken, this.passportApiBase, this.fetcher)
       if (passport) outHeaders.set('x-metadata-passport', passport)
     }
     if (!bodyIsFormData) outHeaders.set('Content-Type', 'application/json')
@@ -213,6 +223,7 @@ export class SdfProvider implements LlmModelProvider {
         // Match Custom/Azure: clients retry; Workers subrequest budget
         // doesn't tolerate extra retries with backoff.
         maxRetries: 0,
+        fetchImpl: this.fetcher,
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

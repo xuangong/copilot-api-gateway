@@ -63,7 +63,10 @@ const customUpstream = (id: string, apiKey = 'sk-test'): UpstreamRecord<unknown>
   flagOverrides: {},
   disabledPublicModelIds: [],
   state: null,
-  proxyFallbackList: [],
+  // An empty chain collapses to direct-connect (a raw socket), which needs a
+  // bootstrapped SocketDial. Ask for `direct_fetch` so egress goes through the
+  // runtime's fetch and the `globalThis.fetch` shim below can capture it.
+  proxyFallbackList: [{ id: 'direct_fetch' }],
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 })

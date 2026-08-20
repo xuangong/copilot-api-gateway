@@ -12,6 +12,7 @@
   "dependencies": {
     "@vibe-llm/protocols": "workspace:*",
     "@vibe-llm/provider-llm": "workspace:*",
-    "@vibe-core/http": "workspace:*"
+    "@vibe-core/http": "workspace:*",
+    "@vibe-core/upstream": "workspace:*"
   }
 }

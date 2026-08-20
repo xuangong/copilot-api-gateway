@@ -15,6 +15,7 @@ import {
   type ProviderResponse,
 } from '@vibe-llm/provider-llm'
 import { fetchWithRetry, mergeHeaders, truncateBody } from '@vibe-core/http'
+import { directFetcher, type Fetcher } from '@vibe-core/upstream'
 import {
   type CustomAuthStyle,
   type CustomPathOverrideKey,
@@ -49,8 +50,16 @@ export class CustomProvider implements LlmModelProvider {
   private readonly manualModels?: ReadonlyArray<{ id: string; name?: string; ownedBy?: string }>
   private readonly manualPricing: Map<string, ModelPricing>
   private autoPricing: Map<string, ModelPricing> = new Map()
+  /**
+   * Carries the upstream's egress proxy chain. Defaults to `directFetcher` so
+   * an upstream with no proxy configured behaves exactly as before; when a
+   * chain is configured, both the /models discovery call and every inference
+   * call leave the host through it. A manual model list short-circuits
+   * getModels() before any egress, so that path is unaffected either way.
+   */
+  private readonly fetcher: Fetcher
 
-  constructor(cfg: CustomProviderConfig) {
+  constructor(cfg: CustomProviderConfig, fetcher: Fetcher = directFetcher) {
     const authStyle = cfg.authStyle ?? 'bearer'
     if (authStyle !== 'none' && !cfg.apiKey) {
       throw new Error('Custom provider requires an apiKey')
@@ -75,6 +84,7 @@ export class CustomProvider implements LlmModelProvider {
         ? { id: m, name: undefined, ownedBy: undefined }
         : { id: m.id, name: m.name, ownedBy: m.ownedBy },
     )
+    this.fetcher = fetcher
     this.manualPricing = new Map()
     for (const m of cfg.models ?? []) {
       if (typeof m !== 'string' && 'upstreamModelId' in m && m.cost) {
@@ -107,6 +117,7 @@ export class CustomProvider implements LlmModelProvider {
     const res = await fetchWithRetry(this.modelsEndpoint, {
       method: 'GET',
       headers: this.authHeaders(),
+      fetchImpl: this.fetcher,
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -235,6 +246,7 @@ export class CustomProvider implements LlmModelProvider {
         // subrequest CPU budgets don't tolerate up to 3 retries with
         // exponential backoff; clients (OpenAI/Anthropic SDKs) retry themselves.
         maxRetries: 0,
+        fetchImpl: this.fetcher,
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

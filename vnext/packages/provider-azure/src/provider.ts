@@ -22,6 +22,7 @@ import {
   type ProviderResponse,
 } from '@vibe-llm/provider-llm'
 import { fetchWithRetry, mergeHeaders, parseJsonBody, truncateBody } from '@vibe-core/http'
+import { directFetcher, type Fetcher } from '@vibe-core/upstream'
 
 export interface AzureProviderConfig {
   name: string
@@ -67,8 +68,15 @@ export class AzureProvider implements LlmModelProvider {
   private readonly defaultHeaders: Record<string, string>
   private readonly extraDeployments: ReadonlyArray<{ name: string; model: string }>
   private readonly modelPricing: ReadonlyArray<{ upstreamModelId: string; cost?: ModelPricing }>
+  /**
+   * Carries the upstream's egress proxy chain. Defaults to `directFetcher` so
+   * an upstream with no proxy configured behaves exactly as before; when a
+   * chain is configured, every Azure egress — the probe's deployments list and
+   * every inference call — leaves the host through it.
+   */
+  private readonly fetcher: Fetcher
 
-  constructor(cfg: AzureProviderConfig) {
+  constructor(cfg: AzureProviderConfig, fetcher: Fetcher = directFetcher) {
     if (!cfg.apiKey) throw new Error('Azure provider requires an apiKey')
     if (!cfg.endpoint) throw new Error('Azure provider requires an endpoint')
     if (!cfg.deployment) throw new Error('Azure provider requires a deployment')
@@ -83,6 +91,7 @@ export class AzureProvider implements LlmModelProvider {
     this.defaultHeaders = cfg.defaultHeaders ?? {}
     this.extraDeployments = cfg.deployments ?? []
     this.modelPricing = cfg.models ?? []
+    this.fetcher = fetcher
   }
 
   async getModels(): Promise<ProviderModelsResponse> {
@@ -108,7 +117,7 @@ export class AzureProvider implements LlmModelProvider {
   async probe(): Promise<ProbeResult> {
     return probeViaModels(async () => {
       const url = `${this.endpoint}/openai/deployments?api-version=${encodeURIComponent(this.apiVersion)}`
-      const res = await fetch(url, { headers: this.headers('openai') })
+      const res = await this.fetcher(url, { headers: this.headers('openai') })
       if (!res.ok) {
         const body = await res.text().catch(() => '')
         const err = new Error(`Azure deployments list failed: ${res.status} ${body.slice(0, 500)}`) as Error & { status?: number }
@@ -237,6 +246,7 @@ export class AzureProvider implements LlmModelProvider {
         // subrequest CPU budgets don't tolerate up to 3 retries with
         // exponential backoff; clients (OpenAI/Anthropic SDKs) retry themselves.
         maxRetries: 0,
+        fetchImpl: this.fetcher,
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

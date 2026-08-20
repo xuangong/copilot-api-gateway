@@ -18,6 +18,8 @@
  * Authorization is the same bearer we send to LLM API.
  */
 
+import { directFetcher, type Fetcher } from '@vibe-core/upstream'
+
 /** Passport type + contract version are encoded in the path. */
 const PASSPORT_PATH = '/v1/passports/llm-api/v1'
 
@@ -46,12 +48,20 @@ const inFlight = new Map<string, Promise<string | null>>()
 function cacheKey(substrateToken: string, apiBase: string): string {
   // The tail is enough to distinguish tokens without holding a second copy
   // of the secret in a long-lived map key.
+  //
+  // The fetcher is deliberately not part of the key: it only decides how the
+  // bytes leave this host, not which passport comes back, and (token, apiBase)
+  // already scopes the entry to one tenant on one ring.
   return `${apiBase}|${substrateToken.slice(-16)}`
 }
 
-async function fetchPassport(substrateToken: string, apiBase: string): Promise<Entry | null> {
+async function fetchPassport(
+  substrateToken: string,
+  apiBase: string,
+  fetcher: Fetcher,
+): Promise<Entry | null> {
   const url = `${apiBase.replace(/\/+$/, '')}${PASSPORT_PATH}`
-  const res = await fetch(url, {
+  const res = await fetcher(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${substrateToken}`, 'Content-Type': 'application/json' },
     // Identity comes from the token; the body carries only optional session
@@ -79,8 +89,18 @@ async function fetchPassport(substrateToken: string, apiBase: string): Promise<E
  * Return a cached passport, fetching once if cold. Returns null on any
  * failure — the caller omits the header and lets Substrate produce the real
  * error, rather than this becoming a second failure mode of its own.
+ *
+ * `fetcher` carries the upstream's egress proxy chain. It defaults to
+ * `directFetcher` to match SdfProvider's constructor default, so a caller with
+ * no proxy configured needs no argument — but a proxied upstream MUST pass its
+ * fetcher, or this hop leaves the host directly while the inference call that
+ * needs the passport goes through the proxy.
  */
-export async function getPassport(substrateToken: string, apiBase: string): Promise<string | null> {
+export async function getPassport(
+  substrateToken: string,
+  apiBase: string,
+  fetcher: Fetcher = directFetcher,
+): Promise<string | null> {
   const key = cacheKey(substrateToken, apiBase)
   const hit = cache.get(key)
   if (hit && hit.expiresAtMs > Date.now()) return hit.token
@@ -88,7 +108,7 @@ export async function getPassport(substrateToken: string, apiBase: string): Prom
   const pending = inFlight.get(key)
   if (pending) return pending
 
-  const promise = fetchPassport(substrateToken, apiBase)
+  const promise = fetchPassport(substrateToken, apiBase, fetcher)
     .then((entry) => {
       if (entry) cache.set(key, entry)
       return entry?.token ?? null
