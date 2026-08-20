@@ -13,7 +13,7 @@
 
 import { blake3 } from '@noble/hashes/blake3.js';
 
-import { base64DecodeBytes, concat, encodeAtypAddress, randomBytes, utf8Bytes } from '../bytes.ts';
+import { base64UrlDecodeBytes, concat, encodeAtypAddress, randomBytes, utf8Bytes } from '../bytes.ts';
 import { assertValidTargetHost, assertValidTargetPort, connectOrDialError } from '../dial-target.ts';
 import { ProxyDialError } from '../errors.ts';
 import { makeExactReader } from '../exact-reader.ts';
@@ -46,7 +46,7 @@ export const dialShadowsocks2022 = async (
   const keyLen = KEY_LEN_2022[config.method];
   let psk: Uint8Array<ArrayBuffer>;
   try {
-    psk = base64DecodeBytes(config.passwordBase64);
+    psk = base64UrlDecodeBytes(config.passwordBase64);
   } catch (cause) {
     throw new ProxyDialError('SS2022: invalid base64 in PSK', 'config', { cause });
   }
