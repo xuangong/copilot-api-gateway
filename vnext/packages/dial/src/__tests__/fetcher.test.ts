@@ -211,6 +211,68 @@ test('a direct_fetch-only list keeps the caller body untouched (no materializati
   expect(seen).toBe(body)
 })
 
+// Regression: `collectBody` used to read the multipart Content-Type back off
+// `new Request(url, { body: formData }).headers`, which Bun leaves unset. The
+// body then travelled as raw bytes with no Content-Type at all, and upstreams
+// fell back to parsing it as JSON ("LLM API: Invalid JSON format").
+test('materializing a FormData body keeps the multipart content-type', async () => {
+  const { repo } = fakeBackoffs()
+  const body = new FormData()
+  body.set('model', 'm')
+  body.set('file', new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }), 'a.png')
+  let seenHeaders: Record<string, string> | undefined
+  let seenBody: Uint8Array | undefined
+  const fetcher = createFetcher({
+    proxyBackoffs: repo,
+    upstreamId: 'u',
+    fallbackList: [{ id: 'direct_connect' }],
+    runtimeLocation: 'TEST',
+    proxyById: new Map(),
+    runProxied: async () => new Response('proxy'),
+    runDirectFetch: async () => new Response('direct fetch'),
+    runDirectConnect: async (_target, request) => {
+      seenHeaders = request.headers
+      seenBody = request.body
+      return new Response('ok')
+    },
+    socketDial: () => stubSocketDial,
+  })
+  await fetcher('https://api.openai.com', { method: 'POST', body })
+  const ct = seenHeaders?.['content-type']
+  expect(ct).toMatch(/^multipart\/form-data; boundary=.+/)
+  // The declared boundary must be the one the serialized body actually uses,
+  // or the upstream cannot split the parts.
+  const boundary = ct!.slice(ct!.indexOf('boundary=') + 'boundary='.length)
+  expect(new TextDecoder().decode(seenBody!)).toStartWith(`--${boundary}\r\n`)
+})
+
+test('a caller-set content-type still wins over the synthesized one', async () => {
+  const { repo } = fakeBackoffs()
+  const body = new FormData()
+  body.set('field', 'value')
+  let seenHeaders: Record<string, string> | undefined
+  const fetcher = createFetcher({
+    proxyBackoffs: repo,
+    upstreamId: 'u',
+    fallbackList: [{ id: 'direct_connect' }],
+    runtimeLocation: 'TEST',
+    proxyById: new Map(),
+    runProxied: async () => new Response('proxy'),
+    runDirectFetch: async () => new Response('direct fetch'),
+    runDirectConnect: async (_target, request) => {
+      seenHeaders = request.headers
+      return new Response('ok')
+    },
+    socketDial: () => stubSocketDial,
+  })
+  await fetcher('https://api.openai.com', {
+    method: 'POST',
+    body,
+    headers: { 'content-type': 'application/x-custom' },
+  })
+  expect(seenHeaders?.['content-type']).toBe('application/x-custom')
+})
+
 test('a ReadableStream body is rejected when a materialized transport is in play', async () => {
   const { repo } = fakeBackoffs()
   const fetcher = createFetcher({

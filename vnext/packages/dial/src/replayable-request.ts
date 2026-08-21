@@ -155,8 +155,26 @@ const collectBody = async (
   if (body instanceof FormData || body instanceof URLSearchParams) {
     const req = new Request('https://internal/', { method: 'POST', body })
     const buffer = new Uint8Array(await req.arrayBuffer())
-    const contentType = req.headers.get('content-type') ?? undefined
+    const contentType = req.headers.get('content-type') ?? synthesizeContentType(body, buffer)
     return { body: buffer, contentType }
   }
   throw new Error('unsupported BodyInit shape for materialized request')
+}
+
+/**
+ * Bun leaves `Request.headers` empty for a FormData body even though it
+ * serializes one with a boundary, so the Content-Type has to be recovered from
+ * the bytes. Without it the buffered body travels with no Content-Type at all
+ * and upstreams fall back to parsing multipart as JSON.
+ */
+const synthesizeContentType = (
+  body: FormData | URLSearchParams,
+  buffer: Uint8Array,
+): string | undefined => {
+  if (body instanceof URLSearchParams) return 'application/x-www-form-urlencoded;charset=UTF-8'
+  // The first line of a multipart body is the delimiter: `--<boundary>`.
+  const head = new TextDecoder().decode(buffer.subarray(0, 256))
+  const eol = head.indexOf('\r\n')
+  if (eol <= 2 || !head.startsWith('--')) return undefined
+  return `multipart/form-data; boundary=${head.slice(2, eol)}`
 }
