@@ -484,20 +484,108 @@ select option {
   border-color: rgba(139, 92, 246, 0.5);
   box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1), 0 4px 16px rgba(0,0,0,0.08);
 }
-.pg-composer textarea {
+.pg-input {
   width: 100%;
-  background: transparent !important;
-  border: none !important;
-  outline: none !important;
-  resize: none;
-  padding: 12px 16px 4px !important;
-  font-size: 14px !important;
-  font-family: "Outfit", system-ui, sans-serif !important;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 12px 16px 4px;
+  font-size: 14px;
+  font-family: "Outfit", system-ui, sans-serif;
+  line-height: 1.5;
   min-height: 52px;
   max-height: 180px;
+  overflow-y: auto;
   color: var(--text-primary);
-  box-shadow: none !important;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
+/* `:empty` is unreliable here — browsers leave a stray <br> behind after the
+   last character is deleted — so emptiness is driven from `domToParts`. */
+.pg-input[data-empty="true"]::before {
+  content: attr(data-placeholder);
+  color: var(--text-dim);
+  pointer-events: none;
+}
+/* Pasted images sit in the text flow, so they line up with the surrounding
+   run rather than stretching the line. */
+.pg-inline-img {
+  max-height: 120px;
+  max-width: 100%;
+  vertical-align: middle;
+  border-radius: 6px;
+  margin: 2px;
+}
+/* Vision badge — advisory. It never gates the attach button, because the
+   upstream's capability flag is wrong often enough that a false negative
+   would block a model that works. */
+.pg-vision {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.6;
+  border: 1px solid var(--input-border);
+  cursor: help;
+  white-space: nowrap;
+}
+.pg-vision-label { color: var(--text-dim); }
+.pg-vision-yes { border-color: rgba(16, 185, 129, 0.35); background: rgba(16, 185, 129, 0.08); }
+.pg-vision-no,
+.pg-vision-yes-but-rejected {
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.08);
+}
+.pg-vision-unknown { opacity: 0.7; }
+/* Attach stays clickable — the tint is a warning, not a block. */
+.pg-icon-btn-warn { color: #f59e0b; }
+
+/* Stands in for an image whose bytes are no longer in the store. */
+.pg-img-placeholder {
+  display: inline-block;
+  padding: 0 6px;
+  margin: 0 2px;
+  border: 1px dashed var(--input-border);
+  border-radius: 6px;
+  opacity: 0.6;
+  cursor: help;
+}
+/* Thread images zoom on a single click; composer images zoom on double click,
+   because a single click there is the native "select this image" gesture. */
+.pg-zoomable { cursor: zoom-in; }
+.pg-zoom-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+  cursor: zoom-out;
+}
+.pg-zoom-img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+}
+.pg-zoom-close {
+  position: absolute;
+  top: 16px; right: 20px;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+}
+.pg-zoom-close:hover { background: rgba(255, 255, 255, 0.28); }
 .pg-composer-actions {
   display: flex;
   align-items: center;
@@ -530,26 +618,12 @@ select option {
 .pg-send-btn:hover:not(:disabled) { filter: brightness(1.1); }
 .pg-send-btn:active:not(:disabled) { transform: scale(0.95); }
 .pg-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.pg-url-row {
-  padding: 0 12px 8px;
-}
-.pg-url-row input {
-  width: 100%;
-  background: transparent !important;
-  border: 1px solid var(--input-border) !important;
-  border-radius: 8px !important;
-  padding: 6px 10px !important;
-  font-size: 12px !important;
-}
 
 /* iOS Safari auto-zooms on focus when input font-size < 16px.
    Bump composer inputs to 16px on small viewports to suppress the zoom. */
 @media (max-width: 640px) {
-  .pg-composer textarea {
-    font-size: 16px !important;
-  }
-  .pg-url-row input {
-    font-size: 16px !important;
+  .pg-input {
+    font-size: 16px;
   }
 }
 
@@ -733,22 +807,3 @@ select option {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
-/* Image thumbnail in attach row */
-.pg-thumb {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px 4px 4px;
-  border: 1px solid var(--input-border);
-  border-radius: 8px;
-  background: var(--input-bg);
-}
-.pg-thumb img { width: 28px; height: 28px; border-radius: 4px; object-fit: cover; }
-.pg-thumb button {
-  font-size: 12px; line-height: 1;
-  width: 18px; height: 18px;
-  border-radius: 50%; border: none;
-  background: transparent; color: var(--text-dim);
-  cursor: pointer;
-}
-.pg-thumb button:hover { color: #f87171; background: var(--input-bg); }

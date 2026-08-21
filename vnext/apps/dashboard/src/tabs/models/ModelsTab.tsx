@@ -4,6 +4,7 @@ import { Select } from "../../components/Select"
 import { listKeys, type ApiKeyDetail } from "../../api/keys"
 import { listPlaygroundModels, type PlaygroundModel } from "../../api/models"
 import { ChatPanel } from "./ChatPanel"
+import { visionSupport } from "./vision"
 
 const LS_KEY_ID = "playground.keyId"
 const LS_OPEN_GROUPS = "playground.openGroups"
@@ -240,7 +241,7 @@ export function ModelsTab() {
 
         <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           {selectedModelId && selectedKey ? (
-            <ChatPanel modelId={selectedModelId} apiKey={selectedKey.key} systemPrompt={systemPrompt} webSearchEnabled={webSearchEnabled} onRevertModel={setSelectedModelId} />
+            <ChatPanel modelId={selectedModelId} apiKey={selectedKey.key} systemPrompt={systemPrompt} webSearchEnabled={webSearchEnabled} vision={visionSupport(selectedModelId, selectedModel?.capabilities?.supports)} onRevertModel={setSelectedModelId} />
           ) : (
             <div className="flex items-center justify-center h-full text-themed-dim text-sm">
               {t("dash.playground.selectModel")}

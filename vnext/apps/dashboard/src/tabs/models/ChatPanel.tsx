@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useT } from "../../state/i18n"
 import { fileToDataUrl, ImageTooLargeError } from "./image"
+import { getImages, pruneImages, putImage } from "./image-store"
+import { domToParts, type Part, partsToText } from "./parts"
+import { toAnthropicContent, toGeminiParts, toOpenAIContent } from "./payload"
+import { isImageRejection, type VisionSupport } from "./vision"
+import { collectImageIds, adoptImageIds, hydrateMessage, migrateMessage, stripImageBytes } from "./persistence"
 import { parseOpenAIStream, type Citation, type StreamUsage, type WebSearchProgress } from "./streams/openai"
 import { parseAnthropicStream } from "./streams/anthropic"
 import { parseGeminiStream } from "./streams/gemini"
@@ -17,13 +22,14 @@ function loadPersistedMessages(): Message[] {
   try {
     const raw = localStorage.getItem(LS_MESSAGES)
     if (!raw) return []
-    const parsed = JSON.parse(raw) as Message[]
+    const parsed = JSON.parse(raw) as Array<Message & { imageUrl?: string }>
     if (!Array.isArray(parsed)) return []
+    const migrated = parsed.map(migrateMessage)
     // Drop any trailing streaming-in-progress assistant bubble that may have
     // been persisted without text (e.g. tab closed mid-stream).
-    const last = parsed[parsed.length - 1]
-    if (last && last.role === "assistant" && !last.text) parsed.pop()
-    return parsed
+    const last = migrated[migrated.length - 1]
+    if (last && last.role === "assistant" && !last.text) migrated.pop()
+    return migrated
   } catch {
     return []
   }
@@ -36,14 +42,22 @@ function loadPersistedProtocol(): Protocol {
 
 interface Message {
   role: Role
+  /** Flattened text — display fallback, copy button, empty-bubble checks. */
   text: string
-  imageUrl?: string
+  /** Ordered content as typed in the composer. Absent on assistant messages. */
+  parts?: Part[]
   usage?: StreamUsage
   durationMs?: number
   /** Web search progress events surfaced as inline bubbles. */
   webSearches?: WebSearchEntry[]
   /** Sources the gateway grounded the answer in, deduped by URL. */
   citations?: Citation[]
+}
+
+/** A message as the protocol serializers see it. */
+function messageParts(m: Message): Part[] {
+  if (m.parts) return m.parts
+  return m.text ? [{ type: "text", text: m.text }] : []
 }
 
 interface WebSearchEntry {
@@ -74,6 +88,8 @@ interface Props {
   apiKey: string
   systemPrompt: string
   webSearchEnabled: boolean
+  /** Whether this model takes images — see `vision.ts`. Advisory only. */
+  vision: VisionSupport
   onRevertModel?: (id: string) => void
 }
 
@@ -108,19 +124,20 @@ function composeSystemPrompt(userPrompt: string): string {
   return trimmed ? `${timeLine}\n\n${trimmed}` : timeLine
 }
 
-export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onRevertModel }: Props) {
+export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vision, onRevertModel }: Props) {
   const t = useT()
   const [protocol, setProtocol] = useState<Protocol>(() => loadPersistedProtocol())
   const [messages, setMessages] = useState<Message[]>(() => loadPersistedMessages())
-  const [input, setInput] = useState("")
-  const [imageUrl, setImageUrl] = useState("")
-  const [imageDataUrl, setImageDataUrl] = useState("")
+  const [isEmpty, setIsEmpty] = useState(true)
   const [imageError, setImageError] = useState("")
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
+  /** Data URL of the image shown in the zoom overlay, or null when closed. */
+  const [zoomed, setZoomed] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const editorRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const lastUserRef = useRef<Message | null>(null)
   const startedAtRef = useRef<number>(0)
@@ -135,12 +152,43 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
   useEffect(() => {
     if (streaming) return
     try {
-      const slice = messages.slice(-MAX_PERSISTED_MESSAGES)
+      const slice = messages.slice(-MAX_PERSISTED_MESSAGES).map(stripImageBytes)
       localStorage.setItem(LS_MESSAGES, JSON.stringify(slice))
     } catch {
       /* quota exceeded, ignore */
     }
   }, [messages, streaming])
+
+  // Images live in IndexedDB, so a reloaded history arrives with ids but no
+  // bytes. Fill them back in, adopt anything a previous release left inline,
+  // and drop stored images the history no longer references.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const initial = messages
+      const adopted = new Map<string, string>()
+      for (const m of initial) {
+        for (const p of m.parts ?? []) {
+          if (p.type === "image" && p.dataUrl && !p.id && !adopted.has(p.dataUrl)) {
+            adopted.set(p.dataUrl, await putImage(p.dataUrl))
+          }
+        }
+      }
+      const byId = await getImages(collectImageIds(initial))
+      if (cancelled) return
+      if (byId.size > 0 || adopted.size > 0) {
+        setMessages((prev) => prev.map((m) => adoptImageIds(hydrateMessage(m, byId), adopted)))
+      }
+      await pruneImages([...collectImageIds(initial), ...adopted.values()])
+    })().catch(() => {
+      /* IndexedDB unavailable — images degrade to the placeholder chip */
+    })
+    return () => {
+      cancelled = true
+    }
+    // Runs once: everything pasted later is already in memory and in the store.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Track model+protocol changes; if there are messages, surface inline confirm bar
   // rather than wiping silently.
@@ -205,23 +253,9 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
   function toAnthropicMessages(history: Message[]): Array<Record<string, unknown>> {
     const out: Array<Record<string, unknown>> = []
     for (const m of history) {
-      if (!m.text && !m.imageUrl) continue
-      if (m.imageUrl) {
-        const parts: Array<Record<string, unknown>> = []
-        if (m.text) parts.push({ type: "text", text: m.text })
-        if (m.imageUrl.startsWith("data:")) {
-          const comma = m.imageUrl.indexOf(",")
-          const meta = m.imageUrl.slice(5, comma)
-          const mime = meta.split(";")[0] || "image/png"
-          const data = m.imageUrl.slice(comma + 1)
-          parts.push({ type: "image", source: { type: "base64", media_type: mime, data } })
-        } else {
-          parts.push({ type: "image", source: { type: "url", url: m.imageUrl } })
-        }
-        out.push({ role: m.role, content: parts })
-      } else {
-        out.push({ role: m.role, content: m.text })
-      }
+      const content = toAnthropicContent(messageParts(m))
+      if (typeof content === "string" && !content) continue
+      out.push({ role: m.role, content })
     }
     return out
   }
@@ -265,31 +299,135 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
   }, [messages])
 
-  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
-    setImageError("")
-    const file = e.target.files?.[0]
-    if (!file) {
-      setImageDataUrl("")
+  // —— Composer (contenteditable) ——
+  // React can't control a contenteditable without fighting the caret, so the
+  // editor is uncontrolled: the DOM is the source of truth and we only mirror
+  // an "is empty" flag out of it for the placeholder and the send button.
+
+  function readParts(): Part[] {
+    const el = editorRef.current
+    return el ? domToParts(el) : []
+  }
+
+  function syncEmpty() {
+    setIsEmpty(readParts().length === 0)
+  }
+
+  function clearEditor() {
+    if (editorRef.current) editorRef.current.innerHTML = ""
+    setIsEmpty(true)
+  }
+
+  /** Focus the editor, putting the caret at the end if it isn't already inside. */
+  function ensureCaretInEditor() {
+    const el = editorRef.current
+    if (!el) return
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+      el.focus()
       return
     }
-    try {
-      const url = await fileToDataUrl(file)
-      setImageDataUrl(url)
-      setImageUrl("")
-    } catch (err) {
-      if (err instanceof ImageTooLargeError) {
-        setImageError(t("dash.playground.imageTooLarge"))
-      } else {
-        setImageError(String((err as Error).message))
+    el.focus()
+    const range = document.createRange()
+    range.selectNodeContents(el)
+    range.collapse(false)
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+  }
+
+  function setEditorText(s: string) {
+    const el = editorRef.current
+    if (!el) return
+    el.textContent = s
+    setIsEmpty(s.trim() === "")
+    ensureCaretInEditor()
+  }
+
+  // `execCommand` is deprecated but universally implemented, and it is the only
+  // insertion API that keeps the browser's native undo stack intact.
+  function insertText(s: string) {
+    ensureCaretInEditor()
+    document.execCommand("insertText", false, s)
+    syncEmpty()
+  }
+
+  function insertImage(dataUrl: string, id: string) {
+    ensureCaretInEditor()
+    // Safe to build by concatenation: base64 data URLs contain no `"` or `<`,
+    // and the id is our own hex hash.
+    document.execCommand(
+      "insertHTML",
+      false,
+      `<img src="${dataUrl}" data-img-id="${id}" class="pg-inline-img" alt="">`,
+    )
+    syncEmpty()
+  }
+
+  /** The single funnel for paste, drop and the 📎 picker. */
+  async function insertFiles(files: File[]) {
+    setImageError("")
+    for (const f of files) {
+      try {
+        const dataUrl = await fileToDataUrl(f)
+        // Store before inserting so the id travels with the image from the
+        // first render — a message sent immediately still persists its bytes.
+        insertImage(dataUrl, await putImage(dataUrl))
+      } catch (err) {
+        setImageError(
+          err instanceof ImageTooLargeError
+            ? t("dash.playground.imageTooLarge")
+            : String((err as Error).message),
+        )
       }
-      setImageDataUrl("")
     }
   }
 
-  function removeImage() {
-    setImageDataUrl("")
-    setImageUrl("")
-    setImageError("")
+  async function onPaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    const dt = e.clipboardData
+    // clipboardData is invalidated the moment we await, so drain it first.
+    const files: File[] = []
+    for (const item of Array.from(dt.items)) {
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const f = item.getAsFile()
+        if (f) files.push(f)
+      }
+    }
+    e.preventDefault()
+    if (files.length > 0) {
+      await insertFiles(files)
+      return
+    }
+    // Paste as plain text — pasted HTML would drag foreign markup and inline
+    // styles into the composer, and `domToParts` would have to survive them.
+    insertText(dt.getData("text/plain"))
+  }
+
+  function onDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (Array.from(e.dataTransfer.items).some((i) => i.kind === "file")) e.preventDefault()
+  }
+
+  async function onDrop(e: React.DragEvent<HTMLDivElement>) {
+    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"))
+    if (files.length === 0) return
+    e.preventDefault()
+    // Drop where the pointer is, not where the caret happened to be.
+    const caretFrom = (document as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null
+    }).caretRangeFromPoint
+    const range = caretFrom?.call(document, e.clientX, e.clientY)
+    if (range && editorRef.current?.contains(range.commonAncestorContainer)) {
+      const sel = window.getSelection()
+      sel?.removeAllRanges()
+      sel?.addRange(range)
+    }
+    await insertFiles(files)
+  }
+
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    // Reset first so picking the same file twice in a row still fires onChange.
+    e.target.value = ""
+    if (files.length > 0) await insertFiles(files)
   }
 
   function clear() {
@@ -299,19 +437,14 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
   }
 
   const send = useCallback(
-    async (overrideInput?: { text: string; image?: string }) => {
-      const text = (overrideInput?.text ?? input).trim()
-      const img = overrideInput?.image ?? (imageDataUrl || imageUrl.trim())
-      if (!text && !img) return
-      const userMsg: Message = { role: "user", text, imageUrl: img || undefined }
+    async (override?: Part[]) => {
+      const parts = override ?? readParts()
+      if (parts.length === 0) return
+      const userMsg: Message = { role: "user", text: partsToText(parts), parts }
       lastUserRef.current = userMsg
       const nextHistory = [...messages, userMsg]
       setMessages([...nextHistory, { role: "assistant", text: "" }])
-      if (overrideInput === undefined) {
-        setInput("")
-        setImageUrl("")
-        setImageDataUrl("")
-      }
+      if (override === undefined) clearEditor()
       setImageError("")
       setError(null)
       setStreaming(true)
@@ -338,7 +471,8 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
             if (last && last.role === "assistant" && !last.text) return prev.slice(0, -1)
             return prev
           })
-          setError((err as Error).message)
+          const raw = (err as Error).message
+          setError(isImageRejection(raw) ? t("dash.playground.visionRejected") : raw)
         }
       } finally {
         setStreaming(false)
@@ -346,7 +480,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [input, imageDataUrl, imageUrl, messages, protocol, modelId, apiKey, systemPrompt, webSearchEnabled],
+    [messages, protocol, modelId, apiKey, systemPrompt, webSearchEnabled],
   )
 
   function retry() {
@@ -361,7 +495,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
     })
     setError(null)
     // Defer to next tick so messages state is committed
-    setTimeout(() => send({ text: last.text, image: last.imageUrl }), 0)
+    setTimeout(() => send(messageParts(last)), 0)
   }
 
   function finalizeLast() {
@@ -432,17 +566,9 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
     const oaiMessages: Array<Record<string, unknown>> = []
     oaiMessages.push({ role: "system", content: composeSystemPrompt(systemPrompt) })
     for (const m of history) {
-      if (m.imageUrl) {
-        oaiMessages.push({
-          role: m.role,
-          content: [
-            ...(m.text ? [{ type: "text", text: m.text }] : []),
-            { type: "image_url", image_url: { url: m.imageUrl } },
-          ],
-        })
-      } else {
-        oaiMessages.push({ role: m.role, content: m.text })
-      }
+      const content = toOpenAIContent(messageParts(m))
+      if (typeof content === "string" && !content) continue
+      oaiMessages.push({ role: m.role, content })
     }
     const resp = await fetch("/v1/chat/completions", {
       method: "POST",
@@ -471,20 +597,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
   }
 
   async function sendAnthropic(history: Message[], signal: AbortSignal) {
-    const anMessages: Array<Record<string, unknown>> = []
-    for (const m of history) {
-      if (m.imageUrl) {
-        anMessages.push({
-          role: m.role,
-          content: [
-            ...(m.text ? [{ type: "text", text: m.text }] : []),
-            { type: "image", source: { type: "url", url: m.imageUrl } },
-          ],
-        })
-      } else {
-        anMessages.push({ role: m.role, content: m.text })
-      }
-    }
+    const anMessages = toAnthropicMessages(history)
     const body: Record<string, unknown> = {
       model: modelId,
       max_tokens: 4096,
@@ -536,24 +649,9 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
   async function sendGemini(history: Message[], signal: AbortSignal) {
     const contents: Array<Record<string, unknown>> = []
     for (const m of history) {
-      const role = m.role === "assistant" ? "model" : "user"
-      const parts: Array<Record<string, unknown>> = []
-      if (m.text) parts.push({ text: m.text })
-      if (m.imageUrl) {
-        // Gemini wants base64 inline data. We only have data URLs reliably;
-        // a remote URL is passed through as text since the backend will reject
-        // raw url refs.
-        if (m.imageUrl.startsWith("data:")) {
-          const comma = m.imageUrl.indexOf(",")
-          const meta = m.imageUrl.slice(5, comma) // e.g. image/png;base64
-          const mime = meta.split(";")[0] || "image/png"
-          const data = m.imageUrl.slice(comma + 1)
-          parts.push({ inlineData: { mimeType: mime, data } })
-        } else {
-          parts.push({ text: `[image] ${m.imageUrl}` })
-        }
-      }
-      contents.push({ role, parts })
+      const parts = toGeminiParts(messageParts(m))
+      if (parts.length === 0) continue
+      contents.push({ role: m.role === "assistant" ? "model" : "user", parts })
     }
     const body: Record<string, unknown> = { contents }
     body.systemInstruction = { parts: [{ text: composeSystemPrompt(systemPrompt) }] }
@@ -583,12 +681,38 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
     }
   }
 
-  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault()
-      if (!streaming) void send()
+  function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "Enter" || e.nativeEvent.isComposing) return
+    e.preventDefault()
+    if (e.shiftKey) {
+      // Force a predictable `<br>` — left to itself the browser may split the
+      // line into a wrapper element instead, which `domToParts` also handles
+      // but which makes the DOM harder to reason about.
+      document.execCommand("insertLineBreak")
+      syncEmpty()
+      return
     }
+    if (!streaming) void send()
   }
+
+  /**
+   * In the composer a single click has to stay the native "select this image"
+   * gesture — that's how you delete one — so zooming is on double click. In the
+   * thread there is nothing to select, so a single click is enough (see JSX).
+   */
+  function onEditorDoubleClick(e: React.MouseEvent<HTMLDivElement>) {
+    const el = e.target as HTMLElement
+    if (el.tagName === "IMG") setZoomed((el as HTMLImageElement).src)
+  }
+
+  useEffect(() => {
+    if (!zoomed) return
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setZoomed(null)
+    }
+    window.addEventListener("keydown", onEsc)
+    return () => window.removeEventListener("keydown", onEsc)
+  }, [zoomed])
 
   async function onCopy(idx: number, text: string) {
     try {
@@ -642,6 +766,23 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
             </button>
           ))}
         </div>
+        <span
+          className={"pg-vision pg-vision-" + vision}
+          title={t(
+            vision === "yes" ? "dash.playground.visionYesHint"
+              : vision === "unknown" ? "dash.playground.visionUnknownHint"
+                : "dash.playground.visionNoHint",
+          )}
+        >
+          {vision === "yes" ? "🖼" : vision === "unknown" ? "🖼?" : "🚫🖼"}
+          <span className="pg-vision-label">
+            {t(
+              vision === "yes" ? "dash.playground.visionYes"
+                : vision === "unknown" ? "dash.playground.visionUnknown"
+                  : "dash.playground.visionNo",
+            )}
+          </span>
+        </span>
         {streaming && (
           <span className="text-themed-dim flex items-center gap-2 ml-2">
             <span className="pg-dots"><span/><span/><span/></span>
@@ -708,13 +849,13 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
             <div className="pg-empty-title">{t("dash.playground.emptyHint")}</div>
             <div className="pg-empty-model">{modelId}</div>
             <div className="pg-empty-suggestions">
-              <button className="pg-suggestion" onClick={() => setInput("Explain how SSE streaming works in 3 sentences.")}>
+              <button className="pg-suggestion" onClick={() => setEditorText("Explain how SSE streaming works in 3 sentences.")}>
                 💡 Explain how SSE streaming works
               </button>
-              <button className="pg-suggestion" onClick={() => setInput("Write a TypeScript function that debounces an async call.")}>
+              <button className="pg-suggestion" onClick={() => setEditorText("Write a TypeScript function that debounces an async call.")}>
                 ⚡ Write a debounce function in TS
               </button>
-              <button className="pg-suggestion" onClick={() => setInput("Hi! Introduce yourself in one sentence.")}>
+              <button className="pg-suggestion" onClick={() => setEditorText("Hi! Introduce yourself in one sentence.")}>
                 👋 Say hi
               </button>
             </div>
@@ -742,6 +883,33 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
                       <span className="pg-dots text-themed-dim"><span/><span/><span/></span>
                     ) : isAssistant ? (
                       <div className="md-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
+                    ) : m.parts ? (
+                      <div className="whitespace-pre-wrap">
+                        {m.parts.map((p, pi) =>
+                          p.type === "text" ? (
+                            <span key={pi}>{p.text}</span>
+                          ) : p.dataUrl ? (
+                            <img
+                              key={pi}
+                              src={p.dataUrl}
+                              alt=""
+                              className="pg-inline-img pg-zoomable"
+                              onClick={() => setZoomed(p.dataUrl)}
+                              title={t("dash.playground.zoomImage")}
+                            />
+                          ) : (
+                            // The bytes are gone from the store — the position
+                            // survives so the message still reads correctly.
+                            <span
+                              key={pi}
+                              className="pg-img-placeholder"
+                              title={t("dash.playground.imagePlaceholder")}
+                            >
+                              🖼
+                            </span>
+                          ),
+                        )}
+                      </div>
                     ) : (
                       <div className="whitespace-pre-wrap">{m.text}</div>
                     )}
@@ -773,9 +941,6 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
                           </a>
                         ))}
                       </div>
-                    )}
-                    {m.imageUrl && (
-                      <img src={m.imageUrl} alt="" className="mt-2 max-h-48 rounded-lg" />
                     )}
                     {isAssistant && (m.usage || m.durationMs != null) && (
                       <div className="pg-bubble-meta">
@@ -809,47 +974,35 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
 
       <div className="pg-composer-wrap">
         <div className="pg-composer">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
+          <div
+            ref={editorRef}
+            className="pg-input"
+            contentEditable={!streaming}
+            suppressContentEditableWarning
+            role="textbox"
+            aria-multiline="true"
+            data-placeholder={t("dash.playground.messagePlaceholder")}
+            data-empty={isEmpty ? "true" : undefined}
+            onInput={syncEmpty}
             onKeyDown={onKeyDown}
-            placeholder={t("dash.playground.messagePlaceholder")}
-            disabled={streaming}
-            rows={1}
+            onDoubleClick={onEditorDoubleClick}
+            onPaste={(e) => void onPaste(e)}
+            onDragOver={onDragOver}
+            onDrop={(e) => void onDrop(e)}
           />
-          {imageUrl && !imageDataUrl && (
-            <div className="pg-url-row">
-              <input
-                type="url"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                placeholder={t("dash.playground.imageUrl")}
-                disabled={streaming}
-              />
-            </div>
-          )}
           <div className="pg-composer-actions">
-            <label className="pg-icon-btn" title={t("dash.playground.imageFile")}>
+            <label
+              className={"pg-icon-btn" + (vision === "no" || vision === "yes-but-rejected" ? " pg-icon-btn-warn" : "")}
+              title={t(vision === "yes" || vision === "unknown"
+                ? "dash.playground.imageFile"
+                : "dash.playground.visionNoHint")}
+            >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8L9.4 17.36a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-              <input type="file" accept="image/*" className="hidden" onChange={onPickFile} disabled={streaming} />
+              <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => void onPickFile(e)} disabled={streaming} />
             </label>
             <button
-              className="pg-icon-btn"
-              onClick={() => setImageUrl(imageUrl ? "" : " ")}
-              title={t("dash.playground.imageUrl")}
-              disabled={streaming || !!imageDataUrl}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-            </button>
-            {imageDataUrl && (
-              <span className="pg-thumb">
-                <img src={imageDataUrl} alt="" />
-                <button onClick={removeImage} title={t("dash.playground.removeImage")} disabled={streaming}>✕</button>
-              </span>
-            )}
-            <button
               onClick={() => void send()}
-              disabled={streaming || (!input.trim() && !imageDataUrl && !imageUrl.trim())}
+              disabled={streaming || isEmpty}
               className="pg-send-btn"
               title={t("dash.playground.send")}
             >
@@ -859,6 +1012,13 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
         </div>
         {imageError && <div className="text-xs text-accent-red mt-2 text-center">{imageError}</div>}
       </div>
+
+      {zoomed && (
+        <div className="pg-zoom-overlay" onClick={() => setZoomed(null)} role="presentation">
+          <img src={zoomed} alt="" className="pg-zoom-img" />
+          <button className="pg-zoom-close" title={t("dash.playground.closeZoom")}>✕</button>
+        </div>
+      )}
     </div>
   )
 }

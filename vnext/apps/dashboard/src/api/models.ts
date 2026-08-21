@@ -14,6 +14,9 @@ export interface PlaygroundModel {
       max_prompt_tokens?: number
       max_output_tokens?: number
     }
+    /** Upstream's own capability claims — see `tabs/models/vision.ts` on why
+     *  `supports.vision` needs correcting before it drives any UI. */
+    supports?: Record<string, unknown>
   }
   [extra: string]: unknown
 }
