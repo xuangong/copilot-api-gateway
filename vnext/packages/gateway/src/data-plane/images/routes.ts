@@ -27,6 +27,7 @@ import { openRequestDump, parseJsonBody } from '../chat-flow/shared/dump-open.ts
 import { readRequestBody } from '../../shared/dump/request-body.ts'
 import { openDumpAccumulator, type DumpAccumulator } from '../../shared/dump/accumulator.ts'
 import { getRepo } from '../../repo/index.ts'
+import { HTTPError } from '@vibe-llm/provider-llm'
 
 type Vars = { auth: DataPlaneAuthCtx }
 
@@ -51,6 +52,21 @@ function rateLimitResponse(c: ImagesCtx, rl: { reason: string; retryAfterSeconds
       ...(rl.retryAfterSeconds != null ? { retry_after_seconds: rl.retryAfterSeconds } : {}),
     },
   }, 429)
+}
+
+/**
+ * Providers signal a non-2xx upstream by throwing an `HTTPError` carrying the
+ * real Response (provider-sdf :236, provider-custom :260). Every chat-flow
+ * attempt unwraps it; without the same treatment here an upstream 400 like
+ * "Transparent background is not supported for this model" reaches the client
+ * as a bare 500 with the message gone.
+ */
+export function upstreamErrorResponse(err: unknown): Response | null {
+  if (!(err instanceof HTTPError) || !err.response) return null
+  return new Response(err.response.body, {
+    status: err.response.status,
+    headers: err.response.headers,
+  })
 }
 
 function forwardUpstream(response: Response): Response {
@@ -94,7 +110,9 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
   }
 
   const pricing = binding.provider.getPricingForModelKey(payload.model)
-  const attempt = await runImagesAttempt({
+  let attempt: Awaited<ReturnType<typeof runImagesAttempt>>
+  try {
+    attempt = await runImagesAttempt({
     apiKeyId: auth.apiKeyId,
     model: payload.model,
     modelKey: payload.model,
@@ -114,7 +132,12 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
       })
       return new Response(pr.body, { status: pr.status, headers: pr.headers })
     },
-  })
+    })
+  } catch (err) {
+    const upstream = upstreamErrorResponse(err)
+    if (!upstream) throw err
+    return wrapResponse(dump, upstream)
+  }
 
   if (!attempt.ok && 'rateLimit' in attempt) {
     return wrapResponse(dump, rateLimitResponse(c, attempt.rateLimit))
@@ -203,7 +226,9 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
   }
 
   const pricing = binding.provider.getPricingForModelKey(model)
-  const attempt = await runImagesAttempt({
+  let attempt: Awaited<ReturnType<typeof runImagesAttempt>>
+  try {
+    attempt = await runImagesAttempt({
     apiKeyId: auth.apiKeyId,
     model,
     modelKey: model,
@@ -223,7 +248,12 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
       })
       return new Response(pr.body, { status: pr.status, headers: pr.headers })
     },
-  })
+    })
+  } catch (err) {
+    const upstream = upstreamErrorResponse(err)
+    if (!upstream) throw err
+    return wrapResponse(dump, upstream)
+  }
 
   if (!attempt.ok && 'rateLimit' in attempt) {
     return wrapResponse(dump, rateLimitResponse(c, attempt.rateLimit))
