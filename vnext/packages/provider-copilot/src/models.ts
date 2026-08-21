@@ -39,6 +39,13 @@ export interface Model {
   preview: boolean
   vendor: string
   version: string
+  /**
+   * Wire paths Copilot will actually serve this model on, e.g.
+   * `["/responses", "ws:/responses"]`. Present on the newer catalog entries
+   * (grok, mai-code, gemini-3.x, gpt-5.x, claude-*) and absent on the legacy
+   * tail (gpt-4o and older), so consumers must tolerate `undefined`.
+   */
+  supported_endpoints?: string[]
   policy?: {
     state: string
     terms: string
