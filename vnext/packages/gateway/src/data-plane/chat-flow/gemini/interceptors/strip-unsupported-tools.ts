@@ -1,12 +1,19 @@
 /**
  * Strip Gemini tool capabilities we can't translate.
  *
- * Only `functionDeclarations` are portable to our hub protocols. Everything
- * else (googleSearch, googleSearchRetrieval, codeExecution, computerUse,
+ * `functionDeclarations` are portable to our hub protocols, and
+ * `googleSearch` / `googleSearchRetrieval` are now mapped by each
+ * `gemini-via-*` request translator onto that target's hosted web search — so
+ * both are left in place. Everything else (codeExecution, computerUse,
  * urlContext, fileSearch, mcpServers, googleMaps) is stripped in place; tool
- * groups that end up empty after stripping are removed, and if that drains
- * the `tools` array entirely we delete the field so translators don't see
- * `tools: []` (which some downstream shape validators reject).
+ * groups that end up carrying nothing we understand are removed, and if that
+ * drains the `tools` array entirely we delete the field so translators don't
+ * see `tools: []` (which some downstream shape validators reject).
+ *
+ * Note that a search-only group (`{ googleSearch: {} }`) has no
+ * `functionDeclarations` and must still survive this filter, otherwise the
+ * translator never sees the request for search.
+ *
  * Ported from `copilot-gateway`'s `strip-unsupported-tools.ts`.
  */
 import type { GeminiInterceptor } from './types.ts'
@@ -30,8 +37,6 @@ interface GeminiPayloadLike {
 }
 
 const stripToolCapabilities = (tool: GeminiToolGroupLike): void => {
-  delete tool.googleSearch
-  delete tool.googleSearchRetrieval
   delete tool.codeExecution
   delete tool.computerUse
   delete tool.urlContext
@@ -40,11 +45,16 @@ const stripToolCapabilities = (tool: GeminiToolGroupLike): void => {
   delete tool.googleMaps
 }
 
+const carriesSomethingTranslatable = (tool: GeminiToolGroupLike): boolean =>
+  (Array.isArray(tool.functionDeclarations) && tool.functionDeclarations.length > 0) ||
+  tool.googleSearch !== undefined ||
+  tool.googleSearchRetrieval !== undefined
+
 export const stripUnsupportedToolsFromPayload = (payload: GeminiPayloadLike): void => {
   if (!payload.tools) return
   const tools = payload.tools.filter((tool) => {
     stripToolCapabilities(tool)
-    return Array.isArray(tool.functionDeclarations) && tool.functionDeclarations.length > 0
+    return carriesSomethingTranslatable(tool)
   })
   if (tools.length === 0) {
     delete payload.tools

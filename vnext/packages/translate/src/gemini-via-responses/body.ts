@@ -134,12 +134,14 @@ export async function translateResponsesToGeminiBody(
   const parts: GeminiPart[] = []
   let finishReason: GeminiFinishReason | undefined
   let usageMetadata: GeminiUsageMetadata | undefined
+  let groundingMetadata: GeminiCandidate['groundingMetadata']
 
   for await (const ge of translateResponsesToGeminiEvents(events, { model: options.model })) {
     if ('error' in ge) continue
     const candidate = ge.candidates?.[0]
     if (candidate?.content?.parts) parts.push(...candidate.content.parts)
     if (candidate?.finishReason !== undefined) finishReason = candidate.finishReason
+    if (candidate?.groundingMetadata !== undefined) groundingMetadata = candidate.groundingMetadata
     if (ge.usageMetadata !== undefined) usageMetadata = ge.usageMetadata
   }
 
@@ -147,6 +149,7 @@ export async function translateResponsesToGeminiBody(
     index: 0,
     content: { role: 'model', parts },
     ...(finishReason !== undefined ? { finishReason } : {}),
+    ...(groundingMetadata !== undefined ? { groundingMetadata } : {}),
   }
 
   return {

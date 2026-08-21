@@ -1,11 +1,12 @@
-import type { StreamChunk, StreamUsage } from "./openai"
+import { toCitations, type StreamChunk, type StreamUsage } from "./openai"
 
 export type { StreamChunk, StreamUsage }
 
 // Gemini SSE format (?alt=sse): each event is `data: {json}\n\n`.
 // Each chunk carries candidates[0].content.parts[*].text (incremental) and
-// optionally a usageMetadata block. The final chunk includes finishReason and
-// the cumulative usageMetadata.
+// optionally a usageMetadata block. The final chunk includes finishReason,
+// groundingMetadata (when the turn was web-grounded) and the cumulative
+// usageMetadata — so a single line can produce several chunks.
 export async function* parseGeminiStream(
   body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<StreamChunk, void, void> {
@@ -22,16 +23,14 @@ export async function* parseGeminiStream(
       while ((nl = buf.indexOf("\n")) !== -1) {
         const raw = buf.slice(0, nl).replace(/\r$/, "")
         buf = buf.slice(nl + 1)
-        const out = parseLine(raw)
-        if (out) {
+        for (const out of parseLine(raw)) {
           if (out.type === "usage") lastUsage = out.usage
           else yield out
         }
       }
     }
     const tail = buf.replace(/\r$/, "")
-    const out = parseLine(tail)
-    if (out) {
+    for (const out of parseLine(tail)) {
       if (out.type === "usage") lastUsage = out.usage
       else yield out
     }
@@ -41,45 +40,31 @@ export async function* parseGeminiStream(
   if (lastUsage) yield { type: "usage", usage: lastUsage }
 }
 
-function parseLine(raw: string): StreamChunk | null {
-  if (!raw.startsWith("data:")) return null
+function parseLine(raw: string): StreamChunk[] {
+  if (!raw.startsWith("data:")) return []
   const payload = raw.slice(5).trim()
-  if (!payload) return null
+  if (!payload) return []
   let json: unknown
   try {
     json = JSON.parse(payload)
   } catch {
-    return null
+    return []
   }
   const obj = json as {
     error?: { message?: string }
     candidates?: Array<{
       content?: { parts?: Array<{ text?: string }> }
+      groundingMetadata?: { groundingChunks?: Array<{ web?: { uri?: string; title?: string } }> }
     }>
     usageMetadata?: {
       promptTokenCount?: number
       candidatesTokenCount?: number
     }
-    _meta?: {
-      web_search?: {
-        status?: "in_progress" | "searching" | "completed"
-        query?: string
-        item_id?: string
-      }
-    }
   }
   if (obj.error) throw new Error(obj.error.message ?? "Gemini stream error")
-  const ws = obj._meta?.web_search
-  if (ws && ws.status) {
-    return {
-      type: "web_search",
-      progress: {
-        status: ws.status,
-        ...(ws.query ? { query: ws.query } : {}),
-        ...(ws.item_id ? { item_id: ws.item_id } : {}),
-      },
-    }
-  }
+
+  const out: StreamChunk[] = []
+
   const parts = obj.candidates?.[0]?.content?.parts
   let text = ""
   if (Array.isArray(parts)) {
@@ -87,15 +72,25 @@ function parseLine(raw: string): StreamChunk | null {
       if (typeof p?.text === "string") text += p.text
     }
   }
-  if (text) return { type: "delta", text }
+  if (text) out.push({ type: "delta", text })
+
+  // Grounding rides on the final candidate, alongside finishReason and usage.
+  const grounding = obj.candidates?.[0]?.groundingMetadata?.groundingChunks
+  if (Array.isArray(grounding)) {
+    const citations = toCitations(
+      grounding.flatMap((chunk) => (chunk.web?.uri ? [{ url: chunk.web.uri, title: chunk.web.title }] : [])),
+    )
+    if (citations.length) out.push({ type: "citations", citations })
+  }
+
   if (obj.usageMetadata) {
-    return {
+    out.push({
       type: "usage",
       usage: {
         input_tokens: obj.usageMetadata.promptTokenCount ?? 0,
         output_tokens: obj.usageMetadata.candidatesTokenCount ?? 0,
       },
-    }
+    })
   }
-  return null
+  return out
 }

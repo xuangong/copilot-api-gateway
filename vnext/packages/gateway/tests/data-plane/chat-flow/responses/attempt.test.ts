@@ -139,3 +139,36 @@ test('case e — provider returns null body returns InternalErrorResult(502)', a
     expect(String(res.error)).toMatch(/empty body/)
   }
 })
+
+// `Invocation.sourceApi` names the protocol the *client* speaks, not the one
+// this attempt runs. A chat-completions / messages / gemini request routed to a
+// Responses upstream re-enters this same attempt through `traverseTranslation`,
+// and interceptors that behave differently for a native caller — the web-search
+// shim stands aside only when the client can read `web_search_call` items
+// itself — have no other way to tell the two apart. `telemetryCtx.sourceApi` is
+// the one value threaded intact across the translation hop, so it is the source
+// of truth here, exactly as in messages/attempt.ts.
+test('case f — sourceApi reports the inbound protocol, not this attempt', async () => {
+  const seen: Array<string | undefined> = []
+  const capture = (async (invocation: { sourceApi?: string }, _ctx: unknown, run: () => unknown) => {
+    seen.push(invocation.sourceApi)
+    return await run()
+  }) as never
+
+  for (const inbound of ['chat-completions', 'messages', 'gemini', 'responses', undefined] as const) {
+    const fetchMock = mock(async () => makeProviderResponse({ status: 200, body: okJsonBody }))
+    const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: fetchMock } } as never
+    await responsesAttempt.generate({
+      payload: { model: 'gpt-4o', input: [], stream: false },
+      auth: baseAuth,
+      ctx: baseCtx,
+      telemetryCtx: { ...baseTelemetry, ...(inbound !== undefined ? { sourceApi: inbound } : {}) },
+      interceptors: [capture],
+      selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'responses', translator: identityTranslator, bareModel: 'gpt-4o' }),
+    })
+  }
+
+  // A caller that predates the telemetry field is treated as native, so the
+  // behaviour of every existing call site is unchanged.
+  expect(seen).toEqual(['chat_completions', 'messages', 'gemini', 'responses', 'responses'])
+})

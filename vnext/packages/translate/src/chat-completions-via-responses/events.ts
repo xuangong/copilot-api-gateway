@@ -18,6 +18,8 @@
  *    `tool_calls`; otherwise `stop`. If the upstream stream ends without
  *    `response.completed`, finish stays `null` until the final chunk and
  *    is then defaulted to `stop` to preserve a valid Chat SSE finish.
+ *  - `response.output_item.done` for a `web_search_call` carries the sources
+ *    the search resolved; they become `delta.annotations` (see below).
  */
 interface ChatChoiceDelta {
   role?: 'assistant'
@@ -28,6 +30,28 @@ interface ChatChoiceDelta {
     type?: 'function'
     function: { name?: string; arguments?: string }
   }>
+  /**
+   * Web-search citations, in OpenAI's spec shape. Responses carries them on
+   * the `web_search_call` output item, which has no Chat Completions
+   * counterpart; without this the sources are dropped on the way out and the
+   * client gets an answer it cannot attribute. Same channel and shape as the
+   * Messages pair uses, so a Chat Completions client behaves identically
+   * whichever endpoint actually served the model.
+   */
+  annotations?: ChatUrlCitationAnnotation[]
+}
+
+export interface ChatUrlCitationAnnotation {
+  type: 'url_citation'
+  url_citation: { url: string; title?: string }
+}
+
+export interface ChatUsage {
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  prompt_tokens_details?: { cached_tokens?: number }
+  completion_tokens_details?: { reasoning_tokens?: number }
 }
 
 export interface ChatSSEChunk {
@@ -36,14 +60,88 @@ export interface ChatSSEChunk {
   created: number
   model: string
   choices: Array<{ index: 0; delta: ChatChoiceDelta; finish_reason: 'stop' | 'length' | 'tool_calls' | null }>
+  usage?: ChatUsage
+}
+
+interface ResponsesUsage {
+  input_tokens?: number
+  output_tokens?: number
+  total_tokens?: number
+  input_tokens_details?: { cached_tokens?: number }
+  output_tokens_details?: { reasoning_tokens?: number }
 }
 
 interface ResponsesEvent {
   type: string
-  response?: { id?: string; model?: string; created_at?: number; status?: string; incomplete_details?: { reason?: string } }
+  response?: {
+    id?: string
+    model?: string
+    created_at?: number
+    status?: string
+    incomplete_details?: { reason?: string }
+    usage?: ResponsesUsage
+  }
   delta?: string
   output_index?: number
-  item?: { type?: string; call_id?: string; name?: string; arguments?: string }
+  item?: {
+    type?: string
+    call_id?: string
+    name?: string
+    arguments?: string
+    results?: Array<{ url?: string; title?: string }>
+  }
+}
+
+/**
+ * `web_search_call.results` is only populated when the request opted in via
+ * `include: ["web_search_call.results"]` — the Chat Completions request
+ * translator adds that token whenever the client asks for search. URLs already
+ * announced on this stream are skipped so a model that searches several times
+ * does not re-cite the same page.
+ */
+function webSearchResultAnnotations(
+  results: Array<{ url?: string; title?: string }> | undefined,
+  citedUrls: Set<string>,
+): ChatUrlCitationAnnotation[] {
+  if (!Array.isArray(results)) return []
+  const out: ChatUrlCitationAnnotation[] = []
+  for (const entry of results) {
+    const url = entry?.url
+    if (typeof url !== 'string' || url === '') continue
+    if (citedUrls.has(url)) continue
+    citedUrls.add(url)
+    const title = entry.title
+    out.push({
+      type: 'url_citation',
+      url_citation: { url, ...(typeof title === 'string' && title !== '' ? { title } : {}) },
+    })
+  }
+  return out
+}
+
+/**
+ * Responses reports token counts once, on the terminal envelope; Chat
+ * Completions carries them on a trailing choice-less chunk. Emitted whenever
+ * upstream reports usage rather than gated on `stream_options.include_usage`
+ * — this translator only sees the event stream, not the request — matching
+ * what `chat-completions-via-messages` already does for the Messages pair.
+ */
+function makeUsageChunk(id: string, model: string, created: number, usage: ResponsesUsage): ChatSSEChunk {
+  const prompt = usage.input_tokens ?? 0
+  const completion = usage.output_tokens ?? 0
+  const cached = usage.input_tokens_details?.cached_tokens ?? 0
+  const reasoning = usage.output_tokens_details?.reasoning_tokens ?? 0
+  return {
+    id, object: 'chat.completion.chunk', created, model,
+    choices: [],
+    usage: {
+      prompt_tokens: prompt,
+      completion_tokens: completion,
+      total_tokens: usage.total_tokens ?? prompt + completion,
+      ...(cached > 0 ? { prompt_tokens_details: { cached_tokens: cached } } : {}),
+      ...(reasoning > 0 ? { completion_tokens_details: { reasoning_tokens: reasoning } } : {}),
+    },
+  }
 }
 
 function makeChunk(id: string, model: string, created: number, delta: ChatChoiceDelta, finish: ChatSSEChunk['choices'][number]['finish_reason'] = null): ChatSSEChunk {
@@ -62,6 +160,9 @@ export async function* translateResponsesToChatSSE(
   let sawToolCall = false
   let finish: string | null = null
   let started = false
+  let usage: ResponsesUsage | undefined
+  /** URLs already emitted as annotations, so repeat searches do not duplicate sources. */
+  const citedUrls = new Set<string>()
 
   for await (const ev of events as AsyncIterable<ResponsesEvent>) {
     if (ev.type === 'response.created') {
@@ -93,6 +194,15 @@ export async function* translateResponsesToChatSSE(
       })
       continue
     }
+    if (ev.type === 'response.output_item.done' && ev.item?.type === 'web_search_call') {
+      // Deliberately does NOT set `sawToolCall`: the search already ran
+      // server-side, so surfacing it as a pending call would make the client
+      // think it owes a tool result and finish the turn as `tool_calls`.
+      // Only the sources travel, as annotations on an empty content delta.
+      const annotations = webSearchResultAnnotations(ev.item.results, citedUrls)
+      if (annotations.length > 0) yield makeChunk(id, model, created, { annotations })
+      continue
+    }
     if (ev.type === 'response.function_call_arguments.delta' && typeof ev.delta === 'string') {
       yield makeChunk(id, model, created, {
         tool_calls: [{ index: ev.output_index ?? 0, function: { arguments: ev.delta } }],
@@ -104,6 +214,7 @@ export async function* translateResponsesToChatSSE(
       if (reason === 'max_output_tokens') finish = 'length'
       else if (sawToolCall) finish = 'tool_calls'
       else finish = 'stop'
+      usage = ev.response?.usage
       break
     }
   }
@@ -115,4 +226,6 @@ export async function* translateResponsesToChatSSE(
       ? finish
       : 'stop'
   yield makeChunk(id, model, created, {}, finalFinish)
+  // Usage trails the finish chunk, per the Chat Completions streaming shape.
+  if (usage) yield makeUsageChunk(id, model, created, usage)
 }

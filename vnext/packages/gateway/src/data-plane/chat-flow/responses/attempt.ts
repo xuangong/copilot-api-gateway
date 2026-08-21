@@ -62,6 +62,7 @@ import { selectPair } from '../../dispatch/pair-selector.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
 import { traverseTranslation } from '../shared/traverse-translation.ts'
 import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-dispatch.ts'
+import { invocationSourceApi } from '../shared/invocation-source-api.ts'
 
 // ─── Public types ─────────────────────────────────────────────────────────
 
@@ -209,7 +210,12 @@ export const responsesAttempt = {
     const invocation: Invocation = {
       endpoint: 'responses',
       enabledFlags: new Set(sel.binding.enabledFlags ?? []),
-      sourceApi: 'responses',
+      // The *inbound* protocol, not this attempt's. A chat-completions /
+      // messages / gemini request routed onto a Responses upstream re-enters
+      // here through `traverseTranslation`, and the web-search shim keys off
+      // this field: a native Responses client can read the upstream's own
+      // `web_search_call` items, a translated one cannot.
+      sourceApi: invocationSourceApi(args.telemetryCtx.sourceApi, 'responses'),
       action: args.action,
       payload: args.payload as Record<string, unknown>,
       headers: { ...(args.inheritedHeaders ?? {}) },

@@ -119,4 +119,70 @@ describe('translateChatToResponses', () => {
     } as never)
     expect(out.target.stream).toBe(false)
   })
+
+  describe('hosted web search', () => {
+    // Chat Completions triggers search with top-level `web_search_options`,
+    // Responses with a `tools[]` entry. Every `gpt-5*` on Copilot is served
+    // only on /responses, so without this bridge the dashboard's 联网搜索
+    // toggle is a no-op for those models.
+    test('maps web_search_options onto a hosted web_search tool', () => {
+      const out = translateChatToResponses({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'weather' }],
+        web_search_options: {},
+      } as never)
+      expect(out.target.tools).toEqual([{ type: 'web_search' }] as never)
+    })
+
+    test('forwards search_context_size and user_location, keeping client tools first', () => {
+      const location = { type: 'approximate', approximate: { city: 'Beijing' } }
+      const out = translateChatToResponses({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'weather' }],
+        tools: [{ type: 'function', function: { name: 'lookup', parameters: { type: 'object' } } }],
+        web_search_options: { search_context_size: 'high', user_location: location },
+      } as never)
+      const tools = out.target.tools as Array<{ type: string; name?: string }>
+      expect(tools.map((t) => t.name ?? t.type)).toEqual(['lookup', 'web_search'])
+      // Responses has both knobs natively, so unlike the Messages pair they survive.
+      expect(tools[1]).toEqual({
+        type: 'web_search',
+        search_context_size: 'high',
+        user_location: location,
+      } as never)
+    })
+
+    test('leaves tools untouched when search was not requested', () => {
+      const out = translateChatToResponses({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hi' }],
+      } as never)
+      expect(out.target.tools).toBeUndefined()
+      expect((out.target as { include?: unknown }).include).toBeUndefined()
+    })
+
+    // The gateway's web-search shim gates `web_search_call.results` on the
+    // Responses-only `include` opt-in, mirroring native Responses. A Chat
+    // Completions client has no way to spell that token, so requesting search
+    // is taken as requesting its sources.
+    test('opts into web_search_call.results so sources reach the client', () => {
+      const out = translateChatToResponses({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'weather' }],
+        web_search_options: {},
+      } as never)
+      expect((out.target as { include?: unknown }).include).toEqual(['web_search_call.results'])
+    })
+
+    test('does not duplicate the token when the caller already sent include', () => {
+      const out = translateChatToResponses({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'weather' }],
+        web_search_options: {},
+        include: ['web_search_call.results', 'reasoning.encrypted_content'],
+      } as never)
+      expect((out.target as { include?: unknown }).include)
+        .toEqual(['web_search_call.results', 'reasoning.encrypted_content'])
+    })
+  })
 })

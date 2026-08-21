@@ -169,6 +169,18 @@ function translateToolChoice(choice: unknown): { type: 'auto' | 'any' | 'tool' |
   return undefined
 }
 
+/**
+ * Hosted web search crosses the protocol boundary as a shape change, not a
+ * field rename: Chat Completions expresses it as the top-level
+ * `web_search_options` argument, Messages as a `tools[]` entry. Mirrors
+ * `gemini-via-messages/request.ts`, which does the same for `googleSearch`.
+ *
+ * `search_context_size` is dropped deliberately — it caps results *per search*,
+ * and Anthropic's tool has no such knob (only `max_uses`, a turn-level cap).
+ * `user_location` is likewise ignored, matching the Chat Completions shim.
+ */
+const HOSTED_WEB_SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search' } as const
+
 export function translateChatToMessages(
   payload: ChatPayload,
   options: TranslateChatToMessagesOptions = {},
@@ -234,6 +246,11 @@ export function translateChatToMessages(
     out.stop_sequences = Array.isArray(payload.stop) ? payload.stop : [payload.stop]
   }
   if (tools) out.tools = tools
+  // Appended after `applyLastToolCacheBreakpoint` so the breakpoint stays on
+  // the last *client* tool; the hosted entry is a constant and not worth caching.
+  if ((payload as { web_search_options?: unknown }).web_search_options !== undefined) {
+    out.tools = [...((out.tools as unknown[]) ?? []), { ...HOSTED_WEB_SEARCH_TOOL }]
+  }
   if (toolChoice) out.tool_choice = toolChoice
   if (thinking) out.thinking = thinking
   if (output_config) out.output_config = output_config

@@ -86,4 +86,139 @@ describe('translateResponsesToChatSSE', () => {
     expect(upstreamClosed).toBe(true)
     expect(count).toBe(3)
   })
+
+  describe('usage', () => {
+    // Responses reports tokens once, on the terminal envelope. Without this
+    // bridge a Chat Completions client sees no usage at all (the dashboard
+    // playground renders "— 入 / — 出").
+    const completed = (usage: unknown) => [
+      { type: 'response.created', response: { id: 'r_u', model: 'gpt-5.5', created_at: 7 } },
+      { type: 'response.output_text.delta', delta: 'hi' },
+      { type: 'response.completed', response: { id: 'r_u', status: 'completed', usage } },
+    ]
+
+    test('emits a trailing usage chunk after the finish chunk', async () => {
+      const chunks = await collect(translateResponsesToChatSSE(feed(completed({
+        input_tokens: 797, output_tokens: 127, total_tokens: 924,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens_details: { reasoning_tokens: 18 },
+      }))))
+      const last = chunks.at(-1)!
+      expect(last.choices).toEqual([])
+      expect(last.usage).toEqual({
+        prompt_tokens: 797,
+        completion_tokens: 127,
+        total_tokens: 924,
+        // cached_tokens is 0 here, so the detail bucket is omitted entirely.
+        completion_tokens_details: { reasoning_tokens: 18 },
+      })
+      // The finish chunk must still be the last one carrying a choice.
+      expect(chunks.at(-2)!.choices[0]!.finish_reason).toBe('stop')
+    })
+
+    test('derives total_tokens and reports cached prompt tokens', async () => {
+      const chunks = await collect(translateResponsesToChatSSE(feed(completed({
+        input_tokens: 10, output_tokens: 4, input_tokens_details: { cached_tokens: 6 },
+      }))))
+      expect(chunks.at(-1)!.usage).toEqual({
+        prompt_tokens: 10,
+        completion_tokens: 4,
+        total_tokens: 14,
+        prompt_tokens_details: { cached_tokens: 6 },
+      })
+    })
+
+    test('emits no usage chunk when upstream reports none', async () => {
+      const chunks = await collect(translateResponsesToChatSSE(feed(completed(undefined))))
+      expect(chunks.some((c) => c.usage)).toBe(false)
+      expect(chunks.at(-1)!.choices[0]!.finish_reason).toBe('stop')
+    })
+  })
+
+  describe('web search sources', () => {
+    // Responses carries sources on the `web_search_call` output item; Chat
+    // Completions has no such item, so they travel as `delta.annotations` on
+    // an otherwise-empty content delta — the same channel and shape the
+    // Messages pair already uses. Without this the answer arrives with no
+    // sources even though the gateway resolved them.
+    const searchCall = (results: unknown) => ({
+      type: 'response.output_item.done',
+      output_index: 1,
+      item: { type: 'web_search_call', status: 'completed', results },
+    })
+
+    const annotationsOf = (chunks: Array<{ choices: Array<{ delta: { annotations?: unknown } }> }>) =>
+      chunks.flatMap((c) => c.choices[0]?.delta.annotations ?? [])
+
+    test('maps web_search_call results onto url_citation annotations', async () => {
+      const chunks = await collect(translateResponsesToChatSSE(feed([
+        { type: 'response.created', response: { id: 'r_s', model: 'gpt-5.5', created_at: 9 } },
+        searchCall([
+          { type: 'text_result', url: 'https://a.example/x', title: 'A', snippet: 's' },
+          { type: 'text_result', url: 'https://b.example/y', title: 'B', snippet: 's' },
+        ]),
+        { type: 'response.output_text.delta', delta: '晴' },
+        { type: 'response.completed', response: { id: 'r_s', status: 'completed' } },
+      ])))
+      expect(annotationsOf(chunks)).toEqual([
+        { type: 'url_citation', url_citation: { url: 'https://a.example/x', title: 'A' } },
+        { type: 'url_citation', url_citation: { url: 'https://b.example/y', title: 'B' } },
+      ])
+      // Sources ride an empty content delta; the answer text is untouched.
+      const text = chunks.map((c) => c.choices[0]?.delta.content ?? '').join('')
+      expect(text).toBe('晴')
+    })
+
+    test('drops the title when absent and skips entries without a url', async () => {
+      const chunks = await collect(translateResponsesToChatSSE(feed([
+        { type: 'response.created', response: { id: 'r', model: 'm', created_at: 1 } },
+        searchCall([
+          { type: 'text_result', url: 'https://a.example/x' },
+          { type: 'text_result', title: 'no url' },
+          { type: 'text_result', url: '' },
+        ]),
+        { type: 'response.completed', response: { id: 'r', status: 'completed' } },
+      ])))
+      expect(annotationsOf(chunks)).toEqual([
+        { type: 'url_citation', url_citation: { url: 'https://a.example/x' } },
+      ])
+    })
+
+    test('does not re-cite a url a second search returns again', async () => {
+      const chunks = await collect(translateResponsesToChatSSE(feed([
+        { type: 'response.created', response: { id: 'r', model: 'm', created_at: 1 } },
+        searchCall([{ type: 'text_result', url: 'https://dup.example', title: 'D' }]),
+        searchCall([
+          { type: 'text_result', url: 'https://dup.example', title: 'D' },
+          { type: 'text_result', url: 'https://new.example', title: 'N' },
+        ]),
+        { type: 'response.completed', response: { id: 'r', status: 'completed' } },
+      ])))
+      expect(annotationsOf(chunks)).toEqual([
+        { type: 'url_citation', url_citation: { url: 'https://dup.example', title: 'D' } },
+        { type: 'url_citation', url_citation: { url: 'https://new.example', title: 'N' } },
+      ])
+    })
+
+    test('emits nothing when results are absent (client did not opt in)', async () => {
+      const chunks = await collect(translateResponsesToChatSSE(feed([
+        { type: 'response.created', response: { id: 'r', model: 'm', created_at: 1 } },
+        { type: 'response.output_item.done', output_index: 1,
+          item: { type: 'web_search_call', status: 'completed' } },
+        { type: 'response.completed', response: { id: 'r', status: 'completed' } },
+      ])))
+      expect(annotationsOf(chunks)).toEqual([])
+    })
+
+    test('a completed web_search_call does not make the turn finish as tool_calls', async () => {
+      const chunks = await collect(translateResponsesToChatSSE(feed([
+        { type: 'response.created', response: { id: 'r', model: 'm', created_at: 1 } },
+        searchCall([{ type: 'text_result', url: 'https://a.example', title: 'A' }]),
+        { type: 'response.output_text.delta', delta: 'x' },
+        { type: 'response.completed', response: { id: 'r', status: 'completed' } },
+      ])))
+      // The search already ran server-side; the client owes no tool result.
+      expect(chunks.at(-1)!.choices[0]!.finish_reason).toBe('stop')
+    })
+  })
 })

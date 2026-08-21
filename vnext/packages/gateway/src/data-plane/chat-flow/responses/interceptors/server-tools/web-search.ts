@@ -27,22 +27,22 @@ import {
   actionSearchQueries,
   CONTEXT_SIZE_TO_MAX_RESULTS,
   DEFAULT_SEARCH_CONTEXT_SIZE,
-  executeOperationToIr,
   isSearchContextSize,
   maxResultsForContextSize,
-  parseWebSearchOperations,
   renderWebSearchCallOutput,
-  runBackendSearchMulti,
   schemaErrorIr,
-  startBatchFetch,
-  type ParsedWebSearchOperations,
   type WebSearchCallIR,
   type WebSearchExecutionSession,
   type WebSearchFilters,
-  type WebSearchOperation,
 } from '../../../../tools/web-search/operations.ts'
+import { planWebSearchCalls } from '../../../../tools/web-search/plan-operations.ts'
 import { resolveConfiguredWebSearchProvider } from '../../../../tools/web-search/provider.ts'
 import { loadSearchConfig } from '../../../../tools/web-search/search-config.ts'
+import {
+  WEB_SEARCH_SHIM_TOOL_DESCRIPTION,
+  WEB_SEARCH_SHIM_TOOL_NAME,
+  WEB_SEARCH_SHIM_TOOL_PARAMETERS,
+} from '../../../../tools/web-search/shim-tool-schema.ts'
 import type { ConfiguredWebSearchProvider } from '../../../../tools/web-search/types.ts'
 import { truncatePreservingCodePoints } from '../../../shared/text.ts'
 import type {
@@ -97,9 +97,18 @@ export const WEB_SEARCH_HOSTED_TYPE_NAMES = [
 // `ResponsesHostedToolType` so the type union and runtime check can't drift.
 export const WEB_SEARCH_HOSTED_TYPES: ReadonlySet<string> = new Set<string>(WEB_SEARCH_HOSTED_TYPE_NAMES)
 
+// `include` opt-ins that widen the hosted `web_search_call` item. The shim
+// reads them into its own state and then has them stripped from the outbound
+// payload — it synthesizes the item itself, so the upstream has no use for
+// them, and grok-* / mai-code-* reject the tokens instead of ignoring them.
+export const WEB_SEARCH_INCLUDE_TOKENS = [
+  'web_search_call.results',
+  'web_search_call.action.sources',
+] as const
+
 // Function-name regex `^[a-zA-Z0-9_-]+$` forbids dots, so the shim call
 // uses the underscored form of the model's training-time `web.run`.
-export const SHIM_TOOL_NAME = 'web_search'
+export const SHIM_TOOL_NAME = WEB_SEARCH_SHIM_TOOL_NAME
 
 // The hosted tool's `user_location` must surface to the model, not just
 // to the backend provider — without this hint the model asks "Which
@@ -114,20 +123,18 @@ const formatUserLocation = (loc: NonNullable<WebSearchFilters['userLocation']>):
   return joined.length === 0 ? `(timezone: ${loc.timezone})` : `${joined} (timezone: ${loc.timezone})`
 }
 
-// `web.run` shim call shape: 13 sub-properties on a single tool. The
-// shim implements 3 (`search_query`, `open`, `find`); the other 10
-// surface as per-entry error IRs at dispatch time. The description
-// deliberately omits the unsupported ones.
-//   https://github.com/openai/harmony/blob/abd677f7ac962629c808197caa1feb9e3e95d2b0/src/chat.rs#L259-L313
+// `web.run` shim call shape — the sub-property vocabulary and its
+// description live in `tools/web-search/shim-tool-schema.ts` so the Chat
+// Completions shim exposes an identical tool to the model. Only the
+// Responses-native envelope (top-level `name`/`parameters`, `strict`) and
+// the optional user-location hint are built here.
 const buildShimFunctionTool = (
   canonical: ResponsesTool,
   name: string,
 ): ResponsesTool => {
   const hosted = canonical as ResponsesHostedTool
   const userLocation = hosted.user_location
-  const baseDescription
-    = 'Accesses the web through three actions: searching, opening a page, and finding text inside a page. '
-    + 'Multiple sub-property arrays may be populated in one call to dispatch several operations in parallel.'
+  const baseDescription = WEB_SEARCH_SHIM_TOOL_DESCRIPTION
   const hasUserLocation = userLocation !== undefined && (
     (userLocation.city !== undefined && userLocation.city.length > 0)
     || (userLocation.region !== undefined && userLocation.region.length > 0)
@@ -142,49 +149,7 @@ const buildShimFunctionTool = (
     type: 'function',
     name,
     description,
-    parameters: {
-      type: 'object',
-      properties: {
-        search_query: {
-          type: 'array',
-          description: 'Run one or more web searches. Each entry produces an independent search-results list.',
-          items: {
-            type: 'object',
-            properties: {
-              q: { type: 'string', description: 'The search query.' },
-            },
-            required: ['q'],
-            additionalProperties: false,
-          },
-        },
-        open: {
-          type: 'array',
-          description: 'Fetch the readable text content of fully qualified URLs.',
-          items: {
-            type: 'object',
-            properties: {
-              ref_id: { type: 'string', description: 'An HTTP or HTTPS URL.' },
-            },
-            required: ['ref_id'],
-            additionalProperties: false,
-          },
-        },
-        find: {
-          type: 'array',
-          description: 'Find exact case-insensitive matches of `pattern` inside the page at `ref_id`. Returns up to 10 matches with ~200 characters of surrounding context.',
-          items: {
-            type: 'object',
-            properties: {
-              ref_id: { type: 'string', description: 'An HTTP or HTTPS URL of the page to search inside.' },
-              pattern: { type: 'string', description: 'Case-insensitive substring to find.' },
-            },
-            required: ['ref_id', 'pattern'],
-            additionalProperties: false,
-          },
-        },
-      },
-      additionalProperties: false,
-    },
+    parameters: WEB_SEARCH_SHIM_TOOL_PARAMETERS,
     // Strict mode requires `required` to list every property, but every
     // sub-property here is optional (one call may set only
     // `search_query`, another only `open`).
@@ -345,18 +310,19 @@ export const prepareToolsForShim = (
 const MAX_MALFORMED_WIRE_DUMP_CHARS = 1024
 
 /**
- * Persistent `payload.private` shape for one `web_search_call`. One shim call
- * function_call corresponds to exactly one wsc and one op — multi-op
- * shim calls (multi-kind mix or multi-instance same-kind) are rejected at
- * dispatch with an `ambiguous` error, so there is never an array to
- * denormalize. The persisted-payload key IS the wsc id, so we don't repeat
- * it inside.
+ * Persistent `payload.private` shape for one `web_search_call`. A shim call
+ * carrying several operations fans out into one wsc per operation, each with
+ * its own payload — so this is always one wsc and one op, never an array to
+ * denormalize. The persisted-payload key IS the wsc id, so we don't repeat it
+ * inside.
  *
- * - `functionCallItem` is the upstream's literal function_call from the
- *   originating turn, with `arguments` replaced by the
- *   jsonrepair-canonical strict-JSON form (every other field — type,
- *   call_id, name, status — passes through untouched). Replayed verbatim
- *   so the upstream model's prior assistant turn looks bit-exact.
+ * - `functionCallItem` is the function_call this wsc replays as: the
+ *   upstream's own item when the call produced a single wsc, otherwise a
+ *   synthetic per-slot one (suffixed call_id, `arguments` naming only this
+ *   slot's operation) so N replayed calls read as N honest requests rather
+ *   than N copies of the same one. Either way `arguments` is the
+ *   jsonrepair-canonical strict-JSON form, and type/name/status pass through
+ *   untouched, so the upstream model's prior assistant turn stays well-formed.
  *
  * - `ir` stores the action, structured results, and optional upstream
  *   model-facing output straight from `planShimSlots`. Replay uses
@@ -527,75 +493,59 @@ interface ShimState extends WebSearchExecutionSession {
 
 const ITERATION_CAP = 30
 
+interface ShimSlot {
+  id: string
+  action?: ResponsesWebSearchAction
+  /** The slice of the shim call's arguments this slot alone will replay. */
+  arguments: Record<string, unknown>
+  promise: Promise<WebSearchCallIR>
+}
+
 const planShimSlots = (
-  parsed: ParsedWebSearchOperations,
-  _commands: Record<string, unknown>,
-  toolName: string,
+  args: Record<string, unknown> | null,
   state: ShimState,
   loopState: ServerToolLoopState,
-): { id: string; promise: Promise<WebSearchCallIR> } => {
+): ShimSlot[] => {
   if (loopState.iterationCount > ITERATION_CAP) {
-    return {
+    // One refusal slot for the whole call, whatever it asked for: the budget
+    // is exhausted, so there is nothing to fan out.
+    return [{
       id: synthesizeWebSearchCallId(),
+      arguments: args ?? {},
       promise: Promise.resolve(schemaErrorIr(
         'tool budget exhausted',
         'Tool call budget exhausted',
         `Web search iteration limit (${ITERATION_CAP}) reached. Further web_search calls in this response will return this same error. Summarize what you have already learned, and continue the task using other available tools (shell, file inspection, prior knowledge) or directly answer based on what you've gathered.`,
       )),
-    }
+    }]
   }
 
-  if (parsed.kind === 'malformed' || parsed.ops.length === 0) {
-    return {
-      id: synthesizeWebSearchCallId(),
-      promise: Promise.resolve(schemaErrorIr(
-        'malformed shim call arguments',
-        'Malformed arguments',
-        'Error: arguments must be a JSON object with sub-property arrays (search_query[], open[], find[]).',
-      )),
-    }
-  }
-
-  // Multi-`search_query` entries collapse into one wsc with a multi-query
-  // action (`{type:'search', queries:[...]}`) — protocol-native and the
-  // only same-kind shape that fits in one wsc. Require every entry to
-  // parse cleanly; one malformed entry forces the model to fix all of
-  // them rather than silently dropping a search.
-  if (parsed.ops.length > 1 && parsed.ops.every((op) => op.kind === 'search' && op.error === undefined)) {
-    const searchOps = parsed.ops as Array<Extract<WebSearchOperation, { kind: 'search' }>>
-    return {
-      id: synthesizeWebSearchCallId(),
-      promise: runBackendSearchMulti(searchOps, state),
-    }
-  }
-
-  // Any other multi-op shape cannot reduce to a single wsc action: `open`
-  // and `find` actions each carry one url/pattern, and mixed kinds have
-  // incompatible action types. Surface as ambiguous and let the model
-  // split into independent calls.
-  if (parsed.ops.length > 1) {
-    return {
-      id: synthesizeWebSearchCallId(),
-      promise: Promise.resolve(schemaErrorIr(
-        'ambiguous shim call',
-        'Ambiguous tool call',
-        `Error: ambiguous \`${toolName}\` tool call — each function_call maps to one web_search_call. `
-        + 'Multiple `search_query` entries are fine (they collapse into one search). '
-        + 'For `open`/`find`, or any mix of kinds, split into one call per `open[]` entry, `find[]` entry, or `search_query[]` batch.',
-      )),
-    }
-  }
-
-  return {
+  // Everything below the iteration cap is protocol-agnostic and shared with
+  // the Chat Completions shim.
+  return planWebSearchCalls(args, state).map((plan) => ({
     id: synthesizeWebSearchCallId(),
-    promise: startBatchFetch(parsed, state).then((batch) => executeOperationToIr(parsed.ops[0]!, state, batch)),
-  }
+    ...(plan.action !== undefined ? { action: plan.action } : {}),
+    arguments: plan.arguments,
+    promise: plan.promise,
+  }))
 }
 
 export const webSearchServerTool: ServerToolRegistration<Invocation, ServerToolRequestCtx> = async (
   invocation,
   requestCtx,
 ) => {
+  // A native Responses caller reads `web_search_call` items itself, so an
+  // upstream that serves the hosted tool can talk to it directly and the shim
+  // is pure overhead — the flag exists to say whether this upstream can. A
+  // caller on any other protocol cannot: its translator has to turn results
+  // into that protocol's own citation shape, which only exists for searches the
+  // gateway ran. The shim is therefore structurally required there, the mirror
+  // image of `messages-web-search-shim` being structurally required when the
+  // *target* cannot carry the hosted tool. `sourceApi` is the inbound protocol
+  // even after a translation hop (see responses/attempt.ts).
+  if ((invocation.sourceApi ?? 'responses') === 'responses') {
+    return { type: 'inactive' }
+  }
   if (!invocation.enabledFlags.has('responses-web-search-shim')) {
     return { type: 'inactive' }
   }
@@ -641,50 +591,65 @@ export const webSearchServerTool: ServerToolRegistration<Invocation, ServerToolR
       ? {
           hosted: {
             hostedTypes: WEB_SEARCH_HOSTED_TYPE_NAMES,
+            includeTokens: WEB_SEARCH_INCLUDE_TOKENS,
             canonicalize: canonicalizeWebSearchTool,
             buildFunctionTool: buildShimFunctionTool,
             dispatcher: ({ intercepted, loopState }) => {
-              const commands = intercepted.arguments ?? {}
-              const slot = planShimSlots(parseWebSearchOperations(intercepted.arguments), commands, intercepted.name, state, loopState)
-              const functionCallItem: ResponsesFunctionToolCallItem = {
-                type: 'function_call',
-                call_id: intercepted.callId,
-                name: intercepted.name,
-                // Serialize the post-jsonrepair parsed object rather than
-                // re-using the upstream's raw `arguments` string (which
-                // might be malformed); `{}` is the safe fallback when
-                // jsonrepair couldn't even produce an object.
-                arguments: JSON.stringify(intercepted.arguments ?? {}),
-                status: 'completed',
-              }
-              return [{
-                id: slot.id,
-                startItem: { type: 'web_search_call', status: 'in_progress' },
-                startEvents: [
-                  { type: 'response.web_search_call.in_progress' },
-                  { type: 'response.web_search_call.searching' },
-                ],
-                run: async function* run() {
-                  const ir = await slot.promise
-                  // `results` is gated on the client's `include`
-                  // opt-in to match native Responses' default wire
-                  // shape; the IR keeps them either way for the
-                  // private-payload round-trip.
-                  const item: ServerToolOutputItem & Omit<ResponsesOutputWebSearchCall, 'id'> = state.includeSearchResults
-                    ? { type: 'web_search_call', status: 'completed', action: ir.action, results: ir.results }
-                    : { type: 'web_search_call', status: 'completed', action: ir.action }
-                  const privatePayload: WebSearchCallPrivatePayload = {
-                    v: 1,
-                    functionCallItem,
-                    ir,
-                  }
-                  return {
-                    item,
-                    endEvents: [{ type: 'response.web_search_call.completed' }],
-                    privatePayload,
-                  }
-                },
-              }]
+              const slots = planShimSlots(intercepted.arguments, state, loopState)
+              return slots.map((slot, index) => {
+                const functionCallItem: ResponsesFunctionToolCallItem = {
+                  type: 'function_call',
+                  // A fanned-out call cannot reuse the upstream's single
+                  // call_id: replay pairs each function_call with its own
+                  // output, and duplicate call_ids would be malformed
+                  // history. Upstream is stateless per request, so a
+                  // synthetic suffix only has to be unique within the input
+                  // list we resend.
+                  call_id: slots.length === 1 ? intercepted.callId : `${intercepted.callId}_${index}`,
+                  name: intercepted.name,
+                  // Serialize this slot's own slice of the parsed arguments
+                  // rather than the upstream's raw string (which might be
+                  // malformed, and which names every operation rather than
+                  // just this one).
+                  arguments: JSON.stringify(slot.arguments),
+                  status: 'completed',
+                }
+                return {
+                  id: slot.id,
+                  // Native Responses can't name the query until the search
+                  // resolves, so its `added` item carries only an id. The shim
+                  // runs the search itself and already knows — announcing it
+                  // here is an additive deviation that lets clients show what
+                  // is being searched while it is still in flight.
+                  startItem: slot.action !== undefined
+                    ? { type: 'web_search_call', status: 'in_progress', action: slot.action }
+                    : { type: 'web_search_call', status: 'in_progress' },
+                  startEvents: [
+                    { type: 'response.web_search_call.in_progress' },
+                    { type: 'response.web_search_call.searching' },
+                  ],
+                  run: async function* run() {
+                    const ir = await slot.promise
+                    // `results` is gated on the client's `include`
+                    // opt-in to match native Responses' default wire
+                    // shape; the IR keeps them either way for the
+                    // private-payload round-trip.
+                    const item: ServerToolOutputItem & Omit<ResponsesOutputWebSearchCall, 'id'> = state.includeSearchResults
+                      ? { type: 'web_search_call', status: 'completed', action: ir.action, results: ir.results }
+                      : { type: 'web_search_call', status: 'completed', action: ir.action }
+                    const privatePayload: WebSearchCallPrivatePayload = {
+                      v: 1,
+                      functionCallItem,
+                      ir,
+                    }
+                    return {
+                      item,
+                      endEvents: [{ type: 'response.web_search_call.completed' }],
+                      privatePayload,
+                    }
+                  },
+                }
+              })
             },
           },
         }

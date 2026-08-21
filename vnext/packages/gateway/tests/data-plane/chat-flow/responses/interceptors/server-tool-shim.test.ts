@@ -535,6 +535,62 @@ test('withResponsesServerToolShim: active but non-hosted registration → pass-t
   expect(transformCalls).toBe(1)
 })
 
+// ─── include-token stripping for shimmed hosted tools ────────────────
+//
+// A shimmed hosted tool never reaches the upstream — the shim replaces it with
+// a plain function tool and synthesizes the `web_search_call` items itself. Any
+// `include` token that only exists to widen that hosted item is therefore dead
+// weight on the wire, and not every upstream tolerates dead weight: Copilot's
+// grok-* / mai-code-* Responses endpoint answers `include:
+// ["web_search_call.results"]` with `400 invalid_request_body / Argument not
+// supported`. The shim reads those tokens into its own state, so stripping them
+// from the outbound payload costs nothing downstream.
+
+const hostedWithIncludes = (): ServerToolHostedDispatch => ({
+  hostedTypes: ['web_search'],
+  includeTokens: ['web_search_call.results', 'web_search_call.action.sources'],
+  canonicalize: (raw) => (raw.type === 'web_search' ? { type: 'web_search' } : undefined),
+  buildFunctionTool: (_c, name) => ({ type: 'function', name }),
+  dispatcher: () => [],
+})
+
+const captureOutboundInclude = async (include: unknown): Promise<Record<string, unknown>> => {
+  const store = createInMemoryPrivatePayloadStore()
+  const reg: ServerToolRegistration<Invocation, Record<string, unknown>> = () => ({
+    type: 'active',
+    baseToolName: 'web_search',
+    hosted: hostedWithIncludes(),
+  })
+  const inv = baseInv()
+  inv.payload = { ...inv.payload, tools: [{ type: 'web_search' }], include }
+  const interceptor = withResponsesServerToolShim([reg], store)
+  let seen: Record<string, unknown> = {}
+  await interceptor(inv, baseCtx, async () => {
+    seen = inv.payload as Record<string, unknown>
+    return llmEventResult(
+      (async function* () {
+        yield doneFrame()
+      })(),
+      stubIdentity,
+    )
+  })
+  return seen
+}
+
+test('withResponsesServerToolShim: strips the hosted tool include tokens from the outbound payload', async () => {
+  const payload = await captureOutboundInclude(['web_search_call.results'])
+  expect(payload.include).toBeUndefined()
+})
+
+test('withResponsesServerToolShim: keeps include tokens the shimmed tool does not own', async () => {
+  const payload = await captureOutboundInclude([
+    'web_search_call.results',
+    'reasoning.encrypted_content',
+    'web_search_call.action.sources',
+  ])
+  expect(payload.include).toEqual(['reasoning.encrypted_content'])
+})
+
 test('withResponsesServerToolShim: upstream-error from run() propagates', async () => {
   const store = createInMemoryPrivatePayloadStore()
   const interceptor = withResponsesServerToolShim([], store)

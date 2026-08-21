@@ -9,6 +9,11 @@
  */
 import type { MessagesEvent } from '@vibe-llm/protocols/messages'
 
+export interface ChatUrlCitationAnnotation {
+  type: 'url_citation'
+  url_citation: { url: string; title?: string }
+}
+
 export interface ChatSSEChunk {
   id: string
   object: 'chat.completion.chunk'
@@ -22,6 +27,13 @@ export interface ChatSSEChunk {
       tool_calls?: Array<{ index: number; id?: string; type?: 'function'; function?: { name?: string; arguments?: string } }>
       reasoning_text?: string
       reasoning_opaque?: string
+      /**
+       * Web-search citations, in OpenAI's spec shape. Anthropic carries them as
+       * a `web_search_tool_result` content block, which has no Chat Completions
+       * counterpart; without this the whole search round trip is dropped on the
+       * way out and cross-protocol clients get an answer with no sources.
+       */
+      annotations?: ChatUrlCitationAnnotation[]
     }
     finish_reason?: 'stop' | 'length' | 'tool_calls' | 'content_filter' | null
   }>
@@ -41,6 +53,8 @@ interface State {
   promptTokens: number
   cachedPromptTokens: number
   toolCalls: Map<number, ToolCallSlot>
+  /** URLs already emitted as annotations, to keep repeat searches from duplicating sources. */
+  citedUrls: Set<string>
   reasoningBlockIndex?: number
   terminated: boolean
 }
@@ -54,6 +68,7 @@ function createState(): State {
     promptTokens: 0,
     cachedPromptTokens: 0,
     toolCalls: new Map(),
+    citedUrls: new Set(),
     terminated: false,
   }
 }
@@ -108,6 +123,29 @@ function mapStopReason(stopReason: string | null | undefined): ChatSSEChunk['cho
   }
 }
 
+/**
+ * `web_search_tool_result.content` is either the result array or a single
+ * error object (`web_search_tool_result_error`); only the former has sources.
+ * URLs already announced on this stream are skipped so a model that searches
+ * several times does not re-cite the same page.
+ */
+function webSearchResultAnnotations(content: unknown, state: State): ChatUrlCitationAnnotation[] {
+  if (!Array.isArray(content)) return []
+  const out: ChatUrlCitationAnnotation[] = []
+  for (const entry of content as Array<{ url?: unknown; title?: unknown }>) {
+    const url = entry?.url
+    if (typeof url !== 'string' || url === '') continue
+    if (state.citedUrls.has(url)) continue
+    state.citedUrls.add(url)
+    const title = entry.title
+    out.push({
+      type: 'url_citation',
+      url_citation: { url, ...(typeof title === 'string' && title !== '' ? { title } : {}) },
+    })
+  }
+  return out
+}
+
 function translateOne(ev: MessagesEvent, state: State): ChatSSEChunk[] | 'DONE' {
   if (state.terminated) return []
   switch (ev.type) {
@@ -131,6 +169,7 @@ function translateOne(ev: MessagesEvent, state: State): ChatSSEChunk[] | 'DONE' 
         id?: string
         name?: string
         data?: string
+        content?: unknown
       }
       if (block.type === 'thinking') {
         state.reasoningBlockIndex = ev.index
@@ -155,6 +194,14 @@ function translateOne(ev: MessagesEvent, state: State): ChatSSEChunk[] | 'DONE' 
             ],
           }),
         ]
+      }
+      if (block.type === 'web_search_tool_result') {
+        // `server_tool_use` is deliberately *not* mapped to a `tool_calls`
+        // delta: the search already ran server-side, so surfacing it as a
+        // pending call would make the client think it owes a tool result.
+        // Only the sources travel, as annotations on an empty content delta.
+        const annotations = webSearchResultAnnotations(block.content, state)
+        return annotations.length > 0 ? [makeChunk(state, { annotations })] : []
       }
       return []
     }
@@ -247,6 +294,7 @@ export async function* translateMessagesToChatSSE(
   } finally {
     // Release per-stream state on cancellation/early break.
     state.toolCalls.clear()
+    state.citedUrls.clear()
     state.terminated = true
   }
 }

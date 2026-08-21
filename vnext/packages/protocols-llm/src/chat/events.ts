@@ -13,6 +13,23 @@ export interface ChatCompletionsReasoningItem {
   id?: string
 }
 
+/**
+ * URL citation emitted alongside assistant content when a web search backed
+ * the answer. OpenAI spec shape (`ChatCompletionMessage.Annotation`); the only
+ * discriminator defined today is `url_citation`. `start_index`/`end_index`
+ * are byte offsets into the accumulated `content` and are optional here
+ * because the gateway's search shim has no per-span attribution to report.
+ */
+export interface ChatCompletionsAnnotation {
+  type: 'url_citation'
+  url_citation: {
+    url: string
+    title?: string
+    start_index?: number
+    end_index?: number
+  }
+}
+
 export interface ChatCompletionsDelta {
   content?: string | null
   role?: string
@@ -20,6 +37,7 @@ export interface ChatCompletionsDelta {
   reasoning_text?: string | null
   reasoning_opaque?: string | null
   reasoning_items?: ChatCompletionsReasoningItem[] | null
+  annotations?: ChatCompletionsAnnotation[] | null
 }
 
 export interface ChatCompletionsChoiceStreaming {

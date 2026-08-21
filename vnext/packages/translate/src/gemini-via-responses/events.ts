@@ -12,7 +12,7 @@
  *  - Responses event shapes are inlined locally (vNext protocols package
  *    leaves nested Responses shapes loose).
  */
-import type { GeminiFinishReason, GeminiPart, GeminiStreamEvent, GeminiUsageMetadata } from '../shared/gemini-via/types.ts'
+import type { GeminiFinishReason, GeminiGroundingMetadata, GeminiPart, GeminiStreamEvent, GeminiUsageMetadata } from '../shared/gemini-via/types.ts'
 import { geminiCandidateEvent, parseStrictJsonObject } from '../shared/gemini-via/gemini.ts'
 
 export interface TranslateResponsesToGeminiEventsOptions {
@@ -97,10 +97,15 @@ interface RespOutputItemAddedEvent extends RespEventBase {
   item: { type: string; call_id?: string; name?: string; arguments?: string }
 }
 
+interface RespOutputWebSearchCall {
+  type: 'web_search_call'
+  results?: Array<{ url?: string; title?: string }>
+}
+
 interface RespOutputItemDoneEvent extends RespEventBase {
   type: 'response.output_item.done'
   output_index: number
-  item: RespOutputFunctionCall | RespOutputReasoning | { type: string }
+  item: RespOutputFunctionCall | RespOutputReasoning | RespOutputWebSearchCall | { type: string }
 }
 
 interface RespFnArgsDeltaEvent extends RespEventBase {
@@ -150,6 +155,8 @@ interface State {
   functionCalls: Map<number, ResponsesFunctionCallDraft>
   emittedReasoningKeys: Set<string>
   emittedTextKeys: Set<string>
+  /** Cited URL → first title seen, in citation order. */
+  citations: Map<string, string | undefined>
 }
 
 const partKey = (outputIndex: number, partIndex: number): string => `${outputIndex}:${partIndex}`
@@ -231,8 +238,38 @@ function functionCallDoneEvent(
   })
 }
 
-const handleTerminal = (event: RespTerminalEvent, model?: string): GeminiStreamEvent => {
+/**
+ * Collect a completed search's sources. `results` only arrives when the
+ * request opted in with `include: ["web_search_call.results"]`, which
+ * `./request.ts` does whenever the client asked for `googleSearch`. The shim
+ * fans a single model call out into one item per operation, so the same page
+ * can surface twice — first title wins, as on the Chat Completions pair.
+ */
+const collectCitations = (item: RespOutputWebSearchCall, state: State): void => {
+  if (!Array.isArray(item.results)) return
+  for (const entry of item.results) {
+    const url = entry?.url
+    if (typeof url !== 'string' || url === '') continue
+    if (state.citations.has(url)) continue
+    state.citations.set(url, typeof entry.title === 'string' && entry.title !== '' ? entry.title : undefined)
+  }
+}
+
+const buildGroundingMetadata = (state: State): GeminiGroundingMetadata | undefined => {
+  if (state.citations.size === 0) return undefined
+  return {
+    groundingChunks: [...state.citations].map(([uri, title]) => ({
+      web: { uri, ...(title !== undefined ? { title } : {}) },
+    })),
+  }
+}
+
+const handleTerminal = (event: RespTerminalEvent, state: State, model?: string): GeminiStreamEvent => {
   const out = geminiCandidateEvent([], mapTerminalFinishReason(event), mapUsage(event.response.usage))
+  // Grounding rides on the candidate, so it can only be emitted once every
+  // search this turn has reported — i.e. on the terminal envelope.
+  const groundingMetadata = buildGroundingMetadata(state)
+  if (groundingMetadata && out.candidates?.[0]) out.candidates[0].groundingMetadata = groundingMetadata
   if (model) (out as { modelVersion?: string }).modelVersion = model
   return out
 }
@@ -245,6 +282,7 @@ export async function* translateResponsesToGeminiEvents(
     functionCalls: new Map(),
     emittedReasoningKeys: new Set(),
     emittedTextKeys: new Set(),
+    citations: new Map(),
   }
 
   try {
@@ -310,6 +348,8 @@ export async function* translateResponsesToGeminiEvents(
             yield* reasoningItemDoneEvents(ev.item as RespOutputReasoning, ev.output_index, state)
           } else if (ev.item.type === 'function_call') {
             yield functionCallDoneEvent(ev.item as RespOutputFunctionCall, ev.output_index, state)
+          } else if (ev.item.type === 'web_search_call') {
+            collectCitations(ev.item as RespOutputWebSearchCall, state)
           }
           break
         }
@@ -317,7 +357,7 @@ export async function* translateResponsesToGeminiEvents(
         case 'response.completed':
         case 'response.incomplete':
         case 'response.failed':
-          yield handleTerminal(event as RespTerminalEvent, options.model)
+          yield handleTerminal(event as RespTerminalEvent, state, options.model)
           return
 
         case 'error': {
@@ -333,5 +373,6 @@ export async function* translateResponsesToGeminiEvents(
     state.functionCalls.clear()
     state.emittedReasoningKeys.clear()
     state.emittedTextKeys.clear()
+    state.citations.clear()
   }
 }

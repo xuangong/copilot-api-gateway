@@ -37,7 +37,7 @@
  *     status 400 and the same JSON body — the substitution is documented
  *     inline at the call site.
  */
-import { jsonrepair } from 'jsonrepair'
+import { parseServerToolArguments } from '../../shared/tool-arguments.ts'
 
 import type { ResponsesInterceptor } from './types'
 import { truncatePreservingCodePoints } from '../../shared/text'
@@ -299,17 +299,9 @@ export const rewriteToolsForHostedShim = (
   return { rewritten, canonicalHostedTool }
 }
 
-export const parseServerToolArguments = (argumentsJson: string): Record<string, unknown> | null => {
-  if (argumentsJson === '') return {}
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(jsonrepair(argumentsJson))
-  } catch {
-    return null
-  }
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null
-  return parsed as Record<string, unknown>
-}
+// Re-exported from its shared home so the Chat Completions web-search shim
+// can parse tool arguments the same way without importing this module.
+export { parseServerToolArguments }
 
 const syntheticPrologueResponse = (
   state: MergeState,
@@ -1033,6 +1025,18 @@ export const withResponsesServerToolShim = (
       const rewrite = rewriteToolsForHostedShim(currentTools, hosted, toolName)
       canonicalHostedTool = rewrite.canonicalHostedTool
       ctx.payload = { ...ctx.payload, tools: rewrite.rewritten }
+      // The hosted item is synthesized here, never upstream, so its `include`
+      // opt-ins are dead weight on the wire — and grok-* / mai-code-* reject
+      // rather than ignore them. Registrations have already read whatever they
+      // need out of `include` during prepare.
+      const owned = hosted.includeTokens
+      if (owned?.length && Array.isArray(ctx.payload.include)) {
+        const kept = (ctx.payload.include as unknown[]).filter(
+          (token) => typeof token !== 'string' || !owned.includes(token),
+        )
+        const { include: _dropped, ...rest } = ctx.payload as Record<string, unknown>
+        ctx.payload = (kept.length ? { ...rest, include: kept } : rest) as typeof ctx.payload
+      }
     }
     const rawToolChoice = ctx.payload.tool_choice as ResponsesToolChoiceLoose
     const originalToolChoice =

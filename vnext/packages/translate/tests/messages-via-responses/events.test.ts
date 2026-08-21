@@ -194,4 +194,151 @@ describe('messages-via-responses :: events', () => {
     const last = out[out.length - 1] as { type: string }
     expect(last.type).toBe('error')
   })
+
+  describe('hosted web search', () => {
+    // Responses announces a search as a `web_search_call` output item: the
+    // `added` event carries only an id, while the query and the resolved
+    // sources arrive together on `done`. Anthropic splits the same thing
+    // across two blocks — `server_tool_use` for the call, then
+    // `web_search_tool_result` for what it found — which is exactly what the
+    // dashboard's Messages stream reader already looks for.
+    const searchAdded = { type: 'response.output_item.added', output_index: 1,
+      item: { type: 'web_search_call', status: 'in_progress', id: 'ws_1' } }
+    const searchDone = (results?: unknown) => ({
+      type: 'response.output_item.done', output_index: 1,
+      item: {
+        type: 'web_search_call', status: 'completed', id: 'ws_1',
+        action: { type: 'search', query: '北京 天气', queries: ['北京 天气'] },
+        ...(results === undefined ? {} : { results }),
+      },
+    })
+    const blocksOf = (out: unknown[]) => out
+      .filter((e) => (e as { type: string }).type === 'content_block_start')
+      .map((e) => (e as { content_block: Record<string, unknown> }).content_block)
+
+    it('opens a server_tool_use block for the search and streams the query as its input', async () => {
+      const out = await collect(translateResponsesEventsToMessagesEvents(fromArray([
+        { type: 'response.created', response: { id: 'r', model: 'm' } },
+        searchAdded,
+        searchDone([{ type: 'text_result', url: 'https://a.example', title: 'A', snippet: 's' }]),
+        { type: 'response.completed', response: { status: 'completed', output: [], usage: { input_tokens: 5, output_tokens: 2 } } },
+      ] as RespEv[])))
+      const call = blocksOf(out).find((b) => b.type === 'server_tool_use')
+      expect(call).toEqual({ type: 'server_tool_use', id: 'ws_1', name: 'web_search', input: {} })
+      // The query is only known on `done`, so it arrives as an input delta.
+      const argDelta = out.find((e) => {
+        const ev = e as { type: string; delta?: { type?: string } }
+        return ev.type === 'content_block_delta' && ev.delta?.type === 'input_json_delta'
+      }) as { delta: { partial_json: string } } | undefined
+      expect(JSON.parse(argDelta!.delta.partial_json)).toEqual({ query: '北京 天气' })
+    })
+
+    it('emits a web_search_tool_result block carrying the resolved sources', async () => {
+      const out = await collect(translateResponsesEventsToMessagesEvents(fromArray([
+        { type: 'response.created', response: { id: 'r', model: 'm' } },
+        searchAdded,
+        searchDone([
+          { type: 'text_result', url: 'https://a.example', title: 'A', snippet: 's' },
+          { type: 'text_result', url: 'https://b.example', title: 'B', snippet: 's' },
+        ]),
+        { type: 'response.completed', response: { status: 'completed', output: [], usage: { input_tokens: 5, output_tokens: 2 } } },
+      ] as RespEv[])))
+      const result = blocksOf(out).find((b) => b.type === 'web_search_tool_result')
+      expect(result).toEqual({
+        type: 'web_search_tool_result',
+        tool_use_id: 'ws_1',
+        // `encrypted_content` is required by the Messages schema but has no
+        // Responses counterpart, so it is empty rather than fabricated.
+        content: [
+          { type: 'web_search_result', url: 'https://a.example', title: 'A', encrypted_content: '' },
+          { type: 'web_search_result', url: 'https://b.example', title: 'B', encrypted_content: '' },
+        ],
+      })
+    })
+
+    it('skips the result block when upstream returned no sources', async () => {
+      const out = await collect(translateResponsesEventsToMessagesEvents(fromArray([
+        { type: 'response.created', response: { id: 'r', model: 'm' } },
+        searchAdded,
+        searchDone(undefined),
+        { type: 'response.completed', response: { status: 'completed', output: [], usage: { input_tokens: 5, output_tokens: 2 } } },
+      ] as RespEv[])))
+      expect(blocksOf(out).some((b) => b.type === 'web_search_tool_result')).toBe(false)
+      // The call itself is still reported, so the client can see a search ran.
+      expect(blocksOf(out).some((b) => b.type === 'server_tool_use')).toBe(true)
+    })
+
+    it('keeps answer text in its own block after a search', async () => {
+      const out = await collect(translateResponsesEventsToMessagesEvents(fromArray([
+        { type: 'response.created', response: { id: 'r', model: 'm' } },
+        searchAdded,
+        searchDone([{ type: 'text_result', url: 'https://a.example', title: 'A' }]),
+        { type: 'response.output_text.delta', output_index: 2, content_index: 0, delta: '多云' },
+        { type: 'response.completed', response: { status: 'completed', output: [], usage: { input_tokens: 5, output_tokens: 2 } } },
+      ] as RespEv[])))
+      expect(blocksOf(out).map((b) => b.type))
+        .toEqual(['server_tool_use', 'web_search_tool_result', 'text'])
+      // A server-side search is not a client tool call, so the turn still ends normally.
+      const delta = out.find((e) => (e as { type: string }).type === 'message_delta') as
+        { delta: { stop_reason: string } }
+      expect(delta.delta.stop_reason).toBe('end_turn')
+    })
+
+    // The gateway's shim originates its own searches, so it can name the query
+    // on `added` — while the search is still running — instead of making the
+    // client wait for `done`. Anthropic has no slot for a late-arriving query
+    // either, so it has to go out as the block's first input delta.
+    it('streams the query as soon as `added` names it, without waiting for done', async () => {
+      const out = await collect(translateResponsesEventsToMessagesEvents(fromArray([
+        { type: 'response.created', response: { id: 'r', model: 'm' } },
+        { type: 'response.output_item.added', output_index: 1, item: {
+          type: 'web_search_call', status: 'in_progress', id: 'ws_1',
+          action: { type: 'search', query: '北京 天气', queries: ['北京 天气'] },
+        } },
+      ] as RespEv[])))
+      const argDelta = out.find((e) => {
+        const ev = e as { type: string; delta?: { type?: string } }
+        return ev.type === 'content_block_delta' && ev.delta?.type === 'input_json_delta'
+      }) as { delta: { partial_json: string } } | undefined
+      expect(JSON.parse(argDelta!.delta.partial_json)).toEqual({ query: '北京 天气' })
+    })
+
+    it('does not restate the query when done repeats it', async () => {
+      const out = await collect(translateResponsesEventsToMessagesEvents(fromArray([
+        { type: 'response.created', response: { id: 'r', model: 'm' } },
+        { type: 'response.output_item.added', output_index: 1, item: {
+          type: 'web_search_call', status: 'in_progress', id: 'ws_1',
+          action: { type: 'search', query: '北京 天气', queries: ['北京 天气'] },
+        } },
+        searchDone([{ type: 'text_result', url: 'https://a.example', title: 'A' }]),
+        { type: 'response.completed', response: { status: 'completed', output: [], usage: { input_tokens: 5, output_tokens: 2 } } },
+      ] as RespEv[])))
+      const argDeltas = out.filter((e) => {
+        const ev = e as { type: string; delta?: { type?: string } }
+        return ev.type === 'content_block_delta' && ev.delta?.type === 'input_json_delta'
+      })
+      expect(argDeltas.length).toBe(1)
+    })
+  })
+
+  // Responses reports token counts only on the terminal envelope, but
+  // `message_start` — where Anthropic puts `input_tokens` — is emitted from
+  // `response.created`, long before they exist. Without restating them on
+  // `message_delta` the client reports `0` prompt tokens for every turn.
+  it('restates input_tokens on message_delta, where Responses finally reports them', async () => {
+    const out = await collect(translateResponsesEventsToMessagesEvents(fromArray([
+      { type: 'response.created', response: { id: 'r', model: 'm' } },
+      { type: 'response.output_text.delta', output_index: 0, content_index: 0, delta: 'hi' },
+      { type: 'response.completed', response: {
+        status: 'completed', output: [],
+        usage: { input_tokens: 973, output_tokens: 158, input_tokens_details: { cached_tokens: 73 } },
+      } },
+    ] as RespEv[])))
+    const delta = out.find((e) => (e as { type: string }).type === 'message_delta') as
+      { usage: { input_tokens?: number; output_tokens: number; cache_read_input_tokens?: number } }
+    // Same split as message_start: the cached portion is reported separately.
+    expect(delta.usage.input_tokens).toBe(900)
+    expect(delta.usage.output_tokens).toBe(158)
+    expect(delta.usage.cache_read_input_tokens).toBe(73)
+  })
 })

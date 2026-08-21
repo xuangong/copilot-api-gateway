@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useT } from "../../state/i18n"
 import { fileToDataUrl, ImageTooLargeError } from "./image"
-import { parseOpenAIStream, type StreamUsage, type WebSearchProgress } from "./streams/openai"
+import { parseOpenAIStream, type Citation, type StreamUsage, type WebSearchProgress } from "./streams/openai"
 import { parseAnthropicStream } from "./streams/anthropic"
 import { parseGeminiStream } from "./streams/gemini"
 import { renderMarkdown } from "./markdown"
@@ -42,6 +42,8 @@ interface Message {
   durationMs?: number
   /** Web search progress events surfaced as inline bubbles. */
   webSearches?: WebSearchEntry[]
+  /** Sources the gateway grounded the answer in, deduped by URL. */
+  citations?: Citation[]
 }
 
 interface WebSearchEntry {
@@ -49,6 +51,22 @@ interface WebSearchEntry {
   id: string
   status: "in_progress" | "searching" | "completed"
   query?: string
+}
+
+/**
+ * How many `pause_turn` continuations the playground will drive before giving
+ * up. The gateway already caps how many searches one turn may run; this only
+ * stops a pathological ping-pong from looping forever in the browser.
+ */
+const MAX_PAUSE_TURNS = 8
+
+/** Fallback label for a source with no title. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "")
+  } catch {
+    return url
+  }
 }
 
 interface Props {
@@ -59,14 +77,14 @@ interface Props {
   onRevertModel?: (id: string) => void
 }
 
-const WEB_SEARCH_DESCRIPTION = "Search the web for current information. Use this when you need to find recent information, news, or answers to questions that require up-to-date knowledge."
-const WEB_SEARCH_PARAMS = {
-  type: "object",
-  properties: {
-    query: { type: "string", description: "The search query to execute" },
-  },
-  required: ["query"],
-} as const
+/**
+ * Web search is requested through each protocol's *hosted* search shape, not
+ * as a client function tool. The playground is an ordinary client: the gateway
+ * runs the search server-side (where the search credentials live — they must
+ * never reach the browser) and the tool schema the model sees is the gateway's
+ * business, not ours. Declaring a `web_search` function tool here would mean
+ * claiming we execute it, which we can't.
+ */
 
 /**
  * Prepend the user's current local time to the system prompt so models can
@@ -397,6 +415,19 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
     })
   }
 
+  /** Merge in newly cited sources, keeping arrival order and one entry per URL. */
+  function applyCitations(citations: Citation[]) {
+    setMessages((prev) => {
+      const last = prev[prev.length - 1]
+      if (!last || last.role !== "assistant") return prev
+      const seen = new Map<string, Citation>()
+      for (const c of [...(last.citations ?? []), ...citations]) {
+        if (!seen.has(c.url)) seen.set(c.url, c)
+      }
+      return [...prev.slice(0, -1), { ...last, citations: [...seen.values()] }]
+    })
+  }
+
   async function sendOpenAI(history: Message[], signal: AbortSignal) {
     const oaiMessages: Array<Record<string, unknown>> = []
     oaiMessages.push({ role: "system", content: composeSystemPrompt(systemPrompt) })
@@ -421,20 +452,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
         messages: oaiMessages,
         stream: true,
         stream_options: { include_usage: true },
-        ...(webSearchEnabled
-          ? {
-              tools: [
-                {
-                  type: "function",
-                  function: {
-                    name: "web_search",
-                    description: WEB_SEARCH_DESCRIPTION,
-                    parameters: WEB_SEARCH_PARAMS,
-                  },
-                },
-              ],
-            }
-          : {}),
+        ...(webSearchEnabled ? { web_search_options: {} } : {}),
       }),
       signal,
     })
@@ -447,6 +465,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
         appendAssistant(ch.text)
         await new Promise<void>((r) => setTimeout(r, 0))
       } else if (ch.type === "web_search") applyWebSearchProgress(ch.progress)
+      else if (ch.type === "citations") applyCitations(ch.citations)
       else setLastUsage(ch.usage)
     }
   }
@@ -474,15 +493,24 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
     }
     body.system = composeSystemPrompt(systemPrompt)
     if (webSearchEnabled) {
-      body.tools = [
-        {
-          name: "web_search",
-          description: WEB_SEARCH_DESCRIPTION,
-          input_schema: WEB_SEARCH_PARAMS,
-        },
-      ]
+      body.tools = [{ type: "web_search_20250305", name: "web_search" }]
     }
 
+    // A hosted search ends the turn with `pause_turn` and no answer text: the
+    // gateway ran the search, and the client owns the decision to continue.
+    // Replay the assistant blocks verbatim until the model actually answers.
+    for (let turn = 0; turn < MAX_PAUSE_TURNS; turn++) {
+      const paused = await streamAnthropicTurn(body, signal)
+      if (!paused) return
+      anMessages.push({ role: "assistant", content: paused })
+    }
+  }
+
+  /** One `/v1/messages` round trip. Returns the assistant blocks if it paused. */
+  async function streamAnthropicTurn(
+    body: Record<string, unknown>,
+    signal: AbortSignal,
+  ): Promise<unknown[] | null> {
     const resp = await fetch("/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": apiKey },
@@ -499,7 +527,10 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
         await new Promise<void>((r) => setTimeout(r, 0))
       } else if (ch.type === "usage") setLastUsage(ch.usage)
       else if (ch.type === "web_search") applyWebSearchProgress(ch.progress)
+      else if (ch.type === "citations") applyCitations(ch.citations)
+      else if (ch.type === "pause_turn") return ch.content
     }
+    return null
   }
 
   async function sendGemini(history: Message[], signal: AbortSignal) {
@@ -527,17 +558,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
     const body: Record<string, unknown> = { contents }
     body.systemInstruction = { parts: [{ text: composeSystemPrompt(systemPrompt) }] }
     if (webSearchEnabled) {
-      body.tools = [
-        {
-          functionDeclarations: [
-            {
-              name: "web_search",
-              description: WEB_SEARCH_DESCRIPTION,
-              parameters: WEB_SEARCH_PARAMS,
-            },
-          ],
-        },
-      ]
+      body.tools = [{ googleSearch: {} }]
     }
     const resp = await fetch(
       `/v1beta/models/${encodeURIComponent(modelId)}:streamGenerateContent?alt=sse`,
@@ -558,6 +579,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
         await new Promise<void>((r) => setTimeout(r, 0))
       } else if (ch.type === "usage") setLastUsage(ch.usage)
       else if (ch.type === "web_search") applyWebSearchProgress(ch.progress)
+      else if (ch.type === "citations") applyCitations(ch.citations)
     }
   }
 
@@ -733,6 +755,22 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, onR
                             </span>
                             {w.query && <span className="pg-tool-query">"{w.query}"</span>}
                           </div>
+                        ))}
+                      </div>
+                    )}
+                    {isAssistant && m.citations && m.citations.length > 0 && (
+                      <div className="pg-tool-list">
+                        {m.citations.map((c, ci) => (
+                          <a
+                            key={c.url}
+                            className="pg-tool pg-tool-completed"
+                            href={c.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <span className="pg-tool-icon">{ci + 1}</span>
+                            <span className="pg-tool-label">{c.title || hostOf(c.url)}</span>
+                          </a>
                         ))}
                       </div>
                     )}

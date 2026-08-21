@@ -79,7 +79,13 @@ export const OPTIONAL_FLAGS = [
   {
     id: "responses-web-search-shim",
     label: "Responses web search shim",
-    description: "Execute the Responses `web_search` hosted tool through the gateway's configured search provider instead of forwarding it to a Responses upstream. The orchestrator model calls a generated function tool; the shim runs the search and synthesizes the native web_search_call lifecycle.",
+    description: "Execute the Responses `web_search` hosted tool through the gateway's configured search provider instead of forwarding it to a Responses upstream. The orchestrator model calls a generated function tool; the shim runs the search and synthesizes the native web_search_call lifecycle. This flag governs translated callers only: a native Responses request always forwards its hosted tool to the upstream, because that client reads `web_search_call` items itself. A request arriving on another protocol always uses the shim, because only a search the gateway ran can be rendered as that protocol's own citations.",
+    defaultFor: ["copilot", "azure", "custom"],
+  },
+  {
+    id: "chat-completions-web-search-shim",
+    label: "Chat Completions web search shim",
+    description: "Execute the Chat Completions `web_search_options` request argument through the gateway's configured search provider instead of forwarding it to the upstream. The orchestrator model calls a generated function tool; the shim runs the search, loops the turn server-side (Chat Completions has no `pause_turn`) and reports sources as `annotations[].url_citation`. Also covers Gemini-source requests, whose `googleSearch` tool maps onto this argument when the target is Chat Completions.",
     defaultFor: ["copilot", "azure", "custom"],
   },
   {

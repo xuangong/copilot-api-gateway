@@ -52,6 +52,7 @@ import { selectPair } from '../../dispatch/pair-selector.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
 import { traverseTranslation } from '../shared/traverse-translation.ts'
 import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-dispatch.ts'
+import { invocationSourceApi } from '../shared/invocation-source-api.ts'
 
 // ─── Public types ─────────────────────────────────────────────────────────
 
@@ -306,7 +307,14 @@ export const messagesAttempt = {
     const invocation: Invocation = {
       endpoint: 'messages',
       enabledFlags: new Set([...(sel.binding.enabledFlags ?? []), 'messages-web-search-shim']),
-      sourceApi: 'messages',
+      // The *inbound* protocol, not this attempt's. When a gemini / responses /
+      // chat-completions request is translated onto a messages upstream, this
+      // attempt still runs, but the client never sees Messages frames and can
+      // therefore not honour a `pause_turn` handback — the web-search shim
+      // keys off this field to drive the continuation server-side instead.
+      // `telemetryCtx.sourceApi` is the only value threaded intact through
+      // `traverseTranslation`, so it is the source of truth here.
+      sourceApi: invocationSourceApi(args.telemetryCtx.sourceApi, 'messages'),
       payload: args.payload as Record<string, unknown>,
       headers: { ...(args.inheritedHeaders ?? {}) },
     }

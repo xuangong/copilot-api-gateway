@@ -71,6 +71,15 @@ export type ServerToolDispatcher = (args: {
  */
 export interface ServerToolHostedDispatch {
   readonly hostedTypes: readonly string[]
+  /**
+   * `include` tokens that only exist to widen the hosted item this shim
+   * replaces (e.g. `web_search_call.results`). The shim reads them for its own
+   * state and then strips them from the outbound payload: the upstream never
+   * emits the hosted item, and some upstreams — Copilot's grok-* / mai-code-*
+   * Responses endpoint among them — reject the token outright rather than
+   * ignoring it.
+   */
+  readonly includeTokens?: readonly string[]
   canonicalize: (raw: ResponsesTool) => ResponsesTool | undefined
   buildFunctionTool: (canonical: ResponsesTool, toolName: string) => ResponsesTool
   dispatcher: ServerToolDispatcher

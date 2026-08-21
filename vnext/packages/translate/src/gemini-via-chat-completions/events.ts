@@ -17,6 +17,7 @@
 import type {
   GeminiCandidate,
   GeminiFinishReason,
+  GeminiGroundingMetadata,
   GeminiPart,
   GeminiStreamEvent,
   GeminiUsageMetadata,
@@ -43,12 +44,18 @@ interface ChatToolCallDelta {
   function?: { name?: string; arguments?: string }
 }
 
+interface ChatAnnotation {
+  type?: string
+  url_citation?: { url?: string; title?: string }
+}
+
 interface ChatStreamDelta {
   role?: 'assistant'
   content?: string | null
   tool_calls?: ChatToolCallDelta[]
   reasoning_text?: string
   reasoning_opaque?: string
+  annotations?: ChatAnnotation[] | null
 }
 
 type ChatFinishReason = 'stop' | 'length' | 'tool_calls' | 'content_filter' | null | undefined
@@ -85,14 +92,38 @@ interface ChatToolCallDraft {
 
 interface ChoiceState extends GeminiThoughtSignatureState {
   toolCalls: Record<number, ChatToolCallDraft>
+  /**
+   * URL citations seen so far on this choice, deduped by URL and kept in
+   * arrival order. Gemini carries grounding on the candidate rather than in
+   * the content stream, so these are held until the finish chunk.
+   */
+  citations: Map<string, string | undefined>
 }
 
 const getChoiceState = (
   states: Record<number, ChoiceState>,
   index: number,
 ): ChoiceState => {
-  states[index] ??= { toolCalls: {} }
+  states[index] ??= { toolCalls: {}, citations: new Map() }
   return states[index]
+}
+
+const accumulateCitations = (annotations: ChatAnnotation[], state: ChoiceState): void => {
+  for (const annotation of annotations) {
+    const url = annotation.url_citation?.url
+    if (typeof url !== 'string' || url === '') continue
+    if (state.citations.has(url)) continue
+    state.citations.set(url, annotation.url_citation?.title)
+  }
+}
+
+const buildGroundingMetadata = (state: ChoiceState): GeminiGroundingMetadata | undefined => {
+  if (state.citations.size === 0) return undefined
+  return {
+    groundingChunks: [...state.citations].map(([uri, title]) => ({
+      web: { uri, ...(title !== undefined && title !== '' ? { title } : {}) },
+    })),
+  }
 }
 
 const mapFinishReason = (reason: ChatFinishReason): GeminiFinishReason | undefined => {
@@ -194,6 +225,7 @@ const buildCandidate = (
   }
 
   if (delta.tool_calls) accumulateToolCalls(delta.tool_calls, state)
+  if (delta.annotations) accumulateCitations(delta.annotations, state)
 
   const finishReason = mapFinishReason(choice.finish_reason)
   if (finishReason) {
@@ -203,10 +235,16 @@ const buildCandidate = (
 
   if (!parts.length && !finishReason) return null
 
+  // Grounding rides on the final candidate only: the shim streams citations as
+  // one annotations delta near the end of the turn, and Gemini clients read
+  // `groundingMetadata` off the candidate, not off an incremental part.
+  const groundingMetadata = finishReason ? buildGroundingMetadata(state) : undefined
+
   return {
     index: choice.index,
     content: { role: 'model', parts },
     ...(finishReason !== undefined ? { finishReason } : {}),
+    ...(groundingMetadata ? { groundingMetadata } : {}),
   }
 }
 

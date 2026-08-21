@@ -862,6 +862,250 @@ export const rewriteMessagesWebSearchEventsToNative = async function* (
   }
 }
 
+// ── Cross-protocol server-driven continuation ──
+
+/**
+ * Ceiling on continuation turns the gateway drives on the client's behalf.
+ * Matches the Chat Completions shim's `MAX_SEARCH_TURNS`.
+ */
+const MAX_SERVER_DRIVEN_SEARCH_TURNS = 4
+
+type LooseBlock = Record<string, unknown>
+
+interface BlockDraft {
+  block: LooseBlock
+  /** `input_json_delta` fragments; only parseable once the block closes. */
+  json: string
+}
+
+const accumulateBlockDelta = (draft: BlockDraft, delta: Record<string, unknown>): void => {
+  switch (delta.type) {
+    case 'text_delta':
+      draft.block.text = String(draft.block.text ?? '') + String(delta.text ?? '')
+      if (Array.isArray(delta.citations)) {
+        draft.block.citations = [...((draft.block.citations as unknown[]) ?? []), ...delta.citations]
+      }
+      return
+    case 'citations_delta':
+      draft.block.citations = [...((draft.block.citations as unknown[]) ?? []), delta.citation]
+      return
+    case 'input_json_delta':
+      draft.json += String(delta.partial_json ?? '')
+      return
+    case 'thinking_delta':
+      draft.block.thinking = String(draft.block.thinking ?? '') + String(delta.thinking ?? '')
+      return
+    case 'signature_delta':
+      draft.block.signature = String(draft.block.signature ?? '') + String(delta.signature ?? '')
+      return
+    default:
+      return
+  }
+}
+
+const closeBlockDraft = (draft: BlockDraft): LooseBlock => {
+  if (draft.json !== '') {
+    try {
+      draft.block.input = JSON.parse(draft.json)
+    } catch {
+      /* a truncated tool call is not replayable; leave `input` as-is */
+    }
+  }
+  return draft.block
+}
+
+/**
+ * Blocks safe to send back as an assistant turn. A `thinking` block that never
+ * received a delta is unsigned and an empty `text` block is malformed; both are
+ * rejected by the upstream on replay.
+ */
+const replayableBlocks = (blocks: readonly LooseBlock[]): LooseBlock[] =>
+  blocks.filter(b => {
+    if (b.type === 'thinking') return Boolean(b.thinking)
+    if (b.type === 'text') return Boolean(b.text)
+    return true
+  })
+
+const readTokens = (usage: unknown, key: 'input_tokens' | 'output_tokens'): number => {
+  if (!isJsonObject(usage)) return 0
+  const value = usage[key]
+  return typeof value === 'number' ? value : 0
+}
+
+const readWebSearchRequests = (usage: unknown): number => {
+  if (!isJsonObject(usage)) return 0
+  const serverToolUse = usage.server_tool_use
+  if (!isJsonObject(serverToolUse)) return 0
+  const value = serverToolUse.web_search_requests
+  return typeof value === 'number' ? value : 0
+}
+
+/**
+ * Splices N upstream turns into ONE downstream Messages turn.
+ *
+ * The native shim ends an intercepted turn with `stop_reason: 'pause_turn'`,
+ * which is Anthropic's handback: the *client* is expected to replay the
+ * assistant blocks and ask again for the answer. That contract only works when
+ * the client speaks Messages. When the inbound protocol is gemini / responses /
+ * chat-completions, the translator on the way out has no `pause_turn` to map —
+ * Pair 1 folds it into a plain stop — so the client sees an empty, finished
+ * turn and cannot recover. Here the gateway plays the client itself: it
+ * withholds the paused turn's terminator, appends the assistant blocks to the
+ * conversation, re-runs the chain, and renumbers the follow-up turn's content
+ * blocks so downstream sees one continuous message.
+ */
+const driveMessagesWebSearchTurns = async function* (
+  firstTurn: AsyncIterable<ProtocolFrame<MessagesStreamEvent>>,
+  args: {
+    invocation: Invocation
+    /** Native (pre-shim-rewrite) payload — the re-prepare has to start here. */
+    basePayload: MessagesPayload
+    run: () => Promise<LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>>
+    provider: ActiveMessagesWebSearchProvider | undefined
+  },
+): AsyncGenerator<ProtocolFrame<MessagesStreamEvent>> {
+  let current = firstTurn
+  let turn = 0
+  // Content-block indices are per-turn; downstream needs one ascending run.
+  let indexBase = 0
+  const messages = [...((args.basePayload.messages ?? []) as unknown as MessagesMessage[])]
+  let inputTokens = 0
+  let outputTokens = 0
+  let webSearchRequests = 0
+
+  for (;;) {
+    const blocks: LooseBlock[] = []
+    let draft: BlockDraft | undefined
+    let highestIndex = -1
+    let stopReason: string | null = null
+    let finalDelta: Extract<MessagesStreamEvent, { type: 'message_delta' }> | undefined
+    // `message_stop` and the `done` frame terminate the *merged* turn, so they
+    // are held back until the loop actually finishes.
+    const tail: Array<ProtocolFrame<MessagesStreamEvent>> = []
+    let errored = false
+
+    for await (const frame of current) {
+      if (frame.type === 'done') {
+        tail.push(frame)
+        continue
+      }
+      const event = frame.event
+
+      if (event.type === 'message_start') {
+        inputTokens += readTokens((event as { message?: { usage?: unknown } }).message?.usage, 'input_tokens')
+        outputTokens += readTokens((event as { message?: { usage?: unknown } }).message?.usage, 'output_tokens')
+        // Only the first turn's opener is real; later ones would restart the
+        // message downstream.
+        if (turn === 0) yield frame
+        continue
+      }
+
+      if (event.type === 'content_block_start' || event.type === 'content_block_delta' || event.type === 'content_block_stop') {
+        highestIndex = Math.max(highestIndex, event.index)
+        if (event.type === 'content_block_start') {
+          draft = { block: { ...(event.content_block as unknown as LooseBlock) }, json: '' }
+        } else if (event.type === 'content_block_delta') {
+          if (draft) accumulateBlockDelta(draft, event.delta as unknown as Record<string, unknown>)
+        } else if (draft) {
+          blocks.push(closeBlockDraft(draft))
+          draft = undefined
+        }
+        yield eventFrame({ ...event, index: event.index + indexBase })
+        continue
+      }
+
+      if (event.type === 'message_delta') {
+        finalDelta = event
+        stopReason = (event.delta as { stop_reason?: string | null }).stop_reason ?? null
+        inputTokens += readTokens(event.usage, 'input_tokens')
+        outputTokens += readTokens(event.usage, 'output_tokens')
+        webSearchRequests += readWebSearchRequests(event.usage)
+        continue
+      }
+
+      if (event.type === 'message_stop') {
+        tail.push(frame)
+        continue
+      }
+
+      if (event.type === 'error') {
+        errored = true
+        yield frame
+        break
+      }
+
+      yield frame
+    }
+
+    const finishMergedTurn = function* (): Generator<ProtocolFrame<MessagesStreamEvent>> {
+      if (finalDelta) {
+        yield eventFrame({
+          type: 'message_delta',
+          delta: {
+            ...finalDelta.delta,
+            // A `pause_turn` surviving to here means the budget ran out. The
+            // caller cannot continue, so end the turn rather than hand back a
+            // handback it has no way to honour.
+            ...(stopReason === 'pause_turn' ? { stop_reason: 'end_turn' as const } : {}),
+          },
+          usage: {
+            ...(inputTokens > 0 ? { input_tokens: inputTokens } : {}),
+            output_tokens: outputTokens,
+            ...(webSearchRequests > 0 ? { server_tool_use: { web_search_requests: webSearchRequests } } : {}),
+          },
+        } as MessagesStreamEvent)
+      }
+      yield* tail
+    }
+
+    if (errored) {
+      yield* tail
+      return
+    }
+
+    if (stopReason !== 'pause_turn' || turn >= MAX_SERVER_DRIVEN_SEARCH_TURNS) {
+      yield* finishMergedTurn()
+      return
+    }
+
+    messages.push({ role: 'assistant', content: replayableBlocks(blocks) as MessagesMessage['content'] })
+    // Re-preparing from the native shape (rather than patching the already
+    // rewritten upstream payload) means the replay decoder does the
+    // native → upstream translation for us, exactly as it would for a client
+    // that continued the turn itself. Scalar fields other interceptors set on
+    // `invocation.payload` are preserved; only tools + messages are restored.
+    const nextSource = {
+      ...(args.invocation.payload as unknown as MessagesPayload),
+      ...(args.basePayload.tools !== undefined ? { tools: args.basePayload.tools } : {}),
+      messages: messages as unknown as MessagesPayload['messages'],
+    } as MessagesPayload
+    const nextPrepared = prepareMessagesWebSearchShimRequest(nextSource)
+    if (nextPrepared.type !== 'ok' || nextPrepared.state.mode === 'inactive') {
+      yield* finishMergedTurn()
+      return
+    }
+    if (turn + 1 >= MAX_SERVER_DRIVEN_SEARCH_TURNS && nextPrepared.state.mode === 'active') {
+      // Last turn we are willing to drive: clamp the search budget so further
+      // searches come back as `max_uses_exceeded` and the model answers with
+      // what it has instead of paging for more.
+      nextPrepared.state.maxUses = nextPrepared.state.priorSearchUseCount
+    }
+
+    args.invocation.payload = nextPrepared.payload as unknown as Record<string, unknown>
+    const next = await args.run()
+    if (next.type !== 'events') {
+      // Messages has an in-band `error` event, but synthesizing one here would
+      // lose the upstream status; throwing lets `attempt.ts` map it to a
+      // fully-accounted internal-error result.
+      throw new Error(`Messages web search shim: upstream continuation turn failed with result type '${next.type}'`)
+    }
+
+    indexBase += highestIndex + 1
+    turn += 1
+    current = rewriteMessagesWebSearchEventsToNative(next.events, nextPrepared.state, args.provider)
+  }
+}
+
 const invalidRequestUpstreamError = (
   message: string,
 ): LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>> => ({
@@ -934,6 +1178,9 @@ const prepareMessagesWebSearchInvocation = (
  * Gated by the `messages-web-search-shim` flag on `Invocation.enabledFlags`.
  */
 export const withMessagesWebSearchShim: MessagesInterceptor = async (invocation, ctx, run) => {
+  // Captured before `prepare` swaps in the upstream-shaped payload: the
+  // cross-protocol continuation loop has to re-prepare from the native shape.
+  const basePayload = invocation.payload as unknown as MessagesPayload
   const prepared = prepareMessagesWebSearchInvocation(invocation)
   if (prepared.type === 'inactive') return await run()
   if (prepared.type === 'invalid-request') return invalidRequestUpstreamError(prepared.message)
@@ -946,8 +1193,18 @@ export const withMessagesWebSearchShim: MessagesInterceptor = async (invocation,
   const result = await run()
   if (result.type !== 'events') return result
 
+  const events = rewriteMessagesWebSearchEventsToNative(result.events, prepared.state, providerResolution.provider)
+
+  // A Messages client can honour `pause_turn` itself; anything else cannot.
+  if ((invocation.sourceApi ?? 'messages') === 'messages') return { ...result, events }
+
   return {
     ...result,
-    events: rewriteMessagesWebSearchEventsToNative(result.events, prepared.state, providerResolution.provider),
+    events: driveMessagesWebSearchTurns(events, {
+      invocation,
+      basePayload,
+      run,
+      provider: providerResolution.provider,
+    }),
   }
 }

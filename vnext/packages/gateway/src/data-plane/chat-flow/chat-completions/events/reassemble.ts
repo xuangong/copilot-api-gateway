@@ -1,5 +1,9 @@
 import { chatCompletionsErrorPayloadMessage } from '@vibe-llm/protocols/chat'
-import type { ChatCompletionsStreamEvent, ChatCompletionsReasoningItem } from '@vibe-llm/protocols/chat'
+import type {
+  ChatCompletionsStreamEvent,
+  ChatCompletionsReasoningItem,
+  ChatCompletionsAnnotation,
+} from '@vibe-llm/protocols/chat'
 import { captureExtras } from '../../shared/reassemble-extras.ts'
 
 export interface ChatCompletionsResult {
@@ -23,6 +27,7 @@ export interface ChatCompletionsResult {
       reasoning_text?: string
       reasoning_opaque?: string
       reasoning_items?: ChatCompletionsReasoningItem[]
+      annotations?: ChatCompletionsAnnotation[]
       [k: string]: unknown
     }
     finish_reason: string
@@ -43,6 +48,7 @@ const KNOWN_CHUNK_KEYS: ReadonlySet<string> = new Set([
 const KNOWN_CHOICE_KEYS: ReadonlySet<string> = new Set(['index', 'delta', 'finish_reason'])
 const KNOWN_DELTA_KEYS: ReadonlySet<string> = new Set([
   'content', 'role', 'reasoning_text', 'reasoning_opaque', 'reasoning_items', 'tool_calls',
+  'annotations',
 ])
 
 // SSE chunks always carry `object: 'chat.completion.chunk'`. The synthesized
@@ -62,6 +68,7 @@ export async function reassembleChatCompletions(
   let reasoningOpaque = ''
   let hasReasoningOpaque = false
   const reasoningItems: ChatCompletionsReasoningItem[] = []
+  const annotations: ChatCompletionsAnnotation[] = []
   let finishReason: string = 'stop'
   let lastUsage: ChatCompletionsResult['usage'] | undefined
 
@@ -111,6 +118,12 @@ export async function reassembleChatCompletions(
       if (Array.isArray(delta.reasoning_items)) {
         reasoningItems.push(...(delta.reasoning_items as ChatCompletionsReasoningItem[]))
       }
+      // Citations arrive as whole entries, never as partial deltas, so a plain
+      // concat is the correct accumulation (unlike tool_calls, which are
+      // index-keyed and streamed piecewise).
+      if (Array.isArray(delta.annotations)) {
+        annotations.push(...(delta.annotations as ChatCompletionsAnnotation[]))
+      }
 
       if (Array.isArray(delta.tool_calls)) {
         for (const toolCall of delta.tool_calls as Array<Record<string, unknown>>) {
@@ -157,6 +170,7 @@ export async function reassembleChatCompletions(
     ...(reasoningText && { reasoning_text: reasoningText }),
     ...(hasReasoningOpaque ? { reasoning_opaque: reasoningOpaque } : {}),
     ...(reasoningItems.length > 0 && { reasoning_items: reasoningItems }),
+    ...(annotations.length > 0 && { annotations }),
     ...messageExtras,
   }
 

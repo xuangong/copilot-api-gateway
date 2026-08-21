@@ -108,6 +108,28 @@ describe('messages-via-responses :: request', () => {
     expect((tools[1] as { parameters?: unknown }).parameters).toEqual({ type: 'object' })
   })
 
+  // Responses withholds `web_search_call.results` unless the request asks for
+  // them, and the gateway's shim mirrors that. Messages has no `include`
+  // argument, so requesting the server-side search tool is taken as
+  // requesting its sources — otherwise the answer arrives uncitable.
+  it('opts into web_search_call.results when the server-side search tool is requested', () => {
+    const out = translateMessagesToResponses({
+      model: 'm', max_tokens: 8,
+      messages: [{ role: 'user', content: 'q' }],
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+    } as unknown as MessagesPayload)
+    expect((out.target as { include?: unknown }).include).toEqual(['web_search_call.results'])
+  })
+
+  it('leaves include unset when no server-side search tool was requested', () => {
+    const out = translateMessagesToResponses({
+      model: 'm', max_tokens: 8,
+      messages: [{ role: 'user', content: 'q' }],
+      tools: [{ name: 'calc', input_schema: { type: 'object' } }],
+    } as unknown as MessagesPayload)
+    expect((out.target as { include?: unknown }).include).toBeUndefined()
+  })
+
   it('translates tool_choice variants (auto, any→required, named tool, none) and falls back to auto', () => {
     const base: MessagesPayload = {
       model: 'm', max_tokens: 8,

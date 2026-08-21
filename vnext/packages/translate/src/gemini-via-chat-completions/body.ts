@@ -10,6 +10,7 @@
 import type {
   GeminiCandidate,
   GeminiFinishReason,
+  GeminiGroundingMetadata,
   GeminiPart,
   GeminiResult,
   GeminiUsageMetadata,
@@ -35,6 +36,7 @@ interface ChatBodyMessage {
   tool_calls?: ChatBodyToolCall[]
   reasoning_text?: string
   reasoning_opaque?: string
+  annotations?: Array<{ type?: string; url_citation?: { url?: string; title?: string } }> | null
 }
 
 interface ChatBodyChoice {
@@ -81,6 +83,11 @@ const synthesizeChunks = function* (body: ChatCompletionsBodyResponse): Generato
     }
     if (toolCalls.length) {
       delta.tool_calls = toolCalls
+    }
+    // Replayed as a delta so the stream translator's citation accumulator is
+    // the single place that turns url_citations into groundingMetadata.
+    if (message.annotations?.length) {
+      delta.annotations = message.annotations
     }
 
     return { index: choice.index, delta, finish_reason: null as ChatBodyChoice['finish_reason'] }
@@ -131,6 +138,7 @@ export async function translateChatToGeminiBody(
 
   const partsByIndex = new Map<number, GeminiPart[]>()
   const finishByIndex = new Map<number, GeminiFinishReason>()
+  const groundingByIndex = new Map<number, GeminiGroundingMetadata>()
   let usageMetadata: GeminiUsageMetadata | undefined
 
   for await (const ge of translateChatToGeminiEvents(events, { model: options.model })) {
@@ -144,6 +152,7 @@ export async function translateChatToGeminiBody(
         partsByIndex.set(idx, existing)
       }
       if (candidate.finishReason !== undefined) finishByIndex.set(idx, candidate.finishReason)
+      if (candidate.groundingMetadata !== undefined) groundingByIndex.set(idx, candidate.groundingMetadata)
     }
   }
 
@@ -157,10 +166,12 @@ export async function translateChatToGeminiBody(
   const candidates: GeminiCandidate[] = sortedIndices.map(idx => {
     const parts = partsByIndex.get(idx) ?? []
     const finishReason = finishByIndex.get(idx)
+    const groundingMetadata = groundingByIndex.get(idx)
     return {
       index: idx,
       content: { role: 'model', parts },
       ...(finishReason !== undefined ? { finishReason } : {}),
+      ...(groundingMetadata !== undefined ? { groundingMetadata } : {}),
     }
   })
 

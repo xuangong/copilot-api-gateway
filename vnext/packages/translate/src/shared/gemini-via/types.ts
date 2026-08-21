@@ -95,6 +95,22 @@ export interface GeminiCandidate {
   content: GeminiContent
   finishReason?: GeminiFinishReason
   index: number
+  groundingMetadata?: GeminiGroundingMetadata
+}
+
+/**
+ * Web-grounding evidence attached to a candidate.
+ *
+ * Synthesised from whatever citation channel the hub protocol offers (Chat
+ * Completions `annotations[].url_citation`, Messages `web_search_tool_result`).
+ * `groundingSupports` is deliberately never emitted: it correlates grounding
+ * chunks with character spans of the answer, and no hub protocol gives us those
+ * offsets. Clients that only read `groundingChunks` — the common case, and what
+ * the dashboard does — see complete data.
+ */
+export interface GeminiGroundingMetadata {
+  webSearchQueries?: string[]
+  groundingChunks?: Array<{ web: { uri: string; title?: string } }>
 }
 
 export type GeminiFinishReason =

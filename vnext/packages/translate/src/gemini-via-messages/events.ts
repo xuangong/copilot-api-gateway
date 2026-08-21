@@ -34,10 +34,19 @@ export interface GeminiPart {
   functionCall?: { name: string; args: Record<string, unknown> }
 }
 
+export interface GeminiGroundingChunk {
+  web: { uri: string; title?: string }
+}
+
+export interface GeminiGroundingMetadata {
+  groundingChunks: GeminiGroundingChunk[]
+}
+
 export interface GeminiCandidate {
   index?: number
   content?: { role: 'model'; parts: GeminiPart[] }
   finishReason?: 'STOP' | 'MAX_TOKENS' | 'SAFETY' | 'FINISH_REASON_UNSPECIFIED'
+  groundingMetadata?: GeminiGroundingMetadata
 }
 
 export interface GeminiStreamResponse {
@@ -54,6 +63,12 @@ interface ToolCallDraft {
 
 interface ChoiceState {
   toolCalls: Map<number, ToolCallDraft>
+  /**
+   * URL citations seen so far, deduped by URL and kept in arrival order.
+   * Gemini carries grounding on the candidate rather than in the content
+   * stream, so these are held back until the finish chunk.
+   */
+  citations: Map<string, string | undefined>
 }
 
 interface State {
@@ -76,7 +91,7 @@ function createState(model: string | undefined): State {
 function getChoiceState(state: State, index: number): ChoiceState {
   let cs = state.choices.get(index)
   if (!cs) {
-    cs = { toolCalls: new Map() }
+    cs = { toolCalls: new Map(), citations: new Map() }
     state.choices.set(index, cs)
   }
   return cs
@@ -132,6 +147,15 @@ function flushToolCallParts(cs: ChoiceState): GeminiPart[] {
   return parts
 }
 
+function buildGroundingMetadata(cs: ChoiceState): GeminiGroundingMetadata | undefined {
+  if (cs.citations.size === 0) return undefined
+  return {
+    groundingChunks: [...cs.citations].map(([uri, title]) => ({
+      web: { uri, ...(title !== undefined && title !== '' ? { title } : {}) },
+    })),
+  }
+}
+
 function buildChunkResponses(state: State, chunk: ChatSSEChunk): GeminiStreamResponse[] {
   const out: GeminiStreamResponse[] = []
   const liveCandidates: GeminiCandidate[] = []
@@ -162,6 +186,14 @@ function buildChunkResponses(state: State, chunk: ChatSSEChunk): GeminiStreamRes
       }
     }
 
+    if (delta.annotations) {
+      for (const annotation of delta.annotations) {
+        const url = annotation.url_citation?.url
+        if (typeof url !== 'string' || url === '' || cs.citations.has(url)) continue
+        cs.citations.set(url, annotation.url_citation.title)
+      }
+    }
+
     if (liveParts.length > 0) {
       liveCandidates.push({
         index: choice.index,
@@ -172,10 +204,14 @@ function buildChunkResponses(state: State, chunk: ChatSSEChunk): GeminiStreamRes
     const finishReason = mapFinishReason(choice.finish_reason)
     if (finishReason !== undefined) {
       const trailingParts = flushToolCallParts(cs)
+      // Grounding rides on the candidate, so it can only be emitted once the
+      // turn's sources are all in — i.e. on the finish chunk.
+      const groundingMetadata = buildGroundingMetadata(cs)
       state.finishedCandidates.push({
         index: choice.index,
         content: { role: 'model', parts: trailingParts },
         finishReason,
+        ...(groundingMetadata ? { groundingMetadata } : {}),
       })
     }
   }

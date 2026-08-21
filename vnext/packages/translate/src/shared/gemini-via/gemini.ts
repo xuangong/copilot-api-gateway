@@ -197,6 +197,25 @@ export const geminiReasoningEffort = (
   return geminiThinkingLevelEffort(thinkingConfig) ?? null
 }
 
+/**
+ * True when the request asks for Google's hosted web search.
+ *
+ * `googleSearch` is the current spelling; `googleSearchRetrieval` is the
+ * Gemini 1.5-era one. Both mean "ground this turn in web results", so both map
+ * onto whatever hosted search the target protocol offers. The declared value
+ * of either key is an options object we have no equivalent for (dynamic
+ * retrieval thresholds and the like) — its presence is the whole signal.
+ *
+ * The gateway does not strip these groups any more (see the gemini
+ * `strip-unsupported-tools` interceptor): every gemini request is translated,
+ * so each `gemini-via-*` request translator is responsible for mapping this
+ * onto its target's hosted-search shape.
+ */
+export const geminiWantsWebSearch = (payload: GeminiPayload): boolean =>
+  payload.tools?.some(
+    toolGroup => toolGroup.googleSearch !== undefined || toolGroup.googleSearchRetrieval !== undefined,
+  ) ?? false
+
 export const geminiFunctionDeclarations = (
   payload: GeminiPayload,
   allowedNameMode: 'any' | 'all' | 'none',

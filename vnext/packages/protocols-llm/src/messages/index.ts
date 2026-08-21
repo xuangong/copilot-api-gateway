@@ -47,11 +47,35 @@ export const MessagesRedactedThinkingBlockSchema = z.object({
 /** Backwards-compatible alias for the previous loose ThinkingBlock union. */
 export type ThinkingBlock = MessagesThinkingBlock | MessagesRedactedThinkingBlock
 
+/**
+ * Server-side tool blocks — what the gateway's hosted web-search shim emits.
+ *
+ * A paused turn (`stop_reason: 'pause_turn'`) hands the conversation back to
+ * the client, which must replay the assistant turn verbatim to get the answer.
+ * That replay carries these two blocks, so rejecting them here would 400 the
+ * gateway's own output and make hosted search unusable past the first turn.
+ */
+const ServerToolUseBlock = z.object({
+  type: z.literal('server_tool_use'),
+  id: z.string(),
+  name: z.string(),
+  input: z.unknown().optional(),
+}).loose()
+
+const WebSearchToolResultBlock = z.object({
+  type: z.literal('web_search_tool_result'),
+  tool_use_id: z.string(),
+  // Either the result array or a `web_search_tool_result_error` object.
+  content: z.union([z.array(z.unknown()), z.unknown()]).optional(),
+}).loose()
+
 const ContentBlock = z.union([
   TextBlock,
   ImageBlock,
   ToolUseBlock,
   ToolResultBlock,
+  ServerToolUseBlock,
+  WebSearchToolResultBlock,
   MessagesThinkingBlockSchema,
   MessagesRedactedThinkingBlockSchema,
 ])

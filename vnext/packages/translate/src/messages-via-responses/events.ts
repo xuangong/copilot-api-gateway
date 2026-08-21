@@ -32,6 +32,11 @@ interface RespCreatedEvent extends RespEventBase {
   }
 }
 
+interface RespWebSearchResult {
+  url?: string
+  title?: string
+}
+
 interface RespOutputItem {
   type: string
   id?: string
@@ -40,10 +45,20 @@ interface RespOutputItem {
   arguments?: string
   summary?: Array<{ text?: string }>
   content?: Array<{ type: string; text?: string; refusal?: string }>
+  /** Hosted web_search_call: the executed query, known only on `done`. */
+  action?: { type?: string; query?: string }
+  /** Hosted web_search_call: sources, present only when the request opted in. */
+  results?: RespWebSearchResult[]
 }
 
 interface RespOutputItemAddedEvent extends RespEventBase {
   type: 'response.output_item.added'
+  output_index: number
+  item: RespOutputItem
+}
+
+interface RespOutputItemDoneEvent extends RespEventBase {
+  type: 'response.output_item.done'
   output_index: number
   item: RespOutputItem
 }
@@ -109,7 +124,7 @@ type RespEvent =
   | RespFailedEvent
   | RespErrorEvent
   | (RespEventBase & { type: 'ping' })
-  | (RespEventBase & { type: 'response.output_item.done' })
+  | RespOutputItemDoneEvent
 
 // ─── State machine ───
 
@@ -129,6 +144,8 @@ interface State {
   thinkingBlockByOutputIndex: Map<number, number>
   openBlocks: Set<number>
   functionCallState: Map<number, FunctionCallState>
+  /** Map of outputIndex → open `server_tool_use` block for a hosted search. */
+  searchCallState: Map<number, { blockIndex: number; id: string; queryEmitted: boolean }>
 }
 
 function createState(): State {
@@ -139,6 +156,7 @@ function createState(): State {
     thinkingBlockByOutputIndex: new Map(),
     openBlocks: new Set(),
     functionCallState: new Map(),
+    searchCallState: new Map(),
   }
 }
 
@@ -215,7 +233,79 @@ function handleCreated(ev: RespCreatedEvent): MessagesEvent[] {
   ]
 }
 
+/**
+ * Hosted web search, Responses → Messages. Responses reports a search as one
+ * `web_search_call` output item; Anthropic splits the same thing across two
+ * blocks: `server_tool_use` for the call and `web_search_tool_result` for the
+ * sources it found. Anthropic has no slot for a query that arrives after the
+ * block opened, so it goes out as an `input_json_delta` — as early as the
+ * upstream names it, which is on `added` when the gateway's shim ran the
+ * search and on `done` when a native upstream did.
+ */
+function emitQueryDelta(blockIndex: number, query: string): MessagesEvent {
+  return {
+    type: 'content_block_delta',
+    index: blockIndex,
+    delta: { type: 'input_json_delta', partial_json: JSON.stringify({ query }) } as never,
+  }
+}
+
+function openSearchCallBlock(ev: RespOutputItemAddedEvent, state: State): MessagesEvent[] {
+  const blockIndex = state.nextBlockIndex++
+  const id = ev.item.id ?? `ws_${blockIndex}`
+  const query = ev.item.action?.query
+
+  const out: MessagesEvent[] = []
+  closeOpenBlocks(state, out)
+  out.push({
+    type: 'content_block_start',
+    index: blockIndex,
+    content_block: { type: 'server_tool_use', id, name: 'web_search', input: {} } as never,
+  })
+  state.openBlocks.add(blockIndex)
+  if (query !== undefined) out.push(emitQueryDelta(blockIndex, query))
+  state.searchCallState.set(ev.output_index, { blockIndex, id, queryEmitted: query !== undefined })
+  return out
+}
+
+function closeSearchCallBlock(ev: RespOutputItemDoneEvent, state: State): MessagesEvent[] {
+  const call = state.searchCallState.get(ev.output_index)
+  if (!call) return []
+  state.searchCallState.delete(ev.output_index)
+
+  const out: MessagesEvent[] = []
+  const query = ev.item.action?.query
+  // `done` repeats the query the shim already announced; sending it twice
+  // would append a second JSON object to the same block's input.
+  if (query !== undefined && !call.queryEmitted) out.push(emitQueryDelta(call.blockIndex, query))
+
+  const results = ev.item.results
+  if (!results) return out
+
+  closeOpenBlocks(state, out)
+  const blockIndex = state.nextBlockIndex++
+  out.push({
+    type: 'content_block_start',
+    index: blockIndex,
+    content_block: {
+      type: 'web_search_tool_result',
+      tool_use_id: call.id,
+      content: results.map((r) => ({
+        type: 'web_search_result',
+        url: r.url ?? '',
+        title: r.title ?? '',
+        // Required by the Messages schema but with no Responses counterpart,
+        // so it is left empty rather than fabricated.
+        encrypted_content: '',
+      })),
+    } as never,
+  })
+  state.openBlocks.add(blockIndex)
+  return out
+}
+
 function handleOutputItemAdded(ev: RespOutputItemAddedEvent, state: State): MessagesEvent[] {
+  if (ev.item.type === 'web_search_call') return openSearchCallBlock(ev, state)
   if (ev.item.type !== 'function_call') return []
   const blockIndex = state.nextBlockIndex++
   const toolCallId = ev.item.call_id ?? `tool_${blockIndex}`
@@ -312,11 +402,16 @@ function handleCompleted(ev: RespCompletedEvent, state: State): MessagesEvent[] 
   const out: MessagesEvent[] = []
   closeOpenBlocks(state, out)
   state.functionCallState.clear()
+  state.searchCallState.clear()
   const cached = ev.response.usage?.input_tokens_details?.cached_tokens
   out.push({
     type: 'message_delta',
     delta: { stop_reason: mapStopReason(ev), stop_sequence: null },
     usage: {
+      // Responses only reports token counts on the terminal envelope, long
+      // after `message_start` was emitted from `response.created`. Restating
+      // the prompt side here is the only way clients see anything but zero.
+      input_tokens: (ev.response.usage?.input_tokens ?? 0) - (cached ?? 0),
       output_tokens: ev.response.usage?.output_tokens ?? 0,
       ...(cached !== undefined ? { cache_read_input_tokens: cached } : {}),
     } as never,
@@ -330,6 +425,7 @@ function handleStreamError(state: State, message: string): MessagesEvent[] {
   const out: MessagesEvent[] = []
   closeOpenBlocks(state, out)
   state.functionCallState.clear()
+  state.searchCallState.clear()
   state.messageCompleted = true
   out.push({ type: 'error', error: { type: 'api_error', message } })
   return out
@@ -343,8 +439,9 @@ function translateOne(ev: RespEvent, state: State): MessagesEvent[] {
     case 'response.output_item.added':
       return handleOutputItemAdded(ev, state)
     case 'response.output_item.done':
-      // Lazy-close: blocks close when a new one opens or on completion.
-      return []
+      // Only a hosted search needs closing work here; every other block is
+      // lazy-closed when the next one opens or when the stream completes.
+      return closeSearchCallBlock(ev, state)
     case 'response.output_text.delta':
       return handleTextDelta(ev, state)
     case 'response.function_call_arguments.delta':
@@ -391,6 +488,7 @@ export async function* translateResponsesEventsToMessagesEvents(
     state.openBlocks.clear()
     state.textBlockByKey.clear()
     state.thinkingBlockByOutputIndex.clear()
+    state.searchCallState.clear()
     state.functionCallState.clear()
     state.messageCompleted = true
   }

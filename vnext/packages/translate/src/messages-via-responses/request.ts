@@ -192,6 +192,9 @@ function translateSystem(system: MessagesPayload['system']): string | undefined 
   return text.length > 0 ? text : undefined
 }
 
+/** Responses `include` value that unlocks hosted web-search source lists. */
+const WEB_SEARCH_RESULTS_INCLUDE = 'web_search_call.results'
+
 function translateTools(tools: MessagesTool[] | undefined): ResponseTool[] | undefined {
   if (!tools || tools.length === 0) return undefined
   return tools.map<ResponseTool>((t) => {
@@ -288,7 +291,16 @@ export function translateMessagesToResponses(payload: MessagesPayload): Messages
   if (ext.metadata) target.metadata = { ...ext.metadata }
   if (tools !== undefined) {
     const translated = translateTools(tools)
-    if (translated) target.tools = translated
+    if (translated) {
+      target.tools = translated
+      // Responses withholds `web_search_call.results` unless the request asks
+      // for them. Messages has no `include` argument, so asking for the
+      // server-side search tool is taken as asking for its sources too —
+      // otherwise the answer arrives with nothing to cite.
+      if (translated.some((t) => (t as { type?: string }).type === 'web_search')) {
+        target.include = [WEB_SEARCH_RESULTS_INCLUDE]
+      }
+    }
     const tool_choice = translateToolChoice(ext.tool_choice, tools)
     if (tool_choice !== undefined) target.tool_choice = tool_choice
   }

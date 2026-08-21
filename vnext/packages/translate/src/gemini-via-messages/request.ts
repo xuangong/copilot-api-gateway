@@ -59,6 +59,8 @@ interface GeminiFunctionDeclaration {
 
 interface GeminiToolGroup {
   functionDeclarations?: GeminiFunctionDeclaration[]
+  googleSearch?: unknown
+  googleSearchRetrieval?: unknown
 }
 
 interface GeminiToolConfig {
@@ -241,7 +243,23 @@ export function translateGeminiToMessages(
   options: TranslateGeminiToMessagesOptions,
 ): MessagesPayload {
   const chat = translateGeminiToChat(payload, options.model)
-  return translateChatToMessages(chat, {
+  const messages = translateChatToMessages(chat, {
     fallbackMaxOutputTokens: options.fallbackMaxOutputTokens,
   })
+
+  // `googleSearch` / `googleSearchRetrieval` → Anthropic's hosted web search.
+  // Appended after Pair 1 rather than routed through the intermediate Chat
+  // shape: Chat Completions expresses hosted search as the top-level
+  // `web_search_options` field, which Pair 1 has no reason to know about, and
+  // Messages expresses it as a `tools[]` entry. Translating it here keeps the
+  // Chat intermediate a pure function-tool carrier.
+  const wantsSearch = (payload.tools as GeminiToolGroup[] | undefined)?.some(
+    group => group.googleSearch !== undefined || group.googleSearchRetrieval !== undefined,
+  )
+  if (wantsSearch) {
+    const out = messages as MessagesPayload & { tools?: unknown[] }
+    out.tools = [...(out.tools ?? []), { type: 'web_search_20250305', name: 'web_search' }]
+  }
+
+  return messages
 }

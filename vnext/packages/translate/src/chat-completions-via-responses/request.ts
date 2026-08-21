@@ -15,6 +15,8 @@
  *  - Custom tools become Responses `function` tools with `strict: false`.
  *    Non-function client tools (e.g. `web_search`) are dropped — they have
  *    no Chat→Responses analogue.
+ *  - Top-level `web_search_options` becomes a hosted `web_search` tool entry;
+ *    that is where Chat Completions puts the trigger (see below).
  *  - `max_tokens` (or `fallbackMaxOutputTokens` option) maps to
  *    `max_output_tokens`.
  */
@@ -39,6 +41,7 @@ type ResponsesInputItem = ResponsesMessageItem | ResponsesFunctionCallItem | Res
 
 type ResponsesTool =
   | { type: 'function'; name: string; description?: string; parameters?: unknown; strict: boolean }
+  | { type: 'web_search'; search_context_size?: string; user_location?: unknown }
 
 type ResponsesToolChoice = 'auto' | 'required' | 'none' | { type: 'function'; name: string }
 
@@ -142,6 +145,45 @@ function translateToolChoice(choice: ChatPayload['tool_choice']): ResponsesToolC
   return undefined
 }
 
+/**
+ * Hosted web search crosses the protocol boundary as a shape change, not a
+ * field rename: Chat Completions expresses it as the top-level
+ * `web_search_options` argument, Responses as a `tools[]` entry. Without this
+ * a Chat Completions client silently loses search whenever the model is only
+ * served on /responses (every `gpt-5*` on Copilot, per copilotModelEndpoints).
+ *
+ * Unlike the Messages counterpart, both options survive the trip: Responses'
+ * `web_search` tool has the same `search_context_size` and `user_location`
+ * knobs, so they are forwarded rather than dropped.
+ */
+function hostedWebSearchTool(options: unknown): ResponsesTool {
+  const o = (options ?? {}) as { search_context_size?: unknown; user_location?: unknown }
+  return {
+    type: 'web_search',
+    ...(typeof o.search_context_size === 'string' ? { search_context_size: o.search_context_size } : {}),
+    ...(o.user_location !== undefined ? { user_location: o.user_location } : {}),
+  }
+}
+
+/**
+ * Native Responses — and the gateway's web-search shim, which mirrors it —
+ * omit `web_search_call.results` from the wire unless the request opts in
+ * with this `include` token. Chat Completions has no `include` argument, so a
+ * client there cannot spell the opt-in; asking for search is therefore taken
+ * as asking for the sources it produced. This is a deliberate departure from
+ * otherwise-faithful translation: the alternative is a Chat Completions
+ * client that can never see a citation, since `annotations[]` (its only
+ * source channel) is built from exactly this field.
+ */
+const WEB_SEARCH_RESULTS_INCLUDE = 'web_search_call.results'
+
+function withSearchResultsIncluded(existing: unknown): string[] {
+  const include = Array.isArray(existing) ? (existing as string[]) : []
+  return include.includes(WEB_SEARCH_RESULTS_INCLUDE)
+    ? include
+    : [...include, WEB_SEARCH_RESULTS_INCLUDE]
+}
+
 export function translateChatToResponses(
   payload: ChatPayload,
   options?: TranslateChatToResponsesOptions,
@@ -160,6 +202,11 @@ export function translateChatToResponses(
   if (ext.metadata) target.metadata = { ...ext.metadata }
   const tools = translateTools(payload.tools)
   if (tools) target.tools = tools
+  const webSearchOptions = (payload as { web_search_options?: unknown }).web_search_options
+  if (webSearchOptions !== undefined) {
+    target.tools = [...((target.tools as ResponsesTool[]) ?? []), hostedWebSearchTool(webSearchOptions)]
+    target.include = withSearchResultsIncluded((payload as { include?: unknown }).include)
+  }
   const tc = translateToolChoice(payload.tool_choice)
   if (tc !== undefined) target.tool_choice = tc
   const cap = payload.max_tokens ?? options?.fallbackMaxOutputTokens

@@ -1,4 +1,5 @@
 import type { ChatCompletionsInterceptor } from './types'
+import { withChatCompletionsWebSearchShim } from './with-chat-completions-web-search-shim'
 import { withUsageStreamOptionsIncluded } from './include-usage-stream-options'
 import { withToolArgumentWhitespaceAborted } from './with-tool-argument-whitespace-aborted'
 import { withPromptCacheKeyStripped } from './with-prompt-cache-key-stripped'
@@ -12,6 +13,15 @@ import { withReasoningContentDialect } from './with-reasoning-content-dialect'
 // Unified Chat Completions interceptor registry.
 //
 // Order (outermost → innermost; first listed wraps last):
+//   - `withChatCompletionsWebSearchShim` is outermost because it is the only
+//     interceptor that re-enters the chain: it rewrites `web_search_options`
+//     into an injected function tool and then calls `run()` once per ReAct
+//     turn. Sitting outside everything else means each loop turn re-applies
+//     `include_usage`, the role rewrites and the vendor normalizers to the
+//     grown `messages` array, and the shim itself observes canonical
+//     (already denormalized) events. Flag-gated
+//     (`chat-completions-web-search-shim`) and inert unless the request
+//     actually carries `web_search_options`.
 //   - `withUsageStreamOptionsIncluded` flips upstream
 //     `stream_options.include_usage` before any vendor-specific normalizer
 //     observes the wire body.
@@ -44,6 +54,7 @@ import { withReasoningContentDialect } from './with-reasoning-content-dialect'
 //     (implied by `vendor-deepseek` for back-compat) rather than repeated
 //     per vendor.
 export const chatCompletionsInterceptors: readonly ChatCompletionsInterceptor[] = [
+  withChatCompletionsWebSearchShim,
   withUsageStreamOptionsIncluded,
   withToolArgumentWhitespaceAborted,
   withPromptCacheKeyStripped,

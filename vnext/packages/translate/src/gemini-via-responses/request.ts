@@ -24,6 +24,7 @@ import {
   geminiThoughtText,
   type GeminiToolCallIds,
   geminiVisibleText,
+  geminiWantsWebSearch,
 } from '../shared/gemini-via/gemini.ts'
 import type { GeminiContent, GeminiPayload, GeminiGenerationConfig, GeminiPart } from '../shared/gemini-via/types.ts'
 import { TranslatorValidationError } from '../errors.ts'
@@ -69,13 +70,20 @@ type ResponsesInputItem =
   | ResponsesFunctionCallOutputItem
   | ResponsesReasoningItem
 
-interface ResponsesTool {
+interface ResponsesFunctionTool {
   type: 'function'
   name: string
   description?: string
   parameters: unknown
   strict: boolean
 }
+
+/** Hosted web search — either Copilot's native one or the gateway's shim. */
+interface ResponsesHostedWebSearchTool {
+  type: 'web_search'
+}
+
+type ResponsesTool = ResponsesFunctionTool | ResponsesHostedWebSearchTool
 
 interface ResponsesTargetRequest {
   model: string
@@ -95,6 +103,7 @@ interface ResponsesTargetRequest {
       }
   reasoning?: { effort: 'none' | 'low' | 'medium' | 'high'; summary?: 'detailed' }
   tools?: ResponsesTool[]
+  include?: string[]
   tool_choice?:
     | 'auto'
     | 'required'
@@ -251,13 +260,18 @@ const applyGenerationConfig = (
 }
 
 const buildTools = (payload: GeminiPayload): ResponsesTool[] | undefined => {
-  const tools = geminiFunctionDeclarations(payload, 'any').map(declaration => ({
+  const tools: ResponsesTool[] = geminiFunctionDeclarations(payload, 'any').map(declaration => ({
     type: 'function' as const,
     name: declaration.name,
     ...(declaration.description !== undefined ? { description: declaration.description } : {}),
     parameters: declaration.parameters ?? { type: 'object', properties: {} },
     strict: false,
   }))
+  // `googleSearch` / `googleSearchRetrieval` → the Responses hosted web search,
+  // which the target side serves either natively or through the gateway's
+  // server-tool shim. Unlike Chat Completions this is a `tools[]` entry, so it
+  // belongs here rather than beside the top-level request fields.
+  if (geminiWantsWebSearch(payload)) tools.push({ type: 'web_search' })
   return tools.length ? tools : undefined
 }
 
@@ -297,6 +311,12 @@ export function translateGeminiToResponses(
   const tools = buildTools(payload)
   if (tools) {
     request.tools = tools
+    // Responses omits `web_search_call.results` unless the request opts in,
+    // and Gemini has no `include` argument for a client to spell it — so
+    // asking for `googleSearch` is taken as asking for the sources it found.
+    // `groundingMetadata` is built from exactly this field, so without the
+    // token a grounded Gemini answer would arrive with no citations at all.
+    if (geminiWantsWebSearch(payload)) request.include = ['web_search_call.results']
     const intent = geminiFunctionCallingIntent(payload.toolConfig?.functionCallingConfig)
     switch (intent?.type) {
       case 'none':

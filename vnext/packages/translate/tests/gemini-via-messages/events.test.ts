@@ -90,4 +90,59 @@ describe('gemini-via-messages :: events', () => {
     await gen.return!(undefined as never)
     expect(closed).toBe(true)
   })
+
+  it('carries web_search sources through as groundingMetadata on the candidate', async () => {
+    // Pair 1 turns the Anthropic `web_search_tool_result` block into
+    // `url_citation` annotations; this hop has to land them on the candidate,
+    // which is where Gemini clients look for grounding.
+    const events: MessagesEvent[] = [
+      { type: 'message_start', message: { id: 'm_g', type: 'message', role: 'assistant', model: 'g', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 4, output_tokens: 0 } } as never },
+      { type: 'content_block_start', index: 0, content_block: { type: 'server_tool_use', id: 'srvtoolu_1', name: 'web_search', input: {} } as never },
+      { type: 'content_block_stop', index: 0 },
+      {
+        type: 'content_block_start',
+        index: 1,
+        content_block: {
+          type: 'web_search_tool_result',
+          tool_use_id: 'srvtoolu_1',
+          content: [
+            { type: 'web_search_result', url: 'https://a.example/', title: 'A', encrypted_content: 'x' },
+            { type: 'web_search_result', url: 'https://b.example/', encrypted_content: 'x' },
+          ],
+        } as never,
+      },
+      { type: 'content_block_stop', index: 1 },
+      { type: 'content_block_start', index: 2, content_block: { type: 'text', text: '' } as never },
+      { type: 'content_block_delta', index: 2, delta: { type: 'text_delta', text: 'Sunny.' } as never },
+      { type: 'content_block_stop', index: 2 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 3 } as never },
+      { type: 'message_stop' },
+    ]
+
+    const out = await collect(translateMessagesToGeminiEvents(fromArray(events), { model: 'g' }))
+    const final = out.find((c) => c.candidates?.[0]?.finishReason)
+    expect(final?.candidates?.[0]?.groundingMetadata).toEqual({
+      groundingChunks: [
+        { web: { uri: 'https://a.example/', title: 'A' } },
+        { web: { uri: 'https://b.example/' } },
+      ],
+    })
+    // Grounding is a candidate-level field, so it must not leak onto the
+    // incremental text candidates.
+    expect(out.filter((c) => c.candidates?.some((cand) => cand.groundingMetadata))).toHaveLength(1)
+  })
+
+  it('omits groundingMetadata when the turn did no searching', async () => {
+    const events: MessagesEvent[] = [
+      { type: 'message_start', message: { id: 'm_n', type: 'message', role: 'assistant', model: 'g', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } as never },
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } as never },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hi' } as never },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 1 } as never },
+      { type: 'message_stop' },
+    ]
+    const out = await collect(translateMessagesToGeminiEvents(fromArray(events), { model: 'g' }))
+    const final = out.find((c) => c.candidates?.[0]?.finishReason)
+    expect(final?.candidates?.[0]?.groundingMetadata).toBeUndefined()
+  })
 })

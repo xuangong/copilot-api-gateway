@@ -24,6 +24,7 @@ import {
   geminiThoughtText,
   type GeminiToolCallIds,
   geminiVisibleText,
+  geminiWantsWebSearch,
 } from '../shared/gemini-via/gemini.ts'
 import type { GeminiContent, GeminiPayload, GeminiGenerationConfig, GeminiPart } from '../shared/gemini-via/types.ts'
 import { TranslatorValidationError } from '../errors.ts'
@@ -87,6 +88,7 @@ interface ChatTargetRequest {
   reasoning_effort?: 'none' | 'low' | 'medium' | 'high'
   tools?: ChatTool[]
   tool_choice?: ChatToolChoice
+  web_search_options?: Record<string, never>
 }
 
 const appendOpaque = (current: string | null, signature?: string): string | null =>
@@ -317,6 +319,13 @@ export function translateGeminiToChat(
   })
 
   applyGenerationConfig(request, payload.generationConfig, options.fallbackMaxOutputTokens)
+
+  // `googleSearch` / `googleSearchRetrieval` become the Chat Completions
+  // hosted-search parameter. It is a top-level request field rather than a
+  // `tools[]` entry because Chat Completions has no hosted tool variant, and
+  // it is deliberately kept out of `buildTools` so the mapping survives a
+  // search-only request that declares no `functionDeclarations` at all.
+  if (geminiWantsWebSearch(payload)) request.web_search_options = {}
 
   const tools = buildTools(payload)
   if (tools) {

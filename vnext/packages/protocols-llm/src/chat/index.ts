@@ -55,6 +55,7 @@ export type {
   ChatCompletionsDelta,
   ChatCompletionsToolCall,
   ChatCompletionsReasoningItem,
+  ChatCompletionsAnnotation,
   ChatCompletionsChoiceStreaming,
   ChatCompletionsUsage,
 } from './events.ts'

@@ -193,4 +193,43 @@ describe('chat-completions-via-messages :: request', () => {
       }),
     ).toThrow(TranslatorValidationError)
   })
+
+  describe('hosted web search', () => {
+    // The trigger changes shape across the boundary: top-level
+    // `web_search_options` in Chat Completions, a `tools[]` entry in Messages.
+    // Without this the messages web-search shim never activates and a Chat
+    // Completions client silently loses search on a messages-only upstream.
+    it('maps web_search_options onto the Anthropic hosted tool', () => {
+      const out = translateChatToMessages({
+        model: 'm',
+        messages: [{ role: 'user', content: 'weather' }],
+        max_tokens: 1,
+        web_search_options: {},
+      } as never)
+      expect(out.tools).toEqual([{ type: 'web_search_20250305', name: 'web_search' }] as never)
+    })
+
+    it('keeps client tools and appends the hosted tool last', () => {
+      const out = translateChatToMessages({
+        model: 'm',
+        messages: [{ role: 'user', content: 'weather' }],
+        max_tokens: 1,
+        tools: [{ type: 'function', function: { name: 'lookup', parameters: { type: 'object' } } }],
+        web_search_options: { search_context_size: 'high', user_location: { type: 'approximate' } },
+      } as never)
+      const tools = out.tools as Array<{ name: string }>
+      expect(tools.map((t) => t.name)).toEqual(['lookup', 'web_search'])
+      // Neither option has a Messages counterpart; both are dropped, not forwarded.
+      expect(tools[1]).toEqual({ type: 'web_search_20250305', name: 'web_search' } as never)
+    })
+
+    it('leaves tools alone when the client did not ask for search', () => {
+      const out = translateChatToMessages({
+        model: 'm',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 1,
+      })
+      expect(out.tools).toBeUndefined()
+    })
+  })
 })
