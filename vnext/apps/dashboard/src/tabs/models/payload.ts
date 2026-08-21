@@ -10,14 +10,21 @@ import { type Part, splitDataUrl } from "./parts"
 
 type Block = Record<string, unknown>
 
+/** Which turn the content belongs to; assistant turns may not carry images. */
+export type Turn = "user" | "assistant"
+
 /**
  * Images only travel as data URLs: the composer produces them from the
  * clipboard / file picker, and remote URLs (from pre-`parts` persisted
  * history) can't be forwarded — Gemini has no url shape at all and Anthropic
  * would need to fetch it server-side. Drop them rather than emit a block the
  * upstream will reject.
+ *
+ * Assistant turns drop images outright: an image model writes its output there,
+ * and no chat API accepts an image block from the assistant.
  */
-function inlineImages(parts: Part[]): Part[] {
+function inlineImages(parts: Part[], turn?: Turn): Part[] {
+  if (turn === "assistant") return parts.filter((p) => p.type !== "image")
   return parts.filter((p) => p.type !== "image" || splitDataUrl(p.dataUrl) !== null)
 }
 
@@ -27,8 +34,8 @@ function textOnly(parts: Part[]): string | null {
     : null
 }
 
-export function toOpenAIContent(parts: Part[]): string | Block[] {
-  const usable = inlineImages(parts)
+export function toOpenAIContent(parts: Part[], turn?: Turn): string | Block[] {
+  const usable = inlineImages(parts, turn)
   const flat = textOnly(usable)
   if (flat !== null) return flat
   return usable.map((p) =>
@@ -38,8 +45,8 @@ export function toOpenAIContent(parts: Part[]): string | Block[] {
   )
 }
 
-export function toAnthropicContent(parts: Part[]): string | Block[] {
-  const usable = inlineImages(parts)
+export function toAnthropicContent(parts: Part[], turn?: Turn): string | Block[] {
+  const usable = inlineImages(parts, turn)
   const flat = textOnly(usable)
   if (flat !== null) return flat
   return usable.map((p) => {
@@ -50,8 +57,8 @@ export function toAnthropicContent(parts: Part[]): string | Block[] {
   })
 }
 
-export function toGeminiParts(parts: Part[]): Block[] {
-  return inlineImages(parts).map((p) => {
+export function toGeminiParts(parts: Part[], turn?: Turn): Block[] {
+  return inlineImages(parts, turn).map((p) => {
     if (p.type === "text") return { text: p.text }
     const { mime, data } = splitDataUrl(p.dataUrl)!
     return { inlineData: { mimeType: mime, data } }

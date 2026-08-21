@@ -17,6 +17,8 @@ export interface PlaygroundModel {
     /** Upstream's own capability claims — see `tabs/models/vision.ts` on why
      *  `supports.vision` needs correcting before it drives any UI. */
     supports?: Record<string, unknown>
+    /** `chat`, `embeddings`, `image`, … — drives which endpoints apply. */
+    type?: string
   }
   [extra: string]: unknown
 }

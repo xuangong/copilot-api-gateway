@@ -64,6 +64,29 @@ describe("toAnthropicContent", () => {
   })
 })
 
+describe("assistant content", () => {
+  // Image models put their output on the assistant turn. Chat APIs don't take
+  // image blocks from the assistant, so replaying such a history as context
+  // would 400 — drop the images and keep whatever text there was.
+  it("drops images from an assistant turn", () => {
+    expect(toOpenAIContent([text("here"), image(PNG)], "assistant")).toBe("here")
+    expect(toAnthropicContent([text("here"), image(PNG)], "assistant")).toBe("here")
+    expect(toGeminiParts([text("here"), image(PNG)], "assistant")).toEqual([{ text: "here" }])
+  })
+
+  it("keeps images on a user turn", () => {
+    expect(toOpenAIContent([image(PNG)], "user")).toEqual([
+      { type: "image_url", image_url: { url: PNG } },
+    ])
+  })
+
+  it("keeps images when no role is given", () => {
+    expect(toGeminiParts([image(PNG)])).toEqual([
+      { inlineData: { mimeType: "image/png", data: "AAAA" } },
+    ])
+  })
+})
+
 describe("toGeminiParts", () => {
   it("maps text parts to text entries", () => {
     expect(toGeminiParts([text("hello")])).toEqual([{ text: "hello" }])

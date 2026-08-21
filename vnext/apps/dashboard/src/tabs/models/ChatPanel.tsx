@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useT } from "../../state/i18n"
 import { fileToDataUrl, ImageTooLargeError } from "./image"
+import {
+  buildEditsForm, buildGenerationsBody, imagesErrorMessage, parseImagesResponse,
+  type ImageParams,
+} from "./images"
 import { getImages, pruneImages, putImage } from "./image-store"
 import { domToParts, type Part, partsToText } from "./parts"
 import { toAnthropicContent, toGeminiParts, toOpenAIContent } from "./payload"
 import { isImageRejection, type VisionSupport } from "./vision"
+import { ImageParamsBar } from "./ImageParamsBar"
 import { collectImageIds, adoptImageIds, hydrateMessage, migrateMessage, stripImageBytes } from "./persistence"
 import { parseOpenAIStream, type Citation, type StreamUsage, type WebSearchProgress } from "./streams/openai"
 import { parseAnthropicStream } from "./streams/anthropic"
@@ -28,7 +33,7 @@ function loadPersistedMessages(): Message[] {
     // Drop any trailing streaming-in-progress assistant bubble that may have
     // been persisted without text (e.g. tab closed mid-stream).
     const last = migrated[migrated.length - 1]
-    if (last && last.role === "assistant" && !last.text) migrated.pop()
+    if (last && last.role === "assistant" && !last.text && !last.parts?.length) migrated.pop()
     return migrated
   } catch {
     return []
@@ -90,6 +95,10 @@ interface Props {
   webSearchEnabled: boolean
   /** Whether this model takes images — see `vision.ts`. Advisory only. */
   vision: VisionSupport
+  /** `image` swaps the three chat protocols for the /v1/images endpoints. */
+  mode: "chat" | "image"
+  imageParams: ImageParams
+  onImageParamsChange: (next: ImageParams) => void
   onRevertModel?: (id: string) => void
 }
 
@@ -124,11 +133,13 @@ function composeSystemPrompt(userPrompt: string): string {
   return trimmed ? `${timeLine}\n\n${trimmed}` : timeLine
 }
 
-export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vision, onRevertModel }: Props) {
+export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vision, mode, imageParams, onImageParamsChange, onRevertModel }: Props) {
   const t = useT()
   const [protocol, setProtocol] = useState<Protocol>(() => loadPersistedProtocol())
   const [messages, setMessages] = useState<Message[]>(() => loadPersistedMessages())
   const [isEmpty, setIsEmpty] = useState(true)
+  /** Composer holds at least one image → an image-model send becomes an edit. */
+  const [hasReference, setHasReference] = useState(false)
   const [imageError, setImageError] = useState("")
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -217,6 +228,8 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       return
     }
     if (streaming) return
+    // Image models have no chat context to count, and count_tokens would 404.
+    if (mode === "image") return
     const ctrl = new AbortController()
     const timer = setTimeout(() => {
       void countContextTokens(messages, ctrl.signal)
@@ -226,7 +239,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       ctrl.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, streaming, modelId, apiKey, systemPrompt])
+  }, [messages, streaming, modelId, apiKey, systemPrompt, mode])
 
   async function countContextTokens(history: Message[], signal: AbortSignal) {
     const anMessages = toAnthropicMessages(history)
@@ -253,7 +266,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
   function toAnthropicMessages(history: Message[]): Array<Record<string, unknown>> {
     const out: Array<Record<string, unknown>> = []
     for (const m of history) {
-      const content = toAnthropicContent(messageParts(m))
+      const content = toAnthropicContent(messageParts(m), m.role)
       if (typeof content === "string" && !content) continue
       out.push({ role: m.role, content })
     }
@@ -310,12 +323,15 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
   }
 
   function syncEmpty() {
-    setIsEmpty(readParts().length === 0)
+    const parts = readParts()
+    setIsEmpty(parts.length === 0)
+    setHasReference(parts.some((p) => p.type === "image" && !!p.dataUrl))
   }
 
   function clearEditor() {
     if (editorRef.current) editorRef.current.innerHTML = ""
     setIsEmpty(true)
+    setHasReference(false)
   }
 
   /** Focus the editor, putting the caret at the end if it isn't already inside. */
@@ -453,7 +469,9 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       const ctrl = new AbortController()
       abortRef.current = ctrl
       try {
-        if (protocol === "openai") {
+        if (mode === "image") {
+          await sendImages(parts, ctrl.signal)
+        } else if (protocol === "openai") {
           await sendOpenAI(nextHistory, ctrl.signal)
         } else if (protocol === "anthropic") {
           await sendAnthropic(nextHistory, ctrl.signal)
@@ -468,7 +486,9 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
           // Pop the empty assistant bubble; show error in dedicated banner
           setMessages((prev) => {
             const last = prev[prev.length - 1]
-            if (last && last.role === "assistant" && !last.text) return prev.slice(0, -1)
+            if (last && last.role === "assistant" && !last.text && !last.parts?.length) {
+              return prev.slice(0, -1)
+            }
             return prev
           })
           const raw = (err as Error).message
@@ -480,7 +500,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [messages, protocol, modelId, apiKey, systemPrompt, webSearchEnabled],
+    [messages, protocol, modelId, apiKey, systemPrompt, webSearchEnabled, mode, imageParams],
   )
 
   function retry() {
@@ -562,11 +582,55 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     })
   }
 
+  /**
+   * Image models take a prompt, not a conversation. References pasted into the
+   * composer turn the call into an edit — same one funnel, so a screenshot you
+   * paste is the image you edit.
+   */
+  async function sendImages(parts: Part[], signal: AbortSignal) {
+    const prompt = partsToText(parts).trim()
+    const refs = parts.filter((p) => p.type === "image" && p.dataUrl)
+    const editing = refs.length > 0
+
+    const resp = editing
+      ? await fetch("/v1/images/edits", {
+          method: "POST",
+          headers: { "x-api-key": apiKey },
+          body: buildEditsForm(modelId, prompt, imageParams, refs),
+          signal,
+        })
+      : await fetch("/v1/images/generations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+          body: JSON.stringify(buildGenerationsBody(modelId, prompt, imageParams)),
+          signal,
+        })
+
+    const text = await resp.text()
+    if (!resp.ok) throw new Error(imagesErrorMessage(text) || `HTTP ${resp.status}`)
+
+    const { parts: result, usage } = parseImagesResponse(JSON.parse(text))
+    // Store the bytes the same way pasted images are stored, so a reload
+    // rehydrates generated images from IndexedDB instead of a placeholder.
+    const stored: Part[] = []
+    for (const p of result) {
+      if (p.type !== "image") continue
+      stored.push(p.dataUrl.startsWith("data:")
+        ? { type: "image", dataUrl: p.dataUrl, id: await putImage(p.dataUrl) }
+        : p)
+    }
+    setMessages((prev) => {
+      const last = prev[prev.length - 1]
+      if (!last || last.role !== "assistant") return prev
+      return [...prev.slice(0, -1), { ...last, parts: stored, ...(usage ? { usage } : {}) }]
+    })
+  }
+
   async function sendOpenAI(history: Message[], signal: AbortSignal) {
     const oaiMessages: Array<Record<string, unknown>> = []
     oaiMessages.push({ role: "system", content: composeSystemPrompt(systemPrompt) })
     for (const m of history) {
-      const content = toOpenAIContent(messageParts(m))
+      const content = toOpenAIContent(messageParts(m), m.role)
       if (typeof content === "string" && !content) continue
       oaiMessages.push({ role: m.role, content })
     }
@@ -649,7 +713,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
   async function sendGemini(history: Message[], signal: AbortSignal) {
     const contents: Array<Record<string, unknown>> = []
     for (const m of history) {
-      const parts = toGeminiParts(messageParts(m))
+      const parts = toGeminiParts(messageParts(m), m.role)
       if (parts.length === 0) continue
       contents.push({ role: m.role === "assistant" ? "model" : "user", parts })
     }
@@ -750,8 +814,18 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       }
     >
       <div className="pg-topbar">
-        <span className="text-themed-dim">{t("dash.playground.protocol")}:</span>
-        <div className="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5">
+        {mode === "image" && (
+          <ImageParamsBar
+            params={imageParams}
+            onChange={onImageParamsChange}
+            editing={hasReference}
+            disabled={streaming}
+          />
+        )}
+        {mode === "chat" && (
+          <span className="text-themed-dim">{t("dash.playground.protocol")}:</span>
+        )}
+        <div className={"flex items-center gap-1 bg-surface-800 rounded-lg p-0.5" + (mode === "image" ? " hidden" : "")}>
           {(["openai", "anthropic", "gemini"] as const).map((p) => (
             <button
               key={p}
@@ -766,6 +840,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
             </button>
           ))}
         </div>
+        {mode === "chat" && (
         <span
           className={"pg-vision pg-vision-" + vision}
           title={t(
@@ -783,6 +858,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
             )}
           </span>
         </span>
+        )}
         {streaming && (
           <span className="text-themed-dim flex items-center gap-2 ml-2">
             <span className="pg-dots"><span/><span/><span/></span>
@@ -790,7 +866,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          {messages.length > 0 && (
+          {mode === "chat" && messages.length > 0 && (
             <span className="text-themed-dim text-xs mr-2 font-mono">
               {ctxCounting
                 ? t("dash.playground.ctxCounting")
@@ -881,8 +957,6 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
                     )}
                     {showDots ? (
                       <span className="pg-dots text-themed-dim"><span/><span/><span/></span>
-                    ) : isAssistant ? (
-                      <div className="md-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
                     ) : m.parts ? (
                       <div className="whitespace-pre-wrap">
                         {m.parts.map((p, pi) =>
@@ -893,7 +967,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
                               key={pi}
                               src={p.dataUrl}
                               alt=""
-                              className="pg-inline-img pg-zoomable"
+                              className={"pg-zoomable " + (isAssistant ? "pg-gen-img" : "pg-inline-img")}
                               onClick={() => setZoomed(p.dataUrl)}
                               title={t("dash.playground.zoomImage")}
                             />
@@ -910,6 +984,8 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
                           ),
                         )}
                       </div>
+                    ) : isAssistant ? (
+                      <div className="md-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
                     ) : (
                       <div className="whitespace-pre-wrap">{m.text}</div>
                     )}

@@ -543,6 +543,42 @@ select option {
 /* Attach stays clickable — the tint is a warning, not a block. */
 .pg-icon-btn-warn { color: #f59e0b; }
 
+/* Generated images are the answer, not an attachment — give them room. Still
+   capped so a 1024px result doesn't push the thread around. */
+.pg-gen-img {
+  display: block;
+  max-height: 320px;
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 4px 0;
+  cursor: zoom-in;
+}
+
+/* Image-generation parameter bar, in place of the protocol switcher. */
+.pg-img-params {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pg-img-param {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.pg-img-mode {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--glow-border);
+  background: var(--glow-color);
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: help;
+  white-space: nowrap;
+}
+
 /* Stands in for an image whose bytes are no longer in the store. */
 .pg-img-placeholder {
   display: inline-block;
