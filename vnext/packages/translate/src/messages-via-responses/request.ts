@@ -72,8 +72,11 @@ function userContent(block: ContentBlock): PendingContent | null {
     const src = block.source
     const url = src.type === 'base64' && src.media_type && src.data
       ? `data:${src.media_type};base64,${src.data}`
-      : (src.url ?? '')
-    return { type: 'input_image', text: url }
+      : src.url
+    // Responses carries the url in `image_url`, not `text`. Dropping a source
+    // we can't render beats emitting a block the upstream will 400 on.
+    if (!url) return null
+    return { type: 'input_image', image_url: url, detail: 'auto' }
   }
   return null
 }

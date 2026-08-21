@@ -38,11 +38,16 @@ interface ChatMsgTool { role: 'tool'; tool_call_id: string; content: string }
 interface ChatMsgSystem { role: 'system'; content: string }
 type ChatMessage = ChatMsgUser | ChatMsgAssistant | ChatMsgTool | ChatMsgSystem
 
-function partsToChat(parts: Array<{ type: string; text?: string }>): ChatMsgUser['content'] {
+function partsToChat(parts: Array<{ type: string; text?: string; image_url?: string }>): ChatMsgUser['content'] {
   const out: Array<{ type: string; text?: string; image_url?: { url: string } }> = []
   for (const p of parts) {
     if (p.type === 'input_text' && typeof p.text === 'string') out.push({ type: 'text', text: p.text })
-    else if (p.type === 'input_image' && typeof p.text === 'string') out.push({ type: 'image_url', image_url: { url: p.text } })
+    else if (p.type === 'input_image') {
+      // `image_url` is the Responses shape; `text` is what older gateway builds
+      // wrote, so replayed transcripts keep their images.
+      const url = typeof p.image_url === 'string' ? p.image_url : p.text
+      if (url) out.push({ type: 'image_url', image_url: { url } })
+    }
   }
   return out
 }

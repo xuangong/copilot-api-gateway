@@ -50,16 +50,37 @@ function extractSystemText(message: ResponsesMessageItem): string {
   return message.content.map((b) => b.text ?? '').join('')
 }
 
+/**
+ * `data:image/png;base64,AAA` → an Anthropic base64 source; anything else
+ * rides as a url source. Returns null when there is no url to carry.
+ */
+function inputImageToBlock(url: string | undefined): ContentBlockLike | null {
+  if (!url) return null
+  if (url.startsWith('data:')) {
+    const comma = url.indexOf(',')
+    if (comma < 0) return null
+    const media_type = url.slice(5, comma).split(';')[0] || 'image/png'
+    return { type: 'image', source: { type: 'base64', media_type, data: url.slice(comma + 1) } } as ContentBlockLike
+  }
+  return { type: 'image', source: { type: 'url', url } } as ContentBlockLike
+}
+
 function translateUserContent(
-  blocks: Array<{ type: string; text?: string }>,
+  blocks: Array<{ type: string; text?: string; image_url?: string }>,
 ): ContentBlockLike[] {
   const out: ContentBlockLike[] = []
   for (const block of blocks) {
     if (block.type === 'input_text') {
       out.push({ type: 'text', text: block.text ?? '' })
+      continue
     }
-    // input_image / input_file dropped: no faithful Anthropic conversion
-    // available without a media_type lookup.
+    if (block.type === 'input_image') {
+      // `text` is the legacy field older gateway builds wrote the url into.
+      const image = inputImageToBlock(block.image_url ?? block.text)
+      if (image) out.push(image)
+      continue
+    }
+    // input_file dropped: no Anthropic equivalent.
   }
   return out
 }

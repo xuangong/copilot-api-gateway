@@ -14,6 +14,8 @@ describe('translateResponsesToChat', () => {
     ])
   })
 
+  // Regression: this used to read the url off `text`, so a spec-conformant
+  // Responses client (Codex) had its images silently dropped.
   test('input_image part → image_url part', () => {
     const out = translateResponsesToChat({
       model: 'm',
@@ -21,12 +23,24 @@ describe('translateResponsesToChat', () => {
         type: 'message', role: 'user',
         content: [
           { type: 'input_text', text: 'see' },
-          { type: 'input_image', text: 'https://x/y.png' },
+          { type: 'input_image', image_url: 'https://x/y.png', detail: 'auto' },
         ],
       }],
     } as never)
     expect(out.target.messages[0].content).toEqual([
       { type: 'text', text: 'see' },
+      { type: 'image_url', image_url: { url: 'https://x/y.png' } },
+    ])
+  })
+
+  // Older gateway builds emitted the url on `text`; keep reading those so a
+  // replayed transcript doesn't lose its images.
+  test('input_image with the url on the legacy text field still translates', () => {
+    const out = translateResponsesToChat({
+      model: 'm',
+      input: [{ type: 'message', role: 'user', content: [{ type: 'input_image', text: 'https://x/y.png' }] }],
+    } as never)
+    expect(out.target.messages[0].content).toEqual([
       { type: 'image_url', image_url: { url: 'https://x/y.png' } },
     ])
   })

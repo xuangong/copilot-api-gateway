@@ -3,6 +3,62 @@ import { translateResponsesToMessages } from '@vibe-llm/translate/responses-via-
 import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
 
 describe('responses-via-messages :: request', () => {
+  // Regression: images used to be dropped outright. Anthropic does take them —
+  // a data URL splits into a base64 source, anything else rides as a url source.
+  it('translates input_image into an Anthropic image block', () => {
+    const p = {
+      model: 'claude',
+      input: [{
+        type: 'message', role: 'user',
+        content: [
+          { type: 'input_text', text: 'see' },
+          { type: 'input_image', image_url: 'data:image/png;base64,AAA', detail: 'auto' },
+        ],
+      }],
+    } as unknown as ResponsesPayload
+    const out = translateResponsesToMessages(p)
+    expect(out.target.messages[0]?.content).toEqual([
+      { type: 'text', text: 'see' },
+      {
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/png', data: 'AAA' },
+        cache_control: { type: 'ephemeral' },
+      },
+    ] as never)
+  })
+
+  it('passes a remote image url through as a url source', () => {
+    const p = {
+      model: 'claude',
+      input: [{
+        type: 'message', role: 'user',
+        content: [{ type: 'input_image', image_url: 'https://x/y.png' }],
+      }],
+    } as unknown as ResponsesPayload
+    const out = translateResponsesToMessages(p)
+    expect(out.target.messages[0]?.content).toEqual([
+      {
+        type: 'image',
+        source: { type: 'url', url: 'https://x/y.png' },
+        cache_control: { type: 'ephemeral' },
+      },
+    ] as never)
+  })
+
+  it('drops an input_image with no url rather than emitting an empty source', () => {
+    const p = {
+      model: 'claude',
+      input: [{
+        type: 'message', role: 'user',
+        content: [{ type: 'input_text', text: 'hi' }, { type: 'input_image' }],
+      }],
+    } as unknown as ResponsesPayload
+    const out = translateResponsesToMessages(p)
+    expect(out.target.messages[0]?.content).toEqual([
+      { type: 'text', text: 'hi', cache_control: { type: 'ephemeral' } },
+    ] as never)
+  })
+
   it('translates string input into a single user message', () => {
     const p = { model: 'claude-3', input: 'hi' } as ResponsesPayload
     const out = translateResponsesToMessages(p)

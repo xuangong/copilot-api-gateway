@@ -9,7 +9,7 @@
  *  - System messages are filtered out and joined with `\n\n` into Responses
  *    `instructions`.
  *  - User text becomes `input_text`; user `image_url` parts (string OR
- *    `{ url }` object) become `input_image`.
+ *    `{ url }` object) become `input_image` with the url in `image_url`.
  *  - Assistant `tool_calls` map to `function_call` items; `tool` role
  *    messages map to `function_call_output`.
  *  - Custom tools become Responses `function` tools with `strict: false`.
@@ -33,7 +33,7 @@ type ChatMessage = ChatPayload['messages'][number]
 interface ResponsesMessageItem {
   type: 'message'
   role: 'user' | 'assistant'
-  content: string | Array<{ type: string; text?: string }>
+  content: string | Array<{ type: string; text?: string; image_url?: string; detail?: string }>
 }
 interface ResponsesFunctionCallItem { type: 'function_call'; call_id: string; name: string; arguments: string }
 interface ResponsesFunctionCallOutputItem { type: 'function_call_output'; call_id: string; output: string }
@@ -45,8 +45,8 @@ type ResponsesTool =
 
 type ResponsesToolChoice = 'auto' | 'required' | 'none' | { type: 'function'; name: string }
 
-function partsToContent(parts: unknown[]): Array<{ type: string; text?: string }> {
-  const out: Array<{ type: string; text?: string }> = []
+function partsToContent(parts: unknown[]): Array<{ type: string; text?: string; image_url?: string; detail?: string }> {
+  const out: Array<{ type: string; text?: string; image_url?: string; detail?: string }> = []
   for (const p of parts) {
     const part = p as { type?: string; text?: string; image_url?: { url?: string } | string }
     if (part.type === 'text' && typeof part.text === 'string') {
@@ -55,7 +55,10 @@ function partsToContent(parts: unknown[]): Array<{ type: string; text?: string }
       const url = typeof part.image_url === 'string'
         ? part.image_url
         : part.image_url?.url
-      if (url) out.push({ type: 'input_image', text: url })
+      // Responses carries the url in `image_url`, not `text` — an upstream
+      // rejects the latter with "image_url is required for content type
+      // image_url".
+      if (url) out.push({ type: 'input_image', image_url: url, detail: 'auto' })
     }
   }
   return out

@@ -30,7 +30,10 @@ describe('translateChatToResponses', () => {
     ])
   })
 
-  test('image_url part becomes input_image', () => {
+  // Regression: the URL used to be emitted as `text`, which upstreams reject
+  // with "image_url is required for content type image_url". The Responses
+  // shape — and this repo's own schema — is `image_url: string`.
+  test('image_url part becomes input_image carrying the url in image_url', () => {
     const out = translateChatToResponses({
       model: 'm',
       messages: [{
@@ -45,8 +48,19 @@ describe('translateChatToResponses', () => {
       type: 'message', role: 'user',
       content: [
         { type: 'input_text', text: 'see' },
-        { type: 'input_image', text: 'https://x/y.png' },
+        { type: 'input_image', image_url: 'https://x/y.png', detail: 'auto' },
       ],
+    }])
+  })
+
+  test('image_url given as a bare string is accepted too', () => {
+    const out = translateChatToResponses({
+      model: 'm',
+      messages: [{ role: 'user', content: [{ type: 'image_url', image_url: 'data:image/png;base64,AAA' }] }],
+    } as never)
+    expect(out.target.input).toEqual([{
+      type: 'message', role: 'user',
+      content: [{ type: 'input_image', image_url: 'data:image/png;base64,AAA', detail: 'auto' }],
     }])
   })
 

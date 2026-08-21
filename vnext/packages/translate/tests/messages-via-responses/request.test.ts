@@ -17,6 +17,8 @@ describe('messages-via-responses :: request', () => {
     expect(input[0]).toMatchObject({ type: 'message', role: 'user', content: 'hello' })
   })
 
+  // Regression: the data URL used to be emitted as `text`, which upstreams
+  // reject with "image_url is required for content type image_url".
   it('translates text + image blocks into input_text + input_image content parts', () => {
     const p: MessagesPayload = {
       model: 'm',
@@ -36,8 +38,35 @@ describe('messages-via-responses :: request', () => {
     expect(input[0]?.role).toBe('user')
     expect(input[0]?.content).toEqual([
       { type: 'input_text', text: 'see this' },
-      { type: 'input_image', text: 'data:image/png;base64,AAA' },
+      { type: 'input_image', image_url: 'data:image/png;base64,AAA', detail: 'auto' },
     ] as never)
+  })
+
+  it('passes a url-sourced image straight through', () => {
+    const p = {
+      model: 'm',
+      max_tokens: 32,
+      messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'url', url: 'https://x/y.png' } }] }],
+    } as unknown as MessagesPayload
+    const out = translateMessagesToResponses(p)
+    const input = out.target.input as Array<{ content: unknown }>
+    expect(input[0]?.content).toEqual([
+      { type: 'input_image', image_url: 'https://x/y.png', detail: 'auto' },
+    ] as never)
+  })
+
+  it('drops an image block with no usable source rather than emitting an empty url', () => {
+    const p = {
+      model: 'm',
+      max_tokens: 32,
+      messages: [{
+        role: 'user',
+        content: [{ type: 'text', text: 'hi' }, { type: 'image', source: { type: 'base64' } }],
+      }],
+    } as unknown as MessagesPayload
+    const out = translateMessagesToResponses(p)
+    const input = out.target.input as Array<{ content: unknown }>
+    expect(input[0]?.content).toEqual([{ type: 'input_text', text: 'hi' }] as never)
   })
 
   it('translates assistant tool_use into a function_call item with call_id only and tool_result into function_call_output', () => {
