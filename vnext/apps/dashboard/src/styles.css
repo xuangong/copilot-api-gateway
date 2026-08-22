@@ -508,8 +508,14 @@ select option {
   pointer-events: none;
 }
 /* Pasted images sit in the text flow, so they line up with the surrounding
-   run rather than stretching the line. */
+   run rather than stretching the line.
+
+   `display` is not optional here: Tailwind's preflight sets every img to
+   `display: block`, which pushes whatever you type after a pasted image onto
+   the next line. The thread hid this because `.pg-img-wrap` is inline-block;
+   the composer has no such wrapper. */
 .pg-inline-img {
+  display: inline-block;
   max-height: 120px;
   max-width: 100%;
   vertical-align: middle;
