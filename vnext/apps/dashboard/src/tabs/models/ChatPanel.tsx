@@ -10,6 +10,7 @@ import { domToParts, type Part, partsToText } from "./parts"
 import { toAnthropicContent, toGeminiParts, toOpenAIContent } from "./payload"
 import { isImageRejection, type VisionSupport } from "./vision"
 import { ImageParamsBar } from "./ImageParamsBar"
+import { downloadImage, imageFilename } from "./download"
 import { collectImageIds, adoptImageIds, hydrateMessage, migrateMessage, stripImageBytes } from "./persistence"
 import { parseOpenAIStream, type Citation, type StreamUsage, type WebSearchProgress } from "./streams/openai"
 import { parseAnthropicStream } from "./streams/anthropic"
@@ -147,6 +148,8 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
   const [fullscreen, setFullscreen] = useState(false)
   /** Data URL of the image shown in the zoom overlay, or null when closed. */
   const [zoomed, setZoomed] = useState<string | null>(null)
+  /** Timestamp the thread was opened with — names downloads consistently. */
+  const openedAtRef = useRef<Date>(new Date())
   const abortRef = useRef<AbortController | null>(null)
   const editorRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -963,14 +966,25 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
                           p.type === "text" ? (
                             <span key={pi}>{p.text}</span>
                           ) : p.dataUrl ? (
-                            <img
-                              key={pi}
-                              src={p.dataUrl}
-                              alt=""
-                              className={"pg-zoomable " + (isAssistant ? "pg-gen-img" : "pg-inline-img")}
-                              onClick={() => setZoomed(p.dataUrl)}
-                              title={t("dash.playground.zoomImage")}
-                            />
+                            <span key={pi} className="pg-img-wrap">
+                              <img
+                                src={p.dataUrl}
+                                alt=""
+                                className={"pg-zoomable " + (isAssistant ? "pg-gen-img" : "pg-inline-img")}
+                                onClick={() => setZoomed(p.dataUrl)}
+                                title={t("dash.playground.zoomImage")}
+                              />
+                              <button
+                                className="pg-img-save"
+                                title={t("dash.playground.download")}
+                                onClick={() => void downloadImage(
+                                  p.dataUrl,
+                                  imageFilename(p.dataUrl, openedAtRef.current, pi),
+                                )}
+                              >
+                                ⬇
+                              </button>
+                            </span>
                           ) : (
                             // The bytes are gone from the store — the position
                             // survives so the message still reads correctly.
@@ -1092,6 +1106,17 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       {zoomed && (
         <div className="pg-zoom-overlay" onClick={() => setZoomed(null)} role="presentation">
           <img src={zoomed} alt="" className="pg-zoom-img" />
+          <button
+            className="pg-zoom-save"
+            title={t("dash.playground.download")}
+            onClick={(e) => {
+              // The overlay closes on click; saving shouldn't also dismiss it.
+              e.stopPropagation()
+              void downloadImage(zoomed, imageFilename(zoomed, openedAtRef.current, 0))
+            }}
+          >
+            ⬇
+          </button>
           <button className="pg-zoom-close" title={t("dash.playground.closeZoom")}>✕</button>
         </div>
       )}
