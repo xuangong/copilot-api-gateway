@@ -7,7 +7,7 @@ import {
 } from "./images"
 import { getImages, pruneImages, putImage } from "./image-store"
 import { domToParts, type Part, partsToText } from "./parts"
-import { toAnthropicContent, toGeminiParts, toOpenAIContent } from "./payload"
+import { toAnthropicContent, toChatHistory, toGeminiParts, toOpenAIContent } from "./payload"
 import { isImageRejection, type VisionSupport } from "./vision"
 import { ImageParamsBar } from "./ImageParamsBar"
 import { downloadImage, imageFilename } from "./download"
@@ -274,10 +274,10 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
 
   function toAnthropicMessages(history: Message[]): Array<Record<string, unknown>> {
     const out: Array<Record<string, unknown>> = []
-    for (const m of history) {
-      const content = toAnthropicContent(messageParts(m), m.role)
+    for (const turn of toChatHistory(history)) {
+      const content = toAnthropicContent(turn.parts, turn.role)
       if (typeof content === "string" && !content) continue
-      out.push({ role: m.role, content })
+      out.push({ role: turn.role, content })
     }
     return out
   }
@@ -647,10 +647,10 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
   async function sendOpenAI(history: Message[], signal: AbortSignal) {
     const oaiMessages: Array<Record<string, unknown>> = []
     oaiMessages.push({ role: "system", content: composeSystemPrompt(systemPrompt) })
-    for (const m of history) {
-      const content = toOpenAIContent(messageParts(m), m.role)
+    for (const turn of toChatHistory(history)) {
+      const content = toOpenAIContent(turn.parts, turn.role)
       if (typeof content === "string" && !content) continue
-      oaiMessages.push({ role: m.role, content })
+      oaiMessages.push({ role: turn.role, content })
     }
     const resp = await fetch("/v1/chat/completions", {
       method: "POST",
@@ -730,10 +730,10 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
 
   async function sendGemini(history: Message[], signal: AbortSignal) {
     const contents: Array<Record<string, unknown>> = []
-    for (const m of history) {
-      const parts = toGeminiParts(messageParts(m), m.role)
+    for (const turn of toChatHistory(history)) {
+      const parts = toGeminiParts(turn.parts, turn.role)
       if (parts.length === 0) continue
-      contents.push({ role: m.role === "assistant" ? "model" : "user", parts })
+      contents.push({ role: turn.role === "assistant" ? "model" : "user", parts })
     }
     const body: Record<string, unknown> = { contents }
     body.systemInstruction = { parts: [{ text: composeSystemPrompt(systemPrompt) }] }

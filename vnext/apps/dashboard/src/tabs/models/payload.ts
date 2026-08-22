@@ -64,3 +64,47 @@ export function toGeminiParts(parts: Part[], turn?: Turn): Block[] {
     return { inlineData: { mimeType: mime, data } }
   })
 }
+
+/** A message as this module needs to see it. */
+interface HistoryMessage {
+  role: Turn
+  text: string
+  parts?: Part[]
+}
+
+export interface ChatTurn {
+  role: Turn
+  parts: Part[]
+}
+
+/**
+ * Normalises a playground thread into the turns a chat API can accept.
+ *
+ * An image model writes its output on the assistant turn, and no chat API
+ * takes an image block from the assistant. Dropping those images is what a
+ * chat model would need — but it also makes the picture invisible, so a poster
+ * generated a moment ago vanished the instant the conversation moved to a chat
+ * model. Instead the images ride forward onto the next user turn, which is
+ * where the model expects to be shown something, and keeps the
+ * user/assistant alternation Anthropic requires intact.
+ */
+export function toChatHistory(messages: HistoryMessage[]): ChatTurn[] {
+  const out: ChatTurn[] = []
+  let carried: Part[] = []
+
+  for (const m of messages) {
+    const parts = m.parts ?? (m.text ? [{ type: "text" as const, text: m.text }] : [])
+    if (m.role === "assistant") {
+      carried.push(...parts.filter((p) => p.type === "image"))
+      const rest = parts.filter((p) => p.type !== "image")
+      if (rest.length > 0) out.push({ role: "assistant", parts: rest })
+      continue
+    }
+    const merged = [...carried, ...parts]
+    carried = []
+    if (merged.length > 0) out.push({ role: "user", parts: merged })
+  }
+  // Anything still carried has no user turn to attach to; a trailing assistant
+  // image can't be sent as-is, so it goes.
+  return out
+}

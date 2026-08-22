@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import type { Part } from "./parts"
-import { toAnthropicContent, toGeminiParts, toOpenAIContent } from "./payload"
+import { toAnthropicContent, toChatHistory, toGeminiParts, toOpenAIContent } from "./payload"
 
 const PNG = "data:image/png;base64,AAAA"
 const JPG = "data:image/jpeg;base64,BBBB"
@@ -106,5 +106,68 @@ describe("toGeminiParts", () => {
 
   it("drops non-data-url images left over from persisted history", () => {
     expect(toGeminiParts([text("a"), image(REMOTE)])).toEqual([{ text: "a" }])
+  })
+})
+
+describe("toChatHistory", () => {
+  const user = (text: string, parts?: Part[]) => ({ role: "user" as const, text, parts })
+  const bot = (text: string, parts?: Part[]) => ({ role: "assistant" as const, text, parts })
+
+  it("passes an ordinary conversation through unchanged", () => {
+    expect(toChatHistory([user("hi"), bot("hello")])).toEqual([
+      { role: "user", parts: [text("hi")] },
+      { role: "assistant", parts: [text("hello")] },
+    ])
+  })
+
+  // An image model writes its output on the assistant turn. No chat API takes
+  // an image block from the assistant, but dropping it makes the picture
+  // invisible to the next model — which is how a generated poster vanished
+  // when the conversation moved to a chat model.
+  it("moves an assistant's images onto the next user turn", () => {
+    expect(toChatHistory([
+      user("draw a poster", [text("draw a poster")]),
+      bot("", [image(PNG)]),
+      user("write copy for it", [text("write copy for it")]),
+    ])).toEqual([
+      { role: "user", parts: [text("draw a poster")] },
+      { role: "user", parts: [image(PNG), text("write copy for it")] },
+    ])
+  })
+
+  it("keeps the assistant's own words on the assistant turn", () => {
+    expect(toChatHistory([
+      bot("here you go", [text("here you go"), image(PNG)]),
+      user("thanks"),
+    ])).toEqual([
+      { role: "assistant", parts: [text("here you go")] },
+      { role: "user", parts: [image(PNG), text("thanks")] },
+    ])
+  })
+
+  it("drops an assistant image with no later user turn to carry it", () => {
+    expect(toChatHistory([user("draw"), bot("", [image(PNG)])])).toEqual([
+      { role: "user", parts: [text("draw")] },
+    ])
+  })
+
+  it("carries images across several assistant turns to the one user turn", () => {
+    expect(toChatHistory([
+      bot("", [image(PNG)]),
+      bot("", [image(JPG)]),
+      user("compare them"),
+    ])).toEqual([
+      { role: "user", parts: [image(PNG), image(JPG), text("compare them")] },
+    ])
+  })
+
+  it("falls back to the flattened text when a message has no parts", () => {
+    expect(toChatHistory([user("plain")])).toEqual([{ role: "user", parts: [text("plain")] }])
+  })
+
+  it("drops a message that has nothing left in it", () => {
+    expect(toChatHistory([user(""), user("real")])).toEqual([
+      { role: "user", parts: [text("real")] },
+    ])
   })
 })
