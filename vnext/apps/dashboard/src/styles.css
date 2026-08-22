@@ -601,11 +601,32 @@ select option {
   opacity: 0;
   transition: opacity 0.15s ease, background 0.15s ease;
 }
-.pg-img-wrap:hover .pg-img-save { opacity: 1; }
-.pg-img-save:hover { background: rgba(0, 0, 0, 0.8); }
-/* Touch devices have no hover, so the button has to be there already. */
+/* Sits beside the save button: puts this image back in the composer as an
+   edit reference, which is the only way to iterate — the images endpoints
+   carry no conversation. */
+.pg-img-ref {
+  position: absolute;
+  top: 6px;
+  right: 38px;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.pg-img-wrap:hover .pg-img-save,
+.pg-img-wrap:hover .pg-img-ref { opacity: 1; }
+.pg-img-save:hover,
+.pg-img-ref:hover { background: rgba(0, 0, 0, 0.8); }
+/* Touch devices have no hover, so the buttons have to be there already. */
 @media (hover: none) {
-  .pg-img-save { opacity: 1; }
+  .pg-img-save, .pg-img-ref { opacity: 1; }
 }
 .pg-zoom-save {
   position: absolute;

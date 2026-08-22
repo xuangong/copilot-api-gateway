@@ -5,7 +5,7 @@ import { listKeys, type ApiKeyDetail } from "../../api/keys"
 import { listPlaygroundModels, type PlaygroundModel } from "../../api/models"
 import { ChatPanel } from "./ChatPanel"
 import { visionSupport } from "./vision"
-import { DEFAULT_IMAGE_PARAMS, type ImageParams } from "./images"
+import { DEFAULT_IMAGE_PARAMS, playgroundMode, type ImageParams } from "./images"
 
 const LS_KEY_ID = "playground.keyId"
 const LS_OPEN_GROUPS = "playground.openGroups"
@@ -176,7 +176,8 @@ export function ModelsTab() {
   const selectedKey = keys.find((k) => k.id === selectedKeyId)
   const selectedModel = models?.find((m) => m.id === selectedModelId)
   // Image models take a prompt and return bytes — no chat protocol applies.
-  const mode: "chat" | "image" = selectedModel?.capabilities?.type === "image" ? "image" : "chat"
+  // Undefined until the list has loaded; ChatPanel refuses to send until then.
+  const mode = playgroundMode(selectedModel?.capabilities, models !== null)
 
   const modelList = (
     <ModelList

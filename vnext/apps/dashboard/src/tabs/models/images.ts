@@ -143,3 +143,77 @@ export function imagesErrorMessage(raw: string): string {
   }
   return current
 }
+
+/** `undefined` means "not known yet" — see `playgroundMode`. */
+export type PlaygroundMode = "chat" | "image"
+
+/**
+ * Which endpoints the selected model uses.
+ *
+ * Deliberately `undefined` until the model list has loaded and the model is in
+ * it. Defaulting to `chat` in that window sent an image model down the chat
+ * path on the first send after a reload, and the upstream answered "No messages
+ * upstream available for model: gpt-image-2".
+ */
+export function playgroundMode(
+  capabilities: { type?: string } | undefined,
+  modelsLoaded: boolean,
+): PlaygroundMode | undefined {
+  if (!modelsLoaded || !capabilities) return undefined
+  return capabilities.type === "image" ? "image" : "chat"
+}
+
+/** The subset of a chat message this module needs. */
+interface ImageTurn {
+  role: "user" | "assistant"
+  text: string
+  parts?: Part[]
+}
+
+/**
+ * Folds the conversation into the one prompt + reference images an image
+ * request can carry.
+ *
+ * `/v1/images/*` has no messages array — each call sees only what it is given.
+ * Sending just the latest line means a follow-up like "continue" arrives with
+ * no subject at all, which is how a poster request came back as unrelated
+ * artwork. So the reference image comes from the thread when the composer has
+ * none, and every prior instruction rides along with the new one.
+ */
+export function buildImageContext(history: ImageTurn[], maxTurns = 8): {
+  prompt: string
+  refs: Part[]
+} {
+  // Scanning backwards puts the composer's own images first when it has any,
+  // then the newest result — which is what a bare "continue" refers to.
+  let refs: Part[] = []
+  for (let i = history.length - 1; i >= 0; i--) {
+    const images = (history[i]!.parts ?? []).filter((p) => p.type === "image" && p.dataUrl)
+    if (images.length > 0) {
+      refs = images
+      break
+    }
+  }
+
+  const instructions = history
+    .filter((m) => m.role === "user")
+    .map((m) => m.text.trim())
+    .filter((t) => t !== "")
+    // "continue, continue, continue" is one intent, not three.
+    .filter((t, i, all) => t !== all[i - 1])
+    .slice(-maxTurns)
+
+  const latest = instructions[instructions.length - 1] ?? ""
+  const earlier = instructions.slice(0, -1)
+  if (earlier.length === 0) return { prompt: latest, refs }
+
+  // Labelled rather than concatenated: a flat join reads as a list of commands,
+  // so the model re-executes "make a poster" on every follow-up instead of
+  // treating it as the background to "continue".
+  return {
+    prompt:
+      `Earlier instructions in this session, for context:\n${earlier.join("\n")}` +
+      `\n\nWhat to do now:\n${latest}`,
+    refs,
+  }
+}

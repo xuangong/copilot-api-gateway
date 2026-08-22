@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useT } from "../../state/i18n"
 import { fileToDataUrl, ImageTooLargeError } from "./image"
 import {
-  buildEditsForm, buildGenerationsBody, imagesErrorMessage, parseImagesResponse,
-  type ImageParams,
+  buildEditsForm, buildGenerationsBody, buildImageContext, imagesErrorMessage,
+  parseImagesResponse, type ImageParams, type PlaygroundMode,
 } from "./images"
 import { getImages, pruneImages, putImage } from "./image-store"
 import { domToParts, type Part, partsToText } from "./parts"
@@ -96,8 +96,13 @@ interface Props {
   webSearchEnabled: boolean
   /** Whether this model takes images — see `vision.ts`. Advisory only. */
   vision: VisionSupport
-  /** `image` swaps the three chat protocols for the /v1/images endpoints. */
-  mode: "chat" | "image"
+  /**
+   * `image` swaps the three chat protocols for the /v1/images endpoints.
+   * Undefined while the model list is still loading — sending in that window
+   * would have to guess, and guessing wrong routes an image model at the chat
+   * endpoints.
+   */
+  mode: PlaygroundMode | undefined
   imageParams: ImageParams
   onImageParamsChange: (next: ImageParams) => void
   onRevertModel?: (id: string) => void
@@ -231,8 +236,9 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       return
     }
     if (streaming) return
-    // Image models have no chat context to count, and count_tokens would 404.
-    if (mode === "image") return
+    // Only count for a model we know is a chat model: images have no context,
+    // and count_tokens 404s for them.
+    if (mode !== "chat") return
     const ctrl = new AbortController()
     const timer = setTimeout(() => {
       void countContextTokens(messages, ctrl.signal)
@@ -442,6 +448,16 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     await insertFiles(files)
   }
 
+  /**
+   * Puts one specific thread image into the composer. Sends already inherit the
+   * newest image automatically; this is the override for reaching back past it.
+   */
+  async function insertAsReference(part: Part) {
+    if (part.type !== "image" || !part.dataUrl) return
+    insertImage(part.dataUrl, part.id ?? await putImage(part.dataUrl))
+    editorRef.current?.focus()
+  }
+
   async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
     // Reset first so picking the same file twice in a row still fires onChange.
@@ -458,7 +474,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
   const send = useCallback(
     async (override?: Part[]) => {
       const parts = override ?? readParts()
-      if (parts.length === 0) return
+      if (parts.length === 0 || mode === undefined) return
       const userMsg: Message = { role: "user", text: partsToText(parts), parts }
       lastUserRef.current = userMsg
       const nextHistory = [...messages, userMsg]
@@ -473,7 +489,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       abortRef.current = ctrl
       try {
         if (mode === "image") {
-          await sendImages(parts, ctrl.signal)
+          await sendImages(nextHistory, ctrl.signal)
         } else if (protocol === "openai") {
           await sendOpenAI(nextHistory, ctrl.signal)
         } else if (protocol === "anthropic") {
@@ -590,9 +606,8 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
    * composer turn the call into an edit — same one funnel, so a screenshot you
    * paste is the image you edit.
    */
-  async function sendImages(parts: Part[], signal: AbortSignal) {
-    const prompt = partsToText(parts).trim()
-    const refs = parts.filter((p) => p.type === "image" && p.dataUrl)
+  async function sendImages(history: Message[], signal: AbortSignal) {
+    const { prompt, refs } = buildImageContext(history)
     const editing = refs.length > 0
 
     const resp = editing
@@ -821,14 +836,14 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
           <ImageParamsBar
             params={imageParams}
             onChange={onImageParamsChange}
-            editing={hasReference}
+            editing={hasReference || buildImageContext(messages).refs.length > 0}
             disabled={streaming}
           />
         )}
         {mode === "chat" && (
           <span className="text-themed-dim">{t("dash.playground.protocol")}:</span>
         )}
-        <div className={"flex items-center gap-1 bg-surface-800 rounded-lg p-0.5" + (mode === "image" ? " hidden" : "")}>
+        <div className={"flex items-center gap-1 bg-surface-800 rounded-lg p-0.5" + (mode === "chat" ? "" : " hidden")}>
           {(["openai", "anthropic", "gemini"] as const).map((p) => (
             <button
               key={p}
@@ -974,6 +989,15 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
                                 onClick={() => setZoomed(p.dataUrl)}
                                 title={t("dash.playground.zoomImage")}
                               />
+                              {mode === "image" && (
+                                <button
+                                  className="pg-img-ref"
+                                  title={t("dash.playground.useAsReference")}
+                                  onClick={() => void insertAsReference(p)}
+                                >
+                                  ✎
+                                </button>
+                              )}
                               <button
                                 className="pg-img-save"
                                 title={t("dash.playground.download")}
@@ -1092,7 +1116,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
             </label>
             <button
               onClick={() => void send()}
-              disabled={streaming || isEmpty}
+              disabled={streaming || isEmpty || mode === undefined}
               className="pg-send-btn"
               title={t("dash.playground.send")}
             >
