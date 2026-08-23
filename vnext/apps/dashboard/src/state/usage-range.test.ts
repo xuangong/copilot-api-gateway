@@ -146,3 +146,41 @@ describe("dayOffsetFromKey", () => {
     expect(dayOffsetFromKey("2026-08-13", NOW)).toBe(1)
   })
 })
+
+// "View this day" pushes a history entry so the back button undoes it. The
+// state comes back from the browser untrusted — it survives reloads, and other
+// code on the page pushes its own entries.
+describe("usageViewFromHistoryState", () => {
+  test("reads a view this hook pushed", async () => {
+    const { usageViewFromHistoryState } = await import("./usage")
+    expect(usageViewFromHistoryState({ usageView: { range: "week", periodOffset: -2 } }))
+      .toEqual({ range: "week", periodOffset: -2 })
+  })
+
+  test("ignores history entries that are not ours", async () => {
+    const { usageViewFromHistoryState } = await import("./usage")
+    for (const s of [null, undefined, {}, "week", 7, { other: 1 }, { usageView: null }, { usageView: "week" }]) {
+      expect(usageViewFromHistoryState(s)).toBeNull()
+    }
+  })
+
+  test("rejects a range it does not know", async () => {
+    const { usageViewFromHistoryState } = await import("./usage")
+    expect(usageViewFromHistoryState({ usageView: { range: "fortnight", periodOffset: 0 } })).toBeNull()
+  })
+
+  // A positive offset would ask for a period in the future; a fractional one
+  // would land between days.
+  test("rejects an offset that could not have come from the UI", async () => {
+    const { usageViewFromHistoryState } = await import("./usage")
+    expect(usageViewFromHistoryState({ usageView: { range: "today", periodOffset: 3 } })).toBeNull()
+    expect(usageViewFromHistoryState({ usageView: { range: "today", periodOffset: -1.5 } })).toBeNull()
+    expect(usageViewFromHistoryState({ usageView: { range: "today", periodOffset: "-1" } })).toBeNull()
+  })
+
+  test("accepts the present period", async () => {
+    const { usageViewFromHistoryState } = await import("./usage")
+    expect(usageViewFromHistoryState({ usageView: { range: "month", periodOffset: 0 } }))
+      .toEqual({ range: "month", periodOffset: 0 })
+  })
+})

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useToast } from "./toast"
 import * as api from "../api/usage"
 import type { ParticipantRow, UsageRow } from "../api/usage"
@@ -92,6 +92,31 @@ export function computeTimeRange(
  * a local day 23 or 25 hours long, and dividing by 86400000 would land on the
  * wrong date.
  */
+/** The part of the Usage view that "View this day" moves, and back restores. */
+export interface UsageView {
+  range: UsageRange
+  periodOffset: number
+}
+
+const USAGE_RANGES: readonly string[] = ["today", "week", "7d", "30d", "month"]
+
+/**
+ * Validate a `popstate` state object before acting on it. History state
+ * survives reloads and other code on the page pushes its own entries, so
+ * anything that is not recognisably ours is ignored rather than trusted.
+ */
+export function usageViewFromHistoryState(state: unknown): UsageView | null {
+  if (typeof state !== "object" || state === null) return null
+  const view = (state as { usageView?: unknown }).usageView
+  if (typeof view !== "object" || view === null) return null
+  const { range, periodOffset } = view as { range?: unknown; periodOffset?: unknown }
+  if (typeof range !== "string" || !USAGE_RANGES.includes(range)) return null
+  // A positive offset asks for a period that has not happened; a fractional one
+  // lands between days. Neither is reachable through the UI.
+  if (typeof periodOffset !== "number" || !Number.isInteger(periodOffset) || periodOffset > 0) return null
+  return { range: range as UsageRange, periodOffset }
+}
+
 export function dayOffsetFromKey(dateKey: string, now: Date = new Date()): number {
   const [y, m, d] = dateKey.split("-").map(Number)
   const target = new Date(y!, m! - 1, d!, 12, 0, 0, 0)
@@ -194,12 +219,20 @@ const EMPTY_SUMMARY: UsageSummary = {
 
 export function useUsage(isAdmin: boolean) {
   const { push: toast } = useToast()
-  const [range, setRange] = useState<UsageRange>("today")
-  const [periodOffset, setPeriodOffset] = useState(0)
+  // Switching tabs unmounts this tab, so without seeding from history a back
+  // navigation would land on an entry that claims a particular day while the
+  // UI silently reset to today.
+  const restored = typeof window === "undefined" ? null : usageViewFromHistoryState(window.history.state)
+  const [range, setRange] = useState<UsageRange>(restored?.range ?? "today")
+  const [periodOffset, setPeriodOffset] = useState(restored?.periodOffset ?? 0)
   const [metric, setMetric] = useState<UsageMetric>("tokens")
   const [filters, setFilters] = useState<UsageFilters>({ user: "", key: "", client: "", model: "" })
   const [data, setData] = useState<UsageRow[]>([])
   const [participantRows, setParticipantRows] = useState<ParticipantRow[]>([])
+  const rangeRef = useRef(range)
+  const offsetRef = useRef(periodOffset)
+  rangeRef.current = range
+  offsetRef.current = periodOffset
   const [loading, setLoading] = useState(true)
 
   const reload = useCallback(async () => {
@@ -360,9 +393,30 @@ export function useUsage(isAdmin: boolean) {
     setRange(r)
   }, [range])
 
+  // Pushes a history entry so the back button undoes the jump. Only this
+  // action does — the range buttons and the ‹ › arrows are ordinary controls,
+  // and turning every click of them into a history entry would make going back
+  // a chore.
   const openDay = useCallback((dateKey: string) => {
-    setRange("today")
-    setPeriodOffset(Math.min(0, dayOffsetFromKey(dateKey)))
+    const next: UsageView = { range: "today", periodOffset: Math.min(0, dayOffsetFromKey(dateKey)) }
+    // Stamp the entry we are leaving first, so going back has somewhere to
+    // return to; the URL is unchanged, only the entry is added.
+    const here: UsageView = { range: rangeRef.current, periodOffset: offsetRef.current }
+    window.history.replaceState({ ...window.history.state, usageView: here }, "", window.location.href)
+    window.history.pushState({ ...window.history.state, usageView: next }, "", window.location.href)
+    setRange(next.range)
+    setPeriodOffset(next.periodOffset)
+  }, [])
+
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      const view = usageViewFromHistoryState(e.state)
+      if (!view) return
+      setRange(view.range)
+      setPeriodOffset(view.periodOffset)
+    }
+    window.addEventListener("popstate", onPop)
+    return () => window.removeEventListener("popstate", onPop)
   }, [])
 
   const shiftPeriod = useCallback((delta: number) => {
