@@ -258,6 +258,23 @@ export function tooltipPlacement({
   }
 }
 
+export interface TooltipRow {
+  label: string
+  value: number
+  color: string
+}
+
+/**
+ * A bucket usually has one active series and several sitting at zero — the
+ * "Cache" line especially. Listing them buries the number you hovered for.
+ *
+ * Non-zero rather than positive: these charts do not produce negative values,
+ * but if one ever appeared it would be real data, not noise.
+ */
+export function visibleTooltipRows(rows: TooltipRow[]): TooltipRow[] {
+  return rows.filter((r) => r.value !== 0)
+}
+
 function hideTooltip(el: HTMLDivElement | null) {
   if (el) el.style.opacity = "0"
   if (el) el.style.pointerEvents = "none"
@@ -295,8 +312,14 @@ function renderLinkTooltip(
   if (sameBucket) return
 
   const title = tooltip.title[0] ?? ""
-  const rows = tooltip.dataPoints
-    .map((p) => `<div class="pg-chart-tip-row"><span class="pg-chart-tip-dot" style="background:${p.dataset.borderColor}"></span>${escapeHtml(String(p.dataset.label ?? ""))}<b>${Number(p.parsed.y).toLocaleString()}${escapeHtml(unitLabel)}</b></div>`)
+  const rows = visibleTooltipRows(
+    tooltip.dataPoints.map((p) => ({
+      label: String(p.dataset.label ?? ""),
+      value: Number(p.parsed.y),
+      color: String(p.dataset.borderColor ?? ""),
+    })),
+  )
+    .map((r) => `<div class="pg-chart-tip-row"><span class="pg-chart-tip-dot" style="background:${escapeHtml(r.color)}"></span>${escapeHtml(r.label)}<b>${r.value.toLocaleString()}${escapeHtml(unitLabel)}</b></div>`)
     .join("")
   const linkLabel = linkRef.current.link.labelFor(index)
   const linkHtml = linkLabel === null

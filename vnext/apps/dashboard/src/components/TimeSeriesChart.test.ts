@@ -64,3 +64,32 @@ describe("tooltipPlacement", () => {
     expect(p.left).toBe(0)
   })
 })
+
+// A bucket usually has one active series; the rest sit at zero. Listing them
+// buries the number you came to read — "Cache 0 tokens" especially.
+describe("visibleTooltipRows", () => {
+  const rows = [
+    { label: "Admin", value: 0, color: "#111" },
+    { label: "Xian Zhang", value: 23, color: "#222" },
+    { label: "Cache", value: 0, color: "#333" },
+  ]
+
+  test("drops the zero rows and keeps the order of the rest", async () => {
+    const { visibleTooltipRows } = await import("./TimeSeriesChart")
+    expect(visibleTooltipRows(rows).map((r) => r.label)).toEqual(["Xian Zhang"])
+  })
+
+  // An all-zero bucket still gets a tooltip with its date, so hovering never
+  // looks broken — it just has nothing to list.
+  test("returns nothing when every series is zero", async () => {
+    const { visibleTooltipRows } = await import("./TimeSeriesChart")
+    expect(visibleTooltipRows([{ label: "a", value: 0, color: "#1" }])).toEqual([])
+  })
+
+  // Negative values are not something these charts produce, but "non-zero" is
+  // the rule, not "positive" — silently hiding one would lose real data.
+  test("keeps a negative value", async () => {
+    const { visibleTooltipRows } = await import("./TimeSeriesChart")
+    expect(visibleTooltipRows([{ label: "a", value: -5, color: "#1" }])).toHaveLength(1)
+  })
+})
