@@ -31,10 +31,13 @@ const env = {} as never
 interface StubRepoOpts {
   upstreams?: UpstreamRecord<unknown>[]
   searchConfig?: SearchConfig | null
+  /** The calling key; `null` (the default) is a key that cannot search. */
+  apiKey?: Record<string, unknown> | null
 }
 
 const stubRepo = (opts: StubRepoOpts = {}): Repo => ({
   upstreams: { list: async () => opts.upstreams ?? [] },
+  apiKeys: { getById: async () => opts.apiKey ?? null },
   searchConfig: {
     get: async () => opts.searchConfig ?? null,
     save: async () => {},
@@ -134,11 +137,14 @@ const post = (path: string, body: unknown) => new Request(`http://local${path}`,
   body: JSON.stringify(body),
 })
 
-describe('local mode (disabled provider)', () => {
+describe('local mode (key cannot search)', () => {
   const setup = () => {
     initRepo(stubRepo({ searchConfig: { ...DEFAULT_SEARCH_CONFIG, provider: 'disabled' } }))
   }
 
+  // Search engines now come from the caller's API key, same as the chat shims.
+  // A key that can't search gets the endpoint's ordinary text shape — Codex
+  // renders `output` to the user, so a 500 would be worse than an explanation.
   test('both /alpha/search and /v1/alpha/search hit the handler', async () => {
     setup()
     const app = buildApp()
@@ -147,8 +153,7 @@ describe('local mode (disabled provider)', () => {
       expect(res.status).toBe(200)
       const json = await res.json() as { encrypted_output: null; output: string }
       expect(json.encrypted_output).toBeNull()
-      // Provider disabled → rendered search error contains the "not configured" text.
-      expect(json.output).toContain('Web search provider is not configured')
+      expect(json.output).toContain('API key')
     }
   })
 

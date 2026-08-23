@@ -21,16 +21,9 @@ import { webSearchServerTool } from '../../../../../../src/data-plane/chat-flow/
 import { createInMemoryPrivatePayloadStore } from '../../../../../../src/data-plane/orchestrator/server-tools/private-payload-store'
 import type { ServerToolRequestCtx } from '../../../../../../src/data-plane/orchestrator/server-tools/types'
 import { initRepo } from '../../../../../../src/repo/index'
-import { DEFAULT_SEARCH_CONFIG } from '../../../../../../src/data-plane/tools/web-search/search-config'
 import type { ApiKeyId } from '../../../../../../src/repo/branded-ids'
-import type { Repo, SearchConfig } from '../../../../../../src/repo/types'
+import type { Repo } from '../../../../../../src/repo/types'
 import type { Invocation } from '@vibe-llm/protocols/common'
-
-const searchConfig = (): SearchConfig => ({
-  ...structuredClone(DEFAULT_SEARCH_CONFIG),
-  provider: 'tavily',
-  tavily: { apiKey: 'tvly-test' },
-})
 
 const stubRepo = (): Repo => ({
   upstreams: { list: async () => [] },
@@ -45,7 +38,6 @@ const stubRepo = (): Repo => ({
       webSearchTavilyKey: 'tvly-test',
     }),
   },
-  searchConfig: { get: async () => searchConfig(), save: async () => {} },
   webSearchUsage: { record: async () => {} },
   webSearchEngineUsage: { record: async () => {} },
 } as unknown as Repo)

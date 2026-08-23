@@ -22,7 +22,8 @@ import type { Env } from '../../app.ts'
 import type { ApiKeyId } from '../../repo/branded-ids.ts'
 import { readAuth } from '../chat-flow/shared/gateway-ctx.ts'
 import { loadSearchConfig } from '../tools/web-search/search-config.ts'
-import { resolveConfiguredWebSearchProvider } from '../tools/web-search/provider.ts'
+import { providerNameFor } from '../tools/web-search/key-config.ts'
+import { resolveWebSearchForKey } from '../tools/web-search/resolve-for-key.ts'
 import type { ConfiguredWebSearchProvider } from '../tools/web-search/types.ts'
 import {
   assertLocalWebSearchSupport,
@@ -128,19 +129,6 @@ export const alphaSearchHandler = async (c: Context<{ Bindings: Env }>): Promise
     throw error
   }
 
-  let configuredProvider: Promise<ConfiguredWebSearchProvider> | undefined
-  const session: WebSearchExecutionSession = {
-    getProvider: () => {
-      configuredProvider ??= Promise.resolve(resolveConfiguredWebSearchProvider(cfg))
-      return configuredProvider
-    },
-    filters: filtersFromSettings(body.settings),
-    apiKeyId: (auth.apiKeyId ?? ('' as ApiKeyId)),
-    pageCache: new Map(),
-    includeSearchActionSources: false,
-    signal: c.req.raw.signal,
-  }
-
   const parsed = parseWebSearchOperations((body.commands ?? {}) as Record<string, unknown>)
   if (parsed.kind !== 'ops' || parsed.ops.length === 0) {
     return c.json({
@@ -148,6 +136,34 @@ export const alphaSearchHandler = async (c: Context<{ Bindings: Env }>): Promise
       output: 'No web search commands were provided. Populate at least one of `search_query`, `open`, or `find`.',
     })
   }
+
+  // Same source of truth as the chat shims: the caller's own key. A key that
+  // can't search gets the endpoint's ordinary "here is why nothing happened"
+  // shape rather than a 500 — Codex renders `output` to the user.
+  const resolvedSearch = await resolveWebSearchForKey(auth.apiKeyId as ApiKeyId | undefined)
+  if (resolvedSearch.type !== 'enabled') {
+    return c.json({
+      encrypted_output: null,
+      output: resolvedSearch.type === 'disabled'
+        ? 'Web search is not enabled for this API key. Turn it on under API Keys in the dashboard.'
+        : 'No web search engine is configured for this API key. Add a credential under API Keys in the dashboard.',
+    })
+  }
+  const configuredProvider: Promise<ConfiguredWebSearchProvider> = Promise.resolve({
+    type: 'enabled',
+    provider: providerNameFor(resolvedSearch.engines[0]!),
+    impl: resolvedSearch.impl,
+  })
+
+  const session: WebSearchExecutionSession = {
+    getProvider: () => configuredProvider,
+    filters: filtersFromSettings(body.settings),
+    apiKeyId: (auth.apiKeyId ?? ('' as ApiKeyId)),
+    pageCache: new Map(),
+    includeSearchActionSources: false,
+    signal: c.req.raw.signal,
+  }
+
 
   const batch = await startBatchFetch(parsed, session)
   const blocks = await Promise.all(parsed.ops.map((op) => executeOperationToText(op, session, batch)))

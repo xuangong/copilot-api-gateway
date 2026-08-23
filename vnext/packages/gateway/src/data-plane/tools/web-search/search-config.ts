@@ -1,5 +1,20 @@
-// Ported 1:1 from copilot-gateway data-plane/tools/web-search/search-config.ts,
-// with the isJsonObject helper inlined (vNext protocols don't export it).
+/**
+ * The global `search_config` row.
+ *
+ * Search *engines* no longer come from here — every caller resolves them from
+ * its own API key (`key-config.ts`). What is left in use is
+ * `passthroughOpenAiSearch`, which `/alpha/search` reads to decide whether to
+ * relay a Codex search to a pinned upstream instead of running it locally.
+ *
+ * That setting has no UI and no API route either, so it can only be enabled by
+ * editing the database — the same gap that made the engine half unusable. It
+ * survives only because it configures a different thing (which upstream to
+ * relay to, not which engine to search with); wire it up or drop it, but don't
+ * grow it.
+ *
+ * Ported from copilot-gateway data-plane/tools/web-search/search-config.ts,
+ * with the isJsonObject helper inlined (vNext protocols don't export it).
+ */
 
 import type { SearchConfig } from './types.ts'
 import { getRepo } from '../../../repo/index.ts'

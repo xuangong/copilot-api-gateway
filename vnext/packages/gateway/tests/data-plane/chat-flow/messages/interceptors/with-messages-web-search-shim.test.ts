@@ -13,8 +13,7 @@
 import { test, expect, describe, beforeEach, afterEach } from 'bun:test'
 import { withMessagesWebSearchShim } from '../../../../../src/data-plane/chat-flow/messages/interceptors/with-messages-web-search-shim'
 import { initRepo } from '../../../../../src/repo/index'
-import { DEFAULT_SEARCH_CONFIG } from '../../../../../src/data-plane/tools/web-search/search-config'
-import type { Repo, SearchConfig } from '../../../../../src/repo/types'
+import type { Repo } from '../../../../../src/repo/types'
 import type { Invocation, RequestContext } from '@vibe-llm/protocols/common'
 import {
   llmEventResult,
@@ -33,12 +32,6 @@ const stubIdentity: TelemetryModelIdentity = {
   modelKey: '<unknown>',
   cost: null,
 }
-
-const searchConfig = (): SearchConfig => ({
-  ...structuredClone(DEFAULT_SEARCH_CONFIG),
-  provider: 'tavily',
-  tavily: { apiKey: 'tvly-test' },
-})
 
 /** A key with web search on and one usable engine — the shims read this now. */
 const searchKey = (over: Record<string, unknown> = {}) => ({
