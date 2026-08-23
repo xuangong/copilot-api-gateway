@@ -81,6 +81,28 @@ export const rowMatchesUser = (
   return row.ownerId === userId || row.sharedWith.some((u) => u.id === userId)
 }
 
+/**
+ * How a usage row should be labelled when grouping "by user".
+ *
+ * A shared key names everyone who could have used it rather than its owner:
+ * `usage` records a key, never who held it, so crediting the owner alone
+ * asserts something the data cannot support. Keys with the same participants
+ * collapse into one group — the ambiguity is identical, and separate
+ * look-alike series would only add noise.
+ */
+export function usageAttribution(
+  participants: ParticipantIndex,
+  keyId: string,
+): { id: string; label: string } {
+  const people = usersForKey(participants, keyId)
+  if (people.length > 1) {
+    const ids = people.map((u) => u.id).sort()
+    return { id: `shared:${ids.join("+")}`, label: people.map((u) => u.name).join(", ") }
+  }
+  const only = people[0]
+  return only ? { id: only.id, label: only.name } : { id: "_admin", label: "Admin" }
+}
+
 export const hasSharedKeyInScope = (participants: ParticipantIndex, keyIds: string[]): boolean =>
   keyIds.some((id) => isShared(participants, id))
 

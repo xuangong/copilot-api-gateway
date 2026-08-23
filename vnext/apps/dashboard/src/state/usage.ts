@@ -6,6 +6,7 @@ import {
   buildDimensions,
   indexParticipants,
   rowMatchesUser,
+  usageAttribution,
   type KeyDimension,
 } from "../tabs/usage/participants"
 import { buildTimeBuckets, localDayStart, localMonthStart, utcHourToBucketKey } from "../components/TimeSeriesChart"
@@ -310,16 +311,18 @@ export function useUsage(isAdmin: boolean) {
       byClient: !filters.client
         ? buildDistribution(filtered, (r) => r.client || "unknown", (_r, k) => k)
         : [],
+      // Attribution, not ownership: a shared key names everyone who could have
+      // used it, because usage is recorded per key and never per person.
       byUser:
         isAdmin && !filters.user
           ? buildDistribution(
               filtered,
-              (r) => r.ownerId || "_admin",
-              (r, k) => r.ownerName || (k === "_admin" ? "Admin" : k.slice(0, 8)),
+              (r) => usageAttribution(participants, r.keyId).id,
+              (r) => usageAttribution(participants, r.keyId).label,
             )
           : [],
     }
-  }, [filtered, data, filters, isAdmin])
+  }, [filtered, data, filters, isAdmin, participants])
 
   // Chart series: group by the first un-filtered dimension (user > key > client > model).
   // When the metric is tokens, also emit a separate "Cache" line (dashed) showing cache traffic.
@@ -345,8 +348,9 @@ export function useUsage(isAdmin: boolean) {
       if (!agg.has(bucket)) continue
       let seriesKey: string
       if (groupBy === "user") {
-        seriesKey = r.ownerId || "_admin"
-        seriesNames.set(seriesKey, r.ownerName || (seriesKey === "_admin" ? "Admin" : seriesKey.slice(0, 8)))
+        const who = usageAttribution(participants, r.keyId)
+        seriesKey = who.id
+        seriesNames.set(seriesKey, who.label)
       } else if (groupBy === "key") {
         seriesKey = r.keyId
         seriesNames.set(r.keyId, keyNameMap.get(r.keyId) ?? r.keyId.slice(0, 8))
@@ -376,7 +380,7 @@ export function useUsage(isAdmin: boolean) {
     const cacheHasData = metric === "tokens" && cacheData.some((v) => v > 0)
 
     return { labels, series, cacheData: cacheHasData ? cacheData : null, bucketKeys: keys, isDaily }
-  }, [filtered, data, range, periodOffset, metric, filters, isAdmin])
+  }, [filtered, data, range, periodOffset, metric, filters, isAdmin, participants])
 
   const updateFilter = useCallback((patch: Partial<UsageFilters>) => {
     setFilters((cur) => ({ ...cur, ...patch }))

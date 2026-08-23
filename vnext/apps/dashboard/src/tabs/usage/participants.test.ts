@@ -167,3 +167,48 @@ describe("rowMatchesUser", () => {
     expect(rowMatchesUser(m, "k_missing", "u_alice")).toBe(false)
   })
 })
+
+// Grouping usage "by user" has to stop short of naming one person when the key
+// is shared: the tables record a key, never who held it.
+describe("usageAttribution", () => {
+  const m = indexParticipants(ALL)
+
+  test("an unshared key is attributed to its owner", async () => {
+    const { usageAttribution } = await import("./participants")
+    expect(usageAttribution(m, "k_solo")).toEqual({ id: "u_bob", label: "Bob" })
+  })
+
+  test("a shared key names everyone who could have used it", async () => {
+    const { usageAttribution } = await import("./participants")
+    expect(usageAttribution(m, "k_team")).toEqual({
+      id: "shared:u_alice+u_bob+u_carol",
+      label: "Alice, Bob, Carol",
+    })
+  })
+
+  // Two keys shared with the same people are the same ambiguity; splitting
+  // them into look-alike series would just add noise.
+  test("keys with identical participants share one group", async () => {
+    const { usageAttribution } = await import("./participants")
+    const two = indexParticipants([
+      P.team,
+      {
+        keyId: "k_other",
+        ownerId: "u_carol",
+        ownerName: "Carol",
+        sharedWith: [{ id: "u_alice", name: "Alice" }, { id: "u_bob", name: "Bob" }],
+      },
+    ])
+    expect(usageAttribution(two, "k_team").id).toBe(usageAttribution(two, "k_other").id)
+  })
+
+  test("a key with no participants row falls back to the admin bucket", async () => {
+    const { usageAttribution } = await import("./participants")
+    expect(usageAttribution(m, "k_missing")).toEqual({ id: "_admin", label: "Admin" })
+  })
+
+  test("an ownerless unshared key is the admin bucket too", async () => {
+    const { usageAttribution } = await import("./participants")
+    expect(usageAttribution(m, "k_orphan")).toEqual({ id: "_admin", label: "Admin" })
+  })
+})
