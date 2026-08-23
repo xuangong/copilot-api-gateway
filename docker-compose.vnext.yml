@@ -30,5 +30,10 @@ services:
     restart: unless-stopped
 
 secrets:
+  # Only needed on machines whose npm default registry is a corporate proxy;
+  # the build otherwise resolves everything from the public registry. Pointing
+  # at $HOME/.npmrc unconditionally made the build fail outright on any host
+  # without one, which is every host but a dev laptop. Set NPMRC_FILE in .env
+  # to opt in.
   npmrc:
-    file: ${HOME}/.npmrc
+    file: ${NPMRC_FILE:-/dev/null}
