@@ -13,7 +13,7 @@ export function UsageTab() {
   const usage = useUsage(isAdmin)
   const t = useT()
   const RANGE_OPTIONS: Array<{ id: UsageRange; label: string }> = [
-    { id: "today", label: t("dash.today") },
+    { id: "today", label: t("dash.day") },
     { id: "week", label: t("dash.week") },
     { id: "month", label: t("dash.month") },
     { id: "7d", label: t("dash.sevenDays") },
