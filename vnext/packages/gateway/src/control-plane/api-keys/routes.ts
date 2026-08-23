@@ -28,6 +28,8 @@ import {
   type ApiKey,
 } from '../lib/api-keys.ts'
 import { getRepo } from '../../repo/index.ts'
+import { testKeyWebSearch } from '../../data-plane/tools/web-search/test-connection.ts'
+import { resolveWebSearchForKey } from '../../data-plane/tools/web-search/resolve-for-key.ts'
 import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 import { zValidator } from '../middleware/zod-validator.ts'
 import { loadOwned } from '../shared/ownership.ts'
@@ -376,6 +378,21 @@ apiKeysRouter.post('/:id/rotate', async (c) => {
   if (!key) return c.json({ error: 'Key not found' }, 404)
   const sourceMap = await loadSourceMapForKey(key)
   return c.json(keyToJson(key, undefined, true, sourceMap))
+})
+
+// POST /:id/web-search-test — run one fixed query on this key's own engines.
+// Without it, "is my search actually configured?" can only be answered by
+// sending a real chat request and reading the answer for signs a search ran.
+apiKeysRouter.post('/:id/web-search-test', async (c) => {
+  const auth = c.get('auth') ?? {}
+  const id = c.req.param('id') as ApiKeyId
+  if (!(await checkOwnership(id, auth))) return c.json({ error: 'Forbidden' }, 403)
+  const key = await getRepo().apiKeys.getById(id)
+  if (!key) return c.json({ error: 'Key not found' }, 404)
+  const result = await testKeyWebSearch(key, (k) => resolveWebSearchForKey(k.id))
+  // 400 on failure so the dashboard can style it without inspecting the body,
+  // matching the reference project's `/search-config/test`.
+  return c.json(result, result.ok ? 200 : 400)
 })
 
 // DELETE /:id

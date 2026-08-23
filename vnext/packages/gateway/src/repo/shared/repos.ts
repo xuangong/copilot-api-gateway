@@ -26,8 +26,6 @@ import type {
   Repo,
   ResponsesItemRecord,
   ResponsesItemsRepo,
-  SearchConfig,
-  SearchConfigRepo,
   SessionRepo,
   UsageRecord,
   UsageRepo,
@@ -47,7 +45,7 @@ import type { BillingDimension, ModelPricing } from "@vibe-llm/protocols/common"
 import { UpstreamGoneError } from "@vibe-core/upstream-repo"
 import type { BackoffRow, ProxyBackoffRepo, ProxyFallbackEntry, ProxyRecord, ProxyRepo } from "@vibe-core/proxy-repo"
 
-const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_month, quota_tokens_per_month, quota_cost_per_month, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref, web_search_jina_key, web_search_jina_ref, dump_retention_seconds"
+const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_month, quota_tokens_per_month, quota_cost_per_month, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref, web_search_jina_key, web_search_jina_ref, web_search_passthrough_upstream, web_search_passthrough_model, dump_retention_seconds"
 const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at, github_host, source"
 const UPSTREAM_COLS = "id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, state_json, proxy_fallback_list_json, created_at, updated_at"
 const USAGE_DIM_COLS = "key_id, model, upstream, model_key, client, hour, dimension, tokens, unit_price"
@@ -65,7 +63,6 @@ const DEVICE_COLS = "device_code, user_code, expires_at, user_id, session_token,
 const PERF_SUMMARY_COLS = "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, operation, requests, errors, total_ms_sum"
 const PERF_BUCKET_COLS = "hour, metric_scope, key_id, model, upstream, source_api, target_api, stream, runtime_location, operation, lower_ms, upper_ms, count"
 const RESPONSES_ITEMS_COLS = "id, api_key_id, kind, item_json, private_json, created_at, expires_at"
-const SEARCH_CONFIG_COLS = "id, provider, tavily_api_key, microsoft_grounding_api_key, jina_api_key, passthrough_openai_search, alpha_search_upstream_id, alpha_search_model, bing_api_key, copilot_github_token, langsearch_api_key, updated_at"
 
 function toApiKey(row: any): ApiKey {
   let priority: string[] | undefined
@@ -95,6 +92,8 @@ function toApiKey(row: any): ApiKey {
     webSearchMsGroundingRef: row.web_search_ms_grounding_ref ?? undefined,
     webSearchJinaKey: row.web_search_jina_key ?? undefined,
     webSearchJinaRef: row.web_search_jina_ref ?? undefined,
+    webSearchPassthroughUpstream: row.web_search_passthrough_upstream ?? undefined,
+    webSearchPassthroughModel: row.web_search_passthrough_model ?? undefined,
     dumpRetentionSeconds: row.dump_retention_seconds ?? null,
   }
 }
@@ -329,8 +328,8 @@ class SharedApiKeyRepo implements ApiKeyRepo {
 
   async save(key: ApiKey): Promise<void> {
     await this.x.run(
-      `INSERT INTO api_keys (${API_KEY_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_month = excluded.quota_requests_per_month, quota_tokens_per_month = excluded.quota_tokens_per_month, quota_cost_per_month = excluded.quota_cost_per_month, web_search_enabled = excluded.web_search_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key, web_search_ms_grounding_key = excluded.web_search_ms_grounding_key, web_search_priority = excluded.web_search_priority, web_search_langsearch_ref = excluded.web_search_langsearch_ref, web_search_tavily_ref = excluded.web_search_tavily_ref, web_search_ms_grounding_ref = excluded.web_search_ms_grounding_ref, web_search_jina_key = excluded.web_search_jina_key, web_search_jina_ref = excluded.web_search_jina_ref, dump_retention_seconds = excluded.dump_retention_seconds`,
+      `INSERT INTO api_keys (${API_KEY_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_month = excluded.quota_requests_per_month, quota_tokens_per_month = excluded.quota_tokens_per_month, quota_cost_per_month = excluded.quota_cost_per_month, web_search_enabled = excluded.web_search_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key, web_search_ms_grounding_key = excluded.web_search_ms_grounding_key, web_search_priority = excluded.web_search_priority, web_search_langsearch_ref = excluded.web_search_langsearch_ref, web_search_tavily_ref = excluded.web_search_tavily_ref, web_search_ms_grounding_ref = excluded.web_search_ms_grounding_ref, web_search_jina_key = excluded.web_search_jina_key, web_search_jina_ref = excluded.web_search_jina_ref, web_search_passthrough_upstream = excluded.web_search_passthrough_upstream, web_search_passthrough_model = excluded.web_search_passthrough_model, dump_retention_seconds = excluded.dump_retention_seconds`,
       [
         key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null,
         key.quotaRequestsPerMonth ?? null, key.quotaTokensPerMonth ?? null, key.quotaCostPerMonth ?? null,
@@ -339,6 +338,7 @@ class SharedApiKeyRepo implements ApiKeyRepo {
         key.webSearchPriority ? JSON.stringify(key.webSearchPriority) : null,
         key.webSearchLangsearchRef ?? null, key.webSearchTavilyRef ?? null, key.webSearchMsGroundingRef ?? null,
         key.webSearchJinaKey ?? null, key.webSearchJinaRef ?? null,
+        key.webSearchPassthroughUpstream ?? null, key.webSearchPassthroughModel ?? null,
         key.dumpRetentionSeconds ?? null,
       ],
     )
@@ -1100,7 +1100,6 @@ export function buildSharedRepo(x: SqlExecutor): Repo {
     deviceCodes: new SharedDeviceCodeRepo(x),
     observabilityShares: new SharedObservabilityShareRepo(x),
     responsesItems: new SharedResponsesItemsRepo(x),
-    searchConfig: new SharedSearchConfigRepo(x),
     proxies: new SharedProxyRepo(x),
     proxyBackoffs: new SharedProxyBackoffRepo(x),
   }
@@ -1157,77 +1156,6 @@ class SharedResponsesItemsRepo implements ResponsesItemsRepo {
 
   async deleteAll(): Promise<void> {
     await this.x.run("DELETE FROM responses_items", [])
-  }
-}
-
-class SharedSearchConfigRepo implements SearchConfigRepo {
-  constructor(private x: SqlExecutor) {}
-
-  async get(): Promise<SearchConfig | null> {
-    const row = await this.x.first<{
-      provider: string
-      tavily_api_key: string
-      microsoft_grounding_api_key: string
-      jina_api_key: string
-      passthrough_openai_search: number
-      alpha_search_upstream_id: string
-      alpha_search_model: string
-      bing_api_key: string | null
-      copilot_github_token: string | null
-      langsearch_api_key: string | null
-    }>(
-      `SELECT provider, tavily_api_key, microsoft_grounding_api_key, jina_api_key, passthrough_openai_search, alpha_search_upstream_id, alpha_search_model, bing_api_key, copilot_github_token, langsearch_api_key FROM search_config WHERE id = 1`,
-      [],
-    )
-    if (!row) return null
-    return {
-      provider: row.provider as SearchConfig["provider"],
-      tavily: { apiKey: row.tavily_api_key },
-      microsoftGrounding: { apiKey: row.microsoft_grounding_api_key },
-      jina: { apiKey: row.jina_api_key },
-      bing: { apiKey: row.bing_api_key ?? "" },
-      copilot: { githubToken: row.copilot_github_token ?? "" },
-      langsearch: { apiKey: row.langsearch_api_key ?? "" },
-      passthroughOpenAiSearch: {
-        enabled: row.passthrough_openai_search === 1,
-        upstreamId: row.alpha_search_upstream_id,
-        model: row.alpha_search_model,
-      },
-    }
-  }
-
-  async save(config: SearchConfig): Promise<void> {
-    const { provider, tavily, microsoftGrounding, jina, bing, copilot, langsearch, passthroughOpenAiSearch } = config
-    const updatedAt = new Date().toISOString()
-    await this.x.run(
-      `INSERT INTO search_config (${SEARCH_CONFIG_COLS})
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET
-         provider = excluded.provider,
-         tavily_api_key = excluded.tavily_api_key,
-         microsoft_grounding_api_key = excluded.microsoft_grounding_api_key,
-         jina_api_key = excluded.jina_api_key,
-         passthrough_openai_search = excluded.passthrough_openai_search,
-         alpha_search_upstream_id = excluded.alpha_search_upstream_id,
-         alpha_search_model = excluded.alpha_search_model,
-         bing_api_key = excluded.bing_api_key,
-         copilot_github_token = excluded.copilot_github_token,
-         langsearch_api_key = excluded.langsearch_api_key,
-         updated_at = excluded.updated_at`,
-      [
-        provider,
-        tavily.apiKey,
-        microsoftGrounding.apiKey,
-        jina.apiKey,
-        passthroughOpenAiSearch.enabled ? 1 : 0,
-        passthroughOpenAiSearch.upstreamId,
-        passthroughOpenAiSearch.model,
-        bing.apiKey,
-        copilot.githubToken,
-        langsearch.apiKey,
-        updatedAt,
-      ],
-    )
   }
 }
 

@@ -1,9 +1,9 @@
 // Ported 1:1 from copilot-gateway data-plane/tools/web-search/types.ts
 
-import type { SearchConfig, WebSearchProviderName } from '../../../shared/web-search-providers.ts'
+import type { WebSearchProviderName } from '../../../shared/web-search-providers.ts'
 import type { MessagesWebSearchErrorCode } from '@vibe-llm/protocols/messages'
 
-export type { SearchConfig, WebSearchProviderName } from '../../../shared/web-search-providers.ts'
+export type { WebSearchProviderName } from '../../../shared/web-search-providers.ts'
 
 export const DEFAULT_WEB_SEARCH_RESULT_COUNT = 10
 
@@ -100,13 +100,13 @@ export type ConfiguredWebSearchProvider =
 export type SearchConfigConnectionTestResult =
   | {
       ok: true
-      provider: SearchConfig['provider']
+      provider: WebSearchProviderName
       query: string
       results: WebSearchPreviewResult[]
     }
   | {
       ok: false
-      provider: SearchConfig['provider']
+      provider: WebSearchProviderName
       query: string
       error: { code: string; message: string }
     }

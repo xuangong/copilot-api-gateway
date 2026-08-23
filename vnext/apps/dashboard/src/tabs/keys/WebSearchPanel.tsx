@@ -3,6 +3,8 @@ import type { ApiKeyDetail, KeyPatchBody, KeyRefDescriptor, WebSearchRange, WebS
 import { useT, t as tStatic } from "../../state/i18n"
 import { DEFAULT_WS_PRIORITY } from "./helpers"
 import { Select } from "../../components/Select"
+import { useModelCatalog } from "../../state/models"
+import { testKeyWebSearch, type WebSearchTestResult } from "../../api/keys"
 
 type Engine = "langsearch" | "tavily" | "msGrounding" | "jina"
 
@@ -35,6 +37,8 @@ interface EditState {
   jinaReplacing: boolean
   priority: string[]
   copySourceId: string
+  passthroughUpstream: string
+  passthroughModel: string
 }
 
 function initialEdit(key: ApiKeyDetail): EditState {
@@ -59,6 +63,8 @@ function initialEdit(key: ApiKeyDetail): EditState {
     jinaReplacing: false,
     priority,
     copySourceId: "",
+    passthroughUpstream: key.web_search_passthrough_upstream ?? "",
+    passthroughModel: key.web_search_passthrough_model ?? "",
   }
 }
 
@@ -103,6 +109,27 @@ export function WebSearchPanel({
         ? "web_search_tavily_key"
         : "web_search_ms_grounding_key"
     return allKeys.filter((k) => k.id !== keyRow.id && k[field])
+  }
+
+  const { catalog } = useModelCatalog(keyRow.id)
+  // Only codex and custom upstreams can serve alpha_search — the same check
+  // the gateway's dispatcher makes. Filtering here stops the pair being
+  // configured into a state the gateway would only reject at request time.
+  const passthroughUpstreams = useMemo(
+    () => (catalog?.byUpstream ?? []).filter((g) => g.provider === "codex" || g.provider === "custom"),
+    [catalog],
+  )
+  const passthroughModels = useMemo(
+    () => passthroughUpstreams.find((g) => g.upstream === edit.passthroughUpstream)?.models ?? [],
+    [passthroughUpstreams, edit.passthroughUpstream],
+  )
+
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<WebSearchTestResult | null>(null)
+  const runTest = async () => {
+    setTesting(true)
+    setTestResult(await testKeyWebSearch(keyRow.id))
+    setTesting(false)
   }
 
   const currentBorrowCandidates = useMemo(
@@ -171,6 +198,12 @@ export function WebSearchPanel({
       body.web_search_ms_grounding_ref = null
     }
 
+    // Both halves or neither: a lone upstream cannot name a model to relay to,
+    // and `null` is how the API clears a field.
+    const wantsPassthrough = edit.passthroughUpstream !== "" && edit.passthroughModel !== ""
+    body.web_search_passthrough_upstream = wantsPassthrough ? edit.passthroughUpstream : null
+    body.web_search_passthrough_model = wantsPassthrough ? edit.passthroughModel : null
+
     if (edit.jinaRef) {
       body.web_search_jina_ref = edit.jinaRef
     } else if (edit.jina.trim()) {
@@ -211,9 +244,14 @@ export function WebSearchPanel({
         <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">{t("dash.webSearchLabel")}</span>
         <div className="flex items-center gap-2">
           {!editing && canEdit ? (
-            <button type="button" onClick={startEdit} className="btn-ghost text-xs">
-              {t("dash.edit")}
-            </button>
+            <>
+              <button type="button" onClick={() => void runTest()} disabled={testing} className="btn-ghost text-xs">
+                {testing ? t("dash.wsTesting") : t("dash.wsTest")}
+              </button>
+              <button type="button" onClick={startEdit} className="btn-ghost text-xs">
+                {t("dash.edit")}
+              </button>
+            </>
           ) : null}
           {editing ? (
             <>
@@ -301,6 +339,34 @@ export function WebSearchPanel({
                 onBorrowOpen={() => setBorrowPickerEngine("msGrounding")}
               />
             </div>
+          </div>
+
+          <div className="space-y-2 border-t border-themed pt-3">
+            <label className="text-xs text-themed-dim">{t("dash.wsPassthrough")}</label>
+            <p className="text-[10px] text-themed-dim">{t("dash.wsPassthroughHint")}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Select
+                value={edit.passthroughUpstream}
+                onChange={(v) => setEdit({ ...edit, passthroughUpstream: v, passthroughModel: "" })}
+                className="min-w-[200px]"
+                options={[
+                  { value: "", label: t("dash.wsPassthroughOff") },
+                  ...passthroughUpstreams.map((g) => ({ value: g.upstream, label: g.upstream })),
+                ]}
+              />
+              <Select
+                value={edit.passthroughModel}
+                onChange={(v) => setEdit({ ...edit, passthroughModel: v })}
+                className="min-w-[180px]"
+                options={[
+                  { value: "", label: t("dash.wsPassthroughPickModel") },
+                  ...passthroughModels.map((m) => ({ value: m.id, label: m.id })),
+                ]}
+              />
+            </div>
+            {passthroughUpstreams.length === 0 ? (
+              <p className="text-[10px] text-accent-amber">{t("dash.wsPassthroughNoUpstream")}</p>
+            ) : null}
           </div>
 
           {isAdmin ? (
@@ -413,6 +479,25 @@ export function WebSearchPanel({
               {keyRow.web_search_enabled ? t("dash.wsEnabledShort") : t("dash.wsDisabledShort")}
             </span>
           </div>
+          {testResult ? (
+            <div
+              className={`text-[11px] rounded px-2 py-1.5 ${
+                testResult.ok ? "bg-accent-teal/10 text-accent-teal" : "bg-accent-red/10 text-accent-red"
+              }`}
+            >
+              {testResult.ok
+                ? `${testResult.provider} — ${testResult.results?.[0]?.title ?? ""}`
+                : `${testResult.error?.code ?? "failed"}: ${testResult.error?.message ?? ""}`}
+            </div>
+          ) : null}
+          {keyRow.web_search_passthrough_upstream && keyRow.web_search_passthrough_model ? (
+            <div className="flex items-start gap-3">
+              <span className="text-xs text-themed-secondary shrink-0 mt-0.5">{t("dash.wsPassthrough")}</span>
+              <span className="text-[10px] font-mono text-themed-secondary">
+                {keyRow.web_search_passthrough_upstream} · {keyRow.web_search_passthrough_model}
+              </span>
+            </div>
+          ) : null}
           {keyRow.web_search_enabled ? (
             <div className="space-y-2">
               <div className="flex items-start gap-3">

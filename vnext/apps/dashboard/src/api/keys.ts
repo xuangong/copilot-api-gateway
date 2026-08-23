@@ -1,4 +1,4 @@
-import { api } from "./client"
+import { api, ApiError } from "./client"
 import { adaptUsageRow, type ServerUsageRow } from "./usage"
 
 // Shape returned by GET /api/keys (see src/routes/api-keys.ts keyToJson()).
@@ -35,6 +35,8 @@ export interface ApiKeyDetail {
   web_search_ms_grounding_ref: KeyRefDescriptor | null
   web_search_jina_key: string | null
   web_search_jina_ref: KeyRefDescriptor | null
+  web_search_passthrough_upstream: string | null
+  web_search_passthrough_model: string | null
   web_search_priority: string[] | null
   assignees?: KeyAssigneeBrief[]
 }
@@ -54,6 +56,8 @@ export interface KeyPatchBody {
   web_search_ms_grounding_ref?: string | null
   web_search_jina_key?: string | null
   web_search_jina_ref?: string | null
+  web_search_passthrough_upstream?: string | null
+  web_search_passthrough_model?: string | null
 }
 
 export interface EngineUsage {
@@ -148,4 +152,33 @@ export async function getMonthTokenUsage(keyId: string): Promise<TokenUsageRecor
     query: { start: monthStartHour(0), end: monthStartHour(1), key_id: keyId },
   })
   return rows.map(adaptUsageRow)
+}
+
+/** One fixed query run on the key's own engines — see the gateway's
+ *  `test-connection.ts` for why this exists. */
+export interface WebSearchTestResult {
+  ok: boolean
+  provider: string
+  query: string
+  results?: Array<{ title: string; url: string; previewText: string }>
+  error?: { code: string; message: string }
+}
+
+export async function testKeyWebSearch(id: string): Promise<WebSearchTestResult> {
+  try {
+    return await api<WebSearchTestResult>(
+      `/api/keys/${encodeURIComponent(id)}/web-search-test`,
+      { method: "POST" },
+    )
+  } catch (e) {
+    // The route answers 400 on a failed test, which `api` throws on — but a
+    // failed test is a result, not a transport error. `ApiError` carries the
+    // parsed body, so unwrap it rather than re-parsing the message.
+    if (e instanceof ApiError) {
+      const body = e.body as WebSearchTestResult | undefined
+      if (body && typeof body.ok === "boolean") return body
+    }
+    const message = e instanceof Error ? e.message : String(e)
+    return { ok: false, provider: "", query: "", error: { code: "request_failed", message } }
+  }
 }

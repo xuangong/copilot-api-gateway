@@ -1,6 +1,5 @@
 import type { BillingDimension, ModelPricing, UpstreamKind, UpstreamRecord } from "@vibe-llm/protocols/common"
 import type { ProxyRepo, ProxyBackoffRepo } from "@vibe-core/proxy-repo"
-import type { SearchConfig } from "../shared/web-search-providers.ts"
 import type { ApiKeyId, DeviceCodeToken, GitHubAccountId, InviteCodeId, ResponsesItemId, SessionToken, UpstreamId, UserId } from "./branded-ids.ts"
 
 export type { SearchConfig, WebSearchProviderName } from "../shared/web-search-providers.ts"
@@ -33,6 +32,14 @@ export interface ApiKey {
   webSearchJinaKey?: string
   /** Same as above for Jina. */
   webSearchJinaRef?: string
+  /**
+   * `/alpha/search` passthrough: relay this key's Codex searches to this
+   * upstream and model instead of running them on the key's own engines. Only
+   * a codex or custom upstream that serves the model on `alpha_search`
+   * qualifies. Both unset (the default) means run locally.
+   */
+  webSearchPassthroughUpstream?: string
+  webSearchPassthroughModel?: string
   /** Rolling window in seconds for per-key request dumps. `null` = capture disabled. */
   dumpRetentionSeconds?: number | null
 }
@@ -441,11 +448,6 @@ export interface ResponsesItemsRepo {
  * Ported 1:1 from copilot-gateway `SearchConfigRepo` — see repo/types.ts:255
  * in the reference project.
  */
-export interface SearchConfigRepo {
-  get(): Promise<SearchConfig | null>
-  save(config: SearchConfig): Promise<void>
-}
-
 export interface Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
@@ -464,7 +466,6 @@ export interface Repo {
   observabilityShares: ObservabilityShareRepo
   deviceCodes: DeviceCodeRepo
   responsesItems: ResponsesItemsRepo
-  searchConfig: SearchConfigRepo
   proxies: ProxyRepo
   proxyBackoffs: ProxyBackoffRepo
 }

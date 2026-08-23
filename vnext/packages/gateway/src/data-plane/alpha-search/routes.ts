@@ -3,7 +3,7 @@
  * project (`copilot-gateway/data-plane/alpha-search/routes.ts`).
  *
  * Two modes:
- *   - passthrough (`SearchConfig.passthroughOpenAiSearch.enabled=true`):
+ *   - passthrough (the caller's key names an upstream + model):
  *     dispatches to the pinned codex/custom upstream and relays the raw
  *     Response verbatim (opaque `encrypted_output` preserved).
  *   - local (default): validates commands against the local
@@ -20,8 +20,8 @@ import type { Context } from 'hono'
 import { z } from 'zod'
 import type { Env } from '../../app.ts'
 import type { ApiKeyId } from '../../repo/branded-ids.ts'
+import { getRepo } from '../../repo/index.ts'
 import { readAuth } from '../chat-flow/shared/gateway-ctx.ts'
-import { loadSearchConfig } from '../tools/web-search/search-config.ts'
 import { providerNameFor } from '../tools/web-search/key-config.ts'
 import { resolveWebSearchForKey } from '../tools/web-search/resolve-for-key.ts'
 import type { ConfiguredWebSearchProvider } from '../tools/web-search/types.ts'
@@ -109,10 +109,20 @@ export const alphaSearchHandler = async (c: Context<{ Bindings: Env }>): Promise
   const body = parsedBody.data
 
   const auth = readAuth(c)
-  const cfg = await loadSearchConfig()
+  // Passthrough is configured on the key, like the engines: it names an
+  // upstream, and upstreams are owner-scoped. Both fields set means relay;
+  // otherwise the search runs locally on this key's own engines.
+  const callerKey = auth.apiKeyId
+    ? await getRepo().apiKeys.getById(auth.apiKeyId as ApiKeyId).catch(() => null)
+    : null
+  const passthroughUpstream = callerKey?.webSearchPassthroughUpstream ?? ''
+  const passthroughModel = callerKey?.webSearchPassthroughModel ?? ''
 
-  if (cfg.passthroughOpenAiSearch.enabled) {
-    const dispatcher = await resolveAlphaSearchDispatcher({ config: cfg.passthroughOpenAiSearch, auth })
+  if (passthroughUpstream !== '' && passthroughModel !== '') {
+    const dispatcher = await resolveAlphaSearchDispatcher({
+      config: { upstreamId: passthroughUpstream, model: passthroughModel },
+      auth,
+    })
     const headers = new Headers()
     const turnMetadata = c.req.header('x-codex-turn-metadata')
     if (turnMetadata !== undefined) headers.set('x-codex-turn-metadata', turnMetadata)
