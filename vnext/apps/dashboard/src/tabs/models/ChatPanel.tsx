@@ -827,7 +827,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     <div
       className={
         fullscreen
-          ? "fixed inset-0 z-50 flex flex-col min-h-0 pg-chat-surface bg-surface-900"
+          ? "fixed inset-0 z-50 flex flex-col min-h-0 pg-chat-surface pg-fullscreen bg-surface-900"
           : "flex flex-col h-full min-h-0 pg-chat-surface"
       }
     >
@@ -964,15 +964,6 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
                 <div key={i} className={"pg-row " + (m.role === "user" ? "pg-row-user" : "")}>
                   {isAssistant && <div className="pg-avatar">AI</div>}
                   <div className={"pg-bubble " + (m.role === "user" ? "pg-bubble-user" : "pg-bubble-assistant")}>
-                    {isAssistant && m.text && (
-                      <button
-                        className="pg-copy"
-                        onClick={() => onCopy(i, m.text)}
-                        title={t("dash.playground.copy")}
-                      >
-                        {copiedIdx === i ? t("dash.playground.copied") : t("dash.playground.copy")}
-                      </button>
-                    )}
                     {showDots ? (
                       <span className="pg-dots text-themed-dim"><span/><span/><span/></span>
                     ) : m.parts ? (
@@ -1056,13 +1047,23 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
                         ))}
                       </div>
                     )}
-                    {isAssistant && (m.usage || m.durationMs != null) && (
+                    {isAssistant && (m.text || m.usage || m.durationMs != null) && (
                       <div className="pg-bubble-meta">
-                        {t("dash.playground.usage", {
-                          tin: m.usage?.input_tokens ?? "—",
-                          tout: m.usage?.output_tokens ?? "—",
-                          ms: m.durationMs ?? "—",
-                        })}
+                        {(m.usage || m.durationMs != null) &&
+                          t("dash.playground.usage", {
+                            tin: m.usage?.input_tokens ?? "—",
+                            tout: m.usage?.output_tokens ?? "—",
+                            ms: m.durationMs ?? "—",
+                          })}
+                        {m.text && (
+                          <button
+                            className="pg-copy"
+                            onClick={() => onCopy(i, m.text)}
+                            title={t("dash.playground.copy")}
+                          >
+                            {copiedIdx === i ? t("dash.playground.copied") : t("dash.playground.copy")}
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>

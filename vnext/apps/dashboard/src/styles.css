@@ -364,6 +364,13 @@ select option {
   flex-direction: column;
   gap: 20px;
 }
+/* Fullscreen exists to get more room; 760px is the cap for the split view,
+   where the model list takes the rest. Still capped — prose past ~110ch is
+   hard to read — just far enough to be worth the click. */
+.pg-fullscreen .pg-thread,
+.pg-fullscreen .pg-composer {
+  max-width: 1100px;
+}
 
 /* Row that holds avatar + bubble */
 .pg-row {
@@ -410,6 +417,12 @@ select option {
   font-size: 11px;
   color: var(--text-dim);
   font-family: "IBM Plex Mono", monospace;
+  /* Footer for the reply: token counts on the left, actions on the right. */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 19px;
 }
 
 /* Inline web_search / tool progress bubbles */
@@ -449,14 +462,17 @@ select option {
 
 /* Copy button on assistant bubble */
 .pg-copy {
-  position: absolute;
-  top: -4px;
-  right: 0;
+  /* In the reply's own footer, not floating over the turn above it. Absolute
+     positioning put it in the gap between bubbles, where it read as belonging
+     to whichever message it happened to overlap. */
+  margin-left: auto;
+  flex-shrink: 0;
   font-size: 11px;
-  padding: 2px 6px;
+  line-height: 1;
+  padding: 3px 6px;
   border-radius: 4px;
-  border: 1px solid transparent;
-  background: transparent;
+  border: 1px solid var(--input-border);
+  background: var(--surface-800);
   color: var(--text-dim);
   cursor: pointer;
   opacity: 0;
