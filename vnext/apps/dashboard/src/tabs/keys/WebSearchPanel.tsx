@@ -480,14 +480,28 @@ export function WebSearchPanel({
             </span>
           </div>
           {testResult ? (
+            // The one job of a test button is to say whether search works. Lead
+            // with the verdict and label the evidence — a bare engine name and
+            // a page title read as neither.
             <div
-              className={`text-[11px] rounded px-2 py-1.5 ${
+              className={`text-[11px] rounded px-2 py-1.5 space-y-1 ${
                 testResult.ok ? "bg-accent-teal/10 text-accent-teal" : "bg-accent-red/10 text-accent-red"
               }`}
             >
-              {testResult.ok
-                ? `${testResult.provider} — ${testResult.results?.[0]?.title ?? ""}`
-                : `${testResult.error?.code ?? "failed"}: ${testResult.error?.message ?? ""}`}
+              <div className="font-medium">
+                {testResult.ok
+                  ? t("dash.wsTestOk", {
+                      engine: testResult.provider,
+                      n: testResult.results?.length ?? 0,
+                    })
+                  : t("dash.wsTestFailed", { reason: testResult.error?.message ?? testResult.error?.code ?? "" })}
+              </div>
+              {testResult.ok && testResult.results?.[0] ? (
+                <div className="text-themed-dim">
+                  {t("dash.wsTestSample", { query: testResult.query })}
+                  <span className="block truncate">{testResult.results[0].title}</span>
+                </div>
+              ) : null}
             </div>
           ) : null}
           {keyRow.web_search_passthrough_upstream && keyRow.web_search_passthrough_model ? (
