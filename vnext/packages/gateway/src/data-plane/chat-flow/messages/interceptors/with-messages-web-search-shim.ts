@@ -40,8 +40,8 @@ import type {
 import { MESSAGES_WEB_SEARCH_ERROR_CODES } from '@vibe-llm/protocols/messages'
 import { decodeBase64UrlJson, encodeBase64UrlJson } from '../../../../data-plane/shared/base64url-json.ts'
 import type { ApiKeyId } from '../../../../repo/branded-ids.ts'
-import { resolveConfiguredWebSearchProvider } from '../../../tools/web-search/provider.ts'
-import { loadSearchConfig } from '../../../tools/web-search/search-config.ts'
+import { providerNameFor } from '../../../tools/web-search/key-config.ts'
+import { resolveWebSearchForKey } from '../../../tools/web-search/resolve-for-key.ts'
 import { searchWebAndRecordUsage } from '../../../tools/web-search/search.ts'
 import type {
   WebSearchProvider,
@@ -1117,35 +1117,18 @@ const invalidRequestUpstreamError = (
   ),
 })
 
+/**
+ * `null` means the key can't search — switched off, or switched on with no
+ * engine whose credential resolved. That is a configuration state, not a
+ * failure: the caller drops the hosted tool and lets the model answer without
+ * search, rather than turning a gap in the dashboard into a 500 mid-request.
+ */
 const resolveActiveMessagesWebSearchProvider = async (
   apiKeyId: ApiKeyId,
-): Promise<
-  | { type: 'ok'; provider: ActiveMessagesWebSearchProvider }
-  | LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>
-> => {
-  const searchConfig = await loadSearchConfig()
-  const configuredProvider = resolveConfiguredWebSearchProvider(searchConfig)
-
-  if (configuredProvider.type === 'enabled') {
-    return {
-      type: 'ok',
-      provider: {
-        providerName: configuredProvider.provider,
-        impl: configuredProvider.impl,
-        apiKeyId,
-      },
-    }
-  }
-
-  return {
-    type: 'internal-error',
-    status: 500,
-    error: new Error(
-      configuredProvider.type === 'disabled'
-        ? 'Native Messages web search requires an enabled search provider.'
-        : `Native Messages web search is missing the configured ${configuredProvider.provider} credential.`,
-    ),
-  }
+): Promise<ActiveMessagesWebSearchProvider | null> => {
+  const resolved = await resolveWebSearchForKey(apiKeyId)
+  if (resolved.type !== 'enabled') return null
+  return { providerName: providerNameFor(resolved.engines[0]!), impl: resolved.impl, apiKeyId }
 }
 
 type PreparedMessagesWebSearchShimState = Exclude<MessagesWebSearchShimState, { mode: 'inactive' }>
@@ -1154,6 +1137,17 @@ type PrepareMessagesWebSearchInvocationResult =
   | { type: 'inactive' }
   | { type: 'invalid-request'; message: string }
   | { type: 'prepared'; state: PreparedMessagesWebSearchShimState }
+
+/** The request as it would have looked had the caller never asked for search. */
+const withoutNativeWebSearchTool = (payload: MessagesPayload): MessagesPayload => {
+  const tools = payload.tools as unknown as MessagesTool[] | undefined
+  if (!Array.isArray(tools)) return payload
+  const kept = tools.filter(t => !isNativeWebSearchToolDefinition(t))
+  const next = { ...payload, tools: kept as unknown as MessagesPayload['tools'] }
+  // An empty `tools` array is not the same as no tools to every upstream.
+  if (kept.length === 0) delete next.tools
+  return next
+}
 
 const prepareMessagesWebSearchInvocation = (
   invocation: Invocation,
@@ -1185,15 +1179,25 @@ export const withMessagesWebSearchShim: MessagesInterceptor = async (invocation,
   if (prepared.type === 'inactive') return await run()
   if (prepared.type === 'invalid-request') return invalidRequestUpstreamError(prepared.message)
 
-  const providerResolution = prepared.state.mode === 'active'
-    ? await resolveActiveMessagesWebSearchProvider((ctx.apiKeyId ?? '') as ApiKeyId)
-    : { type: 'ok' as const, provider: undefined }
-  if (providerResolution.type !== 'ok') return providerResolution
+  let provider: ActiveMessagesWebSearchProvider | undefined
+  if (prepared.state.mode === 'active') {
+    const resolved = await resolveActiveMessagesWebSearchProvider((ctx.apiKeyId ?? '') as ApiKeyId)
+    if (!resolved) {
+      // No engine for this key. `prepare` has already rewritten the native
+      // tool into a client `web_search` function tool for the shim to execute;
+      // leaving that in place would hand the caller a tool it never declared
+      // and nobody runs. Put the original payload back, minus the hosted tool,
+      // and let the model answer without search.
+      invocation.payload = withoutNativeWebSearchTool(basePayload) as unknown as Record<string, unknown>
+      return await run()
+    }
+    provider = resolved
+  }
 
   const result = await run()
   if (result.type !== 'events') return result
 
-  const events = rewriteMessagesWebSearchEventsToNative(result.events, prepared.state, providerResolution.provider)
+  const events = rewriteMessagesWebSearchEventsToNative(result.events, prepared.state, provider)
 
   // A Messages client can honour `pause_turn` itself; anything else cannot.
   if ((invocation.sourceApi ?? 'messages') === 'messages') return { ...result, events }
@@ -1204,7 +1208,7 @@ export const withMessagesWebSearchShim: MessagesInterceptor = async (invocation,
       invocation,
       basePayload,
       run,
-      provider: providerResolution.provider,
+      provider,
     }),
   }
 }

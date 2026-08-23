@@ -118,13 +118,25 @@ test('GET /api/export raw returns live secrets', async () => {
 })
 
 test('GET /api/export?redact=1 hides secrets', async () => {
-  store.apiKeys.set('k1', mkKey('k1', 'secret-key'))
+  // Every per-engine web-search credential is a secret too, not just the API
+  // key itself — an export that leaks one is as bad as leaking the key.
+  store.apiKeys.set('k1', {
+    ...mkKey('k1', 'secret-key'),
+    webSearchLangsearchKey: 'ls-secret',
+    webSearchTavilyKey: 'tv-secret',
+    webSearchMsGroundingKey: 'ms-secret',
+    webSearchJinaKey: 'jn-secret',
+  })
   store.accounts.set(1, mkAccount(1, 'gh-token'))
   store.upstreams.set('u1', mkUpstream('u1', 'up-secret'))
 
   const res = await buildApp({ isAdmin: true }).request('/api/export?redact=1')
   const body = await res.json() as { apiKeys: ApiKey[]; githubAccounts: GitHubAccount[]; upstreams: UpstreamRecord[] }
   expect(body.apiKeys[0].key).toBe(REDACTED)
+  expect(body.apiKeys[0].webSearchLangsearchKey).toBe(REDACTED)
+  expect(body.apiKeys[0].webSearchTavilyKey).toBe(REDACTED)
+  expect(body.apiKeys[0].webSearchMsGroundingKey).toBe(REDACTED)
+  expect(body.apiKeys[0].webSearchJinaKey).toBe(REDACTED)
   expect(body.githubAccounts[0].token).toBe(REDACTED)
   expect(body.upstreams[0].config.apiKey).toBe(REDACTED)
 })

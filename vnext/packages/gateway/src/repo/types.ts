@@ -30,6 +30,9 @@ export interface ApiKey {
   webSearchTavilyRef?: string
   /** Same as above for Microsoft Grounding. */
   webSearchMsGroundingRef?: string
+  webSearchJinaKey?: string
+  /** Same as above for Jina. */
+  webSearchJinaRef?: string
   /** Rolling window in seconds for per-key request dumps. `null` = capture disabled. */
   dumpRetentionSeconds?: number | null
 }

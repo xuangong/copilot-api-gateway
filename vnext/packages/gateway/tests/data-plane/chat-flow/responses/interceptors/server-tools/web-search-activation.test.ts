@@ -34,6 +34,17 @@ const searchConfig = (): SearchConfig => ({
 
 const stubRepo = (): Repo => ({
   upstreams: { list: async () => [] },
+  apiKeys: {
+    getById: async () => ({
+      id: 'key_test',
+      name: 'k',
+      key: 'sk',
+      createdAt: '2026-01-01T00:00:00Z',
+      webSearchEnabled: true,
+      webSearchPriority: ['tavily'],
+      webSearchTavilyKey: 'tvly-test',
+    }),
+  },
   searchConfig: { get: async () => searchConfig(), save: async () => {} },
   webSearchUsage: { record: async () => {} },
   webSearchEngineUsage: { record: async () => {} },

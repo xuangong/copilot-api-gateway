@@ -41,5 +41,5 @@ export async function copyToClipboard(text: string): Promise<void> {
   }
 }
 
-export const DEFAULT_WS_PRIORITY = ["msGrounding", "langsearch", "tavily", "bing", "copilot"] as const
+export const DEFAULT_WS_PRIORITY = ["msGrounding", "langsearch", "tavily", "jina", "bing", "copilot"] as const
 export type WsEngineId = (typeof DEFAULT_WS_PRIORITY)[number]

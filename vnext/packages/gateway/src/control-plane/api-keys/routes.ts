@@ -76,6 +76,7 @@ function keyToJson(k: ApiKey, ownerName?: string, isOwner?: boolean, sourceMap?:
   const langsearchRef = k.webSearchLangsearchRef ? refDescriptor(k.webSearchLangsearchRef, map) : null
   const tavilyRef = k.webSearchTavilyRef ? refDescriptor(k.webSearchTavilyRef, map) : null
   const msGroundingRef = k.webSearchMsGroundingRef ? refDescriptor(k.webSearchMsGroundingRef, map) : null
+  const jinaRef = k.webSearchJinaRef ? refDescriptor(k.webSearchJinaRef, map) : null
   // Response is dual-cased: snake_case fields are the historical shape (kept
   // for the dashboard + any snake_case consumer); camelCase aliases exist so
   // llm-relay's Rust `ApiKey` struct (which has #[serde(rename_all = "camelCase")])
@@ -95,6 +96,8 @@ function keyToJson(k: ApiKey, ownerName?: string, isOwner?: boolean, sourceMap?:
     web_search_tavily_ref: tavilyRef,
     web_search_ms_grounding_key: msGroundingRef ? null : maskKey(k.webSearchMsGroundingKey),
     web_search_ms_grounding_ref: msGroundingRef,
+    web_search_jina_key: jinaRef ? null : maskKey(k.webSearchJinaKey),
+    web_search_jina_ref: jinaRef,
     web_search_priority: k.webSearchPriority ?? null,
     // camelCase aliases for llm-relay compatibility.
     createdAt: k.createdAt,
@@ -301,6 +304,8 @@ apiKeysRouter.patch('/:id', async (c) => {
     web_search_langsearch_ref?: string | null
     web_search_tavily_ref?: string | null
     web_search_ms_grounding_ref?: string | null
+    web_search_jina_key?: string | null
+    web_search_jina_ref?: string | null
   }
   const existing = await getApiKeyById(id)
   if (!existing) return c.json({ error: 'Key not found' }, 404)
@@ -328,6 +333,7 @@ apiKeysRouter.patch('/:id', async (c) => {
     ['langsearch', body.web_search_langsearch_key, body.web_search_langsearch_ref, 'webSearchLangsearchKey', 'webSearchLangsearchRef'],
     ['tavily', body.web_search_tavily_key, body.web_search_tavily_ref, 'webSearchTavilyKey', 'webSearchTavilyRef'],
     ['ms_grounding', body.web_search_ms_grounding_key, body.web_search_ms_grounding_ref, 'webSearchMsGroundingKey', 'webSearchMsGroundingRef'],
+    ['jina', body.web_search_jina_key, body.web_search_jina_ref, 'webSearchJinaKey', 'webSearchJinaRef'],
   ]
   const mutableUpdated = updated as unknown as Record<string, unknown>
   for (const [engineLabel, literalVal, refVal, literalField, refField] of pairs) {

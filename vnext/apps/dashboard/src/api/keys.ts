@@ -33,6 +33,8 @@ export interface ApiKeyDetail {
   web_search_tavily_ref: KeyRefDescriptor | null
   web_search_ms_grounding_key: string | null
   web_search_ms_grounding_ref: KeyRefDescriptor | null
+  web_search_jina_key: string | null
+  web_search_jina_ref: KeyRefDescriptor | null
   web_search_priority: string[] | null
   assignees?: KeyAssigneeBrief[]
 }
@@ -50,6 +52,8 @@ export interface KeyPatchBody {
   web_search_langsearch_ref?: string | null
   web_search_tavily_ref?: string | null
   web_search_ms_grounding_ref?: string | null
+  web_search_jina_key?: string | null
+  web_search_jina_ref?: string | null
 }
 
 export interface EngineUsage {

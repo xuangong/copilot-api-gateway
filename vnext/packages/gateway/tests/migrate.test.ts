@@ -63,6 +63,9 @@ describe("applyMigrations", () => {
     db.exec("ALTER TABLE api_keys RENAME COLUMN quota_requests_per_month TO quota_requests_per_day")
     db.exec("ALTER TABLE api_keys RENAME COLUMN quota_tokens_per_month TO quota_tokens_per_day")
     db.exec("ALTER TABLE api_keys DROP COLUMN quota_cost_per_month")
+    // Same for 0005's per-key jina credential columns.
+    db.exec("ALTER TABLE api_keys DROP COLUMN web_search_jina_key")
+    db.exec("ALTER TABLE api_keys DROP COLUMN web_search_jina_ref")
     db.exec("INSERT INTO users (id, name, created_at) VALUES ('u1', 'someone', '2026-01-01')")
 
     applyMigrations(db)

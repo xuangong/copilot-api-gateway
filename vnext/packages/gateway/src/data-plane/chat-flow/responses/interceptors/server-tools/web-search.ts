@@ -36,8 +36,9 @@ import {
   type WebSearchFilters,
 } from '../../../../tools/web-search/operations.ts'
 import { planWebSearchCalls } from '../../../../tools/web-search/plan-operations.ts'
-import { resolveConfiguredWebSearchProvider } from '../../../../tools/web-search/provider.ts'
-import { loadSearchConfig } from '../../../../tools/web-search/search-config.ts'
+import type { ApiKeyId } from '../../../../../repo/branded-ids.ts'
+import { providerNameFor } from '../../../../tools/web-search/key-config.ts'
+import { resolveWebSearchForKey } from '../../../../tools/web-search/resolve-for-key.ts'
 import {
   WEB_SEARCH_SHIM_TOOL_DESCRIPTION,
   WEB_SEARCH_SHIM_TOOL_NAME,
@@ -566,16 +567,22 @@ export const webSearchServerTool: ServerToolRegistration<Invocation, ServerToolR
   }
 
   const { filters } = prepared
-  const searchConfig = await loadSearchConfig()
+  // Resolved here rather than lazily inside `getProvider`: with no engine for
+  // this key the shim must not engage at all, so the hosted tool passes
+  // through untouched instead of being rewritten into a search that can never
+  // run.
+  const resolved = await resolveWebSearchForKey(requestCtx.apiKeyId as ApiKeyId | undefined)
+  if (resolved.type !== 'enabled') return { type: 'inactive' }
+  const configuredProvider: Promise<ConfiguredWebSearchProvider> = Promise.resolve({
+    type: 'enabled',
+    provider: providerNameFor(resolved.engines[0]!),
+    impl: resolved.impl,
+  })
   const includeArray = Array.isArray(invocation.payload.include) ? (invocation.payload.include as string[]) : []
-  let configuredProvider: Promise<ConfiguredWebSearchProvider> | undefined
   const state: ShimState = {
     filters,
     pageCache: new Map(),
-    getProvider: () => {
-      configuredProvider ??= Promise.resolve(resolveConfiguredWebSearchProvider(searchConfig))
-      return configuredProvider
-    },
+    getProvider: () => configuredProvider,
     apiKeyId: requestCtx.apiKeyId,
     includeSearchResults: includeArray.includes('web_search_call.results'),
     includeSearchActionSources: includeArray.includes('web_search_call.action.sources'),

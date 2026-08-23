@@ -40,6 +40,7 @@ const SECRET_API_KEY_FIELDS: ReadonlyArray<keyof ApiKey> = [
   'webSearchLangsearchKey',
   'webSearchTavilyKey',
   'webSearchMsGroundingKey',
+  'webSearchJinaKey',
 ]
 
 const SECRET_CONFIG_KEY_RE = /token|apikey|api_key|authorization|password|secret/i

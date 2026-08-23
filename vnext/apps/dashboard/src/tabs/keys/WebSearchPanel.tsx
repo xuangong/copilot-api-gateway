@@ -4,7 +4,7 @@ import { useT, t as tStatic } from "../../state/i18n"
 import { DEFAULT_WS_PRIORITY } from "./helpers"
 import { Select } from "../../components/Select"
 
-type Engine = "langsearch" | "tavily" | "msGrounding"
+type Engine = "langsearch" | "tavily" | "msGrounding" | "jina"
 
 interface Props {
   keyRow: ApiKeyDetail
@@ -24,12 +24,15 @@ interface EditState {
   langsearch: string
   tavily: string
   msGrounding: string
+  jina: string
   langsearchRef: string
   tavilyRef: string
   msGroundingRef: string
+  jinaRef: string
   langsearchReplacing: boolean
   tavilyReplacing: boolean
   msGroundingReplacing: boolean
+  jinaReplacing: boolean
   priority: string[]
   copySourceId: string
 }
@@ -45,12 +48,15 @@ function initialEdit(key: ApiKeyDetail): EditState {
     langsearch: "",
     tavily: "",
     msGrounding: "",
+    jina: "",
     langsearchRef: key.web_search_langsearch_ref?.id ?? "",
     tavilyRef: key.web_search_tavily_ref?.id ?? "",
     msGroundingRef: key.web_search_ms_grounding_ref?.id ?? "",
+    jinaRef: key.web_search_jina_ref?.id ?? "",
     langsearchReplacing: false,
     tavilyReplacing: false,
     msGroundingReplacing: false,
+    jinaReplacing: false,
     priority,
     copySourceId: "",
   }
@@ -119,6 +125,7 @@ export function WebSearchPanel({
     if (borrowPickerEngine === "langsearch") setEdit({ ...edit, langsearchRef: id })
     else if (borrowPickerEngine === "tavily") setEdit({ ...edit, tavilyRef: id })
     else if (borrowPickerEngine === "msGrounding") setEdit({ ...edit, msGroundingRef: id })
+    else if (borrowPickerEngine === "jina") setEdit({ ...edit, jinaRef: id })
     setBorrowPickerEngine("")
   }
 
@@ -164,6 +171,16 @@ export function WebSearchPanel({
       body.web_search_ms_grounding_ref = null
     }
 
+    if (edit.jinaRef) {
+      body.web_search_jina_ref = edit.jinaRef
+    } else if (edit.jina.trim()) {
+      body.web_search_jina_key = edit.jina.trim()
+    } else if (edit.jinaReplacing) {
+      body.web_search_jina_key = null
+    } else if (keyRow.web_search_jina_ref) {
+      body.web_search_jina_ref = null
+    }
+
     const ok = await onSave(body)
     if (ok) setEditing(false)
   }
@@ -180,6 +197,7 @@ export function WebSearchPanel({
       langsearch: { id: "langsearch", label: "LangSearch", ref: keyRow.web_search_langsearch_ref, key: keyRow.web_search_langsearch_key, builtin: false },
       tavily: { id: "tavily", label: "Tavily", ref: keyRow.web_search_tavily_ref, key: keyRow.web_search_tavily_key, builtin: false },
       msGrounding: { id: "msGrounding", label: "MS Grounding", ref: keyRow.web_search_ms_grounding_ref, key: keyRow.web_search_ms_grounding_key, builtin: false },
+      jina: { id: "jina", label: "Jina", ref: keyRow.web_search_jina_ref, key: keyRow.web_search_jina_key, builtin: false },
       bing: { id: "bing", label: "Bing", ref: null, key: null, builtin: true },
       copilot: { id: "copilot", label: "Copilot", ref: null, key: null, builtin: true },
     }
@@ -252,6 +270,20 @@ export function WebSearchPanel({
               onStartReplace={() => setEdit({ ...edit, tavilyReplacing: true, tavily: "" })}
               onChangeValue={(v) => setEdit({ ...edit, tavily: v })}
               onBorrowOpen={() => setBorrowPickerEngine("tavily")}
+            />
+            <EngineEditorRow
+              label={t("dash.wsJinaKey")}
+              engine="jina"
+              refId={edit.jinaRef}
+              refDescriptor={keyRow.web_search_jina_ref}
+              existingMasked={keyRow.web_search_jina_key}
+              replacing={edit.jinaReplacing}
+              value={edit.jina}
+              allKeys={allKeys}
+              onUnlinkRef={() => setEdit({ ...edit, jinaRef: "" })}
+              onStartReplace={() => setEdit({ ...edit, jinaReplacing: true, jina: "" })}
+              onChangeValue={(v) => setEdit({ ...edit, jina: v })}
+              onBorrowOpen={() => setBorrowPickerEngine("jina")}
             />
             <div className="sm:col-span-2">
               <EngineEditorRow

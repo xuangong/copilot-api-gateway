@@ -48,8 +48,8 @@ import {
   type WebSearchFilters,
 } from '../../../tools/web-search/operations.ts'
 import { planWebSearchCalls } from '../../../tools/web-search/plan-operations.ts'
-import { resolveConfiguredWebSearchProvider } from '../../../tools/web-search/provider.ts'
-import { loadSearchConfig } from '../../../tools/web-search/search-config.ts'
+import { providerNameFor } from '../../../tools/web-search/key-config.ts'
+import { resolveWebSearchForKey } from '../../../tools/web-search/resolve-for-key.ts'
 import {
   WEB_SEARCH_SHIM_TOOL_DESCRIPTION,
   WEB_SEARCH_SHIM_TOOL_NAME,
@@ -180,17 +180,19 @@ export const withChatCompletionsWebSearchShim: ChatCompletionsInterceptor = asyn
     )
   }
 
-  const configured = resolveConfiguredWebSearchProvider(await loadSearchConfig())
-  if (configured.type !== 'enabled') {
-    return {
-      type: 'internal-error',
-      status: 500,
-      error: new Error(
-        configured.type === 'disabled'
-          ? 'Chat Completions web search requires an enabled search provider.'
-          : `Chat Completions web search is missing the configured ${configured.provider} credential.`,
-      ),
-    }
+  // No engine for this key — switched off, or switched on with nothing
+  // configured. Leave `web_search_options` in place and run the request
+  // unchanged: the option is advisory, and failing here would turn a gap in
+  // the dashboard into a 500 the caller can do nothing about.
+  const resolved = await resolveWebSearchForKey(ctx.apiKeyId as ApiKeyId | undefined)
+  if (resolved.type !== 'enabled') {
+    delete inv.payload.web_search_options
+    return run()
+  }
+  const configured = {
+    type: 'enabled' as const,
+    provider: providerNameFor(resolved.engines[0]!),
+    impl: resolved.impl,
   }
 
   // Rewrite the request: the option is gateway-side only and must never
