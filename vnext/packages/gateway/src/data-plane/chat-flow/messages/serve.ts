@@ -79,7 +79,11 @@ const messagesHooks: ServeTemplateHooks<
     payload: a.payload,
     // Structural typing: extra apiKeyId on auth is ignored by attempt.
     auth: a.auth,
-    ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal },
+    // apiKeyId reaches the interceptors the same way the Responses flow does
+    // (responses/serve.ts:178). The web-search shim resolves the caller's
+    // engines from their key, so without it every Messages request looks like
+    // it has no key and never searches.
+    ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId },
     telemetryCtx: a.telemetryCtx,
   }),
 

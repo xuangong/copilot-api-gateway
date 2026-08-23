@@ -40,9 +40,21 @@ const searchConfig = (): SearchConfig => ({
   tavily: { apiKey: 'tvly-test' },
 })
 
-const stubRepo = (config: SearchConfig): Repo => ({
+/** A key with web search on and one usable engine — the shims read this now. */
+const searchKey = (over: Record<string, unknown> = {}) => ({
+  id: 'key_test',
+  name: 'k',
+  key: 'sk',
+  createdAt: '2026-01-01T00:00:00Z',
+  webSearchEnabled: true,
+  webSearchPriority: ['tavily'],
+  webSearchTavilyKey: 'tvly-test',
+  ...over,
+})
+
+const stubRepo = (key: Record<string, unknown> = searchKey()): Repo => ({
   upstreams: { list: async () => [] },
-  searchConfig: { get: async () => config, save: async () => {} },
+  apiKeys: { getById: async () => key },
   webSearchUsage: { record: async () => {} },
   webSearchEngineUsage: { record: async () => {} },
 } as unknown as Repo)
@@ -121,7 +133,7 @@ let originalFetch: typeof globalThis.fetch
 
 beforeEach(() => {
   originalFetch = globalThis.fetch
-  initRepo(stubRepo(searchConfig()))
+  initRepo(stubRepo())
   globalThis.fetch = (async () =>
     new Response(
       JSON.stringify({ results: [{ url: 'https://a.example/', title: 'A', content: 'sunny' }] }),
@@ -142,6 +154,34 @@ describe('messages source (native)', () => {
     expect(script.calls()).toBe(1)
     const delta = out.find(e => e.type === 'message_delta')
     expect((delta?.delta as { stop_reason?: string }).stop_reason).toBe('pause_turn')
+  })
+})
+
+describe('keys that cannot search', () => {
+  // Regression: `messages/serve.ts` built the interceptor context without
+  // `apiKeyId`, so every request looked keyless. The shim resolves engines
+  // from the caller's key, so search silently stopped happening — and the
+  // rewritten client `web_search` tool leaked to the caller, who had never
+  // declared it and would never execute it.
+  test('leaves no injected tool behind when the context carries no key', async () => {
+    const script = scriptedRun([answerTurn('answered without searching')])
+    const inv = invocation('messages')
+    const out = await withMessagesWebSearchShim(inv, { requestStartedAt: 0 }, script.run)
+
+    expect(out.type).toBe('events')
+    expect(script.calls()).toBe(1)
+    expect(JSON.stringify(inv.payload)).not.toContain('web_search')
+  })
+
+  test('answers without searching when the key has web search off', async () => {
+    initRepo(stubRepo(searchKey({ webSearchEnabled: false })))
+    const script = scriptedRun([answerTurn('answered without searching')])
+    const inv = invocation('messages')
+    const out = await withMessagesWebSearchShim(inv, ctx, script.run)
+
+    expect(out.type).toBe('events')
+    expect(script.calls()).toBe(1)
+    expect(JSON.stringify(inv.payload)).not.toContain('web_search')
   })
 })
 
