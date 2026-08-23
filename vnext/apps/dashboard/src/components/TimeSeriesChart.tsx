@@ -98,6 +98,7 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
   const chartRef = useRef<Chart | null>(null)
   const tooltipRef = useRef<HTMLDivElement | null>(null)
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const overTip = useRef(false)
   const linkRef = useRef<LinkState | null>(null)
   linkRef.current = pointLink ? { index: linkRef.current?.index ?? 0, link: pointLink } : null
   const [themeTick, setThemeTick] = useState(0)
@@ -143,7 +144,7 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
             labels: { color: tickC, font: { family: "Outfit, sans-serif", size: 11 } },
           },
           tooltip: pointLink
-            ? { enabled: false, external: (ctx) => renderLinkTooltip(ctx, tooltipRef.current, unitLabel, linkRef, hideTimer) }
+            ? { enabled: false, external: (ctx) => renderLinkTooltip(ctx, tooltipRef.current, unitLabel, linkRef, hideTimer, overTip) }
             : {
                 callbacks: {
                   label: (c) => `${c.dataset.label}: ${Number(c.parsed.y).toLocaleString()}${unitLabel}`,
@@ -177,18 +178,40 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
     return () => window.removeEventListener("theme-changed", handler)
   }, [])
 
+  // Hovering the tooltip cancels the pending hide so its link stays reachable;
+  // leaving it hides at once.
+  useEffect(() => {
+    const el = tooltipRef.current
+    if (!el) return
+    // Tracked as state rather than by cancelling the pending timer: Chart.js
+    // runs its external handler asynchronously after the canvas mouseout, so
+    // the enter often arrives *before* there is any timer to cancel.
+    const cancel = () => {
+      overTip.current = true
+      if (hideTimer.current !== null) {
+        clearTimeout(hideTimer.current)
+        hideTimer.current = null
+      }
+    }
+    const leave = () => {
+      overTip.current = false
+      hideTooltip(el)
+    }
+    el.addEventListener("mouseenter", cancel)
+    el.addEventListener("mouseover", cancel)
+    el.addEventListener("mouseleave", leave)
+    return () => {
+      el.removeEventListener("mouseenter", cancel)
+      el.removeEventListener("mouseover", cancel)
+      el.removeEventListener("mouseleave", leave)
+    }
+  }, [pointLink])
+
   return (
     <div style={{ height, width: "100%", position: "relative" }}>
       <canvas ref={canvasRef} />
       {pointLink ? (
-        <div
-          ref={tooltipRef}
-          className="pg-chart-tip"
-          // Hovering the tooltip cancels the pending hide, so the link can be
-          // reached; leaving it hides immediately.
-          onMouseEnter={() => { if (hideTimer.current !== null) { clearTimeout(hideTimer.current); hideTimer.current = null } }}
-          onMouseLeave={() => hideTooltip(tooltipRef.current)}
-        />
+        <div ref={tooltipRef} className="pg-chart-tip" />
       ) : null}
     </div>
   )
@@ -204,6 +227,37 @@ interface LinkState {
   link: ChartPointLink
 }
 
+/**
+ * Where to put the tooltip box for a point at (anchorX, anchorY).
+ *
+ * Anchored to the data point rather than the cursor: a tooltip that tracks the
+ * caret slides away from the pointer that is trying to reach its link. Being a
+ * pure function of the anchor, it also means vertical mouse movement — exactly
+ * the movement you make to reach the box — never shifts it at all.
+ */
+export function tooltipPlacement({
+  anchorX,
+  anchorY,
+  tip,
+  canvas,
+  gap,
+}: {
+  anchorX: number
+  anchorY: number
+  tip: { width: number; height: number }
+  canvas: { width: number; height: number }
+  gap: number
+}): { left: number; top: number; below: boolean } {
+  const below = anchorY - tip.height - gap < 0
+  const top = below ? anchorY + gap : anchorY - tip.height - gap
+  const maxLeft = Math.max(0, canvas.width - tip.width)
+  return {
+    left: Math.min(maxLeft, Math.max(0, anchorX - tip.width / 2)),
+    top: Math.max(0, top),
+    below,
+  }
+}
+
 function hideTooltip(el: HTMLDivElement | null) {
   if (el) el.style.opacity = "0"
   if (el) el.style.pointerEvents = "none"
@@ -215,21 +269,30 @@ function renderLinkTooltip(
   unitLabel: string,
   linkRef: { current: LinkState | null },
   hideTimer: { current: ReturnType<typeof setTimeout> | null },
+  overTip: { current: boolean },
 ) {
   if (!el || !linkRef.current) return
   const { chart, tooltip } = ctx
 
   if (tooltip.opacity === 0) {
-    // Do not hide straight away: the mouse may be on its way into the tooltip,
-    // and leaving the canvas is what fires this in the first place.
+    // Already inside the tooltip — leaving the canvas is exactly what moving
+    // toward it looks like, so this must not hide anything.
+    if (overTip.current) return
+    // Otherwise give the pointer a moment to cross the gap.
     if (hideTimer.current !== null) clearTimeout(hideTimer.current)
-    hideTimer.current = setTimeout(() => hideTooltip(el), 220)
+    hideTimer.current = setTimeout(() => {
+      if (!overTip.current) hideTooltip(el)
+    }, 220)
     return
   }
   if (hideTimer.current !== null) { clearTimeout(hideTimer.current); hideTimer.current = null }
 
   const index = tooltip.dataPoints[0]?.dataIndex ?? 0
+  const sameBucket = linkRef.current.index === index && el.style.opacity === "1"
   linkRef.current = { ...linkRef.current, index }
+  // Only the bucket matters. Re-rendering on every mousemove within one bucket
+  // would rewrite the DOM under the pointer and cancel a click in progress.
+  if (sameBucket) return
 
   const title = tooltip.title[0] ?? ""
   const rows = tooltip.dataPoints
@@ -247,11 +310,26 @@ function renderLinkTooltip(
     linkRef.current?.link.onSelect(linkRef.current.index)
   }
 
+  // Highest drawn point at this index, so the box clears every series.
+  let anchorY = chart.chartArea.bottom
+  let anchorX = tooltip.caretX
+  for (const p of tooltip.dataPoints) {
+    if (p.element.y < anchorY) anchorY = p.element.y
+    anchorX = p.element.x
+  }
+
   const { offsetLeft, offsetTop } = chart.canvas
   el.style.opacity = "1"
   el.style.pointerEvents = "auto"
-  el.style.left = `${offsetLeft + tooltip.caretX}px`
-  el.style.top = `${offsetTop + tooltip.caretY}px`
+  const { left, top } = tooltipPlacement({
+    anchorX,
+    anchorY,
+    tip: { width: el.offsetWidth, height: el.offsetHeight },
+    canvas: { width: chart.canvas.clientWidth, height: chart.canvas.clientHeight },
+    gap: 12,
+  })
+  el.style.left = `${offsetLeft + left}px`
+  el.style.top = `${offsetTop + top}px`
 }
 
 
