@@ -44,6 +44,22 @@ export function UsageTab() {
   }, [usage.chart, palette])
   const unitLabel = usage.metric === "requests" ? " req" : " tokens"
   const periodNoun = usage.range === "today" ? "day" : usage.range === "week" ? "week" : "month"
+  // Only the daily-bucket ranges have a day to open; "today" is already one,
+  // and its buckets are hours.
+  const bucketKeys = usage.chart.bucketKeys
+  // A week/month chart runs to the end of the period, so its later buckets can
+  // be days that have not happened yet — and an empty past day is just as
+  // pointless to open.
+  const bucketHasData = (i: number) => chartDatasets.some((d) => (d.data[i] ?? 0) > 0)
+  const dayLink = usage.chart.isDaily
+    ? {
+        labelFor: (i: number) => (bucketKeys[i] && bucketHasData(i) ? t("dash.viewThisDay") : null),
+        onSelect: (i: number) => {
+          const key = bucketKeys[i]
+          if (key && bucketHasData(i)) usage.openDay(key)
+        },
+      }
+    : undefined
 
   return (
     <div>
@@ -126,6 +142,7 @@ export function UsageTab() {
             datasets={chartDatasets}
             unitLabel={unitLabel}
             height={320}
+            {...(dayLink ? { pointLink: dayLink } : {})}
           />
         </div>
 

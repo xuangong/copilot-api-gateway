@@ -83,6 +83,22 @@ export function computeTimeRange(
   return { start: start.toISOString().slice(0, 13), end: end.toISOString().slice(0, 13) }
 }
 
+/**
+ * Turn a daily bucket key ("YYYY-MM-DD") back into the `periodOffset` that
+ * selects it in the "today" range, so clicking a day in the week/month chart
+ * can open that day.
+ *
+ * Counted in calendar days rather than elapsed milliseconds: a DST shift makes
+ * a local day 23 or 25 hours long, and dividing by 86400000 would land on the
+ * wrong date.
+ */
+export function dayOffsetFromKey(dateKey: string, now: Date = new Date()): number {
+  const [y, m, d] = dateKey.split("-").map(Number)
+  const target = new Date(y!, m! - 1, d!, 12, 0, 0, 0)
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0)
+  return Math.round((target.getTime() - today.getTime()) / 86400000)
+}
+
 export function formatDayLabel(periodOffset: number, now: Date = new Date()): string {
   const day = localDayStart(now, periodOffset)
   if (periodOffset === 0) return `Today (${day.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`
@@ -326,7 +342,7 @@ export function useUsage(isAdmin: boolean) {
     const cacheData = keys.map((k) => cacheAgg.get(k) ?? 0)
     const cacheHasData = metric === "tokens" && cacheData.some((v) => v > 0)
 
-    return { labels, series, cacheData: cacheHasData ? cacheData : null }
+    return { labels, series, cacheData: cacheHasData ? cacheData : null, bucketKeys: keys, isDaily }
   }, [filtered, data, range, periodOffset, metric, filters, isAdmin])
 
   const updateFilter = useCallback((patch: Partial<UsageFilters>) => {
@@ -343,6 +359,11 @@ export function useUsage(isAdmin: boolean) {
     if (r !== range) setPeriodOffset(0)
     setRange(r)
   }, [range])
+
+  const openDay = useCallback((dateKey: string) => {
+    setRange("today")
+    setPeriodOffset(Math.min(0, dayOffsetFromKey(dateKey)))
+  }, [])
 
   const shiftPeriod = useCallback((delta: number) => {
     setPeriodOffset((cur) => {
@@ -368,5 +389,6 @@ export function useUsage(isAdmin: boolean) {
     shiftPeriod,
     updateFilter,
     clearFilters,
+    openDay,
   }
 }

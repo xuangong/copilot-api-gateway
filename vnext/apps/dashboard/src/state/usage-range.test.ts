@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { computeTimeRange, formatDayLabel, formatMonthLabel, formatWeekLabel } from "./usage"
-import { buildTimeBuckets } from "../components/TimeSeriesChart"
+import { buildTimeBuckets, localDateKey, localDayStart } from "../components/TimeSeriesChart"
 
 // A Wednesday, mid-month, mid-afternoon local time — far enough from any
 // boundary that a day/week/month step cannot accidentally land on the same
@@ -110,5 +110,39 @@ describe("bucket keys line up with the queried range", () => {
     const { start, end } = computeTimeRange("today", -1, NOW)
     const span = new Date(`${end}:00:00Z`).getTime() - new Date(`${start}:00:00Z`).getTime()
     expect(span).toBe(DAY)
+  })
+})
+
+// Clicking a day in the week/month chart jumps to that day's own view, which
+// means turning its bucket key back into a periodOffset.
+describe("dayOffsetFromKey", () => {
+  test("today is 0 and earlier days are negative", async () => {
+    const { dayOffsetFromKey } = await import("./usage")
+    expect(dayOffsetFromKey("2026-08-12", NOW)).toBe(0)
+    expect(dayOffsetFromKey("2026-08-11", NOW)).toBe(-1)
+    expect(dayOffsetFromKey("2026-08-05", NOW)).toBe(-7)
+  })
+
+  test("crosses a month boundary", async () => {
+    const { dayOffsetFromKey } = await import("./usage")
+    expect(dayOffsetFromKey("2026-07-31", NOW)).toBe(-12)
+  })
+
+  // A DST shift makes a day 23 or 25 hours long; dividing elapsed milliseconds
+  // by 86400000 would land half a day off and select the wrong date.
+  test("is unaffected by a day that is not 24 hours long", async () => {
+    const { dayOffsetFromKey } = await import("./usage")
+    // Whatever the local zone does, stepping back one calendar day from the
+    // key must round-trip through computeTimeRange to that same key.
+    for (const key of ["2026-03-08", "2026-11-01", "2026-08-11"]) {
+      const offset = dayOffsetFromKey(key, NOW)
+      const back = localDayStart(NOW, offset)
+      expect(localDateKey(back)).toBe(key)
+    }
+  })
+
+  test("a future day yields a positive offset the caller can reject", async () => {
+    const { dayOffsetFromKey } = await import("./usage")
+    expect(dayOffsetFromKey("2026-08-13", NOW)).toBe(1)
   })
 })

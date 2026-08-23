@@ -10,6 +10,7 @@ import {
   Legend,
   Filler,
   type ChartDataset as CJDataset,
+  type TooltipModel,
 } from "chart.js"
 
 Chart.register(
@@ -38,12 +39,28 @@ export interface ChartDataset {
   fill?: boolean
 }
 
+export interface ChartPointLink {
+  /**
+   * Link text for the hovered point, or null to omit the link — an empty
+   * bucket has nothing worth opening.
+   */
+  labelFor: (index: number) => string | null
+  /** Called with the hovered point's index when the link is clicked. */
+  onSelect: (index: number) => void
+}
+
 interface Props {
   labels: string[]
   datasets: ChartDataset[]
   height?: number
   unitLabel?: string
   yTickFormat?: (v: number) => string
+  /**
+   * Renders the tooltip in the DOM instead of on the canvas so it can hold a
+   * real, clickable link. Chart.js draws its built-in tooltip into the canvas,
+   * where nothing is clickable.
+   */
+  pointLink?: ChartPointLink
 }
 
 function isDarkTheme(): boolean {
@@ -76,9 +93,13 @@ function hexToRgba(hex: string, alpha: number): string {
  * Chart.js-backed time-series chart. Bundled — no CDN.
  * Dark-mode aware via `theme-changed` window event.
  */
-export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = "", yTickFormat }: Props) {
+export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = "", yTickFormat, pointLink }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const chartRef = useRef<Chart | null>(null)
+  const tooltipRef = useRef<HTMLDivElement | null>(null)
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const linkRef = useRef<LinkState | null>(null)
+  linkRef.current = pointLink ? { index: linkRef.current?.index ?? 0, link: pointLink } : null
   const [themeTick, setThemeTick] = useState(0)
 
   useEffect(() => {
@@ -121,11 +142,13 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
             display: true,
             labels: { color: tickC, font: { family: "Outfit, sans-serif", size: 11 } },
           },
-          tooltip: {
-            callbacks: {
-              label: (ctx) => `${ctx.dataset.label}: ${Number(ctx.parsed.y).toLocaleString()}${unitLabel}`,
-            },
-          },
+          tooltip: pointLink
+            ? { enabled: false, external: (ctx) => renderLinkTooltip(ctx, tooltipRef.current, unitLabel, linkRef, hideTimer) }
+            : {
+                callbacks: {
+                  label: (c) => `${c.dataset.label}: ${Number(c.parsed.y).toLocaleString()}${unitLabel}`,
+                },
+              },
         },
         scales: {
           x: {
@@ -146,7 +169,7 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
         chartRef.current = null
       }
     }
-  }, [labels, datasets, height, unitLabel, yTickFormat, themeTick])
+  }, [labels, datasets, height, unitLabel, yTickFormat, themeTick, pointLink])
 
   useEffect(() => {
     const handler = () => setThemeTick((n) => n + 1)
@@ -155,10 +178,85 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
   }, [])
 
   return (
-    <div style={{ height, width: "100%" }}>
+    <div style={{ height, width: "100%", position: "relative" }}>
       <canvas ref={canvasRef} />
+      {pointLink ? (
+        <div
+          ref={tooltipRef}
+          className="pg-chart-tip"
+          // Hovering the tooltip cancels the pending hide, so the link can be
+          // reached; leaving it hides immediately.
+          onMouseEnter={() => { if (hideTimer.current !== null) { clearTimeout(hideTimer.current); hideTimer.current = null } }}
+          onMouseLeave={() => hideTooltip(tooltipRef.current)}
+        />
+      ) : null}
     </div>
   )
+}
+
+// — DOM tooltip with a clickable link —
+//
+// Chart.js paints its tooltip onto the canvas, so a link inside it could never
+// be clicked. `external` hands us the model and lets us draw it ourselves.
+
+interface LinkState {
+  index: number
+  link: ChartPointLink
+}
+
+function hideTooltip(el: HTMLDivElement | null) {
+  if (el) el.style.opacity = "0"
+  if (el) el.style.pointerEvents = "none"
+}
+
+function renderLinkTooltip(
+  ctx: { chart: Chart; tooltip: TooltipModel<"line"> },
+  el: HTMLDivElement | null,
+  unitLabel: string,
+  linkRef: { current: LinkState | null },
+  hideTimer: { current: ReturnType<typeof setTimeout> | null },
+) {
+  if (!el || !linkRef.current) return
+  const { chart, tooltip } = ctx
+
+  if (tooltip.opacity === 0) {
+    // Do not hide straight away: the mouse may be on its way into the tooltip,
+    // and leaving the canvas is what fires this in the first place.
+    if (hideTimer.current !== null) clearTimeout(hideTimer.current)
+    hideTimer.current = setTimeout(() => hideTooltip(el), 220)
+    return
+  }
+  if (hideTimer.current !== null) { clearTimeout(hideTimer.current); hideTimer.current = null }
+
+  const index = tooltip.dataPoints[0]?.dataIndex ?? 0
+  linkRef.current = { ...linkRef.current, index }
+
+  const title = tooltip.title[0] ?? ""
+  const rows = tooltip.dataPoints
+    .map((p) => `<div class="pg-chart-tip-row"><span class="pg-chart-tip-dot" style="background:${p.dataset.borderColor}"></span>${escapeHtml(String(p.dataset.label ?? ""))}<b>${Number(p.parsed.y).toLocaleString()}${escapeHtml(unitLabel)}</b></div>`)
+    .join("")
+  const linkLabel = linkRef.current.link.labelFor(index)
+  const linkHtml = linkLabel === null
+    ? ""
+    : `<button type="button" class="pg-chart-tip-link">${escapeHtml(linkLabel)}</button>`
+  el.innerHTML = `<div class="pg-chart-tip-title">${escapeHtml(title)}</div>${rows}${linkHtml}`
+
+  const btn = el.querySelector<HTMLButtonElement>(".pg-chart-tip-link")
+  if (btn) btn.onclick = () => {
+    hideTooltip(el)
+    linkRef.current?.link.onSelect(linkRef.current.index)
+  }
+
+  const { offsetLeft, offsetTop } = chart.canvas
+  el.style.opacity = "1"
+  el.style.pointerEvents = "auto"
+  el.style.left = `${offsetLeft + tooltip.caretX}px`
+  el.style.top = `${offsetTop + tooltip.caretY}px`
+}
+
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!)
 }
 
 // — Bucket helpers ported from src/ui/dashboard/client.ts —
