@@ -1,4 +1,7 @@
 import { api } from "./client"
+import type { ParticipantRow } from "../tabs/usage/participants"
+
+export type { ParticipantRow }
 
 // Shape returned by GET /api/token-usage. Mirrors src/routes/dashboard.ts
 // (UsageRecord + enrichUsage + key/owner name decoration).
@@ -76,4 +79,13 @@ export interface UsageRangeQuery {
 export async function fetchTokenUsage(range: UsageRangeQuery): Promise<UsageRow[]> {
   const rows = await api<ServerUsageRow[]>("/api/token-usage", { query: { start: range.start, end: range.end } })
   return rows.map(adaptUsageRow)
+}
+
+/**
+ * Who can use each key in scope — owner plus anyone it is shared with. Kept
+ * off the usage rows because those are per (key, model, client, hour); one
+ * row per key instead of one per bucket. Empty for shared views.
+ */
+export function fetchUsageParticipants(): Promise<ParticipantRow[]> {
+  return api<ParticipantRow[]>("/api/token-usage/participants")
 }

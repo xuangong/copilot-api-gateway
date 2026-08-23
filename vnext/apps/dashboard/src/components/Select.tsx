@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react"
 export interface SelectOption {
   value: string
   label: string
+  /** Optional pill after the label, e.g. "shared" on a shared API key. */
+  badge?: string
 }
 
 interface Props {
@@ -47,6 +49,7 @@ export function Select({
 
   const current = options.find((o) => o.value === value)
   const label = current?.label ?? placeholder ?? ""
+  const badge = current?.badge
   const btnPad = size === "md" ? "px-3 py-2 text-sm" : "px-2.5 py-1.5 text-xs"
   const itemPad = size === "md" ? "px-3 py-2.5 text-sm" : "px-3 py-2 text-xs"
 
@@ -60,6 +63,11 @@ export function Select({
         className={buttonClassName ?? defaultBtn}
       >
         <span className="truncate">{label}</span>
+        {badge ? (
+          <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] bg-accent-teal/10 text-accent-teal">
+            {badge}
+          </span>
+        ) : null}
         <svg className="w-3 h-3 shrink-0 opacity-60" viewBox="0 0 12 12" fill="none">
           <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
@@ -78,7 +86,14 @@ export function Select({
                 o.value === value ? "text-accent-violet" : "text-themed-secondary"
               }`}
             >
-              <span className="block truncate">{o.label}</span>
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span className="truncate">{o.label}</span>
+                {o.badge ? (
+                  <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] bg-accent-teal/10 text-accent-teal">
+                    {o.badge}
+                  </span>
+                ) : null}
+              </span>
             </button>
           ))}
         </div>

@@ -64,6 +64,59 @@ function enrichWithKeyName(
 
 export const tokenUsageRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
 
+/**
+ * GET /token-usage/participants — who can use each key in scope.
+ *
+ * The Usage tab derived its user list from each usage row's owner, so a key
+ * shared through `key_assignments` looked like it belonged to its owner alone.
+ * This supplies the missing half.
+ *
+ * Deliberately not GET /api/keys: that returns `key: k.key`, the plaintext API
+ * key, which the Usage tab has no use for. And deliberately not folded into
+ * the usage rows: those are per (key, model, client, hour), so a repeated
+ * assignee array would balloon a 30-day response.
+ *
+ * Registered before '/token-usage' only for readability — Hono matches the
+ * literal path either way.
+ */
+tokenUsageRouter.get('/token-usage/participants', async (c) => {
+  const auth = c.get('auth') ?? {}
+  const repo = getRepo()
+
+  // The shared view HMAC-rewrites keyIds (see redact-shared-view.ts), so these
+  // rows could not be joined to its usage anyway — and the names would expose
+  // people the viewer is not otherwise shown. Same for a caller with no
+  // identity to scope by.
+  if (auth.isViewingShared || (!auth.isAdmin && !auth.userId)) return c.json([])
+
+  const keys = auth.isAdmin ? await repo.apiKeys.list() : await getUserKeys(auth.userId!)
+  const assignmentsPerKey = await Promise.all(keys.map((k) => repo.keyAssignments.listByKey(k.id)))
+
+  const wantedUserIds = new Set<string>()
+  for (const k of keys) if (k.ownerId) wantedUserIds.add(k.ownerId)
+  for (const list of assignmentsPerKey) for (const a of list) wantedUserIds.add(a.userId)
+  const named = await Promise.all([...wantedUserIds].map((id) => repo.users.getById(id as UserId)))
+  const nameOf = new Map<string, string>()
+  for (const u of named) if (u) nameOf.set(u.id, u.name)
+
+  return c.json(
+    keys.map((k, i) => {
+      // Being given access to a key does not entitle you to the roster of who
+      // else has it; the Keys tab draws the same line (KeyRow.tsx only lists
+      // assignees to the owner).
+      const maySeeAssignees = auth.isAdmin || k.ownerId === auth.userId
+      return {
+        keyId: k.id,
+        ownerId: k.ownerId ?? null,
+        ownerName: k.ownerId ? (nameOf.get(k.ownerId) ?? null) : null,
+        sharedWith: maySeeAssignees
+          ? assignmentsPerKey[i]!.map((a) => ({ id: a.userId, name: nameOf.get(a.userId) ?? a.userId.slice(0, 8) }))
+          : [],
+      }
+    }),
+  )
+})
+
 tokenUsageRouter.get('/token-usage', async (c) => {
   const auth = c.get('auth') ?? {}
   const keyId = (c.req.query('key_id') || undefined) as ApiKeyId | undefined

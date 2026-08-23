@@ -50,6 +50,7 @@ function inMemoryRepo() {
     },
     keyAssignments: {
       listByUser: async (userId: string) => assignments.filter((a) => a.userId === userId),
+      listByKey: async (keyId: string) => assignments.filter((a) => a.keyId === keyId),
     },
   } as unknown as Repo
 
@@ -168,4 +169,85 @@ test('GET /api/token-usage shared-view with no owned keys → []', async () => {
   const res = await call(buildApp({ userId: 'viewer', isViewingShared: true, ownerId: 'owner' }), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
   expect(res.status).toBe(200)
   expect(await res.json()).toEqual([])
+})
+
+// --- GET /api/token-usage/participants ------------------------------------
+//
+// Tells the Usage tab who can use each key, so a key shared through
+// key_assignments stops looking like it belongs to its owner alone. Carries no
+// key material — that is why it exists instead of reusing GET /api/keys.
+
+interface ParticipantsRow {
+  keyId: string
+  ownerId: string | null
+  ownerName: string | null
+  sharedWith: Array<{ id: string; name: string }>
+}
+
+const participants = async (auth: TokenUsageAuthCtx) => {
+  const res = await call(buildApp(auth), '/api/token-usage/participants')
+  return { res, body: (await res.json()) as ParticipantsRow[] }
+}
+
+test('participants: admin sees every key with its owner and assignees', async () => {
+  store.keys.set('k1', mkKey('k1', 'team', 'u1'))
+  store.keys.set('k2', mkKey('k2', 'solo', 'u2'))
+  store.users.set('u1', { id: 'u1', name: 'Alice' } as User)
+  store.users.set('u2', { id: 'u2', name: 'Bob' } as User)
+  store.users.set('u3', { id: 'u3', name: 'Carol' } as User)
+  store.assignments.push({ keyId: 'k1', userId: 'u2', assignedBy: 'admin', assignedAt: '' })
+  store.assignments.push({ keyId: 'k1', userId: 'u3', assignedBy: 'admin', assignedAt: '' })
+
+  const { res, body } = await participants({ isAdmin: true, userId: 'admin' })
+  expect(res.status).toBe(200)
+  const byKey = Object.fromEntries(body.map((r) => [r.keyId, r]))
+  expect(byKey.k1!.ownerName).toBe('Alice')
+  expect(byKey.k1!.sharedWith.map((u) => u.name).sort()).toEqual(['Bob', 'Carol'])
+  expect(byKey.k2!.sharedWith).toEqual([])
+})
+
+test('participants: a key with no owner reports null rather than being dropped', async () => {
+  store.keys.set('k1', mkKey('k1', 'orphan'))
+  const { body } = await participants({ isAdmin: true, userId: 'admin' })
+  expect(body).toEqual([{ keyId: 'k1', ownerId: null, ownerName: null, sharedWith: [] }])
+})
+
+test('participants: response carries no key material', async () => {
+  store.keys.set('k1', mkKey('k1', 'team', 'u1'))
+  const { body } = await participants({ isAdmin: true, userId: 'admin' })
+  expect(JSON.stringify(body)).not.toContain('k-k1')
+})
+
+// Matches the Keys tab, which only lists assignees to the key's owner: being
+// given access to a key does not entitle you to the roster of who else has it.
+test('participants: a non-owner sees the owner but not their fellow assignees', async () => {
+  store.keys.set('k-own', mkKey('k-own', 'mine', 'u1'))
+  store.keys.set('k-shared', mkKey('k-shared', 'theirs', 'u9'))
+  store.users.set('u1', { id: 'u1', name: 'Alice' } as User)
+  store.users.set('u2', { id: 'u2', name: 'Bob' } as User)
+  store.users.set('u9', { id: 'u9', name: 'Zoe' } as User)
+  store.assignments.push({ keyId: 'k-own', userId: 'u2', assignedBy: 'admin', assignedAt: '' })
+  store.assignments.push({ keyId: 'k-shared', userId: 'u1', assignedBy: 'admin', assignedAt: '' })
+  store.assignments.push({ keyId: 'k-shared', userId: 'u2', assignedBy: 'admin', assignedAt: '' })
+
+  const { body } = await participants({ userId: 'u1' })
+  const byKey = Object.fromEntries(body.map((r) => [r.keyId, r]))
+  expect(byKey['k-own']!.sharedWith.map((u) => u.name)).toEqual(['Bob'])
+  expect(byKey['k-shared']!.ownerName).toBe('Zoe')
+  expect(byKey['k-shared']!.sharedWith).toEqual([])
+})
+
+// The shared view HMAC-rewrites keyIds, so participants could not be joined to
+// usage anyway — and the names would leak identities the viewer never sees.
+test('participants: shared view gets nothing', async () => {
+  store.keys.set('k1', mkKey('k1', 'owned', 'owner'))
+  store.users.set('owner', { id: 'owner', name: 'Olive' } as User)
+  const { body } = await participants({ userId: 'viewer', isViewingShared: true, ownerId: 'owner' })
+  expect(body).toEqual([])
+})
+
+test('participants: a caller with neither admin nor a user id gets nothing', async () => {
+  store.keys.set('k1', mkKey('k1', 'owned', 'owner'))
+  const { body } = await participants({})
+  expect(body).toEqual([])
 })

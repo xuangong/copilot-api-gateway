@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useToast } from "./toast"
 import * as api from "../api/usage"
-import type { UsageRow } from "../api/usage"
+import type { ParticipantRow, UsageRow } from "../api/usage"
+import {
+  buildDimensions,
+  indexParticipants,
+  rowMatchesUser,
+  type KeyDimension,
+} from "../tabs/usage/participants"
 import { buildTimeBuckets, localMonthStart, utcHourToBucketKey } from "../components/TimeSeriesChart"
 
 export type UsageRange = "today" | "week" | "7d" | "30d" | "month"
@@ -134,10 +140,16 @@ function buildDistribution(
 }
 
 export interface UsageDimensions {
-  keys: Array<{ id: string; name: string }>
+  keys: KeyDimension[]
   clients: string[]
   models: string[]
   users: Array<{ id: string; name: string }>
+  /**
+   * True when a listed key is shared. Usage is recorded per key only, so a
+   * shared key's traffic counts in full for every user who can reach it —
+   * the UI has to say so rather than imply a per-person split.
+   */
+  sharedInScope: boolean
 }
 
 const EMPTY_SUMMARY: UsageSummary = {
@@ -156,14 +168,19 @@ export function useUsage(isAdmin: boolean) {
   const [metric, setMetric] = useState<UsageMetric>("tokens")
   const [filters, setFilters] = useState<UsageFilters>({ user: "", key: "", client: "", model: "" })
   const [data, setData] = useState<UsageRow[]>([])
+  const [participantRows, setParticipantRows] = useState<ParticipantRow[]>([])
   const [loading, setLoading] = useState(true)
 
   const reload = useCallback(async () => {
     setLoading(true)
     try {
       const q = computeTimeRange(range, periodOffset)
-      const rows = await api.fetchTokenUsage(q)
+      const [rows, people] = await Promise.all([
+        api.fetchTokenUsage(q),
+        api.fetchUsageParticipants(),
+      ])
       setData(rows)
+      setParticipantRows(people)
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "error")
     } finally {
@@ -175,31 +192,21 @@ export function useUsage(isAdmin: boolean) {
     reload()
   }, [reload])
 
-  // Derive available filter dimensions from the full unfiltered dataset.
+  const participants = useMemo(() => indexParticipants(participantRows), [participantRows])
+
+  // Derive available filter dimensions from the full unfiltered dataset. The
+  // dropdowns are independent of one another; the user list now includes
+  // everyone a listed key is shared with, not just its owner.
   const dimensions: UsageDimensions = useMemo(() => {
-    const keyNameMap = new Map<string, string>()
-    const keySet = new Set<string>()
     const clientSet = new Set<string>()
     const modelSet = new Set<string>()
-    const userMap = new Map<string, string>()
     for (const r of data) {
-      keyNameMap.set(r.keyId, r.keyName ?? r.keyId.slice(0, 8))
-      keySet.add(r.keyId)
       if (r.client) clientSet.add(r.client)
       if (r.model) modelSet.add(r.model)
-      if (r.ownerId) userMap.set(r.ownerId, r.ownerName || r.ownerId.slice(0, 8))
     }
-    return {
-      keys: [...keySet]
-        .map((id) => ({ id, name: keyNameMap.get(id) ?? id.slice(0, 8) }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-      clients: [...clientSet].sort(),
-      models: [...modelSet].sort(),
-      users: isAdmin
-        ? [...userMap.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
-        : [],
-    }
-  }, [data, isAdmin])
+    const { keys, users, sharedInScope } = buildDimensions({ rows: data, participants, isAdmin })
+    return { keys, users, sharedInScope, clients: [...clientSet].sort(), models: [...modelSet].sort() }
+  }, [data, participants, isAdmin])
 
   // Apply filters before computing summary and distributions.
   const filtered = useMemo(() => {
@@ -207,9 +214,9 @@ export function useUsage(isAdmin: boolean) {
     if (filters.key) rows = rows.filter((r) => r.keyId === filters.key)
     if (filters.client) rows = rows.filter((r) => r.client === filters.client)
     if (filters.model) rows = rows.filter((r) => r.model === filters.model)
-    if (filters.user) rows = rows.filter((r) => r.ownerId === filters.user)
+    if (filters.user) rows = rows.filter((r) => rowMatchesUser(participants, r.keyId, filters.user))
     return rows
-  }, [data, filters])
+  }, [data, filters, participants])
 
   const summary: UsageSummary = useMemo(() => {
     const s = { ...EMPTY_SUMMARY }

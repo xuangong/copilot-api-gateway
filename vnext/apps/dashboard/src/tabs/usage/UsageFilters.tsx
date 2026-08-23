@@ -33,7 +33,11 @@ export function UsageFiltersBar({ isAdmin, filters, dimensions, onChange, onClea
           onChange={(v) => onChange({ key: v })}
           options={[
             { value: "", label: t("dash.allKeys") },
-            ...dimensions.keys.map((k) => ({ value: k.id, label: k.name })),
+            ...dimensions.keys.map((k) => ({
+              value: k.id,
+              label: k.name,
+              ...(k.shared ? { badge: t("dash.sharedBadge") } : {}),
+            })),
           ]}
         />
       </FilterField>
@@ -57,6 +61,12 @@ export function UsageFiltersBar({ isAdmin, filters, dimensions, onChange, onClea
           ]}
         />
       </FilterField>
+      {/* Usage is recorded per key only, so a shared key's traffic counts in
+          full for every user who can reach it. Say so rather than let the
+          numbers imply a per-person split. */}
+      {isAdmin && dimensions.sharedInScope ? (
+        <p className="w-full text-[11px] text-themed-dim">{t("dash.sharedUsageNote")}</p>
+      ) : null}
       {anyFilter ? (
         <button
           onClick={onClear}
