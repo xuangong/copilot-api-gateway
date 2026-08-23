@@ -173,6 +173,11 @@ export function localDateKey(d: Date): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
+/** Local midnight of the day containing `ref`, offset by whole days. */
+export function localDayStart(ref: Date, dayDelta: number): Date {
+  return new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() + dayDelta, 0, 0, 0, 0)
+}
+
 /** Local midnight on the 1st of the month containing `ref`, offset by whole months. */
 export function localMonthStart(ref: Date, monthDelta: number): Date {
   return new Date(ref.getFullYear(), ref.getMonth() + monthDelta, 1, 0, 0, 0, 0)
@@ -190,15 +195,21 @@ export interface TimeBuckets {
  * `periodOffset` shifts the window backwards for the two calendar ranges:
  * whole weeks for "week", whole months for "month". Ignored by the rest.
  */
-export function buildTimeBuckets(range: TimeBucketRange, periodOffset: number): TimeBuckets {
-  const now = new Date()
+export function buildTimeBuckets(
+  range: TimeBucketRange,
+  periodOffset: number,
+  now: Date = new Date(),
+): TimeBuckets {
   const keys: string[] = []
   const labels: string[] = []
   const isDaily = range !== "today"
 
   if (range === "today") {
+    // Follows periodOffset for the same reason computeTimeRange does: the
+    // chart and the summary must describe the same day.
+    const day = localDayStart(now, periodOffset)
     for (let h = 0; h < 24; h++) {
-      const d = new Date(now)
+      const d = new Date(day)
       d.setHours(h, 0, 0, 0)
       keys.push(localHourKey(d))
       const next = String((h + 1) % 24).padStart(2, "0")

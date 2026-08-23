@@ -8,7 +8,7 @@ import {
   rowMatchesUser,
   type KeyDimension,
 } from "../tabs/usage/participants"
-import { buildTimeBuckets, localMonthStart, utcHourToBucketKey } from "../components/TimeSeriesChart"
+import { buildTimeBuckets, localDayStart, localMonthStart, utcHourToBucketKey } from "../components/TimeSeriesChart"
 
 export type UsageRange = "today" | "week" | "7d" | "30d" | "month"
 export type UsageMetric = "tokens" | "requests"
@@ -41,10 +41,16 @@ export interface UsageFilters {
 
 // Compute UTC-hour bounds for the query, mirroring computeTimeRange in
 // src/ui/dashboard/client.ts. Result strings are sliced to "YYYY-MM-DDTHH".
-// "week" and "month" are calendar windows in *local* time, shifted back by
-// `periodOffset` whole periods; the rest are trailing windows ending now.
-export function computeTimeRange(range: UsageRange, periodOffset: number): api.UsageRangeQuery {
-  const now = new Date()
+// "today", "week" and "month" are calendar windows in *local* time, shifted
+// back by `periodOffset` whole periods; 7d/30d are trailing windows ending now
+// and have no period to step through, so they ignore the offset.
+//
+// `now` is injectable so the range maths can be tested against a fixed clock.
+export function computeTimeRange(
+  range: UsageRange,
+  periodOffset: number,
+  now: Date = new Date(),
+): api.UsageRangeQuery {
   let start: Date
   let end: Date
   if (range === "week") {
@@ -63,19 +69,28 @@ export function computeTimeRange(range: UsageRange, periodOffset: number): api.U
     const todayLocal = new Date(now)
     todayLocal.setHours(0, 0, 0, 0)
     if (range === "today") {
-      start = todayLocal
-    } else if (range === "7d") {
-      start = new Date(todayLocal.getTime() - 6 * 86400000)
-    } else {
-      start = new Date(todayLocal.getTime() - 29 * 86400000)
+      // A whole calendar day, so stepping back lands on that day rather than
+      // on "midnight-to-now" of a day that has long since ended.
+      start = localDayStart(now, periodOffset)
+      end = localDayStart(now, periodOffset + 1)
+      return { start: start.toISOString().slice(0, 13), end: end.toISOString().slice(0, 13) }
     }
+    start = range === "7d"
+      ? new Date(todayLocal.getTime() - 6 * 86400000)
+      : new Date(todayLocal.getTime() - 29 * 86400000)
     end = new Date(now.getTime() + 3600000)
   }
   return { start: start.toISOString().slice(0, 13), end: end.toISOString().slice(0, 13) }
 }
 
-export function formatWeekLabel(periodOffset: number): string {
-  const now = new Date()
+export function formatDayLabel(periodOffset: number, now: Date = new Date()): string {
+  const day = localDayStart(now, periodOffset)
+  if (periodOffset === 0) return `Today (${day.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`
+  if (periodOffset === -1) return `Yesterday (${day.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`
+  return day.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+}
+
+export function formatWeekLabel(periodOffset: number, now: Date = new Date()): string {
   const ref = new Date(now)
   ref.setDate(ref.getDate() + periodOffset * 7)
   const day = ref.getDay()
@@ -90,8 +105,8 @@ export function formatWeekLabel(periodOffset: number): string {
   return range
 }
 
-export function formatMonthLabel(periodOffset: number): string {
-  const first = localMonthStart(new Date(), periodOffset)
+export function formatMonthLabel(periodOffset: number, now: Date = new Date()): string {
+  const first = localMonthStart(now, periodOffset)
   const name = first.toLocaleDateString("en-US", { month: "long", year: "numeric" })
   if (periodOffset === 0) return `This month (${name})`
   if (periodOffset === -1) return `Last month (${name})`

@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import { useAuth } from "../../state/auth"
-import { formatMonthLabel, formatWeekLabel, useUsage, type UsageMetric, type UsageRange } from "../../state/usage"
+import { formatDayLabel, formatMonthLabel, formatWeekLabel, useUsage, type UsageMetric, type UsageRange } from "../../state/usage"
 import { UsageFiltersBar } from "./UsageFilters"
 import { UsageSummaryCards } from "./UsageSummary"
 import { UsageDistributionTable } from "./UsageDistributionTable"
@@ -43,6 +43,7 @@ export function UsageTab() {
     return series
   }, [usage.chart, palette])
   const unitLabel = usage.metric === "requests" ? " req" : " tokens"
+  const periodNoun = usage.range === "today" ? "day" : usage.range === "week" ? "week" : "month"
 
   return (
     <div>
@@ -69,19 +70,22 @@ export function UsageTab() {
             </div>
           </div>
 
-          {usage.range === "week" || usage.range === "month" ? (
+          {/* 7d/30d are trailing windows ending now — no period to step. */}
+          {usage.range === "today" || usage.range === "week" || usage.range === "month" ? (
             <div className="flex items-center gap-3 ml-1">
               <button
                 onClick={() => usage.shiftPeriod(-1)}
                 className="p-1 rounded hover:bg-surface-600 text-themed-dim hover:text-themed transition-all"
-                title={usage.range === "week" ? "Previous week" : "Previous month"}
+                title={`Previous ${periodNoun}`}
               >
                 ‹
               </button>
               <span className="text-xs text-themed-secondary font-medium min-w-[180px] text-center">
-                {usage.range === "week"
-                  ? formatWeekLabel(usage.periodOffset)
-                  : formatMonthLabel(usage.periodOffset)}
+                {usage.range === "today"
+                  ? formatDayLabel(usage.periodOffset)
+                  : usage.range === "week"
+                    ? formatWeekLabel(usage.periodOffset)
+                    : formatMonthLabel(usage.periodOffset)}
               </span>
               <button
                 onClick={() => usage.shiftPeriod(1)}
@@ -91,7 +95,7 @@ export function UsageTab() {
                     ? "text-themed-dim/30 cursor-not-allowed"
                     : "hover:bg-surface-600 text-themed-dim hover:text-themed"
                 }`}
-                title={usage.range === "week" ? "Next week" : "Next month"}
+                title={`Next ${periodNoun}`}
               >
                 ›
               </button>
