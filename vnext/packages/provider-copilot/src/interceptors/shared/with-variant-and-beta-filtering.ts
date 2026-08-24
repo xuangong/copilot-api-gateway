@@ -1,12 +1,15 @@
 // src/providers/copilot/interceptors/shared/with-variant-and-beta-filtering.ts
 import type { AccountType } from "../../account-type"
 import { getCachedRawModels } from "../../raw-models-cache"
+import { adaptThinkingForModel } from "../../transforms/thinking-cleanup"
+import type { AnthropicMessagesPayload } from "../../transforms/types"
 import {
   filterAnthropicBetaForUpstream,
   hasContext1mBeta,
   parseAnthropicBeta,
   parseCompositeModelId,
   resolveCopilotRawModel,
+  thinkingCapabilitiesFor,
 } from "../../variants"
 import type { CopilotInterceptor, Invocation } from "@vibe-llm/protocols/common"
 import type { Fetcher } from "@vibe-core/upstream"
@@ -34,17 +37,23 @@ const KIND_BY_ENDPOINT: Record<string, VariantKind | null> = {
  * so variant resolution leaves the host the same way inference does. Keeping
  * them out of the Invocation contract preserves portability — other providers
  * don't need to know Copilot's variant catalog exists.
+ *
+ * The session is read through getters rather than captured by value: the
+ * provider swaps its token and base URL in place when the upstream rejects a
+ * revoked session (provider.ts withAuthRetry), and a by-value capture here
+ * would keep resolving variants with the dead token for the life of the
+ * provider.
  */
 export const createVariantAndBetaFilteringInterceptor = (
-  copilotToken: string,
+  getCopilotToken: () => string,
   accountType: AccountType,
-  baseUrl?: string,
+  getBaseUrl: () => string | undefined,
   fetcher?: Fetcher,
 ): CopilotInterceptor => {
   return async (inv, _ctx, run) => {
     const kind = KIND_BY_ENDPOINT[inv.endpoint]
     if (kind !== null && kind !== undefined) {
-      await applyVariantAndBetaFiltering(inv, kind, copilotToken, accountType, baseUrl, fetcher)
+      await applyVariantAndBetaFiltering(inv, kind, getCopilotToken(), accountType, getBaseUrl(), fetcher)
     }
     return run()
   }
@@ -90,6 +99,16 @@ const applyVariantAndBetaFiltering = async (
         reasoningEffort: effectiveEffort,
       })
       if (resolved !== modelId) payload.model = resolved
+      // Thinking adaptation lives here, not in its own interceptor, because
+      // this is the only place holding the raw_models catalog — and because
+      // the anthropic-beta decision below reads `thinking.type`, so it has to
+      // see the adapted payload, not the client's original shape.
+      if (kind === "messages") {
+        adaptThinkingForModel(
+          payload as unknown as AnthropicMessagesPayload,
+          thinkingCapabilitiesFor(rawModels, resolved),
+        )
+      }
     } catch (e) {
       console.error("[variants] resolve failed:", e)
     }

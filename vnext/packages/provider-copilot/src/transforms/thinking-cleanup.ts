@@ -26,30 +26,49 @@ export function filterThinkingBlocks(payload: AnthropicMessagesPayload): void {
 }
 
 /**
+ * What the upstream catalog says this model can do, distilled to the two facts
+ * the thinking contract turns on. Derived from `capabilities.supports` on
+ * Copilot's `/models` — see `thinkingCapabilitiesFor` in ../variants.
+ */
+export interface ThinkingCapabilities {
+  /** `supports.adaptive_thinking === true` */
+  adaptiveThinking: boolean
+  /** `supports.reasoning_effort` present and non-empty */
+  reasoningEffort: boolean
+}
+
+/**
  * Normalize thinking + reasoning-effort fields per upstream model contract.
  *
- * - Claude Haiku 4.5 (and dated variants) rejects `output_config` entirely
- *   ("model does not support reasoning effort") and only accepts
- *   `thinking.type: "enabled"`. Strip `output_config` and downgrade
- *   `adaptive` → `enabled` with a safe budget.
+ * - A model with no `reasoning_effort` (today: Claude Haiku 4.5) rejects
+ *   `output_config` entirely ("model does not support reasoning effort") and
+ *   only accepts `thinking.type: "enabled"`. Strip `output_config` and
+ *   downgrade `adaptive` → `enabled` with a safe budget.
  *
- * - Claude 4.7+ (Opus/Sonnet/Haiku 4.7, Opus 4.8, future 4.x≥7) rejects
- *   `thinking.type: "enabled"` and requires `thinking.type: "adaptive"` plus
- *   `output_config.effort`. Convert if the client still uses the older shape.
+ * - A model advertising `adaptive_thinking` rejects `thinking.type: "enabled"`
+ *   and requires `"adaptive"` plus `output_config.effort`. Convert if the
+ *   client still uses the older shape.
  *
- * Why duplicate the model-matching logic instead of reading capability
- * metadata: this interceptor runs without the Copilot raw_models cache in
- * scope (the variant-filter interceptor owns that closure). A regex over the
- * Anthropic naming convention is good enough — Anthropic versions are sparse
- * and additive.
+ * This used to match on the model id with a regex, on the reasoning that the
+ * raw_models cache was out of scope here. That regex enumerated versions
+ * (4.7/4.8) and families (opus|sonnet|haiku), so it silently missed every
+ * `claude-*-5` — a 400 on the first Claude 5 request — and would have missed
+ * `claude-fable-5` besides. The capability metadata is authoritative and needs
+ * no edit when Anthropic ships a version or a family we've never heard of, so
+ * the caller now resolves it and passes it in.
  *
- * Ported from `src/transforms/thinking-cleanup.ts` (legacy gateway) and
- * extended to cover 4.8 (legacy only matched 4.7).
+ * `caps === undefined` means we could not read the catalog for this upstream.
+ * That is deliberately a no-op rather than a guess: an unreadable catalog
+ * leaves the request exactly as the client sent it.
  */
-export function adaptThinkingForModel(payload: AnthropicMessagesPayload): void {
+export function adaptThinkingForModel(
+  payload: AnthropicMessagesPayload,
+  caps: ThinkingCapabilities | undefined,
+): void {
   if (!payload.model) return
+  if (!caps) return
 
-  if (modelRejectsReasoningEffort(payload.model)) {
+  if (!caps.reasoningEffort) {
     if (payload.output_config) {
       delete payload.output_config
     }
@@ -64,7 +83,7 @@ export function adaptThinkingForModel(payload: AnthropicMessagesPayload): void {
 
   if (!payload.thinking) return
 
-  if (!modelRequiresAdaptiveThinking(payload.model)) return
+  if (!caps.adaptiveThinking) return
 
   if (payload.thinking.type === "enabled") {
     payload.thinking.type = "adaptive"
@@ -73,22 +92,4 @@ export function adaptThinkingForModel(payload: AnthropicMessagesPayload): void {
       payload.output_config = { effort: "medium" }
     }
   }
-}
-
-/**
- * Models that reject `output_config` outright. Currently only Haiku 4.5
- * variants; extend as new restricted slots appear.
- */
-function modelRejectsReasoningEffort(model: string): boolean {
-  return /claude-haiku-4[-.]5/i.test(model)
-}
-
-/**
- * Models that require `thinking.type: "adaptive"` instead of the legacy
- * `"enabled"`. Matches Claude 4.7+ (Opus/Sonnet/Haiku at 4.7, 4.8, …).
- * Stay narrow: skips 4.5/4.6, only matches single-digit minor versions ≥ 7
- * to avoid false positives like a hypothetical 4.10 (would need re-check).
- */
-function modelRequiresAdaptiveThinking(model: string): boolean {
-  return /claude-(?:opus|sonnet|haiku)-4[-.][789](?:[-.]|$)/i.test(model)
 }

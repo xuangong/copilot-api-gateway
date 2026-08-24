@@ -15,10 +15,28 @@ export interface ModelLimits {
   max_inputs?: number
 }
 
+/**
+ * `capabilities.supports` as Copilot actually returns it. Verified against a
+ * live `/models` on 2026-08-24 (individual tenant, 42 models); the union of
+ * keys seen was exactly the set below.
+ *
+ * `adaptive_thinking` and `reasoning_effort` are load-bearing — they decide
+ * the thinking wire contract (see transforms/thinking-cleanup.ts). Every key
+ * stays optional: older tenants and the legacy tail of the catalog omit most
+ * of them, and absence is meaningful (a model with no `reasoning_effort`
+ * rejects `output_config` outright).
+ */
 export interface ModelSupports {
   tool_calls?: boolean
   parallel_tool_calls?: boolean
   dimensions?: boolean
+  streaming?: boolean
+  structured_outputs?: boolean
+  vision?: boolean
+  reasoning_effort?: string[]
+  adaptive_thinking?: boolean
+  min_thinking_budget?: number
+  max_thinking_budget?: number
 }
 
 export interface ModelCapabilities {

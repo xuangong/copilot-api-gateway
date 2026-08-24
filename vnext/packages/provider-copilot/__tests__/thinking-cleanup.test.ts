@@ -5,8 +5,16 @@ import {
 } from '../src/transforms/thinking-cleanup'
 import type { AnthropicMessagesPayload } from '../src/transforms/types'
 
+// Capability shapes as observed on Copilot's live /models (2026-08-24):
+//   claude-opus-5 / 4.8 / 4.7 / 4.6, claude-sonnet-5 / 4.6
+//     → adaptive_thinking: true, reasoning_effort: [...]
+//   claude-haiku-4.5
+//     → neither key present
+const ADAPTIVE_CAPS = { adaptiveThinking: true, reasoningEffort: true }
+const NO_REASONING_CAPS = { adaptiveThinking: false, reasoningEffort: false }
+
 describe('adaptThinkingForModel', () => {
-  describe('claude-haiku-4.5 (rejects reasoning effort)', () => {
+  describe('models without reasoning_effort support (e.g. claude-haiku-4.5)', () => {
     test('strips output_config entirely when present', () => {
       const payload: AnthropicMessagesPayload = {
         model: 'claude-haiku-4.5',
@@ -14,18 +22,7 @@ describe('adaptThinkingForModel', () => {
         messages: [{ role: 'user', content: 'hi' }],
         output_config: { effort: 'high' },
       }
-      adaptThinkingForModel(payload)
-      expect(payload.output_config).toBeUndefined()
-    })
-
-    test('matches dated variant claude-haiku-4-5-20251001', () => {
-      const payload: AnthropicMessagesPayload = {
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 20,
-        messages: [{ role: 'user', content: 'hi' }],
-        output_config: { effort: 'medium' },
-      }
-      adaptThinkingForModel(payload)
+      adaptThinkingForModel(payload, NO_REASONING_CAPS)
       expect(payload.output_config).toBeUndefined()
     })
 
@@ -36,7 +33,7 @@ describe('adaptThinkingForModel', () => {
         messages: [{ role: 'user', content: 'hi' }],
         thinking: { type: 'adaptive' },
       }
-      adaptThinkingForModel(payload)
+      adaptThinkingForModel(payload, NO_REASONING_CAPS)
       expect(payload.thinking?.type).toBe('enabled')
       expect(payload.thinking?.budget_tokens).toBe(1024)
     })
@@ -48,24 +45,35 @@ describe('adaptThinkingForModel', () => {
         messages: [{ role: 'user', content: 'hi' }],
         thinking: { type: 'adaptive', budget_tokens: 2048 },
       }
-      adaptThinkingForModel(payload)
+      adaptThinkingForModel(payload, NO_REASONING_CAPS)
       expect(payload.thinking?.type).toBe('enabled')
       expect(payload.thinking?.budget_tokens).toBe(2048)
     })
   })
 
-  describe('claude 4.7+ models (require thinking.type=adaptive)', () => {
-    test('converts thinking.type=enabled→adaptive for claude-opus-4.7', () => {
+  describe('models advertising adaptive_thinking', () => {
+    test('converts thinking.type=enabled→adaptive for claude-opus-5', () => {
       const payload: AnthropicMessagesPayload = {
-        model: 'claude-opus-4.7',
+        model: 'claude-opus-5',
         max_tokens: 50,
         messages: [{ role: 'user', content: 'hi' }],
         thinking: { type: 'enabled', budget_tokens: 1024 },
       }
-      adaptThinkingForModel(payload)
+      adaptThinkingForModel(payload, ADAPTIVE_CAPS)
       expect(payload.thinking?.type).toBe('adaptive')
       expect(payload.thinking?.budget_tokens).toBeUndefined()
       expect(payload.output_config?.effort).toBe('medium')
+    })
+
+    test('converts for claude-fable-5, whose family the old regex never listed', () => {
+      const payload: AnthropicMessagesPayload = {
+        model: 'claude-fable-5',
+        max_tokens: 50,
+        messages: [{ role: 'user', content: 'hi' }],
+        thinking: { type: 'enabled', budget_tokens: 1024 },
+      }
+      adaptThinkingForModel(payload, ADAPTIVE_CAPS)
+      expect(payload.thinking?.type).toBe('adaptive')
     })
 
     test('converts thinking.type=enabled→adaptive for claude-opus-4.8', () => {
@@ -75,21 +83,10 @@ describe('adaptThinkingForModel', () => {
         messages: [{ role: 'user', content: 'hi' }],
         thinking: { type: 'enabled', budget_tokens: 1024 },
       }
-      adaptThinkingForModel(payload)
+      adaptThinkingForModel(payload, ADAPTIVE_CAPS)
       expect(payload.thinking?.type).toBe('adaptive')
       expect(payload.thinking?.budget_tokens).toBeUndefined()
       expect(payload.output_config?.effort).toBe('medium')
-    })
-
-    test('matches dashed dated variant claude-opus-4-8-20251201', () => {
-      const payload: AnthropicMessagesPayload = {
-        model: 'claude-opus-4-8-20251201',
-        max_tokens: 50,
-        messages: [{ role: 'user', content: 'hi' }],
-        thinking: { type: 'enabled', budget_tokens: 1024 },
-      }
-      adaptThinkingForModel(payload)
-      expect(payload.thinking?.type).toBe('adaptive')
     })
 
     test('preserves existing output_config.effort when converting', () => {
@@ -100,7 +97,7 @@ describe('adaptThinkingForModel', () => {
         thinking: { type: 'enabled', budget_tokens: 1024 },
         output_config: { effort: 'high' },
       }
-      adaptThinkingForModel(payload)
+      adaptThinkingForModel(payload, ADAPTIVE_CAPS)
       expect(payload.output_config?.effort).toBe('high')
     })
 
@@ -112,35 +109,42 @@ describe('adaptThinkingForModel', () => {
         thinking: { type: 'adaptive' },
         output_config: { effort: 'low' },
       }
-      adaptThinkingForModel(payload)
+      adaptThinkingForModel(payload, ADAPTIVE_CAPS)
       expect(payload.thinking?.type).toBe('adaptive')
       expect(payload.output_config?.effort).toBe('low')
     })
   })
 
-  describe('older / unaffected models', () => {
-    test('claude-sonnet-4.6 with thinking.enabled is left untouched', () => {
+  describe('models with reasoning_effort but no adaptive_thinking', () => {
+    test('leaves thinking.enabled untouched and keeps output_config', () => {
       const payload: AnthropicMessagesPayload = {
-        model: 'claude-sonnet-4.6',
+        model: 'claude-sonnet-4.5',
+        max_tokens: 50,
+        messages: [{ role: 'user', content: 'hi' }],
+        thinking: { type: 'enabled', budget_tokens: 1024 },
+        output_config: { effort: 'high' },
+      }
+      adaptThinkingForModel(payload, { adaptiveThinking: false, reasoningEffort: true })
+      expect(payload.thinking?.type).toBe('enabled')
+      expect(payload.thinking?.budget_tokens).toBe(1024)
+      expect(payload.output_config?.effort).toBe('high')
+    })
+  })
+
+  describe('no capability metadata available', () => {
+    // Deliberate: an upstream whose /models we could not read gets today's
+    // behaviour (pass through untouched) rather than a guess.
+    test('leaves the payload alone when caps are undefined', () => {
+      const payload: AnthropicMessagesPayload = {
+        model: 'claude-opus-5',
         max_tokens: 50,
         messages: [{ role: 'user', content: 'hi' }],
         thinking: { type: 'enabled', budget_tokens: 1024 },
       }
-      adaptThinkingForModel(payload)
+      adaptThinkingForModel(payload, undefined)
       expect(payload.thinking?.type).toBe('enabled')
       expect(payload.thinking?.budget_tokens).toBe(1024)
       expect(payload.output_config).toBeUndefined()
-    })
-
-    test('claude-opus-4.5 with thinking.enabled is left untouched', () => {
-      const payload: AnthropicMessagesPayload = {
-        model: 'claude-opus-4.5',
-        max_tokens: 50,
-        messages: [{ role: 'user', content: 'hi' }],
-        thinking: { type: 'enabled', budget_tokens: 1024 },
-      }
-      adaptThinkingForModel(payload)
-      expect(payload.thinking?.type).toBe('enabled')
     })
 
     test('no-op when no model', () => {
@@ -150,7 +154,7 @@ describe('adaptThinkingForModel', () => {
         messages: [{ role: 'user' as const, content: 'hi' }],
         output_config: { effort: 'high' as const },
       }
-      adaptThinkingForModel(payload as AnthropicMessagesPayload)
+      adaptThinkingForModel(payload as AnthropicMessagesPayload, NO_REASONING_CAPS)
       // empty model -> early return -> field untouched
       expect(payload.output_config?.effort).toBe('high')
     })

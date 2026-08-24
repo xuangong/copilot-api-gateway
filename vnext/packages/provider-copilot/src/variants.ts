@@ -16,6 +16,7 @@
  */
 
 import type { Model, ModelsResponse } from "./models"
+import type { ThinkingCapabilities } from "./transforms/thinking-cleanup"
 
 const CLAUDE_VARIANT_SUFFIX = /-(?:high|xhigh|1m(?:-internal)?)$/
 const CLAUDE_DATE_SUFFIX = /-\d{8}$/
@@ -85,7 +86,7 @@ function mergeVariantGroup(variants: Array<Model>): Model {
   const base = pickBase(variants)
   const baseId = copilotPublicModelId(base.id)
   const limits = base.capabilities?.limits ?? {}
-  const supports = (base.capabilities?.supports ?? {}) as Record<string, unknown>
+  const supports = base.capabilities?.supports ?? {}
 
   return {
     ...base,
@@ -108,13 +109,9 @@ function mergeVariantGroup(variants: Array<Model>): Model {
       supports: {
         ...supports,
         reasoning_effort: unionStrings(
-          ...variants.map(
-            (v) =>
-              (v.capabilities?.supports as { reasoning_effort?: string[] } | undefined)
-                ?.reasoning_effort,
-          ),
+          ...variants.map((v) => v.capabilities?.supports?.reasoning_effort),
         ),
-      } as typeof base.capabilities.supports,
+      },
     },
     available_combinations: computeCombinations(variants),
   }
@@ -130,8 +127,7 @@ function computeCombinations(
   ]
   for (const model of variants) {
     const supports1m = variantSupports1m(model)
-    const efforts = (model.capabilities?.supports as { reasoning_effort?: string[] } | undefined)
-      ?.reasoning_effort
+    const efforts = model.capabilities?.supports?.reasoning_effort
     const bucket = buckets[supports1m ? 1 : 0]!
     if (!efforts || efforts.length === 0) bucket.efforts.add(undefined)
     else for (const e of efforts) bucket.efforts.add(e)
@@ -294,8 +290,7 @@ export function composeModelOptions(
 
   for (const model of candidates) {
     const supports1m = variantSupports1m(model)
-    const efforts = (model.capabilities?.supports as { reasoning_effort?: string[] } | undefined)
-      ?.reasoning_effort
+    const efforts = model.capabilities?.supports?.reasoning_effort
     const bucket = buckets[supports1m ? 1 : 0]!
     if (!efforts || efforts.length === 0) {
       bucket.efforts.add(undefined)
@@ -343,8 +338,7 @@ function variantSupports1m(model: Model): boolean {
 
 function variantSupportsEffort(model: Model, effort: string | undefined): boolean {
   if (!effort) return true
-  const efforts = (model.capabilities?.supports as { reasoning_effort?: string[] } | undefined)
-    ?.reasoning_effort
+  const efforts = model.capabilities?.supports?.reasoning_effort
   return efforts?.includes(effort) === true
 }
 
@@ -369,6 +363,38 @@ function preference(a: Model, b: Model): number {
 
 const firstPreferred = (models: ReadonlyArray<Model>): Model | undefined =>
   [...models].sort(preference)[0]
+
+/**
+ * Distil the two capability facts that decide the thinking wire contract.
+ *
+ * Reads the whole variant group rather than the single resolved id: the
+ * `-high` / `-1m-internal` siblings are the same model in a different slot,
+ * and a sibling that happens to omit `reasoning_effort` must not make us
+ * strip `output_config` from a model that plainly supports it. A key present
+ * on any sibling counts for the group.
+ *
+ * Returns undefined when the catalog has nothing to say about this id — the
+ * caller must then leave the payload alone rather than guess.
+ */
+export function thinkingCapabilitiesFor(
+  models: ModelsResponse,
+  modelId: string,
+): ThinkingCapabilities | undefined {
+  if (!isClaudeModel(modelId)) return undefined
+
+  const normalized = copilotPublicModelId(normalizeAnthropicVersion(modelId))
+  const group = models.data.filter(
+    (m) => m.id === modelId || m.id === normalized || isVariantForBase(normalized, m),
+  )
+  if (group.length === 0) return undefined
+
+  return {
+    adaptiveThinking: group.some((m) => m.capabilities?.supports?.adaptive_thinking === true),
+    reasoningEffort: group.some(
+      (m) => (m.capabilities?.supports?.reasoning_effort?.length ?? 0) > 0,
+    ),
+  }
+}
 
 /**
  * Reverse the merge: given a public-ish model id and the request hints,
