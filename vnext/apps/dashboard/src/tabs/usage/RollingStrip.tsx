@@ -65,10 +65,16 @@ export function RollingStrip({ cells, selectedKey, isDark, onPick }: Props) {
             daily activity graph, which is a different number entirely. */}
         <span className="text-[10px] text-themed-dim">{t("dash.rollingTotalHint")}</span>
       </div>
-      {/* Stretched across the whole card rather than fixed-size and scrolling:
-          ninety squares only read as a trend if they are all on screen at once.
-          aspect-square keeps them square at whatever width that works out to. */}
-      <div className="flex items-stretch gap-[2px] w-full" onMouseLeave={() => setHover(null)}>
+      {/* Wraps rather than shrinks. Ninety squares only read as a trend if they
+          are all on screen, but on a narrow card ninety across leaves each one a
+          couple of pixels wide — so the row folds to forty-five, then thirty,
+          then fifteen. Every count divides ninety exactly, so the fold is always
+          into whole rows and none is left half-empty. aspect-square keeps them
+          square at whatever width the column works out to. */}
+      <div
+        className="grid gap-[2px] w-full grid-cols-[repeat(15,minmax(0,1fr))] sm:grid-cols-[repeat(30,minmax(0,1fr))] lg:grid-cols-[repeat(45,minmax(0,1fr))] xl:grid-cols-[repeat(90,minmax(0,1fr))]"
+        onMouseLeave={() => setHover(null)}
+      >
         {cells.map((c, i) => (
           <button
             key={c.endKey}
@@ -79,7 +85,7 @@ export function RollingStrip({ cells, selectedKey, isDark, onPick }: Props) {
             onBlur={() => setHover(null)}
             onClick={() => onPick(c.endKey)}
             style={{ backgroundColor: shades[costShadeLevel(c.costUSD)] }}
-            className={`flex-1 min-w-[2px] aspect-square rounded-[2px] transition-all ${
+            className={`aspect-square rounded-[2px] transition-all ${
               c.endKey === selectedKey ? "ring-1 ring-white/70" : "hover:ring-1 hover:ring-white/40"
             }`}
           />
