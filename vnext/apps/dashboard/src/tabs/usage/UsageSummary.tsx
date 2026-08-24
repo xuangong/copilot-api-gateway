@@ -19,7 +19,17 @@ export function UsageSummaryCards({ summary }: Props) {
   const hitPct = totalInput > 0 ? ((summary.cacheRead / totalInput) * 100).toFixed(1) + "% " + t("dash.cacheHitSuffix") : ""
   const weighted = computeWeightedTokens(summary.cacheRead, summary.cacheCreation, summary.input, summary.output)
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 mt-6 pt-5 border-t border-white/5">
+    // Four across at most, never eight. A grid cell does not clip its contents,
+    // so an eighth of the card is not a budget the number respects — it just
+    // overflows both ways and lands on top of its neighbours, which is exactly
+    // what a month of traffic does: thirteen digits of mono at text-lg needs
+    // roughly twice the width an eighth of a card leaves it. Two rows of four
+    // fits the widest number these cards can hold.
+    //
+    // The fold to two happens at md rather than sm because four across at 640px
+    // is back inside the overlapping range; below that the phone gets four rows
+    // of two, each with half the card to itself.
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-5 border-t border-white/5">
       <Cell label={t("dash.requests")} value={fmt(summary.requests)} />
       <Cell label={t("dash.totalInput")} value={fmt(totalInput)} note={t("dash.uncachedCacheNote")} />
       <Cell label={t("dash.cacheRead")} value={fmt(summary.cacheRead)} note={hitPct} valueClass="text-green-400" />
