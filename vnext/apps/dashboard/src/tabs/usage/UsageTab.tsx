@@ -133,7 +133,13 @@ export function UsageTab() {
               <input
                 id="usage-end-date"
                 type="date"
-                value={usage.endDate ?? ""}
+                // Falls back to today rather than to blank. A null endDate means
+                // "the window that ends now", which is a day the user can name —
+                // so leaving the field empty hides an answer the page already
+                // knows, and makes the Latest button look like it cleared the
+                // window rather than moved it. Same fallback the strip's
+                // selection ring uses, so the two always agree.
+                value={usage.endDate ?? localDateKey(new Date())}
                 // A window closing in the future could only ever be part empty.
                 max={localDateKey(new Date())}
                 onChange={(e) => usage.chooseEndDate(e.target.value || null)}
