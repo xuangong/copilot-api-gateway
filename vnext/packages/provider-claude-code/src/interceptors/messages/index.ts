@@ -1,5 +1,6 @@
-// Claude Code re-mimicry chain. Runs on the re-mimicry path (callMessages
-// short-circuits to passthrough when inbound is already CC-shaped).
+// Claude Code re-mimicry chain. Runs on the re-mimicry path only —
+// `ClaudeCodeProvider.fetch` bypasses the chain entirely when
+// `isClaudeCodeShapedRequest` says the inbound request is already CC-shaped.
 //
 // Order matters:
 //   1. backfillRequiredFields         fills max_tokens/temperature so rest

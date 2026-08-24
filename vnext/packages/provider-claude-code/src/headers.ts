@@ -11,6 +11,30 @@
 // vNext note: ported verbatim from
 // copilot-gateway/packages/provider-claude-code/src/headers.ts. No semicolons
 // per vNext lint config.
+//
+// Deliberately NOT bumped to 2.1.233 (checked 2026-08-24). The three values
+// below are co-captured — they must move as one set, because the detector can
+// cross-check them and an impossible combination is worse than a consistently
+// stale one. Two of the three are readable from the published native binary
+// (`npm pack @anthropic-ai/claude-code-linux-arm64@<v>`, then `strings`):
+//
+//   value                          2.1.181 (pinned)   2.1.233
+//   User-Agent version             2.1.181            2.1.233
+//   X-Stainless-Package-Version    0.94.0             0.112.1
+//   X-Stainless-Runtime-Version    v24.3.0            unknown
+//
+// The third is not readable. The CLI ships as a Bun-compiled binary, so that
+// header carries Bun's `process.version`. 2.1.181 embeds V8 13.6.233.10-node.18
+// — the same generation as Bun 1.3.0, which reports v24.3.0, confirming the
+// pin. 2.1.233 embeds V8 14.6.202.34-node.20, i.e. a newer Bun whose value we
+// cannot measure: the npm mirror tops out at Bun 1.3.14, and Bun dedups the
+// literal out of the compiled string table. To refresh, get that one number
+// (run the matching Bun's `process.version`, or capture live CLI traffic) and
+// move all three together.
+//
+// Verified unchanged at 2.1.233, so not blockers: `X-Stainless-Runtime` is
+// still `node` (Bun satisfies the SDK's node branch), and every token in the
+// two anthropic-beta lists below still exists in the 2.1.233 binary.
 
 export const CLAUDE_CLI_VERSION = '2.1.181'
 

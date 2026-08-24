@@ -37,7 +37,7 @@ import type { Fetcher } from './fetcher'
 import { sha256Uuid, uuidV7 } from './ids'
 import type { CodexProviderModel } from './models'
 import { parseCodexQuotaHeaders, putCodexQuota } from './quota'
-import type { CodexAccountCredential } from './state'
+import type { CodexAccountCredential, CodexQuotaSnapshotEntryMap } from './state'
 import type {
   CanonicalResponsesPayload,
   ResponsesInputItem,
@@ -168,6 +168,14 @@ const prepareCodexCall = async (
   if (opts.account.state !== 'active') {
     return { ok: false, response: synthetic503(`Codex upstream is ${opts.account.state}`) }
   }
+  const now = new Date()
+  const blockedUntil = rateLimitedUntil(opts.account.quotaSnapshot, now)
+  if (blockedUntil !== null) {
+    return {
+      ok: false,
+      response: synthetic429(`Codex upstream rate-limited until ${blockedUntil}`, blockedUntil, now),
+    }
+  }
   try {
     const entry = await ensureCodexAccessToken(
       opts.upstreamId,
@@ -186,6 +194,44 @@ const prepareCodexCall = async (
 
 const mintAccessToken = (opts: CodexBackendCallBase, refreshToken: string) =>
   mintCodexAccessToken(refreshToken, opts.fetcher, opts.effects.persistRefreshTokenRotation)
+
+// ─── Pre-flight quota gate ─────────────────────────────────────────────────
+// Returns the ISO instant this account is blocked until, or null when it is
+// free to dispatch. `ratelimited_until` is stamped by `parseCodexQuotaHeaders`
+// only on a real 429, so a non-null future value means the upstream already
+// told us it is rejecting; short-circuit at the gate so we don't burn an OAuth
+// refresh on a request that has no chance.
+//
+// No reference implementation to port here: copilot-gateway writes
+// `ratelimited_until` but never reads it back. Two deliberate non-signals,
+// mirroring the claude-code gate's anti-false-positive rules:
+//
+//   - `primary_used_percent` / `secondary_used_percent` are utilization
+//     reports, not rejections. An account can sit at 100% and still be served
+//     (spillover to credits, window rolling over mid-request); gating on
+//     utilization would refuse requests the upstream would have honoured.
+//   - a bucket with no `ratelimited_until` never gates, whatever else it
+//     carries. Without a horizon the gate could never expire on its own, and
+//     no later request would fire to refresh the snapshot.
+//
+// Buckets are keyed by `active_limit`, and the governing limit is only known
+// from the response headers — so any blocked bucket gates, and we report the
+// furthest horizon among them.
+const rateLimitedUntil = (
+  snapshot: CodexQuotaSnapshotEntryMap | null,
+  now: Date,
+): string | null => {
+  if (!snapshot) return null
+  let furthest: string | null = null
+  for (const entry of Object.values(snapshot)) {
+    const until = entry.data.ratelimited_until
+    if (!until) continue
+    const ms = new Date(until).getTime()
+    if (!Number.isFinite(ms) || ms <= now.getTime()) continue
+    if (furthest === null || ms > new Date(furthest).getTime()) furthest = until
+  }
+  return furthest
+}
 
 // ─── Identity / turn metadata ──────────────────────────────────────────────
 
@@ -648,6 +694,20 @@ const synthetic503 = (message: string): Response =>
   new Response(
     JSON.stringify({ error: { type: 'codex_upstream_unavailable', message } }),
     { status: 503, headers: { 'content-type': 'application/json' } },
+  )
+
+const synthetic429 = (message: string, retryAtIso: string, now: Date): Response =>
+  new Response(
+    JSON.stringify({ error: { type: 'codex_rate_limited', message, retry_at: retryAtIso } }),
+    {
+      status: 429,
+      headers: {
+        'content-type': 'application/json',
+        'retry-after': String(
+          Math.max(0, Math.ceil((new Date(retryAtIso).getTime() - now.getTime()) / 1000)),
+        ),
+      },
+    },
   )
 
 // Codex backend serves SSE without setting `content-type: text/event-stream`

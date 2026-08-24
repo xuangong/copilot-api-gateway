@@ -38,7 +38,7 @@ import {
   parseMessagesStream,
   type MessagesStreamEvent,
 } from '@vibe-llm/protocols/messages'
-import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vibe-llm/provider-llm'
+import { HTTPError, type InboundHeaderMatcher, type ProviderRequest, type ProviderResponse } from '@vibe-llm/provider-llm'
 import {
   telemetryModelIdentity,
   upstreamPerformanceContext,
@@ -53,6 +53,7 @@ import { getTranslator, type PairTranslator } from '../../dispatch/translator-re
 import { traverseTranslation } from '../shared/traverse-translation.ts'
 import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-dispatch.ts'
 import { invocationSourceApi } from '../shared/invocation-source-api.ts'
+import { allowedInboundHeaders } from '../../shared/inbound-headers.ts'
 
 // ─── Public types ─────────────────────────────────────────────────────────
 
@@ -83,6 +84,14 @@ export interface MessagesAttemptArgs {
   /** Overridable interceptor chain; defaults to an empty chain (terminal-only). */
   readonly interceptors?: ReadonlyArray<MessagesInterceptor>
   readonly inheritedHeaders?: Record<string, string>
+  /**
+   * Raw client headers from the inbound HTTP request. Never forwarded wholesale
+   * — the attempt filters them through the *resolved* provider's
+   * `inboundHeaderAllowlist`, so a provider that declares nothing sees nothing.
+   * Only claude-code opts in, because its billing detector keys on the caller's
+   * own Claude Code fingerprint surviving to the wire.
+   */
+  readonly inboundHeaders?: Headers
   readonly snapshotMode?: 'none'
   /**
    * Test seam for cross-protocol dispatch. When the resolved binding routes to
@@ -103,7 +112,7 @@ export type { MessagesInterceptor } from './interceptors'
 // ─── Binding selection ───────────────────────────────────────────────────
 
 export type SelectMessagesBindingResult =
-  | { kind: 'ok'; binding: AttemptBindingShape & { readonly provider: { readonly fetch: (req: ProviderRequest) => Promise<ProviderResponse>; readonly getPricingForModelKey: (k: string) => unknown | null } }; targetEndpoint: EndpointKey; translator: PairTranslator; bareModel: string }
+  | { kind: 'ok'; binding: AttemptBindingShape & { readonly provider: { readonly fetch: (req: ProviderRequest) => Promise<ProviderResponse>; readonly getPricingForModelKey: (k: string) => unknown | null; readonly inboundHeaderAllowlist?: readonly InboundHeaderMatcher[] } }; targetEndpoint: EndpointKey; translator: PairTranslator; bareModel: string }
   | { kind: 'model-not-found'; bareModel: string }
   | { kind: 'no-eligible-binding'; bareModel: string }
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
@@ -316,7 +325,10 @@ export const messagesAttempt = {
       // `traverseTranslation`, so it is the source of truth here.
       sourceApi: invocationSourceApi(args.telemetryCtx.sourceApi, 'messages'),
       payload: args.payload as Record<string, unknown>,
-      headers: { ...(args.inheritedHeaders ?? {}) },
+      // Client headers first, gateway-derived headers second: `inheritedHeaders`
+      // comes from the translation path and is authoritative, so it wins any
+      // name collision with what the caller sent.
+      headers: { ...allowedInboundHeaders(args.inboundHeaders, sel.binding.provider), ...(args.inheritedHeaders ?? {}) },
     }
     const chain: ReadonlyArray<MessagesInterceptor> = args.interceptors ?? messagesInterceptors
 

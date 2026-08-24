@@ -5,12 +5,12 @@
  * vNext adaptations vs reference:
  *   - Factory function replaced with a class implementing LlmModelProvider.
  *   - Single endpoint 'messages'.
- *   - Interceptor chain empty in Gb (claude-code interceptors deferred).
  *   - Access-token / catalog / pricing routing lives on the class methods.
  */
 import { ensureClaudeCodeAccessToken } from './access-token'
 import { ClaudeCodeOAuthSessionTerminatedError } from './auth/oauth'
 import { assertClaudeCodeUpstreamRecord, type ClaudeCodeUpstreamConfig } from './config'
+import { isClaudeCodeShapedRequest } from './detection'
 import { callClaudeCodeMessages } from './fetch'
 import { directFetcher, type Fetcher } from './fetcher'
 import {
@@ -34,14 +34,41 @@ import {
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
+  type InboundHeaderMatcher,
 } from '@vibe-llm/provider-llm'
 
 const CLAUDE_CODE_SUPPORTED: readonly EndpointKey[] = ['messages']
+
+// Client headers this provider may see. Mirrors sub2api `gateway_service.go`
+// L421-L444 — the set a real Claude Code client sends that Anthropic's billing
+// detector reads. Anything outside it is dropped at the gateway boundary, and
+// `authorization` is additionally stripped there unconditionally.
+//
+// Divergence from the reference: it carries `anthropic-beta` as a typed field on
+// the call and re-stamps it after filtering, so the raw header is absent from
+// its allowlist. vNext has no such typed slot, and detection requires the header
+// to be present, so it rides through as an ordinary allowlisted header.
+const INBOUND_HEADER_ALLOWLIST: readonly InboundHeaderMatcher[] = [
+  'accept',
+  /^x-stainless-(?:retry-count|timeout|lang|package-version|os|arch|runtime|runtime-version|helper-method)$/,
+  'anthropic-dangerous-direct-browser-access',
+  'anthropic-version',
+  'anthropic-beta',
+  'x-app',
+  'accept-language',
+  'sec-fetch-mode',
+  'user-agent',
+  'content-type',
+  'accept-encoding',
+  'x-claude-code-session-id',
+  'x-client-request-id',
+]
 
 export class ClaudeCodeProvider implements LlmModelProvider {
   readonly kind = 'claude-code' as const
   readonly name: string
   readonly supportedEndpoints = CLAUDE_CODE_SUPPORTED
+  readonly inboundHeaderAllowlist = INBOUND_HEADER_ALLOWLIST
   private readonly upstreamId: string
   private readonly config: ClaudeCodeUpstreamConfig
   private readonly fetcher: Fetcher
@@ -92,6 +119,26 @@ export class ClaudeCodeProvider implements LlmModelProvider {
       const model = await this.resolveModel(req.payload)
       const { model: _ignored, ...wireBody } = req.payload as MessagesPayload
 
+      // Detection runs on the *unmodified* payload — it needs `model` for the
+      // Haiku connectivity probe, which `wireBody` has already stripped.
+      const shaped = isClaudeCodeShapedRequest({
+        headers: req.headers,
+        body: req.payload as MessagesPayload,
+      })
+
+      const terminal = (): Promise<Response> =>
+        callClaudeCodeMessages({
+          upstreamId: this.upstreamId,
+          model,
+          // On the shaped path the chain never runs, so this is still the
+          // caller's own body verbatim.
+          body: bctx.payload,
+          signal: req.signal,
+          fetcher: this.fetcher,
+          shaped,
+          inboundHeaders: req.headers,
+        })
+
       // Boundary ctx carries mutable `payload` (interceptors overwrite it
       // in place) plus read-only model + upstreamId (needed by
       // synthesize-metadata-user-id to derive deterministic device/session
@@ -101,19 +148,20 @@ export class ClaudeCodeProvider implements LlmModelProvider {
         model,
         upstreamId: this.upstreamId,
       }
-      const upstreamResp = await runInterceptors<MessagesBoundaryCtx, object, Response>(
-        {},
-        bctx,
-        CLAUDE_CODE_MESSAGES_BOUNDARY,
-        () =>
-          callClaudeCodeMessages({
-            upstreamId: this.upstreamId,
-            model,
-            body: bctx.payload,
-            signal: req.signal,
-            fetcher: this.fetcher,
-          }),
-      )
+
+      // The interceptor chain exists to disguise non-CC traffic as CC. Running
+      // it on genuine CC traffic would overwrite the caller's real system
+      // blocks, metadata and tool shape with our synthetic equivalents — a
+      // fidelity loss for zero benefit. So shaped calls skip straight to the
+      // terminal.
+      const upstreamResp = shaped
+        ? await terminal()
+        : await runInterceptors<MessagesBoundaryCtx, object, Response>(
+            {},
+            bctx,
+            CLAUDE_CODE_MESSAGES_BOUNDARY,
+            terminal,
+          )
 
       return {
         status: upstreamResp.status,

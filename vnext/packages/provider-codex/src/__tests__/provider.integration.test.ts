@@ -60,7 +60,9 @@ class InMemoryUpstreamRepo implements UpstreamRepo {
 const UPSTREAM_ID = 'ups_codex_test'
 const ACCOUNT_ID = 'acct_test'
 
-const baseRecord = (): UpstreamRecord<CodexUpstreamState> => ({
+const baseRecord = (
+  quotaSnapshot: CodexUpstreamState['accounts'][number]['quotaSnapshot'] = null,
+): UpstreamRecord<CodexUpstreamState> => ({
   id: UPSTREAM_ID,
   provider: 'codex',
   name: 'test-codex',
@@ -94,7 +96,7 @@ const baseRecord = (): UpstreamRecord<CodexUpstreamState> => ({
           expiresAt: Date.now() + 60 * 60 * 1000,
           refreshedAt: '2026-01-01T00:00:00.000Z',
         },
-        quotaSnapshot: null,
+        quotaSnapshot,
       },
     ],
   },
@@ -395,4 +397,67 @@ test('alpha_search 401 twice → propagated to caller', async () => {
     c.url.endsWith(CODEX_ALPHA_SEARCH_PATH),
   )
   expect(alphaCalls).toHaveLength(2) // original + one retry, no third
+})
+
+// ─── Pre-flight quota gate ─────────────────────────────────────────────────
+// No reference implementation to port: copilot-gateway writes
+// `ratelimited_until` but never reads it. The signal itself is unambiguous
+// though — it is stamped only when the upstream actually answered 429 — so the
+// gate mirrors the claude-code one using codex's own field.
+
+const limitedBucket = (
+  ratelimitedUntil: string | null,
+): CodexUpstreamState['accounts'][number]['quotaSnapshot'] => ({
+  weekly: {
+    fetchedAt: Date.now(),
+    data: {
+      observed_at: new Date().toISOString(),
+      active_limit: 'weekly',
+      primary_used_percent: 100,
+      ...(ratelimitedUntil === null ? {} : { ratelimited_until: ratelimitedUntil }),
+    },
+  },
+})
+
+const isoIn = (ms: number): string => new Date(Date.now() + ms).toISOString()
+
+test('bucket rate-limited into the future → synthetic 429, no wire call', async () => {
+  const record = baseRecord(limitedBucket(isoIn(10 * 60 * 1000)))
+  repo.put(record)
+  const harness = makeHarness(() => okSSE())
+  const provider = new CodexProvider(record, harness.fetcher)
+  const resp = await provider.fetch(makeRequest())
+
+  expect(resp.status).toBe(429)
+  const retryAfter = Number(resp.headers.get('retry-after'))
+  expect(retryAfter).toBeGreaterThan(0)
+  expect(retryAfter).toBeLessThanOrEqual(10 * 60)
+
+  expect(harness.calls.filter((c) => c.url.endsWith(CODEX_RESPONSES_PATH))).toHaveLength(0)
+  expect(harness.calls.filter((c) => c.url === CODEX_OAUTH_TOKEN_URL)).toHaveLength(0)
+})
+
+test('bucket whose rate limit already elapsed does not gate', async () => {
+  const record = baseRecord(limitedBucket(isoIn(-60 * 1000)))
+  repo.put(record)
+  const harness = makeHarness(() => okSSE())
+  const provider = new CodexProvider(record, harness.fetcher)
+  const resp = await provider.fetch(makeRequest())
+
+  expect(resp.status).toBe(200)
+  expect(harness.calls.filter((c) => c.url.endsWith(CODEX_RESPONSES_PATH))).toHaveLength(1)
+})
+
+test('bucket at 100% used but never 429d does not gate', async () => {
+  // `used_percent` is a utilization report, not a rejection. Only a real 429
+  // stamps `ratelimited_until`; gating on utilization would refuse requests
+  // the upstream would have served.
+  const record = baseRecord(limitedBucket(null))
+  repo.put(record)
+  const harness = makeHarness(() => okSSE())
+  const provider = new CodexProvider(record, harness.fetcher)
+  const resp = await provider.fetch(makeRequest())
+
+  expect(resp.status).toBe(200)
+  expect(harness.calls.filter((c) => c.url.endsWith(CODEX_RESPONSES_PATH))).toHaveLength(1)
 })

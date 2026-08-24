@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { withDefaultInstructions } from '../interceptors/responses/with-default-instructions'
+import { withSystemRewrittenToDeveloper } from '../interceptors/responses/with-system-rewritten-to-developer'
 import { withUnsupportedFieldsStripped } from '../interceptors/responses/with-unsupported-fields-stripped'
 import type { Invocation, RequestContext } from '@vibe-llm/protocols/common'
 
@@ -33,6 +34,36 @@ test('withDefaultInstructions leaves non-empty user value alone', async () => {
   const inv = mkInv({ instructions: 'You are a pirate.' })
   await withDefaultInstructions(inv, ctx, noop)
   expect(inv.payload.instructions).toBe('You are a pirate.')
+})
+
+// The real Codex CLI never puts a `system` role on the Responses Lite wire —
+// its base prompt rides in `instructions` and everything else is a `developer`
+// item. Forwarding an inbound `system` item verbatim would emit a shape the
+// client we impersonate cannot produce.
+// https://github.com/openai/codex/blob/1f17e7512f0e47625f2cad416f14870688a99814/codex-rs/core/src/client.rs#L829-L849
+test('withSystemRewrittenToDeveloper rewrites system input items to developer', async () => {
+  const inv = mkInv({
+    input: [
+      { type: 'message', role: 'system', content: 'be terse' },
+      { type: 'message', role: 'user', content: 'hi' },
+    ],
+  })
+  await withSystemRewrittenToDeveloper(inv, ctx, noop)
+  expect(inv.payload.input).toEqual([
+    { type: 'message', role: 'developer', content: 'be terse' },
+    { type: 'message', role: 'user', content: 'hi' },
+  ])
+})
+
+test('withSystemRewrittenToDeveloper leaves other roles and non-array input alone', async () => {
+  const inv = mkInv({ input: [{ type: 'message', role: 'developer', content: 'x' }] })
+  await withSystemRewrittenToDeveloper(inv, ctx, noop)
+  expect(inv.payload.input).toEqual([{ type: 'message', role: 'developer', content: 'x' }])
+
+  // Responses accepts a bare string for `input`; it carries no role to rewrite.
+  const invString = mkInv({ input: 'hi' })
+  await withSystemRewrittenToDeveloper(invString, ctx, noop)
+  expect(invString.payload.input).toBe('hi')
 })
 
 test('withUnsupportedFieldsStripped removes codex-rejected fields', async () => {

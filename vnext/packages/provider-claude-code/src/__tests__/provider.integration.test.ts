@@ -11,12 +11,15 @@
 //   4. Terminal OAuth refresh (invalid_grant retry-race exhausted) → 503 +
 //      account flipped to refresh_failed.
 //   5. setup-token expired at fetch time → 503, not a wire round-trip.
+//   6. Pre-flight quota gate: exhausted primary window → synthetic 429 without
+//      touching the wire; plus the three shapes that must NOT gate.
 
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { CLAUDE_CODE_OAUTH_TOKEN_URL } from '../constants'
 import type { Fetcher } from '../fetcher'
 import { ClaudeCodeProvider } from '../provider'
 import type { ClaudeCodeUpstreamState } from '../state'
+import type { ClaudeCodeQuotaSnapshot } from '../quota'
 import type { UpstreamRepo } from '@vibe-core/upstream-repo'
 import { initUpstreamRepo, UpstreamGoneError } from '@vibe-core/upstream-repo'
 import { __resetPlatformForTests, initBackground } from '@vibe-core/platform'
@@ -122,6 +125,7 @@ interface Recorded {
   method: string
   authorization: string | null
   bodyText: string | null
+  headers: Headers
 }
 
 interface FetcherHarness {
@@ -162,6 +166,7 @@ const makeHarness = (
       method,
       authorization: headers.get('authorization'),
       bodyText: typeof init?.body === 'string' ? init.body : null,
+      headers,
     }
     calls.push(record)
     const u = url.toString()
@@ -207,6 +212,29 @@ const makeRequest = (): ProviderRequest => ({
 })
 
 const settleBackground = (): Promise<void> => new Promise((r) => setTimeout(r, 5))
+
+// Minimal snapshot shaped like `parseClaudeCodeQuotaHeaders` output. Only the
+// fields the pre-flight gate reads are meaningful; the rest sit at their
+// header-absent defaults.
+const quotaSnapshot = (
+  over: Partial<ClaudeCodeQuotaSnapshot> = {},
+): { fetchedAt: number; data: ClaudeCodeQuotaSnapshot } => ({
+  fetchedAt: Date.now(),
+  data: {
+    status: null,
+    reset: null,
+    fallbackAvailable: null,
+    fallbackPercentage: null,
+    representativeClaim: null,
+    overage: null,
+    fiveHour: null,
+    sevenDay: null,
+    raw: { 'anthropic-ratelimit-unified-status': 'seeded' },
+    ...over,
+  },
+})
+
+const isoIn = (ms: number): string => new Date(Date.now() + ms).toISOString()
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
@@ -369,4 +397,141 @@ test('setup-token expired → 503, no wire round-trip', async () => {
   const fresh = await repo.getById<ClaudeCodeUpstreamState>(UPSTREAM_ID)
   const acct = fresh!.state.accounts[0]!
   expect(acct.state).toBe('refresh_failed')
+})
+
+// ─── Pre-flight quota gate ─────────────────────────────────────────────────
+
+test('exhausted primary window → synthetic 429 with retry-after, no wire call', async () => {
+  const resetIso = isoIn(15 * 60 * 1000)
+  repo.put(baseRecord({ quotaSnapshot: quotaSnapshot({ status: 'rejected', reset: resetIso }) }))
+  const harness = makeHarness(() => okSSE())
+  const provider = new ClaudeCodeProvider(baseRecord(), harness.fetcher)
+  const resp = await provider.fetch(makeRequest())
+
+  expect(resp.status).toBe(429)
+  const retryAfter = Number(resp.headers.get('retry-after'))
+  expect(retryAfter).toBeGreaterThan(0)
+  expect(retryAfter).toBeLessThanOrEqual(15 * 60)
+
+  expect(harness.calls.filter((c) => c.url === ANTHROPIC_MESSAGES)).toHaveLength(0)
+  // Gate sits ahead of the token layer so an exhausted window never burns a
+  // refresh round-trip.
+  expect(harness.calls.filter((c) => c.url === CLAUDE_CODE_OAUTH_TOKEN_URL)).toHaveLength(0)
+})
+
+test('rejected with an already-past reset does not gate', async () => {
+  repo.put(
+    baseRecord({
+      quotaSnapshot: quotaSnapshot({ status: 'rejected', reset: isoIn(-60 * 1000) }),
+    }),
+  )
+  const harness = makeHarness(() => okSSE())
+  const provider = new ClaudeCodeProvider(baseRecord(), harness.fetcher)
+  const resp = await provider.fetch(makeRequest())
+
+  expect(resp.status).toBe(200)
+  expect(harness.calls.filter((c) => c.url === ANTHROPIC_MESSAGES)).toHaveLength(1)
+})
+
+test('overage rejected while primary allowed does not gate', async () => {
+  // Steady state for any plan account that never bought extra credits —
+  // gating on it would refuse every request such an account ever makes.
+  repo.put(
+    baseRecord({
+      quotaSnapshot: quotaSnapshot({
+        status: 'allowed',
+        reset: isoIn(60 * 60 * 1000),
+        overage: {
+          status: 'rejected',
+          reset: null,
+          utilization: null,
+          disabledReason: 'out_of_credits',
+        },
+      }),
+    }),
+  )
+  const harness = makeHarness(() => okSSE())
+  const provider = new ClaudeCodeProvider(baseRecord(), harness.fetcher)
+  const resp = await provider.fetch(makeRequest())
+
+  expect(resp.status).toBe(200)
+  expect(harness.calls.filter((c) => c.url === ANTHROPIC_MESSAGES)).toHaveLength(1)
+})
+
+test('rejected without a reset does not gate', async () => {
+  // No reset means no horizon to expire the gate — the account would be
+  // locked out forever because no later request refreshes the snapshot.
+  repo.put(baseRecord({ quotaSnapshot: quotaSnapshot({ status: 'rejected', reset: null }) }))
+  const harness = makeHarness(() => okSSE())
+  const provider = new ClaudeCodeProvider(baseRecord(), harness.fetcher)
+  const resp = await provider.fetch(makeRequest())
+
+  expect(resp.status).toBe(200)
+  expect(harness.calls.filter((c) => c.url === ANTHROPIC_MESSAGES)).toHaveLength(1)
+})
+
+// ─── 7. Shaped passthrough ─────────────────────────────────────────────────
+//
+// Gap #1: when the caller is already a real Claude Code client, the request
+// must reach Anthropic verbatim. Running the re-mimicry chain on it would
+// overwrite the caller's genuine session fingerprint with our synthetic one —
+// a fidelity loss for zero defensive benefit.
+
+const SHAPED_USER_ID = `user_${'a'.repeat(64)}_account_11111111-1111-1111-1111-111111111111_session_22222222-2222-2222-2222-222222222222`
+const SHAPED_UA = 'claude-cli/2.1.181 (external, cli)'
+
+const shapedRequest = (): ProviderRequest => ({
+  endpoint: 'messages',
+  payload: {
+    model: 'claude-opus-4-7',
+    messages: [{ role: 'user', content: 'hi' }],
+    max_tokens: 100,
+    system: [{ type: 'text', text: "You are Claude Code, Anthropic's official CLI for Claude." }],
+    metadata: { user_id: SHAPED_USER_ID },
+  },
+  headers: new Headers({
+    'user-agent': SHAPED_UA,
+    'x-app': 'cli',
+    'anthropic-beta': 'oauth-2025-04-20',
+    'anthropic-version': '2023-06-01',
+    'x-claude-code-session-id': 'sess-abc',
+  }),
+  sourceApi: 'anthropic',
+})
+
+test('shaped request passes body and client fingerprint through untouched', async () => {
+  repo.put(baseRecord())
+  const h = makeHarness(() => okSSE())
+  const provider = new ClaudeCodeProvider(baseRecord(), h.fetcher)
+  const res = await provider.fetch(shapedRequest())
+  expect(res.status).toBe(200)
+
+  const call = h.calls.find((c) => c.url === ANTHROPIC_MESSAGES)!
+  const body = JSON.parse(call.bodyText!)
+  // The caller's own system block and session id survive verbatim: exactly one
+  // block, no injected identity/billing prelude, no re-synthesized user_id.
+  expect(body.system).toEqual([
+    { type: 'text', text: "You are Claude Code, Anthropic's official CLI for Claude." },
+  ])
+  expect(body.metadata.user_id).toBe(SHAPED_USER_ID)
+  expect(call.headers.get('user-agent')).toBe(SHAPED_UA)
+  expect(call.headers.get('x-claude-code-session-id')).toBe('sess-abc')
+  // The client's bearer never reaches upstream — provider-owned OAuth does.
+  expect(call.authorization).toBe('Bearer at_initial')
+})
+
+test('unshaped request is re-mimicked by the interceptor chain', async () => {
+  repo.put(baseRecord())
+  const h = makeHarness(() => okSSE())
+  const provider = new ClaudeCodeProvider(baseRecord(), h.fetcher)
+  await provider.fetch(makeRequest())
+
+  const call = h.calls.find((c) => c.url === ANTHROPIC_MESSAGES)!
+  const body = JSON.parse(call.bodyText!)
+  // The chain injects the CC identity surface the bare request lacked.
+  expect(Array.isArray(body.system)).toBe(true)
+  expect(body.system.length).toBeGreaterThan(0)
+  expect(typeof body.metadata?.user_id).toBe('string')
+  // And the pinned mimicry UA, not whatever the caller sent (nothing here).
+  expect(call.headers.get('user-agent')).toMatch(/^claude-cli\//)
 })

@@ -41,6 +41,13 @@ export interface MessagesServeArgs {
   readonly signal?: AbortSignal
   /** Opaque per-request dump sink (null when the api key has no retention). */
   readonly dump?: KitDumpSink | null
+  /**
+   * Raw client request headers. Forwarded to the attempt, which filters them
+   * through the resolved provider's `inboundHeaderAllowlist` before any reach
+   * the wire. Omitted ⇒ no client header is forwarded, the pre-existing
+   * behaviour.
+   */
+  readonly inboundHeaders?: Headers
 }
 
 type MessagesPayload = Record<string, unknown> & { model: string; stream?: boolean }
@@ -85,6 +92,9 @@ const messagesHooks: ServeTemplateHooks<
     // it has no key and never searches.
     ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId },
     telemetryCtx: a.telemetryCtx,
+    // `extras` is the kit's only per-request passthrough slot; the hooks object
+    // is module-level and so cannot close over serveMessages' args.
+    inboundHeaders: (a.extras as { inboundHeaders?: Headers }).inboundHeaders,
   }),
 
   respond: (r, c) => respondMessages(r, {
@@ -103,7 +113,7 @@ export async function serveMessages(args: MessagesServeArgs): Promise<Response> 
   }
   const { response } = await serveTemplate(
     messagesHooks,
-    { raw: args.raw, auth, obsCtx: args.obsCtx as KitObsCtx, signal: args.signal, extras: {}, dump: args.dump ?? null },
+    { raw: args.raw, auth, obsCtx: args.obsCtx as KitObsCtx, signal: args.signal, extras: { inboundHeaders: args.inboundHeaders }, dump: args.dump ?? null },
     kitDeps,
   )
   return response

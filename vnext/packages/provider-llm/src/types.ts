@@ -53,6 +53,13 @@ export interface ProviderRequest {
 }
 
 /**
+ * A client-authored header name this provider can consume. Strings are exact,
+ * ASCII-case-insensitive names; regular expressions run against the normalized
+ * lowercase name.
+ */
+export type InboundHeaderMatcher = string | RegExp
+
+/**
  * LlmModelProvider — extends framework UpstreamAdapter with the three
  * LLM-specific guarantees the gateway routing layer relies on:
  *   - kind: the UpstreamKind discriminator for plugin lookup
@@ -66,4 +73,12 @@ export interface LlmModelProvider extends UpstreamAdapter {
   readonly supportedEndpoints: readonly EndpointKey[]
   getPricingForModelKey(modelKey: string): ModelPricing | null
   fetch(req: ProviderRequest): Promise<ProviderResponse>
+  /**
+   * Client headers this provider is allowed to see on `ProviderRequest.headers`.
+   * The gateway filters the inbound request through this list at the binding
+   * boundary, so a provider that omits it receives no client headers at all —
+   * the default, and the status quo for every provider but claude-code, which
+   * needs the caller's own Claude Code fingerprint to survive to the wire.
+   */
+  readonly inboundHeaderAllowlist?: readonly InboundHeaderMatcher[]
 }

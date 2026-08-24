@@ -136,3 +136,60 @@ test('case e — provider returns null body returns InternalErrorResult(502)', a
     expect(String(res.error)).toMatch(/empty body/)
   }
 })
+
+// Gap #1 Layer C: raw client headers reach the attempt as `inboundHeaders`, but
+// only the subset the *resolved provider* declares in `inboundHeaderAllowlist`
+// may reach the wire. Providers that declare nothing keep today's behaviour of
+// seeing no client headers at all.
+test('case f — inboundHeaders are filtered through the provider allowlist', async () => {
+  let captured: Headers | null = null
+  const fetchMock = mock(async (req: { headers: Headers }) => {
+    captured = req.headers
+    return makeProviderResponse({ status: 200, body: okJsonBody })
+  })
+  const fakeBinding = {
+    ...fakeBindingBase,
+    provider: {
+      ...fakeBindingBase.provider,
+      fetch: fetchMock,
+      inboundHeaderAllowlist: ['user-agent', /^x-stainless-lang$/],
+    },
+  } as never
+  await messagesAttempt.generate({
+    payload: { model: 'claude-opus', messages: [], stream: false },
+    auth: baseAuth,
+    ctx: baseCtx,
+    telemetryCtx: baseTelemetry,
+    inboundHeaders: new Headers({
+      'user-agent': 'claude-cli/2.1.181',
+      'x-stainless-lang': 'js',
+      'x-secret': 'nope',
+      authorization: 'Bearer gateway-key',
+    }),
+    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'messages', translator: identityTranslator, bareModel: 'claude-opus' }),
+  })
+  const headers = captured as unknown as Headers
+  expect(headers.get('user-agent')).toBe('claude-cli/2.1.181')
+  expect(headers.get('x-stainless-lang')).toBe('js')
+  expect(headers.get('x-secret')).toBeNull()
+  expect(headers.get('authorization')).toBeNull()
+})
+
+test('case g — a provider with no allowlist sees no inbound client headers', async () => {
+  let captured: Headers | null = null
+  const fetchMock = mock(async (req: { headers: Headers }) => {
+    captured = req.headers
+    return makeProviderResponse({ status: 200, body: okJsonBody })
+  })
+  const fakeBinding = { ...fakeBindingBase, provider: { ...fakeBindingBase.provider, fetch: fetchMock } } as never
+  await messagesAttempt.generate({
+    payload: { model: 'claude-opus', messages: [], stream: false },
+    auth: baseAuth,
+    ctx: baseCtx,
+    telemetryCtx: baseTelemetry,
+    inboundHeaders: new Headers({ 'user-agent': 'claude-cli/2.1.181' }),
+    selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'messages', translator: identityTranslator, bareModel: 'claude-opus' }),
+  })
+  const headers = captured as unknown as Headers
+  expect(headers.get('user-agent')).toBeNull()
+})

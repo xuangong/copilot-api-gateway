@@ -11,5 +11,5 @@ export async function messagesHandler(c: Context<{ Bindings: Env }>): Promise<Re
   const { requestBody, dump } = await openRequestDump(c, auth, c.req.method)
   let raw: unknown
   try { raw = parseJsonBody(requestBody.bytes) } catch { return dump ? dump.finalize(invalidJsonResponse()) : invalidJsonResponse() }
-  return serveMessages({ raw, auth, obsCtx: readObsCtx(c, auth), signal: c.req.raw.signal, dump })
+  return serveMessages({ raw, auth, obsCtx: readObsCtx(c, auth), signal: c.req.raw.signal, dump, inboundHeaders: c.req.raw.headers })
 }
