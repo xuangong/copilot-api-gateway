@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import {
   COST_ANCHOR_WINDOW,
+  MIN_DAY_FILL,
   STRIP_CELLS,
   STRIP_WINDOW,
   buildRollingStrip,
   computeStripRange,
   costShadeLevel,
+  dayFillRatio,
 } from "./usage-strip"
 
 // Wed 12 Aug 2026, 15:30 local — the same fixed clock the range tests use.
@@ -95,6 +97,58 @@ describe("buildRollingStrip", () => {
   test("labels the cell by its closing day", () => {
     const cells = buildRollingStrip(new Map(), new Date(2026, 7, 12))
     expect(cells[89]!.label).toBe("Aug 12")
+  })
+
+  // The square carries two readings at once: the outline is the window total,
+  // the fill is what the closing day itself contributed.
+  test("carries the closing day's own totals alongside the window's", () => {
+    const daily = new Map([
+      [day("2026-08-12"), { cost: 5, tokens: 50 }],
+      [day("2026-08-01"), { cost: 3, tokens: 30 }],
+    ])
+    const cells = buildRollingStrip(daily, new Date(2026, 7, 12))
+    const last = cells[89]!
+    expect(last.costUSD).toBe(8)
+    expect(last.dayCostUSD).toBe(5)
+    expect(last.dayTokens).toBe(50)
+    // A day inside the window but not closing it contributes nothing to the fill.
+    const quiet = cells.find((c) => c.endKey === "2026-08-11")!
+    expect(quiet.costUSD).toBe(3)
+    expect(quiet.dayCostUSD).toBe(0)
+  })
+})
+
+// The fill is deliberately relative where the shade is absolute: it answers
+// "how big was this day next to the biggest one here", which only has meaning
+// against the days on screen.
+describe("dayFillRatio", () => {
+  test("the busiest day fills the square", () => {
+    expect(dayFillRatio(40, 40)).toBe(1)
+  })
+
+  test("an empty day fills nothing", () => {
+    expect(dayFillRatio(0, 40)).toBe(0)
+    expect(dayFillRatio(-1, 40)).toBe(0)
+  })
+
+  test("a day with no busiest day to measure against fills nothing", () => {
+    expect(dayFillRatio(5, 0)).toBe(0)
+    expect(dayFillRatio(0, 0)).toBe(0)
+  })
+
+  test("an ordinary day fills in proportion", () => {
+    expect(dayFillRatio(20, 40)).toBeCloseTo(0.5, 6)
+  })
+
+  // Without a floor a real but tiny day renders as nothing at all, which reads
+  // as "no usage" — a different fact entirely.
+  test("a tiny day still shows a sliver rather than vanishing", () => {
+    expect(dayFillRatio(0.001, 40)).toBe(MIN_DAY_FILL)
+    expect(dayFillRatio(0.001, 40)).toBeGreaterThan(0)
+  })
+
+  test("never overflows the square", () => {
+    expect(dayFillRatio(80, 40)).toBe(1)
   })
 })
 

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react"
-import { COST_ANCHOR_WINDOW, costShadeLevel, type RollingStripCell } from "../../state/usage-strip"
+import { COST_ANCHOR_WINDOW, costShadeLevel, dayFillRatio, type RollingStripCell } from "../../state/usage-strip"
 import { useT } from "../../state/i18n"
 
 interface Props {
@@ -43,6 +43,9 @@ export function RollingStrip({ cells, selectedKey, isDark, onPick }: Props) {
   if (cells.length === 0) return null
   const shades = isDark ? SHADES_DARK : SHADES_LIGHT
   const shown = hover ? cells[hover.index] : null
+  // The fill is measured against the busiest day *on screen*, so it has to be
+  // taken from the cells themselves rather than from a constant.
+  const peakDay = cells.reduce((m, c) => (c.dayCostUSD > m ? c.dayCostUSD : m), 0)
 
   // Measured rather than derived from the index: the squares are flex-sized, so
   // their width depends on the card and a computed offset would drift.
@@ -75,21 +78,34 @@ export function RollingStrip({ cells, selectedKey, isDark, onPick }: Props) {
         className="grid gap-[2px] w-full grid-cols-[repeat(15,minmax(0,1fr))] sm:grid-cols-[repeat(30,minmax(0,1fr))] lg:grid-cols-[repeat(45,minmax(0,1fr))] xl:grid-cols-[repeat(90,minmax(0,1fr))]"
         onMouseLeave={() => setHover(null)}
       >
-        {cells.map((c, i) => (
-          <button
-            key={c.endKey}
-            type="button"
-            aria-label={`${c.label}: ${money(c.costUSD)}, ${c.tokens.toLocaleString()} tokens`}
-            onMouseEnter={track(i)}
-            onFocus={track(i)}
-            onBlur={() => setHover(null)}
-            onClick={() => onPick(c.endKey)}
-            style={{ backgroundColor: shades[costShadeLevel(c.costUSD)] }}
-            className={`aspect-square rounded-[2px] transition-all ${
-              c.endKey === selectedKey ? "ring-1 ring-white/70" : "hover:ring-1 hover:ring-white/40"
-            }`}
-          />
-        ))}
+        {cells.map((c, i) => {
+          // Two readings on one square: the outline is the 28-day total on an
+          // absolute scale, the fill is the closing day against the busiest day
+          // here. Drawn as a hard-stopped gradient rather than a nested element
+          // so a square stays a single node — there are ninety of them.
+          const shade = shades[costShadeLevel(c.costUSD)]!
+          const pct = Math.round(dayFillRatio(c.dayCostUSD, peakDay) * 100)
+          return (
+            <button
+              key={c.endKey}
+              type="button"
+              aria-label={`${c.label}: ${money(c.costUSD)} over 28 days, ${money(c.dayCostUSD)} that day, ${c.tokens.toLocaleString()} tokens`}
+              onMouseEnter={track(i)}
+              onFocus={track(i)}
+              onBlur={() => setHover(null)}
+              onClick={() => onPick(c.endKey)}
+              style={{
+                borderColor: shade,
+                // Left transparent above the fill so the card reads through,
+                // which keeps the outline legible against its own interior.
+                backgroundImage: pct > 0 ? `linear-gradient(to top, ${shade} ${pct}%, transparent ${pct}%)` : "none",
+              }}
+              className={`aspect-square rounded-[2px] border transition-all ${
+                c.endKey === selectedKey ? "ring-1 ring-white/70" : "hover:ring-1 hover:ring-white/40"
+              }`}
+            />
+          )
+        })}
       </div>
       {/* Floated over the square itself, and pointer-events-none so it can never
           steal the hover from the square it is describing. The background is a
@@ -104,6 +120,11 @@ export function RollingStrip({ cells, selectedKey, isDark, onPick }: Props) {
           <div className="text-[10px] text-themed-dim">{shown.label}</div>
           <div className="text-[11px] text-themed font-medium">{money(shown.costUSD)}</div>
           <div className="text-[10px] text-themed-secondary">{shown.tokens.toLocaleString()} tokens</div>
+          {/* The fill has no legend of its own — the square only shows a height,
+              so the number behind it has to be readable somewhere. */}
+          <div className="text-[10px] text-themed-dim mt-0.5 pt-0.5 border-t border-surface-500">
+            {`${t("dash.rollingThatDay")} ${money(shown.dayCostUSD)} · ${shown.dayTokens.toLocaleString()} tokens`}
+          </div>
         </div>
       ) : null}
       <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-themed-dim">

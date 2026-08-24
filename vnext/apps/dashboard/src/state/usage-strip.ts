@@ -32,6 +32,31 @@ export interface RollingStripCell {
   label: string
   costUSD: number
   tokens: number
+  /** What the closing day contributed by itself — the fill, not the outline. */
+  dayCostUSD: number
+  dayTokens: number
+}
+
+/**
+ * The smallest fill a day with any spend at all gets. A day that cost $0.30
+ * against a $400 peak is under a thousandth of the square, which draws as
+ * nothing — and "nothing" already means "no usage", a different fact. Better to
+ * overstate the smallest days than to lose them.
+ */
+export const MIN_DAY_FILL = 0.06
+
+/**
+ * How much of the square a single day's spend fills, 0 to 1.
+ *
+ * Relative where costShadeLevel is absolute, and deliberately so: the two answer
+ * different questions. The outline says how big this window is on a fixed scale,
+ * so its colour survives a change of filter; the fill says how big this day was
+ * next to the busiest day on screen, which only has meaning against the days
+ * actually drawn.
+ */
+export function dayFillRatio(dayCostUSD: number, peakDayCostUSD: number): number {
+  if (!(peakDayCostUSD > 0) || !(dayCostUSD > 0)) return 0
+  return Math.min(1, Math.max(MIN_DAY_FILL, dayCostUSD / peakDayCostUSD))
 }
 
 /**
@@ -130,6 +155,9 @@ export function buildRollingStrip(
       label: close.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
       costUSD: runCost,
       tokens: runTokens,
+      // Free: the closing day is the one just added to the running sum.
+      dayCostUSD: cost[i]!,
+      dayTokens: tokens[i]!,
     })
   }
   return out
