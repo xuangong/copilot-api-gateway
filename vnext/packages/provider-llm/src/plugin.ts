@@ -25,6 +25,10 @@ export interface ProviderPluginContext {
      *  host routes inference through the proxy but refreshes the session token
      *  direct — so inference dies when the token expires, not at startup. */
     fetcher?: Fetcher,
+    /** `{ forceRefresh: true }` demands a new exchange instead of the cached
+     *  session. Set by the provider after the upstream rejected the cached
+     *  token with 401/403 — `expires_at` alone cannot see a revocation. */
+    opts?: { forceRefresh?: boolean },
   ) => Promise<{ token: string; apiEndpoint: string }>
   /** Per-request token + accountType supplied by the caller. Used when the
    *  upstream row has no githubToken or token exchange fails. Copilot only. */

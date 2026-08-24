@@ -124,3 +124,47 @@ test('createFromUpstream — omits the exchange fetcher when ctx has no fetcherF
   })
   expect(seenFetcher).toBeUndefined()
 })
+
+test('createFromUpstream — githubToken path arms the provider with a forceRefresh exchange', async () => {
+  // The revoked-session recovery hangs off this hook: without it a Copilot
+  // session revoked before its `expires_at` keeps 403-ing until an operator
+  // re-authorises the GitHub account by hand.
+  const upstream = makeUpstream({ githubToken: 'gh_xxx', accountType: 'business', githubHost: 'msft.ghe.com' })
+  const perUpstream = async () => new Response('{}')
+  const calls: Array<{ gh: string; host?: string; force?: boolean; fetcher: unknown }> = []
+  const provider = await copilotProviderPlugin.createFromUpstream(upstream, {
+    getCachedCopilotToken: async (gh, _at, host, fetcher, opts) => {
+      calls.push({ gh, host, force: opts?.forceRefresh, fetcher })
+      return { token: `tid_${calls.length}`, apiEndpoint: 'https://copilot-api.msft.ghe.com' }
+    },
+    fetcherForUpstream: () => perUpstream,
+  })
+  expect(provider).toBeInstanceOf(CopilotProvider)
+  expect(calls).toHaveLength(1)
+  expect(calls[0]?.force).toBeUndefined()
+
+  // Reach the hook the way the provider does.
+  const refresh = (provider as unknown as { refreshSession?: () => Promise<{ token: string; baseUrl?: string }> })
+    .refreshSession
+  expect(typeof refresh).toBe('function')
+  const next = await refresh!()
+  expect(next).toEqual({ token: 'tid_2', baseUrl: 'https://copilot-api.msft.ghe.com' })
+  expect(calls[1]).toEqual({
+    gh: 'gh_xxx',
+    host: 'msft.ghe.com',
+    force: true,
+    fetcher: perUpstream,
+  })
+})
+
+test('createFromUpstream — fallback path gets no refresh hook', async () => {
+  // Nothing to re-exchange from: the session came in on the request, not from
+  // a stored GitHub credential.
+  const upstream = makeUpstream({})
+  const provider = await copilotProviderPlugin.createFromUpstream(upstream, {
+    copilotFallback: { copilotToken: 'tid_fb', accountType: 'individual' },
+  })
+  expect(
+    (provider as unknown as { refreshSession?: unknown }).refreshSession,
+  ).toBeUndefined()
+})
