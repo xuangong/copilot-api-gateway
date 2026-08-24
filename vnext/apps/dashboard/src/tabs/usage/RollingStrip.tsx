@@ -68,14 +68,16 @@ export function RollingStrip({ cells, selectedKey, isDark, onPick }: Props) {
             daily activity graph, which is a different number entirely. */}
         <span className="text-[10px] text-themed-dim">{t("dash.rollingTotalHint")}</span>
       </div>
-      {/* Wraps rather than shrinks. Ninety squares only read as a trend if they
-          are all on screen, but on a narrow card ninety across leaves each one a
-          couple of pixels wide — so the row folds to forty-five, then thirty,
-          then fifteen. Every count divides ninety exactly, so the fold is always
-          into whole rows and none is left half-empty. aspect-square keeps them
+      {/* Wraps rather than shrinks, and never goes wider than forty-five. Ninety
+          squares in one row sounds like the best reading of the trend, but at
+          any real card width it leaves each square around a dozen pixels — too
+          small to judge a fill height against its neighbour, which is the whole
+          point. Two rows of forty-five is the widest that still reads, so the
+          fold runs 45 / 30 / 15. Every count divides ninety exactly, so the rows
+          are always whole and none is left half-empty. aspect-square keeps them
           square at whatever width the column works out to. */}
       <div
-        className="grid gap-[2px] w-full grid-cols-[repeat(15,minmax(0,1fr))] sm:grid-cols-[repeat(30,minmax(0,1fr))] lg:grid-cols-[repeat(45,minmax(0,1fr))] xl:grid-cols-[repeat(90,minmax(0,1fr))]"
+        className="grid gap-[2px] w-full grid-cols-[repeat(15,minmax(0,1fr))] sm:grid-cols-[repeat(30,minmax(0,1fr))] lg:grid-cols-[repeat(45,minmax(0,1fr))]"
         onMouseLeave={() => setHover(null)}
       >
         {cells.map((c, i) => {
