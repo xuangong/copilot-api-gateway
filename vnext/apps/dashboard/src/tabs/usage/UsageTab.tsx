@@ -4,7 +4,8 @@ import { formatDayLabel, formatMonthLabel, formatWeekLabel, useUsage, type Usage
 import { UsageFiltersBar } from "./UsageFilters"
 import { UsageSummaryCards } from "./UsageSummary"
 import { UsageDistributionTable } from "./UsageDistributionTable"
-import { TimeSeriesChart, paletteFor, type ChartDataset } from "../../components/TimeSeriesChart"
+import { RollingStrip } from "./RollingStrip"
+import { TimeSeriesChart, localDateKey, paletteFor, type ChartDataset } from "../../components/TimeSeriesChart"
 import { useT } from "../../state/i18n"
 
 export function UsageTab() {
@@ -16,8 +17,7 @@ export function UsageTab() {
     { id: "today", label: t("dash.day") },
     { id: "week", label: t("dash.week") },
     { id: "month", label: t("dash.month") },
-    { id: "7d", label: t("dash.sevenDays") },
-    { id: "30d", label: t("dash.thirtyDays") },
+    { id: "28d", label: t("dash.twentyEightDays") },
   ]
   const METRIC_OPTIONS: Array<{ id: UsageMetric; label: string }> = [
     { id: "tokens", label: t("dash.metricTokens") },
@@ -51,6 +51,11 @@ export function UsageTab() {
   // be days that have not happened yet — and an empty past day is just as
   // pointless to open.
   const bucketHasData = (i: number) => chartDatasets.some((d) => (d.data[i] ?? 0) > 0)
+  // Read off the chart's own labels rather than recomputing the window, so the
+  // caption can never name a span the graph is not drawing.
+  const chartLabels = usage.chart.labels
+  const windowLabel =
+    chartLabels.length > 0 ? `${chartLabels[0]} – ${chartLabels[chartLabels.length - 1]}` : ""
   const dayLink = usage.chart.isDaily
     ? {
         labelFor: (i: number) => (bucketKeys[i] && bucketHasData(i) ? t("dash.viewThisDay") : null),
@@ -86,7 +91,7 @@ export function UsageTab() {
             </div>
           </div>
 
-          {/* 7d/30d are trailing windows ending now — no period to step. */}
+          {/* 28d is a trailing window — no period to step. */}
           {usage.range === "today" || usage.range === "week" || usage.range === "month" ? (
             <div className="flex items-center gap-3 ml-1">
               <button
@@ -116,6 +121,43 @@ export function UsageTab() {
                 ›
               </button>
             </div>
+          ) : null}
+
+          {/* 28d has no arrows because its window is not one of a series of
+              periods — the user names its last day instead. */}
+          {usage.range === "28d" ? (
+            <div className="flex items-center gap-2 ml-1 flex-wrap">
+              <label htmlFor="usage-end-date" className="text-xs text-themed-dim">
+                {t("dash.endDate")}
+              </label>
+              <input
+                id="usage-end-date"
+                type="date"
+                value={usage.endDate ?? ""}
+                // A window closing in the future could only ever be part empty.
+                max={localDateKey(new Date())}
+                onChange={(e) => usage.chooseEndDate(e.target.value || null)}
+                className="bg-surface-800 rounded-md px-2 py-1 text-xs text-themed border border-transparent focus:border-surface-600 outline-none"
+              />
+              <span className="text-xs text-themed-secondary font-medium">{windowLabel}</span>
+              {usage.endDate ? (
+                <button
+                  onClick={() => usage.chooseEndDate(null)}
+                  className="text-xs text-themed-dim hover:text-themed underline underline-offset-2"
+                >
+                  {t("dash.latestWindow")}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {usage.range === "28d" ? (
+            <RollingStrip
+              cells={usage.strip}
+              selectedKey={usage.endDate ?? localDateKey(new Date())}
+              isDark={isDark}
+              onPick={(day) => usage.chooseEndDate(day)}
+            />
           ) : null}
 
           <UsageFiltersBar

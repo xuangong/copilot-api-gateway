@@ -382,7 +382,24 @@ export function localMonthStart(ref: Date, monthDelta: number): Date {
   return new Date(ref.getFullYear(), ref.getMonth() + monthDelta, 1, 0, 0, 0, 0)
 }
 
-export type TimeBucketRange = "today" | "week" | "7d" | "30d" | "month"
+export type TimeBucketRange = "today" | "week" | "7d" | "28d" | "30d" | "month"
+
+/** How many daily buckets each trailing window holds. */
+export const TRAILING_WINDOW_DAYS: Record<"7d" | "28d" | "30d", number> = { "7d": 7, "28d": 28, "30d": 30 }
+
+/**
+ * Local midnight of a "YYYY-MM-DD" day, or null when the string is not one.
+ * Parsed field by field rather than through `new Date(s)`, which reads a bare
+ * date as UTC midnight and so lands on the previous day west of Greenwich.
+ */
+export function parseLocalDateKey(key: string | null | undefined): Date | null {
+  if (typeof key !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return null
+  const [y, m, d] = key.split("-").map(Number) as [number, number, number]
+  const date = new Date(y, m - 1, d, 0, 0, 0, 0)
+  // Rejects the impossible days a regex still admits (2026-13-99 rolls over).
+  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return null
+  return date
+}
 
 export interface TimeBuckets {
   keys: string[]
@@ -393,11 +410,16 @@ export interface TimeBuckets {
 /**
  * `periodOffset` shifts the window backwards for the two calendar ranges:
  * whole weeks for "week", whole months for "month". Ignored by the rest.
+ *
+ * `endDate` ("YYYY-MM-DD") pins the trailing windows to a chosen last day
+ * instead of ending them at today; it is ignored by every other range, and an
+ * unparseable value falls back to the trailing window.
  */
 export function buildTimeBuckets(
   range: TimeBucketRange,
   periodOffset: number,
   now: Date = new Date(),
+  endDate?: string | null,
 ): TimeBuckets {
   const keys: string[] = []
   const labels: string[] = []
@@ -436,11 +458,17 @@ export function buildTimeBuckets(
       labels.push(d.toLocaleDateString("en-US", { month: "short", day: "numeric" }))
     }
   } else {
-    const days = range === "7d" ? 7 : 30
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(now)
-      d.setDate(d.getDate() - i)
-      d.setHours(0, 0, 0, 0)
+    const days = TRAILING_WINDOW_DAYS[range]
+    // The picked day is the last day *in* the window, so the window opens
+    // days-1 days before it; counted in calendar days so a DST shift cannot
+    // slide the first bucket onto the wrong date.
+    const pinned = parseLocalDateKey(endDate)
+    const first = pinned
+      ? new Date(pinned.getFullYear(), pinned.getMonth(), pinned.getDate() - (days - 1), 0, 0, 0, 0)
+      : localDayStart(now, -(days - 1))
+    for (let i = 0; i < days; i++) {
+      const d = new Date(first)
+      d.setDate(first.getDate() + i)
       keys.push(localDateKey(d))
       labels.push(d.toLocaleDateString("en-US", { month: "short", day: "numeric" }))
     }
