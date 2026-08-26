@@ -1,10 +1,11 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useAuth } from "../../state/auth"
 import { formatDayLabel, formatMonthLabel, formatWeekLabel, useUsage, type UsageMetric, type UsageRange } from "../../state/usage"
 import { UsageFiltersBar } from "./UsageFilters"
 import { UsageSummaryCards } from "./UsageSummary"
 import { UsageDistributionTable } from "./UsageDistributionTable"
 import { RollingStrip } from "./RollingStrip"
+import { UsageForecast } from "./UsageForecast"
 import { TimeSeriesChart, localDateKey, paletteFor, type ChartDataset } from "../../components/TimeSeriesChart"
 import { useT } from "../../state/i18n"
 
@@ -13,6 +14,10 @@ export function UsageTab() {
   const isAdmin = !!session?.isAdmin
   const usage = useUsage(isAdmin)
   const t = useT()
+  // Lives here rather than inside the forecast because the two components it
+  // joins are siblings: the row is hovered in one and the days light up in the
+  // other.
+  const [forecastRun, setForecastRun] = useState<number | null>(null)
   const RANGE_OPTIONS: Array<{ id: UsageRange; label: string }> = [
     { id: "today", label: t("dash.day") },
     { id: "week", label: t("dash.week") },
@@ -161,9 +166,14 @@ export function UsageTab() {
             <RollingStrip
               cells={usage.strip}
               selectedKey={usage.endDate ?? localDateKey(new Date())}
+              highlightTail={forecastRun}
               isDark={isDark}
               onPick={(day) => usage.chooseEndDate(day)}
             />
+          ) : null}
+
+          {usage.range === "28d" ? (
+            <UsageForecast cells={usage.strip} onHoverRun={setForecastRun} />
           ) : null}
 
           <UsageFiltersBar

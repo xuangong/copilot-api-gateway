@@ -6,6 +6,11 @@ interface Props {
   cells: RollingStripCell[]
   /** The day the window currently closes on, so the strip can mark it. */
   selectedKey: string | null
+  /**
+   * How many squares at the end of the strip to pick out — the run of days a
+   * forecast row is hovering. Null or zero leaves the strip alone.
+   */
+  highlightTail?: number | null
   isDark: boolean
   onPick: (endKey: string) => void
 }
@@ -36,7 +41,7 @@ interface Hover {
  * a square floats its cost and tokens above it, and clicking closes the window
  * on that day.
  */
-export function RollingStrip({ cells, selectedKey, isDark, onPick }: Props) {
+export function RollingStrip({ cells, selectedKey, highlightTail, isDark, onPick }: Props) {
   const t = useT()
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const [hover, setHover] = useState<Hover | null>(null)
@@ -46,6 +51,11 @@ export function RollingStrip({ cells, selectedKey, isDark, onPick }: Props) {
   // The fill is measured against the busiest day *on screen*, so it has to be
   // taken from the cells themselves rather than from a constant.
   const peakDay = cells.reduce((m, c) => (c.dayCostUSD > m ? c.dayCostUSD : m), 0)
+  // A ring on the run would be lost among ninety squares that already carry
+  // rings; fading everything else is what makes a stretch of days readable at
+  // this size. The run always ends on today, so a count is enough to place it.
+  const tail = highlightTail && highlightTail > 0 ? highlightTail : 0
+  const litFrom = cells.length - tail
 
   // Measured rather than derived from the index: the squares are flex-sized, so
   // their width depends on the card and a computed offset would drift.
@@ -87,6 +97,7 @@ export function RollingStrip({ cells, selectedKey, isDark, onPick }: Props) {
           // so a square stays a single node — there are ninety of them.
           const shade = shades[costShadeLevel(c.costUSD)]!
           const pct = Math.round(dayFillRatio(c.dayCostUSD, peakDay) * 100)
+          const lit = tail > 0 && i >= litFrom
           return (
             <button
               key={c.endKey}
@@ -103,7 +114,13 @@ export function RollingStrip({ cells, selectedKey, isDark, onPick }: Props) {
                 backgroundImage: pct > 0 ? `linear-gradient(to top, ${shade} ${pct}%, transparent ${pct}%)` : "none",
               }}
               className={`aspect-square rounded-[2px] border transition-all ${
-                c.endKey === selectedKey ? "ring-1 ring-white/70" : "hover:ring-1 hover:ring-white/40"
+                tail > 0 && !lit ? "opacity-20 " : ""
+              }${
+                lit
+                  ? "ring-1 ring-amber-400"
+                  : c.endKey === selectedKey
+                    ? "ring-1 ring-white/70"
+                    : "hover:ring-1 hover:ring-white/40"
               }`}
             />
           )
