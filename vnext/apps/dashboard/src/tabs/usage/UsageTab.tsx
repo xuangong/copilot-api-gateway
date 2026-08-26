@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "../../state/auth"
 import { formatDayLabel, formatMonthLabel, formatWeekLabel, useUsage, type UsageMetric, type UsageRange } from "../../state/usage"
 import { UsageFiltersBar } from "./UsageFilters"
@@ -9,11 +9,22 @@ import { UsageForecast } from "./UsageForecast"
 import { TimeSeriesChart, localDateKey, paletteFor, type ChartDataset } from "../../components/TimeSeriesChart"
 import { useT } from "../../state/i18n"
 
+/**
+ * Whether the strip and the forecast are open. Folded away by default: they
+ * answer a question about a 28-day budget, and someone who is not watching one
+ * gets ninety squares and a form between them and the graph they came for.
+ */
+const LS_STRIP_OPEN = "usage.stripOpen"
+
 export function UsageTab() {
   const { session } = useAuth()
   const isAdmin = !!session?.isAdmin
   const usage = useUsage(isAdmin)
   const t = useT()
+  const [stripOpen, setStripOpen] = useState(() => localStorage.getItem(LS_STRIP_OPEN) === "1")
+  useEffect(() => {
+    localStorage.setItem(LS_STRIP_OPEN, stripOpen ? "1" : "0")
+  }, [stripOpen])
   // Lives here rather than inside the forecast because the two components it
   // joins are siblings: the row is hovered in one and the days light up in the
   // other.
@@ -159,10 +170,26 @@ export function UsageTab() {
                   {t("dash.latestWindow")}
                 </button>
               ) : null}
+              {/* Sits with the other 28d controls rather than over the strip
+                  itself: when it is folded there is no strip to sit over. */}
+              <button
+                onClick={() => {
+                  // Dropped on the way down so a run left lit by the pointer
+                  // cannot come back with the strip when it reopens.
+                  if (stripOpen) setForecastRun(null)
+                  setStripOpen((v) => !v)
+                }}
+                aria-expanded={stripOpen}
+                className={`px-2 py-1 rounded-md text-xs font-medium transition-all ${
+                  stripOpen ? "bg-surface-600 text-themed" : "bg-surface-800 text-themed-dim hover:text-themed-secondary"
+                }`}
+              >
+                {t("dash.rollingSection")} {stripOpen ? "▴" : "▾"}
+              </button>
             </div>
           ) : null}
 
-          {usage.range === "28d" ? (
+          {usage.range === "28d" && stripOpen ? (
             <RollingStrip
               cells={usage.strip}
               selectedKey={usage.endDate ?? localDateKey(new Date())}
@@ -172,7 +199,7 @@ export function UsageTab() {
             />
           ) : null}
 
-          {usage.range === "28d" ? (
+          {usage.range === "28d" && stripOpen ? (
             <UsageForecast cells={usage.strip} onHoverRun={setForecastRun} />
           ) : null}
 
