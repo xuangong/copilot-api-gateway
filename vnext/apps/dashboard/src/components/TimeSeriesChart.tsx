@@ -101,6 +101,13 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
   const overTip = useRef(false)
   const linkRef = useRef<LinkState | null>(null)
   linkRef.current = pointLink ? { index: linkRef.current?.index ?? 0, link: pointLink } : null
+  // Only whether there is a link, never which one. Callers build pointLink as a
+  // fresh object literal every render — it closes over the data — so depending
+  // on its identity would tear the chart down and replay its animation on any
+  // re-render of the parent, including ones that have nothing to do with the
+  // chart. The callbacks themselves are reached through linkRef, which is
+  // refreshed above on every render, so the effect never needs to see them.
+  const hasPointLink = !!pointLink
   const [themeTick, setThemeTick] = useState(0)
 
   useEffect(() => {
@@ -143,7 +150,7 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
             display: true,
             labels: { color: tickC, font: { family: "Outfit, sans-serif", size: 11 } },
           },
-          tooltip: pointLink
+          tooltip: hasPointLink
             ? { enabled: false, external: (ctx) => renderLinkTooltip(ctx, tooltipRef.current, unitLabel, linkRef, hideTimer, overTip) }
             : {
                 callbacks: {
@@ -170,7 +177,7 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
         chartRef.current = null
       }
     }
-  }, [labels, datasets, height, unitLabel, yTickFormat, themeTick, pointLink])
+  }, [labels, datasets, height, unitLabel, yTickFormat, themeTick, hasPointLink])
 
   useEffect(() => {
     const handler = () => setThemeTick((n) => n + 1)
@@ -205,12 +212,12 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
       el.removeEventListener("mouseover", cancel)
       el.removeEventListener("mouseleave", leave)
     }
-  }, [pointLink])
+  }, [hasPointLink])
 
   return (
     <div style={{ height, width: "100%", position: "relative" }}>
       <canvas ref={canvasRef} />
-      {pointLink ? (
+      {hasPointLink ? (
         <div ref={tooltipRef} className="pg-chart-tip" />
       ) : null}
     </div>
