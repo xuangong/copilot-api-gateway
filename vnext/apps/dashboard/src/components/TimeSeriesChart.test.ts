@@ -113,3 +113,39 @@ describe("formatTooltipCost", () => {
     expect(formatTooltipCost(0)).toBe("$0.00")
   })
 })
+
+describe("tooltipTotalCost", () => {
+  test("adds up the per-series costs", async () => {
+    const { tooltipTotalCost } = await import("./TimeSeriesChart")
+    expect(
+      tooltipTotalCost([
+        { label: "a", value: 10, color: "#1", cost: 1.5 },
+        { label: "b", value: 20, color: "#2", cost: 2.25 },
+      ]),
+    ).toBeCloseTo(3.75, 10)
+  })
+
+  // The Cache line carries no cost of its own — its spend is already inside the
+  // series above it, so counting it would bill the bucket twice.
+  test("ignores a row with no cost", async () => {
+    const { tooltipTotalCost } = await import("./TimeSeriesChart")
+    expect(
+      tooltipTotalCost([
+        { label: "Xian Zhang", value: 10, color: "#1", cost: 4 },
+        { label: "Cache", value: 9, color: "#2" },
+      ]),
+    ).toBe(4)
+  })
+
+  // A row hidden for having no tokens is a statement about the y-axis, not
+  // about money. Totalling only the visible rows could drop real spend.
+  test("counts a zero-token row that still cost something", async () => {
+    const { tooltipTotalCost } = await import("./TimeSeriesChart")
+    expect(tooltipTotalCost([{ label: "a", value: 0, color: "#1", cost: 0.5 }])).toBe(0.5)
+  })
+
+  test("is zero when nothing carries a cost", async () => {
+    const { tooltipTotalCost } = await import("./TimeSeriesChart")
+    expect(tooltipTotalCost([{ label: "a", value: 3, color: "#1" }])).toBe(0)
+  })
+})

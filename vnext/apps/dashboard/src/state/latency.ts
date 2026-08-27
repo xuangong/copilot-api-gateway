@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useToast } from "./toast"
 import * as api from "../api/latency"
 import type { LatencyRecord } from "../api/latency"
-import { buildTimeBuckets, utcHourToBucketKey } from "../components/TimeSeriesChart"
+import { buildTimeBuckets, utcHourToBucketKey } from "./time-buckets"
+import { useZoneMode, zoneOps, type TimeZoneMode } from "./timezone"
 
 export type LatencyRange = "today" | "week" | "7d" | "30d"
 
@@ -27,24 +28,22 @@ export interface LatencyByColo {
 
 // Compute [start, end) ISO-13-char window (YYYY-MM-DDTHH) to match
 // the legacy `computeTimeRange` helper used by the Alpine dashboard.
-function computeTimeRange(range: LatencyRange, weekOffset: number): { start: string; end: string } {
+// `mode` is the same dashboard-wide preference the Usage tab exposes, so both
+// tabs agree on where a day begins.
+function computeTimeRange(range: LatencyRange, weekOffset: number, mode: TimeZoneMode): { start: string; end: string } {
+  const ops = zoneOps(mode)
   const now = new Date()
   let start: Date, end: Date
   if (range === "week") {
-    const ref = new Date(now)
-    ref.setDate(ref.getDate() + weekOffset * 7)
-    const day = ref.getDay()
-    const monday = new Date(ref)
-    monday.setDate(ref.getDate() - ((day + 6) % 7))
-    monday.setHours(0, 0, 0, 0)
+    const ref = ops.make(ops.year(now), ops.month(now), ops.day(now) + weekOffset * 7)
+    const monday = ops.make(ops.year(ref), ops.month(ref), ops.day(ref) - ((ops.weekday(ref) + 6) % 7))
     start = monday
-    end = new Date(monday.getTime() + 7 * 86400000)
+    end = ops.make(ops.year(monday), ops.month(monday), ops.day(monday) + 7)
   } else {
-    const todayLocal = new Date(now)
-    todayLocal.setHours(0, 0, 0, 0)
-    if (range === "today") start = todayLocal
-    else if (range === "7d") start = new Date(todayLocal.getTime() - 6 * 86400000)
-    else start = new Date(todayLocal.getTime() - 29 * 86400000)
+    // Counted in calendar days rather than by subtracting milliseconds, so a
+    // DST shift cannot leave the window an hour short of its first day.
+    const back = range === "today" ? 0 : range === "7d" ? 6 : 29
+    start = ops.make(ops.year(now), ops.month(now), ops.day(now) - back)
     end = new Date(now.getTime() + 3600000)
   }
   return {
@@ -53,16 +52,13 @@ function computeTimeRange(range: LatencyRange, weekOffset: number): { start: str
   }
 }
 
-export function formatWeekLabel(weekOffset: number): string {
+export function formatWeekLabel(weekOffset: number, mode: TimeZoneMode): string {
+  const ops = zoneOps(mode)
   const now = new Date()
-  const ref = new Date(now)
-  ref.setDate(ref.getDate() + weekOffset * 7)
-  const day = ref.getDay()
-  const monday = new Date(ref)
-  monday.setDate(ref.getDate() - ((day + 6) % 7))
-  monday.setHours(0, 0, 0, 0)
-  const sunday = new Date(monday.getTime() + 6 * 86400000)
-  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  const ref = ops.make(ops.year(now), ops.month(now), ops.day(now) + weekOffset * 7)
+  const monday = ops.make(ops.year(ref), ops.month(ref), ops.day(ref) - ((ops.weekday(ref) + 6) % 7))
+  const sunday = ops.make(ops.year(monday), ops.month(monday), ops.day(monday) + 6)
+  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...ops.fmt })
   if (weekOffset === 0) return `This week (${fmt(monday)} – ${fmt(sunday)})`
   if (weekOffset === -1) return `Last week (${fmt(monday)} – ${fmt(sunday)})`
   return `${fmt(monday)} – ${fmt(sunday)}`
@@ -70,6 +66,7 @@ export function formatWeekLabel(weekOffset: number): string {
 
 export function useLatency() {
   const { push: toast } = useToast()
+  const mode = useZoneMode()
   const [range, setRange] = useState<LatencyRange>("today")
   const [weekOffset, setWeekOffset] = useState(0)
   const [model, setModel] = useState("")
@@ -79,7 +76,7 @@ export function useLatency() {
   const reload = useCallback(async () => {
     setLoading(true)
     try {
-      const { start, end } = computeTimeRange(range, weekOffset)
+      const { start, end } = computeTimeRange(range, weekOffset, mode)
       const rows = await api.listLatency(start, end)
       setData(rows)
     } catch (e) {
@@ -87,7 +84,7 @@ export function useLatency() {
     } finally {
       setLoading(false)
     }
-  }, [range, weekOffset, toast])
+  }, [range, weekOffset, mode, toast])
 
   useEffect(() => {
     reload()
@@ -155,7 +152,8 @@ export function useLatency() {
 
   // Time-series buckets for the chart (Stream vs Sync avg total ms).
   const chart = useMemo(() => {
-    const { keys, labels, isDaily } = buildTimeBuckets(range, weekOffset)
+    const ops = zoneOps(mode)
+    const { keys, labels, isDaily } = buildTimeBuckets(range, weekOffset, new Date(), null, mode)
     const aggStream = new Map<string, number>()
     const aggSync = new Map<string, number>()
     const reqsStream = new Map<string, number>()
@@ -165,7 +163,7 @@ export function useLatency() {
       reqsStream.set(k, 0); reqsSync.set(k, 0)
     }
     for (const r of filtered) {
-      const bucket = utcHourToBucketKey(r.hour, isDaily)
+      const bucket = utcHourToBucketKey(r.hour, isDaily, ops)
       if (!aggStream.has(bucket)) continue
       if (r.stream) {
         reqsStream.set(bucket, (reqsStream.get(bucket) ?? 0) + r.requests)
@@ -181,7 +179,7 @@ export function useLatency() {
       streamData: keys.map((k) => avg(aggStream.get(k) ?? 0, reqsStream.get(k) ?? 0)),
       syncData: keys.map((k) => avg(aggSync.get(k) ?? 0, reqsSync.get(k) ?? 0)),
     }
-  }, [filtered, range, weekOffset])
+  }, [filtered, range, weekOffset, mode])
 
   const switchRange = (r: LatencyRange) => {
     setRange(r)
@@ -208,6 +206,6 @@ export function useLatency() {
     switchRange,
     shiftWeek,
     setModel,
-    weekLabel: formatWeekLabel(weekOffset),
+    weekLabel: formatWeekLabel(weekOffset, mode),
   }
 }

@@ -972,6 +972,24 @@ select option {
   color: var(--text-secondary);
   font-weight: 400;
 }
+/* The bottom line. Ruled off from the per-series rows so it does not read as
+   one more of them. */
+.pg-chart-tip-total {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  line-height: 1.7;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--input-border);
+}
+.pg-chart-tip-total b {
+  margin-left: auto;
+  font-family: "IBM Plex Mono", monospace;
+  color: var(--text);
+  font-weight: 600;
+}
 .pg-chart-tip-dot {
   width: 8px;
   height: 8px;

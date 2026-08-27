@@ -6,7 +6,9 @@ import { UsageSummaryCards } from "./UsageSummary"
 import { UsageDistributionTable } from "./UsageDistributionTable"
 import { RollingStrip } from "./RollingStrip"
 import { UsageForecast } from "./UsageForecast"
-import { TimeSeriesChart, localDateKey, paletteFor, type ChartDataset } from "../../components/TimeSeriesChart"
+import { TimeSeriesChart, paletteFor, type ChartDataset } from "../../components/TimeSeriesChart"
+import { dateKey } from "../../state/time-buckets"
+import { localOffsetLabel, localZoneLabel, setZoneMode, useZoneMode, zoneOps, type TimeZoneMode } from "../../state/timezone"
 import { useT } from "../../state/i18n"
 
 /**
@@ -21,6 +23,12 @@ export function UsageTab() {
   const isAdmin = !!session?.isAdmin
   const usage = useUsage(isAdmin)
   const t = useT()
+  const mode = useZoneMode()
+  const ops = zoneOps(mode)
+  // Read once per render rather than at module load: a laptop that crosses a
+  // zone boundary between sessions would otherwise keep naming the old one.
+  const zoneLabel = localZoneLabel()
+  const today = dateKey(new Date(), ops)
   const [stripOpen, setStripOpen] = useState(() => localStorage.getItem(LS_STRIP_OPEN) === "1")
   useEffect(() => {
     localStorage.setItem(LS_STRIP_OPEN, stripOpen ? "1" : "0")
@@ -38,6 +46,12 @@ export function UsageTab() {
   const METRIC_OPTIONS: Array<{ id: UsageMetric; label: string }> = [
     { id: "tokens", label: t("dash.metricTokens") },
     { id: "requests", label: t("dash.metricRequests") },
+  ]
+  // The local option names the zone it means. "Local" on its own is the thing
+  // this switch exists to remove: a boundary the page will not say out loud.
+  const TZ_OPTIONS: Array<{ id: TimeZoneMode; label: string }> = [
+    { id: "local", label: t("dash.tzLocal", { zone: localOffsetLabel() }) },
+    { id: "utc", label: t("dash.tzUtc") },
   ]
   const isDark = typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") !== "light"
   const palette = paletteFor(isDark ? "dark" : "light")
@@ -107,6 +121,11 @@ export function UsageTab() {
                 value={usage.range}
                 onChange={(v) => usage.switchRange(v)}
               />
+              <SegmentedGroup
+                options={TZ_OPTIONS}
+                value={mode}
+                onChange={(v) => setZoneMode(v)}
+              />
             </div>
           </div>
 
@@ -122,10 +141,10 @@ export function UsageTab() {
               </button>
               <span className="text-xs text-themed-secondary font-medium min-w-[180px] text-center">
                 {usage.range === "today"
-                  ? formatDayLabel(usage.periodOffset)
+                  ? formatDayLabel(usage.periodOffset, new Date(), mode)
                   : usage.range === "week"
-                    ? formatWeekLabel(usage.periodOffset)
-                    : formatMonthLabel(usage.periodOffset)}
+                    ? formatWeekLabel(usage.periodOffset, new Date(), mode)
+                    : formatMonthLabel(usage.periodOffset, new Date(), mode)}
               </span>
               <button
                 onClick={() => usage.shiftPeriod(1)}
@@ -158,9 +177,9 @@ export function UsageTab() {
                 // knows, and makes the Latest button look like it cleared the
                 // window rather than moved it. Same fallback the strip's
                 // selection ring uses, so the two always agree.
-                value={usage.endDate ?? localDateKey(new Date())}
+                value={usage.endDate ?? today}
                 // A window closing in the future could only ever be part empty.
-                max={localDateKey(new Date())}
+                max={today}
                 onChange={(e) => usage.chooseEndDate(e.target.value || null)}
                 className="bg-surface-800 rounded-md px-2 py-1 text-xs text-themed border border-transparent focus:border-surface-600 outline-none"
               />
@@ -195,7 +214,7 @@ export function UsageTab() {
           {usage.range === "28d" && stripOpen ? (
             <RollingStrip
               cells={usage.strip}
-              selectedKey={usage.endDate ?? localDateKey(new Date())}
+              selectedKey={usage.endDate ?? today}
               highlightTail={forecastRun}
               isDark={isDark}
               onPick={(day) => usage.chooseEndDate(day)}
@@ -230,11 +249,16 @@ export function UsageTab() {
             datasets={chartDatasets}
             unitLabel={unitLabel}
             height={320}
+            totalCostLabel={t("dash.tooltipTotalCost")}
             {...(dayLink ? { pointLink: dayLink } : {})}
           />
         </div>
 
-        <p className="text-[10px] text-themed-dim">{t("dash.allTimestampsLocal")}</p>
+        <p className="text-[10px] text-themed-dim">
+          {mode === "utc"
+            ? t("dash.allTimestampsUtc")
+            : t("dash.allTimestampsLocalNamed", { zone: zoneLabel })}
+        </p>
         <UsageSummaryCards summary={usage.summary} />
       </div>
 

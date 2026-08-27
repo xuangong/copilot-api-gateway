@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { buildRollingStrip, type RollingStripCell } from "./usage-strip"
 import { DEFAULT_BUDGET_USD, rankForecastCandidates } from "./usage-forecast"
+import { zoneOps } from "./timezone"
+
+const LOCAL = zoneOps("local")
 
 const LAST = new Date(2026, 7, 12)
 
@@ -17,7 +20,7 @@ function stripWithDayCosts(costs: number[]): RollingStripCell[] {
     const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
     daily.set(k, { cost, tokens: 0 })
   })
-  return buildRollingStrip(daily, LAST)
+  return buildRollingStrip(daily, LAST, LOCAL)
 }
 
 /**

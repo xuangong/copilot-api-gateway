@@ -9,6 +9,9 @@ import {
   costShadeLevel,
   dayFillRatio,
 } from "./usage-strip"
+import { zoneOps } from "./timezone"
+
+const LOCAL = zoneOps("local")
 
 // Wed 12 Aug 2026, 15:30 local — the same fixed clock the range tests use.
 const NOW = new Date(2026, 7, 12, 15, 30, 0, 0)
@@ -37,7 +40,7 @@ describe("strip shape", () => {
 // earliest cell still needs 27 days behind it: 90 + 27 = 117 days in all.
 describe("computeStripRange", () => {
   test("reaches back far enough that the first cell has a full window", () => {
-    const r = computeStripRange(NOW)
+    const r = computeStripRange(NOW, LOCAL)
     expect(r.start).toBe(new Date(2026, 3, 18).toISOString().slice(0, 13))
     expect(r.end).toBe(new Date(NOW.getTime() + HOUR).toISOString().slice(0, 13))
   })
@@ -45,7 +48,7 @@ describe("computeStripRange", () => {
 
 describe("buildRollingStrip", () => {
   test("ends on the chosen day and holds one cell per day back from it", () => {
-    const cells = buildRollingStrip(new Map(), new Date(2026, 7, 12))
+    const cells = buildRollingStrip(new Map(), new Date(2026, 7, 12), LOCAL)
     expect(cells).toHaveLength(90)
     expect(cells[89]!.endKey).toBe("2026-08-12")
     expect(cells[0]!.endKey).toBe("2026-05-15")
@@ -57,7 +60,7 @@ describe("buildRollingStrip", () => {
       new Date(2026, 7, 12),
       Array.from({ length: 120 }, () => ({ cost: 2, tokens: 1000 })),
     )
-    const cells = buildRollingStrip(daily, new Date(2026, 7, 12))
+    const cells = buildRollingStrip(daily, new Date(2026, 7, 12), LOCAL)
     for (const c of cells) {
       expect(c.costUSD).toBeCloseTo(56, 6)
       expect(c.tokens).toBe(28000)
@@ -69,14 +72,14 @@ describe("buildRollingStrip", () => {
   test("slides the window rather than re-reading a fixed span", () => {
     // 1 on the last day, 0 everywhere else.
     const daily = new Map([[day("2026-08-12"), { cost: 1, tokens: 10 }]])
-    const cells = buildRollingStrip(daily, new Date(2026, 7, 12))
+    const cells = buildRollingStrip(daily, new Date(2026, 7, 12), LOCAL)
     // Only the windows that still contain Aug 12 see it — that is the last one.
     expect(cells[89]!.costUSD).toBe(1)
     expect(cells[88]!.costUSD).toBe(0)
     // And a day at the very start of the earliest window shows up there only:
     // the first square closes 2026-05-15, so its window opens on Apr 18.
     const daily2 = new Map([[day("2026-04-18"), { cost: 1, tokens: 10 }]])
-    const cells2 = buildRollingStrip(daily2, new Date(2026, 7, 12))
+    const cells2 = buildRollingStrip(daily2, new Date(2026, 7, 12), LOCAL)
     expect(cells2[0]!.costUSD).toBe(1)
     // One day later the window has already slid past it.
     expect(cells2.find((c) => c.endKey === "2026-05-16")!.costUSD).toBe(0)
@@ -87,7 +90,7 @@ describe("buildRollingStrip", () => {
       [day("2026-08-12"), { cost: 5, tokens: 50 }],
       [day("2026-08-01"), { cost: 3, tokens: 30 }],
     ])
-    const cells = buildRollingStrip(daily, new Date(2026, 7, 12))
+    const cells = buildRollingStrip(daily, new Date(2026, 7, 12), LOCAL)
     expect(cells[89]!.costUSD).toBe(8)
     expect(cells[89]!.tokens).toBe(80)
     // The window closing 2026-07-31 covers Jul 4 – Jul 31, which holds neither.
@@ -95,7 +98,7 @@ describe("buildRollingStrip", () => {
   })
 
   test("labels the cell by its closing day", () => {
-    const cells = buildRollingStrip(new Map(), new Date(2026, 7, 12))
+    const cells = buildRollingStrip(new Map(), new Date(2026, 7, 12), LOCAL)
     expect(cells[89]!.label).toBe("Aug 12")
   })
 
@@ -106,7 +109,7 @@ describe("buildRollingStrip", () => {
       [day("2026-08-12"), { cost: 5, tokens: 50 }],
       [day("2026-08-01"), { cost: 3, tokens: 30 }],
     ])
-    const cells = buildRollingStrip(daily, new Date(2026, 7, 12))
+    const cells = buildRollingStrip(daily, new Date(2026, 7, 12), LOCAL)
     const last = cells[89]!
     expect(last.costUSD).toBe(8)
     expect(last.dayCostUSD).toBe(5)

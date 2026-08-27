@@ -11,12 +11,13 @@ import {
 } from "../tabs/usage/participants"
 import {
   buildTimeBuckets,
-  localDayStart,
-  localMonthStart,
-  parseLocalDateKey,
+  dayStart,
+  monthStart,
+  parseDateKey,
   utcHourToBucketKey,
   TRAILING_WINDOW_DAYS,
-} from "../components/TimeSeriesChart"
+} from "./time-buckets"
+import { useZoneMode, zoneOps, type TimeZoneMode } from "./timezone"
 import { buildRollingStrip, computeStripRange, stripLastDay, type DailyTotal, type RollingStripCell } from "./usage-strip"
 
 export type UsageRange = "today" | "week" | "28d" | "month"
@@ -50,9 +51,9 @@ export interface UsageFilters {
 
 // Compute UTC-hour bounds for the query, mirroring computeTimeRange in
 // src/ui/dashboard/client.ts. Result strings are sliced to "YYYY-MM-DDTHH".
-// "today", "week" and "month" are calendar windows in *local* time, shifted
-// back by `periodOffset` whole periods; 28d is a trailing window ending now
-// and has no period to step through, so it ignores the offset.
+// "today", "week" and "month" are calendar windows in the zone `mode` names,
+// shifted back by `periodOffset` whole periods; 28d is a trailing window ending
+// now and has no period to step through, so it ignores the offset.
 //
 // 28d instead accepts an `endDate` ("YYYY-MM-DD"): given one it becomes a
 // fixed 28-day window whose *last* day is that date, which is how the user
@@ -63,41 +64,39 @@ export interface UsageFilters {
 export function computeTimeRange(
   range: UsageRange,
   periodOffset: number,
-  now: Date = new Date(),
-  endDate?: string | null,
+  now: Date,
+  endDate: string | null | undefined,
+  mode: TimeZoneMode,
 ): api.UsageRangeQuery {
+  const ops = zoneOps(mode)
   let start: Date
   let end: Date
   if (range === "week") {
-    const ref = new Date(now)
-    ref.setDate(ref.getDate() + periodOffset * 7)
-    const day = ref.getDay()
-    const monday = new Date(ref)
-    monday.setDate(ref.getDate() - ((day + 6) % 7))
-    monday.setHours(0, 0, 0, 0)
+    const ref = ops.make(ops.year(now), ops.month(now), ops.day(now) + periodOffset * 7)
+    const monday = ops.make(ops.year(ref), ops.month(ref), ops.day(ref) - ((ops.weekday(ref) + 6) % 7))
     start = monday
-    end = new Date(monday.getTime() + 7 * 86400000)
+    end = ops.make(ops.year(monday), ops.month(monday), ops.day(monday) + 7)
   } else if (range === "month") {
-    start = localMonthStart(now, periodOffset)
-    end = localMonthStart(now, periodOffset + 1)
+    start = monthStart(now, periodOffset, ops)
+    end = monthStart(now, periodOffset + 1, ops)
   } else {
     if (range === "today") {
       // A whole calendar day, so stepping back lands on that day rather than
       // on "midnight-to-now" of a day that has long since ended.
-      start = localDayStart(now, periodOffset)
-      end = localDayStart(now, periodOffset + 1)
+      start = dayStart(now, periodOffset, ops)
+      end = dayStart(now, periodOffset + 1, ops)
       return { start: start.toISOString().slice(0, 13), end: end.toISOString().slice(0, 13) }
     }
     const days = TRAILING_WINDOW_DAYS[range]
-    const pinned = parseLocalDateKey(endDate)
+    const pinned = parseDateKey(endDate, ops)
     if (pinned) {
       // Counted in calendar days, not milliseconds: a DST shift would
       // otherwise leave the window an hour short of its last day. The picked
       // day is inside the window, so the query runs to the midnight after it.
-      start = new Date(pinned.getFullYear(), pinned.getMonth(), pinned.getDate() - (days - 1), 0, 0, 0, 0)
-      end = new Date(pinned.getFullYear(), pinned.getMonth(), pinned.getDate() + 1, 0, 0, 0, 0)
+      start = ops.make(ops.year(pinned), ops.month(pinned), ops.day(pinned) - (days - 1))
+      end = ops.make(ops.year(pinned), ops.month(pinned), ops.day(pinned) + 1)
     } else {
-      start = localDayStart(now, -(days - 1))
+      start = dayStart(now, -(days - 1), ops)
       end = new Date(now.getTime() + 3600000)
     }
   }
@@ -142,43 +141,49 @@ export function usageViewFromHistoryState(state: unknown): UsageView | null {
   // lands between days. Neither is reachable through the UI.
   if (typeof periodOffset !== "number" || !Number.isInteger(periodOffset) || periodOffset > 0) return null
   // A bad end date only costs the pinned window, so it is dropped rather
-  // than used to reject an otherwise usable entry.
-  const day = typeof endDate === "string" && parseLocalDateKey(endDate) ? endDate : null
+  // than used to reject an otherwise usable entry. Validated on the UTC
+  // calendar because the question here is only "is this a real date" — the
+  // answer is the same in every zone, and UTC keeps it independent of the
+  // preference in force when the entry was pushed.
+  const day = typeof endDate === "string" && parseDateKey(endDate, zoneOps("utc")) ? endDate : null
   return { range: range as UsageRange, periodOffset, endDate: day }
 }
 
-export function dayOffsetFromKey(dateKey: string, now: Date = new Date()): number {
+export function dayOffsetFromKey(dateKey: string, now: Date, mode: TimeZoneMode): number {
+  const ops = zoneOps(mode)
   const [y, m, d] = dateKey.split("-").map(Number)
-  const target = new Date(y!, m! - 1, d!, 12, 0, 0, 0)
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0)
+  // Noon, not midnight: a DST jump moves midnight but never crosses noon, so
+  // the difference still divides into whole days.
+  const target = ops.make(y!, m! - 1, d!, 12)
+  const today = ops.make(ops.year(now), ops.month(now), ops.day(now), 12)
   return Math.round((target.getTime() - today.getTime()) / 86400000)
 }
 
-export function formatDayLabel(periodOffset: number, now: Date = new Date()): string {
-  const day = localDayStart(now, periodOffset)
-  if (periodOffset === 0) return `Today (${day.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`
-  if (periodOffset === -1) return `Yesterday (${day.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`
-  return day.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+export function formatDayLabel(periodOffset: number, now: Date, mode: TimeZoneMode): string {
+  const ops = zoneOps(mode)
+  const day = dayStart(now, periodOffset, ops)
+  const short = day.toLocaleDateString("en-US", { month: "short", day: "numeric", ...ops.fmt })
+  if (periodOffset === 0) return `Today (${short})`
+  if (periodOffset === -1) return `Yesterday (${short})`
+  return day.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", ...ops.fmt })
 }
 
-export function formatWeekLabel(periodOffset: number, now: Date = new Date()): string {
-  const ref = new Date(now)
-  ref.setDate(ref.getDate() + periodOffset * 7)
-  const day = ref.getDay()
-  const monday = new Date(ref)
-  monday.setDate(ref.getDate() - ((day + 6) % 7))
-  monday.setHours(0, 0, 0, 0)
-  const sunday = new Date(monday.getTime() + 6 * 86400000)
-  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+export function formatWeekLabel(periodOffset: number, now: Date, mode: TimeZoneMode): string {
+  const ops = zoneOps(mode)
+  const ref = ops.make(ops.year(now), ops.month(now), ops.day(now) + periodOffset * 7)
+  const monday = ops.make(ops.year(ref), ops.month(ref), ops.day(ref) - ((ops.weekday(ref) + 6) % 7))
+  const sunday = ops.make(ops.year(monday), ops.month(monday), ops.day(monday) + 6)
+  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...ops.fmt })
   const range = `${fmt(monday)} – ${fmt(sunday)}`
   if (periodOffset === 0) return `This week (${range})`
   if (periodOffset === -1) return `Last week (${range})`
   return range
 }
 
-export function formatMonthLabel(periodOffset: number, now: Date = new Date()): string {
-  const first = localMonthStart(now, periodOffset)
-  const name = first.toLocaleDateString("en-US", { month: "long", year: "numeric" })
+export function formatMonthLabel(periodOffset: number, now: Date, mode: TimeZoneMode): string {
+  const ops = zoneOps(mode)
+  const first = monthStart(now, periodOffset, ops)
+  const name = first.toLocaleDateString("en-US", { month: "long", year: "numeric", ...ops.fmt })
   if (periodOffset === 0) return `This month (${name})`
   if (periodOffset === -1) return `Last month (${name})`
   return name
@@ -305,6 +310,9 @@ function cachePut(cache: StripCache, key: string, rows: UsageRow[]): void {
 
 export function useUsage(isAdmin: boolean) {
   const { push: toast } = useToast()
+  // Every window boundary below is drawn on this clock. Flipping it has to
+  // refetch as well as re-bucket: the query bounds move with it.
+  const mode = useZoneMode()
   // Switching tabs unmounts this tab, so without seeding from history a back
   // navigation would land on an entry that claims a particular day while the
   // UI silently reset to today.
@@ -330,7 +338,7 @@ export function useUsage(isAdmin: boolean) {
   const reload = useCallback(async () => {
     setLoading(true)
     try {
-      const q = computeTimeRange(range, periodOffset, new Date(), endDate)
+      const q = computeTimeRange(range, periodOffset, new Date(), endDate, mode)
       const [rows, people] = await Promise.all([
         api.fetchTokenUsage(q),
         api.fetchUsageParticipants(),
@@ -342,7 +350,7 @@ export function useUsage(isAdmin: boolean) {
     } finally {
       setLoading(false)
     }
-  }, [range, periodOffset, endDate, toast])
+  }, [range, periodOffset, endDate, mode, toast])
 
   useEffect(() => {
     reload()
@@ -361,7 +369,7 @@ export function useUsage(isAdmin: boolean) {
       setStripRows([])
       return
     }
-    const q = computeStripRange(new Date())
+    const q = computeStripRange(new Date(), zoneOps(mode))
     const key = `${q.start}|${q.end}`
     // Served straight from cache whenever the user comes back to the 28d range,
     // which is the common move once the strip is on screen.
@@ -385,7 +393,7 @@ export function useUsage(isAdmin: boolean) {
     return () => {
       cancelled = true
     }
-  }, [range])
+  }, [range, mode])
 
   const participants = useMemo(() => indexParticipants(participantRows), [participantRows])
 
@@ -450,7 +458,8 @@ export function useUsage(isAdmin: boolean) {
   // Chart series: group by the first un-filtered dimension (user > key > client > model).
   // When the metric is tokens, also emit a separate "Cache" line (dashed) showing cache traffic.
   const chart = useMemo(() => {
-    const { keys, labels, isDaily } = buildTimeBuckets(range, periodOffset, new Date(), endDate)
+    const ops = zoneOps(mode)
+    const { keys, labels, isDaily } = buildTimeBuckets(range, periodOffset, new Date(), endDate, mode)
     const keyNameMap = new Map<string, string>()
     for (const r of data) keyNameMap.set(r.keyId, r.keyName ?? r.keyId.slice(0, 8))
 
@@ -471,7 +480,7 @@ export function useUsage(isAdmin: boolean) {
     for (const k of keys) { agg.set(k, new Map()); costAgg.set(k, new Map()); cacheAgg.set(k, 0) }
 
     for (const r of filtered) {
-      const bucket = utcHourToBucketKey(r.hour, isDaily)
+      const bucket = utcHourToBucketKey(r.hour, isDaily, ops)
       if (!agg.has(bucket)) continue
       let seriesKey: string
       if (groupBy === "user") {
@@ -511,7 +520,7 @@ export function useUsage(isAdmin: boolean) {
     const cacheHasData = metric === "tokens" && cacheData.some((v) => v > 0)
 
     return { labels, series, cacheData: cacheHasData ? cacheData : null, bucketKeys: keys, isDaily }
-  }, [filtered, data, range, periodOffset, endDate, metric, filters, isAdmin, participants])
+  }, [filtered, data, range, periodOffset, endDate, metric, filters, isAdmin, participants, mode])
 
   // One square per closing day, each holding that day's trailing 28-day totals.
   // Built from its own wider fetch, filtered the same way as the window rows.
@@ -521,9 +530,10 @@ export function useUsage(isAdmin: boolean) {
   // toggling tokens/requests must not throw this work away.
   const strip = useMemo<RollingStripCell[]>(() => {
     if (range !== "28d" || stripRows.length === 0) return []
+    const ops = zoneOps(mode)
     const daily = new Map<string, DailyTotal>()
     for (const r of applyFilters(stripRows, filters, participants)) {
-      const day = utcHourToBucketKey(r.hour, true)
+      const day = utcHourToBucketKey(r.hour, true, ops)
       const acc = daily.get(day)
       const cost = r.cost?.totalUSD ?? 0
       const tokens = rowTokens(r)
@@ -537,8 +547,8 @@ export function useUsage(isAdmin: boolean) {
     // Always ends today, matching the span that was fetched. The selection is
     // drawn as a ring on whichever square already holds that day; it does not
     // move the squares.
-    return buildRollingStrip(daily, stripLastDay())
-  }, [range, stripRows, filters, participants])
+    return buildRollingStrip(daily, stripLastDay(new Date(), ops), ops)
+  }, [range, stripRows, filters, participants, mode])
 
   const updateFilter = useCallback((patch: Partial<UsageFilters>) => {
     setFilters((cur) => ({ ...cur, ...patch }))
@@ -563,7 +573,9 @@ export function useUsage(isAdmin: boolean) {
    * window ending today.
    */
   const chooseEndDate = useCallback((day: string | null) => {
-    setEndDate(day && parseLocalDateKey(day) ? day : null)
+    // Validated on the UTC calendar for the same reason as in
+    // usageViewFromHistoryState: this only asks whether the date exists.
+    setEndDate(day && parseDateKey(day, zoneOps("utc")) ? day : null)
   }, [])
 
   // Pushes a history entry so the back button undoes the jump. Only this
@@ -573,7 +585,7 @@ export function useUsage(isAdmin: boolean) {
   const openDay = useCallback((dateKey: string) => {
     const next: UsageView = {
       range: "today",
-      periodOffset: Math.min(0, dayOffsetFromKey(dateKey)),
+      periodOffset: Math.min(0, dayOffsetFromKey(dateKey, new Date(), mode)),
       endDate: null,
     }
     // Stamp the entry we are leaving first, so going back has somewhere to
@@ -588,7 +600,7 @@ export function useUsage(isAdmin: boolean) {
     setRange(next.range)
     setPeriodOffset(next.periodOffset)
     setEndDate(null)
-  }, [])
+  }, [mode])
 
   useEffect(() => {
     const onPop = (e: PopStateEvent) => {

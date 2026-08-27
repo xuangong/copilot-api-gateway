@@ -1,5 +1,6 @@
 import type { UsageRangeQuery } from "../api/usage"
-import { localDateKey } from "../components/TimeSeriesChart"
+import { dateKey } from "./time-buckets"
+import type { ZoneOps } from "./timezone"
 
 /**
  * How many squares the strip holds. Deliberately much longer than the 28-day
@@ -60,18 +61,18 @@ export function dayFillRatio(dayCostUSD: number, peakDayCostUSD: number): number
 }
 
 /**
- * Local midnight today — the day the strip always ends on, whatever window the
- * user has selected below it.
+ * Midnight today in the selected zone — the day the strip always ends on,
+ * whatever window the user has selected below it.
  */
-export function stripLastDay(now: Date = new Date()): Date {
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+export function stripLastDay(now: Date, ops: ZoneOps): Date {
+  return ops.make(ops.year(now), ops.month(now), ops.day(now))
 }
 
-/** Local midnight `back` calendar days before `from`. */
-function dayBefore(from: Date, back: number): Date {
+/** Midnight `back` calendar days before `from`. */
+function dayBefore(from: Date, back: number, ops: ZoneOps): Date {
   // Calendar days, not milliseconds: a DST shift makes a local day 23 or 25
   // hours long and would slide the result onto the wrong date.
-  return new Date(from.getFullYear(), from.getMonth(), from.getDate() - back, 0, 0, 0, 0)
+  return ops.make(ops.year(from), ops.month(from), ops.day(from) - back)
 }
 
 /**
@@ -91,12 +92,13 @@ function dayBefore(from: Date, back: number): Date {
  * defeat the cache, since each click would ask for a span nobody had fetched.
  */
 export function computeStripRange(
-  now: Date = new Date(),
+  now: Date,
+  ops: ZoneOps,
   cells: number = STRIP_CELLS,
   window: number = STRIP_WINDOW,
 ): UsageRangeQuery {
-  const last = stripLastDay(now)
-  const start = dayBefore(last, cells - 1 + (window - 1))
+  const last = stripLastDay(now, ops)
+  const start = dayBefore(last, cells - 1 + (window - 1), ops)
   // Runs to the current hour so today's partial usage counts toward the last
   // square, which is the one the eye goes to first.
   const end = new Date(now.getTime() + 3600000)
@@ -106,8 +108,8 @@ export function computeStripRange(
 /**
  * Turn per-day totals into one rolling-window total per closing day.
  *
- * `dailyTotals` is keyed by local date ("YYYY-MM-DD"); a day with no usage has
- * no entry and reads as zero rather than shortening the window.
+ * `dailyTotals` is keyed by date ("YYYY-MM-DD") in the same zone as `ops`; a day
+ * with no usage has no entry and reads as zero rather than shortening the window.
  *
  * Genuinely a sliding sum: the span is walked once, each step adding the day
  * that entered the window and subtracting the day that left it, so the work is
@@ -116,11 +118,12 @@ export function computeStripRange(
 export function buildRollingStrip(
   dailyTotals: Map<string, DailyTotal>,
   lastDay: Date,
+  ops: ZoneOps,
   window: number = STRIP_WINDOW,
   cells: number = STRIP_CELLS,
 ): RollingStripCell[] {
   const span = cells + window - 1
-  const first = dayBefore(lastDay, span - 1)
+  const first = dayBefore(lastDay, span - 1, ops)
 
   // Materialise the span in order once, so the slide is plain array indexing
   // rather than a date-key lookup per (cell, day) pair.
@@ -128,8 +131,8 @@ export function buildRollingStrip(
   const cost: number[] = []
   const tokens: number[] = []
   for (let i = 0; i < span; i++) {
-    const d = new Date(first.getFullYear(), first.getMonth(), first.getDate() + i, 0, 0, 0, 0)
-    const v = dailyTotals.get(localDateKey(d))
+    const d = ops.make(ops.year(first), ops.month(first), ops.day(first) + i)
+    const v = dailyTotals.get(dateKey(d, ops))
     days.push(d)
     cost.push(v?.cost ?? 0)
     tokens.push(v?.tokens ?? 0)
@@ -151,8 +154,8 @@ export function buildRollingStrip(
     if (i < window - 1) continue
     const close = days[i]!
     out.push({
-      endKey: localDateKey(close),
-      label: close.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      endKey: dateKey(close, ops),
+      label: close.toLocaleDateString("en-US", { month: "short", day: "numeric", ...ops.fmt }),
       costUSD: runCost,
       tokens: runTokens,
       // Free: the closing day is the one just added to the running sum.
