@@ -22,7 +22,7 @@ import type { ModelPricing } from "@vibe-llm/protocols/common"
 
 export const COPILOT_PRICING_SOURCE = {
   url: "https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing",
-  verifiedOn: "2026-08-19",
+  verifiedOn: "2026-08-27",
 } as const
 
 export interface PricingTier {
@@ -46,9 +46,29 @@ export interface CopilotModelPricing {
 
 const only = (pricing: ModelPricing): readonly PricingTier[] => [{ label: "Default", pricing }]
 
+/** Every populated rate doubled, tier labels and thresholds untouched. */
+const doubled = (tiers: readonly PricingTier[]): readonly PricingTier[] =>
+  tiers.map((t) => ({
+    ...t,
+    pricing: Object.fromEntries(
+      Object.entries(t.pricing).map(([k, v]) => [k, typeof v === "number" ? v * 2 : v]),
+    ) as ModelPricing,
+  }))
+
 const OPUS_4X_5: ModelPricing = { input: 5, input_cache_read: 0.5, input_cache_write: 6.25, output: 25 }
 const SONNET_4X: ModelPricing = { input: 3, input_cache_read: 0.3, input_cache_write: 3.75, output: 15 }
 const GEMINI_FLASH_PROMO: ModelPricing = { input: 0.75, input_cache_read: 0.075, output: 3.75 }
+// GitHub prices Sol at 50% off standard rates through 2026-09-03. The figures
+// here are the discounted ones the page prints, i.e. what is actually billed,
+// so this row needs re-checking after that date.
+const SOL: readonly PricingTier[] = [
+  { label: "Default", pricing: { input: 2, input_cache_read: 0.2, input_cache_write: 2.5, output: 10 } },
+  {
+    label: "Long context",
+    contextThreshold: 272_000,
+    pricing: { input: 4, input_cache_read: 0.4, input_cache_write: 5, output: 15 },
+  },
+]
 const GROK_4X: readonly PricingTier[] = [
   { label: "Default", pricing: { input: 2, input_cache_read: 0.5, output: 6 } },
   {
@@ -92,15 +112,13 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
   {
     displayName: "GPT-5.6 Sol",
     match: "gpt-5.6-sol",
-    tiers: [
-      { label: "Default", pricing: { input: 5, input_cache_read: 0.5, input_cache_write: 6.25, output: 30 } },
-      {
-        label: "Long context",
-        contextThreshold: 272_000,
-        pricing: { input: 10, input_cache_read: 1, input_cache_write: 12.5, output: 45 },
-      },
-    ],
+    tiers: SOL,
   },
+  // Live in the catalog on some tenants but absent from the docs page, so the
+  // rate is inferred: "Claude Opus 4.8 (fast mode)" is listed at exactly twice
+  // plain Opus 4.8, and this applies that same ratio to Sol. Unverified — if
+  // GitHub ever publishes a Sol Fast row, replace this rather than trust it.
+  { match: "gpt-5.6-sol-fast", tiers: doubled(SOL) },
   {
     displayName: "GPT-5.6 Terra",
     match: "gpt-5.6-terra",
@@ -258,6 +276,15 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
   { match: "minimax-m2.5", tiers: only({ input: 0.3, output: 1.2 }) },
   { match: /^text-embedding-3-small/, tiers: only({ input: 0.02, output: 0 }) },
   { match: "text-embedding-ada-002", tiers: only({ input: 0.1, output: 0 }) },
+
+  // ── Deliberately unpriced ────────────────────────────────────────────────
+  // These appear in a live /models response (or in stored usage) but GitHub
+  // publishes no rate for them, so they are left to match nothing and cost 0
+  // rather than be assigned a guess:
+  //   trajectory-compaction  — Fireworks; present on all six tenants
+  //   deepseek-v4-flash      — seen in usage 2026-08-18, since delisted
+  //   deepseek-v4-pro        — ditto
+  // Their tokens still accumulate in `usage`; only the cost column is blank.
 ]
 
 const ISO_DATE_SUFFIX = /-\d{4}-\d{2}-\d{2}$/

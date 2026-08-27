@@ -61,8 +61,15 @@ test("unknown model returns null", () => {
   expect(pricingForCopilotPublicModelId("does-not-exist")).toBeNull()
 })
 
-test("embedding models map to input-only pricing", () => {
-  expect(pricingForCopilotPublicModelId("text-embedding-3-small")).toEqual({
+// Live in a /models response (or in stored usage) but with no published rate.
+// If one of these ever starts pricing, it was a deliberate decision, not drift.
+test("models GitHub publishes no rate for stay unpriced", () => {
+  for (const id of ["trajectory-compaction", "deepseek-v4-flash", "deepseek-v4-pro"]) {
+    expect(pricingForCopilotPublicModelId(id)).toBeNull()
+  }
+})
+
+test("embedding models map to input-only pricing", () => {  expect(pricingForCopilotPublicModelId("text-embedding-3-small")).toEqual({
     input: 0.02,
     output: 0,
   })
@@ -118,6 +125,39 @@ test("GPT-5.5 carries both published bands", () => {
       pricing: { input: 10, input_cache_read: 1, output: 45 },
     },
   ])
+})
+
+// Sol shipped priced byte-identically to GPT-5.5 — a copy/paste that billed it
+// at 2.5x input and 3x output for five weeks. Pinning the real figures here.
+test("GPT-5.6 Sol carries the 50%-off promo rate, not GPT-5.5's", () => {
+  const row = catalogRow("GPT-5.6 Sol")
+  expect(row.tiers).toEqual([
+    {
+      label: "Default",
+      pricing: { input: 2, input_cache_read: 0.2, input_cache_write: 2.5, output: 10 },
+    },
+    {
+      label: "Long context",
+      contextThreshold: 272_000,
+      pricing: { input: 4, input_cache_read: 0.4, input_cache_write: 5, output: 15 },
+    },
+  ])
+})
+
+test("Sol Fast bills at exactly twice Sol and stays out of the catalog", () => {
+  const sol = catalogRow("GPT-5.6 Sol").tiers
+  const fast = COPILOT_MODEL_PRICING.find((m) => m.match === "gpt-5.6-sol-fast")
+  if (!fast) throw new Error("no gpt-5.6-sol-fast entry")
+  expect(fast.displayName).toBeUndefined()
+  expect(fast.tiers.length).toBe(sol.length)
+  for (const [i, tier] of fast.tiers.entries()) {
+    const base = sol[i]!
+    expect(tier.label).toBe(base.label)
+    expect(tier.contextThreshold).toBe(base.contextThreshold)
+    for (const [dim, rate] of Object.entries(tier.pricing)) {
+      expect(rate).toBe((base.pricing[dim as keyof typeof base.pricing] as number) * 2)
+    }
+  }
 })
 
 test("GPT-5.6 Luna's long-context band starts at 200K, not 272K", () => {
