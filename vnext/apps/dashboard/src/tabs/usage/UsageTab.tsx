@@ -46,6 +46,7 @@ export function UsageTab() {
       label: s.label,
       data: s.data,
       color: palette[i % palette.length] ?? "#888888",
+      costData: s.cost,
     }))
     if (usage.chart.cacheData) {
       series.push({
@@ -54,6 +55,8 @@ export function UsageTab() {
         color: "#a78bfa",
         dashed: true,
         fill: false,
+        // No costData: cache tokens are already billed inside the series above,
+        // so pricing them again would double-count the bucket.
       })
     }
     return series

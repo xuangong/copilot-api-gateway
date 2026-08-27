@@ -37,6 +37,12 @@ export interface ChartDataset {
   color: string
   dashed?: boolean
   fill?: boolean
+  /**
+   * Per-bucket cost in USD, aligned with `data`. Shown in the tooltip beside
+   * the plotted value; omit for a series that has no cost of its own (the
+   * Cache line is a slice of another series' tokens, not a separate bill).
+   */
+  costData?: number[]
 }
 
 export interface ChartPointLink {
@@ -79,6 +85,16 @@ function defaultYTick(v: number): string {
   return String(v)
 }
 
+/**
+ * Cost as it reads in a tooltip. Two decimals is what the rest of the dashboard
+ * shows, but a single hour can cost fractions of a cent, and "$0.00" beside a
+ * live number reads as broken — so anything under a cent keeps four places.
+ */
+export function formatTooltipCost(v: number): string {
+  if (v > 0 && v < 0.01) return `$${v.toFixed(4)}`
+  return `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
 function hexToRgba(hex: string, alpha: number): string {
   const h = hex.replace("#", "")
   const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h
@@ -101,6 +117,11 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
   const overTip = useRef(false)
   const linkRef = useRef<LinkState | null>(null)
   linkRef.current = pointLink ? { index: linkRef.current?.index ?? 0, link: pointLink } : null
+  // Cost is read through a ref rather than copied onto the Chart.js datasets so
+  // the tooltip can find it by dataset index without widening Chart.js's own
+  // dataset type.
+  const costRef = useRef<Array<number[] | null>>([])
+  costRef.current = datasets.map((d) => d.costData ?? null)
   // Only whether there is a link, never which one. Callers build pointLink as a
   // fresh object literal every render — it closes over the data — so depending
   // on its identity would tear the chart down and replay its animation on any
@@ -151,10 +172,14 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
             labels: { color: tickC, font: { family: "Outfit, sans-serif", size: 11 } },
           },
           tooltip: hasPointLink
-            ? { enabled: false, external: (ctx) => renderLinkTooltip(ctx, tooltipRef.current, unitLabel, linkRef, hideTimer, overTip) }
+            ? { enabled: false, external: (ctx) => renderLinkTooltip(ctx, tooltipRef.current, unitLabel, linkRef, hideTimer, overTip, costRef) }
             : {
                 callbacks: {
-                  label: (c) => `${c.dataset.label}: ${Number(c.parsed.y).toLocaleString()}${unitLabel}`,
+                  label: (c) => {
+                    const cost = costRef.current[c.datasetIndex]?.[c.dataIndex]
+                    const suffix = typeof cost === "number" && cost > 0 ? `  ·  ${formatTooltipCost(cost)}` : ""
+                    return `${c.dataset.label}: ${Number(c.parsed.y).toLocaleString()}${unitLabel}${suffix}`
+                  },
                 },
               },
         },
@@ -269,6 +294,8 @@ export interface TooltipRow {
   label: string
   value: number
   color: string
+  /** USD for this bucket, when the series has a cost of its own. */
+  cost?: number
 }
 
 /**
@@ -294,6 +321,7 @@ function renderLinkTooltip(
   linkRef: { current: LinkState | null },
   hideTimer: { current: ReturnType<typeof setTimeout> | null },
   overTip: { current: boolean },
+  costRef: { current: Array<number[] | null> },
 ) {
   if (!el || !linkRef.current) return
   const { chart, tooltip } = ctx
@@ -320,13 +348,23 @@ function renderLinkTooltip(
 
   const title = tooltip.title[0] ?? ""
   const rows = visibleTooltipRows(
-    tooltip.dataPoints.map((p) => ({
-      label: String(p.dataset.label ?? ""),
-      value: Number(p.parsed.y),
-      color: String(p.dataset.borderColor ?? ""),
-    })),
+    tooltip.dataPoints.map((p) => {
+      const cost = costRef.current[p.datasetIndex]?.[p.dataIndex]
+      return {
+        label: String(p.dataset.label ?? ""),
+        value: Number(p.parsed.y),
+        color: String(p.dataset.borderColor ?? ""),
+        ...(typeof cost === "number" ? { cost } : {}),
+      }
+    }),
   )
-    .map((r) => `<div class="pg-chart-tip-row"><span class="pg-chart-tip-dot" style="background:${escapeHtml(r.color)}"></span>${escapeHtml(r.label)}<b>${r.value.toLocaleString()}${escapeHtml(unitLabel)}</b></div>`)
+    .map((r) => {
+      const costHtml =
+        typeof r.cost === "number" && r.cost > 0
+          ? `<span class="pg-chart-tip-cost">${escapeHtml(formatTooltipCost(r.cost))}</span>`
+          : ""
+      return `<div class="pg-chart-tip-row"><span class="pg-chart-tip-dot" style="background:${escapeHtml(r.color)}"></span>${escapeHtml(r.label)}<b>${r.value.toLocaleString()}${escapeHtml(unitLabel)}${costHtml}</b></div>`
+    })
     .join("")
   const linkLabel = linkRef.current.link.labelFor(index)
   const linkHtml = linkLabel === null

@@ -93,3 +93,23 @@ describe("visibleTooltipRows", () => {
     expect(visibleTooltipRows([{ label: "a", value: -5, color: "#1" }])).toHaveLength(1)
   })
 })
+
+// A single hour can cost fractions of a cent. Rounding that to "$0.00" beside a
+// live token count reads as a bug, so sub-cent values keep four places.
+describe("formatTooltipCost", () => {
+  test("uses two decimals for ordinary amounts", async () => {
+    const { formatTooltipCost } = await import("./TimeSeriesChart")
+    expect(formatTooltipCost(12.3456)).toBe("$12.35")
+    expect(formatTooltipCost(0.01)).toBe("$0.01")
+  })
+
+  test("keeps four decimals below a cent", async () => {
+    const { formatTooltipCost } = await import("./TimeSeriesChart")
+    expect(formatTooltipCost(0.0012)).toBe("$0.0012")
+  })
+
+  test("shows plain zero rather than $0.0000", async () => {
+    const { formatTooltipCost } = await import("./TimeSeriesChart")
+    expect(formatTooltipCost(0)).toBe("$0.00")
+  })
+})

@@ -965,6 +965,13 @@ select option {
   color: var(--text);
   font-weight: 500;
 }
+/* Sits with the value in the right-hand column, dimmed so the number the user
+   hovered for still reads first. */
+.pg-chart-tip-cost {
+  margin-left: 8px;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
 .pg-chart-tip-dot {
   width: 8px;
   height: 8px;

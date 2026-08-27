@@ -463,8 +463,12 @@ export function useUsage(isAdmin: boolean) {
 
     const seriesNames = new Map<string, string>()
     const agg = new Map<string, Map<string, number>>()
+    // Cost rides alongside the plotted value rather than replacing it: the line
+    // still draws tokens (or requests), but the tooltip reads out what that
+    // bucket cost, which is the number nobody can infer from the y-axis.
+    const costAgg = new Map<string, Map<string, number>>()
     const cacheAgg = new Map<string, number>()
-    for (const k of keys) { agg.set(k, new Map()); cacheAgg.set(k, 0) }
+    for (const k of keys) { agg.set(k, new Map()); costAgg.set(k, new Map()); cacheAgg.set(k, 0) }
 
     for (const r of filtered) {
       const bucket = utcHourToBucketKey(r.hour, isDaily)
@@ -491,6 +495,9 @@ export function useUsage(isAdmin: boolean) {
       const cache = (r.cacheReadTokens ?? 0) + (r.cacheCreationTokens ?? 0)
       const value = metric === "requests" ? (r.requests ?? 0) : (r.inputTokens ?? 0) + (r.outputTokens ?? 0) + cache
       m.set(seriesKey, (m.get(seriesKey) ?? 0) + value)
+      const cm = costAgg.get(bucket)!
+      const cost = r.cost && typeof r.cost.totalUSD === "number" ? r.cost.totalUSD : 0
+      cm.set(seriesKey, (cm.get(seriesKey) ?? 0) + cost)
       if (metric === "tokens") cacheAgg.set(bucket, (cacheAgg.get(bucket) ?? 0) + cache)
     }
 
@@ -498,6 +505,7 @@ export function useUsage(isAdmin: boolean) {
     const series = seriesList.map((sk) => ({
       label: seriesNames.get(sk) ?? sk,
       data: keys.map((k) => agg.get(k)?.get(sk) ?? 0),
+      cost: keys.map((k) => costAgg.get(k)?.get(sk) ?? 0),
     }))
     const cacheData = keys.map((k) => cacheAgg.get(k) ?? 0)
     const cacheHasData = metric === "tokens" && cacheData.some((v) => v > 0)
