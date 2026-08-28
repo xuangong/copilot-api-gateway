@@ -89,7 +89,19 @@ test('upstreamErrorResponse ignores errors that carry no response', async () => 
   expect(upstreamErrorResponse(new Error('socket closed'))).toBeNull()
 })
 
-test('POST /v1/images/edits 400 when not multipart', async () => {
+test('POST /v1/images/edits 400 on an unsupported content-type', async () => {
+  initRepo(stubRepo([]))
+  const app = buildApp({})
+  const req = new Request('http://local/v1/images/edits', {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain' },
+    body: 'hello',
+  })
+  const res = await app.fetch(req, env)
+  expect(res.status).toBe(400)
+})
+
+test('POST /v1/images/edits 400 when the JSON body carries no images', async () => {
   initRepo(stubRepo([]))
   const app = buildApp({})
   const req = new Request('http://local/v1/images/edits', {
@@ -99,6 +111,28 @@ test('POST /v1/images/edits 400 when not multipart', async () => {
   })
   const res = await app.fetch(req, env)
   expect(res.status).toBe(400)
+})
+
+// Codex's image extension posts edits as JSON with base64 data URLs rather
+// than multipart. Reaching binding resolution (404, not 400) proves the route
+// accepted and normalized the body.
+test('POST /v1/images/edits accepts the Codex JSON shape and reaches binding resolution', async () => {
+  initRepo(stubRepo([]))
+  const app = buildApp({})
+  const req = new Request('http://local/v1/images/edits', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gpt-image-2',
+      prompt: 'turn the cat into a ragdoll',
+      background: 'auto',
+      quality: 'auto',
+      size: 'auto',
+      images: [{ image_url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/wEAAAAASUVORK5CYII=' }],
+    }),
+  })
+  const res = await app.fetch(req, env)
+  expect(res.status).toBe(404)
 })
 
 test('POST /v1/images/edits 400 when model field missing in multipart', async () => {

@@ -3,7 +3,14 @@
  *
  * Routes (all mounted both with and without /v1 to match SDKs):
  *   - POST /images/generations  + /v1/images/generations  (JSON in, raw forward out)
- *   - POST /images/edits        + /v1/images/edits        (multipart in, raw forward out)
+ *   - POST /images/edits        + /v1/images/edits        (multipart OR JSON in, raw forward out)
+ *
+ * `/images/edits` accepts two wire shapes. Multipart is what the OpenAI spec
+ * documents and what every SDK sends. JSON with `images:[{image_url}]` is what
+ * Codex's client-owned image extension sends; `json-edits.ts` decodes its
+ * base64 data URLs and rebuilds the multipart form, so everything downstream
+ * of the branch — binding resolution, provider.fetch, observability — is
+ * identical for both.
  *
  * Phase A Task 4 (X-4) refactor: the per-call observability scaffolding
  * (quota gate → timer → call → record latency-only) was extracted into
@@ -27,6 +34,7 @@ import { openRequestDump, parseJsonBody } from '../chat-flow/shared/dump-open.ts
 import { readRequestBody } from '../../shared/dump/request-body.ts'
 import { openDumpAccumulator, type DumpAccumulator } from '../../shared/dump/accumulator.ts'
 import { getRepo } from '../../repo/index.ts'
+import { formDataFromJsonEdits } from './json-edits.ts'
 import { HTTPError } from '@vibe-llm/provider-llm'
 
 type Vars = { auth: DataPlaneAuthCtx }
@@ -164,40 +172,65 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
     } catch { /* best-effort */ }
   }
 
-  if (!contentType.toLowerCase().startsWith('multipart/form-data')) {
-    dump?.failed('/images/edits requires multipart/form-data')
+  const lowerContentType = contentType.toLowerCase()
+  const isJson = lowerContentType.startsWith('application/json')
+  const isMultipart = lowerContentType.startsWith('multipart/form-data')
+  if (!isJson && !isMultipart) {
+    dump?.failed('/images/edits requires multipart/form-data or application/json')
     return wrapResponse(dump, c.json(
-      { error: { type: 'invalid_request_error', message: '/images/edits requires multipart/form-data' } },
+      { error: { type: 'invalid_request_error', message: '/images/edits requires multipart/form-data or application/json' } },
       400,
     ))
   }
 
   let form: FormData
-  try {
-    // Rebuild a Request over the buffered bytes so Hono's formData() parser
-    // can consume them (we already drained the original stream via readRequestBody).
-    const rebuilt = new Request(c.req.url, {
-      method: c.req.method,
-      headers: c.req.raw.headers,
-      body: requestBody.bytes,
-    })
-    form = await rebuilt.formData()
-  } catch {
-    dump?.failed('failed to parse multipart body')
-    return wrapResponse(dump, c.json(
-      { error: { type: 'invalid_request_error', message: 'failed to parse multipart body' } },
-      400,
-    ))
-  }
+  let model: string
 
-  const modelField = form.get('model')
-  const model = typeof modelField === 'string' ? modelField : null
-  if (!model) {
-    dump?.failed('model field is required in multipart body')
-    return wrapResponse(dump, c.json(
-      { error: { type: 'invalid_request_error', message: 'model field is required in multipart body' } },
-      400,
-    ))
+  if (isJson) {
+    // Codex's image extension posts edits as JSON with base64 data URLs
+    // instead of multipart. Normalize to the documented multipart shape so
+    // the provider seam below is identical for both wire forms.
+    let parsed: unknown
+    try {
+      parsed = parseJsonBody(requestBody.bytes)
+    } catch {
+      dump?.failed('invalid JSON')
+      return wrapResponse(dump, c.json({ error: { type: 'invalid_request_error', message: 'invalid JSON' } }, 400))
+    }
+    const normalized = formDataFromJsonEdits(parsed)
+    if (!normalized.ok) {
+      dump?.failed(normalized.message)
+      return wrapResponse(dump, c.json({ error: { type: 'invalid_request_error', message: normalized.message } }, 400))
+    }
+    form = normalized.form
+    model = normalized.model
+  } else {
+    try {
+      // Rebuild a Request over the buffered bytes so Hono's formData() parser
+      // can consume them (we already drained the original stream via readRequestBody).
+      const rebuilt = new Request(c.req.url, {
+        method: c.req.method,
+        headers: c.req.raw.headers,
+        body: requestBody.bytes,
+      })
+      form = await rebuilt.formData()
+    } catch {
+      dump?.failed('failed to parse multipart body')
+      return wrapResponse(dump, c.json(
+        { error: { type: 'invalid_request_error', message: 'failed to parse multipart body' } },
+        400,
+      ))
+    }
+
+    const modelField = form.get('model')
+    if (typeof modelField !== 'string' || modelField.length === 0) {
+      dump?.failed('model field is required in multipart body')
+      return wrapResponse(dump, c.json(
+        { error: { type: 'invalid_request_error', message: 'model field is required in multipart body' } },
+        400,
+      ))
+    }
+    model = modelField
   }
   dump?.requestedModel(model)
 
