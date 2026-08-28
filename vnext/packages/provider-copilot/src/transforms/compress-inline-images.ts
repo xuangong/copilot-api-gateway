@@ -11,9 +11,11 @@
  *     both updated, and `source.type` stays "base64".
  *   - Chat Completions: OpenAI `image_url` content parts. The base64 data
  *     lives inside `image_url.url` as a full data URL.
- *   - Responses: `input_image` parts inside message.content and inside
- *     `function_call_output` outputs (multimodal tool results, e.g. a
- *     screenshot tool). Base64 lives in `image_url` as a full data URL.
+ *   - Responses: `input_image` parts inside message.content and inside the
+ *     outputs of `function_call_output` *and* `custom_tool_call_output`
+ *     (multimodal tool results — a screenshot tool, or Codex's local image
+ *     extension replaying every image it has generated this session). Base64
+ *     lives in `image_url` as a full data URL.
  *
  * Per-model size caps are inlined here so the calculator knows the exact
  * downscale point of each upstream encoder and we never ship pixels the
@@ -176,32 +178,65 @@ const isResponseInputImage = (part: unknown): part is ResponseInputImagePart => 
   return p.type === "input_image" && typeof p.image_url === "string"
 }
 
+/**
+ * Marks a part whose `image_url` we produced ourselves. A single client
+ * request can reach this boundary more than once — a fallback candidate
+ * attempt, or another turn of the Responses server-tool shim's `while (true)`
+ * loop — and we rewrite parts in place, so without a marker the second pass
+ * would re-encode our own lossy WebP (compounding artifacts and re-billing the
+ * processor). Keyed by a Symbol and defined non-enumerable so it never
+ * survives into JSON sent upstream.
+ */
+const compressedImageUrl = Symbol("compressedImageUrl")
+
+type MarkedPart = ResponseInputImagePart & { [compressedImageUrl]?: string }
+
+const alreadyCompressed = (part: MarkedPart): boolean =>
+  part[compressedImageUrl] === part.image_url
+
+const markCompressed = (part: MarkedPart, imageUrl: string): void => {
+  Object.defineProperty(part, compressedImageUrl, {
+    value: imageUrl,
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  })
+}
+
 export const compressInlineImagesResponses = async (
   payload: ResponsesPayload,
   upstreamModelId: string,
 ): Promise<number> => {
   if (!Array.isArray(payload.input)) return 0
-  const targets: ResponseInputImagePart[] = []
+  const targets: MarkedPart[] = []
   for (const item of payload.input) {
-    // Image parts can live under `content` on message items and under
-    // `output` on function_call_output items (multimodal tool results,
-    // e.g. a screenshot returned from a custom tool).
+    // Image parts can live under `content` on message items and under `output`
+    // on tool-result items. Both tool-result shapes carry them: freeform
+    // `function_call_output`, and `custom_tool_call_output` — which is where
+    // Codex's local image extension parks every image it has generated, so
+    // skipping it lets a long image session grow past the upstream body limit
+    // and come back as a 413.
     const t = (item as { type?: string }).type
     let parts: unknown
     if (t === "message") parts = (item as { content?: unknown }).content
-    else if (t === "function_call_output") parts = (item as { output?: unknown }).output
+    else if (t === "function_call_output" || t === "custom_tool_call_output") {
+      parts = (item as { output?: unknown }).output
+    }
     if (!Array.isArray(parts)) continue
     for (const part of parts) {
-      if (isResponseInputImage(part) && isBase64ImageDataUrl(part.image_url)) {
-        targets.push(part)
-      }
+      if (!isResponseInputImage(part)) continue
+      const marked = part as MarkedPart
+      if (alreadyCompressed(marked)) continue
+      if (isBase64ImageDataUrl(marked.image_url)) targets.push(marked)
     }
   }
   if (targets.length === 0) return 0
   const targetSize = responsesChatTargetSize(upstreamModelId)
   await Promise.all(
     targets.map(async (target) => {
-      target.image_url = await compressImageDataUrlToWebp(target.image_url, targetSize)
+      const compressed = await compressImageDataUrlToWebp(target.image_url, targetSize)
+      target.image_url = compressed
+      markCompressed(target, compressed)
     }),
   )
   return targets.length
