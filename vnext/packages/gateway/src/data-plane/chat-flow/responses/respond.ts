@@ -8,9 +8,9 @@
  *     is the terminator);
  *   - Model-key correction reads from `event.response.model` (per
  *     `response.created.response.model` and the terminal lifecycle envelope);
- *   - Upstream-error envelope is the OpenAI Responses shape
- *     (`{error: {type, message, ...}}`), produced by
- *     `repackageUpstreamError(res, 'responses')`;
+ *   - Upstream-error bodies are forwarded verbatim by
+ *     `forwardUpstreamError(res, 'responses')` — the upstream already speaks
+ *     this envelope, so re-minting could only drop fields;
  *   - Non-streaming branch reassembles the frames into a `ResponsesResult`
  *     JSON envelope via `collectResponsesProtocolEventsToResult`.
  *
@@ -38,7 +38,7 @@ import {
   type SseFrame,
 } from '@vibe-core/result'
 import type { ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
-import { repackageUpstreamError } from '../../errors/repackage'
+import { forwardUpstreamError } from '../../errors/forward'
 import {
   SourceStreamState,
   eventResultMetadata,
@@ -307,9 +307,10 @@ const isBridgedResponse = (
 
 /**
  * Repackage an upstream non-2xx body as a Responses-shaped error envelope.
- * Uses `repackageUpstreamError(res, 'responses')` for shape parity with the
- * legacy `dispatch()` path. The performance row is fired-and-forgotten via
- * `waitUntil` so a slow repo write never blocks the client response.
+ * Forwarded verbatim by `forwardUpstreamError(res, 'responses')` — the upstream
+ * already speaks this envelope, so re-minting it could only drop fields. The
+ * performance row is fired-and-forgotten via `waitUntil` so a slow repo write
+ * never blocks the client response.
  */
 const renderUpstreamError = async (
   result: UpstreamErrorResult,
@@ -319,7 +320,7 @@ const renderUpstreamError = async (
     waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
   }
   options.dump?.error('upstream', result.performance?.upstream ?? undefined)
-  return await repackageUpstreamError(upstreamErrorToResponse(result), 'responses')
+  return await forwardUpstreamError(upstreamErrorToResponse(result), 'responses')
 }
 
 const renderExecuteResult = async (

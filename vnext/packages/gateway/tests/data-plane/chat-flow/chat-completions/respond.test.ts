@@ -64,25 +64,23 @@ test('internal-error renders JSON envelope with status', async () => {
 // renderer no longer accepts a bridged-response variant. The pass-through test
 // from the dispatch era was deleted alongside the union variant.
 
-test('upstream-error renders via repackageUpstreamError (status preserved + OpenAI error envelope)', async () => {
+test('upstream-error is forwarded verbatim, status and headers preserved', async () => {
   const resp = await respondChatCompletions(
     {
       type: 'upstream-error',
       status: 429,
       headers: new Headers({ 'retry-after': '5', 'content-type': 'application/json' }),
-      body: new TextEncoder().encode('{"error":{"message":"rate"}}'),
+      body: new TextEncoder().encode('{"error":{"message":"rate","code":"rate_limit_exceeded"}}'),
     },
     { wantsStream: true, includeUsageChunk: false },
   )
   expect(resp.status).toBe(429)
-  // repackageUpstreamError lifts the message into the OpenAI-shaped envelope and
-  // sets `type` (api_error for 5xx, invalid_request_error for 4xx). The
-  // upstream `retry-after` header is intentionally dropped — the OpenAI SDK
-  // surfaces rate-limit info via the body envelope, not Retry-After (see
-  // copilot-gateway dispatch() rate-limit path for the same trade-off).
-  const json = (await resp.json()) as { error: { type: string; message: string } }
-  expect(json.error.type).toBe('invalid_request_error')
-  expect(json.error.message).toContain('rate')
+  // The body is the provider's, untouched — `code` used to be dropped here.
+  // `retry-after` now reaches the client too; the OpenAI SDK backs off on it.
+  expect(resp.headers.get('retry-after')).toBe('5')
+  const json = (await resp.json()) as { error: { message: string; code: string } }
+  expect(json.error.message).toBe('rate')
+  expect(json.error.code).toBe('rate_limit_exceeded')
 })
 
 test('mid-stream throw → SSE writes error event-frame and closes', async () => {

@@ -92,7 +92,7 @@ test('internal-error → JSON {error:{message}} envelope at the given status', a
   expect(json.error?.message).toContain('model not found')
 })
 
-test('upstream-error → repackaged into gemini error envelope, status preserved', async () => {
+test('upstream-error → minted gemini error envelope, status preserved', async () => {
   const resp = await respondGemini(
     {
       type: 'upstream-error',
@@ -103,8 +103,12 @@ test('upstream-error → repackaged into gemini error envelope, status preserved
     { wantsStream: true },
   )
   expect(resp.status).toBe(429)
-  // Body is the gemini-shape envelope from `repackageUpstreamError(_, 'gemini')`.
-  const json = (await resp.json()) as { error?: { message?: string } }
+  // Gemini is the one protocol that still gets reshaped: the upstream body is
+  // OpenAI-shaped (no upstream we bind speaks Gemini natively), so forwarding
+  // it verbatim would leave the client with no `code` and no `status`.
+  const json = (await resp.json()) as { error?: { code?: number; message?: string; status?: string } }
+  expect(json.error?.code).toBe(429)
+  expect(json.error?.status).toBe('RESOURCE_EXHAUSTED')
   expect(typeof json.error?.message).toBe('string')
 })
 

@@ -207,7 +207,7 @@ test('POST /v1/messages with invalid payload returns Anthropic error shape', asy
   expect(body.error.type).toBe('invalid_request_error')
 })
 
-test('POST /v1/messages surfaces upstream 503 as Anthropic error envelope', async () => {
+test('POST /v1/messages forwards an upstream 503 body verbatim', async () => {
   initRepo(stubRepo([stubUpstream()]))
   installCopilotFetch({ stream: false, upstreamStatus: 503, upstreamBody: { error: { message: 'upstream overloaded' } } })
   const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
@@ -218,8 +218,8 @@ test('POST /v1/messages surfaces upstream 503 as Anthropic error envelope', asyn
   })
   const res = await app.fetch(req, env)
   expect(res.status).toBe(503)
-  const body = await res.json() as { type: string; error: { type: string; message: string } }
-  expect(body.type).toBe('error')
-  expect(body.error.type).toBe('api_error')
-  expect(body.error.message).toContain('upstream overloaded')
+  // The provider's body reaches the client untouched — no invented `type`, and
+  // nothing dropped. The Anthropic SDK reads `error.message`, which is here.
+  const body = await res.json() as { error: { message: string } }
+  expect(body).toEqual({ error: { message: 'upstream overloaded' } })
 }, 20000)

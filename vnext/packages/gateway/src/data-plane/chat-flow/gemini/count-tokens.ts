@@ -8,7 +8,7 @@
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseGeminiPayload } from '../../parsers.ts'
 import { resolveBinding, stripUpstreamPin } from '../../routing/binding-resolver.ts'
-import { repackageUpstreamError } from '../../errors/repackage.ts'
+import { forwardUpstreamError } from '../../errors/forward.ts'
 import { HTTPError } from '@vibe-llm/provider-copilot'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'
 import { translateGeminiToMessages } from '@vibe-llm/translate/gemini-via-messages'
@@ -86,7 +86,7 @@ export async function serveGeminiCountTokens(args: GeminiCountTokensServeArgs): 
     return tee(Response.json(reshaped, { status: 200 }))
   } catch (err) {
     if (err instanceof HTTPError) {
-      return tee(await repackageUpstreamError(err.response, 'gemini'))
+      return tee(await forwardUpstreamError(err.response, 'gemini'))
     }
     const message = err instanceof Error ? err.message : 'upstream error'
     return tee(jsonErrorWrap(502, { error: { code: 502, message, status: 'UNKNOWN' } }))

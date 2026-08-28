@@ -2,7 +2,7 @@
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseMessagesCountTokensPayload } from '../../parsers.ts'
 import { resolveBinding, stripUpstreamPin } from '../../routing/binding-resolver.ts'
-import { repackageUpstreamError } from '../../errors/repackage.ts'
+import { forwardUpstreamError } from '../../errors/forward.ts'
 import { HTTPError } from '@vibe-llm/provider-copilot'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
@@ -60,7 +60,7 @@ export async function serveCountTokens(args: CountTokensServeArgs): Promise<Resp
     return tee(Response.json(json, { status: response.status }))
   } catch (err) {
     if (err instanceof HTTPError) {
-      return tee(await repackageUpstreamError(err.response, 'messages'))
+      return tee(await forwardUpstreamError(err.response, 'messages'))
     }
     const message = err instanceof Error ? err.message : 'upstream error'
     return tee(jsonErrorWrap(502, { type: 'error', error: { type: 'api_error', message } }))

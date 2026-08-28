@@ -50,7 +50,7 @@ import {
   expandPreviousResponseId,
   PreviousResponseNotFoundError,
 } from '../../dispatch/responses-store-bridge.ts'
-import { renderPreviousResponseNotFound } from '../../errors/repackage.ts'
+import { renderPreviousResponseNotFound } from '../../errors/forward.ts'
 import { getResponsesStore } from '../../../data-plane/runtime/responses-store.ts'
 import {
   responsesAttempt,

@@ -1,7 +1,7 @@
-// vnext/apps/gateway/tests/errors/repackage-previous-id.test.ts
+// vnext/packages/gateway/tests/errors/forward-previous-id.test.ts
 import { test, expect } from 'bun:test'
 import { PreviousResponseNotFoundError } from '../../src/data-plane/dispatch/responses-store-bridge.ts'
-import { renderPreviousResponseNotFound } from '../../src/data-plane/errors/repackage.ts'
+import { renderPreviousResponseNotFound } from '../../src/data-plane/errors/forward.ts'
 
 test('renderPreviousResponseNotFound emits OpenAI verbatim 400 envelope', async () => {
   const res = renderPreviousResponseNotFound(new PreviousResponseNotFoundError('resp_abc'))

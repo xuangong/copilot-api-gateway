@@ -31,7 +31,7 @@ import {
   type SseFrame,
 } from '@vibe-core/result'
 import type { ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
-import { repackageUpstreamError } from '../../errors/repackage'
+import { forwardUpstreamError } from '../../errors/forward'
 import {
   SourceStreamState,
   eventResultMetadata,
@@ -318,13 +318,13 @@ const renderEventsAsJson = async (
 // attempts surface a 501 internal-error result via attempt.ts now, so the
 // renderer only handles `LlmExecuteResult` variants.
 
-// Upstream errors carry the raw provider body verbatim; the OpenAI SDK expects
-// the `{ error: { type, message, ...code } }` envelope shape. We reuse the
-// existing `repackageUpstreamError` helper (sourceApi='chat_completions') so
-// the body is normalized identically to the legacy `dispatch()` path — same
-// type defaults (`invalid_request_error` for 4xx, `api_error` for 5xx), same
-// status preservation. The performance row is fired-and-forgotten via
-// `waitUntil` so a slow repo write never blocks the client response.
+// Upstream errors reach the client byte-for-byte via `forwardUpstreamError`.
+// The provider already speaks the OpenAI envelope, so re-minting it could only
+// lose fields — and did: `code` and `param` were being dropped, which is what
+// made Copilot's `computer_use_preview` rejection unreadable. Status and
+// headers are preserved too, so `retry-after` survives a 429. The performance
+// row is fired-and-forgotten via `waitUntil` so a slow repo write never blocks
+// the client response.
 const renderUpstreamError = async (
   result: UpstreamErrorResult,
   options: RespondChatCompletionsOptions,
@@ -333,7 +333,7 @@ const renderUpstreamError = async (
     waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
   }
   options.dump?.error('upstream', result.performance?.upstream ?? undefined)
-  return await repackageUpstreamError(upstreamErrorToResponse(result), 'chat_completions')
+  return await forwardUpstreamError(upstreamErrorToResponse(result), 'chat_completions')
 }
 
 const renderExecuteResult = async (

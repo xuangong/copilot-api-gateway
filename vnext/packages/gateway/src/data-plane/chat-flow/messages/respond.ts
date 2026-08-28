@@ -21,8 +21,10 @@
  *   - Model-key correction reads from `event.message.model` (the `message_start`
  *     frame), in addition to the chat-completions/responses `event.model` /
  *     `event.response.model` fallbacks
- *   - Upstream-error envelope shape: `{type: 'error', error: {type, message}}`
- *     (handled by `repackageUpstreamError(res, 'messages')`)
+ *   - Upstream-error bodies are forwarded verbatim by
+ *     `forwardUpstreamError(res, 'messages')`, not re-minted. A cross-protocol
+ *     binding therefore hands an Anthropic client an OpenAI-shaped body — both
+ *     nest the text at `error.message`, which is where the SDK reads it.
  *
  * Reference: copilot-gateway/packages/gateway/src/data-plane/llm/messages/respond.ts
  */
@@ -40,7 +42,7 @@ import {
   type SseFrame,
 } from '@vibe-core/result'
 import type { MessagesStreamEvent } from '@vibe-llm/protocols/messages'
-import { repackageUpstreamError } from '../../errors/repackage'
+import { forwardUpstreamError } from '../../errors/forward'
 import {
   SourceStreamState,
   eventResultMetadata,
@@ -320,10 +322,9 @@ const renderEventsAsJson = async (
 // renderer only handles `LlmExecuteResult` variants.
 
 /**
- * Repackage an upstream non-2xx body as an Anthropic-shaped error envelope.
- * Uses `repackageUpstreamError(res, 'messages')` for shape parity with the
- * legacy `dispatch()` path. The performance row is fired-and-forgotten via
- * `waitUntil` so a slow repo write never blocks the client response.
+ * Forward an upstream non-2xx body untouched via `forwardUpstreamError`.
+ * The performance row is fired-and-forgotten via `waitUntil` so a slow repo
+ * write never blocks the client response.
  */
 const renderUpstreamError = async (
   result: UpstreamErrorResult,
@@ -333,7 +334,7 @@ const renderUpstreamError = async (
     waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
   }
   options.dump?.error('upstream', result.performance?.upstream ?? undefined)
-  return await repackageUpstreamError(upstreamErrorToResponse(result), 'messages')
+  return await forwardUpstreamError(upstreamErrorToResponse(result), 'messages')
 }
 
 const renderExecuteResult = async (

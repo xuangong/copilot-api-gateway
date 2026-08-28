@@ -195,9 +195,9 @@ test('POST /v1/chat/completions with invalid payload returns OpenAI error shape'
   expect(res.status).toBe(400)
 })
 
-test('POST /v1/chat/completions surfaces upstream 400 as OpenAI error envelope', async () => {
+test('POST /v1/chat/completions forwards an upstream 400 body verbatim', async () => {
   initRepo(stubRepo([stubUpstream()]))
-  installCopilotFetch({ stream: false, upstreamStatus: 400, upstreamBody: { error: { message: 'model not allowed' } } })
+  installCopilotFetch({ stream: false, upstreamStatus: 400, upstreamBody: { error: { message: 'model not allowed', code: 'model_not_found' } } })
   const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
   const req = new Request('http://local/v1/chat/completions', {
     method: 'POST',
@@ -206,7 +206,8 @@ test('POST /v1/chat/completions surfaces upstream 400 as OpenAI error envelope',
   })
   const res = await app.fetch(req, env)
   expect(res.status).toBe(400)
-  const body = await res.json() as { error: { type: string; message: string } }
-  expect(body.error.type).toBe('invalid_request_error')
-  expect(body.error.message).toContain('model not allowed')
+  // Untouched: `code` used to be stripped on the way out, which is what made
+  // Copilot's tool-rejection errors unreadable to clients.
+  const body = await res.json() as { error: { message: string; code: string } }
+  expect(body).toEqual({ error: { message: 'model not allowed', code: 'model_not_found' } })
 })

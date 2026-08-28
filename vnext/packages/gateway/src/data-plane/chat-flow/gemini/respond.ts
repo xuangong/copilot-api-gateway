@@ -37,7 +37,7 @@ import {
   type LlmExecuteResult,
   type UpstreamErrorResult,
 } from '@vibe-llm/protocols/common'
-import { repackageUpstreamError } from '../../errors/repackage'
+import { forwardUpstreamError } from '../../errors/forward'
 import { encodeClientSSE } from '../../dispatch/sse-writers.ts'
 import { SourceStreamState, recordPerformance } from '../shared/respond-telemetry.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
@@ -363,10 +363,14 @@ const renderEventsAsJson = async (
 }
 
 /**
- * Repackage an upstream non-2xx body as a gemini-shape error envelope.
- * Reuses `repackageUpstreamError(res, 'gemini')` for parity with the legacy
- * `dispatch()` path. The performance row is fired-and-forgotten via
- * `waitUntil`.
+ * Render an upstream non-2xx body for a Gemini client.
+ *
+ * The one protocol that still gets a minted envelope: no upstream we bind
+ * speaks Gemini, so the error arriving here is OpenAI-shaped and forwarding it
+ * verbatim would leave a `@google/genai` client with no `code` and no `status`.
+ * `forwardUpstreamError(res, 'gemini')` only passes a body through when it
+ * already is a Google RPC error. The performance row is fired-and-forgotten
+ * via `waitUntil`.
  */
 const renderUpstreamError = async (
   result: UpstreamErrorResult,
@@ -376,7 +380,7 @@ const renderUpstreamError = async (
     waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
   }
   options.dump?.error('upstream', result.performance?.upstream ?? undefined)
-  return await repackageUpstreamError(upstreamErrorToResponse(result), 'gemini')
+  return await forwardUpstreamError(upstreamErrorToResponse(result), 'gemini')
 }
 
 const renderExecuteResult = async (

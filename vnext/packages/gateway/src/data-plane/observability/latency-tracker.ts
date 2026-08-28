@@ -10,7 +10,7 @@
  * no new rows.
  *
  * Source-api enums use dash form in the perf tables ('chat-completions') but
- * the dispatcher's SourceApi type from errors/repackage.ts uses underscore
+ * the dispatcher's SourceApi type from errors/forward.ts uses underscore
  * form ('chat_completions'). This module is the single translation point.
  */
 import { getRepo } from '../../repo/index.ts'
