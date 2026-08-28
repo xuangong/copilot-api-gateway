@@ -66,9 +66,12 @@ export function Select({
         onClick={() => setOpen((v) => !v)}
         className={buttonClassName ?? defaultBtn}
       >
-        <span className="truncate">{label}</span>
+        {/* `min-w-0` is what makes `truncate` bite: without it a flex item
+            refuses to shrink below its content, so a long label or a wide
+            badge pushes text out past the button's edge instead of clipping. */}
+        <span className="truncate min-w-0">{label}</span>
         {badge ? (
-          <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] bg-accent-teal/10 text-accent-teal">
+          <span className="shrink-0 max-w-[45%] truncate px-1.5 py-0.5 rounded text-[10px] bg-accent-teal/10 text-accent-teal">
             {badge}
           </span>
         ) : null}
@@ -91,9 +94,9 @@ export function Select({
               }`}
             >
               <span className="flex items-center gap-1.5 min-w-0">
-                <span className="truncate">{o.label}</span>
+                <span className="truncate min-w-0">{o.label}</span>
                 {o.badge ? (
-                  <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] bg-accent-teal/10 text-accent-teal">
+                  <span className="shrink-0 max-w-[45%] truncate px-1.5 py-0.5 rounded text-[10px] bg-accent-teal/10 text-accent-teal">
                     {o.badge}
                   </span>
                 ) : null}

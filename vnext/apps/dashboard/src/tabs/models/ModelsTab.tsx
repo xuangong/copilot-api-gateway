@@ -133,14 +133,20 @@ export function ModelsTab() {
    * `models`, not from `grouped`: `grouped` is narrowed by the sidebar's search
    * box, and while fullscreen that box isn't on screen — a picker silently
    * missing most of its entries because of a filter the user can't see would be
-   * worse than no picker. The upstream rides along as a badge so same-named
-   * models from different upstreams stay distinguishable.
+   * worse than no picker.
+   *
+   * The label is the display name the sidebar uses, not the raw id, and the
+   * upstream isn't shown at all: it's an opaque `up_copilot_<uuid>`, so as a
+   * badge it was pure noise that also crowded the name out of the button. The
+   * rest of this tab already treats a model id as globally unique (selection is
+   * stored as a bare id and resolved with a flat `find`), so nothing needs
+   * disambiguating here.
    */
   const modelOptions = useMemo<SelectOption[]>(() => {
     if (!models) return []
     return [...models]
       .sort((a, b) => a._upstream.localeCompare(b._upstream) || a.id.localeCompare(b.id))
-      .map((m) => ({ value: m.id, label: m.id, badge: m._upstream }))
+      .map((m) => ({ value: m.id, label: m.name ?? m.id }))
   }, [models])
 
   useEffect(() => {
