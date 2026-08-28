@@ -93,6 +93,28 @@ app.route('/engines/v1', dmrPrefixed)
 app.route('/engines/:engine/v1', dmrPrefixed)
 app.route('/anthropic', dmrPrefixed)
 
+// Codex model-provider compatibility namespace. Codex appends `models`,
+// `responses`, `responses/compact`, `images/generations`, `images/edits` and
+// `alpha/search` to whatever `model_providers.<name>.base_url` is configured,
+// so every one of those has to exist under a single shared base. The data plane
+// already registers each of them in both bare and `/v1` form, so mounting the
+// router once puts the whole set in place.
+//
+// The prefix carries no routing semantics: these are the same handlers the bare
+// paths use, and upstream selection still runs off the request body's `model`.
+// It exists for what the string itself does to the client. Codex tests the
+// endpoint against a list of Azure host substrings (`openai.azure.`,
+// `cognitiveservices.azure.`, `aoai.azure.`, `azure-api.`,
+// `windows.net/openai`); matching one keeps its remote-compaction path and
+// makes it send `store: true`. `.codex` is only there to say what the namespace
+// is for.
+//
+// Unconditional, unlike the DMR prefixes above: it adds paths without changing
+// the behaviour of any existing one, and it reuses the same data-plane auth, so
+// there is nothing to gate. It inherits the same harmless redundant
+// combinations (`/azure-api.codex/v1/responses`).
+app.route('/azure-api.codex', dataPlane)
+
 app.route('/', dataPlane)
 app.route('/', controlPlane)
 app.route('/', staticPages)
