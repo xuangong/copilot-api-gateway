@@ -17,6 +17,7 @@ import { parseAnthropicStream } from "./streams/anthropic"
 import { parseGeminiStream } from "./streams/gemini"
 import { renderMarkdown } from "./markdown"
 import { isAtBottom } from "./scroll"
+import { contextPercent, contextPressure, formatTokens } from "./tokens"
 
 type Protocol = "openai" | "anthropic" | "gemini"
 type Role = "user" | "assistant"
@@ -107,6 +108,13 @@ interface Props {
   /** Whether this model takes images — see `vision.ts`. Advisory only. */
   vision: VisionSupport
   /**
+   * The model's own context ceiling, so the thread's token count can be read
+   * as headroom rather than as a bare number. Undefined when the models
+   * endpoint reports no limit — the readout then falls back to the count alone
+   * rather than inventing a denominator.
+   */
+  contextWindow?: number
+  /**
    * `image` swaps the three chat protocols for the /v1/images endpoints.
    * Undefined while the model list is still loading — sending in that window
    * would have to guess, and guessing wrong routes an image model at the chat
@@ -149,7 +157,7 @@ function composeSystemPrompt(userPrompt: string): string {
   return trimmed ? `${timeLine}\n\n${trimmed}` : timeLine
 }
 
-export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vision, mode, imageParams, onImageParamsChange, onRevertModel }: Props) {
+export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vision, contextWindow, mode, imageParams, onImageParamsChange, onRevertModel }: Props) {
   const t = useT()
   const [protocol, setProtocol] = useState<Protocol>(() => loadPersistedProtocol())
   const [messages, setMessages] = useState<Message[]>(() => loadPersistedMessages())
@@ -960,13 +968,39 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          {mode === "chat" && messages.length > 0 && (
-            <span className="text-themed-dim text-xs mr-2 font-mono">
-              {ctxCounting
-                ? t("dash.playground.ctxCounting")
-                : t("dash.playground.ctxTokens", { n: ctxTokens ?? "—" })}
-            </span>
-          )}
+          {mode === "chat" && messages.length > 0 && (() => {
+            if (ctxCounting) {
+              return (
+                <span className="text-themed-dim text-xs mr-2 font-mono">
+                  {t("dash.playground.ctxCounting")}
+                </span>
+              )
+            }
+            // No count yet, or no ceiling reported: show what we have rather
+            // than a made-up denominator.
+            if (ctxTokens == null || !contextWindow) {
+              return (
+                <span className="text-themed-dim text-xs mr-2 font-mono">
+                  {t("dash.playground.ctxTokens", { n: ctxTokens ?? "—" })}
+                </span>
+              )
+            }
+            const pressure = contextPressure(ctxTokens, contextWindow)
+            return (
+              <span
+                className={"text-xs mr-2 font-mono pg-ctx pg-ctx-" + pressure}
+                title={t("dash.playground.ctxTitle", {
+                  left: Math.max(0, contextWindow - ctxTokens),
+                })}
+              >
+                {t("dash.playground.ctxTokensOf", {
+                  n: ctxTokens,
+                  limit: formatTokens(contextWindow),
+                  pct: contextPercent(ctxTokens, contextWindow),
+                })}
+              </span>
+            )
+          })()}
           {messages.length >= 4 && (
             <button
               onClick={compact}

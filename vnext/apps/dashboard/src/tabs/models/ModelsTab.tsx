@@ -6,6 +6,7 @@ import { listPlaygroundModels, type PlaygroundModel } from "../../api/models"
 import { ChatPanel } from "./ChatPanel"
 import { visionSupport } from "./vision"
 import { DEFAULT_IMAGE_PARAMS, playgroundMode, type ImageParams } from "./images"
+import { formatTokens } from "./tokens"
 
 const LS_KEY_ID = "playground.keyId"
 const LS_OPEN_GROUPS = "playground.openGroups"
@@ -264,7 +265,7 @@ export function ModelsTab() {
 
         <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           {selectedModelId && selectedKey ? (
-            <ChatPanel modelId={selectedModelId} apiKey={selectedKey.key} systemPrompt={systemPrompt} webSearchEnabled={webSearchEnabled} vision={visionSupport(selectedModelId, selectedModel?.capabilities?.supports)} mode={mode} imageParams={imageParams} onImageParamsChange={setImageParams} onRevertModel={setSelectedModelId} />
+            <ChatPanel modelId={selectedModelId} apiKey={selectedKey.key} systemPrompt={systemPrompt} webSearchEnabled={webSearchEnabled} vision={visionSupport(selectedModelId, selectedModel?.capabilities?.supports)} contextWindow={selectedModel?.capabilities?.limits?.max_context_window_tokens} mode={mode} imageParams={imageParams} onImageParamsChange={setImageParams} onRevertModel={setSelectedModelId} />
           ) : (
             <div className="flex items-center justify-center h-full text-themed-dim text-sm">
               {t("dash.playground.selectModel")}
@@ -304,11 +305,6 @@ interface ListProps {
   onPick: (id: string) => void
   openGroups: Record<string, boolean>
   onToggleGroup: (g: string) => void
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1000) return `${Math.round(n / 1000)}k`
-  return String(n)
 }
 
 function ModelList({
