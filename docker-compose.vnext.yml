@@ -10,6 +10,10 @@ services:
       # 41414 on both sides, and on both the local and the SSH host, so one URL
       # and one set of smoke-test commands work everywhere.
       - "${VNEXT_PORT:-41414}:41414"
+      # Docker Model Runner's default host port, so a client configured for a
+      # real DMR (`http://<host>:12434`) works as a drop-in. Only meaningful
+      # with DMR_COMPAT set; harmless otherwise.
+      - "${VNEXT_DMR_PORT:-12434}:41414"
     environment:
       - PORT=41414
       - ACCOUNT_TYPE=${ACCOUNT_TYPE:-individual}
@@ -24,6 +28,13 @@ services:
       - VNEXT_DEV_GITHUB_TOKEN=${VNEXT_DEV_GITHUB_TOKEN:-}
       - VNEXT_DEV_COPILOT_TOKEN=${VNEXT_DEV_COPILOT_TOKEN:-}
       - VNEXT_DEV_USER_ID=${VNEXT_DEV_USER_ID:-dev-user}
+      # Docker Model Runner compatibility. DMR clients cannot send a key (see
+      # data-plane/dmr/config.ts), so DMR_BOUND_KEY is the identity every
+      # request on that surface is billed and quota-checked against. LAN only:
+      # anyone who can reach the port can spend that key. Both unset by
+      # default, which leaves the compat layer completely inert.
+      - DMR_COMPAT=${DMR_COMPAT:-}
+      - DMR_BOUND_KEY=${DMR_BOUND_KEY:-}
     volumes:
       # Persist vnext sqlite separately from the prod gateway's .data dir.
       - ./data-vnext:/data

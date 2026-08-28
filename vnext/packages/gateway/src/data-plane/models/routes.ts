@@ -216,11 +216,17 @@ interface GeminiModelShape {
   topK: 40
 }
 
-interface OpenAIShapedModel {
+export interface OpenAIShapedModel {
   id: string
   name?: string
   capabilities?: {
     type?: string
+    supports?: {
+      tool_calls?: boolean
+      vision?: boolean
+      reasoning_effort?: string[]
+      adaptive_thinking?: boolean
+    }
     limits?: {
       max_context_window_tokens?: number
       max_output_tokens?: number
@@ -246,7 +252,7 @@ function toGeminiShape(m: OpenAIShapedModel): GeminiModelShape {
   }
 }
 
-function isChatModel(m: OpenAIShapedModel): boolean {
+export function isChatModel(m: OpenAIShapedModel): boolean {
   const capType = m.capabilities?.type?.toLowerCase()
   // Gemini surface skips embeddings/images. Copilot rows come back with
   // type='chat'; generic providers may omit the field, so treat missing

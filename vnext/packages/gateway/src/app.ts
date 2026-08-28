@@ -5,6 +5,8 @@ import { staticPages } from './shared/edge/static-pages.ts'
 import { getRepo } from './repo/index.ts'
 import { devAuthMiddleware } from './control-plane/auth/dev-auth.ts'
 import { sessionAuthMiddleware } from './control-plane/auth/session-auth.ts'
+import { dmrRouter } from './data-plane/dmr/routes.ts'
+import { isDmrCompatEnabled } from './data-plane/dmr/config.ts'
 
 export interface Env {
   ACCOUNT_TYPE?: string
@@ -58,6 +60,38 @@ app.get('/debug/db/users-count', async (c) => {
 
 app.use('*', sessionAuthMiddleware)
 app.use('*', devAuthMiddleware)
+
+// Docker Model Runner compatibility. Inert unless DMR_COMPAT is set, in which
+// case the whole data plane is re-exposed under DMR's prefixes so clients that
+// hardcode them (AnythingLLM rewrites any configured base path to
+// `engines/v1`) can talk to us unmodified. Mounting the router itself rather
+// than aliasing routes one by one means future data-plane routes follow along
+// automatically.
+//
+// dmrRouter must come first: its native `GET /models` returns DMR's bare-array
+// shape and has to shadow the data plane's OpenAI-shaped one, and Hono matches
+// in registration order. With the flag off it falls through instead of
+// answering, so the shape below is unchanged.
+//
+// The prefixes are registered unconditionally but gated per request — the flag
+// is read from the environment, and deciding at module-load time would bake in
+// whatever was set when the module first happened to be imported.
+//
+// Prefix mounting also yields redundant combinations like
+// `/engines/v1/v1/chat/completions`. Those are an artifact of stripping a
+// prefix off a router that already carries `/v1` paths, not an API we mean to
+// offer — harmless, and not worth extra routing to suppress.
+const dmrPrefixed = new Hono<{ Bindings: Env }>()
+dmrPrefixed.use('*', async (c, next) => {
+  if (!isDmrCompatEnabled()) return c.notFound()
+  await next()
+})
+dmrPrefixed.route('/', dataPlane)
+
+app.route('/', dmrRouter)
+app.route('/engines/v1', dmrPrefixed)
+app.route('/engines/:engine/v1', dmrPrefixed)
+app.route('/anthropic', dmrPrefixed)
 
 app.route('/', dataPlane)
 app.route('/', controlPlane)

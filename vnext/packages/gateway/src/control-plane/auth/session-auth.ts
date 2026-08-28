@@ -17,6 +17,7 @@ import { ADMIN_EMAILS, type AccountType } from '../../shared/config/constants.ts
 import { validateApiKey } from '../lib/api-keys.ts'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
 import { resolveControlPlaneFetcher } from '../upstreams/proxy-resolution.ts'
+import { dmrBoundKey, isDmrCompatEnabled, isDmrPath } from '../../data-plane/dmr/config.ts'
 import type { ApiKeyId, SessionToken, UserId } from '../../repo/branded-ids.ts'
 
 interface FullAuthCtx {
@@ -31,17 +32,31 @@ interface FullAuthCtx {
 
 function extractKey(c: Context): string | null {
   const url = new URL(c.req.url)
+  const onDmrSurface = isDmrCompatEnabled() && isDmrPath(url.pathname)
+  // AnythingLLM's DMR provider builds its client with `apiKey: null` and so
+  // sends the literal string "null". On the DMR surface those sentinels mean
+  // "no credential", not "this credential"; anywhere else they stay as-is so
+  // behaviour outside the compat layer is unchanged.
+  const present = (v: string | null | undefined): v is string =>
+    !!v && !(onDmrSurface && (v === 'null' || v === 'undefined'))
+
   const fromQuery = url.searchParams.get('key')
-  if (fromQuery) return fromQuery
+  if (present(fromQuery)) return fromQuery
   const apiKey = c.req.header('x-api-key')
-  if (apiKey) return apiKey
+  if (present(apiKey)) return apiKey
   const goog = c.req.header('x-goog-api-key')
-  if (goog) return goog
+  if (present(goog)) return goog
   const auth = c.req.header('authorization')
-  if (auth?.toLowerCase().startsWith('bearer ')) return auth.slice(7)
+  if (auth?.toLowerCase().startsWith('bearer ')) {
+    const bearer = auth.slice(7)
+    if (present(bearer)) return bearer
+  }
   const cookie = c.req.header('cookie') ?? ''
   const m = cookie.match(/(?:^|;\s*)session_token=([^\s;]+)/)
   if (m && m[1]) return m[1]
+  // Last resort, and only here: DMR clients have no channel to carry a key,
+  // so the server binds one for them.
+  if (onDmrSurface) return dmrBoundKey() ?? null
   return null
 }
 
