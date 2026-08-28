@@ -16,6 +16,7 @@ import { parseOpenAIStream, type Citation, type StreamUsage, type WebSearchProgr
 import { parseAnthropicStream } from "./streams/anthropic"
 import { parseGeminiStream } from "./streams/gemini"
 import { renderMarkdown } from "./markdown"
+import { isAtBottom } from "./scroll"
 
 type Protocol = "openai" | "anthropic" | "gemini"
 type Role = "user" | "assistant"
@@ -158,6 +159,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
   const abortRef = useRef<AbortController | null>(null)
   const editorRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const threadObserverRef = useRef<ResizeObserver | null>(null)
   const lastUserRef = useRef<Message | null>(null)
   const startedAtRef = useRef<number>(0)
   const lastDepsRef = useRef<{ modelId: string; protocol: Protocol }>({ modelId, protocol })
@@ -317,9 +319,50 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     setPendingDeps(null)
   }
 
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
-  }, [messages])
+  // —— Thread scrolling ——
+  // Two behaviours, and the second one is "do nothing":
+  //
+  //   * reader is at the bottom → stay pinned there, so the growing answer
+  //     pushes older content up and the bottom edge holds still;
+  //   * reader has scrolled up    → never move them. The browser's own scroll
+  //     anchoring keeps the viewport stable while content grows below the fold,
+  //     but only as long as nothing scrolls programmatically.
+  //
+  // The pin is an instant `scrollTop` assignment, not `behavior: "smooth"`.
+  // `messages` is re-set on every delta, so a smooth animation would be
+  // restarted dozens of times a second toward a target that keeps moving — that
+  // chase is what read as upward jitter.
+  //
+  // It is driven by a ResizeObserver rather than a `messages` effect because
+  // height changes that no state update accompanies — an image finishing its
+  // decode, a code block laying out — have to keep the thread pinned too.
+
+  const stickToBottomRef = useRef(true)
+
+  function pinToBottom() {
+    const el = scrollRef.current
+    if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight
+  }
+
+  function onThreadScroll(e: React.UIEvent<HTMLDivElement>) {
+    // Our own `scrollTop` write re-enters here; it lands at the bottom, so the
+    // flag simply stays true and there is no feedback loop.
+    stickToBottomRef.current = isAtBottom(e.currentTarget)
+  }
+
+  const observeThread = useCallback((node: HTMLDivElement | null) => {
+    threadObserverRef.current?.disconnect()
+    threadObserverRef.current = null
+    if (!node) return
+    const observer = new ResizeObserver(pinToBottom)
+    observer.observe(node)
+    threadObserverRef.current = observer
+    pinToBottom()
+    // `pinToBottom` reads refs only, so this callback stays stable and the
+    // observer is not torn down and rebuilt on every render.
+  }, [])
+
+  useEffect(() => () => threadObserverRef.current?.disconnect(), [])
 
   // —— Composer (contenteditable) ——
   // React can't control a contenteditable without fighting the caret, so the
@@ -477,6 +520,9 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       if (parts.length === 0 || mode === undefined) return
       const userMsg: Message = { role: "user", text: partsToText(parts), parts }
       lastUserRef.current = userMsg
+      // Sending is an explicit "show me the answer", so re-arm the pin even if
+      // the reader had scrolled up to review something before typing.
+      stickToBottomRef.current = true
       const nextHistory = [...messages, userMsg]
       setMessages([...nextHistory, { role: "assistant", text: "" }])
       if (override === undefined) clearEditor()
@@ -937,7 +983,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
         </div>
       )}
 
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto">
+      <div ref={scrollRef} onScroll={onThreadScroll} className="flex-1 min-h-0 overflow-auto">
         {messages.length === 0 && !error ? (
           <div className="pg-empty">
             <div className="pg-empty-title">{t("dash.playground.emptyHint")}</div>
@@ -955,7 +1001,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
             </div>
           </div>
         ) : (
-          <div className="pg-thread">
+          <div ref={observeThread} className="pg-thread">
             {messages.map((m, i) => {
               const isAssistant = m.role === "assistant"
               const isLast = i === messages.length - 1
