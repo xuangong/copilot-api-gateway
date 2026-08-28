@@ -280,7 +280,7 @@ export function ModelsTab() {
 
         <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           {selectedModelId && selectedKey ? (
-            <ChatPanel modelId={selectedModelId} apiKey={selectedKey.key} systemPrompt={systemPrompt} webSearchEnabled={webSearchEnabled} vision={visionSupport(selectedModelId, selectedModel?.capabilities?.supports)} contextWindow={selectedModel?.capabilities?.limits?.max_context_window_tokens} modelOptions={modelOptions} onPickModel={pickModel} mode={mode} imageParams={imageParams} onImageParamsChange={setImageParams} onRevertModel={setSelectedModelId} />
+            <ChatPanel modelId={selectedModelId} apiKey={selectedKey.key} systemPrompt={systemPrompt} webSearchEnabled={webSearchEnabled} vision={visionSupport(selectedModelId, selectedModel?.capabilities?.supports)} contextWindow={selectedModel?.capabilities?.limits?.max_context_window_tokens} modelOptions={modelOptions} onPickModel={pickModel} mode={mode} imageParams={imageParams} onImageParamsChange={setImageParams} />
           ) : (
             <div className="flex items-center justify-center h-full text-themed-dim text-sm">
               {t("dash.playground.selectModel")}

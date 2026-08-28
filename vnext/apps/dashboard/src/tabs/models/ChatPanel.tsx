@@ -18,6 +18,7 @@ import { parseAnthropicStream } from "./streams/anthropic"
 import { parseGeminiStream } from "./streams/gemini"
 import { renderMarkdown } from "./markdown"
 import { isAtBottom } from "./scroll"
+import { initialFullscreen, persistFullscreen, spendLanded } from "./fullscreen"
 import { contextPercent, contextPressure, formatTokens } from "./tokens"
 
 type Protocol = "openai" | "anthropic" | "gemini"
@@ -131,7 +132,6 @@ interface Props {
   mode: PlaygroundMode | undefined
   imageParams: ImageParams
   onImageParamsChange: (next: ImageParams) => void
-  onRevertModel?: (id: string) => void
 }
 
 /**
@@ -165,7 +165,7 @@ function composeSystemPrompt(userPrompt: string): string {
   return trimmed ? `${timeLine}\n\n${trimmed}` : timeLine
 }
 
-export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vision, contextWindow, modelOptions, onPickModel, mode, imageParams, onImageParamsChange, onRevertModel }: Props) {
+export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vision, contextWindow, modelOptions, onPickModel, mode, imageParams, onImageParamsChange }: Props) {
   const t = useT()
   const [protocol, setProtocol] = useState<Protocol>(() => loadPersistedProtocol())
   const [messages, setMessages] = useState<Message[]>(() => loadPersistedMessages())
@@ -183,7 +183,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
    * switching models, compacting — resets this alongside them.
    */
   const [expandedSources, setExpandedSources] = useState<ReadonlySet<number>>(() => new Set())
-  const [fullscreen, setFullscreen] = useState(false)
+  const [fullscreen, setFullscreen] = useState(initialFullscreen)
   /** Data URL of the image shown in the zoom overlay, or null when closed. */
   const [zoomed, setZoomed] = useState<string | null>(null)
   /** Timestamp the thread was opened with — names downloads consistently. */
@@ -194,7 +194,6 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
   const threadObserverRef = useRef<ResizeObserver | null>(null)
   const lastUserRef = useRef<Message | null>(null)
   const startedAtRef = useRef<number>(0)
-  const lastDepsRef = useRef<{ modelId: string; protocol: Protocol }>({ modelId, protocol })
 
   useEffect(() => {
     localStorage.setItem(LS_PROTOCOL, protocol)
@@ -243,20 +242,15 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Track model+protocol changes; if there are messages, surface inline confirm bar
-  // rather than wiping silently.
-  const [pendingDeps, setPendingDeps] = useState<{ modelId: string; protocol: Protocol } | null>(null)
+  // Switching model or protocol keeps the thread. The history is stored
+  // protocol-neutrally and re-encoded per send, so nothing about it belongs to
+  // the model that produced it — and carrying a conversation across models is
+  // most of what comparing them means. Clearing stays a deliberate act: the
+  // topbar's own button, always one click away.
   useEffect(() => {
-    const prev = lastDepsRef.current
-    if (prev.modelId === modelId && prev.protocol === protocol) return
-    if (messages.length === 0) {
-      lastDepsRef.current = { modelId, protocol }
-      abortRef.current?.abort()
-      setError(null)
-      return
-    }
-    setPendingDeps({ modelId, protocol })
-  }, [modelId, protocol, messages.length])
+    // A failure belongs to the model that produced it, though.
+    setError(null)
+  }, [modelId, protocol])
 
   // —— Context token counting (Option D) ——
   // Calls /v1/messages/count_tokens after debounce so the topbar shows the
@@ -336,23 +330,6 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       setTimeout(() => setCompactNotice(null), 3000)
       return next
     })
-  }
-
-  function confirmSwitch() {
-    abortRef.current?.abort()
-    setMessages([])
-    setExpandedSources(new Set())
-    setError(null)
-    lastDepsRef.current = { modelId, protocol }
-    setPendingDeps(null)
-  }
-  function cancelSwitch() {
-    // Roll back parent's selection to the last accepted model so the topbar
-    // and model list reflect that the switch was cancelled.
-    const prev = lastDepsRef.current
-    if (prev.modelId !== modelId) onRevertModel?.(prev.modelId)
-    if (prev.protocol !== protocol) setProtocol(prev.protocol)
-    setPendingDeps(null)
   }
 
   // —— Thread scrolling ——
@@ -920,6 +897,14 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     }
   }, [fullscreen])
 
+  // Remember the frame for the next reload, and spend the landing so that
+  // moving to another tab and back within this page load opens windowed —
+  // that return is a navigation, not a resume.
+  useEffect(() => {
+    persistFullscreen(fullscreen)
+  }, [fullscreen])
+  useEffect(spendLanded, [])
+
   return (
     <div
       className={
@@ -1065,14 +1050,6 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
           </button>
         </div>
       </div>
-
-      {pendingDeps && (
-        <div className="pg-confirm">
-          <span>{t("dash.playground.switchWarn")}</span>
-          <button className="btn-primary !py-1 !px-3 !text-xs" onClick={confirmSwitch}>{t("dash.playground.confirm")}</button>
-          <button className="btn-ghost !py-1 !px-3 !text-xs" onClick={cancelSwitch}>{t("dash.playground.cancel")}</button>
-        </div>
-      )}
 
       <div ref={scrollRef} onScroll={onThreadScroll} className="flex-1 min-h-0 overflow-auto">
         {messages.length === 0 && !error ? (
