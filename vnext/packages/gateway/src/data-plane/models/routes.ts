@@ -221,6 +221,7 @@ export interface OpenAIShapedModel {
   name?: string
   capabilities?: {
     type?: string
+    family?: string
     supports?: {
       tool_calls?: boolean
       vision?: boolean

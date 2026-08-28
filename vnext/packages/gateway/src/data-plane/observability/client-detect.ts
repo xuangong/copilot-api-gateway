@@ -24,6 +24,7 @@ const CLIENT_PATTERNS: ClientPattern[] = [
   { pattern: /Aider/i, name: 'aider' },
   { pattern: /Copilot/i, name: 'copilot' },
   { pattern: /openclaw/i, name: 'openclaw' },
+  { pattern: /ollama-js/i, name: 'ollama-js' },
   { pattern: /antigravity/i, name: 'antigravity' },
   { pattern: /JetBrains/i, name: 'jetbrains' },
   { pattern: /VSCode/i, name: 'vscode' },

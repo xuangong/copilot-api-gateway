@@ -24,7 +24,7 @@ import type { DumpAccumulator } from '../../shared/dump/accumulator.ts'
 
 type Vars = { auth: DataPlaneAuthCtx }
 
-interface EmbeddingsPayload {
+export interface EmbeddingsPayload {
   model: string
   input: string | string[] | number[] | number[][]
   encoding_format?: 'float' | 'base64'
@@ -39,13 +39,22 @@ type EmbeddingsCtx = Context<{ Bindings: Env; Variables: Vars }>
 const wrapResponse = (dump: DumpAccumulator | null, response: Response): Response =>
   dump ? dump.finalize(response) : response
 
-async function handle(c: EmbeddingsCtx): Promise<Response> {
+/**
+ * `presetBody` lets a caller that has already parsed (and reshaped) the request
+ * reuse this handler without re-reading the body — the Ollama `/api/embed`
+ * shim does exactly that. The dump still records the bytes the client actually
+ * sent, which is the honest thing to store.
+ */
+export async function embeddingsHandler(
+  c: EmbeddingsCtx,
+  presetBody?: EmbeddingsPayload,
+): Promise<Response> {
   const auth = c.get('auth') ?? {}
   const { requestBody, dump } = await openRequestDump(c, auth, c.req.method)
 
   let body: EmbeddingsPayload
   try {
-    body = parseJsonBody(requestBody.bytes) as EmbeddingsPayload
+    body = presetBody ?? (parseJsonBody(requestBody.bytes) as EmbeddingsPayload)
   } catch {
     dump?.failed('invalid JSON')
     return wrapResponse(dump, c.json({ error: { type: 'invalid_request_error', message: 'invalid JSON' } }, 400))
@@ -122,5 +131,5 @@ async function handle(c: EmbeddingsCtx): Promise<Response> {
   return wrapResponse(dump, Response.json(attempt.json, { status: attempt.status }))
 }
 
-embeddingsRouter.post('/embeddings', handle)
-embeddingsRouter.post('/v1/embeddings', handle)
+embeddingsRouter.post('/embeddings', (c) => embeddingsHandler(c))
+embeddingsRouter.post('/v1/embeddings', (c) => embeddingsHandler(c))
