@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useT } from "../../state/i18n"
-import { Select } from "../../components/Select"
+import { Select, type SelectOption } from "../../components/Select"
 import { listKeys, type ApiKeyDetail } from "../../api/keys"
 import { listPlaygroundModels, type PlaygroundModel } from "../../api/models"
 import { ChatPanel } from "./ChatPanel"
@@ -127,6 +127,21 @@ export function ModelsTab() {
     for (const arr of groups.values()) arr.sort((a, b) => a.id.localeCompare(b.id))
     return groups
   }, [models, search])
+
+  /**
+   * Flat model list for the fullscreen picker inside ChatPanel. Built from
+   * `models`, not from `grouped`: `grouped` is narrowed by the sidebar's search
+   * box, and while fullscreen that box isn't on screen — a picker silently
+   * missing most of its entries because of a filter the user can't see would be
+   * worse than no picker. The upstream rides along as a badge so same-named
+   * models from different upstreams stay distinguishable.
+   */
+  const modelOptions = useMemo<SelectOption[]>(() => {
+    if (!models) return []
+    return [...models]
+      .sort((a, b) => a._upstream.localeCompare(b._upstream) || a.id.localeCompare(b.id))
+      .map((m) => ({ value: m.id, label: m.id, badge: m._upstream }))
+  }, [models])
 
   useEffect(() => {
     if (!models) return
@@ -265,7 +280,7 @@ export function ModelsTab() {
 
         <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           {selectedModelId && selectedKey ? (
-            <ChatPanel modelId={selectedModelId} apiKey={selectedKey.key} systemPrompt={systemPrompt} webSearchEnabled={webSearchEnabled} vision={visionSupport(selectedModelId, selectedModel?.capabilities?.supports)} contextWindow={selectedModel?.capabilities?.limits?.max_context_window_tokens} mode={mode} imageParams={imageParams} onImageParamsChange={setImageParams} onRevertModel={setSelectedModelId} />
+            <ChatPanel modelId={selectedModelId} apiKey={selectedKey.key} systemPrompt={systemPrompt} webSearchEnabled={webSearchEnabled} vision={visionSupport(selectedModelId, selectedModel?.capabilities?.supports)} contextWindow={selectedModel?.capabilities?.limits?.max_context_window_tokens} modelOptions={modelOptions} onPickModel={pickModel} mode={mode} imageParams={imageParams} onImageParamsChange={setImageParams} onRevertModel={setSelectedModelId} />
           ) : (
             <div className="flex items-center justify-center h-full text-themed-dim text-sm">
               {t("dash.playground.selectModel")}

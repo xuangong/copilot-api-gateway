@@ -799,6 +799,11 @@ select option {
   }
 }
 .pg-topbar-sep { color: var(--text-dim); opacity: 0.5; }
+/* Fullscreen model picker. `Select` stretches its button to the container, so
+   it needs an explicit width here or it would eat the whole topbar row. Long
+   model ids truncate inside the button; the dropdown shows them in full. */
+.pg-fs-model { width: 200px; flex: none; }
+@media (max-width: 640px) { .pg-fs-model { width: 140px; } }
 .pg-topbar select,
 .pg-topbar .pg-topbar-btn {
   background: transparent !important;

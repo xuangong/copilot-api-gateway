@@ -56,7 +56,11 @@ export function Select({
   const defaultBtn = `w-full bg-surface-800 border border-white/10 text-themed-secondary rounded-md focus:border-accent-violet/50 focus:outline-none flex items-center justify-between gap-2 text-left ${btnPad}`
 
   return (
-    <div ref={rootRef} className={`relative ${className}`}>
+    // `data-select-open` lets an ancestor that also handles Escape — the
+    // playground's fullscreen overlay, for one — tell "close the dropdown"
+    // apart from "close me". Both listen on document, so neither can rely on
+    // ordering or on stopPropagation to sort it out.
+    <div ref={rootRef} className={`relative ${className}`} data-select-open={open || undefined}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

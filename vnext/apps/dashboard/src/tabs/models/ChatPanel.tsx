@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useT } from "../../state/i18n"
+import { Select, type SelectOption } from "../../components/Select"
 import { fileToDataUrl, ImageTooLargeError } from "./image"
 import {
   buildEditsForm, buildGenerationsBody, buildImageContext, imagesErrorMessage,
@@ -115,6 +116,13 @@ interface Props {
    */
   contextWindow?: number
   /**
+   * The full model list, flattened for the fullscreen picker. Fullscreen turns
+   * this panel into an overlay that covers the sidebar, so without a picker of
+   * its own the only way to change model is to leave fullscreen first.
+   */
+  modelOptions: SelectOption[]
+  onPickModel: (id: string) => void
+  /**
    * `image` swaps the three chat protocols for the /v1/images endpoints.
    * Undefined while the model list is still loading — sending in that window
    * would have to guess, and guessing wrong routes an image model at the chat
@@ -157,7 +165,7 @@ function composeSystemPrompt(userPrompt: string): string {
   return trimmed ? `${timeLine}\n\n${trimmed}` : timeLine
 }
 
-export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vision, contextWindow, mode, imageParams, onImageParamsChange, onRevertModel }: Props) {
+export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vision, contextWindow, modelOptions, onPickModel, mode, imageParams, onImageParamsChange, onRevertModel }: Props) {
   const t = useT()
   const [protocol, setProtocol] = useState<Protocol>(() => loadPersistedProtocol())
   const [messages, setMessages] = useState<Message[]>(() => loadPersistedMessages())
@@ -894,7 +902,12 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
   useEffect(() => {
     if (!fullscreen) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setFullscreen(false)
+      if (e.key !== "Escape") return
+      // An open dropdown owns this Escape. Both listeners sit on document, so
+      // without the check one press would close the dropdown *and* drop out of
+      // fullscreen — two undos for one keystroke.
+      if (document.querySelector("[data-select-open]")) return
+      setFullscreen(false)
     }
     document.addEventListener("keydown", onKey)
     // Lock body scroll while in fullscreen so the overlay doesn't allow the
@@ -916,6 +929,20 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       }
     >
       <div className="pg-topbar">
+        {/*
+          Only in fullscreen: everywhere else the sidebar list is the picker,
+          and a second control for the same thing would just be one more place
+          for the two to disagree.
+        */}
+        {fullscreen && modelOptions.length > 0 && (
+          <Select
+            value={modelId}
+            options={modelOptions}
+            onChange={onPickModel}
+            className="pg-fs-model"
+          />
+        )}
+
         {mode === "image" && (
           <ImageParamsBar
             params={imageParams}
