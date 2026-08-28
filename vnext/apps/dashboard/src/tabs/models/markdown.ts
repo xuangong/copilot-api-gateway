@@ -10,6 +10,7 @@ import bash from "highlight.js/lib/languages/bash"
 import xml from "highlight.js/lib/languages/xml"
 import css from "highlight.js/lib/languages/css"
 import DOMPurify from "dompurify"
+import { cjkStrong } from "./cjk-emphasis"
 
 hljs.registerLanguage("javascript", javascript)
 hljs.registerLanguage("js", javascript)
@@ -29,6 +30,10 @@ marked.setOptions({
   gfm: true,
   breaks: true,
 })
+
+// `**加粗。**后接文字` is literal asterisks under CommonMark's flanking rule.
+// See cjk-emphasis.ts for why, and for how narrowly this claws it back.
+marked.use({ extensions: [cjkStrong] })
 
 // Custom renderer to apply hljs to fenced code blocks
 const renderer = new marked.Renderer()
