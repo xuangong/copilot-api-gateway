@@ -1,4 +1,5 @@
 import type { EndpointKey } from './index'
+import type { AccountType } from './index'
 import type { LlmExecuteResult } from './result'
 import type { ProtocolFrame } from '@vibe-core/result'
 import type { ChatCompletionsStreamEvent } from '../chat'
@@ -36,6 +37,30 @@ export interface RequestContext {
   // engagement without re-running binding selection. Optional to preserve
   // legacy test constructors that build a bare RequestContext.
   readonly targetEndpoint?: EndpointKey
+  // Binding-visibility scope for this request, injected by attempt.ts from the
+  // same auth context that selected the main binding.
+  //
+  // A server-tool plugin dispatches its own upstream call — the image shim
+  // resolves the image model against `/images/generations`, which the
+  // orchestrator's own binding cannot serve — so it has to re-enumerate. That
+  // second enumeration must run under the *caller's* scope, or it sees only
+  // globally-owned upstreams and reports a model the caller can plainly reach
+  // as "no upstream provides model 'X'".
+  //
+  // Reference: copilot-gateway threads `GatewayCtx.upstreamIds` (an api-key
+  // scoped upstream id set) into `ShimState` for exactly this. vNext scopes by
+  // owner instead of by id set, so this carries the owner-shaped equivalent.
+  readonly bindingScope?: BindingScope
+}
+
+/** Owner/pin/credential triple that decides which upstreams a request can see.
+ *  Mirrors `ListUpstreamModelsOptions` in the gateway registry, declared here
+ *  so `RequestContext` stays free of a gateway import. */
+export interface BindingScope {
+  readonly ownerId?: string
+  readonly copilot?: { readonly copilotToken: string; readonly accountType: AccountType }
+  /** Single-upstream pin from the model id (`model@upstream`) or the api key. */
+  readonly pin?: string
 }
 
 export type CopilotInterceptor = Interceptor<RequestContext, Invocation, Response>

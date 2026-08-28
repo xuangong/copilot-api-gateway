@@ -13,6 +13,7 @@
  */
 
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
+import type { BindingScope } from '@vibe-llm/protocols/common'
 
 export type ResponsesTool = { type: string; [key: string]: unknown }
 export type ResponsesInputItem = { type: string; [key: string]: unknown }
@@ -127,6 +128,11 @@ export interface ServerToolRequestCtx {
   /** Caller-pinned upstream id set for candidate enumeration; null / omitted
    *  means "any upstream". Consumed by the image-generation plugin. */
   readonly upstreamIds?: readonly string[] | null
+  /** Binding-visibility scope of the enclosing request, forwarded from
+   *  `RequestContext.bindingScope`. A plugin that dispatches its own upstream
+   *  call must enumerate under this scope, not the empty one — see the field's
+   *  comment in `protocols-llm/src/common/invocation.ts`. */
+  readonly bindingScope?: BindingScope
 }
 
 /** Plugin descriptor — what the registry stores. */

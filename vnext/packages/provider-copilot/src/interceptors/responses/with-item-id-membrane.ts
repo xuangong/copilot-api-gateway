@@ -1,4 +1,4 @@
-import type { ResponsesInterceptor } from './types'
+import type { ResponsesStreamInterceptor } from '@vibe-llm/protocols/common'
 import type { ProtocolFrame } from '@vibe-core/result'
 import {
   unwrapCopilotItemId,
@@ -17,6 +17,17 @@ import {
 // round-trip on multi-turn conversations (the client re-sends the wrapped id
 // in `input`; we unwrap it back to the upstream id before dispatch).
 //
+// `COPILOT_OUTPUT_ITEM_POLICIES` is a closed allowlist of the item types
+// *Copilot's upstream* emits, and `copilotOutputItemType` throws on anything
+// else. That is only sound at the innermost position of the chain: the
+// gateway's outer shims synthesize items Copilot never sends (the server-tool
+// shim mints `image_generation_call` / `web_search_call`), and running the
+// allowlist over those turns a working request into a 502. So this interceptor
+// is declared on `CopilotProvider.responsesInterceptors` rather than registered
+// in the shared chain — `responses/attempt.ts` appends provider-declared
+// interceptors last, which both keeps it inside every shim and keeps it off
+// non-Copilot upstreams.
+//
 // vNext adaptation notes vs the reference:
 //   - `run()` returns `LlmExecuteResult` (only the `'events'` variant carries
 //     stream frames). There is no `compaction` action in vNext, so the
@@ -24,6 +35,11 @@ import {
 //   - `inv.payload` is `Record<string, unknown>`; we round-trip through
 //     `CanonicalResponsesPayload` since canonicalize.ts guarantees `input` is
 //     an explicitly-discriminated `ResponsesInputItem[]` at this layer.
+//   - Running inside the server-tool shim means this executes once per ReAct
+//     turn rather than once per request. Both directions are idempotent:
+//     `restoreInputItem` returns already-unwrapped (`foreign`) values as-is,
+//     and `mapCarrierValues` returns items whose type is outside the allowlist
+//     untouched.
 
 const COPILOT_OUTPUT_ITEM_POLICIES = {
   message: { prefix: 'msg', carrier: null },
@@ -274,7 +290,11 @@ const normalizeFrames = async function* (
   }
 }
 
-export const withItemIdMembrane: ResponsesInterceptor = async (inv, _ctx, run) => {
+export const withCopilotResponsesItemIdMembrane: ResponsesStreamInterceptor = async (
+  inv,
+  _ctx,
+  run,
+) => {
   // Restore upstream ids on inbound input items before dispatch.
   inv.payload = restoreInputItemIds(inv.payload as CanonicalResponsesPayload) as Record<string, unknown>
 

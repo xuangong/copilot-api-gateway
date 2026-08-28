@@ -38,6 +38,7 @@
  *     inline at the call site.
  */
 import { parseServerToolArguments } from '../../shared/tool-arguments.ts'
+import { serverToolTrace } from './server-tools/trace.ts'
 
 import type { ResponsesInterceptor } from './types'
 import { truncatePreservingCodePoints } from '../../shared/text'
@@ -605,6 +606,11 @@ export const consumeTurnStreaming = async function* (
       if (intercepted !== undefined) {
         if (event.item.type === 'function_call') intercepted.argumentsJson = event.item.arguments
         intercepted.intercepted.arguments = parseServerToolArguments(intercepted.argumentsJson)
+        serverToolTrace('dispatch', {
+          tool: intercepted.intercepted.name,
+          iteration: loopState.iterationCount,
+          remainingToolCalls: loopState.remainingToolCalls ?? null,
+        })
         const slots = intercepted.dispatcher({ intercepted: intercepted.intercepted, loopState })
         if (loopState.remainingToolCalls !== undefined) loopState.remainingToolCalls -= 1
         const dispatchedSlots: DispatchedServerToolSlot[] = []
@@ -1007,6 +1013,7 @@ export const withResponsesServerToolShim = (
   const requestCtx: ServerToolRequestCtx = {
     store,
     apiKeyId: (gatewayCtx.apiKeyId ?? '') as ApiKeyId,
+    ...(gatewayCtx.bindingScope !== undefined ? { bindingScope: gatewayCtx.bindingScope } : {}),
     ...(gatewayCtx.downstreamAbortSignal !== undefined ? { abortSignal: gatewayCtx.downstreamAbortSignal } : {}),
   }
   const active: ActiveServerTool[] = []
@@ -1049,6 +1056,9 @@ export const withResponsesServerToolShim = (
     active.push({ ...prepared, toolName, canonicalHostedTool, originalToolChoice })
   }
 
+  serverToolTrace('prepared', {
+    tools: active.map((e) => ({ name: e.toolName, hosted: e.hosted !== undefined })),
+  })
   if (active.length === 0) return await run()
 
   const rewrittenToolChoice = rewriteHostedToolChoice(ctx.payload.tool_choice as ResponsesToolChoiceLoose, active)

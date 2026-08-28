@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'bun:test'
-import { withItemIdMembrane } from '../../../../../src/data-plane/chat-flow/responses/interceptors/with-item-id-membrane'
+import { withCopilotResponsesItemIdMembrane } from '../interceptors/responses/with-item-id-membrane'
 import type { Invocation, RequestContext } from '@vibe-llm/protocols/common'
 import {
   llmEventResult,
@@ -55,13 +55,13 @@ const collectEvents = async (
   return out
 }
 
-describe('withItemIdMembrane', () => {
+describe('withCopilotResponsesItemIdMembrane', () => {
   test('outbound stream: reasoning item public id + carrier wraps upstream id', async () => {
     const upstreamId = 'rs_upstream_opaque'
     const encrypted = 'encrypted_state_v1'
     const item = { type: 'reasoning', id: upstreamId, encrypted_content: encrypted, summary: [] }
 
-    const res = await withItemIdMembrane(
+    const res = await withCopilotResponsesItemIdMembrane(
       inv([]),
       baseCtx,
       runEvents(
@@ -104,7 +104,7 @@ describe('withItemIdMembrane', () => {
 
   test('outbound stream: message item (no carrier) still gets stable public id', async () => {
     const item = { type: 'message', id: 'msg_upstream_1', role: 'assistant', content: [] }
-    const res = await withItemIdMembrane(
+    const res = await withCopilotResponsesItemIdMembrane(
       inv([]),
       baseCtx,
       runEvents(
@@ -133,7 +133,7 @@ describe('withItemIdMembrane', () => {
     } as unknown as ResponsesInputItem
 
     const invocation = inv([wrappedItem])
-    await withItemIdMembrane(invocation, baseCtx, runEvents())
+    await withCopilotResponsesItemIdMembrane(invocation, baseCtx, runEvents())
 
     const restoredInput = (invocation.payload as { input: ResponsesInputItem[] }).input[0] as {
       id: string
@@ -153,7 +153,7 @@ describe('withItemIdMembrane', () => {
     } as unknown as ResponsesInputItem
 
     const invocation = inv([item])
-    await withItemIdMembrane(invocation, baseCtx, runEvents())
+    await withCopilotResponsesItemIdMembrane(invocation, baseCtx, runEvents())
 
     const out = (invocation.payload as { input: ResponsesInputItem[] }).input[0] as {
       id: string
@@ -169,7 +169,7 @@ describe('withItemIdMembrane', () => {
     const encrypted = 'state_bytes_turn1'
     const item = { type: 'reasoning', id: upstreamId, encrypted_content: encrypted, summary: [] }
 
-    const outbound = await withItemIdMembrane(
+    const outbound = await withCopilotResponsesItemIdMembrane(
       inv([]),
       baseCtx,
       runEvents({
@@ -192,7 +192,7 @@ describe('withItemIdMembrane', () => {
     } as unknown as ResponsesInputItem
 
     const turn2 = inv([echoed])
-    await withItemIdMembrane(turn2, baseCtx, runEvents())
+    await withCopilotResponsesItemIdMembrane(turn2, baseCtx, runEvents())
     const restored = (turn2.payload as { input: ResponsesInputItem[] }).input[0] as {
       id: string
       encrypted_content: string
@@ -203,7 +203,7 @@ describe('withItemIdMembrane', () => {
   })
 
   test('throws on unsupported output item type', async () => {
-    const res = await withItemIdMembrane(
+    const res = await withCopilotResponsesItemIdMembrane(
       inv([]),
       baseCtx,
       runEvents({
@@ -220,7 +220,7 @@ describe('withItemIdMembrane', () => {
 
   test('throws on duplicate output_item.added for same output_index', async () => {
     const item = { type: 'message', id: 'msg_x', role: 'assistant', content: [] }
-    const res = await withItemIdMembrane(
+    const res = await withCopilotResponsesItemIdMembrane(
       inv([]),
       baseCtx,
       runEvents(
@@ -236,7 +236,7 @@ describe('withItemIdMembrane', () => {
 
   test('response.completed with output array pins ids consistently with prior stream events', async () => {
     const item = { type: 'message', id: 'msg_upstream_A', role: 'assistant', content: [{ type: 'output_text', text: 'hi' }] }
-    const res = await withItemIdMembrane(
+    const res = await withCopilotResponsesItemIdMembrane(
       inv([]),
       baseCtx,
       runEvents(

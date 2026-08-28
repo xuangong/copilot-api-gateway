@@ -35,6 +35,11 @@ services:
       # default, which leaves the compat layer completely inert.
       - DMR_COMPAT=${DMR_COMPAT:-}
       - DMR_BOUND_KEY=${DMR_BOUND_KEY:-}
+      # Set to 1 to trace the server-tool shim's ReAct path (which hosted tools
+      # engaged, when the model actually dispatched one, and which upstream +
+      # model the image sub-call resolved to). Routing metadata only — no
+      # prompts or image bytes. Unset by default.
+      - SERVER_TOOL_TRACE=${SERVER_TOOL_TRACE:-}
     volumes:
       # Persist vnext sqlite separately from the prod gateway's .data dir.
       - ./data-vnext:/data

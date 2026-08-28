@@ -77,6 +77,12 @@ export const OPTIONAL_FLAGS = [
     defaultFor: ["copilot", "azure", "custom"],
   },
   {
+    id: "responses-image-generation-inject",
+    label: "Declare `image_generation` on the caller's behalf",
+    description: "Append the hosted `image_generation` tool to every /responses request that does not already declare it, so `responses-image-generation-shim` can host it. For API callers that render `image_generation_call` items themselves but would rather not declare the tool on every request. Not for Codex: it cannot render a base64 `result` — its UI needs a file path, which only its own local extension produces — so Codex is served by the `/azure-api.codex` namespace instead. Declaring is not forcing: `tool_choice` is untouched, and a request that sets it to `none` is skipped. Costs prompt tokens on every turn, so it is opt-in.",
+    defaultFor: [],
+  },
+  {
     id: "responses-web-search-shim",
     label: "Responses web search shim",
     description: "Execute the Responses `web_search` hosted tool through the gateway's configured search provider instead of forwarding it to a Responses upstream. The orchestrator model calls a generated function tool; the shim runs the search and synthesizes the native web_search_call lifecycle. This flag governs translated callers only: a native Responses request always forwards its hosted tool to the upstream, because that client reads `web_search_call` items itself. A request arriving on another protocol always uses the shim, because only a search the gateway ran can be rendered as that protocol's own citations.",

@@ -36,6 +36,7 @@ import type { ApiKeyId } from '../../../../../repo/branded-ids.ts'
 import type { ResponsesInputImage } from '@vibe-llm/protocols/responses'
 import { getImageProcessor, dimensionsFromBytes } from '@vibe-core/platform'
 import { createRandomResponsesItemId } from '@vibe-llm/protocols/responses'
+import { serverToolTrace } from './trace.ts'
 import {
   createExternalImageFetcher,
   type ExternalImageFetchResult,
@@ -518,7 +519,15 @@ export const buildImageGenerationFunctionTool = (_canonical: ResponsesHostedImag
     'Generate an image from a text description, or edit an attached image per instructions. '
     + 'Use it whenever the user asks for a picture, drawing, illustration, photo, diagram, or any visual, '
     + 'or wants to modify an attached image. Generate directly without asking for confirmation, '
-    + 'and do not describe or comment on the image after generating it.',
+    + 'and do not describe or comment on the image after generating it. '
+    // Agentic clients ship skill/plugin catalogs and tend to consult them
+    // before acting: asked for a picture, the model goes looking for an
+    // image-generation skill, finds one describing a local tool it does not
+    // have, and reports the capability as unavailable — with the working tool
+    // already in its own registry. Saying outright that this one is
+    // self-sufficient short-circuits that detour.
+    + 'This tool is self-contained: it needs no API key, no script, no setup, and no skill lookup. '
+    + 'Call it directly instead of searching for an image-generation skill or CLI fallback.',
   parameters: {
     type: 'object',
     properties: {
@@ -928,7 +937,7 @@ export const resolveImageOperation = (
 //   - `binding.provider.getPricingForModelKey(modelKey) ?? null` fills the
 //     `cost` slot the vNext telemetry identity requires (reference field was
 //     `pricing`).
-import type { EndpointKey, ModelEndpoints } from '@vibe-llm/protocols/common'
+import type { BindingScope, EndpointKey, ModelEndpoints } from '@vibe-llm/protocols/common'
 import {
   serializeOpenAIImagesEditsRequest,
   type ImagesEditsRequest,
@@ -1016,6 +1025,10 @@ export interface ShimState {
   config: MaterializedImageGenerationConfig
   apiKeyId: ApiKeyId
   upstreamIds: readonly string[] | null
+  /** Visibility scope of the enclosing request. The image sub-call resolves a
+   *  *different* model on a *different* endpoint than the orchestrator turn, so
+   *  it re-enumerates — and must do so under the caller's scope. */
+  bindingScope: BindingScope | undefined
   downstreamAbortSignal: AbortSignal | undefined
   imageDispatchCount: number
 }
@@ -1117,8 +1130,16 @@ const resolveImageCandidate = async (
     resolution = await enumerateBindingCandidates({
       model: state.config.model,
       pickTarget,
-      // vNext registry pin is threaded on `opts.pin`; upstreamIds filtering
-      // (reference had it as first-class) is applied post-enumeration below.
+      // Scope this enumeration to what the caller can see. Without it
+      // `listVisibleUpstreams(undefined)` returns only globally-owned
+      // upstreams, and an owner-scoped image model resolves to
+      // `sawModel:false` — i.e. "no upstream provides model 'X'" for a model
+      // the same key serves fine on `POST /v1/images/generations`.
+      //
+      // `upstreamIds` below is a second, narrower filter (the caller's pinned
+      // set) applied post-enumeration; it cannot substitute for the scope,
+      // which decides what is enumerable in the first place.
+      opts: { ...(state.bindingScope ?? {}) },
     })
   } catch (e) {
     return { ok: false, error: serverError(e) }
@@ -1127,6 +1148,18 @@ const resolveImageCandidate = async (
     ? resolution.candidates
     : resolution.candidates.filter(c => state.upstreamIds!.includes(c.binding.upstream))
   const match = filtered[0]
+  serverToolTrace('image.resolve', {
+    requestedModel: state.config.model,
+    endpoint: endpointKey,
+    sawModel: resolution.sawModel,
+    scopedToOwner: state.bindingScope?.ownerId !== undefined,
+    candidates: resolution.candidates.length,
+    afterUpstreamFilter: filtered.length,
+    upstreamPin: state.upstreamIds ?? null,
+    chosen: match === undefined
+      ? null
+      : { upstream: match.binding.upstream, modelKey: match.binding.model.id, targetEndpoint: match.targetEndpoint },
+  })
   if (match !== undefined) {
     return { ok: true, candidate: match }
   }
@@ -1235,7 +1268,17 @@ const issueImageCall = async (
         signal: state.downstreamAbortSignal,
       }),
     )
-    if (response.status !== 429 || retry >= MAX_RATE_LIMIT_RETRIES) return { response, modelKey }
+    if (response.status !== 429 || retry >= MAX_RATE_LIMIT_RETRIES) {
+      serverToolTrace('image.upstream', {
+        upstream: binding.upstream,
+        modelKey,
+        endpoint: targetEndpoint,
+        status: response.status,
+        retries: retry,
+        stream,
+      })
+      return { response, modelKey }
+    }
 
     // 25% jitter desynchronizes parallel callers so a burst of orchestrator
     // turns doesn't all re-issue at the same instant.
@@ -1390,6 +1433,13 @@ export const streamImageGeneration = (
   const attempt: AttemptState = { upstreamCallStartedAt: null, firstOutputTokenAt: null, telemetry: undefined }
   const runtimeLocation = getRuntimeLocation()
   const finish = (outcome: ImageOutcome): ServerToolTerminal => {
+    serverToolTrace('image.terminal', {
+      action,
+      upstream: binding.upstream,
+      modelKey: binding.model.id,
+      ok: outcome.ok,
+      ...(outcome.ok ? { b64Bytes: outcome.b64.length } : { code: outcome.error.code, message: outcome.error.message }),
+    })
     void recordImagePerformance({
       apiKeyId: state.apiKeyId,
       attempt,
@@ -1635,6 +1685,7 @@ export const imageGenerationServerTool: ServerToolRegistration<Invocation, Serve
     config: materializedConfig,
     apiKeyId: requestCtx.apiKeyId,
     upstreamIds: requestCtx.upstreamIds ?? null,
+    bindingScope: requestCtx.bindingScope,
     downstreamAbortSignal: requestCtx.abortSignal,
     imageDispatchCount: 0,
   }

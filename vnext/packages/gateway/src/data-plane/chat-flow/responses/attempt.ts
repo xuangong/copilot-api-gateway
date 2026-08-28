@@ -16,11 +16,20 @@
  *     internal-error result so the failure mode is loud and the abandoned
  *     response is fully accounted for in telemetry.
  *
- * Note: hosted `image_generation` Responses tool entries are stripped at the
- * Copilot provider boundary (see `withImageGenerationStripped`). vNext does
- * NOT bridge hosted image_generation through the Responses route — clients
- * that want image generation should call `/v1/images/generations` directly
- * (SDF provider). This matches the upstream reference project's stance.
+ * Hosted `image_generation` Responses tool entries never reach the Copilot
+ * wire: `withImageGenerationStripped` removes them at the provider boundary.
+ * The gateway serves them itself instead — `withResponsesServerToolShim`
+ * rewrites the hosted tool into an ordinary function tool, runs the image call
+ * against `/images/generations` on a separate dispatch, and synthesizes the
+ * native `image_generation_call` lifecycle back to the client.
+ *
+ * The interceptor chain is `responsesInterceptors` (provider-agnostic) plus
+ * whatever the selected binding's provider declares in
+ * `responsesInterceptors`, appended innermost. Provider-declared interceptors
+ * must be innermost because they encode upstream-specific assumptions that the
+ * shims above them deliberately violate — Copilot's item-id membrane rejects
+ * item types its upstream never emits, including the ones the server-tool shim
+ * mints.
  *
  * Pre-binding errors (model-not-found, no-eligible-binding, no-translator)
  * deliberately omit `performance` per Spec 3 §6.2 — `respond.ts` skips the
@@ -111,7 +120,7 @@ export type { ResponsesInterceptor } from './interceptors'
 // ─── Binding selection ───────────────────────────────────────────────────
 
 export type SelectResponsesBindingResult =
-  | { kind: 'ok'; binding: AttemptBindingShape & { readonly provider: { readonly fetch: (req: ProviderRequest) => Promise<ProviderResponse>; readonly getPricingForModelKey: (k: string) => unknown | null } }; targetEndpoint: EndpointKey; translator: PairTranslator; bareModel: string }
+  | { kind: 'ok'; binding: AttemptBindingShape & { readonly provider: { readonly fetch: (req: ProviderRequest) => Promise<ProviderResponse>; readonly getPricingForModelKey: (k: string) => unknown | null; readonly responsesInterceptors?: readonly ResponsesInterceptor[] } }; targetEndpoint: EndpointKey; translator: PairTranslator; bareModel: string }
   | { kind: 'model-not-found'; bareModel: string }
   | { kind: 'no-eligible-binding'; bareModel: string }
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
@@ -220,7 +229,15 @@ export const responsesAttempt = {
       payload: args.payload as Record<string, unknown>,
       headers: { ...(args.inheritedHeaders ?? {}) },
     }
-    const chain: ReadonlyArray<ResponsesInterceptor> = args.interceptors ?? responsesInterceptors
+    // Provider-declared interceptors go last, i.e. innermost: they wrap the
+    // terminal directly and so never observe frames synthesized by the shims
+    // above them (the server-tool ReAct loop mints `image_generation_call` /
+    // `web_search_call` items no upstream ever sends). This is where Copilot's
+    // item-id membrane runs — see `LlmModelProvider.responsesInterceptors`.
+    const chain: ReadonlyArray<ResponsesInterceptor> = [
+      ...(args.interceptors ?? responsesInterceptors),
+      ...(sel.binding.provider.responsesInterceptors ?? []),
+    ]
 
     let upstreamResp: ProviderResponse | undefined
 
@@ -324,7 +341,20 @@ export const responsesAttempt = {
 
     try {
       if (chain.length === 0) return await terminal()
-      const chainCtx: RequestContext = { ...args.ctx, targetEndpoint: sel.targetEndpoint }
+      // `bindingScope` rides along for the same reason `apiKeyId` does: the
+      // server-tool shim dispatches its own upstream call (the image sub-call
+      // against /images/generations) and has to re-enumerate bindings for a
+      // different model. Without the caller's scope that enumeration sees only
+      // globally-owned upstreams and mis-reports a reachable model as absent.
+      const chainCtx: RequestContext = {
+        ...args.ctx,
+        targetEndpoint: sel.targetEndpoint,
+        bindingScope: {
+          ...(args.auth.ownerId !== undefined ? { ownerId: args.auth.ownerId } : {}),
+          ...(args.auth.copilot !== undefined ? { copilot: args.auth.copilot } : {}),
+          ...(args.auth.pin !== undefined ? { pin: args.auth.pin } : {}),
+        },
+      }
       return await runInterceptors(invocation, chainCtx, chain, terminal)
     } catch (err) {
       if (upstreamResp?.body) void upstreamResp.body.cancel().catch(() => {})

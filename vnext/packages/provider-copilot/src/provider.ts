@@ -17,7 +17,7 @@ import { callCopilotAPI } from './forward'
 import { getModels, type ModelsResponse } from './models'
 import { pricingForCopilotModelKey } from './pricing'
 import type { EndpointKey, ModelPricing } from '@vibe-llm/protocols/common'
-import type { CopilotInterceptor, Invocation, RequestContext } from "@vibe-llm/protocols/common"
+import type { CopilotInterceptor, Invocation, RequestContext, ResponsesStreamInterceptor } from "@vibe-llm/protocols/common"
 import { runInterceptors } from "@vibe-core/service"
 import type {
   LlmModelProvider,
@@ -36,6 +36,7 @@ import { withInitiatorHeader } from './interceptors/shared/with-initiator-header
 import { messagesPayloadInterceptors } from './interceptors/messages'
 import { messagesCountTokensPayloadInterceptors } from './interceptors/messages-count-tokens'
 import { responsesPayloadInterceptors } from './interceptors/responses'
+import { withCopilotResponsesItemIdMembrane } from './interceptors/responses/with-item-id-membrane'
 import { chatCompletionsPayloadInterceptors } from './interceptors/chat-completions'
 import { embeddingsPayloadInterceptors } from './interceptors/embeddings'
 
@@ -80,6 +81,18 @@ export class CopilotProvider implements LlmModelProvider {
   readonly kind = 'copilot' as const
   readonly name: string
   readonly supportedEndpoints = COPILOT_SUPPORTED
+  /**
+   * Frame-level Responses interceptors, consumed by the gateway's
+   * `responses/attempt.ts` and appended at the innermost chain position.
+   *
+   * Not to be confused with `responsesChain` below: that one is byte-level —
+   * it mutates the outgoing payload/headers and never sees a response. The
+   * membrane rewrites item ids on the *parsed* stream, which our provider
+   * contract (`fetch -> ProviderResponse`) has no access to.
+   */
+  readonly responsesInterceptors: readonly ResponsesStreamInterceptor[] = [
+    withCopilotResponsesItemIdMembrane,
+  ]
   // Mutable: withAuthRetry swaps both in place when a revoked session is
   // re-exchanged, so later requests on this provider use the live credential.
   private copilotToken: string

@@ -14,7 +14,12 @@ import type {
   ProviderResponse,
   UpstreamAdapter,
 } from '@vibe-core/upstream'
-import type { EndpointKey, ModelPricing, UpstreamKind } from '@vibe-llm/protocols/common'
+import type {
+  EndpointKey,
+  ModelPricing,
+  ResponsesStreamInterceptor,
+  UpstreamKind,
+} from '@vibe-llm/protocols/common'
 
 export type { UpstreamKind }
 export type { ProbeResult, ProviderModelsResponse, ProviderResponse }
@@ -81,4 +86,23 @@ export interface LlmModelProvider extends UpstreamAdapter {
    * needs the caller's own Claude Code fingerprint to survive to the wire.
    */
   readonly inboundHeaderAllowlist?: readonly InboundHeaderMatcher[]
+  /**
+   * Frame-level Responses interceptors this provider needs. The gateway appends
+   * them at the innermost position of the shared `/v1/responses` chain, so they
+   * wrap the terminal directly and never observe frames synthesized by outer
+   * shims (the server-tool ReAct loop, the compact shim).
+   *
+   * This is vNext's stand-in for the reference project's in-provider boundary
+   * chain. There, `callResponses` returns parsed events, so a provider can run
+   * its own frame interceptors internally. Here the provider contract is
+   * byte-level (`fetch -> ProviderResponse`) and SSE parsing happens gateway-side
+   * in `responses/attempt.ts`, so anything needing frames has to run there — but
+   * it stays *declared* by the provider, which keeps it scoped to that upstream
+   * instead of being applied to every one.
+   *
+   * Distinct from a provider's internal payload/header chain (e.g. Copilot's
+   * `responsesChain`), which mutates the outgoing request and never sees a
+   * response.
+   */
+  readonly responsesInterceptors?: readonly ResponsesStreamInterceptor[]
 }
