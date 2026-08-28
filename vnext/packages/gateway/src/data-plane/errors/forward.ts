@@ -64,6 +64,21 @@ function forwardableHeaders(src: Headers): Headers {
   return out
 }
 
+/**
+ * The Google RPC error body for a given HTTP status.
+ *
+ * Exported because upstream errors are not the only ones a `/v1beta` client
+ * sees: the gemini route also mints its own (model-not-found, no-translator,
+ * a reassembly failure). Those used to go out as a bare `{error:{message}}`,
+ * i.e. the OpenAI shape this module exists to keep away from Gemini clients —
+ * so the same request could answer in two different error shapes depending on
+ * where it failed, and `@google/genai` found neither `code` nor `status` on
+ * half of them.
+ */
+export function geminiErrorBody(status: number, message: string): { error: { code: number; message: string; status: string } } {
+  return { error: { code: status, message, status: geminiStatus(status) } }
+}
+
 function geminiStatus(code: number): string {
   if (code === 400) return 'INVALID_ARGUMENT'
   if (code === 401) return 'UNAUTHENTICATED'
@@ -104,7 +119,7 @@ function mintEnvelope(status: number, message: string, sourceApi: SourceApi): Re
   if (sourceApi === 'messages') {
     body = { type: 'error', error: { type, message } }
   } else if (sourceApi === 'gemini') {
-    body = { error: { code: status, message, status: geminiStatus(status) } }
+    body = geminiErrorBody(status, message)
   } else {
     body = { error: { type, message } }
   }

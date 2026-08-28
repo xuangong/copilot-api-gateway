@@ -9,7 +9,9 @@
  *   - `wantsStream === false`: drain stream into a single `GeminiResult`
  *     envelope and emit JSON.
  *
- * Plus error envelope shapes (`{error: {message}}` at the result's status).
+ * Plus error envelope shapes: both the forwarded upstream error and the ones
+ * the gateway mints itself go out as Google RPC (`{error:{code,message,status}}`)
+ * at the result's status.
  *
  * Telemetry persistence is exercised separately in state-bridge.test.ts —
  * here we omit `telemetryCtx` so no usage/perf rows are required.
@@ -82,14 +84,30 @@ test('events + wantsStream=false → JSON envelope with concatenated text + fina
   expect(json.responseId).toBe('resp-1')
 })
 
-test('internal-error → JSON {error:{message}} envelope at the given status', async () => {
+// Regression: gateway-minted errors used to go out as a bare
+// `{error:{message}}` — the OpenAI shape — while upstream errors on the same
+// route were reshaped into Google RPC form. A `@google/genai` client branching
+// on `error.status` found it on one and not the other.
+test('internal-error → Google RPC envelope, same shape as an upstream error', async () => {
   const resp = await respondGemini(llmInternalErrorResult(404, new Error('model not found: x')), {
     wantsStream: false,
   })
   expect(resp.status).toBe(404)
   expect(resp.headers.get('content-type')).toContain('application/json')
-  const json = (await resp.json()) as { error: { message?: string } }
+  const json = (await resp.json()) as { error: { code?: number; message?: string; status?: string } }
   expect(json.error?.message).toContain('model not found')
+  expect(json.error?.code).toBe(404)
+  expect(json.error?.status).toBe('NOT_FOUND')
+})
+
+test('internal-error at 500 maps to INTERNAL', async () => {
+  const resp = await respondGemini(llmInternalErrorResult(500, new Error('no translator for gemini → responses')), {
+    wantsStream: false,
+  })
+  expect(resp.status).toBe(500)
+  const json = (await resp.json()) as { error: { code?: number; status?: string } }
+  expect(json.error?.code).toBe(500)
+  expect(json.error?.status).toBe('INTERNAL')
 })
 
 test('upstream-error → minted gemini error envelope, status preserved', async () => {

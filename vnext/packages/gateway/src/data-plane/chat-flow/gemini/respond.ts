@@ -37,7 +37,7 @@ import {
   type LlmExecuteResult,
   type UpstreamErrorResult,
 } from '@vibe-llm/protocols/common'
-import { forwardUpstreamError } from '../../errors/forward'
+import { forwardUpstreamError, geminiErrorBody } from '../../errors/forward'
 import { encodeClientSSE } from '../../dispatch/sse-writers.ts'
 import { SourceStreamState, recordPerformance } from '../shared/respond-telemetry.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
@@ -358,7 +358,7 @@ const renderEventsAsJson = async (
     }
     const message = err instanceof Error ? err.message : String(err)
     options.dump?.failed(message)
-    return Response.json({ error: { message } }, { status: 502 })
+    return Response.json(geminiErrorBody(502, message), { status: 502 })
   }
 }
 
@@ -396,7 +396,7 @@ const renderExecuteResult = async (
     }
     options.dump?.failed(result.error.message)
     return Response.json(
-      { error: { message: result.error.message } },
+      geminiErrorBody(result.status, result.error.message),
       { status: result.status },
     )
   }
