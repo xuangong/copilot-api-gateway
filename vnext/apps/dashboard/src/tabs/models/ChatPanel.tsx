@@ -81,6 +81,15 @@ interface WebSearchEntry {
  */
 const MAX_PAUSE_TURNS = 8
 
+/**
+ * How many sources stay visible before the rest fold behind "more…". A
+ * research-style turn can ground itself in twenty links, and the full list
+ * pushes the answer it belongs to off the screen — the sources end up more
+ * prominent than the text they support. Three is enough to show what kind of
+ * material was used; the rest is there for anyone who wants to audit it.
+ */
+const COLLAPSED_SOURCE_COUNT = 3
+
 /** Fallback label for a source with no title. */
 function hostOf(url: string): string {
   try {
@@ -151,6 +160,13 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
+  /**
+   * Which assistant turns have their source list expanded, by message index.
+   * Index is what the rest of this component already keys per-message UI on
+   * (see `copiedIdx`), so anything that renumbers messages — clearing,
+   * switching models, compacting — resets this alongside them.
+   */
+  const [expandedSources, setExpandedSources] = useState<ReadonlySet<number>>(() => new Set())
   const [fullscreen, setFullscreen] = useState(false)
   /** Data URL of the image shown in the zoom overlay, or null when closed. */
   const [zoomed, setZoomed] = useState<string | null>(null)
@@ -298,6 +314,9 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       const next = [...prev.slice(0, start), ...prev.slice(start + dropCount)]
       const dropped = prev.length - next.length
       setCompactNotice(t("dash.playground.compacted", { n: Math.ceil(dropped / 2) }))
+      // Compaction renumbers everything after the drop, so any expansion the
+      // user had opened would land on a different turn than they opened it on.
+      setExpandedSources(new Set())
       setTimeout(() => setCompactNotice(null), 3000)
       return next
     })
@@ -306,6 +325,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
   function confirmSwitch() {
     abortRef.current?.abort()
     setMessages([])
+    setExpandedSources(new Set())
     setError(null)
     lastDepsRef.current = { modelId, protocol }
     setPendingDeps(null)
@@ -508,9 +528,19 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     if (files.length > 0) await insertFiles(files)
   }
 
+  function toggleSources(idx: number) {
+    setExpandedSources((prev) => {
+      const next = new Set(prev)
+      // `delete` reports whether it removed anything, which is the toggle.
+      if (!next.delete(idx)) next.add(idx)
+      return next
+    })
+  }
+
   function clear() {
     abortRef.current?.abort()
     setMessages([])
+    setExpandedSources(new Set())
     setError(null)
   }
 
@@ -1077,22 +1107,42 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
                         ))}
                       </div>
                     )}
-                    {isAssistant && m.citations && m.citations.length > 0 && (
-                      <div className="pg-tool-list">
-                        {m.citations.map((c, ci) => (
-                          <a
-                            key={c.url}
-                            className="pg-tool pg-tool-completed"
-                            href={c.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <span className="pg-tool-icon">{ci + 1}</span>
-                            <span className="pg-tool-label">{c.title || hostOf(c.url)}</span>
-                          </a>
-                        ))}
-                      </div>
-                    )}
+                    {isAssistant && m.citations && m.citations.length > 0 && (() => {
+                      const all = m.citations
+                      const expanded = expandedSources.has(i)
+                      const hidden = all.length - COLLAPSED_SOURCE_COUNT
+                      const shown = expanded ? all : all.slice(0, COLLAPSED_SOURCE_COUNT)
+                      return (
+                        <div className="pg-tool-list">
+                          {shown.map((c, ci) => (
+                            <a
+                              key={c.url}
+                              className="pg-tool pg-tool-completed"
+                              href={c.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <span className="pg-tool-icon">{ci + 1}</span>
+                              <span className="pg-tool-label">{c.title || hostOf(c.url)}</span>
+                            </a>
+                          ))}
+                          {hidden > 0 && (
+                            <button
+                              className="pg-tool pg-tool-more"
+                              onClick={() => toggleSources(i)}
+                              aria-expanded={expanded}
+                            >
+                              <span className="pg-tool-icon">{expanded ? "▴" : "▾"}</span>
+                              <span className="pg-tool-label">
+                                {expanded
+                                  ? t("dash.playground.sourcesFewer")
+                                  : t("dash.playground.sourcesMore", { n: hidden })}
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })()}
                     {isAssistant && (m.text || m.usage || m.durationMs != null) && (
                       <div className="pg-bubble-meta">
                         {(m.usage || m.durationMs != null) &&
