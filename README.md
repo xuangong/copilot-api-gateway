@@ -20,6 +20,7 @@
   - 数据导入导出
 - **Per-Key Quota** — 每个 API key 可设日级别配额（Requests/Day + Weighted Tokens/Day），超限返回 429；Dashboard 实时展示配额进度
 - **Prompt Caching** — 透传 Anthropic prompt cache 控制，dashboard 展示 Cache Read / Cache Creation / 缓存命中率
+- **本地模型客户端伪装** — 网关可同时冒充 **Ollama** 与 **Docker Model Runner**，让 AnythingLLM、Open WebUI 这类只认本地推理服务的客户端直接接入（见「本地客户端兼容」）
 - **兼容性修复** — 自动处理 Copilot API 的兼容性问题（billing header、工具类型、thinking 块、Gemini model mapping 等）
 - **双部署模式** — Cloudflare Workers（全球边缘 + Smart Placement）或 Docker 自托管
 - **SDK 集成测试** — 适配自官方 SDK 仓库的测试用例，确保真实兼容性
@@ -93,6 +94,17 @@ cd vnext && bun run build:ui
 | `POST /v1/images/edits` | 图像编辑（gpt-image-2，multipart） | OpenAI SDK |
 | `GET /v1/models` | 模型列表 | 通用 |
 
+### Ollama 兼容接口
+
+无需任何开关，默认可用，**必须带 API key**。详见「本地客户端兼容」。
+
+| 端点 | 说明 |
+|------|------|
+| `GET /api/tags` | 模型列表（Ollama 形状；含 chat 与 embedding，不含图像模型） |
+| `POST /api/show` | 模型详情（`capabilities` + `model_info.*.context_length`） |
+| `POST /api/chat` | 对话，流式为 NDJSON，非流式为单个 Ollama 信封 |
+| `POST /api/embed` | 向量 |
+
 ### Dashboard & 管理
 
 | 端点 | 说明 |
@@ -148,6 +160,78 @@ export OPENAI_API_KEY=your-api-key
 export GEMINI_API_KEY=your-api-key
 export GEMINI_API_BASE_URL=https://your-gateway.workers.dev
 ```
+
+## 本地客户端兼容（Ollama / Docker Model Runner）
+
+AnythingLLM、Open WebUI 这类工具的很多 provider 只认「本地推理服务」的形状，
+不接受任意 OpenAI 兼容地址。网关为此提供两套伪装面，可以同时开着，互不干扰。
+
+两者的**关键差别在鉴权**，这决定了你该用哪一套：
+
+| | Ollama 面 | Docker Model Runner 面 |
+|---|---|---|
+| 路径 | `/api/*` | `/engines/v1/*`、`/engines/{engine}/v1/*`、`/anthropic/*`、`/models` |
+| 开关 | 无，默认常开 | 需要 `DMR_COMPAT=1` |
+| 鉴权 | **必须带真实 API key** | 用 `DMR_BOUND_KEY` 绑定的那把 key，客户端不传凭证 |
+| 适用 | 任意网络位置，含 Cloudflare | **仅限内网/本机** |
+
+**优先选 Ollama 面。** DMR 面之所以要开关和内网限制，是因为 DMR 本身是无鉴权的
+机器本地服务，客户端（比如 AnythingLLM 的 DMR provider）会硬发
+`Authorization: Bearer null`，并把你配的 base path 重写成 `engines/v1` ——
+header、路径、query 全无剩余通道能递 key，身份只能由服务端从环境变量里绑定。
+所以这一面暴露到公网等于开放中继。Ollama 客户端有 Authorization 头可用，
+就不存在这个问题。
+
+`/api/*` 刻意不在 `isDmrPath()` 的范围内，即使 `DMR_COMPAT=1` 也不会被
+`DMR_BOUND_KEY` 兜底——没带 key 就是 401。
+
+### 在 AnythingLLM 里用 Ollama 面（推荐）
+
+LLM Provider 选 **Ollama**，然后：
+
+| 字段 | 值 |
+|---|---|
+| Ollama Base URL | `http://<host>:41414` —— **不带 `/v1`，也不能有结尾 `/`** |
+| Authentication Token | 你的网关 API key |
+| Model | 下拉框里选（列表来自 `/api/tags`） |
+
+三个容易踩的点：
+
+1. **结尾斜杠会被判为非法**。AnythingLLM 显式检查 `BasePath Cannot end in /`。
+2. **地址是从 AnythingLLM 的服务端进程解析的，不是浏览器**。AnythingLLM 跑在
+   Docker 里时 `127.0.0.1` 指的是它自己的容器，要用 `host.docker.internal:41414`
+   或局域网 IP。
+3. **不填 Authentication Token 会静默失败**。网关返回 401，但 AnythingLLM 把
+   fetch 异常吞掉后返回空列表，界面上只是下拉框空着，不会告诉你是没授权。
+
+Embedding 也走同一套：Embedder 选 Ollama，同样的 URL 和 token，模型选
+`text-embedding-3-small`。`/api/tags` 会同时列出 chat 和 embedding 模型，
+正是因为 AnythingLLM 用同一个 helper 喂这两个下拉框。
+
+命令行自测：
+
+```bash
+H="authorization: Bearer $YOUR_KEY"
+curl -s -H "$H" localhost:41414/api/tags | jq '.models[0].name'
+curl -s -H "$H" localhost:41414/api/show -d '{"model":"gpt-5.6-sol"}' \
+  | jq '{capabilities, ctx: (.model_info|to_entries|map(select(.key|endswith(".context_length"))))}'
+curl -sN -H "$H" localhost:41414/api/chat \
+  -d '{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"hi"}]}' | tail -1
+curl -s -o /dev/null -w '%{http_code}\n' localhost:41414/api/tags   # 无 key 应为 401
+```
+
+> 如果 AnythingLLM 里 **Model context window 显示 4096**，说明 `/api/show` 的
+> 应答被它当成了不可用——这是它唯一会静默降级的地方。上面第二条 curl 能看到
+> 真实窗口值就说明没问题。
+
+### 在 AnythingLLM 里用 DMR 面
+
+先给网关设 `DMR_COMPAT=1` 和 `DMR_BOUND_KEY=<某把 API key>`，再在
+LLM Provider 里选 **Docker Model Runner**，Base URL 填 `http://<host>:41414`
+（客户端会自己补 `engines/v1`）。所有请求都会记到 `DMR_BOUND_KEY` 那把 key 上，
+所以建议专门开一把带配额的 key，不要复用管理密钥。
+
+`DMR_COMPAT` 不设时，这一面的路由完全不生效，网关行为与之前逐字节一致。
 
 ## SDK 使用示例
 
@@ -347,6 +431,10 @@ Dashboard 由 React 19 + Vite + Tailwind 构建（`vnext/apps/dashboard/`），�
 | `ACCOUNT_TYPE` | Copilot 账户类型：`individual` / `business` / `enterprise` | 否（默认 individual） |
 | `LANGSEARCH_API_KEY` | LangSearch 搜索 API Key | 否 |
 | `TAVILY_API_KEY` | Tavily 搜索 API Key | 否 |
+| `DMR_COMPAT` | 开启 Docker Model Runner 兼容面（仅内网使用，见「本地客户端兼容」） | 否 |
+| `DMR_BOUND_KEY` | DMR 面所有请求归属的 API key，`DMR_COMPAT=1` 时必需 | 否 |
+
+> Ollama 兼容面（`/api/*`）不需要任何环境变量，默认常开，靠请求自带的 API key 鉴权。
 
 ## 兼容性处理
 
@@ -380,7 +468,8 @@ Dashboard 由 React 19 + Vite + Tailwind 构建（`vnext/apps/dashboard/`），�
 │   │   │       │                   # token-usage, copilot-quota, data-transfer
 │   │   │       ├── data-plane/     # chat-flow (messages/responses/chat-completions/
 │   │   │       │                   # gemini/count-tokens), embeddings, images, models,
-│   │   │       │                   # dispatch, routing, providers, observability
+│   │   │       │                   # dispatch, routing, providers, observability,
+│   │       │                   # ollama（Ollama 兼容面）、dmr（DMR 兼容面）
 │   │   │       └── shared/         # observability, repo, http, etc.
 │   │   ├── protocols/              # SDK 协议类型与 SSE 编解码
 │   │   ├── translate/              # 协议间互转（messages ↔ chat-completions ↔ responses ↔ gemini）
