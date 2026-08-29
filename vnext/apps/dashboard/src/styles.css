@@ -385,16 +385,41 @@ select option {
   align-items: flex-start;
 }
 .pg-row-user { justify-content: flex-end; }
+/* A pill, not a circle: the badge carries the model's family name now, and
+   those run from three letters ("MAI") to six ("Claude"). Fixed 28px would
+   clip the long ones, so width follows the text and 28px is only the floor —
+   short names still come out round. */
 .pg-avatar {
   flex-shrink: 0;
-  width: 28px; height: 28px;
-  border-radius: 50%;
+  min-width: 28px; height: 28px;
+  padding: 0 8px;
+  border-radius: 14px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: 600;
+  font-size: 11px; font-weight: 600;
+  white-space: nowrap;
   background: linear-gradient(135deg, #8b5cf6, #06b6d4);
   color: #fff;
   margin-top: 2px;
 }
+
+/* Retract button, to the left of the user's own bubble. Hidden until the row
+   is hovered, like the copy button — it undoes a turn, so it shouldn't sit
+   permanently in reach of a stray click. */
+.pg-retract {
+  align-self: center;
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--input-border);
+  background: var(--surface-800);
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.pg-row:hover .pg-retract { opacity: 1; }
+.pg-retract:hover { color: #8b5cf6; background: var(--input-bg); }
 
 /* Bubble containers */
 .pg-bubble {
@@ -761,6 +786,16 @@ select option {
 .pg-send-btn:hover:not(:disabled) { filter: brightness(1.1); }
 .pg-send-btn:active:not(:disabled) { transform: scale(0.95); }
 .pg-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+/* Stop state. The send gradient reads as "go", which is exactly wrong for a
+   button that now cancels — so the fill drops to a flat surface and the icon
+   takes the danger colour, making the swap visible at a glance rather than
+   only through the changed glyph. */
+.pg-send-btn-stop {
+  background: var(--surface-700);
+  border: 1px solid var(--input-border);
+  color: var(--danger);
+}
+.pg-send-btn-stop:hover:not(:disabled) { filter: none; background: var(--surface-800); }
 
 /* iOS Safari auto-zooms on focus when input font-size < 16px.
    Bump composer inputs to 16px on small viewports to suppress the zoom. */

@@ -19,6 +19,8 @@ import { parseGeminiStream } from "./streams/gemini"
 import { renderMarkdown } from "./markdown"
 import { isAtBottom } from "./scroll"
 import { initialFullscreen, persistFullscreen, spendLanded } from "./fullscreen"
+import { avatarLabel } from "./avatar"
+import { pruneIndexedState, retractFrom } from "./retract"
 import { contextPercent, contextPressure, formatTokens } from "./tokens"
 
 type Protocol = "openai" | "anthropic" | "gemini"
@@ -62,6 +64,13 @@ interface Message {
   webSearches?: WebSearchEntry[]
   /** Sources the gateway grounded the answer in, deduped by URL. */
   citations?: Citation[]
+  /**
+   * Display name of the model that wrote this turn, for the avatar badge. A
+   * thread survives model switches, so the panel's *current* model is the
+   * wrong answer for anything but the newest reply. Absent on user turns and
+   * on history persisted before turns recorded this.
+   */
+  model?: string
 }
 
 /** A message as the protocol serializers see it. */
@@ -537,6 +546,29 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     setError(null)
   }
 
+  /**
+   * Take back a user turn: the thread rewinds to just before it, and its
+   * content goes back into the composer so a typo can be fixed and re-sent.
+   *
+   * Everything after the retracted turn goes too. A mistyped question doesn't
+   * only produce one bad answer — it stays in the history and every later turn
+   * is answered in light of it, so leaving the tail behind would keep exactly
+   * the contamination this is meant to undo.
+   */
+  async function retract(index: number, parts: Part[]) {
+    // The reply being retracted may still be arriving.
+    abortRef.current?.abort()
+    setMessages((prev) => retractFrom(prev, index))
+    setExpandedSources((prev) => pruneIndexedState(prev, index))
+    setError(null)
+    clearEditor()
+    for (const p of parts) {
+      if (p.type === "text") insertText(p.text)
+      else if (p.dataUrl) insertImage(p.dataUrl, p.id ?? (await putImage(p.dataUrl)))
+    }
+    syncEmpty()
+  }
+
   const send = useCallback(
     async (override?: Part[]) => {
       const parts = override ?? readParts()
@@ -547,7 +579,11 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       // the reader had scrolled up to review something before typing.
       stickToBottomRef.current = true
       const nextHistory = [...messages, userMsg]
-      setMessages([...nextHistory, { role: "assistant", text: "" }])
+      // Stamped now, not at render time: the panel's model can change while
+      // this reply is still streaming, and the badge must keep naming whoever
+      // actually produced the text.
+      const model = modelOptions.find((o) => o.value === modelId)?.label ?? modelId
+      setMessages([...nextHistory, { role: "assistant", text: "", model }])
       if (override === undefined) clearEditor()
       setImageError("")
       setError(null)
@@ -588,7 +624,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [messages, protocol, modelId, apiKey, systemPrompt, webSearchEnabled, mode, imageParams],
+    [messages, protocol, modelId, apiKey, systemPrompt, webSearchEnabled, mode, imageParams, modelOptions],
   )
 
   function retry() {
@@ -843,6 +879,9 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       syncEmpty()
       return
     }
+    // Typing during a stream is fine; sending is not. The next turn has to be
+    // built on a finished reply, so Enter waits until the stream ends or the
+    // stop button cuts it short — the draft sits in the composer meanwhile.
     if (!streaming) void send()
   }
 
@@ -1076,7 +1115,17 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
               const showDots = isAssistant && streaming && isLast && !m.text
               return (
                 <div key={i} className={"pg-row " + (m.role === "user" ? "pg-row-user" : "")}>
-                  {isAssistant && <div className="pg-avatar">AI</div>}
+                  {isAssistant && <div className="pg-avatar">{avatarLabel(m.model)}</div>}
+                  {!isAssistant && (
+                    <button
+                      className="pg-retract"
+                      title={t("dash.playground.retractTitle")}
+                      aria-label={t("dash.playground.retract")}
+                      onClick={() => void retract(i, messageParts(m))}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>
+                    </button>
+                  )}
                   <div className={"pg-bubble " + (m.role === "user" ? "pg-bubble-user" : "pg-bubble-assistant")}>
                     {showDots ? (
                       <span className="pg-dots text-themed-dim"><span/><span/><span/></span>
@@ -1226,7 +1275,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
           <div
             ref={editorRef}
             className="pg-input"
-            contentEditable={!streaming}
+            contentEditable
             suppressContentEditableWarning
             role="textbox"
             aria-multiline="true"
@@ -1247,15 +1296,27 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
                 : "dash.playground.visionNoHint")}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8L9.4 17.36a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-              <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => void onPickFile(e)} disabled={streaming} />
+              <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => void onPickFile(e)} />
             </label>
+            {/* One button, two jobs. While a reply streams the only thing this
+                corner can usefully do is stop it — and putting stop where the
+                hand already is beats making the user find it in the topbar.
+                Composing stays open throughout; it's *sending* that waits. */}
             <button
-              onClick={() => void send()}
-              disabled={streaming || isEmpty || mode === undefined}
-              className="pg-send-btn"
-              title={t("dash.playground.send")}
+              onClick={() => {
+                if (streaming) abortRef.current?.abort()
+                else void send()
+              }}
+              disabled={!streaming && (isEmpty || mode === undefined)}
+              className={"pg-send-btn" + (streaming ? " pg-send-btn-stop" : "")}
+              title={streaming ? t("dash.playground.stop") : t("dash.playground.send")}
+              aria-label={streaming ? t("dash.playground.stop") : t("dash.playground.send")}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+              {streaming ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+              )}
             </button>
           </div>
         </div>
