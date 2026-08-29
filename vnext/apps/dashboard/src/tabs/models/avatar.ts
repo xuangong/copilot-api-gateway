@@ -33,3 +33,35 @@ export function avatarLabel(modelName: string | undefined): string {
   // "MAI"), and no rule guesses right for both "gpt" → GPT and "grok" → Grok.
   return head ? head.slice(0, MAX_LABEL) : FALLBACK_AVATAR
 }
+
+/**
+ * The badge's accent colour, as an `R G B` triple the stylesheet composes into
+ * a tint, a border and the text colour.
+ *
+ * One gradient for every model made the badge decorative rather than
+ * informative — the point of naming the author is that a thread holding three
+ * models can be read at a glance, and three identical purple chips defeat
+ * that. Each family gets the colour its vendor is already known by, so the
+ * badge is legible before the word is.
+ */
+const ACCENTS: Record<string, string> = {
+  claude: "201 100 66",
+  gpt: "16 163 127",
+  o: "16 163 127",
+  codex: "16 163 127",
+  gemini: "66 133 244",
+  grok: "113 113 122",
+  mai: "0 120 212",
+  phi: "0 120 212",
+  deepseek: "77 107 254",
+  qwen: "124 58 237",
+  llama: "8 102 255",
+  mistral: "234 88 12",
+}
+
+/** Violet, matching the rest of the dashboard's accents, for anything unlisted. */
+const DEFAULT_ACCENT = "139 92 246"
+
+export function avatarAccent(label: string): string {
+  return ACCENTS[label.toLowerCase()] ?? DEFAULT_ACCENT
+}

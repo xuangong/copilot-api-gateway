@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react"
 import { useT } from "../../state/i18n"
 import { Select, type SelectOption } from "../../components/Select"
 import { fileToDataUrl, ImageTooLargeError } from "./image"
@@ -19,7 +19,7 @@ import { parseGeminiStream } from "./streams/gemini"
 import { renderMarkdown } from "./markdown"
 import { isAtBottom } from "./scroll"
 import { initialFullscreen, persistFullscreen, spendLanded } from "./fullscreen"
-import { avatarLabel } from "./avatar"
+import { avatarAccent, avatarLabel } from "./avatar"
 import { pruneIndexedState, retractFrom } from "./retract"
 import { contextPercent, contextPressure, formatTokens } from "./tokens"
 
@@ -1115,12 +1115,22 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
               const showDots = isAssistant && streaming && isLast && !m.text
               return (
                 <div key={i} className={"pg-row " + (m.role === "user" ? "pg-row-user" : "")}>
-                  {isAssistant && <div className="pg-avatar">{avatarLabel(m.model)}</div>}
+                  {isAssistant && (() => {
+                    const label = avatarLabel(m.model)
+                    return (
+                      <div
+                        className="pg-avatar"
+                        style={{ "--pg-accent": avatarAccent(label) } as CSSProperties}
+                      >
+                        {label}
+                      </div>
+                    )
+                  })()}
                   {!isAssistant && (
                     <button
-                      className="pg-retract"
-                      title={t("dash.playground.retractTitle")}
-                      aria-label={t("dash.playground.retract")}
+                      className="pg-retract tip tip-start"
+                      data-tip={t("dash.playground.retractTitle")}
+                      aria-label={t("dash.playground.retractTitle")}
                       onClick={() => void retract(i, messageParts(m))}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>

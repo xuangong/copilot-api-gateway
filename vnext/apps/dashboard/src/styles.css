@@ -388,18 +388,27 @@ select option {
 /* A pill, not a circle: the badge carries the model's family name now, and
    those run from three letters ("MAI") to six ("Claude"). Fixed 28px would
    clip the long ones, so width follows the text and 28px is only the floor —
-   short names still come out round. */
+   short names still come out round.
+
+   Tinted, not filled. A saturated gradient behind every name shouted louder
+   than the reply it labelled, and made three different models look identical;
+   a wash of the family's own colour with matching text and hairline reads as
+   an identifier instead of a decoration. `--pg-accent` is set per turn by
+   ChatPanel; the value here is the fallback for anything unstyled. */
 .pg-avatar {
+  --pg-accent: 139 92 246;
   flex-shrink: 0;
-  min-width: 28px; height: 28px;
-  padding: 0 8px;
-  border-radius: 14px;
+  min-width: 28px; height: 26px;
+  padding: 0 9px;
+  border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
   font-size: 11px; font-weight: 600;
+  letter-spacing: 0.01em;
   white-space: nowrap;
-  background: linear-gradient(135deg, #8b5cf6, #06b6d4);
-  color: #fff;
-  margin-top: 2px;
+  background: rgb(var(--pg-accent) / 0.13);
+  border: 1px solid rgb(var(--pg-accent) / 0.28);
+  color: rgb(var(--pg-accent));
+  margin-top: 3px;
 }
 
 /* Retract button, to the left of the user's own bubble. Hidden until the row
@@ -420,6 +429,51 @@ select option {
 }
 .pg-row:hover .pg-retract { opacity: 1; }
 .pg-retract:hover { color: #8b5cf6; background: var(--input-bg); }
+
+/* Tooltip on `data-tip`, styled like the chart's. The native `title` attribute
+   was doing this job, but it waits about a second and renders in the OS's own
+   chrome — for a control whose consequences the user has to read *before*
+   clicking, "eventually, somewhere" isn't good enough. Appears on focus too,
+   so the explanation isn't mouse-only. */
+.tip { position: relative; }
+.tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 7px);
+  /* Grows to fit a short label, wraps rather than running off the panel once
+     the text is a full sentence — which it has to be for anything whose
+     consequences the user is reading before they click. */
+  width: max-content;
+  max-width: 240px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--input-border);
+  background: var(--surface-800);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: left;
+  color: var(--text-secondary);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 30;
+  transition: opacity 0.12s ease;
+  left: 50%;
+  transform: translateX(-50%);
+}
+/* Anchor the left edge instead of centring, for a control sitting near the
+   left of its container — a centred sentence would hang off the thread. */
+.tip-start::after { left: 0; transform: none; }
+/* The thread scrolls, so it clips: the topmost row has only its 24px of
+   padding above it, and a tooltip drawn there would be cut in half. That row
+   alone drops its tooltip below the control, where the gap to the next row
+   leaves plenty of space. */
+.pg-thread > .pg-row:first-child .tip::after {
+  bottom: auto;
+  top: calc(100% + 7px);
+}
+.tip:hover::after,
+.tip:focus-visible::after { opacity: 1; }
 
 /* Bubble containers */
 .pg-bubble {

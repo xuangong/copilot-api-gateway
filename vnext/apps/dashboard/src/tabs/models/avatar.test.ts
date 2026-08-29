@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { avatarLabel, FALLBACK_AVATAR } from "./avatar"
+import { avatarAccent, avatarLabel, FALLBACK_AVATAR } from "./avatar"
 
 test("a display name yields its leading word", () => {
   expect(avatarLabel("Claude Opus 5")).toBe("Claude")
@@ -38,4 +38,27 @@ test("history with no recorded model falls back", () => {
 
 test("a name that opens with a digit falls back rather than showing a number", () => {
   expect(avatarLabel("4o-mini")).toBe(FALLBACK_AVATAR)
+})
+
+test("each family gets its own accent, so a mixed thread reads at a glance", () => {
+  const claude = avatarAccent("Claude")
+  const gpt = avatarAccent("GPT")
+  const gemini = avatarAccent("Gemini")
+  expect(new Set([claude, gpt, gemini]).size).toBe(3)
+})
+
+test("the accent ignores the casing the catalog happened to use", () => {
+  expect(avatarAccent("gpt")).toBe(avatarAccent("GPT"))
+})
+
+test("an unlisted family falls back to the dashboard's own violet", () => {
+  expect(avatarAccent("Someothermodel")).toBe(avatarAccent(FALLBACK_AVATAR))
+})
+
+test("an accent is always three space-separated channel values", () => {
+  for (const name of ["Claude", "GPT", "Grok", "MAI", "Whatever"]) {
+    const channels = avatarAccent(name).split(" ")
+    expect(channels).toHaveLength(3)
+    for (const c of channels) expect(Number(c)).toBeGreaterThanOrEqual(0)
+  }
 })
