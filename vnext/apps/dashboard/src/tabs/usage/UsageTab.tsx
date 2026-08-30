@@ -6,6 +6,7 @@ import { UsageSummaryCards } from "./UsageSummary"
 import { UsageDistributionTable } from "./UsageDistributionTable"
 import { RollingStrip } from "./RollingStrip"
 import { UsageForecast } from "./UsageForecast"
+import { UsageRefresh } from "./UsageRefresh"
 import { TimeSeriesChart, paletteFor, type ChartDataset } from "../../components/TimeSeriesChart"
 import { dateKey } from "../../state/time-buckets"
 import { localOffsetLabel, localZoneLabel, setZoneMode, useZoneMode, zoneOps, type TimeZoneMode } from "../../state/timezone"
@@ -108,7 +109,11 @@ export function UsageTab() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">{t("dash.usage")}</span>
-              {usage.loading ? <Spinner /> : null}
+              <UsageRefresh
+                loading={usage.loading}
+                lastUpdated={usage.lastUpdated}
+                onRefresh={usage.refresh}
+              />
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <SegmentedGroup
@@ -271,15 +276,6 @@ export function UsageTab() {
         <p className="text-sm text-themed-dim italic mt-6">{t("dash.noUsageInRange")}</p>
       ) : null}
     </div>
-  )
-}
-
-function Spinner() {
-  return (
-    <svg className="animate-spin h-3.5 w-3.5 text-themed-dim" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" opacity="0.25" />
-      <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" opacity="0.75" />
-    </svg>
   )
 }
 

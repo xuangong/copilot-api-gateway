@@ -464,6 +464,9 @@ select option {
 /* Anchor the left edge instead of centring, for a control sitting near the
    left of its container — a centred sentence would hang off the thread. */
 .tip-start::after { left: 0; transform: none; }
+/* Drawn below instead of above, for a control in a panel's top row where
+   there is nothing overhead but the page header to cover. */
+.tip-below::after { bottom: auto; top: calc(100% + 7px); }
 /* The thread scrolls, so it clips: the topmost row has only its 24px of
    padding above it, and a tooltip drawn there would be cut in half. That row
    alone drops its tooltip below the control, where the gap to the next row

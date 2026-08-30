@@ -334,6 +334,13 @@ export function useUsage(isAdmin: boolean) {
   offsetRef.current = periodOffset
   endDateRef.current = endDate
   const [loading, setLoading] = useState(true)
+  // When the numbers on screen were last known to be true. Drives the "updated
+  // N ago" line, and is the clock the auto-refresh cadence is measured from.
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
+  // Bumped by an explicit refresh to make the strip refetch. Its own effect is
+  // keyed on the range, which hasn't changed, so without this the strip would
+  // sit on its cached rows while everything around it updated.
+  const [refreshNonce, setRefreshNonce] = useState(0)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -345,6 +352,7 @@ export function useUsage(isAdmin: boolean) {
       ])
       setData(rows)
       setParticipantRows(people)
+      setLastUpdated(Date.now())
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "error")
     } finally {
@@ -354,6 +362,21 @@ export function useUsage(isAdmin: boolean) {
 
   useEffect(() => {
     reload()
+  }, [reload])
+
+  /**
+   * What the refresh button and the auto-refresh timer call.
+   *
+   * Distinct from `reload` because it also drops the strip's cached rows: a
+   * control labelled "refresh" that quietly left a third of the page on
+   * yesterday's numbers would be worse than no control at all. `reload` stays
+   * as-is for the range and clock changes, which already refetch what they
+   * need and shouldn't pay for a strip refetch on every click.
+   */
+  const refresh = useCallback(() => {
+    stripCache.current.clear()
+    setRefreshNonce((n) => n + 1)
+    void reload()
   }, [reload])
 
   // The strip's own fetch. It spans 117 days — every one of the 90 squares is
@@ -393,7 +416,7 @@ export function useUsage(isAdmin: boolean) {
     return () => {
       cancelled = true
     }
-  }, [range, mode])
+  }, [range, mode, refreshNonce])
 
   const participants = useMemo(() => indexParticipants(participantRows), [participantRows])
 
@@ -629,12 +652,14 @@ export function useUsage(isAdmin: boolean) {
     filters,
     data,
     loading,
+    lastUpdated,
     dimensions,
     summary,
     distributions,
     chart,
     strip,
     reload,
+    refresh,
     setMetric,
     switchRange,
     chooseEndDate,
