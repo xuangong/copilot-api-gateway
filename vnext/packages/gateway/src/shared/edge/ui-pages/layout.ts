@@ -9,6 +9,7 @@ export function Layout({ title, children }: { title: string; children: string })
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${title} — Copilot Gateway</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
   <script src="/cdn/tailwind.js"></script>
   <script defer src="/cdn/alpine.js"></script>
   <script src="/cdn/chart.js"></script>

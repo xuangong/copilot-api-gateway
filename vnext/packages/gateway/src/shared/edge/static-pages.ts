@@ -7,6 +7,7 @@ import { LoginPage } from './ui-pages/login'
 import { DashboardPage } from './ui-pages/dashboard-app/page'
 import { DevicePage } from './ui-pages/device'
 import { GuidePage } from './ui-pages/guide'
+import faviconB64Module from './assets/favicon.png.txt'
 
 const CDN_MAP: Record<string, string> = {
   'tailwind.js': 'https://cdn.tailwindcss.com/3.4.17',
@@ -20,6 +21,22 @@ const CDN_MAP: Record<string, string> = {
 
 const html = (body: string) =>
   new Response(body, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+
+// The tab icon: a 64×64 PNG of the same three-layer glyph the dashboard header
+// wears, carried as base64 text for the same reason the dashboard bundle is —
+// a Text import is the only asset channel that works identically on Workers and
+// on Bun. Decoded once at module load, not per request.
+const faviconBytes = Uint8Array.from(
+  atob(faviconB64Module as unknown as string),
+  (ch) => ch.charCodeAt(0),
+)
+const faviconResponse = () =>
+  new Response(faviconBytes, {
+    headers: {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=604800, immutable',
+    },
+  })
 
 export const staticPages = new Hono()
 
@@ -36,7 +53,11 @@ staticPages.get('/dashboard', () => html(DashboardPage()))
 staticPages.on('HEAD', '/dashboard', (c) => c.body(null, 200))
 staticPages.get('/device/login', () => html(DevicePage()))
 staticPages.get('/guide', () => html(GuidePage()))
-staticPages.get('/favicon.ico', (c) => c.body(null, 204))
+// Both paths serve the same PNG. `/favicon.ico` is what a browser probes on its
+// own when a page declares no icon; PNG bytes under an .ico name are what every
+// current browser expects there.
+staticPages.get('/favicon.ico', faviconResponse)
+staticPages.get('/favicon.png', faviconResponse)
 
 staticPages.get('/cdn/:file', async (c) => {
   const file = c.req.param('file')
