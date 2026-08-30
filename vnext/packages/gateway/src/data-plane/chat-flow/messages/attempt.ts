@@ -220,26 +220,61 @@ export async function* synthesizeMessagesFramesFromJson(
   }
   const blocks = Array.isArray(body.content) ? body.content : []
   for (let i = 0; i < blocks.length; i++) {
-    const block = blocks[i] as { type?: string; text?: string }
-    // Match real upstream SSE: `content_block_start` opens with empty text;
-    // the body arrives via subsequent `content_block_delta`. Initialising
-    // text here would double-count when the reassembler concatenates the
-    // delta on top (cf. messages/events/reassemble.ts).
+    const block = (blocks[i] ?? {}) as { type?: string; text?: string; input?: unknown }
+    const type = block.type ?? 'text'
+    const isToolUse = type === 'tool_use' || type === 'server_tool_use'
+
+    // `content_block_start` carries the block's *identity* — a tool_use's `id`
+    // and `name`, a thinking block's `signature` — but not its streamed
+    // payload. Text and tool input arrive on the deltas below, because that is
+    // how a real upstream feed is shaped and the reassembler concatenates on
+    // top of what start opened with; seeding them here would double-count
+    // (cf. messages/events/reassemble.ts).
+    //
+    // This used to send `{ type, text: '' }` for *every* block, which was
+    // correct for the text blocks it was written against and quietly destroyed
+    // everything else. A tool_use reached the client with no `id`, no `name`
+    // and no `input`, wearing a `text: ''` that has no business being on a
+    // tool_use at all. Claude Code reported that as "No such tool available:
+    // undefined" and answered it with an equally orphaned `tool_result`; both
+    // blocks stayed in the transcript and were replayed on every later turn.
+    // The `as never` cast below is gone for the same reason — it was what let
+    // the malformed block past the type checker in the first place.
+    //
+    // Note this is not a rare path: the caller takes it whenever the *upstream*
+    // answers with JSON, which happens even when the client asked to stream.
+    const { text: _text, input: _input, ...identity } = block
     yield {
       type: 'event',
       event: {
         type: 'content_block_start',
         index: i,
-        content_block: { type: block.type ?? 'text', text: '' } as never,
+        content_block: type === 'text'
+          ? { type: 'text', text: '' }
+          : isToolUse
+            ? { ...identity, type, input: {} }
+            : { ...identity, type },
       } as MessagesStreamEvent,
     }
-    if (block.type === 'text' && typeof block.text === 'string') {
+    if (type === 'text' && typeof block.text === 'string') {
       yield {
         type: 'event',
         event: {
           type: 'content_block_delta',
           index: i,
           delta: { type: 'text_delta', text: block.text },
+        } as MessagesStreamEvent,
+      }
+    } else if (isToolUse && block.input !== undefined) {
+      // Always a non-empty string, even for `{}`: the reassembler tests
+      // `if (block.inputJson)`, so an empty string would silently fall back to
+      // `input: {}` rather than parsing what we sent.
+      yield {
+        type: 'event',
+        event: {
+          type: 'content_block_delta',
+          index: i,
+          delta: { type: 'input_json_delta', partial_json: JSON.stringify(block.input) },
         } as MessagesStreamEvent,
       }
     }
