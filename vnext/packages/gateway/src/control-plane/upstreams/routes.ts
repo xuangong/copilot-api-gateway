@@ -49,7 +49,7 @@ import { CustomProvider, normalizeCustomConfig } from '@vibe-llm/provider-custom
 import { parseEndpoints, normalizeStringRecord } from '@vibe-llm/provider-llm'
 import { AzureProvider } from '@vibe-llm/provider-azure'
 import type { AzureProviderConfig as PkgAzureConfig } from '@vibe-llm/provider-azure'
-import { SdfProvider } from '@vibe-llm/provider-sdf'
+import { SdfProvider, substrateTokenExpiry } from '@vibe-llm/provider-sdf'
 import type { SdfProviderConfig as PkgSdfConfig } from '@vibe-llm/provider-sdf'
 
 export interface AuthCtx {
@@ -294,6 +294,28 @@ function normalizeConfig(provider: UpstreamKind, config: unknown): Record<string
   return normalizeCopilotConfig(raw)
 }
 
+/**
+ * The moment an sdf upstream's Substrate token died, ISO 8601 — or undefined if
+ * it has not (or if we cannot tell). Present means expired; there is no
+ * "expired: false" to reason about.
+ *
+ * This exists because redactConfig, below, hides the token from the dashboard.
+ * The browser therefore cannot run this check itself, so the server runs it and
+ * ships the verdict as its own field. Read the raw config here, BEFORE
+ * redaction — swap the order and this only ever sees '***'.
+ *
+ * Deliberately a hint and nothing more: it never gates dispatch. See
+ * substrateTokenExpiry's contract for why an unexpired `exp` proves nothing.
+ */
+function tokenExpiredAt(upstream: UpstreamRecord<unknown>): string | undefined {
+  if (upstream.provider !== 'sdf') return undefined
+  const token = (upstream.config as { substrateToken?: unknown } | null)?.substrateToken
+  if (typeof token !== 'string' || !token) return undefined
+  const exp = substrateTokenExpiry(token)
+  if (exp === null || exp * 1000 > Date.now()) return undefined
+  return new Date(exp * 1000).toISOString()
+}
+
 function redactConfig(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(redactConfig)
   if (!value || typeof value !== 'object') return value
@@ -305,10 +327,16 @@ function redactConfig(value: unknown): unknown {
   return out
 }
 
-function serializeUpstream(
-  upstream: UpstreamRecord<unknown>,
-): Omit<UpstreamRecord<unknown>, 'config'> & { config: Record<string, unknown> } {
-  return { ...upstream, config: redactConfig(upstream.config) as Record<string, unknown> }
+function serializeUpstream(upstream: UpstreamRecord<unknown>): Omit<UpstreamRecord<unknown>, 'config'> & {
+  config: Record<string, unknown>
+  tokenExpiredAt?: string
+} {
+  const expiredAt = tokenExpiredAt(upstream)
+  return {
+    ...upstream,
+    config: redactConfig(upstream.config) as Record<string, unknown>,
+    ...(expiredAt ? { tokenExpiredAt: expiredAt } : {}),
+  }
 }
 
 /**

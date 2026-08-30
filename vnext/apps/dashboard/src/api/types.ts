@@ -41,6 +41,11 @@ export interface UpstreamRecord {
   flagOverrides?: Record<string, boolean>
   disabledPublicModelIds: string[]
   proxyFallbackList?: ProxyFallbackEntry[]
+  // Set by the server only for sdf upstreams whose Substrate token's `exp` has
+  // already passed — the token itself is redacted, so we cannot work this out
+  // here. Present means expired; absent means "not expired, or unknowable", and
+  // deliberately not a health signal (a live-looking token can still be revoked).
+  tokenExpiredAt?: string
   createdAt: string
   updatedAt: string
 }

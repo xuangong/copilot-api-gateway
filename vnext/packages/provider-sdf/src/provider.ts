@@ -285,20 +285,41 @@ function randomShort(): string {
 }
 
 /**
- * Read the `tid` claim out of the Substrate bearer for `x-metadata-tenant-id`.
- * Decode only — the token is already trusted (it came from our own config) and
- * the header is attribution metadata, not an authorization decision, so
- * verifying the signature would buy nothing and cost a JWKS fetch.
+ * The claim set of a JWT, or null if this string is not one we can read.
+ *
+ * Decode only, never verify. The token is already trusted (it came from our own
+ * config), and nothing here feeds an authorization decision, so checking the
+ * signature would buy nothing and cost a JWKS fetch. base64url is an encoding,
+ * not encryption — the payload is plaintext to anyone holding the token.
  */
-function tenantIdFromToken(token: string): string {
+function decodeJwtClaims(token: string): Record<string, unknown> | null {
   try {
     const payload = token.split('.')[1]
-    if (!payload) return 'unknown'
-    const claims = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as {
-      tid?: unknown
-    }
-    return typeof claims.tid === 'string' && claims.tid ? claims.tid : 'unknown'
+    if (!payload) return null
+    const claims: unknown = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')))
+    if (!claims || typeof claims !== 'object' || Array.isArray(claims)) return null
+    return claims as Record<string, unknown>
   } catch {
-    return 'unknown'
+    return null
   }
+}
+
+/** Read the `tid` claim out of the Substrate bearer for `x-metadata-tenant-id`. */
+function tenantIdFromToken(token: string): string {
+  const tid = decodeJwtClaims(token)?.tid
+  return typeof tid === 'string' && tid ? tid : 'unknown'
+}
+
+/**
+ * The `exp` claim in Unix seconds, or null if this token carries no readable one.
+ *
+ * Necessary but not sufficient, and callers must treat it that way: an `exp` in
+ * the past means the token is definitely dead; an `exp` in the future does NOT
+ * mean it is alive. Revocation, a policy change and a wrong scope are all
+ * invisible from here — only a real request can rule those out. So this is fit
+ * to raise a flag for a human, and unfit to gate traffic on.
+ */
+export function substrateTokenExpiry(token: string): number | null {
+  const exp = decodeJwtClaims(token)?.exp
+  return typeof exp === 'number' && Number.isFinite(exp) ? exp : null
 }

@@ -74,17 +74,35 @@ export function UpstreamRow({
     }
   }
 
+  // Set only when the server could read a past `exp` out of this upstream's
+  // credential. Absence is not a clean bill of health — see the field's doc.
+  const expiredAt = u.tokenExpiredAt ? new Date(u.tokenExpiredAt).toLocaleString() : null
+
   return (
     <div
       className={`bg-surface-900 rounded-lg p-3 sm:p-4 border transition-colors ${
-        editing ? "border-accent-violet/60" : "border-surface-600"
+        editing
+          ? "border-accent-violet/60"
+          : expiredAt
+            ? "border-[color:var(--danger-edge)]"
+            : "border-surface-600"
       } ${locked ? "opacity-60" : ""}`}
     >
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <ProviderAvatar provider={u.provider} avatarUrl={avatar} title={u.provider} />
           <div className="min-w-0 flex-1">
-            <div className="font-medium text-themed truncate">{u.name}</div>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-medium text-themed truncate">{u.name}</span>
+              {expiredAt ? (
+                <span
+                  className="inline-flex items-center shrink-0 px-2 py-0.5 rounded-full text-[11px] leading-none bg-[color:var(--danger-wash)] text-[color:var(--danger)] border border-[color:var(--danger-edge)]"
+                  title={t("dash.tokenExpiredTip", { at: expiredAt })}
+                >
+                  {t("dash.tokenExpiredBadge")}
+                </span>
+              ) : null}
+            </div>
             <div className="text-xs text-themed-dim font-mono truncate">
               {ghUser?.login ? `@${ghUser.login}` : u.id}
             </div>
