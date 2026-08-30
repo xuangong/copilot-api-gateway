@@ -178,14 +178,19 @@ test('POST /v1beta/models/:model:streamGenerateContent returns Gemini SSE chunks
   expect(text).toContain('"finishReason":"STOP"')
 })
 
-test('POST /v1beta/models with invalid payload returns Gemini error shape', async () => {
+test('POST /v1beta/models with a non-object body returns Gemini error shape', async () => {
+  // See the Messages counterpart: the schema no longer gates inbound requests,
+  // so the trigger is a body that could never be a request under any revision
+  // of the protocol. The assertion is about the error envelope, not the schema.
   initRepo(stubRepo([]))
   const app = buildApp({})
   const req = new Request(`http://local/v1beta/models/${MODEL_ID}:generateContent`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({}),
+    body: JSON.stringify([{ role: 'user' }]),
   })
   const res = await app.fetch(req, env)
   expect(res.status).toBe(400)
+  const body = await res.json() as { error: { status: string } }
+  expect(body.error.status).toBe('INVALID_ARGUMENT')
 })

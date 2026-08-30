@@ -191,14 +191,21 @@ test('POST /v1/messages streaming returns Anthropic SSE events', async () => {
   expect(reconstructed).toContain('Hello from upstream')
 })
 
-test('POST /v1/messages with invalid payload returns Anthropic error shape', async () => {
-  // No repo / fetch stub needed: validation rejects the request before dispatch.
+test('POST /v1/messages with a non-object body returns Anthropic error shape', async () => {
+  // No repo / fetch stub needed: this is refused before dispatch.
+  //
+  // The trigger is deliberately a body that is not a JSON object at all. The
+  // gateway no longer validates the request against the Messages schema — the
+  // shape of a chat request is the client's contract with the model, and a
+  // proxy enforcing it just breaks first whenever the two ends move on. What
+  // this test still pins down is the envelope: whatever we do refuse, we have
+  // to refuse in the shape an Anthropic client can parse.
   initRepo(stubRepo([]))
   const app = buildApp({})
   const req = new Request('http://local/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ messages: [] }), // missing model + max_tokens
+    body: JSON.stringify([{ role: 'user' }]),
   })
   const res = await app.fetch(req, env)
   expect(res.status).toBe(400)

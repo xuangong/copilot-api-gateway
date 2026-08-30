@@ -183,16 +183,21 @@ test('POST /v1/chat/completions streaming returns OpenAI SSE chunks + [DONE]', a
   expect(deltas.join('')).toContain('Hello from upstream')
 })
 
-test('POST /v1/chat/completions with invalid payload returns OpenAI error shape', async () => {
+test('POST /v1/chat/completions with a non-object body returns OpenAI error shape', async () => {
+  // See the Messages counterpart: the schema no longer gates inbound requests,
+  // so the trigger is a body that could never be a request under any revision
+  // of the protocol. The assertion is about the error envelope, not the schema.
   initRepo(stubRepo([]))
   const app = buildApp({})
   const req = new Request('http://local/v1/chat/completions', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({}),
+    body: JSON.stringify([{ role: 'user' }]),
   })
   const res = await app.fetch(req, env)
   expect(res.status).toBe(400)
+  const body = await res.json() as { error: { type: string } }
+  expect(body.error.type).toBe('invalid_request_error')
 })
 
 test('POST /v1/chat/completions forwards an upstream 400 body verbatim', async () => {
