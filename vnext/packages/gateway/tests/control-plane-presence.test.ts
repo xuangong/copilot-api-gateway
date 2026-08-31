@@ -4,7 +4,7 @@
  * Covers POST /heartbeat (auth + validation + upsert) and
  * GET /relays (4-branch scoping + redaction in shared view + enrichment).
  */
-import { test, expect, beforeEach, afterEach } from 'bun:test'
+import { test, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { Hono } from 'hono'
 import { initRepo } from '../src/repo/index.ts'
 import { __resetPlatformForTests } from '@vibe-core/platform'
@@ -28,6 +28,15 @@ function inMemoryRepo() {
   const assignments: KeyAssignment[] = []
   const usage: UsageRecord[] = []
 
+  // Mirrors the real DELETE ... WHERE last_seen_at < ?. Wrapped in mock() so a
+  // test can make it throw and prove the read still succeeds.
+  const pruneStale = mock(async (olderThanMinutes: number) => {
+    const cutoff = Date.now() - olderThanMinutes * 60 * 1000
+    for (const [id, p] of presence) {
+      if (new Date(p.lastSeenAt).getTime() < cutoff) presence.delete(id)
+    }
+  })
+
   const repo = {
     apiKeys: {
       listByOwner: async (ownerId: string) =>
@@ -44,6 +53,7 @@ function inMemoryRepo() {
       list: async () => [...presence.values()],
       listByKeyIds: async (ids: string[]) =>
         [...presence.values()].filter((p) => p.keyId && ids.includes(p.keyId)),
+      pruneStale,
     },
     usage: {
       query: async (opts: { keyIds?: string[]; start: string; end: string }) =>
@@ -56,7 +66,7 @@ function inMemoryRepo() {
     },
   } as unknown as Repo
 
-  return { repo, keys, presence, users, assignments, usage }
+  return { repo, keys, presence, users, assignments, usage, pruneStale }
 }
 
 const TEST_ENV = { SERVER_SECRET: 'test-secret' }
@@ -162,7 +172,49 @@ test('GET /api/relays admin sees all + ownerName enrichment', async () => {
   expect(body[0].isOnline).toBe(false) // 10min > 3min threshold
 })
 
-test('GET /api/relays isActive=true when usage exists for key', async () => {
+test('GET /api/relays prunes rows past the 30-day TTL before listing', async () => {
+  store.keys.set('k1', mkKey('k1', 'a', 'u1'))
+  const day = 24 * 60 * 60 * 1000
+  store.presence.set('fresh', mkPresence('fresh', 'k1', new Date().toISOString()))
+  store.presence.set('stale', mkPresence('stale', 'k1', new Date(Date.now() - 31 * day).toISOString()))
+
+  const res = await buildApp({ userId: 'u1' }).request('/api/relays', {}, TEST_ENV)
+  const body = await res.json() as Array<{ clientId: string }>
+
+  expect(body.map((r) => r.clientId)).toEqual(['fresh'])
+  // Actually deleted, not merely filtered out of the response.
+  expect(store.presence.has('stale')).toBe(false)
+})
+
+test('GET /api/relays keeps a row that is offline but inside the TTL', async () => {
+  store.keys.set('k1', mkKey('k1', 'a', 'u1'))
+  const lastSeen = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString()
+  store.presence.set('c1', mkPresence('c1', 'k1', lastSeen))
+
+  const res = await buildApp({ userId: 'u1' }).request('/api/relays', {}, TEST_ENV)
+  const body = await res.json() as Array<{ clientId: string; isOnline: boolean }>
+
+  expect(body).toHaveLength(1)
+  expect(body[0].isOnline).toBe(false)
+})
+
+test('GET /api/relays survives a prune failure', async () => {
+  store.keys.set('k1', mkKey('k1', 'a', 'u1'))
+  store.presence.set('c1', mkPresence('c1', 'k1', new Date().toISOString()))
+  store.pruneStale.mockImplementationOnce(async () => {
+    throw new Error('D1 unavailable')
+  })
+
+  const res = await buildApp({ userId: 'u1' }).request('/api/relays', {}, TEST_ENV)
+
+  expect(res.status).toBe(200)
+  expect(await res.json()).toHaveLength(1)
+})
+
+test('GET /api/relays no longer reports isActive', async () => {
+  // isActive was a per-key predicate rendered per-device: usage on one device
+  // lit up every other device sharing that key. Removed rather than fixed —
+  // `usage` has no client_id, so the device-level fact is not computable.
   store.keys.set('k1', mkKey('k1', 'a', 'u1'))
   store.presence.set('c1', mkPresence('c1', 'k1', new Date().toISOString()))
   const nowHour = new Date().toISOString().slice(0, 13)
@@ -173,8 +225,8 @@ test('GET /api/relays isActive=true when usage exists for key', async () => {
   })
 
   const res = await buildApp({ userId: 'u1' }).request('/api/relays', {}, TEST_ENV)
-  const body = await res.json() as Array<{ isActive: boolean }>
-  expect(body[0].isActive).toBe(true)
+  const body = await res.json() as Array<Record<string, unknown>>
+  expect(body[0]).not.toHaveProperty('isActive')
 })
 
 test('GET /api/relays shared-view: owned-only + redacted', async () => {
@@ -187,7 +239,7 @@ test('GET /api/relays shared-view: owned-only + redacted', async () => {
   expect(res.status).toBe(200)
   const body = await res.json() as Array<Record<string, unknown>>
   expect(body).toHaveLength(1)
-  // redactForSharedView('relays') → { id, clientLabel, status, isOnline, isActive, lastSeenAt }
+  // redactForSharedView('relays') → { id, clientLabel, status, isOnline, lastSeenAt }
   expect(body[0].clientLabel).toBe('owned')
   expect(body[0].status).toBe('connected')
   expect(body[0].id).not.toBe('c1')

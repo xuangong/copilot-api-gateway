@@ -13,7 +13,6 @@ export interface RelayClient {
   gatewayUrl?: string | null
   lastSeenAt: string
   isOnline: boolean
-  isActive: boolean
 }
 
 export function listRelays(): Promise<RelayClient[]> {

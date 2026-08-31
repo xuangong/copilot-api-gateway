@@ -73,11 +73,7 @@ export function ClientsTab() {
 
 function ClientRow({ client: c, isAdmin, now }: { client: RelayClient; isAdmin: boolean; now: number }) {
   const t = useT()
-  const dotClass = c.isActive
-    ? "bg-accent-teal status-pulse"
-    : c.isOnline
-      ? "bg-accent-violet"
-      : "bg-surface-600"
+  const dotClass = c.isOnline ? "bg-accent-teal status-pulse" : "bg-surface-600"
 
   return (
     <div className="flex items-center justify-between gap-3 p-4 rounded-lg bg-surface-800/50 border border-white/[0.04]">
@@ -96,10 +92,8 @@ function ClientRow({ client: c, isAdmin, now }: { client: RelayClient; isAdmin: 
             <span className="text-sm font-medium text-themed truncate">
               {c.clientName || c.clientLabel || c.clientId}
             </span>
-            {c.isActive ? (
-              <span className="shrink-0 text-[10px] font-medium text-accent-teal uppercase tracking-widest">{t("dash.activeLabel")}</span>
-            ) : c.isOnline ? (
-              <span className="shrink-0 text-[10px] font-medium text-accent-violet uppercase tracking-widest">{t("dash.onlineLabel")}</span>
+            {c.isOnline ? (
+              <span className="shrink-0 text-[10px] font-medium text-accent-teal uppercase tracking-widest">{t("dash.onlineLabel")}</span>
             ) : (
               <span className="shrink-0 text-[10px] font-medium text-themed-dim uppercase tracking-widest">{t("dash.offlineLabel")}</span>
             )}

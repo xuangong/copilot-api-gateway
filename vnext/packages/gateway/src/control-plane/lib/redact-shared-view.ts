@@ -32,7 +32,7 @@ type RedactInput =
   | { kind: 'tokenUsage'; payload: Array<Record<string, unknown> & { keyId: string }>; ownerId: string; secret: string }
   | { kind: 'latency'; payload: Array<Record<string, unknown> & { keyId: string }>; ownerId: string; secret: string }
   | { kind: 'upstreamAccounts'; payload: Array<Record<string, unknown> & { id: string | number }>; ownerId: string; secret: string }
-  | { kind: 'relays'; payload: Array<Record<string, unknown> & { clientId: string; keyName?: string; isOnline?: boolean; isActive?: boolean; lastSeenAt?: unknown }>; ownerId: string; secret: string }
+  | { kind: 'relays'; payload: Array<Record<string, unknown> & { clientId: string; keyName?: string; isOnline?: boolean; lastSeenAt?: unknown }>; ownerId: string; secret: string }
 
 export function redactForSharedView(input: RedactInput): Array<Record<string, unknown>> {
   const { ownerId, secret } = input
@@ -58,7 +58,6 @@ export function redactForSharedView(input: RedactInput): Array<Record<string, un
         clientLabel: c.keyName || `Relay #${idx + 1}`,
         status: c.isOnline ? 'connected' : 'disconnected',
         isOnline: c.isOnline,
-        isActive: c.isActive,
         lastSeenAt: c.lastSeenAt,
       }))
   }

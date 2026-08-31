@@ -5,7 +5,16 @@
  * - POST /heartbeat: API-key-authenticated; relay clients call to report presence.
  * - GET /relays: 4-branch scoping (admin / shared-view / user / fallback empty).
  *   Shared view uses redactForSharedView({ kind: 'relays', ... }).
- *   Enriches each row with isOnline (lastSeen<3min) + isActive (usage in last 2h).
+ *   Enriches each row with isOnline (lastSeen<3min), and prunes long-dead rows.
+ *
+ * There used to be a third state, isActive, defined as "this key had usage in
+ * the last 2 hours". It was rendered per-device, but the predicate is per-key:
+ * with N devices sharing one key, any one of them making a request lit up all
+ * N — including ones last seen months earlier. Device-level traffic is not
+ * computable here at all, because `usage` is bucketed by key_id only and
+ * carries no client_id. Rather than keep a plausible-looking lie, the state is
+ * gone; see the header comment on PRESENCE_TTL_MINUTES for the other half of
+ * why the list looked inflated.
  */
 import { Hono } from 'hono'
 import { z } from 'zod'
@@ -29,6 +38,26 @@ export interface PresenceAuthCtx {
 }
 
 type Vars = { auth: PresenceAuthCtx }
+
+/** A heartbeat within this window means the device is up. */
+const ONLINE_THRESHOLD_MINUTES = 3
+
+/**
+ * Rows older than this are deleted on the next /relays read.
+ *
+ * Device identity is the relay's `clientId`, a UUID it keeps in its own local
+ * config. Reinstalling the relay, resetting its config, or moving it into a
+ * fresh container mints a new UUID, so the same physical machine upserts a new
+ * row and the old one is orphaned forever. Until the relay reports a stable
+ * OS-level machine id we cannot merge those rows — the payload carries nothing
+ * that identifies hardware — so the next best thing is to let the orphans age
+ * out.
+ *
+ * Deleting is cheap to get wrong in our favour: heartbeat is an upsert, so a
+ * machine that comes back simply recreates its row on the next beat. Nothing
+ * here is a source of truth.
+ */
+const PRESENCE_TTL_MINUTES = 30 * 24 * 60
 
 async function getUserKeyIds(userId: UserId): Promise<ApiKeyId[]> {
   const repo = getRepo()
@@ -86,7 +115,15 @@ presenceRouter.post('/heartbeat', zValidator('json', heartbeatBody), async (c) =
 presenceRouter.get('/relays', async (c) => {
   const auth = c.get('auth') ?? {}
   const repo = getRepo()
-  const onlineThresholdMinutes = 3
+
+  // Prune before listing so the response already reflects the cleanup. Failure
+  // is not worth failing the read over — the stale rows just survive one more
+  // round.
+  try {
+    await repo.presence.pruneStale(PRESENCE_TTL_MINUTES)
+  } catch {
+    // best effort
+  }
 
   let clients
   if (auth.isAdmin) {
@@ -103,22 +140,6 @@ presenceRouter.get('/relays', async (c) => {
   }
 
   const now = Date.now()
-  const activeThresholdHours = 2
-  const activeHour = new Date(now - activeThresholdHours * 3600 * 1000)
-    .toISOString()
-    .slice(0, 13)
-  const endHour = new Date(now + 3600 * 1000).toISOString().slice(0, 13)
-
-  const keyIds = [...new Set(clients.map((c) => c.keyId).filter(Boolean) as ApiKeyId[])]
-  const activeKeyIds = new Set<string>()
-  if (keyIds.length > 0) {
-    try {
-      const usageRows = await repo.usage.query({ keyIds, start: activeHour, end: endHour })
-      for (const r of usageRows) activeKeyIds.add(r.keyId)
-    } catch {
-      // usage query failure should not break relays endpoint
-    }
-  }
 
   const ownerNameMap = new Map<string, string>()
   if (auth.isAdmin) {
@@ -133,8 +154,7 @@ presenceRouter.get('/relays', async (c) => {
 
   const enriched = clients.map((cli) => ({
     ...cli,
-    isOnline: now - new Date(cli.lastSeenAt).getTime() < onlineThresholdMinutes * 60 * 1000,
-    isActive: cli.keyId ? activeKeyIds.has(cli.keyId) : false,
+    isOnline: now - new Date(cli.lastSeenAt).getTime() < ONLINE_THRESHOLD_MINUTES * 60 * 1000,
     ownerName: cli.ownerId ? (ownerNameMap.get(cli.ownerId) ?? null) : null,
   }))
 
