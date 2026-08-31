@@ -24,7 +24,9 @@ const UPSTREAM_REJECTS_CLAUDE_AGENT_IDENTITY: ReadonlySet<string> = new Set(["cl
  *
  * Mutates `headers` in place. `copilot-integration-id` is set to "" because
  * Copilot treats the empty value as "delete the integration tag" — we want
- * no integration id leaking on Claude Code traffic.
+ * no integration id leaking on Claude Code traffic. The deletion is actually
+ * performed by the sentinel loop in forward.ts; do not turn that merge back
+ * into an object spread, which would send an empty value instead.
  *
  * Adapted from copilot-gateway/Floway:
  * apps/api/src/data-plane/providers/copilot/interceptors/messages/set-claude-agent-headers.ts

@@ -12,10 +12,27 @@ import type { AccountType } from "@vibe-llm/protocols/common"
 export type { AccountType }
 
 // Copilot API
-export const COPILOT_VERSION = "0.26.7"
+//
+// The five values below were captured together from one real GitHub Copilot
+// Chat client. They must move as one set. Bumping any single one on its own
+// assembles a client that has never existed — an editor plugin claiming
+// 0.52.0 while speaking a 2025 API version is a sharper signal than a client
+// that is uniformly a few releases behind.
+//
+// Source: copilot-gateway/packages/provider-copilot/src/auth.ts
+export const COPILOT_VERSION = "0.52.0"
+export const VSCODE_VERSION = "1.124.2"
+export const EDITOR_VERSION = `vscode/${VSCODE_VERSION}`
 export const EDITOR_PLUGIN_VERSION = `copilot-chat/${COPILOT_VERSION}`
 export const USER_AGENT = `GitHubCopilotChat/${COPILOT_VERSION}`
-export const API_VERSION = "2025-04-01"
+
+/** Copilot data plane (api.githubcopilot.com). */
+export const COPILOT_API_VERSION = "2026-06-01"
+/**
+ * GitHub REST management plane (api.github.com). Not the same calendar as
+ * COPILOT_API_VERSION — do not collapse the two back into one constant.
+ */
+export const GITHUB_API_VERSION = "2025-04-01"
 
 // Account types
 export const getCopilotBaseUrl = (accountType: AccountType) =>

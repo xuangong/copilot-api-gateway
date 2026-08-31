@@ -21,12 +21,18 @@ const MODELS_BODY = {
   ],
 }
 
+/** `headers` may be a plain object or a Headers instance depending on the call site. */
+const readAuth = (headers: RequestInit["headers"]): boolean =>
+  headers instanceof Headers
+    ? headers.has("authorization")
+    : Boolean((headers as Record<string, string> | undefined)?.Authorization)
+
 /** Records every call and answers /models and /v1/messages with plausible bodies. */
 const recordingFetcher = (seen: SeenCall[]): Fetcher => async (url, init) => {
   seen.push({
     url,
     method: (init.method as string) ?? "GET",
-    hasAuth: Boolean((init.headers as Record<string, string>)?.Authorization),
+    hasAuth: readAuth(init.headers),
   })
   const body = url.endsWith("/models")
     ? MODELS_BODY

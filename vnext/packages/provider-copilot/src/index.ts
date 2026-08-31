@@ -29,6 +29,16 @@ export { clearRawModelsCache } from "./raw-models-cache"
 
 export type { AccountType } from "./account-type"
 
+export {
+  COPILOT_VERSION,
+  VSCODE_VERSION,
+  EDITOR_VERSION,
+  EDITOR_PLUGIN_VERSION,
+  USER_AGENT,
+  COPILOT_API_VERSION,
+  GITHUB_API_VERSION,
+} from "./account-type"
+
 export { copilotModelEndpoints } from "./endpoints"
 
 export { copilotPricingCatalog, COPILOT_PRICING_SOURCE } from "./pricing"

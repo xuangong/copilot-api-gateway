@@ -64,11 +64,21 @@ export async function callCopilotAPI({
     console.log(`[upstream] ${requestId} sync request started, timeout=${timeout ? `${timeout/1000}s` : "none"}`)
   }
 
+  // An empty string in extraHeaders is a sentinel meaning "delete this
+  // header", not "send an empty value" — setClaudeAgentHeaders relies on it to
+  // strip copilot-integration-id. A plain object spread cannot express that,
+  // so merge through Headers. Do not revert this to `{ ...a, ...b }`.
+  const headers = new Headers(copilotHeaders(copilotToken))
+  for (const [name, value] of Object.entries(extraHeaders ?? {})) {
+    if (value === "") headers.delete(name)
+    else headers.set(name, value)
+  }
+
   let response: Response
   try {
     response = await fetchWithRetry(`${baseUrl}${endpoint}`, {
       method: "POST",
-      headers: { ...copilotHeaders(copilotToken), ...(extraHeaders ?? {}) },
+      headers,
       body: JSON.stringify(payload),
       timeout,
       fetchImpl: fetcher,
