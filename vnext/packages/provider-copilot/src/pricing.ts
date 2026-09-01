@@ -105,14 +105,20 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
     match: "gpt-5.6-sol",
     tiers: SOL,
   },
-  // Live in the catalog on some tenants but absent from the docs page. The
-  // rates below are written out rather than derived from SOL: fast tiers have
-  // no fixed ratio to their base model (GitHub lists Opus 4.8 fast at 2x plain
+  // Rates are written out rather than derived from SOL: fast tiers have no
+  // fixed ratio to their base model (GitHub lists Opus 4.8 fast at 2x plain
   // Opus 4.8, but Opus 4.6/4.7 fast at 6x), so any multiplier would be a
-  // coincidence dressed up as a rule. Unverified — if GitHub ever publishes a
-  // Sol Fast row, replace these figures rather than trust them. No
-  // `displayName`: that field is reserved for names the docs actually print.
+  // coincidence dressed up as a rule — do not "simplify" this back into
+  // `SOL.map(x => x * 2)`.
+  //
+  // The Default tier was confirmed against the catalog row on 2026-09-01
+  // (in 400 / out 2000 / cache read 40 / cache write 500, in hundredths of a
+  // cent per million). The Long context band is *not* in that table — the
+  // catalog prints one 1M context column and no band split — so those four
+  // figures remain unverified. They are unbilled today (`tiers[0]` is the only
+  // tier billing reads) but would need checking before that changes.
   {
+    displayName: "GPT-5.6 Sol Fast (Internal only)",
     match: "gpt-5.6-sol-fast",
     tiers: [
       { label: "Default", pricing: { input: 4, input_cache_read: 0.4, input_cache_write: 5, output: 20 } },

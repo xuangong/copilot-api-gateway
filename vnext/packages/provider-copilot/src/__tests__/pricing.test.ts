@@ -144,20 +144,25 @@ test("GPT-5.6 Sol carries the 50%-off promo rate, not GPT-5.5's", () => {
   ])
 })
 
-test("Sol Fast bills at exactly twice Sol and stays out of the catalog", () => {
-  const sol = catalogRow("GPT-5.6 Sol").tiers
+// The Default tier is pinned to literals, not to `Sol x 2`. It happens to be
+// double Sol today, but that is a coincidence — GitHub prices Opus 4.6/4.7 fast
+// at 6x their base — so asserting the ratio would enshrine a rule that does not
+// exist and would quietly "verify" a wrong number the next time Sol moves.
+test("Sol Fast's Default tier matches the published rates literally", () => {
   const fast = COPILOT_MODEL_PRICING.find((m) => m.match === "gpt-5.6-sol-fast")
   if (!fast) throw new Error("no gpt-5.6-sol-fast entry")
-  expect(fast.displayName).toBeUndefined()
-  expect(fast.tiers.length).toBe(sol.length)
-  for (const [i, tier] of fast.tiers.entries()) {
-    const base = sol[i]!
-    expect(tier.label).toBe(base.label)
-    expect(tier.contextThreshold).toBe(base.contextThreshold)
-    for (const [dim, rate] of Object.entries(tier.pricing)) {
-      expect(rate).toBe((base.pricing[dim as keyof typeof base.pricing] as number) * 2)
-    }
-  }
+  expect(fast.tiers[0]).toEqual({
+    label: "Default",
+    pricing: { input: 4, input_cache_read: 0.4, input_cache_write: 5, output: 20 },
+  })
+})
+
+test("Sol Fast's long-context band mirrors Sol's threshold", () => {
+  // Only the threshold is asserted: the catalog shows a single 1M context
+  // column with no band split, so the four rates in this tier are unverified
+  // and pinning them here would dress a guess up as a fact.
+  const fast = COPILOT_MODEL_PRICING.find((m) => m.match === "gpt-5.6-sol-fast")
+  expect(fast?.tiers[1]?.contextThreshold).toBe(catalogRow("GPT-5.6 Sol").tiers[1]?.contextThreshold)
 })
 
 test("GPT-5.6 Luna's long-context band starts at 200K, not 272K", () => {
@@ -231,8 +236,8 @@ test("legacy and internal models stay out of the catalog", () => {
 })
 
 test("the catalog has one row per documented model", () => {
-  // 11 Anthropic + 9 OpenAI + 4 Google + 2 xAI + 2 Microsoft + 2 Moonshot + 1 fine-tuned
-  expect(copilotPricingCatalog().models.length).toBe(31)
+  // 11 Anthropic + 10 OpenAI + 4 Google + 2 xAI + 2 Microsoft + 2 Moonshot + 1 fine-tuned
+  expect(copilotPricingCatalog().models.length).toBe(32)
 })
 
 test("both promo-priced Gemini flash rows share the promotional rate", () => {
