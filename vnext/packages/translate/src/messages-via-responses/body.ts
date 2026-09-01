@@ -26,7 +26,8 @@ interface ResponsesResultLike {
   usage?: {
     input_tokens?: number
     output_tokens?: number
-    input_tokens_details?: { cached_tokens?: number }
+    // Both details are disjoint subsets of the inclusive `input_tokens`.
+    input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number }
   }
 }
 
@@ -47,6 +48,7 @@ export interface MessagesResponseLike {
     input_tokens: number
     output_tokens: number
     cache_read_input_tokens?: number
+    cache_creation_input_tokens?: number
   }
 }
 
@@ -124,7 +126,8 @@ export function translateResponsesToMessagesBody(resp: ResponsesResultLike): Mes
       : []
 
   const cached = resp.usage?.input_tokens_details?.cached_tokens
-  const inputTokens = (resp.usage?.input_tokens ?? 0) - (cached ?? 0)
+  const cacheWrite = resp.usage?.input_tokens_details?.cache_write_tokens
+  const inputTokens = Math.max(0, (resp.usage?.input_tokens ?? 0) - (cached ?? 0) - (cacheWrite ?? 0))
 
   return {
     id: resp.id,
@@ -138,6 +141,7 @@ export function translateResponsesToMessagesBody(resp: ResponsesResultLike): Mes
       input_tokens: inputTokens,
       output_tokens: resp.usage?.output_tokens ?? 0,
       ...(cached !== undefined ? { cache_read_input_tokens: cached } : {}),
+      ...(cacheWrite !== undefined ? { cache_creation_input_tokens: cacheWrite } : {}),
     },
   }
 }

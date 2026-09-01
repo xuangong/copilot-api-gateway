@@ -27,7 +27,7 @@ interface RespCreatedEvent extends RespEventBase {
     model: string
     usage?: {
       input_tokens?: number
-      input_tokens_details?: { cached_tokens?: number }
+      input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number }
     }
   }
 }
@@ -98,7 +98,7 @@ interface RespCompletedEvent extends RespEventBase {
     usage?: {
       input_tokens?: number
       output_tokens?: number
-      input_tokens_details?: { cached_tokens?: number }
+      input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number }
     }
   }
 }
@@ -211,7 +211,8 @@ function openThinkingBlock(state: State, outputIndex: number, out: MessagesEvent
 
 function handleCreated(ev: RespCreatedEvent): MessagesEvent[] {
   const cached = ev.response.usage?.input_tokens_details?.cached_tokens
-  const input = (ev.response.usage?.input_tokens ?? 0) - (cached ?? 0)
+  const cacheWrite = ev.response.usage?.input_tokens_details?.cache_write_tokens
+  const input = Math.max(0, (ev.response.usage?.input_tokens ?? 0) - (cached ?? 0) - (cacheWrite ?? 0))
   return [
     {
       type: 'message_start',
@@ -227,6 +228,7 @@ function handleCreated(ev: RespCreatedEvent): MessagesEvent[] {
           input_tokens: input,
           output_tokens: 0,
           ...(cached !== undefined ? { cache_read_input_tokens: cached } : {}),
+          ...(cacheWrite !== undefined ? { cache_creation_input_tokens: cacheWrite } : {}),
         } as never,
       },
     },
@@ -404,6 +406,7 @@ function handleCompleted(ev: RespCompletedEvent, state: State): MessagesEvent[] 
   state.functionCallState.clear()
   state.searchCallState.clear()
   const cached = ev.response.usage?.input_tokens_details?.cached_tokens
+  const cacheWrite = ev.response.usage?.input_tokens_details?.cache_write_tokens
   out.push({
     type: 'message_delta',
     delta: { stop_reason: mapStopReason(ev), stop_sequence: null },
@@ -411,9 +414,12 @@ function handleCompleted(ev: RespCompletedEvent, state: State): MessagesEvent[] 
       // Responses only reports token counts on the terminal envelope, long
       // after `message_start` was emitted from `response.created`. Restating
       // the prompt side here is the only way clients see anything but zero.
-      input_tokens: (ev.response.usage?.input_tokens ?? 0) - (cached ?? 0),
+      // `input_tokens` is inclusive upstream: cached and cache-write are
+      // disjoint subsets of it, and Messages wants the three reported apart.
+      input_tokens: Math.max(0, (ev.response.usage?.input_tokens ?? 0) - (cached ?? 0) - (cacheWrite ?? 0)),
       output_tokens: ev.response.usage?.output_tokens ?? 0,
       ...(cached !== undefined ? { cache_read_input_tokens: cached } : {}),
+      ...(cacheWrite !== undefined ? { cache_creation_input_tokens: cacheWrite } : {}),
     } as never,
   })
   out.push({ type: 'message_stop' })

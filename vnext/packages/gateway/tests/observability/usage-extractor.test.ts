@@ -34,6 +34,41 @@ test('extractFromJson: Responses input_tokens_details.cached_tokens subtraction'
   })
 })
 
+// Both frames below are verbatim from a live Copilot probe on gpt-5.6-sol:
+// one ~1.9k-token prompt sent twice. It proves two things at once — Copilot
+// *does* report cache writes on the Responses endpoint (the Chat Completions
+// path never did, which is why this was missed), and `input_tokens` is the
+// inclusive total, so both details must be subtracted to get the bare rate.
+test('extractFromJson: Responses cache_write_tokens is subtracted and billed apart', () => {
+  const out = extractFromJson({
+    response: { model: 'gpt-5.6-sol' },
+    usage: {
+      input_tokens: 1934,
+      output_tokens: 12,
+      input_tokens_details: { cached_tokens: 0, cache_write_tokens: 1931 },
+    },
+  })
+  expect(out).toEqual({
+    model: 'gpt-5.6-sol',
+    tokens: { input: 3, output: 12, input_cache_write: 1931 },
+  })
+})
+
+test('extractFromJson: the repeat call reports the same tokens as a cache read', () => {
+  const out = extractFromJson({
+    response: { model: 'gpt-5.6-sol' },
+    usage: {
+      input_tokens: 1934,
+      output_tokens: 12,
+      input_tokens_details: { cached_tokens: 1931, cache_write_tokens: 0 },
+    },
+  })
+  expect(out).toEqual({
+    model: 'gpt-5.6-sol',
+    tokens: { input: 3, output: 12, input_cache_read: 1931 },
+  })
+})
+
 test('extractFromJson: OpenAI Chat prompt_tokens', () => {
   const out = extractFromJson({
     model: 'gpt-4o',
@@ -93,6 +128,20 @@ test('pickUsageModelId: caller dash → dot normalization', () => {
     .toBe('claude-opus-4.7')
 })
 
+// Copilot serves gpt-5.6-sol-fast but echoes `"model": "gpt-5.6-sol"` back in
+// the response envelope (verified against the live endpoint). Fast costs twice
+// the base, so losing the suffix here halves the bill and hides the model from
+// the by-model panel entirely.
+test('pickUsageModelId: OpenAI fast variant survives an upstream base id', () => {
+  expect(pickUsageModelId('gpt-5.6-sol', 'gpt-5.6-sol-fast')).toBe('gpt-5.6-sol-fast')
+})
+
+test('pickUsageModelId: a shared prefix that is not a dashed suffix does not merge', () => {
+  // `gpt-5.6-solar` is not `gpt-5.6-sol` + "-<variant>"; treating it as one
+  // would attribute a different model's spend to Sol.
+  expect(pickUsageModelId('gpt-5.6-solar', 'gpt-5.6-sol')).toBe('gpt-5.6-solar')
+})
+
 test('pickUsageModelId: JSON wins for unrelated ids', () => {
   expect(pickUsageModelId('gpt-5.5', 'claude-code-sdk')).toBe('gpt-5.5')
 })
@@ -128,6 +177,23 @@ test('applyStreamEvent: Responses response.completed is terminal', () => {
   expect(latest.tokens.input).toBe(80)
   expect(latest.tokens.output).toBe(30)
   expect(latest.tokens.input_cache_read).toBe(20)
+})
+
+test('applyStreamEvent: Responses response.completed splits out cache writes', () => {
+  const latest: UsageInfo = { tokens: {} }
+  const terminal = applyStreamEvent({
+    type: 'response.completed',
+    response: {
+      usage: {
+        input_tokens: 1934,
+        output_tokens: 12,
+        input_tokens_details: { cached_tokens: 0, cache_write_tokens: 1931 },
+      },
+    },
+  }, latest)
+  expect(terminal).toBe(true)
+  expect(latest.tokens.input).toBe(3)
+  expect(latest.tokens.input_cache_write).toBe(1931)
 })
 
 test('applyStreamEvent: Responses response.completed with image-modality split is terminal', () => {

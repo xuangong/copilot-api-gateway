@@ -27,7 +27,7 @@ interface RespUsage {
   output_tokens?: number
   total_tokens?: number
   output_tokens_details?: { reasoning_tokens?: number }
-  input_tokens_details?: { cached_tokens?: number }
+  input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number }
 }
 
 interface RespError {
@@ -177,6 +177,10 @@ const mapUsage = (usage: RespUsage | undefined): GeminiUsageMetadata | undefined
     ...(usage.input_tokens_details?.cached_tokens !== undefined
       ? { cachedContentTokenCount: usage.input_tokens_details.cached_tokens }
       : {}),
+    // `cache_write_tokens` is deliberately dropped: GeminiUsageMetadata has no
+    // cache-write slot, and promptTokenCount already includes those tokens.
+    // Billing reads the write count off the Responses envelope directly, so
+    // nothing is lost here — only the client-visible breakdown is coarser.
   }
 }
 

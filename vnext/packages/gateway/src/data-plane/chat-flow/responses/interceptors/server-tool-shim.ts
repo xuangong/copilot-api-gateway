@@ -82,7 +82,7 @@ export interface MergeUsage {
   input_tokens?: number
   output_tokens?: number
   total_tokens?: number
-  input_tokens_details?: { cached_tokens: number }
+  input_tokens_details?: { cached_tokens: number; cache_write_tokens?: number }
   output_tokens_details?: { reasoning_tokens: number }
 }
 
@@ -156,9 +156,17 @@ export const sumUsage = (a: MergeUsage, b: MergeUsage): MergeUsage => {
   sumScalar('output_tokens')
   sumScalar('total_tokens')
   if (a.input_tokens_details !== undefined || b.input_tokens_details !== undefined) {
+    // cache_write_tokens stays optional: only one of the merged turns priming
+    // the cache is normal, but neither having the field means the upstream
+    // does not report it at all, and inventing a 0 would claim otherwise.
+    const aWrite = a.input_tokens_details?.cache_write_tokens
+    const bWrite = b.input_tokens_details?.cache_write_tokens
     out.input_tokens_details = {
       cached_tokens:
         (a.input_tokens_details?.cached_tokens ?? 0) + (b.input_tokens_details?.cached_tokens ?? 0),
+      ...(aWrite !== undefined || bWrite !== undefined
+        ? { cache_write_tokens: (aWrite ?? 0) + (bWrite ?? 0) }
+        : {}),
     }
   }
   if (a.output_tokens_details !== undefined || b.output_tokens_details !== undefined) {

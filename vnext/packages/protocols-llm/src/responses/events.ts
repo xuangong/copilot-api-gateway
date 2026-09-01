@@ -309,7 +309,15 @@ export interface ResponsesResult {
     input_tokens: number
     output_tokens: number
     total_tokens: number
-    input_tokens_details?: { cached_tokens: number }
+    // Both details are disjoint subsets of `input_tokens`, which is the
+    // inclusive total. Probed against Copilot's Responses endpoint on
+    // gpt-5.6-sol: a priming call reported
+    // `{input_tokens: 1934, cache_write_tokens: 1931, cached_tokens: 0}` and
+    // the repeat reported `{input_tokens: 1934, cache_write_tokens: 0,
+    // cached_tokens: 1931}`. Optional because older upstreams populate
+    // `cached_tokens` alone.
+    // https://github.com/openai/openai-node/blob/61539248cbe04665de68a71e6fd878127ae4db87/src/resources/responses/responses.ts#L7259-L7269
+    input_tokens_details?: { cached_tokens: number; cache_write_tokens?: number }
     output_tokens_details?: { reasoning_tokens: number }
   }
 }

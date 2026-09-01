@@ -4,9 +4,11 @@
  * Three response shapes are recognized:
  *   1. Anthropic Messages — gated on `cache_read_input_tokens` /
  *      `cache_creation_input_tokens` to disambiguate from Responses.
- *   2. /v1/responses — input_tokens + input_tokens_details.cached_tokens.
- *      When *_tokens_details carries text/image splits, the image-modality
- *      split is preserved via `tokenUsageFromImagesResponse`.
+ *   2. /v1/responses — input_tokens is the inclusive total; both
+ *      input_tokens_details.cached_tokens and .cache_write_tokens are
+ *      disjoint subsets of it, so bare `input` is the remainder after
+ *      subtracting both. When *_tokens_details carries text/image splits,
+ *      the image-modality split is preserved via `tokenUsageFromImagesResponse`.
  *   3. OpenAI Chat Completions — prompt_tokens + prompt_tokens_details.cached_tokens.
  *
  * Stream events are folded into a `latest` accumulator; only Responses
@@ -39,6 +41,13 @@ function modelFromJson(json: unknown): string | undefined {
  * Pick the most specific id between caller-provided and JSON-extracted.
  * Caller wins only when (a) both refer to the same Copilot logical model,
  * and (b) caller carries a strictly longer variant suffix.
+ *
+ * Two ways to establish (a). `copilotPublicModelId` collapses Claude variant
+ * and date suffixes, but it is Claude-only — for every other family it is the
+ * identity, which left the whole rule dead outside Anthropic. So a plain
+ * prefix test backs it up: Copilot's OpenAI variants are the base id plus a
+ * dashed suffix, and upstream echoes back the *base*. Without this,
+ * `gpt-5.6-sol-fast` was recorded as `gpt-5.6-sol` and billed at half rate.
  */
 export function pickUsageModelId(
   fromJson: string | undefined,
@@ -48,7 +57,9 @@ export function pickUsageModelId(
   if (!fromJson) return normalizedCaller ?? fromCaller
   if (!normalizedCaller) return fromJson
   if (normalizedCaller === fromJson) return fromJson
-  const sameBase = copilotPublicModelId(normalizedCaller) === copilotPublicModelId(fromJson)
+  const sameBase =
+    copilotPublicModelId(normalizedCaller) === copilotPublicModelId(fromJson) ||
+    normalizedCaller.startsWith(`${fromJson}-`)
   if (sameBase && normalizedCaller.length > fromJson.length) return normalizedCaller
   return fromJson
 }
@@ -120,7 +131,7 @@ export function extractFromJson(json: unknown): UsageInfo | null {
       output_tokens?: number
       cache_read_input_tokens?: number
       cache_creation_input_tokens?: number
-      input_tokens_details?: { cached_tokens?: number; text_tokens?: number; image_tokens?: number }
+      input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number; text_tokens?: number; image_tokens?: number }
       output_tokens_details?: { text_tokens?: number; image_tokens?: number }
       prompt_tokens?: number
       completion_tokens?: number
@@ -152,13 +163,15 @@ export function extractFromJson(json: unknown): UsageInfo | null {
       }
     }
     const cached = u.input_tokens_details?.cached_tokens ?? 0
+    const cacheWrite = u.input_tokens_details?.cache_write_tokens ?? 0
     const model = modelFromJson(json)
     return {
       model,
       tokens: compactTokens({
-        input: Math.max(0, u.input_tokens - cached),
+        input: Math.max(0, u.input_tokens - cached - cacheWrite),
         output: u.output_tokens ?? 0,
         input_cache_read: cached,
+        input_cache_write: cacheWrite,
       }),
     }
   }
@@ -200,7 +213,7 @@ export function applyStreamEvent(parsed: unknown, latest: UsageInfo): boolean {
       usage?: {
         input_tokens?: number
         output_tokens?: number
-        input_tokens_details?: { cached_tokens?: number; text_tokens?: number; image_tokens?: number }
+        input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number; text_tokens?: number; image_tokens?: number }
         output_tokens_details?: { text_tokens?: number; image_tokens?: number }
       }
     }
@@ -251,10 +264,12 @@ export function applyStreamEvent(parsed: unknown, latest: UsageInfo): boolean {
       }
     }
     const cached = u.input_tokens_details?.cached_tokens ?? 0
+    const cacheWrite = u.input_tokens_details?.cache_write_tokens ?? 0
     latest.tokens = compactTokens({
-      input: Math.max(0, (u.input_tokens ?? 0) - cached),
+      input: Math.max(0, (u.input_tokens ?? 0) - cached - cacheWrite),
       output: u.output_tokens ?? 0,
       input_cache_read: cached,
+      input_cache_write: cacheWrite,
     })
     return true
   }
