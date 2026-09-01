@@ -46,15 +46,6 @@ export interface CopilotModelPricing {
 
 const only = (pricing: ModelPricing): readonly PricingTier[] => [{ label: "Default", pricing }]
 
-/** Every populated rate doubled, tier labels and thresholds untouched. */
-const doubled = (tiers: readonly PricingTier[]): readonly PricingTier[] =>
-  tiers.map((t) => ({
-    ...t,
-    pricing: Object.fromEntries(
-      Object.entries(t.pricing).map(([k, v]) => [k, typeof v === "number" ? v * 2 : v]),
-    ) as ModelPricing,
-  }))
-
 const OPUS_4X_5: ModelPricing = { input: 5, input_cache_read: 0.5, input_cache_write: 6.25, output: 25 }
 const SONNET_4X: ModelPricing = { input: 3, input_cache_read: 0.3, input_cache_write: 3.75, output: 15 }
 const GEMINI_FLASH_PROMO: ModelPricing = { input: 0.75, input_cache_read: 0.075, output: 3.75 }
@@ -114,11 +105,24 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
     match: "gpt-5.6-sol",
     tiers: SOL,
   },
-  // Live in the catalog on some tenants but absent from the docs page, so the
-  // rate is inferred: "Claude Opus 4.8 (fast mode)" is listed at exactly twice
-  // plain Opus 4.8, and this applies that same ratio to Sol. Unverified — if
-  // GitHub ever publishes a Sol Fast row, replace this rather than trust it.
-  { match: "gpt-5.6-sol-fast", tiers: doubled(SOL) },
+  // Live in the catalog on some tenants but absent from the docs page. The
+  // rates below are written out rather than derived from SOL: fast tiers have
+  // no fixed ratio to their base model (GitHub lists Opus 4.8 fast at 2x plain
+  // Opus 4.8, but Opus 4.6/4.7 fast at 6x), so any multiplier would be a
+  // coincidence dressed up as a rule. Unverified — if GitHub ever publishes a
+  // Sol Fast row, replace these figures rather than trust them. No
+  // `displayName`: that field is reserved for names the docs actually print.
+  {
+    match: "gpt-5.6-sol-fast",
+    tiers: [
+      { label: "Default", pricing: { input: 4, input_cache_read: 0.4, input_cache_write: 5, output: 20 } },
+      {
+        label: "Long context",
+        contextThreshold: 272_000,
+        pricing: { input: 8, input_cache_read: 0.8, input_cache_write: 10, output: 30 },
+      },
+    ],
+  },
   {
     displayName: "GPT-5.6 Terra",
     match: "gpt-5.6-terra",
