@@ -20,8 +20,7 @@ export function resolveKeyModel(
   let routedModel = bareModel
   const matchedRuleIndexes: number[] = []
 
-  for (let index = 0; index < policy.modelMappings.length; index++) {
-    const mapping = policy.modelMappings[index]!
+  for (const [index, mapping] of policy.modelMappings.entries()) {
     if (mapping.source !== routedModel) continue
     routedModel = mapping.destination
     matchedRuleIndexes.push(index)
