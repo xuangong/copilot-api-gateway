@@ -200,6 +200,38 @@ test('POST /v1/responses/compact routes the source model through enabled key map
   expect(upstream?.model).toBe(MODEL_ID)
 })
 
+test('POST /v1/responses/compact expands previous response before routing the current model', async () => {
+  const source = 'source-model'
+  initRepo(stubRepo([stubUpstream()]))
+  const store = new InMemoryResponsesSnapshotStore()
+  await store.save({
+    responseId: 'resp_previous', apiKeyId: 'key', model: 'snapshot-model',
+    items: [{ type: 'message', role: 'user', content: 'earlier work' }],
+    createdAt: Date.now(), expiresAt: Date.now() + 60_000,
+  })
+  initResponsesStore(store)
+  installCopilotFetch()
+  const app = buildApp({
+    apiKeyId: 'key',
+    copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE },
+    routingPolicy: { modelMappingsEnabled: true, modelMappings: [{ source, destination: MODEL_ID }] },
+  })
+  const res = await app.fetch(new Request('http://local/v1/responses/compact', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: source, previous_response_id: 'resp_previous', stream: true,
+      input: [{ type: 'message', role: 'user', content: 'current work' }],
+    }),
+  }), env)
+
+  expect(res.status).toBe(200)
+  expect(res.headers.get('content-type')).toContain('application/json')
+  const upstream = capturedUpstreamBody as { model?: unknown; previous_response_id?: unknown; input?: unknown[] } | null
+  expect(upstream?.model).toBe(MODEL_ID)
+  expect(upstream?.previous_response_id).toBeUndefined()
+  expect(upstream?.input).toContainEqual({ type: 'message', role: 'user', content: 'earlier work' })
+})
+
 test('POST /responses/compact (unversioned alias) is mounted too', async () => {
   initRepo(stubRepo([stubUpstream()]))
   initResponsesStore(new InMemoryResponsesSnapshotStore())

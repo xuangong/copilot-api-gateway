@@ -180,14 +180,14 @@ test('POST /v1beta Gemini routes the normalized URL model through enabled key ma
   expect(body.modelVersion).toBe(MODEL_ID)
 })
 
-test('POST /v1beta Gemini routes enabled mappings for streamGenerateContent', async () => {
+test('POST /v1beta Gemini routes a normalized source to distinct destination for streamGenerateContent', async () => {
   initRepo(stubRepo([stubUpstream()]))
   installCopilotFetch({ stream: true })
   const app = buildApp({
     copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE },
-    routingPolicy: { modelMappingsEnabled: true, modelMappings: [{ source: MODEL_ID, destination: MODEL_ID }] },
+    routingPolicy: { modelMappingsEnabled: true, modelMappings: [{ source: 'gemini-3-flash-preview', destination: MODEL_ID }] },
   })
-  const res = await app.fetch(new Request(`http://local/v1beta/models/${MODEL_ID}:streamGenerateContent`, {
+  const res = await app.fetch(new Request('http://local/v1beta/models/gemini-2.5-flash-customtools:streamGenerateContent', {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
   }), env)
@@ -211,6 +211,23 @@ test('POST /v1beta Gemini leaves normalized URL model unchanged when mappings ar
 
   expect(res.status).toBe(404)
   expect(capturedUpstreamModel).toBeNull()
+})
+
+test('POST /v1beta Gemini leaves stream source unchanged when mappings are disabled', async () => {
+  initRepo(stubRepo([stubUpstream()]))
+  installCopilotFetch({ stream: true })
+  const app = buildApp({
+    copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE },
+    routingPolicy: { modelMappingsEnabled: false, modelMappings: [{ source: MODEL_ID, destination: 'other' }] },
+  })
+  const res = await app.fetch(new Request(`http://local/v1beta/models/${MODEL_ID}:streamGenerateContent`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
+  }), env)
+
+  expect(res.status).toBe(200)
+  expect(capturedUpstreamModel).toBe('claude-3-5-sonnet')
+  expect(await res.text()).toContain(`"modelVersion":"${MODEL_ID}"`)
 })
 
 test('POST /v1beta/models/:model:streamGenerateContent returns Gemini SSE chunks', async () => {
