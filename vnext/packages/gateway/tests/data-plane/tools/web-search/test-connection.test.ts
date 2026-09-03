@@ -13,6 +13,8 @@ const key = (over: Partial<ApiKey> = {}): ApiKey => ({
   key: 'sk_1',
   createdAt: '2026-01-01T00:00:00Z',
   webSearchEnabled: true,
+  modelMappingsEnabled: false,
+  modelMappings: [],
   webSearchPriority: ['tavily'],
   webSearchTavilyKey: 'tv',
   ...over,

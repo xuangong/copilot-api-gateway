@@ -39,6 +39,8 @@ async function seedKey(id: string, opts: { quotaTokensPerMonth?: number } = {}) 
     name: id,
     key: 'sk-' + id,
     createdAt: new Date().toISOString(),
+    modelMappingsEnabled: false,
+    modelMappings: [],
     ...opts,
   })
 }

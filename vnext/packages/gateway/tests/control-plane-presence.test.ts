@@ -82,7 +82,7 @@ function buildApp(auth: PresenceAuthCtx) {
 }
 
 function mkKey(id: string, name: string, ownerId?: string): ApiKey {
-  return { id, name, key: `k-${id}`, createdAt: '2026-01-01T00:00:00Z', ownerId } as ApiKey
+  return { id, name, key: `k-${id}`, createdAt: '2026-01-01T00:00:00Z', ownerId, modelMappingsEnabled: false, modelMappings: [] } as ApiKey
 }
 
 function mkPresence(clientId: string, keyId: string | null, lastSeenAt: string, ownerId: string | null = null, keyName: string = 'k'): ClientPresence {

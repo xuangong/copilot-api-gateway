@@ -26,6 +26,8 @@ function fakeKey(id: string): ApiKey {
     webSearchLangsearchRef: null,
     webSearchTavilyRef: null,
     webSearchMsGroundingRef: null,
+    modelMappingsEnabled: false,
+    modelMappings: [],
   } as ApiKey
 }
 

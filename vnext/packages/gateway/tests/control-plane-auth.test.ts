@@ -221,6 +221,7 @@ test('POST /login falls back to API key when token lacks ses_ prefix', async () 
   await store.repo.apiKeys.save({
     id: 'k1', name: 'devkey', key: 'rawkey123456',
     createdAt: 'x', ownerId: 'u-owner', webSearchEnabled: true,
+    modelMappingsEnabled: false, modelMappings: [],
   })
   const res = await buildApp().request('/auth/login', {
     method: 'POST', body: JSON.stringify({ key: 'rawkey123456' }),
@@ -321,6 +322,7 @@ test('GET /admin/users enriches each user with counts', async () => {
   await store.repo.users.create(mkUser({ id: 'u1' }))
   await store.repo.apiKeys.save({
     id: 'k1', name: 'k', key: 'kk', createdAt: 'x', ownerId: 'u1', webSearchEnabled: true,
+    modelMappingsEnabled: false, modelMappings: [],
   })
   await store.repo.github.saveAccount(42, {
     token: 'tok', accountType: 'individual',
@@ -363,6 +365,7 @@ test('DELETE /admin/users/:id cascades across repos', async () => {
   })
   await store.repo.apiKeys.save({
     id: 'k1', name: 'k', key: 'kk', createdAt: 'x', ownerId: 'u1', webSearchEnabled: true,
+    modelMappingsEnabled: false, modelMappings: [],
   })
   await store.repo.github.saveAccount(99, {
     token: 't', accountType: 'individual',

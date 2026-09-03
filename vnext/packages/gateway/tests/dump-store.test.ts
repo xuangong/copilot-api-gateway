@@ -54,6 +54,8 @@ async function setupCtx(retentionSeconds: number | null = 3600): Promise<Ctx> {
     key: "raw-k1",
     createdAt: now,
     ownerId: "u1",
+    modelMappingsEnabled: false,
+    modelMappings: [],
     dumpRetentionSeconds: retentionSeconds,
   } as any)
   await repo.upstreams.save({

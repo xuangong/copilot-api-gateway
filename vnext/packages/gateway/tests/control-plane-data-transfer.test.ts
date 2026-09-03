@@ -58,7 +58,7 @@ function buildApp(auth: DataTransferAuthCtx) {
 }
 
 function mkKey(id: string, key: string): ApiKey {
-  return { id, name: id, key, createdAt: '2026-01-01T00:00:00Z' }
+  return { id, name: id, key, createdAt: '2026-01-01T00:00:00Z', modelMappingsEnabled: false, modelMappings: [] }
 }
 
 function mkAccount(userId: number, token: string): GitHubAccount {

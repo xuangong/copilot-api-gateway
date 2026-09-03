@@ -213,7 +213,7 @@ const scopedRepo = (): Repo => {
     },
     apiKeys: {
       getById: async (id: string) =>
-        id === SHARED_KEY ? { id: SHARED_KEY, name: 'shared', ownerId: OWNER } : null,
+        id === SHARED_KEY ? { id: SHARED_KEY, name: 'shared', ownerId: OWNER, modelMappingsEnabled: false, modelMappings: [] } : null,
     },
     keyAssignments: {
       listByUser: async (userId: string) =>

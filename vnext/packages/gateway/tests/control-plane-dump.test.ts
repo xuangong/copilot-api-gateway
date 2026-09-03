@@ -127,7 +127,7 @@ beforeEach(() => {
 const saveKey = async (id: string, ownerId: string, retention: number | null) => {
   await repoCtx.repo.apiKeys.save({
     id, name: `k-${id}`, key: `raw-${id}`, createdAt: new Date().toISOString(),
-    ownerId, dumpRetentionSeconds: retention,
+    ownerId, modelMappingsEnabled: false, modelMappings: [], dumpRetentionSeconds: retention,
   } as unknown as ApiKey)
 }
 

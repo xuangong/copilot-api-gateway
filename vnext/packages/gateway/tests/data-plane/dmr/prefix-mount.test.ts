@@ -56,7 +56,7 @@ const repo = (): Repo => ({
   upstreams: { list: async (f: { ownerId?: string } = {}) => (f.ownerId === OWNER ? [upstream] : []) },
   apiKeys: {
     findByRawKey: async (raw: string) =>
-      raw === BOUND_KEY ? { id: 'k1', name: 'bound', key: raw, ownerId: OWNER } : null,
+      raw === BOUND_KEY ? { id: 'k1', name: 'bound', key: raw, ownerId: OWNER, modelMappingsEnabled: false, modelMappings: [] } : null,
     getById: async () => null,
   },
   users: { findByKey: async () => null },

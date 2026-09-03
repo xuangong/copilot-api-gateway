@@ -34,6 +34,8 @@ const stubRepo = (): Repo => ({
       key: 'sk',
       createdAt: '2026-01-01T00:00:00Z',
       webSearchEnabled: true,
+      modelMappingsEnabled: false,
+      modelMappings: [],
       webSearchPriority: ['tavily'],
       webSearchTavilyKey: 'tvly-test',
     }),

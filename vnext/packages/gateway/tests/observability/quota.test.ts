@@ -27,6 +27,7 @@ const baseKey = (over: Partial<{ quotaRequestsPerMonth: number | null; quotaToke
   webSearchLangsearchKey: null, webSearchTavilyKey: null, webSearchMsGroundingKey: null,
   webSearchPriority: null,
   webSearchLangsearchRef: null, webSearchTavilyRef: null, webSearchMsGroundingRef: null,
+  modelMappingsEnabled: false, modelMappings: [],
   ...over,
 } as any)
 

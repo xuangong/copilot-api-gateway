@@ -74,7 +74,7 @@ function call(app: ReturnType<typeof buildApp>, path: string) {
 }
 
 function mkKey(id: string, name: string, ownerId?: string): ApiKey {
-  return { id, name, key: `k-${id}`, createdAt: '2026-01-01T00:00:00Z', ownerId } as ApiKey
+  return { id, name, key: `k-${id}`, createdAt: '2026-01-01T00:00:00Z', ownerId, modelMappingsEnabled: false, modelMappings: [] } as ApiKey
 }
 
 function mkUsage(keyId: string, hour: string, model = 'claude-sonnet-4-6'): UsageRecord {

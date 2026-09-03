@@ -100,6 +100,8 @@ test('streaming SSE dispatch writes 1 usage + 1 perf row', async () => {
     name: 'k',
     key: 'sk-test',
     createdAt: new Date().toISOString(),
+    modelMappingsEnabled: false,
+    modelMappings: [],
   })
 
   // Save a Copilot upstream so enumerateBindingCandidates finds the model
@@ -214,6 +216,8 @@ test('non-streaming dispatch persists pricing snapshot from provider.getPricingF
     name: 'k',
     key: 'sk-price',
     createdAt: new Date().toISOString(),
+    modelMappingsEnabled: false,
+    modelMappings: [],
   })
   await repo.upstreams.save({
     id: 'copilot:p1',

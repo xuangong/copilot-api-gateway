@@ -84,6 +84,8 @@ test('dispatch returns 429 when token quota exceeded', async () => {
     key: 'sk-test',
     createdAt: new Date().toISOString(),
     quotaTokensPerMonth: 100,
+    modelMappingsEnabled: false,
+    modelMappings: [],
   })
 
   // Pre-fill usage so weighted tokens exceed 100

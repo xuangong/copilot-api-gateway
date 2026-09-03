@@ -63,7 +63,7 @@ const scopedRepo = (): Repo => ({
   },
   apiKeys: {
     findByRawKey: async (raw: string) =>
-      raw === BOUND_KEY ? { id: 'k1', name: 'bound', key: raw, ownerId: OWNER } : null,
+      raw === BOUND_KEY ? { id: 'k1', name: 'bound', key: raw, ownerId: OWNER, modelMappingsEnabled: false, modelMappings: [] } : null,
   },
   users: { findByKey: async () => null },
 } as unknown as Repo)
