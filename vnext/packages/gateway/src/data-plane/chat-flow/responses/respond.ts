@@ -42,6 +42,8 @@ import { forwardUpstreamError } from '../../errors/forward'
 import {
   SourceStreamState,
   eventResultMetadata,
+  finalModelIdentity,
+  normalizeStreamEventModel,
   recordPerformance,
   recordUsage,
 } from '../shared/respond-telemetry.ts'
@@ -98,13 +100,18 @@ async function* consumeWithState<T>(
   try {
     for await (const frame of events) {
       if (frame.type === 'event') {
-        state.rememberUsage(frame.event)
         const evObj = frame.event as {
           model?: unknown
           response?: { model?: unknown }
           message?: { model?: unknown }
         }
         state.rememberModelKey(evObj.model ?? evObj.response?.model ?? evObj.message?.model)
+        const normalized = normalizeStreamEventModel(frame.event, state.modelKey)
+        state.rememberUsage(normalized)
+        const output = normalized === frame.event ? frame : { ...frame, event: normalized as T }
+        dump?.frame(output as ProtocolFrame<unknown>)
+        yield output
+        continue
       }
       dump?.frame(frame as ProtocolFrame<unknown>)
       yield frame
@@ -132,7 +139,7 @@ async function persistFromEventResult<T>(
   const md = await eventResultMetadata(result)
   const finalIdentity = result.finalMetadata
     ? md.modelIdentity
-    : { ...md.modelIdentity, modelKey: state.modelKey }
+    : finalModelIdentity(md.modelIdentity, state.modelKey, result.resolveModelIdentity)
   if (dump) {
     if (state.failed) dump.failed('responses stream failed')
     else dump.success(finalIdentity, state.usage.tokens)
@@ -187,9 +194,7 @@ const renderEventsAsSSE = (
   result: LlmEventResult<ProtocolFrame<ResponsesStreamEvent>>,
   options: RespondResponsesOptions,
 ): Response => {
-  const state = options.telemetryCtx || options.dump
-    ? new SourceStreamState(result.modelIdentity.modelKey)
-    : null
+  const state = new SourceStreamState(result.modelIdentity.modelKey)
   // Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
   // sees source-shape frames; same-protocol falls through unchanged.
   const upstreamFrames: AsyncIterable<ProtocolFrame<ResponsesStreamEvent>> = result.translateEvents
@@ -200,7 +205,7 @@ const renderEventsAsSSE = (
         result.modelIdentity.modelKey,
       )
     : result.events
-  const events = state ? consumeWithState(upstreamFrames, state, options.dump) : upstreamFrames
+  const events = consumeWithState(upstreamFrames, state, options.dump)
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       const keepalive = startSseKeepalive(controller, COMMENT_KEEPALIVE_FRAME)
@@ -221,7 +226,7 @@ const renderEventsAsSSE = (
       } finally {
         keepalive.stop()
         controller.close()
-        if (state) {
+        if (options.telemetryCtx || options.dump) {
           waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
         }
       }
@@ -257,10 +262,8 @@ const renderEventsAsJson = async (
   result: LlmEventResult<ProtocolFrame<ResponsesStreamEvent>>,
   options: RespondResponsesOptions,
 ): Promise<Response> => {
-  const state = options.telemetryCtx || options.dump
-    ? new SourceStreamState(result.modelIdentity.modelKey)
-    : null
-  const events = state ? consumeWithState(result.events, state, options.dump) : result.events
+  const state = new SourceStreamState(result.modelIdentity.modelKey)
+  const events = consumeWithState(result.events, state, options.dump)
   try {
     // Dispatch reassembly on hub protocol — same-protocol (or absent) →
     // responses reassembler; cross-protocol → hub reassembler so the
@@ -279,16 +282,16 @@ const renderEventsAsJson = async (
     const finalBody = result.translateBody
       ? await result.translateBody(reassembled, {
           signal: options.downstreamAbortController?.signal ?? new AbortController().signal,
-          model: result.modelIdentity.modelKey,
+          model: state.modelKey,
         })
       : reassembled
-    if (state) {
+    if (options.telemetryCtx || options.dump) {
       waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     }
     return Response.json(finalBody)
   } catch (err) {
-    if (state) state.failedAfter()
-    if (state) {
+    state.failedAfter()
+    if (options.telemetryCtx || options.dump) {
       waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     }
     const message = err instanceof Error ? err.message : String(err)

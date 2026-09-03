@@ -51,6 +51,15 @@ test('consumeWithState falls back to `model` when `modelVersion` is absent', asy
   expect(state.modelKey).toBe('gemini-2.5-pro-via-model-field')
 })
 
+test('consumeWithState preserves mapped Gemini modelVersion in yielded events', async () => {
+  const state = new SourceStreamState('gemini-2.5-pro-fast')
+  const upstream = { candidates: [], modelVersion: 'gemini-2.5-pro' }
+  async function* source() { yield upstream }
+  const [event] = await drain(consumeWithState(source(), state)) as Array<{ modelVersion: string }>
+  expect(event?.modelVersion).toBe('gemini-2.5-pro-fast')
+  expect(upstream.modelVersion).toBe('gemini-2.5-pro')
+})
+
 test('consumeWithState sets failed=true on iteration error before re-throwing', async () => {
   const state = new SourceStreamState('gemini-2.5-pro')
   async function* source() {

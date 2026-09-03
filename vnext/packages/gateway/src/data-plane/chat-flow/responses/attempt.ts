@@ -336,7 +336,15 @@ export const responsesAttempt = {
       })
       const modelIdentity = telemetryModelIdentity(bindingForTelemetry, sel.bareModel)
       const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
-      return llmEventResult(decorated, modelIdentity, performance)
+      return llmEventResult(
+        decorated,
+        modelIdentity,
+        performance,
+        undefined,
+        undefined,
+        undefined,
+        (modelKey) => telemetryModelIdentity(bindingForTelemetry, modelKey),
+      )
     }
 
     try {

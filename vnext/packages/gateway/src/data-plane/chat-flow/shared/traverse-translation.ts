@@ -152,5 +152,6 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     // encoding. The translator function here consumes BARE hub events (not
     // ProtocolFrame envelopes) and yields BARE source events.
     args.translator.translateEvents as LlmEventResult<ProtocolFrame<SourceFrame>>['translateEvents'],
+    innerEvents.resolveModelIdentity,
   )
 }

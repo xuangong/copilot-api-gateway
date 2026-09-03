@@ -27,6 +27,7 @@ import { detectClient } from '../../../data-plane/observability/client-detect.ts
 import {
   applyStreamEvent,
   extractFromJson,
+  pickUsageModelId,
   type UsageInfo,
 } from '../../../data-plane/observability/usage-extractor.ts'
 import { getRepo } from '../../../repo/index.ts'
@@ -107,15 +108,47 @@ export class SourceStreamState {
   }
 
   rememberModelKey(key: unknown): void {
-    if (typeof key !== 'string') return
-    if (key.length === 0) return
-    if (key === this.modelKey) return
-    this.modelKey = key
+    if (typeof key !== 'string' || key.length === 0) return
+    this.modelKey = pickUsageModelId(key, this.modelKey)
   }
 
   failedAfter(): void {
     this.failed = true
   }
+}
+
+/**
+ * Resolve the final identity after a stream reports a model alias. A mapped
+ * destination wins over its shorter base echo; a genuine correction is adopted
+ * only when the attempt can resolve its corresponding pricing identity.
+ */
+export function finalModelIdentity(
+  initial: TelemetryModelIdentity,
+  observed: string,
+  resolveModelIdentity?: (modelKey: string) => TelemetryModelIdentity | null,
+): TelemetryModelIdentity {
+  if (observed.length === 0) return initial
+  const modelKey = pickUsageModelId(observed, initial.modelKey)
+  if (modelKey === initial.modelKey || !resolveModelIdentity) return initial
+  return resolveModelIdentity(modelKey) ?? initial
+}
+
+/** Return a fresh event only when it carries a model field to normalize. */
+export function normalizeStreamEventModel(event: unknown, modelKey: string): unknown {
+  if (!event || typeof event !== 'object') return event
+  const source = event as Record<string, unknown>
+  let normalized: Record<string, unknown> | null = null
+  const replaceModel = (value: unknown): Record<string, unknown> | null => {
+    if (!value || typeof value !== 'object') return null
+    const nested = value as Record<string, unknown>
+    return typeof nested.model === 'string' ? { ...nested, model: modelKey } : null
+  }
+  if (typeof source.model === 'string') normalized = { ...source, model: modelKey }
+  for (const field of ['response', 'message'] as const) {
+    const nested = replaceModel(source[field])
+    if (nested) normalized = { ...(normalized ?? source), [field]: nested }
+  }
+  return normalized ?? event
 }
 
 function nonZeroUsage(tokens: TokenUsage): boolean {

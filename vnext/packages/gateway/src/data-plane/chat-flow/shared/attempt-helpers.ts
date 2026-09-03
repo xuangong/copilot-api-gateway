@@ -35,9 +35,10 @@ export interface AttemptBindingShape {
 export function telemetryModelIdentity(
   binding: AttemptBindingShape,
   modelKey: string,
+  publicModel = modelKey,
 ): TelemetryModelIdentity {
   return {
-    model: binding.model.id,
+    model: publicModel,
     upstream: binding.upstream,
     modelKey,
     cost: (binding.provider.getPricingForModelKey(modelKey) ?? null) as TelemetryModelIdentity['cost'],
@@ -48,10 +49,11 @@ export function upstreamPerformanceContext(
   telemetryCtx: TelemetryRequestContext,
   binding: AttemptBindingShape,
   modelKey: string,
+  publicModel = modelKey,
 ): PerformanceTelemetryContext {
   return {
     keyId: telemetryCtx.apiKeyId,
-    model: binding.model.id,
+    model: publicModel,
     upstream: binding.upstream,
     modelKey,
     stream: telemetryCtx.isStreaming,
@@ -90,8 +92,10 @@ export function providerResponseToExecuteResult<T>(
     decorated,
     telemetryModelIdentity(args.binding, args.bareModel),
     upstreamPerformanceContext(args.telemetryCtx, args.binding, args.bareModel),
-    // No finalMetadata: pass-through path. Interceptors that replace the stream
-    // construct their own LlmEventResult with their own finalMetadata.
+    undefined,
+    undefined,
+    undefined,
+    (modelKey) => telemetryModelIdentity(args.binding, modelKey),
   )
 }
 

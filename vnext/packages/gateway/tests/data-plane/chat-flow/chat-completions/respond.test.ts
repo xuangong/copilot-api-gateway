@@ -46,6 +46,18 @@ test('events + wantsStream=false → JSON Response with reassembled completion',
   expect(json.choices[0]?.message.content).toBe('hi')
 })
 
+test('streaming and JSON responses preserve the mapped destination model', async () => {
+  const mappedIdentity = { ...stubIdentity, model: 'gpt-5.6-sol-fast', modelKey: 'gpt-5.6-sol-fast' }
+  const source = async function* (): AsyncGenerator<ProtocolFrame<ChatCompletionsStreamEvent>> {
+    yield eventFrame({ id: 'x', object: 'chat.completion.chunk', created: 0, model: 'gpt-5.6-sol', choices: [] } as never)
+    yield doneFrame()
+  }
+  const stream = await respondChatCompletions(llmEventResult(source(), mappedIdentity), { wantsStream: true, includeUsageChunk: false })
+  expect(await stream.text()).toContain('"model":"gpt-5.6-sol-fast"')
+  const json = await respondChatCompletions(llmEventResult(source(), mappedIdentity), { wantsStream: false, includeUsageChunk: false })
+  expect((await json.json() as { model: string }).model).toBe('gpt-5.6-sol-fast')
+})
+
 test('internal-error renders JSON envelope with status', async () => {
   const resp = await respondChatCompletions(llmInternalErrorResult(502, new Error('boom')), {
     wantsStream: true,

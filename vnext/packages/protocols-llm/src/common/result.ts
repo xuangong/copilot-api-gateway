@@ -75,6 +75,12 @@ export interface LlmEventResult<T> {
   readonly type: 'events'
   readonly events: AsyncIterable<T>
   readonly modelIdentity: TelemetryModelIdentity
+  /**
+   * Resolves an upstream-reported model key into this attempt's public model,
+   * provider and price identity. This stays runtime-only; it is never part of
+   * a persisted telemetry payload.
+   */
+  readonly resolveModelIdentity?: (modelKey: string) => TelemetryModelIdentity
   readonly performance?: PerformanceTelemetryContext
   readonly finalMetadata?: Promise<EventResultMetadata>
   /**
@@ -140,6 +146,7 @@ export const llmEventResult = <T>(
   finalMetadata?: Promise<EventResultMetadata>,
   translateBody?: LlmEventResult<T>['translateBody'],
   translateEvents?: LlmEventResult<T>['translateEvents'],
+  resolveModelIdentity?: LlmEventResult<T>['resolveModelIdentity'],
 ): LlmEventResult<T> => ({
   type: 'events',
   events,
@@ -148,6 +155,7 @@ export const llmEventResult = <T>(
   finalMetadata,
   translateBody,
   translateEvents,
+  resolveModelIdentity,
 })
 
 export const llmInternalErrorResult = (

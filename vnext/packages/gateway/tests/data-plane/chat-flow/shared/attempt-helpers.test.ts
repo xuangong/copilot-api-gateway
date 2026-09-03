@@ -27,6 +27,11 @@ test('telemetryModelIdentity uses bareModel as initial modelKey + resolves cost'
   expect(id.cost).toEqual({ inputPerM: 1, outputPerM: 2 })
 })
 
+test('telemetryModelIdentity reports the routed destination instead of composite binding id', () => {
+  const id = telemetryModelIdentity(fakeBinding as never, 'gpt-5.6-sol-fast')
+  expect(id.model).toBe('gpt-5.6-sol-fast')
+})
+
 test('telemetryModelIdentity tolerates unknown modelKey (cost null)', () => {
   const id = telemetryModelIdentity(fakeBinding as never, 'gpt-unknown')
   expect(id.cost).toBeNull()

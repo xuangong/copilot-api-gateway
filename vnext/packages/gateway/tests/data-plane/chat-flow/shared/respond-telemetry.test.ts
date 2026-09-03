@@ -3,6 +3,8 @@ import { setupTestPlatform } from '../../../_setup-platform.ts'
 import {
   SourceStreamState,
   eventResultMetadata,
+  finalModelIdentity,
+  normalizeStreamEventModel,
   recordUsage,
   recordPerformance,
 } from '../../../../src/data-plane/chat-flow/shared/respond-telemetry.ts'
@@ -66,15 +68,37 @@ test('eventResultMetadata falls back to result.modelIdentity + performance', asy
   expect(md.performance?.keyId).toBe('k1')
 })
 
-test('SourceStreamState.rememberModelKey accepts only non-empty differing values', () => {
-  const s = new SourceStreamState('gpt-4')
-  expect(s.modelKey).toBe('gpt-4')
-  s.rememberModelKey('')
-  expect(s.modelKey).toBe('gpt-4')
-  s.rememberModelKey('gpt-4')
-  expect(s.modelKey).toBe('gpt-4')
-  s.rememberModelKey('gpt-4-turbo-2025')
-  expect(s.modelKey).toBe('gpt-4-turbo-2025')
+test('finalModelIdentity preserves a more specific mapped destination and its price', () => {
+  const fast = { ...identity('gpt-5.6-sol-fast'), cost: { input: 2 } as never }
+  const final = finalModelIdentity(fast, 'gpt-5.6-sol', (key) =>
+    ({ ...fast, modelKey: key, cost: { input: 1 } as never }),
+  )
+  expect(final).toBe(fast)
+})
+
+test('finalModelIdentity accepts a dated correction and reprices it', () => {
+  const initial = { ...identity('gpt-4-turbo'), cost: { input: 1 } as never }
+  const dated = { ...initial, modelKey: 'gpt-4-turbo-2025', cost: { input: 3 } as never }
+  expect(finalModelIdentity(initial, 'gpt-4-turbo-2025', (key) =>
+    key === dated.modelKey ? dated : null,
+  )).toBe(dated)
+})
+
+test('finalModelIdentity retains initial identity for invalid correction or missing price', () => {
+  const initial = { ...identity('gpt-4'), cost: { input: 1 } as never }
+  expect(finalModelIdentity(initial, '', () => null)).toBe(initial)
+  expect(finalModelIdentity(initial, 'unrelated', () => null)).toBe(initial)
+})
+
+test('normalizeStreamEventModel clones only observed model-bearing paths', () => {
+  const event = { model: 'gpt-5.6-sol', response: { model: 'gpt-5.6-sol' }, message: { model: 'gpt-5.6-sol' } }
+  const normalized = normalizeStreamEventModel(event, 'gpt-5.6-sol-fast') as typeof event
+  expect(normalized).not.toBe(event)
+  expect(normalized.model).toBe('gpt-5.6-sol-fast')
+  expect(normalized.response).not.toBe(event.response)
+  expect(normalized.response.model).toBe('gpt-5.6-sol-fast')
+  expect(normalized.message.model).toBe('gpt-5.6-sol-fast')
+  expect(normalizeStreamEventModel({ usage: {} }, 'gpt-5.6-sol-fast')).toEqual({ usage: {} })
 })
 
 test('SourceStreamState accumulates usage via rememberUsage', () => {
