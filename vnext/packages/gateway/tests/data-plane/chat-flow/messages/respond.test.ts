@@ -46,10 +46,10 @@ test('Messages translated stream receives and outputs the mapped destination', a
   expect(contextModel).toBe('gpt-5.6-sol-fast')
 })
 
-test('Messages stream normalizes a modelVersion-only correction', async () => {
+test('Messages stream keeps public model for a modelVersion provider revision', async () => {
   async function* modelVersionFrame(): AsyncGenerator<ProtocolFrame<MessagesStreamEvent>> {
     yield eventFrame({ type: 'message_stop', modelVersion: 'gpt-4-turbo-2025' } as unknown as MessagesStreamEvent)
   }
   const response = await respondMessages(llmEventResult(modelVersionFrame(), { ...identity, model: 'gpt-4-turbo', modelKey: 'gpt-4-turbo' }), { wantsStream: true })
-  expect(await response.text()).toContain('"modelVersion":"gpt-4-turbo-2025"')
+  expect(await response.text()).toContain('"modelVersion":"gpt-4-turbo"')
 })

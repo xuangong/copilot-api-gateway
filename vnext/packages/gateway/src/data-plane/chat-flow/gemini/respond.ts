@@ -125,7 +125,7 @@ const renderEventsAsSSE = (
   result: LlmEventResult<unknown>,
   options: RespondGeminiOptions,
 ): Response => {
-  const state = new SourceStreamState(result.modelIdentity.modelKey)
+  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
   // Cross-protocol streaming: apply translator at SSE-time so encodeClientSSE
   // and consumeWithState see bare gemini-shape events; same-protocol (no
   // translateEvents) passes result.events through unchanged.
@@ -134,7 +134,7 @@ const renderEventsAsSSE = (
         result.events,
         result.translateEvents,
         options.downstreamAbortController?.signal,
-        result.modelIdentity.modelKey,
+        result.modelIdentity.model,
       )
     : result.events
   const events = consumeWithState(upstreamEvents, state, options.dump)
@@ -315,7 +315,7 @@ const renderEventsAsJson = async (
   result: LlmEventResult<unknown>,
   options: RespondGeminiOptions,
 ): Promise<Response> => {
-  const state = new SourceStreamState(result.modelIdentity.modelKey)
+  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
   const events = consumeWithState(result.events, state, options.dump)
   try {
     // Dispatch reassembly on hub protocol.
@@ -340,7 +340,7 @@ const renderEventsAsJson = async (
     const finalBody = result.translateBody
       ? await result.translateBody(reassembled, {
           signal: options.downstreamAbortController?.signal ?? new AbortController().signal,
-          model: state.modelKey,
+          model: state.publicModel,
         })
       : reassembled
     if (options.telemetryCtx || options.dump) {
@@ -373,7 +373,7 @@ const renderUpstreamError = async (
   options: RespondGeminiOptions,
 ): Promise<Response> => {
   if (options.telemetryCtx) {
-    waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
+    waitUntil(recordPerformance(options.telemetryCtx, result.performance, true, undefined, result.targetApi))
   }
   options.dump?.error('upstream', result.performance?.upstream ?? undefined)
   return await forwardUpstreamError(upstreamErrorToResponse(result), 'gemini')

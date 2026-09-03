@@ -28,6 +28,7 @@ import {
 import { type ProtocolFrame } from '@vibe-core/result'
 import type { PairTranslator } from '../../dispatch/translator-registry.ts'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
+import { performanceTargetFromProtocol } from './respond-telemetry.ts'
 
 /**
  * File-local alias mirroring `result.ts`'s `TranslatorProtocol`. The
@@ -97,7 +98,14 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     signal: args.signal,
   })
 
-  if (inner.type === 'upstream-error') return inner
+  if (inner.type === 'upstream-error') {
+    return inner.targetApi
+      ? inner
+      : {
+          ...inner,
+          targetApi: performanceTargetFromProtocol(args.hubProtocol),
+        }
+  }
   if (inner.type === 'internal-error') {
     const prefix = `via-translator:${args.sourceProtocol}→${args.hubProtocol}`
     const reason = inner.reason ? `${prefix}:${inner.reason}` : prefix

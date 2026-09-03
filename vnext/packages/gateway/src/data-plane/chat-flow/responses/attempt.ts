@@ -59,7 +59,9 @@ import {
 } from '@vibe-llm/protocols/responses'
 import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vibe-llm/provider-llm'
 import {
+  initialProviderModelKey,
   telemetryModelIdentity,
+  modelIdentityResolver,
   upstreamPerformanceContext,
   type AttemptBindingShape,
 } from '../shared/attempt-helpers.ts'
@@ -300,14 +302,16 @@ export const responsesAttempt = {
         action: invocation.action,
       }
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
+      const publicModel = sel.bareModel
+      const providerModelKey = initialProviderModelKey(bindingForTelemetry, publicModel)
       upstreamResp = await sel.binding.provider.fetch(providerReq)
       if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
         const errResp = new Response(upstreamResp.body, { status: upstreamResp.status, headers: upstreamResp.headers })
-        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
+        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
         return await readUpstreamError(errResp, performance)
       }
       if (!upstreamResp.body) {
-        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
+        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
         return llmInternalErrorResult(502, new Error('upstream returned empty body'), performance)
       }
       // Streaming branch: parse the upstream SSE body as Responses frames.
@@ -334,8 +338,8 @@ export const responsesAttempt = {
         abortSignal: args.ctx.downstreamAbortSignal,
         protocol: 'responses',
       })
-      const modelIdentity = telemetryModelIdentity(bindingForTelemetry, sel.bareModel)
-      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
+      const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, publicModel)
+      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
       return llmEventResult(
         decorated,
         modelIdentity,
@@ -343,7 +347,7 @@ export const responsesAttempt = {
         undefined,
         undefined,
         undefined,
-        (modelKey) => telemetryModelIdentity(bindingForTelemetry, modelKey),
+        modelIdentityResolver(bindingForTelemetry, modelIdentity.model),
       )
     }
 
@@ -367,7 +371,9 @@ export const responsesAttempt = {
     } catch (err) {
       if (upstreamResp?.body) void upstreamResp.body.cancel().catch(() => {})
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
-      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
+      const publicModel = sel.bareModel
+      const providerModelKey = initialProviderModelKey(bindingForTelemetry, publicModel)
+      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
       // HTTPError is the legacy provider contract for upstream non-2xx; the
       // ProviderResponse-based branch above already covers the new contract,
       // but we keep this guard for providers that still throw.

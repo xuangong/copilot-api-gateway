@@ -151,8 +151,13 @@ function modelToBindingModel(
   const endpoints = kind === 'copilot'
     ? copilotModelEndpoints(model as Model)
     : genericModelEndpoints(model as Model, supportedEndpoints)
+  const providerData = (model as { providerData?: { upstreamModelId?: unknown } }).providerData
+  const providerModelKey = typeof providerData?.upstreamModelId === 'string'
+    ? providerData.upstreamModelId
+    : undefined
   return {
     id: model.id,
+    ...(providerModelKey !== undefined ? { providerModelKey } : {}),
     displayName: model.name,
     ownedBy: model.vendor,
     endpoints,

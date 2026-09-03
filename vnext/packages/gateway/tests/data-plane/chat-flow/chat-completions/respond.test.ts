@@ -1,5 +1,6 @@
 // vnext/packages/gateway/tests/data-plane/chat-flow/chat-completions/respond.test.ts
 import { test, expect } from 'bun:test'
+import { setupTestPlatform } from '../../../_setup-platform.ts'
 import { respondChatCompletions } from '../../../../src/data-plane/chat-flow/chat-completions/respond'
 import {
   llmEventResult,
@@ -46,13 +47,57 @@ test('events + wantsStream=false → JSON Response with reassembled completion',
   expect(json.choices[0]?.message.content).toBe('hi')
 })
 
-test('Chat streaming normalizes a modelVersion-only correction', async () => {
+test('Chat streaming retains the requested public model for a modelVersion provider revision', async () => {
   async function* source(): AsyncGenerator<ProtocolFrame<ChatCompletionsStreamEvent>> {
     yield eventFrame({ id: 'x', object: 'chat.completion.chunk', created: 0, modelVersion: 'gpt-4-turbo-2025', choices: [] } as never)
     yield doneFrame()
   }
   const response = await respondChatCompletions(llmEventResult(source(), { ...stubIdentity, modelKey: 'gpt-4-turbo', model: 'gpt-4-turbo' }), { wantsStream: true, includeUsageChunk: false })
-  expect(await response.text()).toContain('"modelVersion":"gpt-4-turbo-2025"')
+  expect(await response.text()).toContain('"modelVersion":"gpt-4-turbo"')
+})
+
+test('streaming keeps the public alias while persisting the provider revision and its price', async () => {
+  const { repo } = setupTestPlatform()
+  const alias = 'claude-sonnet-4-5'
+  const datedKey = 'claude-sonnet-4-5-20250929'
+  const datedCost = { input: 3, output: 15 }
+  const identity = {
+    ...stubIdentity,
+    model: alias,
+    modelKey: datedKey,
+    upstream: 'claude-code',
+    cost: datedCost,
+  }
+  const source = async function* (): AsyncGenerator<ProtocolFrame<ChatCompletionsStreamEvent>> {
+    yield eventFrame({
+      id: 'x', object: 'chat.completion.chunk', created: 0,
+      model: datedKey,
+      choices: [{ index: 0, delta: { content: 'ok' } }],
+      usage: { prompt_tokens: 2, completion_tokens: 1 },
+    } as never)
+    yield doneFrame()
+  }
+  const response = await respondChatCompletions(llmEventResult(source(), identity, {
+    keyId: 'claude-alias-key', model: alias, modelKey: datedKey, upstream: 'claude-code',
+    stream: true, runtimeLocation: 'bun',
+  }), {
+    wantsStream: true,
+    includeUsageChunk: false,
+    telemetryCtx: {
+      apiKeyId: 'claude-alias-key' as never, userAgent: null, requestId: 'claude-alias-request',
+      isStreaming: true, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'chat-completions',
+    },
+  })
+  expect(await response.text()).toContain(`"model":"${alias}"`)
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const usage = await repo.usage.query({
+    keyId: 'claude-alias-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(usage[0]).toMatchObject({ model: alias, modelKey: datedKey, cost: datedCost })
+  const performance = await repo.performance.query({
+    keyId: 'claude-alias-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(performance.summary[0]).toMatchObject({ model: alias, upstream: 'claude-code' })
 })
 
 test('streaming and JSON responses preserve the mapped destination model', async () => {

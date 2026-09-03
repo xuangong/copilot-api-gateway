@@ -50,6 +50,7 @@ const stubUpstream = (overrides: Partial<UpstreamRecord> = {}): UpstreamRecord =
 const stubRepo = (upstreams: UpstreamRecord[]): Repo => ({
   upstreams: {
     list: async () => upstreams,
+    getById: async (id: string) => upstreams.find((upstream) => upstream.id === id) ?? null,
   },
 } as unknown as Repo)
 
@@ -82,6 +83,50 @@ test('listProviderBindings expands stored Copilot upstream into per-model bindin
   expect(bindings.map((b) => b.model.id).sort()).toEqual(['gpt-4o', 'o3-mini'])
   expect(bindings[0]!.kind).toBe('copilot')
   expect(bindings[0]!.upstream).toBe('copilot:u1')
+})
+
+test('listProviderBindings preserves a provider model key apart from its public alias', async () => {
+  initRepo(stubRepo([stubUpstream({
+    provider: 'claude-code',
+    config: {
+      accounts: [{
+        email: null,
+        accountUuid: '00000000-0000-4000-8000-000000000001',
+        organizationUuid: null,
+        subscriptionType: 'max',
+        rateLimitTier: null,
+      }],
+    },
+    state: {
+      accounts: [{
+        accountUuid: '00000000-0000-4000-8000-000000000001',
+        tokenKind: 'oauth',
+        refreshToken: 'rt',
+        state: 'active',
+        stateUpdatedAt: '2026-01-01T00:00:00Z',
+        accessToken: {
+          token: 'at',
+          expiresAt: Date.now() + 3_600_000,
+          refreshedAt: '2026-01-01T00:00:00Z',
+        },
+        quotaSnapshot: null,
+        usageProbeSnapshot: null,
+      }],
+    },
+  })]))
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    data: [{
+      id: 'claude-sonnet-4-5-20250929',
+      display_name: 'Claude Sonnet 4.5',
+      max_input_tokens: 200000,
+    }],
+  }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch
+  const bindings = await listProviderBindings()
+  expect(bindings).toHaveLength(1)
+  expect(bindings[0]?.model).toMatchObject({
+    id: 'claude-sonnet-4-5',
+    providerModelKey: 'claude-sonnet-4-5-20250929',
+  })
 })
 
 test('listProviderBindings hides disabledPublicModelIds', async () => {

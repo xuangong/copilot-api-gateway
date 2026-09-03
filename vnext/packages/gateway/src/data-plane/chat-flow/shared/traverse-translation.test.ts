@@ -140,6 +140,115 @@ test('translated finalMetadata preserves rejection from the inner attempt', asyn
   await expect(result.finalMetadata).rejects.toBe(failure)
 })
 
+test('translated upstream errors preserve body and status while recording the hub target', async () => {
+  const { repo } = setupTestPlatform()
+  const body = new TextEncoder().encode('{"error":{"message":"slow down"}}')
+  const result = await traverseTranslation({
+    sourcePayload: { model: 'x' }, sourceProtocol: 'messages', hubProtocol: 'responses',
+    translator: fakeTranslator(),
+    innerAttempt: async () => ({
+      type: 'upstream-error' as const, status: 429, headers: new Headers({ 'retry-after': '1' }), body,
+      performance: {
+        keyId: 'translated-error-key', model: 'x', modelKey: 'x', upstream: 'u',
+        stream: false, runtimeLocation: 'bun' as const,
+      },
+    }),
+    inheritedHeaders: {}, inheritedTelemetryCtx: fakeTelemetryCtx, auth: {} as never,
+  })
+  expect(result.type).toBe('upstream-error')
+  if (result.type !== 'upstream-error') throw new Error('expected upstream error')
+  expect(result.status).toBe(429)
+  expect(result.body).toBe(body)
+  expect(result.targetApi).toBe('responses')
+  const response = await respondResponses(result as never, {
+    wantsStream: false,
+    telemetryCtx: {
+      apiKeyId: 'translated-error-key' as never, userAgent: null, requestId: 'translated-error',
+      isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'messages',
+    },
+  })
+  expect(response.status).toBe(429)
+  expect(response.headers.get('retry-after')).toBe('1')
+  expect(await response.text()).toBe('{"error":{"message":"slow down"}}')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const persisted = await repo.performance.query({
+    keyId: 'translated-error-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(persisted.summary[0]?.sourceApi).toBe('messages')
+  expect(persisted.summary[0]?.targetApi).toBe('responses')
+})
+
+test('gemini translated upstream errors persist the responses hub instead of its default target', async () => {
+  const { repo } = setupTestPlatform()
+  const result = await traverseTranslation({
+    sourcePayload: {}, sourceProtocol: 'gemini', hubProtocol: 'responses', translator: fakeTranslator(),
+    innerAttempt: async () => ({
+      type: 'upstream-error' as const, status: 503, headers: new Headers(), body: new Uint8Array(),
+      performance: {
+        keyId: 'gemini-translated-error', model: 'public-model', modelKey: 'provider-key', upstream: 'u',
+        stream: false, runtimeLocation: 'bun' as const,
+      },
+    }),
+    inheritedHeaders: {}, inheritedTelemetryCtx: fakeTelemetryCtx, auth: {} as never,
+  })
+  const response = await respondResponses(result as never, {
+    wantsStream: false,
+    telemetryCtx: {
+      apiKeyId: 'gemini-translated-error' as never, userAgent: null, requestId: 'gemini-translated-error',
+      isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
+    },
+  })
+  expect(response.status).toBe(503)
+  await response.text()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const persisted = await repo.performance.query({
+    keyId: 'gemini-translated-error' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(persisted.summary[0]).toMatchObject({ sourceApi: 'gemini', targetApi: 'responses' })
+})
+
+test('translated upstream errors retain actual hub targets across source protocols', async () => {
+  const cases = [
+    { sourceProtocol: 'responses' as const, hubProtocol: 'messages' as const, targetApi: 'messages' as const },
+    { sourceProtocol: 'gemini' as const, hubProtocol: 'responses' as const, targetApi: 'responses' as const },
+    { sourceProtocol: 'chat_completions' as const, hubProtocol: 'responses' as const, targetApi: 'responses' as const },
+  ]
+  for (const item of cases) {
+    const upstream = {
+      type: 'upstream-error' as const,
+      status: 500,
+      headers: new Headers(),
+      body: new Uint8Array(),
+    }
+    const result = await traverseTranslation({
+      sourcePayload: {},
+      sourceProtocol: item.sourceProtocol,
+      hubProtocol: item.hubProtocol,
+      translator: fakeTranslator(),
+      innerAttempt: async () => upstream,
+      inheritedHeaders: {},
+      inheritedTelemetryCtx: fakeTelemetryCtx,
+      auth: {} as never,
+    })
+    expect(result.type).toBe('upstream-error')
+    if (result.type !== 'upstream-error') throw new Error('expected upstream error')
+    expect(result.targetApi).toBe(item.targetApi)
+    expect(result.body).toBe(upstream.body)
+    expect(result.headers).toBe(upstream.headers)
+  }
+})
+
+test('nested translations keep the deepest upstream error target', async () => {
+  const upstream = {
+    type: 'upstream-error' as const, status: 500, headers: new Headers(), body: new Uint8Array(), targetApi: 'responses' as const,
+  }
+  const result = await traverseTranslation({
+    sourcePayload: {}, sourceProtocol: 'chat_completions', hubProtocol: 'messages', translator: fakeTranslator(),
+    innerAttempt: async () => upstream, inheritedHeaders: {}, inheritedTelemetryCtx: fakeTelemetryCtx, auth: {} as never,
+  })
+  expect(result).toBe(upstream)
+})
+
 test('TranslatorValidationError → 400 with reason translator-validation', async () => {
   const result = await traverseTranslation({
     sourcePayload: {},
@@ -178,7 +287,7 @@ test('generic translator throw → 500 with reason translator-internal', async (
   expect(result.reason).toBe('translator-internal')
 })
 
-test('upstream-error pass-through unchanged', async () => {
+test('upstream-error receives the translated target while preserving its response fields', async () => {
   const upstream = {
     type: 'upstream-error' as const,
     status: 502,
@@ -195,7 +304,11 @@ test('upstream-error pass-through unchanged', async () => {
     inheritedTelemetryCtx: fakeTelemetryCtx,
     auth: {} as never,
   })
-  expect(result).toBe(upstream)
+  expect(result.type).toBe('upstream-error')
+  if (result.type !== 'upstream-error') throw new Error('expected upstream error')
+  expect(result).toEqual({ ...upstream, targetApi: 'responses' })
+  expect(result.body).toBe(upstream.body)
+  expect(result.headers).toBe(upstream.headers)
 })
 
 test('internal-error reason is prefixed with via-translator', async () => {

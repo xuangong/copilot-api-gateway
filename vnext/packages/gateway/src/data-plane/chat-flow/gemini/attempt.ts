@@ -49,6 +49,7 @@ import {
 import { type ProtocolFrame } from '@vibe-core/result'
 import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vibe-llm/provider-llm'
 import {
+  initialProviderModelKey,
   upstreamPerformanceContext,
   type AttemptBindingShape,
 } from '../shared/attempt-helpers.ts'
@@ -184,6 +185,8 @@ export const geminiAttempt = {
     const chain: ReadonlyArray<GeminiInterceptor> = args.interceptors ?? geminiInterceptors
 
     const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
+    const publicModel = sel.bareModel
+    const providerModelKey = initialProviderModelKey(bindingForTelemetry, publicModel)
 
     const terminal = async (): Promise<GeminiAttemptResult> => {
       return await traverseTranslation({
@@ -215,7 +218,12 @@ export const geminiAttempt = {
       const chainCtx: RequestContext = { ...args.ctx, targetEndpoint: sel.targetEndpoint }
       return await runInterceptors(invocation, chainCtx, chain, terminal)
     } catch (err) {
-      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
+      const performance = upstreamPerformanceContext(
+        args.telemetryCtx,
+        bindingForTelemetry,
+        providerModelKey,
+        publicModel,
+      )
       // HTTPError is the legacy provider contract for upstream non-2xx; the
       // hub attempt's ProviderResponse-based branch above already covers the
       // new contract, but we keep this guard for providers that still throw.

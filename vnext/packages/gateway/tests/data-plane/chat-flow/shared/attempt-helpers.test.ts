@@ -1,6 +1,9 @@
 import { test, expect } from 'bun:test'
 import {
+  initialProviderModelKey,
   telemetryModelIdentity,
+  modelIdentityResolver,
+  providerResponseToExecuteResult,
   upstreamPerformanceContext,
 } from '../../../../src/data-plane/chat-flow/shared/attempt-helpers.ts'
 import type { TelemetryRequestContext } from '../../../../src/data-plane/chat-flow/shared/telemetry-ctx.ts'
@@ -27,9 +30,77 @@ test('telemetryModelIdentity uses bareModel as initial modelKey + resolves cost'
   expect(id.cost).toEqual({ inputPerM: 1, outputPerM: 2 })
 })
 
-test('telemetryModelIdentity reports the routed destination instead of composite binding id', () => {
-  const id = telemetryModelIdentity(fakeBinding as never, 'gpt-5.6-sol-fast')
+test('telemetryModelIdentity keeps an explicit routed destination distinct from binding id', () => {
+  const id = telemetryModelIdentity(
+    fakeBinding as never,
+    'gpt-5.6-sol-fast',
+    'gpt-5.6-sol-fast',
+  )
   expect(id.model).toBe('gpt-5.6-sol-fast')
+})
+
+test('provider revisions retain the routed public model while using the provider key for pricing', () => {
+  const datedKey = 'claude-sonnet-4-5-20250929'
+  const datedPricing = { inputPerM: 3, outputPerM: 15 }
+  const claudeBinding = {
+    upstream: 'claude-code',
+    model: {
+      id: 'claude-sonnet-4-5',
+      providerModelKey: datedKey,
+    },
+    provider: {
+      getPricingForModelKey: (key: string) => key === datedKey
+        ? datedPricing
+        : null,
+    },
+  }
+  const publicModel = claudeBinding.model.id
+  const initialKey = initialProviderModelKey(claudeBinding, publicModel)
+  const initial = telemetryModelIdentity(claudeBinding, initialKey, publicModel)
+  const performance = upstreamPerformanceContext(ctx(), claudeBinding, initialKey, publicModel)
+  const corrected = modelIdentityResolver(claudeBinding, initial.model)(datedKey)
+
+  expect(initial).toEqual({
+    model: publicModel,
+    upstream: 'claude-code',
+    modelKey: datedKey,
+    cost: datedPricing,
+  })
+  expect(performance.model).toBe(publicModel)
+  expect(performance.modelKey).toBe(datedKey)
+  expect(corrected).toEqual(initial)
+})
+
+test('providerResponseToExecuteResult separates public aliases from provider keys', () => {
+  const datedKey = 'claude-sonnet-4-5-20250929'
+  const binding = {
+    upstream: 'claude-code',
+    model: { id: 'claude-sonnet-4-5', providerModelKey: datedKey },
+    provider: { getPricingForModelKey: (key: string) => key === datedKey ? { inputPerM: 3 } : null },
+  }
+  const result = providerResponseToExecuteResult({
+    providerResp: {
+      status: 200,
+      headers: new Headers(),
+      body: new ReadableStream<Uint8Array>({ start(controller) { controller.close() } }),
+    },
+    binding,
+    telemetryCtx: ctx(),
+    bareModel: 'claude-sonnet-4-5',
+    protocol: 'messages',
+    toEvents: async function* () {},
+  })
+
+  expect(result.modelIdentity).toEqual({
+    model: 'claude-sonnet-4-5',
+    upstream: 'claude-code',
+    modelKey: datedKey,
+    cost: { inputPerM: 3 },
+  })
+  expect(result.performance).toMatchObject({
+    model: 'claude-sonnet-4-5',
+    modelKey: datedKey,
+  })
 })
 
 test('telemetryModelIdentity tolerates unknown modelKey (cost null)', () => {

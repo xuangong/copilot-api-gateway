@@ -91,13 +91,17 @@ test('finalModelIdentity retains initial identity when resolver is missing', () 
   expect(finalModelIdentity(initial, 'unrelated')).toBe(initial)
 })
 
-test('finalModelIdentity accepts a resolver result with null pricing', () => {
-  const initial = { ...identity('gpt-4-turbo'), cost: { input: 1 } as never }
+test('finalModelIdentity accepts an unpriced provider revision while retaining public model', () => {
+  const initial = {
+    ...identity('gpt-4-turbo'),
+    model: 'gpt-4-turbo',
+    cost: { input: 1 } as never,
+  }
   const resolved = finalModelIdentity(initial, 'gpt-4-turbo-2025', (modelKey) => ({
-    ...initial, model: modelKey, modelKey, cost: null,
+    ...initial, modelKey, cost: null,
   }))
   expect(resolved.modelKey).toBe('gpt-4-turbo-2025')
-  expect(resolved.model).toBe('gpt-4-turbo-2025')
+  expect(resolved.model).toBe('gpt-4-turbo')
   expect(resolved.cost).toBeNull()
 })
 

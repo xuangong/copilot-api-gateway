@@ -18,24 +18,28 @@ import { withUpstreamTelemetry } from './upstream-telemetry.ts'
  * Minimal shape this module reads from a `LlmProviderBinding`. The live
  * `LlmProviderBinding` (from `@vibe-llm/provider-llm`) has:
  *   - `upstream: string` — the upstream's name
- *   - `model: BindingModel` — `{ id, ..., cost? }`
+ *   - `model: BindingModel` — `{ id, providerModelKey?, ..., cost? }`
  *   - `provider: LlmModelProvider` — exposes `getPricingForModelKey(k)`
  *
  * Tests can substitute any structurally-compatible object via `as never` cast.
  */
 export interface AttemptBindingShape {
   readonly upstream: string
-  readonly model: { readonly id: string }
+  readonly model: { readonly id: string; readonly providerModelKey?: string }
   readonly provider: {
     readonly getPricingForModelKey: (k: string) => unknown | null
   }
   readonly enabledFlags?: ReadonlySet<string>
 }
 
+export function initialProviderModelKey(binding: AttemptBindingShape, publicModel: string): string {
+  return binding.model.providerModelKey ?? publicModel
+}
+
 export function telemetryModelIdentity(
   binding: AttemptBindingShape,
   modelKey: string,
-  publicModel = modelKey,
+  publicModel = binding.model.id,
 ): TelemetryModelIdentity {
   return {
     model: publicModel,
@@ -45,11 +49,18 @@ export function telemetryModelIdentity(
   }
 }
 
+export function modelIdentityResolver(
+  binding: AttemptBindingShape,
+  publicModel: string,
+): (modelKey: string) => TelemetryModelIdentity {
+  return (modelKey) => telemetryModelIdentity(binding, modelKey, publicModel)
+}
+
 export function upstreamPerformanceContext(
   telemetryCtx: TelemetryRequestContext,
   binding: AttemptBindingShape,
   modelKey: string,
-  publicModel = modelKey,
+  publicModel = binding.model.id,
 ): PerformanceTelemetryContext {
   return {
     keyId: telemetryCtx.apiKeyId,
@@ -88,14 +99,26 @@ export function providerResponseToExecuteResult<T>(
     abortSignal: args.abortSignal,
     protocol: args.protocol,
   })
+  const publicModel = args.bareModel
+  const providerModelKey = initialProviderModelKey(args.binding, publicModel)
+  const modelIdentity = telemetryModelIdentity(
+    args.binding,
+    providerModelKey,
+    publicModel,
+  )
   return llmEventResult(
     decorated,
-    telemetryModelIdentity(args.binding, args.bareModel),
-    upstreamPerformanceContext(args.telemetryCtx, args.binding, args.bareModel),
+    modelIdentity,
+    upstreamPerformanceContext(
+      args.telemetryCtx,
+      args.binding,
+      providerModelKey,
+      publicModel,
+    ),
     undefined,
     undefined,
     undefined,
-    (modelKey) => telemetryModelIdentity(args.binding, modelKey),
+    modelIdentityResolver(args.binding, modelIdentity.model),
   )
 }
 

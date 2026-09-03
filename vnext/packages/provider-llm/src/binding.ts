@@ -12,6 +12,8 @@ import type { LlmModelProvider } from './types'
 
 export interface BindingModel {
   id: string
+  /** Provider wire/pricing key when it differs from the client-facing alias. */
+  providerModelKey?: string
   displayName?: string
   ownedBy?: string
   created?: number

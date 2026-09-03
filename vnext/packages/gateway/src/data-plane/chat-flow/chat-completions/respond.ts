@@ -119,7 +119,7 @@ async function* consumeWithState<T>(
           message?: { model?: unknown }
         }
         state.rememberModelKey(evObj.model ?? evObj.modelVersion ?? evObj.response?.model ?? evObj.message?.model)
-        const normalized = normalizeStreamEventModel(frame.event, state.modelKey)
+        const normalized = normalizeStreamEventModel(frame.event, state.publicModel)
         state.rememberUsage(normalized)
         const output = normalized === frame.event ? frame : { ...frame, event: normalized as T }
         dump?.frame(output as ProtocolFrame<unknown>)
@@ -211,7 +211,7 @@ const renderEventsAsSSE = (
   result: LlmEventResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
   options: RespondChatCompletionsOptions,
 ): Response => {
-  const state = new SourceStreamState(result.modelIdentity.modelKey)
+  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
   // Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
   // sees source-shape frames; same-protocol falls through unchanged.
   const upstreamFrames: AsyncIterable<ProtocolFrame<ChatCompletionsStreamEvent>> = result.translateEvents
@@ -219,7 +219,7 @@ const renderEventsAsSSE = (
         result.events as unknown as AsyncIterable<ProtocolFrame<unknown>>,
         result.translateEvents,
         options.downstreamAbortController?.signal,
-        result.modelIdentity.modelKey,
+        result.modelIdentity.model,
       )
     : result.events
   const events = consumeWithState(upstreamFrames, state, options.dump)
@@ -283,7 +283,7 @@ const renderEventsAsJson = async (
   result: LlmEventResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
   options: RespondChatCompletionsOptions,
 ): Promise<Response> => {
-  const state = new SourceStreamState(result.modelIdentity.modelKey)
+  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
   const events = consumeWithState(result.events, state, options.dump)
   try {
     // Dispatch reassembly on hub protocol — same-protocol (or absent) →
@@ -306,7 +306,7 @@ const renderEventsAsJson = async (
     const finalBody = result.translateBody
       ? await result.translateBody(reassembled, {
           signal: options.downstreamAbortController?.signal ?? new AbortController().signal,
-          model: state.modelKey,
+          model: state.publicModel,
         })
       : reassembled
     if (options.telemetryCtx || options.dump) {
@@ -341,7 +341,7 @@ const renderUpstreamError = async (
   options: RespondChatCompletionsOptions,
 ): Promise<Response> => {
   if (options.telemetryCtx) {
-    waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
+    waitUntil(recordPerformance(options.telemetryCtx, result.performance, true, undefined, result.targetApi))
   }
   options.dump?.error('upstream', result.performance?.upstream ?? undefined)
   return await forwardUpstreamError(upstreamErrorToResponse(result), 'chat_completions')

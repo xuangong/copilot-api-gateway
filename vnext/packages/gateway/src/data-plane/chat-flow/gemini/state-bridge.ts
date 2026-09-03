@@ -55,7 +55,7 @@ export async function* consumeWithState(
     for await (const evt of events) {
       const e = evt as { modelVersion?: unknown; model?: unknown }
       state.rememberModelKey(e.modelVersion ?? e.model)
-      const normalized = normalizeStreamEventModel(evt, state.modelKey)
+      const normalized = normalizeStreamEventModel(evt, state.publicModel)
       state.rememberUsage(normalized)
       dump?.frame(eventFrame(normalized) as ProtocolFrame<unknown>)
       yield normalized

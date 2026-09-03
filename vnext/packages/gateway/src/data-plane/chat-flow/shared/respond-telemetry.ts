@@ -90,11 +90,13 @@ export async function eventResultMetadata<T>(
  */
 export class SourceStreamState {
   modelKey: string
+  readonly publicModel: string
   failed = false
   usage: UsageInfo
 
-  constructor(initialModelKey: string) {
+  constructor(initialModelKey: string, publicModel = initialModelKey) {
     this.modelKey = initialModelKey
+    this.publicModel = publicModel
     this.usage = { tokens: {} }
   }
 
@@ -210,13 +212,22 @@ export async function recordUsage(
  * kit's `endpointTag`); `targetApi` mirrors the source unless the model
  * identity carries a `translatorPair.hub` overriding it.
  */
+type TranslatorHub = NonNullable<TelemetryModelIdentity['translatorPair']>['hub']
+
+export function performanceTargetFromProtocol(
+  protocol: TranslatorHub,
+): Exclude<PerformanceTargetApi, 'embeddings'> | undefined {
+  if (protocol === 'chat_completions') return 'chat-completions'
+  if (protocol === 'messages' || protocol === 'responses') return protocol
+  return undefined
+}
+
 export function performanceTargetFromTranslatorPair(
   identity: TelemetryModelIdentity,
 ): PerformanceTargetApi | undefined {
-  const hub = identity.translatorPair?.hub
-  if (hub === 'chat_completions') return 'chat-completions'
-  if (hub === 'messages' || hub === 'responses') return hub
-  return undefined
+  return identity.translatorPair
+    ? performanceTargetFromProtocol(identity.translatorPair.hub)
+    : undefined
 }
 
 export async function recordPerformance(

@@ -24,12 +24,12 @@ test('Responses stream and JSON retain mapped destination when upstream echoes b
   expect((await json.json() as { model: string }).model).toBe('gpt-5.6-sol-fast')
 })
 
-test('Responses stream normalizes a modelVersion-only correction', async () => {
+test('Responses stream keeps public model for a modelVersion provider revision', async () => {
   async function* source(): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
     yield eventFrame({ type: 'response.completed', modelVersion: 'gpt-4-turbo-2025', response: { id: 'x', object: 'response', model: 'gpt-4-turbo-2025', output: [], status: 'completed', error: null, incomplete_details: null } } as never)
   }
   const response = await respondResponses(llmEventResult(source(), { ...identity, model: 'gpt-4-turbo', modelKey: 'gpt-4-turbo' }), { wantsStream: true })
-  expect(await response.text()).toContain('"modelVersion":"gpt-4-turbo-2025"')
+  expect(await response.text()).toContain('"modelVersion":"gpt-4-turbo"')
 })
 
 test('Responses translated stream receives and outputs the mapped destination', async () => {

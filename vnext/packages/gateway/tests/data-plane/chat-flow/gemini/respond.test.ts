@@ -28,7 +28,7 @@ import type { ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
 import type { MessagesStreamEvent } from '@vibe-llm/protocols/messages'
 
 const stubIdentity: TelemetryModelIdentity = {
-  model: '<unknown>',
+  model: 'gemini-2.5-pro',
   upstream: '<unknown>',
   modelKey: 'gemini-2.5-pro',
   cost: null,

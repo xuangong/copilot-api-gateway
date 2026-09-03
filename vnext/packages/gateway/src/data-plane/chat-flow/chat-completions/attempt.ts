@@ -21,7 +21,9 @@ import { type ProtocolFrame } from '@vibe-core/result'
 import { parseChatCompletionsStream, type ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
 import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vibe-llm/provider-llm'
 import {
+  initialProviderModelKey,
   telemetryModelIdentity,
+  modelIdentityResolver,
   upstreamPerformanceContext,
   type AttemptBindingShape,
 } from '../shared/attempt-helpers.ts'
@@ -163,6 +165,8 @@ export const chatCompletionsAttempt = {
       // returns a structurally-equivalent LlmProviderBinding; we only depend on
       // upstream.name + upstreamModel.id + provider.getPricingForModelKey).
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
+      const publicModel = sel.bareModel
+      const providerModelKey = initialProviderModelKey(bindingForTelemetry, publicModel)
       upstreamResp = await binding.provider.fetch(providerReq)
       if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
         // Wrap the ProviderResponse shape into a Response so readUpstreamError
@@ -170,11 +174,11 @@ export const chatCompletionsAttempt = {
         // ctx flows through so respond.ts can write a `failed=true` perf row
         // without losing keyId/upstream/runtime.
         const errResp = new Response(upstreamResp.body, { status: upstreamResp.status, headers: upstreamResp.headers })
-        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
+        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
         return await readUpstreamError(errResp, performance)
       }
       if (!upstreamResp.body) {
-        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
+        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
         return llmInternalErrorResult(502, new Error('upstream returned empty body'), performance)
       }
       // Non-streaming requests (or unexpectedly-JSON responses) need to be
@@ -198,8 +202,8 @@ export const chatCompletionsAttempt = {
         abortSignal: args.ctx.downstreamAbortSignal,
         protocol: 'chat_completions',
       })
-      const modelIdentity = telemetryModelIdentity(bindingForTelemetry, sel.bareModel)
-      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
+      const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, publicModel)
+      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
       return llmEventResult(
         decorated,
         modelIdentity,
@@ -207,7 +211,7 @@ export const chatCompletionsAttempt = {
         undefined,
         undefined,
         undefined,
-        (modelKey) => telemetryModelIdentity(bindingForTelemetry, modelKey),
+        modelIdentityResolver(bindingForTelemetry, modelIdentity.model),
       )
     }
 
@@ -224,7 +228,9 @@ export const chatCompletionsAttempt = {
       // errors (model-not-found, etc.) returned earlier above deliberately
       // omit `performance` per spec §6.2.
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
-      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, sel.bareModel)
+      const publicModel = sel.bareModel
+      const providerModelKey = initialProviderModelKey(bindingForTelemetry, publicModel)
+      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
       // Providers throw `HTTPError` for upstream non-2xx (matches the legacy
       // `dispatch()` contract). Surface it as an `UpstreamErrorResult` so
       // respond.ts can preserve the original status (400/401/etc.) and body

@@ -121,6 +121,8 @@ export interface UpstreamErrorResult {
   readonly headers: Headers
   readonly body: Uint8Array
   readonly performance?: PerformanceTelemetryContext
+  /** Actual protocol reached after cross-protocol translation, when known. */
+  readonly targetApi?: 'messages' | 'responses' | 'chat-completions'
 }
 
 export interface InternalErrorResult {
