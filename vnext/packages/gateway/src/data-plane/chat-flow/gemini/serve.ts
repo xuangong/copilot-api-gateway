@@ -111,15 +111,15 @@ export async function serveGemini(args: GeminiServeArgs): Promise<Response> {
     apiKeyId: args.auth.apiKeyId,
     routingPolicy: args.auth.routingPolicy,
   }
-  const routedModel = resolveKeyModel(args.model, args.auth.routingPolicy).routedModel
+  const resolved = resolveKeyModel(args.model, args.auth.routingPolicy)
   const { response } = await serveTemplate(
     geminiHooks,
     {
       raw: args.raw,
-      auth,
+      auth: resolved.upstreamPin ? { ...auth, pin: resolved.upstreamPin } : auth,
       obsCtx: args.obsCtx as KitObsCtx,
       signal: args.signal,
-      extras: { requestedModel: args.model, model: routedModel, forceStream: args.forceStream },
+      extras: { requestedModel: args.model, model: resolved.routedModel, forceStream: args.forceStream },
       dump: args.dump ?? null,
     },
     kitDeps,

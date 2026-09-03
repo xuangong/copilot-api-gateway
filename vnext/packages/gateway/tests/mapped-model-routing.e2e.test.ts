@@ -12,7 +12,7 @@ const env = {} as never
 const destination = 'destination'
 const originalFetch = globalThis.fetch
 
-type Protocol = 'chat' | 'messages' | 'responses'
+type Protocol = 'chat' | 'messages' | 'responses' | 'gemini'
 
 interface ServedCall {
   model: string | null
@@ -117,8 +117,13 @@ function requestFor(protocol: Protocol, model: string): Request {
       ...common, body: JSON.stringify({ model, max_tokens: 16, messages: [{ role: 'user', content: 'hi' }] }),
     })
   }
-  return new Request('http://local/v1/responses', {
-    ...common, body: JSON.stringify({ model, input: 'hi' }),
+  if (protocol === 'responses') {
+    return new Request('http://local/v1/responses', {
+      ...common, body: JSON.stringify({ model, input: 'hi' }),
+    })
+  }
+  return new Request(`http://local/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    ...common, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
   })
 }
 
@@ -137,13 +142,16 @@ const mappedPolicy: DataPlaneAuthCtx['routingPolicy'] = {
   modelMappings: [{ source: 'source', destination }],
 }
 
-test.each(['messages', 'responses'] as const)('mapped explicit pin selects only its provider for %s', async (protocol) => {
+test.each(['chat', 'messages', 'responses', 'gemini'] as const)('mapped explicit pin selects only its provider for %s', async (protocol) => {
   const { response, calls } = await serve(protocol, 'up_A/source', [customUpstream('up_A'), customUpstream('up_B')], {
     routingPolicy: mappedPolicy,
   })
 
   expect(response.status).toBe(200)
-  expect(calls.A).toEqual([{ model: destination, path: `/v1/${protocol}` }])
+  expect(calls.A).toEqual([{
+    model: destination,
+    path: protocol === 'chat' ? '/v1/chat/completions' : protocol === 'gemini' ? '/v1/messages' : `/v1/${protocol}`,
+  }])
   expect(calls.B).toEqual([])
 })
 
@@ -151,6 +159,9 @@ test.each([
   ['absent', 'chat', []],
   ['disabled', 'messages', [customUpstream('up_A', ['chat_completions', 'messages', 'responses'], false)]],
   ['unsupported endpoint', 'responses', [customUpstream('up_A', ['embeddings'])]],
+  ['absent', 'gemini', []],
+  ['disabled', 'gemini', [customUpstream('up_A', ['chat_completions', 'messages', 'responses'], false)]],
+  ['unsupported endpoint', 'gemini', [customUpstream('up_A', ['embeddings'])]],
 ] as const)('mapped explicit pin returns model-not-found when A is %s and B could serve the destination', async (_state, protocol, aRows) => {
   const { response, calls } = await serve(protocol, 'up_A/source', [...aRows, customUpstream('up_B')], {
     routingPolicy: mappedPolicy,

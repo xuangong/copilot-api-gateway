@@ -16,8 +16,14 @@ const auth: DataPlaneAuthCtx = {
 }
 const obsCtx: DispatchObsCtx = { apiKeyId: 'key', userAgent: 'test', requestId: 'request' }
 
-test('dump retains Responses source model before routing an immutable payload', async () => {
-  initResponsesStore(new InMemoryResponsesSnapshotStore())
+test('compact dump retains source while previous response is expanded and model is routed', async () => {
+  const store = new InMemoryResponsesSnapshotStore()
+  await store.save({
+    responseId: 'resp_previous', apiKeyId: 'key', model: 'old-model',
+    items: [{ type: 'message', role: 'user', content: 'earlier work' }],
+    createdAt: Date.now(), expiresAt: Date.now() + 60_000,
+  })
+  initResponsesStore(store)
   const requested: string[] = []
   const dump = {
     requestedModel: (model: string) => { requested.push(model) },
@@ -28,10 +34,18 @@ test('dump retains Responses source model before routing an immutable payload', 
     recordSentPayloadBytes: () => {},
     error: () => {},
   }
-  const raw = { model: 'source', input: 'hello' }
-  const { response } = await serveResponses({ raw, auth, obsCtx, dump })
+  const raw = {
+    model: 'source', previous_response_id: 'resp_previous',
+    input: [{ type: 'message', role: 'user', content: 'current work' }],
+  }
+  const { response, mergedInputItems } = await serveResponses({ raw, auth, obsCtx, dump, action: 'compact' })
 
   expect(requested).toEqual(['source'])
   expect(raw.model).toBe('source')
+  expect(raw.previous_response_id).toBe('resp_previous')
+  expect(mergedInputItems).toEqual([
+    { type: 'message', role: 'user', content: 'earlier work' },
+    { type: 'message', role: 'user', content: 'current work' },
+  ])
   expect(response.status).toBe(404)
 })

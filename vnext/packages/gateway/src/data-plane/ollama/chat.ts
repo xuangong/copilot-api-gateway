@@ -75,7 +75,7 @@ export async function ollamaChatHandler(c: Context<{ Bindings: Env }>): Promise<
     return Response.json(
       openAIJsonToOllama(
         json,
-        body.model,
+        json.model ?? body.model,
         createdAt,
         timings(
           startMs,
@@ -91,6 +91,7 @@ export async function ollamaChatHandler(c: Context<{ Bindings: Env }>): Promise<
   const state = new OllamaStreamState()
   const encoder = new TextEncoder()
   let firstTokenMs: number | null = null
+  let effectiveModel = body.model
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -99,13 +100,15 @@ export async function ollamaChatHandler(c: Context<{ Bindings: Env }>): Promise<
       }
       try {
         for await (const chunk of parseChatSSEStream(upstream.body, c.req.raw.signal)) {
-          const line = state.chunkToLine(chunk as OpenAIStreamChunk, body.model, createdAt)
+          const parsedChunk = chunk as OpenAIStreamChunk
+          if (typeof parsedChunk.model === 'string') effectiveModel = parsedChunk.model
+          const line = state.chunkToLine(parsedChunk, effectiveModel, createdAt)
           if (line !== null && firstTokenMs === null) firstTokenMs = performance.now()
           write(line)
         }
-        write(state.toolCallLine(body.model, createdAt))
+        write(state.toolCallLine(effectiveModel, createdAt))
         write(state.doneLine(
-          body.model,
+          effectiveModel,
           createdAt,
           timings(startMs, firstTokenMs, performance.now(), state.promptTokens, state.completionTokens),
         ))
@@ -114,7 +117,7 @@ export async function ollamaChatHandler(c: Context<{ Bindings: Env }>): Promise<
         // terminal frame is what tells ollama-js to stop reading, so emit it
         // rather than leaving the reader hanging on a truncated stream.
         write(state.doneLine(
-          body.model,
+          effectiveModel,
           createdAt,
           timings(startMs, firstTokenMs, performance.now(), state.promptTokens, state.completionTokens),
         ))

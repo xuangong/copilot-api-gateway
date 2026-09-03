@@ -148,11 +148,13 @@ test('API-key routing maps Ollama model names only when enabled', async () => {
   const routed = await chat({ model: SOURCE_MODEL, stream: false, messages: [{ role: 'user', content: 'hi' }] })
   expect(routed.status).toBe(200)
   expect(capturedUpstreamModel).toBe(MODEL)
+  expect((await routed.json() as { model?: unknown }).model).toBe(MODEL)
 
   modelMappingsEnabled = false
   const original = await chat({ model: SOURCE_MODEL, stream: false, messages: [{ role: 'user', content: 'hi' }] })
   expect(original.status).toBe(200)
   expect(capturedUpstreamModel).toBe(SOURCE_MODEL)
+  expect((await original.json() as { model?: unknown }).model).toBe(SOURCE_MODEL)
 })
 
 test('streaming is NDJSON — every line parses on its own, terminated by done:true', async () => {
@@ -169,6 +171,7 @@ test('streaming is NDJSON — every line parses on its own, terminated by done:t
   expect(last.prompt_eval_count).toBe(4)
   expect(last.eval_count).toBe(2)
   expect(frames.slice(0, -1).every((f) => f.done === false)).toBe(true)
+  expect(frames.every((f) => f.model === MODEL)).toBe(true)
 })
 
 test('stream defaults to true when the field is omitted', async () => {

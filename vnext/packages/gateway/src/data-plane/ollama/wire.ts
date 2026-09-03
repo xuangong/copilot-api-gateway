@@ -205,6 +205,7 @@ export function openAIJsonToOllama(
 }
 
 export interface OpenAIStreamChunk {
+  model?: string
   choices?: Array<{
     delta?: {
       content?: string | null
