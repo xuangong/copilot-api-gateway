@@ -18,6 +18,7 @@ import type {
 } from '../src/repo/types.ts'
 import { apiKeysRouter, type AuthCtx } from '../src/control-plane/api-keys/routes.ts'
 import { createApiKey } from '../src/control-plane/lib/api-keys.ts'
+import { initRuntimeLocation, __resetPlatformForTests } from '@vibe-core/platform'
 
 function inMemoryRepo() {
   const keys = new Map<string, ApiKey>()
@@ -89,6 +90,8 @@ function buildApp(auth: AuthCtx) {
 let store: ReturnType<typeof inMemoryRepo>
 
 beforeEach(() => {
+  __resetPlatformForTests()
+  initRuntimeLocation('bun')
   store = inMemoryRepo()
   initRepo(store.repo)
 })
@@ -329,4 +332,147 @@ test('an anonymous caller (no admin, no user) is refused an existing key', async
   const victim = await createApiKey('victim', 'u1')
   const res = await buildApp({}).request(`/api/keys/${victim.id}`)
   expect(res.status).toBe(403)
+})
+
+interface MappingJson {
+  source: string
+  destination: string
+}
+
+interface MappingKeyJson {
+  model_mappings_enabled: boolean
+  model_mappings: MappingJson[]
+  model_mappings_invalid: boolean
+  modelMappingsEnabled: boolean
+  modelMappings: MappingJson[]
+  modelMappingsInvalid: boolean
+  can_manage_model_mappings: boolean
+  canManageModelMappings: boolean
+}
+
+async function patchKey(app: Hono, id: string, body: unknown): Promise<Response> {
+  return app.request(`/api/keys/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
+test('GET list and assigned detail expose dual mapping fields and mapping permission', async () => {
+  const key = await createApiKey('shared', 'owner')
+  key.modelMappingsEnabled = true
+  key.modelMappings = [{ source: 'source', destination: 'destination' }]
+  await store.repo.apiKeys.save(key)
+  await store.repo.keyAssignments.assign(key.id, 'assignee', 'owner')
+
+  const app = buildApp({ isUser: true, userId: 'assignee' })
+  const list = await app.request('/api/keys')
+  const listEntry = (await list.json() as MappingKeyJson[])[0]!
+  expect(listEntry).toMatchObject({
+    model_mappings_enabled: true,
+    model_mappings: [{ source: 'source', destination: 'destination' }],
+    model_mappings_invalid: false,
+    modelMappingsEnabled: true,
+    modelMappings: [{ source: 'source', destination: 'destination' }],
+    modelMappingsInvalid: false,
+    can_manage_model_mappings: true,
+    canManageModelMappings: true,
+  })
+
+  const detail = await app.request(`/api/keys/${key.id}`)
+  expect(detail.status).toBe(200)
+  expect((await detail.json() as MappingKeyJson).can_manage_model_mappings).toBe(true)
+
+  const apiKeyList = await buildApp({ apiKeyId: key.id }).request('/api/keys')
+  expect((await apiKeyList.json() as MappingKeyJson[])[0]!.can_manage_model_mappings).toBe(false)
+})
+
+test('PATCH mappings accepts snake case only and preserves omitted mapping fields', async () => {
+  const key = await createApiKey('key', 'owner')
+  const owner = buildApp({ isUser: true, userId: 'owner' })
+
+  const initial = await patchKey(owner, key.id, { model_mappings: [] })
+  expect(initial.status).toBe(200)
+  const initialJson = await initial.json() as MappingKeyJson
+  expect(initialJson.model_mappings_enabled).toBe(false)
+  expect(initialJson.model_mappings).toEqual([])
+
+  const camelOnly = await patchKey(owner, key.id, { modelMappingsEnabled: true })
+  expect(camelOnly.status).toBe(200)
+  expect((await camelOnly.json() as MappingKeyJson).model_mappings_enabled).toBe(false)
+
+  const enabled = await patchKey(owner, key.id, { model_mappings_enabled: true })
+  expect(enabled.status).toBe(200)
+  expect((await enabled.json() as MappingKeyJson).model_mappings).toEqual([])
+})
+
+test('PATCH rejects malformed mapping configuration without saving', async () => {
+  const key = await createApiKey('key', 'owner')
+  const app = buildApp({ isUser: true, userId: 'owner' })
+  const malformed = await patchKey(app, key.id, {
+    model_mappings_enabled: 'true',
+    model_mappings: [{ source: 'a', destination: 'b', extra: true }],
+  })
+  expect(malformed.status).toBe(400)
+  const error = await malformed.json() as { error: string }
+  expect(error.error).toMatch(/model_mappings_enabled/)
+  expect((await store.repo.apiKeys.getById(key.id))?.modelMappingsEnabled).toBe(false)
+
+  const badItem = await patchKey(app, key.id, { model_mappings: [{ source: ' ', destination: 'b' }] })
+  expect(badItem.status).toBe(400)
+  expect((await badItem.json() as { error: string }).error).toMatch(/index 0.*source/)
+})
+
+test('PATCH validates mapping destinations against the key owner catalog', async () => {
+  const key = await createApiKey('key', 'owner')
+  const upstream = {
+    id: 'copilot:owner', provider: 'copilot', name: 'owner', ownerId: 'owner', enabled: true,
+    sortOrder: 0, config: { githubToken: 'token' }, flagOverrides: {}, disabledPublicModelIds: [],
+    state: null, proxyFallbackList: [{ id: 'direct_fetch' }], createdAt: 'x', updatedAt: 'x',
+  }
+  store.repo.upstreams = {
+    list: async (filter: { ownerId?: string } = {}) => filter.ownerId === 'owner' ? [upstream] : [],
+  } as Repo['upstreams']
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input)
+    const payload = url.includes('/copilot_internal/v2/token')
+      ? { token: 'copilot-token', expires_at: Math.floor(Date.now() / 1000) + 3600 }
+      : { object: 'list', data: [{
+
+      id: 'claude-opus-4.7', object: 'model', name: 'Claude', vendor: 'anthropic', version: 'claude-opus-4.7',
+      model_picker_enabled: true, preview: false,
+      capabilities: { family: 'anthropic', limits: {}, supports: {}, tokenizer: 'x', type: 'text' },
+    }, {
+      id: 'claude-opus-4.7-xhigh-1m', object: 'model', name: 'Claude', vendor: 'anthropic', version: 'claude-opus-4.7-xhigh-1m',
+      model_picker_enabled: true, preview: false,
+      capabilities: { family: 'anthropic', limits: { max_context_window_tokens: 1_000_000 }, supports: { reasoning_effort: ['xhigh'] }, tokenizer: 'x', type: 'text' },
+    }] }
+    return Promise.resolve(new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } }))
+  }) as typeof fetch
+  try {
+    const app = buildApp({ isUser: true, userId: 'owner' })
+    const valid = await patchKey(app, key.id, { model_mappings: [{ source: 'source', destination: 'claude-opus-4.7-xhigh-1m' }] })
+    expect(valid.status).toBe(200)
+    const invalid = await patchKey(app, key.id, { model_mappings: [{ source: 'source', destination: 'missing' }] })
+    expect(invalid.status).toBe(400)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('assignee may change only model mappings and cannot combine another mutable field', async () => {
+  const key = await createApiKey('key', 'owner')
+  await store.repo.keyAssignments.assign(key.id, 'assignee', 'owner')
+  const app = buildApp({ isUser: true, userId: 'assignee' })
+
+  const mappingOnly = await patchKey(app, key.id, { model_mappings_enabled: true, model_mappings: [] })
+  expect(mappingOnly.status).toBe(200)
+  expect((await store.repo.apiKeys.getById(key.id))?.modelMappingsEnabled).toBe(true)
+
+  const mixed = await patchKey(app, key.id, { model_mappings_enabled: false, name: 'stolen' })
+  expect(mixed.status).toBe(403)
+  const stored = await store.repo.apiKeys.getById(key.id)
+  expect(stored?.name).toBe('key')
+  expect(stored?.modelMappingsEnabled).toBe(true)
 })

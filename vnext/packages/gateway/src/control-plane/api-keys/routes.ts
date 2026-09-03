@@ -33,6 +33,9 @@ import { resolveWebSearchForKey } from '../../data-plane/tools/web-search/resolv
 import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 import { zValidator } from '../middleware/zod-validator.ts'
 import { loadOwned } from '../shared/ownership.ts'
+import { listProviderBindings } from '../../data-plane/providers/registry.ts'
+import { buildCompositeModelId, composeModelOptions } from '@vibe-llm/provider-copilot'
+import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 
 export interface AuthCtx {
   isAdmin?: boolean
@@ -73,7 +76,13 @@ async function loadSourceMapForKey(k: ApiKey): Promise<Map<string, ApiKey>> {
   return map
 }
 
-function keyToJson(k: ApiKey, ownerName?: string, isOwner?: boolean, sourceMap?: Map<string, ApiKey>) {
+function keyToJson(
+  k: ApiKey,
+  ownerName?: string,
+  isOwner?: boolean,
+  sourceMap?: Map<string, ApiKey>,
+  canManageModelMappings = false,
+) {
   const map = sourceMap ?? new Map<string, ApiKey>()
   const langsearchRef = k.webSearchLangsearchRef ? refDescriptor(k.webSearchLangsearchRef, map) : null
   const tavilyRef = k.webSearchTavilyRef ? refDescriptor(k.webSearchTavilyRef, map) : null
@@ -101,11 +110,19 @@ function keyToJson(k: ApiKey, ownerName?: string, isOwner?: boolean, sourceMap?:
     web_search_jina_key: jinaRef ? null : maskKey(k.webSearchJinaKey),
     web_search_jina_ref: jinaRef,
     web_search_priority: k.webSearchPriority ?? null,
+    model_mappings_enabled: k.modelMappingsInvalid ? false : k.modelMappingsEnabled,
+    model_mappings: k.modelMappingsInvalid ? [] : k.modelMappings.map(({ source, destination }) => ({ source, destination })),
+    model_mappings_invalid: k.modelMappingsInvalid === true,
+    can_manage_model_mappings: canManageModelMappings,
     // camelCase aliases for llm-relay compatibility.
     createdAt: k.createdAt,
     lastUsedAt: k.lastUsedAt ?? null,
     ownerId: k.ownerId ?? null,
     ownerName: ownerName ?? null,
+    modelMappingsEnabled: k.modelMappingsInvalid ? false : k.modelMappingsEnabled,
+    modelMappings: k.modelMappingsInvalid ? [] : k.modelMappings.map(({ source, destination }) => ({ source, destination })),
+    modelMappingsInvalid: k.modelMappingsInvalid === true,
+    canManageModelMappings,
   }
 }
 
@@ -115,6 +132,68 @@ async function ownedKey(keyId: ApiKeyId, ctx: AuthCtx): Promise<ApiKey | null> {
 
 async function checkOwnership(keyId: ApiKeyId, ctx: AuthCtx): Promise<boolean> {
   return (await ownedKey(keyId, ctx)) !== null
+}
+
+async function canManageModelMappings(key: ApiKey, ctx: AuthCtx): Promise<boolean> {
+  if (ctx.isAdmin) return true
+  if (!ctx.userId) return false
+  if (key.ownerId === ctx.userId) return true
+  return (await getRepo().keyAssignments.listByUser(ctx.userId)).some((grant) => grant.keyId === key.id)
+}
+
+async function visibleKey(keyId: ApiKeyId, ctx: AuthCtx): Promise<ApiKey | null> {
+  const key = await getApiKeyById(keyId)
+  return key && await canManageModelMappings(key, ctx) ? key : null
+}
+
+interface ModelMappingInput {
+  source: string
+  destination: string
+}
+
+function validationError(message: string): { error: string } {
+  return { error: message }
+}
+
+function validateModelMappings(value: unknown): ModelMappingInput[] | { error: string } {
+  if (!Array.isArray(value)) return validationError('model_mappings must be an array')
+  if (value.length > 100) return validationError('model_mappings must contain at most 100 items')
+  const mappings: ModelMappingInput[] = []
+  for (const [index, item] of value.entries()) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return validationError(`model_mappings index ${index} must be an object`)
+    }
+    const record = item as Record<string, unknown>
+    const keys = Object.keys(record)
+    if (keys.length !== 2 || !keys.includes('source') || !keys.includes('destination')) {
+      return validationError(`model_mappings index ${index} must contain only source and destination`)
+    }
+    for (const field of ['source', 'destination'] as const) {
+      const raw = record[field]
+      if (typeof raw !== 'string') return validationError(`model_mappings index ${index} ${field} must be a string`)
+      const trimmed = raw.trim()
+      if (!trimmed) return validationError(`model_mappings index ${index} ${field} must not be blank`)
+      if (trimmed.length > 256) return validationError(`model_mappings index ${index} ${field} must be at most 256 characters`)
+      record[field] = trimmed
+    }
+    mappings.push({ source: record.source as string, destination: record.destination as string })
+  }
+  return mappings
+}
+
+async function destinationsAreAvailable(ownerId: string | undefined, mappings: readonly ModelMappingInput[]): Promise<boolean> {
+  if (mappings.length === 0) return true
+  const bindings = await listProviderBindings({ ownerId, dedupe: true, strictCatalog: true })
+  const available = new Set<string>()
+  for (const binding of bindings) {
+    available.add(binding.model.id)
+    if (binding.kind !== 'copilot' || !binding.model.raw) continue
+    const rawModels: ModelsResponse = { object: 'list', data: [binding.model.raw as unknown as Model] }
+    for (const combo of composeModelOptions(rawModels, binding.model.id)) {
+      available.add(buildCompositeModelId(binding.model.id, combo))
+    }
+  }
+  return mappings.every(({ destination }) => available.has(destination))
 }
 
 /**
@@ -176,7 +255,7 @@ apiKeysRouter.get('/', async (c) => {
       if (src) sourceMap.set(id, src)
     }))
     return c.json(keys.map((k, i) => {
-      const json = keyToJson(k, k.ownerId ? ownerMap.get(k.ownerId) : undefined, true, sourceMap)
+      const json = keyToJson(k, k.ownerId ? ownerMap.get(k.ownerId) : undefined, true, sourceMap, true)
       const assignees = allAssignments[i]!.map((a) => ({
         user_id: a.userId,
         user_name: assigneeNameMap.get(a.userId) ?? null,
@@ -210,7 +289,7 @@ apiKeysRouter.get('/', async (c) => {
       if (src) ownSourceMap.set(id, src)
     }))
     const result = ownKeys.map((k, i) => {
-      const json = keyToJson(k, undefined, true, ownSourceMap)
+      const json = keyToJson(k, undefined, true, ownSourceMap, true)
       const assignees = ownKeyAssignments[i]!.map((a) => ({
         user_id: a.userId,
         user_name: assigneeNameMap.get(a.userId) ?? null,
@@ -240,7 +319,7 @@ apiKeysRouter.get('/', async (c) => {
       }))
       for (const k of assignedKeys) {
         if (k && !ownKeys.some((o) => o.id === k.id)) {
-          result.push({ ...keyToJson(k, k.ownerId ? ownerMap.get(k.ownerId) : undefined, false, assignedSourceMap), assignees: [] })
+          result.push({ ...keyToJson(k, k.ownerId ? ownerMap.get(k.ownerId) : undefined, false, assignedSourceMap, true), assignees: [] })
         }
       }
     }
@@ -280,20 +359,61 @@ apiKeysRouter.post('/', zValidator('json', createKeyBody), async (c) => {
 apiKeysRouter.get('/:id', async (c) => {
   const auth = c.get('auth') ?? {}
   const id = c.req.param('id') as ApiKeyId
-  const key = await ownedKey(id, auth)
+  const key = await visibleKey(id, auth)
   if (!key) return c.json({ error: 'Forbidden' }, 403)
   const sourceMap = await loadSourceMapForKey(key)
-  return c.json(keyToJson(key, undefined, true, sourceMap))
+  return c.json(keyToJson(key, undefined, key.ownerId === auth.userId || auth.isAdmin === true, sourceMap, true))
 })
 
 // PATCH /:id — rename + quota + web_search (XOR literal vs ref)
 apiKeysRouter.patch('/:id', async (c) => {
   const auth = c.get('auth') ?? {}
   const id = c.req.param('id') as ApiKeyId
-  if (!(await checkOwnership(id, auth))) {
+  const parsedBody: unknown = await c.req.json().catch(() => ({}))
+  const body = parsedBody && typeof parsedBody === 'object' && !Array.isArray(parsedBody)
+    ? parsedBody as Record<string, unknown>
+    : {}
+  const mappingFields = new Set(['model_mappings_enabled', 'model_mappings'])
+  const hasMappingUpdate = [...mappingFields].some((field) => Object.hasOwn(body, field))
+  const hasOtherMutableUpdate = [
+    'name', 'quota_requests_per_month', 'quota_tokens_per_month', 'quota_cost_per_month',
+    'web_search_enabled', 'web_search_langsearch_key', 'web_search_tavily_key',
+    'web_search_ms_grounding_key', 'web_search_priority', 'web_search_langsearch_ref',
+    'web_search_tavily_ref', 'web_search_ms_grounding_ref', 'web_search_jina_key',
+    'web_search_jina_ref', 'web_search_passthrough_upstream', 'web_search_passthrough_model',
+    'dump_retention_seconds',
+  ].some((field) => Object.hasOwn(body, field))
+  const existing = await getApiKeyById(id)
+  if (!existing) return c.json({ error: 'Forbidden' }, 403)
+  const canManageMappings = await canManageModelMappings(existing, auth)
+  const isOwner = auth.isAdmin === true || (!!auth.userId && existing.ownerId === auth.userId)
+  if ((!isOwner && (!hasMappingUpdate || hasOtherMutableUpdate)) || (!canManageMappings && hasMappingUpdate)) {
     return c.json({ error: 'Forbidden' }, 403)
   }
-  const body = await c.req.json().catch(() => ({})) as {
+  if (!isOwner && !hasMappingUpdate) return c.json({ error: 'Forbidden' }, 403)
+  const updated: ApiKey = { ...existing }
+  if (hasMappingUpdate) {
+    if (Object.hasOwn(body, 'model_mappings_enabled')) {
+      if (typeof body.model_mappings_enabled !== 'boolean') {
+        return c.json(validationError('model_mappings_enabled must be a boolean'), 400)
+      }
+      updated.modelMappingsEnabled = body.model_mappings_enabled
+    }
+    if (Object.hasOwn(body, 'model_mappings')) {
+      const mappings = validateModelMappings(body.model_mappings)
+      if (!Array.isArray(mappings)) return c.json(mappings, 400)
+      updated.modelMappings = mappings
+    }
+    try {
+      if (!await destinationsAreAvailable(existing.ownerId, updated.modelMappings)) {
+        return c.json(validationError('model_mappings destination is not available'), 400)
+      }
+    } catch {
+      return c.json({ error: 'Unable to validate model mappings' }, 503)
+    }
+    updated.modelMappingsInvalid = false
+  }
+  const legacyBody = body as {
     name?: string
     quota_requests_per_month?: number | null
     quota_tokens_per_month?: number | null
@@ -309,33 +429,31 @@ apiKeysRouter.patch('/:id', async (c) => {
     web_search_jina_key?: string | null
     web_search_jina_ref?: string | null
   }
-  const existing = await getApiKeyById(id)
-  if (!existing) return c.json({ error: 'Key not found' }, 404)
-  const updated: ApiKey = { ...existing }
-  if (body.name !== undefined) {
-    if (!body.name || typeof body.name !== 'string') {
+  const bodyForLegacy = legacyBody
+  if (bodyForLegacy.name !== undefined) {
+    if (!bodyForLegacy.name || typeof bodyForLegacy.name !== 'string') {
       return c.json({ error: 'name must be a non-empty string' }, 400)
     }
-    updated.name = body.name
+    updated.name = bodyForLegacy.name
   }
-  if (body.quota_requests_per_month !== undefined) {
-    updated.quotaRequestsPerMonth = body.quota_requests_per_month === null ? undefined : body.quota_requests_per_month
+  if (bodyForLegacy.quota_requests_per_month !== undefined) {
+    updated.quotaRequestsPerMonth = bodyForLegacy.quota_requests_per_month === null ? undefined : bodyForLegacy.quota_requests_per_month
   }
-  if (body.quota_tokens_per_month !== undefined) {
-    updated.quotaTokensPerMonth = body.quota_tokens_per_month === null ? undefined : body.quota_tokens_per_month
+  if (bodyForLegacy.quota_tokens_per_month !== undefined) {
+    updated.quotaTokensPerMonth = bodyForLegacy.quota_tokens_per_month === null ? undefined : bodyForLegacy.quota_tokens_per_month
   }
-  if (body.quota_cost_per_month !== undefined) {
-    updated.quotaCostPerMonth = body.quota_cost_per_month === null ? undefined : body.quota_cost_per_month
+  if (bodyForLegacy.quota_cost_per_month !== undefined) {
+    updated.quotaCostPerMonth = bodyForLegacy.quota_cost_per_month === null ? undefined : bodyForLegacy.quota_cost_per_month
   }
-  if (body.web_search_enabled !== undefined) {
-    updated.webSearchEnabled = body.web_search_enabled
+  if (bodyForLegacy.web_search_enabled !== undefined) {
+    updated.webSearchEnabled = bodyForLegacy.web_search_enabled
   }
 
   const pairs: Array<[string, unknown, unknown, keyof ApiKey, keyof ApiKey]> = [
-    ['langsearch', body.web_search_langsearch_key, body.web_search_langsearch_ref, 'webSearchLangsearchKey', 'webSearchLangsearchRef'],
-    ['tavily', body.web_search_tavily_key, body.web_search_tavily_ref, 'webSearchTavilyKey', 'webSearchTavilyRef'],
-    ['ms_grounding', body.web_search_ms_grounding_key, body.web_search_ms_grounding_ref, 'webSearchMsGroundingKey', 'webSearchMsGroundingRef'],
-    ['jina', body.web_search_jina_key, body.web_search_jina_ref, 'webSearchJinaKey', 'webSearchJinaRef'],
+    ['langsearch', bodyForLegacy.web_search_langsearch_key, bodyForLegacy.web_search_langsearch_ref, 'webSearchLangsearchKey', 'webSearchLangsearchRef'],
+    ['tavily', bodyForLegacy.web_search_tavily_key, bodyForLegacy.web_search_tavily_ref, 'webSearchTavilyKey', 'webSearchTavilyRef'],
+    ['ms_grounding', bodyForLegacy.web_search_ms_grounding_key, bodyForLegacy.web_search_ms_grounding_ref, 'webSearchMsGroundingKey', 'webSearchMsGroundingRef'],
+    ['jina', bodyForLegacy.web_search_jina_key, bodyForLegacy.web_search_jina_ref, 'webSearchJinaKey', 'webSearchJinaRef'],
   ]
   const mutableUpdated = updated as unknown as Record<string, unknown>
   for (const [engineLabel, literalVal, refVal, literalField, refField] of pairs) {
@@ -359,8 +477,8 @@ apiKeysRouter.patch('/:id', async (c) => {
       mutableUpdated[literalField as string] = undefined
     }
   }
-  if (body.web_search_priority !== undefined) {
-    updated.webSearchPriority = body.web_search_priority === null ? undefined : body.web_search_priority
+  if (bodyForLegacy.web_search_priority !== undefined) {
+    updated.webSearchPriority = bodyForLegacy.web_search_priority === null ? undefined : bodyForLegacy.web_search_priority
   }
 
   await getRepo().apiKeys.save(updated)

@@ -55,6 +55,8 @@ export interface ListUpstreamModelsOptions {
    * catalogs must never leak another owner's models.
    */
   allOwners?: boolean
+  /** Propagate an upstream catalog failure instead of treating it as empty. */
+  strictCatalog?: boolean
 }
 
 export function createCopilotProvider(opts: CreateProviderOptions): LlmModelProvider {
@@ -301,6 +303,7 @@ export async function listProviderBindings(
         })
       }
     } catch (err) {
+      if (opts.strictCatalog) throw err
       console.warn(
         `[registry] upstream ${upstream.id} (${upstream.provider}) contributed no models:`,
         err instanceof Error ? err.message : String(err),
