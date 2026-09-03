@@ -82,6 +82,8 @@ export interface LlmEventResult<T> {
    */
   readonly resolveModelIdentity?: (modelKey: string) => TelemetryModelIdentity
   readonly performance?: PerformanceTelemetryContext
+  /** Set by an interceptor when it replaces the upstream event stream. */
+  readonly __interceptorReplaced?: true
   readonly finalMetadata?: Promise<EventResultMetadata>
   /**
    * Optional escape hatch for cross-protocol attempts that need to translate a

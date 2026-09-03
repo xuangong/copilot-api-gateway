@@ -2,6 +2,9 @@ import { test, expect } from 'bun:test'
 import { traverseTranslation } from './traverse-translation.ts'
 import { TranslatorValidationError } from '@vibe-llm/translate/errors'
 import { llmEventResult, llmInternalErrorResult } from '@vibe-llm/protocols/common'
+import { eventResultMetadata, finalModelIdentity, performanceTargetFromTranslatorPair } from './respond-telemetry.ts'
+import { respondResponses } from '../responses/respond.ts'
+import { setupTestPlatform } from '../../../../tests/_setup-platform.ts'
 import type { PairTranslator } from '../../dispatch/translator-registry.ts'
 
 const fakeTelemetryCtx = {} as never
@@ -39,18 +42,102 @@ test('happy path: stamps translatorPair and forwards translateBody', async () =>
   expect(result.translateBody).toBeDefined()
 })
 
-test('resolver returned through translation grafts the source and hub pair', async () => {
+test('translated authoritative metadata, resolver, and performance target retain one translator pair', async () => {
   async function* hubEvents() { yield { kind: 'hub-evt' } as never }
-  const innerResult = llmEventResult(hubEvents(), fakeIdentity, undefined, undefined, undefined, undefined, (modelKey) => ({ ...fakeIdentity, modelKey }))
+  const authoritative = { model: 'corrected', upstream: 'u', modelKey: 'corrected', cost: null }
+  const performance = {
+    keyId: 'key', model: 'corrected', upstream: 'u', modelKey: 'corrected',
+    stream: true, runtimeLocation: 'bun' as const,
+  }
+  const innerResult = llmEventResult(
+    hubEvents(),
+    fakeIdentity,
+    undefined,
+    Promise.resolve({ modelIdentity: authoritative, performance }),
+    undefined,
+    undefined,
+    (modelKey) => ({ ...fakeIdentity, modelKey }),
+  )
   const result = await traverseTranslation({
     sourcePayload: { model: 'x' }, sourceProtocol: 'messages', hubProtocol: 'responses',
     translator: fakeTranslator(), innerAttempt: async () => innerResult,
     inheritedHeaders: {}, inheritedTelemetryCtx: fakeTelemetryCtx, auth: {} as never,
   })
   if (result.type !== 'events') throw new Error('unreachable')
+  const pair = { source: 'messages' as const, hub: 'responses' as const }
+  expect(result.modelIdentity.translatorPair).toEqual(pair)
   expect(result.resolveModelIdentity?.('corrected')).toEqual({
-    ...fakeIdentity, modelKey: 'corrected', translatorPair: { source: 'messages', hub: 'responses' },
+    ...fakeIdentity, modelKey: 'corrected', translatorPair: pair,
   })
+  const metadata = await result.finalMetadata
+  expect(metadata).toEqual({
+    modelIdentity: { ...authoritative, translatorPair: pair },
+    performance,
+  })
+  expect(metadata?.performance).toBe(performance)
+  const persisted = await eventResultMetadata(result)
+  expect(persisted.modelIdentity.translatorPair).toEqual(pair)
+  expect(finalModelIdentity(result.modelIdentity, 'other', result.resolveModelIdentity)).toEqual({
+    ...fakeIdentity, modelKey: 'other', translatorPair: pair,
+  })
+  expect(performanceTargetFromTranslatorPair(persisted.modelIdentity)).toBe('responses')
+})
+
+test('translated responder persists the authoritative final metadata hub target', async () => {
+  const { repo } = setupTestPlatform()
+  async function* hubEvents() {
+    const response = {
+      id: 'resp_1', object: 'response', model: 'corrected', output: [],
+      status: 'completed', error: null, incomplete_details: null,
+    }
+    yield { type: 'event' as const, event: { type: 'response.completed', response } }
+  }
+  const authoritative = { model: 'corrected', upstream: 'u', modelKey: 'corrected', cost: null }
+  const result = await traverseTranslation({
+    sourcePayload: { model: 'x' }, sourceProtocol: 'messages', hubProtocol: 'responses',
+    translator: fakeTranslator(),
+    innerAttempt: async () => ({
+      ...llmEventResult(
+        hubEvents(),
+        fakeIdentity,
+        undefined,
+        Promise.resolve({ modelIdentity: authoritative, performance: {
+          keyId: 'translated-key', model: 'corrected', upstream: 'u', modelKey: 'corrected',
+          stream: false, runtimeLocation: 'bun',
+        } }),
+      ),
+      __interceptorReplaced: true as const,
+    }),
+    inheritedHeaders: {}, inheritedTelemetryCtx: fakeTelemetryCtx, auth: {} as never,
+  })
+  const response = await respondResponses(result as never, {
+    wantsStream: false,
+    telemetryCtx: {
+      apiKeyId: 'translated-key' as never, userAgent: null, requestId: 'translated-request',
+      isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'messages',
+    },
+  })
+  await response.text()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const persisted = await repo.performance.query({
+    keyId: 'translated-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(persisted.summary).toHaveLength(1)
+  expect(persisted.summary[0]?.sourceApi).toBe('messages')
+  expect(persisted.summary[0]?.targetApi).toBe('responses')
+})
+
+test('translated finalMetadata preserves rejection from the inner attempt', async () => {
+  async function* hubEvents() { yield { kind: 'hub-evt' } as never }
+  const failure = new Error('metadata failure')
+  const result = await traverseTranslation({
+    sourcePayload: { model: 'x' }, sourceProtocol: 'messages', hubProtocol: 'responses',
+    translator: fakeTranslator(),
+    innerAttempt: async () => llmEventResult(hubEvents(), fakeIdentity, undefined, Promise.reject(failure)),
+    inheritedHeaders: {}, inheritedTelemetryCtx: fakeTelemetryCtx, auth: {} as never,
+  })
+  if (result.type !== 'events') throw new Error('unreachable')
+  await expect(result.finalMetadata).rejects.toBe(failure)
 })
 
 test('TranslatorValidationError → 400 with reason translator-validation', async () => {

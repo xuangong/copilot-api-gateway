@@ -121,18 +121,23 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
   //     shape (per spec §3.7).
   // The `translatorPair` field on `modelIdentity` (set below) is the discriminator
   // respond.ts uses for the dispatch.
+  const translatorPair = { source: args.sourceProtocol, hub: args.hubProtocol } as const
   const sourceModelIdentity = {
     ...innerEvents.modelIdentity,
-    translatorPair: { source: args.sourceProtocol, hub: args.hubProtocol },
+    translatorPair,
   }
+  const finalMetadata = innerEvents.finalMetadata?.then((metadata) => ({
+    ...metadata,
+    modelIdentity: { ...metadata.modelIdentity, translatorPair },
+  }))
   const innerResolver = innerEvents.resolveModelIdentity
   const resolveModelIdentity = innerResolver
     ? (modelKey: string) => ({
         ...innerResolver(modelKey),
-        translatorPair: { source: args.sourceProtocol, hub: args.hubProtocol },
+        translatorPair,
       })
     : undefined
-  return llmEventResult(
+  const result = llmEventResult(
     // Cast: the events stream is structurally `ProtocolFrame<HubFrame>`, but
     // the source-protocol LlmExecuteResult is typed as `ProtocolFrame<SourceFrame>`.
     // respond.ts (the only consumer of this result) discriminates on
@@ -141,7 +146,7 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     innerEvents.events as unknown as AsyncIterable<ProtocolFrame<SourceFrame>>,
     sourceModelIdentity,
     innerEvents.performance,
-    innerEvents.finalMetadata,
+    finalMetadata,
     // Wrap translateBody so the hub→source envelope mapper sees the original
     // client-side request payload. Required by translators (e.g.
     // responses-via-chat-completions/body.ts) that echo back fields like
@@ -161,4 +166,7 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     args.translator.translateEvents as LlmEventResult<ProtocolFrame<SourceFrame>>['translateEvents'],
     resolveModelIdentity,
   )
+  return innerEvents.__interceptorReplaced
+    ? { ...result, __interceptorReplaced: true }
+    : result
 }
