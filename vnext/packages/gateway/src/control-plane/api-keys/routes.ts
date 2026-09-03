@@ -186,7 +186,7 @@ function validateModelMappings(value: unknown): ModelMappingInput[] | { error: s
 
 async function destinationsAreAvailable(ownerId: string | undefined, mappings: readonly ModelMappingInput[]): Promise<boolean> {
   if (mappings.length === 0) return true
-  const bindings = await listProviderBindings({ ownerId, dedupe: true, strictCatalog: true })
+  const bindings = await listProviderBindings({ ownerId, dedupe: false, strictCatalog: true })
   const available = new Set<string>()
   const copilotModelsByUpstream = new Map<string, Model[]>()
   for (const binding of bindings) {

@@ -98,6 +98,14 @@ test('listProviderBindings hides all Copilot raw variants when its public base i
   expect(bindings).toEqual([])
 })
 
+test('listProviderBindings strictCatalog propagates upstream discovery failures while ordinary catalogs stay best effort', async () => {
+  initRepo({
+    upstreams: { list: async () => { throw new Error('discovery failed') } },
+  } as unknown as Repo)
+  await expect(listProviderBindings({ strictCatalog: true })).rejects.toThrow('discovery failed')
+  await expect(listProviderBindings()).resolves.toEqual([])
+})
+
 test('listProviderBindings falls back to request-scoped Copilot when no stored upstream', async () => {
   initRepo(stubRepo([]))
   stubFetch([stubModel('gpt-4o')])

@@ -45,6 +45,10 @@ export function normalizeApiKeyModelMappings(value: unknown): ModelMappingsNorma
     }
 
     const mapping = item as Record<string, unknown>
+    const keys = Object.keys(mapping)
+    if (keys.length !== 2 || !keys.includes('source') || !keys.includes('destination')) {
+      return { ok: false, reason: 'invalid_item', index }
+    }
     for (const field of ['source', 'destination'] as const) {
       const raw = mapping[field]
       if (typeof raw !== 'string') return { ok: false, reason: 'invalid_field', index, field }

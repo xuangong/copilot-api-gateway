@@ -270,7 +270,8 @@ export async function listProviderBindings(
   let upstreams: UpstreamRecord<unknown>[]
   try {
     upstreams = await listVisibleUpstreams(opts.ownerId as UserId | undefined, opts.allOwners)
-  } catch {
+  } catch (err) {
+    if (opts.strictCatalog) throw err
     upstreams = []
   }
 

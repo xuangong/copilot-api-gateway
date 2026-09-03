@@ -63,6 +63,7 @@ test('normalizer fails the entire list closed without exposing invalid values', 
     { input: [{ source: 'a', destination: 'b'.repeat(MAX_MODEL_NAME_LENGTH + 1) }], expected: { ok: false, reason: 'field_too_long', index: 0, field: 'destination' } },
     { input: Array.from({ length: MAX_MODEL_MAPPINGS + 1 }, () => ({ source: 'a', destination: 'b' })), expected: { ok: false, reason: 'too_many_items' } },
     { input: [{ source: 'a'.repeat(MAX_MODEL_NAME_LENGTH + 1), destination: 'b' }], expected: { ok: false, reason: 'field_too_long', index: 0, field: 'source' } },
+    { input: [{ source: 'a', destination: 'b', extra: true }], expected: { ok: false, reason: 'invalid_item', index: 0 } },
   ]
 
   for (const { input, expected } of cases) {

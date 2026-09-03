@@ -367,7 +367,8 @@ test('GET list and assigned detail expose dual mapping fields and mapping permis
 
   const app = buildApp({ isUser: true, userId: 'assignee' })
   const list = await app.request('/api/keys')
-  const listEntry = (await list.json() as MappingKeyJson[])[0]!
+  const listEntry = (await list.json() as MappingKeyJson[]).at(0)
+  expect(listEntry).toBeDefined()
   expect(listEntry).toMatchObject({
     model_mappings_enabled: true,
     model_mappings: [{ source: 'source', destination: 'destination' }],
@@ -384,7 +385,24 @@ test('GET list and assigned detail expose dual mapping fields and mapping permis
   expect((await detail.json() as MappingKeyJson).can_manage_model_mappings).toBe(true)
 
   const apiKeyList = await buildApp({ apiKeyId: key.id }).request('/api/keys')
-  expect((await apiKeyList.json() as MappingKeyJson[])[0]!.can_manage_model_mappings).toBe(false)
+  const apiKeyEntry = (await apiKeyList.json() as MappingKeyJson[]).at(0)
+  expect(apiKeyEntry).toBeDefined()
+  expect(apiKeyEntry?.can_manage_model_mappings).toBe(false)
+})
+
+test('PATCH both mapping fields saves once atomically', async () => {
+  const key = await createApiKey('key', 'owner')
+  let saves = 0
+  const realSave = store.repo.apiKeys.save
+  store.repo.apiKeys.save = async (updated) => { saves++; await realSave(updated) }
+  const result = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, {
+    model_mappings_enabled: true, model_mappings: [],
+  })
+  expect(result.status).toBe(200)
+  expect(saves).toBe(1)
+  const stored = await store.repo.apiKeys.getById(key.id)
+  expect(stored?.modelMappingsEnabled).toBe(true)
+  expect(stored?.modelMappings).toEqual([])
 })
 
 test('PATCH mappings accepts snake case only and preserves omitted mapping fields', async () => {
@@ -404,6 +422,19 @@ test('PATCH mappings accepts snake case only and preserves omitted mapping field
   const enabled = await patchKey(owner, key.id, { model_mappings_enabled: true })
   expect(enabled.status).toBe(200)
   expect((await enabled.json() as MappingKeyJson).model_mappings).toEqual([])
+})
+
+test('GET fails closed for corrupt stored mappings', async () => {
+  const key = await createApiKey('key', 'owner')
+  key.modelMappingsEnabled = true
+  key.modelMappings = [{ source: 'source', destination: 'destination' }]
+  key.modelMappingsInvalid = true
+  await store.repo.apiKeys.save(key)
+  const result = await buildApp({ isUser: true, userId: 'owner' }).request(`/api/keys/${key.id}`)
+  const body = await result.json() as MappingKeyJson
+  expect(body.model_mappings_enabled).toBe(false)
+  expect(body.model_mappings).toEqual([])
+  expect(body.model_mappings_invalid).toBe(true)
 })
 
 test('PATCH rejects malformed mapping configuration without saving', async () => {
@@ -459,6 +490,22 @@ test('PATCH validates mapping destinations against the key owner catalog', async
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+test('PATCH returns generic 503 without saving when catalog discovery fails', async () => {
+  const key = await createApiKey('key', 'owner')
+  let saves = 0
+  const realSave = store.repo.apiKeys.save
+  store.repo.apiKeys.save = async (updated) => { saves++; await realSave(updated) }
+  store.repo.upstreams = {
+    list: async () => { throw new Error('catalog discovery failed') },
+  } as Repo['upstreams']
+  const result = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, {
+    model_mappings: [{ source: 'missing-source-is-valid', destination: 'destination' }],
+  })
+  expect(result.status).toBe(503)
+  expect(await result.json()).toEqual({ error: 'Unable to validate model mappings' })
+  expect(saves).toBe(0)
 })
 
 test('ownerless key is only manageable by an admin', async () => {
