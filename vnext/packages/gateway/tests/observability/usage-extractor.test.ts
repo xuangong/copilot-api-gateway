@@ -167,6 +167,30 @@ test('applyStreamEvent: Anthropic message_delta accumulates, not terminal', () =
   expect(latest.tokens.input).toBe(50)
 })
 
+test('applyStreamEvent: Anthropic message_delta replaces provisional input with terminal usage', () => {
+  const latest: UsageInfo = { tokens: {} }
+  applyStreamEvent({
+    type: 'message_start',
+    message: { model: 'gpt-5.6-sol', usage: { input_tokens: 0, output_tokens: 0 } },
+  }, latest)
+
+  // Responses does not report usage on response.created, so the Messages
+  // translator can only put a provisional zero in message_start. It restates
+  // the final prompt split on message_delta once response.completed arrives.
+  const terminal = applyStreamEvent({
+    type: 'message_delta',
+    usage: {
+      input_tokens: 3_440,
+      output_tokens: 6,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 35_273,
+    },
+  }, latest)
+
+  expect(terminal).toBe(false)
+  expect(latest.tokens).toEqual({ input: 3_440, output: 6, input_cache_write: 35_273 })
+})
+
 test('applyStreamEvent: Responses response.completed is terminal', () => {
   const latest: UsageInfo = { tokens: {} }
   const terminal = applyStreamEvent({

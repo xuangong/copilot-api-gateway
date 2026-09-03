@@ -218,6 +218,7 @@ export function applyStreamEvent(parsed: unknown, latest: UsageInfo): boolean {
       }
     }
     usage?: {
+      input_tokens?: number
       output_tokens?: number
       cache_read_input_tokens?: number
       cache_creation_input_tokens?: number
@@ -245,7 +246,11 @@ export function applyStreamEvent(parsed: unknown, latest: UsageInfo): boolean {
   if (p.type === 'message_delta' && p.usage?.output_tokens != null) {
     const u = p.usage
     const next: TokenUsage = {
-      input: latest.tokens.input ?? 0,
+      // For Messages translated from Responses, message_start can only carry a
+      // provisional zero: upstream usage arrives on response.completed. The
+      // translator restates the final prompt split on this terminal delta, so
+      // prefer it when present and preserve message_start for native Messages.
+      input: u.input_tokens ?? latest.tokens.input ?? 0,
       output: u.output_tokens ?? 0,
     }
     next.input_cache_read = u.cache_read_input_tokens ?? latest.tokens.input_cache_read ?? 0
