@@ -157,6 +157,20 @@ test('API-key routing maps Ollama model names only when enabled', async () => {
   expect((await original.json() as { model?: unknown }).model).toBe(SOURCE_MODEL)
 })
 
+test('mapped stream uses the destination model in every Ollama frame', async () => {
+  modelMappingsEnabled = true
+  const res = await chat({ model: SOURCE_MODEL, stream: true, messages: [{ role: 'user', content: 'hi' }] })
+
+  expect(res.status).toBe(200)
+  expect(capturedUpstreamModel).toBe(MODEL)
+  const frames = (await res.text()).split('\n').filter(Boolean)
+    .map((line) => JSON.parse(line) as { model?: unknown; done?: unknown })
+  expect(frames.length).toBeGreaterThan(0)
+  expect(frames.every((frame) => frame.model === MODEL)).toBe(true)
+  expect(frames.at(-1)?.done).toBe(true)
+  expect(frames.at(-1)?.model).toBe(MODEL)
+})
+
 test('streaming is NDJSON — every line parses on its own, terminated by done:true', async () => {
   const res = await chat({ model: MODEL, messages: [{ role: 'user', content: 'hi' }] })
   expect(res.status).toBe(200)

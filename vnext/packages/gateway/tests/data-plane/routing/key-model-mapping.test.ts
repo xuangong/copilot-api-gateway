@@ -134,7 +134,7 @@ test('resolver preserves valid upstream pins and does not mistake vendors for pi
   const policy = { modelMappingsEnabled: true, modelMappings: [{ source: 'a', destination: 'b' }] }
   expect(resolveKeyModel('up_123/a', policy)).toEqual({
     requestedModel: 'up_123/a',
-    routedModel: 'up_123/b',
+    routedModel: 'b',
     upstreamPin: 'up_123',
     matchedRuleIndexes: [0],
   })
