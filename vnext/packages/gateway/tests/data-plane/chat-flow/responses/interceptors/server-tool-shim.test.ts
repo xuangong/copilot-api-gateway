@@ -545,6 +545,70 @@ test('withResponsesServerToolShim: active but non-hosted registration → pass-t
   expect(transformCalls).toBe(1)
 })
 
+test('withResponsesServerToolShim uses second-turn identity for two-turn hosted tool loops', async () => {
+  const store = createInMemoryPrivatePayloadStore()
+  const slot: ServerToolResultSlot = {
+    id: 'ws_1', startItem: { type: 'web_search_call', status: 'in_progress' }, startEvents: [],
+    run: async function* () { return { item: { type: 'web_search_call', status: 'completed' }, endEvents: [], privatePayload: null } },
+  }
+  const registration: ServerToolRegistration<Invocation, Record<string, unknown>> = () => ({
+    type: 'active', baseToolName: 'web_search', hosted: {
+      hostedTypes: ['web_search'], canonicalize: (raw) => raw.type === 'web_search' ? { type: 'web_search' } : undefined,
+      buildFunctionTool: (_tool, name) => ({ type: 'function', name }), dispatcher: () => [slot],
+    },
+  })
+  const first = { model: 'gpt-5.6-sol-fast', upstream: 'first', modelKey: 'gpt-5.6-sol-fast', cost: { inputPerM: 1 } as never }
+  const second = { model: 'gpt-5.6-sol-fast', upstream: 'second', modelKey: 'gpt-5.6-sol-fast', cost: { inputPerM: 9 } as never }
+  let calls = 0
+  const interceptor = withResponsesServerToolShim([registration], store)
+  const result = await interceptor({ ...baseInv(), payload: { ...baseInv().payload, tools: [{ type: 'web_search' }] } }, baseCtx, async () => {
+    calls += 1
+    const response = snapshotFor(`turn-${calls}`, 'gpt-5.6-sol')
+    if (calls === 1) return llmEventResult(framesOf([
+      { type: 'response.queued', response }, { type: 'response.created', response }, { type: 'response.in_progress', response },
+      { type: 'response.output_item.added', output_index: 0, item: { id: 'fc', type: 'function_call', call_id: 'c', name: 'web_search', arguments: '' } as never },
+      { type: 'response.output_item.done', output_index: 0, item: { id: 'fc', type: 'function_call', call_id: 'c', name: 'web_search', arguments: '{}' } as never },
+      { type: 'response.completed', response },
+    ]), first, undefined, undefined, undefined, undefined, () => first)
+    return llmEventResult(framesOf([
+      { type: 'response.queued', response }, { type: 'response.created', response }, { type: 'response.in_progress', response }, { type: 'response.completed', response },
+    ]), second, undefined, undefined, undefined, undefined, () => second)
+  })
+  if (result.type !== 'events') throw new Error('expected events')
+  const { frames: output } = await collectAndReturn(result.events as AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>, void>)
+  expect(calls).toBe(2)
+  const models = output.filter((frame) => frame.type === 'event').flatMap((frame) => {
+    const event = frame.event as { response?: { model?: string } }
+    return event.response?.model === undefined ? [] : [event.response.model]
+  })
+  expect(models.every((model) => model === 'gpt-5.6-sol-fast')).toBe(true)
+  const metadata = await result.finalMetadata
+  expect(metadata?.modelIdentity).toBe(second)
+  expect(result.resolveModelIdentity?.('anything')).toBe(second)
+})
+
+test('withResponsesServerToolShim accepts an unpriced terminal correction in finalMetadata', async () => {
+  const store = createInMemoryPrivatePayloadStore()
+  const registration: ServerToolRegistration<Invocation, Record<string, unknown>> = () => ({
+    type: 'active', baseToolName: 'web_search', hosted: {
+      hostedTypes: ['web_search'], canonicalize: (raw) => raw.type === 'web_search' ? { type: 'web_search' } : undefined,
+      buildFunctionTool: (_tool, name) => ({ type: 'function', name }), dispatcher: () => [],
+    },
+  })
+  const initial = { model: 'gpt-4-turbo', upstream: 'priced', modelKey: 'gpt-4-turbo', cost: { inputPerM: 1 } as never }
+  const corrected = { model: 'gpt-4-turbo-2025', upstream: 'unpriced', modelKey: 'gpt-4-turbo-2025', cost: null }
+  const interceptor = withResponsesServerToolShim([registration], store)
+  const result = await interceptor({ ...baseInv(), payload: { ...baseInv().payload, tools: [{ type: 'web_search' }] } }, baseCtx, async () => {
+    const response = snapshotFor('corrected', 'gpt-4-turbo-2025')
+    return llmEventResult(framesOf([{ type: 'response.created', response }, { type: 'response.completed', response }]), initial, undefined, undefined, undefined, undefined, (modelKey) => modelKey === corrected.modelKey ? corrected : initial)
+  })
+  if (result.type !== 'events') throw new Error('expected events')
+  await collectAndReturn(result.events as AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>, void>)
+  const metadata = await result.finalMetadata
+  expect(metadata?.modelIdentity).toBe(corrected)
+  expect(metadata?.modelIdentity.cost).toBeNull()
+})
+
 // ─── include-token stripping for shimmed hosted tools ────────────────
 //
 // A shimmed hosted tool never reaches the upstream — the shim replaces it with
