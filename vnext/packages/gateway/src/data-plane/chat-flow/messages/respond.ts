@@ -120,10 +120,11 @@ async function* consumeWithState<T>(
       if (frame.type === 'event') {
         const evObj = frame.event as {
           model?: unknown
+          modelVersion?: unknown
           response?: { model?: unknown }
           message?: { model?: unknown }
         }
-        state.rememberModelKey(evObj.model ?? evObj.response?.model ?? evObj.message?.model)
+        state.rememberModelKey(evObj.model ?? evObj.modelVersion ?? evObj.response?.model ?? evObj.message?.model)
         const normalized = normalizeStreamEventModel(frame.event, state.modelKey)
         state.rememberUsage(normalized)
         const output = normalized === frame.event ? frame : { ...frame, event: normalized as T }

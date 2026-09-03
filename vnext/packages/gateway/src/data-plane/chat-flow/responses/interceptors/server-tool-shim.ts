@@ -366,30 +366,29 @@ const rewriteOutputIndex = (
   } as ResponsesStreamEvent
 }
 
+const captureReportedResponse = (merge: MergeState, response: ResponsesResult): void => {
+  if (typeof response.model === 'string' && response.model.length > 0) {
+    merge.lastSeenModel = merge.lastSeenModel === null
+      ? response.model
+      : pickUsageModelId(response.model, merge.lastSeenModel)
+  }
+  merge.upstreamResponseSnapshot = response
+}
+
 const captureTerminalEvent = (
   event: ResponsesStreamEvent,
   merge: MergeState,
 ): { status: UpstreamTerminal; usage: MergeUsage } | null => {
-  const captureModel = (response: ResponsesResult): void => {
-    if (typeof response.model === 'string' && response.model.length > 0) {
-      merge.lastSeenModel = merge.lastSeenModel === null
-        ? response.model
-        : pickUsageModelId(response.model, merge.lastSeenModel)
-    }
-  }
   if (event.type === 'response.completed') {
-    captureModel(event.response)
-    merge.upstreamResponseSnapshot = event.response
+    captureReportedResponse(merge, event.response)
     return { status: { kind: 'completed' }, usage: usageOf(event.response.usage) }
   }
   if (event.type === 'response.failed') {
-    captureModel(event.response)
-    merge.upstreamResponseSnapshot = event.response
+    captureReportedResponse(merge, event.response)
     return { status: { kind: 'failed', response: event.response }, usage: usageOf(event.response.usage) }
   }
   if (event.type === 'response.incomplete') {
-    captureModel(event.response)
-    merge.upstreamResponseSnapshot = event.response
+    captureReportedResponse(merge, event.response)
     return { status: { kind: 'incomplete', response: event.response }, usage: usageOf(event.response.usage) }
   }
   return null
@@ -504,9 +503,7 @@ export const consumeTurnStreaming = async function* (
 
     const eventType = (event as { type: string }).type
     if (eventType === 'response.queued' || eventType === 'response.created') {
-      const reportedModel = (event as { response: { model?: unknown } }).response.model
-      if (typeof reportedModel === 'string' && reportedModel.length > 0) merge.lastSeenModel = reportedModel
-      merge.upstreamResponseSnapshot = (event as { response: ResponsesResult }).response
+      captureReportedResponse(merge, (event as { response: ResponsesResult }).response)
       ensureModel()
       if (isFirstTurn) {
         const status = eventType === 'response.queued' ? 'queued' : 'in_progress'
@@ -519,6 +516,7 @@ export const consumeTurnStreaming = async function* (
     }
 
     if (event.type === 'response.in_progress') {
+      captureReportedResponse(merge, event.response)
       if (isFirstTurn) {
         yield stamp({
           type: 'response.in_progress',
@@ -1107,6 +1105,7 @@ export const withResponsesServerToolShim = (
   const merge = createMergeState()
   const firstResult = await run()
   if (firstResult.type !== 'events') return firstResult
+  merge.lastSeenModel = firstResult.modelIdentity.modelKey
   const turn1Iter = consumeTurnStreaming(firstResult.events, merge, true, dispatchers, loopState, active)
 
   let resolveFinalMetadata!: (m: EventResultMetadata) => void
@@ -1136,7 +1135,7 @@ export const withResponsesServerToolShim = (
       resolveFinalMetadata,
     }),
     finalMetadata: shimFinalMetadata,
-    resolveModelIdentity: firstResult.resolveModelIdentity,
+    resolveModelIdentity: (modelKey) => metadata.resolveModelIdentity?.(modelKey) ?? metadata.modelIdentity,
   }
 }
 
