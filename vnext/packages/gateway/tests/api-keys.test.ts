@@ -1,5 +1,5 @@
 import { test, expect, beforeEach } from 'bun:test'
-import { initRepo } from '../src/repo/index.ts'
+import { getRepo, initRepo } from '../src/repo/index.ts'
 import { __resetPlatformForTests } from '@vibe-core/platform'
 import type { ApiKey, Repo } from '../src/repo/types.ts'
 import { DEFAULT_API_KEY_MODEL_MAPPINGS } from '../src/shared/api-key-model-mappings.ts'
@@ -102,10 +102,44 @@ test('validateApiKey returns only its minimal routing projection', async () => {
   })
   expect(v).not.toHaveProperty('key')
   expect(v).not.toHaveProperty('webSearchEnabled')
-  expect(v).not.toHaveProperty('webSearchProvider')
   expect(v).not.toHaveProperty('quota')
   expect(v).not.toHaveProperty('createdAt')
   expect(await validateApiKey('bogus')).toBeNull()
+})
+
+test('validateApiKey excludes all non-routing API key fields', async () => {
+  const key: ApiKey = {
+    id: 'sensitive-key',
+    name: 'safe-name',
+    key: 'raw-key-must-not-leak',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ownerId: 'owner-x',
+    modelMappingsEnabled: true,
+    modelMappings: [{ source: 'source', destination: 'destination' }],
+    lastUsedAt: '2026-01-02T00:00:00.000Z',
+    quotaRequestsPerMonth: 1,
+    quotaTokensPerMonth: 2,
+    quotaCostPerMonth: 3,
+    webSearchEnabled: true,
+    webSearchLangsearchKey: 'langsearch-secret',
+    webSearchTavilyKey: 'tavily-secret',
+    webSearchMsGroundingKey: 'grounding-secret',
+    webSearchJinaKey: 'jina-secret',
+    webSearchPriority: ['langsearch'],
+    webSearchLangsearchRef: 'source-key',
+    webSearchTavilyRef: 'source-key',
+    webSearchMsGroundingRef: 'source-key',
+    webSearchJinaRef: 'source-key',
+    webSearchPassthroughUpstream: 'upstream-secret',
+    webSearchPassthroughModel: 'model-secret',
+    dumpRetentionSeconds: 60,
+  }
+  await getRepo().apiKeys.save(key)
+
+  const validated = await validateApiKey(key.key)
+  if (!validated) throw new Error('test key was not validated')
+  expect(Object.keys(validated).sort()).toEqual(['id', 'name', 'ownerId', 'routingPolicy'])
+  expect(Object.keys(validated.routingPolicy).sort()).toEqual(['modelMappings', 'modelMappingsEnabled'])
 })
 
 test('validateApiKey fail-closes invalid stored mappings and clones its routing policy', async () => {

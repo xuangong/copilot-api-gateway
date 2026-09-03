@@ -116,10 +116,12 @@ async function saveCopilotUpstream(
 type ProbeVars = {
   auth?: {
     userId?: UserId
+    isUser?: boolean
     apiKeyId?: string
     authKind?: 'apiKey' | 'session'
     routingPolicy?: { modelMappingsEnabled: boolean; modelMappings: readonly { source: string; destination: string }[] }
     copilot?: { copilotToken: string }
+    githubToken?: string
   }
 }
 
@@ -151,12 +153,13 @@ async function buildApp(): Promise<Hono<{ Variables: ProbeVars }>> {
   return app
 }
 
-async function buildOwnerlessApiKeyApp(): Promise<Hono<{ Variables: ProbeVars }>> {
+async function buildApiKeyApp(ownerId?: UserId): Promise<Hono<{ Variables: ProbeVars }>> {
   await repo.apiKeys.save({
-    id: 'key_ownerless',
-    name: 'ownerless',
-    key: 'ownerless_api_key',
+    id: ownerId ? 'key_owned' : 'key_ownerless',
+    name: ownerId ? 'owned' : 'ownerless',
+    key: ownerId ? 'owned_api_key' : 'ownerless_api_key',
     createdAt: NOW,
+    ownerId,
     modelMappingsEnabled: true,
     modelMappings: [{ source: 'gpt-5.6-sol', destination: 'gpt-5.6-sol-fast' }],
   })
@@ -193,7 +196,7 @@ function request(app: Hono<{ Variables: ProbeVars }>): Promise<Response> {
  * one at a time).
  */
 test('an ownerless API key attaches only its safe routing auth context without pre-warming', async () => {
-  const app = await buildOwnerlessApiKeyApp()
+  const app = await buildApiKeyApp()
   const res = await app.request('/probe', { headers: { 'x-api-key': 'ownerless_api_key' } })
 
   expect(res.status).toBe(200)
@@ -208,6 +211,54 @@ test('an ownerless API key attaches only its safe routing auth context without p
   })
   expect(globalFetchUrls).toEqual([])
   expect(dials).toEqual([])
+})
+
+test('an owned API key retains routing auth and pre-warms its Copilot context', async () => {
+  await saveCopilotUpstream('gh_token_owned_key', [])
+  const app = await buildApiKeyApp(OWNER)
+  const res = await app.request('/probe', { headers: { 'x-api-key': 'owned_api_key' } })
+
+  expect(res.status).toBe(200)
+  expect(await res.json()).toEqual({
+    userId: OWNER,
+    isUser: true,
+    apiKeyId: 'key_owned',
+    authKind: 'apiKey',
+    routingPolicy: {
+      modelMappingsEnabled: true,
+      modelMappings: [{ source: 'gpt-5.6-sol', destination: 'gpt-5.6-sol-fast' }],
+    },
+    copilot: { copilotToken: 'copilot_session_from_global_fetch', accountType: 'individual' },
+    githubToken: 'gh_token_owned_key',
+  })
+  expect(globalFetchUrls).toEqual(['https://api.github.com/copilot_internal/v2/token'])
+  expect(dials).toEqual([])
+})
+
+test('an owned API key retains routing auth when its Copilot pre-warm fetch fails', async () => {
+  await repo.proxies.insert({
+    id: 'px_owned_failure',
+    name: 'owned failure',
+    url: 'http://127.0.0.1:1',
+    dialTimeoutSeconds: null,
+  })
+  await saveCopilotUpstream('gh_token_owned_key_failure', [{ id: 'px_owned_failure' }])
+  const app = await buildApiKeyApp(OWNER)
+  const res = await app.request('/probe', { headers: { 'x-api-key': 'owned_api_key' } })
+
+  expect(res.status).toBe(200)
+  expect(await res.json()).toEqual({
+    userId: OWNER,
+    isUser: true,
+    apiKeyId: 'key_owned',
+    authKind: 'apiKey',
+    routingPolicy: {
+      modelMappingsEnabled: true,
+      modelMappings: [{ source: 'gpt-5.6-sol', destination: 'gpt-5.6-sol-fast' }],
+    },
+  })
+  expect(globalFetchUrls).toEqual([])
+  expect(dials).toEqual([{ host: '127.0.0.1', port: 1 }])
 })
 
 test('a saved chain sends the copilot pre-warm exchange through the resolved fetcher', async () => {
