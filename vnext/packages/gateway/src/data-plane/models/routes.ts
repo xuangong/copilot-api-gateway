@@ -17,6 +17,7 @@ import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { listUpstreamModels, type CreateProviderOptions } from '../providers/registry.ts'
 import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
+import type { ApiKeyRoutingPolicy } from '../../shared/api-key-model-mappings.ts'
 import { getRepo } from '../../repo/index.ts'
 import { isCodexUserAgent } from '../codex/catalog.ts'
 import { loadCodexCatalog } from '../codex/models.ts'
@@ -89,6 +90,8 @@ export interface DataPlaneAuthCtx {
   copilot?: CreateProviderOptions
   /** API-key id authenticated for this request; required for per-key web-search/quota lookups. */
   apiKeyId?: ApiKeyId
+  /** Safe model-routing policy projected from the authenticated API key. */
+  routingPolicy?: ApiKeyRoutingPolicy
   /** GitHub OAuth token attached to the request (used by Copilot web-search engine). */
   githubToken?: string
   /** Env-derived Microsoft Grounding key, surfaced via auth ctx so handlers don't reach into env directly. */

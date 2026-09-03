@@ -2,7 +2,7 @@
  * Session/API-key auth middleware for control-plane routes.
  *
  * Resolves the caller from cookie/header and populates `c.set('auth', ...)`
- * with `{ userId, isAdmin, isUser, apiKeyId, authKind }`. Mirrors the main
+ * with `{ userId, isAdmin, isUser, apiKeyId, routingPolicy, authKind }`. Mirrors the main
  * project's authCheck() in src/index.ts but as a Hono middleware so each
  * route can decide whether to require admin / user / public access.
  *
@@ -18,6 +18,7 @@ import { validateApiKey } from '../lib/api-keys.ts'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
 import { resolveControlPlaneFetcher } from '../upstreams/proxy-resolution.ts'
 import { dmrBoundKey, isDmrCompatEnabled, isDmrPath } from '../../data-plane/dmr/config.ts'
+import type { ApiKeyRoutingPolicy } from '../../shared/api-key-model-mappings.ts'
 import type { ApiKeyId, SessionToken, UserId } from '../../repo/branded-ids.ts'
 
 interface FullAuthCtx {
@@ -25,6 +26,7 @@ interface FullAuthCtx {
   isAdmin?: boolean
   isUser?: boolean
   apiKeyId?: ApiKeyId
+  routingPolicy?: ApiKeyRoutingPolicy
   authKind?: 'public' | 'session' | 'apiKey'
   copilot?: { copilotToken: string; accountType: AccountType }
   githubToken?: string
@@ -98,6 +100,7 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
           userId: result.ownerId,
           isUser: !!result.ownerId,
           apiKeyId: result.id,
+          routingPolicy: result.routingPolicy,
           authKind: 'apiKey',
         }
         resolvedUserId = result.ownerId
@@ -150,7 +153,7 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
       // land here too — thrown at dial time inside getCachedCopilotToken, and
       // only when it misses cache (copilot-token-cache.ts:93 returns first).
     }
-    c.set('auth' as never, ctx as never)
   }
+  if (ctx) c.set('auth' as never, ctx as never)
   await next()
 }

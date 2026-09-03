@@ -113,7 +113,15 @@ async function saveCopilotUpstream(
  * middleware writes the full FullAuthCtx (session-auth.ts); this narrower shape
  * is all the probe route needs to answer "did the pre-warm succeed?".
  */
-type ProbeVars = { auth?: { copilot?: { copilotToken: string } } }
+type ProbeVars = {
+  auth?: {
+    userId?: UserId
+    apiKeyId?: string
+    authKind?: 'apiKey' | 'session'
+    routingPolicy?: { modelMappingsEnabled: boolean; modelMappings: readonly { source: string; destination: string }[] }
+    copilot?: { copilotToken: string }
+  }
+}
 
 /**
  * A live session for OWNER, plus the app under test. The `ses_` prefix selects
@@ -143,6 +151,22 @@ async function buildApp(): Promise<Hono<{ Variables: ProbeVars }>> {
   return app
 }
 
+async function buildOwnerlessApiKeyApp(): Promise<Hono<{ Variables: ProbeVars }>> {
+  await repo.apiKeys.save({
+    id: 'key_ownerless',
+    name: 'ownerless',
+    key: 'ownerless_api_key',
+    createdAt: NOW,
+    modelMappingsEnabled: true,
+    modelMappings: [{ source: 'gpt-5.6-sol', destination: 'gpt-5.6-sol-fast' }],
+  })
+
+  const app = new Hono<{ Variables: ProbeVars }>()
+  app.use('*', sessionAuthMiddleware)
+  app.get('/probe', (c) => c.json(c.get('auth') ?? null))
+  return app
+}
+
 function request(app: Hono<{ Variables: ProbeVars }>): Promise<Response> {
   return app.request('/probe', { headers: { cookie: 'session_token=ses_prewarm' } })
 }
@@ -168,6 +192,24 @@ function request(app: Hono<{ Variables: ProbeVars }>): Promise<Response> {
  * each of the three assertions below detects it on its own (checked separately,
  * one at a time).
  */
+test('an ownerless API key attaches only its safe routing auth context without pre-warming', async () => {
+  const app = await buildOwnerlessApiKeyApp()
+  const res = await app.request('/probe', { headers: { 'x-api-key': 'ownerless_api_key' } })
+
+  expect(res.status).toBe(200)
+  expect(await res.json()).toEqual({
+    apiKeyId: 'key_ownerless',
+    authKind: 'apiKey',
+    isUser: false,
+    routingPolicy: {
+      modelMappingsEnabled: true,
+      modelMappings: [{ source: 'gpt-5.6-sol', destination: 'gpt-5.6-sol-fast' }],
+    },
+  })
+  expect(globalFetchUrls).toEqual([])
+  expect(dials).toEqual([])
+})
+
 test('a saved chain sends the copilot pre-warm exchange through the resolved fetcher', async () => {
   // `insert` is the ProxyRepo's own writer, so the row is genuine SQLite state
   // that loadProxyCatalog reads back through the real column/JSON plumbing.
