@@ -33,6 +33,33 @@ test('rejects malformed JSON body with 400', async () => {
   expect(resp.status).toBe(400)
 })
 
+test('dump retains source model before enabled routing maps the attempt model', async () => {
+  const requested: string[] = []
+  const dump = {
+    requestedModel: (model: string) => { requested.push(model) },
+    finalize: (response: Response) => response,
+    failed: (_message: string) => {},
+    success: () => {},
+    frame: () => {},
+    recordSentPayloadBytes: () => {},
+    error: () => {},
+  }
+  const raw = { model: 'source-model', messages: [{ role: 'user', content: 'hi' }] }
+  const resp = await serveChatCompletions({
+    raw,
+    auth: {
+      ...fakeAuth,
+      routingPolicy: { modelMappingsEnabled: true, modelMappings: [{ source: 'source-model', destination: 'destination-model' }] },
+    },
+    obsCtx: fakeObsCtx,
+    dump,
+  })
+
+  expect(requested).toEqual(['source-model'])
+  expect(raw.model).toBe('source-model')
+  expect(resp.status).toBe(404)
+})
+
 test('passes wantsStream=true to respond when stream:true in body (model-not-found surfaces as 4xx)', async () => {
   const resp = await serveChatCompletions({
     raw: {

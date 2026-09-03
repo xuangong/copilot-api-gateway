@@ -165,6 +165,22 @@ test('POST /v1/messages non-stream returns Anthropic-shaped body', async () => {
   expect(body.usage.output_tokens).toBeGreaterThan(0)
 })
 
+test('POST /v1/messages leaves a catalog source model unchanged when mappings are disabled', async () => {
+  initRepo(stubRepo([stubUpstream()]))
+  installCopilotFetch({ stream: false })
+  const app = buildApp({
+    copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE },
+    routingPolicy: { modelMappingsEnabled: false, modelMappings: [{ source: MODEL_ID, destination: 'not-in-catalog' }] },
+  })
+  const res = await app.fetch(new Request('http://local/v1/messages', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: MODEL_ID, max_tokens: 64, messages: [{ role: 'user', content: 'hi' }] }),
+  }), env)
+
+  expect(res.status).toBe(200)
+  expect(capturedUpstreamModel).toBe('claude-3-5-sonnet')
+})
+
 test('POST /v1/messages routes the source model through enabled key mappings', async () => {
   const source = 'source-model'
   const destination = MODEL_ID
@@ -183,6 +199,7 @@ test('POST /v1/messages routes the source model through enabled key mappings', a
   expect(res.status).toBe(200)
   // Copilot normalizes the selected public destination to its provider key.
   expect(capturedUpstreamModel).toBe('claude-3-5-sonnet')
+  expect((await res.json() as { model?: unknown }).model).toBe(destination)
 })
 
 test('POST /v1/messages streaming returns Anthropic SSE events', async () => {

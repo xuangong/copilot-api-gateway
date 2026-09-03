@@ -164,6 +164,19 @@ test('POST /v1/chat/completions non-stream returns OpenAI-shaped body', async ()
   expect(body.usage.completion_tokens).toBeGreaterThan(0)
 })
 
+test('POST /v1/chat/completions leaves a catalog source model unchanged without policy', async () => {
+  initRepo(stubRepo([stubUpstream()]))
+  installCopilotFetch({ stream: false })
+  const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
+  const res = await app.fetch(new Request('http://local/v1/chat/completions', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: MODEL_ID, messages: [{ role: 'user', content: 'hi' }] }),
+  }), env)
+
+  expect(res.status).toBe(200)
+  expect(capturedUpstreamModel).toBe(MODEL_ID)
+})
+
 test('POST /v1/chat/completions routes the source model through enabled key mappings', async () => {
   const source = 'source-model'
   initRepo(stubRepo([stubUpstream()]))
@@ -179,6 +192,7 @@ test('POST /v1/chat/completions routes the source model through enabled key mapp
 
   expect(res.status).toBe(200)
   expect(capturedUpstreamModel).toBe(MODEL_ID)
+  expect((await res.json() as { model?: unknown }).model).toBe(MODEL_ID)
 })
 
 test('POST /v1/chat/completions streaming returns OpenAI SSE chunks + [DONE]', async () => {

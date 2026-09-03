@@ -93,6 +93,7 @@ const upstreamJson = {
   id: 'resp_upstream_1',
   object: 'response',
   output_text: 'Hello from upstream',
+  model: 'upstream-base-model',
   output: [{
     type: 'message',
     role: 'assistant',
@@ -164,6 +165,20 @@ test('POST /v1/responses non-stream returns Responses-shaped body', async () => 
   expect(body.usage.total_tokens).toBeGreaterThan(0)
 })
 
+test('POST /v1/responses leaves a catalog source model unchanged without policy', async () => {
+  initRepo(stubRepo([stubUpstream()]))
+  initResponsesStore(new InMemoryResponsesSnapshotStore())
+  installCopilotFetch({ stream: false })
+  const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
+  const res = await app.fetch(new Request('http://local/v1/responses', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: MODEL_ID, input: 'hi' }),
+  }), env)
+
+  expect(res.status).toBe(200)
+  expect(capturedUpstreamModel).toBe(MODEL_ID)
+})
+
 test('POST /v1/responses routes the source model through enabled key mappings', async () => {
   const source = 'source-model'
   initRepo(stubRepo([stubUpstream()]))
@@ -180,6 +195,7 @@ test('POST /v1/responses routes the source model through enabled key mappings', 
 
   expect(res.status).toBe(200)
   expect(capturedUpstreamModel).toBe(MODEL_ID)
+  expect((await res.json() as { model?: unknown }).model).toBe(MODEL_ID)
 })
 
 test('POST /v1/responses streaming returns Responses SSE events', async () => {

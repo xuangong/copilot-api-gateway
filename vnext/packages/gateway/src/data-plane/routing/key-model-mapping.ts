@@ -12,11 +12,16 @@ export function resolveKeyModel(
   requestedModel: string,
   policy?: ApiKeyRoutingPolicy,
 ): ResolvedKeyModel {
+  const { upstreamPin, bareModel } = parseModelRouting(requestedModel)
   if (!policy?.modelMappingsEnabled || policy.modelMappings.length === 0) {
-    return { requestedModel, routedModel: requestedModel, matchedRuleIndexes: [] }
+    return {
+      requestedModel,
+      routedModel: requestedModel,
+      ...(upstreamPin ? { upstreamPin } : {}),
+      matchedRuleIndexes: [],
+    }
   }
 
-  const { upstreamPin, bareModel } = parseModelRouting(requestedModel)
   let routedModel = bareModel
   const matchedRuleIndexes: number[] = []
 

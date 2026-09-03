@@ -18,6 +18,7 @@ const env = {} as never
 const KEY = 'ollama-real-key'
 const OWNER = 'owner-user'
 const MODEL = 'gpt-4o-mini'
+const SOURCE_MODEL = 'source-model'
 let modelMappingsEnabled = false
 let capturedUpstreamModel: string | null = null
 
@@ -60,7 +61,7 @@ const repo = (): Repo => ({
     findByRawKey: async (raw: string) =>
       raw === KEY ? {
         id: 'k1', name: 'real', key: raw, ownerId: OWNER, modelMappingsEnabled,
-        modelMappings: [{ source: 'source-model', destination: MODEL }],
+        modelMappings: [{ source: SOURCE_MODEL, destination: MODEL }],
       } : null,
     getById: async () => null,
   },
@@ -103,7 +104,7 @@ beforeEach(() => {
     }
     if (url.pathname.endsWith('/models')) {
       return new Response(
-        JSON.stringify({ object: 'list', data: [stubModel(MODEL)] } satisfies ModelsResponse),
+        JSON.stringify({ object: 'list', data: [stubModel(MODEL), stubModel(SOURCE_MODEL)] } satisfies ModelsResponse),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }
@@ -144,14 +145,14 @@ test('stream:false returns a single Ollama envelope', async () => {
 
 test('API-key routing maps Ollama model names only when enabled', async () => {
   modelMappingsEnabled = true
-  const routed = await chat({ model: 'source-model', stream: false, messages: [{ role: 'user', content: 'hi' }] })
+  const routed = await chat({ model: SOURCE_MODEL, stream: false, messages: [{ role: 'user', content: 'hi' }] })
   expect(routed.status).toBe(200)
   expect(capturedUpstreamModel).toBe(MODEL)
 
   modelMappingsEnabled = false
-  const original = await chat({ model: MODEL, stream: false, messages: [{ role: 'user', content: 'hi' }] })
+  const original = await chat({ model: SOURCE_MODEL, stream: false, messages: [{ role: 'user', content: 'hi' }] })
   expect(original.status).toBe(200)
-  expect(capturedUpstreamModel).toBe(MODEL)
+  expect(capturedUpstreamModel).toBe(SOURCE_MODEL)
 })
 
 test('streaming is NDJSON — every line parses on its own, terminated by done:true', async () => {
