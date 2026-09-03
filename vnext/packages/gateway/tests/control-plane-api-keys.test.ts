@@ -390,6 +390,45 @@ test('GET list and assigned detail expose dual mapping fields and mapping permis
   expect(apiKeyEntry?.can_manage_model_mappings).toBe(false)
 })
 
+test('admin and owner GET list and detail expose snake and camel mapping capability', async () => {
+  const key = await createApiKey('key', 'owner')
+  for (const auth of [{ isAdmin: true }, { isUser: true, userId: 'owner' }] satisfies AuthCtx[]) {
+    const app = buildApp(auth)
+    const list = await app.request('/api/keys')
+    const rows = await list.json() as MappingKeyJson[]
+    const row = rows.at(0)
+    expect(row).toBeDefined()
+    expect(row?.can_manage_model_mappings).toBe(true)
+    expect(row?.canManageModelMappings).toBe(true)
+    const detail = await app.request(`/api/keys/${key.id}`)
+    const body = await detail.json() as MappingKeyJson
+    expect(body.can_manage_model_mappings).toBe(true)
+    expect(body.canManageModelMappings).toBe(true)
+  }
+})
+
+test('mapping PATCH denies unrelated user, authenticated API key, and anonymous callers', async () => {
+  const key = await createApiKey('key', 'owner')
+  for (const auth of [
+    { isUser: true, userId: 'unrelated' },
+    { apiKeyId: key.id },
+    {},
+  ] satisfies AuthCtx[]) {
+    const response = await patchKey(buildApp(auth), key.id, { model_mappings: [] })
+    expect(response.status).toBe(403)
+  }
+})
+
+test('mapping PATCH hides missing and foreign keys identically', async () => {
+  const foreignKey = await createApiKey('foreign', 'owner')
+  const app = buildApp({ isUser: true, userId: 'unrelated' })
+  const body = { model_mappings: [] }
+  const foreign = await patchKey(app, foreignKey.id, body)
+  const missing = await patchKey(app, 'key_missing', body)
+  expect(foreign.status).toBe(missing.status)
+  expect(await foreign.json()).toEqual(await missing.json())
+})
+
 test('PATCH both mapping fields saves once atomically', async () => {
   const key = await createApiKey('key', 'owner')
   let saves = 0
@@ -437,6 +476,35 @@ test('GET fails closed for corrupt stored mappings', async () => {
   expect(body.model_mappings_invalid).toBe(true)
 })
 
+test('PATCH mapping boundaries and exact keys are enforced', async () => {
+  const key = await createApiKey('key', 'owner')
+  const app = buildApp({ isUser: true, userId: 'owner' })
+  const exactMax = Array.from({ length: 100 }, (_, index) => ({ source: `source-${index}`, destination: `direct-${index}` }))
+  store.repo.upstreams = {
+    list: async (filter: { ownerId?: string } = {}) => filter.ownerId === 'owner' ? [{
+      id: 'copilot:owner', provider: 'copilot', name: 'owner', ownerId: 'owner', enabled: true, sortOrder: 0,
+      config: { githubToken: 'token' }, flagOverrides: {}, disabledPublicModelIds: [], state: null,
+      proxyFallbackList: [{ id: 'direct_fetch' }], createdAt: 'x', updatedAt: 'boundaries',
+    }] : [],
+  } as Repo['upstreams']
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const payload = String(input).includes('/copilot_internal/v2/token')
+      ? { token: 'copilot-token', expires_at: Math.floor(Date.now() / 1000) + 3600 }
+      : { object: 'list', data: [...exactMax.map((mapping) => ({ id: mapping.destination, object: 'model', name: mapping.destination, vendor: 'openai', version: mapping.destination, model_picker_enabled: true, preview: false, capabilities: { family: 'openai', limits: {}, supports: {}, tokenizer: 'x', type: 'text' } })), ...['d'.repeat(256)].map((id) => ({ id, object: 'model', name: id, vendor: 'openai', version: id, model_picker_enabled: true, preview: false, capabilities: { family: 'openai', limits: {}, supports: {}, tokenizer: 'x', type: 'text' } }))] }
+    return Promise.resolve(new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } }))
+  }) as typeof fetch
+  try {
+  expect((await patchKey(app, key.id, { model_mappings: exactMax })).status).toBe(200)
+  expect((await patchKey(app, key.id, { model_mappings: [...exactMax, { source: 'x', destination: 'y' }] })).status).toBe(400)
+  expect((await patchKey(app, key.id, { model_mappings: [{ source: 's'.repeat(256), destination: 'd'.repeat(256) }] })).status).toBe(200)
+  expect((await patchKey(app, key.id, { model_mappings: [{ source: 's'.repeat(257), destination: 'd' }] })).status).toBe(400)
+  expect((await patchKey(app, key.id, { model_mappings: [{ source: 's', destination: 'd', extra: true }] })).status).toBe(400)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('PATCH rejects malformed mapping configuration without saving', async () => {
   const key = await createApiKey('key', 'owner')
   const app = buildApp({ isUser: true, userId: 'owner' })
@@ -452,6 +520,33 @@ test('PATCH rejects malformed mapping configuration without saving', async () =>
   const badItem = await patchKey(app, key.id, { model_mappings: [{ source: ' ', destination: 'b' }] })
   expect(badItem.status).toBe(400)
   expect((await badItem.json() as { error: string }).error).toMatch(/index 0.*source/)
+})
+
+test('mapping-only and enabled-only PATCH preserve omitted mapping values', async () => {
+  const key = await createApiKey('key', 'owner')
+  key.modelMappingsEnabled = true
+  key.modelMappings = [{ source: 'one', destination: 'two' }]
+  await store.repo.apiKeys.save(key)
+  const app = buildApp({ isUser: true, userId: 'owner' })
+  const mappingOnly = await patchKey(app, key.id, { model_mappings: [] })
+  expect((await mappingOnly.json() as MappingKeyJson).model_mappings_enabled).toBe(true)
+  const current = await store.repo.apiKeys.getById(key.id)
+  if (!current) throw new Error('expected key')
+  current.modelMappings = []
+  await store.repo.apiKeys.save(current)
+  const enableOnly = await patchKey(app, key.id, { model_mappings_enabled: false })
+  expect((await enableOnly.json() as MappingKeyJson).model_mappings).toEqual([])
+})
+
+test('explicit empty mappings skip catalog validation', async () => {
+  const key = await createApiKey('key', 'owner')
+  let catalogCalls = 0
+  store.repo.upstreams = {
+    list: async () => { catalogCalls++; throw new Error('must not fetch') },
+  } as Repo['upstreams']
+  const result = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, { model_mappings: [] })
+  expect(result.status).toBe(200)
+  expect(catalogCalls).toBe(0)
 })
 
 test('PATCH validates mapping destinations against the key owner catalog', async () => {
