@@ -114,6 +114,17 @@ export class SourceStreamState {
     this.modelKey = pickUsageModelId(key, this.modelKey)
   }
 
+  /**
+   * Records only terminal error signals with the semantics of the specified
+   * protocol. Callers must opt in so a Messages content block that happens to
+   * carry error-shaped data cannot mark an otherwise successful request failed.
+   */
+  rememberFailure(event: unknown, protocol: 'responses'): void {
+    if (!event || typeof event !== 'object') return
+    const type = (event as { type?: unknown }).type
+    if (type === 'error' || type === 'response.failed') this.failedAfter()
+  }
+
   failedAfter(): void {
     this.failed = true
   }

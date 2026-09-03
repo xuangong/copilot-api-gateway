@@ -31,6 +31,7 @@
  * Reference: messages/respond.ts, chat-completions/respond.ts.
  */
 import { waitUntil } from '@vibe-core/platform'
+import type { ProtocolFrame } from '@vibe-core/result'
 import {
   upstreamErrorToResponse,
   type LlmEventResult,
@@ -42,7 +43,11 @@ import { encodeClientSSE } from '../../dispatch/sse-writers.ts'
 import { SourceStreamState, recordPerformance } from '../shared/respond-telemetry.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
-import { consumeWithState, persistFromEventResult } from './state-bridge.ts'
+import {
+  consumeHubFramesWithState,
+  consumeWithState,
+  persistFromEventResult,
+} from './state-bridge.ts'
 import { collectChatCompletionsProtocolEventsToResult } from '../chat-completions/events/to-result'
 import { collectMessagesProtocolEventsToResult } from '../messages/events/reassemble'
 import { collectResponsesProtocolEventsToResult } from '../responses/events/reassemble'
@@ -316,14 +321,19 @@ const renderEventsAsJson = async (
   options: RespondGeminiOptions,
 ): Promise<Response> => {
   const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
-  const events = consumeWithState(result.events, state, options.dump)
+  // Cross-protocol buffered results contain hub ProtocolFrames. Preserve those
+  // frames for the hub reassembler while observing their contained events;
+  // the streaming path remains on the bare Gemini bridge above.
+  const hubProtocol = result.modelIdentity.translatorPair?.hub
+  const events = hubProtocol
+    ? consumeHubFramesWithState(result.events as AsyncIterable<ProtocolFrame<unknown>>, state, options.dump)
+    : consumeWithState(result.events, state, options.dump)
   try {
     // Dispatch reassembly on hub protocol.
     // Gemini has no native hub, so all production bindings are cross-protocol
     // (traverseTranslation always stamps `translatorPair`). When `translatorPair`
     // is absent (legacy tests / unknown paths), fall back to the native gemini
     // stream reassembler so existing callers keep working.
-    const hubProtocol = result.modelIdentity.translatorPair?.hub
     let reassembled: unknown
     if (hubProtocol === 'messages') {
       reassembled = await collectMessagesProtocolEventsToResult(events as never)

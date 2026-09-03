@@ -648,8 +648,8 @@ test('withResponsesServerToolShim turns a snapshot-less empty upstream stream in
   await expect(result.finalMetadata).resolves.toEqual({ modelIdentity: stubIdentity, performance: undefined })
 })
 
-test('respondResponses drains a shimmed first bare error without a prerequisite failure', async () => {
-  setupTestPlatform()
+test('respondResponses records a shimmed pre-lifecycle raw error as failed without usage', async () => {
+  const { repo } = setupTestPlatform()
   const store = createInMemoryPrivatePayloadStore()
   const registration: ServerToolRegistration<Invocation, Record<string, unknown>> = () => ({
     type: 'active', baseToolName: 'web_search', hosted: {
@@ -658,25 +658,61 @@ test('respondResponses drains a shimmed first bare error without a prerequisite 
       buildFunctionTool: (_tool, name) => ({ type: 'function', name }), dispatcher: () => [],
     },
   })
+  const identity = {
+    model: 'public-response-model',
+    upstream: 'test-upstream',
+    modelKey: 'provider-response-model',
+    cost: null,
+  }
+  const performance = {
+    keyId: 'shim-raw-error-key',
+    model: identity.model,
+    upstream: identity.upstream,
+    modelKey: identity.modelKey,
+    stream: true,
+    runtimeLocation: 'bun' as const,
+  }
   const interceptor = withResponsesServerToolShim([registration], store)
   const result = await interceptor(
     { ...baseInv(), payload: { ...baseInv().payload, tools: [{ type: 'web_search' }] } },
     baseCtx,
     async () => llmEventResult((async function* () {
       yield eventFrame({ type: 'error', message: 'upstream unavailable', code: 'upstream_error' } as ResponsesStreamEvent)
-    })(), stubIdentity),
+    })(), identity, performance),
   )
   if (result.type !== 'events') throw new Error('expected events')
   const failures: unknown[] = []
   const response = await respondResponses(result, {
     wantsStream: true,
+    telemetryCtx: {
+      apiKeyId: 'shim-raw-error-key' as never,
+      userAgent: null,
+      requestId: 'shim-raw-error-request',
+      isStreaming: true,
+      runtimeLocation: 'bun',
+      requestStartedAt: Date.now(),
+      sourceApi: 'responses',
+    },
     dump: { frame: () => {}, failed: (error) => { failures.push(error) }, success: () => {} } as never,
   })
   const body = await response.text()
   expect(body).toContain('upstream unavailable')
   expect(body).not.toContain('cannot synthesize a Responses terminal envelope')
   await new Promise((resolve) => setTimeout(resolve, 0))
-  expect(failures).toEqual([])
+  expect(failures).toEqual(['responses stream failed'])
+  const usage = await repo.usage.query({
+    keyId: 'shim-raw-error-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(usage).toEqual([])
+  const persisted = await repo.performance.query({
+    keyId: 'shim-raw-error-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(persisted.summary[0]).toMatchObject({
+    model: 'public-response-model',
+    sourceApi: 'responses',
+    targetApi: 'responses',
+    errors: 1,
+  })
 })
 
 test('withResponsesServerToolShim accepts an unpriced terminal correction in finalMetadata', async () => {

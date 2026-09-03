@@ -17,6 +17,7 @@
  * here we omit `telemetryCtx` so no usage/perf rows are required.
  */
 import { test, expect, mock } from 'bun:test'
+import { setupTestPlatform } from '../../../_setup-platform.ts'
 import { respondGemini } from '../../../../src/data-plane/chat-flow/gemini/respond.ts'
 import {
   llmEventResult,
@@ -243,6 +244,110 @@ test('wantsStream=false + translateBody set: invokes translateBody with hub-reas
 
   // The response body must be what translateBody returned (gemini-shaped sentinel)
   expect(json).toEqual(sentinelGeminiJson)
+})
+
+test('Gemini nonstream responses hub persists hub usage with public model and provider key', async () => {
+  const { repo } = setupTestPlatform()
+  const alias = 'gemini-public'
+  const datedKey = 'gemini-provider-20260904'
+  const identity: TelemetryModelIdentity = {
+    model: alias,
+    upstream: 'upstream',
+    modelKey: 'gemini-provider',
+    cost: { input: 1, output: 1 },
+    translatorPair: { source: 'gemini', hub: 'responses' },
+  }
+  const responseResult = {
+    id: 'resp_hub', object: 'response', model: datedKey, output: [], status: 'completed',
+    error: null, incomplete_details: null,
+    usage: { input_tokens: 7, output_tokens: 3 },
+  }
+  async function* hubFrames(): AsyncGenerator<ProtocolFrame<unknown>> {
+    yield { type: 'event', event: { type: 'response.created', response: responseResult } }
+    yield { type: 'event', event: { type: 'response.completed', response: responseResult } }
+  }
+  const result = llmEventResult(
+    hubFrames(),
+    identity,
+    { keyId: 'gemini-responses-key', model: alias, modelKey: 'gemini-provider', upstream: 'upstream', stream: false, runtimeLocation: 'bun' },
+    undefined,
+    async () => ({ candidates: [] }),
+    undefined,
+    (modelKey) => modelKey === datedKey
+      ? { ...identity, modelKey, cost: { input: 2, output: 4 } }
+      : identity,
+  )
+  const response = await respondGemini(result, {
+    wantsStream: false,
+    telemetryCtx: {
+      apiKeyId: 'gemini-responses-key' as never, userAgent: null, requestId: 'gemini-responses-request',
+      isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
+    },
+  })
+  expect(await response.json()).toEqual({ candidates: [] })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const usage = await repo.usage.query({
+    keyId: 'gemini-responses-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(usage[0]).toMatchObject({
+    model: alias, modelKey: datedKey, cost: { input: 2, output: 4 }, tokens: { input: 7, output: 3 },
+  })
+  const performance = await repo.performance.query({
+    keyId: 'gemini-responses-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(performance.summary[0]).toMatchObject({ model: alias, sourceApi: 'gemini', targetApi: 'responses' })
+})
+
+test('Gemini nonstream messages hub persists message usage and provider key', async () => {
+  const { repo } = setupTestPlatform()
+  const alias = 'gemini-public'
+  const providerKey = 'claude-provider-revision'
+  const identity: TelemetryModelIdentity = {
+    model: alias,
+    upstream: 'upstream',
+    modelKey: providerKey,
+    cost: { input: 2, output: 4 },
+    translatorPair: { source: 'gemini', hub: 'messages' },
+  }
+  async function* hubFrames(): AsyncGenerator<ProtocolFrame<unknown>> {
+    yield {
+      type: 'event',
+      event: {
+        type: 'message_start',
+        message: {
+          id: 'msg_hub', type: 'message', role: 'assistant', model: providerKey, content: [],
+          stop_reason: null, stop_sequence: null, usage: { input_tokens: 5, output_tokens: 0 },
+        },
+      },
+    }
+    yield {
+      type: 'event',
+      event: { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 2 } },
+    }
+    yield { type: 'event', event: { type: 'message_stop' } }
+  }
+  const result = llmEventResult(
+    hubFrames(),
+    identity,
+    { keyId: 'gemini-messages-key', model: alias, modelKey: providerKey, upstream: 'upstream', stream: false, runtimeLocation: 'bun' },
+    undefined,
+    async () => ({ candidates: [] }),
+  )
+  const response = await respondGemini(result, {
+    wantsStream: false,
+    telemetryCtx: {
+      apiKeyId: 'gemini-messages-key' as never, userAgent: null, requestId: 'gemini-messages-request',
+      isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
+    },
+  })
+  expect(await response.json()).toEqual({ candidates: [] })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const usage = await repo.usage.query({
+    keyId: 'gemini-messages-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(usage[0]).toMatchObject({
+    model: alias, modelKey: providerKey, cost: { input: 2, output: 4 }, tokens: { input: 5, output: 2 },
+  })
 })
 
 test('wantsStream=false + translateBody set with hub=messages: dispatches to messages reassembler', async () => {

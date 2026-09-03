@@ -41,6 +41,43 @@ import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 import { eventFrame, type ProtocolFrame } from '@vibe-core/result'
 
+interface ModelBearingEvent {
+  model?: unknown
+  modelVersion?: unknown
+  response?: { model?: unknown }
+  message?: { model?: unknown }
+}
+
+/**
+ * Observe hub protocol frames without changing them. Gemini's non-streaming
+ * cross-protocol result retains ProtocolFrame wrappers for the hub reassembler;
+ * its usage and provider model must therefore be read from `frame.event`, not
+ * from the wrapper or through Gemini's bare-event stream bridge.
+ */
+export async function* consumeHubFramesWithState(
+  events: AsyncIterable<ProtocolFrame<unknown>>,
+  state: SourceStreamState,
+  dump?: DumpAccumulator | null,
+): AsyncGenerator<ProtocolFrame<unknown>> {
+  try {
+    for await (const frame of events) {
+      if (frame.type === 'event') {
+        const event = frame.event as ModelBearingEvent
+        state.rememberModelKey(
+          event.model ?? event.modelVersion ?? event.response?.model ?? event.message?.model,
+        )
+        state.rememberUsage(frame.event)
+      }
+      dump?.frame(frame)
+      yield frame
+    }
+  } catch (err) {
+    state.failedAfter()
+    dump?.failed(err)
+    throw err
+  }
+}
+
 /**
  * Drain an `AsyncIterable<unknown>` of bare gemini events while observing
  * model-key + usage into `state`. Throws are propagated AFTER setting

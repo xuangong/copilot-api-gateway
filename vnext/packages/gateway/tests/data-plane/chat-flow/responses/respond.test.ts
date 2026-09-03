@@ -32,6 +32,44 @@ test('Responses stream keeps public model for a modelVersion provider revision',
   expect(await response.text()).toContain('"modelVersion":"gpt-4-turbo"')
 })
 
+test('Responses response.failed records failed performance without usage', async () => {
+  const { repo } = setupTestPlatform()
+  const failedIdentity: TelemetryModelIdentity = {
+    model: 'public-response-model', upstream: 'test', modelKey: 'provider-response-model', cost: null,
+  }
+  async function* failedFrames(): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
+    yield eventFrame({
+      type: 'response.failed',
+      response: {
+        id: 'resp_failed', object: 'response', model: 'provider-response-model', output: [],
+        status: 'failed', error: { code: 'server_error', message: 'upstream unavailable' }, incomplete_details: null,
+      },
+    } as ResponsesStreamEvent)
+  }
+  const response = await respondResponses(
+    llmEventResult(failedFrames(), failedIdentity, {
+      keyId: 'response-failed-key', model: failedIdentity.model, modelKey: failedIdentity.modelKey,
+      upstream: 'test', stream: false, runtimeLocation: 'bun',
+    }),
+    {
+      wantsStream: false,
+      telemetryCtx: {
+        apiKeyId: 'response-failed-key' as never, userAgent: null, requestId: 'response-failed-request',
+        isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'responses',
+      },
+    },
+  )
+  expect((await response.json() as { status: string }).status).toBe('failed')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(await repo.usage.query({
+    keyId: 'response-failed-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })).toEqual([])
+  const performance = await repo.performance.query({
+    keyId: 'response-failed-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(performance.summary[0]).toMatchObject({ model: 'public-response-model', errors: 1 })
+})
+
 test('Responses translated stream receives and outputs the mapped destination', async () => {
   let contextModel = ''
   const result = llmEventResult(
