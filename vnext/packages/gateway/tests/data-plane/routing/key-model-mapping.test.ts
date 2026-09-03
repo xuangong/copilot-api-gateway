@@ -40,6 +40,16 @@ test('normalizer accepts exactly the maximum mappings in order', () => {
   })
 })
 
+test('normalizer accepts model names at the maximum length', () => {
+  const source = 's'.repeat(MAX_MODEL_NAME_LENGTH)
+  const destination = 'd'.repeat(MAX_MODEL_NAME_LENGTH)
+
+  expect(normalizeApiKeyModelMappings([{ source, destination }])).toEqual({
+    ok: true,
+    value: [{ source, destination }],
+  })
+})
+
 test('normalizer fails the entire list closed without exposing invalid values', () => {
   const cases: Array<{ input: unknown; expected: object }> = [
     { input: {}, expected: { ok: false, reason: 'not_array' } },
@@ -48,6 +58,7 @@ test('normalizer fails the entire list closed without exposing invalid values', 
     { input: [42], expected: { ok: false, reason: 'invalid_item', index: 0 } },
     { input: [{ source: 1, destination: 'b' }], expected: { ok: false, reason: 'invalid_field', index: 0, field: 'source' } },
     { input: [{ source: 'a', destination: false }], expected: { ok: false, reason: 'invalid_field', index: 0, field: 'destination' } },
+    { input: [{ source: 'a', destination: '   ' }], expected: { ok: false, reason: 'empty_field', index: 0, field: 'destination' } },
     { input: [{ source: ' ', destination: 'b' }], expected: { ok: false, reason: 'empty_field', index: 0, field: 'source' } },
     { input: [{ source: 'a', destination: 'b'.repeat(MAX_MODEL_NAME_LENGTH + 1) }], expected: { ok: false, reason: 'field_too_long', index: 0, field: 'destination' } },
     { input: Array.from({ length: MAX_MODEL_MAPPINGS + 1 }, () => ({ source: 'a', destination: 'b' })), expected: { ok: false, reason: 'too_many_items' } },
