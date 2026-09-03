@@ -46,6 +46,15 @@ test('events + wantsStream=false → JSON Response with reassembled completion',
   expect(json.choices[0]?.message.content).toBe('hi')
 })
 
+test('Chat streaming normalizes a modelVersion-only correction', async () => {
+  async function* source(): AsyncGenerator<ProtocolFrame<ChatCompletionsStreamEvent>> {
+    yield eventFrame({ id: 'x', object: 'chat.completion.chunk', created: 0, modelVersion: 'gpt-4-turbo-2025', choices: [] } as never)
+    yield doneFrame()
+  }
+  const response = await respondChatCompletions(llmEventResult(source(), { ...stubIdentity, modelKey: 'gpt-4-turbo', model: 'gpt-4-turbo' }), { wantsStream: true, includeUsageChunk: false })
+  expect(await response.text()).toContain('"modelVersion":"gpt-4-turbo-2025"')
+})
+
 test('streaming and JSON responses preserve the mapped destination model', async () => {
   const mappedIdentity = { ...stubIdentity, model: 'gpt-5.6-sol-fast', modelKey: 'gpt-5.6-sol-fast' }
   const source = async function* (): AsyncGenerator<ProtocolFrame<ChatCompletionsStreamEvent>> {

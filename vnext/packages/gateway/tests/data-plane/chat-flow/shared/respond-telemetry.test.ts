@@ -84,10 +84,20 @@ test('finalModelIdentity accepts a dated correction and reprices it', () => {
   )).toBe(dated)
 })
 
-test('finalModelIdentity retains initial identity for invalid correction or missing price', () => {
+test('finalModelIdentity retains initial identity when resolver is missing', () => {
   const initial = { ...identity('gpt-4'), cost: { input: 1 } as never }
   expect(finalModelIdentity(initial, '', () => null)).toBe(initial)
-  expect(finalModelIdentity(initial, 'unrelated', () => null)).toBe(initial)
+  expect(finalModelIdentity(initial, 'unrelated')).toBe(initial)
+})
+
+test('finalModelIdentity accepts a resolver result with null pricing', () => {
+  const initial = { ...identity('gpt-4-turbo'), cost: { input: 1 } as never }
+  const resolved = finalModelIdentity(initial, 'gpt-4-turbo-2025', (modelKey) => ({
+    ...initial, model: modelKey, modelKey, cost: null,
+  }))
+  expect(resolved.modelKey).toBe('gpt-4-turbo-2025')
+  expect(resolved.model).toBe('gpt-4-turbo-2025')
+  expect(resolved.cost).toBeNull()
 })
 
 test('normalizeStreamEventModel clones only observed model-bearing paths', () => {

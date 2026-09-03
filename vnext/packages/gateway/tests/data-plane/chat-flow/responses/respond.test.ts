@@ -21,6 +21,33 @@ test('Responses stream and JSON retain mapped destination when upstream echoes b
   expect((await json.json() as { model: string }).model).toBe('gpt-5.6-sol-fast')
 })
 
+test('Responses stream normalizes a modelVersion-only correction', async () => {
+  async function* source(): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
+    yield eventFrame({ type: 'response.completed', modelVersion: 'gpt-4-turbo-2025', response: { id: 'x', object: 'response', model: 'gpt-4-turbo-2025', output: [], status: 'completed', error: null, incomplete_details: null } } as never)
+  }
+  const response = await respondResponses(llmEventResult(source(), { ...identity, model: 'gpt-4-turbo', modelKey: 'gpt-4-turbo' }), { wantsStream: true })
+  expect(await response.text()).toContain('"modelVersion":"gpt-4-turbo-2025"')
+})
+
+test('Responses translated stream receives and outputs the mapped destination', async () => {
+  let contextModel = ''
+  const result = llmEventResult(
+    frames() as AsyncIterable<ProtocolFrame<ResponsesStreamEvent>>,
+    identity,
+    undefined,
+    undefined,
+    undefined,
+    async function* (_events, context) {
+      contextModel = context.model ?? ''
+      const response: ResponsesResult = { id: 'translated', object: 'response', model: 'gpt-5.6-sol', output: [], status: 'completed', error: null, incomplete_details: null }
+      yield { type: 'response.completed', response }
+    },
+  )
+  const response = await respondResponses(result, { wantsStream: true })
+  expect(await response.text()).toContain('"model":"gpt-5.6-sol-fast"')
+  expect(contextModel).toBe('gpt-5.6-sol-fast')
+})
+
 test('Responses translateBody receives the observed effective model', async () => {
   let model = ''
   const result = llmEventResult(frames(), identity, undefined, undefined, async (body, ctx) => {

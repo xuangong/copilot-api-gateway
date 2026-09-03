@@ -24,6 +24,28 @@ test('Messages stream and JSON retain mapped destination when upstream echoes ba
   expect((await json.json() as { model: string }).model).toBe('gpt-5.6-sol-fast')
 })
 
+test('Messages translated stream receives and outputs the mapped destination', async () => {
+  let contextModel = ''
+  const result = llmEventResult(
+    frames() as AsyncIterable<ProtocolFrame<MessagesStreamEvent>>,
+    identity,
+    undefined,
+    undefined,
+    undefined,
+    async function* (_events, context) {
+      contextModel = context.model ?? ''
+      yield { type: 'message_start', message: {
+        id: 'translated', type: 'message', role: 'assistant', model: 'gpt-5.6-sol', content: [], stop_reason: null,
+        stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 },
+      } }
+      yield { type: 'message_stop' }
+    },
+  )
+  const response = await respondMessages(result, { wantsStream: true })
+  expect(await response.text()).toContain('"model":"gpt-5.6-sol-fast"')
+  expect(contextModel).toBe('gpt-5.6-sol-fast')
+})
+
 test('Messages stream normalizes a modelVersion-only correction', async () => {
   async function* modelVersionFrame(): AsyncGenerator<ProtocolFrame<MessagesStreamEvent>> {
     yield eventFrame({ type: 'message_stop', modelVersion: 'gpt-4-turbo-2025' } as unknown as MessagesStreamEvent)
