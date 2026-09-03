@@ -1,8 +1,10 @@
 import type { BillingDimension, ModelPricing, UpstreamKind, UpstreamRecord } from "@vibe-llm/protocols/common"
 import type { ProxyRepo, ProxyBackoffRepo } from "@vibe-core/proxy-repo"
 import type { ApiKeyId, DeviceCodeToken, GitHubAccountId, InviteCodeId, ResponsesItemId, SessionToken, UpstreamId, UserId } from "./branded-ids.ts"
+import type { ApiKeyModelMapping } from '../shared/api-key-model-mappings.ts'
 
 export type { SearchConfig, WebSearchProviderName } from "../shared/web-search-providers.ts"
+export type { ApiKeyModelMapping, ApiKeyRoutingPolicy } from '../shared/api-key-model-mappings.ts'
 export type { ProxyRepo, ProxyBackoffRepo, ProxyRecord, ProxyFallbackEntry, BackoffRow } from "@vibe-core/proxy-repo"
 
 export interface ApiKey {
@@ -10,6 +12,10 @@ export interface ApiKey {
   name: string
   key: string
   createdAt: string
+  modelMappingsEnabled: boolean
+  modelMappings: ApiKeyModelMapping[]
+  /** True when persisted model mappings failed validation and were fail-closed. */
+  modelMappingsInvalid?: boolean
   lastUsedAt?: string
   ownerId?: UserId
   quotaRequestsPerMonth?: number
