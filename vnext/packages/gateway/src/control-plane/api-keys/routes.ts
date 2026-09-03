@@ -34,6 +34,7 @@ import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 import { zValidator } from '../middleware/zod-validator.ts'
 import { loadOwned } from '../shared/ownership.ts'
 import { listProviderBindings } from '../../data-plane/providers/registry.ts'
+import { normalizeApiKeyModelMappings } from '../../shared/api-key-model-mappings.ts'
 import { buildCompositeModelId, composeModelOptions, copilotPublicModelId } from '@vibe-llm/provider-copilot'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 
@@ -159,29 +160,14 @@ function validationError(message: string): { error: string } {
 }
 
 function validateModelMappings(value: unknown): ModelMappingInput[] | { error: string } {
-  if (!Array.isArray(value)) return validationError('model_mappings must be an array')
-  if (value.length > 100) return validationError('model_mappings must contain at most 100 items')
-  const mappings: ModelMappingInput[] = []
-  for (const [index, item] of value.entries()) {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) {
-      return validationError(`model_mappings index ${index} must be an object`)
-    }
-    const record = item as Record<string, unknown>
-    const keys = Object.keys(record)
-    if (keys.length !== 2 || !keys.includes('source') || !keys.includes('destination')) {
-      return validationError(`model_mappings index ${index} must contain only source and destination`)
-    }
-    for (const field of ['source', 'destination'] as const) {
-      const raw = record[field]
-      if (typeof raw !== 'string') return validationError(`model_mappings index ${index} ${field} must be a string`)
-      const trimmed = raw.trim()
-      if (!trimmed) return validationError(`model_mappings index ${index} ${field} must not be blank`)
-      if (trimmed.length > 256) return validationError(`model_mappings index ${index} ${field} must be at most 256 characters`)
-      record[field] = trimmed
-    }
-    mappings.push({ source: record.source as string, destination: record.destination as string })
-  }
-  return mappings
+  const normalized = normalizeApiKeyModelMappings(value)
+  if (normalized.ok) return normalized.value
+  if (normalized.reason === 'not_array') return validationError('model_mappings must be an array')
+  if (normalized.reason === 'too_many_items') return validationError('model_mappings must contain at most 100 items')
+  if (normalized.reason === 'invalid_item') return validationError(`model_mappings index ${normalized.index ?? 0} must contain only source and destination`)
+  if (normalized.reason === 'invalid_field') return validationError(`model_mappings index ${normalized.index ?? 0} ${normalized.field ?? 'source'} must be a string`)
+  if (normalized.reason === 'empty_field') return validationError(`model_mappings index ${normalized.index ?? 0} ${normalized.field ?? 'source'} must not be blank`)
+  return validationError(`model_mappings index ${normalized.index ?? 0} ${normalized.field ?? 'source'} must be at most 256 characters`)
 }
 
 async function destinationsAreAvailable(ownerId: string | undefined, mappings: readonly ModelMappingInput[]): Promise<boolean> {
@@ -393,19 +379,12 @@ apiKeysRouter.patch('/:id', async (c) => {
     : {}
   const mappingFields = new Set(['model_mappings_enabled', 'model_mappings'])
   const hasMappingUpdate = [...mappingFields].some((field) => Object.hasOwn(body, field))
-  const hasOtherMutableUpdate = [
-    'name', 'quota_requests_per_month', 'quota_tokens_per_month', 'quota_cost_per_month',
-    'web_search_enabled', 'web_search_langsearch_key', 'web_search_tavily_key',
-    'web_search_ms_grounding_key', 'web_search_priority', 'web_search_langsearch_ref',
-    'web_search_tavily_ref', 'web_search_ms_grounding_ref', 'web_search_jina_key',
-    'web_search_jina_ref', 'web_search_passthrough_upstream', 'web_search_passthrough_model',
-    'dump_retention_seconds',
-  ].some((field) => Object.hasOwn(body, field))
+  const isMappingOnlyBody = Object.keys(body).every((field) => mappingFields.has(field))
   const existing = await getApiKeyById(id)
   if (!existing) return c.json({ error: 'Forbidden' }, 403)
   const canManageMappings = await canManageModelMappings(existing, auth)
   const isOwner = auth.isAdmin === true || (!!auth.userId && existing.ownerId === auth.userId)
-  if ((!isOwner && (!hasMappingUpdate || hasOtherMutableUpdate)) || (!canManageMappings && hasMappingUpdate)) {
+  if ((!isOwner && (!hasMappingUpdate || !isMappingOnlyBody)) || (!canManageMappings && hasMappingUpdate)) {
     return c.json({ error: 'Forbidden' }, 403)
   }
   if (!isOwner && !hasMappingUpdate) return c.json({ error: 'Forbidden' }, 403)
@@ -430,6 +409,17 @@ apiKeysRouter.patch('/:id', async (c) => {
       return c.json({ error: 'Unable to validate model mappings' }, 503)
     }
     updated.modelMappingsInvalid = false
+    if (isMappingOnlyBody) {
+      const patch = {
+        ...(Object.hasOwn(body, 'model_mappings_enabled') && { modelMappingsEnabled: updated.modelMappingsEnabled }),
+        ...(Object.hasOwn(body, 'model_mappings') && { modelMappings: updated.modelMappings }),
+      }
+      await getRepo().apiKeys.patchModelMappings(id, patch)
+      const persisted = await getRepo().apiKeys.getById(id)
+      if (!persisted) return c.json({ error: 'Forbidden' }, 403)
+      const sourceMap = await loadSourceMapForKey(persisted)
+      return c.json(keyToJson(persisted, undefined, isOwner, sourceMap, canManageMappings))
+    }
   }
   const legacyBody = body as {
     name?: string

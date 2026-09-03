@@ -1,4 +1,4 @@
-import type { BillingDimension, ModelPricing, UpstreamKind, UpstreamRecord } from "@vibe-llm/protocols/common"
+import type { BillingDimension, ModelPricing, UpstreamRecord } from "@vibe-llm/protocols/common"
 import type { ProxyRepo, ProxyBackoffRepo } from "@vibe-core/proxy-repo"
 import type { ApiKeyId, DeviceCodeToken, GitHubAccountId, InviteCodeId, ResponsesItemId, SessionToken, UpstreamId, UserId } from "./branded-ids.ts"
 import type { ApiKeyModelMapping } from '../shared/api-key-model-mappings.ts'
@@ -133,6 +133,8 @@ export interface ApiKeyRepo {
   findByRawKey(rawKey: string): Promise<ApiKey | null>
   getById(id: ApiKeyId): Promise<ApiKey | null>
   save(key: ApiKey): Promise<void>
+  /** Atomically update only the supplied mapping settings. */
+  patchModelMappings(id: ApiKeyId, patch: { modelMappingsEnabled?: boolean; modelMappings?: ApiKeyModelMapping[] }): Promise<boolean>
   delete(id: ApiKeyId): Promise<boolean>
   deleteAll(): Promise<void>
   /** Bump last_used_at to now. No-op if id does not exist. */

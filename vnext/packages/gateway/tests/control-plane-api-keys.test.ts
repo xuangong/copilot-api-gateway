@@ -34,6 +34,17 @@ function inMemoryRepo() {
       findByRawKey: async (raw: string) => [...keys.values()].find((k) => k.key === raw) ?? null,
       getById: async (id: string) => keys.get(id) ?? null,
       save: async (k: ApiKey) => { keys.set(k.id, k) },
+      patchModelMappings: async (id: string, patch: { modelMappingsEnabled?: boolean; modelMappings?: ApiKey['modelMappings'] }) => {
+        const current = keys.get(id)
+        if (!current) return false
+        keys.set(id, {
+          ...current,
+          ...(patch.modelMappingsEnabled !== undefined && { modelMappingsEnabled: patch.modelMappingsEnabled }),
+          ...(patch.modelMappings !== undefined && { modelMappings: patch.modelMappings }),
+          modelMappingsInvalid: false,
+        })
+        return true
+      },
       delete: async (id: string) => keys.delete(id),
       deleteAll: async () => { keys.clear() },
     },
@@ -431,14 +442,14 @@ test('mapping PATCH hides missing and foreign keys identically', async () => {
 
 test('PATCH both mapping fields saves once atomically', async () => {
   const key = await createApiKey('key', 'owner')
-  let saves = 0
-  const realSave = store.repo.apiKeys.save
-  store.repo.apiKeys.save = async (updated) => { saves++; await realSave(updated) }
+  let patches = 0
+  const realPatch = store.repo.apiKeys.patchModelMappings
+  store.repo.apiKeys.patchModelMappings = async (id, patch) => { patches++; return realPatch(id, patch) }
   const result = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, {
     model_mappings_enabled: true, model_mappings: [],
   })
   expect(result.status).toBe(200)
-  expect(saves).toBe(1)
+  expect(patches).toBe(1)
   const stored = await store.repo.apiKeys.getById(key.id)
   expect(stored?.modelMappingsEnabled).toBe(true)
   expect(stored?.modelMappings).toEqual([])
@@ -682,6 +693,58 @@ test('PATCH accepts a composite built from split raw variants within one upstrea
     expect(response.status).toBe(200)
   } finally {
     restore()
+  }
+})
+
+test('assignee mapping PATCH does not overwrite concurrent owner fields while catalog awaits', async () => {
+  const key = await createApiKey('key', 'owner')
+  await store.repo.keyAssignments.assign(key.id, 'assignee', 'owner')
+  store.repo.upstreams = {
+    list: async (filter: { ownerId?: string } = {}) => filter.ownerId === 'owner' ? [{
+      id: 'copilot:owner', provider: 'copilot', name: 'owner', ownerId: 'owner', enabled: true, sortOrder: 0,
+      config: { githubToken: 'token' }, flagOverrides: {}, disabledPublicModelIds: [], state: null,
+      proxyFallbackList: [{ id: 'direct_fetch' }], createdAt: 'x', updatedAt: 'concurrent-catalog',
+    }] : [],
+  } as Repo['upstreams']
+  let notifyCatalogStarted: (() => void) | undefined
+  const catalogStarted = new Promise<void>((resolve) => { notifyCatalogStarted = resolve })
+  let resolveCatalog: ((response: Response) => void) | undefined
+  const catalogResponse = new Promise<Response>((resolve) => { resolveCatalog = resolve })
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    if (String(input).includes('/copilot_internal/v2/token')) {
+      return Promise.resolve(new Response(JSON.stringify({ token: 'copilot-token', expires_at: Math.floor(Date.now() / 1000) + 3600 }), { status: 200 }))
+    }
+    notifyCatalogStarted?.()
+    return catalogResponse
+  }) as typeof fetch
+  let saves = 0
+  let patches = 0
+  const realSave = store.repo.apiKeys.save
+  const realPatch = store.repo.apiKeys.patchModelMappings
+  store.repo.apiKeys.save = async (updated) => { saves++; await realSave(updated) }
+  store.repo.apiKeys.patchModelMappings = async (id, patch) => { patches++; return realPatch(id, patch) }
+  try {
+    const request = patchKey(buildApp({ isUser: true, userId: 'assignee' }), key.id, {
+      model_mappings: [{ source: 'alias', destination: 'direct-target' }],
+    })
+    await catalogStarted
+    const concurrent = await store.repo.apiKeys.getById(key.id)
+    if (!concurrent) throw new Error('expected key')
+    await store.repo.apiKeys.save({ ...concurrent, name: 'owner-update', quotaRequestsPerMonth: 99 })
+    saves = 0
+    if (!resolveCatalog) throw new Error('expected catalog resolver')
+    resolveCatalog(new Response(JSON.stringify({ object: 'list', data: [catalogModel('direct-target')] }), { status: 200 }))
+    const response = await request
+    expect(response.status).toBe(200)
+    expect(saves).toBe(0)
+    expect(patches).toBe(1)
+    expect(await store.repo.apiKeys.getById(key.id)).toMatchObject({
+      name: 'owner-update', quotaRequestsPerMonth: 99,
+      modelMappings: [{ source: 'alias', destination: 'direct-target' }],
+    })
+  } finally {
+    globalThis.fetch = originalFetch
   }
 })
 

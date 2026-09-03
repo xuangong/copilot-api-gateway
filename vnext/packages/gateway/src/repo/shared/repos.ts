@@ -1,6 +1,7 @@
 import type {
   ApiKey,
   ApiKeyRepo,
+  ApiKeyModelMapping,
   CacheRepo,
   ClientPresence,
   ClientPresenceRepo,
@@ -355,6 +356,26 @@ class SharedApiKeyRepo implements ApiKeyRepo {
         JSON.stringify(key.modelMappings),
       ],
     )
+  }
+
+  async patchModelMappings(
+    id: ApiKeyId,
+    patch: { modelMappingsEnabled?: boolean; modelMappings?: ApiKeyModelMapping[] },
+  ): Promise<boolean> {
+    const sets: string[] = []
+    const binds: unknown[] = []
+    if (patch.modelMappingsEnabled !== undefined) {
+      sets.push('model_mappings_enabled = ?')
+      binds.push(patch.modelMappingsEnabled ? 1 : 0)
+    }
+    if (patch.modelMappings !== undefined) {
+      sets.push('model_mappings = ?')
+      binds.push(JSON.stringify(patch.modelMappings))
+    }
+    if (sets.length === 0) return false
+    binds.push(id)
+    const result = await this.x.run(`UPDATE api_keys SET ${sets.join(', ')} WHERE id = ?`, binds)
+    return result.changes > 0
   }
 
   async delete(id: ApiKeyId): Promise<boolean> {

@@ -60,6 +60,21 @@ test("SqliteRepo: api key mappings preserve ordered duplicates and explicit empt
   })
 })
 
+test("SqliteRepo: partial mapping patches leave unrelated columns intact", async () => {
+  const { repo } = newRepo()
+  const now = new Date().toISOString()
+  await repo.apiKeys.save({
+    id: 'k-patch', name: 'original', key: 'raw-secret-patch', createdAt: now,
+    quotaRequestsPerMonth: 10, modelMappingsEnabled: false, modelMappings: [{ source: 'a', destination: 'b' }],
+  })
+  await repo.apiKeys.patchModelMappings('k-patch', { modelMappingsEnabled: true })
+  let saved = await repo.apiKeys.getById('k-patch')
+  expect(saved).toMatchObject({ name: 'original', quotaRequestsPerMonth: 10, modelMappingsEnabled: true, modelMappings: [{ source: 'a', destination: 'b' }] })
+  await repo.apiKeys.patchModelMappings('k-patch', { modelMappings: [] })
+  saved = await repo.apiKeys.getById('k-patch')
+  expect(saved).toMatchObject({ modelMappingsEnabled: true, modelMappings: [] })
+})
+
 test("SqliteRepo: toggling mappings and full saves retain the list", async () => {
   const { repo } = newRepo()
   const now = new Date().toISOString()
