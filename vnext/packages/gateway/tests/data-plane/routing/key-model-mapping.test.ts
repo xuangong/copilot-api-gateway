@@ -25,19 +25,37 @@ test('normalizer trims mappings while preserving duplicates and order', () => {
   })
 })
 
-test('normalizer fails the entire list closed for invalid values', () => {
-  const cases: Array<{ input: unknown; reason: string; index?: number; field?: string }> = [
-    { input: {}, reason: 'not_array' },
-    { input: [null], reason: 'invalid_item', index: 0 },
-    { input: [{ source: 1, destination: 'b' }], reason: 'invalid_field', index: 0, field: 'source' },
-    { input: [{ source: ' ', destination: 'b' }], reason: 'empty_field', index: 0, field: 'source' },
-    { input: [{ source: 'a', destination: 'b'.repeat(MAX_MODEL_NAME_LENGTH + 1) }], reason: 'field_too_long', index: 0, field: 'destination' },
-    { input: Array.from({ length: MAX_MODEL_MAPPINGS + 1 }, () => ({ source: 'a', destination: 'b' })), reason: 'too_many_items' },
-    { input: [{ source: 'a'.repeat(MAX_MODEL_NAME_LENGTH + 1), destination: 'b' }], reason: 'field_too_long', index: 0, field: 'source' },
+test('normalizer accepts exactly the maximum mappings in order', () => {
+  const mappings = Array.from({ length: MAX_MODEL_MAPPINGS }, (_, index) => ({
+    source: ` source-${index} `,
+    destination: ` destination-${index} `,
+  }))
+
+  expect(normalizeApiKeyModelMappings(mappings)).toEqual({
+    ok: true,
+    value: Array.from({ length: MAX_MODEL_MAPPINGS }, (_, index) => ({
+      source: `source-${index}`,
+      destination: `destination-${index}`,
+    })),
+  })
+})
+
+test('normalizer fails the entire list closed without exposing invalid values', () => {
+  const cases: Array<{ input: unknown; expected: object }> = [
+    { input: {}, expected: { ok: false, reason: 'not_array' } },
+    { input: [[]], expected: { ok: false, reason: 'invalid_item', index: 0 } },
+    { input: [null], expected: { ok: false, reason: 'invalid_item', index: 0 } },
+    { input: [42], expected: { ok: false, reason: 'invalid_item', index: 0 } },
+    { input: [{ source: 1, destination: 'b' }], expected: { ok: false, reason: 'invalid_field', index: 0, field: 'source' } },
+    { input: [{ source: 'a', destination: false }], expected: { ok: false, reason: 'invalid_field', index: 0, field: 'destination' } },
+    { input: [{ source: ' ', destination: 'b' }], expected: { ok: false, reason: 'empty_field', index: 0, field: 'source' } },
+    { input: [{ source: 'a', destination: 'b'.repeat(MAX_MODEL_NAME_LENGTH + 1) }], expected: { ok: false, reason: 'field_too_long', index: 0, field: 'destination' } },
+    { input: Array.from({ length: MAX_MODEL_MAPPINGS + 1 }, () => ({ source: 'a', destination: 'b' })), expected: { ok: false, reason: 'too_many_items' } },
+    { input: [{ source: 'a'.repeat(MAX_MODEL_NAME_LENGTH + 1), destination: 'b' }], expected: { ok: false, reason: 'field_too_long', index: 0, field: 'source' } },
   ]
 
-  for (const { input, reason, index, field } of cases) {
-    expect(normalizeApiKeyModelMappings(input)).toEqual({ ok: false, reason, index, field })
+  for (const { input, expected } of cases) {
+    expect(normalizeApiKeyModelMappings(input)).toEqual(expected)
   }
 })
 
@@ -45,9 +63,13 @@ test('stored mapping parser labels JSON parsing failures without exposing input'
   expect(parseStoredApiKeyModelMappings('{')).toEqual({ ok: false, reason: 'invalid_json' })
 })
 
-test('default mappings cannot be mutated by consumers', () => {
+test('default mappings and their elements cannot be mutated by consumers', () => {
   const defaults = DEFAULT_API_KEY_MODEL_MAPPINGS as Array<{ source: string; destination: string }>
+  const defaultMapping = defaults[0]!
+
   expect(() => defaults.push({ source: 'x', destination: 'y' })).toThrow()
+  expect(() => { defaultMapping.source = 'x' }).toThrow()
+  expect(() => { defaultMapping.destination = 'y' }).toThrow()
   expect(DEFAULT_API_KEY_MODEL_MAPPINGS).toEqual([
     { source: 'gpt-5.6-sol', destination: 'gpt-5.6-sol-fast' },
   ])
