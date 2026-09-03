@@ -21,6 +21,7 @@
 import { serveTemplate, type KitAuthCtx, type KitDumpSink, type KitObsCtx, type ServeTemplateHooks } from '@vibe-core/chat-flow-kit'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseMessagesPayload } from '../../parsers.ts'
+import { resolveKeyModel } from '../../routing/key-model-mapping.ts'
 import { kitDeps } from '../shared/kit-deps.ts'
 import type { DispatchObsCtx } from '../shared/obs-ctx.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
@@ -52,7 +53,7 @@ export interface MessagesServeArgs {
 
 type MessagesPayload = Record<string, unknown> & { model: string; stream?: boolean }
 
-type MessagesServeAuth = MessagesAttemptAuth & KitAuthCtx
+type MessagesServeAuth = MessagesAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
 
 const messagesHooks: ServeTemplateHooks<
   MessagesPayload,
@@ -79,6 +80,12 @@ const messagesHooks: ServeTemplateHooks<
       throw wrapped
     }
   },
+
+  preProcess: async (payload, ctx) => ({
+    kind: 'continue',
+    payload: { ...payload, model: resolveKeyModel(payload.model, ctx.auth.routingPolicy).routedModel },
+    extra: undefined,
+  }),
 
   wantsStream: (p) => p.stream === true,
 
@@ -110,6 +117,7 @@ export async function serveMessages(args: MessagesServeArgs): Promise<Response> 
     ownerId: args.auth.userId,
     copilot: args.auth.copilot,
     apiKeyId: args.auth.apiKeyId,
+    routingPolicy: args.auth.routingPolicy,
   }
   const { response } = await serveTemplate(
     messagesHooks,

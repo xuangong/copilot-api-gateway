@@ -113,8 +113,10 @@ function makeUpstreamSSE(): Response {
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
+let capturedUpstreamModel: string | null = null
 function installCopilotFetch(opts: { stream: boolean }) {
-  installFetch((req) => {
+  capturedUpstreamModel = null
+  installFetch(async (req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
       return new Response(
@@ -123,6 +125,8 @@ function installCopilotFetch(opts: { stream: boolean }) {
       )
     }
     if (url.pathname.endsWith('/messages') || url.pathname.endsWith('/v1/messages')) {
+      const body = await req.json() as { model?: unknown }
+      capturedUpstreamModel = typeof body.model === 'string' ? body.model : null
       if (opts.stream) return makeUpstreamSSE()
       return new Response(JSON.stringify(upstreamJson), {
         status: 200, headers: { 'content-type': 'application/json' },
@@ -156,6 +160,22 @@ test('POST /v1beta/models/:model:generateContent returns Gemini-shaped body', as
   expect(body.candidates[0]?.content.parts[0]?.text).toContain('Hello from upstream')
   expect(body.candidates[0]?.finishReason).toBe('STOP')
   expect(body.usageMetadata.totalTokenCount).toBeGreaterThan(0)
+})
+
+test('POST /v1beta Gemini routes the normalized URL model through enabled key mappings', async () => {
+  initRepo(stubRepo([stubUpstream()]))
+  installCopilotFetch({ stream: false })
+  const app = buildApp({
+    copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE },
+    routingPolicy: { modelMappingsEnabled: true, modelMappings: [{ source: 'gemini-3-flash-preview', destination: MODEL_ID }] },
+  })
+  const res = await app.fetch(new Request('http://local/v1beta/models/gemini-2.5-flash-customtools:generateContent', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
+  }), env)
+
+  expect(res.status).toBe(200)
+  expect(capturedUpstreamModel).toBe('claude-3-5-sonnet')
 })
 
 test('POST /v1beta/models/:model:streamGenerateContent returns Gemini SSE chunks', async () => {

@@ -21,6 +21,7 @@
 import { serveTemplate, type KitAuthCtx, type KitDumpSink, type KitObsCtx, type ServeTemplateHooks } from '@vibe-core/chat-flow-kit'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseChatPayload } from '../../parsers.ts'
+import { resolveKeyModel } from '../../routing/key-model-mapping.ts'
 import { kitDeps } from '../shared/kit-deps.ts'
 import type { DispatchObsCtx } from '../shared/gateway-ctx.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
@@ -53,7 +54,7 @@ type ChatCompletionsPayload = Record<string, unknown> & {
  * Wrapper-local intersection auth. See module header for why this is
  * necessary — the kit needs apiKeyId for quota, attempt does not.
  */
-type ChatCompletionsServeAuth = ChatCompletionsAttemptAuth & KitAuthCtx
+type ChatCompletionsServeAuth = ChatCompletionsAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
 
 const chatCompletionsHooks: ServeTemplateHooks<
   ChatCompletionsPayload,
@@ -77,6 +78,12 @@ const chatCompletionsHooks: ServeTemplateHooks<
       throw wrapped
     }
   },
+
+  preProcess: async (payload, ctx) => ({
+    kind: 'continue',
+    payload: { ...payload, model: resolveKeyModel(payload.model, ctx.auth.routingPolicy).routedModel },
+    extra: undefined,
+  }),
 
   wantsStream: (p) => p.stream === true,
 
@@ -103,6 +110,7 @@ export async function serveChatCompletions(args: ChatCompletionsServeArgs): Prom
     ownerId: args.auth.userId,
     copilot: args.auth.copilot,
     apiKeyId: args.auth.apiKeyId,
+    routingPolicy: args.auth.routingPolicy,
   }
   const { response } = await serveTemplate(
     chatCompletionsHooks,

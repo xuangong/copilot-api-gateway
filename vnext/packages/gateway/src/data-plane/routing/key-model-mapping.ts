@@ -10,9 +10,9 @@ export interface ResolvedKeyModel {
 
 export function resolveKeyModel(
   requestedModel: string,
-  policy: ApiKeyRoutingPolicy,
+  policy?: ApiKeyRoutingPolicy,
 ): ResolvedKeyModel {
-  if (!policy.modelMappingsEnabled || policy.modelMappings.length === 0) {
+  if (!policy?.modelMappingsEnabled || policy.modelMappings.length === 0) {
     return { requestedModel, routedModel: requestedModel, matchedRuleIndexes: [] }
   }
 

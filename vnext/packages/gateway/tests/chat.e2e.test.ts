@@ -110,8 +110,10 @@ function makeUpstreamSSE(): Response {
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
+let capturedUpstreamModel: string | null = null
 function installCopilotFetch(opts: { stream: boolean; upstreamStatus?: number; upstreamBody?: unknown }) {
-  installFetch((req) => {
+  capturedUpstreamModel = null
+  installFetch(async (req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
       return new Response(
@@ -120,6 +122,8 @@ function installCopilotFetch(opts: { stream: boolean; upstreamStatus?: number; u
       )
     }
     if (url.pathname.endsWith('/chat/completions')) {
+      const body = await req.json() as { model?: unknown }
+      capturedUpstreamModel = typeof body.model === 'string' ? body.model : null
       if (opts.upstreamStatus && opts.upstreamStatus >= 400) {
         return new Response(JSON.stringify(opts.upstreamBody ?? { error: { message: 'upstream sad' } }), {
           status: opts.upstreamStatus, headers: { 'content-type': 'application/json' },
@@ -158,6 +162,23 @@ test('POST /v1/chat/completions non-stream returns OpenAI-shaped body', async ()
   expect(body.choices[0]?.message.content).toContain('Hello from upstream')
   expect(body.choices[0]?.finish_reason).toBe('stop')
   expect(body.usage.completion_tokens).toBeGreaterThan(0)
+})
+
+test('POST /v1/chat/completions routes the source model through enabled key mappings', async () => {
+  const source = 'source-model'
+  initRepo(stubRepo([stubUpstream()]))
+  installCopilotFetch({ stream: false })
+  const app = buildApp({
+    copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE },
+    routingPolicy: { modelMappingsEnabled: true, modelMappings: [{ source, destination: MODEL_ID }] },
+  })
+  const res = await app.fetch(new Request('http://local/v1/chat/completions', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: source, messages: [{ role: 'user', content: 'hi' }] }),
+  }), env)
+
+  expect(res.status).toBe(200)
+  expect(capturedUpstreamModel).toBe(MODEL_ID)
 })
 
 test('POST /v1/chat/completions streaming returns OpenAI SSE chunks + [DONE]', async () => {

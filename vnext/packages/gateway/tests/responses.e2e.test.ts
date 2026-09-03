@@ -113,8 +113,10 @@ function makeUpstreamSSE(): Response {
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
+let capturedUpstreamModel: string | null = null
 function installCopilotFetch(opts: { stream: boolean }) {
-  installFetch((req) => {
+  capturedUpstreamModel = null
+  installFetch(async (req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
       return new Response(
@@ -123,6 +125,8 @@ function installCopilotFetch(opts: { stream: boolean }) {
       )
     }
     if (url.pathname.endsWith('/responses')) {
+      const body = await req.json() as { model?: unknown }
+      capturedUpstreamModel = typeof body.model === 'string' ? body.model : null
       if (opts.stream) return makeUpstreamSSE()
       return new Response(JSON.stringify(upstreamJson), {
         status: 200, headers: { 'content-type': 'application/json' },
@@ -158,6 +162,24 @@ test('POST /v1/responses non-stream returns Responses-shaped body', async () => 
   expect(body.output[0]?.type).toBe('message')
   expect(body.output[0]?.content?.[0]?.type).toBe('output_text')
   expect(body.usage.total_tokens).toBeGreaterThan(0)
+})
+
+test('POST /v1/responses routes the source model through enabled key mappings', async () => {
+  const source = 'source-model'
+  initRepo(stubRepo([stubUpstream()]))
+  initResponsesStore(new InMemoryResponsesSnapshotStore())
+  installCopilotFetch({ stream: false })
+  const app = buildApp({
+    copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE },
+    routingPolicy: { modelMappingsEnabled: true, modelMappings: [{ source, destination: MODEL_ID }] },
+  })
+  const res = await app.fetch(new Request('http://local/v1/responses', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: source, input: 'hi' }),
+  }), env)
+
+  expect(res.status).toBe(200)
+  expect(capturedUpstreamModel).toBe(MODEL_ID)
 })
 
 test('POST /v1/responses streaming returns Responses SSE events', async () => {

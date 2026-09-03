@@ -181,6 +181,25 @@ test('POST /v1/responses/compact returns JSON envelope with object=response.comp
   expect(head?.content?.[0]?.text ?? '').toContain('CONTEXT CHECKPOINT COMPACTION')
 })
 
+test('POST /v1/responses/compact routes the source model through enabled key mappings', async () => {
+  const source = 'source-model'
+  initRepo(stubRepo([stubUpstream()]))
+  initResponsesStore(new InMemoryResponsesSnapshotStore())
+  installCopilotFetch()
+  const app = buildApp({
+    copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE },
+    routingPolicy: { modelMappingsEnabled: true, modelMappings: [{ source, destination: MODEL_ID }] },
+  })
+  const res = await app.fetch(new Request('http://local/v1/responses/compact', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: source, input: [{ type: 'message', role: 'user', content: 'work' }] }),
+  }), env)
+
+  expect(res.status).toBe(200)
+  const upstream = capturedUpstreamBody as { model?: unknown } | null
+  expect(upstream?.model).toBe(MODEL_ID)
+})
+
 test('POST /responses/compact (unversioned alias) is mounted too', async () => {
   initRepo(stubRepo([stubUpstream()]))
   initResponsesStore(new InMemoryResponsesSnapshotStore())

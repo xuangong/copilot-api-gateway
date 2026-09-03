@@ -125,6 +125,45 @@ test('responses + previous_response_id expands snapshot and clears the field', a
   ])
 })
 
+test('responses maps the model after expanding previous_response_id', async () => {
+  const source = 'source-model'
+  initRepo(stubRepo([stubUpstream()]))
+  const store = new InMemoryResponsesSnapshotStore()
+  await store.save({
+    responseId: 'resp_prev', apiKeyId: 'k1', model: MODEL_ID,
+    items: [{ type: 'message', role: 'user', content: 'turn1 user' }],
+    createdAt: Date.now(), expiresAt: Date.now() + 60_000,
+  })
+  initResponsesStore(store)
+
+  let observed: { model?: unknown; input?: unknown[]; previous_response_id?: unknown } | null = null
+  installFetch(async (req) => {
+    const url = new URL(req.url)
+    if (url.pathname.endsWith('/models')) return new Response(JSON.stringify({ data: [stubModel(MODEL_ID)] }), { headers: { 'content-type': 'application/json' } })
+    if (url.pathname.endsWith('/responses')) {
+      observed = await req.json() as typeof observed
+      return new Response(JSON.stringify({ id: 'resp_new', object: 'response', model: MODEL_ID, output: [], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }), { headers: { 'content-type': 'application/json' } })
+    }
+    return new Response('not found', { status: 404 })
+  })
+  const app = buildApp({
+    apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' },
+    routingPolicy: { modelMappingsEnabled: true, modelMappings: [{ source, destination: MODEL_ID }] },
+  } as DataPlaneAuthCtx)
+  const res = await app.fetch(new Request('http://x/v1/responses', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: source, previous_response_id: 'resp_prev', input: [{ type: 'message', role: 'user', content: 'turn2 user' }] }),
+  }), {} as never)
+
+  expect(res.status).toBe(200)
+  expect(observed?.model).toBe(MODEL_ID)
+  expect(observed?.previous_response_id).toBeUndefined()
+  expect(observed?.input).toEqual([
+    { type: 'message', role: 'user', content: 'turn1 user' },
+    { type: 'message', role: 'user', content: 'turn2 user' },
+  ])
+})
+
 test('responses + unknown previous_response_id returns 400 with verbatim envelope', async () => {
   initRepo(stubRepo([stubUpstream()]))
   const store = new InMemoryResponsesSnapshotStore()

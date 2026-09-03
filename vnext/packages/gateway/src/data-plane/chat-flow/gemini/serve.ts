@@ -24,6 +24,7 @@
 import { serveTemplate, type KitAuthCtx, type KitDumpSink, type KitObsCtx, type ServeTemplateHooks } from '@vibe-core/chat-flow-kit'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseGeminiPayload } from '../../parsers.ts'
+import { resolveKeyModel } from '../../routing/key-model-mapping.ts'
 import { kitDeps } from '../shared/kit-deps.ts'
 import type { DispatchObsCtx } from '../shared/obs-ctx.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
@@ -54,7 +55,7 @@ export interface GeminiServeArgs {
 
 type GeminiPayload = Record<string, unknown> & { stream?: boolean }
 
-type GeminiServeAuth = GeminiAttemptAuth & KitAuthCtx
+type GeminiServeAuth = GeminiAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
 
 const geminiHooks: ServeTemplateHooks<
   GeminiPayload,
@@ -82,12 +83,12 @@ const geminiHooks: ServeTemplateHooks<
   // forceStream lives in extras (URL-derived), not on the payload body.
   wantsStream: (_payload, input) => input.extras.forceStream === true,
 
-  // Model is URL-derived (path param), not in the body. Read it back off
-  // extras so the kit's dump seam can stamp requestedModel after parse.
-  extractRequestedModel: (_p, input) => input.extras.model as string | undefined,
+  // Model is URL-derived (path param), not in the body. Keep the normalized
+  // source separately so the dump always records what the caller requested.
+  extractRequestedModel: (_p, input) => input.extras.requestedModel as string | undefined,
 
   runAttempt: (a) => geminiAttempt.generate({
-    payload: a.payload,
+    payload: { ...a.payload },
     model: a.extras.model as string,
     forceStream: a.extras.forceStream === true,
     auth: a.auth,
@@ -108,7 +109,9 @@ export async function serveGemini(args: GeminiServeArgs): Promise<Response> {
     ownerId: args.auth.userId,
     copilot: args.auth.copilot,
     apiKeyId: args.auth.apiKeyId,
+    routingPolicy: args.auth.routingPolicy,
   }
+  const routedModel = resolveKeyModel(args.model, args.auth.routingPolicy).routedModel
   const { response } = await serveTemplate(
     geminiHooks,
     {
@@ -116,7 +119,7 @@ export async function serveGemini(args: GeminiServeArgs): Promise<Response> {
       auth,
       obsCtx: args.obsCtx as KitObsCtx,
       signal: args.signal,
-      extras: { model: args.model, forceStream: args.forceStream },
+      extras: { requestedModel: args.model, model: routedModel, forceStream: args.forceStream },
       dump: args.dump ?? null,
     },
     kitDeps,

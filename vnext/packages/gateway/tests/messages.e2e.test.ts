@@ -113,8 +113,10 @@ function makeUpstreamSSE(): Response {
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
+let capturedUpstreamModel: string | null = null
 function installCopilotFetch(opts: { stream: boolean; upstreamStatus?: number; upstreamBody?: unknown }) {
-  installFetch((req) => {
+  capturedUpstreamModel = null
+  installFetch(async (req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
       return new Response(
@@ -123,6 +125,8 @@ function installCopilotFetch(opts: { stream: boolean; upstreamStatus?: number; u
       )
     }
     if (url.pathname.endsWith('/messages') || url.pathname.endsWith('/v1/messages')) {
+      const body = await req.json() as { model?: unknown }
+      capturedUpstreamModel = typeof body.model === 'string' ? body.model : null
       if (opts.upstreamStatus && opts.upstreamStatus >= 400) {
         return new Response(JSON.stringify(opts.upstreamBody ?? { error: { message: 'upstream sad' } }), {
           status: opts.upstreamStatus, headers: { 'content-type': 'application/json' },
@@ -159,6 +163,26 @@ test('POST /v1/messages non-stream returns Anthropic-shaped body', async () => {
   expect(body.content[0]?.text).toContain('Hello from upstream')
   expect(body.stop_reason).toBe('end_turn')
   expect(body.usage.output_tokens).toBeGreaterThan(0)
+})
+
+test('POST /v1/messages routes the source model through enabled key mappings', async () => {
+  const source = 'source-model'
+  const destination = MODEL_ID
+  initRepo(stubRepo([stubUpstream()]))
+  installCopilotFetch({ stream: false })
+  const app = buildApp({
+    copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE },
+    routingPolicy: { modelMappingsEnabled: true, modelMappings: [{ source, destination }] },
+  })
+  const res = await app.fetch(new Request('http://local/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: source, max_tokens: 64, messages: [{ role: 'user', content: 'hi' }] }),
+  }), env)
+
+  expect(res.status).toBe(200)
+  // Copilot normalizes the selected public destination to its provider key.
+  expect(capturedUpstreamModel).toBe('claude-3-5-sonnet')
 })
 
 test('POST /v1/messages streaming returns Anthropic SSE events', async () => {

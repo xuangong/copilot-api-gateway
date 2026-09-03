@@ -42,6 +42,7 @@ import {
 } from '@vibe-core/chat-flow-kit'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseResponsesPayload } from '../../parsers.ts'
+import { resolveKeyModel } from '../../routing/key-model-mapping.ts'
 import { kitDeps } from '../shared/kit-deps.ts'
 import type { DispatchObsCtx } from '../shared/obs-ctx.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
@@ -97,7 +98,7 @@ type ResponsesPayload = Record<string, unknown> & {
   previous_response_id?: string | null
 }
 
-type ResponsesServeAuth = ResponsesAttemptAuth & KitAuthCtx
+type ResponsesServeAuth = ResponsesAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
 
 type ResponsesExtra = { readonly mergedInputItems: unknown[] }
 
@@ -139,7 +140,11 @@ const responsesHooks: ServeTemplateHooks<
       )
       const expanded = (payload as { input?: unknown }).input
       const mergedInputItems = Array.isArray(expanded) ? (expanded as unknown[]) : []
-      return { kind: 'continue', payload, extra: { mergedInputItems } } satisfies PreProcessResult<
+      return {
+        kind: 'continue',
+        payload: { ...payload, model: resolveKeyModel(payload.model, ctx.auth.routingPolicy).routedModel },
+        extra: { mergedInputItems },
+      } satisfies PreProcessResult<
         ResponsesPayload,
         ResponsesExtra
       >
@@ -195,6 +200,7 @@ export async function serveResponses(args: ResponsesServeArgs): Promise<Response
     ownerId: args.auth.userId,
     copilot: args.auth.copilot,
     apiKeyId: args.auth.apiKeyId,
+    routingPolicy: args.auth.routingPolicy,
   }
   const { response, extra } = await serveTemplate(
     responsesHooks,
