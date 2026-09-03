@@ -126,6 +126,7 @@ async function* consumeWithState<T>(
           message?: { model?: unknown }
         }
         state.rememberModelKey(evObj.model ?? evObj.modelVersion ?? evObj.response?.model ?? evObj.message?.model)
+        state.rememberFailure(frame.event, 'messages')
         const normalized = normalizeStreamEventModel(frame.event, state.publicModel)
         state.rememberUsage(normalized)
         const output = normalized === frame.event ? frame : { ...frame, event: normalized as T }

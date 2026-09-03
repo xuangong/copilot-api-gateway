@@ -95,6 +95,7 @@ async function* applyTranslatorEventsForStreaming(
   translateEvents: NonNullable<LlmEventResult<unknown>['translateEvents']>,
   signal: AbortSignal | undefined,
   model: string | undefined,
+  state: SourceStreamState,
 ): AsyncGenerator<unknown> {
   async function* unwrap(): AsyncGenerator<unknown> {
     for await (const frame of hubFrames) {
@@ -106,8 +107,13 @@ async function* applyTranslatorEventsForStreaming(
     signal: signal ?? new AbortController().signal,
     model,
   }
-  const translated = translateEvents(unwrap(), ctx) as AsyncIterable<unknown>
-  for await (const ev of translated) yield ev
+  try {
+    const translated = translateEvents(unwrap(), ctx) as AsyncIterable<unknown>
+    for await (const ev of translated) yield ev
+  } catch (err) {
+    state.failedAfter()
+    throw err
+  }
 }
 
 /**
@@ -149,6 +155,7 @@ const renderEventsAsSSE = (
         result.translateEvents,
         options.downstreamAbortController?.signal,
         result.modelIdentity.model,
+        state,
       )
     : consumeWithState(result.events, state, options.dump)
   const inner = encodeClientSSE('gemini', events)

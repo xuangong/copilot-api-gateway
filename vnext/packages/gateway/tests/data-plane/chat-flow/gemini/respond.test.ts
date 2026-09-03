@@ -246,6 +246,62 @@ test('wantsStream=false + translateBody set: invokes translateBody with hub-reas
   expect(json).toEqual(sentinelGeminiJson)
 })
 
+test('Gemini streaming translator exception marks the hub request failed once', async () => {
+  const { repo } = setupTestPlatform()
+  const failures: unknown[] = []
+  const successes: unknown[] = []
+  const identity: TelemetryModelIdentity = {
+    model: 'gemini-public', upstream: 'upstream', modelKey: 'provider-model', cost: null,
+    translatorPair: { source: 'gemini', hub: 'responses' },
+  }
+  async function* hubFrames(): AsyncGenerator<ProtocolFrame<unknown>> {
+    yield {
+      type: 'event',
+      event: {
+        type: 'response.created',
+        response: {
+          id: 'resp_created', object: 'response', model: 'provider-model', output: [], status: 'in_progress',
+          error: null, incomplete_details: null,
+        },
+      },
+    }
+  }
+  async function* translateEvents(events: AsyncIterable<unknown>): AsyncGenerator<unknown> {
+    for await (const _event of events) throw new Error('translator failed')
+  }
+  const response = await respondGemini(
+    llmEventResult(
+      hubFrames(), identity,
+      { keyId: 'gemini-stream-translator-failed-key', model: identity.model, modelKey: identity.modelKey, upstream: 'upstream', stream: true, runtimeLocation: 'bun' },
+      undefined, undefined, translateEvents,
+    ),
+    {
+      wantsStream: true,
+      telemetryCtx: {
+        apiKeyId: 'gemini-stream-translator-failed-key' as never, userAgent: null, requestId: 'gemini-stream-translator-failed-request',
+        isStreaming: true, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
+      },
+      dump: {
+        frame: () => {}, failed: (error) => { failures.push(error) }, success: (value) => { successes.push(value) },
+      } as never,
+    },
+  )
+  expect(await response.text()).toContain('translator failed')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(await repo.usage.query({
+    keyId: 'gemini-stream-translator-failed-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })).toEqual([])
+  const performance = await repo.performance.query({
+    keyId: 'gemini-stream-translator-failed-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(performance.summary).toHaveLength(1)
+  expect(performance.summary[0]).toMatchObject({
+    model: 'gemini-public', sourceApi: 'gemini', targetApi: 'responses', errors: 1,
+  })
+  expect(failures).toHaveLength(1)
+  expect(successes).toEqual([])
+})
+
 test('Gemini streaming Responses failure records hub failure before translation', async () => {
   const { repo } = setupTestPlatform()
   const identity: TelemetryModelIdentity = {
