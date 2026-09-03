@@ -89,6 +89,7 @@ test("SqliteRepo: corrupt model mappings fail closed as a whole", async () => {
     "not-json",
     "{}",
     "[null]",
+    '[{"source":"a","destination":"b"},null]',
     '[{"source":1,"destination":"b"}]',
     '[{"source":"a","destination":1}]',
     '[{"source":"   ","destination":"b"}]',

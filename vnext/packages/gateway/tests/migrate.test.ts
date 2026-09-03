@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
-import { mkdtempSync, writeFileSync } from "node:fs"
+import { copyFileSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
+import { fileURLToPath } from "node:url"
 import { join } from "node:path"
+import { migrationsDir } from "../src/migrations-dir.ts"
 import { applyMigrations } from "@vibe-llm/platform-bun/src/migrate.ts"
 
 const ledger = (db: Database) =>
@@ -20,6 +22,16 @@ const scratchDir = (files: Record<string, string>): string => {
   const dir = mkdtempSync(join(tmpdir(), "migrate-test-"))
   for (const [name, sql] of Object.entries(files)) writeFileSync(join(dir, name), sql)
   return dir
+}
+
+const copyMigrationRange = (destination: string, start: number, end: number): void => {
+  const source = fileURLToPath(migrationsDir)
+  for (const file of readdirSync(source)) {
+    const match = /^(\d{4})_/.exec(file)
+    if (!match) continue
+    const prefix = Number(match[1])
+    if (prefix >= start && prefix <= end) copyFileSync(join(source, file), join(destination, file))
+  }
 }
 
 describe("applyMigrations", () => {
@@ -91,6 +103,34 @@ describe("applyMigrations", () => {
       enabled: 0,
       mappings: '[{"source":"gpt-5.6-sol","destination":"gpt-5.6-sol-fast"}]',
     })
+  })
+
+  test("applies 0007 to an existing ledger database without losing API key data", () => {
+    const dir = mkdtempSync(join(tmpdir(), "migrate-upgrade-test-"))
+    copyMigrationRange(dir, 1, 6)
+    const db = new Database(":memory:")
+    applyMigrations(db, dir)
+    db.exec("INSERT INTO users (id, name, created_at) VALUES ('u1', 'owner', '2026-01-01')")
+    db.exec("INSERT INTO api_keys (id, name, key, created_at, owner_id, quota_requests_per_month) VALUES ('k1', 'preserved', 'secret', '2026-01-01', 'u1', 123)")
+
+    copyMigrationRange(dir, 7, 7)
+    applyMigrations(db, dir)
+
+    expect(ledger(db)).toContain("0007_api_key_model_mappings.sql")
+    expect(
+      db.query<{ name: string; ownerId: string; quota: number; enabled: number; mappings: string }, []>(
+        "SELECT name, owner_id AS ownerId, quota_requests_per_month AS quota, model_mappings_enabled AS enabled, model_mappings AS mappings FROM api_keys WHERE id = 'k1'",
+      ).get(),
+    ).toEqual({
+      name: "preserved",
+      ownerId: "u1",
+      quota: 123,
+      enabled: 0,
+      mappings: '[{"source":"gpt-5.6-sol","destination":"gpt-5.6-sol-fast"}]',
+    })
+    const before = ledger(db)
+    applyMigrations(db, dir)
+    expect(ledger(db)).toEqual(before)
   })
 
   test("a failing file rolls back entirely and records nothing", () => {

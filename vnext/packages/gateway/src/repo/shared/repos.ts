@@ -68,7 +68,7 @@ const RESPONSES_ITEMS_COLS = "id, api_key_id, kind, item_json, private_json, cre
 function toApiKey(row: any): ApiKey {
   const modelMappings = parseStoredApiKeyModelMappings(row.model_mappings)
   if (!modelMappings.ok) {
-    const safeFields: Record<string, string | number> = { event: "invalid_api_key_model_mappings", reason: modelMappings.reason }
+    const safeFields: Record<string, string | number> = { evt: "invalid_api_key_model_mappings", reason: modelMappings.reason }
     if (modelMappings.index !== undefined) safeFields.index = modelMappings.index
     if (modelMappings.field !== undefined) safeFields.field = modelMappings.field
     console.warn(safeFields)
