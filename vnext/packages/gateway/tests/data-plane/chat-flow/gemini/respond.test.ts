@@ -65,6 +65,17 @@ test('events + wantsStream=true → SSE data-only frames, no [DONE]', async () =
   expect(body).toContain('"finishReason":"STOP"')
 })
 
+test('Gemini stream and JSON preserve mapped modelVersion and model fields', async () => {
+  const identity = { ...stubIdentity, modelKey: 'gemini-2.5-pro-fast', model: 'gemini-2.5-pro-fast' }
+  const events = async function* () { yield { candidates: [], modelVersion: 'gemini-2.5-pro', model: 'gemini-2.5-pro' } }
+  const stream = await respondGemini(llmEventResult(events(), identity), { wantsStream: true })
+  const streamBody = await stream.text()
+  expect(streamBody).toContain('"modelVersion":"gemini-2.5-pro-fast"')
+  expect(streamBody).toContain('"model":"gemini-2.5-pro-fast"')
+  const json = await respondGemini(llmEventResult(events(), identity), { wantsStream: false })
+  expect((await json.json() as { modelVersion: string }).modelVersion).toBe('gemini-2.5-pro-fast')
+})
+
 test('events + wantsStream=false → JSON envelope with concatenated text + final usage/modelVersion', async () => {
   const resp = await respondGemini(llmEventResult(okEvents(), stubIdentity), { wantsStream: false })
   expect(resp.status).toBe(200)

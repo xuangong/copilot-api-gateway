@@ -32,6 +32,7 @@ import {
   SourceStreamState,
   eventResultMetadata,
   finalModelIdentity,
+  normalizeStreamEventModel,
   recordPerformance,
   recordUsage,
 } from '../shared/respond-telemetry.ts'
@@ -53,7 +54,7 @@ export async function* consumeWithState(
     for await (const evt of events) {
       const e = evt as { modelVersion?: unknown; model?: unknown }
       state.rememberModelKey(e.modelVersion ?? e.model)
-      const normalized = normalizeGeminiEventModel(evt, state.modelKey)
+      const normalized = normalizeStreamEventModel(evt, state.modelKey)
       state.rememberUsage(normalized)
       dump?.frame(eventFrame(normalized) as ProtocolFrame<unknown>)
       yield normalized
@@ -63,14 +64,6 @@ export async function* consumeWithState(
     dump?.failed(err)
     throw err
   }
-}
-
-function normalizeGeminiEventModel(event: unknown, modelKey: string): unknown {
-  if (!event || typeof event !== 'object') return event
-  const source = event as Record<string, unknown>
-  if (typeof source.modelVersion === 'string') return { ...source, modelVersion: modelKey }
-  if (typeof source.model === 'string') return { ...source, model: modelKey }
-  return event
 }
 
 export async function persistFromEventResult(

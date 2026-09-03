@@ -101,6 +101,23 @@ test('normalizeStreamEventModel clones only observed model-bearing paths', () =>
   expect(normalizeStreamEventModel({ usage: {} }, 'gpt-5.6-sol-fast')).toEqual({ usage: {} })
 })
 
+test('normalizeStreamEventModel normalizes every model field, while unchanged event retains identity', () => {
+  const event = {
+    model: 'base',
+    modelVersion: 'base-version',
+    response: { model: 'nested-response', stable: true },
+    message: { model: 'nested-message', stable: true },
+  }
+  const normalized = normalizeStreamEventModel(event, 'destination') as typeof event
+  expect(normalized.model).toBe('destination')
+  expect(normalized.modelVersion).toBe('destination')
+  expect(normalized.response.model).toBe('destination')
+  expect(normalized.message.model).toBe('destination')
+  expect(event.model).toBe('base')
+  const already = { model: 'destination', response: { model: 'destination' } }
+  expect(normalizeStreamEventModel(already, 'destination')).toBe(already)
+})
+
 test('SourceStreamState accumulates usage via rememberUsage', () => {
   const s = new SourceStreamState('gpt-4')
   s.rememberUsage({

@@ -300,6 +300,16 @@ test('consumeTurnStreaming: pass-through when no dispatchers match', async () =>
   expect(frames.some((f) => f.type === 'event' && f.event.type === 'response.created')).toBe(true)
 })
 
+test('consumeTurnStreaming captures the terminal completed model with mapped-base protection', async () => {
+  const merge = createMergeState()
+  merge.lastSeenModel = 'gpt-5.6-sol-fast'
+  await collectAndReturn(consumeTurnStreaming(
+    framesOf([{ type: 'response.completed', response: snapshotFor('upstream', 'gpt-5.6-sol') }]),
+    merge, false, new Map(), emptyLoopState, [],
+  ))
+  expect(merge.lastSeenModel).toBe('gpt-5.6-sol-fast')
+})
+
 test('consumeTurnStreaming: sawClientToolCall flips for unmatched function_call', async () => {
   const merge = createMergeState()
   const iter = consumeTurnStreaming(

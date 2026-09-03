@@ -39,6 +39,20 @@ test('happy path: stamps translatorPair and forwards translateBody', async () =>
   expect(result.translateBody).toBeDefined()
 })
 
+test('resolver returned through translation grafts the source and hub pair', async () => {
+  async function* hubEvents() { yield { kind: 'hub-evt' } as never }
+  const innerResult = llmEventResult(hubEvents(), fakeIdentity, undefined, undefined, undefined, undefined, (modelKey) => ({ ...fakeIdentity, modelKey }))
+  const result = await traverseTranslation({
+    sourcePayload: { model: 'x' }, sourceProtocol: 'messages', hubProtocol: 'responses',
+    translator: fakeTranslator(), innerAttempt: async () => innerResult,
+    inheritedHeaders: {}, inheritedTelemetryCtx: fakeTelemetryCtx, auth: {} as never,
+  })
+  if (result.type !== 'events') throw new Error('unreachable')
+  expect(result.resolveModelIdentity?.('corrected')).toEqual({
+    ...fakeIdentity, modelKey: 'corrected', translatorPair: { source: 'messages', hub: 'responses' },
+  })
+})
+
 test('TranslatorValidationError → 400 with reason translator-validation', async () => {
   const result = await traverseTranslation({
     sourcePayload: {},

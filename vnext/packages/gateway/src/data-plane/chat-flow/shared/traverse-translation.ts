@@ -125,6 +125,13 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     ...innerEvents.modelIdentity,
     translatorPair: { source: args.sourceProtocol, hub: args.hubProtocol },
   }
+  const innerResolver = innerEvents.resolveModelIdentity
+  const resolveModelIdentity = innerResolver
+    ? (modelKey: string) => ({
+        ...innerResolver(modelKey),
+        translatorPair: { source: args.sourceProtocol, hub: args.hubProtocol },
+      })
+    : undefined
   return llmEventResult(
     // Cast: the events stream is structurally `ProtocolFrame<HubFrame>`, but
     // the source-protocol LlmExecuteResult is typed as `ProtocolFrame<SourceFrame>`.
@@ -152,6 +159,6 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     // encoding. The translator function here consumes BARE hub events (not
     // ProtocolFrame envelopes) and yields BARE source events.
     args.translator.translateEvents as LlmEventResult<ProtocolFrame<SourceFrame>>['translateEvents'],
-    innerEvents.resolveModelIdentity,
+    resolveModelIdentity,
   )
 }

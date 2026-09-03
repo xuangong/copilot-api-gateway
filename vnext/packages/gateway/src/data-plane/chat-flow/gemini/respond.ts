@@ -125,9 +125,7 @@ const renderEventsAsSSE = (
   result: LlmEventResult<unknown>,
   options: RespondGeminiOptions,
 ): Response => {
-  const state = options.telemetryCtx || options.dump
-    ? new SourceStreamState(result.modelIdentity.modelKey)
-    : null
+  const state = new SourceStreamState(result.modelIdentity.modelKey)
   // Cross-protocol streaming: apply translator at SSE-time so encodeClientSSE
   // and consumeWithState see bare gemini-shape events; same-protocol (no
   // translateEvents) passes result.events through unchanged.
@@ -139,7 +137,7 @@ const renderEventsAsSSE = (
         result.modelIdentity.modelKey,
       )
     : result.events
-  const events = state ? consumeWithState(upstreamEvents, state, options.dump) : upstreamEvents
+  const events = consumeWithState(upstreamEvents, state, options.dump)
   const inner = encodeClientSSE('gemini', events)
   const reader = inner.getReader()
   const body = new ReadableStream<Uint8Array>({
@@ -147,7 +145,7 @@ const renderEventsAsSSE = (
       const { value, done } = await reader.read()
       if (done) {
         controller.close()
-        if (state) {
+        if (options.telemetryCtx || options.dump) {
           waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
         }
         return
@@ -157,7 +155,7 @@ const renderEventsAsSSE = (
     async cancel(_reason) {
       try { await reader.cancel() } catch { /* swallow */ }
       options.downstreamAbortController?.abort()
-      if (state) {
+      if (options.telemetryCtx || options.dump) {
         waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
       }
     },
@@ -317,10 +315,8 @@ const renderEventsAsJson = async (
   result: LlmEventResult<unknown>,
   options: RespondGeminiOptions,
 ): Promise<Response> => {
-  const state = options.telemetryCtx || options.dump
-    ? new SourceStreamState(result.modelIdentity.modelKey)
-    : null
-  const events = state ? consumeWithState(result.events, state, options.dump) : result.events
+  const state = new SourceStreamState(result.modelIdentity.modelKey)
+  const events = consumeWithState(result.events, state, options.dump)
   try {
     // Dispatch reassembly on hub protocol.
     // Gemini has no native hub, so all production bindings are cross-protocol
@@ -344,16 +340,16 @@ const renderEventsAsJson = async (
     const finalBody = result.translateBody
       ? await result.translateBody(reassembled, {
           signal: options.downstreamAbortController?.signal ?? new AbortController().signal,
-          model: result.modelIdentity.modelKey,
+          model: state.modelKey,
         })
       : reassembled
-    if (state) {
+    if (options.telemetryCtx || options.dump) {
       waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     }
     return Response.json(finalBody)
   } catch (err) {
-    if (state) state.failedAfter()
-    if (state) {
+    state.failedAfter()
+    if (options.telemetryCtx || options.dump) {
       waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     }
     const message = err instanceof Error ? err.message : String(err)

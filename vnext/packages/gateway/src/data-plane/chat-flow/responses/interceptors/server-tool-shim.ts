@@ -68,7 +68,8 @@ import {
   type ResponsesResult,
   type ResponsesStreamEvent,
 } from '@vibe-llm/protocols/responses'
-import type { EventResultMetadata, Invocation, LlmExecuteResult, RequestContext } from '@vibe-llm/protocols/common'
+import type { EventResultMetadata, Invocation, LlmEventResult, LlmExecuteResult, RequestContext } from '@vibe-llm/protocols/common'
+import { pickUsageModelId } from '../../../observability/usage-extractor.ts'
 
 // InterceptorRun is the third arg of a ResponsesInterceptor.
 type InterceptorRun<R> = () => Promise<R>
@@ -122,6 +123,8 @@ export interface TurnSummary {
 
 export type LatestUpstreamMetadata = {
   -readonly [K in 'modelIdentity' | 'performance']: EventResultMetadata[K]
+} & {
+  resolveModelIdentity?: LlmEventResult<unknown>['resolveModelIdentity']
 }
 
 // The terminal the shim emits downstream. Distinct from `UpstreamTerminal`
@@ -367,29 +370,25 @@ const captureTerminalEvent = (
   event: ResponsesStreamEvent,
   merge: MergeState,
 ): { status: UpstreamTerminal; usage: MergeUsage } | null => {
+  const captureModel = (response: ResponsesResult): void => {
+    if (typeof response.model === 'string' && response.model.length > 0) {
+      merge.lastSeenModel = merge.lastSeenModel === null
+        ? response.model
+        : pickUsageModelId(response.model, merge.lastSeenModel)
+    }
+  }
   if (event.type === 'response.completed') {
+    captureModel(event.response)
     merge.upstreamResponseSnapshot = event.response
     return { status: { kind: 'completed' }, usage: usageOf(event.response.usage) }
   }
   if (event.type === 'response.failed') {
-    if (
-      merge.lastSeenModel === null &&
-      typeof event.response.model === 'string' &&
-      event.response.model.length > 0
-    ) {
-      merge.lastSeenModel = event.response.model
-    }
+    captureModel(event.response)
     merge.upstreamResponseSnapshot = event.response
     return { status: { kind: 'failed', response: event.response }, usage: usageOf(event.response.usage) }
   }
   if (event.type === 'response.incomplete') {
-    if (
-      merge.lastSeenModel === null &&
-      typeof event.response.model === 'string' &&
-      event.response.model.length > 0
-    ) {
-      merge.lastSeenModel = event.response.model
-    }
+    captureModel(event.response)
     merge.upstreamResponseSnapshot = event.response
     return { status: { kind: 'incomplete', response: event.response }, usage: usageOf(event.response.usage) }
   }
@@ -987,6 +986,7 @@ async function* runMultiTurnLoop(args: {
       }
       metadata.modelIdentity = nextResult.modelIdentity
       metadata.performance = nextResult.performance
+      metadata.resolveModelIdentity = nextResult.resolveModelIdentity
       currentTurn = yield* consumeTurnStreaming(nextResult.events, merge, false, dispatchers, loopState, active)
       merge.accumulatedUsage = sumUsage(merge.accumulatedUsage, currentTurn.turnUsage)
     }
@@ -1007,10 +1007,16 @@ async function* runMultiTurnLoop(args: {
       active,
     )
   } finally {
-    if (midStreamError === undefined) resolveFinalMetadata({
-      modelIdentity: metadata.modelIdentity,
-      performance: metadata.performance,
-    })
+    if (midStreamError === undefined) {
+      const observed = merge.lastSeenModel
+      const modelKey = observed === null
+        ? metadata.modelIdentity.modelKey
+        : pickUsageModelId(observed, metadata.modelIdentity.modelKey)
+      const modelIdentity = modelKey === metadata.modelIdentity.modelKey
+        ? metadata.modelIdentity
+        : metadata.resolveModelIdentity?.(modelKey) ?? metadata.modelIdentity
+      resolveFinalMetadata({ modelIdentity, performance: metadata.performance })
+    }
   }
 }
 
@@ -1110,6 +1116,7 @@ export const withResponsesServerToolShim = (
   const metadata: LatestUpstreamMetadata = {
     modelIdentity: firstResult.modelIdentity,
     performance: firstResult.performance,
+    resolveModelIdentity: firstResult.resolveModelIdentity,
   }
 
   return {
@@ -1129,6 +1136,7 @@ export const withResponsesServerToolShim = (
       resolveFinalMetadata,
     }),
     finalMetadata: shimFinalMetadata,
+    resolveModelIdentity: firstResult.resolveModelIdentity,
   }
 }
 

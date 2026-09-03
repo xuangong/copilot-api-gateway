@@ -141,9 +141,14 @@ export function normalizeStreamEventModel(event: unknown, modelKey: string): unk
   const replaceModel = (value: unknown): Record<string, unknown> | null => {
     if (!value || typeof value !== 'object') return null
     const nested = value as Record<string, unknown>
-    return typeof nested.model === 'string' ? { ...nested, model: modelKey } : null
+    return typeof nested.model === 'string' && nested.model !== modelKey
+      ? { ...nested, model: modelKey }
+      : null
   }
-  if (typeof source.model === 'string') normalized = { ...source, model: modelKey }
+  if (typeof source.model === 'string' && source.model !== modelKey) normalized = { ...source, model: modelKey }
+  if (typeof source.modelVersion === 'string' && source.modelVersion !== modelKey) {
+    normalized = { ...(normalized ?? source), modelVersion: modelKey }
+  }
   for (const field of ['response', 'message'] as const) {
     const nested = replaceModel(source[field])
     if (nested) normalized = { ...(normalized ?? source), [field]: nested }
