@@ -119,10 +119,17 @@ export class SourceStreamState {
    * protocol. Callers must opt in so a Messages content block that happens to
    * carry error-shaped data cannot mark an otherwise successful request failed.
    */
-  rememberFailure(event: unknown, protocol: 'responses'): void {
+  rememberFailure(
+    event: unknown,
+    protocol: 'responses' | 'messages' | 'chat_completions',
+  ): void {
     if (!event || typeof event !== 'object') return
     const type = (event as { type?: unknown }).type
-    if (type === 'error' || type === 'response.failed') this.failedAfter()
+    if (protocol === 'responses' && (type === 'error' || type === 'response.failed')) {
+      this.failedAfter()
+    }
+    if (protocol === 'messages' && type === 'error') this.failedAfter()
+    if (protocol === 'chat_completions' && type === 'error') this.failedAfter()
   }
 
   failedAfter(): void {

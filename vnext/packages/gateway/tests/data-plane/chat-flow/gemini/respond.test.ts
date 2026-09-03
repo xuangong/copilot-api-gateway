@@ -298,6 +298,92 @@ test('Gemini nonstream responses hub persists hub usage with public model and pr
   expect(performance.summary[0]).toMatchObject({ model: alias, sourceApi: 'gemini', targetApi: 'responses' })
 })
 
+test('Gemini nonstream Responses failure persists one failed performance row without usage', async () => {
+  const { repo } = setupTestPlatform()
+  const identity: TelemetryModelIdentity = {
+    model: 'gemini-public', upstream: 'upstream', modelKey: 'provider-model', cost: null,
+    translatorPair: { source: 'gemini', hub: 'responses' },
+  }
+  async function* hubFrames(): AsyncGenerator<ProtocolFrame<unknown>> {
+    yield {
+      type: 'event',
+      event: {
+        type: 'response.failed',
+        response: {
+          id: 'resp_failed', object: 'response', model: 'provider-model', output: [], status: 'failed',
+          error: { code: 'server_error', message: 'upstream unavailable' }, incomplete_details: null,
+        },
+      },
+    }
+  }
+  const response = await respondGemini(
+    llmEventResult(
+      hubFrames(), identity,
+      { keyId: 'gemini-responses-failed-key', model: identity.model, modelKey: identity.modelKey, upstream: 'upstream', stream: false, runtimeLocation: 'bun' },
+      undefined, async () => ({ candidates: [] }),
+    ),
+    {
+      wantsStream: false,
+      telemetryCtx: {
+        apiKeyId: 'gemini-responses-failed-key' as never, userAgent: null, requestId: 'gemini-responses-failed-request',
+        isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
+      },
+    },
+  )
+  expect(await response.json()).toEqual({ candidates: [] })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(await repo.usage.query({
+    keyId: 'gemini-responses-failed-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })).toEqual([])
+  const performance = await repo.performance.query({
+    keyId: 'gemini-responses-failed-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(performance.summary).toHaveLength(1)
+  expect(performance.summary[0]).toMatchObject({
+    model: 'gemini-public', sourceApi: 'gemini', targetApi: 'responses', errors: 1,
+  })
+})
+
+test('Gemini nonstream Messages error persists one failed performance row without usage', async () => {
+  const { repo } = setupTestPlatform()
+  const identity: TelemetryModelIdentity = {
+    model: 'gemini-public', upstream: 'upstream', modelKey: 'provider-model', cost: null,
+    translatorPair: { source: 'gemini', hub: 'messages' },
+  }
+  async function* hubFrames(): AsyncGenerator<ProtocolFrame<unknown>> {
+    yield {
+      type: 'event',
+      event: { type: 'error', error: { type: 'api_error', message: 'upstream unavailable' } },
+    }
+  }
+  const response = await respondGemini(
+    llmEventResult(
+      hubFrames(), identity,
+      { keyId: 'gemini-messages-failed-key', model: identity.model, modelKey: identity.modelKey, upstream: 'upstream', stream: false, runtimeLocation: 'bun' },
+      undefined, async () => ({ candidates: [] }),
+    ),
+    {
+      wantsStream: false,
+      telemetryCtx: {
+        apiKeyId: 'gemini-messages-failed-key' as never, userAgent: null, requestId: 'gemini-messages-failed-request',
+        isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
+      },
+    },
+  )
+  expect(response.status).toBe(502)
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(await repo.usage.query({
+    keyId: 'gemini-messages-failed-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })).toEqual([])
+  const performance = await repo.performance.query({
+    keyId: 'gemini-messages-failed-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(performance.summary).toHaveLength(1)
+  expect(performance.summary[0]).toMatchObject({
+    model: 'gemini-public', sourceApi: 'gemini', targetApi: 'messages', errors: 1,
+  })
+})
+
 test('Gemini nonstream messages hub persists message usage and provider key', async () => {
   const { repo } = setupTestPlatform()
   const alias = 'gemini-public'

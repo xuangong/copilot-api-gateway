@@ -41,6 +41,8 @@ import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 import { eventFrame, type ProtocolFrame } from '@vibe-core/result'
 
+type HubProtocol = 'responses' | 'messages' | 'chat_completions'
+
 interface ModelBearingEvent {
   model?: unknown
   modelVersion?: unknown
@@ -58,6 +60,7 @@ export async function* consumeHubFramesWithState(
   events: AsyncIterable<ProtocolFrame<unknown>>,
   state: SourceStreamState,
   dump?: DumpAccumulator | null,
+  hubProtocol?: HubProtocol,
 ): AsyncGenerator<ProtocolFrame<unknown>> {
   try {
     for await (const frame of events) {
@@ -67,6 +70,7 @@ export async function* consumeHubFramesWithState(
           event.model ?? event.modelVersion ?? event.response?.model ?? event.message?.model,
         )
         state.rememberUsage(frame.event)
+        if (hubProtocol) state.rememberFailure(frame.event, hubProtocol)
       }
       dump?.frame(frame)
       yield frame

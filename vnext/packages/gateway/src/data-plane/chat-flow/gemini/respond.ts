@@ -325,8 +325,16 @@ const renderEventsAsJson = async (
   // frames for the hub reassembler while observing their contained events;
   // the streaming path remains on the bare Gemini bridge above.
   const hubProtocol = result.modelIdentity.translatorPair?.hub
-  const events = hubProtocol
-    ? consumeHubFramesWithState(result.events as AsyncIterable<ProtocolFrame<unknown>>, state, options.dump)
+  const isHubProtocol = hubProtocol === 'responses' ||
+    hubProtocol === 'messages' ||
+    hubProtocol === 'chat_completions'
+  const events = isHubProtocol
+    ? consumeHubFramesWithState(
+        result.events as AsyncIterable<ProtocolFrame<unknown>>,
+        state,
+        options.dump,
+        hubProtocol,
+      )
     : consumeWithState(result.events, state, options.dump)
   try {
     // Dispatch reassembly on hub protocol.

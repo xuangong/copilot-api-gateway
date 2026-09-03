@@ -14,7 +14,10 @@
  * persists `isError=true`. We assert this via `failedAfter()` being called.
  */
 import { test, expect } from 'bun:test'
-import { consumeWithState } from '../../../../src/data-plane/chat-flow/gemini/state-bridge.ts'
+import {
+  consumeHubFramesWithState,
+  consumeWithState,
+} from '../../../../src/data-plane/chat-flow/gemini/state-bridge.ts'
 import { SourceStreamState } from '../../../../src/data-plane/chat-flow/shared/respond-telemetry.ts'
 
 const drain = async <T>(iter: AsyncIterable<T>): Promise<T[]> => {
@@ -58,6 +61,42 @@ test('consumeWithState preserves mapped Gemini modelVersion in yielded events', 
   const [event] = await drain(consumeWithState(source(), state)) as Array<{ modelVersion: string }>
   expect(event?.modelVersion).toBe('gemini-2.5-pro-fast')
   expect(upstream.modelVersion).toBe('gemini-2.5-pro')
+})
+
+test('consumeHubFramesWithState marks a Responses terminal failure', async () => {
+  const state = new SourceStreamState('provider-model')
+  const frames = [{
+    type: 'event' as const,
+    event: {
+      type: 'response.failed',
+      response: {
+        id: 'resp_failed', object: 'response', model: 'provider-model', output: [], status: 'failed',
+        error: { code: 'server_error', message: 'failed' }, incomplete_details: null,
+      },
+    },
+  }]
+  await drain(consumeHubFramesWithState(frames, state, undefined, 'responses'))
+  expect(state.failed).toBe(true)
+})
+
+test('consumeHubFramesWithState marks a Messages error event', async () => {
+  const state = new SourceStreamState('provider-model')
+  const frames = [{
+    type: 'event' as const,
+    event: { type: 'error', error: { type: 'api_error', message: 'failed' } },
+  }]
+  await drain(consumeHubFramesWithState(frames, state, undefined, 'messages'))
+  expect(state.failed).toBe(true)
+})
+
+test('consumeHubFramesWithState does not treat a chat finish reason as failure', async () => {
+  const state = new SourceStreamState('provider-model')
+  const frames = [{
+    type: 'event' as const,
+    event: { choices: [{ finish_reason: 'stop' }] },
+  }]
+  await drain(consumeHubFramesWithState(frames, state, undefined, 'chat_completions'))
+  expect(state.failed).toBe(false)
 })
 
 test('consumeWithState sets failed=true on iteration error before re-throwing', async () => {
