@@ -167,6 +167,21 @@ test('applyStreamEvent: Anthropic message_delta accumulates, not terminal', () =
   expect(latest.tokens.input).toBe(50)
 })
 
+test('applyStreamEvent: Anthropic message_delta zero does not erase known input', () => {
+  const latest: UsageInfo = { tokens: {} }
+  applyStreamEvent({
+    type: 'message_start',
+    message: { model: 'claude-sonnet-4.6', usage: { input_tokens: 50, output_tokens: 0 } },
+  }, latest)
+
+  applyStreamEvent({
+    type: 'message_delta',
+    usage: { input_tokens: 0, output_tokens: 7 },
+  }, latest)
+
+  expect(latest.tokens).toEqual({ input: 50, output: 7 })
+})
+
 test('applyStreamEvent: Anthropic message_delta replaces provisional input with terminal usage', () => {
   const latest: UsageInfo = { tokens: {} }
   applyStreamEvent({

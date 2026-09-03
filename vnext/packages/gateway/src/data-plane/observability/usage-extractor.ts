@@ -247,10 +247,10 @@ export function applyStreamEvent(parsed: unknown, latest: UsageInfo): boolean {
     const u = p.usage
     const next: TokenUsage = {
       // For Messages translated from Responses, message_start can only carry a
-      // provisional zero: upstream usage arrives on response.completed. The
-      // translator restates the final prompt split on this terminal delta, so
-      // prefer it when present and preserve message_start for native Messages.
-      input: u.input_tokens ?? latest.tokens.input ?? 0,
+      // provisional zero and the terminal delta restates the final prompt
+      // split. Prefer a positive final value, but never let a redundant or
+      // synthesized terminal zero erase input already reported at start.
+      input: (u.input_tokens ?? 0) > 0 ? u.input_tokens : (latest.tokens.input ?? 0),
       output: u.output_tokens ?? 0,
     }
     next.input_cache_read = u.cache_read_input_tokens ?? latest.tokens.input_cache_read ?? 0
