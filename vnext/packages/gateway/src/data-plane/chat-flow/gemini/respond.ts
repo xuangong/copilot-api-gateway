@@ -91,7 +91,7 @@ export interface RespondGeminiOptions {
 // No `[DONE]` terminator is appended — gemini SSE terminates naturally with
 // the last `candidates` frame (no sentinel by convention).
 async function* applyTranslatorEventsForStreaming(
-  hubFrames: AsyncIterable<unknown>,
+  hubFrames: AsyncIterable<ProtocolFrame<unknown>>,
   translateEvents: NonNullable<LlmEventResult<unknown>['translateEvents']>,
   signal: AbortSignal | undefined,
   model: string | undefined,
@@ -131,18 +131,26 @@ const renderEventsAsSSE = (
   options: RespondGeminiOptions,
 ): Response => {
   const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
-  // Cross-protocol streaming: apply translator at SSE-time so encodeClientSSE
-  // and consumeWithState see bare gemini-shape events; same-protocol (no
-  // translateEvents) passes result.events through unchanged.
-  const upstreamEvents: AsyncIterable<unknown> = result.translateEvents
+  const hubProtocol = result.modelIdentity.translatorPair?.hub
+  const isHubProtocol = hubProtocol === 'responses' ||
+    hubProtocol === 'messages' ||
+    hubProtocol === 'chat_completions'
+  // Observe the hub frames before translation. The resulting Gemini events are
+  // client output only: observing them again would overwrite authoritative hub
+  // usage and provider model correction with translated Gemini metadata.
+  const events: AsyncIterable<unknown> = result.translateEvents && isHubProtocol
     ? applyTranslatorEventsForStreaming(
-        result.events,
+        consumeHubFramesWithState(
+          result.events as AsyncIterable<ProtocolFrame<unknown>>,
+          state,
+          options.dump,
+          hubProtocol,
+        ),
         result.translateEvents,
         options.downstreamAbortController?.signal,
         result.modelIdentity.model,
       )
-    : result.events
-  const events = consumeWithState(upstreamEvents, state, options.dump)
+    : consumeWithState(result.events, state, options.dump)
   const inner = encodeClientSSE('gemini', events)
   const reader = inner.getReader()
   const body = new ReadableStream<Uint8Array>({

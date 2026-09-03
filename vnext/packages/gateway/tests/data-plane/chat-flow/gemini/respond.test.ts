@@ -246,6 +246,140 @@ test('wantsStream=false + translateBody set: invokes translateBody with hub-reas
   expect(json).toEqual(sentinelGeminiJson)
 })
 
+test('Gemini streaming Responses failure records hub failure before translation', async () => {
+  const { repo } = setupTestPlatform()
+  const identity: TelemetryModelIdentity = {
+    model: 'gemini-public', upstream: 'upstream', modelKey: 'provider-model', cost: null,
+    translatorPair: { source: 'gemini', hub: 'responses' },
+  }
+  async function* hubFrames(): AsyncGenerator<ProtocolFrame<unknown>> {
+    yield {
+      type: 'event',
+      event: {
+        type: 'response.failed',
+        response: {
+          id: 'resp_failed', object: 'response', model: 'provider-model', output: [], status: 'failed',
+          error: { code: 'server_error', message: 'upstream unavailable' }, incomplete_details: null,
+        },
+      },
+    }
+  }
+  async function* translateEvents(events: AsyncIterable<unknown>): AsyncGenerator<unknown> {
+    for await (const _event of events) yield { error: { message: 'translated upstream unavailable' } }
+  }
+  const response = await respondGemini(
+    llmEventResult(
+      hubFrames(), identity,
+      { keyId: 'gemini-stream-responses-failed-key', model: identity.model, modelKey: identity.modelKey, upstream: 'upstream', stream: true, runtimeLocation: 'bun' },
+      undefined, undefined, translateEvents,
+    ),
+    {
+      wantsStream: true,
+      telemetryCtx: {
+        apiKeyId: 'gemini-stream-responses-failed-key' as never, userAgent: null, requestId: 'gemini-stream-responses-failed-request',
+        isStreaming: true, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
+      },
+    },
+  )
+  expect(await response.text()).toContain('translated upstream unavailable')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(await repo.usage.query({
+    keyId: 'gemini-stream-responses-failed-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })).toEqual([])
+  const performance = await repo.performance.query({
+    keyId: 'gemini-stream-responses-failed-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(performance.summary).toHaveLength(1)
+  expect(performance.summary[0]).toMatchObject({
+    model: 'gemini-public', sourceApi: 'gemini', targetApi: 'responses', errors: 1,
+  })
+})
+
+test('Gemini streaming Messages error records hub failure before translation', async () => {
+  const { repo } = setupTestPlatform()
+  const identity: TelemetryModelIdentity = {
+    model: 'gemini-public', upstream: 'upstream', modelKey: 'provider-model', cost: null,
+    translatorPair: { source: 'gemini', hub: 'messages' },
+  }
+  async function* hubFrames(): AsyncGenerator<ProtocolFrame<unknown>> {
+    yield { type: 'event', event: { type: 'error', error: { type: 'api_error', message: 'upstream unavailable' } } }
+  }
+  async function* translateEvents(events: AsyncIterable<unknown>): AsyncGenerator<unknown> {
+    for await (const _event of events) yield { error: { message: 'translated upstream unavailable' } }
+  }
+  const response = await respondGemini(
+    llmEventResult(
+      hubFrames(), identity,
+      { keyId: 'gemini-stream-messages-failed-key', model: identity.model, modelKey: identity.modelKey, upstream: 'upstream', stream: true, runtimeLocation: 'bun' },
+      undefined, undefined, translateEvents,
+    ),
+    {
+      wantsStream: true,
+      telemetryCtx: {
+        apiKeyId: 'gemini-stream-messages-failed-key' as never, userAgent: null, requestId: 'gemini-stream-messages-failed-request',
+        isStreaming: true, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
+      },
+    },
+  )
+  expect(await response.text()).toContain('translated upstream unavailable')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(await repo.usage.query({
+    keyId: 'gemini-stream-messages-failed-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })).toEqual([])
+  const performance = await repo.performance.query({
+    keyId: 'gemini-stream-messages-failed-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(performance.summary).toHaveLength(1)
+  expect(performance.summary[0]).toMatchObject({
+    model: 'gemini-public', sourceApi: 'gemini', targetApi: 'messages', errors: 1,
+  })
+})
+
+test('Gemini streaming hub success persists usage exactly once from the provider frame', async () => {
+  const { repo } = setupTestPlatform()
+  const datedKey = 'provider-model-20260904'
+  const identity: TelemetryModelIdentity = {
+    model: 'gemini-public', upstream: 'upstream', modelKey: 'provider-model', cost: { input: 1, output: 1 },
+    translatorPair: { source: 'gemini', hub: 'responses' },
+  }
+  async function* hubFrames(): AsyncGenerator<ProtocolFrame<unknown>> {
+    const response = {
+      id: 'resp_completed', object: 'response', model: datedKey, output: [], status: 'completed',
+      error: null, incomplete_details: null, usage: { input_tokens: 7, output_tokens: 3 },
+    }
+    yield { type: 'event', event: { type: 'response.completed', response } }
+  }
+  async function* translateEvents(events: AsyncIterable<unknown>): AsyncGenerator<unknown> {
+    for await (const _event of events) {
+      yield { candidates: [], usageMetadata: { promptTokenCount: 70, candidatesTokenCount: 30 } }
+    }
+  }
+  const response = await respondGemini(
+    llmEventResult(
+      hubFrames(), identity,
+      { keyId: 'gemini-stream-success-key', model: identity.model, modelKey: identity.modelKey, upstream: 'upstream', stream: true, runtimeLocation: 'bun' },
+      undefined, undefined, translateEvents,
+      (modelKey) => modelKey === datedKey ? { ...identity, modelKey, cost: { input: 2, output: 4 } } : identity,
+    ),
+    {
+      wantsStream: true,
+      telemetryCtx: {
+        apiKeyId: 'gemini-stream-success-key' as never, userAgent: null, requestId: 'gemini-stream-success-request',
+        isStreaming: true, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
+      },
+    },
+  )
+  expect(await response.text()).toContain('"promptTokenCount":70')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const usage = await repo.usage.query({
+    keyId: 'gemini-stream-success-key' as never, start: '2000-01-01T00', end: '2100-01-01T00',
+  })
+  expect(usage).toHaveLength(1)
+  expect(usage[0]).toMatchObject({
+    model: 'gemini-public', modelKey: datedKey, cost: { input: 2, output: 4 }, tokens: { input: 7, output: 3 },
+  })
+})
+
 test('Gemini nonstream responses hub persists hub usage with public model and provider key', async () => {
   const { repo } = setupTestPlatform()
   const alias = 'gemini-public'
