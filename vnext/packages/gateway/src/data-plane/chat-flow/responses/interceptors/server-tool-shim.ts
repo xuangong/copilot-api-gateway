@@ -112,7 +112,11 @@ export type UpstreamTerminal =
   | { kind: 'completed' }
   | { kind: 'failed'; response: ResponsesResult }
   | { kind: 'incomplete'; response: ResponsesResult }
-  | { kind: 'bare-error-pre-shell'; error: { message: string; code: string } }
+  | {
+      kind: 'bare-error-pre-shell'
+      error: { message: string; code: string }
+      event: Extract<ResponsesStreamEvent, { type: 'error' }>
+    }
 
 export interface TurnSummary {
   dispatched: Array<{ intercepted: InterceptedFunctionCall; slots: DispatchedServerToolSlot[] }>
@@ -535,8 +539,12 @@ export const consumeTurnStreaming = async function* (
     if (event.type === 'error') {
       const e = event as Extract<ResponsesStreamEvent, { type: 'error' }>
       const code = typeof e.code === 'string' && e.code.length > 0 ? e.code : 'server_error'
-      if (merge.lastSeenModel === null) {
-        terminalStatus = { kind: 'bare-error-pre-shell', error: { message: e.message, code } }
+      if (merge.upstreamResponseSnapshot === undefined) {
+        terminalStatus = {
+          kind: 'bare-error-pre-shell',
+          error: { message: e.message, code },
+          event: e,
+        }
       } else {
         terminalStatus = {
           kind: 'failed',
@@ -693,13 +701,18 @@ export const consumeTurnStreaming = async function* (
   }
 
   if (terminalStatus === undefined) {
-    if (merge.lastSeenModel === null) {
+    if (merge.upstreamResponseSnapshot === undefined) {
       terminalStatus = {
         kind: 'bare-error-pre-shell',
         error: {
           message: 'Upstream stream ended without a terminal event (no response.created observed)',
           code: 'server_error',
         },
+        event: {
+          type: 'error',
+          message: 'Upstream stream ended without a terminal event (no response.created observed)',
+          code: 'server_error',
+        } as Extract<ResponsesStreamEvent, { type: 'error' }>,
       }
     } else {
       terminalStatus = {
@@ -912,7 +925,6 @@ async function* runMultiTurnLoop(args: {
     resolveFinalMetadata,
   } = args
   const baseInput = args.canonicalInput
-  let midStreamError: unknown = undefined
   try {
     let currentTurn: TurnSummary = yield* turn1Iter
     merge.accumulatedUsage = sumUsage(merge.accumulatedUsage, currentTurn.turnUsage)
@@ -935,14 +947,11 @@ async function* runMultiTurnLoop(args: {
         return
       }
       if (turn.terminalStatus.kind === 'bare-error-pre-shell') {
-        yield synthesizeTerminalEnvelope(
-          merge,
-          {
-            kind: 'failed',
-            error: { code: turn.terminalStatus.error.code, message: turn.terminalStatus.error.message },
-          },
-          active,
-        )
+        // No upstream response lifecycle was captured, so there is no shell
+        // from which a valid terminal envelope can be synthesized. Preserve
+        // the upstream error rather than replacing it with a shim prerequisite
+        // failure. The binding-time identity remains authoritative metadata.
+        yield eventFrame(turn.terminalStatus.event)
         return
       }
       if (!executedShim && !turn.sawClientToolCall) {
@@ -989,9 +998,13 @@ async function* runMultiTurnLoop(args: {
       merge.accumulatedUsage = sumUsage(merge.accumulatedUsage, currentTurn.turnUsage)
     }
   } catch (error) {
-    if (merge.lastSeenModel === null) {
-      midStreamError = error
-      throw error
+    if (merge.upstreamResponseSnapshot === undefined) {
+      yield eventFrame({
+        type: 'error',
+        message: `Upstream stream failed before response lifecycle: ${error instanceof Error ? error.message : String(error)}`,
+        code: 'server_error',
+      } as Extract<ResponsesStreamEvent, { type: 'error' }>)
+      return
     }
     yield synthesizeTerminalEnvelope(
       merge,
@@ -1005,16 +1018,14 @@ async function* runMultiTurnLoop(args: {
       active,
     )
   } finally {
-    if (midStreamError === undefined) {
-      const observed = merge.lastSeenModel
-      const modelKey = observed === null
-        ? metadata.modelIdentity.modelKey
-        : pickUsageModelId(observed, metadata.modelIdentity.modelKey)
-      const modelIdentity = modelKey === metadata.modelIdentity.modelKey
-        ? metadata.modelIdentity
-        : metadata.resolveModelIdentity?.(modelKey) ?? metadata.modelIdentity
-      resolveFinalMetadata({ modelIdentity, performance: metadata.performance })
-    }
+    const observed = merge.lastSeenModel
+    const modelKey = observed === null
+      ? metadata.modelIdentity.modelKey
+      : pickUsageModelId(observed, metadata.modelIdentity.modelKey)
+    const modelIdentity = modelKey === metadata.modelIdentity.modelKey
+      ? metadata.modelIdentity
+      : metadata.resolveModelIdentity?.(modelKey) ?? metadata.modelIdentity
+    resolveFinalMetadata({ modelIdentity, performance: metadata.performance })
   }
 }
 

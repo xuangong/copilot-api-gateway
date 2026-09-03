@@ -38,6 +38,8 @@ import type {
 import type { ResponsesResult, ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
 import { eventFrame, doneFrame, type ProtocolFrame } from '@vibe-core/result'
 import { llmEventResult, type Invocation, type RequestContext, type TelemetryModelIdentity } from '@vibe-llm/protocols/common'
+import { respondResponses } from '../../../../../src/data-plane/chat-flow/responses/respond.ts'
+import { setupTestPlatform } from '../../../../_setup-platform.ts'
 
 const stubIdentity: TelemetryModelIdentity = {
   model: '<unknown>',
@@ -586,6 +588,95 @@ test('withResponsesServerToolShim uses second-turn identity for two-turn hosted 
   const metadata = await result.finalMetadata
   expect(metadata?.modelIdentity).toBe(second)
   expect(result.resolveModelIdentity?.('anything')).toBe(second)
+})
+
+test('withResponsesServerToolShim forwards a first bare upstream error and settles final metadata', async () => {
+  const store = createInMemoryPrivatePayloadStore()
+  const registration: ServerToolRegistration<Invocation, Record<string, unknown>> = () => ({
+    type: 'active', baseToolName: 'web_search', hosted: {
+      hostedTypes: ['web_search'],
+      canonicalize: (raw) => raw.type === 'web_search' ? { type: 'web_search' } : undefined,
+      buildFunctionTool: (_tool, name) => ({ type: 'function', name }), dispatcher: () => [],
+    },
+  })
+  const error = { type: 'error', message: 'upstream unavailable', code: 'upstream_error' } as ResponsesStreamEvent
+  const interceptor = withResponsesServerToolShim([registration], store)
+  const result = await interceptor(
+    { ...baseInv(), payload: { ...baseInv().payload, tools: [{ type: 'web_search' }] } },
+    baseCtx,
+    async () => llmEventResult((async function* () { yield eventFrame(error) })(), stubIdentity),
+  )
+  if (result.type !== 'events') throw new Error('expected events')
+  const output = await collectAndReturn(result.events as AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>, void>)
+  expect(output.frames).toHaveLength(1)
+  expect(output.frames[0]?.type).toBe('event')
+  if (output.frames[0]?.type !== 'event') throw new Error('expected event frame')
+  expect(output.frames[0].event).toBe(error)
+  if (!result.finalMetadata) throw new Error('expected final metadata')
+  const settled = await Promise.race([
+    result.finalMetadata.then((metadata) => ({ kind: 'resolved' as const, metadata })),
+    new Promise<{ kind: 'timeout' }>((resolve) => setTimeout(() => resolve({ kind: 'timeout' }), 100)),
+  ])
+  expect(settled.kind).toBe('resolved')
+  if (settled.kind !== 'resolved') throw new Error('metadata did not settle')
+  expect(settled.metadata.modelIdentity).toBe(stubIdentity)
+})
+
+test('withResponsesServerToolShim turns a snapshot-less empty upstream stream into one error and settles metadata', async () => {
+  const store = createInMemoryPrivatePayloadStore()
+  const registration: ServerToolRegistration<Invocation, Record<string, unknown>> = () => ({
+    type: 'active', baseToolName: 'web_search', hosted: {
+      hostedTypes: ['web_search'],
+      canonicalize: (raw) => raw.type === 'web_search' ? { type: 'web_search' } : undefined,
+      buildFunctionTool: (_tool, name) => ({ type: 'function', name }), dispatcher: () => [],
+    },
+  })
+  const result = await withResponsesServerToolShim([registration], store)(
+    { ...baseInv(), payload: { ...baseInv().payload, tools: [{ type: 'web_search' }] } },
+    baseCtx,
+    async () => llmEventResult((async function* () {})(), stubIdentity),
+  )
+  if (result.type !== 'events') throw new Error('expected events')
+  const output = await collectAndReturn(result.events as AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>, void>)
+  expect(output.frames).toHaveLength(1)
+  if (output.frames[0]?.type !== 'event') throw new Error('expected event frame')
+  expect(output.frames[0].event).toMatchObject({
+    type: 'error',
+    message: 'Upstream stream ended without a terminal event (no response.created observed)',
+  })
+  if (!result.finalMetadata) throw new Error('expected final metadata')
+  await expect(result.finalMetadata).resolves.toEqual({ modelIdentity: stubIdentity, performance: undefined })
+})
+
+test('respondResponses drains a shimmed first bare error without a prerequisite failure', async () => {
+  setupTestPlatform()
+  const store = createInMemoryPrivatePayloadStore()
+  const registration: ServerToolRegistration<Invocation, Record<string, unknown>> = () => ({
+    type: 'active', baseToolName: 'web_search', hosted: {
+      hostedTypes: ['web_search'],
+      canonicalize: (raw) => raw.type === 'web_search' ? { type: 'web_search' } : undefined,
+      buildFunctionTool: (_tool, name) => ({ type: 'function', name }), dispatcher: () => [],
+    },
+  })
+  const interceptor = withResponsesServerToolShim([registration], store)
+  const result = await interceptor(
+    { ...baseInv(), payload: { ...baseInv().payload, tools: [{ type: 'web_search' }] } },
+    baseCtx,
+    async () => llmEventResult((async function* () {
+      yield eventFrame({ type: 'error', message: 'upstream unavailable', code: 'upstream_error' } as ResponsesStreamEvent)
+    })(), stubIdentity),
+  )
+  if (result.type !== 'events') throw new Error('expected events')
+  const failures: unknown[] = []
+  const response = await respondResponses(result, {
+    wantsStream: true,
+    dump: { frame: () => {}, failed: (error) => { failures.push(error) }, success: () => {} } as never,
+  })
+  const body = await response.text()
+  expect(body).toContain('upstream unavailable')
+  expect(body).not.toContain('cannot synthesize a Responses terminal envelope')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(failures).toEqual([])
 })
 
 test('withResponsesServerToolShim accepts an unpriced terminal correction in finalMetadata', async () => {
