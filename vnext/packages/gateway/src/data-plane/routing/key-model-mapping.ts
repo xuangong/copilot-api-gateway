@@ -1,5 +1,5 @@
 import type { ApiKeyRoutingPolicy } from '../../shared/api-key-model-mappings.ts'
-import { parseModelRouting } from './binding-resolver.ts'
+import { parseModelRouting } from './model-routing.ts'
 
 export interface ResolvedKeyModel {
   requestedModel: string

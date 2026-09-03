@@ -14,19 +14,10 @@ import type { EndpointKey } from '@vibe-llm/protocols/common'
 import { bindingServesEndpoint, type LlmProviderBinding } from './binding.ts'
 import { listProviderBindings, type CreateProviderOptions } from '../providers/registry.ts'
 import { parseCompositeModelId } from '@vibe-llm/provider-copilot'
+import { parseModelRouting } from './model-routing.ts'
 
-export interface ModelRoutingHint {
-  upstreamPin?: string
-  bareModel: string
-}
-
-export function parseModelRouting(model: string): ModelRoutingHint {
-  const slash = model.indexOf('/')
-  if (slash <= 0) return { bareModel: model }
-  const prefix = model.slice(0, slash)
-  if (!prefix.startsWith('up_')) return { bareModel: model }
-  return { upstreamPin: prefix, bareModel: model.slice(slash + 1) }
-}
+export { parseModelRouting } from './model-routing.ts'
+export type { ModelRoutingHint } from './model-routing.ts'
 
 export interface ResolveBindingOptions {
   ownerId?: string

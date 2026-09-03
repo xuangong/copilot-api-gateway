@@ -6,7 +6,7 @@
 import type { EndpointKey, ModelEndpoints } from '@vibe-llm/protocols/common'
 import type { LlmProviderBinding } from '@vibe-llm/provider-llm'
 import { listProviderBindings, type CreateProviderOptions } from '../providers/registry.ts'
-import { parseModelRouting } from './binding-resolver.ts'
+import { parseModelRouting } from './model-routing.ts'
 import { parseCompositeModelId } from '@vibe-llm/provider-copilot'
 
 export interface BindingCandidate {
