@@ -245,12 +245,15 @@ export function applyStreamEvent(parsed: unknown, latest: UsageInfo): boolean {
   }
   if (p.type === 'message_delta' && p.usage?.output_tokens != null) {
     const u = p.usage
+    const terminalInput = u.input_tokens
     const next: TokenUsage = {
       // For Messages translated from Responses, message_start can only carry a
       // provisional zero and the terminal delta restates the final prompt
-      // split. Prefer a positive final value, but never let a redundant or
-      // synthesized terminal zero erase input already reported at start.
-      input: (u.input_tokens ?? 0) > 0 ? u.input_tokens : (latest.tokens.input ?? 0),
+      // split. Prefer a finite positive final value, but never let malformed
+      // input or a redundant/synthesized zero erase input reported at start.
+      input: typeof terminalInput === 'number' && Number.isFinite(terminalInput) && terminalInput > 0
+        ? terminalInput
+        : (latest.tokens.input ?? 0),
       output: u.output_tokens ?? 0,
     }
     next.input_cache_read = u.cache_read_input_tokens ?? latest.tokens.input_cache_read ?? 0

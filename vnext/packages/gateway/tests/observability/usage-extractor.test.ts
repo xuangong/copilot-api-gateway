@@ -167,6 +167,17 @@ test('applyStreamEvent: Anthropic message_delta accumulates, not terminal', () =
   expect(latest.tokens.input).toBe(50)
 })
 
+test('applyStreamEvent: Anthropic message_delta ignores invalid input counts', () => {
+  for (const invalid of ['17', Number.POSITIVE_INFINITY, Number.NaN]) {
+    const latest: UsageInfo = { tokens: { input: 50 } }
+    applyStreamEvent({
+      type: 'message_delta',
+      usage: { input_tokens: invalid, output_tokens: 7 },
+    }, latest)
+    expect(latest.tokens).toEqual({ input: 50, output: 7 })
+  }
+})
+
 test('applyStreamEvent: Anthropic message_delta zero does not erase known input', () => {
   const latest: UsageInfo = { tokens: {} }
   applyStreamEvent({
