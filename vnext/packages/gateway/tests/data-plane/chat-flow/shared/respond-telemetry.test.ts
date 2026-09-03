@@ -5,6 +5,7 @@ import {
   eventResultMetadata,
   finalModelIdentity,
   normalizeStreamEventModel,
+  performanceTargetFromTranslatorPair,
   recordUsage,
   recordPerformance,
 } from '../../../../src/data-plane/chat-flow/shared/respond-telemetry.ts'
@@ -240,6 +241,12 @@ test('recordPerformance routes gemini source through chat-completions target', a
   await recordPerformance({ ...ctx, sourceApi: 'gemini' }, perf(), false, stub)
   expect(calls[0]?.sourceApi).toBe('gemini')
   expect(calls[0]?.targetApi).toBe('chat-completions')
+})
+
+test('performanceTargetFromTranslatorPair maps protocol spelling for persisted targets', () => {
+  expect(performanceTargetFromTranslatorPair({ ...identity(), translatorPair: { source: 'messages', hub: 'chat_completions' } })).toBe('chat-completions')
+  expect(performanceTargetFromTranslatorPair({ ...identity(), translatorPair: { source: 'messages', hub: 'responses' } })).toBe('responses')
+  expect(performanceTargetFromTranslatorPair({ ...identity(), translatorPair: { source: 'messages', hub: 'gemini' } })).toBeUndefined()
 })
 
 test('recordPerformance honors hubOverride when translator carries a hub', async () => {

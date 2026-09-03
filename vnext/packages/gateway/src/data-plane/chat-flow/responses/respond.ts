@@ -44,6 +44,7 @@ import {
   eventResultMetadata,
   finalModelIdentity,
   normalizeStreamEventModel,
+  performanceTargetFromTranslatorPair,
   recordPerformance,
   recordUsage,
 } from '../shared/respond-telemetry.ts'
@@ -147,7 +148,13 @@ async function persistFromEventResult<T>(
   }
   if (telemetryCtx) {
     await recordUsage(telemetryCtx, finalIdentity, state.usage.tokens)
-    await recordPerformance(telemetryCtx, md.performance, state.failed)
+    await recordPerformance(
+      telemetryCtx,
+      md.performance,
+      state.failed,
+      undefined,
+      performanceTargetFromTranslatorPair(finalIdentity),
+    )
   }
 }
 

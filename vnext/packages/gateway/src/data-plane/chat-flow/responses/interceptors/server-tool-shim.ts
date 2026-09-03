@@ -1120,6 +1120,7 @@ export const withResponsesServerToolShim = (
 
   return {
     ...firstResult,
+    __interceptorReplaced: true,
     events: runMultiTurnLoop({
       ctx,
       run,

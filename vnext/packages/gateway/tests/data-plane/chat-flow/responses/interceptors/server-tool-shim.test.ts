@@ -577,6 +577,7 @@ test('withResponsesServerToolShim uses second-turn identity for two-turn hosted 
   if (result.type !== 'events') throw new Error('expected events')
   const { frames: output } = await collectAndReturn(result.events as AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>, void>)
   expect(calls).toBe(2)
+  expect((result as { __interceptorReplaced?: boolean }).__interceptorReplaced).toBe(true)
   const models = output.filter((frame) => frame.type === 'event').flatMap((frame) => {
     const event = frame.event as { response?: { model?: string } }
     return event.response?.model === undefined ? [] : [event.response.model]

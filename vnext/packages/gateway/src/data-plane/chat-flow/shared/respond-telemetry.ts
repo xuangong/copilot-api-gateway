@@ -210,6 +210,15 @@ export async function recordUsage(
  * kit's `endpointTag`); `targetApi` mirrors the source unless the model
  * identity carries a `translatorPair.hub` overriding it.
  */
+export function performanceTargetFromTranslatorPair(
+  identity: TelemetryModelIdentity,
+): PerformanceTargetApi | undefined {
+  const hub = identity.translatorPair?.hub
+  if (hub === 'chat_completions') return 'chat-completions'
+  if (hub === 'messages' || hub === 'responses') return hub
+  return undefined
+}
+
 export async function recordPerformance(
   telemetryCtx: TelemetryRequestContext,
   performance: PerformanceTelemetryContext | undefined,
