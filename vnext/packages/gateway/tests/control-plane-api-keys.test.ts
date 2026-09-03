@@ -461,6 +461,31 @@ test('PATCH validates mapping destinations against the key owner catalog', async
   }
 })
 
+test('ownerless key is only manageable by an admin', async () => {
+  const key = await createApiKey('key')
+  await store.repo.keyAssignments.assign(key.id, 'assignee', 'admin')
+  const assignee = buildApp({ isUser: true, userId: 'assignee' })
+  expect((await assignee.request(`/api/keys/${key.id}`)).status).toBe(403)
+  expect((await patchKey(assignee, key.id, { model_mappings: [] })).status).toBe(403)
+  const admin = buildApp({ isAdmin: true })
+  expect((await admin.request(`/api/keys/${key.id}`)).status).toBe(200)
+})
+
+test('owner PATCH persists and clears web search passthrough fields', async () => {
+  const key = await createApiKey('key', 'owner')
+  const app = buildApp({ isUser: true, userId: 'owner' })
+  const set = await patchKey(app, key.id, {
+    web_search_passthrough_upstream: 'upstream-a', web_search_passthrough_model: 'model-a',
+  })
+  expect(set.status).toBe(200)
+  expect((await store.repo.apiKeys.getById(key.id))?.webSearchPassthroughUpstream).toBe('upstream-a')
+  const clear = await patchKey(app, key.id, {
+    web_search_passthrough_upstream: null, web_search_passthrough_model: null,
+  })
+  expect(clear.status).toBe(200)
+  expect((await store.repo.apiKeys.getById(key.id))?.webSearchPassthroughUpstream).toBeUndefined()
+})
+
 test('assignee may change only model mappings and cannot combine another mutable field', async () => {
   const key = await createApiKey('key', 'owner')
   await store.repo.keyAssignments.assign(key.id, 'assignee', 'owner')

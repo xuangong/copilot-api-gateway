@@ -91,6 +91,13 @@ test('listProviderBindings hides disabledPublicModelIds', async () => {
   expect(bindings.map((b) => b.model.id)).toEqual(['gpt-4o'])
 })
 
+test('listProviderBindings hides all Copilot raw variants when its public base is disabled', async () => {
+  initRepo(stubRepo([stubUpstream({ disabledPublicModelIds: ['claude-opus-4.7'] })]))
+  stubFetch([stubModel('claude-opus-4.7'), stubModel('claude-opus-4.7-xhigh'), stubModel('claude-opus-4.7-1m-internal')])
+  const bindings = await listProviderBindings({ copilot: { copilotToken: 'tkn', accountType: 'individual' } })
+  expect(bindings).toEqual([])
+})
+
 test('listProviderBindings falls back to request-scoped Copilot when no stored upstream', async () => {
   initRepo(stubRepo([]))
   stubFetch([stubModel('gpt-4o')])

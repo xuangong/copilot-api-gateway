@@ -34,7 +34,7 @@ import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 import { zValidator } from '../middleware/zod-validator.ts'
 import { loadOwned } from '../shared/ownership.ts'
 import { listProviderBindings } from '../../data-plane/providers/registry.ts'
-import { buildCompositeModelId, composeModelOptions } from '@vibe-llm/provider-copilot'
+import { buildCompositeModelId, composeModelOptions, copilotPublicModelId } from '@vibe-llm/provider-copilot'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 
 export interface AuthCtx {
@@ -110,6 +110,8 @@ function keyToJson(
     web_search_jina_key: jinaRef ? null : maskKey(k.webSearchJinaKey),
     web_search_jina_ref: jinaRef,
     web_search_priority: k.webSearchPriority ?? null,
+    web_search_passthrough_upstream: k.webSearchPassthroughUpstream ?? null,
+    web_search_passthrough_model: k.webSearchPassthroughModel ?? null,
     model_mappings_enabled: k.modelMappingsInvalid ? false : k.modelMappingsEnabled,
     model_mappings: k.modelMappingsInvalid ? [] : k.modelMappings.map(({ source, destination }) => ({ source, destination })),
     model_mappings_invalid: k.modelMappingsInvalid === true,
@@ -136,6 +138,7 @@ async function checkOwnership(keyId: ApiKeyId, ctx: AuthCtx): Promise<boolean> {
 
 async function canManageModelMappings(key: ApiKey, ctx: AuthCtx): Promise<boolean> {
   if (ctx.isAdmin) return true
+  if (!key.ownerId) return false
   if (!ctx.userId) return false
   if (key.ownerId === ctx.userId) return true
   return (await getRepo().keyAssignments.listByUser(ctx.userId)).some((grant) => grant.keyId === key.id)
@@ -185,12 +188,21 @@ async function destinationsAreAvailable(ownerId: string | undefined, mappings: r
   if (mappings.length === 0) return true
   const bindings = await listProviderBindings({ ownerId, dedupe: true, strictCatalog: true })
   const available = new Set<string>()
+  const copilotModelsByUpstream = new Map<string, Model[]>()
   for (const binding of bindings) {
     available.add(binding.model.id)
     if (binding.kind !== 'copilot' || !binding.model.raw) continue
-    const rawModels: ModelsResponse = { object: 'list', data: [binding.model.raw as unknown as Model] }
-    for (const combo of composeModelOptions(rawModels, binding.model.id)) {
-      available.add(buildCompositeModelId(binding.model.id, combo))
+    const rawModels = copilotModelsByUpstream.get(binding.upstream) ?? []
+    rawModels.push(binding.model.raw as unknown as Model)
+    copilotModelsByUpstream.set(binding.upstream, rawModels)
+  }
+  for (const rawModels of copilotModelsByUpstream.values()) {
+    const catalog: ModelsResponse = { object: 'list', data: rawModels }
+    for (const raw of rawModels) {
+      const baseId = copilotPublicModelId(raw.id)
+      for (const combo of composeModelOptions(catalog, baseId)) {
+        available.add(buildCompositeModelId(baseId, combo))
+      }
     }
   }
   return mappings.every(({ destination }) => available.has(destination))
@@ -428,6 +440,8 @@ apiKeysRouter.patch('/:id', async (c) => {
     web_search_ms_grounding_ref?: string | null
     web_search_jina_key?: string | null
     web_search_jina_ref?: string | null
+    web_search_passthrough_upstream?: string | null
+    web_search_passthrough_model?: string | null
   }
   const bodyForLegacy = legacyBody
   if (bodyForLegacy.name !== undefined) {
@@ -479,6 +493,12 @@ apiKeysRouter.patch('/:id', async (c) => {
   }
   if (bodyForLegacy.web_search_priority !== undefined) {
     updated.webSearchPriority = bodyForLegacy.web_search_priority === null ? undefined : bodyForLegacy.web_search_priority
+  }
+  if (bodyForLegacy.web_search_passthrough_upstream !== undefined) {
+    updated.webSearchPassthroughUpstream = bodyForLegacy.web_search_passthrough_upstream ?? undefined
+  }
+  if (bodyForLegacy.web_search_passthrough_model !== undefined) {
+    updated.webSearchPassthroughModel = bodyForLegacy.web_search_passthrough_model ?? undefined
   }
 
   await getRepo().apiKeys.save(updated)

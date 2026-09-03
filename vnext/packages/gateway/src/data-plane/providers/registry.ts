@@ -22,7 +22,7 @@ import { getRepo } from '../../repo/index.ts'
 import { __registerPlatformReset, getRuntimeLocation } from '@vibe-core/platform'
 import { getCache } from '../../data-plane/cache/index.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
-import { copilotModelEndpoints } from '@vibe-llm/provider-copilot'
+import { copilotModelEndpoints, copilotPublicModelId } from '@vibe-llm/provider-copilot'
 import type { LlmModelProvider, LlmProviderBinding, LlmProviderPlugin } from '@vibe-llm/provider-llm'
 import type { EndpointKey, ModelEndpoints, UpstreamKind } from '@vibe-llm/protocols/common'
 import { CopilotProvider, copilotProviderPlugin } from '@vibe-llm/provider-copilot'
@@ -293,7 +293,8 @@ export async function listProviderBindings(
       const enabledFlags = resolveEffectiveFlags(defaultsForUpstream(upstream.provider), [upstream.flagOverrides])
       const disabled = new Set(upstream.disabledPublicModelIds)
       for (const model of models.data ?? []) {
-        if (disabled.has(model.id)) continue
+        const publicId = upstream.provider === 'copilot' ? copilotPublicModelId(model.id) : model.id
+        if (disabled.has(publicId)) continue
         bindings.push({
           upstream: upstream.id,
           kind: upstream.provider,
@@ -314,7 +315,7 @@ export async function listProviderBindings(
 
   // Request-scoped Copilot fallback: if no stored Copilot upstream produced
   // bindings, synthesize one from the per-request token in opts.copilot.
-  if (!bindings.some((b) => b.kind === 'copilot') && opts.copilot) {
+  if (!upstreams.some((upstream) => upstream.provider === 'copilot') && opts.copilot) {
     const provider = createCopilotProvider(opts.copilot)
     try {
       const models = await provider.getModels()
