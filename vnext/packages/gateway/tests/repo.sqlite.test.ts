@@ -2,13 +2,15 @@ import { test, expect } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
 
-const newRepo = () => new SqliteRepo(new Database(':memory:'))
+const newRepo = (db = new Database(":memory:")) => ({ repo: new SqliteRepo(db), db })
 
 test('SqliteRepo: apiKeys save + lookup round-trip', async () => {
-  const repo = newRepo()
+  const { repo } = newRepo()
   const now = new Date().toISOString()
   await repo.apiKeys.save({
     id: 'k1', name: 'test', key: 'raw-secret-1', createdAt: now, ownerId: 'u1',
+    modelMappingsEnabled: false,
+    modelMappings: [],
   })
   const byId = await repo.apiKeys.getById('k1')
   expect(byId?.name).toBe('test')
@@ -20,8 +22,102 @@ test('SqliteRepo: apiKeys save + lookup round-trip', async () => {
   expect(await repo.apiKeys.getById('k1')).toBeNull()
 })
 
+test("SqliteRepo: api key mappings preserve ordered duplicates and explicit empty lists", async () => {
+  const { repo } = newRepo()
+  const now = new Date().toISOString()
+  const mappings = [
+    { source: "a", destination: "b" },
+    { source: "a", destination: "c" },
+    { source: "c", destination: "d" },
+  ]
+  await repo.apiKeys.save({
+    id: "k-mappings",
+    name: "mappings",
+    key: "raw-secret-mappings",
+    createdAt: now,
+    modelMappingsEnabled: true,
+    modelMappings: mappings,
+  })
+
+  expect(await repo.apiKeys.getById("k-mappings")).toMatchObject({
+    modelMappingsEnabled: true,
+    modelMappings: mappings,
+    modelMappingsInvalid: false,
+  })
+
+  await repo.apiKeys.save({
+    id: "k-empty",
+    name: "empty",
+    key: "raw-secret-empty",
+    createdAt: now,
+    modelMappingsEnabled: false,
+    modelMappings: [],
+  })
+  expect(await repo.apiKeys.getById("k-empty")).toMatchObject({
+    modelMappingsEnabled: false,
+    modelMappings: [],
+    modelMappingsInvalid: false,
+  })
+})
+
+test("SqliteRepo: toggling mappings and full saves retain the list", async () => {
+  const { repo } = newRepo()
+  const now = new Date().toISOString()
+  const key = {
+    id: "k-toggle",
+    name: "original",
+    key: "raw-secret-toggle",
+    createdAt: now,
+    modelMappingsEnabled: true,
+    modelMappings: [{ source: "a", destination: "b" }],
+  }
+  await repo.apiKeys.save(key)
+  await repo.apiKeys.save({ ...key, modelMappingsEnabled: false })
+  await repo.apiKeys.save({ ...key, name: "renamed", modelMappingsEnabled: false })
+
+  expect(await repo.apiKeys.getById("k-toggle")).toMatchObject({
+    name: "renamed",
+    modelMappingsEnabled: false,
+    modelMappings: [{ source: "a", destination: "b" }],
+  })
+})
+
+test("SqliteRepo: corrupt model mappings fail closed as a whole", async () => {
+  const { repo, db } = newRepo()
+  const now = new Date().toISOString()
+  const invalidValues = [
+    "not-json",
+    "{}",
+    "[null]",
+    '[{"source":1,"destination":"b"}]',
+    '[{"source":"a","destination":1}]',
+    '[{"source":"   ","destination":"b"}]',
+    '[{"source":"a","destination":"   "}]',
+    JSON.stringify(Array.from({ length: 101 }, () => ({ source: "a", destination: "b" }))),
+    JSON.stringify([{ source: "a".repeat(257), destination: "b" }]),
+    JSON.stringify([{ source: "a", destination: "b".repeat(257) }]),
+  ]
+
+  for (const [index, modelMappings] of invalidValues.entries()) {
+    await repo.apiKeys.save({
+      id: `k-invalid-${index}`,
+      name: "invalid",
+      key: `raw-secret-invalid-${index}`,
+      createdAt: now,
+      modelMappingsEnabled: true,
+      modelMappings: [],
+    })
+    db.query("UPDATE api_keys SET model_mappings = ? WHERE id = ?").run(modelMappings, `k-invalid-${index}`)
+    expect(await repo.apiKeys.getById(`k-invalid-${index}`)).toMatchObject({
+      modelMappingsEnabled: false,
+      modelMappings: [],
+      modelMappingsInvalid: true,
+    })
+  }
+})
+
 test('SqliteRepo: upstreams save + list round-trip', async () => {
-  const repo = newRepo()
+  const { repo } = newRepo()
   const now = new Date().toISOString()
   await repo.upstreams.save({
     id: 'ups-1',

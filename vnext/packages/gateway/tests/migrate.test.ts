@@ -33,9 +33,10 @@ describe("applyMigrations", () => {
     for (const required of ["api_keys", "github_accounts", "usage", "users", "web_search_usage"]) {
       expect(t).toContain(required)
     }
-    expect(
-      db.query<{ name: string }, []>("SELECT name FROM pragma_table_info('api_keys')").all().map((r) => r.name),
-    ).toContain("owner_id")
+    const apiKeyColumns = db.query<{ name: string }, []>("SELECT name FROM pragma_table_info('api_keys')").all().map((r) => r.name)
+    expect(apiKeyColumns).toContain("owner_id")
+    expect(apiKeyColumns).toContain("model_mappings_enabled")
+    expect(apiKeyColumns).toContain("model_mappings")
   })
 
   test("re-running is a no-op", () => {
@@ -69,7 +70,10 @@ describe("applyMigrations", () => {
     db.exec("ALTER TABLE api_keys DROP COLUMN web_search_jina_ref")
     db.exec("ALTER TABLE api_keys DROP COLUMN web_search_passthrough_upstream")
     db.exec("ALTER TABLE api_keys DROP COLUMN web_search_passthrough_model")
+    db.exec("ALTER TABLE api_keys DROP COLUMN model_mappings_enabled")
+    db.exec("ALTER TABLE api_keys DROP COLUMN model_mappings")
     db.exec("INSERT INTO users (id, name, created_at) VALUES ('u1', 'someone', '2026-01-01')")
+    db.exec("INSERT INTO api_keys (id, name, key, created_at) VALUES ('k1', 'preserved', 'secret', '2026-01-01')")
 
     applyMigrations(db)
 
@@ -77,7 +81,16 @@ describe("applyMigrations", () => {
     expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM users").get()!.n).toBe(1)
     expect(
       db.query<{ name: string }, []>("SELECT name FROM pragma_table_info('api_keys')").all().map((r) => r.name),
-    ).toContain("quota_requests_per_month")
+    ).toEqual(expect.arrayContaining(["quota_requests_per_month", "model_mappings_enabled", "model_mappings"]))
+    expect(
+      db.query<{ name: string; enabled: number; mappings: string }, []>(
+        "SELECT name, model_mappings_enabled AS enabled, model_mappings AS mappings FROM api_keys WHERE id = 'k1'",
+      ).get(),
+    ).toEqual({
+      name: "preserved",
+      enabled: 0,
+      mappings: '[{"source":"gpt-5.6-sol","destination":"gpt-5.6-sol-fast"}]',
+    })
   })
 
   test("a failing file rolls back entirely and records nothing", () => {
