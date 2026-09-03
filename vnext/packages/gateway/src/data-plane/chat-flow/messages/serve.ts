@@ -81,11 +81,15 @@ const messagesHooks: ServeTemplateHooks<
     }
   },
 
-  preProcess: async (payload, ctx) => ({
-    kind: 'continue',
-    payload: { ...payload, model: resolveKeyModel(payload.model, ctx.auth.routingPolicy).routedModel },
-    extra: undefined,
-  }),
+  preProcess: async (payload, ctx) => {
+    const resolved = resolveKeyModel(payload.model, ctx.auth.routingPolicy)
+    return {
+      kind: 'continue',
+      payload: { ...payload, model: resolved.routedModel },
+      extra: undefined,
+      ...(resolved.upstreamPin ? { auth: { ...ctx.auth, pin: resolved.upstreamPin } } : {}),
+    }
+  },
 
   wantsStream: (p) => p.stream === true,
 

@@ -33,7 +33,7 @@ export function resolveKeyModel(
 
   return {
     requestedModel,
-    routedModel: upstreamPin ? `${upstreamPin}/${routedModel}` : routedModel,
+    routedModel,
     ...(upstreamPin ? { upstreamPin } : {}),
     matchedRuleIndexes,
   }

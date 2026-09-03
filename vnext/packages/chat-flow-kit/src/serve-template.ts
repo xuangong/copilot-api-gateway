@@ -65,8 +65,8 @@ export interface PreProcessCtx<TAuth extends KitAuthCtx = KitAuthCtx> {
  *  payload + extra, OR short-circuit with a Response. The short-circuit branch
  *  lets endpoints render bespoke error envelopes (e.g. domain-specific
  *  not-found shapes) without the kit knowing their wire shape. */
-export type PreProcessResult<TPayload, TExtra> =
-  | { kind: 'continue'; payload: TPayload; extra: TExtra }
+export type PreProcessResult<TPayload, TExtra, TAuth extends KitAuthCtx = KitAuthCtx> =
+  | { kind: 'continue'; payload: TPayload; extra: TExtra; auth?: TAuth }
   | { kind: 'short-circuit'; response: Response; extra: TExtra }
 
 export interface RunAttemptArgs<TPayload, TAuth, TTelemetryCtx> {
@@ -116,7 +116,7 @@ export interface ServeTemplateHooks<
   preProcess?(
     payload: TPayload,
     ctx: PreProcessCtx<TAuth>,
-  ): Promise<PreProcessResult<TPayload, TExtra>>
+  ): Promise<PreProcessResult<TPayload, TExtra, TAuth>>
 
   wantsStream(payload: TPayload, input: ServeTemplateInput<TAuth>): boolean
 
@@ -181,7 +181,7 @@ export async function serveTemplate<
   // 2. preProcess (optional).
   let extra: TExtra | undefined
   if (hooks.preProcess) {
-    let pre: PreProcessResult<TPayload, TExtra>
+    let pre: PreProcessResult<TPayload, TExtra, TAuth>
     try {
       pre = await hooks.preProcess(payload, { auth: input.auth })
     } catch (err) {
@@ -197,6 +197,7 @@ export async function serveTemplate<
     }
     payload = pre.payload
     extra = pre.extra
+    if (pre.auth) input = { ...input, auth: pre.auth }
   }
 
   // 3. wantsStream.

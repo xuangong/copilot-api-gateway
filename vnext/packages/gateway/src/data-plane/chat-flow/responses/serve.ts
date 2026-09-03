@@ -140,13 +140,16 @@ const responsesHooks: ServeTemplateHooks<
       )
       const expanded = (payload as { input?: unknown }).input
       const mergedInputItems = Array.isArray(expanded) ? (expanded as unknown[]) : []
+      const resolved = resolveKeyModel(payload.model, ctx.auth.routingPolicy)
       return {
         kind: 'continue',
-        payload: { ...payload, model: resolveKeyModel(payload.model, ctx.auth.routingPolicy).routedModel },
+        payload: { ...payload, model: resolved.routedModel },
         extra: { mergedInputItems },
+        ...(resolved.upstreamPin ? { auth: { ...ctx.auth, pin: resolved.upstreamPin } } : {}),
       } satisfies PreProcessResult<
         ResponsesPayload,
-        ResponsesExtra
+        ResponsesExtra,
+        ResponsesServeAuth
       >
     } catch (err) {
       // PreviousResponseNotFoundError carries only `status: 400` (no
