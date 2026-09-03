@@ -643,3 +643,123 @@ test('assignee may change only model mappings and cannot combine another mutable
   expect(stored?.name).toBe('key')
   expect(stored?.modelMappingsEnabled).toBe(true)
 })
+
+function installOwnerCatalog(models: Array<Record<string, unknown>>, enabled = true): () => void {
+  store.repo.upstreams = {
+    list: async (filter: { ownerId?: string } = {}) => filter.ownerId === 'owner' ? [{
+      id: 'copilot:owner', provider: 'copilot', name: 'owner', ownerId: 'owner', enabled, sortOrder: 0,
+      config: { githubToken: 'token' }, flagOverrides: {}, disabledPublicModelIds: [], state: null,
+      proxyFallbackList: [{ id: 'direct_fetch' }], createdAt: 'x', updatedAt: `catalog-${enabled}`,
+    }] : [],
+  } as Repo['upstreams']
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const payload = String(input).includes('/copilot_internal/v2/token')
+      ? { token: 'copilot-token', expires_at: Math.floor(Date.now() / 1000) + 3600 }
+      : { object: 'list', data: models }
+    return Promise.resolve(new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } }))
+  }) as typeof fetch
+  return () => { globalThis.fetch = originalFetch }
+}
+
+function catalogModel(id: string, supports: Record<string, unknown> = {}, maxContext = 200_000): Record<string, unknown> {
+  return {
+    id, object: 'model', name: id, vendor: 'anthropic', version: id, model_picker_enabled: true, preview: false,
+    capabilities: { family: 'anthropic', limits: { max_context_window_tokens: maxContext }, supports, tokenizer: 'x', type: 'text' },
+  }
+}
+
+test('PATCH accepts a composite built from split raw variants within one upstream', async () => {
+  const key = await createApiKey('key', 'owner')
+  const restore = installOwnerCatalog([
+    catalogModel('claude-opus-4.7-xhigh', { reasoning_effort: ['xhigh'] }),
+    catalogModel('claude-opus-4.7-1m-internal', {}, 1_000_000),
+  ])
+  try {
+    const response = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, {
+      model_mappings: [{ source: 'alias', destination: 'claude-opus-4.7-xhigh-1m' }],
+    })
+    expect(response.status).toBe(200)
+  } finally {
+    restore()
+  }
+})
+
+test('PATCH rejects a destination from a disabled upstream without saving mappings', async () => {
+  const key = await createApiKey('key', 'owner')
+  const restore = installOwnerCatalog([catalogModel('direct-target')], false)
+  try {
+    const response = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, {
+      model_mappings: [{ source: 'alias', destination: 'direct-target' }],
+    })
+    expect(response.status).toBe(400)
+    expect((await store.repo.apiKeys.getById(key.id))?.modelMappings).not.toEqual([{ source: 'alias', destination: 'direct-target' }])
+  } finally {
+    restore()
+  }
+})
+
+test('PATCH accepts a source absent from a successful catalog when destination is direct', async () => {
+  const key = await createApiKey('key', 'owner')
+  const restore = installOwnerCatalog([catalogModel('direct-target')])
+  try {
+    const response = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, {
+      model_mappings: [{ source: 'unlisted-alias', destination: 'direct-target' }],
+    })
+    expect(response.status).toBe(200)
+    expect((await store.repo.apiKeys.getById(key.id))?.modelMappings).toEqual([{ source: 'unlisted-alias', destination: 'direct-target' }])
+  } finally {
+    restore()
+  }
+})
+
+test('enabled-only PATCH retains a nonempty mapping list in response and repository', async () => {
+  const key = await createApiKey('key', 'owner')
+  key.modelMappings = [{ source: 'source', destination: 'destination' }]
+  await store.repo.apiKeys.save(key)
+  const restore = installOwnerCatalog([catalogModel('destination')])
+  try {
+    const response = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, { model_mappings_enabled: true })
+    const body = await response.json() as MappingKeyJson
+    expect(response.status).toBe(200)
+    expect(body.model_mappings).toEqual([{ source: 'source', destination: 'destination' }])
+    expect((await store.repo.apiKeys.getById(key.id))?.modelMappings).toEqual([{ source: 'source', destination: 'destination' }])
+  } finally {
+    restore()
+  }
+})
+
+test('camel-only PATCH does not save or change stored mapping settings', async () => {
+  const key = await createApiKey('key', 'owner')
+  let saves = 0
+  const realSave = store.repo.apiKeys.save
+  store.repo.apiKeys.save = async (updated) => { saves++; await realSave(updated) }
+  const response = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, { modelMappingsEnabled: true })
+  expect(response.status).toBe(200)
+  expect(saves).toBe(1)
+  expect((await store.repo.apiKeys.getById(key.id))?.modelMappingsEnabled).toBe(false)
+})
+
+test('valid catalog PATCH preserves duplicate source order self mappings and trimmed response', async () => {
+  const key = await createApiKey('key', 'owner')
+  const restore = installOwnerCatalog([catalogModel('self'), catalogModel('destination')])
+  const expected = [
+    { source: 'self', destination: 'self' },
+    { source: 'source', destination: 'destination' },
+    { source: 'source', destination: 'destination' },
+  ]
+  try {
+    const response = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, {
+      model_mappings: [
+        { source: ' self ', destination: ' self ' },
+        { source: ' source ', destination: ' destination ' },
+        { source: 'source', destination: 'destination' },
+      ],
+    })
+    expect(response.status).toBe(200)
+    expect((await response.json() as MappingKeyJson).model_mappings).toEqual(expected)
+    expect((await store.repo.apiKeys.getById(key.id))?.modelMappings).toEqual(expected)
+  } finally {
+    restore()
+  }
+})

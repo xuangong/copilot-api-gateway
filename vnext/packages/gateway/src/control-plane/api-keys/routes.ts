@@ -198,10 +198,16 @@ async function destinationsAreAvailable(ownerId: string | undefined, mappings: r
   }
   for (const rawModels of copilotModelsByUpstream.values()) {
     const catalog: ModelsResponse = { object: 'list', data: rawModels }
-    for (const raw of rawModels) {
-      const baseId = copilotPublicModelId(raw.id)
-      for (const combo of composeModelOptions(catalog, baseId)) {
-        available.add(buildCompositeModelId(baseId, combo))
+    const baseIds = new Set(rawModels.map((raw) => copilotPublicModelId(raw.id)))
+    for (const baseId of baseIds) {
+      const combinations = composeModelOptions(catalog, baseId)
+      for (const combo of combinations) available.add(buildCompositeModelId(baseId, combo))
+      // Copilot exposes effort and 1M support on separate raw siblings for some
+      // models. The public picker composes those independently advertised facts.
+      if (combinations.some((combo) => combo.context1m)) {
+        for (const combo of combinations) {
+          if (combo.effort) available.add(buildCompositeModelId(baseId, { effort: combo.effort, context1m: true }))
+        }
       }
     }
   }

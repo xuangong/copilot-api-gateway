@@ -287,6 +287,7 @@ export async function listProviderBindings(
 
   const bindings: LlmProviderBinding[] = []
   for (const upstream of upstreams) {
+    if (!upstream.enabled) continue
     try {
       const provider = await createProviderFromUpstream(upstream, opts.copilot, fetcherForUpstream)
       if (!provider) continue
