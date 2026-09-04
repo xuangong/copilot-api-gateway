@@ -11,6 +11,8 @@ export interface UsageRow {
   keyName?: string
   ownerId?: string
   ownerName?: string
+  /** Logical model requested before a key mapping; empty for legacy records. */
+  incomingModel: string
   model?: string
   client?: string
   requests: number
@@ -31,6 +33,8 @@ export interface ServerUsageRow {
   keyName?: string
   ownerId?: string
   ownerName?: string
+  /** Optional while older servers are rolling out this field. */
+  incomingModel?: string
   model?: string
   client?: string
   requests?: number
@@ -60,6 +64,7 @@ export function adaptUsageRow(r: ServerUsageRow): UsageRow {
     keyName: r.keyName,
     ownerId: r.ownerId,
     ownerName: r.ownerName,
+    incomingModel: r.incomingModel ?? "",
     model: r.model,
     client: r.client,
     requests: r.requests ?? 0,

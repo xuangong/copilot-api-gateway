@@ -1,6 +1,12 @@
 import type { UsageDimensions, UsageFilters } from "../../state/usage"
 import { useT } from "../../state/i18n"
 import { Select } from "../../components/Select"
+import {
+  ALL_INCOMING_MODEL_OPTION,
+  decodeIncomingModelOption,
+  incomingModelOptionValue,
+  incomingModelSelectOptions,
+} from "../../state/usage-model-dimensions"
 
 interface Props {
   isAdmin: boolean
@@ -12,7 +18,7 @@ interface Props {
 
 export function UsageFiltersBar({ isAdmin, filters, dimensions, onChange, onClear }: Props) {
   const t = useT()
-  const anyFilter = filters.user || filters.key || filters.client || filters.model
+  const anyFilter = filters.user || filters.key || filters.client || filters.model || filters.incomingModel !== null
   return (
     <div className="flex flex-wrap items-center gap-3">
       {isAdmin && dimensions.users.length > 0 ? (
@@ -51,14 +57,26 @@ export function UsageFiltersBar({ isAdmin, filters, dimensions, onChange, onClea
           ]}
         />
       </FilterField>
-      <FilterField label={t("dash.model")}>
+      <FilterField label={t("dash.routedModel")}>
         <Select
           value={filters.model}
+          ariaLabel={t("dash.routedModel")}
           onChange={(v) => onChange({ model: v })}
           options={[
             { value: "", label: t("dash.allModels") },
             ...dimensions.models.map((m) => ({ value: m, label: m })),
           ]}
+        />
+      </FilterField>
+      <FilterField label={t("dash.incomingModel")}>
+        <Select
+          value={filters.incomingModel === null ? ALL_INCOMING_MODEL_OPTION : incomingModelOptionValue(filters.incomingModel)}
+          ariaLabel={t("dash.incomingModel")}
+          onChange={(value) => onChange({ incomingModel: decodeIncomingModelOption(value) })}
+          options={incomingModelSelectOptions(dimensions.incomingModels, {
+            all: t("dash.all"),
+            legacy: t("dash.legacy"),
+          })}
         />
       </FilterField>
       {/* Usage is recorded per key only, so a shared key's traffic counts in

@@ -11,6 +11,7 @@ import { TimeSeriesChart, paletteFor, type ChartDataset } from "../../components
 import { dateKey } from "../../state/time-buckets"
 import { localOffsetLabel, localZoneLabel, setZoneMode, useZoneMode, zoneOps, type TimeZoneMode } from "../../state/timezone"
 import { useT } from "../../state/i18n"
+import { formatUsageFilterHint } from "../../state/usage-model-dimensions"
 
 /**
  * Whether the strip and the forecast are open. Folded away by default: they
@@ -38,6 +39,7 @@ export function UsageTab() {
   // joins are siblings: the row is hovered in one and the days light up in the
   // other.
   const [forecastRun, setForecastRun] = useState<number | null>(null)
+  const [modelDistribution, setModelDistribution] = useState<"routed" | "incoming">("routed")
   const RANGE_OPTIONS: Array<{ id: UsageRange; label: string }> = [
     { id: "today", label: t("dash.day") },
     { id: "week", label: t("dash.week") },
@@ -267,7 +269,23 @@ export function UsageTab() {
         <UsageSummaryCards summary={usage.summary} />
       </div>
 
-      <UsageDistributionTable title={t("dash.byModel")} rows={usage.distributions.byModel} />
+      <div className="flex items-center justify-between mt-5">
+        <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">{t("dash.modelDistribution")}</span>
+        <SegmentedGroup
+          options={[
+            { id: "routed", label: t("dash.routedModel") },
+            { id: "incoming", label: t("dash.incomingModel") },
+          ]}
+          value={modelDistribution}
+          onChange={setModelDistribution}
+          ariaLabel={t("dash.modelDistributionToggle")}
+        />
+      </div>
+      <UsageDistributionTable
+        title={modelDistribution === "routed" ? t("dash.byRoutedModel") : t("dash.byIncomingModel")}
+        rows={modelDistribution === "routed" ? usage.distributions.byRoutedModel : usage.distributions.byIncomingModel}
+        showRoutedModels={modelDistribution === "incoming"}
+      />
       {isAdmin ? <UsageDistributionTable title={t("dash.byUser")} rows={usage.distributions.byUser} /> : null}
       <UsageDistributionTable title={t("dash.byKey")} rows={usage.distributions.byKey} />
       <UsageDistributionTable title={t("dash.byClient")} rows={usage.distributions.byClient} />
@@ -283,14 +301,17 @@ interface SegmentedGroupProps<T extends string> {
   options: ReadonlyArray<{ id: T; label: string }>
   value: T
   onChange: (v: T) => void
+  ariaLabel?: string
 }
 
-function SegmentedGroup<T extends string>({ options, value, onChange }: SegmentedGroupProps<T>) {
+function SegmentedGroup<T extends string>({ options, value, onChange, ariaLabel }: SegmentedGroupProps<T>) {
   return (
-    <div className="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5">
+    <div className="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5" role="group" aria-label={ariaLabel}>
       {options.map((o) => (
         <button
           key={o.id}
+          type="button"
+          aria-pressed={value === o.id}
           onClick={() => onChange(o.id)}
           className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
             value === o.id
@@ -315,32 +336,29 @@ function FilterHint({
 }: {
   isAdmin: boolean
   usersAvailable: boolean
-  filters: { user: string; key: string; client: string; model: string }
+  filters: { user: string; key: string; client: string; model: string; incomingModel: string | null }
   visible: boolean
   keyName?: string
   userName?: string
 }) {
+  const t = useT()
   if (!visible) return null
   const selected: string[] = []
-  const all: string[] = []
+  const remaining: string[] = []
   if (isAdmin && usersAvailable) {
-    if (filters.user) selected.push("User: " + (userName ?? filters.user.slice(0, 8)))
-    else all.push("User")
+    if (filters.user) selected.push(t("dash.filterUser", { value: userName ?? filters.user.slice(0, 8) }))
+    else remaining.push(t("dash.user"))
   }
-  if (filters.key) selected.push("Key: " + (keyName ?? filters.key.slice(0, 8)))
-  else all.push("Key")
-  if (filters.client) selected.push("Client: " + filters.client)
-  else all.push("Client")
-  if (filters.model) selected.push("Model: " + filters.model)
-  else all.push("Model")
-
-  let msg: string
-  if (selected.length === 0) {
-    msg = "Showing overall usage. Select a filter to see distribution by the remaining dimensions."
-  } else if (all.length === 0) {
-    msg = "Filtered by " + selected.join(", ") + "."
+  if (filters.key) selected.push(t("dash.filterKey", { value: keyName ?? filters.key.slice(0, 8) }))
+  else remaining.push(t("dash.key"))
+  if (filters.client) selected.push(t("dash.filterClient", { value: filters.client }))
+  else remaining.push(t("dash.client"))
+  if (filters.model) selected.push(t("dash.filterRoutedModel", { value: filters.model }))
+  else remaining.push(t("dash.routedModel"))
+  if (filters.incomingModel !== null) {
+    selected.push(t("dash.filterIncomingModel", { value: filters.incomingModel || t("dash.legacyUnknown") }))
   } else {
-    msg = "Filtered by " + selected.join(", ") + ". Showing distribution by " + all.join(" & ") + "."
+    remaining.push(t("dash.incomingModel"))
   }
-  return <p className="text-[11px] text-themed-dim">{msg}</p>
+  return <p className="text-[11px] text-themed-dim">{formatUsageFilterHint({ selected, remaining }, t)}</p>
 }

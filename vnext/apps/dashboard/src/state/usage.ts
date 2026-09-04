@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useToast } from "./toast"
+import { useT } from "./i18n"
 import * as api from "../api/usage"
 import type { ParticipantRow, UsageRow } from "../api/usage"
 import {
   buildDimensions,
   indexParticipants,
-  rowMatchesUser,
   usageAttribution,
   type KeyDimension,
 } from "../tabs/usage/participants"
@@ -19,6 +19,12 @@ import {
 } from "./time-buckets"
 import { useZoneMode, zoneOps, type TimeZoneMode } from "./timezone"
 import { buildRollingStrip, computeStripRange, stripLastDay, type DailyTotal, type RollingStripCell } from "./usage-strip"
+import {
+  buildDistribution,
+  buildIncomingModelDistribution,
+  buildRoutedModelDistribution,
+  filterUsageRows,
+} from "./usage-model-dimensions"
 
 export type UsageRange = "today" | "week" | "28d" | "month"
 export type UsageMetric = "tokens" | "requests"
@@ -33,6 +39,8 @@ export interface UsageSummary {
 }
 
 export interface DistributionRow {
+  /** Stable identity, distinct from the display label for legacy-name collisions. */
+  id: string
   label: string
   requests: number
   input: number
@@ -40,13 +48,18 @@ export interface DistributionRow {
   cacheRead: number
   cacheCreation: number
   costUSD: number
+  /** Present only for incoming-model rows. */
+  routedModels?: string[]
 }
 
 export interface UsageFilters {
   user: string
   key: string
   client: string
+  /** Routed model. */
   model: string
+  /** null is all incoming models; an empty string is a legacy record. */
+  incomingModel: string | null
 }
 
 // Compute UTC-hour bounds for the query, mirroring computeTimeRange in
@@ -189,51 +202,12 @@ export function formatMonthLabel(periodOffset: number, now: Date, mode: TimeZone
   return name
 }
 
-function buildDistribution(
-  rows: UsageRow[],
-  keyFn: (r: UsageRow) => string,
-  labelFn: (r: UsageRow, k: string) => string,
-): DistributionRow[] {
-  const m = new Map<string, DistributionRow>()
-  for (const r of rows) {
-    const k = keyFn(r)
-    const req = r.requests ?? 0
-    const inp = r.inputTokens ?? 0
-    const out = r.outputTokens ?? 0
-    const cr = r.cacheReadTokens ?? 0
-    const cc = r.cacheCreationTokens ?? 0
-    const cost = r.cost && typeof r.cost.totalUSD === "number" ? r.cost.totalUSD : 0
-    const existing = m.get(k)
-    if (existing) {
-      existing.requests += req
-      existing.input += inp
-      existing.output += out
-      existing.cacheRead += cr
-      existing.cacheCreation += cc
-      existing.costUSD += cost
-    } else {
-      m.set(k, {
-        label: labelFn(r, k),
-        requests: req,
-        input: inp,
-        output: out,
-        cacheRead: cr,
-        cacheCreation: cc,
-        costUSD: cost,
-      })
-    }
-  }
-  return [...m.values()].sort((a, b) => {
-    const totA = a.input + a.output + a.cacheRead + a.cacheCreation
-    const totB = b.input + b.output + b.cacheRead + b.cacheCreation
-    return totB - totA
-  })
-}
-
 export interface UsageDimensions {
   keys: KeyDimension[]
   clients: string[]
+  /** Routed models. */
   models: string[]
+  incomingModels: string[]
   users: Array<{ id: string; name: string }>
   /**
    * True when a listed key is shared. Usage is recorded per key only, so a
@@ -250,23 +224,6 @@ const EMPTY_SUMMARY: UsageSummary = {
   cacheRead: 0,
   cacheCreation: 0,
   costUSD: 0,
-}
-
-/**
- * The dimension filters, applied client-side. Shared by the window rows and the
- * strip's wider history so a filtered view never shows an unfiltered trend.
- */
-function applyFilters(
-  rows: UsageRow[],
-  filters: UsageFilters,
-  participants: ReturnType<typeof indexParticipants>,
-): UsageRow[] {
-  let out = rows
-  if (filters.key) out = out.filter((r) => r.keyId === filters.key)
-  if (filters.client) out = out.filter((r) => r.client === filters.client)
-  if (filters.model) out = out.filter((r) => r.model === filters.model)
-  if (filters.user) out = out.filter((r) => rowMatchesUser(participants, r.keyId, filters.user))
-  return out
 }
 
 /** Every token a row accounts for, cache included. */
@@ -310,6 +267,7 @@ function cachePut(cache: StripCache, key: string, rows: UsageRow[]): void {
 
 export function useUsage(isAdmin: boolean) {
   const { push: toast } = useToast()
+  const t = useT()
   // Every window boundary below is drawn on this clock. Flipping it has to
   // refetch as well as re-bucket: the query bounds move with it.
   const mode = useZoneMode()
@@ -321,7 +279,7 @@ export function useUsage(isAdmin: boolean) {
   const [periodOffset, setPeriodOffset] = useState(restored?.periodOffset ?? 0)
   const [endDate, setEndDate] = useState<string | null>(restored?.endDate ?? null)
   const [metric, setMetric] = useState<UsageMetric>("tokens")
-  const [filters, setFilters] = useState<UsageFilters>({ user: "", key: "", client: "", model: "" })
+  const [filters, setFilters] = useState<UsageFilters>({ user: "", key: "", client: "", model: "", incomingModel: null })
   const [data, setData] = useState<UsageRow[]>([])
   const [participantRows, setParticipantRows] = useState<ParticipantRow[]>([])
   const [stripRows, setStripRows] = useState<UsageRow[]>([])
@@ -426,16 +384,25 @@ export function useUsage(isAdmin: boolean) {
   const dimensions: UsageDimensions = useMemo(() => {
     const clientSet = new Set<string>()
     const modelSet = new Set<string>()
+    const incomingModelSet = new Set<string>()
     for (const r of data) {
       if (r.client) clientSet.add(r.client)
       if (r.model) modelSet.add(r.model)
+      incomingModelSet.add(r.incomingModel)
     }
     const { keys, users, sharedInScope } = buildDimensions({ rows: data, participants, isAdmin })
-    return { keys, users, sharedInScope, clients: [...clientSet].sort(), models: [...modelSet].sort() }
+    return {
+      keys,
+      users,
+      sharedInScope,
+      clients: [...clientSet].sort(),
+      models: [...modelSet].sort(),
+      incomingModels: [...incomingModelSet].sort(),
+    }
   }, [data, participants, isAdmin])
 
   // Apply filters before computing summary and distributions.
-  const filtered = useMemo(() => applyFilters(data, filters, participants), [data, filters, participants])
+  const filtered = useMemo(() => filterUsageRows(data, filters, participants), [data, filters, participants])
 
   const summary: UsageSummary = useMemo(() => {
     const s = { ...EMPTY_SUMMARY }
@@ -456,8 +423,11 @@ export function useUsage(isAdmin: boolean) {
     const keyNameMap = new Map<string, string>()
     for (const r of data) keyNameMap.set(r.keyId, r.keyName ?? r.keyId.slice(0, 8))
     return {
-      byModel: !filters.model
-        ? buildDistribution(filtered, (r) => r.model || "unknown", (_r, k) => k)
+      byRoutedModel: !filters.model
+        ? buildRoutedModelDistribution(filtered, t("dash.unknown"))
+        : [],
+      byIncomingModel: filters.incomingModel === null
+        ? buildIncomingModelDistribution(filtered, t("dash.legacyUnknown"), t("dash.unknown"))
         : [],
       byKey: !filters.key
         ? buildDistribution(filtered, (r) => r.keyId, (r) => keyNameMap.get(r.keyId) ?? r.keyId.slice(0, 8))
@@ -476,7 +446,7 @@ export function useUsage(isAdmin: boolean) {
             )
           : [],
     }
-  }, [filtered, data, filters, isAdmin, participants])
+  }, [filtered, data, filters, isAdmin, participants, t])
 
   // Chart series: group by the first un-filtered dimension (user > key > client > model).
   // When the metric is tokens, also emit a separate "Cache" line (dashed) showing cache traffic.
@@ -555,7 +525,7 @@ export function useUsage(isAdmin: boolean) {
     if (range !== "28d" || stripRows.length === 0) return []
     const ops = zoneOps(mode)
     const daily = new Map<string, DailyTotal>()
-    for (const r of applyFilters(stripRows, filters, participants)) {
+    for (const r of filterUsageRows(stripRows, filters, participants)) {
       const day = utcHourToBucketKey(r.hour, true, ops)
       const acc = daily.get(day)
       const cost = r.cost?.totalUSD ?? 0
@@ -578,7 +548,7 @@ export function useUsage(isAdmin: boolean) {
   }, [])
 
   const clearFilters = useCallback(() => {
-    setFilters({ user: "", key: "", client: "", model: "" })
+    setFilters({ user: "", key: "", client: "", model: "", incomingModel: null })
   }, [])
 
   // The offset only means something for the calendar ranges, and a week offset

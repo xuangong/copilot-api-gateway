@@ -6,6 +6,8 @@ import { useT } from "../../state/i18n"
 interface Props {
   title: string
   rows: DistributionRow[]
+  showRoutedModels?: boolean
+  ariaLabel?: string
 }
 
 type DimensionMetric = "requests" | "input" | "output"
@@ -20,7 +22,7 @@ function percents(rows: DistributionRow[], metric: DimensionMetric): number[] {
   return rows.map((r) => Math.round(((r[metric] || 0) / total) * 1000) / 10)
 }
 
-export function UsageDistributionTable({ title, rows }: Props) {
+export function UsageDistributionTable({ title, rows, showRoutedModels = false, ariaLabel }: Props) {
   const [hovered, setHovered] = useState<string | null>(null)
   const isDark =
     typeof document !== "undefined" &&
@@ -34,7 +36,7 @@ export function UsageDistributionTable({ title, rows }: Props) {
 
   if (rows.length === 0) return null
 
-  const hoveredRow = hovered ? rows.find((r) => r.label === hovered) ?? null : null
+  const hoveredRow = hovered ? rows.find((r) => r.id === hovered) ?? null : null
   const hoveredIdx = hoveredRow ? rows.indexOf(hoveredRow) : -1
 
   return (
@@ -61,11 +63,11 @@ export function UsageDistributionTable({ title, rows }: Props) {
         <div className="flex flex-wrap gap-x-5 gap-y-2">
           {rows.map((r, i) => (
             <div
-              key={`leg-${r.label}`}
+              key={`leg-${r.id}`}
               className="flex items-center gap-2 cursor-pointer transition-opacity duration-150"
-              onMouseEnter={() => setHovered(r.label)}
+              onMouseEnter={() => setHovered(r.id)}
               onMouseLeave={() => setHovered(null)}
-              style={{ opacity: hovered && hovered !== r.label ? 0.35 : 1 }}
+              style={{ opacity: hovered && hovered !== r.id ? 0.35 : 1 }}
             >
               <span className="w-2 h-2 rounded-full shrink-0" style={{ background: palette[i % palette.length] }} />
               <span className="text-[11px] text-themed-secondary">{r.label}</span>
@@ -75,10 +77,11 @@ export function UsageDistributionTable({ title, rows }: Props) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm whitespace-nowrap">
+        <table className="w-full text-sm whitespace-nowrap" aria-label={ariaLabel ?? title}>
           <thead>
             <tr className="border-b" style={{ borderColor: "var(--border-color)" }}>
               <Th align="left">{title}</Th>
+              {showRoutedModels ? <Th align="left">{t("dash.routedModels")}</Th> : null}
               <Th>{t("dash.requests")}</Th>
               <Th>{t("dash.input")}</Th>
               <Th>{t("dash.output")}</Th>
@@ -90,12 +93,12 @@ export function UsageDistributionTable({ title, rows }: Props) {
           </thead>
           <tbody>
             {rows.map((r, i) => {
-              const isHover = hovered === r.label
-              const someoneElse = hovered && hovered !== r.label
+              const isHover = hovered === r.id
+              const someoneElse = hovered && hovered !== r.id
               return (
                 <tr
-                  key={r.label}
-                  onMouseEnter={() => setHovered(r.label)}
+                  key={r.id}
+                  onMouseEnter={() => setHovered(r.id)}
                   onMouseLeave={() => setHovered(null)}
                   className={`transition-all duration-150 cursor-pointer border-b ${
                     isHover ? "bg-surface-700/50" : someoneElse ? "opacity-40" : ""
@@ -108,6 +111,7 @@ export function UsageDistributionTable({ title, rows }: Props) {
                       <span className="text-xs text-themed">{r.label}</span>
                     </span>
                   </td>
+                  {showRoutedModels ? <td className="py-2.5 pr-4 text-left text-xs text-themed-secondary">{r.routedModels?.join(", ") ?? "—"}</td> : null}
                   <Td>{fmt(r.requests)}</Td>
                   <Td>{fmt(r.input)}</Td>
                   <Td>{fmt(r.output)}</Td>
@@ -142,11 +146,11 @@ function StackedBar({ label, rows, pct, palette, hovered, onHover }: StackedBarP
         {rows.map((r, i) => {
           const p = pct[i] ?? 0
           if (p <= 0) return null
-          const dim = hovered && hovered !== r.label
+          const dim = hovered && hovered !== r.id
           return (
             <div
-              key={`${label}-${r.label}`}
-              onMouseEnter={() => onHover(r.label)}
+              key={`${label}-${r.id}`}
+              onMouseEnter={() => onHover(r.id)}
               title={`${r.label}: ${p}%`}
               className="h-full transition-all duration-200 cursor-pointer"
               style={{
