@@ -45,26 +45,39 @@ async function seedKey(id: string, opts: { quotaTokensPerMonth?: number } = {}) 
   })
 }
 
-test('images success: latency only (no usage, no perf fan-out)', async () => {
+test('images success records usage and preserves the upstream response body', async () => {
   await seedKey('i-ok')
 
-  const upstreamResponse = new Response(JSON.stringify({ data: [{ url: 'http://x' }] }), {
+  const responseBody = JSON.stringify({
+    data: [{ url: 'http://x' }],
+    usage: {
+      input_tokens: 12,
+      output_tokens: 20,
+      input_tokens_details: { text_tokens: 4, image_tokens: 8 },
+      output_tokens_details: { text_tokens: 0, image_tokens: 20 },
+    },
+  })
+  const upstreamResponse = new Response(responseBody, {
     status: 200,
     headers: { 'content-type': 'application/json' },
   })
 
   let dumpedIdentity: { incomingModel: string; model: string; modelKey: string } | undefined
+  let dumpedTokens: unknown
   const dump = {
-    success: (identity: { incomingModel: string; model: string; modelKey: string }) => { dumpedIdentity = identity },
+    success: (identity: { incomingModel: string; model: string; modelKey: string }, tokens: unknown) => {
+      dumpedIdentity = identity
+      dumpedTokens = tokens
+    },
   } as never
   const result = await runImagesAttempt({
     apiKeyId: 'i-ok',
     incomingModel: 'image-source',
-    model: 'dall-e-3',
+    model: 'image-destination',
     modelKey: 'dall-e-3-provider',
-    pricing: null,
+    pricing: { input: 5, input_image: 7, output_image: 40 },
     dump,
-    upstream: 'github_copilot',
+    upstream: 'custom:one',
     userAgent: 'curl/8',
     requestId: 'req-i-1',
     call: () => Promise.resolve(upstreamResponse),
@@ -73,22 +86,46 @@ test('images success: latency only (no usage, no perf fan-out)', async () => {
   expect(result.ok).toBe(true)
   if (!result.ok) throw new Error('expected ok')
   expect(result.status).toBe(200)
-  expect(result.response).toBe(upstreamResponse)
+  expect(await result.response.text()).toBe(responseBody)
   expect(dumpedIdentity?.incomingModel).toBe('image-source')
-  expect(dumpedIdentity?.model).toBe('dall-e-3')
+  expect(dumpedIdentity?.model).toBe('image-destination')
   expect(dumpedIdentity?.modelKey).toBe('dall-e-3-provider')
+  expect(dumpedTokens).toEqual({ input: 4, input_image: 8, output_image: 20 })
 
-  const lat = await repo.latency.query({ keyId: 'i-ok', start: dayStart(), end: dayEnd() })
-  expect(lat.length).toBe(0)
-  // Images don't extract usage
   const usage = await repo.usage.query({ keyId: 'i-ok', start: dayStart(), end: dayEnd() })
-  expect(usage.length).toBe(0)
-  // No source/target → no perf fan-out
-  const perf = await repo.performance.query({ keyId: 'i-ok', start: dayStart(), end: dayEnd() })
-  expect(perf.summary.length).toBe(0)
+  expect(usage).toHaveLength(1)
+  expect(usage[0]).toMatchObject({
+    incomingModel: 'image-source',
+    model: 'image-destination',
+    modelKey: 'dall-e-3-provider',
+    upstream: 'custom:one',
+    cost: { input: 5, input_image: 7, output_image: 40 },
+    tokens: { input: 4, input_image: 8, output_image: 20 },
+    requests: 1,
+  })
 })
 
-test('images success does not fabricate usage when upstream includes usage', async () => {
+test('images success without usage does not fabricate a row', async () => {
+  await seedKey('i-none')
+  const result = await runImagesAttempt({
+    apiKeyId: 'i-none',
+    incomingModel: 'image-source',
+    model: 'image-destination',
+    modelKey: 'provider-image-key',
+    pricing: null,
+    upstream: 'custom:one',
+    userAgent: undefined,
+    requestId: undefined,
+    dump: null,
+    call: () => Promise.resolve(new Response(JSON.stringify({ data: [] }))),
+  })
+
+  expect(result.ok).toBe(true)
+  const usage = await repo.usage.query({ keyId: 'i-none', start: dayStart(), end: dayEnd() })
+  expect(usage).toEqual([])
+})
+
+test('images success with malformed usage does not fabricate a row', async () => {
   await seedKey('i-usage')
   const result = await runImagesAttempt({
     apiKeyId: 'i-usage',
@@ -100,7 +137,7 @@ test('images success does not fabricate usage when upstream includes usage', asy
     userAgent: undefined,
     requestId: undefined,
     dump: null,
-    call: () => Promise.resolve(new Response(JSON.stringify({ usage: { output_tokens: 7 } }))),
+    call: () => Promise.resolve(new Response(JSON.stringify({ usage: { output_tokens: '7' } }))),
   })
 
   expect(result.ok).toBe(true)
@@ -128,6 +165,9 @@ test('images 4xx: error-tagged latency, response forwarded', async () => {
   expect(result.status).toBe(400)
   if (!('response' in result)) throw new Error('expected response')
   expect(result.response).toBe(upstreamResponse)
+
+  const usage = await repo.usage.query({ keyId: 'i-bad', start: dayStart(), end: dayEnd() })
+  expect(usage).toEqual([])
 
   const lat = await repo.latency.query({ keyId: 'i-bad', start: dayStart(), end: dayEnd() })
   expect(lat.length).toBe(0)
@@ -216,6 +256,9 @@ test('images without apiKeyId: skips observability, returns response', async () 
   expect(result.ok).toBe(true)
   if (!result.ok) throw new Error('expected ok')
   expect(result.response).toBe(upstreamResponse)
+
+  const usage = db.query('SELECT COUNT(*) as n FROM usage').get() as { n: number }
+  expect(usage.n).toBe(0)
 
   const lat = db.query('SELECT COUNT(*) as n FROM latency').get() as { n: number }
   expect(lat.n).toBe(0)

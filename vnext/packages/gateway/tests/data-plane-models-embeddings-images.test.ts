@@ -208,6 +208,125 @@ test('POST /v1/images/generations 404 when no binding', async () => {
   expect(res.status).toBe(404)
 })
 
+const imageUsageResponseBody = JSON.stringify({
+  data: [{ url: 'https://image.test/generated.png' }],
+  usage: {
+    input_tokens: 9,
+    output_tokens: 12,
+    input_tokens_details: { text_tokens: 3, image_tokens: 6 },
+    output_tokens_details: { text_tokens: 0, image_tokens: 12 },
+  },
+})
+
+const imageUsageAuth: DataPlaneAuthCtx = {
+  apiKeyId: 'image-key' as never,
+  routingPolicy: {
+    modelMappingsEnabled: true,
+    modelMappings: [{ source: 'image-source', destination: 'image-destination' }],
+  },
+}
+
+const imageUsageUpstream = stubUpstream({
+  id: 'custom:image-usage',
+  provider: 'custom',
+  config: {
+    name: 'image-usage',
+    baseUrl: 'https://image-usage.test/v1',
+    apiKey: 'test-key',
+    endpoints: ['images_generations', 'images_edits'],
+    models: [{ upstreamModelId: 'image-destination', cost: { input: 2, input_image: 3, output_image: 4 } }],
+  },
+} as Partial<UpstreamRecord>)
+
+function initImageUsageRepo(recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number }>) {
+  initRepo({
+    ...stubRepo([imageUsageUpstream]),
+    apiKeys: { getById: async () => null, touchLastUsed: async () => {} },
+    usage: { record: async (row) => { recorded.push(row) } },
+    performance: { record: async () => {} },
+  } as Repo)
+}
+
+function installImageUsageFetch() {
+  installFetch(async (req) => {
+    if (new URL(req.url).pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({
+        object: 'list',
+        data: [{ id: 'image-destination', object: 'model', capabilities: { type: 'image' } }],
+      }), { headers: { 'content-type': 'application/json' } })
+    }
+    return new Response(imageUsageResponseBody, { headers: { 'content-type': 'application/json' } })
+  })
+}
+
+function expectRecordedImageUsage(recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number }>) {
+  expect(recorded).toHaveLength(1)
+  expect(recorded[0]).toMatchObject({
+    incomingModel: 'image-source',
+    model: 'image-destination',
+    modelKey: 'image-destination',
+    upstream: 'custom:image-usage',
+    cost: { input: 2, input_image: 3, output_image: 4 },
+    tokens: { input: 3, input_image: 6, output_image: 12 },
+    requests: 1,
+  })
+}
+
+test('POST /v1/images/generations records mapped image usage and forwards its body', async () => {
+  const recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number }> = []
+  initImageUsageRepo(recorded)
+  installImageUsageFetch()
+
+  const res = await buildApp(imagesRouter, imageUsageAuth).request('/v1/images/generations', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'image-source', prompt: 'a cat' }),
+  })
+
+  expect(res.status).toBe(200)
+  expect(await res.text()).toBe(imageUsageResponseBody)
+  expectRecordedImageUsage(recorded)
+})
+
+test('POST /v1/images/edits JSON records mapped image usage and forwards its body', async () => {
+  const recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number }> = []
+  initImageUsageRepo(recorded)
+  installImageUsageFetch()
+
+  const res = await buildApp(imagesRouter, imageUsageAuth).request('/v1/images/edits', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'image-source',
+      prompt: 'edit this',
+      images: [{ image_url: 'data:image/png;base64,aGVsbG8=' }],
+    }),
+  })
+
+  expect(res.status).toBe(200)
+  expect(await res.text()).toBe(imageUsageResponseBody)
+  expectRecordedImageUsage(recorded)
+})
+
+test('POST /v1/images/edits multipart records mapped image usage and forwards its body', async () => {
+  const recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number }> = []
+  initImageUsageRepo(recorded)
+  installImageUsageFetch()
+  const form = new FormData()
+  form.append('model', 'image-source')
+  form.append('prompt', 'edit this')
+  form.append('image', new Blob(['image'], { type: 'image/png' }), 'image.png')
+
+  const res = await buildApp(imagesRouter, imageUsageAuth).request('/v1/images/edits', {
+    method: 'POST',
+    body: form,
+  })
+
+  expect(res.status).toBe(200)
+  expect(await res.text()).toBe(imageUsageResponseBody)
+  expectRecordedImageUsage(recorded)
+})
+
 test('POST /v1/images/edits 400 when not multipart', async () => {
   initRepo(stubRepo([]))
   const res = await buildApp(imagesRouter).request('/v1/images/edits', {

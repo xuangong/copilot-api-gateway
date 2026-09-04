@@ -1,19 +1,17 @@
 /**
  * images-attempt — gateway-layer observability scaffolding around a single
  * image upstream call. Both `images_generations` and `images_edits` use the
- * same shape: quota → start timer → call → recordLatency. Images carry no
- * token usage and the body is forwarded verbatim to the client, so this
- * module does NOT parse the response — it just hands the Response back to
- * the caller and leaves the body forwarding decision (response.body + status
- * + headers vs. JSON re-serialization) to the route.
+ * same shape: quota → start timer → call → usage + latency. Successful image
+ * responses are cloned for telemetry so the route can forward their original
+ * bodies verbatim to the client.
  *
- * Behavior preserved verbatim from data-plane/images/routes.ts:
+ * Behavior preserved from data-plane/images/routes.ts except that successful
+ * OpenAI image usage is now persisted:
  *   - Quota gate before timer.
  *   - recordLatency fires with `isError: !response.ok` regardless of outcome.
  *   - sourceApi/targetApi intentionally OMITTED so the perf fan-out is
  *     skipped (images don't have a meaningful target-api enum in the perf
  *     schema).
- *   - No usage tracking.
  *   - apiKeyId undefined → all observability skipped, upstream still fires.
  */
 import { checkQuota } from '../../../data-plane/observability/quota.ts'
@@ -24,6 +22,7 @@ import {
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 import type { ModelPricing } from '@vibe-llm/protocols/common'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
+import { recordTokenUsage, tokenUsageFromImagesBody } from '../../shared/token-usage.ts'
 
 export interface ImagesAttemptInput {
   apiKeyId: ApiKeyId | undefined
@@ -107,6 +106,23 @@ export async function runImagesAttempt(
     input.dump?.error('upstream', input.upstream)
     return { ok: false, status: res.status, response: res }
   }
+
+  let usage = null
+  if (input.apiKeyId) {
+    try {
+      const telemetryResponse = res.clone()
+      usage = tokenUsageFromImagesBody(await telemetryResponse.json())
+      await recordTokenUsage(input.apiKeyId, {
+        incomingModel: input.incomingModel,
+        model: input.model,
+        upstream: input.upstream,
+        modelKey: input.modelKey,
+        cost: input.pricing,
+      }, usage)
+    } catch {
+      // Telemetry must not change the upstream response delivered to the client.
+    }
+  }
   input.dump?.success(
     {
       incomingModel: input.incomingModel,
@@ -115,7 +131,7 @@ export async function runImagesAttempt(
       modelKey: input.modelKey,
       cost: input.pricing,
     },
-    null,
+    usage,
   )
   return { ok: true, status: res.status, response: res }
 }
