@@ -16,6 +16,7 @@ import {
   deleteDraftMapping,
   getVisibleFieldErrors,
   moveDraftMapping,
+  resetDraftInteractions,
   resetModelMappingsDraft,
   setDraftSaveAttempted,
   touchDraftMapping,
@@ -118,7 +119,10 @@ export function ModelMappingsPanel({
         model_mappings_enabled: draft.enabled,
         model_mappings: normalizeModelMappings(draft.rows),
       });
-      if (ok) setEditing(false);
+      if (ok) {
+        setDraft((current) => resetDraftInteractions(current));
+        setEditing(false);
+      }
     } finally {
       setSaving(false);
     }
@@ -257,6 +261,15 @@ export function ModelMappingsPanel({
                       }
                       className="w-full text-xs font-mono"
                     />
+                    {sourceErrors.map((code) => (
+                      <p
+                        id={sourceErrorId}
+                        key={code}
+                        className="mt-1 text-[10px] text-accent-red"
+                      >
+                        {errorText({ index, field: "source", code }, t)}
+                      </p>
+                    ))}
                   </div>
                   <div>
                     <label className="text-[10px] text-themed-dim block mb-1">
@@ -296,6 +309,15 @@ export function ModelMappingsPanel({
                         disabled: !catalogLoading && choice.unavailable,
                       }))}
                     />
+                    {destinationErrors.map((code) => (
+                      <p
+                        id={destinationErrorId}
+                        key={code}
+                        className="mt-1 text-[10px] text-accent-red"
+                      >
+                        {errorText({ index, field: "destination", code }, t)}
+                      </p>
+                    ))}
                   </div>
                   <div className="flex sm:pt-5 gap-1">
                     <button
@@ -347,24 +369,6 @@ export function ModelMappingsPanel({
                     </button>
                   </div>
                 </div>
-                {sourceErrors.map((code) => (
-                  <p
-                    id={sourceErrorId}
-                    key={code}
-                    className="text-[10px] text-accent-red"
-                  >
-                    {errorText({ index, field: "source", code }, t)}
-                  </p>
-                ))}
-                {destinationErrors.map((code) => (
-                  <p
-                    id={destinationErrorId}
-                    key={code}
-                    className="text-[10px] text-accent-red"
-                  >
-                    {errorText({ index, field: "destination", code }, t)}
-                  </p>
-                ))}
               </div>
             );
           })}

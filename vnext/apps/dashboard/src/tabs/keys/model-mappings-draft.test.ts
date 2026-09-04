@@ -5,6 +5,7 @@ import {
   deleteDraftMapping,
   getVisibleFieldErrors,
   moveDraftMapping,
+  resetDraftInteractions,
   resetModelMappingsDraft,
   setDraftSaveAttempted,
   touchDraftMapping,
@@ -179,6 +180,41 @@ describe("model mappings draft", () => {
     expect(
       getVisibleFieldErrors(deleted, first.rowId, "source", available),
     ).toEqual(["blank"]);
+  });
+
+  test("clears draft interaction state while preserving the saved rows and enabled state", () => {
+    const saved = setDraftSaveAttempted(
+      updateDraftMapping(
+        createModelMappingsDraft(server),
+        0,
+        "source",
+        "new-alias",
+      ),
+    );
+    const reset = resetDraftInteractions(saved);
+    expect(reset.saveAttempted).toBe(false);
+    expect(reset.enabled).toBe(saved.enabled);
+    expect(
+      reset.rows.map(({ source, destination }) => ({ source, destination })),
+    ).toEqual([
+      { source: "new-alias", destination: "claude-opus" },
+      { source: "fast", destination: "gpt-5" },
+    ]);
+    expect(
+      reset.rows.every(
+        (row) => !row.touched.source && !row.touched.destination,
+      ),
+    ).toBe(true);
+  });
+
+  test("normalizes saved row fields while clearing interactions", () => {
+    const saved = updateDraftMapping(
+      createModelMappingsDraft(server),
+      0,
+      "source",
+      " trimmed-alias ",
+    );
+    expect(resetDraftInteractions(saved).rows[0]?.source).toBe("trimmed-alias");
   });
 
   test("resets rows, touched fields, and save attempt from server state", () => {

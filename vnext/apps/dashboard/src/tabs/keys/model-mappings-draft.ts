@@ -1,5 +1,6 @@
 import type { ApiKeyModelMapping } from "../../api/keys";
 import {
+  normalizeModelMappings,
   validateModelMappings,
   type MappingValidationCode,
 } from "./model-mappings-state";
@@ -48,6 +49,21 @@ export function resetModelMappingsDraft(
   server: ModelMappingsServer,
 ): ModelMappingsDraft {
   return createModelMappingsDraft(server);
+}
+
+export function resetDraftInteractions(
+  draft: ModelMappingsDraft,
+): ModelMappingsDraft {
+  const normalizedRows = normalizeModelMappings(draft.rows);
+  return {
+    ...draft,
+    rows: draft.rows.map((row, index) => ({
+      ...row,
+      ...normalizedRows[index],
+      touched: { source: false, destination: false },
+    })),
+    saveAttempted: false,
+  };
 }
 
 export function touchDraftMapping(
