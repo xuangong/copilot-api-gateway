@@ -18,6 +18,9 @@ const KEY = 'usage-incoming-model-e2e-key'
 const KEY_ID = 'usage-incoming-model-e2e-key-id'
 const DESTINATION = 'deterministic-target'
 const ALIASES = ['caller-alias-a', 'caller-alias-b'] as const
+const INPUT_PRICE_PER_MILLION = 2
+const OUTPUT_PRICE_PER_MILLION = 5
+const EXPECTED_COST = (3 * INPUT_PRICE_PER_MILLION + 2 * OUTPUT_PRICE_PER_MILLION) / 1_000_000
 
 let db: Database
 let repo: SqliteRepo
@@ -36,6 +39,13 @@ function upstream(): UpstreamRecord {
       baseUrl: 'https://incoming-usage-upstream.test/v1',
       apiKey: 'test-upstream-key',
       endpoints: ['chat_completions'],
+      models: [
+        DESTINATION,
+        {
+          upstreamModelId: DESTINATION,
+          cost: { input: INPUT_PRICE_PER_MILLION, output: OUTPUT_PRICE_PER_MILLION },
+        },
+      ],
     },
     flagOverrides: {},
     disabledPublicModelIds: [],
@@ -50,11 +60,17 @@ async function drainBackground(): Promise<void> {
   await Promise.all(pending.splice(0))
 }
 
-function tokenUsagePath(): string {
-  const now = new Date()
-  const hour = now.toISOString().slice(0, 13)
-  const nextHour = new Date(now.getTime() + 60 * 60 * 1000).toISOString().slice(0, 13)
-  return `/api/token-usage?start=${encodeURIComponent(hour)}&end=${encodeURIComponent(nextHour)}`
+function tokenUsagePath(requestStartedAt: Date): string {
+  // Capture the range before issuing requests. This deliberately spans the
+  // preceding and following UTC hours, so writes that straddle an hour boundary
+  // remain visible without relying on test scheduling.
+  const start = new Date(requestStartedAt.getTime() - 60 * 60 * 1000).toISOString().slice(0, 13)
+  const end = new Date(requestStartedAt.getTime() + 2 * 60 * 60 * 1000).toISOString().slice(0, 13)
+  return `/api/token-usage?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
+}
+
+function byIncomingModel<T extends { incomingModel: string }>(rows: readonly T[]): Map<string, T> {
+  return new Map(rows.map((row) => [row.incomingModel, row]))
 }
 
 beforeEach(async () => {
@@ -101,6 +117,7 @@ afterEach(() => {
 })
 
 test('two aliases routed to one target persist independently and API totals are conserved', async () => {
+  const requestStartedAt = new Date()
   for (const model of ALIASES) {
     const response = await app.request('/v1/chat/completions', {
       method: 'POST',
@@ -111,38 +128,56 @@ test('two aliases routed to one target persist independently and API totals are 
   }
   await drainBackground()
 
-  const response = await app.request(tokenUsagePath(), {
+  const response = await app.request(tokenUsagePath(requestStartedAt), {
     headers: { authorization: `Bearer ${KEY}` },
   }, env)
 
   expect(response.status).toBe(200)
   const rows = await response.json() as Array<{
+    keyId: string
+    keyName: string
     incomingModel: string
     model: string
     client: string
+    hour: string
     requests: number
     tokens: { input?: number; output?: number }
     cost: number
   }>
-  expect(rows.map((row) => [row.incomingModel, row.model, row.client, row.requests, row.tokens, row.cost])).toEqual([
-    ['caller-alias-a', DESTINATION, '', 1, { input: 3, output: 2 }, 0],
-    ['caller-alias-b', DESTINATION, '', 1, { input: 3, output: 2 }, 0],
-  ])
+  const rowsByIncomingModel = byIncomingModel(rows)
+  expect(rowsByIncomingModel.size).toBe(2)
+  for (const alias of ALIASES) {
+    expect(rowsByIncomingModel.get(alias)).toEqual({
+      incomingModel: alias,
+      model: DESTINATION,
+      client: '',
+      hour: expect.any(String),
+      keyId: KEY_ID,
+      keyName: 'incoming model E2E key',
+      requests: 1,
+      tokens: { input: 3, output: 2 },
+      cost: EXPECTED_COST,
+    })
+  }
   expect(rows.reduce((sum, row) => sum + row.requests, 0)).toBe(2)
   expect(rows.reduce((sum, row) => sum + (row.tokens.input ?? 0), 0)).toBe(6)
   expect(rows.reduce((sum, row) => sum + (row.tokens.output ?? 0), 0)).toBe(4)
-  expect(rows.reduce((sum, row) => sum + row.cost, 0)).toBe(0)
+  expect(rows.reduce((sum, row) => sum + row.cost, 0)).toBe(EXPECTED_COST * 2)
 
-  const persisted = await repo.usage.listAll()
-  expect(persisted.map((row) => ({
-    incomingModel: row.incomingModel,
-    model: row.model,
-    modelKey: row.modelKey,
-    requests: row.requests,
-    tokens: row.tokens,
-    cost: row.cost,
-  }))).toEqual([
-    { incomingModel: 'caller-alias-a', model: DESTINATION, modelKey: DESTINATION, requests: 1, tokens: { input: 3, output: 2 }, cost: null },
-    { incomingModel: 'caller-alias-b', model: DESTINATION, modelKey: DESTINATION, requests: 1, tokens: { input: 3, output: 2 }, cost: null },
-  ])
+  const persistedByIncomingModel = byIncomingModel(await repo.usage.listAll())
+  expect(persistedByIncomingModel.size).toBe(2)
+  for (const alias of ALIASES) {
+    expect(persistedByIncomingModel.get(alias)).toEqual({
+      keyId: KEY_ID,
+      incomingModel: alias,
+      model: DESTINATION,
+      modelKey: DESTINATION,
+      upstream: 'incoming-usage-upstream',
+      client: '',
+      hour: expect.any(String),
+      requests: 1,
+      tokens: { input: 3, output: 2 },
+      cost: { input: INPUT_PRICE_PER_MILLION, output: OUTPUT_PRICE_PER_MILLION },
+    })
+  }
 })
