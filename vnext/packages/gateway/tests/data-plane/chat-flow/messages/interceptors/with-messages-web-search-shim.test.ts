@@ -27,6 +27,7 @@ type Frames = ProtocolFrame<MessagesStreamEvent>[]
 type Result = LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>
 
 const stubIdentity: TelemetryModelIdentity = {
+  incomingModel: '<unknown>',
   model: '<unknown>',
   upstream: '<unknown>',
   modelKey: '<unknown>',

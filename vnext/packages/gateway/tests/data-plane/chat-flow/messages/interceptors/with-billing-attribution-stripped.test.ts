@@ -10,6 +10,7 @@ import { doneFrame, type ProtocolFrame } from '@vibe-core/result'
 import type { MessagesStreamEvent } from '@vibe-llm/protocols/messages'
 
 const stubIdentity: TelemetryModelIdentity = {
+  incomingModel: '<unknown>',
   model: '<unknown>',
   upstream: '<unknown>',
   modelKey: '<unknown>',

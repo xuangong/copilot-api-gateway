@@ -42,6 +42,7 @@ import { respondResponses } from '../../../../../src/data-plane/chat-flow/respon
 import { setupTestPlatform } from '../../../../_setup-platform.ts'
 
 const stubIdentity: TelemetryModelIdentity = {
+  incomingModel: '<unknown>',
   model: '<unknown>',
   upstream: '<unknown>',
   modelKey: '<unknown>',

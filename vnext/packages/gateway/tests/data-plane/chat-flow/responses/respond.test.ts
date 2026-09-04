@@ -6,6 +6,7 @@ import { respondResponses } from '../../../../src/data-plane/chat-flow/responses
 import { setupTestPlatform } from '../../../_setup-platform.ts'
 
 const identity: TelemetryModelIdentity = {
+  incomingModel: 'gpt-5.6-sol-fast',
   model: 'gpt-5.6-sol-fast', upstream: 'test', modelKey: 'gpt-5.6-sol-fast', cost: null,
 }
 
@@ -35,6 +36,7 @@ test('Responses stream keeps public model for a modelVersion provider revision',
 test('Responses response.failed records failed performance without usage', async () => {
   const { repo } = setupTestPlatform()
   const failedIdentity: TelemetryModelIdentity = {
+    incomingModel: 'public-response-model',
     model: 'public-response-model', upstream: 'test', modelKey: 'provider-response-model', cost: null,
   }
   async function* failedFrames(): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {

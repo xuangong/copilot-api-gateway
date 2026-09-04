@@ -168,6 +168,7 @@ export async function runEmbeddingsAttempt(
   const usageInfo = extractFromJson(json)
   input.dump?.success(
     {
+      incomingModel: input.model,
       model: input.model,
       upstream: input.upstream,
       modelKey: input.modelKey,

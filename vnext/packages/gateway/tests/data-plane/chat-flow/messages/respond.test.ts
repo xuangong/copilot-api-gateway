@@ -6,6 +6,7 @@ import { respondMessages } from '../../../../src/data-plane/chat-flow/messages/r
 import { setupTestPlatform } from '../../../_setup-platform.ts'
 
 const identity: TelemetryModelIdentity = {
+  incomingModel: 'gpt-5.6-sol-fast',
   model: 'gpt-5.6-sol-fast', upstream: 'test', modelKey: 'gpt-5.6-sol-fast', cost: null,
 }
 
@@ -30,6 +31,7 @@ test('Messages native error event is forwarded and records a failed request', as
   const failures: unknown[] = []
   const successes: unknown[] = []
   const errorIdentity: TelemetryModelIdentity = {
+    incomingModel: 'public-message-model',
     model: 'public-message-model', upstream: 'upstream', modelKey: 'provider-message-model', cost: null,
   }
   async function* errorFrames(): AsyncGenerator<ProtocolFrame<MessagesStreamEvent>> {

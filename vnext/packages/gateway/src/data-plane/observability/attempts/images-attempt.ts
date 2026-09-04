@@ -107,6 +107,7 @@ export async function runImagesAttempt(
   }
   input.dump?.success(
     {
+      incomingModel: input.model,
       model: input.model,
       upstream: input.upstream,
       modelKey: input.modelKey,

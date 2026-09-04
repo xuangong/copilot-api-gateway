@@ -36,13 +36,19 @@ export function initialProviderModelKey(binding: AttemptBindingShape, publicMode
   return binding.model.providerModelKey ?? publicModel
 }
 
+export interface TelemetryIdentityInput {
+  readonly incomingModel: string
+  readonly publicModel: string
+}
+
 export function telemetryModelIdentity(
   binding: AttemptBindingShape,
   modelKey: string,
-  publicModel = binding.model.id,
+  input: TelemetryIdentityInput,
 ): TelemetryModelIdentity {
   return {
-    model: publicModel,
+    incomingModel: input.incomingModel,
+    model: input.publicModel,
     upstream: binding.upstream,
     modelKey,
     cost: (binding.provider.getPricingForModelKey(modelKey) ?? null) as TelemetryModelIdentity['cost'],
@@ -51,9 +57,9 @@ export function telemetryModelIdentity(
 
 export function modelIdentityResolver(
   binding: AttemptBindingShape,
-  publicModel: string,
+  input: TelemetryIdentityInput,
 ): (modelKey: string) => TelemetryModelIdentity {
-  return (modelKey) => telemetryModelIdentity(binding, modelKey, publicModel)
+  return (modelKey) => telemetryModelIdentity(binding, modelKey, input)
 }
 
 export function upstreamPerformanceContext(
@@ -77,6 +83,7 @@ export interface ProviderResponseToExecuteResultArgs<T> {
   readonly binding: AttemptBindingShape
   readonly telemetryCtx: TelemetryRequestContext
   readonly bareModel: string
+  readonly incomingModel: string
   readonly toEvents: (body: ReadableStream<Uint8Array>) => AsyncIterable<ProtocolFrame<T>>
   readonly protocol: 'chat_completions' | 'messages' | 'responses'
   readonly abortSignal?: AbortSignal
@@ -100,11 +107,12 @@ export function providerResponseToExecuteResult<T>(
     protocol: args.protocol,
   })
   const publicModel = args.bareModel
+  const identityInput = { incomingModel: args.incomingModel, publicModel }
   const providerModelKey = initialProviderModelKey(args.binding, publicModel)
   const modelIdentity = telemetryModelIdentity(
     args.binding,
     providerModelKey,
-    publicModel,
+    identityInput,
   )
   return llmEventResult(
     decorated,
@@ -118,7 +126,7 @@ export function providerResponseToExecuteResult<T>(
     undefined,
     undefined,
     undefined,
-    modelIdentityResolver(args.binding, modelIdentity.model),
+    modelIdentityResolver(args.binding, identityInput),
   )
 }
 

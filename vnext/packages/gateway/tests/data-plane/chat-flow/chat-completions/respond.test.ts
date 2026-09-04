@@ -13,6 +13,7 @@ import type { ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
 import type { ResponsesResult, ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
 
 const stubIdentity: TelemetryModelIdentity = {
+  incomingModel: '<unknown>',
   model: '<unknown>',
   upstream: '<unknown>',
   modelKey: '<unknown>',

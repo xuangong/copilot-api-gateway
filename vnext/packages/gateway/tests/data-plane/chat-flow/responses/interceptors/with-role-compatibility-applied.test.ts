@@ -6,6 +6,7 @@ import { doneFrame, type ProtocolFrame } from '@vibe-core/result'
 import type { ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
 
 const stubIdentity: TelemetryModelIdentity = {
+  incomingModel: '<unknown>',
   model: '<unknown>',
   upstream: '<unknown>',
   modelKey: '<unknown>',

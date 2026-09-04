@@ -22,8 +22,12 @@ const ctx = (over: Partial<TelemetryRequestContext> = {}): TelemetryRequestConte
   ...over,
 })
 
-test('telemetryModelIdentity uses bareModel as initial modelKey + resolves cost', () => {
-  const id = telemetryModelIdentity(fakeBinding as never, 'gpt-4')
+test('telemetryModelIdentity preserves incoming alias and public target while pricing provider revision', () => {
+  const id = telemetryModelIdentity(fakeBinding as never, 'gpt-4', {
+    incomingModel: 'team-gpt',
+    publicModel: 'gpt-4',
+  })
+  expect(id.incomingModel).toBe('team-gpt')
   expect(id.model).toBe('gpt-4')
   expect(id.upstream).toBe('openai-prod')
   expect(id.modelKey).toBe('gpt-4')
@@ -34,7 +38,7 @@ test('telemetryModelIdentity keeps an explicit routed destination distinct from 
   const id = telemetryModelIdentity(
     fakeBinding as never,
     'gpt-5.6-sol-fast',
-    'gpt-5.6-sol-fast',
+    { incomingModel: 'gpt-5.6-sol-fast', publicModel: 'gpt-5.6-sol-fast' },
   )
   expect(id.model).toBe('gpt-5.6-sol-fast')
 })
@@ -55,12 +59,14 @@ test('provider revisions retain the routed public model while using the provider
     },
   }
   const publicModel = claudeBinding.model.id
+  const input = { incomingModel: 'team-sonnet', publicModel }
   const initialKey = initialProviderModelKey(claudeBinding, publicModel)
-  const initial = telemetryModelIdentity(claudeBinding, initialKey, publicModel)
+  const initial = telemetryModelIdentity(claudeBinding, initialKey, input)
   const performance = upstreamPerformanceContext(ctx(), claudeBinding, initialKey, publicModel)
-  const corrected = modelIdentityResolver(claudeBinding, initial.model)(datedKey)
+  const corrected = modelIdentityResolver(claudeBinding, input)(datedKey)
 
   expect(initial).toEqual({
+    incomingModel: 'team-sonnet',
     model: publicModel,
     upstream: 'claude-code',
     modelKey: datedKey,
@@ -87,11 +93,13 @@ test('providerResponseToExecuteResult separates public aliases from provider key
     binding,
     telemetryCtx: ctx(),
     bareModel: 'claude-sonnet-4-5',
+    incomingModel: 'team-sonnet',
     protocol: 'messages',
     toEvents: async function* () {},
   })
 
   expect(result.modelIdentity).toEqual({
+    incomingModel: 'team-sonnet',
     model: 'claude-sonnet-4-5',
     upstream: 'claude-code',
     modelKey: datedKey,
@@ -103,9 +111,16 @@ test('providerResponseToExecuteResult separates public aliases from provider key
   })
 })
 
-test('telemetryModelIdentity tolerates unknown modelKey (cost null)', () => {
-  const id = telemetryModelIdentity(fakeBinding as never, 'gpt-unknown')
-  expect(id.cost).toBeNull()
+test('modelIdentityResolver corrects only provider key and cost for an unpriced revision', () => {
+  const input = { incomingModel: 'team-gpt', publicModel: 'gpt-4' }
+  const corrected = modelIdentityResolver(fakeBinding as never, input)('gpt-unknown')
+  expect(corrected).toEqual({
+    incomingModel: 'team-gpt',
+    model: 'gpt-4',
+    upstream: 'openai-prod',
+    modelKey: 'gpt-unknown',
+    cost: null,
+  })
 })
 
 test('upstreamPerformanceContext mirrors telemetryCtx + binding', () => {

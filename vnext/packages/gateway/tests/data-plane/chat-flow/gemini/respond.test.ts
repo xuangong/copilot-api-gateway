@@ -29,6 +29,7 @@ import type { ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
 import type { MessagesStreamEvent } from '@vibe-llm/protocols/messages'
 
 const stubIdentity: TelemetryModelIdentity = {
+  incomingModel: 'gemini-2.5-pro',
   model: 'gemini-2.5-pro',
   upstream: '<unknown>',
   modelKey: 'gemini-2.5-pro',
@@ -251,6 +252,7 @@ test('Gemini streaming translator exception marks the hub request failed once', 
   const failures: unknown[] = []
   const successes: unknown[] = []
   const identity: TelemetryModelIdentity = {
+    incomingModel: 'gemini-public',
     model: 'gemini-public', upstream: 'upstream', modelKey: 'provider-model', cost: null,
     translatorPair: { source: 'gemini', hub: 'responses' },
   }
@@ -305,6 +307,7 @@ test('Gemini streaming translator exception marks the hub request failed once', 
 test('Gemini streaming Responses failure records hub failure before translation', async () => {
   const { repo } = setupTestPlatform()
   const identity: TelemetryModelIdentity = {
+    incomingModel: 'gemini-public',
     model: 'gemini-public', upstream: 'upstream', modelKey: 'provider-model', cost: null,
     translatorPair: { source: 'gemini', hub: 'responses' },
   }
@@ -354,6 +357,7 @@ test('Gemini streaming Responses failure records hub failure before translation'
 test('Gemini streaming Messages error records hub failure before translation', async () => {
   const { repo } = setupTestPlatform()
   const identity: TelemetryModelIdentity = {
+    incomingModel: 'gemini-public',
     model: 'gemini-public', upstream: 'upstream', modelKey: 'provider-model', cost: null,
     translatorPair: { source: 'gemini', hub: 'messages' },
   }
@@ -395,6 +399,7 @@ test('Gemini streaming hub success persists usage exactly once from the provider
   const { repo } = setupTestPlatform()
   const datedKey = 'provider-model-20260904'
   const identity: TelemetryModelIdentity = {
+    incomingModel: 'gemini-public',
     model: 'gemini-public', upstream: 'upstream', modelKey: 'provider-model', cost: { input: 1, output: 1 },
     translatorPair: { source: 'gemini', hub: 'responses' },
   }
@@ -441,6 +446,7 @@ test('Gemini nonstream responses hub persists hub usage with public model and pr
   const alias = 'gemini-public'
   const datedKey = 'gemini-provider-20260904'
   const identity: TelemetryModelIdentity = {
+    incomingModel: alias,
     model: alias,
     upstream: 'upstream',
     modelKey: 'gemini-provider',
@@ -491,6 +497,7 @@ test('Gemini nonstream responses hub persists hub usage with public model and pr
 test('Gemini nonstream Responses failure persists one failed performance row without usage', async () => {
   const { repo } = setupTestPlatform()
   const identity: TelemetryModelIdentity = {
+    incomingModel: 'gemini-public',
     model: 'gemini-public', upstream: 'upstream', modelKey: 'provider-model', cost: null,
     translatorPair: { source: 'gemini', hub: 'responses' },
   }
@@ -537,6 +544,7 @@ test('Gemini nonstream Responses failure persists one failed performance row wit
 test('Gemini nonstream Messages error persists one failed performance row without usage', async () => {
   const { repo } = setupTestPlatform()
   const identity: TelemetryModelIdentity = {
+    incomingModel: 'gemini-public',
     model: 'gemini-public', upstream: 'upstream', modelKey: 'provider-model', cost: null,
     translatorPair: { source: 'gemini', hub: 'messages' },
   }
@@ -579,6 +587,7 @@ test('Gemini nonstream messages hub persists message usage and provider key', as
   const alias = 'gemini-public'
   const providerKey = 'claude-provider-revision'
   const identity: TelemetryModelIdentity = {
+    incomingModel: alias,
     model: alias,
     upstream: 'upstream',
     modelKey: providerKey,

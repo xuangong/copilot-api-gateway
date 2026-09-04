@@ -11,6 +11,7 @@ import type { ResponsesStreamEvent, ResponsesInputItem } from '@vibe-llm/protoco
 import { wrapCopilotItemId, unwrapCopilotItemId } from '@vibe-llm/protocols/responses'
 
 const stubIdentity: TelemetryModelIdentity = {
+  incomingModel: '<unknown>',
   model: '<unknown>',
   upstream: '<unknown>',
   modelKey: '<unknown>',

@@ -18,6 +18,7 @@ import type {
 import type { Repo } from '../../../../src/repo/types.ts'
 
 const identity = (modelKey = 'gpt-4'): TelemetryModelIdentity => ({
+  incomingModel: 'team-gpt',
   model: 'gpt-4',
   upstream: 'openai-prod',
   modelKey,
@@ -101,6 +102,7 @@ test('finalModelIdentity accepts an unpriced provider revision while retaining p
     ...initial, modelKey, cost: null,
   }))
   expect(resolved.modelKey).toBe('gpt-4-turbo-2025')
+  expect(resolved.incomingModel).toBe('team-gpt')
   expect(resolved.model).toBe('gpt-4-turbo')
   expect(resolved.cost).toBeNull()
 })
@@ -163,6 +165,7 @@ test('recordUsage writes one row + touchLastUsed when usage non-zero', async () 
   expect(touched).toEqual(['k1'])
   const row = usageRows[0] as Record<string, unknown>
   expect(row.keyId).toBe('k1')
+  expect(row.incomingModel).toBe('team-gpt')
   expect(row.modelKey).toBe('gpt-4')
   expect(row.upstream).toBe('openai-prod')
   expect(row.requests).toBe(1)

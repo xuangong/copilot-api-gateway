@@ -9,6 +9,7 @@ import {
 } from '@vibe-llm/protocols/common'
 
 const identity = (): TelemetryModelIdentity => ({
+  incomingModel: 'gpt-4',
   model: 'gpt-4',
   upstream: 'openai-prod',
   modelKey: 'gpt-4',
@@ -60,7 +61,7 @@ test('EventResultMetadata shape', () => {
 
 test('llmEventResult accepts translateBody', () => {
   async function* gen() { yield 1 as never }
-  const id = { model: 'm', upstream: 'u', modelKey: 'k', cost: null }
+  const id = { incomingModel: 'incoming-m', model: 'm', upstream: 'u', modelKey: 'k', cost: null }
   const tb = (j: unknown) => ({ ok: true, j })
   const r = llmEventResult(gen(), id, undefined, undefined, tb)
   expect(r.translateBody).toBe(tb)
@@ -73,7 +74,7 @@ test('llmInternalErrorResult accepts reason', () => {
 
 test('TelemetryModelIdentity accepts translatorPair', () => {
   const id: TelemetryModelIdentity = {
-    model: 'm', upstream: 'u', modelKey: 'k', cost: null,
+    incomingModel: 'incoming-m', model: 'm', upstream: 'u', modelKey: 'k', cost: null,
     translatorPair: { source: 'chat_completions' as const, hub: 'responses' as const },
   }
   expect(id.translatorPair?.hub).toBe('responses')

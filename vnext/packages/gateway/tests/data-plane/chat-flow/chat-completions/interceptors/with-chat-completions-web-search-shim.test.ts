@@ -22,6 +22,7 @@ type Frames = ProtocolFrame<ChatCompletionsStreamEvent>[]
 type Result = LlmExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
 
 const stubIdentity: TelemetryModelIdentity = {
+  incomingModel: '<unknown>',
   model: '<unknown>',
   upstream: '<unknown>',
   modelKey: '<unknown>',

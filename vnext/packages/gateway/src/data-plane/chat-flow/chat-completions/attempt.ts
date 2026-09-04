@@ -202,7 +202,8 @@ export const chatCompletionsAttempt = {
         abortSignal: args.ctx.downstreamAbortSignal,
         protocol: 'chat_completions',
       })
-      const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, publicModel)
+      const identityInput = { incomingModel: publicModel, publicModel }
+      const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, identityInput)
       const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
       return llmEventResult(
         decorated,
@@ -211,7 +212,7 @@ export const chatCompletionsAttempt = {
         undefined,
         undefined,
         undefined,
-        modelIdentityResolver(bindingForTelemetry, modelIdentity.model),
+        modelIdentityResolver(bindingForTelemetry, identityInput),
       )
     }
 

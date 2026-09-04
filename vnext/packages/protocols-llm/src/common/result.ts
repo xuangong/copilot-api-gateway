@@ -10,6 +10,8 @@ import type { ModelPricing } from './index.ts'
 type TranslatorProtocol = 'chat_completions' | 'messages' | 'responses' | 'gemini'
 
 export interface TelemetryModelIdentity {
+  /** Client-requested model after protocol normalization, before routing. */
+  readonly incomingModel: string
   readonly model: string
   readonly upstream: string
   readonly modelKey: string

@@ -9,7 +9,7 @@ import type { PairTranslator } from '../../dispatch/translator-registry.ts'
 
 const fakeTelemetryCtx = {} as never
 
-const fakeIdentity = { model: 'm', upstream: 'u', modelKey: 'k', cost: null }
+const fakeIdentity = { incomingModel: 'outer-alias', model: 'm', upstream: 'u', modelKey: 'k', cost: null }
 
 function fakeTranslator(overrides: Partial<PairTranslator> = {}): PairTranslator {
   return {
@@ -44,7 +44,7 @@ test('happy path: stamps translatorPair and forwards translateBody', async () =>
 
 test('translated authoritative metadata, resolver, and performance target retain one translator pair', async () => {
   async function* hubEvents() { yield { kind: 'hub-evt' } as never }
-  const authoritative = { model: 'corrected', upstream: 'u', modelKey: 'corrected', cost: null }
+  const authoritative = { incomingModel: 'inner-alias', model: 'corrected', upstream: 'u', modelKey: 'corrected', cost: null }
   const performance = {
     keyId: 'key', model: 'corrected', upstream: 'u', modelKey: 'corrected',
     stream: true, runtimeLocation: 'bun' as const,
@@ -66,6 +66,7 @@ test('translated authoritative metadata, resolver, and performance target retain
   if (result.type !== 'events') throw new Error('unreachable')
   const pair = { source: 'messages' as const, hub: 'responses' as const }
   expect(result.modelIdentity.translatorPair).toEqual(pair)
+  expect(result.modelIdentity.incomingModel).toBe('outer-alias')
   expect(result.resolveModelIdentity?.('corrected')).toEqual({
     ...fakeIdentity, modelKey: 'corrected', translatorPair: pair,
   })
@@ -74,6 +75,7 @@ test('translated authoritative metadata, resolver, and performance target retain
     modelIdentity: { ...authoritative, translatorPair: pair },
     performance,
   })
+  expect(metadata?.modelIdentity.incomingModel).toBe('inner-alias')
   expect(metadata?.performance).toBe(performance)
   const persisted = await eventResultMetadata(result)
   expect(persisted.modelIdentity.translatorPair).toEqual(pair)
@@ -92,7 +94,7 @@ test('translated responder persists the authoritative final metadata hub target'
     }
     yield { type: 'event' as const, event: { type: 'response.completed', response } }
   }
-  const authoritative = { model: 'corrected', upstream: 'u', modelKey: 'corrected', cost: null }
+  const authoritative = { incomingModel: 'inner-alias', model: 'corrected', upstream: 'u', modelKey: 'corrected', cost: null }
   const result = await traverseTranslation({
     sourcePayload: { model: 'x' }, sourceProtocol: 'messages', hubProtocol: 'responses',
     translator: fakeTranslator(),

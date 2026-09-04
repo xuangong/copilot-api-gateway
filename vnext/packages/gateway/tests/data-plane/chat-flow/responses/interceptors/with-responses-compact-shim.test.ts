@@ -12,6 +12,7 @@ import type { ProtocolFrame } from '@vibe-core/result'
 import type { ResponsesStreamEvent, CanonicalResponsesPayload, ResponsesInputItem } from '@vibe-llm/protocols/responses'
 
 const stubIdentity: TelemetryModelIdentity = {
+  incomingModel: '<unknown>',
   model: '<unknown>', upstream: '<unknown>', modelKey: '<unknown>', cost: null,
 }
 const baseCtx: RequestContext = { requestStartedAt: Date.now() }
