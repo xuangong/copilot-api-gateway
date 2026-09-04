@@ -113,9 +113,10 @@ test('resolver keeps incoming identity at the pre-mapping bare model through an 
     modelMappingsEnabled: true,
     modelMappings: [
       { source: 'a', destination: 'b' },
-      { source: 'b', destination: 'c' },
+      { source: 'b', destination: 'a' },
+      { source: 'a', destination: 'c' },
     ],
-  })).toEqual({ incomingModel: 'a', routedModel: 'c', matchedRuleIndexes: [0, 1] })
+  })).toEqual({ incomingModel: 'a', routedModel: 'c', matchedRuleIndexes: [0, 1, 2] })
 })
 
 test('resolver applies self mappings while preserving the incoming identity', () => {
