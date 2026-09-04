@@ -22,9 +22,9 @@ const INPUT_PRICE_PER_MILLION = 2
 const OUTPUT_PRICE_PER_MILLION = 5
 const EXPECTED_COST = (3 * INPUT_PRICE_PER_MILLION + 2 * OUTPUT_PRICE_PER_MILLION) / 1_000_000
 
-let db: Database
-let repo: SqliteRepo
-let pending: Promise<unknown>[]
+let db: Database | undefined
+let repo: SqliteRepo | undefined
+let pending: Promise<unknown>[] = []
 const originalFetch = globalThis.fetch
 
 function upstream(): UpstreamRecord {
@@ -60,6 +60,12 @@ async function drainBackground(): Promise<void> {
   await Promise.all(pending.splice(0))
 }
 
+async function settleBackgroundForCleanup(): Promise<void> {
+  // Cleanup must wait for writes even if the test already failed. Settling here
+  // prevents a second cleanup rejection from masking that primary failure.
+  await Promise.allSettled(pending.splice(0))
+}
+
 function tokenUsagePath(requestStartedAt: Date): string {
   // Capture the range before issuing requests. This deliberately spans the
   // preceding and following UTC hours, so writes that straddle an hour boundary
@@ -74,6 +80,7 @@ function byIncomingModel<T extends { incomingModel: string }>(rows: readonly T[]
 }
 
 beforeEach(async () => {
+  pending = []
   db = new Database(':memory:')
   repo = new SqliteRepo(db)
   await repo.apiKeys.save({
@@ -86,7 +93,6 @@ beforeEach(async () => {
   })
   await repo.upstreams.save(upstream())
   initRepo(repo)
-  pending = []
   initBackground({ waitUntil: (promise) => { pending.push(promise) } })
   initRuntimeLocation('bun')
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -110,10 +116,23 @@ beforeEach(async () => {
   }) as typeof fetch
 })
 
-afterEach(() => {
-  globalThis.fetch = originalFetch
-  db.close()
-  __resetPlatformForTests()
+afterEach(async () => {
+  try {
+    // A failed assertion can exit before the test body drains waitUntil work.
+    // Settle every task before closing SQLite so background telemetry cannot
+    // write to a closed database during test cleanup.
+    await settleBackgroundForCleanup()
+  } finally {
+    globalThis.fetch = originalFetch
+    try {
+      db?.close()
+    } finally {
+      db = undefined
+      repo = undefined
+      pending = []
+      __resetPlatformForTests()
+    }
+  }
 })
 
 test('two aliases routed to one target persist independently and API totals are conserved', async () => {
