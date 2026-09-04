@@ -4,7 +4,10 @@
  * fallback dimensions (input_image → input) work correctly.
  */
 import { test, expect } from 'bun:test'
-import { aggregateUsageForDisplay } from '../src/control-plane/token-usage/aggregate.ts'
+import {
+  aggregateUsageByUserForDisplay,
+  aggregateUsageForDisplay,
+} from '../src/control-plane/token-usage/aggregate.ts'
 import type { UsageRecord } from '../src/repo/types.ts'
 
 const rec = (over: Partial<UsageRecord> = {}): UsageRecord => ({
@@ -47,5 +50,41 @@ test('aggregateUsageForDisplay: client is a grouping dimension, not collapsed', 
   expect(out.map((r) => [r.client, r.tokens.input])).toEqual([
     ['claude-cli', 15],
     ['codex-tui', 7],
+  ])
+})
+
+test('aggregateUsageForDisplay: separates incoming aliases while conserving totals', () => {
+  const out = aggregateUsageForDisplay([
+    rec({ incomingModel: 'alias-a', model: 'target', client: 'cli', requests: 2, tokens: { input: 10 }, cost: { input: 1 } }),
+    rec({ incomingModel: 'alias-a', model: 'target', client: 'cli', requests: 3, tokens: { input: 20 }, cost: { input: 1 } }),
+    rec({ incomingModel: 'alias-b', model: 'target', client: 'cli', requests: 5, tokens: { input: 30 }, cost: { input: 1 } }),
+  ])
+
+  expect(out.map((row) => [row.incomingModel, row.model, row.client, row.requests, row.tokens.input])).toEqual([
+    ['alias-a', 'target', 'cli', 5, 30],
+    ['alias-b', 'target', 'cli', 5, 30],
+  ])
+  expect(out[0]?.cost).toBeCloseTo(0.00003, 12)
+  expect(out[1]?.cost).toBeCloseTo(0.00003, 12)
+  expect(out.reduce((total, row) => total + row.requests, 0)).toBe(10)
+  expect(out.reduce((total, row) => total + (row.tokens.input ?? 0), 0)).toBe(60)
+  expect(out.reduce((total, row) => total + row.cost, 0)).toBeCloseTo(0.00006, 12)
+})
+
+test('aggregateUsageForDisplay: retains a legacy empty incoming model as raw empty text', () => {
+  const out = aggregateUsageForDisplay([rec({ incomingModel: '', model: 'target' })])
+  expect(out).toEqual([expect.objectContaining({ incomingModel: '', model: 'target' })])
+})
+
+test('aggregateUsageByUserForDisplay: separates aliases for one user and target model', () => {
+  const out = aggregateUsageByUserForDisplay([
+    rec({ keyId: 'k1', incomingModel: 'alias-a', model: 'target', requests: 2, tokens: { input: 10 } }),
+    rec({ keyId: 'k2', incomingModel: 'alias-a', model: 'target', requests: 3, tokens: { input: 20 } }),
+    rec({ keyId: 'k1', incomingModel: 'alias-b', model: 'target', requests: 5, tokens: { input: 30 } }),
+  ], new Map([['k1', 7], ['k2', 7]]))
+
+  expect(out.map((row) => [row.userId, row.incomingModel, row.model, row.requests, row.tokens.input])).toEqual([
+    [7, 'alias-a', 'target', 5, 30],
+    [7, 'alias-b', 'target', 5, 30],
   ])
 })

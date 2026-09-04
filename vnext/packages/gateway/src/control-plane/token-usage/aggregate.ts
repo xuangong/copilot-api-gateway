@@ -1,5 +1,6 @@
 /**
- * Per-(key, model, client, hour) and per-(user, model, hour) usage aggregator.
+ * Per-(key, incoming model, model, client, hour) and per-(user, incoming model,
+ * model, hour) usage aggregator.
  * Cost is recomputed at read time from each row's frozen `cost` (per-dimension
  * unit price snapshot) and disjoint token counts — never from any global
  * pricing table — so historical cost stays stable when pricing later changes.
@@ -15,6 +16,8 @@ import { BILLING_DIMENSIONS, type BillingDimension } from '@vibe-llm/protocols/c
 
 export interface DisplayUsageRecord {
   keyId: string
+  /** Logical model requested by the caller before key mapping; '' for legacy rows. */
+  incomingModel: string
   model: string
   /** SDK/client distinguisher (`claude-cli`, `codex-tui`, …); '' when unknown. */
   client: string
@@ -30,6 +33,8 @@ export interface DisplayUsageRecord {
 
 export interface DisplayUsageByUserRecord {
   userId: number
+  /** Logical model requested by the caller before key mapping; '' for legacy rows. */
+  incomingModel: string
   model: string
   hour: string
   requests: number
@@ -55,19 +60,19 @@ export function aggregateUsageForDisplay(records: readonly UsageRecord[]): Displ
   const byKey = new Map<string, DisplayUsageRecord>()
 
   for (const record of records) {
-    const key = `${record.keyId}\0${record.model}\0${record.client}\0${record.hour}`
+    const key = `${record.keyId}\0${record.incomingModel}\0${record.model}\0${record.client}\0${record.hour}`
     let existing = byKey.get(key)
     if (!existing) {
-      existing = { keyId: record.keyId, model: record.model, client: record.client, hour: record.hour, requests: 0, tokens: {}, cost: 0 }
+      existing = { keyId: record.keyId, incomingModel: record.incomingModel, model: record.model, client: record.client, hour: record.hour, requests: 0, tokens: {}, cost: 0 }
       byKey.set(key, existing)
     }
     accumulate(existing, record)
   }
 
-  return [...byKey.values()].sort((a, b) => a.hour.localeCompare(b.hour) || a.keyId.localeCompare(b.keyId) || a.model.localeCompare(b.model) || a.client.localeCompare(b.client))
+  return [...byKey.values()].sort((a, b) => a.hour.localeCompare(b.hour) || a.keyId.localeCompare(b.keyId) || a.incomingModel.localeCompare(b.incomingModel) || a.model.localeCompare(b.model) || a.client.localeCompare(b.client))
 }
 
-// Aggregates per-key UsageRecords into per-(user, model, hour) rows. Records
+// Aggregates per-key UsageRecords into per-(user, incoming model, model, hour) rows. Records
 // whose keyId no longer resolves to a user (a key the operator hard-deleted by
 // hand directly in the DB, etc.) collapse into a synthetic userId 0 so the
 // dashboard can still surface the lost rows; the keyToUser map is populated
@@ -80,14 +85,14 @@ export function aggregateUsageByUserForDisplay(
 
   for (const record of records) {
     const userId = keyToUser.get(record.keyId) ?? 0
-    const key = `${userId}\0${record.model}\0${record.hour}`
+    const key = `${userId}\0${record.incomingModel}\0${record.model}\0${record.hour}`
     let existing = byUser.get(key)
     if (!existing) {
-      existing = { userId, model: record.model, hour: record.hour, requests: 0, tokens: {}, cost: 0 }
+      existing = { userId, incomingModel: record.incomingModel, model: record.model, hour: record.hour, requests: 0, tokens: {}, cost: 0 }
       byUser.set(key, existing)
     }
     accumulate(existing, record)
   }
 
-  return [...byUser.values()].sort((a, b) => a.hour.localeCompare(b.hour) || a.userId - b.userId || a.model.localeCompare(b.model))
+  return [...byUser.values()].sort((a, b) => a.hour.localeCompare(b.hour) || a.userId - b.userId || a.incomingModel.localeCompare(b.incomingModel) || a.model.localeCompare(b.model))
 }

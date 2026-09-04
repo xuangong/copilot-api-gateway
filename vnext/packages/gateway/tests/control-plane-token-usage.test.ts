@@ -77,10 +77,15 @@ function mkKey(id: string, name: string, ownerId?: string): ApiKey {
   return { id, name, key: `k-${id}`, createdAt: '2026-01-01T00:00:00Z', ownerId, modelMappingsEnabled: false, modelMappings: [] } as ApiKey
 }
 
-function mkUsage(keyId: string, hour: string, model = 'claude-sonnet-4-6'): UsageRecord {
+function mkUsage(
+  keyId: string,
+  hour: string,
+  model = 'claude-sonnet-4-6',
+  incomingModel = model,
+): UsageRecord {
   // input=1000 × $3/M + output=500 × $15/M = 0.003 + 0.0075 = 0.0105 USD
   return {
-    keyId, incomingModel: model, model, modelKey: model, hour, client: 'test', upstream: null,
+    keyId, incomingModel, model, modelKey: model, hour, client: 'test', upstream: null,
     requests: 1,
     tokens: { input: 1000, output: 500 },
     cost: { input: 3, output: 15 },
@@ -130,6 +135,23 @@ test('GET /api/token-usage user scopes to own + assigned keys; aggregates cost f
   expect(k1.cost).toBeCloseTo(0.0105, 6)
 })
 
+test('GET /api/token-usage user exposes distinct incoming aliases without duplicating requests', async () => {
+  store.keys.set('k1', mkKey('k1', 'mine', 'u1'))
+  store.usage.push(mkUsage('k1', '2026-03-01T00', 'target-model', 'alias-a'))
+  store.usage.push(mkUsage('k1', '2026-03-01T00', 'target-model', 'alias-b'))
+  store.usage.push(mkUsage('k1', '2026-03-01T01', 'target-model', ''))
+
+  const res = await call(buildApp({ userId: 'u1' }), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
+  expect(res.status).toBe(200)
+  const body = await res.json() as Array<{ incomingModel: string; model: string; requests: number }>
+  expect(body.map((row) => [row.incomingModel, row.model, row.requests])).toEqual([
+    ['alias-a', 'target-model', 1],
+    ['alias-b', 'target-model', 1],
+    ['', 'target-model', 1],
+  ])
+  expect(body.reduce((total, row) => total + row.requests, 0)).toBe(3)
+})
+
 test('GET /api/token-usage admin sees all keys + ownerId/ownerName enrichment', async () => {
   store.keys.set('k1', mkKey('k1', 'alpha', 'u1'))
   store.keys.set('k2', mkKey('k2', 'beta', 'u2'))
@@ -140,11 +162,13 @@ test('GET /api/token-usage admin sees all keys + ownerId/ownerName enrichment', 
 
   const res = await call(buildApp({ isAdmin: true, userId: 'admin' }), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
   expect(res.status).toBe(200)
-  const body = await res.json() as Array<{ keyId: string; ownerId: string; ownerName: string }>
+  const body = await res.json() as Array<{ keyId: string; incomingModel: string; ownerId: string; ownerName: string }>
   expect(body).toHaveLength(2)
   const byKey = Object.fromEntries(body.map((r) => [r.keyId, r]))
   expect(byKey.k1.ownerName).toBe('Alice')
+  expect(byKey.k1.incomingModel).toBe('claude-sonnet-4-6')
   expect(byKey.k2.ownerName).toBe('Bob')
+  expect(byKey.k2.incomingModel).toBe('claude-sonnet-4-6')
 })
 
 test('GET /api/token-usage shared-view: owned-only + HMAC-redacted keyId', async () => {
@@ -156,13 +180,14 @@ test('GET /api/token-usage shared-view: owned-only + HMAC-redacted keyId', async
 
   const res = await call(buildApp({ userId: 'viewer', isViewingShared: true, ownerId: 'owner' }), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
   expect(res.status).toBe(200)
-  const body = await res.json() as Array<{ keyId: string; keyName: string }>
+  const body = await res.json() as Array<{ keyId: string; keyName: string; incomingModel: string }>
   // only owned key surfaces; assigned excluded by getOwnedKeyIdsForScope
   expect(body).toHaveLength(1)
   // keyId is HMAC surrogate (16 chars base64url), not the real id
   expect(body[0].keyId).not.toBe('k-owned')
   expect(body[0].keyId).toMatch(/^[A-Za-z0-9_-]{16}$/)
   expect(body[0].keyName).toBe('owned-key')
+  expect(body[0].incomingModel).toBe('claude-sonnet-4-6')
 })
 
 test('GET /api/token-usage shared-view with no owned keys → []', async () => {
