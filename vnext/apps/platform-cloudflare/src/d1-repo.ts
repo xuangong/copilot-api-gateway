@@ -16,6 +16,8 @@ interface D1PreparedStatement {
 
 export interface D1Database {
   prepare(query: string): D1PreparedStatement
+  // D1 executes batch statements atomically as one transaction.
+  batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>
 }
 
 async function d1HasColumn(db: D1Database, table: string, column: string): Promise<boolean> {
@@ -24,6 +26,33 @@ async function d1HasColumn(db: D1Database, table: string, column: string): Promi
     .bind(table, column)
     .first<{ name: string }>()
   return row !== null
+}
+
+const usageIdentityColumns = "key_id, incoming_model, model, COALESCE(upstream, ''), model_key, client, hour, dimension"
+const usageRequestsIdentityColumns = "key_id, incoming_model, model, COALESCE(upstream, ''), model_key, client, hour"
+
+async function d1HasIdentityIndex(db: D1Database, name: string, columns: string): Promise<boolean> {
+  const row = await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?").bind(name).first<{ sql: string }>()
+  return row?.sql.replace(/\s+/g, " ").includes(columns) ?? false
+}
+
+async function d1HasCurrentUsageSchema(db: D1Database): Promise<boolean> {
+  const [legacy, usageDimension, usageIncoming, requestsIncoming] = await Promise.all([
+    d1HasColumn(db, "usage", "input_tokens"),
+    d1HasColumn(db, "usage", "dimension"),
+    d1HasColumn(db, "usage", "incoming_model"),
+    d1HasColumn(db, "usage_requests", "incoming_model"),
+  ])
+  return !legacy && usageDimension && usageIncoming && requestsIncoming
+}
+
+async function ensureD1Column(db: D1Database, table: "usage" | "usage_requests"): Promise<void> {
+  if (await d1HasColumn(db, table, "incoming_model")) return
+  try {
+    await db.prepare(`ALTER TABLE ${table} ADD COLUMN incoming_model TEXT NOT NULL DEFAULT ''`).run()
+  } catch (error) {
+    if (!(await d1HasColumn(db, table, "incoming_model"))) throw error
+  }
 }
 
 /**
@@ -61,58 +90,57 @@ export async function initD1(db: D1Database): Promise<void> {
   )`).run()
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_usage_requests_hour ON usage_requests (hour)`).run()
 
-  // Plan 6 schema bootstrap + incoming-model migration. Legacy tables are
-  // rebuilt before checking the new column because they lack a dimension row.
+  // Plan 6 schema bootstrap + incoming-model migration. A D1 batch is an
+  // atomic transaction, so a failed conversion leaves the legacy table intact.
   if (await d1HasColumn(db, "usage", "input_tokens")) {
-    await db.prepare(`CREATE TABLE usage_dims_new (
-      key_id TEXT NOT NULL, incoming_model TEXT NOT NULL DEFAULT '', model TEXT NOT NULL, upstream TEXT, model_key TEXT NOT NULL,
-      client TEXT NOT NULL DEFAULT '', hour TEXT NOT NULL, dimension TEXT NOT NULL,
-      tokens INTEGER NOT NULL, unit_price REAL
-    )`).run()
-    await db.prepare(`CREATE TABLE usage_reqs_new (
-      key_id TEXT NOT NULL, incoming_model TEXT NOT NULL DEFAULT '', model TEXT NOT NULL, upstream TEXT, model_key TEXT NOT NULL,
-      client TEXT NOT NULL DEFAULT '', hour TEXT NOT NULL, requests INTEGER NOT NULL
-    )`).run()
-    await db.prepare(`
-      INSERT INTO usage_reqs_new (key_id, incoming_model, model, upstream, model_key, client, hour, requests)
-        SELECT key_id, '', model, upstream, model AS model_key, client, hour, requests FROM usage
-    `).run()
-    await db.prepare(`
-      INSERT INTO usage_dims_new (key_id, incoming_model, model, upstream, model_key, client, hour, dimension, tokens, unit_price)
-        SELECT key_id, '', model, upstream, model, client, hour, 'input', input_tokens, NULL FROM usage WHERE input_tokens > 0
-        UNION ALL
-        SELECT key_id, '', model, upstream, model, client, hour, 'output', output_tokens, NULL FROM usage WHERE output_tokens > 0
-        UNION ALL
-        SELECT key_id, '', model, upstream, model, client, hour, 'input_cache_read', cache_read_tokens, NULL FROM usage WHERE cache_read_tokens > 0
-        UNION ALL
-        SELECT key_id, '', model, upstream, model, client, hour, 'input_cache_write', cache_creation_tokens, NULL FROM usage WHERE cache_creation_tokens > 0
-    `).run()
-    await db.prepare(`DROP TABLE usage`).run()
-    await db.prepare(`DROP TABLE IF EXISTS usage_requests`).run()
-    await db.prepare(`ALTER TABLE usage_dims_new RENAME TO usage`).run()
-    await db.prepare(`ALTER TABLE usage_reqs_new RENAME TO usage_requests`).run()
-    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_usage_hour ON usage (hour)`).run()
-    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_usage_requests_hour ON usage_requests (hour)`).run()
+    try {
+      await db.batch([
+        db.prepare(`CREATE TABLE usage_dims_new (
+          key_id TEXT NOT NULL, incoming_model TEXT NOT NULL DEFAULT '', model TEXT NOT NULL, upstream TEXT, model_key TEXT NOT NULL,
+          client TEXT NOT NULL DEFAULT '', hour TEXT NOT NULL, dimension TEXT NOT NULL,
+          tokens INTEGER NOT NULL, unit_price REAL
+        )`),
+        db.prepare(`CREATE TABLE usage_reqs_new (
+          key_id TEXT NOT NULL, incoming_model TEXT NOT NULL DEFAULT '', model TEXT NOT NULL, upstream TEXT, model_key TEXT NOT NULL,
+          client TEXT NOT NULL DEFAULT '', hour TEXT NOT NULL, requests INTEGER NOT NULL
+        )`),
+        db.prepare(`INSERT INTO usage_reqs_new (key_id, incoming_model, model, upstream, model_key, client, hour, requests)
+          SELECT key_id, '', model, upstream, model AS model_key, client, hour, requests FROM usage`),
+        db.prepare(`INSERT INTO usage_dims_new (key_id, incoming_model, model, upstream, model_key, client, hour, dimension, tokens, unit_price)
+          SELECT key_id, '', model, upstream, model, client, hour, 'input', input_tokens, NULL FROM usage WHERE input_tokens > 0
+          UNION ALL SELECT key_id, '', model, upstream, model, client, hour, 'output', output_tokens, NULL FROM usage WHERE output_tokens > 0
+          UNION ALL SELECT key_id, '', model, upstream, model, client, hour, 'input_cache_read', cache_read_tokens, NULL FROM usage WHERE cache_read_tokens > 0
+          UNION ALL SELECT key_id, '', model, upstream, model, client, hour, 'input_cache_write', cache_creation_tokens, NULL FROM usage WHERE cache_creation_tokens > 0`),
+        db.prepare(`DROP TABLE usage`),
+        db.prepare(`DROP TABLE IF EXISTS usage_requests`),
+        db.prepare(`ALTER TABLE usage_dims_new RENAME TO usage`),
+        db.prepare(`ALTER TABLE usage_reqs_new RENAME TO usage_requests`),
+        db.prepare(`CREATE INDEX IF NOT EXISTS idx_usage_hour ON usage (hour)`),
+        db.prepare(`CREATE INDEX IF NOT EXISTS idx_usage_requests_hour ON usage_requests (hour)`),
+      ])
+    } catch (error) {
+      if (!(await d1HasCurrentUsageSchema(db))) throw error
+    }
   } else {
-    if (!(await d1HasColumn(db, "usage", "incoming_model"))) {
-      await db.prepare(`ALTER TABLE usage ADD COLUMN incoming_model TEXT NOT NULL DEFAULT ''`).run()
-    }
-    if (!(await d1HasColumn(db, "usage_requests", "incoming_model"))) {
-      await db.prepare(`ALTER TABLE usage_requests ADD COLUMN incoming_model TEXT NOT NULL DEFAULT ''`).run()
-    }
+    await ensureD1Column(db, "usage")
+    await ensureD1Column(db, "usage_requests")
   }
 
-  // Recreate identities so pre-0008 schemas do not merge distinct aliases.
-  await db.prepare(`DROP INDEX IF EXISTS idx_usage_identity`).run()
-  await db.prepare(`DROP INDEX IF EXISTS idx_usage_requests_identity`).run()
-  await db.prepare(`
-    CREATE UNIQUE INDEX idx_usage_identity
-      ON usage (key_id, incoming_model, model, COALESCE(upstream, ''), model_key, client, hour, dimension)
-  `).run()
-  await db.prepare(`
-    CREATE UNIQUE INDEX idx_usage_requests_identity
-      ON usage_requests (key_id, incoming_model, model, COALESCE(upstream, ''), model_key, client, hour)
-  `).run()
+  // The pair must change together: keep it in one D1 transaction.
+  try {
+    await db.batch([
+      db.prepare(`DROP INDEX IF EXISTS idx_usage_identity`),
+      db.prepare(`DROP INDEX IF EXISTS idx_usage_requests_identity`),
+      db.prepare(`CREATE UNIQUE INDEX idx_usage_identity ON usage (${usageIdentityColumns})`),
+      db.prepare(`CREATE UNIQUE INDEX idx_usage_requests_identity ON usage_requests (${usageRequestsIdentityColumns})`),
+    ])
+  } catch (error) {
+    const [usageIdentity, requestsIdentity] = await Promise.all([
+      d1HasIdentityIndex(db, "idx_usage_identity", usageIdentityColumns),
+      d1HasIdentityIndex(db, "idx_usage_requests_identity", usageRequestsIdentityColumns),
+    ])
+    if (!usageIdentity || !requestsIdentity) throw error
+  }
 }
 
 class D1Executor implements SqlExecutor {
