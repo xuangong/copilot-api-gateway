@@ -571,7 +571,7 @@ function dimensionRows(record: UsageRecord): { dimension: BillingDimension; toke
 }
 
 function usageBucketKey(row: { key_id: string; incoming_model: string; model: string; upstream: string | null; model_key: string; client: string; hour: string }): string {
-  return JSON.stringify([row.key_id, row.incoming_model, row.model, row.upstream, row.model_key, row.client, row.hour])
+  return JSON.stringify([row.key_id, row.incoming_model, row.model, row.upstream ?? "", row.model_key, row.client, row.hour])
 }
 
 // Reassemble per-bucket UsageRecords from the two narrow tables. The dimension

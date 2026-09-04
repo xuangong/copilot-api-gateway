@@ -82,6 +82,22 @@ test('NUL-containing incoming-model and model tuples stay isolated through recor
   }
 })
 
+test('raw nullable and empty upstream values reassemble as one database bucket', async () => {
+  db.exec(`
+    INSERT INTO usage (key_id, incoming_model, model, upstream, model_key, client, hour, dimension, tokens, unit_price)
+    VALUES ('k1', 'incoming', 'target', NULL, 'provider', 'curl', '2026-06-13T10', 'input', 10, 1);
+    INSERT INTO usage_requests (key_id, incoming_model, model, upstream, model_key, client, hour, requests)
+    VALUES ('k1', 'incoming', 'target', '', 'provider', 'curl', '2026-06-13T10', 2);
+  `)
+
+  expect(await repo.usage.listAll()).toEqual([
+    expect.objectContaining({
+      keyId: 'k1', incomingModel: 'incoming', model: 'target', upstream: null,
+      tokens: { input: 10 }, requests: 2,
+    }),
+  ])
+})
+
 test('legacy unknown token-only, request-only, and full buckets assemble independently', async () => {
   db.exec(`
     INSERT INTO usage (key_id, incoming_model, model, upstream, model_key, client, hour, dimension, tokens, unit_price)
