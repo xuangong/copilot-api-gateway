@@ -14,6 +14,8 @@ interface Props {
   className?: string
   buttonClassName?: string
   placeholder?: string
+  ariaLabel?: string
+  disabled?: boolean
   size?: "sm" | "md"
 }
 
@@ -24,6 +26,8 @@ export function Select({
   className = "",
   buttonClassName,
   placeholder,
+  ariaLabel,
+  disabled = false,
   size = "sm",
 }: Props) {
   const [open, setOpen] = useState(false)
@@ -64,6 +68,8 @@ export function Select({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        aria-label={ariaLabel}
         className={buttonClassName ?? defaultBtn}
       >
         {/* `min-w-0` is what makes `truncate` bite: without it a flex item

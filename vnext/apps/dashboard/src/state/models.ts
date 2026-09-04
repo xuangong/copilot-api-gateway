@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { api } from "../api/client"
 
-interface RawModel {
+export interface RawModel {
   id: string
   name?: string
   _upstream?: string
@@ -57,7 +57,7 @@ function sortCodex(a: string, b: string): number {
   return am !== bm ? am - bm : b.localeCompare(a)
 }
 
-function buildCatalog(data: RawModel[]): ModelCatalog {
+export function buildCatalog(data: RawModel[]): ModelCatalog {
   const claudeBase = data.filter(
     (m) => m.id.startsWith("claude-") && m.supported_endpoints?.includes("/v1/messages"),
   )
@@ -73,23 +73,36 @@ function buildCatalog(data: RawModel[]): ModelCatalog {
       Array.isArray(m.available_combinations) && m.available_combinations.length > 0
         ? m.available_combinations
         : [{ context1m: false, effort: undefined as string | undefined }]
-    for (const c of combos) {
+    const effortCombinations = combos.filter((combination) => combination.effort)
+    const supports1m = combos.some((combination) => combination.context1m)
+    const destinationIds = new Set<string>()
+    for (const combination of combos) {
       let id = m.id
-      if (c.effort === "high" || c.effort === "xhigh") id += "-" + c.effort
-      if (c.context1m) id += "-1m"
+      if (combination.effort) id += `-${combination.effort}`
+      if (combination.context1m) id += "-1m"
+      destinationIds.add(id)
+    }
+    // The gateway combines independent effort and 1M capabilities exposed by
+    // sibling Copilot variants within one upstream; never across upstreams.
+    if (supports1m) {
+      for (const combination of effortCombinations) {
+        destinationIds.add(`${m.id}-${combination.effort}-1m`)
+      }
+    }
+    for (const id of destinationIds) {
       claudeAll.push(id)
       addDestination(id, m._upstream || "(legacy / unmanaged)")
     }
   }
-  const claudeBig = [...claudeAll].sort(sortClaudeBig)
-  const claudeSmall = [...claudeAll].sort(sortClaudeSmall)
+  const claudeBig = [...new Set(claudeAll)].sort(sortClaudeBig)
+  const claudeSmall = [...new Set(claudeAll)].sort(sortClaudeSmall)
 
-  const codex = data
+  const codexIds = data
     .filter((m) => m.id.startsWith("gpt-") && m.supported_endpoints?.includes("/responses"))
     .map((m) => m.id)
-    .sort(sortCodex)
+  const codex = [...new Set(codexIds)].sort(sortCodex)
 
-  const gemini = data.filter((m) => m.id.startsWith("gemini-")).map((m) => m.id)
+  const gemini = [...new Set(data.filter((m) => m.id.startsWith("gemini-")).map((m) => m.id))]
 
   const byUp = new Map<string, UpstreamModelGroup>()
   for (const m of data) {
@@ -121,7 +134,7 @@ export function useModelCatalog(keyId?: string) {
     try {
       // Upstreams belong to the key's owner, not the viewer, so a shared key
       // needs its own id here or the catalog comes back empty.
-      const path = keyId ? `/api/models?keyId=${encodeURIComponent(keyId)}` : "/api/models"
+      const path = keyId ? `/api/models?keyId=${encodeURIComponent(keyId)}&dedupe=0` : "/api/models"
       const r = await api<{ data: RawModel[] }>(path)
       setCatalog(buildCatalog(r.data ?? []))
     } catch (e) {

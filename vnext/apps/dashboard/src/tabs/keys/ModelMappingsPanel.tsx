@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import type { ApiKeyDetail, ApiKeyModelMapping } from "../../api/keys"
 import { Select } from "../../components/Select"
 import { useT } from "../../state/i18n"
-import { useModelCatalog } from "../../state/models"
+import type { ModelCatalog } from "../../state/models"
 import {
   addMapping,
   buildDestinationChoices,
@@ -10,6 +10,7 @@ import {
   initialModelMappingsState,
   isModelMappingsDirty,
   moveMapping,
+  normalizeModelMappings,
   setModelMappingsEnabled,
   validateModelMappings,
   type MappingValidationError,
@@ -20,6 +21,8 @@ interface Props {
   keyRow: ApiKeyDetail
   canEdit: boolean
   busy: boolean
+  catalog: ModelCatalog
+  catalogLoading: boolean
   onSave: (body: { model_mappings_enabled: boolean; model_mappings: ApiKeyModelMapping[] }) => Promise<boolean>
 }
 
@@ -30,11 +33,11 @@ function errorText(error: MappingValidationError, t: (key: string, vars?: Record
   return t("dash.modelMappingTooMany")
 }
 
-export function ModelMappingsPanel({ keyRow, canEdit, busy, onSave }: Props) {
+export function ModelMappingsPanel({ keyRow, canEdit, busy, catalog, catalogLoading, onSave }: Props) {
   const t = useT()
   const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [state, setState] = useState<ModelMappingsState>(() => initialModelMappingsState(keyRow))
-  const { catalog, loading } = useModelCatalog(keyRow.id)
 
   useEffect(() => {
     setState(initialModelMappingsState(keyRow))
@@ -79,10 +82,19 @@ export function ModelMappingsPanel({ keyRow, canEdit, busy, onSave }: Props) {
     }))
   }
   const save = async () => {
-    if (!dirty || errors.length > 0 || busy) return
-    const ok = await onSave({ model_mappings_enabled: state.enabled, model_mappings: state.mappings })
-    if (ok) setEditing(false)
+    if (!dirty || errors.length > 0 || busy || saving) return
+    setSaving(true)
+    try {
+      const ok = await onSave({
+        model_mappings_enabled: state.enabled,
+        model_mappings: normalizeModelMappings(state.mappings),
+      })
+      if (ok) setEditing(false)
+    } finally {
+      setSaving(false)
+    }
   }
+  const interactionDisabled = busy || saving
 
   const status = keyRow.model_mappings_enabled ? t("dash.wsEnabledShort") : t("dash.wsDisabledShort")
   return (
@@ -94,7 +106,7 @@ export function ModelMappingsPanel({ keyRow, canEdit, busy, onSave }: Props) {
             <input
               type="checkbox"
               checked={editing ? state.enabled : keyRow.model_mappings_enabled}
-              disabled={!canEdit || busy}
+              disabled={!canEdit || interactionDisabled}
               onChange={(event) => toggleEnabled(event.target.checked)}
               aria-label={t("dash.modelMappingsToggleAria")}
               className="accent-accent-violet disabled:cursor-not-allowed"
@@ -103,10 +115,10 @@ export function ModelMappingsPanel({ keyRow, canEdit, busy, onSave }: Props) {
           </label>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {!editing && canEdit ? <button type="button" onClick={() => startEdit()} className="btn-ghost text-xs">{t("dash.edit")}</button> : null}
+          {!editing && canEdit ? <button type="button" onClick={() => startEdit()} disabled={interactionDisabled} className="btn-ghost text-xs">{t("dash.edit")}</button> : null}
           {editing ? <>
-            <button type="button" onClick={save} disabled={busy || !dirty || errors.length > 0 || loading} className="btn-primary text-xs py-1 px-3">{busy ? t("dash.savingShort") : t("dash.save")}</button>
-            <button type="button" onClick={cancel} disabled={busy} className="btn-ghost text-xs">{t("dash.cancel")}</button>
+            <button type="button" onClick={save} disabled={interactionDisabled || !dirty || errors.length > 0 || catalogLoading} className="btn-primary text-xs py-1 px-3">{interactionDisabled ? t("dash.savingShort") : t("dash.save")}</button>
+            <button type="button" onClick={cancel} disabled={interactionDisabled} className="btn-ghost text-xs">{t("dash.cancel")}</button>
           </> : null}
         </div>
       </div>
@@ -121,28 +133,28 @@ export function ModelMappingsPanel({ keyRow, canEdit, busy, onSave }: Props) {
           return <div key={index} className="rounded-lg bg-surface-700/50 p-3 space-y-2">
             <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 items-start">
               <div>
-                <label className="text-[10px] text-themed-dim block mb-1">{t("dash.modelMappingSource")}</label>
-                <input type="text" value={mapping.source} onChange={(event) => updateRow(index, "source", event.target.value)} className="w-full text-xs font-mono" aria-label={t("dash.modelMappingSourceAria", { n: index + 1 })} />
+                <label htmlFor={`model-mapping-source-${index}`} className="text-[10px] text-themed-dim block mb-1">{t("dash.modelMappingSource")}</label>
+                <input id={`model-mapping-source-${index}`} type="text" value={mapping.source} disabled={interactionDisabled} onChange={(event) => updateRow(index, "source", event.target.value)} className="w-full text-xs font-mono" />
               </div>
               <div>
                 <label className="text-[10px] text-themed-dim block mb-1">{t("dash.modelMappingDestination")}</label>
-                <Select value={mapping.destination} onChange={(value) => updateRow(index, "destination", value)} options={[
+                <Select value={mapping.destination} disabled={interactionDisabled} ariaLabel={t("dash.modelMappingDestinationAria", { n: index + 1 })} onChange={(value) => updateRow(index, "destination", value)} options={[
                   { value: "", label: t("dash.modelMappingPickDestination") },
                   ...choices.map((choice) => ({ value: choice.id, label: choice.id, badge: choice.unavailable ? t("dash.modelMappingUnavailableBadge") : choice.upstreams.join(", ") || t("dash.modelMappingAvailable") })),
                 ]} />
                 {destination?.unavailable ? <p className="text-[10px] text-accent-red mt-1">{t("dash.modelMappingUnavailable")}</p> : null}
               </div>
               <div className="flex sm:pt-5 gap-1">
-                <button type="button" onClick={() => setState((current) => ({ ...current, mappings: moveMapping(current.mappings, index, -1) }))} disabled={index === 0} aria-label={t("dash.modelMappingMoveUp", { n: index + 1 })} className="btn-ghost text-xs px-2 disabled:opacity-30">▲</button>
-                <button type="button" onClick={() => setState((current) => ({ ...current, mappings: moveMapping(current.mappings, index, 1) }))} disabled={index === state.mappings.length - 1} aria-label={t("dash.modelMappingMoveDown", { n: index + 1 })} className="btn-ghost text-xs px-2 disabled:opacity-30">▼</button>
-                <button type="button" onClick={() => setState((current) => ({ ...current, mappings: deleteMapping(current.mappings, index) }))} aria-label={t("dash.modelMappingDelete", { n: index + 1 })} className="btn-ghost text-xs px-2 text-accent-red">×</button>
+                <button type="button" onClick={() => setState((current) => ({ ...current, mappings: moveMapping(current.mappings, index, -1) }))} disabled={interactionDisabled || index === 0} aria-label={t("dash.modelMappingMoveUp", { n: index + 1 })} className="btn-ghost text-xs px-2 disabled:opacity-30">▲</button>
+                <button type="button" onClick={() => setState((current) => ({ ...current, mappings: moveMapping(current.mappings, index, 1) }))} disabled={interactionDisabled || index === state.mappings.length - 1} aria-label={t("dash.modelMappingMoveDown", { n: index + 1 })} className="btn-ghost text-xs px-2 disabled:opacity-30">▼</button>
+                <button type="button" onClick={() => setState((current) => ({ ...current, mappings: deleteMapping(current.mappings, index) }))} disabled={interactionDisabled} aria-label={t("dash.modelMappingDelete", { n: index + 1 })} className="btn-ghost text-xs px-2 text-accent-red">×</button>
               </div>
             </div>
             {rowErrors.map((error) => <p key={`${error.field}-${error.code}`} className="text-[10px] text-accent-red">{errorText(error, t)}</p>)}
           </div>
         })}
         {errors.find((error) => error.field === "mappings") ? <p className="text-[10px] text-accent-red">{t("dash.modelMappingTooMany")}</p> : null}
-        <button type="button" onClick={() => setState((current) => ({ ...current, mappings: addMapping(current.mappings) }))} disabled={state.mappings.length >= 100} className="btn-ghost text-xs">{t("dash.modelMappingAdd")}</button>
+        <button type="button" onClick={() => setState((current) => ({ ...current, mappings: addMapping(current.mappings) }))} disabled={interactionDisabled || state.mappings.length >= 100} className="btn-ghost text-xs">{t("dash.modelMappingAdd")}</button>
       </div> : <div className="space-y-2">
         {keyRow.model_mappings.length === 0 ? <p className="text-xs text-themed-dim">{t("dash.modelMappingsEmpty")}</p> : keyRow.model_mappings.map((mapping, index) => <div key={`${mapping.source}-${index}`} className="flex items-center gap-2 text-xs font-mono min-w-0"><span className="truncate text-themed-secondary">{mapping.source}</span><span className="text-themed-dim">→</span><span className="truncate text-themed">{mapping.destination}</span></div>)}
       </div>}

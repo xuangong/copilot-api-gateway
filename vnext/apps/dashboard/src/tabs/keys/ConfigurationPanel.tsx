@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import type { ApiKeyDetail } from "../../api/keys"
 import { useT } from "../../state/i18n"
-import { useModelCatalog } from "../../state/models"
+import type { ModelCatalog } from "../../state/models"
 import { useToast } from "../../state/toast"
 import { Select } from "../../components/Select"
 import {
@@ -15,6 +15,8 @@ import {
 
 interface Props {
   keyRow: ApiKeyDetail
+  catalog: ModelCatalog
+  catalogLoading: boolean
 }
 
 type ConfigTab = "claude" | "codex" | "gemini"
@@ -78,9 +80,8 @@ function CodeBlock({ language, text, onCopy, copied }: CodeBlockProps) {
   )
 }
 
-export function ConfigurationPanel({ keyRow }: Props) {
+export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
   const { push: toast } = useToast()
-  const { catalog, loading } = useModelCatalog(keyRow.id)
   const t = useT()
   const [tab, setTab] = useState<ConfigTab>("claude")
   const [claudeBig, setClaudeBig] = useState<string>("")
@@ -160,7 +161,7 @@ export function ConfigurationPanel({ keyRow }: Props) {
         {t("dash.configUsesSelectedKey")}
       </p>
 
-      {loading ? (
+      {catalogLoading ? (
         <p className="mt-4 text-xs text-themed-dim">{t("dash.loadingModels")}</p>
       ) : (
         <div className="mt-4">

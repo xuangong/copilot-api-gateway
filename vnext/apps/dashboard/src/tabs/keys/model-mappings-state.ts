@@ -89,13 +89,17 @@ export function buildDestinationChoices(inputs: DestinationInput[], savedDestina
   return [...choices.values()].sort((a, b) => a.id.localeCompare(b.id))
 }
 
+export function normalizeModelMappings(mappings: ApiKeyModelMapping[]): ApiKeyModelMapping[] {
+  return mappings.map((mapping) => ({ source: mapping.source.trim(), destination: mapping.destination.trim() }))
+}
+
 export function validateModelMappings(
   mappings: ApiKeyModelMapping[],
   availableDestinations: ReadonlySet<string>,
 ): MappingValidationError[] {
   if (mappings.length > 100) return [{ index: 100, field: "mappings", code: "too_many" }]
   const errors: MappingValidationError[] = []
-  mappings.forEach((mapping, index) => {
+  normalizeModelMappings(mappings).forEach((mapping, index) => {
     for (const field of ["source", "destination"] as const) {
       const value = mapping[field]
       if (!value.trim()) errors.push({ index, field, code: "blank" })

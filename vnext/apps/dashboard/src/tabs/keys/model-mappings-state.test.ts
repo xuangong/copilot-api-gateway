@@ -5,6 +5,7 @@ import {
   deleteMapping,
   initialModelMappingsState,
   isModelMappingsDirty,
+  normalizeModelMappings,
   moveMapping,
   setModelMappingsEnabled,
   validateModelMappings,
@@ -88,10 +89,16 @@ describe("model mapping editor state", () => {
     ])
   })
 
-  test("accepts free source aliases but rejects unavailable destinations", () => {
-    expect(validateModelMappings([{ source: "my private alias", destination: "ready" }], new Set(["ready"]))).toEqual([])
+  test("accepts free source aliases and normalizes whitespace before availability", () => {
+    expect(validateModelMappings([{ source: " my private alias ", destination: " ready " }], new Set(["ready"]))).toEqual([])
     expect(validateModelMappings([{ source: "source", destination: "missing" }], new Set(["ready"]))).toEqual([
       { index: 0, field: "destination", code: "unavailable" },
+    ])
+  })
+
+  test("normalizes mapping fields before saving", () => {
+    expect(normalizeModelMappings([{ source: " alias ", destination: " ready " }])).toEqual([
+      { source: "alias", destination: "ready" },
     ])
   })
 
@@ -101,6 +108,7 @@ describe("model mapping editor state", () => {
       { index: 0, field: "source", code: "blank" },
     ])
     expect(validateModelMappings([{ source: "s".repeat(256), destination: "d".repeat(256) }], available)).toEqual([])
+    expect(validateModelMappings([{ source: ` ${"s".repeat(256)} `, destination: " ready " }], available)).toEqual([])
     expect(validateModelMappings([{ source: "s".repeat(257), destination: "ready" }], available)).toEqual([
       { index: 0, field: "source", code: "too_long" },
     ])

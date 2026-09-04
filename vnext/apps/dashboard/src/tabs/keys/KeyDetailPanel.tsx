@@ -1,5 +1,6 @@
 import type { ApiKeyDetail, KeyPatchBody, WebSearchRange, WebSearchUsage } from "../../api/keys"
 import type { QuotaUsage } from "../../state/keys"
+import { useModelCatalog } from "../../state/models"
 import { AssigneesPanel, SharedByOwnerPanel } from "./AssigneesPanel"
 import { ConfigurationPanel } from "./ConfigurationPanel"
 import { QuotaEditor } from "./QuotaEditor"
@@ -37,6 +38,7 @@ export function KeyDetailPanel({
   onAssign,
   onUnassign,
 }: Props) {
+  const modelCatalogState = useModelCatalog(keyRow.id)
   const isOwned = keyRow.is_owner !== false
   const canManage = (isAdmin || isUser) && isOwned
 
@@ -73,16 +75,23 @@ export function KeyDetailPanel({
         onUsageRangeChange={onWsUsageRangeChange}
         onSave={onPatch}
         onCopyFrom={onCopyWebSearchFrom}
+        catalog={modelCatalogState.catalog}
       />
 
       <ModelMappingsPanel
         keyRow={keyRow}
         canEdit={keyRow.can_manage_model_mappings}
         busy={busy}
+        catalog={modelCatalogState.catalog}
+        catalogLoading={modelCatalogState.loading}
         onSave={onPatch}
       />
 
-      <ConfigurationPanel keyRow={keyRow} />
+      <ConfigurationPanel
+        keyRow={keyRow}
+        catalog={modelCatalogState.catalog}
+        catalogLoading={modelCatalogState.loading}
+      />
     </>
   )
 }

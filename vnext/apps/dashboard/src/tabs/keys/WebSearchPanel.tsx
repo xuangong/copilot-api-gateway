@@ -3,7 +3,7 @@ import type { ApiKeyDetail, KeyPatchBody, KeyRefDescriptor, WebSearchRange, WebS
 import { useT, t as tStatic } from "../../state/i18n"
 import { DEFAULT_WS_PRIORITY } from "./helpers"
 import { Select } from "../../components/Select"
-import { useModelCatalog } from "../../state/models"
+import type { ModelCatalog } from "../../state/models"
 import { testKeyWebSearch, type WebSearchTestResult } from "../../api/keys"
 
 type Engine = "langsearch" | "tavily" | "msGrounding" | "jina"
@@ -19,6 +19,7 @@ interface Props {
   onUsageRangeChange: (r: WebSearchRange) => void
   onSave: (body: KeyPatchBody) => Promise<boolean>
   onCopyFrom: (sourceId: string) => Promise<boolean>
+  catalog: ModelCatalog
 }
 
 interface EditState {
@@ -91,6 +92,7 @@ export function WebSearchPanel({
   onUsageRangeChange,
   onSave,
   onCopyFrom,
+  catalog,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [edit, setEdit] = useState<EditState>(() => initialEdit(keyRow))
@@ -111,7 +113,6 @@ export function WebSearchPanel({
     return allKeys.filter((k) => k.id !== keyRow.id && k[field])
   }
 
-  const { catalog } = useModelCatalog(keyRow.id)
   // Only codex and custom upstreams can serve alpha_search — the same check
   // the gateway's dispatcher makes. Filtering here stops the pair being
   // configured into a state the gateway would only reject at request time.
