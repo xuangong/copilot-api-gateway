@@ -234,6 +234,40 @@ describe('serveTemplate — preProcess continue + mutation', () => {
 })
 
 describe('serveTemplate — preProcess extra', () => {
+  test('preProcess can read opaque input extras without receiving mutable auth data', async () => {
+    let seenExtras: Record<string, unknown> | undefined
+    const hooks = defaultHooks({
+      preProcess: async (payload, ctx) => {
+        seenExtras = ctx.extras
+        return { kind: 'continue', payload, extra: { tag: 'x' } }
+      },
+    })
+
+    await serveTemplate(hooks, defaultInput({ extras: { requestedModel: 'url-model' } }), defaultDeps())
+
+    expect(seenExtras).toEqual({ requestedModel: 'url-model' })
+  })
+
+  test('buildTelemetryCtx receives the post-preProcess payload and exact extra before quota or attempt', async () => {
+    const payload = { value: 7 }
+    const extra = { tag: 'telemetry', incomingModel: 'alias' }
+    let telemetryInput: unknown
+    const hooks = defaultHooks({
+      preProcess: async () => ({ kind: 'continue', payload, extra }),
+      wantsStream: () => false,
+    })
+    const deps = defaultDeps({
+      buildTelemetryCtx: (input) => {
+        telemetryInput = input
+        return { tag: input.endpointTag, isStreaming: input.isStreaming }
+      },
+    })
+
+    await serveTemplate(hooks, defaultInput(), deps)
+
+    expect(telemetryInput).toMatchObject({ payload, extra })
+  })
+
   test('passes routing data through extra without changing the original auth object', async () => {
     type RichAuth = KitAuthCtx & { readonly ownerId: string; readonly copilot: boolean }
     type RoutingExtra = { readonly upstreamPin?: string }

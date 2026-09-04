@@ -56,11 +56,12 @@ export interface GeminiServeArgs {
 type GeminiPayload = Record<string, unknown> & { stream?: boolean }
 
 type GeminiServeAuth = GeminiAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
+type GeminiExtra = { readonly incomingModel: string; readonly routedModel: string; readonly upstreamPin?: string }
 
 const geminiHooks: ServeTemplateHooks<
   GeminiPayload,
   GeminiAttemptResult,
-  undefined,
+  GeminiExtra,
   GeminiServeAuth,
   TelemetryRequestContext
 > = {
@@ -80,6 +81,23 @@ const geminiHooks: ServeTemplateHooks<
     }
   },
 
+  preProcess: async (payload, ctx) => {
+    const requestedModel = ctx.extras.requestedModel
+    if (typeof requestedModel !== 'string' || requestedModel.length === 0) {
+      throw new Error('Gemini request must provide a model')
+    }
+    const resolved = resolveKeyModel(requestedModel, ctx.auth.routingPolicy)
+    return {
+      kind: 'continue',
+      payload,
+      extra: {
+        incomingModel: resolved.incomingModel,
+        routedModel: resolved.routedModel,
+        ...(resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {}),
+      },
+    }
+  },
+
   // forceStream lives in extras (URL-derived), not on the payload body.
   wantsStream: (_payload, input) => input.extras.forceStream === true,
 
@@ -87,14 +105,18 @@ const geminiHooks: ServeTemplateHooks<
   // source separately so the dump always records what the caller requested.
   extractRequestedModel: (_p, input) => input.extras.requestedModel as string | undefined,
 
-  runAttempt: (a) => geminiAttempt.generate({
-    payload: { ...a.payload },
-    model: a.extras.model as string,
-    forceStream: a.extras.forceStream === true,
-    auth: a.auth,
-    ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal },
-    telemetryCtx: a.telemetryCtx,
-  }),
+  runAttempt: (a) => {
+    const extra = a.extra
+    if (!extra) throw new Error('Gemini preprocessing must provide routing data')
+    return geminiAttempt.generate({
+      payload: { ...a.payload },
+      model: extra.routedModel,
+      forceStream: a.extras.forceStream === true,
+      auth: extra.upstreamPin ? { ...a.auth, pin: extra.upstreamPin } : a.auth,
+      ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal },
+      telemetryCtx: a.telemetryCtx,
+    })
+  },
 
   respond: (r, c) => respondGemini(r, {
     wantsStream: c.wantsStream,
@@ -105,13 +127,9 @@ const geminiHooks: ServeTemplateHooks<
 }
 
 export async function serveGemini(args: GeminiServeArgs): Promise<Response> {
-  const resolved = resolveKeyModel(args.model, args.auth.routingPolicy)
-  // This adapter owns the attempt auth shape; unlike framework preprocessing,
-  // it may add the resolved pin while retaining every authenticated field.
   const auth: GeminiServeAuth = {
     ...args.auth,
     ownerId: args.auth.userId,
-    ...(resolved.upstreamPin ? { pin: resolved.upstreamPin } : {}),
   }
   const { response } = await serveTemplate(
     geminiHooks,
@@ -120,7 +138,7 @@ export async function serveGemini(args: GeminiServeArgs): Promise<Response> {
       auth,
       obsCtx: args.obsCtx as KitObsCtx,
       signal: args.signal,
-      extras: { requestedModel: args.model, model: resolved.routedModel, forceStream: args.forceStream },
+      extras: { requestedModel: args.model, forceStream: args.forceStream },
       dump: args.dump ?? null,
     },
     kitDeps,

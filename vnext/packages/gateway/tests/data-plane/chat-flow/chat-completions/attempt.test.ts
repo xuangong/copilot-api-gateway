@@ -23,6 +23,7 @@ const okSseBody =
 const baseCtx: RequestContext = { requestStartedAt: Date.now() }
 const baseAuth = { ownerId: 'o', copilot: false }
 const baseTelemetry: TelemetryRequestContext = {
+  incomingModel: 'chat-alias',
   apiKeyId: 'k',
   userAgent: 'ua',
   requestId: 'rid',
@@ -51,6 +52,9 @@ test('case a — same-protocol leaf returns LlmEventResult on provider 200', asy
     selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'chat_completions', translator: identityTranslator, bareModel: 'gpt-x' }),
   })
   expect(res.type).toBe('events')
+  if (res.type === 'events') {
+    expect(res.modelIdentity).toMatchObject({ incomingModel: 'chat-alias', model: 'gpt-x' })
+  }
   expect(fetchMock).toHaveBeenCalledTimes(1)
 })
 

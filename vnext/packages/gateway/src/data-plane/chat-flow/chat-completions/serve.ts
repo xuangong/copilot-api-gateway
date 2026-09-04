@@ -55,7 +55,7 @@ type ChatCompletionsPayload = Record<string, unknown> & {
  * necessary — the kit needs apiKeyId for quota, attempt does not.
  */
 type ChatCompletionsServeAuth = ChatCompletionsAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
-type ChatCompletionsExtra = { readonly upstreamPin?: string }
+type ChatCompletionsExtra = { readonly incomingModel: string; readonly upstreamPin?: string }
 
 const chatCompletionsHooks: ServeTemplateHooks<
   ChatCompletionsPayload,
@@ -85,7 +85,7 @@ const chatCompletionsHooks: ServeTemplateHooks<
     return {
       kind: 'continue',
       payload: { ...payload, model: resolved.routedModel },
-      extra: resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {},
+      extra: { incomingModel: resolved.incomingModel, ...(resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {}) },
     }
   },
 

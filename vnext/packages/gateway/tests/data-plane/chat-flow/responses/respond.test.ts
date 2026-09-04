@@ -56,6 +56,7 @@ test('Responses response.failed records failed performance without usage', async
     {
       wantsStream: false,
       telemetryCtx: {
+        incomingModel: 'test-model',
         apiKeyId: 'response-failed-key' as never, userAgent: null, requestId: 'response-failed-request',
         isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'responses',
       },

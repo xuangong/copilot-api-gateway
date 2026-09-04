@@ -174,9 +174,38 @@ test('successful streaming request → one usage row + one performance row (isEr
   await bg.drain()
 
   expect(captured.usage).toHaveLength(1)
+  expect((captured.usage[0] as { incomingModel: string }).incomingModel).toBe(MODEL_ID)
   expect(captured.perf).toHaveLength(1)
   expect((captured.perf[0] as { isError: boolean }).isError).toBe(false)
   expect(captured.touched).toContain('k_test')
+})
+
+test('mapped request persists the source model as incoming identity and target as public model', async () => {
+  const { repo, captured } = stubRepo([customUpstream()])
+  initRepo(repo)
+  const bg = installTrackingBackground()
+  initRuntimeLocation('bun')
+  installFetch({})
+
+  const app = buildApp({
+    apiKeyId: 'k_test',
+    userId: 'u1',
+    routingPolicy: {
+      modelMappingsEnabled: true,
+      modelMappings: [{ source: 'client-alias', destination: MODEL_ID }],
+    },
+  } as DataPlaneAuthCtx)
+  const res = await app.fetch(new Request('http://local/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'client-alias', stream: true, messages: [{ role: 'user', content: 'hi' }] }),
+  }), env)
+  expect(res.status).toBe(200)
+  await drain(res)
+  await bg.drain()
+
+  expect(captured.usage).toHaveLength(1)
+  expect(captured.usage[0]).toMatchObject({ incomingModel: 'client-alias', model: MODEL_ID })
 })
 
 test('upstream-error (401) → zero usage rows, one performance row with isError=true', async () => {

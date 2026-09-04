@@ -85,6 +85,7 @@ test('streaming keeps the public alias while persisting the provider revision an
     wantsStream: true,
     includeUsageChunk: false,
     telemetryCtx: {
+      incomingModel: 'test-model',
       apiKeyId: 'claude-alias-key' as never, userAgent: null, requestId: 'claude-alias-request',
       isStreaming: true, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'chat-completions',
     },

@@ -40,6 +40,7 @@ const okJsonBody = JSON.stringify({
 const baseCtx: RequestContext = { requestStartedAt: Date.now() }
 const baseAuth = { ownerId: 'o', copilot: false }
 const baseTelemetry: TelemetryRequestContext = {
+  incomingModel: 'responses-alias',
   apiKeyId: 'k',
   userAgent: 'ua',
   requestId: 'rid',
@@ -68,6 +69,9 @@ test('case a — same-protocol leaf returns LlmEventResult on provider 200', asy
     selectBinding: async () => ({ kind: 'ok', binding: fakeBinding, targetEndpoint: 'responses', translator: identityTranslator, bareModel: 'gpt-4o' }),
   })
   expect(res.type).toBe('events')
+  if (res.type === 'events') {
+    expect(res.modelIdentity).toMatchObject({ incomingModel: 'responses-alias', model: 'gpt-4o' })
+  }
   expect(fetchMock).toHaveBeenCalledTimes(1)
 })
 

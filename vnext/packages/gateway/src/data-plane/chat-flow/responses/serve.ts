@@ -100,7 +100,7 @@ type ResponsesPayload = Record<string, unknown> & {
 
 type ResponsesServeAuth = ResponsesAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
 
-type ResponsesExtra = { readonly mergedInputItems: unknown[]; readonly upstreamPin?: string }
+type ResponsesExtra = { readonly mergedInputItems: unknown[]; readonly incomingModel: string; readonly upstreamPin?: string }
 
 const responsesHooks: ServeTemplateHooks<
   ResponsesPayload,
@@ -144,7 +144,7 @@ const responsesHooks: ServeTemplateHooks<
       return {
         kind: 'continue',
         payload: { ...payload, model: resolved.routedModel },
-        extra: { mergedInputItems, ...(resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {}) },
+        extra: { mergedInputItems, incomingModel: resolved.incomingModel, ...(resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {}) },
       } satisfies PreProcessResult<ResponsesPayload, ResponsesExtra>
     } catch (err) {
       // PreviousResponseNotFoundError carries only `status: 400` (no
@@ -155,7 +155,7 @@ const responsesHooks: ServeTemplateHooks<
         return {
           kind: 'short-circuit',
           response: renderPreviousResponseNotFound(err),
-          extra: { mergedInputItems: [] },
+          extra: { mergedInputItems: [], incomingModel: payload.model },
         } satisfies PreProcessResult<ResponsesPayload, ResponsesExtra>
       }
       // Any other expansion failure → re-throw with the {status, body}

@@ -26,6 +26,7 @@ import { type ProtocolFrame } from '@vibe-core/result'
 const baseCtx: RequestContext = { requestStartedAt: Date.now() }
 const baseAuth = { ownerId: 'o', copilot: false }
 const baseTelemetry: TelemetryRequestContext = {
+  incomingModel: 'gemini-alias',
   apiKeyId: 'k',
   userAgent: 'ua',
   requestId: 'rid',
@@ -90,6 +91,7 @@ test('happy path — bridges gemini → messages target and yields LlmEventResul
   expect(res.type).toBe('events')
   // Drain to ensure the lazy pipeline runs without throwing.
   if (res.type === 'events') {
+    expect(res.modelIdentity.incomingModel).toBe('gemini-alias')
     for await (const _ of res.events) { /* drain */ }
   }
   expect(hubAttemptOverride).toHaveBeenCalledTimes(1)

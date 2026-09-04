@@ -7,7 +7,7 @@ import { respondResponses } from '../responses/respond.ts'
 import { setupTestPlatform } from '../../../../tests/_setup-platform.ts'
 import type { PairTranslator } from '../../dispatch/translator-registry.ts'
 
-const fakeTelemetryCtx = {} as never
+const fakeTelemetryCtx = { incomingModel: 'outer-alias' } as never
 
 const fakeIdentity = { incomingModel: 'outer-alias', model: 'm', upstream: 'u', modelKey: 'k', cost: null }
 
@@ -68,19 +68,19 @@ test('translated authoritative metadata, resolver, and performance target retain
   expect(result.modelIdentity.translatorPair).toEqual(pair)
   expect(result.modelIdentity.incomingModel).toBe('outer-alias')
   expect(result.resolveModelIdentity?.('corrected')).toEqual({
-    ...fakeIdentity, modelKey: 'corrected', translatorPair: pair,
+    ...fakeIdentity, incomingModel: 'outer-alias', modelKey: 'corrected', translatorPair: pair,
   })
   const metadata = await result.finalMetadata
   expect(metadata).toEqual({
-    modelIdentity: { ...authoritative, translatorPair: pair },
+    modelIdentity: { ...authoritative, incomingModel: 'outer-alias', translatorPair: pair },
     performance,
   })
-  expect(metadata?.modelIdentity.incomingModel).toBe('inner-alias')
+  expect(metadata?.modelIdentity.incomingModel).toBe('outer-alias')
   expect(metadata?.performance).toBe(performance)
   const persisted = await eventResultMetadata(result)
   expect(persisted.modelIdentity.translatorPair).toEqual(pair)
   expect(finalModelIdentity(result.modelIdentity, 'other', result.resolveModelIdentity)).toEqual({
-    ...fakeIdentity, modelKey: 'other', translatorPair: pair,
+    ...fakeIdentity, incomingModel: 'outer-alias', modelKey: 'other', translatorPair: pair,
   })
   expect(performanceTargetFromTranslatorPair(persisted.modelIdentity)).toBe('responses')
 })
@@ -115,6 +115,7 @@ test('translated responder persists the authoritative final metadata hub target'
   const response = await respondResponses(result as never, {
     wantsStream: false,
     telemetryCtx: {
+      incomingModel: 'translated-source',
       apiKeyId: 'translated-key' as never, userAgent: null, requestId: 'translated-request',
       isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'messages',
     },
@@ -165,6 +166,7 @@ test('translated upstream errors preserve body and status while recording the hu
   const response = await respondResponses(result as never, {
     wantsStream: false,
     telemetryCtx: {
+      incomingModel: 'translated-source',
       apiKeyId: 'translated-error-key' as never, userAgent: null, requestId: 'translated-error',
       isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'messages',
     },
@@ -196,6 +198,7 @@ test('gemini translated upstream errors persist the responses hub instead of its
   const response = await respondResponses(result as never, {
     wantsStream: false,
     telemetryCtx: {
+      incomingModel: 'translated-source',
       apiKeyId: 'gemini-translated-error' as never, userAgent: null, requestId: 'gemini-translated-error',
       isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
     },

@@ -686,6 +686,7 @@ test('respondResponses records a shimmed pre-lifecycle raw error as failed witho
   const response = await respondResponses(result, {
     wantsStream: true,
     telemetryCtx: {
+      incomingModel: 'test-model',
       apiKeyId: 'shim-raw-error-key' as never,
       userAgent: null,
       requestId: 'shim-raw-error-request',

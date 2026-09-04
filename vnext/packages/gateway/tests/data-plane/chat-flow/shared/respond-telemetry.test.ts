@@ -35,6 +35,7 @@ const perf = (): PerformanceTelemetryContext => ({
 })
 
 const ctx: TelemetryRequestContext = {
+  incomingModel: 'gpt-4',
   apiKeyId: 'k1',
   userAgent: null,
   requestId: 'r1',
@@ -45,7 +46,7 @@ const ctx: TelemetryRequestContext = {
 
 beforeEach(() => setupTestPlatform())
 
-test('eventResultMetadata prefers finalMetadata when present', async () => {
+test('eventResultMetadata retains request incoming model when finalMetadata corrects provider identity', async () => {
   const replaced: LlmEventResult<unknown> = {
     type: 'events',
     events: (async function* () {})(),
@@ -54,7 +55,8 @@ test('eventResultMetadata prefers finalMetadata when present', async () => {
     // Provenance flag suppresses the drift warn for legitimate replacement.
     __interceptorReplaced: true,
   } as LlmEventResult<unknown> & { __interceptorReplaced: true }
-  const md = await eventResultMetadata(replaced)
+  const md = await eventResultMetadata(replaced, ctx)
+  expect(md.modelIdentity.incomingModel).toBe('gpt-4')
   expect(md.modelIdentity.modelKey).toBe('gpt-4-turbo')
 })
 

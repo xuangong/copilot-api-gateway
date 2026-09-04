@@ -132,16 +132,18 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
   const translatorPair = { source: args.sourceProtocol, hub: args.hubProtocol } as const
   const sourceModelIdentity = {
     ...innerEvents.modelIdentity,
+    incomingModel: args.inheritedTelemetryCtx.incomingModel,
     translatorPair,
   }
   const finalMetadata = innerEvents.finalMetadata?.then((metadata) => ({
     ...metadata,
-    modelIdentity: { ...metadata.modelIdentity, translatorPair },
+    modelIdentity: { ...metadata.modelIdentity, incomingModel: args.inheritedTelemetryCtx.incomingModel, translatorPair },
   }))
   const innerResolver = innerEvents.resolveModelIdentity
   const resolveModelIdentity = innerResolver
     ? (modelKey: string) => ({
         ...innerResolver(modelKey),
+        incomingModel: args.inheritedTelemetryCtx.incomingModel,
         translatorPair,
       })
     : undefined

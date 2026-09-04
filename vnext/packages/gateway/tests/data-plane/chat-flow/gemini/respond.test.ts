@@ -280,6 +280,7 @@ test('Gemini streaming translator exception marks the hub request failed once', 
     {
       wantsStream: true,
       telemetryCtx: {
+        incomingModel: 'test-model',
         apiKeyId: 'gemini-stream-translator-failed-key' as never, userAgent: null, requestId: 'gemini-stream-translator-failed-request',
         isStreaming: true, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
       },
@@ -335,6 +336,7 @@ test('Gemini streaming Responses failure records hub failure before translation'
     {
       wantsStream: true,
       telemetryCtx: {
+        incomingModel: 'test-model',
         apiKeyId: 'gemini-stream-responses-failed-key' as never, userAgent: null, requestId: 'gemini-stream-responses-failed-request',
         isStreaming: true, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
       },
@@ -376,6 +378,7 @@ test('Gemini streaming Messages error records hub failure before translation', a
     {
       wantsStream: true,
       telemetryCtx: {
+        incomingModel: 'test-model',
         apiKeyId: 'gemini-stream-messages-failed-key' as never, userAgent: null, requestId: 'gemini-stream-messages-failed-request',
         isStreaming: true, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
       },
@@ -425,6 +428,7 @@ test('Gemini streaming hub success persists usage exactly once from the provider
     {
       wantsStream: true,
       telemetryCtx: {
+        incomingModel: 'test-model',
         apiKeyId: 'gemini-stream-success-key' as never, userAgent: null, requestId: 'gemini-stream-success-request',
         isStreaming: true, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
       },
@@ -476,6 +480,7 @@ test('Gemini nonstream responses hub persists hub usage with public model and pr
   const response = await respondGemini(result, {
     wantsStream: false,
     telemetryCtx: {
+      incomingModel: 'test-model',
       apiKeyId: 'gemini-responses-key' as never, userAgent: null, requestId: 'gemini-responses-request',
       isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
     },
@@ -522,6 +527,7 @@ test('Gemini nonstream Responses failure persists one failed performance row wit
     {
       wantsStream: false,
       telemetryCtx: {
+        incomingModel: 'test-model',
         apiKeyId: 'gemini-responses-failed-key' as never, userAgent: null, requestId: 'gemini-responses-failed-request',
         isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
       },
@@ -563,6 +569,7 @@ test('Gemini nonstream Messages error persists one failed performance row withou
     {
       wantsStream: false,
       telemetryCtx: {
+        incomingModel: 'test-model',
         apiKeyId: 'gemini-messages-failed-key' as never, userAgent: null, requestId: 'gemini-messages-failed-request',
         isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
       },
@@ -621,6 +628,7 @@ test('Gemini nonstream messages hub persists message usage and provider key', as
   const response = await respondGemini(result, {
     wantsStream: false,
     telemetryCtx: {
+      incomingModel: 'test-model',
       apiKeyId: 'gemini-messages-key' as never, userAgent: null, requestId: 'gemini-messages-request',
       isStreaming: false, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'gemini',
     },

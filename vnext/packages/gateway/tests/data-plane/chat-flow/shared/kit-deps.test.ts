@@ -22,6 +22,8 @@ test('buildTelemetryCtx copies apiKeyId/userAgent/requestId from obsCtx, threads
     isStreaming: true,
     requestStartedAt: startedAt,
     endpointTag: 'chat_completions',
+    payload: { model: 'routed-model' },
+    extra: { incomingModel: 'incoming-alias' },
   })
   expect(ctx.apiKeyId).toBe('k1')
   expect(ctx.userAgent).toBe('ua')
@@ -30,6 +32,19 @@ test('buildTelemetryCtx copies apiKeyId/userAgent/requestId from obsCtx, threads
   expect(ctx.requestStartedAt).toBe(startedAt)
   expect(ctx.runtimeLocation).toBeDefined()
   expect(typeof ctx.runtimeLocation).toBe('string')
+  expect(ctx.incomingModel).toBe('incoming-alias')
+})
+
+test('buildTelemetryCtx rejects missing incoming model identity', () => {
+  expect(() => kitDeps.buildTelemetryCtx({
+    auth: { apiKeyId: 'auth-key' } as Auth,
+    obsCtx: defaultObs(),
+    isStreaming: false,
+    requestStartedAt: 1,
+    endpointTag: 't',
+    payload: {},
+    extra: {},
+  })).toThrow('Chat preprocessing must provide incoming model identity')
 })
 
 test('buildTelemetryCtx falls back to auth.apiKeyId when obsCtx.apiKeyId is missing', () => {
@@ -39,6 +54,8 @@ test('buildTelemetryCtx falls back to auth.apiKeyId when obsCtx.apiKeyId is miss
     isStreaming: false,
     requestStartedAt: 1,
     endpointTag: 't',
+    payload: {},
+    extra: { incomingModel: 'fallback-test-model' },
   })
   expect(ctx.apiKeyId).toBe('auth-key')
 })
@@ -50,6 +67,8 @@ test('buildTelemetryCtx falls back to <unknown> when neither obsCtx.apiKeyId nor
     isStreaming: false,
     requestStartedAt: 1,
     endpointTag: 't',
+    payload: {},
+    extra: { incomingModel: 'fallback-test-model' },
   })
   expect(ctx.apiKeyId).toBe('<unknown>')
 })
@@ -61,6 +80,8 @@ test('buildTelemetryCtx generates a uuid for requestId when obsCtx.requestId is 
     isStreaming: false,
     requestStartedAt: 1,
     endpointTag: 't',
+    payload: {},
+    extra: { incomingModel: 'fallback-test-model' },
   })
   expect(ctx.requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
 })
@@ -72,6 +93,8 @@ test('buildTelemetryCtx defaults userAgent to null when obsCtx.userAgent is miss
     isStreaming: false,
     requestStartedAt: 1,
     endpointTag: 't',
+    payload: {},
+    extra: { incomingModel: 'fallback-test-model' },
   })
   expect(ctx.userAgent).toBeNull()
 })

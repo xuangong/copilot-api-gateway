@@ -27,6 +27,17 @@ import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 import type { PerformanceSourceApi } from '../../../repo/types.ts'
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
+function incomingModelFromExtra(extra: unknown): string {
+  if (typeof extra !== 'object' || extra === null) {
+    throw new Error('Chat preprocessing must provide incoming model identity')
+  }
+  const incomingModel = (extra as Record<string, unknown>).incomingModel
+  if (typeof incomingModel !== 'string' || incomingModel.length === 0) {
+    throw new Error('Chat preprocessing must provide incoming model identity')
+  }
+  return incomingModel
+}
+
 // Kit contract is protocol-agnostic and types apiKeyId as `string | null`.
 // The gateway passes richer `<Endpoint>AttemptAuth & KitAuthCtx` shapes whose
 // attempt-side already declares `apiKeyId?: ApiKeyId`. That intersection
@@ -59,7 +70,8 @@ function endpointTagToSourceApi(tag: string): PerformanceSourceApi {
 export const kitDeps: ServeTemplateDeps<AuthWithApiKey, TelemetryRequestContext> = {
   runQuotaGate: (apiKeyId) => runQuotaGate(apiKeyId as ApiKeyId | null | undefined),
   jsonErrorWrap,
-  buildTelemetryCtx: ({ auth, obsCtx, isStreaming, requestStartedAt, endpointTag }) => ({
+  buildTelemetryCtx: ({ auth, obsCtx, extra, isStreaming, requestStartedAt, endpointTag }) => ({
+    incomingModel: incomingModelFromExtra(extra),
     apiKeyId: (obsCtx.apiKeyId ?? auth.apiKeyId ?? '<unknown>') as ApiKeyId,
     userAgent: (obsCtx.userAgent as string | null | undefined) ?? null,
     requestId: (obsCtx.requestId as string | undefined) ?? crypto.randomUUID(),

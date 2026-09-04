@@ -212,6 +212,7 @@ test('gemini: successful streaming request → one usage row + one performance r
   await bg.drain()
 
   expect(captured.usage).toHaveLength(1)
+  expect((captured.usage[0] as { incomingModel: string }).incomingModel).toBe(MODEL_ID)
   expect(captured.perf).toHaveLength(1)
   expect((captured.perf[0] as { isError: boolean }).isError).toBe(false)
   expect(captured.touched).toContain('k_test')
@@ -222,6 +223,34 @@ test('gemini: successful streaming request → one usage row + one performance r
   const tokens = (captured.usage[0] as { tokens: { input: number; output: number } }).tokens
   expect(tokens.input).toBe(3)
   expect(tokens.output).toBe(5)
+})
+
+test('gemini: pinned mapped request persists canonical source identity and target public model', async () => {
+  const { repo, captured } = stubRepo([customUpstream()])
+  initRepo(repo)
+  const bg = installTrackingBackground()
+  initRuntimeLocation('bun')
+  installFetch({})
+
+  const app = buildApp({
+    apiKeyId: 'k_test',
+    userId: 'u1',
+    routingPolicy: {
+      modelMappingsEnabled: true,
+      modelMappings: [{ source: 'my-llm-claude', destination: MODEL_ID }],
+    },
+  } as DataPlaneAuthCtx)
+  const res = await app.fetch(new Request('http://local/v1beta/models/up_custom_gemini_tel/my-llm-claude:streamGenerateContent', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
+  }), env)
+  expect(res.status).toBe(200)
+  await drain(res)
+  await bg.drain()
+
+  expect(captured.usage).toHaveLength(1)
+  expect(captured.usage[0]).toMatchObject({ incomingModel: 'my-llm-claude', model: MODEL_ID })
 })
 
 test('gemini: upstream-error (401) → zero usage rows, one performance row with isError=true', async () => {

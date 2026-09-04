@@ -421,7 +421,7 @@ export const messagesAttempt = {
         abortSignal: args.ctx.downstreamAbortSignal,
         protocol: 'messages',
       })
-      const identityInput = { incomingModel: publicModel, publicModel }
+      const identityInput = { incomingModel: args.telemetryCtx.incomingModel, publicModel }
       const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, identityInput)
       const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
       return llmEventResult(

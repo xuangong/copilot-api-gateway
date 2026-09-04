@@ -59,6 +59,8 @@ export interface ServeTemplateInput<TAuth extends KitAuthCtx = KitAuthCtx> {
 
 export interface PreProcessCtx<TAuth extends KitAuthCtx = KitAuthCtx> {
   readonly auth: TAuth
+  /** Endpoint-owned input side data. Opaque to the kit, such as URL-derived model names. */
+  readonly extras: Record<string, unknown>
 }
 
 /** preProcess returns one of two shapes: continue with a (possibly mutated)
@@ -133,16 +135,25 @@ export interface ServeTemplateHooks<
   ): Promise<Response>
 }
 
-export interface ServeTemplateDeps<TAuth extends KitAuthCtx, TTelemetryCtx> {
+export interface BuildTelemetryCtxArgs<TPayload = unknown, TExtra = unknown, TAuth extends KitAuthCtx = KitAuthCtx> {
+  readonly auth: TAuth
+  readonly obsCtx: KitObsCtx
+  readonly payload: TPayload
+  readonly extra: TExtra | undefined
+  readonly isStreaming: boolean
+  readonly requestStartedAt: number
+  readonly endpointTag: string
+}
+
+export interface ServeTemplateDeps<
+  TAuth extends KitAuthCtx,
+  TTelemetryCtx,
+  TPayload = unknown,
+  TExtra = unknown,
+> {
   readonly runQuotaGate: (apiKeyId: string | null | undefined) => Promise<Response | null>
   readonly jsonErrorWrap: (status: number, body: unknown) => Response
-  readonly buildTelemetryCtx: (input: {
-    auth: TAuth
-    obsCtx: KitObsCtx
-    isStreaming: boolean
-    requestStartedAt: number
-    endpointTag: string
-  }) => TTelemetryCtx
+  readonly buildTelemetryCtx: (input: BuildTelemetryCtxArgs<TPayload, TExtra, TAuth>) => TTelemetryCtx
 }
 
 export interface ServeTemplateResult<TExtra> {
@@ -159,7 +170,7 @@ export async function serveTemplate<
 >(
   hooks: ServeTemplateHooks<TPayload, TAttemptResult, TExtra, TAuth, TTelemetryCtx>,
   input: ServeTemplateInput<TAuth>,
-  deps: ServeTemplateDeps<TAuth, TTelemetryCtx>,
+  deps: ServeTemplateDeps<TAuth, TTelemetryCtx, TPayload, TExtra>,
 ): Promise<ServeTemplateResult<TExtra>> {
   const requestStartedAt = Date.now()
 
@@ -188,7 +199,7 @@ export async function serveTemplate<
   if (hooks.preProcess) {
     let pre: PreProcessResult<TPayload, TExtra>
     try {
-      pre = await hooks.preProcess(payload, { auth: input.auth })
+      pre = await hooks.preProcess(payload, { auth: input.auth, extras: input.extras })
     } catch (err) {
       const e = err as Error & { status?: number; body?: unknown }
       const errResp = deps.jsonErrorWrap(e.status ?? 400, e.body ?? { error: { message: e.message } })
@@ -211,6 +222,8 @@ export async function serveTemplate<
   const telemetryCtx = deps.buildTelemetryCtx({
     auth: input.auth,
     obsCtx: input.obsCtx,
+    payload,
+    extra,
     isStreaming: wantsStream,
     requestStartedAt,
     endpointTag: hooks.endpointTag,

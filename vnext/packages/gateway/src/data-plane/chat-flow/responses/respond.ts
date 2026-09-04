@@ -139,7 +139,7 @@ async function persistFromEventResult<T>(
   telemetryCtx: TelemetryRequestContext | undefined,
   dump?: DumpAccumulator | null,
 ): Promise<void> {
-  const md = await eventResultMetadata(result)
+  const md = await eventResultMetadata(result, telemetryCtx)
   const finalIdentity = result.finalMetadata
     ? md.modelIdentity
     : finalModelIdentity(md.modelIdentity, state.modelKey, result.resolveModelIdentity)

@@ -9,6 +9,8 @@ import type { PerformanceSourceApi } from '../../../repo/types.ts'
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 export interface TelemetryRequestContext {
+  /** Canonical requested model before per-key mapping; immutable across attempts. */
+  readonly incomingModel: string
   readonly apiKeyId: ApiKeyId
   /** Matches legacy DispatchObsCtx — null when the inbound `User-Agent` header is absent. */
   readonly userAgent: string | null

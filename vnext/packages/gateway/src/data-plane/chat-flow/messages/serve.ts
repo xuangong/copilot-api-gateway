@@ -54,7 +54,7 @@ export interface MessagesServeArgs {
 type MessagesPayload = Record<string, unknown> & { model: string; stream?: boolean }
 
 type MessagesServeAuth = MessagesAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
-type MessagesExtra = { readonly upstreamPin?: string }
+type MessagesExtra = { readonly incomingModel: string; readonly upstreamPin?: string }
 
 const messagesHooks: ServeTemplateHooks<
   MessagesPayload,
@@ -87,7 +87,7 @@ const messagesHooks: ServeTemplateHooks<
     return {
       kind: 'continue',
       payload: { ...payload, model: resolved.routedModel },
-      extra: resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {},
+      extra: { incomingModel: resolved.incomingModel, ...(resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {}) },
     }
   },
 

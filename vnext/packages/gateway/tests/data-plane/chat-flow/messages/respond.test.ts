@@ -47,6 +47,7 @@ test('Messages native error event is forwarded and records a failed request', as
     {
       wantsStream: true,
       telemetryCtx: {
+        incomingModel: 'test-model',
         apiKeyId: 'messages-native-error-key' as never, userAgent: null, requestId: 'messages-native-error-request',
         isStreaming: true, runtimeLocation: 'bun', requestStartedAt: Date.now(), sourceApi: 'messages',
       },

@@ -66,20 +66,25 @@ const __replacedFlag = '__interceptorReplaced'
  */
 export async function eventResultMetadata<T>(
   result: LlmEventResult<T>,
+  telemetryCtx?: TelemetryRequestContext,
 ): Promise<EventResultMetadata> {
+  let metadata: EventResultMetadata
   if (result.finalMetadata) {
-    const md = await result.finalMetadata
+    metadata = await result.finalMetadata
     if (!(__replacedFlag in (result as object))) {
       console.warn(
         'eventResultMetadata: finalMetadata set without __interceptorReplaced provenance flag',
       )
     }
-    return md
+  } else {
+    metadata = {
+      modelIdentity: result.modelIdentity,
+      performance: result.performance,
+    }
   }
-  return {
-    modelIdentity: result.modelIdentity,
-    performance: result.performance,
-  }
+  return telemetryCtx
+    ? { ...metadata, modelIdentity: { ...metadata.modelIdentity, incomingModel: telemetryCtx.incomingModel } }
+    : metadata
 }
 
 /**
