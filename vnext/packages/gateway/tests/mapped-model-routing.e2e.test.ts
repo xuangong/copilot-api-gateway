@@ -295,6 +295,40 @@ test('Gemini count tokens sends the mapped destination upstream', async () => {
   expect(upstreamModel).toBe(destination)
 })
 
+test('JSON image edits replace their model with the mapped destination', async () => {
+  initRepo(stubRepo([customUpstream('up_A', ['images_edits'])]))
+  initRuntimeLocation('bun')
+  let upstreamForm: FormData | undefined
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input as string, init)
+    const url = new URL(request.url)
+    if (url.pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({ object: 'list', data: [{ id: destination, object: 'model', capabilities: { type: 'image' } }] }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    upstreamForm = await request.formData()
+    return new Response(JSON.stringify({ data: [] }), { headers: { 'content-type': 'application/json' } })
+  }) as typeof fetch
+  const app = buildApp({ routingPolicy: mappedPolicy })
+  const imageBytes = [7, 8, 9]
+  const response = await app.fetch(new Request('http://local/v1/images/edits', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'source',
+      prompt: 'edit this',
+      images: [{ image_url: `data:image/png;base64,${btoa(String.fromCharCode(...imageBytes))}` }],
+    }),
+  }), env)
+
+  expect(response.status).toBe(200)
+  expect(upstreamForm?.getAll('model')).toEqual([destination])
+  const image = upstreamForm?.get('image') as File
+  expect(image.name).toBe('images-0.png')
+  expect(Array.from(new Uint8Array(await image.arrayBuffer()))).toEqual(imageBytes)
+})
+
 test('image edits replace every source model field with one mapped destination', async () => {
   initRepo(stubRepo([customUpstream('up_A', ['images_edits'])]))
   initRuntimeLocation('bun')
@@ -329,6 +363,32 @@ test('image edits replace every source model field with one mapped destination',
   expect([image.name, mask.name]).toEqual(['image.png', 'mask.png'])
   expect(Array.from(new Uint8Array(await image.arrayBuffer()))).toEqual([1, 2, 3])
   expect(Array.from(new Uint8Array(await mask.arrayBuffer()))).toEqual([4, 5])
+})
+
+test('image edits preserve their source model when mappings are disabled', async () => {
+  initRepo(stubRepo([customUpstream('up_A', ['images_edits'])]))
+  initRuntimeLocation('bun')
+  let upstreamForm: FormData | undefined
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input as string, init)
+    const url = new URL(request.url)
+    if (url.pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({ object: 'list', data: [{ id: 'source', object: 'model', capabilities: { type: 'image' } }] }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    upstreamForm = await request.formData()
+    return new Response(JSON.stringify({ data: [] }), { headers: { 'content-type': 'application/json' } })
+  }) as typeof fetch
+  const form = new FormData()
+  form.append('model', 'source')
+  form.append('image', new Blob(['x'], { type: 'image/png' }), 'image.png')
+  const app = buildApp({ routingPolicy: { modelMappingsEnabled: false, modelMappings: [{ source: 'source', destination }] } })
+
+  const response = await app.fetch(new Request('http://local/v1/images/edits', { method: 'POST', body: form }), env)
+
+  expect(response.status).toBe(200)
+  expect(upstreamForm?.getAll('model')).toEqual(['source'])
 })
 
 test('image generation sends the mapped destination upstream', async () => {
