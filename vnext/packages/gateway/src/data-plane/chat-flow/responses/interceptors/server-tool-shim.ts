@@ -1140,7 +1140,7 @@ export const withResponsesServerToolShim = (
   const shimFinalMetadata = new Promise<EventResultMetadata>((resolve) => {
     resolveFinalMetadata = resolve
   })
-  const incomingModel = firstResult.modelIdentity.incomingModel
+  const incomingModel = gatewayCtx.incomingModel ?? firstResult.modelIdentity.incomingModel
   const metadata: LatestUpstreamMetadata = {
     modelIdentity: retainIncomingModel(firstResult.modelIdentity, incomingModel),
     performance: firstResult.performance,
@@ -1149,8 +1149,6 @@ export const withResponsesServerToolShim = (
       return retainIncomingModel(resolved, incomingModel)
     },
   }
-
-  requestCtx.incomingModel = incomingModel
 
   return {
     ...firstResult,

@@ -125,7 +125,7 @@ export interface ServerToolRequestCtx {
   readonly store: import('./private-payload-store').PrivatePayloadStore
   readonly apiKeyId: ApiKeyId
   /** Immutable inbound model alias for server-tool subcall usage attribution. */
-  incomingModel?: string
+  readonly incomingModel?: string
   readonly abortSignal?: AbortSignal
   /** Caller-pinned upstream id set for candidate enumeration; null / omitted
    *  means "any upstream". Consumed by the image-generation plugin. */

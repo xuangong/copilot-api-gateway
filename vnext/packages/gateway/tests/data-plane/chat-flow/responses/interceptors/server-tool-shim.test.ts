@@ -33,6 +33,7 @@ import type {
   ServerToolHostedDispatch,
   ServerToolLoopState,
   ServerToolRegistration,
+  ServerToolRequestCtx,
   ServerToolResultSlot,
 } from '../../../../../src/data-plane/orchestrator/server-tools/types'
 import type { ResponsesResult, ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
@@ -675,7 +676,7 @@ const terminalOrchestratorTurn = (): ResponsesStreamEvent[] => {
 const usageRowsFor = async (repo: ReturnType<typeof setupTestPlatform>['repo']) =>
   await repo.usage.query({ keyId: 'image-key' as never, start: '2000-01-01T00', end: '2100-01-01T00' })
 
-test('withResponsesServerToolShim records outer incoming identity for a non-streaming image tool subcall', async () => {
+test('withResponsesServerToolShim keeps gateway incoming identity immutable across image tool turns', async () => {
   const { repo } = setupTestPlatform()
   await repo.upstreams.save(imageUpstream())
   const originalFetch = globalThis.fetch
@@ -685,14 +686,34 @@ test('withResponsesServerToolShim records outer incoming identity for a non-stre
   })
   try {
     let turns = 0
-    const result = await withResponsesServerToolShim([imageGenerationServerTool], createInMemoryPrivatePayloadStore())(
+    const freezeRequestCtx: ServerToolRegistration<Invocation, ServerToolRequestCtx> = (_invocation, requestCtx) => {
+      Object.freeze(requestCtx)
+      return { type: 'inactive' }
+    }
+    const result = await withResponsesServerToolShim(
+      [freezeRequestCtx, imageGenerationServerTool],
+      createInMemoryPrivatePayloadStore(),
+    )(
       imageToolInvocation(),
-      { ...baseCtx, apiKeyId: 'image-key', incomingModel: 'outer-alias' },
+      Object.freeze({ ...baseCtx, apiKeyId: 'image-key', incomingModel: 'outer-alias' }),
       async () => {
         turns += 1
-        return llmEventResult(framesOf(turns === 1 ? imageOrchestratorTurn() : terminalOrchestratorTurn()), {
-          incomingModel: 'outer-alias', model: 'gpt-5.6-sol', upstream: 'orchestrator', modelKey: 'gpt-5.6-sol', cost: null,
-        })
+        const identity = {
+          incomingModel: 'wrong-inner-alias',
+          model: 'gpt-5.6-sol',
+          upstream: `orchestrator-${turns}`,
+          modelKey: 'gpt-5.6-sol',
+          cost: null,
+        }
+        return llmEventResult(
+          framesOf(turns === 1 ? imageOrchestratorTurn() : terminalOrchestratorTurn()),
+          identity,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          () => identity,
+        )
       },
     )
     if (result.type !== 'events') throw new Error('expected events')
@@ -704,6 +725,9 @@ test('withResponsesServerToolShim records outer incoming identity for a non-stre
       incomingModel: 'outer-alias', model: 'gpt-image-backend', modelKey: 'gpt-image-backend', upstream: 'image-upstream',
       cost: { output_image: 42 }, tokens: { input: 2, output_image: 5 },
     })
+    const metadata = await result.finalMetadata
+    expect(metadata?.modelIdentity).toMatchObject({ incomingModel: 'outer-alias', upstream: 'orchestrator-2' })
+    expect(result.resolveModelIdentity?.('gpt-5.6-sol')).toMatchObject({ incomingModel: 'outer-alias' })
   } finally {
     globalThis.fetch = originalFetch
   }
