@@ -22,7 +22,7 @@ import {
   startTimer,
 } from '../../../data-plane/observability/latency-tracker.ts'
 import { detectClient } from '../../../data-plane/observability/client-detect.ts'
-import { extractFromJson, pickUsageModelId } from '../../../data-plane/observability/usage-extractor.ts'
+import { extractFromJson } from '../../../data-plane/observability/usage-extractor.ts'
 import { getRepo } from '../../../repo/index.ts'
 import type { TokenUsage, UsageRecord } from '../../../repo/types.ts'
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
@@ -42,9 +42,8 @@ const hasAnyTokens = (usage: TokenUsage): boolean => {
  * Part 4). Embeddings is the last consumer of the legacy non-streaming usage
  * writer — Spec 3 migrated chat-flow off this helper into
  * `chat-flow/shared/respond-telemetry.ts`. We keep the same wire shape here
- * (model coalescing via `pickUsageModelId`, hour-bucket key, paired
- * `apiKeys.touchLastUsed`) so embeddings rows look identical to the legacy
- * pipeline.
+ * (hour-bucket key and paired `apiKeys.touchLastUsed`) while preserving the
+ * route-resolved model identity rather than trusting an upstream model echo.
  */
 async function trackNonStreamingUsage(
   json: unknown,
@@ -60,7 +59,10 @@ async function trackNonStreamingUsage(
   if (!hasAnyTokens(info.tokens)) return
   const rec: UsageRecord = {
     keyId,
-    model: pickUsageModelId(info.model, model),
+    // The route already resolved the key policy, so the public identity and
+    // provider key are authoritative even when an upstream echoes the alias
+    // the client used before routing.
+    model,
     modelKey,
     upstream,
     client,

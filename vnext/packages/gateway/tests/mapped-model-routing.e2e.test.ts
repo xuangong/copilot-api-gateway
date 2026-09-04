@@ -269,7 +269,7 @@ test('messages count tokens sends the mapped destination upstream', async () => 
 })
 
 test('Gemini count tokens sends the mapped destination upstream', async () => {
-  initRepo(stubRepo([customUpstream('up_A', ['messages'])]))
+  initRepo(stubRepo([customUpstream('up_A', ['messages', 'messages_count_tokens'])]))
   initRuntimeLocation('bun')
   let upstreamModel: unknown
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {

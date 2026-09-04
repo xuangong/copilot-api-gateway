@@ -142,6 +142,31 @@ test('embeddings throw: rethrows after recording error latency', async () => {
   expect(lat.length).toBe(0)
 })
 
+test('embeddings usage retains the routed model when upstream echoes a source alias', async () => {
+  await seedKey('e-mapped')
+  const response = new Response(JSON.stringify({
+    object: 'list', data: [], model: 'source-alias', usage: { prompt_tokens: 5, total_tokens: 5 },
+  }), { headers: { 'content-type': 'application/json' } })
+
+  await runEmbeddingsAttempt({
+    apiKeyId: 'e-mapped',
+    model: 'destination',
+    modelKey: 'destination',
+    pricing: { input: 0.02 },
+    upstream: 'custom:one',
+    userAgent: undefined,
+    requestId: undefined,
+    dump: null,
+    call: () => Promise.resolve(response),
+  })
+
+  const usage = await repo.usage.query({ keyId: 'e-mapped', start: dayStart(), end: dayEnd() })
+  expect(usage).toHaveLength(1)
+  expect(usage[0]?.model).toBe('destination')
+  expect(usage[0]?.modelKey).toBe('destination')
+  expect(usage[0]?.cost).toEqual({ input: 0.02 })
+})
+
 test('embeddings persists pricing snapshot when caller supplies it', async () => {
   await seedKey('e-price')
 

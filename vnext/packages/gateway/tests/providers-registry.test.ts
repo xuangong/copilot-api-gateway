@@ -296,6 +296,28 @@ test('listProviderBindings: copilot model endpoints follow copilot heuristic', a
   expect(byId.get('text-embedding-3')).toEqual({ embeddings: {} })
 })
 
+test('listProviderBindings: a custom messages endpoint does not imply count tokens', async () => {
+  initRepo(stubRepo([customUpstream({ config: {
+    name: 'my-llm', baseUrl: 'https://api.example.com/v1', apiKey: 'sk-secret', endpoints: ['messages'],
+  } })]))
+  stubFetch([stubModel('model-a')])
+
+  const [binding] = await listProviderBindings({})
+
+  expect(binding?.model.endpoints).toEqual({ messages: {} })
+})
+
+test('listProviderBindings: custom model advertises explicitly configured count tokens', async () => {
+  initRepo(stubRepo([customUpstream({ config: {
+    name: 'my-llm', baseUrl: 'https://api.example.com/v1', apiKey: 'sk-secret', endpoints: ['messages', 'messages_count_tokens'],
+  } })]))
+  stubFetch([stubModel('model-a')])
+
+  const [binding] = await listProviderBindings({})
+
+  expect(binding?.model.endpoints).toEqual({ messages: {}, messages_count_tokens: {} })
+})
+
 test('listProviderBindings: custom model endpoints derive from supportedEndpoints (no copilot heuristic)', async () => {
   initRepo(stubRepo([customUpstream()]))
   // Even a model named "claude-3.7-sonnet" on a custom upstream must NOT
