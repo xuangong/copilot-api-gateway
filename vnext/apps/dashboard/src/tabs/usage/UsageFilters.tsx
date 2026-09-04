@@ -2,9 +2,8 @@ import type { UsageDimensions, UsageFilters } from "../../state/usage"
 import { useT } from "../../state/i18n"
 import { Select } from "../../components/Select"
 import {
-  ALL_INCOMING_MODEL_OPTION,
   decodeIncomingModelOption,
-  incomingModelOptionValue,
+  incomingModelFilterValue,
   incomingModelSelectOptions,
 } from "../../state/usage-model-dimensions"
 
@@ -70,7 +69,7 @@ export function UsageFiltersBar({ isAdmin, filters, dimensions, onChange, onClea
       </FilterField>
       <FilterField label={t("dash.incomingModel")}>
         <Select
-          value={filters.incomingModel === null ? ALL_INCOMING_MODEL_OPTION : incomingModelOptionValue(filters.incomingModel)}
+          value={incomingModelFilterValue(filters.incomingModel)}
           ariaLabel={t("dash.incomingModel")}
           onChange={(value) => onChange({ incomingModel: decodeIncomingModelOption(value) })}
           options={incomingModelSelectOptions(dimensions.incomingModels, {

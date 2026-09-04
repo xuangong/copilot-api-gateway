@@ -6,14 +6,20 @@ export const LEGACY_INCOMING_MODEL_OPTION = "legacy"
 const INCOMING_MODEL_VALUE_PREFIX = "model:"
 
 export function incomingModelOptionValue(model: string): string {
-  return `${INCOMING_MODEL_VALUE_PREFIX}${encodeURIComponent(model)}`
+  return `${INCOMING_MODEL_VALUE_PREFIX}${model}`
+}
+
+export function incomingModelFilterValue(model: string | null): string {
+  if (model === null) return ALL_INCOMING_MODEL_OPTION
+  if (model === "") return LEGACY_INCOMING_MODEL_OPTION
+  return incomingModelOptionValue(model)
 }
 
 export function decodeIncomingModelOption(value: string): string | null {
   if (value === ALL_INCOMING_MODEL_OPTION) return null
   if (value === LEGACY_INCOMING_MODEL_OPTION) return ""
   return value.startsWith(INCOMING_MODEL_VALUE_PREFIX)
-    ? decodeURIComponent(value.slice(INCOMING_MODEL_VALUE_PREFIX.length))
+    ? value.slice(INCOMING_MODEL_VALUE_PREFIX.length)
     : null
 }
 
@@ -168,7 +174,12 @@ function distributeBy(
 }
 
 export function buildRoutedModelDistribution(rows: UsageRow[], unknownLabel: string): ModelDistributionRow[] {
-  return distributeBy(rows, (row) => row.model || unknownLabel, (_row, key) => key, false)
+  return distributeBy(
+    rows,
+    (row) => row.model ? `model:${row.model}` : "missing:",
+    (row) => row.model || unknownLabel,
+    false,
+  )
 }
 
 export function buildIncomingModelDistribution(

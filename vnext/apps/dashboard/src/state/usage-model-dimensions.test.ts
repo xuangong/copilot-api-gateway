@@ -6,6 +6,7 @@ import {
   buildRoutedModelDistribution,
   decodeIncomingModelOption,
   filterUsageRows,
+  incomingModelFilterValue,
   incomingModelOptionValue,
   incomingModelSelectOptions,
   summarizeUsageRows,
@@ -37,12 +38,21 @@ function row(overrides: Partial<UsageRow> = {}): UsageRow {
 const allFilters = { user: "", key: "", client: "", model: "", incomingModel: null }
 
 describe("incoming model select values", () => {
-  test("round trips all model strings without colliding with control values", () => {
-    for (const model of ["", "all", "legacy", "__all_incoming__", "model:caller-alias"]) {
+  test("round trips arbitrary JavaScript strings without colliding with control values", () => {
+    for (const model of ["", "all", "legacy", "__all_incoming__", "model:caller-alias", "\ud800", "\udc00"]) {
+      expect(() => incomingModelOptionValue(model)).not.toThrow()
       expect(decodeIncomingModelOption(incomingModelOptionValue(model))).toBe(model)
     }
     expect(decodeIncomingModelOption("all")).toBeNull()
     expect(decodeIncomingModelOption("legacy")).toBe("")
+  })
+
+  test("maps incoming filter state to its matching select option", () => {
+    expect(incomingModelFilterValue(null)).toBe("all")
+    expect(incomingModelFilterValue("")).toBe("legacy")
+    expect(incomingModelFilterValue("all")).toBe("model:all")
+    expect(incomingModelFilterValue("legacy")).toBe("model:legacy")
+    expect(incomingModelFilterValue("model:caller-alias")).toBe("model:model:caller-alias")
   })
 
   test("lists legacy once and omits its duplicate encoded model option", () => {
@@ -111,6 +121,21 @@ describe("model distributions", () => {
       { label: "target-other", requests: 3, input: 30, output: 15, cacheRead: 6, cacheCreation: 9 },
     ])
     expect(distribution.reduce((total, value) => total + value.costUSD, 0)).toBeCloseTo(1)
+  })
+
+  test("keeps a missing routed model separate from a real model named as its localized fallback", () => {
+    const distribution = buildRoutedModelDistribution([
+      row({ model: undefined, requests: 2 }),
+      row({ model: "未知", requests: 3 }),
+    ], "未知")
+
+    expect(distribution.map((value) => value.requests).sort()).toEqual([2, 3])
+    expect(distribution.every((value) => value.label === "未知")).toBe(true)
+    expect(new Set(distribution.map((value) => value.id)).size).toBe(2)
+    expect(summarizeUsageRows(distribution)).toEqual(summarizeUsageRows([
+      row({ model: undefined, requests: 2 }),
+      row({ model: "未知", requests: 3 }),
+    ]))
   })
 
   test("keeps legacy and a real matching label in separate incoming groups", () => {
