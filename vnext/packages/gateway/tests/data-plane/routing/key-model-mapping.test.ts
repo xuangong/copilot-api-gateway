@@ -87,24 +87,24 @@ test('default mappings and their elements cannot be mutated by consumers', () =>
   ])
 })
 
-test('resolver returns requests unchanged when policy is absent, disabled, or no mapping matches', () => {
+test('resolver exposes a pin-stripped incoming identity before any mapping when policy is absent, disabled, or unmatched', () => {
   const absent = resolveKeyModel('up_123/a', undefined)
   const disabled = resolveKeyModel('up_123/a', { modelMappingsEnabled: false, modelMappings: [{ source: 'a', destination: 'b' }] })
   const empty = resolveKeyModel('a', enabled)
   const unmatched = resolveKeyModel('a', { modelMappingsEnabled: true, modelMappings: [{ source: 'b', destination: 'c' }] })
 
-  expect(absent).toEqual({ requestedModel: 'up_123/a', routedModel: 'a', upstreamPin: 'up_123', matchedRuleIndexes: [] })
-  expect(disabled).toEqual({ requestedModel: 'up_123/a', routedModel: 'a', upstreamPin: 'up_123', matchedRuleIndexes: [] })
-  expect(empty).toEqual({ requestedModel: 'a', routedModel: 'a', matchedRuleIndexes: [] })
-  expect(unmatched).toEqual({ requestedModel: 'a', routedModel: 'a', matchedRuleIndexes: [] })
+  expect(absent).toEqual({ incomingModel: 'a', routedModel: 'a', upstreamPin: 'up_123', matchedRuleIndexes: [] })
+  expect(disabled).toEqual({ incomingModel: 'a', routedModel: 'a', upstreamPin: 'up_123', matchedRuleIndexes: [] })
+  expect(empty).toEqual({ incomingModel: 'a', routedModel: 'a', matchedRuleIndexes: [] })
+  expect(unmatched).toEqual({ incomingModel: 'a', routedModel: 'a', matchedRuleIndexes: [] })
 })
 
-test('resolver applies defaults and ordered chains exactly once per mapping', () => {
+test('resolver keeps incoming identity at the pre-mapping bare model through an ordered chain', () => {
   expect(resolveKeyModel('gpt-5.6-sol', {
     modelMappingsEnabled: true,
     modelMappings: DEFAULT_API_KEY_MODEL_MAPPINGS,
   })).toEqual({
-    requestedModel: 'gpt-5.6-sol',
+    incomingModel: 'gpt-5.6-sol',
     routedModel: 'gpt-5.6-sol-fast',
     matchedRuleIndexes: [0],
   })
@@ -113,13 +113,12 @@ test('resolver applies defaults and ordered chains exactly once per mapping', ()
     modelMappingsEnabled: true,
     modelMappings: [
       { source: 'a', destination: 'b' },
-      { source: 'b', destination: 'a' },
-      { source: 'a', destination: 'c' },
+      { source: 'b', destination: 'c' },
     ],
-  })).toEqual({ requestedModel: 'a', routedModel: 'c', matchedRuleIndexes: [0, 1, 2] })
+  })).toEqual({ incomingModel: 'a', routedModel: 'c', matchedRuleIndexes: [0, 1] })
 })
 
-test('resolver preserves duplicate mappings and self mappings', () => {
+test('resolver applies self mappings while preserving the incoming identity', () => {
   expect(resolveKeyModel('a', {
     modelMappingsEnabled: true,
     modelMappings: [
@@ -127,30 +126,35 @@ test('resolver preserves duplicate mappings and self mappings', () => {
       { source: 'a', destination: 'b' },
       { source: 'b', destination: 'b' },
     ],
-  })).toEqual({ requestedModel: 'a', routedModel: 'b', matchedRuleIndexes: [0, 1, 2] })
+  })).toEqual({ incomingModel: 'a', routedModel: 'b', matchedRuleIndexes: [0, 1, 2] })
 })
 
-test('resolver preserves valid upstream pins and does not mistake vendors for pins', () => {
+test('resolver strips valid upstream pins but preserves vendor-prefixed incoming models', () => {
   const policy = { modelMappingsEnabled: true, modelMappings: [{ source: 'a', destination: 'b' }] }
   expect(resolveKeyModel('up_123/a', policy)).toEqual({
-    requestedModel: 'up_123/a',
+    incomingModel: 'a',
     routedModel: 'b',
     upstreamPin: 'up_123',
     matchedRuleIndexes: [0],
   })
   expect(resolveKeyModel('vendor/a', policy)).toEqual({
-    requestedModel: 'vendor/a',
+    incomingModel: 'vendor/a',
     routedModel: 'vendor/a',
     matchedRuleIndexes: [],
   })
 })
 
-test('resolver does not mutate its input or mapping list', () => {
+test('resolver does not mutate its input or policy while deriving incoming and routed models', () => {
   const mappings = [{ source: 'a', destination: 'b' }]
   const policy = { modelMappingsEnabled: true, modelMappings: mappings }
   const requested = 'up_123/a'
 
-  resolveKeyModel(requested, policy)
+  expect(resolveKeyModel(requested, policy)).toEqual({
+    incomingModel: 'a',
+    routedModel: 'b',
+    upstreamPin: 'up_123',
+    matchedRuleIndexes: [0],
+  })
 
   expect(requested).toBe('up_123/a')
   expect(policy).toEqual({ modelMappingsEnabled: true, modelMappings: [{ source: 'a', destination: 'b' }] })

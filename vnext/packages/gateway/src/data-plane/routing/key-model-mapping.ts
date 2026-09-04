@@ -2,7 +2,7 @@ import type { ApiKeyRoutingPolicy } from '../../shared/api-key-model-mappings.ts
 import { parseModelRouting } from './model-routing.ts'
 
 export interface ResolvedKeyModel {
-  requestedModel: string
+  incomingModel: string
   routedModel: string
   upstreamPin?: string
   matchedRuleIndexes: number[]
@@ -12,17 +12,17 @@ export function resolveKeyModel(
   requestedModel: string,
   policy?: ApiKeyRoutingPolicy,
 ): ResolvedKeyModel {
-  const { upstreamPin, bareModel } = parseModelRouting(requestedModel)
+  const { upstreamPin, bareModel: incomingModel } = parseModelRouting(requestedModel)
   if (!policy?.modelMappingsEnabled || policy.modelMappings.length === 0) {
     return {
-      requestedModel,
-      routedModel: bareModel,
+      incomingModel,
+      routedModel: incomingModel,
       ...(upstreamPin ? { upstreamPin } : {}),
       matchedRuleIndexes: [],
     }
   }
 
-  let routedModel = bareModel
+  let routedModel = incomingModel
   const matchedRuleIndexes: number[] = []
 
   for (const [index, mapping] of policy.modelMappings.entries()) {
@@ -32,7 +32,7 @@ export function resolveKeyModel(
   }
 
   return {
-    requestedModel,
+    incomingModel,
     routedModel,
     ...(upstreamPin ? { upstreamPin } : {}),
     matchedRuleIndexes,
