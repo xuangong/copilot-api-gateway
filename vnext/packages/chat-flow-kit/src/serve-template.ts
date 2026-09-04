@@ -62,11 +62,13 @@ export interface PreProcessCtx<TAuth extends KitAuthCtx = KitAuthCtx> {
 }
 
 /** preProcess returns one of two shapes: continue with a (possibly mutated)
- *  payload + extra, OR short-circuit with a Response. The short-circuit branch
- *  lets endpoints render bespoke error envelopes (e.g. domain-specific
+ *  payload + extra, OR short-circuit with a Response. `authPatch` merges into
+ *  the original auth for endpoint routing, but the kit always preserves the
+ *  original `apiKeyId` for quota and telemetry identity. The short-circuit
+ *  branch lets endpoints render bespoke error envelopes (e.g. domain-specific
  *  not-found shapes) without the kit knowing their wire shape. */
-export type PreProcessResult<TPayload, TExtra, TAuth extends KitAuthCtx = KitAuthCtx> =
-  | { kind: 'continue'; payload: TPayload; extra: TExtra; auth?: TAuth }
+export type PreProcessResult<TPayload, TExtra, TAuthPatch = never> =
+  | { kind: 'continue'; payload: TPayload; extra: TExtra; authPatch?: TAuthPatch }
   | { kind: 'short-circuit'; response: Response; extra: TExtra }
 
 export interface RunAttemptArgs<TPayload, TAuth, TTelemetryCtx> {
@@ -116,7 +118,7 @@ export interface ServeTemplateHooks<
   preProcess?(
     payload: TPayload,
     ctx: PreProcessCtx<TAuth>,
-  ): Promise<PreProcessResult<TPayload, TExtra, TAuth>>
+  ): Promise<PreProcessResult<TPayload, TExtra, Partial<TAuth>>>
 
   wantsStream(payload: TPayload, input: ServeTemplateInput<TAuth>): boolean
 
@@ -181,7 +183,7 @@ export async function serveTemplate<
   // 2. preProcess (optional).
   let extra: TExtra | undefined
   if (hooks.preProcess) {
-    let pre: PreProcessResult<TPayload, TExtra, TAuth>
+    let pre: PreProcessResult<TPayload, TExtra, Partial<TAuth>>
     try {
       pre = await hooks.preProcess(payload, { auth: input.auth })
     } catch (err) {
@@ -197,7 +199,10 @@ export async function serveTemplate<
     }
     payload = pre.payload
     extra = pre.extra
-    if (pre.auth) input = { ...input, auth: pre.auth }
+    if (pre.authPatch) input = {
+      ...input,
+      auth: { ...input.auth, ...pre.authPatch, apiKeyId: input.auth.apiKeyId },
+    }
   }
 
   // 3. wantsStream.

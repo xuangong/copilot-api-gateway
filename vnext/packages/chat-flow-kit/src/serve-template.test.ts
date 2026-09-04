@@ -12,7 +12,7 @@ import {
   type ServeTemplateInput,
 } from './serve-template.ts'
 
-type Auth = KitAuthCtx & { readonly userId?: string }
+type Auth = KitAuthCtx & { readonly userId?: string; readonly pin?: string }
 type Payload = { value: number; stream?: boolean }
 type Extra = { tag: string } | undefined
 type AttemptResult = { kind: 'ok'; echoed: number }
@@ -230,6 +230,55 @@ describe('serveTemplate — preProcess continue + mutation', () => {
     expect(result.extra).toEqual({ tag: 'mutated' })
     const body = await result.response.json()
     expect(body).toEqual({ r: { kind: 'ok', echoed: 107 }, extra: { tag: 'mutated' } })
+  })
+})
+
+describe('serveTemplate — preProcess auth patches', () => {
+  test('merges routing fields while pinning apiKeyId for telemetry, quota, and attempts', async () => {
+    let telemetryAuth: Auth | undefined
+    let quotaApiKeyId: string | null | undefined
+    let attemptAuth: Auth | undefined
+    const hooks = defaultHooks({
+      preProcess: async (payload) => ({
+        kind: 'continue',
+        payload,
+        extra: undefined,
+        authPatch: { apiKeyId: undefined, userId: 'routed-user', pin: 'up_A' },
+      }),
+      runAttempt: async (args) => {
+        attemptAuth = args.auth
+        return { kind: 'ok', echoed: args.payload.value }
+      },
+    })
+    const deps = defaultDeps({
+      buildTelemetryCtx: ({ auth, endpointTag, isStreaming }) => {
+        telemetryAuth = auth
+        return { tag: endpointTag, isStreaming }
+      },
+      runQuotaGate: async (apiKeyId) => {
+        quotaApiKeyId = apiKeyId
+        return null
+      },
+    })
+
+    await serveTemplate(hooks, defaultInput(), deps)
+
+    expect(telemetryAuth).toEqual({ apiKeyId: 'k1', userId: 'routed-user', pin: 'up_A' })
+    expect(quotaApiKeyId).toBe('k1')
+    expect(attemptAuth).toEqual({ apiKeyId: 'k1', userId: 'routed-user', pin: 'up_A' })
+  })
+
+  test('supports a required rich auth hook typed with the default preprocess result', () => {
+    type RichAuth = KitAuthCtx & { readonly ownerId: string; readonly pin?: string }
+    const preProcess = async (payload: Payload): Promise<PreProcessResult<Payload, Extra>> => ({
+      kind: 'continue', payload, extra: undefined,
+    })
+    const hooks: ServeTemplateHooks<Payload, AttemptResult, Extra, RichAuth, TCtx> = {
+      ...defaultHooks(),
+      preProcess,
+    }
+
+    expect(hooks.preProcess).toBe(preProcess)
   })
 })
 

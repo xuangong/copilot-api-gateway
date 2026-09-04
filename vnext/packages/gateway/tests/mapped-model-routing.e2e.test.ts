@@ -155,6 +155,19 @@ test.each(['chat', 'messages', 'responses', 'gemini'] as const)('mapped explicit
   expect(calls.B).toEqual([])
 })
 
+test('Gemini normalizes a pinned customtools alias before applying policy and selects only the pin', async () => {
+  const { response, calls } = await serve('gemini', 'up_A/gemini-2.5-flash-customtools', [customUpstream('up_A'), customUpstream('up_B')], {
+    routingPolicy: {
+      modelMappingsEnabled: true,
+      modelMappings: [{ source: 'gemini-3-flash-preview', destination }],
+    },
+  })
+
+  expect(response.status).toBe(200)
+  expect(calls.A).toEqual([{ model: destination, path: '/v1/messages' }])
+  expect(calls.B).toEqual([])
+})
+
 test.each([
   ['absent', 'chat', []],
   ['disabled', 'messages', [customUpstream('up_A', ['chat_completions', 'messages', 'responses'], false)]],

@@ -14,7 +14,7 @@ const auth: DataPlaneAuthCtx = {
 }
 const obsCtx: DispatchObsCtx = { apiKeyId: 'key', userAgent: 'test', requestId: 'request' }
 
-test('dump retains normalized Gemini source before routing to a distinct destination', async () => {
+test('dump retains the normalized pinned Gemini source before routing to a distinct destination', async () => {
   const requested: string[] = []
   const dump = {
     requestedModel: (model: string) => { requested.push(model) },
@@ -26,9 +26,9 @@ test('dump retains normalized Gemini source before routing to a distinct destina
     error: () => {},
   }
   const response = await serveGemini({
-    raw: { contents: [] }, model: 'normalized-source', forceStream: false, auth, obsCtx, dump,
+    raw: { contents: [] }, model: 'up_A/gemini-3-flash-preview', forceStream: false, auth, obsCtx, dump,
   })
 
-  expect(requested).toEqual(['normalized-source'])
+  expect(requested).toEqual(['up_A/gemini-3-flash-preview'])
   expect(response.status).toBe(404)
 })

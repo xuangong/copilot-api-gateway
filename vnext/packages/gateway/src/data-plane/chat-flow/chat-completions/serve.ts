@@ -85,7 +85,7 @@ const chatCompletionsHooks: ServeTemplateHooks<
       kind: 'continue',
       payload: { ...payload, model: resolved.routedModel },
       extra: undefined,
-      ...(resolved.upstreamPin ? { auth: { ...ctx.auth, pin: resolved.upstreamPin } } : {}),
+      ...(resolved.upstreamPin ? { authPatch: { pin: resolved.upstreamPin } } : {}),
     }
   },
 

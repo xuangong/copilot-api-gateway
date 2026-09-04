@@ -145,7 +145,7 @@ const responsesHooks: ServeTemplateHooks<
         kind: 'continue',
         payload: { ...payload, model: resolved.routedModel },
         extra: { mergedInputItems },
-        ...(resolved.upstreamPin ? { auth: { ...ctx.auth, pin: resolved.upstreamPin } } : {}),
+        ...(resolved.upstreamPin ? { authPatch: { pin: resolved.upstreamPin } } : {}),
       } satisfies PreProcessResult<
         ResponsesPayload,
         ResponsesExtra,
