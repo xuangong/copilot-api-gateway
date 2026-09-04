@@ -69,6 +69,12 @@ describe("applyMigrations", () => {
     const db = new Database(":memory:")
     applyMigrations(db)
     db.exec("DROP TABLE responses_snapshots")
+    db.exec("DROP INDEX idx_usage_identity")
+    db.exec("DROP INDEX idx_usage_requests_identity")
+    db.exec("ALTER TABLE usage DROP COLUMN incoming_model")
+    db.exec("ALTER TABLE usage_requests DROP COLUMN incoming_model")
+    db.exec("CREATE UNIQUE INDEX idx_usage_identity ON usage (key_id, model, COALESCE(upstream, ''), model_key, client, hour, dimension)")
+    db.exec("CREATE UNIQUE INDEX idx_usage_requests_identity ON usage_requests (key_id, model, COALESCE(upstream, ''), model_key, client, hour)")
     db.exec("DROP TABLE _migrations")
     // A ledger-less database predates every migration, so its quota columns
     // still carry the daily names 0003 renames away, and 0004's cost column
@@ -129,6 +135,85 @@ describe("applyMigrations", () => {
         enabled: 0,
         mappings: '[{"source":"gpt-5.6-sol","destination":"gpt-5.6-sol-fast"}]',
       })
+      const before = ledger(db)
+      applyMigrations(db, dir)
+      expect(ledger(db)).toEqual(before)
+    } finally {
+      try {
+        db.close()
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    }
+  })
+
+  test("upgrades an existing usage ledger with legacy incoming-model buckets intact", () => {
+    const dir = mkdtempSync(join(tmpdir(), "migrate-usage-incoming-model-"))
+    const db = new Database(":memory:")
+    try {
+      copyMigrationRange(dir, 1, 7)
+      applyMigrations(db, dir)
+      db.exec(`
+        INSERT INTO usage (key_id, model, upstream, model_key, client, hour, dimension, tokens, unit_price)
+        VALUES ('key-1', 'routed-model', 'upstream-1', 'provider-model', 'client-1', '2026-09-04T10', 'input', 123, 0.42);
+        INSERT INTO usage_requests (key_id, model, upstream, model_key, client, hour, requests)
+        VALUES ('key-1', 'routed-model', 'upstream-1', 'provider-model', 'client-1', '2026-09-04T10', 7);
+      `)
+
+      copyMigrationRange(dir, 8, 8)
+      applyMigrations(db, dir)
+
+      expect(ledger(db)).toContain("0008_usage_incoming_model.sql")
+      expect(
+        db.query<{ name: string; type: string; "notnull": number; dflt_value: string | null }, []>(
+          `SELECT name, type, "notnull", dflt_value FROM pragma_table_info('usage') WHERE name = 'incoming_model'`,
+        ).get(),
+      ).toEqual({ name: "incoming_model", type: "TEXT", "notnull": 1, dflt_value: "''" })
+      expect(
+        db.query<{ name: string; type: string; "notnull": number; dflt_value: string | null }, []>(
+          `SELECT name, type, "notnull", dflt_value FROM pragma_table_info('usage_requests') WHERE name = 'incoming_model'`,
+        ).get(),
+      ).toEqual({ name: "incoming_model", type: "TEXT", "notnull": 1, dflt_value: "''" })
+      expect(
+        db.query<
+          { keyId: string; incomingModel: string; model: string; upstream: string; modelKey: string; client: string; hour: string; dimension: string; tokens: number; unitPrice: number },
+          []
+        >(
+          "SELECT key_id AS keyId, incoming_model AS incomingModel, model, upstream, model_key AS modelKey, client, hour, dimension, tokens, unit_price AS unitPrice FROM usage",
+        ).get(),
+      ).toEqual({
+        keyId: "key-1",
+        incomingModel: "",
+        model: "routed-model",
+        upstream: "upstream-1",
+        modelKey: "provider-model",
+        client: "client-1",
+        hour: "2026-09-04T10",
+        dimension: "input",
+        tokens: 123,
+        unitPrice: 0.42,
+      })
+      expect(
+        db.query<{ keyId: string; incomingModel: string; model: string; upstream: string; modelKey: string; client: string; hour: string; requests: number }, []>(
+          "SELECT key_id AS keyId, incoming_model AS incomingModel, model, upstream, model_key AS modelKey, client, hour, requests FROM usage_requests",
+        ).get(),
+      ).toEqual({
+        keyId: "key-1",
+        incomingModel: "",
+        model: "routed-model",
+        upstream: "upstream-1",
+        modelKey: "provider-model",
+        client: "client-1",
+        hour: "2026-09-04T10",
+        requests: 7,
+      })
+      expect(
+        db.query<{ sql: string }, [string]>("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?").get("idx_usage_identity")?.sql.replace(/\s+/g, " "),
+      ).toContain("key_id, incoming_model, model, COALESCE(upstream, ''), model_key, client, hour, dimension")
+      expect(
+        db.query<{ sql: string }, [string]>("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?").get("idx_usage_requests_identity")?.sql.replace(/\s+/g, " "),
+      ).toContain("key_id, incoming_model, model, COALESCE(upstream, ''), model_key, client, hour")
+
       const before = ledger(db)
       applyMigrations(db, dir)
       expect(ledger(db)).toEqual(before)

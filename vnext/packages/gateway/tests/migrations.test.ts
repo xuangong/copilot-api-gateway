@@ -24,11 +24,13 @@ const listSql = () => readdirSync(dir).filter((f) => f.endsWith(".sql"))
 
 describe("migration corpus", () => {
   test("every filename carries a unique 4-digit prefix", () => {
-    const prefixes = listSql().map((f) => {
-      const m = /^(\d{4})_/.exec(f)
-      expect(m, `${f} must start with a 4-digit prefix`).not.toBeNull()
-      return m![1]!
-    })
+    const prefixes: string[] = []
+    for (const file of listSql()) {
+      const match = /^(\d{4})_/.exec(file)
+      expect(match, `${file} must start with a 4-digit prefix`).not.toBeNull()
+      const prefix = match?.[1]
+      if (prefix !== undefined) prefixes.push(prefix)
+    }
     expect(new Set(prefixes).size).toBe(prefixes.length)
   })
 
