@@ -48,6 +48,7 @@ const hasAnyTokens = (usage: TokenUsage): boolean => {
 async function trackNonStreamingUsage(
   json: unknown,
   keyId: ApiKeyId,
+  incomingModel: string,
   model: string,
   client: string,
   upstream: string | null,
@@ -59,8 +60,7 @@ async function trackNonStreamingUsage(
   if (!hasAnyTokens(info.tokens)) return
   const rec: UsageRecord = {
     keyId,
-    // Temporary compatibility identity until route resolution carries source aliases.
-    incomingModel: model,
+    incomingModel,
     // The route already resolved the key policy, so the public identity and
     // provider key are authoritative even when an upstream echoes the alias
     // the client used before routing.
@@ -82,6 +82,8 @@ async function trackNonStreamingUsage(
 
 export interface EmbeddingsAttemptInput {
   apiKeyId: ApiKeyId | undefined
+  /** Normalized client model before API-key mapping. */
+  incomingModel: string
   model: string
   /** Raw upstream model id — same value handed to provider for pricing lookup. */
   modelKey: string
@@ -168,7 +170,7 @@ export async function runEmbeddingsAttempt(
   const usageInfo = extractFromJson(json)
   input.dump?.success(
     {
-      incomingModel: input.model,
+      incomingModel: input.incomingModel,
       model: input.model,
       upstream: input.upstream,
       modelKey: input.modelKey,
@@ -177,7 +179,7 @@ export async function runEmbeddingsAttempt(
     usageInfo?.tokens ?? null,
   )
   if (input.apiKeyId) {
-    await trackNonStreamingUsage(json, input.apiKeyId, input.model, client, input.upstream, input.modelKey, input.pricing)
+    await trackNonStreamingUsage(json, input.apiKeyId, input.incomingModel, input.model, client, input.upstream, input.modelKey, input.pricing)
     await recordLatency(
       input.apiKeyId,
       input.model,

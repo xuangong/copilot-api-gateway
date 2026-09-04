@@ -53,9 +53,17 @@ test('images success: latency only (no usage, no perf fan-out)', async () => {
     headers: { 'content-type': 'application/json' },
   })
 
+  let dumpedIdentity: { incomingModel: string; model: string; modelKey: string } | undefined
+  const dump = {
+    success: (identity: { incomingModel: string; model: string; modelKey: string }) => { dumpedIdentity = identity },
+  } as never
   const result = await runImagesAttempt({
     apiKeyId: 'i-ok',
+    incomingModel: 'image-source',
     model: 'dall-e-3',
+    modelKey: 'dall-e-3-provider',
+    pricing: null,
+    dump,
     upstream: 'github_copilot',
     userAgent: 'curl/8',
     requestId: 'req-i-1',
@@ -66,6 +74,9 @@ test('images success: latency only (no usage, no perf fan-out)', async () => {
   if (!result.ok) throw new Error('expected ok')
   expect(result.status).toBe(200)
   expect(result.response).toBe(upstreamResponse)
+  expect(dumpedIdentity?.incomingModel).toBe('image-source')
+  expect(dumpedIdentity?.model).toBe('dall-e-3')
+  expect(dumpedIdentity?.modelKey).toBe('dall-e-3-provider')
 
   const lat = await repo.latency.query({ keyId: 'i-ok', start: dayStart(), end: dayEnd() })
   expect(lat.length).toBe(0)
@@ -77,6 +88,26 @@ test('images success: latency only (no usage, no perf fan-out)', async () => {
   expect(perf.summary.length).toBe(0)
 })
 
+test('images success does not fabricate usage when upstream includes usage', async () => {
+  await seedKey('i-usage')
+  const result = await runImagesAttempt({
+    apiKeyId: 'i-usage',
+    incomingModel: 'image-source',
+    model: 'image-destination',
+    modelKey: 'provider-image-key',
+    pricing: { output_image: 1 },
+    upstream: 'custom:one',
+    userAgent: undefined,
+    requestId: undefined,
+    dump: null,
+    call: () => Promise.resolve(new Response(JSON.stringify({ usage: { output_tokens: 7 } }))),
+  })
+
+  expect(result.ok).toBe(true)
+  const usage = await repo.usage.query({ keyId: 'i-usage', start: dayStart(), end: dayEnd() })
+  expect(usage).toEqual([])
+})
+
 test('images 4xx: error-tagged latency, response forwarded', async () => {
   await seedKey('i-bad')
 
@@ -84,6 +115,7 @@ test('images 4xx: error-tagged latency, response forwarded', async () => {
 
   const result = await runImagesAttempt({
     apiKeyId: 'i-bad',
+    incomingModel: 'dall-e-3',
     model: 'dall-e-3',
     upstream: 'github_copilot',
     userAgent: undefined,
@@ -109,6 +141,7 @@ test('images throw: rethrows after recording error latency', async () => {
   try {
     await runImagesAttempt({
       apiKeyId: 'i-throw',
+      incomingModel: 'dall-e-3',
       model: 'dall-e-3',
       upstream: 'github_copilot',
       userAgent: undefined,
@@ -143,6 +176,7 @@ test('images quota exceeded: 429 envelope, no upstream call, no latency', async 
   let calls = 0
   const result = await runImagesAttempt({
     apiKeyId: 'i-q',
+    incomingModel: 'dall-e-3',
     model: 'dall-e-3',
     upstream: 'github_copilot',
     userAgent: undefined,
@@ -171,6 +205,7 @@ test('images without apiKeyId: skips observability, returns response', async () 
 
   const result = await runImagesAttempt({
     apiKeyId: undefined,
+    incomingModel: 'dall-e-3',
     model: 'dall-e-3',
     upstream: 'github_copilot',
     userAgent: undefined,

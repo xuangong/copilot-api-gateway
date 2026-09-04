@@ -129,6 +129,42 @@ test('POST /v1/embeddings 404 when no binding', async () => {
   expect(res.status).toBe(404)
 })
 
+test('POST /v1/embeddings persists mapped source and routed destination identities', async () => {
+  const recorded: Array<{ incomingModel: string; model: string; modelKey: string }> = []
+  initRepo({
+    ...stubRepo([stubUpstream()]),
+    apiKeys: { getById: async () => null, touchLastUsed: async () => {} },
+    usage: { record: async (row) => { recorded.push(row) } },
+    performance: { record: async () => {} },
+  } as Repo)
+  installFetch(async (req) => {
+    if (new URL(req.url).pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({
+        object: 'list', data: [stubModel('embedding-destination', 'embedding')],
+      } satisfies ModelsResponse), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    return new Response(JSON.stringify({ usage: { prompt_tokens: 3, total_tokens: 3 } }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    })
+  })
+
+  const res = await buildApp(embeddingsRouter, {
+    apiKeyId: 'key-1' as never,
+    copilot: { copilotToken: 'tkn', accountType: 'individual' },
+    routingPolicy: { modelMappingsEnabled: true, modelMappings: [{ source: 'embedding-source', destination: 'embedding-destination' }] },
+  }).request('/v1/embeddings', {
+    method: 'POST',
+    body: JSON.stringify({ model: 'embedding-source', input: 'hi' }),
+    headers: { 'content-type': 'application/json' },
+  })
+
+  expect(res.status).toBe(200)
+  expect(recorded).toHaveLength(1)
+  expect(recorded[0]?.incomingModel).toBe('embedding-source')
+  expect(recorded[0]?.model).toBe('embedding-destination')
+  expect(recorded[0]?.modelKey).toBe('embedding-destination')
+})
+
 test('POST /v1/embeddings success forwards upstream JSON', async () => {
   initRepo(stubRepo([stubUpstream()]))
   installFetch(async (req) => {

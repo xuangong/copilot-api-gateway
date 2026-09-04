@@ -110,25 +110,26 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
   let attempt: Awaited<ReturnType<typeof runImagesAttempt>>
   try {
     attempt = await runImagesAttempt({
-    apiKeyId: auth.apiKeyId,
-    model: resolved.routedModel,
-    modelKey: resolved.routedModel,
-    pricing,
-    upstream: binding.upstream,
-    userAgent: c.req.header('user-agent') ?? undefined,
-    requestId: c.req.header('x-request-id') ?? undefined,
-    dump,
-    call: async () => {
-      const pr = await binding.provider.fetch({
-        endpoint: 'images_generations',
-        payload: forwardPayload,
-        headers: new Headers({ 'content-type': 'application/json' }),
-        sourceApi: 'openai',
-        operationName: 'create image',
-        flags: { isStreaming: false },
-      })
-      return new Response(pr.body, { status: pr.status, headers: pr.headers })
-    },
+      apiKeyId: auth.apiKeyId,
+      incomingModel: resolved.incomingModel,
+      model: resolved.routedModel,
+      modelKey: resolved.routedModel,
+      pricing,
+      upstream: binding.upstream,
+      userAgent: c.req.header('user-agent') ?? undefined,
+      requestId: c.req.header('x-request-id') ?? undefined,
+      dump,
+      call: async () => {
+        const pr = await binding.provider.fetch({
+          endpoint: 'images_generations',
+          payload: forwardPayload,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          sourceApi: 'openai',
+          operationName: 'create image',
+          flags: { isStreaming: false },
+        })
+        return new Response(pr.body, { status: pr.status, headers: pr.headers })
+      },
     })
   } catch (err) {
     if (!(err instanceof HTTPError) || !err.response) throw err
@@ -257,25 +258,26 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
   let attempt: Awaited<ReturnType<typeof runImagesAttempt>>
   try {
     attempt = await runImagesAttempt({
-    apiKeyId: auth.apiKeyId,
-    model: resolved.routedModel,
-    modelKey: resolved.routedModel,
-    pricing,
-    upstream: binding.upstream,
-    userAgent: c.req.header('user-agent') ?? undefined,
-    requestId: c.req.header('x-request-id') ?? undefined,
-    dump,
-    call: async () => {
-      const pr = await binding.provider.fetch({
-        endpoint: 'images_edits',
-        payload: forward,
-        headers: new Headers(),
-        sourceApi: 'openai',
-        operationName: 'edit image',
-        flags: { isStreaming: false },
-      })
-      return new Response(pr.body, { status: pr.status, headers: pr.headers })
-    },
+      apiKeyId: auth.apiKeyId,
+      incomingModel: resolved.incomingModel,
+      model: resolved.routedModel,
+      modelKey: resolved.routedModel,
+      pricing,
+      upstream: binding.upstream,
+      userAgent: c.req.header('user-agent') ?? undefined,
+      requestId: c.req.header('x-request-id') ?? undefined,
+      dump,
+      call: async () => {
+        const pr = await binding.provider.fetch({
+          endpoint: 'images_edits',
+          payload: forward,
+          headers: new Headers(),
+          sourceApi: 'openai',
+          operationName: 'edit image',
+          flags: { isStreaming: false },
+        })
+        return new Response(pr.body, { status: pr.status, headers: pr.headers })
+      },
     })
   } catch (err) {
     if (!(err instanceof HTTPError) || !err.response) throw err

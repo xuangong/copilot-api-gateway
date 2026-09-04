@@ -59,6 +59,7 @@ test('embeddings success: usage + latency + perf fan-out', async () => {
 
   const result = await runEmbeddingsAttempt({
     apiKeyId: 'e-ok',
+    incomingModel: 'text-embedding-3-small',
     model: 'text-embedding-3-small',
     modelKey: 'text-embedding-3-small',
     pricing: null,
@@ -94,6 +95,7 @@ test('embeddings 4xx: error latency only, no perf fan-out', async () => {
 
   const result = await runEmbeddingsAttempt({
     apiKeyId: 'e-bad',
+    incomingModel: 'text-embedding-3-small',
     model: 'text-embedding-3-small',
     modelKey: 'text-embedding-3-small',
     pricing: null,
@@ -125,6 +127,7 @@ test('embeddings throw: rethrows after recording error latency', async () => {
   try {
     await runEmbeddingsAttempt({
       apiKeyId: 'e-throw',
+      incomingModel: 'text-embedding-3-small',
       model: 'text-embedding-3-small',
       modelKey: 'text-embedding-3-small',
       pricing: null,
@@ -150,6 +153,7 @@ test('embeddings usage retains the routed model when upstream echoes a source al
 
   await runEmbeddingsAttempt({
     apiKeyId: 'e-mapped',
+    incomingModel: 'source-alias',
     model: 'destination',
     modelKey: 'destination',
     pricing: { input: 0.02 },
@@ -162,6 +166,7 @@ test('embeddings usage retains the routed model when upstream echoes a source al
 
   const usage = await repo.usage.query({ keyId: 'e-mapped', start: dayStart(), end: dayEnd() })
   expect(usage).toHaveLength(1)
+  expect(usage[0]?.incomingModel).toBe('source-alias')
   expect(usage[0]?.model).toBe('destination')
   expect(usage[0]?.modelKey).toBe('destination')
   expect(usage[0]?.cost).toEqual({ input: 0.02 })
@@ -183,6 +188,7 @@ test('embeddings persists pricing snapshot when caller supplies it', async () =>
 
   const result = await runEmbeddingsAttempt({
     apiKeyId: 'e-price',
+    incomingModel: 'text-embedding-3-small',
     model: 'text-embedding-3-small',
     modelKey: 'text-embedding-3-small',
     pricing: { input: 0.02 },
@@ -218,6 +224,7 @@ test('embeddings quota exceeded: 429 short-circuit, no upstream call', async () 
   let calls = 0
   const result = await runEmbeddingsAttempt({
     apiKeyId: 'e-q',
+    incomingModel: 'text-embedding-3-small',
     model: 'text-embedding-3-small',
     modelKey: 'text-embedding-3-small',
     pricing: null,
@@ -247,6 +254,7 @@ test('embeddings without apiKeyId: skips observability, returns parsed json', as
 
   const result = await runEmbeddingsAttempt({
     apiKeyId: undefined,
+    incomingModel: 'text-embedding-3-small',
     model: 'text-embedding-3-small',
     modelKey: 'text-embedding-3-small',
     pricing: null,

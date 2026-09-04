@@ -98,6 +98,7 @@ export async function embeddingsHandler(
   try {
     attempt = await runEmbeddingsAttempt({
       apiKeyId: auth.apiKeyId,
+      incomingModel: resolved.incomingModel,
       model: body.model,
       modelKey: body.model,
       pricing,

@@ -27,6 +27,8 @@ import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
 export interface ImagesAttemptInput {
   apiKeyId: ApiKeyId | undefined
+  /** Normalized client model before API-key mapping. */
+  incomingModel: string
   model: string
   /** Raw upstream model id — same value handed to provider for pricing lookup. */
   modelKey: string
@@ -107,7 +109,7 @@ export async function runImagesAttempt(
   }
   input.dump?.success(
     {
-      incomingModel: input.model,
+      incomingModel: input.incomingModel,
       model: input.model,
       upstream: input.upstream,
       modelKey: input.modelKey,

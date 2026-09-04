@@ -23,6 +23,7 @@ const EMBEDDING_SOURCE_MODEL = 'embedding-source'
 const SOURCE_MODEL = 'source-model'
 let modelMappingsEnabled = false
 let capturedUpstreamModel: string | null = null
+const recordedUsage: Array<{ incomingModel: string; model: string }> = []
 
 const stubModel = (id: string): Model => ({
   id,
@@ -72,7 +73,7 @@ const repo = (): Repo => ({
     touchLastUsed: async () => {},
   },
   users: { findByKey: async () => null },
-  usage: { record: async () => {} },
+  usage: { record: async (row) => { recordedUsage.push({ incomingModel: row.incomingModel, model: row.model }) } },
   performance: { record: async () => {} },
 } as unknown as Repo)
 
@@ -98,6 +99,7 @@ const originalFetch = globalThis.fetch
 beforeEach(() => {
   modelMappingsEnabled = false
   capturedUpstreamModel = null
+  recordedUsage.length = 0
   initRuntimeLocation('bun')
   initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
   initRepo(repo())
@@ -170,6 +172,18 @@ test('API-key routing maps Ollama embed model names only when enabled', async ()
   const original = await embed({ model: EMBEDDING_SOURCE_MODEL, input: 'hi' })
   expect(original.status).toBe(200)
   expect(capturedUpstreamModel).toBe(EMBEDDING_SOURCE_MODEL)
+})
+
+test('Ollama embed preserves the normalized source model in recorded usage', async () => {
+  modelMappingsEnabled = true
+
+  const response = await embed({ model: EMBEDDING_SOURCE_MODEL, input: 'hi' })
+
+  expect(response.status).toBe(200)
+  expect(recordedUsage).toEqual([{
+    incomingModel: EMBEDDING_SOURCE_MODEL,
+    model: EMBEDDING_MODEL,
+  }])
 })
 
 test('API-key routing maps Ollama model names only when enabled', async () => {
