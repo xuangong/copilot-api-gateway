@@ -32,7 +32,7 @@ export interface DisplayUsageRecord {
 }
 
 export interface DisplayUsageByUserRecord {
-  userId: number
+  userId: string
   /** Logical model requested by the caller before key mapping; '' for legacy rows. */
   incomingModel: string
   model: string
@@ -60,7 +60,7 @@ export function aggregateUsageForDisplay(records: readonly UsageRecord[]): Displ
   const byKey = new Map<string, DisplayUsageRecord>()
 
   for (const record of records) {
-    const key = `${record.keyId}\0${record.incomingModel}\0${record.model}\0${record.client}\0${record.hour}`
+    const key = tupleKey([record.keyId, record.incomingModel, record.model, record.client, record.hour])
     let existing = byKey.get(key)
     if (!existing) {
       existing = { keyId: record.keyId, incomingModel: record.incomingModel, model: record.model, client: record.client, hour: record.hour, requests: 0, tokens: {}, cost: 0 }
@@ -72,20 +72,23 @@ export function aggregateUsageForDisplay(records: readonly UsageRecord[]): Displ
   return [...byKey.values()].sort((a, b) => a.hour.localeCompare(b.hour) || a.keyId.localeCompare(b.keyId) || a.incomingModel.localeCompare(b.incomingModel) || a.model.localeCompare(b.model) || a.client.localeCompare(b.client))
 }
 
+const tupleKey = (values: readonly (string | null)[]): string => JSON.stringify(values)
+
 // Aggregates per-key UsageRecords into per-(user, incoming model, model, hour) rows. Records
 // whose keyId no longer resolves to a user (a key the operator hard-deleted by
-// hand directly in the DB, etc.) collapse into a synthetic userId 0 so the
-// dashboard can still surface the lost rows; the keyToUser map is populated
-// from active + soft-deleted api_keys, so a normal soft delete still resolves.
+// hand directly in the DB, etc.) use the empty string, which is not a valid
+// database UUID, so the dashboard can still surface the lost rows. The
+// keyToUser map is populated from active + soft-deleted api_keys, so a normal
+// soft delete still resolves.
 export function aggregateUsageByUserForDisplay(
   records: readonly UsageRecord[],
-  keyToUser: ReadonlyMap<string, number>,
+  keyToUser: ReadonlyMap<string, string>,
 ): DisplayUsageByUserRecord[] {
   const byUser = new Map<string, DisplayUsageByUserRecord>()
 
   for (const record of records) {
-    const userId = keyToUser.get(record.keyId) ?? 0
-    const key = `${userId}\0${record.incomingModel}\0${record.model}\0${record.hour}`
+    const userId = keyToUser.get(record.keyId) ?? ''
+    const key = tupleKey([userId, record.incomingModel, record.model, record.hour])
     let existing = byUser.get(key)
     if (!existing) {
       existing = { userId, incomingModel: record.incomingModel, model: record.model, hour: record.hour, requests: 0, tokens: {}, cost: 0 }
@@ -94,5 +97,5 @@ export function aggregateUsageByUserForDisplay(
     accumulate(existing, record)
   }
 
-  return [...byUser.values()].sort((a, b) => a.hour.localeCompare(b.hour) || a.userId - b.userId || a.incomingModel.localeCompare(b.incomingModel) || a.model.localeCompare(b.model))
+  return [...byUser.values()].sort((a, b) => a.hour.localeCompare(b.hour) || a.userId.localeCompare(b.userId) || a.incomingModel.localeCompare(b.incomingModel) || a.model.localeCompare(b.model))
 }

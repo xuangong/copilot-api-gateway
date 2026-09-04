@@ -81,10 +81,61 @@ test('aggregateUsageByUserForDisplay: separates aliases for one user and target 
     rec({ keyId: 'k1', incomingModel: 'alias-a', model: 'target', requests: 2, tokens: { input: 10 } }),
     rec({ keyId: 'k2', incomingModel: 'alias-a', model: 'target', requests: 3, tokens: { input: 20 } }),
     rec({ keyId: 'k1', incomingModel: 'alias-b', model: 'target', requests: 5, tokens: { input: 30 } }),
-  ], new Map([['k1', 7], ['k2', 7]]))
+  ], new Map([['k1', '00000000-0000-0000-0000-000000000007'], ['k2', '00000000-0000-0000-0000-000000000007']]))
 
   expect(out.map((row) => [row.userId, row.incomingModel, row.model, row.requests, row.tokens.input])).toEqual([
-    [7, 'alias-a', 'target', 5, 30],
-    [7, 'alias-b', 'target', 5, 30],
+    ['00000000-0000-0000-0000-000000000007', 'alias-a', 'target', 5, 30],
+    ['00000000-0000-0000-0000-000000000007', 'alias-b', 'target', 5, 30],
   ])
+})
+
+test('aggregateUsageForDisplay: keeps NUL-containing key, incoming-model, model, and client tuples separate', () => {
+  const out = aggregateUsageForDisplay([
+    rec({ keyId: 'key\0incoming', incomingModel: 'model', model: 'routed', client: 'client', requests: 2, tokens: { input: 10 } }),
+    rec({ keyId: 'key', incomingModel: 'incoming\0model', model: 'routed', client: 'client', requests: 3, tokens: { input: 20 } }),
+    rec({ keyId: 'key', incomingModel: 'incoming', model: 'routed\0client', client: 'hour', requests: 5, tokens: { input: 30 } }),
+    rec({ keyId: 'key', incomingModel: 'incoming', model: 'routed', client: 'client\0hour', requests: 7, tokens: { input: 40 } }),
+  ])
+
+  expect(out).toEqual(expect.arrayContaining([
+    expect.objectContaining({ keyId: 'key\0incoming', incomingModel: 'model', model: 'routed', client: 'client', requests: 2, tokens: { input: 10 } }),
+    expect.objectContaining({ keyId: 'key', incomingModel: 'incoming\0model', model: 'routed', client: 'client', requests: 3, tokens: { input: 20 } }),
+    expect.objectContaining({ keyId: 'key', incomingModel: 'incoming', model: 'routed\0client', client: 'hour', requests: 5, tokens: { input: 30 } }),
+    expect.objectContaining({ keyId: 'key', incomingModel: 'incoming', model: 'routed', client: 'client\0hour', requests: 7, tokens: { input: 40 } }),
+  ]))
+  expect(out).toHaveLength(4)
+  expect(out.reduce((total, row) => total + row.requests, 0)).toBe(17)
+  expect(out.reduce((total, row) => total + (row.tokens.input ?? 0), 0)).toBe(100)
+})
+
+test('aggregateUsageByUserForDisplay: keeps NUL-containing incoming-model and routed-model tuples separate', () => {
+  const out = aggregateUsageByUserForDisplay([
+    rec({ keyId: 'k1', incomingModel: 'alias\0routed', model: 'model', requests: 2, tokens: { input: 10 } }),
+    rec({ keyId: 'k2', incomingModel: 'alias', model: 'routed\0model', requests: 3, tokens: { input: 20 } }),
+  ], new Map([['k1', '00000000-0000-0000-0000-000000000001'], ['k2', '00000000-0000-0000-0000-000000000001']]))
+
+  expect(out.map((row) => [row.incomingModel, row.model, row.requests, row.tokens.input])).toEqual([
+    ['alias', 'routed\0model', 3, 20],
+    ['alias\0routed', 'model', 2, 10],
+  ])
+  expect(out.reduce((total, row) => total + row.requests, 0)).toBe(5)
+  expect(out.reduce((total, row) => total + (row.tokens.input ?? 0), 0)).toBe(30)
+})
+
+test('aggregateUsageByUserForDisplay: preserves UUID users, orders them lexically, and marks missing keys as orphaned', () => {
+  const firstUser = '00000000-0000-0000-0000-000000000001'
+  const secondUser = '00000000-0000-0000-0000-000000000002'
+  const out = aggregateUsageByUserForDisplay([
+    rec({ keyId: 'k2', incomingModel: 'a\0b', model: 'c', requests: 2, tokens: { input: 10 } }),
+    rec({ keyId: 'k1', incomingModel: 'a', model: 'b\0c', requests: 3, tokens: { input: 20 } }),
+    rec({ keyId: 'missing', incomingModel: 'orphan', model: 'target', requests: 5, tokens: { input: 30 } }),
+  ], new Map([['k1', secondUser], ['k2', firstUser]]))
+
+  expect(out.map((row) => [row.userId, row.incomingModel, row.model, row.requests, row.tokens.input])).toEqual([
+    ['', 'orphan', 'target', 5, 30],
+    [firstUser, 'a\0b', 'c', 2, 10],
+    [secondUser, 'a', 'b\0c', 3, 20],
+  ])
+  expect(out.reduce((total, row) => total + row.requests, 0)).toBe(10)
+  expect(out.reduce((total, row) => total + (row.tokens.input ?? 0), 0)).toBe(60)
 })

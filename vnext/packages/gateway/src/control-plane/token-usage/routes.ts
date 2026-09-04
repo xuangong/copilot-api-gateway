@@ -5,8 +5,8 @@
  * 4-branch scoping:
  *   - admin           → all keys + enrich with ownerId/ownerName
  *   - shared view     → owned-only keys for ownerId + HMAC-redact keyIds
+ *   - API key         → authenticated key only
  *   - user (session)  → owned + assigned keys
- *   - fallback (e.g. apiKey caller w/o userId) → key_id query honored, list() keys
  *
  * Cost is summed from each row's per-dimension `cost` snapshot (frozen at
  * write time) via `aggregateUsageForDisplay`; the global pricing table is
@@ -28,6 +28,7 @@ import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 export interface TokenUsageAuthCtx {
   isAdmin?: boolean
   userId?: UserId
+  apiKeyId?: ApiKeyId
   isViewingShared?: boolean
   ownerId?: UserId
 }
@@ -85,9 +86,10 @@ tokenUsageRouter.get('/token-usage/participants', async (c) => {
 
   // The shared view HMAC-rewrites keyIds (see redact-shared-view.ts), so these
   // rows could not be joined to its usage anyway — and the names would expose
-  // people the viewer is not otherwise shown. Same for a caller with no
-  // identity to scope by.
-  if (auth.isViewingShared || (!auth.isAdmin && !auth.userId)) return c.json([])
+  // people the viewer is not otherwise shown. API-key callers do not have a
+  // user roster scope.
+  if (!auth.isAdmin && !auth.userId && !auth.apiKeyId) return c.json({ error: 'Unauthorized' }, 401)
+  if (auth.isViewingShared || auth.apiKeyId) return c.json([])
 
   const keys = auth.isAdmin ? await repo.apiKeys.list() : await getUserKeys(auth.userId!)
   const assignmentsPerKey = await Promise.all(keys.map((k) => repo.keyAssignments.listByKey(k.id)))
@@ -132,6 +134,10 @@ tokenUsageRouter.get('/token-usage', async (c) => {
 
   const repo = getRepo()
 
+  if (!auth.isAdmin && !auth.userId && !auth.apiKeyId) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
   // Shared view: owned-only keys, redact keyIds
   if (auth.isViewingShared && auth.ownerId) {
     const ids = await getOwnedKeyIdsForScope(auth.ownerId)
@@ -156,14 +162,19 @@ tokenUsageRouter.get('/token-usage', async (c) => {
   if (auth.isAdmin) {
     queryOpts = { keyId, start, end }
     keys = await repo.apiKeys.list()
+  } else if (auth.apiKeyId) {
+    // An API key is narrower than a coexisting session identity. Ignore a
+    // caller-supplied key_id rather than letting it widen the scope.
+    queryOpts = { keyId: auth.apiKeyId, start, end }
+    const key = await repo.apiKeys.getById(auth.apiKeyId)
+    keys = key ? [key] : []
   } else if (auth.userId) {
     const userKeys = await getUserKeys(auth.userId)
     if (userKeys.length === 0) return c.json([])
     queryOpts = { keyIds: userKeys.map((k) => k.id), start, end }
     keys = userKeys
   } else {
-    queryOpts = { keyId, start, end }
-    keys = await repo.apiKeys.list()
+    return c.json({ error: 'Unauthorized' }, 401)
   }
 
   const records = await repo.usage.query(queryOpts)

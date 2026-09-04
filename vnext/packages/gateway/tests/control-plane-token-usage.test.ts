@@ -29,6 +29,7 @@ function inMemoryRepo() {
   const usage: UsageRecord[] = []
   const users = new Map<string, User>()
   const assignments: KeyAssignment[] = []
+  let usageQueryCount = 0
 
   const repo = {
     apiKeys: {
@@ -38,12 +39,14 @@ function inMemoryRepo() {
       getById: async (id: string) => keys.get(id) ?? null,
     },
     usage: {
-      query: async (opts: { keyId?: string; keyIds?: string[]; start: string; end: string }) =>
-        usage.filter((u) => {
+      query: async (opts: { keyId?: string; keyIds?: string[]; start: string; end: string }) => {
+        usageQueryCount += 1
+        return usage.filter((u) => {
           if (opts.keyId && u.keyId !== opts.keyId) return false
           if (opts.keyIds && !opts.keyIds.includes(u.keyId)) return false
           return u.hour >= opts.start && u.hour <= opts.end
-        }),
+        })
+      },
     },
     users: {
       getById: async (id: string) => users.get(id) ?? null,
@@ -54,7 +57,14 @@ function inMemoryRepo() {
     },
   } as unknown as Repo
 
-  return { repo, keys, usage, users, assignments }
+  return {
+    repo,
+    keys,
+    usage,
+    users,
+    assignments,
+    getUsageQueryCount: () => usageQueryCount,
+  }
 }
 
 const TEST_ENV = { SERVER_SECRET: 'test-secret' }
@@ -152,21 +162,59 @@ test('GET /api/token-usage user exposes distinct incoming aliases without duplic
   expect(body.reduce((total, row) => total + row.requests, 0)).toBe(3)
 })
 
-test('GET /api/token-usage fallback preserves aliases and legacy incoming model', async () => {
+test('GET /api/token-usage without an identity → 401', async () => {
+  const res = await call(buildApp({}), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
+
+  expect(res.status).toBe(401)
+  expect(await res.json()).toEqual({ error: 'Unauthorized' })
+  expect(store.getUsageQueryCount()).toBe(0)
+})
+
+test('GET /api/token-usage API-key caller is scoped to its key and retains aliases and legacy incoming model', async () => {
   store.keys.set('k1', mkKey('k1', 'public-key', 'u1'))
+  store.keys.set('k2', mkKey('k2', 'other-key', 'u2'))
   store.usage.push(mkUsage('k1', '2026-03-01T00', 'target-model', 'alias-a'))
   store.usage.push(mkUsage('k1', '2026-03-01T00', 'target-model', 'alias-b'))
   store.usage.push(mkUsage('k1', '2026-03-01T01', 'target-model', ''))
+  store.usage.push(mkUsage('k2', '2026-03-01T00', 'target-model', 'other-alias'))
 
-  const res = await call(buildApp({}), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
+  const res = await call(buildApp({ apiKeyId: 'k1' }), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
   expect(res.status).toBe(200)
-  const body = await res.json() as Array<{ incomingModel: string; model: string; requests: number }>
-  expect(body.map((row) => [row.incomingModel, row.model, row.requests])).toEqual([
-    ['alias-a', 'target-model', 1],
-    ['alias-b', 'target-model', 1],
-    ['', 'target-model', 1],
+  const body = await res.json() as Array<{ keyId: string; incomingModel: string; model: string; requests: number }>
+  expect(body.map((row) => [row.keyId, row.incomingModel, row.model, row.requests])).toEqual([
+    ['k1', 'alias-a', 'target-model', 1],
+    ['k1', 'alias-b', 'target-model', 1],
+    ['k1', '', 'target-model', 1],
   ])
   expect(body.reduce((total, row) => total + row.requests, 0)).toBe(3)
+})
+
+test('GET /api/token-usage API-key caller cannot use key_id to read another key', async () => {
+  store.keys.set('k1', mkKey('k1', 'public-key', 'u1'))
+  store.keys.set('k2', mkKey('k2', 'other-key', 'u2'))
+  store.usage.push(mkUsage('k1', '2026-03-01T00'))
+  store.usage.push(mkUsage('k2', '2026-03-01T00'))
+
+  const res = await call(buildApp({ apiKeyId: 'k1' }), '/api/token-usage?key_id=k2&start=2026-03-01T00&end=2026-03-01T23')
+
+  expect(res.status).toBe(200)
+  expect(await res.json()).toEqual([expect.objectContaining({ keyId: 'k1' })])
+  expect(store.getUsageQueryCount()).toBe(1)
+})
+
+test('GET /api/token-usage API-key caller remains limited to its key even when it has an owner session identity', async () => {
+  store.keys.set('k1', mkKey('k1', 'authenticated-key', 'u1'))
+  store.keys.set('k2', mkKey('k2', 'owner-sibling', 'u1'))
+  store.keys.set('k3', mkKey('k3', 'assigned-key', 'u2'))
+  store.assignments.push({ keyId: 'k3', userId: 'u1', assignedBy: 'admin', assignedAt: '' })
+  store.usage.push(mkUsage('k1', '2026-03-01T00'))
+  store.usage.push(mkUsage('k2', '2026-03-01T00'))
+  store.usage.push(mkUsage('k3', '2026-03-01T00'))
+
+  const res = await call(buildApp({ userId: 'u1', apiKeyId: 'k1' }), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
+
+  expect(res.status).toBe(200)
+  expect(await res.json()).toEqual([expect.objectContaining({ keyId: 'k1' })])
 })
 
 test('GET /api/token-usage admin sees all keys + ownerId/ownerName enrichment', async () => {
@@ -288,8 +336,16 @@ test('participants: shared view gets nothing', async () => {
   expect(body).toEqual([])
 })
 
-test('participants: a caller with neither admin nor a user id gets nothing', async () => {
+test('participants: an API-key caller gets nothing', async () => {
   store.keys.set('k1', mkKey('k1', 'owned', 'owner'))
-  const { body } = await participants({})
+  const { res, body } = await participants({ apiKeyId: 'k1' })
+  expect(res.status).toBe(200)
   expect(body).toEqual([])
+})
+
+test('participants: a caller with no identity is unauthorized', async () => {
+  store.keys.set('k1', mkKey('k1', 'owned', 'owner'))
+  const { res, body } = await participants({})
+  expect(res.status).toBe(401)
+  expect(body).toEqual({ error: 'Unauthorized' })
 })

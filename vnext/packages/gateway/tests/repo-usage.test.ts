@@ -62,6 +62,26 @@ test('set() replaces only the matching incoming-model bucket', async () => {
   ]))
 })
 
+test('NUL-containing incoming-model and model tuples stay isolated through record, query, and list', async () => {
+  const first = baseRec({ incomingModel: 'a\0b', model: 'c', tokens: { input: 10 }, requests: 2 })
+  const second = baseRec({ incomingModel: 'a', model: 'b\0c', tokens: { input: 20 }, requests: 3 })
+
+  await repo.usage.record(first)
+  await repo.usage.record(second)
+  await repo.usage.record(first)
+
+  const listed = await repo.usage.listAll()
+  const queried = await repo.usage.query({ keyId: 'k1', start: first.hour, end: '2026-06-13T11' })
+
+  for (const rows of [listed, queried]) {
+    expect(rows).toHaveLength(2)
+    expect(rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ incomingModel: 'a\0b', model: 'c', tokens: { input: 20 }, requests: 4 }),
+      expect.objectContaining({ incomingModel: 'a', model: 'b\0c', tokens: { input: 20 }, requests: 3 }),
+    ]))
+  }
+})
+
 test('legacy unknown token-only, request-only, and full buckets assemble independently', async () => {
   db.exec(`
     INSERT INTO usage (key_id, incoming_model, model, upstream, model_key, client, hour, dimension, tokens, unit_price)
