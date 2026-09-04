@@ -142,7 +142,12 @@ export class DumpAccumulator {
   }
 
   success(identity: TelemetryModelIdentity, usage: TokenUsage | null): void {
-    this.model = identity.model
+    // `requestedModel` is the client-facing identity and must survive key
+    // routing. Successful handlers still supply the resolved identity below
+    // for upstream/cost metadata, but only use its model when no request
+    // model was available (for example, a protocol stream opened before its
+    // model-bearing frame arrived).
+    this.model ??= identity.model
     this.upstreamId = identity.upstream
     this.inputTokens = tokenUsageInput(usage)
     this.outputTokens = usage?.output ?? null
