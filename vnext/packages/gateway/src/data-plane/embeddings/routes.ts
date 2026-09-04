@@ -23,6 +23,7 @@ import { runEmbeddingsAttempt } from '../observability/attempts/embeddings-attem
 import { openRequestDump, parseJsonBody } from '../chat-flow/shared/dump-open.ts'
 import type { DumpAccumulator } from '../../shared/dump/accumulator.ts'
 import { HTTPError } from '@vibe-llm/provider-llm'
+import { forwardUpstreamError } from '../errors/forward.ts'
 
 type Vars = { auth: DataPlaneAuthCtx }
 
@@ -41,14 +42,6 @@ type EmbeddingsCtx = Context<{ Bindings: Env; Variables: Vars }>
 const wrapResponse = (dump: DumpAccumulator | null, response: Response): Response =>
   dump ? dump.finalize(response) : response
 
-const upstreamErrorResponse = (err: unknown): Response | null => {
-  if (!(err instanceof HTTPError) || !err.response) return null
-  return new Response(err.response.body, {
-    status: err.response.status,
-    statusText: err.response.statusText,
-    headers: err.response.headers,
-  })
-}
 
 /**
  * `presetBody` lets a caller that has already parsed (and reshaped) the request
@@ -125,9 +118,8 @@ export async function embeddingsHandler(
       },
     })
   } catch (err) {
-    const upstream = upstreamErrorResponse(err)
-    if (!upstream) throw err
-    return wrapResponse(dump, upstream)
+    if (!(err instanceof HTTPError) || !err.response) throw err
+    return wrapResponse(dump, await forwardUpstreamError(err.response, 'chat_completions'))
   }
 
   if (!attempt.ok && 'rateLimit' in attempt) {

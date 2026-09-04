@@ -929,7 +929,18 @@ test.each([400, 429])('mapped Custom embeddings upstream %i is forwarded without
     upstreamModel = (await request.json() as { model?: unknown }).model
     return new Response(upstreamBody, {
       status,
-      headers: { 'content-type': 'application/json', 'x-upstream-error': `status-${status}` },
+      headers: {
+        'content-type': 'application/json',
+        'content-encoding': 'gzip',
+        'content-length': '999',
+        'connection': 'keep-alive',
+        'keep-alive': 'timeout=5',
+        'set-cookie': 'upstream-session=secret',
+        'transfer-encoding': 'chunked',
+        'retry-after': '30',
+        'x-request-id': `upstream-${status}`,
+        'x-upstream-error': `status-${status}`,
+      },
     })
   }) as typeof fetch
   const app = buildApp({ apiKeyId: dumpKey.id, routingPolicy: mappedPolicy })
@@ -943,8 +954,16 @@ test.each([400, 429])('mapped Custom embeddings upstream %i is forwarded without
   expect(upstreamModel).toBe(destination)
   expect(response.status).toBe(status)
   expect(response.headers.get('content-type')).toContain('application/json')
+  expect(response.headers.get('retry-after')).toBe('30')
+  expect(response.headers.get('x-request-id')).toBe(`upstream-${status}`)
   expect(response.headers.get('x-upstream-error')).toBe(`status-${status}`)
-  expect(await response.text()).toBe(upstreamBody)
+  expect(response.headers.get('content-encoding')).toBeNull()
+  expect(response.headers.get('content-length')).toBeNull()
+  expect(response.headers.get('transfer-encoding')).toBeNull()
+  expect(response.headers.get('connection')).toBeNull()
+  expect(response.headers.get('keep-alive')).toBeNull()
+  expect(response.headers.get('set-cookie')).toBeNull()
+  expect(await response.json()).toEqual(JSON.parse(upstreamBody))
   await drain()
   expect(store.records).toHaveLength(1)
   expect(store.records[0]?.meta.model).toBe('source')
