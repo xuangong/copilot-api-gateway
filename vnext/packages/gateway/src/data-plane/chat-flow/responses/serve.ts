@@ -100,7 +100,7 @@ type ResponsesPayload = Record<string, unknown> & {
 
 type ResponsesServeAuth = ResponsesAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
 
-type ResponsesExtra = { readonly mergedInputItems: unknown[] }
+type ResponsesExtra = { readonly mergedInputItems: unknown[]; readonly upstreamPin?: string }
 
 const responsesHooks: ServeTemplateHooks<
   ResponsesPayload,
@@ -144,13 +144,8 @@ const responsesHooks: ServeTemplateHooks<
       return {
         kind: 'continue',
         payload: { ...payload, model: resolved.routedModel },
-        extra: { mergedInputItems },
-        ...(resolved.upstreamPin ? { authPatch: { pin: resolved.upstreamPin } } : {}),
-      } satisfies PreProcessResult<
-        ResponsesPayload,
-        ResponsesExtra,
-        ResponsesServeAuth
-      >
+        extra: { mergedInputItems, ...(resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {}) },
+      } satisfies PreProcessResult<ResponsesPayload, ResponsesExtra>
     } catch (err) {
       // PreviousResponseNotFoundError carries only `status: 400` (no
       // body), so we MUST delegate to renderPreviousResponseNotFound to
@@ -182,7 +177,7 @@ const responsesHooks: ServeTemplateHooks<
 
   runAttempt: (a) => responsesAttempt.generate({
     payload: a.payload,
-    auth: a.auth,
+    auth: a.extra?.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
     ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId },
     telemetryCtx: a.telemetryCtx,
     requestId: a.extras.requestId as string,

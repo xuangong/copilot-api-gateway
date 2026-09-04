@@ -54,11 +54,12 @@ export interface MessagesServeArgs {
 type MessagesPayload = Record<string, unknown> & { model: string; stream?: boolean }
 
 type MessagesServeAuth = MessagesAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
+type MessagesExtra = { readonly upstreamPin?: string }
 
 const messagesHooks: ServeTemplateHooks<
   MessagesPayload,
   MessagesAttemptResult,
-  undefined,
+  MessagesExtra,
   MessagesServeAuth,
   TelemetryRequestContext
 > = {
@@ -86,8 +87,7 @@ const messagesHooks: ServeTemplateHooks<
     return {
       kind: 'continue',
       payload: { ...payload, model: resolved.routedModel },
-      extra: undefined,
-      ...(resolved.upstreamPin ? { authPatch: { pin: resolved.upstreamPin } } : {}),
+      extra: resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {},
     }
   },
 
@@ -96,7 +96,7 @@ const messagesHooks: ServeTemplateHooks<
   runAttempt: (a) => messagesAttempt.generate({
     payload: a.payload,
     // Structural typing: extra apiKeyId on auth is ignored by attempt.
-    auth: a.auth,
+    auth: a.extra?.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
     // apiKeyId reaches the interceptors the same way the Responses flow does
     // (responses/serve.ts:178). The web-search shim resolves the caller's
     // engines from their key, so without it every Messages request looks like

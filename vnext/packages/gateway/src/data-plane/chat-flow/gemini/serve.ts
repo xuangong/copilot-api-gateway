@@ -105,18 +105,19 @@ const geminiHooks: ServeTemplateHooks<
 }
 
 export async function serveGemini(args: GeminiServeArgs): Promise<Response> {
-  const auth: GeminiServeAuth = {
-    ownerId: args.auth.userId,
-    copilot: args.auth.copilot,
-    apiKeyId: args.auth.apiKeyId,
-    routingPolicy: args.auth.routingPolicy,
-  }
   const resolved = resolveKeyModel(args.model, args.auth.routingPolicy)
+  // This adapter owns the attempt auth shape; unlike framework preprocessing,
+  // it may add the resolved pin while retaining every authenticated field.
+  const auth: GeminiServeAuth = {
+    ...args.auth,
+    ownerId: args.auth.userId,
+    ...(resolved.upstreamPin ? { pin: resolved.upstreamPin } : {}),
+  }
   const { response } = await serveTemplate(
     geminiHooks,
     {
       raw: args.raw,
-      auth: resolved.upstreamPin ? { ...auth, pin: resolved.upstreamPin } : auth,
+      auth,
       obsCtx: args.obsCtx as KitObsCtx,
       signal: args.signal,
       extras: { requestedModel: args.model, model: resolved.routedModel, forceStream: args.forceStream },

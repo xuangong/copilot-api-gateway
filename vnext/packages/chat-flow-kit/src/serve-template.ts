@@ -62,17 +62,20 @@ export interface PreProcessCtx<TAuth extends KitAuthCtx = KitAuthCtx> {
 }
 
 /** preProcess returns one of two shapes: continue with a (possibly mutated)
- *  payload + extra, OR short-circuit with a Response. `authPatch` merges into
- *  the original auth for endpoint routing, but the kit always preserves the
- *  original `apiKeyId` for quota and telemetry identity. The short-circuit
- *  branch lets endpoints render bespoke error envelopes (e.g. domain-specific
+ *  payload + extra, OR short-circuit with a Response. The kit never permits
+ *  preprocessing to modify the auth context; endpoint-specific routing data
+ *  belongs in `extra`. The short-circuit branch lets endpoints render bespoke
+ *  error envelopes (e.g. domain-specific
  *  not-found shapes) without the kit knowing their wire shape. */
-export type PreProcessResult<TPayload, TExtra, TAuthPatch = never> =
-  | { kind: 'continue'; payload: TPayload; extra: TExtra; authPatch?: TAuthPatch }
+export type PreProcessResult<TPayload, TExtra> =
+  | { kind: 'continue'; payload: TPayload; extra: TExtra }
   | { kind: 'short-circuit'; response: Response; extra: TExtra }
 
-export interface RunAttemptArgs<TPayload, TAuth, TTelemetryCtx> {
+export interface RunAttemptArgs<TPayload, TExtra, TAuth, TTelemetryCtx> {
   readonly payload: TPayload
+  /** Endpoint-specific data returned by preProcess. This carries routing data
+   * without allowing preprocessing to alter the request auth context. */
+  readonly extra: TExtra | undefined
   readonly auth: TAuth
   readonly telemetryCtx: TTelemetryCtx
   readonly downstreamAbortSignal: AbortSignal
@@ -118,11 +121,11 @@ export interface ServeTemplateHooks<
   preProcess?(
     payload: TPayload,
     ctx: PreProcessCtx<TAuth>,
-  ): Promise<PreProcessResult<TPayload, TExtra, Partial<TAuth>>>
+  ): Promise<PreProcessResult<TPayload, TExtra>>
 
   wantsStream(payload: TPayload, input: ServeTemplateInput<TAuth>): boolean
 
-  runAttempt(args: RunAttemptArgs<TPayload, TAuth, TTelemetryCtx>): Promise<TAttemptResult>
+  runAttempt(args: RunAttemptArgs<TPayload, TExtra, TAuth, TTelemetryCtx>): Promise<TAttemptResult>
 
   respond(
     result: TAttemptResult,
@@ -183,7 +186,7 @@ export async function serveTemplate<
   // 2. preProcess (optional).
   let extra: TExtra | undefined
   if (hooks.preProcess) {
-    let pre: PreProcessResult<TPayload, TExtra, Partial<TAuth>>
+    let pre: PreProcessResult<TPayload, TExtra>
     try {
       pre = await hooks.preProcess(payload, { auth: input.auth })
     } catch (err) {
@@ -199,10 +202,6 @@ export async function serveTemplate<
     }
     payload = pre.payload
     extra = pre.extra
-    if (pre.authPatch) input = {
-      ...input,
-      auth: { ...input.auth, ...pre.authPatch, apiKeyId: input.auth.apiKeyId },
-    }
   }
 
   // 3. wantsStream.
@@ -231,6 +230,7 @@ export async function serveTemplate<
   // 7. runAttempt.
   const result = await hooks.runAttempt({
     payload,
+    extra,
     auth: input.auth,
     telemetryCtx,
     downstreamAbortSignal: controller.signal,

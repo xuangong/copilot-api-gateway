@@ -55,11 +55,12 @@ type ChatCompletionsPayload = Record<string, unknown> & {
  * necessary — the kit needs apiKeyId for quota, attempt does not.
  */
 type ChatCompletionsServeAuth = ChatCompletionsAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
+type ChatCompletionsExtra = { readonly upstreamPin?: string }
 
 const chatCompletionsHooks: ServeTemplateHooks<
   ChatCompletionsPayload,
   ChatCompletionsAttemptResult,
-  undefined,
+  ChatCompletionsExtra,
   ChatCompletionsServeAuth,
   TelemetryRequestContext
 > = {
@@ -84,8 +85,7 @@ const chatCompletionsHooks: ServeTemplateHooks<
     return {
       kind: 'continue',
       payload: { ...payload, model: resolved.routedModel },
-      extra: undefined,
-      ...(resolved.upstreamPin ? { authPatch: { pin: resolved.upstreamPin } } : {}),
+      extra: resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {},
     }
   },
 
@@ -93,7 +93,7 @@ const chatCompletionsHooks: ServeTemplateHooks<
 
   runAttempt: (a) => chatCompletionsAttempt.generate({
     payload: a.payload,
-    auth: a.auth,
+    auth: a.extra?.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
     // Same as messages/serve.ts: the web-search shim resolves engines from the
     // caller's key, so the interceptors need the id.
     ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId },

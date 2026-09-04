@@ -233,39 +233,47 @@ describe('serveTemplate — preProcess continue + mutation', () => {
   })
 })
 
-describe('serveTemplate — preProcess auth patches', () => {
-  test('merges routing fields while pinning apiKeyId for telemetry, quota, and attempts', async () => {
-    let telemetryAuth: Auth | undefined
+describe('serveTemplate — preProcess extra', () => {
+  test('passes routing data through extra without changing the original auth object', async () => {
+    type RichAuth = KitAuthCtx & { readonly ownerId: string; readonly copilot: boolean }
+    type RoutingExtra = { readonly upstreamPin?: string }
+    const auth: RichAuth = { apiKeyId: 'k1', ownerId: 'owner', copilot: true }
+    let telemetryAuth: RichAuth | undefined
     let quotaApiKeyId: string | null | undefined
-    let attemptAuth: Auth | undefined
-    const hooks = defaultHooks({
+    let attemptAuth: RichAuth | undefined
+    let attemptExtra: RoutingExtra | undefined
+    const hooks: ServeTemplateHooks<Payload, AttemptResult, RoutingExtra, RichAuth, TCtx> = {
+      endpointTag: 'test_endpoint',
+      parse: ({ raw }) => raw as Payload,
       preProcess: async (payload) => ({
-        kind: 'continue',
-        payload,
-        extra: undefined,
-        authPatch: { apiKeyId: undefined, userId: 'routed-user', pin: 'up_A' },
+        kind: 'continue', payload, extra: { upstreamPin: 'up_A' },
       }),
+      wantsStream: () => false,
       runAttempt: async (args) => {
         attemptAuth = args.auth
+        attemptExtra = args.extra
         return { kind: 'ok', echoed: args.payload.value }
       },
-    })
-    const deps = defaultDeps({
-      buildTelemetryCtx: ({ auth, endpointTag, isStreaming }) => {
-        telemetryAuth = auth
+      respond: async () => new Response('ok'),
+    }
+    const deps: ServeTemplateDeps<RichAuth, TCtx> = {
+      jsonErrorWrap: (status, body) => new Response(JSON.stringify(body), { status }),
+      buildTelemetryCtx: ({ auth: seen, endpointTag, isStreaming }) => {
+        telemetryAuth = seen
         return { tag: endpointTag, isStreaming }
       },
       runQuotaGate: async (apiKeyId) => {
         quotaApiKeyId = apiKeyId
         return null
       },
-    })
+    }
 
-    await serveTemplate(hooks, defaultInput(), deps)
+    await serveTemplate(hooks, { ...defaultInput(), auth }, deps)
 
-    expect(telemetryAuth).toEqual({ apiKeyId: 'k1', userId: 'routed-user', pin: 'up_A' })
+    expect(telemetryAuth).toBe(auth)
     expect(quotaApiKeyId).toBe('k1')
-    expect(attemptAuth).toEqual({ apiKeyId: 'k1', userId: 'routed-user', pin: 'up_A' })
+    expect(attemptAuth).toBe(auth)
+    expect(attemptExtra).toEqual({ upstreamPin: 'up_A' })
   })
 
   test('supports a required rich auth hook typed with the default preprocess result', () => {
