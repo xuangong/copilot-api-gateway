@@ -1,7 +1,8 @@
 // packages/gateway/src/data-plane/chat-flow/count-tokens/serve.ts
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseMessagesCountTokensPayload } from '../../parsers.ts'
-import { resolveBinding, stripUpstreamPin } from '../../routing/binding-resolver.ts'
+import { resolveBinding } from '../../routing/binding-resolver.ts'
+import { resolveKeyModel } from '../../routing/key-model-mapping.ts'
 import { forwardUpstreamError } from '../../errors/forward.ts'
 import { HTTPError } from '@vibe-llm/provider-copilot'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'
@@ -27,11 +28,13 @@ export async function serveCountTokens(args: CountTokensServeArgs): Promise<Resp
     ))
   }
   if (args.dump && typeof payload.model === 'string') args.dump.requestedModel(payload.model)
-  stripUpstreamPin(payload as unknown as Record<string, unknown>)
+  const resolved = resolveKeyModel(payload.model, args.auth.routingPolicy)
+  const forwardPayload = { ...payload, model: resolved.routedModel }
 
-  const binding = await resolveBinding(payload.model, 'messages_count_tokens', {
+  const binding = await resolveBinding(resolved.routedModel, 'messages_count_tokens', {
     ownerId: args.auth.userId,
     copilot: args.auth.copilot,
+    pin: resolved.upstreamPin,
   })
   if (!binding) {
     return tee(jsonErrorWrap(404, {
@@ -48,7 +51,7 @@ export async function serveCountTokens(args: CountTokensServeArgs): Promise<Resp
     for (const [k, v] of Object.entries(args.forwardedHeaders)) headers.set(k, v)
     const pr = await binding.provider.fetch({
       endpoint: 'messages_count_tokens',
-      payload,
+      payload: forwardPayload,
       headers,
       sourceApi: 'anthropic',
       operationName: 'count tokens',

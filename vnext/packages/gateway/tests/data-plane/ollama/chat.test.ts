@@ -18,6 +18,8 @@ const env = {} as never
 const KEY = 'ollama-real-key'
 const OWNER = 'owner-user'
 const MODEL = 'gpt-4o-mini'
+const EMBEDDING_MODEL = 'text-embedding-3-small'
+const EMBEDDING_SOURCE_MODEL = 'embedding-source'
 const SOURCE_MODEL = 'source-model'
 let modelMappingsEnabled = false
 let capturedUpstreamModel: string | null = null
@@ -61,12 +63,17 @@ const repo = (): Repo => ({
     findByRawKey: async (raw: string) =>
       raw === KEY ? {
         id: 'k1', name: 'real', key: raw, ownerId: OWNER, modelMappingsEnabled,
-        modelMappings: [{ source: SOURCE_MODEL, destination: MODEL }],
+        modelMappings: [
+          { source: SOURCE_MODEL, destination: MODEL },
+          { source: EMBEDDING_SOURCE_MODEL, destination: EMBEDDING_MODEL },
+        ],
       } : null,
     getById: async () => null,
+    touchLastUsed: async () => {},
   },
   users: { findByKey: async () => null },
   usage: { record: async () => {} },
+  performance: { record: async () => {} },
 } as unknown as Repo)
 
 const completion = {
@@ -104,7 +111,11 @@ beforeEach(() => {
     }
     if (url.pathname.endsWith('/models')) {
       return new Response(
-        JSON.stringify({ object: 'list', data: [stubModel(MODEL), stubModel(SOURCE_MODEL)] } satisfies ModelsResponse),
+        JSON.stringify({ object: 'list', data: [
+          stubModel(MODEL), stubModel(SOURCE_MODEL),
+          { ...stubModel(EMBEDDING_MODEL), capabilities: { ...stubModel(EMBEDDING_MODEL).capabilities, type: 'embedding' } },
+          { ...stubModel(EMBEDDING_SOURCE_MODEL), capabilities: { ...stubModel(EMBEDDING_SOURCE_MODEL).capabilities, type: 'embedding' } },
+        ] } satisfies ModelsResponse),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }
@@ -131,6 +142,12 @@ const chat = (body: unknown, headers: Record<string, string> = { authorization: 
     headers: { 'content-type': 'application/json', ...headers },
   }, env)
 
+const embed = (body: unknown) => app.request('/api/embed', {
+  method: 'POST',
+  body: JSON.stringify(body),
+  headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json' },
+}, env)
+
 test('stream:false returns a single Ollama envelope', async () => {
   const res = await chat({ model: MODEL, stream: false, messages: [{ role: 'user', content: 'hi' }] })
   expect(res.status).toBe(200)
@@ -141,6 +158,18 @@ test('stream:false returns a single Ollama envelope', async () => {
   expect(body.prompt_eval_count).toBe(4)
   expect(body.eval_count).toBe(2)
   expect(body.eval_duration as number).toBeGreaterThan(0)
+})
+
+test('API-key routing maps Ollama embed model names only when enabled', async () => {
+  modelMappingsEnabled = true
+  const routed = await embed({ model: EMBEDDING_SOURCE_MODEL, input: 'hi' })
+  expect(routed.status).toBe(200)
+  expect(capturedUpstreamModel).toBe(EMBEDDING_MODEL)
+
+  modelMappingsEnabled = false
+  const original = await embed({ model: EMBEDDING_SOURCE_MODEL, input: 'hi' })
+  expect(original.status).toBe(200)
+  expect(capturedUpstreamModel).toBe(EMBEDDING_SOURCE_MODEL)
 })
 
 test('API-key routing maps Ollama model names only when enabled', async () => {

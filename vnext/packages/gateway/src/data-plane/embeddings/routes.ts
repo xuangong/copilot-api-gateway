@@ -16,7 +16,8 @@
  */
 import { Hono, type Context } from 'hono'
 import type { Env } from '../../app.ts'
-import { resolveBinding, stripUpstreamPin } from '../routing/binding-resolver.ts'
+import { resolveBinding } from '../routing/binding-resolver.ts'
+import { resolveKeyModel } from '../routing/key-model-mapping.ts'
 import type { DataPlaneAuthCtx } from '../models/routes.ts'
 import { runEmbeddingsAttempt } from '../observability/attempts/embeddings-attempt.ts'
 import { openRequestDump, parseJsonBody } from '../chat-flow/shared/dump-open.ts'
@@ -52,28 +53,31 @@ export async function embeddingsHandler(
   const auth = c.get('auth') ?? {}
   const { requestBody, dump } = await openRequestDump(c, auth, c.req.method)
 
-  let body: EmbeddingsPayload
+  let sourceBody: EmbeddingsPayload
   try {
-    body = presetBody ?? (parseJsonBody(requestBody.bytes) as EmbeddingsPayload)
+    sourceBody = presetBody ?? (parseJsonBody(requestBody.bytes) as EmbeddingsPayload)
   } catch {
     dump?.failed('invalid JSON')
     return wrapResponse(dump, c.json({ error: { type: 'invalid_request_error', message: 'invalid JSON' } }, 400))
   }
-  if (!body || typeof body.model !== 'string') {
+  if (!sourceBody || typeof sourceBody.model !== 'string') {
     dump?.failed('model is required')
     return wrapResponse(dump, c.json({ error: { type: 'invalid_request_error', message: 'model is required' } }, 400))
   }
-  dump?.requestedModel(body.model)
+  dump?.requestedModel(sourceBody.model)
 
-  stripUpstreamPin(body as unknown as Record<string, unknown>)
-  // Copilot upstream rejects scalar `input` with 400 Bad Request; OpenAI spec
-  // accepts both string and array, so normalize to array for upstream compat.
-  if (typeof body.input === 'string') {
-    body.input = [body.input]
+  const resolved = resolveKeyModel(sourceBody.model, auth.routingPolicy)
+  // Never mutate `presetBody`: Ollama retains caller-owned parsed input. The
+  // provider gets a shallow clone containing only the resolved bare model.
+  const body: EmbeddingsPayload = {
+    ...sourceBody,
+    model: resolved.routedModel,
+    ...(typeof sourceBody.input === 'string' ? { input: [sourceBody.input] } : {}),
   }
-  const binding = await resolveBinding(body.model, 'embeddings', {
+  const binding = await resolveBinding(resolved.routedModel, 'embeddings', {
     ownerId: auth.userId,
     copilot: auth.copilot,
+    pin: resolved.upstreamPin,
   })
   if (!binding) {
     dump?.failed(`no embeddings upstream for model ${body.model}`)

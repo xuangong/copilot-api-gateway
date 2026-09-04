@@ -197,3 +197,163 @@ test.each(['chat', 'messages', 'responses'] as const)('custom slash alias is map
   expect(calls.A).toEqual([{ model: destination, path: protocol === 'chat' ? '/v1/chat/completions' : `/v1/${protocol}` }])
   expect(calls.B).toEqual([])
 })
+
+test('embeddings sends the mapped destination upstream', async () => {
+  initRepo(stubRepo([customUpstream('up_A', ['embeddings'])]))
+  initRuntimeLocation('bun')
+  let upstreamModel: unknown
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input as string, init)
+    const url = new URL(request.url)
+    if (url.pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({ object: 'list', data: [{ id: destination, object: 'model', capabilities: { type: 'embedding' } }] }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    upstreamModel = (await request.json() as { model?: unknown }).model
+    return new Response(JSON.stringify({ object: 'list', data: [], model: destination, usage: { prompt_tokens: 1 } }), {
+      headers: { 'content-type': 'application/json' },
+    })
+  }) as typeof fetch
+  const app = buildApp({ routingPolicy: mappedPolicy })
+
+  const response = await app.fetch(new Request('http://local/v1/embeddings', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'source', input: 'hi' }),
+  }), env)
+
+  expect(response.status).toBe(200)
+  expect(upstreamModel).toBe(destination)
+})
+
+test('pinned image edit does not fall back to another provider', async () => {
+  initRepo(stubRepo([customUpstream('up_A', ['images_edits'], false), customUpstream('up_B', ['images_edits'])]))
+  initRuntimeLocation('bun')
+  globalThis.fetch = (async () => new Response('unexpected')) as typeof fetch
+  const form = new FormData()
+  form.append('model', 'up_A/source')
+  form.append('image', new Blob(['x'], { type: 'image/png' }), 'image.png')
+  const app = buildApp({ routingPolicy: mappedPolicy })
+
+  const response = await app.fetch(new Request('http://local/v1/images/edits', { method: 'POST', body: form }), env)
+
+  expect(response.status).toBe(404)
+})
+
+test('messages count tokens sends the mapped destination upstream', async () => {
+  initRepo(stubRepo([customUpstream('up_A', ['messages', 'messages_count_tokens'])]))
+  initRuntimeLocation('bun')
+  let upstreamModel: unknown
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input as string, init)
+    const url = new URL(request.url)
+    if (url.pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({ object: 'list', data: [{ id: destination, object: 'model' }] }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    upstreamModel = (await request.json() as { model?: unknown }).model
+    return new Response(JSON.stringify({ input_tokens: 1 }), { headers: { 'content-type': 'application/json' } })
+  }) as typeof fetch
+  const app = buildApp({ routingPolicy: mappedPolicy })
+
+  const response = await app.fetch(new Request('http://local/v1/messages/count_tokens', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'source', messages: [{ role: 'user', content: 'hi' }] }),
+  }), env)
+
+  expect(response.status).toBe(200)
+  expect(upstreamModel).toBe(destination)
+})
+
+test('Gemini count tokens sends the mapped destination upstream', async () => {
+  initRepo(stubRepo([customUpstream('up_A', ['messages'])]))
+  initRuntimeLocation('bun')
+  let upstreamModel: unknown
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input as string, init)
+    const url = new URL(request.url)
+    if (url.pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({ object: 'list', data: [{ id: destination, object: 'model' }] }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    upstreamModel = (await request.json() as { model?: unknown }).model
+    return new Response(JSON.stringify({ input_tokens: 1 }), { headers: { 'content-type': 'application/json' } })
+  }) as typeof fetch
+  const app = buildApp({ routingPolicy: mappedPolicy })
+
+  const response = await app.fetch(new Request('http://local/v1beta/models/source:countTokens', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
+  }), env)
+
+  expect(response.status).toBe(200)
+  expect(upstreamModel).toBe(destination)
+})
+
+test('image edits replace every source model field with one mapped destination', async () => {
+  initRepo(stubRepo([customUpstream('up_A', ['images_edits'])]))
+  initRuntimeLocation('bun')
+  let upstreamForm: FormData | undefined
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input as string, init)
+    const url = new URL(request.url)
+    if (url.pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({ object: 'list', data: [{ id: destination, object: 'model', capabilities: { type: 'image' } }] }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    upstreamForm = await request.formData()
+    return new Response(JSON.stringify({ data: [] }), { headers: { 'content-type': 'application/json' } })
+  }) as typeof fetch
+  const form = new FormData()
+  form.append('model', 'source')
+  form.append('model', 'other-source')
+  form.append('prompt', 'one')
+  form.append('prompt', 'two')
+  form.append('image', new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }), 'image.png')
+  form.append('mask', new Blob([new Uint8Array([4, 5])], { type: 'image/png' }), 'mask.png')
+  const app = buildApp({ routingPolicy: mappedPolicy })
+
+  const response = await app.fetch(new Request('http://local/v1/images/edits', { method: 'POST', body: form }), env)
+
+  expect(response.status).toBe(200)
+  expect(upstreamForm?.getAll('model')).toEqual([destination])
+  expect(upstreamForm?.getAll('prompt')).toEqual(['one', 'two'])
+  const image = upstreamForm?.get('image') as File
+  const mask = upstreamForm?.get('mask') as File
+  expect([image.name, mask.name]).toEqual(['image.png', 'mask.png'])
+  expect(Array.from(new Uint8Array(await image.arrayBuffer()))).toEqual([1, 2, 3])
+  expect(Array.from(new Uint8Array(await mask.arrayBuffer()))).toEqual([4, 5])
+})
+
+test('image generation sends the mapped destination upstream', async () => {
+  initRepo(stubRepo([customUpstream('up_A', ['images_generations'])]))
+  initRuntimeLocation('bun')
+  let upstreamModel: unknown
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input as string, init)
+    const url = new URL(request.url)
+    if (url.pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({ object: 'list', data: [{ id: destination, object: 'model', capabilities: { type: 'image' } }] }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    upstreamModel = (await request.json() as { model?: unknown }).model
+    return new Response(JSON.stringify({ data: [] }), { headers: { 'content-type': 'application/json' } })
+  }) as typeof fetch
+  const app = buildApp({ routingPolicy: mappedPolicy })
+
+  const response = await app.fetch(new Request('http://local/v1/images/generations', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'source', prompt: 'hi' }),
+  }), env)
+
+  expect(response.status).toBe(200)
+  expect(upstreamModel).toBe(destination)
+})

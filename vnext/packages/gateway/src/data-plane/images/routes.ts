@@ -27,7 +27,8 @@
  */
 import { Hono, type Context } from 'hono'
 import type { Env } from '../../app.ts'
-import { resolveBinding, stripUpstreamPin } from '../routing/binding-resolver.ts'
+import { resolveBinding } from '../routing/binding-resolver.ts'
+import { resolveKeyModel } from '../routing/key-model-mapping.ts'
 import type { DataPlaneAuthCtx } from '../models/routes.ts'
 import { runImagesAttempt } from '../observability/attempts/images-attempt.ts'
 import { openRequestDump, parseJsonBody } from '../chat-flow/shared/dump-open.ts'
@@ -104,10 +105,12 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
   }
   dump?.requestedModel(payload.model)
 
-  stripUpstreamPin(payload as unknown as Record<string, unknown>)
-  const binding = await resolveBinding(payload.model, 'images_generations', {
+  const resolved = resolveKeyModel(payload.model, auth.routingPolicy)
+  const forwardPayload: GenerationsPayload = { ...payload, model: resolved.routedModel }
+  const binding = await resolveBinding(resolved.routedModel, 'images_generations', {
     ownerId: auth.userId,
     copilot: auth.copilot,
+    pin: resolved.upstreamPin,
   })
   if (!binding) {
     dump?.failed(`no images_generations upstream for model ${payload.model}`)
@@ -117,13 +120,13 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
     ))
   }
 
-  const pricing = binding.provider.getPricingForModelKey(payload.model)
+  const pricing = binding.provider.getPricingForModelKey(resolved.routedModel)
   let attempt: Awaited<ReturnType<typeof runImagesAttempt>>
   try {
     attempt = await runImagesAttempt({
     apiKeyId: auth.apiKeyId,
-    model: payload.model,
-    modelKey: payload.model,
+    model: resolved.routedModel,
+    modelKey: resolved.routedModel,
     pricing,
     upstream: binding.upstream,
     userAgent: c.req.header('user-agent') ?? undefined,
@@ -132,7 +135,7 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
     call: async () => {
       const pr = await binding.provider.fetch({
         endpoint: 'images_generations',
-        payload,
+        payload: forwardPayload,
         headers: new Headers({ 'content-type': 'application/json' }),
         sourceApi: 'openai',
         operationName: 'create image',
@@ -234,9 +237,11 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
   }
   dump?.requestedModel(model)
 
-  const binding = await resolveBinding(model, 'images_edits', {
+  const resolved = resolveKeyModel(model, auth.routingPolicy)
+  const binding = await resolveBinding(resolved.routedModel, 'images_edits', {
     ownerId: auth.userId,
     copilot: auth.copilot,
+    pin: resolved.upstreamPin,
   })
   if (!binding) {
     dump?.failed(`no images_edits upstream for model ${model}`)
@@ -250,6 +255,10 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
   // entries where files are File instances; preserve filename via append(key, value, name).
   const forward = new FormData()
   for (const [key, value] of form.entries()) {
+    // The normalized model is appended exactly once after every caller-supplied
+    // model field is removed. This also prevents a duplicate multipart field
+    // from selecting a source model downstream.
+    if (key === 'model') continue
     if (typeof value === 'string') {
       forward.append(key, value)
     } else {
@@ -257,14 +266,15 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
       forward.append(key, value, name)
     }
   }
+  forward.append('model', resolved.routedModel)
 
-  const pricing = binding.provider.getPricingForModelKey(model)
+  const pricing = binding.provider.getPricingForModelKey(resolved.routedModel)
   let attempt: Awaited<ReturnType<typeof runImagesAttempt>>
   try {
     attempt = await runImagesAttempt({
     apiKeyId: auth.apiKeyId,
-    model,
-    modelKey: model,
+    model: resolved.routedModel,
+    modelKey: resolved.routedModel,
     pricing,
     upstream: binding.upstream,
     userAgent: c.req.header('user-agent') ?? undefined,

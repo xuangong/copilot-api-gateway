@@ -136,7 +136,11 @@ function genericModelEndpoints(
   // No `messages`/`responses`/`embeddings` for chat-typed models on custom/azure
   // unless the upstream explicitly declared them in cfg.endpoints (rare).
   if (supported.includes('responses')) out.responses = {}
-  if (supported.includes('messages')) out.messages = {}
+  if (supported.includes('messages')) {
+    out.messages = {}
+    // Custom providers derive the count-tokens URL from their Messages path.
+    out.messages_count_tokens = {}
+  }
   if (supported.includes('embeddings')) out.embeddings = {}
   if (supported.includes('alpha_search')) out.alpha_search = {}
   if (Object.keys(out).length === 0) out.chat_completions = {}

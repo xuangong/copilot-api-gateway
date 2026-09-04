@@ -16,7 +16,7 @@ export function resolveKeyModel(
   if (!policy?.modelMappingsEnabled || policy.modelMappings.length === 0) {
     return {
       requestedModel,
-      routedModel: requestedModel,
+      routedModel: bareModel,
       ...(upstreamPin ? { upstreamPin } : {}),
       matchedRuleIndexes: [],
     }

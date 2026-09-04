@@ -93,8 +93,8 @@ test('resolver returns requests unchanged when policy is absent, disabled, or no
   const empty = resolveKeyModel('a', enabled)
   const unmatched = resolveKeyModel('a', { modelMappingsEnabled: true, modelMappings: [{ source: 'b', destination: 'c' }] })
 
-  expect(absent).toEqual({ requestedModel: 'up_123/a', routedModel: 'up_123/a', upstreamPin: 'up_123', matchedRuleIndexes: [] })
-  expect(disabled).toEqual({ requestedModel: 'up_123/a', routedModel: 'up_123/a', upstreamPin: 'up_123', matchedRuleIndexes: [] })
+  expect(absent).toEqual({ requestedModel: 'up_123/a', routedModel: 'a', upstreamPin: 'up_123', matchedRuleIndexes: [] })
+  expect(disabled).toEqual({ requestedModel: 'up_123/a', routedModel: 'a', upstreamPin: 'up_123', matchedRuleIndexes: [] })
   expect(empty).toEqual({ requestedModel: 'a', routedModel: 'a', matchedRuleIndexes: [] })
   expect(unmatched).toEqual({ requestedModel: 'a', routedModel: 'a', matchedRuleIndexes: [] })
 })

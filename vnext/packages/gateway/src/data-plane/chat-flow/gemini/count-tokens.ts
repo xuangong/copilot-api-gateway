@@ -7,7 +7,8 @@
 // `{ totalTokens }` shape.
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseGeminiPayload } from '../../parsers.ts'
-import { resolveBinding, stripUpstreamPin } from '../../routing/binding-resolver.ts'
+import { resolveBinding } from '../../routing/binding-resolver.ts'
+import { resolveKeyModel } from '../../routing/key-model-mapping.ts'
 import { forwardUpstreamError } from '../../errors/forward.ts'
 import { HTTPError } from '@vibe-llm/provider-copilot'
 import { jsonErrorWrap } from '../shared/error-wrap.ts'
@@ -36,12 +37,13 @@ export async function serveGeminiCountTokens(args: GeminiCountTokensServeArgs): 
     ))
   }
 
-  const messagesPayload = translateGeminiToMessages(geminiPayload, { model: args.model })
-  stripUpstreamPin(messagesPayload as unknown as Record<string, unknown>)
+  const resolved = resolveKeyModel(args.model, args.auth.routingPolicy)
+  const messagesPayload = translateGeminiToMessages(geminiPayload, { model: resolved.routedModel })
 
-  const binding = await resolveBinding(args.model, 'messages_count_tokens', {
+  const binding = await resolveBinding(resolved.routedModel, 'messages_count_tokens', {
     ownerId: args.auth.userId,
     copilot: args.auth.copilot,
+    pin: resolved.upstreamPin,
   })
   if (!binding) {
     return tee(jsonErrorWrap(404, {
