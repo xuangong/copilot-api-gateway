@@ -1,10 +1,13 @@
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type FocusEvent,
+  type KeyboardEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -20,6 +23,7 @@ export interface ComboboxProps {
   value: string;
   options: ComboboxOption[];
   onChange: (value: string) => void;
+  onBlur?: () => void;
   placeholder: string;
   ariaLabel: string;
   disabled?: boolean;
@@ -28,6 +32,7 @@ export interface ComboboxProps {
   noMatchesText: string;
 }
 
+const IDEAL_MAX_HEIGHT = 256;
 const EMPTY_PLACEMENT: ComboboxPlacement = {
   left: 0,
   top: 0,
@@ -40,6 +45,7 @@ export function Combobox({
   value,
   options,
   onChange,
+  onBlur,
   placeholder,
   ariaLabel,
   disabled = false,
@@ -51,6 +57,8 @@ export function Combobox({
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
+  const suppressNextFocusOpen = useRef(false);
+  const positionFrame = useRef<number | undefined>(undefined);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -66,21 +74,31 @@ export function Combobox({
     setQuery("");
   };
 
-  const positionPopup = () => {
+  const positionPopup = useCallback(() => {
     const anchor = rootRef.current?.getBoundingClientRect();
-    if (!anchor) return;
+    const popup = popupRef.current;
+    if (!anchor || !popup) return;
     const viewport = window.visualViewport;
     const viewportWidth = viewport?.width ?? window.innerWidth;
     const viewportHeight = viewport?.height ?? window.innerHeight;
-    const popupHeight = popupRef.current?.getBoundingClientRect().height ?? 256;
+    const desiredHeight = Math.min(popup.scrollHeight, IDEAL_MAX_HEIGHT);
+    const desiredWidth = Math.max(anchor.width, popup.scrollWidth);
     setPlacement(
       getComboboxPlacement(
         anchor,
-        { width: anchor.width, height: popupHeight },
+        { width: desiredWidth, height: desiredHeight },
         { width: viewportWidth, height: viewportHeight },
       ),
     );
-  };
+  }, []);
+
+  const schedulePosition = useCallback(() => {
+    if (positionFrame.current !== undefined) return;
+    positionFrame.current = window.requestAnimationFrame(() => {
+      positionFrame.current = undefined;
+      positionPopup();
+    });
+  }, [positionPopup]);
 
   const openMenu = () => {
     if (disabled) return;
@@ -91,8 +109,8 @@ export function Combobox({
 
   useLayoutEffect(() => {
     if (!open) return;
-    positionPopup();
-  }, [open, filteredOptions.length]);
+    schedulePosition();
+  }, [open, filteredOptions.length, schedulePosition]);
 
   useEffect(() => {
     if (!open) return;
@@ -102,50 +120,66 @@ export function Combobox({
       if (
         !rootRef.current?.contains(target) &&
         !popupRef.current?.contains(target)
-      )
+      ) {
         close();
+      }
     };
-    const handleViewportChange = () => positionPopup();
     const observer =
       typeof ResizeObserver === "undefined"
         ? undefined
-        : new ResizeObserver(handleViewportChange);
+        : new ResizeObserver(schedulePosition);
     if (rootRef.current) observer?.observe(rootRef.current);
     if (popupRef.current) observer?.observe(popupRef.current);
     document.addEventListener("pointerdown", handleOutsidePointer, true);
-    window.addEventListener("resize", handleViewportChange);
-    window.addEventListener("scroll", handleViewportChange, true);
-    window.visualViewport?.addEventListener("resize", handleViewportChange);
-    window.visualViewport?.addEventListener("scroll", handleViewportChange);
+    window.addEventListener("resize", schedulePosition);
+    window.addEventListener("scroll", schedulePosition, true);
+    window.visualViewport?.addEventListener("resize", schedulePosition);
+    window.visualViewport?.addEventListener("scroll", schedulePosition);
     return () => {
       observer?.disconnect();
       document.removeEventListener("pointerdown", handleOutsidePointer, true);
-      window.removeEventListener("resize", handleViewportChange);
-      window.removeEventListener("scroll", handleViewportChange, true);
-      window.visualViewport?.removeEventListener(
-        "resize",
-        handleViewportChange,
-      );
-      window.visualViewport?.removeEventListener(
-        "scroll",
-        handleViewportChange,
-      );
+      window.removeEventListener("resize", schedulePosition);
+      window.removeEventListener("scroll", schedulePosition, true);
+      window.visualViewport?.removeEventListener("resize", schedulePosition);
+      window.visualViewport?.removeEventListener("scroll", schedulePosition);
+      if (positionFrame.current !== undefined) {
+        window.cancelAnimationFrame(positionFrame.current);
+        positionFrame.current = undefined;
+      }
     };
-  }, [open]);
+  }, [open, schedulePosition]);
 
   useEffect(() => {
-    if (activeIndex >= filteredOptions.length)
+    if (activeIndex >= filteredOptions.length) {
       setActiveIndex(getInitialActiveOptionIndex(filteredOptions, value));
+    }
   }, [activeIndex, filteredOptions, value]);
 
   const choose = (option: ComboboxOption) => {
     if (option.disabled) return;
     onChange(option.value);
     close();
+    suppressNextFocusOpen.current = true;
     inputRef.current?.focus();
   };
 
-  const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  const isInsideCombobox = (target: EventTarget | null): boolean =>
+    target instanceof Node &&
+    (((rootRef.current?.contains(target) ?? false) ||
+      popupRef.current?.contains(target)) ??
+      false);
+
+  const handleBlur = (event: FocusEvent<HTMLInputElement>) => {
+    if (isInsideCombobox(event.relatedTarget)) return;
+    close();
+    onBlur?.();
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Tab") {
+      close();
+      return;
+    }
     if (event.key === "Escape") {
       if (open) {
         event.preventDefault();
@@ -178,24 +212,10 @@ export function Combobox({
       openMenu();
       return;
     }
-    let nextIndex = moveActiveOption(
-      activeIndex,
-      filteredOptions.length,
-      event.key,
-    );
-    while (nextIndex >= 0 && filteredOptions[nextIndex]?.disabled) {
-      const candidate = moveActiveOption(
-        nextIndex,
-        filteredOptions.length,
-        event.key,
-      );
-      if (candidate === nextIndex) break;
-      nextIndex = candidate;
-    }
+    const nextIndex = moveActiveOption(filteredOptions, activeIndex, event.key);
     setActiveIndex(nextIndex);
-    const activeOptionId = `${listboxId}-option-${nextIndex}`;
     document
-      .getElementById(activeOptionId)
+      .getElementById(`${listboxId}-option-${nextIndex}`)
       ?.scrollIntoView({ block: "nearest" });
   };
 
@@ -262,7 +282,14 @@ export function Combobox({
         }
         aria-invalid={ariaInvalid || undefined}
         aria-describedby={ariaDescribedBy}
-        onFocus={openMenu}
+        onFocus={() => {
+          if (suppressNextFocusOpen.current) {
+            suppressNextFocusOpen.current = false;
+            return;
+          }
+          openMenu();
+        }}
+        onBlur={handleBlur}
         onClick={openMenu}
         onChange={(event) => {
           if (!open) setOpen(true);

@@ -7,6 +7,7 @@ import {
   moveDraftMapping,
   resetModelMappingsDraft,
   setDraftSaveAttempted,
+  touchDraftMapping,
   updateDraftMapping,
 } from "./model-mappings-draft";
 
@@ -31,6 +32,81 @@ describe("model mappings draft", () => {
     expect(
       getVisibleFieldErrors(draft, newRow.rowId, "destination", available),
     ).toEqual([]);
+  });
+
+  test("keeps fields hidden until blur and reveals only destination once on save", () => {
+    const draft = createModelMappingsDraft({
+      model_mappings_enabled: true,
+      model_mappings: [{ source: "alias", destination: "" }],
+    });
+    const row = draft.rows[0];
+    expect(row).toBeDefined();
+    if (!row) throw new Error("test setup requires an initial draft row");
+    expect(
+      getVisibleFieldErrors(draft, row.rowId, "source", available),
+    ).toEqual([]);
+    expect(
+      getVisibleFieldErrors(draft, row.rowId, "destination", available),
+    ).toEqual([]);
+    expect(
+      getVisibleFieldErrors(
+        setDraftSaveAttempted(draft),
+        row.rowId,
+        "source",
+        available,
+      ),
+    ).toEqual([]);
+    expect(
+      getVisibleFieldErrors(
+        setDraftSaveAttempted(draft),
+        row.rowId,
+        "destination",
+        available,
+      ),
+    ).toEqual(["blank"]);
+  });
+
+  test("hides availability errors while the model catalog is loading", () => {
+    const draft = createModelMappingsDraft({
+      model_mappings_enabled: true,
+      model_mappings: [{ source: "alias", destination: "retired-model" }],
+    });
+    const row = draft.rows[0];
+    expect(row).toBeDefined();
+    if (!row) throw new Error("test setup requires an initial draft row");
+    expect(
+      getVisibleFieldErrors(draft, row.rowId, "destination", available, true),
+    ).toEqual([]);
+  });
+
+  test("shows blank source and destination errors independently after their blur", () => {
+    const draft = createModelMappingsDraft({
+      model_mappings_enabled: true,
+      model_mappings: [{ source: "", destination: "" }],
+    });
+    const row = draft.rows[0];
+    expect(row).toBeDefined();
+    if (!row) throw new Error("test setup requires an initial draft row");
+    const sourceBlurred = touchDraftMapping(draft, 0, "source");
+    expect(
+      getVisibleFieldErrors(sourceBlurred, row.rowId, "source", available),
+    ).toEqual(["blank"]);
+    expect(
+      getVisibleFieldErrors(sourceBlurred, row.rowId, "destination", available),
+    ).toEqual([]);
+    const destinationBlurred = touchDraftMapping(
+      sourceBlurred,
+      0,
+      "destination",
+    );
+    expect(
+      getVisibleFieldErrors(
+        destinationBlurred,
+        row.rowId,
+        "destination",
+        available,
+      ),
+    ).toEqual(["blank"]);
   });
 
   test("shows an unavailable saved destination immediately and only once", () => {

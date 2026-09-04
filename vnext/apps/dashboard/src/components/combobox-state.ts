@@ -61,17 +61,30 @@ export function getInitialActiveOptionIndex(
 }
 
 export function moveActiveOption(
+  options: ComboboxOption[],
   currentIndex: number,
-  optionCount: number,
   key: "ArrowDown" | "ArrowUp" | "Home" | "End",
 ): number {
-  if (optionCount === 0) return -1;
-  if (key === "Home") return 0;
-  if (key === "End") return optionCount - 1;
-  if (currentIndex < 0) return key === "ArrowDown" ? 0 : optionCount - 1;
-  return key === "ArrowDown"
-    ? (currentIndex + 1) % optionCount
-    : (currentIndex - 1 + optionCount) % optionCount;
+  const enabledIndexes = options.reduce<number[]>((indexes, option, index) => {
+    if (!option.disabled) indexes.push(index);
+    return indexes;
+  }, []);
+  if (enabledIndexes.length === 0) return -1;
+  if (key === "Home") return enabledIndexes[0] ?? -1;
+  if (key === "End") return enabledIndexes.at(-1) ?? -1;
+  const currentEnabledIndex = enabledIndexes.indexOf(currentIndex);
+  if (currentEnabledIndex < 0) {
+    return key === "ArrowDown"
+      ? (enabledIndexes[0] ?? -1)
+      : (enabledIndexes.at(-1) ?? -1);
+  }
+  const delta = key === "ArrowDown" ? 1 : -1;
+  return (
+    enabledIndexes[
+      (currentEnabledIndex + delta + enabledIndexes.length) %
+        enabledIndexes.length
+    ] ?? -1
+  );
 }
 
 export function getComboboxPlacement(
@@ -79,9 +92,13 @@ export function getComboboxPlacement(
   popup: ComboboxSize,
   viewport: ComboboxViewport,
 ): ComboboxPlacement {
+  const width = Math.min(
+    Math.max(anchor.width, popup.width),
+    Math.max(0, viewport.width - VIEWPORT_PADDING * 2),
+  );
   const maxLeft = Math.max(
     VIEWPORT_PADDING,
-    viewport.width - VIEWPORT_PADDING - popup.width,
+    viewport.width - VIEWPORT_PADDING - width,
   );
   const left = Math.min(Math.max(VIEWPORT_PADDING, anchor.left), maxLeft);
   const belowSpace = Math.max(
@@ -101,5 +118,5 @@ export function getComboboxPlacement(
     placement === "above"
       ? anchor.top - POPUP_GAP - maxHeight
       : anchor.top + anchor.height + POPUP_GAP;
-  return { left, top, width: popup.width, maxHeight, placement };
+  return { left, top, width, maxHeight, placement };
 }

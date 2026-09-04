@@ -18,6 +18,7 @@ import {
   moveDraftMapping,
   resetModelMappingsDraft,
   setDraftSaveAttempted,
+  touchDraftMapping,
   updateDraftMapping,
   type MappingField,
   type ModelMappingsDraft,
@@ -79,8 +80,11 @@ export function ModelMappingsPanel({
     [catalog.mappingDestinations],
   );
   const errors = useMemo(
-    () => validateModelMappings(draft.rows, availableDestinations),
-    [draft.rows, availableDestinations],
+    () =>
+      catalogLoading
+        ? []
+        : validateModelMappings(draft.rows, availableDestinations),
+    [catalogLoading, draft.rows, availableDestinations],
   );
   const dirty = isModelMappingsDirty(
     { enabled: draft.enabled, mappings: draft.rows },
@@ -210,12 +214,14 @@ export function ModelMappingsPanel({
               mapping.rowId,
               "source",
               availableDestinations,
+              catalogLoading,
             );
             const destinationErrors = getVisibleFieldErrors(
               draft,
               mapping.rowId,
               "destination",
               availableDestinations,
+              catalogLoading,
             );
             const sourceErrorId = `model-mapping-source-error-${mapping.rowId}`;
             const destinationErrorId = `model-mapping-destination-error-${mapping.rowId}`;
@@ -244,6 +250,11 @@ export function ModelMappingsPanel({
                       onChange={(event) =>
                         updateRow(index, "source", event.target.value)
                       }
+                      onBlur={() =>
+                        setDraft((current) =>
+                          touchDraftMapping(current, index, "source"),
+                        )
+                      }
                       className="w-full text-xs font-mono"
                     />
                   </div>
@@ -265,18 +276,24 @@ export function ModelMappingsPanel({
                       }
                       placeholder={t("dash.modelMappingPickDestination")}
                       noMatchesText={t("dash.modelMappingNoMatches")}
+                      onBlur={() =>
+                        setDraft((current) =>
+                          touchDraftMapping(current, index, "destination"),
+                        )
+                      }
                       onChange={(value) =>
                         updateRow(index, "destination", value)
                       }
                       options={choices.map((choice) => ({
                         value: choice.id,
                         label: choice.id,
-                        badge: choice.unavailable
-                          ? t("dash.modelMappingUnavailableBadge")
-                          : choice.upstreams.join(", ") ||
-                            t("dash.modelMappingAvailable"),
+                        badge:
+                          !catalogLoading && choice.unavailable
+                            ? t("dash.modelMappingUnavailableBadge")
+                            : choice.upstreams.join(", ") ||
+                              t("dash.modelMappingAvailable"),
                         keywords: choice.upstreams,
-                        disabled: choice.unavailable,
+                        disabled: !catalogLoading && choice.unavailable,
                       }))}
                     />
                   </div>

@@ -50,6 +50,21 @@ export function resetModelMappingsDraft(
   return createModelMappingsDraft(server);
 }
 
+export function touchDraftMapping(
+  draft: ModelMappingsDraft,
+  index: number,
+  field: MappingField,
+): ModelMappingsDraft {
+  return {
+    ...draft,
+    rows: draft.rows.map((row, rowIndex) =>
+      rowIndex === index
+        ? { ...row, touched: { ...row.touched, [field]: true } }
+        : row,
+    ),
+  };
+}
+
 export function updateDraftMapping(
   draft: ModelMappingsDraft,
   index: number,
@@ -117,11 +132,13 @@ export function getVisibleFieldErrors(
   rowId: string,
   field: MappingField,
   availableDestinations: ReadonlySet<string>,
+  catalogLoading = false,
 ): MappingValidationCode[] {
   const index = draft.rows.findIndex((row) => row.rowId === rowId);
   const row = draft.rows[index];
   const destination = row?.destination.trim() ?? "";
   const hasUnavailableDestination =
+    !catalogLoading &&
     field === "destination" &&
     destination.length > 0 &&
     !availableDestinations.has(destination);
@@ -131,6 +148,11 @@ export function getVisibleFieldErrors(
   )
     return [];
   return validateModelMappings(draft.rows, availableDestinations)
-    .filter((error) => error.index === index && error.field === field)
+    .filter(
+      (error) =>
+        error.index === index &&
+        error.field === field &&
+        !(catalogLoading && error.code === "unavailable"),
+    )
     .map((error) => error.code);
 }

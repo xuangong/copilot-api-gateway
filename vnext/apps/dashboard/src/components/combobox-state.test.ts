@@ -39,13 +39,26 @@ describe("combobox state", () => {
     ]);
   });
 
-  test("starts on the selected option and wraps keyboard active navigation", () => {
+  test("starts on the selected option and navigates only enabled options", () => {
+    const disabledAtEdges: ComboboxOption[] = [
+      { ...options[0], disabled: true },
+      options[1],
+      { ...options[2], disabled: true },
+    ];
     expect(getInitialActiveOptionIndex(options, "gpt-5")).toBe(1);
     expect(getInitialActiveOptionIndex(options, "missing")).toBe(0);
-    expect(moveActiveOption(2, 3, "ArrowDown")).toBe(0);
-    expect(moveActiveOption(0, 3, "ArrowUp")).toBe(2);
-    expect(moveActiveOption(1, 3, "Home")).toBe(0);
-    expect(moveActiveOption(1, 3, "End")).toBe(2);
+    expect(moveActiveOption(options, 2, "ArrowDown")).toBe(0);
+    expect(moveActiveOption(options, 0, "ArrowUp")).toBe(2);
+    expect(moveActiveOption(disabledAtEdges, 1, "Home")).toBe(1);
+    expect(moveActiveOption(disabledAtEdges, 1, "End")).toBe(1);
+    expect(moveActiveOption(disabledAtEdges, 1, "ArrowDown")).toBe(1);
+    expect(
+      moveActiveOption(
+        disabledAtEdges.map((option) => ({ ...option, disabled: true })),
+        -1,
+        "Home",
+      ),
+    ).toBe(-1);
   });
 
   test("places the popup above when below has less room and clamps it inside the viewport", () => {
@@ -61,6 +74,22 @@ describe("combobox state", () => {
       width: 180,
       maxHeight: 120,
       placement: "above",
+    });
+  });
+
+  test("clamps an oversized popup width inside the viewport", () => {
+    expect(
+      getComboboxPlacement(
+        { left: 0, top: 20, width: 600, height: 30 },
+        { width: 600, height: 120 },
+        { width: 320, height: 240 },
+      ),
+    ).toEqual({
+      left: 8,
+      top: 58,
+      width: 304,
+      maxHeight: 120,
+      placement: "below",
     });
   });
 
