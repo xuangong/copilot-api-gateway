@@ -59,16 +59,36 @@ const makeRepo = (): { repo: Repo; recorded: UsageRecord[] } => {
 
 test('recordTokenUsage no-ops when usage is null or all zeros', async () => {
   const { repo, recorded } = makeRepo()
-  await recordTokenUsage('k1', { model: 'm', upstream: 'u', modelKey: 'mk', cost: null }, null, repo)
-  await recordTokenUsage('k1', { model: 'm', upstream: 'u', modelKey: 'mk', cost: null }, { input: 0, output: 0 }, repo)
+  await recordTokenUsage('k1', { incomingModel: 'outer-alias', model: 'm', upstream: 'u', modelKey: 'mk', cost: null }, null, repo)
+  await recordTokenUsage('k1', { incomingModel: 'outer-alias', model: 'm', upstream: 'u', modelKey: 'mk', cost: null }, { input: 0, output: 0 }, repo)
   expect(recorded).toEqual([])
+})
+
+test('recordTokenUsage uses explicit outer incoming model rather than image backend model', async () => {
+  const { repo, recorded } = makeRepo()
+  await recordTokenUsage(
+    'key-1',
+    {
+      incomingModel: 'outer-responses-alias',
+      model: 'gpt-image-2',
+      upstream: 'copilot:acct',
+      modelKey: 'gpt-image-backend',
+      cost: null,
+    },
+    { output_image: 3 },
+    repo,
+  )
+  expect(recorded).toHaveLength(1)
+  expect(recorded[0]?.incomingModel).toBe('outer-responses-alias')
+  expect(recorded[0]?.model).toBe('gpt-image-2')
+  expect(recorded[0]?.modelKey).toBe('gpt-image-backend')
 })
 
 test('recordTokenUsage writes a single row carrying the frozen pricing snapshot', async () => {
   const { repo, recorded } = makeRepo()
   await recordTokenUsage(
     'key-1',
-    { model: 'gpt-image-2', upstream: 'copilot:acct', modelKey: 'gpt-image-2', cost: { input: 5, output_image: 40 } },
+    { incomingModel: 'outer-alias', model: 'gpt-image-2', upstream: 'copilot:acct', modelKey: 'gpt-image-2', cost: { input: 5, output_image: 40 } },
     { input: 12, output_image: 3 },
     repo,
   )

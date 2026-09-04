@@ -104,6 +104,8 @@ const splitModalityCounts = (
 }
 
 export interface ImageUsageModelIdentity {
+  /** Immutable model alias received by the outer request. */
+  readonly incomingModel: string
   readonly model: string
   readonly upstream: string
   readonly modelKey: string
@@ -134,8 +136,7 @@ export const recordTokenUsage = async (
   if (!nonZero(tokens)) return
   const row: UsageRecord = {
     keyId: apiKeyId,
-    // Temporary compatibility identity until route resolution carries source aliases.
-    incomingModel: modelIdentity.model,
+    incomingModel: modelIdentity.incomingModel,
     model: modelIdentity.model,
     modelKey: modelIdentity.modelKey,
     upstream: modelIdentity.upstream,

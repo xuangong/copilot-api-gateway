@@ -31,6 +31,8 @@ export interface RequestContext {
   // image-generation) can attribute upstream usage back to the caller
   // without another lookup. Reference: copilot-gateway `ChatGatewayCtx.apiKeyId`.
   readonly apiKeyId?: string
+  /** Canonical inbound model alias. It remains immutable for internal server-tool subcalls. */
+  readonly incomingModel?: string
   // Selected target endpoint for this attempt. Injected by attempt.ts
   // just before `runInterceptors` so structurally-required interceptors
   // (e.g. Responses compact-shim on non-Responses upstreams) can detect

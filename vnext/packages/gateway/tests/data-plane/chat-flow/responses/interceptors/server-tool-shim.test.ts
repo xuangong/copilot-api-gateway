@@ -489,6 +489,25 @@ const baseInv = (): Invocation => ({
 })
 const baseCtx: RequestContext = { requestStartedAt: Date.now() }
 
+test('withResponsesServerToolShim supplies the outer incoming model while preparing an image server tool', async () => {
+  const store = createInMemoryPrivatePayloadStore()
+  let receivedIncomingModel: string | undefined
+  const registration: ServerToolRegistration<Invocation, Record<string, unknown>> = (_invocation, requestCtx) => {
+    receivedIncomingModel = requestCtx.incomingModel
+    return { type: 'inactive' }
+  }
+  const interceptor = withResponsesServerToolShim([registration], store)
+  const upstream = llmEventResult((async function* () { yield doneFrame() })(), stubIdentity)
+
+  await interceptor(
+    baseInv(),
+    { ...baseCtx, incomingModel: 'outer-responses-alias' },
+    async () => upstream,
+  )
+
+  expect(receivedIncomingModel).toBe('outer-responses-alias')
+})
+
 test('withResponsesServerToolShim: no registrations → pure pass-through', async () => {
   const store = createInMemoryPrivatePayloadStore()
   const interceptor = withResponsesServerToolShim([], store)
@@ -548,7 +567,7 @@ test('withResponsesServerToolShim: active but non-hosted registration → pass-t
   expect(transformCalls).toBe(1)
 })
 
-test('withResponsesServerToolShim uses second-turn identity for two-turn hosted tool loops', async () => {
+test('withResponsesServerToolShim retains the outer incoming model across two hosted tool turns', async () => {
   const store = createInMemoryPrivatePayloadStore()
   const slot: ServerToolResultSlot = {
     id: 'ws_1', startItem: { type: 'web_search_call', status: 'in_progress' }, startEvents: [],
@@ -560,23 +579,27 @@ test('withResponsesServerToolShim uses second-turn identity for two-turn hosted 
       buildFunctionTool: (_tool, name) => ({ type: 'function', name }), dispatcher: () => [slot],
     },
   })
-  const first = { model: 'gpt-5.6-sol-fast', upstream: 'first', modelKey: 'gpt-5.6-sol-fast', cost: { inputPerM: 1 } as never }
-  const second = { model: 'gpt-5.6-sol-fast', upstream: 'second', modelKey: 'gpt-5.6-sol-fast', cost: { inputPerM: 9 } as never }
+  const first = { incomingModel: 'outer-responses-alias', model: 'gpt-5.6-sol-fast', upstream: 'first', modelKey: 'gpt-5.6-sol-fast', cost: { inputPerM: 1 } as never }
+  const second = { incomingModel: 'inner-next-run-alias', model: 'gpt-5.6-sol-fast', upstream: 'second', modelKey: 'gpt-5.6-sol-fast', cost: { inputPerM: 9 } as never }
   let calls = 0
   const interceptor = withResponsesServerToolShim([registration], store)
-  const result = await interceptor({ ...baseInv(), payload: { ...baseInv().payload, tools: [{ type: 'web_search' }] } }, baseCtx, async () => {
-    calls += 1
-    const response = snapshotFor(`turn-${calls}`, 'gpt-5.6-sol')
-    if (calls === 1) return llmEventResult(framesOf([
-      { type: 'response.queued', response }, { type: 'response.created', response }, { type: 'response.in_progress', response },
-      { type: 'response.output_item.added', output_index: 0, item: { id: 'fc', type: 'function_call', call_id: 'c', name: 'web_search', arguments: '' } as never },
-      { type: 'response.output_item.done', output_index: 0, item: { id: 'fc', type: 'function_call', call_id: 'c', name: 'web_search', arguments: '{}' } as never },
-      { type: 'response.completed', response },
-    ]), first, undefined, undefined, undefined, undefined, () => first)
-    return llmEventResult(framesOf([
-      { type: 'response.queued', response }, { type: 'response.created', response }, { type: 'response.in_progress', response }, { type: 'response.completed', response },
-    ]), second, undefined, undefined, undefined, undefined, () => second)
-  })
+  const result = await interceptor(
+    { ...baseInv(), payload: { ...baseInv().payload, tools: [{ type: 'web_search' }] } },
+    { ...baseCtx, incomingModel: 'outer-responses-alias' },
+    async () => {
+      calls += 1
+      const response = snapshotFor(`turn-${calls}`, 'gpt-5.6-sol')
+      if (calls === 1) return llmEventResult(framesOf([
+        { type: 'response.queued', response }, { type: 'response.created', response }, { type: 'response.in_progress', response },
+        { type: 'response.output_item.added', output_index: 0, item: { id: 'fc', type: 'function_call', call_id: 'c', name: 'web_search', arguments: '' } as never },
+        { type: 'response.output_item.done', output_index: 0, item: { id: 'fc', type: 'function_call', call_id: 'c', name: 'web_search', arguments: '{}' } as never },
+        { type: 'response.completed', response },
+      ]), first, undefined, undefined, undefined, undefined, () => first)
+      return llmEventResult(framesOf([
+        { type: 'response.queued', response }, { type: 'response.created', response }, { type: 'response.in_progress', response }, { type: 'response.completed', response },
+      ]), second, undefined, undefined, undefined, undefined, () => second)
+    },
+  )
   if (result.type !== 'events') throw new Error('expected events')
   const { frames: output } = await collectAndReturn(result.events as AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>, void>)
   expect(calls).toBe(2)
@@ -587,8 +610,8 @@ test('withResponsesServerToolShim uses second-turn identity for two-turn hosted 
   })
   expect(models.every((model) => model === 'gpt-5.6-sol-fast')).toBe(true)
   const metadata = await result.finalMetadata
-  expect(metadata?.modelIdentity).toBe(second)
-  expect(result.resolveModelIdentity?.('anything')).toBe(second)
+  expect(metadata?.modelIdentity).toEqual({ ...second, incomingModel: 'outer-responses-alias' })
+  expect(result.resolveModelIdentity?.('anything')).toEqual({ ...second, incomingModel: 'outer-responses-alias' })
 })
 
 test('withResponsesServerToolShim forwards a first bare upstream error and settles final metadata', async () => {

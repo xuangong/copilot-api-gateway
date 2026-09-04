@@ -1024,6 +1024,8 @@ const errorFromBody = (body: string, status: number): { type?: string; code: str
 export interface ShimState {
   config: MaterializedImageGenerationConfig
   apiKeyId: ApiKeyId
+  /** Immutable model alias from the outer Responses request. */
+  incomingModel: string
   upstreamIds: readonly string[] | null
   /** Visibility scope of the enclosing request. The image sub-call resolves a
    *  *different* model on a *different* endpoint than the orchestrator turn, so
@@ -1042,6 +1044,7 @@ const recordImageUsage = (
   const usage = tokenUsageFromImagesBody(responseBody)
   if (usage === null) return
   const promise = recordTokenUsage(state.apiKeyId, {
+    incomingModel: state.incomingModel,
     model: binding.model.id,
     upstream: binding.upstream,
     modelKey,
@@ -1684,6 +1687,7 @@ export const imageGenerationServerTool: ServerToolRegistration<Invocation, Serve
   const state: ShimState = {
     config: materializedConfig,
     apiKeyId: requestCtx.apiKeyId,
+    incomingModel: requestCtx.incomingModel ?? config.model,
     upstreamIds: requestCtx.upstreamIds ?? null,
     bindingScope: requestCtx.bindingScope,
     downstreamAbortSignal: requestCtx.abortSignal,

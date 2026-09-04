@@ -68,7 +68,7 @@ import {
   type ResponsesResult,
   type ResponsesStreamEvent,
 } from '@vibe-llm/protocols/responses'
-import type { EventResultMetadata, Invocation, LlmEventResult, LlmExecuteResult, RequestContext } from '@vibe-llm/protocols/common'
+import type { EventResultMetadata, Invocation, LlmEventResult, LlmExecuteResult } from '@vibe-llm/protocols/common'
 import { pickUsageModelId } from '../../../observability/usage-extractor.ts'
 
 // InterceptorRun is the third arg of a ResponsesInterceptor.
@@ -130,6 +130,14 @@ export type LatestUpstreamMetadata = {
 } & {
   resolveModelIdentity?: LlmEventResult<unknown>['resolveModelIdentity']
 }
+
+const retainIncomingModel = (
+  modelIdentity: EventResultMetadata['modelIdentity'],
+  incomingModel: string,
+): EventResultMetadata['modelIdentity'] =>
+  modelIdentity.incomingModel === incomingModel
+    ? modelIdentity
+    : { ...modelIdentity, incomingModel }
 
 // The terminal the shim emits downstream. Distinct from `UpstreamTerminal`
 // (what we observed) — this carries only the already-extracted error /
@@ -909,6 +917,7 @@ async function* runMultiTurnLoop(args: {
   canonicalInput: ResponsesInputItem[]
   active: readonly ActiveServerTool[]
   metadata: LatestUpstreamMetadata
+  incomingModel: string
   resolveFinalMetadata: (m: EventResultMetadata) => void
 }): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
   const {
@@ -922,6 +931,7 @@ async function* runMultiTurnLoop(args: {
     store,
     active,
     metadata,
+    incomingModel,
     resolveFinalMetadata,
   } = args
   const baseInput = args.canonicalInput
@@ -991,9 +1001,12 @@ async function* runMultiTurnLoop(args: {
         yield synthesizeTerminalEnvelope(merge, { kind: 'failed', error: buildErrorFromResult(nextResult) }, active)
         return
       }
-      metadata.modelIdentity = nextResult.modelIdentity
+      metadata.modelIdentity = retainIncomingModel(nextResult.modelIdentity, incomingModel)
       metadata.performance = nextResult.performance
-      metadata.resolveModelIdentity = nextResult.resolveModelIdentity
+      metadata.resolveModelIdentity = (modelKey) => {
+        const resolved = nextResult.resolveModelIdentity?.(modelKey) ?? nextResult.modelIdentity
+        return retainIncomingModel(resolved, incomingModel)
+      }
       currentTurn = yield* consumeTurnStreaming(nextResult.events, merge, false, dispatchers, loopState, active)
       merge.accumulatedUsage = sumUsage(merge.accumulatedUsage, currentTurn.turnUsage)
     }
@@ -1025,7 +1038,10 @@ async function* runMultiTurnLoop(args: {
     const modelIdentity = modelKey === metadata.modelIdentity.modelKey
       ? metadata.modelIdentity
       : metadata.resolveModelIdentity?.(modelKey) ?? metadata.modelIdentity
-    resolveFinalMetadata({ modelIdentity, performance: metadata.performance })
+    resolveFinalMetadata({
+      modelIdentity: retainIncomingModel(modelIdentity, incomingModel),
+      performance: metadata.performance,
+    })
   }
 }
 
@@ -1036,6 +1052,7 @@ export const withResponsesServerToolShim = (
   const requestCtx: ServerToolRequestCtx = {
     store,
     apiKeyId: (gatewayCtx.apiKeyId ?? '') as ApiKeyId,
+    ...(gatewayCtx.incomingModel !== undefined ? { incomingModel: gatewayCtx.incomingModel } : {}),
     ...(gatewayCtx.bindingScope !== undefined ? { bindingScope: gatewayCtx.bindingScope } : {}),
     ...(gatewayCtx.downstreamAbortSignal !== undefined ? { abortSignal: gatewayCtx.downstreamAbortSignal } : {}),
   }
@@ -1123,11 +1140,17 @@ export const withResponsesServerToolShim = (
   const shimFinalMetadata = new Promise<EventResultMetadata>((resolve) => {
     resolveFinalMetadata = resolve
   })
+  const incomingModel = firstResult.modelIdentity.incomingModel
   const metadata: LatestUpstreamMetadata = {
-    modelIdentity: firstResult.modelIdentity,
+    modelIdentity: retainIncomingModel(firstResult.modelIdentity, incomingModel),
     performance: firstResult.performance,
-    resolveModelIdentity: firstResult.resolveModelIdentity,
+    resolveModelIdentity: (modelKey) => {
+      const resolved = firstResult.resolveModelIdentity?.(modelKey) ?? firstResult.modelIdentity
+      return retainIncomingModel(resolved, incomingModel)
+    },
   }
+
+  requestCtx.incomingModel = incomingModel
 
   return {
     ...firstResult,
@@ -1144,10 +1167,14 @@ export const withResponsesServerToolShim = (
       canonicalInput,
       active,
       metadata,
+      incomingModel,
       resolveFinalMetadata,
     }),
     finalMetadata: shimFinalMetadata,
-    resolveModelIdentity: (modelKey) => metadata.resolveModelIdentity?.(modelKey) ?? metadata.modelIdentity,
+    resolveModelIdentity: (modelKey) => retainIncomingModel(
+      metadata.resolveModelIdentity?.(modelKey) ?? metadata.modelIdentity,
+      incomingModel,
+    ),
   }
 }
 

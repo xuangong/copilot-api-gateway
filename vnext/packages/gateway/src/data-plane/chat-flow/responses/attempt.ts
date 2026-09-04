@@ -361,6 +361,7 @@ export const responsesAttempt = {
       // globally-owned upstreams and mis-reports a reachable model as absent.
       const chainCtx: RequestContext = {
         ...args.ctx,
+        incomingModel: args.telemetryCtx.incomingModel,
         targetEndpoint: sel.targetEndpoint,
         bindingScope: {
           ...(args.auth.ownerId !== undefined ? { ownerId: args.auth.ownerId } : {}),
