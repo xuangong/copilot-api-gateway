@@ -8,6 +8,7 @@ import {
   useState,
   type FocusEvent,
   type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -163,6 +164,14 @@ export function Combobox({
     inputRef.current?.focus();
   };
 
+  const handleOptionPointerDown = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    option: ComboboxOption,
+  ) => {
+    if (option.disabled || (event.button !== 0 && event.button !== -1)) return;
+    event.preventDefault();
+  };
+
   const isInsideCombobox = (target: EventTarget | null): boolean =>
     target instanceof Node &&
     (((rootRef.current?.contains(target) ?? false) ||
@@ -245,6 +254,7 @@ export function Combobox({
             role="option"
             aria-selected={option.value === value}
             disabled={option.disabled}
+            onPointerDown={(event) => handleOptionPointerDown(event, option)}
             onClick={() => choose(option)}
             className={`w-full px-3 py-2 text-left text-xs ${option.disabled ? "cursor-not-allowed opacity-50" : "hover:bg-surface-600"} ${index === activeIndex ? "bg-surface-600" : ""} ${option.value === value ? "text-accent-violet" : "text-themed-secondary"}`}
           >
