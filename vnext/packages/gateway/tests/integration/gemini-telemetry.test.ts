@@ -284,16 +284,14 @@ test('gemini: internal-error pre-binding (model not found) → zero usage rows, 
   expect(captured.perf).toHaveLength(0)
 })
 
-test('gemini: modelKey captured from gemini event modelVersion (state-bridge correction)', async () => {
+test('gemini: public model is retained while the upstream model becomes the provider key', async () => {
   const { repo, captured } = stubRepo([customUpstream()])
   initRepo(repo)
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
-  // Upstream advertises a DIFFERENT model name in message_start. The gemini
-  // event's `modelVersion` is set by the gemini-via-messages translator from
-  // the URL bare model (options.model = MODEL_ID), so the state-bridge
-  // captures MODEL_ID — proving it observes `modelVersion` and not the
-  // upstream's message_start.message.model.
+  // The Messages hub reports its provider-specific model in message_start.
+  // The client-facing usage identity remains the URL's public model, while
+  // modelKey retains that observed provider identity for pricing.
   installFetch({ modelInChunk: 'claude-upstream-different' })
 
   const res = await postGenerate(MODEL_ID, 'streamGenerateContent', {
@@ -304,6 +302,14 @@ test('gemini: modelKey captured from gemini event modelVersion (state-bridge cor
   await bg.drain()
 
   expect(captured.usage).toHaveLength(1)
-  const row = captured.usage[0] as { modelKey: string }
-  expect(row.modelKey).toBe(MODEL_ID)
+  const row = captured.usage[0] as {
+    model: string
+    modelKey: string
+    cost: unknown
+  }
+  expect(row.model).toBe(MODEL_ID)
+  expect(row.modelKey).toBe('claude-upstream-different')
+  expect(row.cost).toBeNull()
+  expect(captured.perf).toHaveLength(1)
+  expect((captured.perf[0] as { model: string }).model).toBe(MODEL_ID)
 })
