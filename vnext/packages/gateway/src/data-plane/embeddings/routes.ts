@@ -22,6 +22,7 @@ import type { DataPlaneAuthCtx } from '../models/routes.ts'
 import { runEmbeddingsAttempt } from '../observability/attempts/embeddings-attempt.ts'
 import { openRequestDump, parseJsonBody } from '../chat-flow/shared/dump-open.ts'
 import type { DumpAccumulator } from '../../shared/dump/accumulator.ts'
+import { HTTPError } from '@vibe-llm/provider-llm'
 
 type Vars = { auth: DataPlaneAuthCtx }
 
@@ -39,6 +40,15 @@ type EmbeddingsCtx = Context<{ Bindings: Env; Variables: Vars }>
 
 const wrapResponse = (dump: DumpAccumulator | null, response: Response): Response =>
   dump ? dump.finalize(response) : response
+
+const upstreamErrorResponse = (err: unknown): Response | null => {
+  if (!(err instanceof HTTPError) || !err.response) return null
+  return new Response(err.response.body, {
+    status: err.response.status,
+    statusText: err.response.statusText,
+    headers: err.response.headers,
+  })
+}
 
 /**
  * `presetBody` lets a caller that has already parsed (and reshaped) the request
@@ -91,27 +101,34 @@ export async function embeddingsHandler(
   // provider's binding resolver above). The provider returns null when no
   // pricing entry exists; we still record the usage row, just without prices.
   const pricing = binding.provider.getPricingForModelKey(body.model)
-  const attempt = await runEmbeddingsAttempt({
-    apiKeyId: auth.apiKeyId,
-    model: body.model,
-    modelKey: body.model,
-    pricing,
-    upstream: binding.upstream,
-    userAgent: c.req.header('user-agent') ?? undefined,
-    requestId: c.req.header('x-request-id') ?? undefined,
-    dump,
-    call: async () => {
-      const pr = await binding.provider.fetch({
-        endpoint: 'embeddings',
-        payload: body,
-        headers: new Headers({ 'content-type': 'application/json' }),
-        sourceApi: 'openai',
-        operationName: 'create embeddings',
-        flags: { isStreaming: false },
-      })
-      return new Response(pr.body, { status: pr.status, headers: pr.headers })
-    },
-  })
+  let attempt: Awaited<ReturnType<typeof runEmbeddingsAttempt>>
+  try {
+    attempt = await runEmbeddingsAttempt({
+      apiKeyId: auth.apiKeyId,
+      model: body.model,
+      modelKey: body.model,
+      pricing,
+      upstream: binding.upstream,
+      userAgent: c.req.header('user-agent') ?? undefined,
+      requestId: c.req.header('x-request-id') ?? undefined,
+      dump,
+      call: async () => {
+        const pr = await binding.provider.fetch({
+          endpoint: 'embeddings',
+          payload: body,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          sourceApi: 'openai',
+          operationName: 'create embeddings',
+          flags: { isStreaming: false },
+        })
+        return new Response(pr.body, { status: pr.status, headers: pr.headers })
+      },
+    })
+  } catch (err) {
+    const upstream = upstreamErrorResponse(err)
+    if (!upstream) throw err
+    return wrapResponse(dump, upstream)
+  }
 
   if (!attempt.ok && 'rateLimit' in attempt) {
     return wrapResponse(dump, c.json({

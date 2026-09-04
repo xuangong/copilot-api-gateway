@@ -910,6 +910,48 @@ test("image generation mapping handles disabled, slash aliases, and unavailable 
   expect(pinned.status).toBe(404);
 });
 
+test.each([400, 429])('mapped Custom embeddings upstream %i is forwarded without becoming a 500', async (status) => {
+  const { store, drain } = initCapturedDumps()
+  const upstreams = [customUpstream('up_A', ['embeddings'])]
+  initRepo(stubRepo(upstreams, dumpKey))
+  initRuntimeLocation('bun')
+  let upstreamModel: unknown
+  const upstreamBody = JSON.stringify({ error: { type: 'invalid_request_error', message: `mapped upstream ${status}` } })
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input as string, init)
+    const url = new URL(request.url)
+    if (url.pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({
+        object: 'list',
+        data: [{ id: destination, object: 'model', capabilities: { type: 'embedding' } }],
+      }), { headers: { 'content-type': 'application/json' } })
+    }
+    upstreamModel = (await request.json() as { model?: unknown }).model
+    return new Response(upstreamBody, {
+      status,
+      headers: { 'content-type': 'application/json', 'x-upstream-error': `status-${status}` },
+    })
+  }) as typeof fetch
+  const app = buildApp({ apiKeyId: dumpKey.id, routingPolicy: mappedPolicy })
+
+  const response = await app.fetch(new Request('http://local/v1/embeddings', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'source', input: 'hi' }),
+  }), env)
+
+  expect(upstreamModel).toBe(destination)
+  expect(response.status).toBe(status)
+  expect(response.headers.get('content-type')).toContain('application/json')
+  expect(response.headers.get('x-upstream-error')).toBe(`status-${status}`)
+  expect(await response.text()).toBe(upstreamBody)
+  await drain()
+  expect(store.records).toHaveLength(1)
+  expect(store.records[0]?.meta.model).toBe('source')
+  expect(store.records[0]?.meta.error).toEqual({ kind: 'failed', reason: expect.any(String) })
+  expect(store.records[0]?.meta.inputTokens).toBeNull()
+})
+
 test("image generation sends the mapped destination upstream", async () => {
   initRepo(stubRepo([customUpstream("up_A", ["images_generations"])]));
   initRuntimeLocation("bun");
