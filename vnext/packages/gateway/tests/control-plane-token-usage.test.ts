@@ -152,6 +152,23 @@ test('GET /api/token-usage user exposes distinct incoming aliases without duplic
   expect(body.reduce((total, row) => total + row.requests, 0)).toBe(3)
 })
 
+test('GET /api/token-usage fallback preserves aliases and legacy incoming model', async () => {
+  store.keys.set('k1', mkKey('k1', 'public-key', 'u1'))
+  store.usage.push(mkUsage('k1', '2026-03-01T00', 'target-model', 'alias-a'))
+  store.usage.push(mkUsage('k1', '2026-03-01T00', 'target-model', 'alias-b'))
+  store.usage.push(mkUsage('k1', '2026-03-01T01', 'target-model', ''))
+
+  const res = await call(buildApp({}), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
+  expect(res.status).toBe(200)
+  const body = await res.json() as Array<{ incomingModel: string; model: string; requests: number }>
+  expect(body.map((row) => [row.incomingModel, row.model, row.requests])).toEqual([
+    ['alias-a', 'target-model', 1],
+    ['alias-b', 'target-model', 1],
+    ['', 'target-model', 1],
+  ])
+  expect(body.reduce((total, row) => total + row.requests, 0)).toBe(3)
+})
+
 test('GET /api/token-usage admin sees all keys + ownerId/ownerName enrichment', async () => {
   store.keys.set('k1', mkKey('k1', 'alpha', 'u1'))
   store.keys.set('k2', mkKey('k2', 'beta', 'u2'))
