@@ -35,6 +35,10 @@ export function initialModelMappingsState(server: Pick<ModelMappingsState, "enab
   }
 }
 
+export function setModelMappingsEnabled(state: ModelMappingsState, enabled: boolean): ModelMappingsState {
+  return { enabled, mappings: state.mappings.map((mapping) => ({ ...mapping })) }
+}
+
 export function addMapping(mappings: ApiKeyModelMapping[]): ApiKeyModelMapping[] {
   return [...mappings, { source: "", destination: "" }]
 }

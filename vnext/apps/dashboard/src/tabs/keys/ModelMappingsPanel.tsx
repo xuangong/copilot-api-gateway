@@ -10,6 +10,7 @@ import {
   initialModelMappingsState,
   isModelMappingsDirty,
   moveMapping,
+  setModelMappingsEnabled,
   validateModelMappings,
   type MappingValidationError,
   type ModelMappingsState,
@@ -59,9 +60,13 @@ export function ModelMappingsPanel({ keyRow, canEdit, busy, onSave }: Props) {
   }, [errors])
   const dirty = isModelMappingsDirty(state, keyRow)
 
-  const startEdit = () => {
-    setState(initialModelMappingsState(keyRow))
+  const startEdit = (enabled = keyRow.model_mappings_enabled) => {
+    setState(setModelMappingsEnabled(initialModelMappingsState(keyRow), enabled))
     setEditing(true)
+  }
+  const toggleEnabled = (enabled: boolean) => {
+    if (editing) setState((current) => setModelMappingsEnabled(current, enabled))
+    else startEdit(enabled)
   }
   const cancel = () => {
     setState(initialModelMappingsState(keyRow))
@@ -83,12 +88,22 @@ export function ModelMappingsPanel({ keyRow, canEdit, busy, onSave }: Props) {
   return (
     <div className="glass-card p-4 sm:p-6 mb-6 animate-in delay-1">
       <div className="flex items-center justify-between gap-3 mb-4">
-        <div className="min-w-0">
+        <div className="min-w-0 flex items-center gap-3">
           <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">{t("dash.modelMappingsLabel")}</span>
-          {!editing ? <span className={`ml-2 text-[10px] ${keyRow.model_mappings_enabled ? "text-accent-teal" : "text-themed-dim"}`}>{status}</span> : null}
+          <label className="flex items-center gap-1.5 text-[10px] text-themed-secondary cursor-pointer">
+            <input
+              type="checkbox"
+              checked={editing ? state.enabled : keyRow.model_mappings_enabled}
+              disabled={!canEdit || busy}
+              onChange={(event) => toggleEnabled(event.target.checked)}
+              aria-label={t("dash.modelMappingsToggleAria")}
+              className="accent-accent-violet disabled:cursor-not-allowed"
+            />
+            <span className={editing ? (state.enabled ? "text-accent-teal" : "text-themed-dim") : (keyRow.model_mappings_enabled ? "text-accent-teal" : "text-themed-dim")}>{editing ? (state.enabled ? t("dash.wsEnabledShort") : t("dash.wsDisabledShort")) : status}</span>
+          </label>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {!editing && canEdit ? <button type="button" onClick={startEdit} className="btn-ghost text-xs">{t("dash.edit")}</button> : null}
+          {!editing && canEdit ? <button type="button" onClick={() => startEdit()} className="btn-ghost text-xs">{t("dash.edit")}</button> : null}
           {editing ? <>
             <button type="button" onClick={save} disabled={busy || !dirty || errors.length > 0 || loading} className="btn-primary text-xs py-1 px-3">{busy ? t("dash.savingShort") : t("dash.save")}</button>
             <button type="button" onClick={cancel} disabled={busy} className="btn-ghost text-xs">{t("dash.cancel")}</button>
@@ -99,10 +114,6 @@ export function ModelMappingsPanel({ keyRow, canEdit, busy, onSave }: Props) {
       {keyRow.model_mappings_invalid ? <div className="rounded-md bg-accent-amber/10 text-accent-amber text-xs p-3 mb-4">{t("dash.modelMappingsInvalidWarning")}</div> : null}
 
       {editing ? <div className="space-y-3">
-        <label className="flex items-center gap-2 text-xs text-themed-secondary cursor-pointer">
-          <input type="checkbox" checked={state.enabled} onChange={(event) => setState((current) => ({ ...current, enabled: event.target.checked }))} className="accent-accent-violet" />
-          {t("dash.modelMappingsEnableLabel")}
-        </label>
         <p className="text-[10px] text-themed-dim">{t("dash.modelMappingsHint")}</p>
         {state.mappings.map((mapping, index) => {
           const rowErrors = errorsByRow.get(index) ?? []

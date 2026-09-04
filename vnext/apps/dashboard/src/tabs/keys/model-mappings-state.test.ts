@@ -6,6 +6,7 @@ import {
   initialModelMappingsState,
   isModelMappingsDirty,
   moveMapping,
+  setModelMappingsEnabled,
   validateModelMappings,
 } from "./model-mappings-state"
 
@@ -20,13 +21,26 @@ describe("model mapping editor state", () => {
 
   test("initial state clones server mappings", () => {
     const state = initialModelMappingsState(server)
-    state.mappings[0]!.source = "changed"
-    expect(server.model_mappings[0]!.source).toBe("friendly-opus")
+    const editableMapping = state.mappings.at(0)
+    expect(editableMapping).toBeDefined()
+    if (!editableMapping) throw new Error("test setup requires a mapping")
+    editableMapping.source = "changed"
+    const serverMapping = server.model_mappings.at(0)
+    expect(serverMapping).toBeDefined()
+    if (!serverMapping) throw new Error("test setup requires a server mapping")
+    expect(serverMapping.source).toBe("friendly-opus")
   })
 
   test("disabled mappings remain editable", () => {
     const state = initialModelMappingsState({ ...server, model_mappings_enabled: false })
     expect(addMapping(state.mappings)).toHaveLength(3)
+  })
+
+  test("header enable transition preserves mappings until save", () => {
+    const state = initialModelMappingsState({ ...server, model_mappings_enabled: false })
+    const enabled = setModelMappingsEnabled(state, true)
+    expect(enabled).toEqual({ enabled: true, mappings: server.model_mappings })
+    expect(isModelMappingsDirty(enabled, { ...server, model_mappings_enabled: false })).toBe(true)
   })
 
   test("adds, deletes, and moves mappings immutably at boundaries", () => {
@@ -47,7 +61,12 @@ describe("model mapping editor state", () => {
     const initial = initialModelMappingsState(server)
     expect(isModelMappingsDirty(initial, server)).toBe(false)
     expect(isModelMappingsDirty({ ...initial, enabled: false }, server)).toBe(true)
-    expect(isModelMappingsDirty({ ...initial, mappings: [{ ...initial.mappings[0]!, source: "alias" }, initial.mappings[1]! ] }, server)).toBe(true)
+    const firstMapping = initial.mappings.at(0)
+    const secondMapping = initial.mappings.at(1)
+    expect(firstMapping).toBeDefined()
+    expect(secondMapping).toBeDefined()
+    if (!firstMapping || !secondMapping) throw new Error("test setup requires two mappings")
+    expect(isModelMappingsDirty({ ...initial, mappings: [{ ...firstMapping, source: "alias" }, secondMapping] }, server)).toBe(true)
     expect(isModelMappingsDirty({ ...initial, mappings: [...initial.mappings].reverse() }, server)).toBe(true)
   })
 
