@@ -93,7 +93,7 @@ test('dispatch returns 429 when token quota exceeded', async () => {
   // input=1000 → weighted=1000, which exceeds 100
   const todayHour = new Date().toISOString().slice(0, 13)
   await repo.usage.record({
-    keyId: 'k1', model: 'm', modelKey: 'm', upstream: null, client: '',
+    keyId: 'k1', incomingModel: 'm', model: 'm', modelKey: 'm', upstream: null, client: '',
     hour: todayHour, requests: 1, tokens: { input: 1000 }, cost: null,
   })
 

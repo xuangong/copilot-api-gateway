@@ -129,6 +129,7 @@ test('images quota exceeded: 429 envelope, no upstream call, no latency', async 
   const todayHour = new Date().toISOString().slice(0, 13)
   await repo.usage.record({
     keyId: 'i-q',
+    incomingModel: 'm',
     model: 'm',
     modelKey: 'm',
     upstream: null,

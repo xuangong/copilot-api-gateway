@@ -81,6 +81,8 @@ export type TokenUsage = Partial<Record<BillingDimension, number>>
 
 export interface UsageRecord {
   keyId: ApiKeyId
+  /** Normalized logical model selected by the caller before key mapping. */
+  incomingModel: string
   /** Public model id (post-variant-merge). */
   model: string
   /** Raw upstream model id used for pricing lookup. */

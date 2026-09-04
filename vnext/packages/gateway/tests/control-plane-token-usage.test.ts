@@ -80,7 +80,7 @@ function mkKey(id: string, name: string, ownerId?: string): ApiKey {
 function mkUsage(keyId: string, hour: string, model = 'claude-sonnet-4-6'): UsageRecord {
   // input=1000 × $3/M + output=500 × $15/M = 0.003 + 0.0075 = 0.0105 USD
   return {
-    keyId, model, modelKey: model, hour, client: 'test', upstream: null,
+    keyId, incomingModel: model, model, modelKey: model, hour, client: 'test', upstream: null,
     requests: 1,
     tokens: { input: 1000, output: 500 },
     cost: { input: 3, output: 15 },

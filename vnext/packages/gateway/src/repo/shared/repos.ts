@@ -50,8 +50,8 @@ import type { BackoffRow, ProxyBackoffRepo, ProxyFallbackEntry, ProxyRecord, Pro
 const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_month, quota_tokens_per_month, quota_cost_per_month, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref, web_search_jina_key, web_search_jina_ref, web_search_passthrough_upstream, web_search_passthrough_model, dump_retention_seconds, model_mappings_enabled, model_mappings"
 const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at, github_host, source"
 const UPSTREAM_COLS = "id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, state_json, proxy_fallback_list_json, created_at, updated_at"
-const USAGE_DIM_COLS = "key_id, model, upstream, model_key, client, hour, dimension, tokens, unit_price"
-const USAGE_REQ_COLS = "key_id, model, upstream, model_key, client, hour, requests"
+const USAGE_DIM_COLS = "key_id, incoming_model, model, upstream, model_key, client, hour, dimension, tokens, unit_price"
+const USAGE_REQ_COLS = "key_id, incoming_model, model, upstream, model_key, client, hour, requests"
 const LATENCY_COLS = "key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss"
 const USER_COLS = "id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash"
 const INVITE_COLS = "id, code, name, email, created_at, used_at, used_by"
@@ -541,6 +541,7 @@ class SharedUpstreamRepo implements UpstreamRepo {
 
 interface UsageDimensionRow {
   key_id: string
+  incoming_model: string
   model: string
   upstream: string | null
   model_key: string
@@ -553,6 +554,7 @@ interface UsageDimensionRow {
 
 interface UsageRequestRow {
   key_id: string
+  incoming_model: string
   model: string
   upstream: string | null
   model_key: string
@@ -568,8 +570,8 @@ function dimensionRows(record: UsageRecord): { dimension: BillingDimension; toke
   })
 }
 
-function usageBucketKey(row: { key_id: string; model: string; upstream: string | null; model_key: string; client: string; hour: string }): string {
-  return [row.key_id, row.model, row.upstream ?? "", row.model_key, row.client, row.hour].join("\0")
+function usageBucketKey(row: { key_id: string; incoming_model: string; model: string; upstream: string | null; model_key: string; client: string; hour: string }): string {
+  return [row.key_id, row.incoming_model, row.model, row.upstream ?? "", row.model_key, row.client, row.hour].join("\0")
 }
 
 // Reassemble per-bucket UsageRecords from the two narrow tables. The dimension
@@ -579,12 +581,13 @@ function usageBucketKey(row: { key_id: string; model: string; upstream: string |
 function assembleUsageRecords(dimensions: readonly UsageDimensionRow[], requests: readonly UsageRequestRow[]): UsageRecord[] {
   const byBucket = new Map<string, UsageRecord>()
 
-  const ensureRecord = (row: { key_id: string; model: string; upstream: string | null; model_key: string; client: string; hour: string }): UsageRecord => {
+  const ensureRecord = (row: { key_id: string; incoming_model: string; model: string; upstream: string | null; model_key: string; client: string; hour: string }): UsageRecord => {
     const key = usageBucketKey(row)
     let record = byBucket.get(key)
     if (!record) {
       record = {
         keyId: row.key_id as ApiKeyId,
+        incomingModel: row.incoming_model,
         model: row.model,
         upstream: row.upstream ?? null,
         modelKey: row.model_key,
@@ -628,18 +631,18 @@ class SharedUsageRepo implements UsageRepo {
     const client = r.client || ""
     for (const row of dimensionRows(r)) {
       await this.x.run(
-        `INSERT INTO usage (${USAGE_DIM_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (key_id, model, COALESCE(upstream, ''), model_key, client, hour, dimension) DO UPDATE SET
+        `INSERT INTO usage (${USAGE_DIM_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (key_id, incoming_model, model, COALESCE(upstream, ''), model_key, client, hour, dimension) DO UPDATE SET
            tokens = tokens + excluded.tokens,
            unit_price = COALESCE(unit_price, excluded.unit_price)`,
-        [r.keyId, r.model, upstream, r.modelKey, client, r.hour, row.dimension, row.tokens, row.unitPrice],
+        [r.keyId, r.incomingModel, r.model, upstream, r.modelKey, client, r.hour, row.dimension, row.tokens, row.unitPrice],
       )
     }
     await this.x.run(
-      `INSERT INTO usage_requests (${USAGE_REQ_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (key_id, model, COALESCE(upstream, ''), model_key, client, hour) DO UPDATE SET
+      `INSERT INTO usage_requests (${USAGE_REQ_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (key_id, incoming_model, model, COALESCE(upstream, ''), model_key, client, hour) DO UPDATE SET
          requests = requests + excluded.requests`,
-      [r.keyId, r.model, upstream, r.modelKey, client, r.hour, r.requests],
+      [r.keyId, r.incomingModel, r.model, upstream, r.modelKey, client, r.hour, r.requests],
     )
   }
 
@@ -649,20 +652,20 @@ class SharedUsageRepo implements UsageRepo {
     // Replacement upsert: clear the bucket's existing dimension rows first so
     // dimensions absent from the new record do not linger.
     await this.x.run(
-      "DELETE FROM usage WHERE key_id = ? AND model = ? AND COALESCE(upstream, '') = COALESCE(?, '') AND model_key = ? AND client = ? AND hour = ?",
-      [r.keyId, r.model, upstream, r.modelKey, client, r.hour],
+      "DELETE FROM usage WHERE key_id = ? AND incoming_model = ? AND model = ? AND COALESCE(upstream, '') = COALESCE(?, '') AND model_key = ? AND client = ? AND hour = ?",
+      [r.keyId, r.incomingModel, r.model, upstream, r.modelKey, client, r.hour],
     )
     for (const row of dimensionRows(r)) {
       await this.x.run(
-        `INSERT INTO usage (${USAGE_DIM_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [r.keyId, r.model, upstream, r.modelKey, client, r.hour, row.dimension, row.tokens, row.unitPrice],
+        `INSERT INTO usage (${USAGE_DIM_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [r.keyId, r.incomingModel, r.model, upstream, r.modelKey, client, r.hour, row.dimension, row.tokens, row.unitPrice],
       )
     }
     await this.x.run(
-      `INSERT INTO usage_requests (${USAGE_REQ_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (key_id, model, COALESCE(upstream, ''), model_key, client, hour) DO UPDATE SET
+      `INSERT INTO usage_requests (${USAGE_REQ_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (key_id, incoming_model, model, COALESCE(upstream, ''), model_key, client, hour) DO UPDATE SET
          requests = excluded.requests`,
-      [r.keyId, r.model, upstream, r.modelKey, client, r.hour, r.requests],
+      [r.keyId, r.incomingModel, r.model, upstream, r.modelKey, client, r.hour, r.requests],
     )
   }
 

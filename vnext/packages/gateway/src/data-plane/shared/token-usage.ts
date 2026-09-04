@@ -134,6 +134,8 @@ export const recordTokenUsage = async (
   if (!nonZero(tokens)) return
   const row: UsageRecord = {
     keyId: apiKeyId,
+    // Temporary compatibility identity until route resolution carries source aliases.
+    incomingModel: modelIdentity.model,
     model: modelIdentity.model,
     modelKey: modelIdentity.modelKey,
     upstream: modelIdentity.upstream,

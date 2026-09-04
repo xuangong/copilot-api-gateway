@@ -204,6 +204,8 @@ export async function recordUsage(
   if (!nonZeroUsage(tokens)) return
   const row: UsageRecord = {
     keyId: telemetryCtx.apiKeyId,
+    // Temporary compatibility identity until route resolution carries source aliases.
+    incomingModel: modelIdentity.model,
     model: modelIdentity.model,
     modelKey: modelIdentity.modelKey,
     upstream: modelIdentity.upstream,

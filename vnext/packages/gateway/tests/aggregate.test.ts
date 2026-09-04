@@ -8,7 +8,7 @@ import { aggregateUsageForDisplay } from '../src/control-plane/token-usage/aggre
 import type { UsageRecord } from '../src/repo/types.ts'
 
 const rec = (over: Partial<UsageRecord> = {}): UsageRecord => ({
-  keyId: 'k', model: 'm', modelKey: 'm', upstream: null, client: '',
+  keyId: 'k', incomingModel: 'm', model: 'm', modelKey: 'm', upstream: null, client: '',
   hour: 'h', requests: 1, tokens: {}, cost: null, ...over,
 })
 

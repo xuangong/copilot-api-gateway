@@ -59,6 +59,8 @@ async function trackNonStreamingUsage(
   if (!hasAnyTokens(info.tokens)) return
   const rec: UsageRecord = {
     keyId,
+    // Temporary compatibility identity until route resolution carries source aliases.
+    incomingModel: model,
     // The route already resolved the key policy, so the public identity and
     // provider key are authoritative even when an upstream echoes the alias
     // the client used before routing.

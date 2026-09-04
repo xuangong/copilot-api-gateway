@@ -42,7 +42,7 @@ test('checkQuota: re-exports formula', () => {
 test('checkQuota: cache-creation tokens count toward the token quota', async () => {
   await repo.apiKeys.save(baseKey({ quotaTokensPerMonth: 100 }))
   await repo.usage.record({
-    keyId: 'k1', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
+    keyId: 'k1', incomingModel: 'gpt-4o', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
     hour: thisMonthHour(), requests: 1, tokens: { input_cache_write: 100 }, cost: null,
   })
   const r = await checkQuota('k1')
@@ -64,7 +64,7 @@ test('checkQuota: key with no quotas configured allowed', async () => {
 test('checkQuota: request quota exceeded denies with Retry-After', async () => {
   await repo.apiKeys.save(baseKey({ quotaRequestsPerMonth: 2 }))
   await repo.usage.record({
-    keyId: 'k1', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
+    keyId: 'k1', incomingModel: 'gpt-4o', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
     hour: thisMonthHour(), requests: 2, tokens: { input: 100, output: 50 }, cost: null,
   })
   const r = await checkQuota('k1')
@@ -77,7 +77,7 @@ test('checkQuota: request quota exceeded denies with Retry-After', async () => {
 test('checkQuota: token quota exceeded denies', async () => {
   await repo.apiKeys.save(baseKey({ quotaTokensPerMonth: 500 }))
   await repo.usage.record({
-    keyId: 'k1', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
+    keyId: 'k1', incomingModel: 'gpt-4o', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
     hour: thisMonthHour(), requests: 1, tokens: { input: 100, output: 100 }, cost: null,
   })
   const r = await checkQuota('k1')
@@ -88,7 +88,7 @@ test('checkQuota: token quota exceeded denies', async () => {
 test('checkQuota: usage below quota allowed', async () => {
   await repo.apiKeys.save(baseKey({ quotaRequestsPerMonth: 100, quotaTokensPerMonth: 1_000_000 }))
   await repo.usage.record({
-    keyId: 'k1', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
+    keyId: 'k1', incomingModel: 'gpt-4o', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
     hour: thisMonthHour(), requests: 1, tokens: { input: 10, output: 10 }, cost: null,
   })
   const r = await checkQuota('k1')
@@ -99,7 +99,7 @@ test('checkQuota: last month usage does not count against this month', async () 
   const now = new Date()
   const lastMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15))
   await repo.usage.record({
-    keyId: 'k1', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
+    keyId: 'k1', incomingModel: 'gpt-4o', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
     hour: lastMonth.toISOString().slice(0, 10) + 'T00', requests: 99,
     tokens: { input: 100, output: 50 }, cost: null,
   })
@@ -110,7 +110,7 @@ test('checkQuota: last month usage does not count against this month', async () 
 test('checkQuota: cost quota exceeded denies', async () => {
   await repo.apiKeys.save(baseKey({ quotaCostPerMonth: 1 }))
   await repo.usage.record({
-    keyId: 'k1', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
+    keyId: 'k1', incomingModel: 'gpt-4o', model: 'gpt-4o', modelKey: 'gpt-4o', upstream: null, client: '',
     hour: thisMonthHour(), requests: 1, tokens: { input: 1_000_000 },
     cost: { input: 3 },
   })
@@ -125,7 +125,7 @@ test('checkQuota: cost quota exceeded denies', async () => {
 test('checkQuota: unpriced usage escapes the cost gate but still hits the token gate', async () => {
   await repo.apiKeys.save(baseKey({ quotaCostPerMonth: 1, quotaTokensPerMonth: 1000 }))
   await repo.usage.record({
-    keyId: 'k1', model: 'brand-new', modelKey: 'brand-new', upstream: null, client: '',
+    keyId: 'k1', incomingModel: 'brand-new', model: 'brand-new', modelKey: 'brand-new', upstream: null, client: '',
     hour: thisMonthHour(), requests: 1, tokens: { input: 5000 }, cost: null,
   })
   const r = await checkQuota('k1')

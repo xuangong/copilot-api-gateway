@@ -204,6 +204,7 @@ test('embeddings quota exceeded: 429 short-circuit, no upstream call', async () 
   const todayHour = new Date().toISOString().slice(0, 13)
   await repo.usage.record({
     keyId: 'e-q',
+    incomingModel: 'm',
     model: 'm',
     modelKey: 'm',
     upstream: null,
