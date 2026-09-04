@@ -1015,3 +1015,110 @@ test("image generation sends the mapped destination upstream", async () => {
   expect(response.status).toBe(200);
   expect(upstreamModel).toBe(destination);
 });
+
+function upstreamImageError(status: number): Response {
+  return new Response(JSON.stringify({
+    error: {
+      type: status === 429 ? 'rate_limit_error' : 'invalid_request_error',
+      message: `mapped image upstream ${status}`,
+      code: `image_${status}`,
+    },
+  }), {
+    status,
+    headers: {
+      'content-type': 'application/json',
+      'content-encoding': 'gzip',
+      'content-length': '999',
+      'transfer-encoding': 'chunked',
+      connection: 'keep-alive',
+      'keep-alive': 'timeout=5',
+      'set-cookie': 'upstream-session=secret',
+      'retry-after': '30',
+      'x-request-id': `upstream-image-${status}`,
+    },
+  })
+}
+
+function expectSanitizedImageErrorHeaders(response: Response, status: number): void {
+  expect(response.status).toBe(status)
+  expect(response.headers.get('content-type')).toContain('application/json')
+  expect(response.headers.get('retry-after')).toBe('30')
+  expect(response.headers.get('x-request-id')).toBe(`upstream-image-${status}`)
+  expect(response.headers.get('content-encoding')).toBeNull()
+  expect(response.headers.get('content-length')).toBeNull()
+  expect(response.headers.get('transfer-encoding')).toBeNull()
+  expect(response.headers.get('connection')).toBeNull()
+  expect(response.headers.get('keep-alive')).toBeNull()
+  expect(response.headers.get('set-cookie')).toBeNull()
+}
+
+test('mapped Custom image generation HTTP 400 preserves its OpenAI body and sanitizes forwarded headers', async () => {
+  const { store, drain } = initCapturedDumps()
+  initRepo(stubRepo([customUpstream('up_A', ['images_generations'])], dumpKey))
+  initRuntimeLocation('bun')
+  let upstreamModel: unknown
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input as string, init)
+    if (new URL(request.url).pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({
+        object: 'list',
+        data: [{ id: destination, object: 'model', capabilities: { type: 'image' } }],
+      }), { headers: { 'content-type': 'application/json' } })
+    }
+    upstreamModel = (await request.json() as { model?: unknown }).model
+    return upstreamImageError(400)
+  }) as typeof fetch
+
+  const response = await buildApp({ apiKeyId: dumpKey.id, routingPolicy: mappedPolicy }).fetch(new Request('http://local/v1/images/generations', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'source', prompt: 'hi' }),
+  }), env)
+
+  expect(upstreamModel).toBe(destination)
+  expectSanitizedImageErrorHeaders(response, 400)
+  expect(await response.json()).toEqual({ error: { type: 'invalid_request_error', message: 'mapped image upstream 400', code: 'image_400' } })
+  await drain()
+  expect(store.records).toHaveLength(1)
+  expect(store.records[0]?.meta.model).toBe('source')
+  expect(store.records[0]?.meta.error).toEqual({ kind: 'failed', reason: expect.any(String) })
+  expect(store.records[0]?.response.status).toBe(400)
+  expect(store.records[0]?.response.headers.some(([name]) => name.toLowerCase() === 'x-dump-record-id')).toBe(false)
+})
+
+test('mapped Custom image edit HTTP 429 preserves its OpenAI body and sanitizes forwarded headers', async () => {
+  const { store, drain } = initCapturedDumps()
+  initRepo(stubRepo([customUpstream('up_A', ['images_edits'])], dumpKey))
+  initRuntimeLocation('bun')
+  let upstreamModel: FormDataEntryValue | null = null
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input as string, init)
+    if (new URL(request.url).pathname.endsWith('/models')) {
+      return new Response(JSON.stringify({
+        object: 'list',
+        data: [{ id: destination, object: 'model', capabilities: { type: 'image' } }],
+      }), { headers: { 'content-type': 'application/json' } })
+    }
+    upstreamModel = (await request.formData()).get('model')
+    return upstreamImageError(429)
+  }) as typeof fetch
+  const form = new FormData()
+  form.append('model', 'source')
+  form.append('prompt', 'edit this')
+  form.append('image', new Blob(['x'], { type: 'image/png' }), 'image.png')
+
+  const response = await buildApp({ apiKeyId: dumpKey.id, routingPolicy: mappedPolicy }).fetch(new Request('http://local/v1/images/edits', {
+    method: 'POST',
+    body: form,
+  }), env)
+
+  expect(upstreamModel).toBe(destination)
+  expectSanitizedImageErrorHeaders(response, 429)
+  expect(await response.json()).toEqual({ error: { type: 'rate_limit_error', message: 'mapped image upstream 429', code: 'image_429' } })
+  await drain()
+  expect(store.records).toHaveLength(1)
+  expect(store.records[0]?.meta.model).toBe('source')
+  expect(store.records[0]?.meta.error).toEqual({ kind: 'failed', reason: expect.any(String) })
+  expect(store.records[0]?.response.status).toBe(429)
+  expect(store.records[0]?.response.headers.some(([name]) => name.toLowerCase() === 'x-dump-record-id')).toBe(false)
+})

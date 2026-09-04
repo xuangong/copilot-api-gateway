@@ -13,8 +13,6 @@
 import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
-import { upstreamErrorResponse } from '../src/data-plane/images/routes.ts'
-import { HTTPError } from '@vibe-llm/provider-llm'
 import { initRepo } from '../src/repo/index.ts'
 import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
@@ -68,25 +66,6 @@ test('POST /v1/images/generations 404 when no binding for model', async () => {
   const body = await res.json() as { error: { type: string; message: string } }
   expect(body.error.type).toBe('invalid_request_error')
   expect(body.error.message).toContain('gpt-image-1')
-})
-
-// Regression: providers signal a non-2xx upstream by throwing an HTTPError
-// that carries the real Response. Every chat-flow attempt unwraps it; the
-// images routes did not, so a "Transparent background is not supported"
-// upstream 400 reached the client as a bare 500 with no message at all.
-test('upstreamErrorResponse forwards the response an HTTPError carries', async () => {
-  const upstream = new Response('{"error":{"message":"bad background"}}', {
-    status: 400,
-    headers: { 'content-type': 'application/json' },
-  })
-  const res = upstreamErrorResponse(new HTTPError('wrapped', upstream))
-  expect(res).not.toBeNull()
-  expect(res!.status).toBe(400)
-  expect(await res!.text()).toBe('{"error":{"message":"bad background"}}')
-})
-
-test('upstreamErrorResponse ignores errors that carry no response', async () => {
-  expect(upstreamErrorResponse(new Error('socket closed'))).toBeNull()
 })
 
 test('POST /v1/images/edits 400 on an unsupported content-type', async () => {
