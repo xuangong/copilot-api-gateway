@@ -40,6 +40,8 @@ import { eventFrame, doneFrame, type ProtocolFrame } from '@vibe-core/result'
 import { llmEventResult, type Invocation, type RequestContext, type TelemetryModelIdentity } from '@vibe-llm/protocols/common'
 import { respondResponses } from '../../../../../src/data-plane/chat-flow/responses/respond.ts'
 import { setupTestPlatform } from '../../../../_setup-platform.ts'
+import { imageGenerationServerTool } from '../../../../../src/data-plane/chat-flow/responses/interceptors/server-tools/image-generation.ts'
+import type { UpstreamRecord } from '../../../../../src/repo/types.ts'
 
 const stubIdentity: TelemetryModelIdentity = {
   incomingModel: '<unknown>',
@@ -612,6 +614,134 @@ test('withResponsesServerToolShim retains the outer incoming model across two ho
   const metadata = await result.finalMetadata
   expect(metadata?.modelIdentity).toEqual({ ...second, incomingModel: 'outer-responses-alias' })
   expect(result.resolveModelIdentity?.('anything')).toEqual({ ...second, incomingModel: 'outer-responses-alias' })
+})
+
+const imageUpstream = (): UpstreamRecord => ({
+  id: 'image-upstream',
+  provider: 'custom',
+  name: 'image backend',
+  enabled: true,
+  sortOrder: 0,
+  config: {
+    name: 'image backend',
+    baseUrl: 'https://images.example.test/v1',
+    authStyle: 'none',
+    endpoints: ['images_generations'],
+    models: [
+      'gpt-image-backend',
+      { upstreamModelId: 'gpt-image-backend', cost: { output_image: 42 } },
+    ],
+  },
+  flagOverrides: {},
+  disabledPublicModelIds: [],
+  state: null,
+  proxyFallbackList: [{ id: 'direct_fetch' }],
+  createdAt: '2026-09-04T00:00:00Z',
+  updatedAt: '2026-09-04T00:00:00Z',
+})
+
+const imageToolInvocation = (partialImages?: number): Invocation => ({
+  endpoint: 'responses',
+  enabledFlags: new Set(['responses-image-generation-shim']),
+  sourceApi: 'responses',
+  payload: {
+    model: 'outer-responses-alias',
+    stream: true,
+    input: [],
+    tools: [{
+      type: 'image_generation',
+      model: 'gpt-image-backend',
+      ...(partialImages === undefined ? {} : { partial_images: partialImages }),
+    }],
+  },
+  headers: {},
+})
+
+const imageOrchestratorTurn = (): ResponsesStreamEvent[] => {
+  const response = snapshotFor('orchestrator', 'gpt-5.6-sol')
+  return [
+    { type: 'response.created', response },
+    { type: 'response.output_item.added', output_index: 0, item: { id: 'call', type: 'function_call', call_id: 'call', name: 'image_generation', arguments: '' } as never },
+    { type: 'response.output_item.done', output_index: 0, item: { id: 'call', type: 'function_call', call_id: 'call', name: 'image_generation', arguments: '{"prompt":"an otter"}' } as never },
+    { type: 'response.completed', response },
+  ]
+}
+
+const terminalOrchestratorTurn = (): ResponsesStreamEvent[] => {
+  const response = snapshotFor('orchestrator-final', 'gpt-5.6-sol')
+  return [{ type: 'response.created', response }, { type: 'response.completed', response }]
+}
+
+const usageRowsFor = async (repo: ReturnType<typeof setupTestPlatform>['repo']) =>
+  await repo.usage.query({ keyId: 'image-key' as never, start: '2000-01-01T00', end: '2100-01-01T00' })
+
+test('withResponsesServerToolShim records outer incoming identity for a non-streaming image tool subcall', async () => {
+  const { repo } = setupTestPlatform()
+  await repo.upstreams.save(imageUpstream())
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => Response.json({
+    data: [{ b64_json: 'aGVsbG8=' }],
+    usage: { input_tokens: 2, output_tokens: 5, output_tokens_details: { image_tokens: 5 } },
+  })
+  try {
+    let turns = 0
+    const result = await withResponsesServerToolShim([imageGenerationServerTool], createInMemoryPrivatePayloadStore())(
+      imageToolInvocation(),
+      { ...baseCtx, apiKeyId: 'image-key', incomingModel: 'outer-alias' },
+      async () => {
+        turns += 1
+        return llmEventResult(framesOf(turns === 1 ? imageOrchestratorTurn() : terminalOrchestratorTurn()), {
+          incomingModel: 'outer-alias', model: 'gpt-5.6-sol', upstream: 'orchestrator', modelKey: 'gpt-5.6-sol', cost: null,
+        })
+      },
+    )
+    if (result.type !== 'events') throw new Error('expected events')
+    await collectAndReturn(result.events as AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>, void>)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const rows = await usageRowsFor(repo)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      incomingModel: 'outer-alias', model: 'gpt-image-backend', modelKey: 'gpt-image-backend', upstream: 'image-upstream',
+      cost: { output_image: 42 }, tokens: { input: 2, output_image: 5 },
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('withResponsesServerToolShim records streaming image subcall usage once with outer incoming identity', async () => {
+  const { repo } = setupTestPlatform()
+  await repo.upstreams.save(imageUpstream())
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(
+    'data: {"type":"image_generation.partial_image","partial_image_index":0,"b64_json":"aGVsbG8="}\n\n'
+    + 'data: {"type":"image_generation.completed","b64_json":"aGVsbG8=","usage":{"input_tokens":3,"output_tokens":7,"output_tokens_details":{"image_tokens":7}}}\n\n',
+    { headers: { 'content-type': 'text/event-stream' } },
+  )
+  try {
+    let turns = 0
+    const result = await withResponsesServerToolShim([imageGenerationServerTool], createInMemoryPrivatePayloadStore())(
+      imageToolInvocation(1),
+      { ...baseCtx, apiKeyId: 'image-key', incomingModel: 'outer-alias' },
+      async () => {
+        turns += 1
+        return llmEventResult(framesOf(turns === 1 ? imageOrchestratorTurn() : terminalOrchestratorTurn()), {
+          incomingModel: 'outer-alias', model: 'gpt-5.6-sol', upstream: 'orchestrator', modelKey: 'gpt-5.6-sol', cost: null,
+        })
+      },
+    )
+    if (result.type !== 'events') throw new Error('expected events')
+    await collectAndReturn(result.events as AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>, void>)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const rows = await usageRowsFor(repo)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      incomingModel: 'outer-alias', model: 'gpt-image-backend', modelKey: 'gpt-image-backend', upstream: 'image-upstream',
+      cost: { output_image: 42 }, tokens: { input: 3, output_image: 7 },
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('withResponsesServerToolShim forwards a first bare upstream error and settles final metadata', async () => {
