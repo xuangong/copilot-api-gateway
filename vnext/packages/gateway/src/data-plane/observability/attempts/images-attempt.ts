@@ -23,6 +23,7 @@ import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 import type { ModelPricing } from '@vibe-llm/protocols/common'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 import { recordTokenUsage, tokenUsageFromImagesBody } from '../../shared/token-usage.ts'
+import { detectClient } from '../client-detect.ts'
 
 export interface ImagesAttemptInput {
   apiKeyId: ApiKeyId | undefined
@@ -118,6 +119,7 @@ export async function runImagesAttempt(
         upstream: input.upstream,
         modelKey: input.modelKey,
         cost: input.pricing,
+        client: detectClient(input.userAgent),
       }, usage)
     } catch {
       // Telemetry must not change the upstream response delivered to the client.

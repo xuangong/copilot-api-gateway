@@ -238,7 +238,7 @@ const imageUsageUpstream = stubUpstream({
   },
 } as Partial<UpstreamRecord>)
 
-function initImageUsageRepo(recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number }>) {
+function initImageUsageRepo(recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number; client: string }>) {
   initRepo({
     ...stubRepo([imageUsageUpstream]),
     apiKeys: { getById: async () => null, touchLastUsed: async () => {} },
@@ -259,7 +259,7 @@ function installImageUsageFetch() {
   })
 }
 
-function expectRecordedImageUsage(recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number }>) {
+function expectRecordedImageUsage(recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number; client: string }>) {
   expect(recorded).toHaveLength(1)
   expect(recorded[0]).toMatchObject({
     incomingModel: 'image-source',
@@ -269,17 +269,18 @@ function expectRecordedImageUsage(recorded: Array<{ incomingModel: string; model
     cost: { input: 2, input_image: 3, output_image: 4 },
     tokens: { input: 3, input_image: 6, output_image: 12 },
     requests: 1,
+    client: 'curl',
   })
 }
 
 test('POST /v1/images/generations records mapped image usage and forwards its body', async () => {
-  const recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number }> = []
+  const recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number; client: string }> = []
   initImageUsageRepo(recorded)
   installImageUsageFetch()
 
   const res = await buildApp(imagesRouter, imageUsageAuth).request('/v1/images/generations', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'user-agent': 'curl/8' },
     body: JSON.stringify({ model: 'image-source', prompt: 'a cat' }),
   })
 
@@ -289,13 +290,13 @@ test('POST /v1/images/generations records mapped image usage and forwards its bo
 })
 
 test('POST /v1/images/edits JSON records mapped image usage and forwards its body', async () => {
-  const recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number }> = []
+  const recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number; client: string }> = []
   initImageUsageRepo(recorded)
   installImageUsageFetch()
 
   const res = await buildApp(imagesRouter, imageUsageAuth).request('/v1/images/edits', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'user-agent': 'curl/8' },
     body: JSON.stringify({
       model: 'image-source',
       prompt: 'edit this',
@@ -309,7 +310,7 @@ test('POST /v1/images/edits JSON records mapped image usage and forwards its bod
 })
 
 test('POST /v1/images/edits multipart records mapped image usage and forwards its body', async () => {
-  const recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number }> = []
+  const recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number; client: string }> = []
   initImageUsageRepo(recorded)
   installImageUsageFetch()
   const form = new FormData()
@@ -319,6 +320,7 @@ test('POST /v1/images/edits multipart records mapped image usage and forwards it
 
   const res = await buildApp(imagesRouter, imageUsageAuth).request('/v1/images/edits', {
     method: 'POST',
+    headers: { 'user-agent': 'curl/8' },
     body: form,
   })
 

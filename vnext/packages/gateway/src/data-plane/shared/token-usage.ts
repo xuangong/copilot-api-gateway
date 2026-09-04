@@ -11,10 +11,9 @@
  *     freezes `ModelPricing` on the TelemetryModelIdentity and writes it into
  *     the row via `cost` for reconstruction at read time.
  *  2. `UsageRecord` requires `client` (SDK distinguisher, e.g. from user-agent
- *     detection). Server-tool dispatch has no request user-agent in scope
- *     (the tool runs mid-response, decoupled from the inbound HTTP request),
- *     so we record '' — same sentinel `respond-telemetry.ts` uses when the
- *     detector returns nothing.
+ *     detection). Callers supply it explicitly. Server-tool dispatch has no
+ *     request user-agent in scope (the tool runs mid-response, decoupled from
+ *     the inbound HTTP request), so it supplies ''.
  *  3. No `apiKeys.touchLastUsed` here — the enclosing Responses request has
  *     already stamped it via the normal respond-telemetry path. A per-image
  *     touch would just add a redundant write.
@@ -110,6 +109,8 @@ export interface ImageUsageModelIdentity {
   readonly upstream: string
   readonly modelKey: string
   readonly cost: ModelPricing | null
+  /** Client identifier derived from the inbound request user-agent. */
+  readonly client: string
 }
 
 const nonZero = (tokens: TokenUsage): boolean => {
@@ -140,7 +141,7 @@ export const recordTokenUsage = async (
     model: modelIdentity.model,
     modelKey: modelIdentity.modelKey,
     upstream: modelIdentity.upstream,
-    client: '',
+    client: modelIdentity.client,
     hour: currentHour(),
     requests: 1,
     tokens,

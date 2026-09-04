@@ -1,16 +1,8 @@
 /**
- * runImagesAttempt — images carry no token usage and the route forwards the
- * upstream body verbatim (status + body + headers). Both `images_generations`
- * and `images_edits` use the same observability shape: quota → latency-only.
- *
- * Behavior preserved verbatim from data-plane/images/routes.ts:
- *   - Quota gate before timer.
- *   - recordLatency fires with `isError: !response.ok` regardless of outcome,
- *     and intentionally OMITS sourceApi/targetApi so the perf fan-out is
- *     skipped (images don't have a meaningful target-api enum).
- *   - No usage tracking (images don't carry token counts).
- *   - apiKeyId undefined → all observability skipped, upstream still fires.
- *   - Throw path mirrors !response.ok: error-tagged latency, then rethrow.
+ * runImagesAttempt — successful image responses may carry token usage. The
+ * attempt parses a clone for telemetry and preserves the original upstream body
+ * for route forwarding. Both `images_generations` and `images_edits` share the
+ * same quota, usage, dump, and latency behavior.
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
@@ -102,7 +94,31 @@ test('images success records usage and preserves the upstream response body', as
     cost: { input: 5, input_image: 7, output_image: 40 },
     tokens: { input: 4, input_image: 8, output_image: 20 },
     requests: 1,
+    client: 'curl',
   })
+})
+
+test('images usage keeps distinct clients in separate usage buckets', async () => {
+  await seedKey('i-clients')
+  const call = () => Promise.resolve(new Response(JSON.stringify({ usage: { output_tokens: 1 } })))
+  const identity = {
+    apiKeyId: 'i-clients',
+    incomingModel: 'image-source',
+    model: 'image-destination',
+    modelKey: 'provider-image-key',
+    pricing: null,
+    upstream: 'custom:one',
+    requestId: undefined,
+    dump: null,
+    call,
+  }
+
+  await runImagesAttempt({ ...identity, userAgent: 'curl/8' })
+  await runImagesAttempt({ ...identity, userAgent: 'axios/1.0' })
+
+  const usage = await repo.usage.query({ keyId: 'i-clients', start: dayStart(), end: dayEnd() })
+  expect(usage).toHaveLength(2)
+  expect(usage.map((row) => row.client).sort()).toEqual(['axios', 'curl'])
 })
 
 test('images success without usage does not fabricate a row', async () => {

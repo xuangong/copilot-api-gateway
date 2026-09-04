@@ -1049,6 +1049,7 @@ const recordImageUsage = (
     upstream: binding.upstream,
     modelKey,
     cost: binding.provider.getPricingForModelKey(modelKey) ?? null,
+    client: '',
   }, usage).catch((error: unknown) => {
     console.error('Failed to record image generation usage:', error)
   })

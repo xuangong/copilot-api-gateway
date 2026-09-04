@@ -59,8 +59,8 @@ const makeRepo = (): { repo: Repo; recorded: UsageRecord[] } => {
 
 test('recordTokenUsage no-ops when usage is null or all zeros', async () => {
   const { repo, recorded } = makeRepo()
-  await recordTokenUsage('k1', { incomingModel: 'outer-alias', model: 'm', upstream: 'u', modelKey: 'mk', cost: null }, null, repo)
-  await recordTokenUsage('k1', { incomingModel: 'outer-alias', model: 'm', upstream: 'u', modelKey: 'mk', cost: null }, { input: 0, output: 0 }, repo)
+  await recordTokenUsage('k1', { incomingModel: 'outer-alias', model: 'm', upstream: 'u', modelKey: 'mk', cost: null, client: '' }, null, repo)
+  await recordTokenUsage('k1', { incomingModel: 'outer-alias', model: 'm', upstream: 'u', modelKey: 'mk', cost: null, client: '' }, { input: 0, output: 0 }, repo)
   expect(recorded).toEqual([])
 })
 
@@ -74,6 +74,7 @@ test('recordTokenUsage uses explicit outer incoming model rather than image back
       upstream: 'copilot:acct',
       modelKey: 'gpt-image-backend',
       cost: null,
+      client: 'curl',
     },
     { output_image: 3 },
     repo,
@@ -82,13 +83,14 @@ test('recordTokenUsage uses explicit outer incoming model rather than image back
   expect(recorded[0]?.incomingModel).toBe('outer-responses-alias')
   expect(recorded[0]?.model).toBe('gpt-image-2')
   expect(recorded[0]?.modelKey).toBe('gpt-image-backend')
+  expect(recorded[0]?.client).toBe('curl')
 })
 
 test('recordTokenUsage writes a single row carrying the frozen pricing snapshot', async () => {
   const { repo, recorded } = makeRepo()
   await recordTokenUsage(
     'key-1',
-    { incomingModel: 'outer-alias', model: 'gpt-image-2', upstream: 'copilot:acct', modelKey: 'gpt-image-2', cost: { input: 5, output_image: 40 } },
+    { incomingModel: 'outer-alias', model: 'gpt-image-2', upstream: 'copilot:acct', modelKey: 'gpt-image-2', cost: { input: 5, output_image: 40 }, client: 'image-sdk' },
     { input: 12, output_image: 3 },
     repo,
   )
@@ -98,7 +100,7 @@ test('recordTokenUsage writes a single row carrying the frozen pricing snapshot'
   expect(row.model).toBe('gpt-image-2')
   expect(row.upstream).toBe('copilot:acct')
   expect(row.modelKey).toBe('gpt-image-2')
-  expect(row.client).toBe('')
+  expect(row.client).toBe('image-sdk')
   expect(row.requests).toBe(1)
   expect(row.tokens).toEqual({ input: 12, output_image: 3 })
   expect(row.cost).toEqual({ input: 5, output_image: 40 })
