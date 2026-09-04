@@ -24,12 +24,18 @@ export interface UpstreamModelGroup {
   models: UpstreamModelEntry[]
 }
 
+export interface ModelMappingDestination {
+  id: string
+  upstreams: string[]
+}
+
 export interface ModelCatalog {
   claudeBig: string[]
   claudeSmall: string[]
   codex: string[]
   gemini: string[]
   byUpstream: UpstreamModelGroup[]
+  mappingDestinations: ModelMappingDestination[]
 }
 
 const CLAUDE_TIER: Record<string, number> = { opus: 0, sonnet: 1, haiku: 2 }
@@ -56,6 +62,12 @@ function buildCatalog(data: RawModel[]): ModelCatalog {
     (m) => m.id.startsWith("claude-") && m.supported_endpoints?.includes("/v1/messages"),
   )
   const claudeAll: string[] = []
+  const destinationUpstreams = new Map<string, Set<string>>()
+  const addDestination = (id: string, upstream: string) => {
+    const upstreams = destinationUpstreams.get(id) ?? new Set<string>()
+    upstreams.add(upstream)
+    destinationUpstreams.set(id, upstreams)
+  }
   for (const m of claudeBase) {
     const combos =
       Array.isArray(m.available_combinations) && m.available_combinations.length > 0
@@ -66,6 +78,7 @@ function buildCatalog(data: RawModel[]): ModelCatalog {
       if (c.effort === "high" || c.effort === "xhigh") id += "-" + c.effort
       if (c.context1m) id += "-1m"
       claudeAll.push(id)
+      addDestination(id, m._upstream || "(legacy / unmanaged)")
     }
   }
   const claudeBig = [...claudeAll].sort(sortClaudeBig)
@@ -81,15 +94,19 @@ function buildCatalog(data: RawModel[]): ModelCatalog {
   const byUp = new Map<string, UpstreamModelGroup>()
   for (const m of data) {
     const up = m._upstream || "(legacy / unmanaged)"
+    addDestination(m.id, up)
     if (!byUp.has(up)) byUp.set(up, { upstream: up, provider: m._provider || "?", models: [] })
     byUp.get(up)!.models.push({ id: m.id, name: m.name || m.id })
   }
   const byUpstream = [...byUp.values()].sort((a, b) => a.upstream.localeCompare(b.upstream))
 
-  return { claudeBig, claudeSmall, codex, gemini, byUpstream }
+  const mappingDestinations = [...destinationUpstreams.entries()]
+    .map(([id, upstreams]) => ({ id, upstreams: [...upstreams].sort((a, b) => a.localeCompare(b)) }))
+    .sort((a, b) => a.id.localeCompare(b.id))
+  return { claudeBig, claudeSmall, codex, gemini, byUpstream, mappingDestinations }
 }
 
-const EMPTY: ModelCatalog = { claudeBig: [], claudeSmall: [], codex: [], gemini: [], byUpstream: [] }
+const EMPTY: ModelCatalog = { claudeBig: [], claudeSmall: [], codex: [], gemini: [], byUpstream: [], mappingDestinations: [] }
 
 export function useModelCatalog(keyId?: string) {
   const [catalog, setCatalog] = useState<ModelCatalog>(EMPTY)

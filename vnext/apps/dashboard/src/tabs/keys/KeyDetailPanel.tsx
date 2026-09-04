@@ -4,6 +4,7 @@ import { AssigneesPanel, SharedByOwnerPanel } from "./AssigneesPanel"
 import { ConfigurationPanel } from "./ConfigurationPanel"
 import { QuotaEditor } from "./QuotaEditor"
 import { WebSearchPanel } from "./WebSearchPanel"
+import { ModelMappingsPanel } from "./ModelMappingsPanel"
 
 interface Props {
   keyRow: ApiKeyDetail
@@ -72,6 +73,13 @@ export function KeyDetailPanel({
         onUsageRangeChange={onWsUsageRangeChange}
         onSave={onPatch}
         onCopyFrom={onCopyWebSearchFrom}
+      />
+
+      <ModelMappingsPanel
+        keyRow={keyRow}
+        canEdit={keyRow.can_manage_model_mappings}
+        busy={busy}
+        onSave={onPatch}
       />
 
       <ConfigurationPanel keyRow={keyRow} />

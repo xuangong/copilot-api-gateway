@@ -14,6 +14,11 @@ export interface KeyAssigneeBrief {
   user_name: string | null
 }
 
+export interface ApiKeyModelMapping {
+  source: string
+  destination: string
+}
+
 export interface ApiKeyDetail {
   id: string
   name: string
@@ -23,6 +28,10 @@ export interface ApiKeyDetail {
   owner_id: string | null
   owner_name: string | null
   is_owner: boolean
+  can_manage_model_mappings: boolean
+  model_mappings_enabled: boolean
+  model_mappings: ApiKeyModelMapping[]
+  model_mappings_invalid: boolean
   quota_requests_per_month: number | null
   quota_tokens_per_month: number | null
   quota_cost_per_month: number | null
@@ -42,6 +51,8 @@ export interface ApiKeyDetail {
 }
 
 export interface KeyPatchBody {
+  model_mappings_enabled?: boolean
+  model_mappings?: ApiKeyModelMapping[]
   name?: string
   quota_requests_per_month?: number | null
   quota_tokens_per_month?: number | null
