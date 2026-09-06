@@ -50,7 +50,7 @@ type ResponseTool =
   | { type: 'web_search' }
   | { type: 'function'; name: string; description?: string; parameters?: unknown; strict: boolean }
 
-type ResponseToolChoice = 'auto' | 'required' | 'none' | { type: 'function'; name: string }
+type ResponseToolChoice = 'auto' | 'required' | 'none' | { type: 'web_search' } | { type: 'function'; name: string }
 
 const MESSAGES_OPENAI_JSON_SCHEMA_NAME = 'messages_response'
 
@@ -198,13 +198,17 @@ function translateSystem(system: MessagesPayload['system']): string | undefined 
 /** Responses `include` value that unlocks hosted web-search source lists. */
 const WEB_SEARCH_RESULTS_INCLUDE = 'web_search_call.results'
 
+function isHostedWebSearchTool(tool: MessagesTool): boolean {
+  return typeof tool.type === 'string' && tool.type.startsWith('web_search')
+}
+
 function translateTools(tools: MessagesTool[] | undefined): ResponseTool[] | undefined {
   if (!tools || tools.length === 0) return undefined
   return tools.map<ResponseTool>((t) => {
     // Anthropic's server-side web_search tool comes as
     // {type:"web_search_20250305", name:"web_search"}. Copilot's
     // /v1/responses upstream executes web_search natively as a hosted tool.
-    if (t.name === 'web_search' || (typeof t.type === 'string' && t.type.startsWith('web_search'))) {
+    if (isHostedWebSearchTool(t)) {
       return { type: 'web_search' }
     }
     return {
@@ -222,16 +226,20 @@ function translateToolChoice(
   tools: MessagesTool[] | undefined,
 ): ResponseToolChoice | undefined {
   if (!choice || !tools || tools.length === 0) return undefined
-  const names = new Set(tools.map((t) => t.name))
   switch (choice.type) {
     case 'auto':
       return 'auto'
     case 'any':
       return 'required'
-    case 'tool':
-      return choice.name && names.has(choice.name)
-        ? { type: 'function', name: choice.name }
-        : 'auto'
+    case 'tool': {
+      const selected = tools.find((tool) => tool.name === choice.name)
+      if (!selected) return 'auto'
+      // Forced selection must use the same kind as the translated tool.
+      // A client function named web_search remains a function.
+      return isHostedWebSearchTool(selected)
+        ? { type: 'web_search' }
+        : { type: 'function', name: selected.name }
+    }
     case 'none':
       return 'none'
     default:

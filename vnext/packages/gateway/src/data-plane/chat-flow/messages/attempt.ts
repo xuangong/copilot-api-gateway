@@ -333,7 +333,8 @@ export const messagesAttempt = {
           return (await hubAttempt.generate({
             payload: innerArgs.payload as never,
             auth: innerArgs.auth as never,
-            ctx: { downstreamAbortSignal: innerArgs.signal } as never,
+            // Hosted tools in the hub still need this key's search settings.
+            ctx: { ...args.ctx, downstreamAbortSignal: innerArgs.signal },
             telemetryCtx: innerArgs.inheritedTelemetryCtx,
             inheritedHeaders: innerArgs.inheritedHeaders,
             snapshotMode: innerArgs.snapshotMode,

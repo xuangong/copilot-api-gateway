@@ -183,6 +183,40 @@ describe('messages-via-responses :: request', () => {
     expect(unknown.target.tool_choice).toBe('auto')
   })
 
+  it.each(['web_search_20250305', 'web_search_20260209', 'web_search_20260318'])(
+    'keeps forced %s selection aligned with the hosted tool declaration',
+    (type) => {
+      const { target } = translateMessagesToResponses({
+        model: 'm', max_tokens: 128,
+        messages: [{ role: 'user', content: 'search the weather' }],
+        tools: [
+          { name: 'calc', input_schema: { type: 'object' } },
+          { type, name: 'web_search' },
+        ],
+        tool_choice: { type: 'tool', name: 'web_search' },
+      })
+      expect(target.tools).toContainEqual({ type: 'web_search' })
+      expect(target.tool_choice).toEqual({ type: 'web_search' })
+    },
+  )
+
+  it.each([undefined, 'custom'])(
+    'preserves a client function named web_search with type %s',
+    (type) => {
+      const { target } = translateMessagesToResponses({
+        model: 'm', max_tokens: 128,
+        messages: [{ role: 'user', content: 'use my search function' }],
+        tools: [{ type, name: 'web_search', input_schema: { type: 'object' } }],
+        tool_choice: { type: 'tool', name: 'web_search' },
+      })
+      expect(target.tools).toEqual([
+        { type: 'function', name: 'web_search', parameters: { type: 'object' }, strict: false },
+      ])
+      expect(target.tool_choice).toEqual({ type: 'function', name: 'web_search' })
+      expect(target.include).toBeUndefined()
+    },
+  )
+
   it('maps thinking budget to reasoning effort when output_config.effort is absent', () => {
     const low = translateMessagesToResponses({
       model: 'm', max_tokens: 8, messages: [{ role: 'user', content: 'q' }],
