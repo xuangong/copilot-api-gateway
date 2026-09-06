@@ -100,6 +100,14 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
   },
 
   // ── OpenAI ───────────────────────────────────────────────────────────────
+  // User-provided reference catalog, 2026-09-06: in 1000 / out 5000 /
+  // cache read 100 / cache write 1250, converted to USD per million tokens
+  // using the same scale as Terra and Luna. No context price bands supplied.
+  {
+    displayName: "GPT-6 Astra",
+    match: "gpt-6-astra",
+    tiers: only({ input: 10, input_cache_read: 1, input_cache_write: 12.5, output: 50 }),
+  },
   {
     displayName: "GPT-5.6 Sol",
     match: "gpt-5.6-sol",

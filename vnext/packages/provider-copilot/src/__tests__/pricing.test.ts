@@ -115,6 +115,14 @@ function catalogRow(displayName: string) {
   return row
 }
 
+test("GPT-6 Astra uses the reference catalog rates for display and usage pricing", () => {
+  const pricing = { input: 10, input_cache_read: 1, input_cache_write: 12.5, output: 50 }
+  expect(catalogRow("GPT-6 Astra").tiers).toEqual([{ label: "Default", pricing }])
+  expect(pricingForCopilotPublicModelId("gpt-6-astra")).toEqual(pricing)
+  expect(pricingForCopilotModelKey("gpt-6-astra")).toEqual(pricing)
+  expect(pricingForCopilotModelKey("gpt-6-astra-2026-09-06")).toEqual(pricing)
+})
+
 test("GPT-5.5 carries both published bands", () => {
   const row = catalogRow("GPT-5.5")
   expect(row.tiers).toEqual([
@@ -236,8 +244,8 @@ test("legacy and internal models stay out of the catalog", () => {
 })
 
 test("the catalog has one row per documented model", () => {
-  // 11 Anthropic + 10 OpenAI + 4 Google + 2 xAI + 2 Microsoft + 2 Moonshot + 1 fine-tuned
-  expect(copilotPricingCatalog().models.length).toBe(32)
+  // 11 Anthropic + 11 OpenAI + 4 Google + 2 xAI + 2 Microsoft + 2 Moonshot + 1 fine-tuned
+  expect(copilotPricingCatalog().models.length).toBe(33)
 })
 
 test("both promo-priced Gemini flash rows share the promotional rate", () => {
