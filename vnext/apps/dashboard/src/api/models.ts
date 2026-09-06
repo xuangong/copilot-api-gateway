@@ -8,6 +8,8 @@ export interface PlaygroundModel {
   vendor?: string
   _upstream: string
   _provider: string
+  /** Final target of a mapping source advertised for the selected key. */
+  _mapped_to?: string
   capabilities?: {
     limits?: {
       max_context_window_tokens?: number

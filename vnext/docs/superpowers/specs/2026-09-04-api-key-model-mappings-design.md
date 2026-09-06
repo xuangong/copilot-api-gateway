@@ -88,13 +88,17 @@ interface ApiKeyModelMapping {
 
 ### 2.5 模型目录
 
-`/v1/models` 与 Key 设置页读取的原始可用模型目录保持不变：
+2026-09-06 更新：客户端和 Dashboard 的 Key 模型目录合并该 Key 可请求的 source alias：
 
-- 不隐藏 source 或 destination；
-- 不把 source 自动加入模型目录；
-- source 可以是目录中不存在的自定义别名；
-- destination 必须来自该 Key 当前可用模型；
-- Key 映射不得写入或污染 upstream 模型缓存。
+- 保留原始模型条目，仅在映射启用时补充 source，按模型 ID 去重；`dedupe=0` 按模型 ID 与 upstream 去重，保留每个上游的来源。
+- 每个 source 都从规则开头完整解析一次；最终目标可由该 Key 的可用上游提供时才加入目录，使用与路由一致的 composite model fallback。
+- 新增条目以 source 为 `id` 和 `name`，继承最终目标的能力及 upstream 来源，并以 `_mapped_to` 标识最终模型；source 精确匹配，不衍生目标的 effort/context 组合别名。
+- `/v1/models`、`/models` 及其 Claude Code/Codex 格式使用当前鉴权 Key 的目录；Codex 的能力元数据按最终目标匹配，保留 source 作为可请求的 slug。
+- Dashboard `/api/models?keyId=<id>` 在 owner/admin/assignment 权限校验后使用所选 Key 的目录；API Key 鉴权的 `/api/models` 使用该 Key 的目录。
+- Session 请求未指定 Key、以及管理员 `allOwners=1` 的上游总览仍返回原始上游目录。
+- Mapping destination 下拉过滤带 `_mapped_to` 的新增条目；服务端 destination 验证仍基于原始上游目录。
+- 客户端配置片段保留 source 原名，不把 alias 的 `-high` / `-1m` 后缀拆成配置参数；Web Search passthrough 直接寻址上游，使用原始模型目录。
+- 映射在请求时投影，Key 映射不得写入或污染 upstream 模型缓存；Disabled、空列表或损坏策略不增加 alias。
 
 ## 3. 方案选择
 
@@ -334,7 +338,7 @@ Source model               Destination model             操作
 - Save 成功后 reload Key 并显示服务端规范化结果；
 - 已保存 destination 后续不可用时保留文本并标红 `Unavailable`，用户必须删除或重选后才能再次保存。
 
-目标模型通过 `/api/models?keyId=<id>` 读取。映射后的 effective catalog 不替代这个原始 target catalog，也不得进入 upstream model cache。
+模型通过 `/api/models?keyId=<id>&dedupe=0` 读取。客户端配置选择器使用合并后的目录；mapping destination 选择器过滤带 `_mapped_to` 的条目，继续使用原始 target catalog。映射保存成功后立即刷新目录，投影结果不得进入 upstream model cache。
 
 ## 11. 损坏配置的容错
 
@@ -472,7 +476,7 @@ Anthropic Messages 请求 gpt-5.6-sol
 4. 显式 upstream pin 被保留。
 5. destination 不可用时严格失败，无隐式回退。
 6. 所有路由、上游 payload、响应身份、价格、usage、quota 均使用最终 destination。
-7. 模型目录保持原样，source alias 不被广告。
+7. 客户端与 Dashboard 的 Key 模型目录包含启用且最终目标可用的 source alias，原始 target catalog 和 upstream 缓存不受影响。
 8. 设置保存后下一次请求立即生效，不依赖进程内缓存失效。
 9. Dashboard 支持完整增删改、排序与 Disabled 状态编辑。
 10. Migration、repo、控制面、协议、usage 与 UI 测试全部通过。

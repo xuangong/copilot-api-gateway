@@ -287,7 +287,7 @@ export function ModelMappingsPanel({
                           ? destinationErrorId
                           : undefined
                       }
-                      placeholder={t("dash.modelMappingPickDestination")}
+                      placeholder={t("dash.modelMappingSearchDestination")}
                       noMatchesText={t("dash.modelMappingNoMatches")}
                       onBlur={() =>
                         setDraft((current) =>

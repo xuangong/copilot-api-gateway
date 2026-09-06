@@ -21,6 +21,7 @@ import type { ApiKeyRoutingPolicy } from '../../shared/api-key-model-mappings.ts
 import { getRepo } from '../../repo/index.ts'
 import { isCodexUserAgent } from '../codex/catalog.ts'
 import { loadCodexCatalog } from '../codex/models.ts'
+import { withKeyModelAliases } from './key-model-catalog.ts'
 
 // Claude Code CLI (`claude-code/x.y.z (...)`) hits `/v1/models` to populate its
 // `/model` picker. It expects the Anthropic-shape catalog
@@ -103,7 +104,7 @@ type Vars = { auth: DataPlaneAuthCtx }
 export const modelsRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
 
 /**
- * Owner whose upstreams back `keyId`, or null when the caller may not see it.
+ * Safe catalog context for `keyId`, or null when the caller may not see it.
  *
  * Upstreams belong to the key's owner, but a dashboard request carries the
  * viewer's session — for a shared key those are different people, and scoping
@@ -112,13 +113,22 @@ export const modelsRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
  * assignment grant. The owner id is resolved server-side on purpose; taking it
  * from the client would let anyone enumerate another user's models.
  */
-async function keyOwnerVisibleTo(keyId: ApiKeyId, auth: DataPlaneAuthCtx): Promise<UserId | null> {
+async function keyCatalogContextVisibleTo(keyId: ApiKeyId, auth: DataPlaneAuthCtx): Promise<DataPlaneAuthCtx | null> {
   const key = await getRepo().apiKeys.getById(keyId)
   if (!key?.ownerId) return null
-  if (auth.isAdmin || key.ownerId === auth.userId) return key.ownerId
-  if (!auth.userId) return null
-  const grants = await getRepo().keyAssignments.listByUser(auth.userId)
-  return grants.some((g) => g.keyId === key.id) ? key.ownerId : null
+  if (!auth.isAdmin && key.ownerId !== auth.userId) {
+    if (!auth.userId) return null
+    const grants = await getRepo().keyAssignments.listByUser(auth.userId)
+    if (!grants.some((g) => g.keyId === key.id)) return null
+  }
+  return {
+    userId: key.ownerId,
+    copilot: key.ownerId === auth.userId ? auth.copilot : undefined,
+    routingPolicy: key.modelMappingsInvalid ? undefined : {
+      modelMappingsEnabled: key.modelMappingsEnabled,
+      modelMappings: key.modelMappings,
+    },
+  }
 }
 
 modelsRouter.get('/api/models', async (c) => {
@@ -132,21 +142,21 @@ modelsRouter.get('/api/models', async (c) => {
 
   // `?keyId=` asks for the catalog the given key can actually reach, which is
   // what the dashboard's per-key config snippets need.
-  let ownerId = auth.userId
+  let catalogAuth = auth
   const keyId = c.req.query('keyId')
   if (keyId && !allOwners) {
-    const owner = await keyOwnerVisibleTo(keyId as ApiKeyId, auth)
-    if (!owner) return c.json({ error: 'Key not visible' }, 403)
-    ownerId = owner
+    const keyAuth = await keyCatalogContextVisibleTo(keyId as ApiKeyId, auth)
+    if (!keyAuth) return c.json({ error: 'Key not visible' }, 403)
+    catalogAuth = keyAuth
   }
 
-  return c.json(
-    await listUpstreamModels({ ownerId, copilot: auth.copilot, dedupe, allOwners }),
-  )
+  const models = await listUpstreamModels({ ownerId: catalogAuth.userId, copilot: catalogAuth.copilot, dedupe, allOwners })
+  return c.json(allOwners ? models : withKeyModelAliases(models, catalogAuth.routingPolicy, dedupe))
 })
 
 async function handleList(auth: DataPlaneAuthCtx) {
-  const models = await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot })
+  const raw = await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot })
+  const models = withKeyModelAliases(raw, auth.routingPolicy)
   if (!models.data.length && !auth.copilot?.copilotToken) {
     return { ok: false, models } as const
   }
@@ -168,27 +178,6 @@ async function handleModelsRequest(c: {
 }) {
   const auth = c.get('auth') ?? {}
   const ua = c.req.header('user-agent')
-  if (isClaudeCodeUserAgent(ua)) {
-    const list = await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot })
-    if (!list.data.length && !auth.copilot?.copilotToken) {
-      return c.json(
-        { error: { type: 'invalid_request_error', message: 'GitHub token not found. Use /auth/github to connect your account.' } },
-        404,
-      )
-    }
-    return c.json(toClaudeCodeCatalog(list.data as OpenAIShapedModel[]))
-  }
-  if (isCodexUserAgent(ua)) {
-    const list = await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot })
-    if (!list.data.length && !auth.copilot?.copilotToken) {
-      return c.json(
-        { error: { type: 'invalid_request_error', message: 'GitHub token not found. Use /auth/github to connect your account.' } },
-        404,
-      )
-    }
-    const catalog = await loadCodexCatalog(ua, list.data as unknown as { id: string; name?: string; capabilities?: { type?: string; limits?: { max_context_window_tokens?: number } } }[])
-    return c.json(catalog)
-  }
   const result = await handleList(auth)
   if (!result.ok) {
     return c.json(
@@ -196,6 +185,8 @@ async function handleModelsRequest(c: {
       404,
     )
   }
+  if (isClaudeCodeUserAgent(ua)) return c.json(toClaudeCodeCatalog(result.models.data))
+  if (isCodexUserAgent(ua)) return c.json(await loadCodexCatalog(ua, result.models.data))
   return c.json(result.models)
 }
 

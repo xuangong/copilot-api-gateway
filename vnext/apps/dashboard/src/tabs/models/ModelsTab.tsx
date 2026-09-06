@@ -7,6 +7,7 @@ import { ChatPanel } from "./ChatPanel"
 import { visionSupport } from "./vision"
 import { DEFAULT_IMAGE_PARAMS, playgroundMode, type ImageParams } from "./images"
 import { formatTokens } from "./tokens"
+import { playgroundModelOptions } from "./model-options"
 
 const LS_KEY_ID = "playground.keyId"
 const LS_OPEN_GROUPS = "playground.openGroups"
@@ -106,9 +107,11 @@ export function ModelsTab() {
     if (!key) return
     setModels(null)
     setModelsError(null)
+    let active = true
     listPlaygroundModels(key.key)
-      .then((resp) => setModels(resp.data))
-      .catch((e: Error) => setModelsError(e.message))
+      .then((resp) => { if (active) setModels(resp.data) })
+      .catch((e: Error) => { if (active) setModelsError(e.message) })
+    return () => { active = false }
   }, [selectedKeyId, keys])
 
   const grouped = useMemo(() => {
@@ -117,7 +120,7 @@ export function ModelsTab() {
     const needle = search.trim().toLowerCase()
     for (const m of models) {
       if (needle) {
-        const hay = `${m.id} ${m.name ?? ""}`.toLowerCase()
+        const hay = `${m.id} ${m.name ?? ""} ${m._mapped_to ?? ""}`.toLowerCase()
         if (!hay.includes(needle)) continue
       }
       const g = groups.get(m._upstream) ?? []
@@ -142,12 +145,11 @@ export function ModelsTab() {
    * stored as a bare id and resolved with a flat `find`), so nothing needs
    * disambiguating here.
    */
+  const mappedBadge = t("dash.playground.mappedModel")
   const modelOptions = useMemo<SelectOption[]>(() => {
     if (!models) return []
-    return [...models]
-      .sort((a, b) => a._upstream.localeCompare(b._upstream) || a.id.localeCompare(b.id))
-      .map((m) => ({ value: m.id, label: m.name ?? m.id }))
-  }, [models])
+    return playgroundModelOptions(models, mappedBadge)
+  }, [models, mappedBadge])
 
   useEffect(() => {
     if (!models) return
@@ -175,6 +177,13 @@ export function ModelsTab() {
     if (isMobile) setDrawerOpen(false)
   }
 
+  function pickKey(id: string) {
+    if (id === selectedKeyId) return
+    setModels(null)
+    setModelsError(null)
+    setSelectedKeyId(id)
+  }
+
   if (keys && keys.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -199,7 +208,7 @@ export function ModelsTab() {
   const selectedModel = models?.find((m) => m.id === selectedModelId)
   // Image models take a prompt and return bytes — no chat protocol applies.
   // Undefined until the list has loaded; ChatPanel refuses to send until then.
-  const mode = playgroundMode(selectedModel?.capabilities, models !== null)
+  const mode = playgroundMode(selectedModel?.capabilities, selectedModel !== undefined)
 
   const modelList = (
     <ModelList
@@ -230,7 +239,7 @@ export function ModelsTab() {
         <label className="text-xs text-themed-dim">{t("dash.playground.sendWithKey")}:</label>
         <Select
           value={selectedKeyId}
-          onChange={setSelectedKeyId}
+          onChange={pickKey}
           className="min-w-[160px]"
           options={keys.map((k) => ({ value: k.id, label: k.name || k.id }))}
         />
@@ -260,8 +269,9 @@ export function ModelsTab() {
         </button>
         )}
         {isMobile && selectedModel && (
-          <span className="text-xs text-themed-dim font-mono truncate max-w-[40%]">
-            {selectedModel.name ?? selectedModel.id}
+          <span className="flex items-center gap-1.5 min-w-0 max-w-[40%] text-xs text-themed-dim">
+            <span className="font-mono truncate">{selectedModel.name ?? selectedModel.id}</span>
+            {selectedModel._mapped_to && <MappedModelBadge target={selectedModel._mapped_to} />}
           </span>
         )}
       </div>
@@ -286,7 +296,7 @@ export function ModelsTab() {
 
         <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           {selectedModelId && selectedKey ? (
-            <ChatPanel modelId={selectedModelId} apiKey={selectedKey.key} systemPrompt={systemPrompt} webSearchEnabled={webSearchEnabled} vision={visionSupport(selectedModelId, selectedModel?.capabilities?.supports)} contextWindow={selectedModel?.capabilities?.limits?.max_context_window_tokens} modelOptions={modelOptions} onPickModel={pickModel} mode={mode} imageParams={imageParams} onImageParamsChange={setImageParams} />
+            <ChatPanel modelId={selectedModelId} apiKey={selectedKey.key} systemPrompt={systemPrompt} webSearchEnabled={webSearchEnabled} vision={visionSupport(selectedModel?._mapped_to ?? selectedModelId, selectedModel?.capabilities?.supports)} contextWindow={selectedModel?.capabilities?.limits?.max_context_window_tokens} modelOptions={modelOptions} onPickModel={pickModel} mode={mode} imageParams={imageParams} onImageParamsChange={setImageParams} />
           ) : (
             <div className="flex items-center justify-center h-full text-themed-dim text-sm">
               {t("dash.playground.selectModel")}
@@ -328,7 +338,19 @@ interface ListProps {
   onToggleGroup: (g: string) => void
 }
 
-function ModelList({
+function MappedModelBadge({ target }: { target: string }) {
+  const t = useT()
+  return (
+    <span
+      className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent-teal/10 text-accent-teal"
+      title={t("dash.playground.mappedTo", { model: target })}
+    >
+      {t("dash.playground.mappedModel")}
+    </span>
+  )
+}
+
+export function ModelList({
   grouped, modelsError, models, search, onSearch, selectedModelId, onPick, openGroups, onToggleGroup,
 }: ListProps) {
   const t = useT()
@@ -365,9 +387,21 @@ function ModelList({
                 <button
                   key={m.id}
                   onClick={() => onPick(m.id)}
+                  aria-pressed={isSelected}
                   className={"pg-model-item" + (isSelected ? " is-selected" : "")}
                 >
-                  <div className="pg-model-item-name">{m.name ?? m.id}</div>
+                  <div className="pg-model-item-name flex items-center gap-1.5">
+                    <span className="min-w-0 truncate" title={m.id}>{m.name ?? m.id}</span>
+                    {m._mapped_to && <MappedModelBadge target={m._mapped_to} />}
+                  </div>
+                  {m._mapped_to && (
+                    <div
+                      className="font-mono text-[10px] text-themed-dim truncate mt-0.5"
+                      title={t("dash.playground.mappedTo", { model: m._mapped_to })}
+                    >
+                      → {m._mapped_to}
+                    </div>
+                  )}
                   <div className="pg-model-item-meta">
                     <div className="font-mono truncate">{m.id}</div>
                     {(ctx || out) && (

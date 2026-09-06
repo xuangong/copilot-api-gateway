@@ -172,7 +172,12 @@ function validateModelMappings(value: unknown): ModelMappingInput[] | { error: s
 
 async function destinationsAreAvailable(ownerId: string | undefined, mappings: readonly ModelMappingInput[]): Promise<boolean> {
   if (mappings.length === 0) return true
-  const bindings = await listProviderBindings({ ownerId, dedupe: false, strictCatalog: true })
+  let catalogIncomplete = false
+  const bindings = await listProviderBindings({
+    ownerId,
+    dedupe: false,
+    onCatalogError: () => { catalogIncomplete = true },
+  })
   const available = new Set<string>()
   const copilotModelsByUpstream = new Map<string, Model[]>()
   for (const binding of bindings) {
@@ -197,7 +202,11 @@ async function destinationsAreAvailable(ownerId: string | undefined, mappings: r
       }
     }
   }
-  return mappings.every(({ destination }) => available.has(destination))
+  if (mappings.every(({ destination }) => available.has(destination))) return true
+  // An unrelated upstream failure cannot invalidate a target we found. A
+  // missing target in a partial catalog, however, is still unverified.
+  if (catalogIncomplete) throw new Error('Model catalog is incomplete')
+  return false
 }
 
 /**

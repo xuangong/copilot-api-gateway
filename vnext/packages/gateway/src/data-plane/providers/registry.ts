@@ -57,6 +57,8 @@ export interface ListUpstreamModelsOptions {
   allOwners?: boolean
   /** Propagate an upstream catalog failure instead of treating it as empty. */
   strictCatalog?: boolean
+  /** Track incomplete discovery while still collecting healthy upstreams. */
+  onCatalogError?: () => void
 }
 
 export function createCopilotProvider(opts: CreateProviderOptions): LlmModelProvider {
@@ -277,6 +279,7 @@ export async function listProviderBindings(
   try {
     upstreams = await listVisibleUpstreams(opts.ownerId as UserId | undefined, opts.allOwners)
   } catch (err) {
+    opts.onCatalogError?.()
     if (opts.strictCatalog) throw err
     upstreams = []
   }
@@ -312,6 +315,7 @@ export async function listProviderBindings(
         })
       }
     } catch (err) {
+      opts.onCatalogError?.()
       if (opts.strictCatalog) throw err
       console.warn(
         `[registry] upstream ${upstream.id} (${upstream.provider}) contributed no models:`,
@@ -338,6 +342,7 @@ export async function listProviderBindings(
         })
       }
     } catch {
+      opts.onCatalogError?.()
       return []
     }
   }

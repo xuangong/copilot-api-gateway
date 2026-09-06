@@ -10,6 +10,8 @@
 
 **Approved design:** `vnext/docs/superpowers/specs/2026-09-04-api-key-model-mappings-design.md`
 
+**2026-09-06 catalog update:** Client model catalogs and the Dashboard catalog for a selected Key now merge enabled mapping sources whose final targets are available. Synthesized entries carry `_mapped_to`; destination pickers filter them out, and upstream caches retain raw catalogs. See design section 2.5 for the updated contract.
+
 ---
 
 ## File and responsibility map
@@ -1033,7 +1035,7 @@ Expected: FAIL because helper module/API fields are missing.
 
 - [ ] **Step 3: Export a destination-ready model catalog**
 
-Make `RawModel`/`buildCatalog` or a focused derived helper export enough data to construct destination choices. Do not change `/api/models` and do not cache effective mappings. Combine:
+Make `RawModel`/`buildCatalog` or a focused derived helper export enough data to construct destination choices. The updated `/api/models` Key catalog includes mapped sources; exclude entries carrying `_mapped_to` from destination choices and do not cache effective mappings. Combine:
 
 - direct `byUpstream` ids;
 - valid advertised Claude/composite ids already expanded by `buildCatalog`;
@@ -1273,7 +1275,7 @@ Before declaring completion, verify each statement directly:
 - [ ] Enabled policies execute each list item once, in order, against current model.
 - [ ] Explicit `up_*/` pin survives mapping and prevents fallback to another upstream.
 - [ ] Destination save validation uses the Key owner's raw catalog, not mapped/effective catalog.
-- [ ] Source aliases never appear in `/v1/models` unless an upstream already advertises them.
+- [ ] Client and Dashboard Key catalogs merge enabled source aliases only when their final mapped targets are available, with no cross-key cache leakage.
 - [ ] Full `ApiKey` and credentials never enter auth routing policy or logs.
 - [ ] Ownerless API Keys retain `apiKeyId` and routing policy context.
 - [ ] Assignees can modify only mapping settings, not quotas/Web Search/name/other fields.

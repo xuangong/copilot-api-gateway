@@ -33,6 +33,7 @@ import {
 import { synthesizeCatalogEntry, type CodexSynthesizeModel } from './synthesize.ts'
 
 interface VNextModelRow extends CodexSynthesizeModel {
+  _mapped_to?: string
   capabilities?: {
     type?: string
     limits?: {
@@ -78,7 +79,8 @@ export const assembleCodexCatalog = (
   const out: CatalogModel[] = []
   for (const row of models) {
     if (!isChatRow(row)) continue
-    out.push(synthesizeCatalogEntry(row, matchCatalog(row.id), capabilities))
+    // Aliases keep their request id while inheriting the target's client capabilities.
+    out.push(synthesizeCatalogEntry(row, matchCatalog(row._mapped_to ?? row.id), capabilities))
   }
   return { models: out }
 }

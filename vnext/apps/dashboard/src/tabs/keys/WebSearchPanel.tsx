@@ -116,8 +116,9 @@ export function WebSearchPanel({
   // Only codex and custom upstreams can serve alpha_search — the same check
   // the gateway's dispatcher makes. Filtering here stops the pair being
   // configured into a state the gateway would only reject at request time.
+  // Passthrough addresses an upstream directly and does not apply key mappings.
   const passthroughUpstreams = useMemo(
-    () => (catalog?.byUpstream ?? []).filter((g) => g.provider === "codex" || g.provider === "custom"),
+    () => (catalog?.rawByUpstream ?? []).filter((g) => g.provider === "codex" || g.provider === "custom"),
     [catalog],
   )
   const passthroughModels = useMemo(

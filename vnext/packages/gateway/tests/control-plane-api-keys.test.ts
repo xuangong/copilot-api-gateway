@@ -776,6 +776,37 @@ test('PATCH accepts a source absent from a successful catalog when destination i
   }
 })
 
+for (const brokenSortOrder of [-1, 1]) {
+  test(`PATCH accepts available destinations even when an unrelated upstream fails (order ${brokenSortOrder})`, async () => {
+    const key = await createApiKey('key', 'owner')
+    const restore = installOwnerCatalog([catalogModel('gpt-6-astra'), catalogModel('gpt-5.6-terra'), catalogModel('gpt-5.6-luna')])
+    const list = store.repo.upstreams.list
+    store.repo.upstreams.list = async (filter = {}) => {
+      const upstreams = await list(filter)
+      const healthy = upstreams.at(0)
+      return healthy ? [...upstreams, {
+        ...healthy, id: 'sdf:broken', provider: 'sdf', config: {}, sortOrder: brokenSortOrder,
+      }] : upstreams
+    }
+    const mappings = [
+      { source: 'claude-opus-5', destination: 'gpt-6-astra' },
+      { source: 'claude-sonnet-5', destination: 'gpt-5.6-terra' },
+      { source: 'claude-haiku-4.5', destination: 'gpt-5.6-luna' },
+    ]
+    try {
+      const app = buildApp({ isUser: true, userId: 'owner' })
+      const response = await patchKey(app, key.id, { model_mappings_enabled: true, model_mappings: mappings })
+      expect(response.status).toBe(200)
+      expect((await store.repo.apiKeys.getById(key.id))?.modelMappings).toEqual(mappings)
+      const missing = await patchKey(app, key.id, { model_mappings: [{ source: 'anything', destination: 'unverified-target' }] })
+      expect(missing.status).toBe(503)
+      expect((await store.repo.apiKeys.getById(key.id))?.modelMappings).toEqual(mappings)
+    } finally {
+      restore()
+    }
+  })
+}
+
 test('enabled-only PATCH retains a nonempty mapping list in response and repository', async () => {
   const key = await createApiKey('key', 'owner')
   key.modelMappings = [{ source: 'source', destination: 'destination' }]

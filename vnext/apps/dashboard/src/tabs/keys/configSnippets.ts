@@ -10,7 +10,8 @@ export interface ClaudeDecomposed {
   context1m: boolean
 }
 
-export function decomposeClaudeId(id: string): ClaudeDecomposed {
+export function decomposeClaudeId(id: string, mappedModelIds: readonly string[] = []): ClaudeDecomposed {
+  if (mappedModelIds.includes(id)) return { baseId: id, context1m: false }
   if (!id || !id.startsWith("claude-")) return { baseId: id || "", context1m: false }
   let rest = id
   let effort: string | undefined
@@ -31,9 +32,9 @@ export function decomposeClaudeId(id: string): ClaudeDecomposed {
   return { baseId: rest, effort, context1m }
 }
 
-export function claudeCodeShellSnippet(big: string, small: string, baseUrl: string, key: string): string {
-  const b = decomposeClaudeId(big)
-  const s = decomposeClaudeId(small)
+export function claudeCodeShellSnippet(big: string, small: string, baseUrl: string, key: string, mappedModelIds: readonly string[] = []): string {
+  const b = decomposeClaudeId(big, mappedModelIds)
+  const s = decomposeClaudeId(small, mappedModelIds)
   const lines = [
     "export ANTHROPIC_BASE_URL=" + baseUrl,
     "export ANTHROPIC_AUTH_TOKEN=" + key,
@@ -50,9 +51,9 @@ export function claudeCodeShellSnippet(big: string, small: string, baseUrl: stri
   return lines.join("\n")
 }
 
-export function claudeCodeSettingsSnippet(big: string, small: string, baseUrl: string, key: string): string {
-  const b = decomposeClaudeId(big)
-  const s = decomposeClaudeId(small)
+export function claudeCodeSettingsSnippet(big: string, small: string, baseUrl: string, key: string, mappedModelIds: readonly string[] = []): string {
+  const b = decomposeClaudeId(big, mappedModelIds)
+  const s = decomposeClaudeId(small, mappedModelIds)
   const env: Record<string, string> = {
     ANTHROPIC_BASE_URL: baseUrl,
     ANTHROPIC_AUTH_TOKEN: key,

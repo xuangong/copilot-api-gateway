@@ -223,7 +223,7 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
                     {t("dash.addToBashrc")}
                   </p>
                   {(() => {
-                    const txt = claudeCodeShellSnippet(claudeBig, claudeSmall, baseUrl, keyValue)
+                    const txt = claudeCodeShellSnippet(claudeBig, claudeSmall, baseUrl, keyValue, catalog.mappedModelIds)
                     return (
                       <CodeBlock
                         language="bash"
@@ -240,7 +240,7 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
                     {t("dash.mergeIntoSettings")}
                   </p>
                   {(() => {
-                    const txt = claudeCodeSettingsSnippet(claudeBig, claudeSmall, baseUrl, keyValue)
+                    const txt = claudeCodeSettingsSnippet(claudeBig, claudeSmall, baseUrl, keyValue, catalog.mappedModelIds)
                     return (
                       <CodeBlock
                         language="json"

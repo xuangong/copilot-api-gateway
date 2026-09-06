@@ -29,6 +29,27 @@ const options: [ComboboxOption, ComboboxOption, ComboboxOption] = [
 ];
 
 describe("combobox state", () => {
+  test("finds model IDs and abbreviated fuzzy queries", () => {
+    expect(filterComboboxOptions(options, "gpt-5-mini")).toEqual([options[0]]);
+    expect(filterComboboxOptions(options, "gpt5m")).toEqual([options[0]]);
+    expect(filterComboboxOptions(options, "cldhaiku")).toEqual([options[2]]);
+    expect(filterComboboxOptions(options, "no-such-model")).toEqual([]);
+  });
+
+  test("does not assemble a fuzzy model match across the upstream badge", () => {
+    const copilotOptions = ["gpt-5.6-luna", "gpt-5.6-terra"].map((id) => ({
+      value: id,
+      label: id,
+      badge: "Copilot demo",
+    }));
+    expect(filterComboboxOptions(copilotOptions, "gpt56t")).toEqual([
+      { value: "gpt-5.6-terra", label: "gpt-5.6-terra", badge: "Copilot demo" },
+    ]);
+    expect(filterComboboxOptions(copilotOptions, "copilot luna")).toEqual([
+      { value: "gpt-5.6-luna", label: "gpt-5.6-luna", badge: "Copilot demo" },
+    ]);
+  });
+
   test("filters case-insensitively by every query word across label badge and keywords", () => {
     expect(filterComboboxOptions(options, "azure FAST")).toEqual([options[0]]);
     expect(filterComboboxOptions(options, "production gpt")).toEqual([

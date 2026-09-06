@@ -84,7 +84,11 @@ export function KeyDetailPanel({
         busy={busy}
         catalog={modelCatalogState.catalog}
         catalogLoading={modelCatalogState.loading}
-        onSave={onPatch}
+        onSave={async (body) => {
+          const saved = await onPatch(body)
+          if (saved) await modelCatalogState.refresh()
+          return saved
+        }}
       />
 
       <ConfigurationPanel

@@ -41,11 +41,17 @@ export function filterComboboxOptions(
   const words = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return options;
   return options.filter((option) => {
-    const haystack = [option.label, option.badge, ...(option.keywords ?? [])]
-      .filter(Boolean)
-      .join(" ")
-      .toLocaleLowerCase();
-    return words.every((word) => haystack.includes(word));
+    const fields = [option.value, option.label, option.badge, ...(option.keywords ?? [])]
+      .flatMap((field) => field ? [field.toLocaleLowerCase()] : []);
+    return words.every((word) => fields.some((field) => {
+      if (field.includes(word)) return true;
+      let matched = 0;
+      for (const char of field) {
+        if (char === word[matched]) matched++;
+        if (matched === word.length) return true;
+      }
+      return false;
+    }));
   });
 }
 
