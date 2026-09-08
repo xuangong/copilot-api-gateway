@@ -293,7 +293,8 @@ export function translateMessagesToResponses(payload: MessagesPayload): Messages
   const target: Record<string, unknown> = {
     model: payload.model,
     input: translateInput(messages),
-    max_output_tokens: payload.max_tokens,
+    // Messages permits one-token probes; Responses requires at least 16.
+    max_output_tokens: Math.max(16, payload.max_tokens),
     stream: payload.stream ?? true,
   }
   if (instructions !== undefined) target.instructions = instructions

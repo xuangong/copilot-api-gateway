@@ -3,6 +3,17 @@ import { translateMessagesToResponses } from '@vibe-llm/translate/messages-via-r
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
 
 describe('messages-via-responses :: request', () => {
+  it.each([
+    [1, 16], [8, 16], [15, 16], [16, 16], [128, 128],
+  ])('adapts Messages max_tokens=%i to a valid Responses output budget of %i', (maxTokens, expected) => {
+    const payload: MessagesPayload = {
+      model: 'gpt-5.6-luna', max_tokens: maxTokens,
+      messages: [{ role: 'user', content: 'Reply OK.' }],
+    }
+    expect(translateMessagesToResponses(payload).target.max_output_tokens).toBe(expected)
+    expect(payload.max_tokens).toBe(maxTokens)
+  })
+
   it('translates string user content into a single user message item', () => {
     const p: MessagesPayload = {
       model: 'gpt-5',
