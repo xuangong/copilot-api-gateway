@@ -1,3 +1,4 @@
+import { fetchWithPerformance, observeUpstreamFrames, observeUpstreamJson } from "../shared/performance-upstream"
 // vnext/packages/gateway/src/data-plane/chat-flow/messages/attempt.ts
 /**
  * Anthropic Messages attempt orchestrator.
@@ -198,7 +199,7 @@ export async function* synthesizeMessagesFramesFromJson(
 ): AsyncGenerator<ProtocolFrame<MessagesStreamEvent>> {
   const id = body.id ?? `msg_${Date.now()}`
   const model = body.model ?? ''
-  const usage = body.usage ?? { input_tokens: 0, output_tokens: 0 }
+  const usage = body.usage ?? {}
   yield {
     type: 'event',
     event: {
@@ -293,7 +294,7 @@ export async function* synthesizeMessagesFramesFromJson(
         stop_reason: (body.stop_reason ?? 'end_turn') as never,
         stop_sequence: body.stop_sequence ?? null,
       },
-      usage: { output_tokens: usage.output_tokens ?? 0 },
+      ...(usage.output_tokens !== undefined ? { usage: { output_tokens: usage.output_tokens } } : {}),
     } as MessagesStreamEvent,
   }
   yield {
@@ -389,7 +390,7 @@ export const messagesAttempt = {
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const publicModel = sel.bareModel
       const providerModelKey = initialProviderModelKey(bindingForTelemetry, publicModel)
-      upstreamResp = await sel.binding.provider.fetch(providerReq)
+      upstreamResp = await fetchWithPerformance(args.telemetryCtx.metrics, "messages", providerReq, () => sel.binding.provider.fetch(providerReq))
       if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
         const errResp = new Response(upstreamResp.body, { status: upstreamResp.status, headers: upstreamResp.headers })
         const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
@@ -414,11 +415,12 @@ export const messagesAttempt = {
         // JSON.parse failures land in the outer try/catch below — they surface
         // as an internal-error result populated with `performance` ctx.
         const json = await readUpstreamMessagesJson(upstreamResp.body)
+        observeUpstreamJson(upstreamResp, json)
         frames = synthesizeMessagesFramesFromJson(json)
       } else {
         frames = parseMessagesStream(upstreamResp.body, args.ctx.downstreamAbortSignal !== undefined ? { signal: args.ctx.downstreamAbortSignal } : {})
       }
-      const { events: decorated } = withUpstreamTelemetry(frames, {
+      const { events: decorated } = withUpstreamTelemetry(observeUpstreamFrames(upstreamResp, frames, upstreamLooksJson), {
         abortSignal: args.ctx.downstreamAbortSignal,
         protocol: 'messages',
       })

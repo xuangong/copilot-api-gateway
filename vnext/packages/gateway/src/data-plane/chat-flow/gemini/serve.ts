@@ -1,3 +1,4 @@
+import { PerformanceRecorder } from "../../observability/performance-recorder"
 // vnext/packages/gateway/src/data-plane/chat-flow/gemini/serve.ts
 /**
  * Gemini generate/stream HTTP serve layer (Spec 10 — chat-flow convergence).
@@ -136,7 +137,7 @@ export async function serveGemini(args: GeminiServeArgs): Promise<Response> {
     {
       raw: args.raw,
       auth,
-      obsCtx: args.obsCtx as KitObsCtx,
+      obsCtx: { ...args.obsCtx, performanceRecorder: new PerformanceRecorder(false, undefined, args.obsCtx.performanceStartedAt), performanceAbortSignal: args.signal } as KitObsCtx,
       signal: args.signal,
       extras: { requestedModel: args.model, forceStream: args.forceStream },
       dump: args.dump ?? null,

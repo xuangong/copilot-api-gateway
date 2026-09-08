@@ -14,9 +14,10 @@ export interface Env {
   GOOGLE_CLIENT_SECRET?: string
 }
 
-export const app = new Hono<{ Bindings: Env }>()
+export const app = new Hono<{ Bindings: Env; Variables: { performanceStartedAt: number } }>()
 
 app.use('*', async (c, next) => {
+  c.set("performanceStartedAt", performance.now())
   const start = Date.now()
   await next()
   const ms = Date.now() - start

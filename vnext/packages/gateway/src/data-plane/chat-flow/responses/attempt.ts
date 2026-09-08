@@ -1,3 +1,4 @@
+import { fetchWithPerformance, observeUpstreamFrames, observeUpstreamJson } from "../shared/performance-upstream"
 // vnext/packages/gateway/src/data-plane/chat-flow/responses/attempt.ts
 /**
  * /v1/responses attempt orchestrator.
@@ -304,7 +305,7 @@ export const responsesAttempt = {
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const publicModel = sel.bareModel
       const providerModelKey = initialProviderModelKey(bindingForTelemetry, publicModel)
-      upstreamResp = await sel.binding.provider.fetch(providerReq)
+      upstreamResp = await fetchWithPerformance(args.telemetryCtx.metrics, "responses", providerReq, () => sel.binding.provider.fetch(providerReq))
       if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
         const errResp = new Response(upstreamResp.body, { status: upstreamResp.status, headers: upstreamResp.headers })
         const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
@@ -330,11 +331,12 @@ export const responsesAttempt = {
         // JSON.parse failures land in the outer try/catch below — they surface
         // as an internal-error result populated with `performance` ctx.
         const json = await readUpstreamResponsesJson(upstreamResp.body)
+        observeUpstreamJson(upstreamResp, json)
         frames = synthesizeResponsesFramesFromJson(json)
       } else {
         frames = parseResponsesStream(upstreamResp.body, args.ctx.downstreamAbortSignal !== undefined ? { signal: args.ctx.downstreamAbortSignal } : {})
       }
-      const { events: decorated } = withUpstreamTelemetry(frames, {
+      const { events: decorated } = withUpstreamTelemetry(observeUpstreamFrames(upstreamResp, frames, upstreamLooksJson), {
         abortSignal: args.ctx.downstreamAbortSignal,
         protocol: 'responses',
       })

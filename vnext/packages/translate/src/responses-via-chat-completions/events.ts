@@ -14,7 +14,7 @@
  *  - Tool call deltas open one `response.output_item.added` per chunk
  *    `index`, then emit `response.function_call_arguments.delta` for each
  *    incremental `arguments` string.
- *  - On Chat `finish_reason`, the loop breaks; an `output_item.done` is
+ *  - After Chat `finish_reason` and any trailing usage, an `output_item.done` is
  *    emitted for the message (if opened) and each tool call. The final
  *    `response.completed` carries `status: 'incomplete'` with reason
  *    `max_output_tokens` when finish was `length`; otherwise `completed`.
@@ -27,6 +27,13 @@ interface ChatChunk {
   id?: string
   model?: string
   created?: number
+  usage?: {
+    prompt_tokens?: number
+    completion_tokens?: number
+    total_tokens?: number
+    prompt_tokens_details?: { cached_tokens?: number }
+    completion_tokens_details?: { reasoning_tokens?: number }
+  }
   choices?: Array<{
     index: number
     delta: {
@@ -61,7 +68,9 @@ export async function* translateChatToResponsesEvents(
   const toolCalls = new Map<number, ToolCallState>() // chunk index → state
   let finish: 'stop' | 'length' | 'tool_calls' | 'function_call' | null = null
 
+  let usage: ChatChunk['usage']
   for await (const raw of events as AsyncIterable<ChatChunk>) {
+    if (raw.usage) usage = { ...usage, ...raw.usage }
     if (raw.id && !id) id = raw.id
     if (raw.model && !model) model = raw.model
     if (raw.created && !createdEmitted) created = raw.created
@@ -143,7 +152,6 @@ export async function* translateChatToResponsesEvents(
     }
     if (choice.finish_reason) {
       finish = choice.finish_reason
-      break
     }
   }
 
@@ -189,6 +197,13 @@ export async function* translateChatToResponsesEvents(
     type: 'response.completed',
     response: {
       id, model, created_at: created, status,
+      ...(usage ? { usage: {
+        ...(usage.prompt_tokens !== undefined ? { input_tokens: usage.prompt_tokens } : {}),
+        ...(usage.completion_tokens !== undefined ? { output_tokens: usage.completion_tokens } : {}),
+        ...(usage.total_tokens !== undefined ? { total_tokens: usage.total_tokens } : {}),
+        ...(usage.prompt_tokens_details ? { input_tokens_details: usage.prompt_tokens_details } : {}),
+        ...(usage.completion_tokens_details ? { output_tokens_details: usage.completion_tokens_details } : {}),
+      } } : {}),
       ...(status === 'incomplete' ? { incomplete_details: { reason: 'max_output_tokens' } } : {}),
     },
   }

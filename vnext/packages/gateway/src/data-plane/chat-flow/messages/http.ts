@@ -1,3 +1,4 @@
+import { ClientDisconnect } from "../shared/client-disconnect"
 // packages/gateway/src/data-plane/chat-flow/messages/http.ts
 import type { Context } from 'hono'
 import type { Env } from '../../../app.ts'
@@ -11,5 +12,6 @@ export async function messagesHandler(c: Context<{ Bindings: Env }>): Promise<Re
   const { requestBody, dump } = await openRequestDump(c, auth, c.req.method)
   let raw: unknown
   try { raw = parseJsonBody(requestBody.bytes) } catch { return dump ? dump.finalize(invalidJsonResponse()) : invalidJsonResponse() }
-  return serveMessages({ raw, auth, obsCtx: readObsCtx(c, auth), signal: c.req.raw.signal, dump, inboundHeaders: c.req.raw.headers })
+  const disconnect = new ClientDisconnect(c.req.raw.signal)
+  return disconnect.wrap(await serveMessages({ raw, auth, obsCtx: readObsCtx(c, auth), signal: disconnect.controller.signal, dump, inboundHeaders: c.req.raw.headers }))
 }

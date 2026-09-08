@@ -1,3 +1,4 @@
+import { ClientDisconnect } from "../shared/client-disconnect"
 // vnext/packages/gateway/src/data-plane/chat-flow/responses/http.ts
 /**
  * /v1/responses HTTP entry point.
@@ -56,26 +57,27 @@ async function responsesHandlerCore(
   let raw: unknown
   try { raw = parseJsonBody(requestBody.bytes) } catch { return dump ? dump.finalize(invalidJsonResponse()) : invalidJsonResponse() }
   const obsCtx = readObsCtx(c, auth)
+  const disconnect = new ClientDisconnect(c.req.raw.signal)
   const { response, mergedInputItems } = await serveResponses({
     raw,
     auth,
     obsCtx,
-    signal: c.req.raw.signal,
+    signal: disconnect.controller.signal,
     requestId: obsCtx.requestId,
     userAgent: obsCtx.userAgent,
     dump,
     action,
   })
-  if (response.status !== 200) return response
+  if (response.status !== 200) return disconnect.wrap(response)
   const ct = response.headers.get('content-type') ?? ''
   const fallbackModel = (raw as { model?: string }).model ?? ''
   const apiKeyId = auth.apiKeyId ?? null
   const requestId = obsCtx.requestId ?? null
   if (ct.includes('text/event-stream') && response.body) {
-    return attachStreamSidecar({ c, response, fallbackModel, apiKeyId, requestId, mergedInputItems })
+    return disconnect.wrap(attachStreamSidecar({ c, response, fallbackModel, apiKeyId, requestId, mergedInputItems }))
   }
   if (ct.includes('application/json')) {
-    return attachNonStreamSidecar({ c, response, fallbackModel, apiKeyId, requestId, mergedInputItems })
+    return disconnect.wrap(attachNonStreamSidecar({ c, response, fallbackModel, apiKeyId, requestId, mergedInputItems }))
   }
-  return response
+  return disconnect.wrap(response)
 }

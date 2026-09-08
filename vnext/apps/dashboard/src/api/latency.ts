@@ -8,7 +8,8 @@ export interface LatencyRecord {
   stream: boolean
   requests: number
   totalMs: number
-  upstreamMs: number
+  upstreamMs: number | null
+  ttfbMs?: number | null
   keyName?: string
 }
 

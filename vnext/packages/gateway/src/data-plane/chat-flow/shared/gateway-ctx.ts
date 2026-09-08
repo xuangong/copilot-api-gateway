@@ -19,7 +19,9 @@ export function readAuth(c: Context): DataPlaneAuthCtx {
 }
 
 export function readObsCtx(c: Context, auth: DataPlaneAuthCtx): DispatchObsCtx {
+  const startedAt: unknown = c.get("performanceStartedAt")
   return {
+    performanceStartedAt: typeof startedAt === "number" ? startedAt : undefined,
     apiKeyId: auth.apiKeyId,
     userAgent: c.req.header('user-agent') ?? undefined,
     requestId: c.req.header('x-request-id') ?? undefined,

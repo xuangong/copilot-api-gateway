@@ -9,28 +9,28 @@ export type LatencyRange = "today" | "week" | "7d" | "30d"
 
 export interface LatencySummary {
   avgTotal: number
-  avgUpstream: number
+  avgUpstream: number | null
 }
 
 export interface LatencyByType {
   type: "Stream" | "Sync"
   requests: number
   avgTotal: number
-  avgUpstream: number
+  avgUpstream: number | null
 }
 
 export interface LatencyByColo {
   colo: string
   requests: number
   avgTotal: number
-  avgUpstream: number
+  avgUpstream: number | null
 }
 
 // Compute [start, end) ISO-13-char window (YYYY-MM-DDTHH) to match
 // the legacy `computeTimeRange` helper used by the Alpine dashboard.
 // `mode` is the same dashboard-wide preference the Usage tab exposes, so both
 // tabs agree on where a day begins.
-function computeTimeRange(range: LatencyRange, weekOffset: number, mode: TimeZoneMode): { start: string; end: string } {
+export function computeTimeRange(range: LatencyRange, weekOffset: number, mode: TimeZoneMode): { start: string; end: string } {
   const ops = zoneOps(mode)
   const now = new Date()
   let start: Date, end: Date
@@ -99,26 +99,26 @@ export function useLatency() {
   const filtered = useMemo(() => (model ? data.filter((r) => r.model === model) : data), [data, model])
 
   const summary = useMemo<LatencySummary>(() => {
-    let totalReqs = 0, sumTotal = 0, sumUpstream = 0
+    let totalReqs = 0, sumTotal = 0, sumUpstream = 0, upstreamRequests = 0
     for (const r of filtered) {
       totalReqs += r.requests
       sumTotal += r.totalMs
-      sumUpstream += r.upstreamMs
+      if (r.upstreamMs != null) { sumUpstream += r.upstreamMs; upstreamRequests += r.requests }
     }
     return {
       avgTotal: totalReqs > 0 ? Math.round(sumTotal / totalReqs) : 0,
-      avgUpstream: totalReqs > 0 ? Math.round(sumUpstream / totalReqs) : 0,
+      avgUpstream: upstreamRequests > 0 ? Math.round(sumUpstream / upstreamRequests) : null,
     }
   }, [filtered])
 
   const byType = useMemo<LatencyByType[]>(() => {
-    const m = new Map<string, { requests: number; totalMs: number; upstreamMs: number }>()
+    const m = new Map<string, { requests: number; totalMs: number; upstreamMs: number; upstreamRequests: number }>()
     for (const r of filtered) {
       const key = r.stream ? "Stream" : "Sync"
-      const cur = m.get(key) ?? { requests: 0, totalMs: 0, upstreamMs: 0 }
+      const cur = m.get(key) ?? { requests: 0, totalMs: 0, upstreamMs: 0, upstreamRequests: 0 }
       cur.requests += r.requests
       cur.totalMs += r.totalMs
-      cur.upstreamMs += r.upstreamMs
+      if (r.upstreamMs != null) { cur.upstreamMs += r.upstreamMs; cur.upstreamRequests += r.requests }
       m.set(key, cur)
     }
     return [...m.entries()]
@@ -126,18 +126,18 @@ export function useLatency() {
         type: type as "Stream" | "Sync",
         requests: v.requests,
         avgTotal: v.requests > 0 ? Math.round(v.totalMs / v.requests) : 0,
-        avgUpstream: v.requests > 0 ? Math.round(v.upstreamMs / v.requests) : 0,
+        avgUpstream: v.upstreamRequests > 0 ? Math.round(v.upstreamMs / v.upstreamRequests) : null,
       }))
       .sort((a, b) => b.requests - a.requests)
   }, [filtered])
 
   const byColo = useMemo<LatencyByColo[]>(() => {
-    const m = new Map<string, { requests: number; totalMs: number; upstreamMs: number }>()
+    const m = new Map<string, { requests: number; totalMs: number; upstreamMs: number; upstreamRequests: number }>()
     for (const r of filtered) {
-      const cur = m.get(r.colo) ?? { requests: 0, totalMs: 0, upstreamMs: 0 }
+      const cur = m.get(r.colo) ?? { requests: 0, totalMs: 0, upstreamMs: 0, upstreamRequests: 0 }
       cur.requests += r.requests
       cur.totalMs += r.totalMs
-      cur.upstreamMs += r.upstreamMs
+      if (r.upstreamMs != null) { cur.upstreamMs += r.upstreamMs; cur.upstreamRequests += r.requests }
       m.set(r.colo, cur)
     }
     return [...m.entries()]
@@ -145,7 +145,7 @@ export function useLatency() {
         colo,
         requests: v.requests,
         avgTotal: v.requests > 0 ? Math.round(v.totalMs / v.requests) : 0,
-        avgUpstream: v.requests > 0 ? Math.round(v.upstreamMs / v.requests) : 0,
+        avgUpstream: v.upstreamRequests > 0 ? Math.round(v.upstreamMs / v.upstreamRequests) : null,
       }))
       .sort((a, b) => b.requests - a.requests)
   }, [filtered])

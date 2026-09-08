@@ -114,6 +114,9 @@ export async function persistFromEventResult(
   telemetryCtx: TelemetryRequestContext | undefined,
   dump?: DumpAccumulator | null,
 ): Promise<void> {
+  if (state.persisted) return
+  state.persisted = true
+  telemetryCtx?.metrics?.finish(state.failed ? "error" : "success")
   const md = await eventResultMetadata(result, telemetryCtx)
   const finalIdentity = result.finalMetadata
     ? md.modelIdentity
@@ -130,6 +133,7 @@ export async function persistFromEventResult(
       state.failed,
       undefined,
       performanceTargetFromTranslatorPair(finalIdentity),
+      finalIdentity,
     )
   }
 }

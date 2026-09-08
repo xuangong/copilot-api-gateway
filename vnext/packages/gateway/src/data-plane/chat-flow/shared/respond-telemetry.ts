@@ -69,7 +69,7 @@ export async function eventResultMetadata<T>(
   telemetryCtx?: TelemetryRequestContext,
 ): Promise<EventResultMetadata> {
   let metadata: EventResultMetadata
-  if (result.finalMetadata) {
+  if (result.finalMetadata && telemetryCtx?.metrics?.snapshot().outcome !== "cancelled") {
     metadata = await result.finalMetadata
     if (!(__replacedFlag in (result as object))) {
       console.warn(
@@ -97,6 +97,7 @@ export class SourceStreamState {
   modelKey: string
   readonly publicModel: string
   failed = false
+  persisted = false
   usage: UsageInfo
 
   constructor(initialModelKey: string, publicModel = initialModelKey) {
@@ -260,30 +261,38 @@ export async function recordPerformance(
   failed: boolean,
   repo: Repo = getRepo(),
   hubOverride?: PerformanceTargetApi,
+  identity?: TelemetryModelIdentity,
 ): Promise<void> {
-  if (!performance) {
-    console.debug(
-      'recordPerformance: skipping (no performance context — pre-binding error)',
-    )
-    return
-  }
-  const durationMs = Date.now() - telemetryCtx.requestStartedAt
-  const sourceApi = telemetryCtx.sourceApi ?? 'chat-completions'
+  const recorder = telemetryCtx.metrics
+  recorder?.finish(failed ? "error" : "success")
+  const snapshot = recorder?.snapshot()
+  const durationMs = snapshot?.metrics.totalMs?.sum ?? Date.now() - telemetryCtx.requestStartedAt
+  const sourceApi = telemetryCtx.sourceApi ?? "chat-completions"
   const targetApi = hubOverride ?? defaultTargetApi(sourceApi)
-  const row: PerformanceRecordInput = {
-    hour: currentHour(),
-    metricScope: 'request_total',
-    keyId: performance.keyId as ApiKeyId,
-    model: performance.model,
-    upstream: performance.upstream,
-    sourceApi,
-    targetApi,
-    stream: performance.stream,
-    runtimeLocation: performance.runtimeLocation,
-    durationMs,
-    isError: failed,
+  const writes: Promise<void>[] = []
+  if (performance && (!recorder || recorder.claimLegacy())) {
+    const row: PerformanceRecordInput = {
+      hour: recorder?.hour ?? currentHour(), metricScope: "request_total", keyId: performance.keyId as ApiKeyId,
+      model: identity?.model ?? performance.model, upstream: identity?.upstream ?? performance.upstream,
+      sourceApi, targetApi, stream: performance.stream, runtimeLocation: performance.runtimeLocation,
+      durationMs, isError: failed || snapshot?.outcome === "cancelled" || snapshot?.outcome === "error",
+    }
+    writes.push(repo.performance.record(row))
   }
-  await repo.performance.record(row)
+  if (recorder && snapshot && recorder.claimMetrics()) {
+    writes.push(repo.performanceMetrics.record({
+      hour: recorder.hour,
+      legacyRecorded: performance !== undefined,
+      group: {
+        ...snapshot, keyId: telemetryCtx.apiKeyId, incomingModel: telemetryCtx.incomingModel,
+        model: identity?.model ?? performance?.model ?? telemetryCtx.incomingModel,
+        upstream: identity?.upstream ?? performance?.upstream ?? null,
+        sourceApi, targetApi, stream: telemetryCtx.isStreaming,
+        runtimeLocation: telemetryCtx.runtimeLocation, requests: 1,
+      },
+    }))
+  }
+  await Promise.all(writes)
 }
 
 export type { LlmEventResult }

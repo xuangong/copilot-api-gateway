@@ -1,3 +1,4 @@
+import { ClientDisconnect } from "../shared/client-disconnect"
 // packages/gateway/src/data-plane/chat-flow/gemini/http.ts
 import type { Context } from 'hono'
 import type { Env } from '../../../app.ts'
@@ -45,13 +46,14 @@ export async function geminiHandler(c: Context<{ Bindings: Env }>): Promise<Resp
     })
   }
 
-  return serveGemini({
+  const disconnect = new ClientDisconnect(c.req.raw.signal)
+  return disconnect.wrap(await serveGemini({
     raw,
     model,
     forceStream: verb === 'streamGenerateContent',
     auth,
     obsCtx: readObsCtx(c, auth),
-    signal: c.req.raw.signal,
+    signal: disconnect.controller.signal,
     dump,
-  })
+  }))
 }

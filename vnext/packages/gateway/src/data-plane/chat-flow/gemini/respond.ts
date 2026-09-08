@@ -1,3 +1,4 @@
+import { translateStream } from "../shared/translate-stream"
 // vnext/packages/gateway/src/data-plane/chat-flow/gemini/respond.ts
 /**
  * Gemini response renderer.
@@ -97,19 +98,8 @@ async function* applyTranslatorEventsForStreaming(
   model: string | undefined,
   state: SourceStreamState,
 ): AsyncGenerator<unknown> {
-  async function* unwrap(): AsyncGenerator<unknown> {
-    for await (const frame of hubFrames) {
-      const f = frame as { type?: string; event?: unknown }
-      if (f?.type === 'event') yield f.event
-    }
-  }
-  const ctx = {
-    signal: signal ?? new AbortController().signal,
-    model,
-  }
   try {
-    const translated = translateEvents(unwrap(), ctx) as AsyncIterable<unknown>
-    for await (const ev of translated) yield ev
+    yield* translateStream(hubFrames, translateEvents, signal, model)
   } catch (err) {
     state.failedAfter()
     throw err
@@ -137,6 +127,11 @@ const renderEventsAsSSE = (
   options: RespondGeminiOptions,
 ): Response => {
   const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
+  const onClientAbort = (): void => {
+    options.telemetryCtx?.metrics?.finish("cancelled")
+    if (options.telemetryCtx || options.dump) waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
+  }
+  options.downstreamAbortController?.signal.addEventListener("abort", onClientAbort, { once: true })
   const hubProtocol = result.modelIdentity.translatorPair?.hub
   const isHubProtocol = hubProtocol === 'responses' ||
     hubProtocol === 'messages' ||
@@ -158,12 +153,19 @@ const renderEventsAsSSE = (
         state,
       )
     : consumeWithState(result.events, state, options.dump)
-  const inner = encodeClientSSE('gemini', events)
+  async function* observedEvents(): AsyncGenerator<unknown> {
+    for await (const event of events) {
+      options.telemetryCtx?.metrics?.observeOutput("gemini", event)
+      yield event
+    }
+  }
+  const inner = encodeClientSSE('gemini', observedEvents())
   const reader = inner.getReader()
   const body = new ReadableStream<Uint8Array>({
     async pull(controller) {
       const { value, done } = await reader.read()
       if (done) {
+        options.downstreamAbortController?.signal.removeEventListener("abort", onClientAbort)
         controller.close()
         if (options.telemetryCtx || options.dump) {
           waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
@@ -173,8 +175,9 @@ const renderEventsAsSSE = (
       controller.enqueue(value)
     },
     async cancel(_reason) {
-      try { await reader.cancel() } catch { /* swallow */ }
+      options.telemetryCtx?.metrics?.finish("cancelled")
       options.downstreamAbortController?.abort()
+      try { await reader.cancel() } catch { /* swallow */ }
       if (options.telemetryCtx || options.dump) {
         waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
       }
@@ -184,6 +187,7 @@ const renderEventsAsSSE = (
     status: 200,
     headers: {
       'content-type': 'text/event-stream',
+      ...(options.telemetryCtx?.metrics?.synthetic ? { "x-gateway-stream-timing": "unavailable" } : {}),
       'cache-control': 'no-cache',
       'connection': 'keep-alive',
       'x-accel-buffering': 'no',

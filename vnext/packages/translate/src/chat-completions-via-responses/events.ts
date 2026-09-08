@@ -47,9 +47,9 @@ export interface ChatUrlCitationAnnotation {
 }
 
 export interface ChatUsage {
-  prompt_tokens: number
-  completion_tokens: number
-  total_tokens: number
+  prompt_tokens?: number
+  completion_tokens?: number
+  total_tokens?: number
   prompt_tokens_details?: { cached_tokens?: number; cache_creation_input_tokens?: number }
   completion_tokens_details?: { reasoning_tokens?: number }
 }
@@ -126,31 +126,35 @@ function webSearchResultAnnotations(
  * — this translator only sees the event stream, not the request — matching
  * what `chat-completions-via-messages` already does for the Messages pair.
  */
+function measuredTokens(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined
+}
+
 function makeUsageChunk(id: string, model: string, created: number, usage: ResponsesUsage): ChatSSEChunk {
-  const prompt = usage.input_tokens ?? 0
-  const completion = usage.output_tokens ?? 0
-  const cached = usage.input_tokens_details?.cached_tokens ?? 0
+  const prompt = measuredTokens(usage.input_tokens)
+  const completion = measuredTokens(usage.output_tokens)
+  const cached = measuredTokens(usage.input_tokens_details?.cached_tokens)
   // Responses names it cache_write_tokens; Chat Completions carries the same
   // count under Anthropic's `cache_creation_input_tokens` spelling, which is
   // what the usage extractor and the Anthropic-shaped clients both read.
-  const cacheWrite = usage.input_tokens_details?.cache_write_tokens ?? 0
-  const reasoning = usage.output_tokens_details?.reasoning_tokens ?? 0
+  const cacheWrite = measuredTokens(usage.input_tokens_details?.cache_write_tokens)
+  const reasoning = measuredTokens(usage.output_tokens_details?.reasoning_tokens)
   return {
     id, object: 'chat.completion.chunk', created, model,
     choices: [],
     usage: {
-      prompt_tokens: prompt,
-      completion_tokens: completion,
-      total_tokens: usage.total_tokens ?? prompt + completion,
-      ...(cached > 0 || cacheWrite > 0
+      ...(prompt !== undefined ? { prompt_tokens: prompt } : {}),
+      ...(completion !== undefined ? { completion_tokens: completion } : {}),
+      ...(prompt !== undefined && completion !== undefined ? { total_tokens: measuredTokens(usage.total_tokens) ?? prompt + completion } : {}),
+      ...(cached !== undefined || cacheWrite !== undefined
         ? {
             prompt_tokens_details: {
-              ...(cached > 0 ? { cached_tokens: cached } : {}),
-              ...(cacheWrite > 0 ? { cache_creation_input_tokens: cacheWrite } : {}),
+              ...(cached !== undefined ? { cached_tokens: cached } : {}),
+              ...(cacheWrite !== undefined ? { cache_creation_input_tokens: cacheWrite } : {}),
             },
           }
         : {}),
-      ...(reasoning > 0 ? { completion_tokens_details: { reasoning_tokens: reasoning } } : {}),
+      ...(reasoning !== undefined ? { completion_tokens_details: { reasoning_tokens: reasoning } } : {}),
     },
   }
 }

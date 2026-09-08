@@ -13,6 +13,24 @@ async function* fromArray<T>(items: T[]): AsyncGenerator<T> {
 }
 
 describe('chat-completions-via-messages :: events', () => {
+  it("keeps partial usage unknown and combines independently updated input components", async () => {
+    const cases = [
+      { initial: {}, updates: [{ output_tokens: 7 }], expected: { completion_tokens: 7 } },
+      { initial: { input_tokens: 0, cache_read_input_tokens: 0 }, updates: [{ output_tokens: 0 }], expected: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, prompt_tokens_details: { cached_tokens: 0 } } },
+      { initial: { input_tokens: 100, cache_read_input_tokens: 50, cache_creation_input_tokens: 20 }, updates: [{ input_tokens: 110, output_tokens: 7 }, { cache_creation_input_tokens: 25 }], expected: { prompt_tokens: 185, completion_tokens: 7, total_tokens: 192, prompt_tokens_details: { cached_tokens: 50 } } },
+      { initial: { input_tokens: 10 }, updates: [{}], expected: { prompt_tokens: 10 } },
+    ]
+    for (const { initial, updates, expected } of cases) {
+      const events: MessagesEvent[] = [
+        { type: "message_start", message: { id: "partial", type: "message", role: "assistant", model: "m", content: [], stop_reason: null, stop_sequence: null, usage: initial } },
+        ...updates.map(usage => ({ type: "message_delta" as const, delta: { stop_reason: "end_turn" as const }, usage })),
+        { type: "message_stop" },
+      ]
+      const chunks = await collect(translateMessagesToChatSSE(fromArray(events)))
+      expect(chunks.filter(chunk => chunk.usage).at(-1)?.usage).toEqual(expected)
+    }
+  })
+
   it('emits role-only initial chunk on message_start with usage carry-over', async () => {
     const evs: MessagesEvent[] = [
       {

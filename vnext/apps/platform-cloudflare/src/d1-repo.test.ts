@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
-import { initD1, type D1Database } from "./d1-repo.ts"
+import { initD1, initD1PerformanceMetrics, type D1Database } from "./d1-repo.ts"
 
 type SqliteBind = string | number | bigint | boolean | null | Uint8Array
 
@@ -86,7 +86,7 @@ describe("initD1", () => {
       await initD1(d1)
 
       expect(db.query<{ name: string; notnull: number; dflt_value: string | null }, []>(`SELECT name, "notnull", dflt_value FROM pragma_table_info('usage') WHERE name = 'incoming_model'`).get()).toEqual({ name: "incoming_model", notnull: 1, dflt_value: "''" })
-      expect(d1.batches).toHaveLength(1)
+      expect(d1.batches).toHaveLength(2)
       expect(d1.batches[0]?.map((sql) => sql.replace(/\s+/g, " ").trim())).toEqual([
         "DROP INDEX IF EXISTS idx_usage_identity",
         "DROP INDEX IF EXISTS idx_usage_requests_identity",
@@ -108,7 +108,7 @@ describe("initD1", () => {
 
       await initD1(d1)
 
-      expect(d1.batches).toHaveLength(2)
+      expect(d1.batches).toHaveLength(3)
       expect(d1.batches[0]).toHaveLength(10)
       expect(db.query<{ incomingModel: string; dimension: string; tokens: number }, []>("SELECT incoming_model AS incomingModel, dimension, tokens FROM usage ORDER BY dimension").all()).toEqual([
         { incomingModel: "", dimension: "input", tokens: 11 },
@@ -178,4 +178,21 @@ describe("initD1", () => {
       db.close()
     }
   })
+})
+
+
+test("performance schema bootstrap is atomic, retry safe and matches numbered SQLite migration", async () => {
+  const db = new Database(":memory:")
+  try {
+    await expect(initD1PerformanceMetrics(new SqliteD1Adapter(db, 1))).rejects.toThrow("injected D1 batch failure")
+    expect(db.query("SELECT name FROM sqlite_master WHERE name = 'performance_metrics'").get()).toBeNull()
+    const adapter = new SqliteD1Adapter(db)
+    await initD1PerformanceMetrics(adapter)
+    await initD1PerformanceMetrics(adapter)
+    const sqlite = new Database(":memory:")
+    try {
+      sqlite.exec(await Bun.file(new URL("../../../packages/gateway/migrations/0009_performance_metrics.sql", import.meta.url)).text())
+      expect(db.query("SELECT name, type, sql FROM sqlite_master WHERE name LIKE '%performance_metrics%' ORDER BY name").all()).toEqual(sqlite.query("SELECT name, type, sql FROM sqlite_master WHERE name LIKE '%performance_metrics%' ORDER BY name").all())
+    } finally { sqlite.close() }
+  } finally { db.close() }
 })

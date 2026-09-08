@@ -11,6 +11,20 @@ async function collect<T>(src: AsyncIterable<T>): Promise<T[]> {
 }
 
 describe('messages-via-responses :: events', () => {
+  it("preserves unknown input usage while retaining an explicitly reported zero", async () => {
+    for (const input of [undefined, 0, 10]) {
+      const usage = input === undefined ? {} : { input_tokens: input }
+      const events = await collect(translateResponsesEventsToMessagesEvents(fromArray([
+        { type: "response.created", response: { id: "r", model: "m", usage } },
+        { type: "response.completed", response: { status: "completed", output: [], usage } },
+      ])))
+      const start = events.find(event => event.type === "message_start")
+      const delta = events.find(event => event.type === "message_delta")
+      expect(start?.message.usage?.input_tokens).toBe(input)
+      expect(delta?.usage?.input_tokens).toBe(input)
+    }
+  })
+
   it('emits message_start on response.created with id/model/usage carried through', async () => {
     const events: RespEv[] = [
       {

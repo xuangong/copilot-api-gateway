@@ -1,3 +1,4 @@
+import type { PerformanceMetricsRepo } from "./performance-metrics"
 import type { BillingDimension, ModelPricing, UpstreamRecord } from "@vibe-llm/protocols/common"
 import type { ProxyRepo, ProxyBackoffRepo } from "@vibe-core/proxy-repo"
 import type { ApiKeyId, DeviceCodeToken, GitHubAccountId, InviteCodeId, ResponsesItemId, SessionToken, UpstreamId, UserId } from "./branded-ids.ts"
@@ -466,6 +467,7 @@ export interface Repo {
   cache: CacheRepo
   latency: LatencyRepo
   performance: PerformanceRepo
+  performanceMetrics: PerformanceMetricsRepo
   users: UserRepo
   inviteCodes: InviteCodeRepo
   sessions: SessionRepo

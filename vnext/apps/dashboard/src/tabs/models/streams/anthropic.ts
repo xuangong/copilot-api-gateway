@@ -26,6 +26,7 @@ interface BlockDraft {
 
 export async function* parseAnthropicStream(
   body: ReadableStream<Uint8Array>,
+  observe?: (event: unknown) => void,
 ): AsyncGenerator<AnthropicChunk, void, void> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
@@ -85,6 +86,7 @@ export async function* parseAnthropicStream(
           usage?: { input_tokens?: number; output_tokens?: number }
         }
         const event = currentEvent || obj.type
+        observe?.({ ...obj, type: event })
         if (event === "error") {
           throw new Error(obj.error?.message ?? "Anthropic stream error")
         }
@@ -92,6 +94,7 @@ export async function* parseAnthropicStream(
         if (event === "content_block_start" && obj.index != null && obj.content_block) {
           const block = { ...obj.content_block } as Record<string, unknown>
           drafts.set(obj.index, { block, json: "" })
+          if (block.type === "text" && typeof block.text === "string" && block.text) yield { type: "delta", text: block.text }
           if (block.type === "server_tool_use" && block.name === "web_search") {
             yield {
               type: "web_search",

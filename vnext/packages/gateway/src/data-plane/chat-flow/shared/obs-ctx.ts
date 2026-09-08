@@ -13,6 +13,7 @@
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 export interface DispatchObsCtx {
+  performanceStartedAt?: number
   apiKeyId: ApiKeyId | undefined
   userAgent: string | undefined
   requestId: string | undefined

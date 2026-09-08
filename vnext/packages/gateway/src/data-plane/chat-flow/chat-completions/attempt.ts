@@ -1,3 +1,4 @@
+import { fetchWithPerformance, observeUpstreamFrames, observeUpstreamJson } from "../shared/performance-upstream"
 // vnext/packages/gateway/src/data-plane/chat-flow/chat-completions/attempt.ts
 /**
  * Chat Completions attempt orchestrator.
@@ -79,9 +80,11 @@ type AttemptBinding = { readonly provider: { readonly fetch: (req: ProviderReque
 // (single throw on iteration), which the outer try/catch maps to a 502.
 const readUpstreamJsonAsFrames = async (
   body: ReadableStream<Uint8Array>,
+  response?: ProviderResponse,
 ): Promise<AsyncGenerator<ProtocolFrame<ChatCompletionsStreamEvent>>> => {
   const buf = await new Response(body).text()
   const json = JSON.parse(buf) as ChatCompletionsJsonBody
+  if (response) observeUpstreamJson(response, json)
   return synthesizeChatCompletionsFramesFromJson(json)
 }
 
@@ -167,7 +170,7 @@ export const chatCompletionsAttempt = {
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const publicModel = sel.bareModel
       const providerModelKey = initialProviderModelKey(bindingForTelemetry, publicModel)
-      upstreamResp = await binding.provider.fetch(providerReq)
+      upstreamResp = await fetchWithPerformance(args.telemetryCtx.metrics, "chat_completions", providerReq, () => binding.provider.fetch(providerReq))
       if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
         // Wrap the ProviderResponse shape into a Response so readUpstreamError
         // can buffer body + headers using the standard helper. The performance
@@ -196,9 +199,9 @@ export const chatCompletionsAttempt = {
         invocation.payload.stream !== true ||
         upstreamContentType.includes('application/json')
       const stream = upstreamIsJson
-        ? await readUpstreamJsonAsFrames(upstreamResp.body)
+        ? await readUpstreamJsonAsFrames(upstreamResp.body, upstreamResp)
         : parseChatCompletionsStream(upstreamResp.body, { signal: args.ctx.downstreamAbortSignal })
-      const { events: decorated } = withUpstreamTelemetry(stream, {
+      const { events: decorated } = withUpstreamTelemetry(observeUpstreamFrames(upstreamResp, stream, upstreamIsJson), {
         abortSignal: args.ctx.downstreamAbortSignal,
         protocol: 'chat_completions',
       })

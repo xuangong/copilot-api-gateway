@@ -38,6 +38,7 @@ export class BunSqliteRepo implements Repo {
   cache: Repo["cache"]
   latency: Repo["latency"]
   performance: Repo["performance"]
+  performanceMetrics: Repo["performanceMetrics"]
   users: Repo["users"]
   inviteCodes: Repo["inviteCodes"]
   sessions: Repo["sessions"]
@@ -61,6 +62,7 @@ export class BunSqliteRepo implements Repo {
     this.cache = shared.cache
     this.latency = shared.latency
     this.performance = shared.performance
+    this.performanceMetrics = shared.performanceMetrics
     this.users = shared.users
     this.inviteCodes = shared.inviteCodes
     this.sessions = shared.sessions

@@ -11,6 +11,18 @@ async function* feed(items: unknown[]): AsyncIterable<unknown> {
 }
 
 describe('translateChatToResponsesEvents', () => {
+  test("terminal response uses trailing usage and leaves absent fields missing", async () => {
+    for (const present of [true, false]) {
+      const events = await collect(translateChatToResponsesEvents(feed([
+        { id: "tail", choices: [{ delta: { content: "hi" } }] },
+        { id: "tail", choices: [{ delta: {}, finish_reason: "stop" }] },
+        ...(present ? [{ choices: [], usage: { prompt_tokens: 100, completion_tokens: 20, prompt_tokens_details: { cached_tokens: 10 }, completion_tokens_details: { reasoning_tokens: 5 } } }] : []),
+      ]))) as Array<{ type: string; response?: { usage?: unknown } }>
+      const terminal = events.find(event => event.type === "response.completed")
+      if (present) expect(terminal?.response?.usage).toEqual({ input_tokens: 100, output_tokens: 20, input_tokens_details: { cached_tokens: 10 }, output_tokens_details: { reasoning_tokens: 5 } })
+      else expect(terminal?.response?.usage).toBeUndefined()
+    }
+  })
   test('text-only stream emits created → message added → text deltas → completed', async () => {
     const chunks = [
       { id: 'r1', model: 'm', created: 1, choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }] },

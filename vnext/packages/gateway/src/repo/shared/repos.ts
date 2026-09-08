@@ -1,3 +1,4 @@
+import { SharedPerformanceMetricsRepo } from "../performance-metrics"
 import type {
   ApiKey,
   ApiKeyRepo,
@@ -1127,6 +1128,7 @@ export function buildSharedRepo(x: SqlExecutor): Repo {
     cache: new SharedCacheRepo(x),
     latency: new SharedLatencyRepo(x),
     performance: new SharedPerformanceRepo(x),
+    performanceMetrics: new SharedPerformanceMetricsRepo(x),
     users: new SharedUserRepo(x),
     inviteCodes: new SharedInviteCodeRepo(x),
     sessions: new SharedSessionRepo(x),

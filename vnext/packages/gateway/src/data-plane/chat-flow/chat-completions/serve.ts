@@ -1,3 +1,4 @@
+import { PerformanceRecorder } from "../../observability/performance-recorder"
 // vnext/packages/gateway/src/data-plane/chat-flow/chat-completions/serve.ts
 /**
  * Chat Completions HTTP serve layer (Spec 10 — chat-flow convergence).
@@ -118,7 +119,7 @@ export async function serveChatCompletions(args: ChatCompletionsServeArgs): Prom
   }
   const { response } = await serveTemplate(
     chatCompletionsHooks,
-    { raw: args.raw, auth, obsCtx: args.obsCtx as KitObsCtx, signal: args.signal, extras: {}, dump: args.dump ?? null },
+    { raw: args.raw, auth, obsCtx: { ...args.obsCtx, performanceRecorder: new PerformanceRecorder(false, undefined, args.obsCtx.performanceStartedAt), performanceAbortSignal: args.signal } as KitObsCtx, signal: args.signal, extras: {}, dump: args.dump ?? null },
     kitDeps,
   )
   return response

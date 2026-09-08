@@ -1,3 +1,4 @@
+import { translateStream } from "../shared/translate-stream"
 // vnext/packages/gateway/src/data-plane/chat-flow/chat-completions/respond.ts
 /**
  * Chat Completions response renderer.
@@ -150,6 +151,9 @@ async function persistFromEventResult<T>(
   telemetryCtx: TelemetryRequestContext | undefined,
   dump?: DumpAccumulator | null,
 ): Promise<void> {
+  if (state.persisted) return
+  state.persisted = true
+  telemetryCtx?.metrics?.finish(state.failed ? "error" : "success")
   const md = await eventResultMetadata(result, telemetryCtx)
   const finalIdentity = result.finalMetadata
     ? md.modelIdentity
@@ -166,6 +170,7 @@ async function persistFromEventResult<T>(
       state.failed,
       undefined,
       performanceTargetFromTranslatorPair(finalIdentity),
+      finalIdentity,
     )
   }
 }
@@ -193,17 +198,7 @@ async function* applyTranslatorEventsForStreaming(
   signal: AbortSignal | undefined,
   model: string | undefined,
 ): AsyncGenerator<ProtocolFrame<ChatCompletionsStreamEvent>> {
-  async function* unwrap(): AsyncGenerator<unknown> {
-    for await (const frame of hubFrames) {
-      if (frame.type === 'event') yield frame.event
-    }
-  }
-  const ctx = {
-    signal: signal ?? new AbortController().signal,
-    model,
-  }
-  const translated = translateEvents(unwrap(), ctx) as AsyncIterable<ChatCompletionsStreamEvent>
-  for await (const ev of translated) yield eventFrame(ev) as ProtocolFrame<ChatCompletionsStreamEvent>
+  for await (const event of translateStream(hubFrames, translateEvents, signal, model)) yield eventFrame(event as ChatCompletionsStreamEvent)
   yield doneFrame() as ProtocolFrame<ChatCompletionsStreamEvent>
 }
 
@@ -212,6 +207,11 @@ const renderEventsAsSSE = (
   options: RespondChatCompletionsOptions,
 ): Response => {
   const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
+  const onClientAbort = (): void => {
+    options.telemetryCtx?.metrics?.finish("cancelled")
+    if (options.telemetryCtx || options.dump) waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
+  }
+  options.downstreamAbortController?.signal.addEventListener("abort", onClientAbort, { once: true })
   // Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
   // sees source-shape frames; same-protocol falls through unchanged.
   const upstreamFrames: AsyncIterable<ProtocolFrame<ChatCompletionsStreamEvent>> = result.translateEvents
@@ -223,22 +223,27 @@ const renderEventsAsSSE = (
       )
     : result.events
   const events = consumeWithState(upstreamFrames, state, options.dump)
+  let cancelled = false
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       const keepalive = startSseKeepalive(controller, COMMENT_KEEPALIVE_FRAME)
       try {
         for await (const frame of events) {
           const sse = chatCompletionsProtocolFrameToSSEFrame(frame, { includeUsageChunk: options.includeUsageChunk })
-          if (sse !== null) controller.enqueue(encodeSseFrame(sse))
+          if (sse !== null && !cancelled) {
+            if (frame.type === "event") options.telemetryCtx?.metrics?.observeOutput("chat_completions", frame.event)
+            if (!cancelled) controller.enqueue(encodeSseFrame(sse))
+          }
           keepalive.touch()
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         options.dump?.failed(message)
-        controller.enqueue(encodeSseFrame(sseFrame(JSON.stringify({ error: { message } }), 'error')))
+        if (!cancelled) controller.enqueue(encodeSseFrame(sseFrame(JSON.stringify({ error: { message } }), 'error')))
       } finally {
         keepalive.stop()
-        controller.close()
+        options.downstreamAbortController?.signal.removeEventListener("abort", onClientAbort)
+        if (!cancelled) controller.close()
         if (options.telemetryCtx || options.dump) {
           waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
         }
@@ -250,7 +255,10 @@ const renderEventsAsSSE = (
     // via the same signal — unwinds promptly instead of waiting for the model
     // to finish.
     cancel(_reason) {
+      cancelled = true
+      options.telemetryCtx?.metrics?.finish("cancelled")
       options.downstreamAbortController?.abort()
+      if (options.telemetryCtx || options.dump) waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     },
   })
   return new Response(body, {
@@ -260,6 +268,7 @@ const renderEventsAsSSE = (
     // and SSE clients don't auto-reconnect from a stale cache entry.
     headers: {
       'content-type': 'text/event-stream',
+      ...(options.telemetryCtx?.metrics?.synthetic ? { "x-gateway-stream-timing": "unavailable" } : {}),
       'cache-control': 'no-cache',
       'connection': 'keep-alive',
       'x-accel-buffering': 'no',

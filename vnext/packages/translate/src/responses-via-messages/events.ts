@@ -24,9 +24,9 @@ interface ResponseOutputItem {
 }
 
 interface ResponsesUsage {
-  input_tokens: number
-  output_tokens: number
-  total_tokens: number
+  input_tokens?: number
+  output_tokens?: number
+  total_tokens?: number
   input_tokens_details?: { cached_tokens: number }
 }
 
@@ -75,8 +75,8 @@ interface State {
   blockMap: Map<number, BlockInfo>
   completedItems: ResponseOutputItem[]
   accumulatedText: string
-  inputTokens: number
-  outputTokens: number
+  inputTokens: number | undefined
+  outputTokens: number | undefined
   cacheReadInputTokens?: number
   cacheCreationInputTokens?: number
   stopReason?: string | null
@@ -92,8 +92,8 @@ function createState(responseId: string, model: string): State {
     blockMap: new Map(),
     completedItems: [],
     accumulatedText: '',
-    inputTokens: 0,
-    outputTokens: 0,
+    inputTokens: undefined,
+    outputTokens: undefined,
     terminated: false,
   }
 }
@@ -102,12 +102,30 @@ function nextSeq(state: State): number {
   return state.sequenceNumber++
 }
 
+function accumulateUsage(state: State, usage: unknown, includeOutput: boolean): void {
+  if (typeof usage !== "object" || usage === null) return
+  const values = usage as Record<string, unknown>
+  for (const [field, wireField] of [
+    ["inputTokens", "input_tokens"],
+    ["outputTokens", "output_tokens"],
+    ["cacheReadInputTokens", "cache_read_input_tokens"],
+    ["cacheCreationInputTokens", "cache_creation_input_tokens"],
+  ] as const) {
+    // message_start.output_tokens is initialization, not final usage.
+    if (field === "outputTokens" && !includeOutput) continue
+    const value = values[wireField]
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+      state[field] = Math.max(state[field] ?? 0, value)
+    }
+  }
+}
+
 function buildUsage(state: State): ResponsesUsage {
-  const input = state.inputTokens + (state.cacheReadInputTokens ?? 0) + (state.cacheCreationInputTokens ?? 0)
+  const input = state.inputTokens === undefined ? undefined : state.inputTokens + (state.cacheReadInputTokens ?? 0) + (state.cacheCreationInputTokens ?? 0)
   return {
-    input_tokens: input,
-    output_tokens: state.outputTokens,
-    total_tokens: input + state.outputTokens,
+    ...(input !== undefined ? { input_tokens: input } : {}),
+    ...(state.outputTokens !== undefined ? { output_tokens: state.outputTokens } : {}),
+    ...(input !== undefined && state.outputTokens !== undefined ? { total_tokens: input + state.outputTokens } : {}),
     ...(state.cacheReadInputTokens !== undefined
       ? { input_tokens_details: { cached_tokens: state.cacheReadInputTokens } }
       : {}),
@@ -131,14 +149,12 @@ interface MessageStartLike {
   message: {
     id: string
     model: string
-    usage: { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
+    usage?: { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
   }
 }
 
 function handleMessageStart(ev: MessageStartLike, state: State): ResponsesStreamEvent[] {
-  state.inputTokens = ev.message.usage.input_tokens ?? 0
-  state.cacheReadInputTokens = ev.message.usage.cache_read_input_tokens
-  state.cacheCreationInputTokens = ev.message.usage.cache_creation_input_tokens
+  accumulateUsage(state, ev.message.usage, false)
   // Honor the upstream message id only if caller didn't specify one.
   // Caller-provided responseId stays the source of truth (it's an
   // OpenAI-style `resp_*` id, not a Messages `msg_*` id).
@@ -353,14 +369,12 @@ function handleContentBlockStop(ev: ContentBlockStopLike, state: State): Respons
 
 interface MessageDeltaLike {
   delta: { stop_reason?: string | null; stop_sequence?: string | null }
-  usage?: { output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
+  usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
 }
 
 function handleMessageDelta(ev: MessageDeltaLike, state: State): ResponsesStreamEvent[] {
   if (ev.delta.stop_reason !== undefined) state.stopReason = ev.delta.stop_reason
-  if (ev.usage?.output_tokens != null) state.outputTokens = ev.usage.output_tokens
-  if (ev.usage?.cache_read_input_tokens != null) state.cacheReadInputTokens = ev.usage.cache_read_input_tokens
-  if (ev.usage?.cache_creation_input_tokens != null) state.cacheCreationInputTokens = ev.usage.cache_creation_input_tokens
+  accumulateUsage(state, ev.usage, true)
   return []
 }
 

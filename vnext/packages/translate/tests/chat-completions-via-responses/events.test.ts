@@ -109,7 +109,7 @@ describe('translateResponsesToChatSSE', () => {
         prompt_tokens: 797,
         completion_tokens: 127,
         total_tokens: 924,
-        // cached_tokens is 0 here, so the detail bucket is omitted entirely.
+        prompt_tokens_details: { cached_tokens: 0 },
         completion_tokens_details: { reasoning_tokens: 18 },
       })
       // The finish chunk must still be the last one carrying a choice.
@@ -132,6 +132,20 @@ describe('translateResponsesToChatSSE', () => {
       const chunks = await collect(translateResponsesToChatSSE(feed(completed(undefined))))
       expect(chunks.some((c) => c.usage)).toBe(false)
       expect(chunks.at(-1)!.choices[0]!.finish_reason).toBe('stop')
+    })
+
+    test("partial usage never fabricates the missing side or total and preserves measured zeros", async () => {
+      const cases = [
+        [{ input_tokens: 100 }, { prompt_tokens: 100 }],
+        [{ output_tokens: 10 }, { completion_tokens: 10 }],
+        [{ input_tokens: 100, total_tokens: 110 }, { prompt_tokens: 100 }],
+        [{ input_tokens: 0, output_tokens: 0, input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } }, { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, prompt_tokens_details: { cached_tokens: 0, cache_creation_input_tokens: 0 }, completion_tokens_details: { reasoning_tokens: 0 } }],
+        [{ input_tokens: -1, output_tokens: Number.NaN, input_tokens_details: { cached_tokens: "0" }, output_tokens_details: { reasoning_tokens: Infinity } }, {}],
+      ]
+      for (const [usage, expected] of cases) {
+        const chunks = await collect(translateResponsesToChatSSE(feed(completed(usage))))
+        expect(chunks.at(-1)?.usage).toEqual(expected)
+      }
     })
   })
 

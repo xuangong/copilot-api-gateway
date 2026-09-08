@@ -1,3 +1,4 @@
+import { PerformanceRecorder } from "../../observability/performance-recorder"
 // vnext/packages/gateway/src/data-plane/chat-flow/responses/serve.ts
 /**
  * /v1/responses HTTP serve layer (Spec 10 — chat-flow convergence).
@@ -205,7 +206,7 @@ export async function serveResponses(args: ResponsesServeArgs): Promise<Response
     {
       raw: args.raw,
       auth,
-      obsCtx: args.obsCtx as KitObsCtx,
+      obsCtx: { ...args.obsCtx, performanceRecorder: new PerformanceRecorder(false, undefined, args.obsCtx.performanceStartedAt), performanceAbortSignal: args.signal } as KitObsCtx,
       signal: args.signal,
       // requestId / userAgent ride through extras so the image-gen
       // shortcut inside responsesAttempt can stamp them on upstream

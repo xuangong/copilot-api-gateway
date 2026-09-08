@@ -23,6 +23,7 @@ export type StreamChunk =
 
 export async function* parseOpenAIStream(
   body: ReadableStream<Uint8Array>,
+  observe?: (event: unknown) => void,
 ): AsyncGenerator<StreamChunk, void, void> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
@@ -36,13 +37,13 @@ export async function* parseOpenAIStream(
       while ((nl = buf.indexOf("\n")) !== -1) {
         const raw = buf.slice(0, nl).replace(/\r$/, "")
         buf = buf.slice(nl + 1)
-        const parsed = parseLine(raw)
+        const parsed = parseLine(raw, observe)
         if (parsed === "DONE") return
         yield* parsed
       }
     }
     const tail = buf.replace(/\r$/, "")
-    const parsed = parseLine(tail)
+    const parsed = parseLine(tail, observe)
     if (parsed !== "DONE") yield* parsed
   } finally {
     reader.releaseLock()
@@ -73,17 +74,18 @@ export function toCitations(
  * attaches `annotations` to the same delta as the content it cites — so a line
  * yields a list rather than a single chunk.
  */
-function parseLine(raw: string): StreamChunk[] | "DONE" {
+function parseLine(raw: string, observe?: (event: unknown) => void): StreamChunk[] | "DONE" {
   if (!raw.startsWith("data:")) return []
   const payload = raw.slice(5).trim()
   if (!payload) return []
-  if (payload === "[DONE]") return "DONE"
+  if (payload === "[DONE]") { observe?.("[DONE]"); return "DONE" }
   let json: unknown
   try {
     json = JSON.parse(payload)
   } catch {
     return []
   }
+  observe?.(json)
   const obj = json as {
     error?: { message?: string }
     choices?: Array<{

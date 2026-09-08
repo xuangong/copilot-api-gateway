@@ -1,3 +1,4 @@
+import { PerformanceRecorder } from "../../observability/performance-recorder"
 // vnext/packages/gateway/src/data-plane/chat-flow/shared/kit-deps.ts
 /**
  * Singleton ServeTemplateDeps for the LLM gateway's four chat-flow endpoints.
@@ -71,6 +72,7 @@ export const kitDeps: ServeTemplateDeps<AuthWithApiKey, TelemetryRequestContext>
   runQuotaGate: (apiKeyId) => runQuotaGate(apiKeyId as ApiKeyId | null | undefined),
   jsonErrorWrap,
   buildTelemetryCtx: ({ auth, obsCtx, extra, isStreaming, requestStartedAt, endpointTag }) => ({
+    metrics: buildPerformanceRecorder(obsCtx.performanceRecorder, isStreaming, obsCtx.performanceAbortSignal),
     incomingModel: incomingModelFromExtra(extra),
     apiKeyId: (obsCtx.apiKeyId ?? auth.apiKeyId ?? '<unknown>') as ApiKeyId,
     userAgent: (obsCtx.userAgent as string | null | undefined) ?? null,
@@ -80,4 +82,11 @@ export const kitDeps: ServeTemplateDeps<AuthWithApiKey, TelemetryRequestContext>
     requestStartedAt,
     sourceApi: endpointTagToSourceApi(endpointTag),
   }),
+}
+
+function buildPerformanceRecorder(value: unknown, streaming: boolean, signal: unknown): PerformanceRecorder {
+  const recorder = value instanceof PerformanceRecorder ? value : new PerformanceRecorder(streaming)
+  recorder.streaming = streaming
+  if (signal instanceof AbortSignal) recorder.bindCancellation(signal)
+  return recorder
 }

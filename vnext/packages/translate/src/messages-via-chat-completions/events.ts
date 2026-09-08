@@ -4,8 +4,8 @@
  *
  * State machine emits a synthetic message_start on the first chunk and
  * lazily opens content blocks per kind (thinking → text → tool_use). On
- * finish_reason it closes all open blocks, emits message_delta with usage,
- * then message_stop.
+ * finish_reason it closes all open blocks, then waits for trailing usage
+ * before emitting message_delta and message_stop.
  *
  * Cancellation: implemented as an async generator with try/finally to
  * release per-stream state when the consumer breaks out of the loop.
@@ -56,9 +56,9 @@ interface State {
   textBlock?: OpenBlock
   thinkingBlock?: OpenBlock
   toolBlocks: Map<number, OpenBlock>
-  inputTokens: number
-  outputTokens: number
-  cachedInputTokens: number
+  inputTokens: number | undefined
+  outputTokens: number | undefined
+  cachedInputTokens: number | undefined
   finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | null
   terminated: boolean
 }
@@ -70,9 +70,9 @@ function createState(): State {
     emittedMessageStart: false,
     nextBlockIndex: 0,
     toolBlocks: new Map(),
-    inputTokens: 0,
-    outputTokens: 0,
-    cachedInputTokens: 0,
+    inputTokens: undefined,
+    outputTokens: undefined,
+    cachedInputTokens: undefined,
     finishReason: null,
     terminated: false,
   }
@@ -112,9 +112,9 @@ function emitMessageStart(state: State): MessagesEvent {
       stop_reason: null,
       stop_sequence: null,
       usage: {
-        input_tokens: state.inputTokens,
+        ...(state.inputTokens !== undefined ? { input_tokens: Math.max(0, state.inputTokens - (state.cachedInputTokens ?? 0)) } : {}),
         output_tokens: 0,
-        ...(state.cachedInputTokens > 0 ? { cache_read_input_tokens: state.cachedInputTokens } : {}),
+        ...((state.cachedInputTokens ?? 0) > 0 ? { cache_read_input_tokens: state.cachedInputTokens } : {}),
       } as never,
     },
   }
@@ -244,16 +244,7 @@ function translateOne(chunk: ChatChunkLike, state: State): MessagesEvent[] {
   if (choice.finish_reason) {
     state.finishReason = choice.finish_reason
     out.push(...closeAllOpenBlocks(state))
-    out.push({
-      type: 'message_delta',
-      delta: { stop_reason: mapFinishReason(choice.finish_reason), stop_sequence: null },
-      usage: {
-        output_tokens: state.outputTokens,
-        ...(state.cachedInputTokens > 0 ? { cache_read_input_tokens: state.cachedInputTokens } : {}),
-      } as never,
-    })
-    out.push({ type: 'message_stop' })
-    state.terminated = true
+
   }
 
   return out
@@ -271,16 +262,17 @@ export async function* translateChatSSEToMessagesEvents(
       for (const ev of out) yield ev
       if (state.terminated) return
     }
-    // Upstream ended without finish_reason — synthesize a terminal sequence.
+    // Chat usage can arrive after finish_reason, so settle only after the tail.
     if (!state.terminated) {
       if (!state.emittedMessageStart) yield emitMessageStart(state)
       for (const ev of closeAllOpenBlocks(state)) yield ev
       yield {
         type: 'message_delta',
-        delta: { stop_reason: 'end_turn', stop_sequence: null },
+        delta: { stop_reason: mapFinishReason(state.finishReason) ?? 'end_turn', stop_sequence: null },
         usage: {
-          output_tokens: state.outputTokens,
-          ...(state.cachedInputTokens > 0 ? { cache_read_input_tokens: state.cachedInputTokens } : {}),
+          ...(state.outputTokens !== undefined ? { output_tokens: state.outputTokens } : {}),
+          ...(state.inputTokens !== undefined ? { input_tokens: Math.max(0, state.inputTokens - (state.cachedInputTokens ?? 0)) } : {}),
+          ...(state.cachedInputTokens !== undefined ? { cache_read_input_tokens: state.cachedInputTokens } : {}),
         } as never,
       }
       yield { type: 'message_stop' }

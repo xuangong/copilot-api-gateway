@@ -21,10 +21,12 @@ import {
   getServerSecret,
   sharedKeyRef,
 } from '../lib/redact-shared-view.ts'
-import { getOwnedKeyIdsForScope } from '../lib/view-context.ts'
+import { deriveViewContext, getOwnedKeyIdsForScope } from '../lib/view-context.ts'
 import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 
 export interface PerformanceAuthCtx {
+  authKind?: "apiKey" | "session" | "public"
+  apiKeyId?: ApiKeyId
   isAdmin?: boolean
   userId?: UserId
   isViewingShared?: boolean
@@ -43,19 +45,20 @@ type Vars = { auth: PerformanceAuthCtx }
  * Field mapping (some are degraded — Spec-3 doesn't capture them):
  *   colo       ← runtimeLocation
  *   totalMs    ← Σ totalMsSum
- *   upstreamMs ← Σ totalMsSum (mirror; no separate upstream timing in summary)
- *   ttfbMs     ← 0 (not captured)
+ *   upstreamMs ← null (not captured)
+ *   ttfbMs     ← null (not captured)
  *   tokenMiss  ← 0 (not captured)
  */
-function summaryToLatencyRecords(rows: PerformanceSummaryRecord[]): LatencyRecord[] {
-  const buckets = new Map<string, LatencyRecord>()
+type DerivedLatencyRecord = Omit<LatencyRecord, "upstreamMs" | "ttfbMs"> & { upstreamMs: null; ttfbMs: null }
+
+function summaryToLatencyRecords(rows: PerformanceSummaryRecord[]): DerivedLatencyRecord[] {
+  const buckets = new Map<string, DerivedLatencyRecord>()
   for (const r of rows) {
     const key = `${r.keyId}|${r.model}|${r.hour}|${r.runtimeLocation}|${r.stream ? 1 : 0}`
     const existing = buckets.get(key)
     if (existing) {
       existing.requests += r.requests
       existing.totalMs += r.totalMsSum
-      existing.upstreamMs += r.totalMsSum
     } else {
       buckets.set(key, {
         keyId: r.keyId,
@@ -65,8 +68,8 @@ function summaryToLatencyRecords(rows: PerformanceSummaryRecord[]): LatencyRecor
         stream: r.stream,
         requests: r.requests,
         totalMs: r.totalMsSum,
-        upstreamMs: r.totalMsSum,
-        ttfbMs: 0,
+        upstreamMs: null,
+        ttfbMs: null,
         tokenMiss: 0,
       })
     }
@@ -215,6 +218,52 @@ performanceRouter.get('/performance', async (c) => {
     buckets: result.buckets.map((r) => ({
       ...r,
       keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),
+    })),
+  })
+})
+
+function validUtcHour(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}$/.test(value)) return false
+  const time = new Date(`${value}:00:00.000Z`)
+  return Number.isFinite(time.getTime()) && time.toISOString().slice(0, 13) === value
+}
+
+performanceRouter.get('/performance/metrics', async (c) => {
+  const auth = c.get('auth') ?? {}
+  const usingApiKey = auth.authKind === "apiKey"
+  if (usingApiKey ? !auth.apiKeyId : !auth.isAdmin && !auth.userId) return c.json({ error: 'Authentication required' }, 401)
+  if (usingApiKey && auth.isViewingShared) return c.json({ error: 'Invalid shared view' }, 403)
+  const start = c.req.query('start') ?? ''
+  const end = c.req.query('end') ?? ''
+  if (!validUtcHour(start) || !validUtcHour(end) || start > end || Date.parse(`${end}:00Z`) - Date.parse(`${start}:00Z`) > 366 * 86400000) {
+    return c.json({ error: 'start and end must be valid ordered UTC hours within 366 days (e.g. 2026-09-08T00)' }, 400)
+  }
+  const repo = getRepo()
+  const view = await deriveViewContext(c, auth)
+  if ("denied" in view) return c.json({ error: "Not authorized to view this user's observability data" }, 403)
+  const ownerId = view.isViewingShared ? view.ownerId : undefined
+  let keys: ApiKey[]
+  if (usingApiKey && auth.apiKeyId) {
+    const key = await repo.apiKeys.getById(auth.apiKeyId)
+    if (!key) return c.json({ error: 'Authentication required' }, 401)
+    keys = [key]
+  } else if (ownerId) keys = await repo.apiKeys.listByOwner(ownerId)
+  else if (auth.isAdmin) keys = await repo.apiKeys.list()
+  else if (auth.userId) keys = await getUserKeys(auth.userId)
+  else return c.json({ error: 'Authentication required' }, 401)
+  const keyFilter = c.req.query('key_id')
+  const secret = ownerId ? getEnvSecret(c) : ''
+  if (keyFilter) keys = keys.filter(key => key.id === keyFilter || (ownerId && sharedKeyRef(ownerId, key.id, secret) === keyFilter))
+  const result = await repo.performanceMetrics.query(!usingApiKey && auth.isAdmin && !ownerId
+    ? { start, end, keyId: keyFilter as ApiKeyId | undefined }
+    : { start, end, keyIds: keys.map(key => key.id) })
+  const names = new Map(keys.map(key => [String(key.id), key.name]))
+  return c.json({
+    ...result,
+    groups: result.groups.map(group => ({
+      ...group,
+      keyId: ownerId ? sharedKeyRef(ownerId, group.keyId, secret) : group.keyId,
+      keyName: names.get(group.keyId) ?? 'Unknown key',
     })),
   })
 })

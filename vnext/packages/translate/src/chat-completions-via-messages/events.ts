@@ -37,7 +37,13 @@ export interface ChatSSEChunk {
     }
     finish_reason?: 'stop' | 'length' | 'tool_calls' | 'content_filter' | null
   }>
-  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number; prompt_tokens_details?: { cached_tokens?: number } }
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } }
+}
+
+interface InputUsage {
+  input_tokens?: number
+  cache_read_input_tokens?: number
+  cache_creation_input_tokens?: number
 }
 
 interface ToolCallSlot {
@@ -50,8 +56,8 @@ interface State {
   model: string
   created: number
   nextToolCallIndex: number
-  promptTokens: number
-  cachedPromptTokens: number
+  inputUsage: InputUsage
+  outputTokens?: number
   toolCalls: Map<number, ToolCallSlot>
   /** URLs already emitted as annotations, to keep repeat searches from duplicating sources. */
   citedUrls: Set<string>
@@ -65,8 +71,7 @@ function createState(): State {
     model: '',
     created: Math.floor(Date.now() / 1000),
     nextToolCallIndex: 0,
-    promptTokens: 0,
-    cachedPromptTokens: 0,
+    inputUsage: {},
     toolCalls: new Map(),
     citedUrls: new Set(),
     terminated: false,
@@ -87,7 +92,18 @@ function makeChunk(
   }
 }
 
-function makeUsageChunk(state: State, outputTokens: number): ChatSSEChunk {
+function updateInputUsage(state: State, usage: InputUsage): void {
+  // Messages deltas contain partial cumulative updates, not replacement snapshots.
+  for (const key of ["input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"] as const) {
+    const value = usage[key]
+    if (value !== undefined && Number.isFinite(value) && value >= 0) state.inputUsage[key] = Math.max(state.inputUsage[key] ?? 0, value)
+  }
+}
+
+function makeUsageChunk(state: State): ChatSSEChunk {
+  const input = state.inputUsage
+  const promptTokens = input.input_tokens === undefined ? undefined : input.input_tokens + (input.cache_read_input_tokens ?? 0) + (input.cache_creation_input_tokens ?? 0)
+  const outputTokens = state.outputTokens
   return {
     id: state.messageId || 'chatcmpl-pending',
     object: 'chat.completion.chunk',
@@ -95,11 +111,11 @@ function makeUsageChunk(state: State, outputTokens: number): ChatSSEChunk {
     model: state.model,
     choices: [],
     usage: {
-      prompt_tokens: state.promptTokens,
-      completion_tokens: outputTokens,
-      total_tokens: state.promptTokens + outputTokens,
-      ...(state.cachedPromptTokens > 0
-        ? { prompt_tokens_details: { cached_tokens: state.cachedPromptTokens } }
+      ...(promptTokens !== undefined ? { prompt_tokens: promptTokens } : {}),
+      ...(outputTokens !== undefined ? { completion_tokens: outputTokens } : {}),
+      ...(promptTokens !== undefined && outputTokens !== undefined ? { total_tokens: promptTokens + outputTokens } : {}),
+      ...(input.cache_read_input_tokens !== undefined
+        ? { prompt_tokens_details: { cached_tokens: input.cache_read_input_tokens } }
         : {}),
     },
   }
@@ -152,15 +168,7 @@ function translateOne(ev: MessagesEvent, state: State): ChatSSEChunk[] | 'DONE' 
     case 'message_start': {
       state.messageId = ev.message.id
       if (ev.message.model) state.model = ev.message.model
-      const usage = (ev.message.usage ?? {}) as {
-        input_tokens?: number
-        cache_read_input_tokens?: number
-        cache_creation_input_tokens?: number
-      }
-      const cached = usage.cache_read_input_tokens ?? 0
-      state.cachedPromptTokens = cached
-      state.promptTokens =
-        (usage.input_tokens ?? 0) + cached + (usage.cache_creation_input_tokens ?? 0)
+      updateInputUsage(state, ev.message.usage ?? {})
       return [makeChunk(state, { role: 'assistant' })]
     }
     case 'content_block_start': {
@@ -253,19 +261,12 @@ function translateOne(ev: MessagesEvent, state: State): ChatSSEChunk[] | 'DONE' 
             cache_creation_input_tokens?: number
           }
         | undefined
-      if (evUsage?.cache_read_input_tokens != null) {
-        const newCached = evUsage.cache_read_input_tokens
-        const newCreation = evUsage.cache_creation_input_tokens ?? 0
-        state.promptTokens =
-          (evUsage.input_tokens ?? state.promptTokens - state.cachedPromptTokens) +
-          newCached +
-          newCreation
-        state.cachedPromptTokens = newCached
-      }
+      updateInputUsage(state, evUsage ?? {})
+      if (evUsage?.output_tokens !== undefined) state.outputTokens = Math.max(state.outputTokens ?? 0, evUsage.output_tokens)
       const finishReason = mapStopReason(evDelta.stop_reason ?? null)
       const finishChunk = makeChunk(state, {}, finishReason)
-      return evUsage
-        ? [finishChunk, makeUsageChunk(state, evUsage.output_tokens ?? 0)]
+      return state.outputTokens !== undefined || Object.keys(state.inputUsage).length > 0
+        ? [finishChunk, makeUsageChunk(state)]
         : [finishChunk]
     }
     case 'message_stop':

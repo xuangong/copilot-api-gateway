@@ -121,3 +121,5 @@ export {
 } from './opaque-value'
 
 export { isOpenAIUsageOnlyEventShape } from './openai-stream'
+
+export * from './performance-metrics'

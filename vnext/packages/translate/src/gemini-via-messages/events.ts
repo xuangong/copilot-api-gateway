@@ -22,9 +22,9 @@ export interface TranslateMessagesToGeminiEventsOptions {
 // ─── Gemini output shape (subset) ───
 
 export interface GeminiUsageMetadata {
-  promptTokenCount: number
-  candidatesTokenCount: number
-  totalTokenCount: number
+  promptTokenCount?: number
+  candidatesTokenCount?: number
+  totalTokenCount?: number
   cachedContentTokenCount?: number
 }
 

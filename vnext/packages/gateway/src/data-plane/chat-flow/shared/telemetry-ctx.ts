@@ -1,3 +1,4 @@
+import type { PerformanceRecorder } from "../../observability/performance-recorder"
 /**
  * Telemetry-only request context, distinct from `@vibe-llm/protocols/common`'s
  * minimal `RequestContext`. Built once per request in serve.ts and threaded
@@ -9,6 +10,7 @@ import type { PerformanceSourceApi } from '../../../repo/types.ts'
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 export interface TelemetryRequestContext {
+  readonly metrics?: PerformanceRecorder
   /** Canonical requested model before per-key mapping; immutable across attempts. */
   readonly incomingModel: string
   readonly apiKeyId: ApiKeyId

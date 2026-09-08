@@ -22,6 +22,8 @@ import { initialFullscreen, persistFullscreen, spendLanded } from "./fullscreen"
 import { avatarAccent, avatarLabel } from "./avatar"
 import { pruneIndexedState, retractFrom } from "./retract"
 import { contextPercent, contextPressure, formatTokens } from "./tokens"
+import { BrowserPerformance, type BrowserPerformanceSnapshot } from "./browser-performance"
+import { PerformanceDetails } from "./PerformanceDetails"
 
 type Protocol = "openai" | "anthropic" | "gemini"
 type Role = "user" | "assistant"
@@ -40,7 +42,7 @@ function loadPersistedMessages(): Message[] {
     // Drop any trailing streaming-in-progress assistant bubble that may have
     // been persisted without text (e.g. tab closed mid-stream).
     const last = migrated[migrated.length - 1]
-    if (last && last.role === "assistant" && !last.text && !last.parts?.length) migrated.pop()
+    if (last && last.role === "assistant" && !last.text && !last.parts?.length && !last.performance) migrated.pop()
     return migrated
   } catch {
     return []
@@ -60,6 +62,7 @@ interface Message {
   parts?: Part[]
   usage?: StreamUsage
   durationMs?: number
+  performance?: BrowserPerformanceSnapshot
   /** Web search progress events surfaced as inline bubbles. */
   webSearches?: WebSearchEntry[]
   /** Sources the gateway grounded the answer in, deduped by URL. */
@@ -589,28 +592,33 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       setError(null)
       setStreaming(true)
       startedAtRef.current = performance.now()
+      const observation = mode === "image" ? undefined : new BrowserPerformance()
 
       const ctrl = new AbortController()
       abortRef.current = ctrl
+      const onAbort = () => { observation?.finish("cancelled") }
+      ctrl.signal.addEventListener("abort", onAbort, { once: true })
       try {
         if (mode === "image") {
           await sendImages(nextHistory, ctrl.signal)
         } else if (protocol === "openai") {
-          await sendOpenAI(nextHistory, ctrl.signal)
+          await sendOpenAI(nextHistory, ctrl.signal, observation!)
         } else if (protocol === "anthropic") {
-          await sendAnthropic(nextHistory, ctrl.signal)
+          await sendAnthropic(nextHistory, ctrl.signal, observation!)
         } else {
-          await sendGemini(nextHistory, ctrl.signal)
+          await sendGemini(nextHistory, ctrl.signal, observation!)
         }
-        finalizeLast()
+        ctrl.signal.throwIfAborted()
+        finalizeLast("success", observation)
       } catch (err) {
-        if ((err as Error).name === "AbortError") {
-          finalizeLast()
+        if (ctrl.signal.aborted || (err as Error).name === "AbortError") {
+          finalizeLast("cancelled", observation)
         } else {
-          // Pop the empty assistant bubble; show error in dedicated banner
+          finalizeLast("error", observation)
+          // Keep collected timings on failed chat turns; image errors use the banner.
           setMessages((prev) => {
             const last = prev[prev.length - 1]
-            if (last && last.role === "assistant" && !last.text && !last.parts?.length) {
+            if (!observation && last && last.role === "assistant" && !last.text && !last.parts?.length) {
               return prev.slice(0, -1)
             }
             return prev
@@ -619,6 +627,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
           setError(isImageRejection(raw) ? t("dash.playground.visionRejected") : raw)
         }
       } finally {
+        ctrl.signal.removeEventListener("abort", onAbort)
         setStreaming(false)
         abortRef.current = null
       }
@@ -642,12 +651,13 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     setTimeout(() => send(messageParts(last)), 0)
   }
 
-  function finalizeLast() {
+  function finalizeLast(outcome: BrowserPerformanceSnapshot["outcome"], observation?: BrowserPerformance) {
+    const snapshot = observation?.finish(outcome)
     const ms = Math.round(performance.now() - startedAtRef.current)
     setMessages((prev) => {
       const last = prev[prev.length - 1]
       if (!last || last.role !== "assistant") return prev
-      const updated: Message = { ...last, durationMs: ms }
+      const updated: Message = { ...last, durationMs: ms, ...(snapshot ? { performance: snapshot } : {}) }
       return [...prev.slice(0, -1), updated]
     })
   }
@@ -749,7 +759,8 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     })
   }
 
-  async function sendOpenAI(history: Message[], signal: AbortSignal) {
+  async function sendOpenAI(history: Message[], signal: AbortSignal, observation: BrowserPerformance) {
+    observation.beginResponse("chat_completions")
     const oaiMessages: Array<Record<string, unknown>> = []
     oaiMessages.push({ role: "system", content: composeSystemPrompt(systemPrompt) })
     for (const turn of toChatHistory(history)) {
@@ -773,7 +784,9 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       const errText = await resp.text().catch(() => "")
       throw new Error(errText || `HTTP ${resp.status}`)
     }
-    for await (const ch of parseOpenAIStream(resp.body)) {
+    if (resp.headers.get("x-gateway-stream-timing") === "unavailable") observation.unavailableStreamingTiming()
+    for await (const ch of parseOpenAIStream(resp.body, observation.observe)) {
+      signal.throwIfAborted()
       if (ch.type === "delta") {
         appendAssistant(ch.text)
         await new Promise<void>((r) => setTimeout(r, 0))
@@ -783,7 +796,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     }
   }
 
-  async function sendAnthropic(history: Message[], signal: AbortSignal) {
+  async function sendAnthropic(history: Message[], signal: AbortSignal, observation: BrowserPerformance) {
     const anMessages = toAnthropicMessages(history)
     const body: Record<string, unknown> = {
       model: modelId,
@@ -800,17 +813,20 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     // gateway ran the search, and the client owns the decision to continue.
     // Replay the assistant blocks verbatim until the model actually answers.
     for (let turn = 0; turn < MAX_PAUSE_TURNS; turn++) {
-      const paused = await streamAnthropicTurn(body, signal)
+      const paused = await streamAnthropicTurn(body, signal, observation)
       if (!paused) return
       anMessages.push({ role: "assistant", content: paused })
     }
+    throw new Error(t("dash.playground.continuationLimit"))
   }
 
   /** One `/v1/messages` round trip. Returns the assistant blocks if it paused. */
   async function streamAnthropicTurn(
     body: Record<string, unknown>,
     signal: AbortSignal,
+    observation: BrowserPerformance,
   ): Promise<unknown[] | null> {
+    observation.beginResponse("messages")
     const resp = await fetch("/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": apiKey },
@@ -821,7 +837,9 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       const errText = await resp.text().catch(() => "")
       throw new Error(errText || `HTTP ${resp.status}`)
     }
-    for await (const ch of parseAnthropicStream(resp.body)) {
+    if (resp.headers.get("x-gateway-stream-timing") === "unavailable") observation.unavailableStreamingTiming()
+    for await (const ch of parseAnthropicStream(resp.body, observation.observe)) {
+      signal.throwIfAborted()
       if (ch.type === "delta") {
         appendAssistant(ch.text)
         await new Promise<void>((r) => setTimeout(r, 0))
@@ -833,7 +851,8 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     return null
   }
 
-  async function sendGemini(history: Message[], signal: AbortSignal) {
+  async function sendGemini(history: Message[], signal: AbortSignal, observation: BrowserPerformance) {
+    observation.beginResponse("gemini")
     const contents: Array<Record<string, unknown>> = []
     for (const turn of toChatHistory(history)) {
       const parts = toGeminiParts(turn.parts, turn.role)
@@ -858,7 +877,9 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       const errText = await resp.text().catch(() => "")
       throw new Error(errText || `HTTP ${resp.status}`)
     }
-    for await (const ch of parseGeminiStream(resp.body)) {
+    if (resp.headers.get("x-gateway-stream-timing") === "unavailable") observation.unavailableStreamingTiming()
+    for await (const ch of parseGeminiStream(resp.body, observation.observe)) {
+      signal.throwIfAborted()
       if (ch.type === "delta") {
         appendAssistant(ch.text)
         await new Promise<void>((r) => setTimeout(r, 0))
@@ -1240,12 +1261,13 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
                         </div>
                       )
                     })()}
+                    {isAssistant && m.performance && <PerformanceDetails snapshot={m.performance} />}
                     {isAssistant && (m.text || m.usage || m.durationMs != null) && (
                       <div className="pg-bubble-meta">
                         {(m.usage || m.durationMs != null) &&
                           t("dash.playground.usage", {
-                            tin: m.usage?.input_tokens ?? "—",
-                            tout: m.usage?.output_tokens ?? "—",
+                            tin: (m.performance ? m.performance.metrics.inputTokens : m.usage?.input_tokens) ?? "—",
+                            tout: (m.performance ? m.performance.metrics.outputTokens : m.usage?.output_tokens) ?? "—",
                             ms: m.durationMs ?? "—",
                           })}
                         {m.text && (

@@ -11,6 +11,22 @@ async function collect<T>(src: AsyncIterable<T>): Promise<T[]> {
 async function* fromArray<T>(items: T[]): AsyncGenerator<T> { for (const it of items) yield it }
 
 describe('responses-via-messages :: events', () => {
+  it("accumulates each Messages input component from partial deltas and ignores invalid or smaller values", async () => {
+    const cases = [
+      [[{ input_tokens: 110, output_tokens: 10 }], { input_tokens: 160, output_tokens: 10, total_tokens: 170, input_tokens_details: { cached_tokens: 50 } }],
+      [[{ input_tokens: 110, output_tokens: 10 }, { cache_read_input_tokens: 60 }, { cache_creation_input_tokens: 20 }, { input_tokens: 90, output_tokens: 5, cache_read_input_tokens: 40, cache_creation_input_tokens: 10 }], { input_tokens: 190, output_tokens: 10, total_tokens: 200, input_tokens_details: { cached_tokens: 60 } }],
+      [[{ input_tokens: -1, output_tokens: Number.NaN, cache_read_input_tokens: Infinity, cache_creation_input_tokens: "3" }], { input_tokens: 150, input_tokens_details: { cached_tokens: 50 } }],
+    ] as const
+    for (const [updates, expected] of cases) {
+      const events = await collect(translateMessagesToResponsesEvents(fromArray([
+        { type: "message_start", message: { id: "components", model: "m", usage: { input_tokens: 100, cache_read_input_tokens: 50 } } },
+        ...updates.map(usage => ({ type: "message_delta", delta: {}, usage })),
+        { type: "message_stop" },
+      ])))
+      const terminal = events.find(event => event.type === "response.completed")
+      expect(terminal?.response.usage).toEqual(expected)
+    }
+  })
   it('emits response.created + response.in_progress on message_start', async () => {
     const events: MessagesEvent[] = [
       { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-3', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 5, output_tokens: 0 } } },

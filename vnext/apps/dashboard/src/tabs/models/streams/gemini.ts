@@ -9,6 +9,7 @@ export type { StreamChunk, StreamUsage }
 // usageMetadata — so a single line can produce several chunks.
 export async function* parseGeminiStream(
   body: ReadableStream<Uint8Array>,
+  observe?: (event: unknown) => void,
 ): AsyncGenerator<StreamChunk, void, void> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
@@ -23,14 +24,14 @@ export async function* parseGeminiStream(
       while ((nl = buf.indexOf("\n")) !== -1) {
         const raw = buf.slice(0, nl).replace(/\r$/, "")
         buf = buf.slice(nl + 1)
-        for (const out of parseLine(raw)) {
+        for (const out of parseLine(raw, observe)) {
           if (out.type === "usage") lastUsage = out.usage
           else yield out
         }
       }
     }
     const tail = buf.replace(/\r$/, "")
-    for (const out of parseLine(tail)) {
+    for (const out of parseLine(tail, observe)) {
       if (out.type === "usage") lastUsage = out.usage
       else yield out
     }
@@ -40,7 +41,7 @@ export async function* parseGeminiStream(
   if (lastUsage) yield { type: "usage", usage: lastUsage }
 }
 
-function parseLine(raw: string): StreamChunk[] {
+function parseLine(raw: string, observe?: (event: unknown) => void): StreamChunk[] {
   if (!raw.startsWith("data:")) return []
   const payload = raw.slice(5).trim()
   if (!payload) return []
@@ -50,10 +51,11 @@ function parseLine(raw: string): StreamChunk[] {
   } catch {
     return []
   }
+  observe?.(json)
   const obj = json as {
     error?: { message?: string }
     candidates?: Array<{
-      content?: { parts?: Array<{ text?: string }> }
+      content?: { parts?: Array<{ text?: string; thought?: boolean }> }
       groundingMetadata?: { groundingChunks?: Array<{ web?: { uri?: string; title?: string } }> }
     }>
     usageMetadata?: {
@@ -69,7 +71,7 @@ function parseLine(raw: string): StreamChunk[] {
   let text = ""
   if (Array.isArray(parts)) {
     for (const p of parts) {
-      if (typeof p?.text === "string") text += p.text
+      if (typeof p?.text === "string" && p.thought !== true) text += p.text
     }
   }
   if (text) out.push({ type: "delta", text })

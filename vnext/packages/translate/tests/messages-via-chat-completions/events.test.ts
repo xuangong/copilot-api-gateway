@@ -11,6 +11,24 @@ async function collect<T>(src: AsyncIterable<T>): Promise<T[]> {
 async function* fromArray<T>(items: T[]): AsyncGenerator<T> { for (const it of items) yield it }
 
 describe('messages-via-chat-completions :: events', () => {
+  it("waits for trailing usage, subtracts cached input, and preserves missing output", async () => {
+    for (const present of [true, false]) {
+      const events = await collect(translateChatSSEToMessagesEvents(fromArray([
+        { id: "tail", choices: [{ delta: { content: "hi" } }] },
+        { id: "tail", choices: [{ delta: {}, finish_reason: "stop" }] },
+        ...(present ? [{ choices: [], usage: { prompt_tokens: 100, completion_tokens: 20, prompt_tokens_details: { cached_tokens: 10 } } }] : []),
+      ])))
+      const delta = events.find(event => event.type === "message_delta")
+      if (present) expect(delta?.usage).toMatchObject({ input_tokens: 90, output_tokens: 20, cache_read_input_tokens: 10 })
+      else {
+        expect(delta?.usage?.output_tokens).toBeUndefined()
+        expect(delta?.usage?.input_tokens).toBeUndefined()
+      }
+      const start = events.find(event => event.type === "message_start")
+      expect(start?.message.usage?.input_tokens).toBeUndefined()
+      expect(events.at(-1)?.type).toBe("message_stop")
+    }
+  })
   it('emits message_start lazily on the first chunk with a delta', async () => {
     const chunks = [
       { id: 'chatcmpl_1', model: 'gpt-4o', choices: [{ index: 0, delta: { role: 'assistant', content: 'Hi' } }] },
@@ -90,8 +108,8 @@ describe('messages-via-chat-completions :: events', () => {
     expect((md.usage as { output_tokens?: number; cache_read_input_tokens?: number })?.output_tokens).toBe(5)
     expect((md.usage as { output_tokens?: number; cache_read_input_tokens?: number })?.cache_read_input_tokens).toBe(3)
     const ms = events.find((e) => e.type === 'message_start') as Extract<MessagesEvent, { type: 'message_start' }>
-    // input_tokens captured pre-emit defaults to 0; usage_only chunk arrives after
-    expect((ms.message.usage as { input_tokens: number }).input_tokens).toBe(0)
+    // Input usage has not arrived at message_start; zero would fabricate a sample.
+    expect(ms.message.usage?.input_tokens).toBeUndefined()
   })
 
   it('synthesizes a terminal sequence when upstream stream ends without finish_reason', async () => {

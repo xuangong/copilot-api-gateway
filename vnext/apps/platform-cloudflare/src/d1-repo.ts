@@ -141,6 +141,25 @@ export async function initD1(db: D1Database): Promise<void> {
     ])
     if (!usageIdentity || !requestsIdentity) throw error
   }
+  await initD1PerformanceMetrics(db)
+}
+
+export async function initD1PerformanceMetrics(db: D1Database): Promise<void> {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS performance_metrics (
+  hour TEXT NOT NULL,
+  key_id TEXT NOT NULL,
+  dimensions TEXT NOT NULL,
+  metric TEXT NOT NULL,
+  upper REAL NOT NULL,
+  count INTEGER NOT NULL,
+  sum REAL NOT NULL,
+  min REAL NOT NULL,
+  max REAL NOT NULL,
+  PRIMARY KEY (hour, key_id, dimensions, metric, upper)
+)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_performance_metrics_hour ON performance_metrics (hour)`),
+  ])
 }
 
 class D1Executor implements SqlExecutor {
@@ -174,6 +193,7 @@ export class D1Repo implements Repo {
   cache: Repo["cache"]
   latency: Repo["latency"]
   performance: Repo["performance"]
+  performanceMetrics: Repo["performanceMetrics"]
   users: Repo["users"]
   inviteCodes: Repo["inviteCodes"]
   sessions: Repo["sessions"]
@@ -196,6 +216,7 @@ export class D1Repo implements Repo {
     this.cache = shared.cache
     this.latency = shared.latency
     this.performance = shared.performance
+    this.performanceMetrics = shared.performanceMetrics
     this.users = shared.users
     this.inviteCodes = shared.inviteCodes
     this.sessions = shared.sessions

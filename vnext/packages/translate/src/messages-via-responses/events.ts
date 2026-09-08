@@ -212,7 +212,7 @@ function openThinkingBlock(state: State, outputIndex: number, out: MessagesEvent
 function handleCreated(ev: RespCreatedEvent): MessagesEvent[] {
   const cached = ev.response.usage?.input_tokens_details?.cached_tokens
   const cacheWrite = ev.response.usage?.input_tokens_details?.cache_write_tokens
-  const input = Math.max(0, (ev.response.usage?.input_tokens ?? 0) - (cached ?? 0) - (cacheWrite ?? 0))
+  const input = ev.response.usage?.input_tokens
   return [
     {
       type: 'message_start',
@@ -225,7 +225,7 @@ function handleCreated(ev: RespCreatedEvent): MessagesEvent[] {
         stop_reason: null,
         stop_sequence: null,
         usage: {
-          input_tokens: input,
+          ...(input !== undefined ? { input_tokens: Math.max(0, input - (cached ?? 0) - (cacheWrite ?? 0)) } : {}),
           output_tokens: 0,
           ...(cached !== undefined ? { cache_read_input_tokens: cached } : {}),
           ...(cacheWrite !== undefined ? { cache_creation_input_tokens: cacheWrite } : {}),
@@ -416,8 +416,8 @@ function handleCompleted(ev: RespCompletedEvent, state: State): MessagesEvent[] 
       // the prompt side here is the only way clients see anything but zero.
       // `input_tokens` is inclusive upstream: cached and cache-write are
       // disjoint subsets of it, and Messages wants the three reported apart.
-      input_tokens: Math.max(0, (ev.response.usage?.input_tokens ?? 0) - (cached ?? 0) - (cacheWrite ?? 0)),
-      output_tokens: ev.response.usage?.output_tokens ?? 0,
+      ...(ev.response.usage?.input_tokens !== undefined ? { input_tokens: Math.max(0, ev.response.usage.input_tokens - (cached ?? 0) - (cacheWrite ?? 0)) } : {}),
+      ...(ev.response.usage?.output_tokens !== undefined ? { output_tokens: ev.response.usage.output_tokens } : {}),
       ...(cached !== undefined ? { cache_read_input_tokens: cached } : {}),
       ...(cacheWrite !== undefined ? { cache_creation_input_tokens: cacheWrite } : {}),
     } as never,
