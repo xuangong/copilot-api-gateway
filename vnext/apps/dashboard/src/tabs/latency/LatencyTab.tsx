@@ -1,24 +1,21 @@
 import { performanceLabels } from "../../state/performance-labels"
-import type { PerformanceMetricName, PerformanceMetricsGroup } from "@vibe-llm/protocols/common"
+import type { PerformanceMetricsGroup } from "@vibe-llm/protocols/common"
 import { usePerformance } from "../../state/performance"
-import { formatPerformanceValue, summarizeDistribution, type PerformanceFilters } from "../../state/performance-data"
+import type { PerformanceFilters } from "../../state/performance-data"
 import type { LatencyRange } from "../../state/latency"
 import { useT } from "../../state/i18n"
 import { Select } from "../../components/Select"
+import { ExperienceSummary } from "./ExperienceSummary"
+import { ModelComparison } from "./ModelComparison"
+import { PerformanceDiagnostics } from "./PerformanceDiagnostics"
 
-const METRICS: PerformanceMetricName[] = [
-  "ttftMs", "firstTextMs", "upstreamTps", "overallTps", "totalMs", "upstreamMs", "generationMs",
-  "gapMs", "maxGapMs", "outputTokens", "reasoningTokens", "inputTokens", "cachedInputTokens",
-]
 const EXTRA_FILTERS = ["keyId", "incomingModel", "upstream", "sourceApi", "targetApi", "runtimeLocation", "inputBucket", "cacheStatus", "reasoningEffort"] as const
-
 
 export function LatencyTab() {
   const s = usePerformance()
   const t = useT()
   const labels = performanceLabels(t)
   const ranges: Array<[LatencyRange, string]> = [["today", "dash.today"], ["week", "dash.weekShort"], ["7d", "dash.sevenDaysShort"], ["30d", "dash.thirtyDaysShort"]]
-  const value = (n: number | null, metric: PerformanceMetricName) => formatPerformanceValue(n, metric, t("dash.perf.unknown"))
   const dynamicOptions = (field: keyof PerformanceMetricsGroup) => {
     const values = [...new Set(s.data.groups.flatMap(group => typeof group[field] === "string" ? [String(group[field])] : []))].sort()
     return values.map(v => ({
@@ -28,16 +25,17 @@ export function LatencyTab() {
     }))
   }
   function filter(field: keyof PerformanceFilters, options: Array<{ value: string; label: string }>) {
-    return <div key={field} className="flex flex-col gap-1.5 min-w-0">
+    return <div key={field} className={"flex flex-col gap-1.5 min-w-0 " + (field === "model" ? "col-span-2 sm:col-span-1" : "")}>
       <span id={"performance-filter-" + field} className="text-xs text-themed-dim">{labels[field]}</span>
       <Select ariaLabel={labels[field]} value={s.filters[field] ?? ""} onChange={v => s.setFilter(field, v)}
         className="w-full min-w-0" options={[{ value: "", label: t("dash.perf.all") }, ...options]} />
     </div>
   }
+  const extraCount = EXTRA_FILTERS.filter(field => s.filters[field]).length
   const selectedCount = s.filtered.reduce((sum, group) => sum + group.requests, 0)
-  return <div className="space-y-6" aria-busy={s.loading}>
+  return <div className="space-y-5" aria-busy={s.loading}>
     <div className="flex flex-wrap items-start justify-between gap-4">
-      <div><h2 className="text-lg font-semibold text-themed">{t("dash.perf.title")}</h2><p className="text-xs text-themed-dim mt-1">{t("dash.perf.gateway")}</p></div>
+      <div><h2 className="text-lg font-semibold text-themed">{t("dash.perf.experience.title")}</h2><p className="text-xs text-themed-dim mt-1 leading-relaxed max-w-[65ch]">{t("dash.perf.experience.scope")}</p></div>
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex bg-surface-800 rounded-lg p-0.5">
           {ranges.map(([range, label]) => <button key={range} type="button" aria-pressed={s.range === range} onClick={() => s.switchRange(range)}
@@ -51,61 +49,26 @@ export function LatencyTab() {
       <span>{s.weekLabel}</span>
       <button type="button" onClick={() => s.shiftWeek(1)} disabled={s.weekOffset >= 0} aria-label={t("dash.nextWeekTitle")} className="p-2 rounded hover:bg-surface-700 disabled:opacity-30">›</button>
     </div>}
-    <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
+    <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
       {filter("model", dynamicOptions("model"))}
       {filter("mode", (["stream", "sync"] as const).map(v => ({ value: v, label: labels[v] })))}
       {filter("outcome", (["success", "error", "cancelled"] as const).map(v => ({ value: v, label: labels[v] })))}
     </div>
-    <details className="rounded-xl border border-themed p-4">
-      <summary className="text-sm text-themed-secondary cursor-pointer">{t("dash.perf.filters")}</summary>
+    <details className="border-b border-themed pb-4">
+      <summary className="text-sm text-themed-secondary cursor-pointer">{t("dash.perf.filters")}{extraCount > 0 && <span className="ml-2 tabular-nums">({extraCount})</span>}</summary>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">{EXTRA_FILTERS.map(field => filter(field, dynamicOptions(field)))}</div>
     </details>
     {s.error && <div role="alert" className="rounded-lg bg-accent-red/10 text-accent-red p-3 text-sm">{s.error}</div>}
     {s.loading ? <div role="status" className="h-36 rounded-xl bg-surface-800 p-5 text-themed-dim text-sm">{t("dash.loadingShort")}</div> : <>
-      <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-themed-secondary">
-        <span className="font-medium text-themed">{selectedCount.toLocaleString()} {t("dash.perf.requests")}</span>
-        {(["success", "error", "cancelled"] as const).map(outcome => <span key={outcome}>{labels[outcome]}: {s.outcomeCounts[outcome].toLocaleString()}</span>)}
+      <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs text-themed-dim">
+        <span className="text-themed-secondary">{selectedCount.toLocaleString()} {t("dash.perf.requests")}</span>
+        <span>{t("dash.perf.experience.averages")}</span>
       </div>
-      {s.data.legacyRequests > 0 && <p className="text-xs text-themed-dim">{t("dash.perf.legacy", { count: s.data.legacyRequests.toLocaleString() })}</p>}
-      {selectedCount === 0 && !s.error && <p className="text-sm text-themed-dim py-3">{t("dash.perf.empty")}</p>}
-      <div className="overflow-x-auto rounded-xl border border-themed">
-        <table className="w-full text-sm whitespace-nowrap">
-          <caption className="sr-only">{t("dash.perf.title")}, {t("dash.perf.gateway")}</caption>
-          <thead className="bg-surface-800 text-xs text-themed-dim"><tr>
-            <th scope="col" className="px-4 py-3 text-left">{t("dash.perf.metric")}</th>
-            {[t("dash.perf.mean"), "P50", "P95", t("dash.perf.maximum"), t("dash.perf.samples")].map(label => <th scope="col" key={label} className="px-4 py-3 text-right font-medium">{label}</th>)}
-          </tr></thead>
-          <tbody>{METRICS.map(metric => {
-            const stats = summarizeDistribution(s.metrics[metric])
-            return <tr key={metric} className="border-t border-themed hover:bg-surface-800/50">
-              <th scope="row" className="px-4 py-3 text-left font-normal text-themed">{labels[metric]}</th>
-              {[stats.mean, stats.p50, stats.p95, stats.max].map((n, index) => <td key={index} className={"px-4 py-3 text-right font-mono text-xs " + (n === null ? "text-themed-dim" : "text-themed-secondary")}>{value(n, metric)}</td>)}
-              <td className="px-4 py-3 text-right font-mono text-xs text-themed-dim">{stats.count.toLocaleString()}</td>
-            </tr>
-          })}</tbody>
-        </table>
-      </div>
-      <div className="space-y-2 max-w-[75ch] text-xs leading-relaxed text-themed-dim"><p>{t("dash.perf.histogram")}</p><p>{t("dash.perf.rateNote")}</p></div>
-      {s.comparisons.length > 0 && <section>
-        <h3 className="text-sm font-medium text-themed mb-3">{t("dash.perf.comparison")}</h3>
-        <div className="overflow-x-auto rounded-xl border border-themed"><table className="w-full text-sm whitespace-nowrap">
-          <thead className="bg-surface-800 text-xs text-themed-dim"><tr>
-            <th scope="col" className="px-4 py-3 text-left">{t("dash.perf.model")} / {t("dash.perf.upstream")}</th>
-            <th scope="col" className="px-4 py-3 text-right">{t("dash.perf.requests")}</th>
-            <th scope="col" className="px-4 py-3 text-right">TTFT P50 / P95</th>
-            <th scope="col" className="px-4 py-3 text-right">{t("dash.perf.upstreamTps")}</th>
-          </tr></thead><tbody>{s.comparisons.map(group => {
-            const ttft = summarizeDistribution(group.metrics.ttftMs)
-            const speed = summarizeDistribution(group.metrics.upstreamTps)
-            return <tr key={group.id} className="border-t border-themed">
-              <th scope="row" className="px-4 py-3 text-left font-normal"><span className="text-themed font-mono text-xs">{group.model}</span><div className="text-xs text-themed-dim mt-1">{group.upstream ?? t("dash.perf.unknown")} · {group.sourceApi} → {group.targetApi}</div></th>
-              <td className="px-4 py-3 text-right text-themed-secondary font-mono text-xs">{group.requests.toLocaleString()}</td>
-              <td className="px-4 py-3 text-right text-themed-secondary font-mono text-xs">{value(ttft.p50, "ttftMs")} / {value(ttft.p95, "ttftMs")}<div className="text-themed-dim mt-1">n={ttft.count}</div></td>
-              <td className="px-4 py-3 text-right text-themed-secondary font-mono text-xs">{value(speed.mean, "upstreamTps")}<div className="text-themed-dim mt-1">n={speed.count}</div></td>
-            </tr>
-          })}</tbody>
-        </table></div>
-      </section>}
+      {selectedCount === 0 ? !s.error && <p className="text-sm text-themed-dim py-6">{t("dash.perf.empty")}</p> : <>
+        <ExperienceSummary metrics={s.metrics} requests={selectedCount} />
+        {s.comparisons.length > 0 && <ModelComparison groups={s.comparisons} />}
+      </>}
+      <PerformanceDiagnostics metrics={s.metrics} legacyRequests={s.data.legacyRequests} />
     </>}
   </div>
 }
