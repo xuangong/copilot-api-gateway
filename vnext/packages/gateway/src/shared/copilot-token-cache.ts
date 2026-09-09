@@ -1,3 +1,4 @@
+import { waitUntil } from "@vibe-core/platform"
 /**
  * In-process cache for the Copilot session token exchanged from a GitHub
  * OAuth token. Ported (slim) from src/services/github/copilot-token-cache.ts —
@@ -53,6 +54,7 @@ const memCache = new Map<string, CachedSession>()
 const inflight = new Map<string, Promise<CopilotSession>>()
 /** When each key last *actually* exchanged, for the forceRefresh cooldown. */
 const lastExchangeAt = new Map<string, number>()
+const earlyRefreshAt = new Map<string, number>()
 const SAFETY_BUFFER_SEC = 60
 const REFRESH_COOLDOWN_MS = 60_000
 
@@ -119,6 +121,15 @@ export async function getCachedCopilotToken(
   const cached = memCache.get(cacheKey)
 
   if (!opts.forceRefresh && isFresh(cached, nowSec)) {
+    // Keep valid sessions usable while renewing ahead of the hard expiry.
+    memCache.delete(cacheKey)
+    memCache.set(cacheKey, cached!)
+    if (cached!.expiresAt <= nowSec + 300 &&
+        Date.now() - (earlyRefreshAt.get(cacheKey) ?? lastExchangeAt.get(cacheKey) ?? 0) >= REFRESH_COOLDOWN_MS) {
+      earlyRefreshAt.set(cacheKey, Date.now())
+      const refresh = getCachedCopilotToken(githubToken, accountType, githubHost, fetcher, { forceRefresh: true }).catch(() => {})
+      try { waitUntil(refresh) } catch { void refresh }
+    }
     return { token: cached!.token, apiEndpoint: cached!.apiEndpoint }
   }
 
@@ -135,25 +146,33 @@ export async function getCachedCopilotToken(
   const pending = inflight.get(cacheKey)
   if (pending) return pending
 
-  const exchange = (async (): Promise<CopilotSession> => {
+  const exchange: Promise<CopilotSession> = Promise.resolve().then(async (): Promise<CopilotSession> => {
     const fresh = await exchangeGithubToken(githubToken, githubHost, fetcher)
     if (typeof fresh.token !== 'string' || !fresh.token || typeof fresh.expires_at !== 'number') {
       throw new Error('Malformed Copilot token exchange response')
     }
     const apiEndpoint = fresh.endpoints?.api ?? defaultApiEndpoint(accountType)
     const entry: CachedSession = { token: fresh.token, apiEndpoint, expiresAt: fresh.expires_at }
+    if (inflight.get(cacheKey) !== exchange) return { token: entry.token, apiEndpoint: entry.apiEndpoint }
+    memCache.delete(cacheKey)
     memCache.set(cacheKey, entry)
+    while (memCache.size > 512) {
+      const oldest = memCache.keys().next().value!
+      memCache.delete(oldest)
+      lastExchangeAt.delete(oldest)
+      earlyRefreshAt.delete(oldest)
+    }
     // Only on success: a failed exchange leaves the caller with nothing, so it
     // must not start a cooldown that suppresses the next attempt.
     lastExchangeAt.set(cacheKey, Date.now())
     return { token: entry.token, apiEndpoint: entry.apiEndpoint }
-  })()
+  })
 
   inflight.set(cacheKey, exchange)
   try {
     return await exchange
   } finally {
-    inflight.delete(cacheKey)
+    if (inflight.get(cacheKey) === exchange) inflight.delete(cacheKey)
   }
 }
 
@@ -164,5 +183,7 @@ export async function invalidateCopilotToken(
 ): Promise<void> {
   const cacheKey = await sha256Hex(`${githubHost}:${accountType}:${githubToken}`)
   memCache.delete(cacheKey)
+  inflight.delete(cacheKey)
+  earlyRefreshAt.delete(cacheKey)
   lastExchangeAt.delete(cacheKey)
 }

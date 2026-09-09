@@ -1,3 +1,4 @@
+import { getTranslator } from '../../dispatch/translator-registry.ts'
 import { MODEL_CATALOG_UNAVAILABLE } from '../../errors/model-catalog.ts'
 import { fetchWithPerformance, observeUpstreamFrames, observeUpstreamJson } from "../shared/performance-upstream"
 // vnext/packages/gateway/src/data-plane/chat-flow/chat-completions/attempt.ts
@@ -120,6 +121,7 @@ export const chatCompletionsAttempt = {
         translator: sel.translator,
         innerAttempt: async (innerArgs) => {
           return (await hubAttempt.generate({
+            selectBinding: async () => ({ ...sel, translator: getTranslator(hubProtocol, hubProtocol)! }),
             payload: innerArgs.payload as never,
             auth: innerArgs.auth as never,
             ctx: { downstreamAbortSignal: innerArgs.signal } as never,

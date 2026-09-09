@@ -168,3 +168,15 @@ test('createFromUpstream — fallback path gets no refresh hook', async () => {
     (provider as unknown as { refreshSession?: unknown }).refreshSession,
   ).toBeUndefined()
 })
+
+test('deferred credentials do not exchange tokens for unselected providers', async () => {
+  let exchanges = 0
+  const provider = await copilotProviderPlugin.createFromUpstream(makeUpstream({ githubToken: 'fixture' }), {
+    deferCredentials: true,
+    getCachedCopilotToken: async () => { exchanges++; return { token: 'fixture', apiEndpoint: 'https://fixture.test' } },
+    fetcherForUpstream: () => async () => Response.json({ object: 'list', data: [] }),
+  })
+  expect(exchanges).toBe(0)
+  await provider!.getModels()
+  expect(exchanges).toBe(1)
+})

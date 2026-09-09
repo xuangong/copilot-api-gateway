@@ -11,7 +11,7 @@
  * `getById(unknownId)` resolves to null → allowed: true. That covers the dev
  * auth path (`apiKeyId === 'dev-user'`, no row in `api_keys`).
  */
-import { getRepo } from '../../repo/index.ts'
+import { getDataPlaneRepo as getRepo } from '../../repo/index.ts'
 import { recordCostUsd } from '../../shared/usage-cost.ts'
 import { computeWeightedTokens } from './quota-math.ts'
 import type { ApiKeyId } from '../../repo/branded-ids.ts'

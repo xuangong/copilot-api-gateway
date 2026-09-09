@@ -8,7 +8,7 @@
 //   - `Fetcher` imported from local ./fetcher.
 //   - No semicolons per vNext lint config.
 
-import { getUpstreamRepo, UpstreamGoneError } from '@vibe-core/upstream-repo'
+import { getUpstreamRepo, getAuthoritativeUpstreamRepo, UpstreamGoneError } from '@vibe-core/upstream-repo'
 import {
   ClaudeCodeOAuthSessionTerminatedError,
   refreshClaudeCodeAccessToken,
@@ -72,7 +72,8 @@ const ensureClaudeCodeAccessTokenInner = async (
   args: EnsureClaudeCodeAccessTokenArgs,
   recoveryAllowed: boolean,
 ): Promise<EnsuredAccessToken> => {
-  const fresh = await getUpstreamRepo().getById(args.upstreamId)
+  const repo = args.force || !recoveryAllowed ? getAuthoritativeUpstreamRepo() : getUpstreamRepo()
+  const fresh = await repo.getById(args.upstreamId)
   if (!fresh) throw new Error(`Claude Code upstream ${args.upstreamId} not found`)
   const state = readClaudeCodeUpstreamState(fresh.state)
 
@@ -210,7 +211,7 @@ const recoverFromRefreshRace = async (
   args: EnsureClaudeCodeAccessTokenArgs,
   usedRefreshToken: string,
 ): Promise<EnsuredAccessToken | null> => {
-  const reread = await getUpstreamRepo().getById(args.upstreamId)
+  const reread = await getAuthoritativeUpstreamRepo().getById(args.upstreamId)
   if (!reread) return null
   const rereadState = readClaudeCodeUpstreamState(reread.state)
   const rereadAccount = rereadState.accounts[0]!

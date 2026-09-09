@@ -7,7 +7,7 @@
 //   - `Fetcher` imported from local ./fetcher (vNext-owned type, not from
 //     an external `@floway-dev/provider` boundary).
 
-import { getUpstreamRepo, UpstreamGoneError } from '@vibe-core/upstream-repo'
+import { getUpstreamRepo, getAuthoritativeUpstreamRepo, UpstreamGoneError } from '@vibe-core/upstream-repo'
 import { CodexOAuthSessionTerminatedError, refreshCodexAccessToken } from './auth/oauth'
 import type { Fetcher } from './fetcher'
 import {
@@ -125,7 +125,8 @@ const ensureCodexAccessTokenInner = async (
   recoveryAllowed: boolean,
   force: boolean,
 ): Promise<CodexAccessTokenEntry> => {
-  const fresh = await getUpstreamRepo().getById(upstreamId)
+  const repo = force || !recoveryAllowed ? getAuthoritativeUpstreamRepo() : getUpstreamRepo()
+  const fresh = await repo.getById(upstreamId)
   if (!fresh) throw new Error(`Codex upstream ${upstreamId} not found`)
   const state = readCodexUpstreamState(fresh.state)
   const account = state.accounts.find((a) => a.chatgptAccountId === accountId)
@@ -166,7 +167,7 @@ const recoverFromRefreshRace = async (
   usedRefreshToken: string,
   mint: (refreshToken: string) => Promise<CodexAccessTokenEntry>,
 ): Promise<CodexAccessTokenEntry | null> => {
-  const reread = await getUpstreamRepo().getById(upstreamId)
+  const reread = await getAuthoritativeUpstreamRepo().getById(upstreamId)
   if (!reread) return null
   const rereadState = readCodexUpstreamState(reread.state)
   const rereadAccount = rereadState.accounts.find((a) => a.chatgptAccountId === accountId)

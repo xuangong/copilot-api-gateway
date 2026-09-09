@@ -1,24 +1,13 @@
-/**
- * Provider registry — Week 5-prep port of old src/providers/registry.ts.
- *
- * Slimmed for vnext scope: Copilot is the only ported provider today, so
- * Azure/Custom factory branches return null until those providers are
- * ported (tracked separately). The shape of listProviderBindings /
- * listUpstreamModels stays 1:1 with the old project so the orchestrator
- * multi-provider walk (Week 4b follow-up) and /v1/models route can drop
- * straight in.
- *
- * Intentionally NOT ported yet:
- *   - getCachedCopilotToken: token-cache module not in vnext; caller is
- *     expected to pass an already-exchanged copilot token via CreateProviderOptions
- *   - 15s upstreamListCache: premature optimization for the scaffold;
- *     re-introduce once /v1/models route shows it in profiles
- */
+import { upstreamConfiguration } from "../../repo/upstream-configuration.ts"
+import { createHash } from "node:crypto"
+import { ConfigurationUnavailableError } from "../../repo/configuration-cache.ts"
+/** Provider bindings use shared configuration and retained model catalogs.
+ * Credential preparation is deferred until discovery or selected dispatch. */
 import type { AccountType } from '../../shared/config/constants.ts'
 import { defaultsForUpstream, resolveEffectiveFlags } from '../flags/index.ts'
 import type { UpstreamRecord } from '../../repo/types.ts'
 import type { UserId } from '../../repo/branded-ids.ts'
-import { getRepo } from '../../repo/index.ts'
+import { getDataPlaneRepo as getRepo } from '../../repo/index.ts'
 import { __registerPlatformReset, getRuntimeLocation, waitUntil } from '@vibe-core/platform'
 import { getCache } from '../../data-plane/cache/index.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
@@ -55,6 +44,7 @@ export interface ListUpstreamModelsOptions {
    * catalogs must never leak another owner's models.
    */
   allOwners?: boolean
+  pin?: string
   /** Propagate an upstream catalog failure instead of treating it as empty. */
   strictCatalog?: boolean
   /** Track incomplete discovery while still collecting healthy upstreams. */
@@ -90,6 +80,7 @@ export async function createProviderFromUpstream(
   if (!plugin) return null
   return plugin.createFromUpstream(upstream, {
     getCachedCopilotToken,
+    deferCredentials: true,
     copilotFallback: copilot,
     fetcherForUpstream,
   })
@@ -188,8 +179,23 @@ interface ModelsMemo extends ModelsSnapshot { refreshAfter: number }
 const modelsMemo = new Map<string, ModelsMemo>()
 const modelsRefreshes = new Map<string, Promise<ModelsResponse>>()
 
+function rememberModels(key: string, entry: ModelsMemo): void {
+  const upstreamKey = key.slice(0, key.lastIndexOf('@'))
+  for (const previous of modelsMemo.keys()) {
+    if (previous.slice(0, previous.lastIndexOf('@')) === upstreamKey) modelsMemo.delete(previous)
+  }
+  modelsMemo.set(key, entry)
+  while (modelsMemo.size > 512) modelsMemo.delete(modelsMemo.keys().next().value!)
+}
+
+
+// Quota telemetry changes state/updatedAt on every response, but does not
+// change model availability. Hash configuration rather than exposing credentials
+// in storage keys; actual config/credential changes still get a new catalog.
+const modelsRevision = (upstream: UpstreamRecord<unknown>): string =>
+  createHash('sha256').update(upstreamConfiguration(upstream)).digest('hex')
 const modelsCacheKey = (upstream: UpstreamRecord<unknown>): string =>
-  `models:${upstream.id}@${upstream.updatedAt}`
+  `models:${upstream.id}@${modelsRevision(upstream)}`
 // A stable storage key avoids accumulating permanent entries on every edit.
 // The revision in the value prevents reuse across configuration changes.
 const modelsSnapshotKey = (upstream: UpstreamRecord<unknown>): string =>
@@ -211,8 +217,8 @@ export function refreshModelsCache(
   const refresh = (async () => {
     const models = await provider.getModels()
     if (!validModels(models)) throw new Error('Invalid upstream model catalog')
-    const snapshot: ModelsSnapshot = { revision: upstream.updatedAt, refreshedAt: Date.now(), models }
-    modelsMemo.set(key, { ...snapshot, refreshAfter: snapshot.refreshedAt + MODELS_REFRESH_MS })
+    const snapshot: ModelsSnapshot = { revision: modelsRevision(upstream), refreshedAt: Date.now(), models }
+    rememberModels(key, { ...snapshot, refreshAfter: snapshot.refreshedAt + MODELS_REFRESH_MS })
     try {
       await getCache().set(modelsSnapshotKey(upstream), snapshot, null)
     } catch {
@@ -233,17 +239,15 @@ async function getCachedModels(
   let snapshot = modelsMemo.get(key)
   if (snapshot && snapshot.refreshAfter > now) return snapshot.models
 
-  try {
+  if (!snapshot) try {
     const l2 = await getCache().get<ModelsSnapshot>(modelsSnapshotKey(upstream))
-    if (l2?.revision === upstream.updatedAt && Number.isFinite(l2.refreshedAt) && validModels(l2.models)) {
-      if (!snapshot || l2.refreshedAt > snapshot.refreshedAt) {
-        snapshot = { ...l2, refreshAfter: l2.refreshedAt + MODELS_REFRESH_MS }
-      }
+    if (l2?.revision === modelsRevision(upstream) && Number.isFinite(l2.refreshedAt) && validModels(l2.models)) {
+      snapshot = { ...l2, refreshAfter: l2.refreshedAt + MODELS_REFRESH_MS }
     } else if (!snapshot) {
       // Preserve pre-upgrade TTL entries too, before their original expiry.
-      const legacy = await getCache().get<ModelsResponse>(key)
+      const legacy = await getCache().get<ModelsResponse>(`models:${upstream.id}@${upstream.updatedAt}`)
       if (legacy && validModels(legacy)) {
-        snapshot = { revision: upstream.updatedAt, refreshedAt: 0, refreshAfter: 0, models: legacy }
+        snapshot = { revision: modelsRevision(upstream), refreshedAt: 0, refreshAfter: 0, models: legacy }
         await getCache().set(modelsSnapshotKey(upstream), snapshot, null)
       }
     }
@@ -254,7 +258,7 @@ async function getCachedModels(
   const current = modelsMemo.get(key)
   if (current && (!snapshot || current.refreshedAt >= snapshot.refreshedAt)) snapshot = current
   if (!snapshot) return refreshModelsCache(upstream, provider)
-  modelsMemo.set(key, snapshot)
+  rememberModels(key, snapshot)
   if (snapshot.refreshAfter > Date.now()) return snapshot.models
 
   // Return known routes immediately while the next complete catalog is fetched.
@@ -310,6 +314,7 @@ export async function listProviderBindings(
   try {
     upstreams = await listVisibleUpstreams(opts.ownerId as UserId | undefined, opts.allOwners)
   } catch (err) {
+    if (err instanceof ConfigurationUnavailableError) throw err
     opts.onCatalogError?.()
     if (opts.strictCatalog) throw err
     upstreams = []
@@ -327,11 +332,12 @@ export async function listProviderBindings(
 
   const bindings: LlmProviderBinding[] = []
   for (const upstream of upstreams) {
-    if (!upstream.enabled) continue
+    if (!upstream.enabled || (opts.pin && upstream.id !== opts.pin)) continue
     try {
       const provider = await createProviderFromUpstream(upstream, opts.copilot, fetcherForUpstream)
       if (!provider) throw new Error('Unable to construct model provider')
       const models = await getCachedModels(upstream, provider)
+      provider.setModelCatalog?.(models)
       const enabledFlags = resolveEffectiveFlags(defaultsForUpstream(upstream.provider), [upstream.flagOverrides])
       const disabled = new Set(upstream.disabledPublicModelIds)
       for (const model of models.data ?? []) {

@@ -12,6 +12,8 @@ import type { Fetcher, UpstreamPlugin } from '@vibe-core/upstream'
 import type { LlmModelProvider } from './types'
 
 export interface ProviderPluginContext {
+  /** Gateway routing constructs providers before selection; defer credential I/O. */
+  deferCredentials?: boolean
   /** Exchange a stored github_token for a short-lived copilot session.
    *  Returns both the token AND the tenant-advertised Copilot API endpoint
    *  (github.com accounts → https://api.githubcopilot.com family;

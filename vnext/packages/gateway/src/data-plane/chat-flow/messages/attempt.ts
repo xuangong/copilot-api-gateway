@@ -336,6 +336,7 @@ export const messagesAttempt = {
         translator: sel.translator,
         innerAttempt: async (innerArgs) => {
           return (await hubAttempt.generate({
+            selectBinding: async () => ({ ...sel, translator: getTranslator(hubProtocol, hubProtocol)! }),
             payload: innerArgs.payload as never,
             auth: innerArgs.auth as never,
             // Hosted tools in the hub still need this key's search settings.

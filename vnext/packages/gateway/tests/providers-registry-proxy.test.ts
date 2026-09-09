@@ -68,7 +68,7 @@ test('a proxy catalog read failure rejects instead of yielding direct-dialing bi
     },
   })
 
-  await expect(listProviderBindings({ ownerId: OWNER })).rejects.toThrow(STORAGE_FAILURE)
+  await expect(listProviderBindings({ ownerId: OWNER })).rejects.toThrow("configuration temporarily unavailable")
 })
 
 /**

@@ -6,7 +6,7 @@
  * creation time to match the legacy default — control-plane PATCH flips it
  * off when an admin disables web search for a given key.
  */
-import { getRepo } from '../../repo/index.ts'
+import { getRepo, getDataPlaneRepo, hasConfigurationSnapshot } from '../../repo/index.ts'
 import type { ApiKey } from '../../repo/types.ts'
 import type { ApiKeyRoutingPolicy } from '../../shared/api-key-model-mappings.ts'
 import { DEFAULT_API_KEY_MODEL_MAPPINGS } from '../../shared/api-key-model-mappings.ts'
@@ -79,7 +79,8 @@ export function deleteApiKey(id: ApiKeyId): Promise<boolean> {
 }
 
 export async function validateApiKey(rawKey: string): Promise<ValidatedApiKey | null> {
-  const key = await getRepo().apiKeys.findByRawKey(rawKey)
+  const repo = hasConfigurationSnapshot() ? getDataPlaneRepo() : getRepo()
+  const key = await repo.apiKeys.findByRawKey(rawKey)
   if (!key) return null
   const routingPolicy: ApiKeyRoutingPolicy = key.modelMappingsInvalid
     ? { modelMappingsEnabled: false, modelMappings: [] }

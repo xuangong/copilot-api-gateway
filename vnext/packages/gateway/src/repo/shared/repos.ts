@@ -1121,6 +1121,11 @@ class SharedPerformanceRepo implements PerformanceRepo {
 
 export function buildSharedRepo(x: SqlExecutor): Repo {
   return {
+    configurationRevision: async () => {
+      const row = await x.first<{ revision: number }>("SELECT revision FROM configuration_revision WHERE id = 1", [])
+      if (!row) throw new Error("Configuration revision migration missing")
+      return row.revision
+    },
     apiKeys: new SharedApiKeyRepo(x),
     github: new SharedGitHubRepo(x),
     upstreams: new SharedUpstreamRepo(x),

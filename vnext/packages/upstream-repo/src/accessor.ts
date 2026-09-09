@@ -1,11 +1,12 @@
 import { __registerPlatformReset } from '@vibe-core/platform'
 import type { UpstreamRepo } from './types'
 
+let _authoritative: (() => UpstreamRepo) | null = null
 let _accessor: (() => UpstreamRepo) | null = null
 
 // Platform reset drops the accessor so a subsequent init from a fresh gateway
 // boot in the same test process doesn't inherit a stale closure.
-__registerPlatformReset(() => { _accessor = null })
+__registerPlatformReset(() => { _accessor = null; _authoritative = null })
 
 /**
  * Called once at boot from `@vibe-core/gateway`; gives provider helpers a
@@ -13,12 +14,19 @@ __registerPlatformReset(() => { _accessor = null })
  * before the gateway's own `getRepo()` singleton is populated — the accessor
  * only runs at first read.
  */
-export const initUpstreamRepo = (accessor: () => UpstreamRepo): void => {
+export const initUpstreamRepo = (accessor: () => UpstreamRepo, authoritative = accessor): void => {
   _accessor = accessor
+  _authoritative = authoritative
 }
 
 export const getUpstreamRepo = (): UpstreamRepo => {
   if (!_accessor)
     throw new Error('UpstreamRepo not initialized — call initUpstreamRepo() first')
   return _accessor()
+}
+
+/** Recovery and explicit refresh must observe credentials rotated by other instances. */
+export const getAuthoritativeUpstreamRepo = (): UpstreamRepo => {
+  if (!_authoritative) throw new Error("UpstreamRepo not initialized")
+  return _authoritative()
 }

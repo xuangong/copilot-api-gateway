@@ -38,6 +38,7 @@ export async function resolveBinding(
   let incomplete = false
   const bindings = await listProviderBindings({
     ownerId: opts.ownerId,
+    pin: upstreamPin,
     copilot: opts.copilot,
     onCatalogError: (upstreamId) => {
       if (!upstreamPin || upstreamId === undefined || upstreamId === upstreamPin) incomplete = true

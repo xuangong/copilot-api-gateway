@@ -32,6 +32,24 @@ export const copilotProviderPlugin: LlmProviderPlugin = {
     const fetcher = ctx.fetcherForUpstream?.(upstream.id)
     if (typeof githubToken === 'string' && githubToken && ctx.getCachedCopilotToken) {
       const getToken = ctx.getCachedCopilotToken
+      if (ctx.deferCredentials) {
+        const prepareSession = async () => {
+          try {
+            const session = await getToken(githubToken, accountType, githubHost, fetcher)
+            return { token: session.token, baseUrl: session.apiEndpoint }
+          } catch (error) {
+            if (!ctx.copilotFallback) throw error
+            return { token: ctx.copilotFallback.copilotToken }
+          }
+        }
+        return new CopilotProvider({
+          copilotToken: '', accountType, prepareSession,
+          refreshSession: async () => {
+            const session = await getToken(githubToken, accountType, githubHost, fetcher, { forceRefresh: true })
+            return { token: session.token, baseUrl: session.apiEndpoint }
+          },
+        }, fetcher)
+      }
       try {
         const session = await getToken(githubToken, accountType, githubHost, fetcher)
         return new CopilotProvider(

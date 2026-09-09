@@ -152,6 +152,10 @@ export class CodexProvider implements LlmModelProvider {
     return state.accounts[idx]!
   }
 
+  setModelCatalog(models: ProviderModelsResponse): void {
+    this.catalogCache = models.data as CodexProviderModel[]
+  }
+
   async getModels(): Promise<ProviderModelsResponse> {
     if (!this.catalogCache) {
       const accountId = this.config.accounts[0].chatgptAccountId

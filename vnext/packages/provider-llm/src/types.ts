@@ -74,6 +74,8 @@ export type InboundHeaderMatcher = string | RegExp
  * Also narrows fetch's request type from `unknown` to `ProviderRequest`.
  */
 export interface LlmModelProvider extends UpstreamAdapter {
+  /** Seed instance-local model resolution from the shared successful catalog. */
+  setModelCatalog?(models: ProviderModelsResponse): void
   readonly kind: UpstreamKind
   readonly supportedEndpoints: readonly EndpointKey[]
   getPricingForModelKey(modelKey: string): ModelPricing | null

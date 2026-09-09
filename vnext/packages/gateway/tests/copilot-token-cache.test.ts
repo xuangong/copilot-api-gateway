@@ -103,3 +103,29 @@ test('a cache hit does not call the fetcher again', async () => {
   await getCachedCopilotToken('ghu_cachetest_hit', 'individual', undefined, injected)
   expect(injectedCalls).toBe(1)
 })
+
+test('near-expiry valid sessions refresh in background without delaying the caller', async () => {
+  const originalNow = Date.now
+  let now = originalNow()
+  Date.now = () => now
+  let calls = 0
+  let release!: () => void
+  const gate = new Promise<void>(r => { release = r })
+  const fetcher: Fetcher = async () => {
+    calls++
+    if (calls > 1) await gate
+    return Response.json({ token: calls === 1 ? 'early-old' : 'early-new', expires_at: Math.floor(now / 1000) + 240 })
+  }
+  try {
+    await getCachedCopilotToken('early-refresh-fixture', 'individual', undefined, fetcher)
+    now += 61_000
+    const session = await getCachedCopilotToken('early-refresh-fixture', 'individual', undefined, fetcher)
+    expect(session.token).toBe('early-old')
+    await new Promise(r => setTimeout(r, 0))
+    expect(calls).toBe(2)
+  } finally {
+    release()
+    await new Promise(r => setTimeout(r, 0))
+    Date.now = originalNow
+  }
+})

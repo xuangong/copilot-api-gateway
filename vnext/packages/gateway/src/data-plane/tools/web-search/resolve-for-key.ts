@@ -7,7 +7,7 @@
  * copilot engine searches with.
  */
 
-import { getRepo } from '../../../repo/index.ts'
+import { getDataPlaneRepo as getRepo } from '../../../repo/index.ts'
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 import { pickCopilotSearchToken, resolveKeyWebSearch, type KeyWebSearchResolution } from './key-config.ts'
 

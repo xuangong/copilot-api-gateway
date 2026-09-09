@@ -525,7 +525,7 @@ test('manual refresh reports failure without replacing a successful catalog', as
 test('an edited upstream cannot inherit the previous configuration snapshot', async () => {
   const { upstream } = catalogFixture()
   await catalogIds()
-  upstream.updatedAt = '2026-09-09T00:00:00Z'
+  upstream.config = { githubToken: 'changed-credential' }
   failCatalog()
   await expect(catalogIds()).rejects.toThrow()
 })

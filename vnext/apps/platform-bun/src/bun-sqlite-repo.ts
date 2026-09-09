@@ -31,6 +31,7 @@ class SqliteExecutor implements SqlExecutor {
 }
 
 export class BunSqliteRepo implements Repo {
+  configurationRevision: Repo["configurationRevision"]
   apiKeys: Repo["apiKeys"]
   github: Repo["github"]
   upstreams: Repo["upstreams"]
@@ -55,6 +56,7 @@ export class BunSqliteRepo implements Repo {
   constructor(db: Database) {
     initSqlite(db)
     const shared = buildSharedRepo(new SqliteExecutor(db))
+    this.configurationRevision = shared.configurationRevision
     this.apiKeys = shared.apiKeys
     this.github = shared.github
     this.upstreams = shared.upstreams

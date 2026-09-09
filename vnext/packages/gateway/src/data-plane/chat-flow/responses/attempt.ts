@@ -271,7 +271,8 @@ export const responsesAttempt = {
           translator: sel.translator,
           innerAttempt: async (innerArgs) => {
             return (await hubAttempt.generate({
-              payload: innerArgs.payload as never,
+              selectBinding: async () => ({ ...sel, translator: getTranslator(hubProtocol, hubProtocol)! }),
+            payload: innerArgs.payload as never,
               auth: innerArgs.auth as never,
               ctx: { downstreamAbortSignal: innerArgs.signal } as never,
               telemetryCtx: innerArgs.inheritedTelemetryCtx,

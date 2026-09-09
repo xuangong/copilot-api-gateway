@@ -460,6 +460,8 @@ export interface ResponsesItemsRepo {
  * in the reference project.
  */
 export interface Repo {
+  /** Monotonic configuration revision, advanced transactionally by database triggers. */
+  configurationRevision?(): Promise<number>
   apiKeys: ApiKeyRepo
   github: GitHubRepo
   upstreams: UpstreamRepo

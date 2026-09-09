@@ -23,7 +23,7 @@ import {
 } from '../../../data-plane/observability/latency-tracker.ts'
 import { detectClient } from '../../../data-plane/observability/client-detect.ts'
 import { extractFromJson } from '../../../data-plane/observability/usage-extractor.ts'
-import { getRepo } from '../../../repo/index.ts'
+import { getDataPlaneRepo as getRepo } from '../../../repo/index.ts'
 import type { TokenUsage, UsageRecord } from '../../../repo/types.ts'
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'

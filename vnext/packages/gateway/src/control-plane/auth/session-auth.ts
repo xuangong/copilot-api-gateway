@@ -12,7 +12,7 @@
  */
 import type { Context, MiddlewareHandler } from 'hono'
 import { getRuntimeLocation } from '@vibe-core/platform'
-import { getRepo } from '../../repo/index.ts'
+import { getDataPlaneRepo, getRepo as getRawRepo, hasConfigurationSnapshot } from '../../repo/index.ts'
 import { ADMIN_EMAILS, type AccountType } from '../../shared/config/constants.ts'
 import { validateApiKey } from '../lib/api-keys.ts'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
@@ -20,6 +20,10 @@ import { resolveControlPlaneFetcher } from '../upstreams/proxy-resolution.ts'
 import { dmrBoundKey, isDmrCompatEnabled, isDmrPath } from '../../data-plane/dmr/config.ts'
 import type { ApiKeyRoutingPolicy } from '../../shared/api-key-model-mappings.ts'
 import type { ApiKeyId, SessionToken, UserId } from '../../repo/branded-ids.ts'
+
+import { isDevAuthEnabled } from './dev-auth.ts'
+
+const getRepo = () => hasConfigurationSnapshot() ? getDataPlaneRepo() : getRawRepo()
 
 interface FullAuthCtx {
   userId?: UserId
@@ -123,7 +127,7 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
     // Swallow — handlers see no auth context and decide what to do.
   }
 
-  if (ctx && resolvedUserId) {
+  if (ctx && resolvedUserId && !hasConfigurationSnapshot()) {
     // Resolve the user's copilot upstream so data-plane handlers (web search,
     // image generation) can reach into auth.copilot/githubToken without each
     // route having to repeat the lookup.
@@ -153,6 +157,9 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
       // land here too — thrown at dial time inside getCachedCopilotToken, and
       // only when it misses cache (copilot-token-cache.ts:93 returns first).
     }
+  }
+  if (!ctx && hasConfigurationSnapshot() && !isDevAuthEnabled()) {
+    return c.json({ error: { type: 'authentication_error', message: 'Invalid API key or session' } }, 401)
   }
   if (ctx) c.set('auth' as never, ctx as never)
   await next()

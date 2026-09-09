@@ -186,6 +186,7 @@ class D1Executor implements SqlExecutor {
 }
 
 export class D1Repo implements Repo {
+  configurationRevision: Repo["configurationRevision"]
   apiKeys: Repo["apiKeys"]
   github: Repo["github"]
   upstreams: Repo["upstreams"]
@@ -209,6 +210,7 @@ export class D1Repo implements Repo {
 
   constructor(db: D1Database) {
     const shared = buildSharedRepo(new D1Executor(db))
+    this.configurationRevision = shared.configurationRevision
     this.apiKeys = shared.apiKeys
     this.github = shared.github
     this.upstreams = shared.upstreams

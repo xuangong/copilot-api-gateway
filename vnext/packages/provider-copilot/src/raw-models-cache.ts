@@ -1,3 +1,4 @@
+import { waitUntil } from "@vibe-core/platform"
 /**
  * Tiny in-process cache for the raw Copilot model list, used at request time to
  * resolve Claude variant ids (e.g. claude-opus-4.7 + context-1m-2025-08-07 →
@@ -14,6 +15,8 @@ import type { Fetcher } from "@vibe-core/upstream"
 import { getRawModels, type ModelsResponse } from "./models"
 
 const TTL_MS = 60_000
+const pending = new Map<string, Promise<ModelsResponse>>()
+let generation = 0
 const cache = new Map<string, { fetchedAt: number; data: ModelsResponse }>()
 
 const hashToken = (token: string): string => {
@@ -47,9 +50,22 @@ export async function getCachedRawModels(
   const now = Date.now()
   const hit = cache.get(key)
   if (hit && now - hit.fetchedAt < TTL_MS) return hit.data
-  const data = await getRawModels(copilotToken, accountType, baseUrlOverride, fetcher)
-  cache.set(key, { fetchedAt: now, data })
-  return data
+  let refresh = pending.get(key)
+  if (!refresh) {
+    const epoch = generation
+    refresh = getRawModels(copilotToken, accountType, baseUrlOverride, fetcher).then(data => {
+      if (epoch === generation) rememberRawModels(copilotToken, accountType, baseUrlOverride, data)
+      return data
+    }).finally(() => { if (pending.get(key) === refresh) pending.delete(key) })
+    pending.set(key, refresh)
+  }
+  if (hit) {
+    hit.fetchedAt = now - TTL_MS + 30_000
+    const background = refresh.catch(() => {})
+    try { waitUntil(background) } catch { void background }
+    return hit.data
+  }
+  return refresh
 }
 
 /**
@@ -58,7 +74,9 @@ export async function getCachedRawModels(
  * invalidateRawModelsForToken(token, accountType).
  */
 export function clearRawModelsCache(): void {
+  generation++
   cache.clear()
+  pending.clear()
 }
 
 /**
@@ -71,5 +89,16 @@ export function invalidateRawModelsForToken(
   accountType: AccountType,
   baseUrlOverride?: string,
 ): void {
-  cache.delete(rawModelsCacheKey(copilotToken, accountType, baseUrlOverride))
+  generation++
+  const key = rawModelsCacheKey(copilotToken, accountType, baseUrlOverride)
+  cache.delete(key)
+  pending.delete(key)
+}
+
+/** Bounded across token rotations; normal gateway calls seed this from its catalog. */
+export function rememberRawModels(token: string, account: AccountType, baseUrl: string | undefined, data: ModelsResponse): void {
+  const key = rawModelsCacheKey(token, account, baseUrl)
+  cache.delete(key)
+  cache.set(key, { fetchedAt: Date.now(), data })
+  while (cache.size > 256) cache.delete(cache.keys().next().value!)
 }

@@ -1,3 +1,4 @@
+import { rememberRawModels } from "./raw-models-cache"
 /**
  * CopilotProvider — extracted to @vibe-llm/provider-copilot in Plan 2c.
  *
@@ -58,6 +59,7 @@ export interface CopilotProviderConfig {
    * token until it ages out — every request 401/403 until the operator
    * re-authorises the account by hand.
    */
+  prepareSession?: () => Promise<{ token: string; baseUrl?: string }>
   refreshSession?: () => Promise<{ token: string; baseUrl?: string }>
 }
 
@@ -95,6 +97,8 @@ export class CopilotProvider implements LlmModelProvider {
   ]
   // Mutable: withAuthRetry swaps both in place when a revoked session is
   // re-exchanged, so later requests on this provider use the live credential.
+  private readonly prepareSession?: () => Promise<{ token: string; baseUrl?: string }>
+  private modelCatalog?: ModelsResponse
   private copilotToken: string
   private readonly accountType: AccountType
   private baseUrl?: string
@@ -113,6 +117,7 @@ export class CopilotProvider implements LlmModelProvider {
     this.name = cfg.name ?? 'copilot'
     this.fetcher = fetcher
     this.refreshSession = cfg.refreshSession
+    this.prepareSession = cfg.prepareSession
 
     const variantFiltering = createVariantAndBetaFilteringInterceptor(() => this.copilotToken, this.accountType, () => this.baseUrl, this.fetcher)
     this.messagesChain = [variantFiltering, withContextManagementBetaAligned, withInitiatorHeader, ...messagesPayloadInterceptors]
@@ -122,10 +127,22 @@ export class CopilotProvider implements LlmModelProvider {
     this.embeddingsChain = embeddingsPayloadInterceptors
   }
 
-  getModels(): Promise<ModelsResponse> {
-    return this.withAuthRetry(() =>
-      getModels(this.copilotToken, this.accountType, this.baseUrl, this.fetcher),
-    )
+  setModelCatalog(models: ModelsResponse): void { this.modelCatalog = models }
+
+  private async prepare(): Promise<void> {
+    if (this.prepareSession) {
+      const session = await this.prepareSession()
+      this.copilotToken = session.token
+      this.baseUrl = session.baseUrl
+    }
+    if (this.modelCatalog) rememberRawModels(this.copilotToken, this.accountType, this.baseUrl, this.modelCatalog)
+  }
+
+  async getModels(): Promise<ModelsResponse> {
+    await this.prepare()
+    const models = await this.withAuthRetry(() => getModels(this.copilotToken, this.accountType, this.baseUrl, this.fetcher))
+    rememberRawModels(this.copilotToken, this.accountType, this.baseUrl, models)
+    return models
   }
 
   probe(): Promise<ProbeResult> {
@@ -137,6 +154,7 @@ export class CopilotProvider implements LlmModelProvider {
   }
 
   async fetch(req: ProviderRequest): Promise<ProviderResponse> {
+    await this.prepare()
     const path = COPILOT_PATHS[req.endpoint]
     if (!path) throw new Error(`CopilotProvider does not support endpoint: ${req.endpoint}`)
 

@@ -83,6 +83,10 @@ export class ClaudeCodeProvider implements LlmModelProvider {
     this.fetcher = fetcher
   }
 
+  setModelCatalog(models: ProviderModelsResponse): void {
+    this.catalogCache = models.data as ClaudeCodeProviderModel[]
+  }
+
   async getModels(): Promise<ProviderModelsResponse> {
     if (!this.catalogCache) {
       let access: { entry: { token: string } }

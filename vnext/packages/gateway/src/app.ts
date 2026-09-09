@@ -2,7 +2,8 @@ import { Hono } from 'hono'
 import { dataPlane } from './data-plane/routes.ts'
 import { controlPlane } from './control-plane/routes.ts'
 import { staticPages } from './shared/edge/static-pages.ts'
-import { getRepo } from './repo/index.ts'
+import { getRepo, withConfigurationSnapshot } from './repo/index.ts'
+import { ConfigurationUnavailableError } from './repo/configuration-cache.ts'
 import { devAuthMiddleware } from './control-plane/auth/dev-auth.ts'
 import { sessionAuthMiddleware } from './control-plane/auth/session-auth.ts'
 import { dmrRouter } from './data-plane/dmr/routes.ts'
@@ -57,6 +58,19 @@ app.get('/health', (c) => c.json({ status: 'ok', service: 'copilot-gateway-vnext
 app.get('/debug/db/users-count', async (c) => {
   const users = await getRepo().users.list()
   return c.json({ users: users.length })
+})
+
+// Pin one immutable configuration view across authentication, routing and translation.
+app.use('*', async (c, next) => {
+  const path = c.req.path.replace(/^\/(?:azure-api\.codex|engines\/(?:[^/]+\/)?v1|anthropic)(?=\/)/, '')
+  const inference = /^(?:\/v1)?\/(?:messages(?:\/count_tokens)?|chat\/completions|responses(?:\/compact)?|embeddings|images\/(?:generations|edits)|alpha\/search|models)$/.test(path)
+    || /^\/v1beta\/models(?:\/.*)?$/.test(path) || /^\/api\/(?:chat|generate|embed|embeddings|tags|show)$/.test(path)
+  if (!inference) return next()
+  try { await withConfigurationSnapshot(next) }
+  catch (error) {
+    if (!(error instanceof ConfigurationUnavailableError)) throw error
+    return c.json({ error: { type: 'api_error', message: error.message } }, 503)
+  }
 })
 
 app.use('*', sessionAuthMiddleware)

@@ -10,7 +10,7 @@
  * dial timing without contaminating the enclosing request's stats.
  */
 import type { PerformanceTelemetryContext } from '@vibe-llm/protocols/common'
-import { getRepo } from '../../repo/index.ts'
+import { getDataPlaneRepo as getRepo } from '../../repo/index.ts'
 import type { ApiKeyId } from '../../repo/branded-ids.ts'
 import type {
   PerformanceOperation,
