@@ -33,3 +33,16 @@ test('MemoryCache delete is idempotent', async () => {
   const c = new MemoryCache()
   await c.delete('never-set')
 })
+
+test('memory persistent entries survive time and are replaced only by a write or delete', async () => {
+  let now = 1_000_000
+  const c = new MemoryCache(() => now)
+  await c.set('snapshot', 'old', null)
+  now += 365 * 24 * 60 * 60 * 1000
+  await c.get('trigger-gc')
+  expect(await c.get<string>('snapshot')).toBe('old')
+  await c.set('snapshot', 'new', null)
+  expect(await c.get<string>('snapshot')).toBe('new')
+  await c.delete('snapshot')
+  expect(await c.get<string>('snapshot')).toBeNull()
+})

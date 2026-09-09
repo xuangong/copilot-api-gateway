@@ -64,3 +64,11 @@ test('KvCache rejects ttl < 60s (KV minimum)', async () => {
   const c = new KvCache(kv)
   await expect(c.set('k', 'v', 30)).rejects.toThrow(/ttlSec must be >= 60/)
 })
+
+test('KvCache persistent entries omit expirationTtl', async () => {
+  const { kv, calls } = fakeKv()
+  const c = new KvCache(kv)
+  await c.set('snapshot', 'old', null)
+  expect(calls).toContainEqual({ op: 'put', key: 'snapshot', value: '"old"' })
+  expect(await c.get<string>('snapshot')).toBe('old')
+})

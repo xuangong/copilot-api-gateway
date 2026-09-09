@@ -55,6 +55,7 @@ import {
 } from '../shared/attempt-helpers.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import type { SelectBindingAuth } from '../shared/select-binding.ts'
+import { MODEL_CATALOG_UNAVAILABLE } from '../../errors/model-catalog.ts'
 import { enumerateBindingCandidates } from '../../routing/candidates.ts'
 import { selectPair } from '../../dispatch/pair-selector.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
@@ -122,6 +123,7 @@ export interface GeminiAttemptArgs {
 
 export type SelectGeminiBindingResult =
   | { kind: 'ok'; binding: AttemptBindingShape & { readonly provider: { readonly fetch: (req: ProviderRequest) => Promise<ProviderResponse>; readonly getPricingForModelKey: (k: string) => unknown | null } }; targetEndpoint: EndpointKey; translator: PairTranslator; bareModel: string }
+  | { kind: 'catalog-unavailable'; bareModel: string }
   | { kind: 'model-not-found'; bareModel: string }
   | { kind: 'no-eligible-binding'; bareModel: string }
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
@@ -134,7 +136,7 @@ const pickTargetForGemini = (endpoints: ModelEndpoints): EndpointKey | null =>
   selectPair('gemini', endpoints)
 
 const defaultSelectBinding: SelectGeminiBinding = async ({ model, auth }) => {
-  const { candidates, sawModel, bareModel } = await enumerateBindingCandidates({
+  const { candidates, sawModel, bareModel, catalogUnavailable } = await enumerateBindingCandidates({
     model,
     pickTarget: pickTargetForGemini,
     opts: {
@@ -143,6 +145,7 @@ const defaultSelectBinding: SelectGeminiBinding = async ({ model, auth }) => {
       pin: auth.pin,
     },
   })
+  if (catalogUnavailable) return { kind: 'catalog-unavailable', bareModel }
   if (!sawModel) return { kind: 'model-not-found', bareModel }
   const first = candidates[0]
   if (!first) return { kind: 'no-eligible-binding', bareModel }
@@ -164,6 +167,7 @@ export const geminiAttempt = {
     const selectFn = args.selectBinding ?? defaultSelectBinding
     const sel = await selectFn({ model: args.model, auth: args.auth })
 
+    if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(MODEL_CATALOG_UNAVAILABLE))
     if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
     if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
     if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for gemini → ${sel.targetEndpoint}`))

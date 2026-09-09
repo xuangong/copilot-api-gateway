@@ -19,7 +19,7 @@ import { defaultsForUpstream, resolveEffectiveFlags } from '../flags/index.ts'
 import type { UpstreamRecord } from '../../repo/types.ts'
 import type { UserId } from '../../repo/branded-ids.ts'
 import { getRepo } from '../../repo/index.ts'
-import { __registerPlatformReset, getRuntimeLocation } from '@vibe-core/platform'
+import { __registerPlatformReset, getRuntimeLocation, waitUntil } from '@vibe-core/platform'
 import { getCache } from '../../data-plane/cache/index.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import { copilotModelEndpoints, copilotPublicModelId } from '@vibe-llm/provider-copilot'
@@ -58,7 +58,7 @@ export interface ListUpstreamModelsOptions {
   /** Propagate an upstream catalog failure instead of treating it as empty. */
   strictCatalog?: boolean
   /** Track incomplete discovery while still collecting healthy upstreams. */
-  onCatalogError?: () => void
+  onCatalogError?: (upstreamId?: string) => void
 }
 
 export function createCopilotProvider(opts: CreateProviderOptions): LlmModelProvider {
@@ -176,43 +176,52 @@ function modelToBindingModel(
 }
 
 
-/**
- * In-process /models memo. Each `listProviderBindings` call previously fetched
- * /models from every visible upstream — N HTTP round-trips per gateway request.
- * Key by `upstream.id + updatedAt` so a control-plane edit invalidates the
- * entry immediately (no need for a manual bust). 120s TTL matches the
- * copilot-gateway reference. Module-level Map works in both Docker
- * (long-lived process) and CFW (shared within an isolate's lifetime).
- */
-const MODELS_MEMO_TTL_MS = 120_000
-const MODELS_L2_TTL_SEC = 120
-const modelsMemo = new Map<string, { expiresAt: number; models: ModelsResponse }>()
+/** A refresh deadline never expires the last successful catalog. */
+const MODELS_REFRESH_MS = 120_000
+const MODELS_RETRY_MS = 30_000
+interface ModelsSnapshot {
+  revision: string
+  refreshedAt: number
+  models: ModelsResponse
+}
+interface ModelsMemo extends ModelsSnapshot { refreshAfter: number }
+const modelsMemo = new Map<string, ModelsMemo>()
+const modelsRefreshes = new Map<string, Promise<ModelsResponse>>()
 
 const modelsCacheKey = (upstream: UpstreamRecord<unknown>): string =>
   `models:${upstream.id}@${upstream.updatedAt}`
+// A stable storage key avoids accumulating permanent entries on every edit.
+// The revision in the value prevents reuse across configuration changes.
+const modelsSnapshotKey = (upstream: UpstreamRecord<unknown>): string =>
+  `models:snapshot:${upstream.id}`
 
-/**
- * Fetches the upstream's model list and writes it to both layers, replacing
- * whatever they held. `getCachedModels` uses it for its miss path.
- *
- * Exported for the control plane's probe route: a probe saves nothing, so
- * `updatedAt` — and with it the key above — is unchanged, and the dashboard's
- * model list would keep serving the pre-probe entry for up to 120s while the
- * probe's own toast reported the live count.
- */
-export async function refreshModelsCache(
+function validModels(models: ModelsResponse): boolean {
+  return models != null && Array.isArray(models.data) &&
+    models.data.every((model) => model != null && typeof model.id === 'string' && model.id.length > 0)
+}
+
+/** Explicit probes still report refresh errors; only automatic discovery uses stale data. */
+export function refreshModelsCache(
   upstream: UpstreamRecord<unknown>,
   provider: LlmModelProvider,
 ): Promise<ModelsResponse> {
   const key = modelsCacheKey(upstream)
-  const models = await provider.getModels()
-  modelsMemo.set(key, { expiresAt: Date.now() + MODELS_MEMO_TTL_MS, models })
-  try {
-    await getCache().set(key, models, MODELS_L2_TTL_SEC)
-  } catch {
-    // L2 write failure is non-fatal; L1 still serves this isolate.
-  }
-  return models
+  const pending = modelsRefreshes.get(key)
+  if (pending) return pending
+  const refresh = (async () => {
+    const models = await provider.getModels()
+    if (!validModels(models)) throw new Error('Invalid upstream model catalog')
+    const snapshot: ModelsSnapshot = { revision: upstream.updatedAt, refreshedAt: Date.now(), models }
+    modelsMemo.set(key, { ...snapshot, refreshAfter: snapshot.refreshedAt + MODELS_REFRESH_MS })
+    try {
+      await getCache().set(modelsSnapshotKey(upstream), snapshot, null)
+    } catch {
+      // Storage failure must not discard the successful isolate-local snapshot.
+    }
+    return models
+  })().finally(() => { modelsRefreshes.delete(key) })
+  modelsRefreshes.set(key, refresh)
+  return refresh
 }
 
 async function getCachedModels(
@@ -221,37 +230,59 @@ async function getCachedModels(
 ): Promise<ModelsResponse> {
   const key = modelsCacheKey(upstream)
   const now = Date.now()
+  let snapshot = modelsMemo.get(key)
+  if (snapshot && snapshot.refreshAfter > now) return snapshot.models
 
-  // L1: in-process memo (Map). Fast, isolate-local.
-  const l1 = modelsMemo.get(key)
-  if (l1 && l1.expiresAt > now) return l1.models
-
-  // L2: distributed cache (KV/D1/Memory). Survives isolate restarts.
-  let l2Hit: ModelsResponse | null = null
   try {
-    l2Hit = await getCache().get<ModelsResponse>(key)
+    const l2 = await getCache().get<ModelsSnapshot>(modelsSnapshotKey(upstream))
+    if (l2?.revision === upstream.updatedAt && Number.isFinite(l2.refreshedAt) && validModels(l2.models)) {
+      if (!snapshot || l2.refreshedAt > snapshot.refreshedAt) {
+        snapshot = { ...l2, refreshAfter: l2.refreshedAt + MODELS_REFRESH_MS }
+      }
+    } else if (!snapshot) {
+      // Preserve pre-upgrade TTL entries too, before their original expiry.
+      const legacy = await getCache().get<ModelsResponse>(key)
+      if (legacy && validModels(legacy)) {
+        snapshot = { revision: upstream.updatedAt, refreshedAt: 0, refreshAfter: 0, models: legacy }
+        await getCache().set(modelsSnapshotKey(upstream), snapshot, null)
+      }
+    }
   } catch {
-    // Bootstrap edge case: cache not yet initialized (e.g. a test that forgot
-    // initCache). Behave as a miss so we fall back to upstream.
-    l2Hit = null
+    // A degraded L2 never invalidates the local snapshot.
   }
-  if (l2Hit) {
-    modelsMemo.set(key, { expiresAt: now + MODELS_MEMO_TTL_MS, models: l2Hit })
-    return l2Hit
-  }
+  // Another caller may have refreshed/backed off while this request read L2.
+  const current = modelsMemo.get(key)
+  if (current && (!snapshot || current.refreshedAt >= snapshot.refreshedAt)) snapshot = current
+  if (!snapshot) return refreshModelsCache(upstream, provider)
+  modelsMemo.set(key, snapshot)
+  if (snapshot.refreshAfter > Date.now()) return snapshot.models
 
-  // Both miss: fetch upstream + write both layers.
-  return refreshModelsCache(upstream, provider)
+  // Return known routes immediately while the next complete catalog is fetched.
+  // Concurrent readers use the same refresh and failed discovery is retried later.
+  snapshot.refreshAfter = Date.now() + MODELS_RETRY_MS
+  const refresh = refreshModelsCache(upstream, provider).catch(() => {
+    const retained = modelsMemo.get(key)
+    if (retained) retained.refreshAfter = Date.now() + MODELS_RETRY_MS
+    console.warn('[registry] catalog refresh failed; retaining snapshot', {
+      upstream: upstream.id, provider: upstream.provider, stage: 'models_refresh',
+    })
+  })
+  try {
+    waitUntil(refresh)
+  } catch {
+    // Direct library/test callers may not have a platform background executor.
+    await refresh
+  }
+  return snapshot.models
 }
 
-/** Clears the in-process /models memo. Test-only. */
+/** Clears isolate-local state, preserving shared storage. Test-only. */
 export function _clearModelsMemoForTest(): void {
   modelsMemo.clear()
+  modelsRefreshes.clear()
 }
 
-// Auto-clear when test harness swaps repos or cache so a stale cached /models from a
-// previous test can't bleed into the next one.
-__registerPlatformReset(() => modelsMemo.clear())
+__registerPlatformReset(_clearModelsMemoForTest)
 
 function sortUpstreams(upstreams: UpstreamRecord<unknown>[]): UpstreamRecord<unknown>[] {
   return upstreams.sort((a, b) =>
@@ -299,7 +330,7 @@ export async function listProviderBindings(
     if (!upstream.enabled) continue
     try {
       const provider = await createProviderFromUpstream(upstream, opts.copilot, fetcherForUpstream)
-      if (!provider) continue
+      if (!provider) throw new Error('Unable to construct model provider')
       const models = await getCachedModels(upstream, provider)
       const enabledFlags = resolveEffectiveFlags(defaultsForUpstream(upstream.provider), [upstream.flagOverrides])
       const disabled = new Set(upstream.disabledPublicModelIds)
@@ -315,7 +346,7 @@ export async function listProviderBindings(
         })
       }
     } catch (err) {
-      opts.onCatalogError?.()
+      opts.onCatalogError?.(upstream.id)
       if (opts.strictCatalog) throw err
       console.warn(
         `[registry] upstream ${upstream.id} (${upstream.provider}) contributed no models:`,
@@ -331,6 +362,7 @@ export async function listProviderBindings(
     const provider = createCopilotProvider(opts.copilot)
     try {
       const models = await provider.getModels()
+      if (!validModels(models)) throw new Error('Invalid upstream model catalog')
       const enabledFlags = defaultsForUpstream('copilot')
       for (const model of models.data ?? []) {
         bindings.push({
@@ -341,9 +373,9 @@ export async function listProviderBindings(
           provider,
         })
       }
-    } catch {
-      opts.onCatalogError?.()
-      return []
+    } catch (err) {
+      opts.onCatalogError?.('copilot:request')
+      if (opts.strictCatalog) throw err
     }
   }
 

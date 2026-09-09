@@ -50,6 +50,7 @@ import {
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import type { SelectBindingAuth } from '../shared/select-binding.ts'
 import { withUpstreamTelemetry } from '../shared/upstream-telemetry'
+import { MODEL_CATALOG_UNAVAILABLE } from '../../errors/model-catalog.ts'
 import { enumerateBindingCandidates } from '../../routing/candidates.ts'
 import { selectPair } from '../../dispatch/pair-selector.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
@@ -116,6 +117,7 @@ export type { MessagesInterceptor } from './interceptors'
 
 export type SelectMessagesBindingResult =
   | { kind: 'ok'; binding: AttemptBindingShape & { readonly provider: { readonly fetch: (req: ProviderRequest) => Promise<ProviderResponse>; readonly getPricingForModelKey: (k: string) => unknown | null; readonly inboundHeaderAllowlist?: readonly InboundHeaderMatcher[] } }; targetEndpoint: EndpointKey; translator: PairTranslator; bareModel: string }
+  | { kind: 'catalog-unavailable'; bareModel: string }
   | { kind: 'model-not-found'; bareModel: string }
   | { kind: 'no-eligible-binding'; bareModel: string }
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
@@ -128,7 +130,7 @@ const pickTargetForMessages = (endpoints: ModelEndpoints): EndpointKey | null =>
   selectPair('messages', endpoints)
 
 const defaultSelectBinding: SelectMessagesBinding = async ({ model, auth }) => {
-  const { candidates, sawModel, bareModel } = await enumerateBindingCandidates({
+  const { candidates, sawModel, bareModel, catalogUnavailable } = await enumerateBindingCandidates({
     model,
     pickTarget: pickTargetForMessages,
     opts: {
@@ -137,6 +139,7 @@ const defaultSelectBinding: SelectMessagesBinding = async ({ model, auth }) => {
       pin: auth.pin,
     },
   })
+  if (catalogUnavailable) return { kind: 'catalog-unavailable', bareModel }
   if (!sawModel) return { kind: 'model-not-found', bareModel }
   const first = candidates[0]
   if (!first) return { kind: 'no-eligible-binding', bareModel }
@@ -313,6 +316,7 @@ export const messagesAttempt = {
     // Root parity: 404 envelope uses the legacy "No messages upstream available
     // for model: <id>. Run GET /v1/models for available ids." message so SDK
     // error parsing and user-facing messages line up across both deployments.
+    if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(MODEL_CATALOG_UNAVAILABLE))
     if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`No messages upstream available for model: ${sel.bareModel}. Run GET /v1/models for available ids.`))
     if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`No messages upstream available for model: ${sel.bareModel}. Run GET /v1/models for available ids.`))
     if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for messages → ${sel.targetEndpoint}`))

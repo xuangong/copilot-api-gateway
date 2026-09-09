@@ -1,3 +1,4 @@
+import { MODEL_CATALOG_UNAVAILABLE } from '../../errors/model-catalog.ts'
 import { fetchWithPerformance, observeUpstreamFrames, observeUpstreamJson } from "../shared/performance-upstream"
 // vnext/packages/gateway/src/data-plane/chat-flow/chat-completions/attempt.ts
 /**
@@ -93,6 +94,7 @@ export const chatCompletionsAttempt = {
     const selectFn = args.selectBinding ?? ((a) => selectBindingForChatCompletions(a))
     const sel = await selectFn({ model: args.payload.model, auth: args.auth })
 
+    if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(MODEL_CATALOG_UNAVAILABLE))
     if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
     if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
     if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for chat_completions → ${sel.targetEndpoint}`))

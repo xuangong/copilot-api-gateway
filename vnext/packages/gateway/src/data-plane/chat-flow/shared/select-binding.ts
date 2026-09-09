@@ -22,6 +22,7 @@ import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 export type SelectBindingResult =
   | { kind: 'ok'; binding: LlmProviderBinding; targetEndpoint: EndpointKey; translator: PairTranslator; bareModel: string }
+  | { kind: 'catalog-unavailable'; bareModel: string }
   | { kind: 'model-not-found'; bareModel: string }
   | { kind: 'no-eligible-binding'; bareModel: string }
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
@@ -72,7 +73,7 @@ export async function selectBindingForChatCompletions(
 ): Promise<SelectBindingResult> {
   const enumerate: EnumerateFn = args.enumerate ?? enumerateBindingCandidates
 
-  const { candidates, sawModel, bareModel } = await enumerate({
+  const { candidates, sawModel, bareModel, catalogUnavailable } = await enumerate({
     model: args.model,
     pickTarget: pickTargetForChatCompletions,
     opts: {
@@ -82,6 +83,7 @@ export async function selectBindingForChatCompletions(
     },
   })
 
+  if (catalogUnavailable) return { kind: 'catalog-unavailable', bareModel }
   if (!sawModel) return { kind: 'model-not-found', bareModel }
 
   const first = candidates[0]

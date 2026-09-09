@@ -44,6 +44,7 @@ export async function serveGeminiCountTokens(args: GeminiCountTokensServeArgs): 
     ownerId: args.auth.userId,
     copilot: args.auth.copilot,
     pin: resolved.upstreamPin,
+    errorFormat: 'gemini',
   })
   if (!binding) {
     return tee(jsonErrorWrap(404, {

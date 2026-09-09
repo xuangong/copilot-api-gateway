@@ -23,10 +23,10 @@ export class MemoryCache implements Cache {
     return JSON.parse(hit.value) as T
   }
 
-  async set<T>(key: string, value: T, ttlSec: number): Promise<void> {
+  async set<T>(key: string, value: T, ttlSec: number | null): Promise<void> {
     this.store.set(key, {
       value: JSON.stringify(value),
-      expiresAt: this.clock() + ttlSec * 1000,
+      expiresAt: ttlSec === null ? Infinity : this.clock() + ttlSec * 1000,
     })
   }
 

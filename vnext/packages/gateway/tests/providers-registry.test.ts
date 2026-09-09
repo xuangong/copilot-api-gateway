@@ -1,12 +1,13 @@
-import { test, expect, afterEach, beforeEach } from 'bun:test'
+import { test, expect, afterEach, beforeEach, spyOn } from 'bun:test'
 import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
+import { __resetPlatformForTests, initRuntimeLocation, initBackground } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
 import {
   listProviderBindings,
   listUpstreamModels,
   createProviderFromUpstream,
   _clearModelsMemoForTest,
+  refreshModelsCache,
 } from '../src/data-plane/providers/registry.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import type { ModelEndpoints } from '@vibe-llm/protocols/common'
@@ -64,13 +65,19 @@ function stubFetch(models: Model[]) {
   })) as typeof fetch
 }
 
+const background: Promise<unknown>[] = []
+const originalNow = Date.now
+
 beforeEach(() => {
+  initBackground({ waitUntil: (p) => { background.push(p) } })
   // Building each upstream's egress chain needs the runtime location for
   // the per-entry colo filter.
   initRuntimeLocation('bun')
 })
 
-afterEach(() => {
+afterEach(async () => {
+  await Promise.allSettled(background.splice(0))
+  Date.now = originalNow
   globalThis.fetch = originalFetch
   __resetPlatformForTests()
   _clearModelsMemoForTest()
@@ -411,4 +418,156 @@ test('L2: a failing get is treated as a miss, not a 5xx', async () => {
   stubFetch([stubModel('gpt-4o')])
   const bindings = await listProviderBindings({ copilot: { copilotToken: 't', accountType: 'individual' } })
   expect(bindings.map((b) => b.model.id)).toEqual(['gpt-4o'])
+})
+
+// Keep the actual provider, registry and both cache layers; only the upstream
+// HTTP response and time are controlled.
+function catalogFixture() {
+  let now = originalNow()
+  spyOn(Date, 'now').mockImplementation(() => now)
+  const upstream = customUpstream()
+  initRepo(stubRepo([upstream]))
+  const l2 = new MemoryCache()
+  initCache(l2)
+  stubFetch([stubModel('gpt-6-astra')])
+  return { upstream, l2, advance: (ms = 121_000) => { now += ms } }
+}
+
+const catalogIds = async () => (await listUpstreamModels({ strictCatalog: true })).data.map((m) => m.id)
+const drainRefresh = async () => { await Promise.all(background.splice(0)) }
+function failCatalog() {
+  globalThis.fetch = (async () => new Response('catalog unavailable', { status: 400 })) as typeof fetch
+}
+
+test('catalog refresh failure retains last successful models in L1 and across isolate restarts', async () => {
+  const { advance } = catalogFixture()
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
+  advance(365 * 24 * 60 * 60 * 1000)
+  failCatalog()
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
+  await drainRefresh()
+  _clearModelsMemoForTest()
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
+  await drainRefresh()
+})
+
+test('slow refresh does not block routing and replaces the old snapshot only after success', async () => {
+  const { advance } = catalogFixture()
+  await catalogIds()
+  advance()
+  let release: (r: Response) => void = () => {}
+  const pending = new Promise<Response>((resolve) => { release = resolve })
+  let requests = 0
+  globalThis.fetch = (async () => { requests++; return pending }) as typeof fetch
+  try {
+    const result = await Promise.race([
+      Promise.all(Array.from({ length: 5 }, () => catalogIds())),
+      Bun.sleep(100).then(() => 'blocked'),
+    ])
+    expect(result).toEqual(Array.from({ length: 5 }, () => ['gpt-6-astra']))
+    expect(requests).toBe(1)
+  } finally {
+    release(new Response(JSON.stringify({ object: 'list', data: [stubModel('new-model')] })))
+    await drainRefresh()
+  }
+  expect(await catalogIds()).toEqual(['new-model'])
+  _clearModelsMemoForTest()
+  expect(await catalogIds()).toEqual(['new-model'])
+})
+
+test('failed refresh backs off but a later successful refresh discovers changes', async () => {
+  const { advance } = catalogFixture()
+  await catalogIds()
+  advance()
+  failCatalog()
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
+  await drainRefresh()
+  stubFetch([stubModel('new-model')])
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
+  await drainRefresh()
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
+  advance()
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
+  await drainRefresh()
+  expect(await catalogIds()).toEqual(['new-model'])
+})
+
+test('a successful empty catalog removes previously discovered models', async () => {
+  const { advance } = catalogFixture()
+  await catalogIds()
+  advance()
+  stubFetch([])
+  await catalogIds()
+  await drainRefresh()
+  expect(await catalogIds()).toEqual([])
+})
+
+test('L2 read failure does not discard a stale L1 catalog', async () => {
+  const { advance } = catalogFixture()
+  await catalogIds()
+  advance()
+  initCache({ async get() { throw new Error('offline') }, async set() {}, async delete() {} })
+  failCatalog()
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
+  await drainRefresh()
+})
+
+test('manual refresh reports failure without replacing a successful catalog', async () => {
+  const { upstream } = catalogFixture()
+  await catalogIds()
+  const provider = await createProviderFromUpstream(upstream)
+  if (!provider) throw new Error('missing fixture provider')
+  failCatalog()
+  await expect(refreshModelsCache(upstream, provider)).rejects.toThrow()
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
+})
+
+test('an edited upstream cannot inherit the previous configuration snapshot', async () => {
+  const { upstream } = catalogFixture()
+  await catalogIds()
+  upstream.updatedAt = '2026-09-09T00:00:00Z'
+  failCatalog()
+  await expect(catalogIds()).rejects.toThrow()
+})
+
+test('legacy catalogs are retained across restarts even when their first refresh fails', async () => {
+  const { upstream, l2, advance } = catalogFixture()
+  await l2.set(`models:${upstream.id}@${upstream.updatedAt}`, {
+    object: 'list', data: [stubModel('gpt-6-astra')],
+  }, 120)
+  failCatalog()
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
+  await drainRefresh()
+  advance(365 * 24 * 60 * 60 * 1000)
+  _clearModelsMemoForTest()
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
+  await drainRefresh()
+})
+
+test('loading L2 into a new isolate does not postpone its refresh deadline', async () => {
+  const { advance } = catalogFixture()
+  await catalogIds()
+  advance(110_000)
+  _clearModelsMemoForTest()
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
+  advance(11_000)
+  stubFetch([stubModel('new-model')])
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
+  await drainRefresh()
+  expect(await catalogIds()).toEqual(['new-model'])
+})
+
+test('malformed Copilot catalogs cannot overwrite a successful snapshot', async () => {
+  let now = originalNow()
+  spyOn(Date, 'now').mockImplementation(() => now)
+  initRepo(stubRepo([stubUpstream({ config: {} })]))
+  initCache(new MemoryCache())
+  const opts = { copilot: { copilotToken: 'fixture', accountType: 'individual' as const }, strictCatalog: true }
+  stubFetch([stubModel('gpt-6-astra')])
+  expect((await listUpstreamModels(opts)).data.map((m) => m.id)).toEqual(['gpt-6-astra'])
+  now += 121_000
+  globalThis.fetch = (async () => Response.json({ error: 'temporary failure' })) as typeof fetch
+  expect((await listUpstreamModels(opts)).data.map((m) => m.id)).toEqual(['gpt-6-astra'])
+  await drainRefresh()
+  expect((await listUpstreamModels(opts)).data.map((m) => m.id)).toEqual(['gpt-6-astra'])
 })

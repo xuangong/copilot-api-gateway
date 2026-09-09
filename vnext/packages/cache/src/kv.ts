@@ -35,10 +35,10 @@ export class KvCache implements Cache {
     }
   }
 
-  async set<T>(key: string, value: T, ttlSec: number): Promise<void> {
-    if (ttlSec < 60) throw new Error(`KvCache: ttlSec must be >= 60, got ${ttlSec}`)
+  async set<T>(key: string, value: T, ttlSec: number | null): Promise<void> {
+    if (ttlSec !== null && ttlSec < 60) throw new Error(`KvCache: ttlSec must be >= 60, got ${ttlSec}`)
     try {
-      await this.kv.put(key, JSON.stringify(value), { expirationTtl: ttlSec })
+      await this.kv.put(key, JSON.stringify(value), ttlSec === null ? undefined : { expirationTtl: ttlSec })
     } catch (err) {
       console.warn('[KvCache] put failed', { key, err: String(err) })
     }

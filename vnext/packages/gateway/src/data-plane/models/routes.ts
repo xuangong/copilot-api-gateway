@@ -15,13 +15,21 @@
  */
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
-import { listUpstreamModels, type CreateProviderOptions } from '../providers/registry.ts'
+import { ModelCatalogUnavailableError } from '../errors/model-catalog.ts'
+import { listUpstreamModels, type CreateProviderOptions, type ListUpstreamModelsOptions } from '../providers/registry.ts'
 import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 import type { ApiKeyRoutingPolicy } from '../../shared/api-key-model-mappings.ts'
 import { getRepo } from '../../repo/index.ts'
 import { isCodexUserAgent } from '../codex/catalog.ts'
 import { loadCodexCatalog } from '../codex/models.ts'
 import { withKeyModelAliases } from './key-model-catalog.ts'
+
+async function listAvailableModels(opts: ListUpstreamModelsOptions, format?: 'gemini') {
+  let incomplete = false
+  const models = await listUpstreamModels({ ...opts, onCatalogError: () => { incomplete = true } })
+  if (!models.data.length && incomplete) throw new ModelCatalogUnavailableError(format)
+  return models
+}
 
 // Claude Code CLI (`claude-code/x.y.z (...)`) hits `/v1/models` to populate its
 // `/model` picker. It expects the Anthropic-shape catalog
@@ -150,12 +158,12 @@ modelsRouter.get('/api/models', async (c) => {
     catalogAuth = keyAuth
   }
 
-  const models = await listUpstreamModels({ ownerId: catalogAuth.userId, copilot: catalogAuth.copilot, dedupe, allOwners })
+  const models = await listAvailableModels({ ownerId: catalogAuth.userId, copilot: catalogAuth.copilot, dedupe, allOwners })
   return c.json(allOwners ? models : withKeyModelAliases(models, catalogAuth.routingPolicy, dedupe))
 })
 
 async function handleList(auth: DataPlaneAuthCtx) {
-  const raw = await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot })
+  const raw = await listAvailableModels({ ownerId: auth.userId, copilot: auth.copilot })
   const models = withKeyModelAliases(raw, auth.routingPolicy)
   if (!models.data.length && !auth.copilot?.copilotToken) {
     return { ok: false, models } as const
@@ -266,7 +274,7 @@ function geminiError(status: 404 | 502, message: string): Response {
 
 modelsRouter.get('/v1beta/models', async (c) => {
   const auth = c.get('auth') ?? {}
-  const list = await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot })
+  const list = await listAvailableModels({ ownerId: auth.userId, copilot: auth.copilot }, 'gemini')
   const models = (list.data as OpenAIShapedModel[]).filter(isChatModel).map(toGeminiShape)
   return c.json({ models })
 })
@@ -276,7 +284,7 @@ modelsRouter.get('/v1beta/models/:modelId{.+}', async (c) => {
   const modelId = raw.replace(/^models\//, '')
   if (!modelId) return geminiError(404, 'Model not found: ')
   const auth = c.get('auth') ?? {}
-  const list = await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot })
+  const list = await listAvailableModels({ ownerId: auth.userId, copilot: auth.copilot }, 'gemini')
   const match = (list.data as OpenAIShapedModel[])
     .filter(isChatModel)
     .find((m) => m.id === modelId)

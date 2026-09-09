@@ -12,6 +12,7 @@
  */
 import type { EndpointKey } from '@vibe-llm/protocols/common'
 import { bindingServesEndpoint, type LlmProviderBinding } from './binding.ts'
+import { ModelCatalogUnavailableError } from '../errors/model-catalog.ts'
 import { listProviderBindings, type CreateProviderOptions } from '../providers/registry.ts'
 import { parseCompositeModelId } from '@vibe-llm/provider-copilot'
 import { parseModelRouting } from './model-routing.ts'
@@ -23,6 +24,7 @@ export interface ResolveBindingOptions {
   ownerId?: string
   copilot?: CreateProviderOptions
   pin?: string
+  errorFormat?: 'gemini'
 }
 
 export async function resolveBinding(
@@ -33,9 +35,13 @@ export async function resolveBinding(
   const parsed = parseModelRouting(model)
   const upstreamPin = opts.pin ?? parsed.upstreamPin
   const bareModel = parsed.bareModel
+  let incomplete = false
   const bindings = await listProviderBindings({
     ownerId: opts.ownerId,
     copilot: opts.copilot,
+    onCatalogError: (upstreamId) => {
+      if (!upstreamPin || upstreamId === undefined || upstreamId === upstreamPin) incomplete = true
+    },
   })
   const candidates = bindings.filter((b) => bindingServesEndpoint(b, endpoint))
   const matches = (b: LlmProviderBinding, id: string) =>
@@ -50,6 +56,7 @@ export async function resolveBinding(
     if (base) return base
   }
 
+  if (incomplete) throw new ModelCatalogUnavailableError(opts.errorFormat)
   return null
 }
 

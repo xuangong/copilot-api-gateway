@@ -22,6 +22,8 @@ export interface EnumerateOptions {
 
 export interface EnumerateResult {
   candidates: BindingCandidate[]
+  /** Discovery failed for a relevant upstream and no usable candidate remains. */
+  catalogUnavailable?: boolean
   sawModel: boolean
   bareModel: string
   upstreamPin?: string
@@ -70,6 +72,15 @@ export async function enumerateBindingCandidates(args: {
   opts?: EnumerateOptions
 }): Promise<EnumerateResult> {
   const { model, pickTarget, opts = {} } = args
-  const bindings = await listProviderBindings({ ownerId: opts.ownerId, copilot: opts.copilot })
-  return filterBindingCandidates({ bindings, model, pickTarget, pin: opts.pin })
+  const upstreamPin = opts.pin ?? parseModelRouting(model).upstreamPin
+  let incomplete = false
+  const bindings = await listProviderBindings({
+    ownerId: opts.ownerId,
+    copilot: opts.copilot,
+    onCatalogError: (upstreamId) => {
+      if (!upstreamPin || upstreamId === undefined || upstreamId === upstreamPin) incomplete = true
+    },
+  })
+  const result = filterBindingCandidates({ bindings, model, pickTarget, pin: opts.pin })
+  return incomplete && result.candidates.length === 0 ? { ...result, catalogUnavailable: true } : result
 }

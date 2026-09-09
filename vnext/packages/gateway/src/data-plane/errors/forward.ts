@@ -80,6 +80,7 @@ export function geminiErrorBody(status: number, message: string): { error: { cod
 }
 
 function geminiStatus(code: number): string {
+  if (code === 503) return 'UNAVAILABLE'
   if (code === 400) return 'INVALID_ARGUMENT'
   if (code === 401) return 'UNAUTHENTICATED'
   if (code === 403) return 'PERMISSION_DENIED'

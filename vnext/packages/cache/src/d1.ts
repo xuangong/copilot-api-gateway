@@ -46,7 +46,7 @@ export class D1Cache implements Cache {
     }
     this.maybeSweep(now)
     if (!row) return null
-    if (row.expires_at <= now) return null
+    if (row.expires_at !== 0 && row.expires_at <= now) return null
     try {
       return JSON.parse(row.value_json) as T
     } catch {
@@ -54,8 +54,9 @@ export class D1Cache implements Cache {
     }
   }
 
-  async set<T>(key: string, value: T, ttlSec: number): Promise<void> {
-    const expiresAt = this.clock() + ttlSec * 1000
+  async set<T>(key: string, value: T, ttlSec: number | null): Promise<void> {
+    // Zero marks an explicitly persistent snapshot and is excluded from GC.
+    const expiresAt = ttlSec === null ? 0 : this.clock() + ttlSec * 1000
     try {
       // SQLite UPSERT. D1 supports the same syntax.
       await this.exec.run(
@@ -80,7 +81,7 @@ export class D1Cache implements Cache {
     if (Math.random() >= this.gcProbability) return
     // Fire-and-forget: we don't await so the read latency isn't affected, but
     // we still log failures.
-    this.exec.run('DELETE FROM cache_kv WHERE expires_at < ?', [now]).catch((err) => {
+    this.exec.run('DELETE FROM cache_kv WHERE expires_at > 0 AND expires_at < ?', [now]).catch((err) => {
       console.warn('[D1Cache] gc sweep failed', { err: String(err) })
     })
   }
