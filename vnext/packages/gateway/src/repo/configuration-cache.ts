@@ -8,8 +8,35 @@ import type { ProxyRecord } from '@vibe-core/proxy-repo'
 export const CONFIG_CHECK_MS = 30_000
 export const CONFIG_AUTH_LEASE_MS = 120_000
 
+type ConfigurationOperation = 'revision_before' | 'revision_after' | 'api_keys' | 'users' | 'upstreams' | 'proxies' | 'snapshot'
+type ConfigurationFailureReason = 'schema_unavailable' | 'storage_busy' | 'timeout' | 'io_context' | 'invalid_data' | 'revision_unstable' | 'unknown'
+
 export class ConfigurationUnavailableError extends Error {
-  constructor() { super('Gateway configuration temporarily unavailable'); this.name = 'ConfigurationUnavailableError' }
+  constructor(
+    readonly operation: ConfigurationOperation = 'snapshot',
+    readonly reason: ConfigurationFailureReason = 'revision_unstable',
+    cause?: unknown,
+  ) {
+    super('Gateway configuration temporarily unavailable', { cause })
+    this.name = 'ConfigurationUnavailableError'
+  }
+}
+
+function configurationFailureReason(error: unknown): ConfigurationFailureReason {
+  // Driver messages can include SQL values and credentials. Emit only a fixed
+  // category; retain the original cause on the internal error for debugging.
+  const message = error instanceof Error ? error.message : ''
+  if (/no such (?:table|column)/i.test(message)) return 'schema_unavailable'
+  if (/SQLITE_BUSY|database is locked|overloaded|too many (?:requests|subrequests)/i.test(message)) return 'storage_busy'
+  if (/timed? ?out|timeout/i.test(message)) return 'timeout'
+  if (/Cannot perform I\/O on behalf of a different request/i.test(message)) return 'io_context'
+  if (error instanceof SyntaxError) return 'invalid_data'
+  return 'unknown'
+}
+
+async function readConfiguration<T>(operation: ConfigurationOperation, read: () => Promise<T>): Promise<T> {
+  try { return await read() }
+  catch (cause) { throw new ConfigurationUnavailableError(operation, configurationFailureReason(cause), cause) }
 }
 
 interface Snapshot {
@@ -116,7 +143,7 @@ export class ConfigurationCache {
 
   async get(): Promise<Snapshot> {
     if (!this.snapshot || this.dirty || this.now() - this.confirmedAt >= CONFIG_AUTH_LEASE_MS) {
-      try { return await this.refresh() } catch { throw new ConfigurationUnavailableError() }
+      return this.refresh()
     }
     if (this.now() >= this.checkAfter && !this.pending) {
       this.checkAfter = this.now() + CONFIG_CHECK_MS
@@ -133,7 +160,19 @@ export class ConfigurationCache {
 
   private refresh(): Promise<Snapshot> {
     if (this.pending) return this.pending
-    this.pending = this.load().finally(() => { this.pending = undefined })
+    this.pending = this.load().catch(cause => {
+      const error = cause instanceof ConfigurationUnavailableError
+        ? cause : new ConfigurationUnavailableError('snapshot', configurationFailureReason(cause), cause)
+      // Log once per shared refresh, including failures hidden by a still-valid
+      // authorization lease. Never serialize the error or its raw cause.
+      console.warn({
+        evt: 'configuration_refresh_failed', operation: error.operation, reason: error.reason,
+        has_snapshot: Boolean(this.snapshot),
+        snapshot_age_ms: this.snapshot ? Math.max(0, this.now() - this.confirmedAt) : null,
+        dirty: this.dirty,
+      })
+      throw error
+    }).finally(() => { this.pending = undefined })
     return this.pending
   }
 
@@ -142,7 +181,7 @@ export class ConfigurationCache {
     // a configuration mutation. A failed/moving load leaves the old value intact.
     for (let attempt = 0; attempt < 3; attempt++) {
       const epoch = this.epoch
-      const revision = await this.raw.configurationRevision!()
+      const revision = await readConfiguration('revision_before', () => this.raw.configurationRevision!())
       if (epoch === this.epoch && this.snapshot && !this.dirty && revision === this.snapshot.revision) {
         this.confirmedAt = this.now()
         this.checkAfter = this.now() + CONFIG_CHECK_MS
@@ -150,10 +189,12 @@ export class ConfigurationCache {
       }
       this.dirty = true
       const [keys, users, upstreams, proxies] = await Promise.all([
-        this.raw.apiKeys.list(), this.raw.users.list(),
-        this.raw.upstreams.list({ includeDisabled: true }), this.raw.proxies.list(),
+        readConfiguration('api_keys', () => this.raw.apiKeys.list()),
+        readConfiguration('users', () => this.raw.users.list()),
+        readConfiguration('upstreams', () => this.raw.upstreams.list({ includeDisabled: true })),
+        readConfiguration('proxies', () => this.raw.proxies.list()),
       ])
-      const after = await this.raw.configurationRevision!()
+      const after = await readConfiguration('revision_after', () => this.raw.configurationRevision!())
       if (epoch !== this.epoch || revision !== after) continue
       const byOwner = new Map<string, UpstreamRecord<unknown>[]>()
       for (const row of upstreams) {
