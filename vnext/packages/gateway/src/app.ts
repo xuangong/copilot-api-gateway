@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { agentRemoteRouter } from './control-plane/agent-remote/routes.ts'
 import { dataPlane } from './data-plane/routes.ts'
 import { controlPlane } from './control-plane/routes.ts'
 import { staticPages } from './shared/edge/static-pages.ts'
@@ -72,6 +73,9 @@ app.use('*', async (c, next) => {
     return c.json({ error: { type: 'api_error', message: error.message } }, 503)
   }
 })
+
+// Workstation control accepts real user sessions without inference auth or prewarming.
+app.route('/', agentRemoteRouter)
 
 app.use('*', sessionAuthMiddleware)
 app.use('*', devAuthMiddleware)

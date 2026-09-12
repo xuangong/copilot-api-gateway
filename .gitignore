@@ -56,3 +56,6 @@ vnext/apps/**/*.sqlite
 .claude/
 data-vnext/
 .env.vnext
+
+# Isolated development workspaces
+.worktrees/
