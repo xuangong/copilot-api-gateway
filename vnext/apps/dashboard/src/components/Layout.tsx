@@ -1,4 +1,5 @@
 import { useAuth } from "../state/auth"
+import { AgentRemoteEntry } from "./AgentRemoteEntry"
 import { UserMenu } from "./UserMenu"
 
 interface Props {
@@ -60,6 +61,7 @@ export function Layout({ tabs, currentTab, onTabChange, children }: Props & { ch
 
         <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-3">
           <nav className="flex gap-1 bg-surface-800 rounded-lg p-0.5 overflow-x-auto scrollbar-hide">
+            <AgentRemoteEntry />
             {tabs.map((t) => {
               const active = t.id === currentTab
               return (

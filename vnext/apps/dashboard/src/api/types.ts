@@ -10,6 +10,7 @@ export interface SessionInfo {
   email?: string
   avatarUrl?: string
   hasPassword?: boolean
+  sessionToken?: string
 }
 
 export interface ProxyFallbackEntry {

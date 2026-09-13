@@ -21,7 +21,9 @@ returns 503 on this optional integration's routes.
 
 Sign in with a real gateway user session, then visit `/agent-remote`. The browser
 first visits the Relay to establish a five-minute login challenge, returns to the
-gateway launch page, and submits its same-origin form. The gateway rechecks the
+gateway launch page, and automatically submits its same-origin form under a CSP
+script hash. A manual submit button remains available. The dashboard navigation shows
+Agent Remote when the integration is configured and a user session is active. The gateway rechecks the
 session and enabled-user records, signs a grant with that challenge, and redirects
 to the configured Relay callback. The callback consumes the challenge and sets an
 HttpOnly Relay cookie. Forwarding the launch URL to another browser cannot log
@@ -37,28 +39,66 @@ keys cannot obtain workstation access.
 ## Grant contract and limits
 
 HS256 header `typ=arc-relay+jwt`; claims `iss`, `aud`, `sub`, `iat`, `exp`, `jti`,
-and `nonce`. The audience is the fixed Relay origin. Expiry is the lesser of 15
-minutes and the gateway login session expiry. Only the Relay receives the grant;
-the user's gateway session token is never placed in it.
+`nonce`, `continuation`, and `sessionExpiresAt`. The audience is the fixed Relay
+origin. Grant expiry is the lesser of 15 minutes and the gateway login expiry;
+`sessionExpiresAt` is the original login expiry in epoch milliseconds. The
+continuation encrypts the original session token and subject with AES-256-GCM,
+a random 96-bit IV, and origin-bound additional authenticated data. Its key is
+HKDF-SHA256 derived from the shared secret with a separate continuation purpose.
+The Relay treats it as opaque and never needs a plaintext gateway login token.
+As both services hold the shared root secret, this is a trusted-service boundary,
+not cryptographic isolation against a compromised Relay. Secret rotation
+invalidates both service proofs and existing continuations.
 
-An issued grant remains usable until expiry even if the account is disabled or
-its login is subsequently revoked. New grants are denied immediately by the
-authoritative lookup. The Relay terminates browser streams at expiry and offers
-re-entry through the gateway. There is no silent refresh or immediate distributed
-revocation. Shared-secret rotation plus Relay restart revokes everything.
+## Renewable authority
 
-The Relay owns per-user Hosts, pairings, bindings and streams. Host pairings are
-process-local and last 24 hours, including their open connections. They cannot
-access browser APIs. Relay restart requires re-pairing and reattaching native
-sessions. The Relay is a separate Node process behind TLS, not a Durable Object or
-multi-replica service. A Cloudflare gateway can issue grants for it, but cannot run
-the existing Node broker directly. No native provider behavior is changed.
+The Relay calls two server-only routes with JSON bodies:
+
+- `POST /api/agent-remote/renew` with `{continuation}` returns
+  `{active:true,subject,expiresAt,validUntil}`. It verifies the original session
+  still exists, has not expired, belongs to the original subject, and that the
+  user remains enabled. `validUntil` is capped at the live login expiry.
+- `POST /api/agent-remote/user-status` with `{subject}` returns
+  `{active:true,subject,validUntil}`. It checks the enabled user independently of
+  browser login lifetime, so browser logout does not unpair a workstation.
+
+Both endpoints authenticate `Authorization: Bearer <service JWT>` with HS256
+header `{alg:"HS256",typ:"arc-relay-service+jwt"}` and claims
+`{iss:relayOrigin,aud:gatewayOrigin,op,bodyHash,iat,exp}`. `op` exactly matches
+`renew` or `user-status`; `bodyHash` is base64url SHA256 of the exact raw request
+body bytes. `iat` and `exp` are integer epoch seconds, lifetime is at most 60
+seconds, future issuance and expired proofs are denied. The signature uses the
+shared signing secret. All Origin and Cookie headers are rejected because these
+are server-to-server requests. Browser session tokens and API keys are rejected.
+Proof verification precedes all authoritative database reads.
+
+Successful leases last at most 120 seconds, with all response timestamps in epoch
+milliseconds. Denials are 401/403, malformed authenticated requests are 400, and
+unavailable authority is 503. Responses are `Cache-Control: no-store`. The Relay
+refreshes every 60 seconds and cannot extend a lease on error. Authority outages stop access at lease expiry but use retryable 503/1013 so
+Hosts reconnect automatically when authority returns. Actual denial uses terminal
+401/1008. Browser sessions, WebSockets, and paired devices lose access within the
+lease after revocation or
+account disable. Revoking the original login affects its browser session;
+disabling the user also affects workstation access.
+
+The Relay stores its own random HttpOnly sessions, device credential hashes and
+native bindings in an atomic private state file. It rechecks Gateway authority
+after restart and requires native reattachment before restored streams. Initial
+pairings expire after ten minutes; first registration binds the credential to a
+persistent installation. Device revoke closes its streams, and explicit re-pairing
+rotates its credential. Transcript traffic never passes through the Gateway.
+Hosted operation requires durable storage and one Relay process per state directory
+behind TLS. Standalone defaults remain ephemeral. A Cloudflare gateway can issue
+grants for the separate Node Relay but does not run the broker itself.
 
 ## Validation
 
 Gateway tests use real in-memory SQLite and cover missing, invalid, disabled and
 expired login sessions, API-key exclusion, Origin, fixed redirect, signature,
-challenge binding and session-bounded grant expiry. Run `bun run ci:local` from
+challenge binding, session-bounded grant expiry, encrypted continuation renewal,
+revocation, user disable, service-proof purpose/body/origin/time validation, and
+unavailable authority. Dashboard entry visibility has rendering coverage. Run `bun run ci:local` from
 `vnext/` (with an outer deadline supplied by the execution environment).
 
 For cross-project validation, build both projects, then run in Agent Remote Control:
@@ -72,5 +112,5 @@ The gateway fixture is `vnext/packages/gateway/tests/fixtures/agent-remote-gatew
 It uses temporary test identities and in-memory SQLite, listens only on loopback,
 and never bootstraps a provider or uses a user's database. The external harness
 exercises the real gateway, Relay entrypoint, Chromium login handoff, a scripted
-WebSocket Host, two-user isolation and forwarded-link rejection. No CLI agent,
+WebSocket Host, two-user isolation, forwarded-link rejection, renewal, Relay process restart with stable device/binding identities, device revoke and logout. No CLI agent,
 Trojan server or cloud inference is required.

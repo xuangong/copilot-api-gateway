@@ -1,24 +1,9 @@
 import { Hono } from 'hono'
-import { env } from '@vibe-core/platform'
+import { agentRemoteConfiguration as configuration } from './config.ts'
+import { agentRemoteLifecycleRouter, encryptContinuation } from './lifecycle.ts'
 import { getRepo } from '../../repo/index.ts'
 import type { SessionToken } from '../../repo/branded-ids.ts'
 
-function origin(value: string): string {
-  const url = new URL(value)
-  if (url.username || url.password || url.search || url.hash || url.pathname !== '/' ||
-    (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)))) {
-    throw new Error('Agent Remote requires an HTTPS origin or loopback HTTP origin')
-  }
-  return url.origin
-}
-function configuration() {
-  const target = env('AGENT_REMOTE_RELAY_URL')
-  const secret = env('AGENT_REMOTE_SIGNING_SECRET')
-  const issuer = env('AGENT_REMOTE_ISSUER')
-  if (!target || !secret || !issuer) return undefined
-  if (new TextEncoder().encode(secret).length < 32) throw new Error('Agent Remote signing secret must contain at least 32 bytes')
-  return { target: origin(target), issuer: origin(issuer), secret }
-}
 async function userSession(request: Request) {
   const authorization = request.headers.get('authorization')
   const token = authorization ? /^Bearer (ses_[^\s]+)$/i.exec(authorization)?.[1]
@@ -34,7 +19,12 @@ const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('
 
 export const agentRemoteRouter = new Hono()
 agentRemoteRouter.use('/agent-remote', secureResponse)
-agentRemoteRouter.use('/api/agent-remote/launch', secureResponse)
+agentRemoteRouter.use('/api/agent-remote/*', secureResponse)
+agentRemoteRouter.route('/', agentRemoteLifecycleRouter)
+agentRemoteRouter.get('/api/agent-remote/config', c => {
+  try { return c.json({ enabled: Boolean(configuration()) }) }
+  catch { return c.json({ enabled: false }) }
+})
 async function secureResponse(c: import('hono').Context, next: import('hono').Next) {
   c.header('cache-control', 'no-store')
   c.header('referrer-policy', 'no-referrer')
@@ -49,8 +39,10 @@ agentRemoteRouter.get('/agent-remote', async c => {
   const challenge = c.req.query('challenge')
   if (challenge === undefined) return c.redirect(`${config.target}/auth/login`, 303)
   if (!/^[A-Za-z0-9_-]{43}$/.test(challenge)) return c.json({ error: 'Invalid login challenge' }, 400)
-  c.header('content-security-policy', `default-src 'none'; form-action 'self' ${config.target}; base-uri 'none'; frame-ancestors 'none'`)
-  return c.html(`<!doctype html><html lang="en"><meta charset="utf-8"><title>Agent Remote</title><h1>Agent Remote</h1><p>Open your private Agent Hosts and sessions. Access lasts up to 15 minutes.</p><form method="post" action="/api/agent-remote/launch"><input type="hidden" name="challenge" value="${challenge}"><button type="submit">Open remote controller</button></form></html>`)
+  const script = 'document.getElementById("launch-form").requestSubmit()'
+  const hash = Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(script))).toString('base64')
+  c.header('content-security-policy', `default-src 'none'; script-src 'sha256-${hash}'; form-action 'self' ${config.target}; base-uri 'none'; frame-ancestors 'none'`)
+  return c.html(`<!doctype html><html lang="en"><meta charset="utf-8"><title>Agent Remote</title><h1>Agent Remote</h1><p>Open your private Agent Hosts and sessions. Access remains active while your gateway login is valid.</p><form id="launch-form" method="post" action="/api/agent-remote/launch"><input type="hidden" name="challenge" value="${challenge}"><button type="submit">Open remote controller</button></form><script>${script}</script></html>`)
 })
 agentRemoteRouter.post('/api/agent-remote/launch', async c => {
   const config = configuration()
@@ -94,7 +86,9 @@ agentRemoteRouter.post('/api/agent-remote/launch', async c => {
   const exp = Math.min(now + 900, Math.floor(Date.parse(caller.session.expiresAt) / 1000))
   if (exp <= now) return c.json({ error: 'Login session expired' }, 401)
   const header = encode({ alg: 'HS256', typ: 'arc-relay+jwt' })
-  const payload = encode({ iss: config.issuer, aud: config.target, sub: caller.user.id, nonce: challenge, iat: now, exp, jti: crypto.randomUUID() })
+  const continuation = await encryptContinuation(config, caller.session.token, caller.user.id)
+  const sessionExpiresAt = Date.parse(caller.session.expiresAt)
+  const payload = encode({ continuation, sessionExpiresAt, iss: config.issuer, aud: config.target, sub: caller.user.id, nonce: challenge, iat: now, exp, jti: crypto.randomUUID() })
   const input = `${header}.${payload}`
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(config.secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
   const signature = Buffer.from(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(input))).toString('base64url')
