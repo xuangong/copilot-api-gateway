@@ -2,8 +2,8 @@ import { expect, test } from "bun:test"
 import { renderToStaticMarkup } from "react-dom/server"
 import { AgentRemoteLink } from "./AgentRemoteEntry"
 
-test("enabled Agent Remote entry links to the browser-bound gateway flow", () => {
-  expect(renderToStaticMarkup(<AgentRemoteLink enabled={true} authenticated={true} />)).toContain('href="/agent-remote"')
+test("enabled Agent Remote entry links to the Host management tab", () => {
+  expect(renderToStaticMarkup(<AgentRemoteLink enabled={true} authenticated={true} />)).toContain('href="#agent-remote"')
 }, 5000)
 
 test("Agent Remote entry is hidden without configuration or a user login", () => {

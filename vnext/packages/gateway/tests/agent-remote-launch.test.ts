@@ -85,3 +85,17 @@ test('does not grant more lifetime than the login session and requires cookie Or
   const payload = new URLSearchParams(new URL(result.launchUrl).hash.slice(1)).get('ticket')?.split('.')[1] ?? ''
   expect((JSON.parse(Buffer.from(payload, 'base64url').toString()) as { exp: number }).exp).toBe(expires)
 }, 5000)
+
+test('selected Host survives login redirect, auto-submit form and signed callback', async () => {
+  const headers = { cookie: `session_token=${sessionToken}` }
+  const start = await app.request('https://gateway.example/agent-remote?host=host_1', { headers })
+  expect(start.headers.get('location')).toBe('https://relay.example/auth/login?host=host_1')
+  const page = await app.request('https://gateway.example/agent-remote?host=host_1&challenge=' + 'n'.repeat(43), { headers })
+  expect(await page.text()).toContain('name="host" value="host_1"')
+  const response = await launch({ authorization: `Bearer ${sessionToken}` }, JSON.stringify({ challenge: 'n'.repeat(43), host: 'host_1' }))
+  expect(response.status).toBe(200)
+  const result = await response.json() as { launchUrl: string }
+  expect(result.launchUrl).toStartWith('https://relay.example/auth/callback?host=host_1#ticket=')
+  expect((await launch({ authorization: `Bearer ${sessionToken}` }, JSON.stringify({ challenge: 'n'.repeat(43), host: 'https://evil.example' }))).status).toBe(400)
+  expect((await app.request('https://gateway.example/agent-remote?host=%22%3E', { headers })).status).toBe(400)
+}, 5000)

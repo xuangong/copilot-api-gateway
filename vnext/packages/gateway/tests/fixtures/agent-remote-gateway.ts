@@ -12,7 +12,7 @@ const repo = new BunSqliteRepo(db)
 initRepo(repo)
 for (const name of ['alice', 'bob']) {
   const id = `agent_remote_${name}` as UserId
-  await repo.users.create({ id, name, createdAt: new Date().toISOString(), disabled: false })
+  await repo.users.create({ id, name, email: `${name}@example.com`, createdAt: new Date().toISOString(), disabled: false })
   await repo.sessions.create({ token: `ses_agent_remote_${name}` as SessionToken, userId: id, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600_000).toISOString() })
 }
 const server = Bun.serve({ hostname: '127.0.0.1', port: Number(process.env.PORT ?? 0), fetch: request => app.fetch(request) })

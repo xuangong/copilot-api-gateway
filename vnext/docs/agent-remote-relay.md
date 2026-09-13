@@ -23,7 +23,7 @@ Sign in with a real gateway user session, then visit `/agent-remote`. The browse
 first visits the Relay to establish a five-minute login challenge, returns to the
 gateway launch page, and automatically submits its same-origin form under a CSP
 script hash. A manual submit button remains available. The dashboard navigation shows
-Agent Remote when the integration is configured and a user session is active. The gateway rechecks the
+Agent Remote when the integration is configured and a user session is active. This tab lists owned and shared Hosts, with online status and sharing controls. The gateway rechecks the
 session and enabled-user records, signs a grant with that challenge, and redirects
 to the configured Relay callback. The callback consumes the challenge and sets an
 HttpOnly Relay cookie. Forwarding the launch URL to another browser cannot log
@@ -31,8 +31,7 @@ that browser into the sender's tenant.
 
 `POST /api/agent-remote/launch` also accepts a Bearer `ses_` session and JSON
 `{"challenge":"<43-character-base64url-sha256-challenge>"}` from clients that have
-initiated the Relay login. It returns `{launchUrl, expiresAt}`. Only that one field
-is accepted. Cookie callers require the exact configured gateway Origin; foreign
+initiated the Relay login. It returns `{launchUrl, expiresAt}`. An optional `host` field selects a Host; IDs contain 1–256 ASCII letters, digits, underscores or hyphens. No other fields are accepted. A `/agent-remote?host=<id>` link preserves the Host through the challenge form and `/auth/callback?host=<id>#ticket=…`. The Relay validates access to the selected Host. Cookie callers require the exact configured gateway Origin; foreign
 Origin values are rejected for all callers. LLM API keys, dev auth and legacy user
 keys cannot obtain workstation access.
 
@@ -49,6 +48,37 @@ The Relay treats it as opaque and never needs a plaintext gateway login token.
 As both services hold the shared root secret, this is a trusted-service boundary,
 not cryptographic isolation against a compromised Relay. Secret rotation
 invalidates both service proofs and existing continuations.
+
+## Host sharing
+
+The Agent Remote dashboard lists online and offline Hosts. Owners can share a Host
+with an existing Gateway user by email, edit the cumulative session creation limit
+(0–10000), revoke access, and grant it again. The Relay owns grants and usage;
+revocation and regrant never reset the used count. Existing sessions remain usable
+at the creation limit. Lowering the limit below usage blocks new creates only.
+Shared Host cards display used/limit and keep the controller link available.
+
+Authenticated browser APIs:
+
+- `GET /api/agent-remote/hosts` returns the caller's owned and shared Hosts.
+- `GET /api/agent-remote/hosts/:hostId/shares` returns the owner's grant list.
+- `PUT /api/agent-remote/hosts/:hostId/shares` accepts `{email,sessionLimit}`.
+- `DELETE /api/agent-remote/hosts/:hostId/shares` accepts `{email}`.
+
+Every route requires a real enabled user's `ses_` session. Cookie mutations require
+the configured Gateway Origin. Recipient IDs come from the authoritative user
+repository. Disabled recipients cannot receive grants but their grants can be
+revoked. The browser cannot supply a caller or recipient subject.
+
+Gateway sends `POST /gateway/control` to the fixed Relay origin with JSON
+`{subject,operation,hostId?,targetSubject?,targetLabel?,sessionLimit?}`. Operations
+are `hosts`, `shares`, `share`, and `revoke-share`; the recipient label is their
+canonical email. The HS256 header is `{alg:"HS256",typ:"arc-gateway-service+jwt"}`
+and claims are `{iss:gatewayOrigin,aud:relayOrigin,op:"control",bodyHash,iat,exp,jti}`.
+`bodyHash` is base64url SHA256 of exact JSON bytes, lifetime is 60 seconds, and
+`jti` is a fresh UUID. Requests carry no Cookie or Origin, reject redirects, have
+a 10-second deadline, and never retry a mutation automatically. Relay enforces
+Host ownership for grant management; an administrator login does not bypass it.
 
 ## Renewable authority
 
@@ -98,7 +128,7 @@ Gateway tests use real in-memory SQLite and cover missing, invalid, disabled and
 expired login sessions, API-key exclusion, Origin, fixed redirect, signature,
 challenge binding, session-bounded grant expiry, encrypted continuation renewal,
 revocation, user disable, service-proof purpose/body/origin/time validation, and
-unavailable authority. Dashboard entry visibility has rendering coverage. Run `bun run ci:local` from
+unavailable authority. Control-plane tests exercise a real loopback Relay HTTP endpoint and SQLite, including signed proof verification, recipient lookup, denied identities, request injection and quota validation. Dashboard tests cover entry visibility, owner controls, revoked usage and exhausted-quota links. Run `bun run ci:local` from
 `vnext/` (with an outer deadline supplied by the execution environment).
 
 For cross-project validation, build both projects, then run in Agent Remote Control:

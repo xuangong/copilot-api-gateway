@@ -1,3 +1,4 @@
+import { AgentRemoteTab } from "./tabs/agent-remote/AgentRemoteTab"
 import { useMemo } from "react"
 import { AuthProvider, useAuth } from "./state/auth"
 import { ToastProvider, ToastHost } from "./state/toast"
@@ -37,6 +38,7 @@ const ALL_TABS: ReadonlyArray<TabDef> = [
 ]
 
 const HIDDEN_FROM_NAV_TABS: ReadonlyArray<TabDef> = [
+  { id: "agent-remote", labelKey: "dash.remote.title", fallback: "Agent Hosts", userOk: true },
   { id: "settings", labelKey: "dash.settings", fallback: "Settings", userOk: true },
 ]
 
@@ -77,6 +79,8 @@ function Shell() {
 
 function TabBody({ tab }: { tab: string }) {
   switch (tab) {
+    case "agent-remote":
+      return <AgentRemoteTab />
     case "upstreams":
       return <UpstreamsTab />
     case "proxies":
