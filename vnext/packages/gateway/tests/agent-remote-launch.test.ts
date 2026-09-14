@@ -22,7 +22,7 @@ beforeEach(async () => {
   repo = new BunSqliteRepo(db)
   initRepo(repo)
   await repo.users.create({ id: userId, name: 'Relay User', createdAt: new Date().toISOString(), disabled: false })
-  await repo.sessions.create({ token: sessionToken, userId, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600_000).toISOString() })
+  await repo.sessions.create({ token: sessionToken, userId, createdAt: new Date().toISOString(), authenticatedAt: Date.now(), expiresAt: new Date(Date.now() + 3600_000).toISOString() })
 })
 afterEach(() => { db.close(); __resetPlatformForTests() })
 function launch(headers: Record<string, string> = {}, body = JSON.stringify({ challenge: 'n'.repeat(43) })) {
@@ -78,7 +78,7 @@ test('gateway offers a same-origin launch form and preserves the fixed redirect'
 test('does not grant more lifetime than the login session and requires cookie Origin', async () => {
   await repo.sessions.deleteByUserId(userId)
   const expires = Math.floor(Date.now() / 1000) + 120
-  await repo.sessions.create({ token: sessionToken, userId, createdAt: new Date().toISOString(), expiresAt: new Date(expires * 1000).toISOString() })
+  await repo.sessions.create({ token: sessionToken, userId, createdAt: new Date().toISOString(), authenticatedAt: Date.now(), expiresAt: new Date(expires * 1000).toISOString() })
   expect((await launch({ cookie: `session_token=${sessionToken}` })).status).toBe(403)
   const response = await launch({ authorization: `Bearer ${sessionToken}` })
   const result = await response.json() as { launchUrl: string }

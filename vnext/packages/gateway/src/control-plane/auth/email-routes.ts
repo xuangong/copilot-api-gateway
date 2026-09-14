@@ -119,6 +119,7 @@ emailAuthRouter.post('/email/verify', zValidator('json', verifyBody), async (c) 
     userId,
     createdAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
+    authenticatedAt: now.getTime(),
   })
 
   const sessionFlags = cookieFlagsForUrl(url, true)
@@ -158,6 +159,7 @@ emailAuthRouter.post('/email/login', zValidator('json', loginBody), async (c) =>
     userId: user.id,
     createdAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
+    authenticatedAt: now.getTime(),
   })
 
   const sessionFlags = cookieFlagsForUrl(url, true)
@@ -234,6 +236,7 @@ emailAuthRouter.get('/email/magic', async (c) => {
     userId: user.id,
     createdAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
+    authenticatedAt: now.getTime(),
   })
 
   const sessionFlags = cookieFlagsForUrl(url, true)

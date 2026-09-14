@@ -208,13 +208,14 @@ test("Agents continuation migration and atomic browser challenges work through t
     const repo = new D1Repo(new SqliteD1Adapter(db))
     const userId = "synthetic-d1-user" as UserId
     const now = Date.now()
-    const session = { token: "ses_synthetic_d1" as SessionToken, userId, createdAt: new Date(now).toISOString(), expiresAt: new Date(now + 3600_000).toISOString() }
+    const session = { token: "ses_synthetic_d1" as SessionToken, userId, createdAt: new Date(now).toISOString(), authenticatedAt: now - 3600_000, expiresAt: new Date(now + 3600_000).toISOString() }
     await repo.users.create({ id: userId, name: "Synthetic", disabled: false, createdAt: session.createdAt })
     await repo.sessions.create(session)
     const handleHash = await continuationHash("arc2_synthetic_handle")
-    const value = { handleHash, issuer: "https://gateway.example", audience: "https://relay.example", expiresAt: now + 3600_000, authenticatedAt: now }
+    expect((await repo.sessions.findByToken(session.token))?.authenticatedAt).toBe(session.authenticatedAt)
+    const value = { handleHash, issuer: "https://gateway.example", audience: "https://relay.example", expiresAt: now + 3600_000, authenticatedAt: session.authenticatedAt }
     expect(await repo.agentRemoteContinuations.create(value, session)).toBe(true)
-    expect(await repo.agentRemoteContinuations.findActive(handleHash, value.issuer, value.audience, now)).toEqual({ subject: userId, expiresAt: value.expiresAt, authenticatedAt: now })
+    expect(await repo.agentRemoteContinuations.findActive(handleHash, value.issuer, value.audience, now)).toEqual({ subject: userId, expiresAt: value.expiresAt, authenticatedAt: session.authenticatedAt })
     expect(await repo.agentRemoteContinuations.findActive(handleHash, value.issuer, "https://other.example", now)).toBeNull()
     expect(await repo.agentRemoteContinuations.findActive(handleHash, value.issuer, value.audience, value.expiresAt)).toBeNull()
     expect(await repo.agentRemoteContinuations.createOAuthState("state-hash", "browser-hash", "/agent-remote", now)).toBe(true)

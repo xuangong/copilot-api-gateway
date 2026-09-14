@@ -57,7 +57,7 @@ const USAGE_REQ_COLS = "key_id, incoming_model, model, upstream, model_key, clie
 const LATENCY_COLS = "key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss"
 const USER_COLS = "id, name, email, avatar_url, created_at, disabled, last_login_at, user_key, password_hash"
 const INVITE_COLS = "id, code, name, email, created_at, used_at, used_by"
-const SESSION_COLS = "token, user_id, created_at, expires_at"
+const SESSION_COLS = "token, user_id, created_at, expires_at, authenticated_at"
 const PRESENCE_COLS = "client_id, client_name, key_id, key_name, owner_id, gateway_url, last_seen_at"
 const WS_USAGE_COLS = "key_id, hour, searches, successes, failures"
 const WS_ENGINE_COLS = "key_id, engine_id, hour, attempts, successes, failures, empty_results, total_results, success_duration_ms, failure_duration_ms"
@@ -818,12 +818,13 @@ class SharedSessionRepo implements SessionRepo {
   constructor(private x: SqlExecutor) {}
 
   async create(session: UserSession): Promise<void> {
-    await this.x.run(`INSERT INTO user_sessions (${SESSION_COLS}) VALUES (?, ?, ?, ?)`, [session.token, session.userId, session.createdAt, session.expiresAt])
+    await this.x.run(`INSERT INTO user_sessions (${SESSION_COLS}) VALUES (?, ?, ?, ?, ?)`, [session.token, session.userId, session.createdAt, session.expiresAt, session.authenticatedAt ?? null])
   }
 
   async findByToken(token: SessionToken): Promise<UserSession | null> {
-    const row = await this.x.first<any>(`SELECT ${SESSION_COLS} FROM user_sessions WHERE token = ?`, [token])
-    return row ? { token: row.token as SessionToken, userId: row.user_id as UserId, createdAt: row.created_at, expiresAt: row.expires_at } : null
+    const row = await this.x.first<{ token: SessionToken; user_id: UserId; created_at: string; expires_at: string; authenticated_at: number | null }>(`SELECT ${SESSION_COLS} FROM user_sessions WHERE token = ?`, [token])
+    return row ? { token: row.token, userId: row.user_id, createdAt: row.created_at, expiresAt: row.expires_at,
+      ...(row.authenticated_at === null ? {} : { authenticatedAt: row.authenticated_at }) } : null
   }
 
   async deleteByToken(token: SessionToken): Promise<void> {

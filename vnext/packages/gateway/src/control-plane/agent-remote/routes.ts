@@ -101,8 +101,15 @@ agentRemoteRouter.post('/api/agent-remote/launch', async c => {
   const exp = Math.min(now + 900, Math.floor(Date.parse(caller.session.expiresAt) / 1000))
   if (exp <= now) return c.json({ error: 'Login session expired' }, 401)
   const header = encode({ alg: 'HS256', typ: 'arc-relay+jwt' })
-  const authenticatedAt = Date.parse(caller.session.createdAt)
-  if (!Number.isFinite(authenticatedAt) || authenticatedAt <= 0 || authenticatedAt > Date.now()) return c.json({ error: 'Invalid login authentication time' }, 401)
+  const authenticatedAt = caller.session.authenticatedAt
+  if (authenticatedAt === undefined || !Number.isSafeInteger(authenticatedAt) || authenticatedAt <= 0 || authenticatedAt > Date.now()) {
+    const returnTo = new URL('/agent-remote', config.issuer)
+    returnTo.searchParams.set('reauthenticate', '1')
+    returnTo.searchParams.set('challenge', challenge)
+    if (typeof host === 'string') returnTo.searchParams.set('host', host)
+    if (form) return c.redirect(returnTo.href, 303)
+    return c.json({ code: 'reauthentication_required', error: 'Login authentication is required', loginUrl: returnTo.href }, 403)
+  }
   const continuation = `arc2_${Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url')}`
   const stored = await getRepo().agentRemoteContinuations.create({ handleHash: await continuationHash(continuation),
     issuer: config.issuer, audience: config.target, expiresAt: Date.parse(caller.session.expiresAt), authenticatedAt }, caller.session)

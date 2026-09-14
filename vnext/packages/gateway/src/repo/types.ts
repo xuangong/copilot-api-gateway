@@ -128,6 +128,8 @@ export interface UserSession {
   userId: UserId
   createdAt: string
   expiresAt: string
+  /** Original credential verification time in epoch milliseconds; never token creation. */
+  authenticatedAt?: number
 }
 
 export interface ApiKeyRepo {

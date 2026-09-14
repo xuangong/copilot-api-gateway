@@ -239,6 +239,7 @@ googleAuthRouter.get('/google/callback', async (c) => {
     userId: user!.id,
     createdAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
+    authenticatedAt: now.getTime(),
   })
 
   const isSecure = returnPath ? oauthOrigin.startsWith('https:') : url.protocol === 'https:'

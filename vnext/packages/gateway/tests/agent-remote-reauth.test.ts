@@ -54,8 +54,14 @@ test("reauthentication requires browser-bound OAuth and returns to the validated
   expect(response.status).toBe(302)
   expect(response.headers.get("location")).toBe(`/agent-remote?challenge=${challenge}&host=host_1`)
   expect(exchanges).toBe(2)
-  const created = db.query<{ created_at: string }, []>("SELECT created_at FROM user_sessions ORDER BY created_at DESC LIMIT 1").get()
-  expect(Date.parse(created?.created_at ?? "")).toBeGreaterThan(Date.now() - 5000)
+  const created = db.query<{ authenticated_at: number }, []>("SELECT authenticated_at FROM user_sessions ORDER BY created_at DESC LIMIT 1").get()
+  expect(created?.authenticated_at).toBeGreaterThan(Date.now() - 5000)
+  const sessionCookie = response.headers.getSetCookie().find(value => value.startsWith("session_token="))?.split(";")[0] ?? ""
+  const launch = await app.request(`${origin}/api/agent-remote/launch`, { method: "POST", headers: { cookie: sessionCookie, origin, "content-type": "application/json" }, body: JSON.stringify({ challenge }) }, env)
+  expect(launch.status).toBe(200)
+  const result = await launch.json() as { launchUrl: string }
+  const payload = new URLSearchParams(new URL(result.launchUrl).hash.slice(1)).get("ticket")?.split(".")[1] ?? ""
+  expect(JSON.parse(Buffer.from(payload, "base64url").toString()).authenticatedAt).toBe(created?.authenticated_at)
   expect((await app.request(`${origin}/auth/google/callback?code=synthetic&state=${state}`, { headers: { cookie } }, env)).status).toBe(400)
 }, 5000)
 

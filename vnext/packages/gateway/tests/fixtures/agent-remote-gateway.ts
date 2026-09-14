@@ -16,7 +16,7 @@ initRepo(repo)
 for (const name of ['alice', 'bob']) {
   const id = `agent_remote_${name}` as UserId
   await repo.users.create({ id, name, email: `${name}@example.com`, createdAt: new Date().toISOString(), disabled: false })
-  await repo.sessions.create({ token: `ses_agent_remote_${name}` as SessionToken, userId: id, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600_000).toISOString() })
+  await repo.sessions.create({ token: `ses_agent_remote_${name}` as SessionToken, userId: id, createdAt: new Date().toISOString(), authenticatedAt: Date.now(), expiresAt: new Date(Date.now() + 3600_000).toISOString() })
 }
 const server = Bun.serve({ hostname, port: Number(process.env.PORT ?? 0), fetch: request => app.fetch(request) })
 await Bun.write(ready, JSON.stringify({ url: server.url.href }))

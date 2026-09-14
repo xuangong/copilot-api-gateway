@@ -25,7 +25,7 @@ beforeEach(async () => {
   initRepo(repo)
   sessionExpiresAt = Date.now() + 3600_000
   await repo.users.create({ id: subject, name: "Lifecycle User", createdAt: new Date().toISOString(), disabled: false })
-  await repo.sessions.create({ token, userId: subject, createdAt: new Date().toISOString(), expiresAt: new Date(sessionExpiresAt).toISOString() })
+  await repo.sessions.create({ token, userId: subject, createdAt: new Date().toISOString(), authenticatedAt: Date.now(), expiresAt: new Date(sessionExpiresAt).toISOString() })
 })
 afterEach(() => { db.close(); __resetPlatformForTests() })
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url")
@@ -58,7 +58,7 @@ test("launch supplies opaque continuation and original authentication time", asy
   const second = await grant()
   expect(first.sessionExpiresAt).toBe(sessionExpiresAt)
   expect(first.continuation).toMatch(/^arc2_[A-Za-z0-9_-]{43}$/)
-  expect(first.authenticatedAt).toBe(Date.parse((await repo.sessions.findByToken(token))?.createdAt ?? ""))
+  expect(first.authenticatedAt).toBe((await repo.sessions.findByToken(token))?.authenticatedAt)
   expect(first.continuation).not.toBe(second.continuation)
   expect(first.continuation).not.toContain(token)
   expect(Buffer.from(first.continuation, "base64url").toString()).not.toContain(token)
@@ -185,7 +185,7 @@ test("continuation registry stores hashes and refuses audience or original sessi
   expect((await service("renew", { continuation: issued.continuation })).status).toBe(401)
   db.query("UPDATE agent_remote_continuations SET audience = ?").run(config.AGENT_REMOTE_RELAY_URL ?? "")
   await repo.sessions.deleteByUserId(subject)
-  await repo.sessions.create({ token, userId: subject, createdAt: new Date().toISOString(), expiresAt: new Date(sessionExpiresAt).toISOString() })
+  await repo.sessions.create({ token, userId: subject, createdAt: new Date().toISOString(), authenticatedAt: Date.now(), expiresAt: new Date(sessionExpiresAt).toISOString() })
   expect((await service("renew", { continuation: issued.continuation })).status).toBe(401)
 }, 5000)
 
@@ -204,7 +204,7 @@ test("authentic legacy encrypted continuation is rejected even with the unchange
 
 test("launching and renewal preserve old authentication time and bound continuation expiry", async () => {
   const authenticatedAt = Date.now() - 3600_000
-  db.query("UPDATE user_sessions SET created_at = ?").run(new Date(authenticatedAt).toISOString())
+  db.query("UPDATE user_sessions SET authenticated_at = ?").run(authenticatedAt)
   const issued = await grant()
   expect(issued.authenticatedAt).toBe(authenticatedAt)
   expect(await (await service("renew", { continuation: issued.continuation })).json()).toMatchObject({ authenticatedAt })
@@ -228,7 +228,7 @@ test("durable continuation admission caps each user and removes expired handles"
 test("Gateway logout revokes only its original login and refuses cross-origin cookie logout", async () => {
   const issued = await grant()
   const other = "ses_other_synthetic_login" as SessionToken
-  await repo.sessions.create({ token: other, userId: subject, createdAt: new Date().toISOString(), expiresAt: new Date(sessionExpiresAt).toISOString() })
+  await repo.sessions.create({ token: other, userId: subject, createdAt: new Date().toISOString(), authenticatedAt: Date.now(), expiresAt: new Date(sessionExpiresAt).toISOString() })
   const denied = await app.request("https://gateway.example/auth/logout", { method: "POST", headers: { cookie: `session_token=${token}`, origin: "https://evil.example" } })
   expect(denied.status).toBe(403)
   expect((await service("renew", { continuation: issued.continuation })).status).toBe(200)

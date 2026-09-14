@@ -48,7 +48,7 @@ not include paths, credentials, query strings or fragments. Generate the secret
 with `openssl rand -base64 32`; use the platform secret store.
 
 Bun/Docker reads these values from its environment. Cloudflare reads them through
-existing `initEnv` wiring; set the values on the Worker before deployment. Apply migration `0011_agent_remote_continuations.sql` before deploying this version. No
+existing `initEnv` wiring; set the values on the Worker before deployment. Apply migrations through `0012_session_authentication_time.sql` before deploying this version. No
 cross-repository runtime package is needed. Missing configuration
 returns 503 on this optional integration's routes.
 
@@ -74,7 +74,12 @@ HS256 header `typ=arc-relay+jwt`; claims `iss`, `aud`, `sub`, `iat`, `exp`, `jti
 `nonce`, `continuation`, `sessionExpiresAt`, and `authenticatedAt`. The audience is
 the fixed Relay origin. Grant expiry is the lesser of 15 minutes and the gateway
 login expiry. `sessionExpiresAt` and `authenticatedAt` are epoch milliseconds;
-`authenticatedAt` is the original `user_sessions.created_at`, never launch or renewal time.
+`authenticatedAt` is the original credential verification time stored separately in
+`user_sessions.authenticated_at`, never token creation, launch, or renewal time.
+Password login, verified email registration, magic-link login, and Google callback
+record this time. Device authorization inherits it from the approving session;
+API keys, legacy user keys, and sessions without provenance cannot acquire it.
+Those sessions remain usable in Gateway but require a real login before launching Agents.
 
 The continuation is `arc2_` followed by 32 random bytes encoded as unpadded base64url.
 Only its SHA-256 hash is persisted. The Gateway registry binds it to a non-secret
@@ -91,6 +96,10 @@ Apply additive migration `0011_agent_remote_continuations.sql` on both Bun and D
 before the Gateway update, then update the Relay. It adds nullable
 `user_sessions.agent_remote_id`, `agent_remote_continuations`, and
 `agent_remote_oauth_states`; existing users, sessions, Hosts and shares remain.
+Migration `0012_session_authentication_time.sql` adds the nullable authentication
+time without inferring a value for existing sessions, and deletes old continuations
+whose authentication provenance was not recorded. These browsers must sign in
+again; ordinary Gateway sessions and stored Hosts and shares are preserved.
 Legacy encrypted `v1` continuations fail closed and users sign in again. Keep the
 existing signing/storage secret: rotating it is a separate operation and is not
 part of this migration.

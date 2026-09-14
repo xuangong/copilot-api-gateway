@@ -32,6 +32,7 @@ interface FullAuthCtx {
   apiKeyId?: ApiKeyId
   routingPolicy?: ApiKeyRoutingPolicy
   authKind?: 'public' | 'session' | 'apiKey'
+  authenticatedAt?: number
   copilot?: { copilotToken: string; accountType: AccountType }
   githubToken?: string
 }
@@ -93,6 +94,7 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
             isAdmin,
             isUser: true,
             authKind: 'session',
+            authenticatedAt: session.authenticatedAt,
           }
           resolvedUserId = session.userId
         }

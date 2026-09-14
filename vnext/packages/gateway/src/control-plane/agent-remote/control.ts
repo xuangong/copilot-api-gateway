@@ -75,7 +75,7 @@ async function control(c: Context, operation: Operation) {
         c.header("retry-after", "60")
         return c.json({ error: "Too many sharing requests" }, 429)
       }
-      const authenticatedAt = Date.parse(caller.session.createdAt)
+      const authenticatedAt = caller.session.authenticatedAt ?? 0
       if (operation === "share" && !(authenticatedAt > 0 && authenticatedAt <= Date.now() && Date.now() - authenticatedAt <= 600_000)) {
         remoteSecurityEvent("share", "denied")
         const loginUrl = new URL("/agent-remote", config.issuer)

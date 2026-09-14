@@ -40,7 +40,7 @@ beforeEach(async () => {
   for (const [id, email] of [[userId, "owner@example.com"], [recipientId, "recipient@example.com"]] as const) {
     await repo.users.create({ id, email, name: id, createdAt: new Date().toISOString(), disabled: false })
   }
-  await repo.sessions.create({ token: sessionToken, userId, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600_000).toISOString() })
+  await repo.sessions.create({ token: sessionToken, userId, createdAt: new Date().toISOString(), authenticatedAt: Date.now(), expiresAt: new Date(Date.now() + 3600_000).toISOString() })
 })
 afterEach(() => { relay.stop(true); db.close(); __resetPlatformForTests() })
 function request(path = "hosts", method = "GET", body?: unknown, headers: Record<string, string> = { authorization: `Bearer ${sessionToken}` }) {
@@ -150,7 +150,7 @@ test("malformed, oversized and non-JSON sharing bodies never reach Relay", async
 }, 5000)
 
 test("sharing changes require actual recent authentication while revocation stays available", async () => {
-  db.query("UPDATE user_sessions SET created_at = ?").run(new Date(Date.now() - 601_000).toISOString())
+  db.query("UPDATE user_sessions SET authenticated_at = ?").run(Date.now() - 601_000)
   const response = await request("hosts/host_1/shares", "PUT", { email: "recipient@example.com", sessionLimit: 1 })
   expect(response.status).toBe(403)
   expect(await response.json()).toEqual({ code: "reauthentication_required", error: "Recent authentication is required", loginUrl: "https://gateway.example/agent-remote?reauthenticate=1&host=host_1" })

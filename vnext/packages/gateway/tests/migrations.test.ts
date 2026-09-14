@@ -23,6 +23,19 @@ const snapshot = (db: Database) =>
 const listSql = () => readdirSync(dir).filter((f) => f.endsWith(".sql"))
 
 describe("migration corpus", () => {
+  test("authentication time migration preserves logins without trusting token creation or old continuations", () => {
+    const db = new Database(":memory:")
+    try {
+      for (const file of listSql().sort().filter(file => file < "0012_")) db.exec(readFileSync(`${dir}/${file}`, "utf8"))
+      db.run("INSERT INTO users (id, name, created_at, disabled) VALUES (?, ?, ?, ?)", ["synthetic", "Synthetic", "2026-09-14", 0])
+      db.run("INSERT INTO user_sessions (token, user_id, created_at, expires_at, agent_remote_id) VALUES (?, ?, ?, ?, ?)", ["ses_old", "synthetic", "2026-09-14", "2099-01-01", "old-id"])
+      db.run("INSERT INTO agent_remote_continuations (handle_hash, session_id, user_id, issuer, audience, expires_at, authenticated_at) VALUES (?, ?, ?, ?, ?, ?, ?)", ["old-hash", "old-id", "synthetic", "issuer", "audience", 9e12, Date.now()])
+      db.exec(readFileSync(`${dir}/0012_session_authentication_time.sql`, "utf8"))
+      expect(db.query("SELECT token, authenticated_at FROM user_sessions").get()).toEqual({ token: "ses_old", authenticated_at: null })
+      expect(db.query("SELECT handle_hash FROM agent_remote_continuations").all()).toEqual([])
+    } finally { db.close() }
+  })
+
   test("every filename carries a unique 4-digit prefix", () => {
     const prefixes: string[] = []
     for (const file of listSql()) {

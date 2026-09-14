@@ -26,22 +26,22 @@ export class SharedAgentRemoteContinuationRepo implements AgentRemoteContinuatio
     const result = await this.sql.run(`INSERT INTO agent_remote_continuations
       (handle_hash, session_id, user_id, issuer, audience, expires_at, authenticated_at)
       SELECT ?, agent_remote_id, user_id, ?, ?, ?, ? FROM user_sessions
-      WHERE token = ? AND user_id = ? AND created_at = ? AND expires_at = ?
+      WHERE token = ? AND user_id = ? AND created_at = ? AND expires_at = ? AND authenticated_at = ?
       AND (SELECT COUNT(*) FROM agent_remote_continuations WHERE user_id = ?) < 128`,
     [value.handleHash, value.issuer, value.audience, value.expiresAt, value.authenticatedAt,
-      session.token, session.userId, session.createdAt, session.expiresAt, session.userId])
+      session.token, session.userId, session.createdAt, session.expiresAt, value.authenticatedAt, session.userId])
     return result.changes === 1
   }
 
   async findActive(handleHash: string, issuer: string, audience: string, now: number) {
     const row = await this.sql.first<{
-      user_id: UserId; expires_at: number; authenticated_at: number; session_expires_at: string; session_created_at: string
+      user_id: UserId; expires_at: number; authenticated_at: number; session_expires_at: string; session_authenticated_at: number | null
     }>(`SELECT c.user_id, c.expires_at, c.authenticated_at,
-        s.expires_at AS session_expires_at, s.created_at AS session_created_at
+        s.expires_at AS session_expires_at, s.authenticated_at AS session_authenticated_at
       FROM agent_remote_continuations c JOIN user_sessions s ON s.agent_remote_id = c.session_id
       WHERE c.handle_hash = ? AND c.issuer = ? AND c.audience = ? AND c.user_id = s.user_id AND c.expires_at > ?`,
     [handleHash, issuer, audience, now])
-    if (!row || Date.parse(row.session_created_at) !== row.authenticated_at || row.authenticated_at > now || row.authenticated_at <= 0) return null
+    if (!row || row.session_authenticated_at !== row.authenticated_at || !Number.isSafeInteger(row.authenticated_at) || row.authenticated_at > now || row.authenticated_at <= 0) return null
     const expiresAt = Math.min(row.expires_at, Date.parse(row.session_expires_at))
     return expiresAt > now ? { subject: row.user_id, expiresAt, authenticatedAt: row.authenticated_at } : null
   }

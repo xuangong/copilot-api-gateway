@@ -84,6 +84,7 @@ deviceAuthRouter.post('/device/verify', zValidator('json', verifyBody), async (c
     userId: brandedUserId,
     createdAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
+    authenticatedAt: c.get('auth')?.authenticatedAt,
   })
   await repo.deviceCodes.verify(dc.deviceCode, brandedUserId, sessionToken)
   return c.json({ ok: true })

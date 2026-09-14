@@ -27,6 +27,7 @@ export interface AuthCtx {
   userId?: string
   isAdmin?: boolean
   authKind?: 'public' | 'session' | 'apiKey'
+  authenticatedAt?: number
 }
 
 type Vars = { auth: AuthCtx }
