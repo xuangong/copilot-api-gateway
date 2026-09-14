@@ -146,14 +146,16 @@ account disable. Revoking the original login affects its browser session;
 disabling the user also affects workstation access.
 
 The Relay stores its own random HttpOnly sessions, device credential hashes and
-native bindings in an atomic private state file. It rechecks Gateway authority
+native bindings in a private signed Node snapshot or its own SQLite Durable
+Object. It rechecks Gateway authority
 after restart and requires native reattachment before restored streams. Initial
 pairings expire after ten minutes; first registration binds the credential to a
 persistent installation. Device revoke closes its streams, and explicit re-pairing
 rotates its credential. Transcript traffic never passes through the Gateway.
-Hosted operation requires durable storage and one Relay process per state directory
-behind TLS. Standalone defaults remain ephemeral. A Cloudflare gateway can issue
-grants for the separate Node Relay but does not run the broker itself.
+Hosted operation requires durable storage behind TLS: one Node process per state
+directory, or one stable Durable Object for the Agents Worker. Standalone defaults
+remain ephemeral. Gateway issues grants for either independent Agents runtime;
+the Gateway Worker does not run the broker or store its device/share/quota state.
 
 ## Validation
 
@@ -172,8 +174,13 @@ AGENT_REMOTE_GATEWAY_CHECKOUT=/absolute/path/to/this/gateway-worktree \
 ```
 
 The gateway fixture is `vnext/packages/gateway/tests/fixtures/agent-remote-gateway.ts`.
-It uses temporary test identities and in-memory SQLite, listens only on loopback,
-and never bootstraps a provider or uses a user's database. The external harness
+It uses temporary test identities and in-memory SQLite, listens on loopback by
+default (or on the explicitly isolated Docker fixture network), and never
+bootstraps a provider or uses a user's database. The external harness
 exercises the real gateway, Relay entrypoint, Chromium login handoff, a scripted
-WebSocket Host, two-user isolation, forwarded-link rejection, renewal, Relay process restart with stable device/binding identities, device revoke and logout. No CLI agent,
+WebSocket Host, two-user isolation, forwarded-link rejection, renewal, SIGKILL
+recovery with stable device/binding identities, device revoke and logout. Select
+`AGENT_REMOTE_TEST_RUNTIME=node|workers` for the Relay backend and optionally
+`AGENT_REMOTE_TEST_DOCKER=1` with `AGENT_REMOTE_GATEWAY_IMAGE` for the isolated
+container contract. No CLI agent,
 Trojan server or cloud inference is required.
