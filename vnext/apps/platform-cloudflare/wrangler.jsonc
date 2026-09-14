@@ -29,7 +29,9 @@
     }
   ],
   "vars": {
-    "ACCOUNT_TYPE": "individual"
+    "ACCOUNT_TYPE": "individual",
+    "AGENT_REMOTE_RELAY_URL": "https://agents.xianliao.de5.net",
+    "AGENT_REMOTE_ISSUER": "https://token.xianliao.de5.net"
   },
   "dev": {
     "port": 8788,

@@ -7,6 +7,39 @@ and does not relay transcript traffic through the gateway Worker.
 
 ## Enable
 
+The production Agents application has its own origin,
+`https://agents.xianliao.de5.net`. Its Worker, Durable Object state, and Controller
+assets belong to the Agent Remote Control deployment, not this Gateway Worker.
+The Gateway configuration selects `https://token.xianliao.de5.net` as its canonical
+issuer. An SSH Gateway installation can use a different issuer, but each Relay
+deployment trusts only its configured issuer. Local SQLite and production D1
+accounts and login sessions remain independent.
+
+The Cloudflare configuration includes the two public origins. Set
+`AGENT_REMOTE_SIGNING_SECRET` through `wrangler secret put` in
+`vnext/apps/platform-cloudflare`, using the same secret as the Agents application.
+The optional routes remain unavailable until the secret is configured. Do not
+copy the Gateway's D1, KV, R2, or other bindings into the Agents Worker.
+
+For Docker, `docker-compose.vnext.yml` explicitly forwards all three Agent Remote
+variables from the environment. Add them to a private `.env` and rebuild this
+worktree's image with Compose before starting it. For ARC local integration,
+build without starting the existing Gateway container:
+
+```sh
+docker compose --project-name arc-gateway-runtime -f docker-compose.vnext.yml build gateway-vnext
+```
+
+Pass `arc-gateway-runtime-gateway-vnext` explicitly to the ARC local launcher. Its
+isolated Compose project supplies local origins, secret, ports, and a separate
+database volume. Never mount `data-vnext` from an existing installation into the
+test stack. Normal interactive testing uses a real local Gateway login; the
+automated test harness uses explicit test-only SQLite identities. Its Docker
+override runs `packages/gateway/tests/fixtures/agent-remote-gateway.ts` with
+`AGENT_REMOTE_FIXTURE_DOCKER=1` and a readiness file; only that explicit fixture
+uses fixed Alice/Bob logins and container binding. The normal server does not
+read this flag or enable those identities.
+
 Configure `AGENT_REMOTE_RELAY_URL` (the HTTPS Relay origin),
 `AGENT_REMOTE_ISSUER` (this gateway's HTTPS public origin), and
 `AGENT_REMOTE_SIGNING_SECRET` (a random secret of at least 32 bytes, shared with the
