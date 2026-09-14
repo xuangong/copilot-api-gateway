@@ -184,3 +184,10 @@ recovery with stable device/binding identities, device revoke and logout. Select
 `AGENT_REMOTE_TEST_DOCKER=1` with `AGENT_REMOTE_GATEWAY_IMAGE` for the isolated
 container contract. No CLI agent,
 Trojan server or cloud inference is required.
+
+Gateway control requests use manual redirect handling for Workers compatibility;
+every non-success response is rejected before parsing a Relay result. Service
+proofs are never forwarded to a redirected destination. The 2026-09-14 production
+adaptation passed 3594 CI tests (one existing skip) and a real local Gateway
+workerd/D1 smoke: a seeded local user session received its Host directory, while
+301/302/303/307/308 responses returned 503 without a redirected request.

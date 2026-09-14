@@ -29,7 +29,7 @@ async function relayControl(config: AgentRemoteConfiguration, body: ControlReque
   const signature = Buffer.from(await crypto.subtle.sign("HMAC", key, encoder.encode(input))).toString("base64url")
   return fetch(`${config.target}/gateway/control`, {
     method: "POST", headers: { authorization: `Bearer ${input}.${signature}`, "content-type": "application/json" },
-    body: raw, redirect: "error", signal: AbortSignal.timeout(10_000),
+    body: raw, redirect: "manual", signal: AbortSignal.timeout(10_000),
   })
 }
 

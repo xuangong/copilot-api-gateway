@@ -11,6 +11,7 @@ let repo: BunSqliteRepo
 let relay: ReturnType<typeof Bun.serve>
 let received: { body: Record<string, unknown>; headers: Headers; raw: string }[]
 let relayStatus = 200
+let relayLocation: string | undefined
 const secret = "test-only-agent-remote-control-secret-0123456789"
 const userId = "owner" as UserId
 const recipientId = "recipient" as UserId
@@ -19,12 +20,15 @@ beforeEach(async () => {
   __resetPlatformForTests()
   received = []
   relayStatus = 200
+  relayLocation = undefined
   relay = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
     const raw = await request.text()
     const body = JSON.parse(raw) as Record<string, unknown>
     received.push({ body, raw, headers: request.headers })
     expect(new URL(request.url).pathname).toBe("/gateway/control")
-    if (relayStatus !== 200) return Response.json({ error: "Access denied" }, { status: relayStatus })
+    if (relayStatus !== 200) return Response.json({ error: "Access denied" }, {
+      status: relayStatus, headers: relayLocation ? { location: relayLocation } : undefined,
+    })
     return Response.json(body.operation === "hosts" ? { hosts: [{ id: "host_1", access: "shared", sessionQuota: { limit: 2, used: 2 } }] }
       : body.operation === "shares" ? { shares: [{ subject: recipientId, label: "recipient@example.com", sessionLimit: 2, used: 2, revoked: false }] } : { ok: true })
   } })
@@ -104,6 +108,25 @@ test("Relay owner denial is preserved and does not expose service credentials", 
   const response = await request("hosts/host_1/shares", "PUT", { email: "recipient@example.com", sessionLimit: 1 })
   expect(response.status).toBe(403)
   expect(await response.text()).not.toContain(secret)
+}, 5000)
+
+test("Relay redirects are rejected without forwarding service credentials", async () => {
+  let redirectedRequests = 0
+  const destination = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch() {
+    redirectedRequests++
+    return Response.json({ hosts: [] })
+  } })
+  try {
+    relayLocation = destination.url.href
+    for (const status of [301, 302, 303, 307, 308]) {
+      relayStatus = status
+      const response = await request()
+      expect(response.status).toBe(503)
+      expect(await response.json()).toEqual({ error: "Agent Remote is temporarily unavailable" })
+    }
+    expect(received).toHaveLength(5)
+    expect(redirectedRequests).toBe(0)
+  } finally { destination.stop(true) }
 }, 5000)
 
 test("same-origin cookie callers can share while expired sessions cannot", async () => {
