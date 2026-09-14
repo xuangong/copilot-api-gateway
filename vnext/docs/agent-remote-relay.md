@@ -239,3 +239,24 @@ proofs are never forwarded to a redirected destination. The 2026-09-14 productio
 adaptation passed 3594 CI tests (one existing skip) and a real local Gateway
 workerd/D1 smoke: a seeded local user session received its Host directory, while
 301/302/303/307/308 responses returned 503 without a redirected request.
+
+### Browser reauthentication and form redirects
+
+Sessions without authentication provenance enter OAuth from the initial GET
+navigation, before rendering the launch form. If authentication provenance
+changes after that page loads, the form POST returns a small HTML navigation
+page with a manual sign-in link instead of redirecting the form to Google.
+This ends the original form's redirect chain while retaining the validated Host
+and login challenge. JSON clients still receive `403 reauthentication_required`.
+
+Browsers apply the launch page's `form-action` policy to the complete form
+redirect chain. Sending an old login through POST -> reauthentication -> Google
+therefore blocked navigation and left the browser on the original Agents launch
+page. The fix keeps the existing restrictive policy; it does not allow arbitrary
+form targets or issue an Agents grant without real authentication.
+
+The failure was reproduced in Chromium using the real Gateway handlers and an
+isolated SQLite login. Browser acceptance then covered legacy login, provenance
+removed between GET and POST, and a valid login reaching the Relay callback,
+with zero CSP violations. Synthetic OAuth/Relay destinations were served on
+separate local origins; no production login or model request was used.

@@ -108,3 +108,12 @@ test("expired and concurrently replayed browser challenges cannot create extra s
   expect(results.map(value => value.status).sort()).toEqual([302, 400])
   expect(exchanges).toBe(2)
 }, 5000)
+
+test("legacy browser entry starts authentication before rendering an auto-submit form", async () => {
+  const response = await app.request(`${origin}/agent-remote?challenge=${challenge}&host=host_1`, { headers: { cookie: `session_token=${token}` } }, env)
+  expect(response.status).toBe(303)
+  const login = new URL(response.headers.get("location") ?? "", origin)
+  expect(login.pathname).toBe("/auth/google")
+  expect(login.searchParams.get("agent_remote_return")).toBe(`/agent-remote?challenge=${challenge}&host=host_1`)
+  expect(exchanges).toBe(0)
+}, 5000)

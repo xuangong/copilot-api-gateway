@@ -39,7 +39,17 @@ agentRemoteRouter.get('/agent-remote', async c => {
     loginUrl.searchParams.set('agent_remote_return', returnPath)
     return c.redirect(loginUrl.href, 303)
   }
-  if (!await userSession(c.req.raw)) return c.html('<!doctype html><html lang="en"><meta charset="utf-8"><title>Agent Remote</title><h1>Agent Remote</h1><p>Sign in to the gateway, then return to this page.</p><a href="/">Open gateway</a></html>', 401)
+  const caller = await userSession(c.req.raw)
+  if (!caller) return c.html('<!doctype html><html lang="en"><meta charset="utf-8"><title>Agent Remote</title><h1>Agent Remote</h1><p>Sign in to the gateway, then return to this page.</p><a href="/">Open gateway</a></html>', 401)
+  if (!hasAuthentication(caller.session.authenticatedAt)) {
+    const target = new URL(c.req.url)
+    const returnPath = agentRemoteReturnPath(target.pathname + target.search)
+    if (!returnPath) return c.json({ error: 'Invalid return target' }, 400)
+    const loginUrl = new URL('/auth/google', config.issuer)
+    loginUrl.searchParams.set('agent_remote_return', returnPath)
+    // Start OAuth as navigation, before a form submission can constrain its redirects.
+    return c.redirect(loginUrl.href, 303)
+  }
   const host = c.req.query('host')
   if (host !== undefined && !validHostId(host)) return c.json({ error: 'Invalid Host' }, 400)
   const hostQuery = host ? `?host=${encodeURIComponent(host)}` : ''
@@ -102,12 +112,19 @@ agentRemoteRouter.post('/api/agent-remote/launch', async c => {
   if (exp <= now) return c.json({ error: 'Login session expired' }, 401)
   const header = encode({ alg: 'HS256', typ: 'arc-relay+jwt' })
   const authenticatedAt = caller.session.authenticatedAt
-  if (authenticatedAt === undefined || !Number.isSafeInteger(authenticatedAt) || authenticatedAt <= 0 || authenticatedAt > Date.now()) {
+  if (!hasAuthentication(authenticatedAt)) {
     const returnTo = new URL('/agent-remote', config.issuer)
     returnTo.searchParams.set('reauthenticate', '1')
     returnTo.searchParams.set('challenge', challenge)
     if (typeof host === 'string') returnTo.searchParams.set('host', host)
-    if (form) return c.redirect(returnTo.href, 303)
+    if (form) {
+      // End the form redirect chain before navigating to external authentication.
+      const script = `location.replace(${JSON.stringify(returnTo.href)})`
+      const hash = Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(script))).toString('base64')
+      c.header('content-security-policy', `default-src 'none'; script-src 'sha256-${hash}'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'`)
+      const href = returnTo.href.replaceAll('&', '&amp;').replaceAll('"', '&quot;')
+      return c.html(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign in again</title><h1>Sign in again</h1><p>Your gateway login needs to be refreshed before opening Agent Remote.</p><a href="${href}">Continue to sign in</a><script>${script}</script></html>`)
+    }
     return c.json({ code: 'reauthentication_required', error: 'Login authentication is required', loginUrl: returnTo.href }, 403)
   }
   const continuation = `arc2_${Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url')}`
@@ -124,3 +141,6 @@ agentRemoteRouter.post('/api/agent-remote/launch', async c => {
   if (form) return c.redirect(launchUrl, 303)
   return c.json({ launchUrl, expiresAt: new Date(exp * 1000).toISOString() })
 })
+function hasAuthentication(value: number | undefined): value is number {
+  return value !== undefined && Number.isSafeInteger(value) && value > 0 && value <= Date.now()
+}

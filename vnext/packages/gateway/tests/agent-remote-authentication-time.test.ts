@@ -90,8 +90,12 @@ test("sessions without authentication provenance cannot launch Agents or create 
   expect((await launch(token)).status).toBe(403)
   expect((await share(token)).status).toBe(403)
   const form = await app.request(`${origin}/api/agent-remote/launch`, { method: "POST", headers: { cookie: `session_token=${token}`, origin, "content-type": "application/x-www-form-urlencoded" }, body: `challenge=${"n".repeat(43)}&host=host_1` })
-  expect(form.status).toBe(303)
-  expect(form.headers.get("location")).toBe(`${origin}/agent-remote?reauthenticate=1&challenge=${"n".repeat(43)}&host=host_1`)
+  expect(form.status).toBe(200)
+  expect(form.headers.get("location")).toBeNull()
+  const document = await form.text()
+  expect(document).toContain("Continue to sign in")
+  expect(document).toContain(`/agent-remote?reauthenticate=1&amp;challenge=${"n".repeat(43)}&amp;host=host_1`)
+  expect(form.headers.get("content-security-policy")).toContain("form-action 'none'")
 }, 5000)
 
 test("continuation renewal refuses authentication time inferred from a session without provenance", async () => {
