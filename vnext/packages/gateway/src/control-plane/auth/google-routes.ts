@@ -9,6 +9,10 @@
  * `fetcher` so tests can inject responses without `mock.module()`
  * (see bun_mock_module_unrestorable memory).
  */
+import { agentRemoteConfiguration } from "../agent-remote/config.ts"
+import { remoteRateAllowed, remoteSecurityEvent } from "../agent-remote/security.ts"
+import { agentRemoteReturnPath } from "../agent-remote/reauthentication.ts"
+import { continuationHash } from "../agent-remote/lifecycle.ts"
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../repo/index.ts'
@@ -47,10 +51,29 @@ googleAuthRouter.get('/google', async (c) => {
   const url = new URL(c.req.url)
   const inviteCode = url.searchParams.get('invite_code') ?? undefined
 
-  const state = generateOAuthState()
-  await saveOAuthState(state, { inviteCode, createdAt: Date.now() })
+  const requestedReturn = url.searchParams.get('agent_remote_return')
+  const returnPath = requestedReturn === null ? undefined : agentRemoteReturnPath(requestedReturn)
+  if (requestedReturn !== null && (!returnPath || url.searchParams.getAll('agent_remote_return').length !== 1)) return c.json({ error: 'Invalid return target' }, 400)
+  const oauthOrigin = returnPath ? agentRemoteConfiguration()?.issuer : publicOrigin(c.req.raw, url)
+  if (!oauthOrigin) return c.json({ error: 'Agent Remote is not configured' }, 503)
+  const state = `${returnPath ? 'arc_' : ''}${generateOAuthState()}`
+  if (returnPath) {
+    c.header('cache-control', 'no-store')
+    if (!remoteRateAllowed('oauth', c.req.header('cf-connecting-ip') ?? 'local', 20)) {
+      c.header('retry-after', '60')
+      return c.json({ error: 'Too many authentication requests' }, 429)
+    }
+    const browser = generateOAuthState()
+    const stored = await getRepo().agentRemoteContinuations.createOAuthState(await continuationHash(state), await continuationHash(browser), returnPath, Date.now())
+    if (!stored) return c.json({ error: 'Too many authentication requests' }, 429)
+    c.header('cache-control', 'no-store')
+    c.header('referrer-policy', 'no-referrer')
+    c.header('Set-Cookie', `agent_remote_oauth=${browser}; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=600${oauthOrigin.startsWith('https:') ? '; Secure' : ''}`, { append: true })
+  } else {
+    await saveOAuthState(state, { inviteCode, createdAt: Date.now() })
+  }
 
-  const redirectUri = `${publicOrigin(c.req.raw, url)}/auth/google/callback`
+  const redirectUri = `${oauthOrigin}/auth/google/callback`
   const googleUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
   googleUrl.searchParams.set('client_id', clientId)
   googleUrl.searchParams.set('redirect_uri', redirectUri)
@@ -59,6 +82,7 @@ googleAuthRouter.get('/google', async (c) => {
   googleUrl.searchParams.set('state', state)
   googleUrl.searchParams.set('access_type', 'online')
   googleUrl.searchParams.set('prompt', 'select_account')
+  if (returnPath) googleUrl.searchParams.set('max_age', '0')
 
   return c.redirect(googleUrl.toString(), 302)
 })
@@ -82,7 +106,23 @@ googleAuthRouter.get('/google/callback', async (c) => {
     return c.html(errorPage('Missing code or state parameter'), 400, HTML)
   }
 
-  const stateData = await getOAuthState(state)
+  const oauthOrigin = state.startsWith('arc_') ? agentRemoteConfiguration()?.issuer : publicOrigin(c.req.raw, url)
+  if (!oauthOrigin) return c.json({ error: 'Agent Remote is not configured' }, 503)
+  let returnPath: string | undefined
+  let stateData: { inviteCode?: string; createdAt: number } | null
+  if (state.startsWith('arc_')) {
+    c.header('cache-control', 'no-store')
+    c.header('referrer-policy', 'no-referrer')
+    const browser = /(?:^|;\s*)agent_remote_oauth=([^;\s]+)/.exec(c.req.header('cookie') ?? '')?.[1]
+    const stored = browser && browser.length <= 256 && state.length <= 256
+      ? await getRepo().agentRemoteContinuations.consumeOAuthState(await continuationHash(state), await continuationHash(browser), Date.now()) : null
+    returnPath = stored ? agentRemoteReturnPath(stored) : undefined
+    stateData = returnPath ? { createdAt: Date.now() } : null
+    if (!returnPath) remoteSecurityEvent('reauthentication', 'denied')
+    c.header('Set-Cookie', `agent_remote_oauth=; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=0${url.protocol === 'https:' ? '; Secure' : ''}`, { append: true })
+  } else {
+    stateData = await getOAuthState(state)
+  }
   if (!stateData) {
     return c.html(
       errorPage('Invalid or expired OAuth state. Please try again.'),
@@ -91,7 +131,7 @@ googleAuthRouter.get('/google/callback', async (c) => {
     )
   }
 
-  const redirectUri = `${publicOrigin(c.req.raw, url)}/auth/google/callback`
+  const redirectUri = `${oauthOrigin}/auth/google/callback`
   const tokenResp = await fetcher('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -201,7 +241,7 @@ googleAuthRouter.get('/google/callback', async (c) => {
     expiresAt: expiresAt.toISOString(),
   })
 
-  const isSecure = url.protocol === 'https:'
+  const isSecure = returnPath ? oauthOrigin.startsWith('https:') : url.protocol === 'https:'
   const securePart = isSecure ? '; Secure' : ''
   const maxAge = SESSION_TTL_DAYS * 24 * 60 * 60
   const sessionFlags = `Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${securePart}`
@@ -220,5 +260,6 @@ googleAuthRouter.get('/google/callback', async (c) => {
     `user_name=${encodeURIComponent(googleUser.name || email)}; ${infoFlags}`,
     { append: true },
   )
-  return c.redirect('/dashboard', 302)
+  if (returnPath) remoteSecurityEvent('reauthentication', 'allowed')
+  return c.redirect(returnPath ?? '/dashboard', 302)
 })

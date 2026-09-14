@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { listRemoteHosts, listHostShares, saveHostShare, revokeHostShare, parseSessionLimit, type RemoteHost, type HostShare } from "../../api/agent-remote"
+import { listRemoteHosts, listHostShares, saveHostShare, revokeHostShare, parseSessionLimit, remoteReauthenticationUrl, type RemoteHost, type HostShare } from "../../api/agent-remote"
 import { useRemoteText } from "./remote-text"
 
 const fieldClass = "bg-surface-800 border border-surface-600 rounded-md px-3 py-2 text-sm text-themed w-full"
@@ -40,6 +40,7 @@ function HostShares({ hostId }: { hostId: string }) {
   const [limit, setLimit] = useState("10")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [loginUrl, setLoginUrl] = useState<string | null>(null)
   const parsed = parseSessionLimit(limit)
   useEffect(() => {
     const controller = new AbortController()
@@ -54,10 +55,14 @@ function HostShares({ hostId }: { hostId: string }) {
     if (busy) return
     setBusy(true)
     setError(null)
+    setLoginUrl(null)
     try {
       await action()
       setShares((await listHostShares(hostId)).shares)
-    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+      setLoginUrl(remoteReauthenticationUrl(cause, window.location.origin) ?? null)
+    }
     finally { setBusy(false) }
   }
   const save = (address: string, total: number) => mutate(() => saveHostShare(hostId, address, total))
@@ -76,6 +81,7 @@ function HostShares({ hostId }: { hostId: string }) {
       <button disabled={busy || parsed === undefined || !email.trim()} className="btn-primary !text-xs !py-2 disabled:opacity-40">{t("dash.remote.share")}</button>
     </form>
     {error && <p role="alert" className="text-sm text-accent-red">{error}</p>}
+    {loginUrl && <a href={loginUrl} className="btn-primary inline-block !text-xs !py-2">{t("dash.remote.reauthenticate")}</a>}
     {shares === null && !error && <p role="status" className="text-xs text-themed-dim">{t("dash.remote.loadingShares")}</p>}
     {shares?.length === 0 && <p className="text-xs text-themed-dim">{t("dash.remote.noShares")}</p>}
     {shares?.map(share => <ShareRow key={`${share.subject}:${share.sessionLimit}:${share.revoked}`} share={share} busy={busy} onSave={save} onRevoke={address => mutate(() => revokeHostShare(hostId, address))} />)}

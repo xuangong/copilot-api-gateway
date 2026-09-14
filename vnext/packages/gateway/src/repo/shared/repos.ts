@@ -1,3 +1,4 @@
+import { SharedAgentRemoteContinuationRepo } from "./agent-remote-continuations.ts"
 import { SharedPerformanceMetricsRepo } from "../performance-metrics"
 import type {
   ApiKey,
@@ -825,6 +826,10 @@ class SharedSessionRepo implements SessionRepo {
     return row ? { token: row.token as SessionToken, userId: row.user_id as UserId, createdAt: row.created_at, expiresAt: row.expires_at } : null
   }
 
+  async deleteByToken(token: SessionToken): Promise<void> {
+    await this.x.run("DELETE FROM user_sessions WHERE token = ?", [token])
+  }
+
   async deleteByUserId(userId: UserId): Promise<void> {
     await this.x.run("DELETE FROM user_sessions WHERE user_id = ?", [userId])
   }
@@ -1137,6 +1142,7 @@ export function buildSharedRepo(x: SqlExecutor): Repo {
     users: new SharedUserRepo(x),
     inviteCodes: new SharedInviteCodeRepo(x),
     sessions: new SharedSessionRepo(x),
+    agentRemoteContinuations: new SharedAgentRemoteContinuationRepo(x),
     presence: new SharedClientPresenceRepo(x),
     webSearchUsage: new SharedWebSearchUsageRepo(x),
     webSearchEngineUsage: new SharedWebSearchEngineUsageRepo(x),

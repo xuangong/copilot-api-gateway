@@ -1,6 +1,9 @@
+import { remoteRateAllowed, remoteSecurityEvent } from "./security.ts"
+import { agentRemoteReturnPath } from "./reauthentication.ts"
+import { getRepo } from "../../repo/index.ts"
 import { Hono } from 'hono'
 import { agentRemoteConfiguration as configuration } from './config.ts'
-import { agentRemoteLifecycleRouter, encryptContinuation } from './lifecycle.ts'
+import { agentRemoteLifecycleRouter, continuationHash } from './lifecycle.ts'
 import { userSession } from "./user-session.ts"
 import { agentRemoteControlRouter, validHostId } from "./control.ts"
 
@@ -25,6 +28,17 @@ agentRemoteRouter.get('/agent-remote', async c => {
   c.header('referrer-policy', 'same-origin')
   const config = configuration()
   if (!config) return c.json({ error: 'Agent Remote is not configured' }, 503)
+  const reauthenticate = c.req.query('reauthenticate')
+  if (reauthenticate !== undefined) {
+    if (reauthenticate !== '1' || c.req.queries('reauthenticate')?.length !== 1) return c.json({ error: 'Invalid reauthentication request' }, 400)
+    const target = new URL(c.req.url)
+    target.searchParams.delete('reauthenticate')
+    const returnPath = agentRemoteReturnPath(target.pathname + target.search)
+    if (!returnPath) return c.json({ error: 'Invalid return target' }, 400)
+    const loginUrl = new URL('/auth/google', config.issuer)
+    loginUrl.searchParams.set('agent_remote_return', returnPath)
+    return c.redirect(loginUrl.href, 303)
+  }
   if (!await userSession(c.req.raw)) return c.html('<!doctype html><html lang="en"><meta charset="utf-8"><title>Agent Remote</title><h1>Agent Remote</h1><p>Sign in to the gateway, then return to this page.</p><a href="/">Open gateway</a></html>', 401)
   const host = c.req.query('host')
   if (host !== undefined && !validHostId(host)) return c.json({ error: 'Invalid Host' }, 400)
@@ -79,13 +93,23 @@ agentRemoteRouter.post('/api/agent-remote/launch', async c => {
   } catch { return c.json({ error: 'Invalid login challenge' }, 400) }
   if (typeof challenge !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(challenge)) return c.json({ error: 'Invalid login challenge' }, 400)
   if (host !== undefined && !validHostId(host)) return c.json({ error: 'Invalid Host' }, 400)
+  if (!remoteRateAllowed('launch', caller.user.id, 30)) {
+    c.header('retry-after', '60')
+    return c.json({ error: 'Too many launch requests' }, 429)
+  }
   const now = Math.floor(Date.now() / 1000)
   const exp = Math.min(now + 900, Math.floor(Date.parse(caller.session.expiresAt) / 1000))
   if (exp <= now) return c.json({ error: 'Login session expired' }, 401)
   const header = encode({ alg: 'HS256', typ: 'arc-relay+jwt' })
-  const continuation = await encryptContinuation(config, caller.session.token, caller.user.id)
+  const authenticatedAt = Date.parse(caller.session.createdAt)
+  if (!Number.isFinite(authenticatedAt) || authenticatedAt <= 0 || authenticatedAt > Date.now()) return c.json({ error: 'Invalid login authentication time' }, 401)
+  const continuation = `arc2_${Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url')}`
+  const stored = await getRepo().agentRemoteContinuations.create({ handleHash: await continuationHash(continuation),
+    issuer: config.issuer, audience: config.target, expiresAt: Date.parse(caller.session.expiresAt), authenticatedAt }, caller.session)
+  if (!stored) return c.json({ error: 'Too many active remote logins' }, 429)
+  remoteSecurityEvent('launch', 'allowed')
   const sessionExpiresAt = Date.parse(caller.session.expiresAt)
-  const payload = encode({ continuation, sessionExpiresAt, iss: config.issuer, aud: config.target, sub: caller.user.id, nonce: challenge, iat: now, exp, jti: crypto.randomUUID() })
+  const payload = encode({ continuation, sessionExpiresAt, authenticatedAt, iss: config.issuer, aud: config.target, sub: caller.user.id, nonce: challenge, iat: now, exp, jti: crypto.randomUUID() })
   const input = `${header}.${payload}`
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(config.secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
   const signature = Buffer.from(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(input))).toString('base64url')

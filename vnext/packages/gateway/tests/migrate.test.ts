@@ -75,6 +75,11 @@ describe("applyMigrations", () => {
     db.exec("ALTER TABLE usage_requests DROP COLUMN incoming_model")
     db.exec("CREATE UNIQUE INDEX idx_usage_identity ON usage (key_id, model, COALESCE(upstream, ''), model_key, client, hour, dimension)")
     db.exec("CREATE UNIQUE INDEX idx_usage_requests_identity ON usage_requests (key_id, model, COALESCE(upstream, ''), model_key, client, hour)")
+    db.exec("DROP TRIGGER agent_remote_session_delete")
+    db.exec("DROP TABLE agent_remote_oauth_states")
+    db.exec("DROP TABLE agent_remote_continuations")
+    db.exec("DROP INDEX idx_user_sessions_agent_remote_id")
+    db.exec("ALTER TABLE user_sessions DROP COLUMN agent_remote_id")
     db.exec("DROP TABLE _migrations")
     // A ledger-less database predates every migration, so its quota columns
     // still carry the daily names 0003 renames away, and 0004's cost column

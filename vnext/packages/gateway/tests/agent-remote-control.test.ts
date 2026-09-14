@@ -148,3 +148,19 @@ test("malformed, oversized and non-JSON sharing bodies never reach Relay", async
   expect((await app.request(url, { method: "PUT", headers: { authorization: `Bearer ${sessionToken}`, "content-type": "text/plain" }, body: "{}" })).status).toBe(415)
   expect(received).toHaveLength(0)
 }, 5000)
+
+test("sharing changes require actual recent authentication while revocation stays available", async () => {
+  db.query("UPDATE user_sessions SET created_at = ?").run(new Date(Date.now() - 601_000).toISOString())
+  const response = await request("hosts/host_1/shares", "PUT", { email: "recipient@example.com", sessionLimit: 1 })
+  expect(response.status).toBe(403)
+  expect(await response.json()).toEqual({ code: "reauthentication_required", error: "Recent authentication is required", loginUrl: "https://gateway.example/agent-remote?reauthenticate=1&host=host_1" })
+  expect(received).toHaveLength(0)
+  expect((await request("hosts/host_1/shares", "DELETE", { email: "recipient@example.com" })).status).toBe(200)
+}, 5000)
+
+test("sharing mutations have a bounded per-user rate window", async () => {
+  for (let index = 0; index < 60; index++) expect((await request("hosts/host_1/shares", "DELETE", { email: "recipient@example.com" })).status).toBe(200)
+  const response = await request("hosts/host_1/shares", "DELETE", { email: "recipient@example.com" })
+  expect(response.status).toBe(429)
+  expect(received).toHaveLength(60)
+}, 5000)

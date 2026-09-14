@@ -1,10 +1,9 @@
 import { Hono } from "hono"
 import { getRepo } from "../../repo/index.ts"
-import type { SessionToken, UserId } from "../../repo/branded-ids.ts"
+import type { UserId } from "../../repo/branded-ids.ts"
 import { agentRemoteConfiguration, type AgentRemoteConfiguration } from "./config.ts"
 
 const encoder = new TextEncoder()
-const continuationPurpose = "arc-gateway-login-continuation-v1"
 const maxBodyBytes = 8192
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -16,34 +15,8 @@ function decode(value: string): Uint8Array<ArrayBuffer> {
   if (result.toString("base64url") !== value) throw new Error("Invalid encoding")
   return new Uint8Array(result)
 }
-function continuationContext(config: AgentRemoteConfiguration): Uint8Array<ArrayBuffer> {
-  return encoder.encode(JSON.stringify([continuationPurpose, config.issuer, config.target]))
-}
-async function continuationKey(config: AgentRemoteConfiguration) {
-  const material = await crypto.subtle.importKey("raw", encoder.encode(config.secret), "HKDF", false, ["deriveKey"])
-  return crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: encoder.encode(continuationPurpose), info: continuationContext(config) }, material,
-    { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"])
-}
-
-export async function encryptContinuation(config: AgentRemoteConfiguration, token: SessionToken, subject: UserId): Promise<string> {
-  const iv = crypto.getRandomValues(new Uint8Array(12))
-  const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: continuationContext(config) },
-    await continuationKey(config), encoder.encode(JSON.stringify({ token, subject })))
-  return `v1.${Buffer.from(iv).toString("base64url")}.${Buffer.from(cipher).toString("base64url")}`
-}
-async function decryptContinuation(config: AgentRemoteConfiguration, continuation: string) {
-  try {
-    const [version, ivPart, cipherPart, extra] = continuation.split(".")
-    if (version !== "v1" || !ivPart || !cipherPart || extra !== undefined) return undefined
-    const iv = decode(ivPart)
-    if (iv.length !== 12) return undefined
-    const clear = await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: continuationContext(config) },
-      await continuationKey(config), decode(cipherPart))
-    const value: unknown = JSON.parse(new TextDecoder().decode(clear))
-    if (!record(value) || typeof value.token !== "string" || !/^ses_[^\s]{1,4092}$/.test(value.token) ||
-      typeof value.subject !== "string" || !value.subject || value.subject.length > 256) return undefined
-    return { token: value.token as SessionToken, subject: value.subject as UserId }
-  } catch { return undefined }
+export async function continuationHash(value: string): Promise<string> {
+  return Buffer.from(await crypto.subtle.digest("SHA-256", encoder.encode(value))).toString("base64url")
 }
 
 async function readBody(request: Request): Promise<Uint8Array<ArrayBuffer> | undefined> {
@@ -109,14 +82,13 @@ for (const operation of ["renew", "user-status"] as const) {
         if (!user || user.disabled) return c.json({ error: "User access denied" }, 403)
         return c.json({ active: true, subject: user.id, validUntil: now + 120_000 })
       }
-      const original = await decryptContinuation(config, value)
-      if (!original) return c.json({ error: "Invalid continuation" }, 401)
-      const session = await repo.sessions.findByToken(original.token)
-      const expiresAt = session ? Date.parse(session.expiresAt) : NaN
-      if (!session || session.userId !== original.subject || !(expiresAt > now)) return c.json({ error: "Login session expired or revoked" }, 401)
-      const user = await repo.users.getById(session.userId)
+      if (!/^arc2_[A-Za-z0-9_-]{43}$/.test(value)) return c.json({ error: "Invalid continuation" }, 401)
+      const original = await repo.agentRemoteContinuations.findActive(await continuationHash(value), config.issuer, config.target, now)
+      if (!original) return c.json({ error: "Login session expired or revoked" }, 401)
+      const { expiresAt, authenticatedAt } = original
+      const user = await repo.users.getById(original.subject)
       if (!user || user.disabled) return c.json({ error: "User access denied" }, 403)
-      return c.json({ active: true, subject: user.id, expiresAt, validUntil: Math.min(now + 120_000, expiresAt) })
+      return c.json({ active: true, subject: user.id, expiresAt, authenticatedAt, validUntil: Math.min(now + 120_000, expiresAt) })
     } catch {
       return c.json({ error: "Agent Remote authority temporarily unavailable" }, 503)
     }

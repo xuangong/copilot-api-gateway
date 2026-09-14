@@ -307,9 +307,27 @@ export interface InviteCodeRepo {
   delete(id: InviteCodeId): Promise<void>
 }
 
+export interface AgentRemoteContinuation {
+  handleHash: string
+  issuer: string
+  audience: string
+  expiresAt: number
+  authenticatedAt: number
+}
+
+export interface AgentRemoteContinuationRepo {
+  createOAuthState(stateHash: string, browserHash: string, returnPath: string, now: number): Promise<boolean>
+  consumeOAuthState(stateHash: string, browserHash: string, now: number): Promise<string | null>
+  create(value: AgentRemoteContinuation, session: UserSession): Promise<boolean>
+  findActive(handleHash: string, issuer: string, audience: string, now: number): Promise<{
+    subject: UserId; expiresAt: number; authenticatedAt: number
+  } | null>
+}
+
 export interface SessionRepo {
   create(session: UserSession): Promise<void>
   findByToken(token: SessionToken): Promise<UserSession | null>
+  deleteByToken(token: SessionToken): Promise<void>
   deleteByUserId(userId: UserId): Promise<void>
   deleteExpired(): Promise<void>
 }
@@ -473,6 +491,7 @@ export interface Repo {
   users: UserRepo
   inviteCodes: InviteCodeRepo
   sessions: SessionRepo
+  agentRemoteContinuations: AgentRemoteContinuationRepo
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo
   webSearchEngineUsage: WebSearchEngineUsageRepo

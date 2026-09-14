@@ -19,6 +19,7 @@ import { emailAuthRouter } from './email-routes.ts'
 import { deviceAuthRouter } from './device-routes.ts'
 import { githubAuthRouter } from './github-routes.ts'
 import { googleAuthRouter } from './google-routes.ts'
+import { publicOrigin } from './utils.ts'
 
 export const SESSION_TTL_DAYS = 30
 
@@ -149,7 +150,15 @@ authRouter.post('/login', zValidator('json', loginBody), async (c) => {
   return c.json({ error: 'Invalid session' }, 401)
 })
 
-authRouter.post('/logout', (c) => {
+authRouter.post('/logout', async (c) => {
+  c.header('cache-control', 'no-store')
+  const authorization = c.req.header('authorization')
+  const token = authorization ? /^Bearer (ses_[^\s]+)$/i.exec(authorization)?.[1]
+    : /(?:^|;\s*)session_token=(ses_[^\s;]+)/.exec(c.req.header('cookie') ?? '')?.[1]
+  const origin = c.req.header('origin')
+  const expectedOrigin = publicOrigin(c.req.raw, new URL(c.req.url))
+  if ((origin !== undefined && origin !== expectedOrigin) || (token && !authorization && !origin)) return c.json({ error: 'Origin is not allowed' }, 403)
+  if (token && token.length <= 4096) await getRepo().sessions.deleteByToken(token as SessionToken)
   c.header('Set-Cookie', 'session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0')
   return c.json({ ok: true })
 })

@@ -26,6 +26,7 @@ export const remoteText = {
   "dash.remote.noShares": "This Host has not been shared yet.",
   "dash.remote.loadingShares": "Loading shares…",
   "dash.remote.lowerLimit": "A limit below the used count blocks new sessions and keeps existing sessions.",
+  "dash.remote.reauthenticate": "Sign in again to manage sharing",
   "dash.remote.loadError": "Unable to load Hosts.",
 } as const
 

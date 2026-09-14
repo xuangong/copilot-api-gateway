@@ -198,6 +198,7 @@ export class D1Repo implements Repo {
   users: Repo["users"]
   inviteCodes: Repo["inviteCodes"]
   sessions: Repo["sessions"]
+  agentRemoteContinuations: Repo["agentRemoteContinuations"]
   presence: Repo["presence"]
   webSearchUsage: Repo["webSearchUsage"]
   webSearchEngineUsage: Repo["webSearchEngineUsage"]
@@ -222,6 +223,7 @@ export class D1Repo implements Repo {
     this.users = shared.users
     this.inviteCodes = shared.inviteCodes
     this.sessions = shared.sessions
+    this.agentRemoteContinuations = shared.agentRemoteContinuations
     this.presence = shared.presence
     this.webSearchUsage = shared.webSearchUsage
     this.webSearchEngineUsage = shared.webSearchEngineUsage

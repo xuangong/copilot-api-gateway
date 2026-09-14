@@ -37,7 +37,7 @@ async function grant() {
   expect(response.status).toBe(200)
   const result = await response.json() as { launchUrl: string }
   const encoded = new URLSearchParams(new URL(result.launchUrl).hash.slice(1)).get("ticket")?.split(".")[1] ?? ""
-  return JSON.parse(Buffer.from(encoded, "base64url").toString()) as { continuation: string; sessionExpiresAt: number }
+  return JSON.parse(Buffer.from(encoded, "base64url").toString()) as { continuation: string; sessionExpiresAt: number; authenticatedAt: number }
 }
 async function proof(op: string, body: string, claims: Record<string, unknown> = {}, header: Record<string, unknown> = {}) {
   const now = Math.floor(Date.now() / 1000)
@@ -53,11 +53,12 @@ async function service(op: string, value: unknown, claims: Record<string, unknow
   })
 }
 
-test("launch supplies encrypted continuation and original login expiry", async () => {
+test("launch supplies opaque continuation and original authentication time", async () => {
   const first = await grant()
   const second = await grant()
   expect(first.sessionExpiresAt).toBe(sessionExpiresAt)
-  expect(typeof first.continuation).toBe("string")
+  expect(first.continuation).toMatch(/^arc2_[A-Za-z0-9_-]{43}$/)
+  expect(first.authenticatedAt).toBe(Date.parse((await repo.sessions.findByToken(token))?.createdAt ?? ""))
   expect(first.continuation).not.toBe(second.continuation)
   expect(first.continuation).not.toContain(token)
   expect(Buffer.from(first.continuation, "base64url").toString()).not.toContain(token)
@@ -73,9 +74,8 @@ test("service renew returns a login-bounded authorization lease", async () => {
   expect(lease).toMatchObject({ active: true, subject, expiresAt: sessionExpiresAt })
   expect(lease.validUntil).toBeGreaterThanOrEqual(start + 120_000)
   expect(lease.validUntil).toBeLessThanOrEqual(Date.now() + 120_000)
-  await repo.sessions.deleteByUserId(subject)
   const shorterExpiry = Date.now() + 30_000
-  await repo.sessions.create({ token, userId: subject, createdAt: new Date().toISOString(), expiresAt: new Date(shorterExpiry).toISOString() })
+  db.query("UPDATE user_sessions SET expires_at = ? WHERE token = ?").run(new Date(shorterExpiry).toISOString(), token)
   const shortened = await service("renew", { continuation: issued.continuation })
   expect(await shortened.json()).toMatchObject({ expiresAt: shorterExpiry, validUntil: shorterExpiry })
 }, 5000)
@@ -171,4 +171,71 @@ test("dashboard integration availability reflects configuration", async () => {
   initEnv(() => "")
   const disabled = await app.request("https://gateway.example/api/agent-remote/config")
   expect(await disabled.json()).toEqual({ enabled: false })
+}, 5000)
+
+test("continuation registry stores hashes and refuses audience or original session replacement", async () => {
+  const issued = await grant()
+  const rows = db.query("SELECT * FROM agent_remote_continuations").all()
+  expect(rows).toHaveLength(1)
+  expect(JSON.stringify(rows)).not.toContain(issued.continuation)
+  expect(JSON.stringify(rows)).not.toContain(token)
+  const lease = await service("renew", { continuation: issued.continuation })
+  expect(await lease.json()).toMatchObject({ authenticatedAt: issued.authenticatedAt })
+  db.query("UPDATE agent_remote_continuations SET audience = ?").run("https://other.example")
+  expect((await service("renew", { continuation: issued.continuation })).status).toBe(401)
+  db.query("UPDATE agent_remote_continuations SET audience = ?").run(config.AGENT_REMOTE_RELAY_URL ?? "")
+  await repo.sessions.deleteByUserId(subject)
+  await repo.sessions.create({ token, userId: subject, createdAt: new Date().toISOString(), expiresAt: new Date(sessionExpiresAt).toISOString() })
+  expect((await service("renew", { continuation: issued.continuation })).status).toBe(401)
+}, 5000)
+
+test("authentic legacy encrypted continuation is rejected even with the unchanged shared secret", async () => {
+  const encoder = new TextEncoder()
+  const purpose = "arc-gateway-login-continuation-v1"
+  const context = encoder.encode(JSON.stringify([purpose, config.AGENT_REMOTE_ISSUER, config.AGENT_REMOTE_RELAY_URL]))
+  const material = await crypto.subtle.importKey("raw", encoder.encode(secret), "HKDF", false, ["deriveKey"])
+  const key = await crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: encoder.encode(purpose), info: context }, material, { name: "AES-GCM", length: 256 }, false, ["encrypt"])
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: context }, key, encoder.encode(JSON.stringify({ token, subject })))
+  const continuation = `v1.${Buffer.from(iv).toString("base64url")}.${Buffer.from(cipher).toString("base64url")}`
+  expect((await service("renew", { continuation })).status).toBe(401)
+  expect((await repo.sessions.findByToken(token))?.token).toBe(token)
+}, 5000)
+
+test("launching and renewal preserve old authentication time and bound continuation expiry", async () => {
+  const authenticatedAt = Date.now() - 3600_000
+  db.query("UPDATE user_sessions SET created_at = ?").run(new Date(authenticatedAt).toISOString())
+  const issued = await grant()
+  expect(issued.authenticatedAt).toBe(authenticatedAt)
+  expect(await (await service("renew", { continuation: issued.continuation })).json()).toMatchObject({ authenticatedAt })
+  db.query("UPDATE agent_remote_continuations SET expires_at = ?").run(Date.now() - 1)
+  expect((await service("renew", { continuation: issued.continuation })).status).toBe(401)
+}, 5000)
+
+test("durable continuation admission caps each user and removes expired handles", async () => {
+  const issued = await grant()
+  const session = await repo.sessions.findByToken(token)
+  if (!session) throw new Error("Synthetic session missing")
+  for (let index = 1; index < 128; index++) {
+    expect(await repo.agentRemoteContinuations.create({ handleHash: `synthetic-hash-${index}`, issuer: config.AGENT_REMOTE_ISSUER ?? "", audience: config.AGENT_REMOTE_RELAY_URL ?? "", expiresAt: sessionExpiresAt, authenticatedAt: issued.authenticatedAt }, session)).toBe(true)
+  }
+  const value = { handleHash: "synthetic-overflow", issuer: config.AGENT_REMOTE_ISSUER ?? "", audience: config.AGENT_REMOTE_RELAY_URL ?? "", expiresAt: sessionExpiresAt, authenticatedAt: issued.authenticatedAt }
+  expect(await repo.agentRemoteContinuations.create(value, session)).toBe(false)
+  db.query("UPDATE agent_remote_continuations SET expires_at = ? WHERE handle_hash = ?").run(Date.now() - 1, "synthetic-hash-1")
+  expect(await repo.agentRemoteContinuations.create(value, session)).toBe(true)
+}, 5000)
+
+test("Gateway logout revokes only its original login and refuses cross-origin cookie logout", async () => {
+  const issued = await grant()
+  const other = "ses_other_synthetic_login" as SessionToken
+  await repo.sessions.create({ token: other, userId: subject, createdAt: new Date().toISOString(), expiresAt: new Date(sessionExpiresAt).toISOString() })
+  const denied = await app.request("https://gateway.example/auth/logout", { method: "POST", headers: { cookie: `session_token=${token}`, origin: "https://evil.example" } })
+  expect(denied.status).toBe(403)
+  expect((await service("renew", { continuation: issued.continuation })).status).toBe(200)
+  const logout = await app.request("https://gateway.example/auth/logout", { method: "POST", headers: { cookie: `session_token=${token}`, origin: "https://gateway.example" } })
+  expect(logout.status).toBe(200)
+  expect(await repo.sessions.findByToken(token)).toBeNull()
+  expect(db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM agent_remote_continuations").get()?.count).toBe(0)
+  expect(await repo.sessions.findByToken(other)).not.toBeNull()
+  expect((await service("renew", { continuation: issued.continuation })).status).toBe(401)
 }, 5000)

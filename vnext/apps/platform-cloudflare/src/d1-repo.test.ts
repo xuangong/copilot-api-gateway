@@ -1,3 +1,4 @@
+import type { UserId, SessionToken } from "../../../packages/gateway/src/repo/branded-ids.ts"
 import { describe, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
 import { initD1, initD1PerformanceMetrics, type D1Database } from "./d1-repo.ts"
@@ -196,3 +197,32 @@ test("performance schema bootstrap is atomic, retry safe and matches numbered SQ
     } finally { sqlite.close() }
   } finally { db.close() }
 })
+
+test("Agents continuation migration and atomic browser challenges work through the D1 repository", async () => {
+  const { D1Repo } = await import("./d1-repo.ts")
+  const { BunSqliteRepo } = await import("../../platform-bun/src/bun-sqlite-repo.ts")
+  const { continuationHash } = await import("../../../packages/gateway/src/control-plane/agent-remote/lifecycle.ts")
+  const db = new Database(":memory:")
+  try {
+    new BunSqliteRepo(db)
+    const repo = new D1Repo(new SqliteD1Adapter(db))
+    const userId = "synthetic-d1-user" as UserId
+    const now = Date.now()
+    const session = { token: "ses_synthetic_d1" as SessionToken, userId, createdAt: new Date(now).toISOString(), expiresAt: new Date(now + 3600_000).toISOString() }
+    await repo.users.create({ id: userId, name: "Synthetic", disabled: false, createdAt: session.createdAt })
+    await repo.sessions.create(session)
+    const handleHash = await continuationHash("arc2_synthetic_handle")
+    const value = { handleHash, issuer: "https://gateway.example", audience: "https://relay.example", expiresAt: now + 3600_000, authenticatedAt: now }
+    expect(await repo.agentRemoteContinuations.create(value, session)).toBe(true)
+    expect(await repo.agentRemoteContinuations.findActive(handleHash, value.issuer, value.audience, now)).toEqual({ subject: userId, expiresAt: value.expiresAt, authenticatedAt: now })
+    expect(await repo.agentRemoteContinuations.findActive(handleHash, value.issuer, "https://other.example", now)).toBeNull()
+    expect(await repo.agentRemoteContinuations.findActive(handleHash, value.issuer, value.audience, value.expiresAt)).toBeNull()
+    expect(await repo.agentRemoteContinuations.createOAuthState("state-hash", "browser-hash", "/agent-remote", now)).toBe(true)
+    expect(await repo.agentRemoteContinuations.consumeOAuthState("state-hash", "wrong-browser", now)).toBeNull()
+    const consumed = await Promise.all([repo.agentRemoteContinuations.consumeOAuthState("state-hash", "browser-hash", now), repo.agentRemoteContinuations.consumeOAuthState("state-hash", "browser-hash", now)])
+    expect(consumed.filter(value => value === "/agent-remote")).toHaveLength(1)
+    expect(consumed.filter(value => value === null)).toHaveLength(1)
+    await repo.sessions.deleteByUserId(userId)
+    expect(await repo.agentRemoteContinuations.findActive(handleHash, value.issuer, value.audience, now)).toBeNull()
+  } finally { db.close() }
+}, 5000)

@@ -1,3 +1,4 @@
+import { remoteRateAllowed, remoteSecurityEvent } from "./security.ts"
 import { Hono, type Context } from "hono"
 import { getRepo } from "../../repo/index.ts"
 import { agentRemoteConfiguration, type AgentRemoteConfiguration } from "./config.ts"
@@ -70,6 +71,18 @@ async function control(c: Context, operation: Operation) {
     if (operation === "share" || operation === "revoke-share") {
       if (!origin && !c.req.header("authorization")) return c.json({ error: "Origin is required" }, 403)
       if (c.req.header("content-type")?.split(";")[0] !== "application/json") return c.json({ error: "JSON is required" }, 415)
+      if (!remoteRateAllowed("share", caller.user.id, 60)) {
+        c.header("retry-after", "60")
+        return c.json({ error: "Too many sharing requests" }, 429)
+      }
+      const authenticatedAt = Date.parse(caller.session.createdAt)
+      if (operation === "share" && !(authenticatedAt > 0 && authenticatedAt <= Date.now() && Date.now() - authenticatedAt <= 600_000)) {
+        remoteSecurityEvent("share", "denied")
+        const loginUrl = new URL("/agent-remote", config.issuer)
+        loginUrl.searchParams.set("reauthenticate", "1")
+        if (body.hostId) loginUrl.searchParams.set("host", body.hostId)
+        return c.json({ code: "reauthentication_required", error: "Recent authentication is required", loginUrl: loginUrl.href }, 403)
+      }
       const input = await mutationBody(c.req.raw)
       const fields = operation === "share" ? ["email", "sessionLimit"] : ["email"]
       if (!input || Object.keys(input).some(key => !fields.includes(key)) || typeof input.email !== "string" ||

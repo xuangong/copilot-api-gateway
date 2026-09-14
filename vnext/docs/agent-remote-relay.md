@@ -48,8 +48,8 @@ not include paths, credentials, query strings or fragments. Generate the secret
 with `openssl rand -base64 32`; use the platform secret store.
 
 Bun/Docker reads these values from its environment. Cloudflare reads them through
-existing `initEnv` wiring; set the values on the Worker before deployment. No
-migration or cross-repository runtime package is needed. Missing configuration
+existing `initEnv` wiring; set the values on the Worker before deployment. Apply migration `0011_agent_remote_continuations.sql` before deploying this version. No
+cross-repository runtime package is needed. Missing configuration
 returns 503 on this optional integration's routes.
 
 Sign in with a real gateway user session, then visit `/agent-remote`. The browser
@@ -71,16 +71,29 @@ keys cannot obtain workstation access.
 ## Grant contract and limits
 
 HS256 header `typ=arc-relay+jwt`; claims `iss`, `aud`, `sub`, `iat`, `exp`, `jti`,
-`nonce`, `continuation`, and `sessionExpiresAt`. The audience is the fixed Relay
-origin. Grant expiry is the lesser of 15 minutes and the gateway login expiry;
-`sessionExpiresAt` is the original login expiry in epoch milliseconds. The
-continuation encrypts the original session token and subject with AES-256-GCM,
-a random 96-bit IV, and origin-bound additional authenticated data. Its key is
-HKDF-SHA256 derived from the shared secret with a separate continuation purpose.
-The Relay treats it as opaque and never needs a plaintext gateway login token.
-As both services hold the shared root secret, this is a trusted-service boundary,
-not cryptographic isolation against a compromised Relay. Secret rotation
-invalidates both service proofs and existing continuations.
+`nonce`, `continuation`, `sessionExpiresAt`, and `authenticatedAt`. The audience is
+the fixed Relay origin. Grant expiry is the lesser of 15 minutes and the gateway
+login expiry. `sessionExpiresAt` and `authenticatedAt` are epoch milliseconds;
+`authenticatedAt` is the original `user_sessions.created_at`, never launch or renewal time.
+
+The continuation is `arc2_` followed by 32 random bytes encoded as unpadded base64url.
+Only its SHA-256 hash is persisted. The Gateway registry binds it to a non-secret
+session UUID, the user, issuer, audience, original expiry and authentication time.
+The UUID is assigned lazily to an existing session; no raw login token is copied
+into the continuation registry. The Relay cannot recover a Gateway login token
+using its signing secret. Only the authenticated renewal endpoint accepts these
+handles. Deleting and recreating the same original login token does not restore
+its old continuation. Gateway logout now deletes only the presented login session
+and requires same-origin cookie requests; other login sessions stay active. Up to 128 unexpired continuations per user are admitted
+atomically; original-session expiry and revocation still bound every renewal.
+
+Apply additive migration `0011_agent_remote_continuations.sql` on both Bun and D1
+before the Gateway update, then update the Relay. It adds nullable
+`user_sessions.agent_remote_id`, `agent_remote_continuations`, and
+`agent_remote_oauth_states`; existing users, sessions, Hosts and shares remain.
+Legacy encrypted `v1` continuations fail closed and users sign in again. Keep the
+existing signing/storage secret: rotating it is a separate operation and is not
+part of this migration.
 
 ## Host sharing
 
@@ -103,6 +116,32 @@ the configured Gateway Origin. Recipient IDs come from the authoritative user
 repository. Disabled recipients cannot receive grants but their grants can be
 revoked. The browser cannot supply a caller or recipient subject.
 
+Creating, regranting or editing a share requires a login authenticated within ten
+minutes. Revocation remains available after that window. Stale sharing changes
+return HTTP 403 with `{code:"reauthentication_required",error:"Recent authentication is required",loginUrl}`.
+`loginUrl` is the configured Gateway `/agent-remote?reauthenticate=1&host=<id>`.
+The dashboard must follow this URL to complete authentication before retrying.
+
+`/agent-remote?reauthenticate=1` redirects through Google OAuth even when a Gateway
+cookie exists. Only validated `host` and `challenge` values survive the roundtrip.
+The OAuth state and separate HttpOnly SameSite browser cookie are hashed and
+bound together in SQL; atomic consumption prevents concurrent replay on D1 and
+Bun. The callback creates a new session only after OAuth exchange, then returns
+to the validated launch path without the reauthentication flag. Arbitrary return
+URLs are rejected. Challenge and binding expiry is ten minutes, with a durable
+limit of 1024 pending challenges. Ordinary Google dashboard login remains unchanged.
+
+Fixed one-minute process-local limits supplement SQL admission: OAuth initiation
+20 per client IP, launch 30 per user, sharing mutations 60 per user, and 1200 per
+operation globally. The bounded map refuses new identities when saturated.
+`CF-Connecting-IP` is authoritative behind Cloudflare; direct Bun deployments
+must strip client-supplied values at their trusted reverse proxy. Requests with
+no trusted IP share a local bucket. Limits are per process/Worker isolate and do
+not claim fleet-wide distributed enforcement. Rate responses are 429 with
+`Retry-After: 60`. Structured Gateway security events include only action/outcome;
+no token, email, prompt, continuation, or user identifier is recorded. Relay
+retains its own user-visible Host/session audit.
+
 Gateway sends `POST /gateway/control` to the fixed Relay origin with JSON
 `{subject,operation,hostId?,targetSubject?,targetLabel?,sessionLimit?}`. Operations
 are `hosts`, `shares`, `share`, and `revoke-share`; the recipient label is their
@@ -118,7 +157,7 @@ Host ownership for grant management; an administrator login does not bypass it.
 The Relay calls two server-only routes with JSON bodies:
 
 - `POST /api/agent-remote/renew` with `{continuation}` returns
-  `{active:true,subject,expiresAt,validUntil}`. It verifies the original session
+  `{active:true,subject,expiresAt,validUntil,authenticatedAt}`. It verifies the original session
   still exists, has not expired, belongs to the original subject, and that the
   user remains enabled. `validUntil` is capped at the live login expiry.
 - `POST /api/agent-remote/user-status` with `{subject}` returns
@@ -161,7 +200,7 @@ the Gateway Worker does not run the broker or store its device/share/quota state
 
 Gateway tests use real in-memory SQLite and cover missing, invalid, disabled and
 expired login sessions, API-key exclusion, Origin, fixed redirect, signature,
-challenge binding, session-bounded grant expiry, encrypted continuation renewal,
+challenge binding, session-bounded grant expiry, opaque continuation renewal,
 revocation, user disable, service-proof purpose/body/origin/time validation, and
 unavailable authority. Control-plane tests exercise a real loopback Relay HTTP endpoint and SQLite, including signed proof verification, recipient lookup, denied identities, request injection and quota validation. Dashboard tests cover entry visibility, owner controls, revoked usage and exhausted-quota links. Run `bun run ci:local` from
 `vnext/` (with an outer deadline supplied by the execution environment).
