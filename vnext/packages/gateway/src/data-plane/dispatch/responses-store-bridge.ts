@@ -6,10 +6,8 @@
  * `items` to `payload.input`, and drop the field so the upstream call never
  * sees it. `savePostTurnSnapshot` is the post-turn writer.
  */
-import type { ResponsesSnapshotStore } from '@vibe-llm/responses-store'
+import { snapshotExpiresAt, type ResponsesSnapshotStore } from '@vibe-llm/responses-store'
 import type { ApiKeyId, ResponsesItemId } from '../../repo/branded-ids.ts'
-
-const DEFAULT_TTL_MS = 24 * 3600_000
 
 export class PreviousResponseNotFoundError extends Error {
   readonly status = 400
@@ -23,13 +21,14 @@ export async function expandPreviousResponseId(
   payload: { previous_response_id?: string | null; input?: unknown },
   store: ResponsesSnapshotStore,
   apiKeyId: ApiKeyId | null,
+  refreshRetentionSeconds?: number,
 ): Promise<void> {
   const raw = payload.previous_response_id
   if (raw == null || raw === '') return
   // Intake boundary: brand the untrusted string from the parsed payload
   // once here so downstream code operates on ResponsesItemId.
   const id = raw as ResponsesItemId
-  const snap = await store.load(id, apiKeyId)
+  const snap = await store.load(id, apiKeyId, { refreshRetentionSeconds })
   if (!snap) throw new PreviousResponseNotFoundError(id)
   const existing = Array.isArray(payload.input)
     ? (payload.input as unknown[])
@@ -43,6 +42,7 @@ export async function expandPreviousResponseId(
 export async function savePostTurnSnapshot(
   store: ResponsesSnapshotStore,
   args: {
+    retentionSeconds: number
     responseId: ResponsesItemId
     apiKeyId: ApiKeyId | null
     model: string
@@ -57,6 +57,6 @@ export async function savePostTurnSnapshot(
     model: args.model,
     items: [...args.inputItems, ...args.outputItems],
     createdAt: now,
-    expiresAt: now + DEFAULT_TTL_MS,
+    expiresAt: snapshotExpiresAt(now, args.retentionSeconds),
   })
 }

@@ -21,7 +21,7 @@ import { BunSqliteRepo } from "./bun-sqlite-repo.ts"
 import { createInMemoryImageProcessor } from "./memory-image-processor.ts"
 import { createBunCache } from "./cache-factory.ts"
 import { FsFileProvider } from "./fs-file-provider.ts"
-import { InMemoryResponsesSnapshotStore } from "@vibe-llm/responses-store"
+import { createBunResponsesStore } from "./responses-store-factory.ts"
 
 export interface BunPlatformOptions {
   dbPath: string
@@ -47,11 +47,7 @@ export function bootstrapBunPlatform(opts: BunPlatformOptions): { db: BunSqliteD
   initFileProvider(files)
   initRepo(new BunSqliteRepo(sqliteDb))
   initCache(createBunCache({ db, backend: opts.cacheBackend }))
-  // In-memory snapshot store: SQLite-backed store requires responses_snapshots
-  // migration that hasn't shipped in the Bun runtime. In-memory keeps
-  // previous_response_id chains working for the current container lifetime;
-  // persistence revisited once the schema migration lands.
-  initResponsesStore(new InMemoryResponsesSnapshotStore())
+  initResponsesStore(createBunResponsesStore(db))
   // No initOAuthKV here: a single Bun process shares the module-level Map, so
   // the KV fallback is already correct.
   if (process.env.RESEND_API_KEY) initResend(process.env.RESEND_API_KEY)

@@ -94,6 +94,7 @@ test('save: writes merged input+output items keyed by responseId', async () => {
   const inputItems = [{ type: 'message', role: 'user', content: 'in1' }]
   const outputItems = [{ type: 'message', role: 'assistant', content: 'out1' }]
   await savePostTurnSnapshot(store, {
+    retentionSeconds: 86400,
     responseId: 'resp_save_1',
     apiKeyId: 'k1',
     model: 'gpt-x',
@@ -111,6 +112,7 @@ test('save: writes merged input+output items keyed by responseId', async () => {
 test('save: anonymous owner uses null apiKeyId', async () => {
   const store = new InMemoryResponsesSnapshotStore()
   await savePostTurnSnapshot(store, {
+    retentionSeconds: 86400,
     responseId: 'resp_save_2',
     apiKeyId: null,
     model: 'gpt-x',

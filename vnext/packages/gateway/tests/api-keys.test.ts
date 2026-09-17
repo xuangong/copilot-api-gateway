@@ -98,6 +98,7 @@ test('validateApiKey returns only its minimal routing projection', async () => {
     id: a.id,
     name: 'a',
     ownerId: 'owner-x',
+    responsesRetentionSeconds: 0,
     routingPolicy: { modelMappingsEnabled: false, modelMappings: DEFAULT_API_KEY_MODEL_MAPPINGS },
   })
   expect(v).not.toHaveProperty('key')
@@ -114,6 +115,7 @@ test('validateApiKey excludes all non-routing API key fields', async () => {
     key: 'raw-key-must-not-leak',
     createdAt: '2026-01-01T00:00:00.000Z',
     ownerId: 'owner-x',
+    responsesRetentionSeconds: 0,
     modelMappingsEnabled: true,
     modelMappings: [{ source: 'source', destination: 'destination' }],
     lastUsedAt: '2026-01-02T00:00:00.000Z',
@@ -138,7 +140,7 @@ test('validateApiKey excludes all non-routing API key fields', async () => {
 
   const validated = await validateApiKey(key.key)
   if (!validated) throw new Error('test key was not validated')
-  expect(Object.keys(validated).sort()).toEqual(['id', 'name', 'ownerId', 'routingPolicy'])
+  expect(Object.keys(validated).sort()).toEqual(['id', 'name', 'ownerId', 'responsesRetentionSeconds', 'routingPolicy'])
   expect(Object.keys(validated.routingPolicy).sort()).toEqual(['modelMappings', 'modelMappingsEnabled'])
 })
 

@@ -11,6 +11,7 @@ beforeAll(() => { setupTestPlatform() })
 afterAll(() => { __resetPlatformForTests() })
 
 const auth: DataPlaneAuthCtx = {
+  responsesRetentionSeconds: 86400,
   userId: 'owner', apiKeyId: 'key',
   routingPolicy: { modelMappingsEnabled: true, modelMappings: [{ source: 'source', destination: 'destination' }] },
 }

@@ -1,10 +1,11 @@
+import { snapshotExpiresAt } from "./retention.ts"
 /**
  * In-memory ResponsesSnapshotStore — for tests and local dev with no DB.
  *
  * Owner isolation is enforced inside load(); cross-owner reads return null.
  * `save` runs opportunistic GC by walking the map and dropping expired rows.
  */
-import type { ResponsesSnapshot, ResponsesSnapshotStore } from './types.ts'
+import type { ResponsesSnapshot, ResponsesSnapshotStore, SnapshotLoadOptions } from './types.ts'
 import { GC_BATCH_LIMIT } from './types.ts'
 
 export interface InMemoryStoreOptions {
@@ -20,11 +21,15 @@ export class InMemoryResponsesSnapshotStore implements ResponsesSnapshotStore {
     this.now = opts.now ?? Date.now
   }
 
-  async load(responseId: string, apiKeyId: string | null): Promise<ResponsesSnapshot | null> {
+  async load(responseId: string, apiKeyId: string | null, options: SnapshotLoadOptions = {}): Promise<ResponsesSnapshot | null> {
     const row = this.rows.get(responseId)
     if (!row) return null
     if (row.apiKeyId !== apiKeyId) return null
-    if (row.expiresAt <= this.now()) return null
+    const now = this.now()
+    if (row.expiresAt <= now) return null
+    if (options.refreshRetentionSeconds !== undefined) {
+      row.expiresAt = Math.max(row.expiresAt, snapshotExpiresAt(now, options.refreshRetentionSeconds))
+    }
     return row
   }
 

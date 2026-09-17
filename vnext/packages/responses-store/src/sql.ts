@@ -1,3 +1,4 @@
+import { snapshotExpiresAt } from "./retention.ts"
 /**
  * SQL-backed ResponsesSnapshotStore — runs against either D1 (CFW) or
  * bun:sqlite (local) via the SqlExecutor adapter. Storing items as JSON
@@ -11,12 +12,11 @@
  * load() filters out expired rows in the WHERE clause so a deferred GC
  * sweep is purely a storage concern, never affecting correctness.
  *
- * save() does an UPSERT (REPLACE INTO) and follows up with an opportunistic
- * GC delete of up to GC_BATCH_LIMIT expired rows. GC is best-effort: a
- * failure logs nothing and does not surface — the caller's save semantics
- * already succeeded.
+ * save() attempts a bounded GC delete before its UPSERT (REPLACE INTO), so
+ * expired snapshots can free space even when the database cannot grow.
+ * GC is best-effort: a failure does not prevent attempting the save.
  */
-import type { ResponsesSnapshot, ResponsesSnapshotStore, SqlExecutor } from './types.ts'
+import type { ResponsesSnapshot, ResponsesSnapshotStore, SnapshotLoadOptions, SqlExecutor } from './types.ts'
 import { GC_BATCH_LIMIT } from './types.ts'
 
 export interface SqliteStoreOptions {
@@ -40,14 +40,15 @@ export class SqliteResponsesSnapshotStore implements ResponsesSnapshotStore {
     this.now = opts.now ?? Date.now
   }
 
-  async load(responseId: string, apiKeyId: string | null): Promise<ResponsesSnapshot | null> {
+  async load(responseId: string, apiKeyId: string | null, options: SnapshotLoadOptions = {}): Promise<ResponsesSnapshot | null> {
+    const now = this.now()
     const row = await this.exec.first<Row>(
       `SELECT response_id, api_key_id, model, items_json, created_at, expires_at
          FROM responses_snapshots
         WHERE response_id = ?
           AND (api_key_id = ? OR (api_key_id IS NULL AND ? IS NULL))
           AND expires_at > ?`,
-      [responseId, apiKeyId, apiKeyId, this.now()],
+      [responseId, apiKeyId, apiKeyId, now],
     )
     if (!row) return null
     let items: unknown[]
@@ -56,6 +57,23 @@ export class SqliteResponsesSnapshotStore implements ResponsesSnapshotStore {
     } catch {
       // A corrupt snapshot is functionally equivalent to a missing one.
       return null
+    }
+    if (options.refreshRetentionSeconds !== undefined) {
+      const expiresAt = snapshotExpiresAt(now, options.refreshRetentionSeconds)
+      if (expiresAt > row.expires_at) {
+        // Update metadata only. MAX prevents an older concurrent request from
+        // shortening the deadline; the predicates never recreate deleted state.
+        const renewed = await this.exec.first<{ expires_at: number }>(
+          `UPDATE responses_snapshots SET expires_at = MAX(expires_at, ?)
+            WHERE response_id = ?
+              AND (api_key_id = ? OR (api_key_id IS NULL AND ? IS NULL))
+              AND expires_at > ?
+            RETURNING expires_at`,
+          [expiresAt, responseId, apiKeyId, apiKeyId, now],
+        )
+        if (!renewed) return null
+        row.expires_at = renewed.expires_at
+      }
     }
     return {
       responseId: row.response_id,
@@ -68,12 +86,6 @@ export class SqliteResponsesSnapshotStore implements ResponsesSnapshotStore {
   }
 
   async save(snap: ResponsesSnapshot): Promise<void> {
-    await this.exec.run(
-      `INSERT OR REPLACE INTO responses_snapshots
-         (response_id, api_key_id, model, items_json, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [snap.responseId, snap.apiKeyId, snap.model, JSON.stringify(snap.items), snap.createdAt, snap.expiresAt],
-    )
     try {
       await this.exec.run(
         `DELETE FROM responses_snapshots
@@ -83,7 +95,13 @@ export class SqliteResponsesSnapshotStore implements ResponsesSnapshotStore {
         [this.now(), GC_BATCH_LIMIT],
       )
     } catch {
-      // GC is best-effort; the save itself already succeeded.
+      // Cleanup failure must not prevent a write when capacity is available.
     }
+    await this.exec.run(
+      `INSERT OR REPLACE INTO responses_snapshots
+         (response_id, api_key_id, model, items_json, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [snap.responseId, snap.apiKeyId, snap.model, JSON.stringify(snap.items), snap.createdAt, snap.expiresAt],
+    )
   }
 }

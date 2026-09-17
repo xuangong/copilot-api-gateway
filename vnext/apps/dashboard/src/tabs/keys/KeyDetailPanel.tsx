@@ -3,6 +3,7 @@ import type { QuotaUsage } from "../../state/keys"
 import { useModelCatalog } from "../../state/models"
 import { AssigneesPanel, SharedByOwnerPanel } from "./AssigneesPanel"
 import { ConfigurationPanel } from "./ConfigurationPanel"
+import { ResponsesRetentionPanel } from "./ResponsesRetentionPanel"
 import { QuotaEditor } from "./QuotaEditor"
 import { WebSearchPanel } from "./WebSearchPanel"
 import { ModelMappingsPanel } from "./ModelMappingsPanel"
@@ -63,6 +64,8 @@ export function KeyDetailPanel({
           })
         }
       />
+
+      <ResponsesRetentionPanel key={keyRow.id} keyRow={keyRow} canEdit={canManage} busy={busy} onSave={onPatch} />
 
       <WebSearchPanel
         keyRow={keyRow}

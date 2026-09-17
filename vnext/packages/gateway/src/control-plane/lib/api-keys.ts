@@ -18,6 +18,7 @@ export interface ValidatedApiKey {
   id: ApiKeyId
   name: string
   ownerId?: UserId
+  responsesRetentionSeconds: number
   routingPolicy: ApiKeyRoutingPolicy
 }
 
@@ -39,6 +40,7 @@ export async function createApiKey(name: string, ownerId?: UserId): Promise<ApiK
     createdAt: new Date().toISOString(),
     ownerId,
     webSearchEnabled: true,
+    responsesRetentionSeconds: 0,
     modelMappingsEnabled: false,
     modelMappings: cloneModelMappings(DEFAULT_API_KEY_MODEL_MAPPINGS),
   }
@@ -88,7 +90,7 @@ export async function validateApiKey(rawKey: string): Promise<ValidatedApiKey | 
         modelMappingsEnabled: key.modelMappingsEnabled,
         modelMappings: cloneModelMappings(key.modelMappings),
       }
-  return { id: key.id, name: key.name, ownerId: key.ownerId, routingPolicy }
+  return { id: key.id, name: key.name, ownerId: key.ownerId, routingPolicy, responsesRetentionSeconds: key.responsesRetentionSeconds ?? 0 }
 }
 
 export async function touchApiKeyLastUsed(id: ApiKeyId): Promise<void> {

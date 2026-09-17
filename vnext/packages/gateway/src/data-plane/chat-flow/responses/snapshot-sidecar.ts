@@ -25,6 +25,7 @@ interface SidecarArgs {
   fallbackModel: string
   apiKeyId: ApiKeyId | null
   requestId: string | null
+  retentionSeconds: number
   mergedInputItems: unknown[]
 }
 
@@ -55,6 +56,7 @@ export function attachStreamSidecar(args: SidecarArgs): Response {
         await savePostTurnSnapshot(store, {
           responseId: responseId as ResponsesItemId,
           apiKeyId,
+          retentionSeconds: args.retentionSeconds,
           model,
           inputItems: mergedInputItems,
           outputItems,
@@ -92,6 +94,7 @@ export function attachNonStreamSidecar(args: SidecarArgs): Response {
         await savePostTurnSnapshot(store, {
           responseId: json.id as ResponsesItemId,
           apiKeyId,
+          retentionSeconds: args.retentionSeconds,
           model: typeof json.model === 'string' ? json.model : fallbackModel,
           inputItems: mergedInputItems,
           outputItems: json.output,

@@ -134,7 +134,7 @@ test('round-trip: responses→responses identity preserves id across turns', asy
   })
 
   const wrapper = buildApp(
-    { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: 'tkn', accountType: 'individual' } } as DataPlaneAuthCtx,
+    { apiKeyId: 'k1', userId: 'u1', responsesRetentionSeconds: 86400, copilot: { copilotToken: 'tkn', accountType: 'individual' } } as DataPlaneAuthCtx,
   )
 
   // Turn 1 — verify the client sees the same id we will replay.
@@ -177,3 +177,122 @@ test('round-trip: responses→responses identity preserves id across turns', asy
 
 // Spec 6 wired native cross-protocol attempts. The responses→chat_completions
 // happy path is now covered by tests/integration/cross-protocol-responses-to-cc.test.ts.
+
+for (const stream of [false, true]) {
+  for (const retention of [undefined, 0, 86400, 259200, 604800]) {
+    for (const requestedStore of [undefined, false, true]) {
+      test(`snapshot policy: stream=${stream}, retention=${retention}, store=${requestedStore}`, async () => {
+        initRepo(stubRepo([stubUpstream()]))
+        const store = new InMemoryResponsesSnapshotStore()
+        initResponsesStore(store)
+        const pending: Promise<unknown>[] = []
+        installFetch((req) => {
+          if (new URL(req.url).pathname.endsWith('/models')) {
+            return Response.json({ data: [stubModel(RESP_MODEL)] })
+          }
+          const response = {
+            id: 'resp_policy', object: 'response', model: RESP_MODEL, status: 'completed',
+            output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'reply' }] }],
+            usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+          }
+          if (!stream) return Response.json(response)
+          return new Response([
+            { type: 'response.created', response },
+            { type: 'response.output_item.done', output_index: 0, item: response.output[0] },
+            { type: 'response.completed', response },
+          ].map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(''), {
+            headers: { 'content-type': 'text/event-stream' },
+          })
+        })
+        const wrapper = buildApp({
+          apiKeyId: 'k1', userId: 'u1', responsesRetentionSeconds: retention,
+          copilot: { copilotToken: 'tkn', accountType: 'individual' },
+        } as DataPlaneAuthCtx)
+        const response = await wrapper.fetch(new Request('http://x/v1/responses', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ model: RESP_MODEL, input: 'question', stream, store: requestedStore }),
+        }), {} as never, { waitUntil: (p: Promise<unknown>) => pending.push(p), passThroughOnException() {} })
+        expect(response.status).toBe(200)
+        expect(await response.text()).toContain('resp_policy')
+        await Promise.all(pending)
+        const saved = await store.load('resp_policy', 'k1')
+        if (retention && requestedStore !== false) {
+          expect(saved).not.toBeNull()
+          expect(saved?.items).toContainEqual({ type: 'message', role: 'user', content: 'question' })
+          expect(saved).not.toBeNull()
+          if (!saved) throw new Error('Expected persisted snapshot')
+          const utcMidnight = new Date(saved.createdAt).setUTCHours(0, 0, 0, 0)
+          expect(saved.expiresAt).toBe(utcMidnight + retention * 1000 + 86400000)
+        } else {
+          expect(saved).toBeNull()
+          expect(store._size()).toBe(0)
+        }
+      })
+    }
+  }
+}
+
+for (const retention of [0, 86400]) {
+  test(`store:false continuation reads prior state only when key retention=${retention}`, async () => {
+    initRepo(stubRepo([stubUpstream()]))
+    const store = new InMemoryResponsesSnapshotStore()
+    initResponsesStore(store)
+    const expiresAt = Date.now() + 60_000
+    await store.save({ responseId: 'resp_old', apiKeyId: 'k1', model: RESP_MODEL,
+      items: [{ type: 'message', role: 'user', content: 'old input' }], createdAt: Date.now(), expiresAt })
+    let forwarded: unknown = null
+    installFetch(async (req) => {
+      if (new URL(req.url).pathname.endsWith('/models')) return Response.json({ data: [stubModel(RESP_MODEL)] })
+      forwarded = await req.json()
+      return Response.json({ id: 'resp_unsaved', object: 'response', model: RESP_MODEL,
+        output: [], usage: { input_tokens: 1, output_tokens: 0, total_tokens: 1 } })
+    })
+    const pending: Promise<unknown>[] = []
+    const wrapper = buildApp({ apiKeyId: 'k1', userId: 'u1', responsesRetentionSeconds: retention,
+      copilot: { copilotToken: 'tkn', accountType: 'individual' } } as DataPlaneAuthCtx)
+    const response = await wrapper.fetch(new Request('http://x/v1/responses', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: RESP_MODEL, previous_response_id: 'resp_old', input: 'new input', store: false }),
+    }), {} as never, { waitUntil: (p: Promise<unknown>) => pending.push(p), passThroughOnException() {} })
+    const body = await response.json()
+    await Promise.all(pending)
+    if (retention === 0) {
+      expect(response.status).toBe(400)
+      expect(body.error.code).toBe('previous_response_not_found')
+      expect(forwarded).toBeNull()
+    } else {
+      expect(response.status).toBe(200)
+      expect(forwarded).toMatchObject({ input: [
+        { type: 'message', role: 'user', content: 'old input' },
+        { type: 'message', role: 'user', content: 'new input' },
+      ] })
+    }
+    expect(await store.load('resp_unsaved', 'k1')).toBeNull()
+    expect((await store.load('resp_old', 'k1'))?.expiresAt).toBe(expiresAt)
+  })
+}
+
+for (const requestedStore of [undefined, true]) {
+  test(`continuation renews previous snapshot when store=${requestedStore}`, async () => {
+    initRepo(stubRepo([stubUpstream()]))
+    const store = new InMemoryResponsesSnapshotStore()
+    initResponsesStore(store)
+    const now = Date.now()
+    await store.save({ responseId: 'resp_active', apiKeyId: 'k1', model: RESP_MODEL,
+      items: [{ type: 'message', role: 'user', content: 'old input' }], createdAt: now - 10000, expiresAt: now + 60000 })
+    installFetch((req) => new URL(req.url).pathname.endsWith('/models')
+      ? Response.json({ data: [stubModel(RESP_MODEL)] })
+      : Response.json({ id: 'resp_renewed', object: 'response', model: RESP_MODEL, output: [], usage: { input_tokens: 1, output_tokens: 0, total_tokens: 1 } }))
+    const wrapper = buildApp({ apiKeyId: 'k1', userId: 'u1', responsesRetentionSeconds: 259200,
+      copilot: { copilotToken: 'tkn', accountType: 'individual' } } as DataPlaneAuthCtx)
+    const response = await wrapper.fetch(new Request('http://x/v1/responses', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: RESP_MODEL, previous_response_id: 'resp_active', input: 'new input', store: requestedStore }),
+    }), {} as never)
+    expect(response.status).toBe(200)
+    await response.text()
+    const renewed = await store.load('resp_active', 'k1')
+    expect(renewed?.expiresAt).toBeGreaterThanOrEqual(now + 259200000)
+    expect(renewed?.createdAt).toBe(now - 10000)
+  })
+}

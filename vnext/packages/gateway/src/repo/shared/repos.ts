@@ -49,7 +49,7 @@ import type { BillingDimension, ModelPricing } from "@vibe-llm/protocols/common"
 import { UpstreamGoneError } from "@vibe-core/upstream-repo"
 import type { BackoffRow, ProxyBackoffRepo, ProxyFallbackEntry, ProxyRecord, ProxyRepo } from "@vibe-core/proxy-repo"
 
-const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_month, quota_tokens_per_month, quota_cost_per_month, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref, web_search_jina_key, web_search_jina_ref, web_search_passthrough_upstream, web_search_passthrough_model, dump_retention_seconds, model_mappings_enabled, model_mappings"
+const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_month, quota_tokens_per_month, quota_cost_per_month, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref, web_search_jina_key, web_search_jina_ref, web_search_passthrough_upstream, web_search_passthrough_model, dump_retention_seconds, model_mappings_enabled, model_mappings, responses_retention_seconds"
 const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at, github_host, source"
 const UPSTREAM_COLS = "id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, state_json, proxy_fallback_list_json, created_at, updated_at"
 const USAGE_DIM_COLS = "key_id, incoming_model, model, upstream, model_key, client, hour, dimension, tokens, unit_price"
@@ -109,6 +109,7 @@ function toApiKey(row: any): ApiKey {
     webSearchPassthroughUpstream: row.web_search_passthrough_upstream ?? undefined,
     webSearchPassthroughModel: row.web_search_passthrough_model ?? undefined,
     dumpRetentionSeconds: row.dump_retention_seconds ?? null,
+    responsesRetentionSeconds: row.responses_retention_seconds ?? 0,
   }
 }
 
@@ -342,8 +343,8 @@ class SharedApiKeyRepo implements ApiKeyRepo {
 
   async save(key: ApiKey): Promise<void> {
     await this.x.run(
-      `INSERT INTO api_keys (${API_KEY_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_month = excluded.quota_requests_per_month, quota_tokens_per_month = excluded.quota_tokens_per_month, quota_cost_per_month = excluded.quota_cost_per_month, web_search_enabled = excluded.web_search_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key, web_search_ms_grounding_key = excluded.web_search_ms_grounding_key, web_search_priority = excluded.web_search_priority, web_search_langsearch_ref = excluded.web_search_langsearch_ref, web_search_tavily_ref = excluded.web_search_tavily_ref, web_search_ms_grounding_ref = excluded.web_search_ms_grounding_ref, web_search_jina_key = excluded.web_search_jina_key, web_search_jina_ref = excluded.web_search_jina_ref, web_search_passthrough_upstream = excluded.web_search_passthrough_upstream, web_search_passthrough_model = excluded.web_search_passthrough_model, dump_retention_seconds = excluded.dump_retention_seconds, model_mappings_enabled = excluded.model_mappings_enabled, model_mappings = excluded.model_mappings`,
+      `INSERT INTO api_keys (${API_KEY_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET name = excluded.name, key = excluded.key, last_used_at = excluded.last_used_at, owner_id = excluded.owner_id, quota_requests_per_month = excluded.quota_requests_per_month, quota_tokens_per_month = excluded.quota_tokens_per_month, quota_cost_per_month = excluded.quota_cost_per_month, web_search_enabled = excluded.web_search_enabled, web_search_langsearch_key = excluded.web_search_langsearch_key, web_search_tavily_key = excluded.web_search_tavily_key, web_search_ms_grounding_key = excluded.web_search_ms_grounding_key, web_search_priority = excluded.web_search_priority, web_search_langsearch_ref = excluded.web_search_langsearch_ref, web_search_tavily_ref = excluded.web_search_tavily_ref, web_search_ms_grounding_ref = excluded.web_search_ms_grounding_ref, web_search_jina_key = excluded.web_search_jina_key, web_search_jina_ref = excluded.web_search_jina_ref, web_search_passthrough_upstream = excluded.web_search_passthrough_upstream, web_search_passthrough_model = excluded.web_search_passthrough_model, dump_retention_seconds = excluded.dump_retention_seconds, model_mappings_enabled = excluded.model_mappings_enabled, model_mappings = excluded.model_mappings, responses_retention_seconds = excluded.responses_retention_seconds`,
       [
         key.id, key.name, key.key, key.createdAt, key.lastUsedAt ?? null, key.ownerId ?? null,
         key.quotaRequestsPerMonth ?? null, key.quotaTokensPerMonth ?? null, key.quotaCostPerMonth ?? null,
@@ -356,6 +357,7 @@ class SharedApiKeyRepo implements ApiKeyRepo {
         key.dumpRetentionSeconds ?? null,
         key.modelMappingsEnabled ? 1 : 0,
         JSON.stringify(key.modelMappings),
+        key.responsesRetentionSeconds ?? 0,
       ],
     )
   }

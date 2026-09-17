@@ -26,9 +26,14 @@ export interface ResponsesSnapshot {
   expiresAt: number
 }
 
+export interface SnapshotLoadOptions {
+  /** Omit for read-only access. Renew a live snapshot using the current key retention. */
+  refreshRetentionSeconds?: number
+}
+
 export interface ResponsesSnapshotStore {
   /** Returns the snapshot iff response_id matches AND owner matches (null-safe). */
-  load(responseId: string, apiKeyId: string | null): Promise<ResponsesSnapshot | null>
+  load(responseId: string, apiKeyId: string | null, options?: SnapshotLoadOptions): Promise<ResponsesSnapshot | null>
   /** Inserts (or replaces) the snapshot. Implementations may also run opportunistic GC. */
   save(snap: ResponsesSnapshot): Promise<void>
 }

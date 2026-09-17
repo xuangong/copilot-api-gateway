@@ -8,6 +8,7 @@
   "routes": [
     { "pattern": "token.xianliao.de5.net", "custom_domain": true }
   ],
+  "triggers": { "crons": ["* * * * *"] },
   "placement": { "mode": "smart" },
   "rules": [
     { "type": "Text", "globs": ["**/*.txt"], "fallthrough": true }

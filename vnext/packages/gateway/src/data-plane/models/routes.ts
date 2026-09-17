@@ -100,6 +100,7 @@ export interface DataPlaneAuthCtx {
   /** API-key id authenticated for this request; required for per-key web-search/quota lookups. */
   apiKeyId?: ApiKeyId
   /** Safe model-routing policy projected from the authenticated API key. */
+  responsesRetentionSeconds?: number
   routingPolicy?: ApiKeyRoutingPolicy
   /** GitHub OAuth token attached to the request (used by Copilot web-search engine). */
   githubToken?: string

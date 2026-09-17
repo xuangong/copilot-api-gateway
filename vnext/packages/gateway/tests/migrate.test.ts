@@ -100,6 +100,7 @@ describe("applyMigrations", () => {
     db.exec("ALTER TABLE api_keys DROP COLUMN web_search_passthrough_model")
     db.exec("ALTER TABLE api_keys DROP COLUMN model_mappings_enabled")
     db.exec("ALTER TABLE api_keys DROP COLUMN model_mappings")
+    db.exec("ALTER TABLE api_keys DROP COLUMN responses_retention_seconds")
     db.exec("INSERT INTO users (id, name, created_at) VALUES ('u1', 'someone', '2026-01-01')")
     db.exec("INSERT INTO api_keys (id, name, key, created_at) VALUES ('k1', 'preserved', 'secret', '2026-01-01')")
 

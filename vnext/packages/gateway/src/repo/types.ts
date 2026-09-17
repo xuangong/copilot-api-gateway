@@ -13,6 +13,8 @@ export interface ApiKey {
   name: string
   key: string
   createdAt: string
+  /** Zero disables Responses state storage; positive values are whole days in seconds. */
+  responsesRetentionSeconds?: number
   modelMappingsEnabled: boolean
   modelMappings: ApiKeyModelMapping[]
   /** True when persisted model mappings failed validation and were fail-closed. */

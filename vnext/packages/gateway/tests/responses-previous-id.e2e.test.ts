@@ -103,7 +103,7 @@ test('responses + previous_response_id expands snapshot and clears the field', a
   })
 
   const wrapper = buildApp(
-    { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
+    { responsesRetentionSeconds: 86400, apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
   )
   const res = await wrapper.fetch(new Request('http://x/v1/responses', {
     method: 'POST',
@@ -147,7 +147,7 @@ test('responses maps the model after expanding previous_response_id', async () =
     return new Response('not found', { status: 404 })
   })
   const app = buildApp({
-    apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' },
+    responsesRetentionSeconds: 86400, apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' },
     routingPolicy: { modelMappingsEnabled: true, modelMappings: [{ source, destination: MODEL_ID }] },
   } as DataPlaneAuthCtx)
   const res = await app.fetch(new Request('http://x/v1/responses', {
@@ -185,7 +185,7 @@ test('responses continuation keeps current source model when routing is disabled
     return new Response('not found', { status: 404 })
   })
   const app = buildApp({
-    apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' },
+    responsesRetentionSeconds: 86400, apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' },
     routingPolicy: { modelMappingsEnabled: false, modelMappings: [{ source, destination: MODEL_ID }] },
   } as DataPlaneAuthCtx)
   const res = await app.fetch(new Request('http://x/v1/responses', {
@@ -213,7 +213,7 @@ test('responses + unknown previous_response_id returns 400 with verbatim envelop
   })
 
   const wrapper = buildApp(
-    { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
+    { responsesRetentionSeconds: 86400, apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
   )
   const res = await wrapper.fetch(new Request('http://x/v1/responses', {
     method: 'POST',
@@ -253,7 +253,7 @@ test('responses + non-array input is rejected by Zod before expand mutates paylo
   installFetch(() => new Response('upstream must not be called', { status: 500 }))
 
   const wrapper = buildApp(
-    { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
+    { responsesRetentionSeconds: 86400, apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
   )
   const res = await wrapper.fetch(new Request('http://x/v1/responses', {
     method: 'POST',
@@ -292,7 +292,7 @@ test('responses + previous_response_id owned by another api key returns 400', as
   })
 
   const wrapper = buildApp(
-    { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
+    { responsesRetentionSeconds: 86400, apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
   )
   const res = await wrapper.fetch(new Request('http://x/v1/responses', {
     method: 'POST',
@@ -330,7 +330,7 @@ test('responses non-stream saves snapshot using upstream response.id', async () 
   })
 
   const wrapper = buildApp(
-    { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
+    { responsesRetentionSeconds: 86400, apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
   )
   const res = await wrapper.fetch(new Request('http://x/v1/responses', {
     method: 'POST',
@@ -388,7 +388,7 @@ test('responses stream saves snapshot when response.completed fires', async () =
   })
 
   const wrapper = buildApp(
-    { apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
+    { responsesRetentionSeconds: 86400, apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } } as DataPlaneAuthCtx,
   )
   const res = await wrapper.fetch(new Request('http://x/v1/responses', {
     method: 'POST',

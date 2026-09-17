@@ -56,6 +56,11 @@ async function responsesHandlerCore(
   const { requestBody, dump } = await openRequestDump(c, auth, c.req.method)
   let raw: unknown
   try { raw = parseJsonBody(requestBody.bytes) } catch { return dump ? dump.finalize(invalidJsonResponse()) : invalidJsonResponse() }
+  // Capture the client preference before provider interceptors can rewrite store.
+  const retentionSeconds = auth.responsesRetentionSeconds ?? 0
+  const saveSnapshot = retentionSeconds > 0 && !!auth.apiKeyId
+    && typeof raw === 'object' && raw !== null && !Array.isArray(raw)
+    && (raw as Record<string, unknown>).store !== false
   const obsCtx = readObsCtx(c, auth)
   const disconnect = new ClientDisconnect(c.req.raw.signal)
   const { response, mergedInputItems } = await serveResponses({
@@ -68,16 +73,16 @@ async function responsesHandlerCore(
     dump,
     action,
   })
-  if (response.status !== 200) return disconnect.wrap(response)
+  if (response.status !== 200 || !saveSnapshot || action === 'compact') return disconnect.wrap(response)
   const ct = response.headers.get('content-type') ?? ''
   const fallbackModel = (raw as { model?: string }).model ?? ''
   const apiKeyId = auth.apiKeyId ?? null
   const requestId = obsCtx.requestId ?? null
   if (ct.includes('text/event-stream') && response.body) {
-    return disconnect.wrap(attachStreamSidecar({ c, response, fallbackModel, apiKeyId, requestId, mergedInputItems }))
+    return disconnect.wrap(attachStreamSidecar({ c, response, fallbackModel, apiKeyId, requestId, mergedInputItems, retentionSeconds }))
   }
   if (ct.includes('application/json')) {
-    return disconnect.wrap(attachNonStreamSidecar({ c, response, fallbackModel, apiKeyId, requestId, mergedInputItems }))
+    return disconnect.wrap(attachNonStreamSidecar({ c, response, fallbackModel, apiKeyId, requestId, mergedInputItems, retentionSeconds }))
   }
   return disconnect.wrap(response)
 }

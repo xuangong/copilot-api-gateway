@@ -130,4 +130,43 @@ export function runStoreContract(factory: StoreFactory): void {
     await injectCorruptRow('resp_corrupt', 'key_a')
     expect(await store.load('resp_corrupt', 'key_a')).toBeNull()
   })
+  test(`[${factory.label}] allowed reads renew by UTC day without changing creation or payload`, async () => {
+    const { store, setNow } = await factory.make()
+    setNow(1000)
+    await store.save(make())
+    const renewed = await store.load('resp_1', 'key_a', { refreshRetentionSeconds: 86400 })
+    expect(renewed?.expiresAt).toBe(172800000)
+    expect(renewed?.createdAt).toBe(1000)
+    expect(renewed?.items).toEqual(make().items)
+    setNow(80000000)
+    expect((await store.load('resp_1', 'key_a', { refreshRetentionSeconds: 86400 }))?.expiresAt).toBe(172800000)
+    setNow(86401000)
+    expect((await store.load('resp_1', 'key_a', { refreshRetentionSeconds: 86400 }))?.expiresAt).toBe(259200000)
+    setNow(172800000)
+    expect(await store.load('resp_1', 'key_a')).not.toBeNull()
+    setNow(259200000)
+    expect(await store.load('resp_1', 'key_a', { refreshRetentionSeconds: 86400 })).toBeNull()
+  })
+
+  test(`[${factory.label}] read-only, foreign and expired reads never extend state`, async () => {
+    const { store, setNow } = await factory.make()
+    setNow(1000)
+    await store.save(make())
+    expect(await store.load('resp_1', 'other', { refreshRetentionSeconds: 86400 })).toBeNull()
+    expect((await store.load('resp_1', 'key_a'))?.expiresAt).toBe(61000)
+    setNow(61000)
+    expect(await store.load('resp_1', 'key_a', { refreshRetentionSeconds: 86400 })).toBeNull()
+    setNow(1000)
+    expect((await store.load('resp_1', 'key_a'))?.expiresAt).toBe(61000)
+  })
+
+  test(`[${factory.label}] later renewal with a shorter duration never shortens an existing deadline`, async () => {
+    const { store, setNow } = await factory.make()
+    setNow(1000)
+    await store.save(make())
+    await store.load('resp_1', 'key_a', { refreshRetentionSeconds: 604800 })
+    setNow(86401000)
+    expect((await store.load('resp_1', 'key_a', { refreshRetentionSeconds: 86400 }))?.expiresAt).toBe(691200000)
+  })
+
 }

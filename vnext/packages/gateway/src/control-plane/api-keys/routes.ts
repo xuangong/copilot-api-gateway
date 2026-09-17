@@ -101,6 +101,8 @@ function keyToJson(
     quota_requests_per_month: k.quotaRequestsPerMonth ?? null,
     quota_tokens_per_month: k.quotaTokensPerMonth ?? null,
     quota_cost_per_month: k.quotaCostPerMonth ?? null,
+    responses_retention_seconds: k.responsesRetentionSeconds ?? 0,
+    responsesRetentionSeconds: k.responsesRetentionSeconds ?? 0,
     web_search_enabled: k.webSearchEnabled ?? false,
     web_search_langsearch_key: langsearchRef ? null : maskKey(k.webSearchLangsearchKey),
     web_search_langsearch_ref: langsearchRef,
@@ -398,6 +400,14 @@ apiKeysRouter.patch('/:id', async (c) => {
   }
   if (!isOwner && !hasMappingUpdate) return c.json({ error: 'Forbidden' }, 403)
   const updated: ApiKey = { ...existing }
+  if (Object.hasOwn(body, 'responses_retention_seconds')) {
+    const retention = body.responses_retention_seconds
+    if (typeof retention !== 'number' || !Number.isSafeInteger(retention)
+      || retention < 0 || retention > 315360000 || retention % 86400 !== 0) {
+      return c.json(validationError('responses_retention_seconds must be 0 or whole days from 86400 to 315360000 seconds'), 400)
+    }
+    updated.responsesRetentionSeconds = retention
+  }
   if (hasMappingUpdate) {
     if (Object.hasOwn(body, 'model_mappings_enabled')) {
       if (typeof body.model_mappings_enabled !== 'boolean') {

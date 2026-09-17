@@ -30,6 +30,7 @@ interface FullAuthCtx {
   isAdmin?: boolean
   isUser?: boolean
   apiKeyId?: ApiKeyId
+  responsesRetentionSeconds?: number
   routingPolicy?: ApiKeyRoutingPolicy
   authKind?: 'public' | 'session' | 'apiKey'
   authenticatedAt?: number
@@ -107,6 +108,7 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
           isUser: !!result.ownerId,
           apiKeyId: result.id,
           routingPolicy: result.routingPolicy,
+          responsesRetentionSeconds: result.responsesRetentionSeconds,
           authKind: 'apiKey',
         }
         resolvedUserId = result.ownerId

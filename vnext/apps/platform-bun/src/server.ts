@@ -1,11 +1,27 @@
+import { sweepResponsesSnapshots } from "@vibe-llm/gateway/maintenance"
 import { app } from "@vibe-llm/gateway"
 import { bootstrapBunPlatform } from "./bootstrap.ts"
 
 const dbPath = process.env.VNEXT_DB_PATH ?? ".vnext-local.sqlite"
-bootstrapBunPlatform({
+const { db } = bootstrapBunPlatform({
   dbPath,
   cacheBackend: process.env.CACHE_BACKEND,
 })
+
+let sweeping = false
+const sweep = async () => {
+  if (sweeping) return
+  sweeping = true
+  try {
+    await sweepResponsesSnapshots(db, Date.now())
+  } catch {
+    console.warn(JSON.stringify({ evt: "responses_expiration_sweep_failed" }))
+  } finally {
+    sweeping = false
+  }
+}
+void sweep()
+setInterval(() => { void sweep() }, 60_000).unref()
 
 // Docker compose sets PORT=41414; bare local runs fall back to 8788.
 const port = Number(process.env.PORT ?? 8788)

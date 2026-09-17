@@ -213,6 +213,7 @@ test('POST /v1/responses/compact expands previous response before routing the cu
   installCopilotFetch()
   const app = buildApp({
     apiKeyId: 'key',
+    responsesRetentionSeconds: 86400,
     copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE },
     routingPolicy: { modelMappingsEnabled: true, modelMappings: [{ source, destination: MODEL_ID }] },
   })

@@ -47,7 +47,7 @@ import { resolveKeyModel } from '../../routing/key-model-mapping.ts'
 import { kitDeps } from '../shared/kit-deps.ts'
 import type { DispatchObsCtx } from '../shared/obs-ctx.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
-import type { ApiKeyId } from '../../../repo/branded-ids.ts'
+import type { ApiKeyId, ResponsesItemId } from '../../../repo/branded-ids.ts'
 import {
   expandPreviousResponseId,
   PreviousResponseNotFoundError,
@@ -99,7 +99,7 @@ type ResponsesPayload = Record<string, unknown> & {
   previous_response_id?: string | null
 }
 
-type ResponsesServeAuth = ResponsesAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
+type ResponsesServeAuth = ResponsesAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy' | 'responsesRetentionSeconds'>
 
 type ResponsesExtra = { readonly mergedInputItems: unknown[]; readonly incomingModel: string; readonly upstreamPin?: string }
 
@@ -133,11 +133,16 @@ const responsesHooks: ServeTemplateHooks<
     // payload.input so the snapshot sidecar persists the full input
     // history for the next turn.
     try {
+      if (payload.previous_response_id && (ctx.auth.responsesRetentionSeconds ?? 0) <= 0) {
+        throw new PreviousResponseNotFoundError(payload.previous_response_id as ResponsesItemId)
+      }
       const store = getResponsesStore()
       await expandPreviousResponseId(
         payload as { previous_response_id?: string | null; input?: unknown },
         store,
         (ctx.auth.apiKeyId ?? null) as ApiKeyId | null,
+        payload.store !== false && (ctx.auth.responsesRetentionSeconds ?? 0) > 0
+          ? ctx.auth.responsesRetentionSeconds : undefined,
       )
       const expanded = (payload as { input?: unknown }).input
       const mergedInputItems = Array.isArray(expanded) ? (expanded as unknown[]) : []
@@ -200,6 +205,7 @@ export async function serveResponses(args: ResponsesServeArgs): Promise<Response
     copilot: args.auth.copilot,
     apiKeyId: args.auth.apiKeyId,
     routingPolicy: args.auth.routingPolicy,
+    responsesRetentionSeconds: args.auth.responsesRetentionSeconds,
   }
   const { response, extra } = await serveTemplate(
     responsesHooks,

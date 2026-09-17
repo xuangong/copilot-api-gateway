@@ -97,6 +97,7 @@ test('attachStreamSidecar — tees SSE and persists snapshot via responses-store
   const { c, pending } = fakeCtxWithWaitUntil()
 
   const returned = attachStreamSidecar({
+    retentionSeconds: 86400,
     c,
     response,
     fallbackModel: 'gpt-test',
@@ -145,6 +146,7 @@ test('attachNonStreamSidecar — clones JSON and persists snapshot', async () =>
   const { c, pending } = fakeCtxWithWaitUntil()
 
   const returned = attachNonStreamSidecar({
+    retentionSeconds: 86400,
     c,
     response,
     fallbackModel: 'gpt-test',
@@ -181,6 +183,7 @@ test('attachStreamSidecar — falls back to fire-and-forget when executionCtx is
 
   // Must not throw even without executionCtx.
   const returned = attachStreamSidecar({
+    retentionSeconds: 86400,
     c,
     response,
     fallbackModel: 'gpt-test',

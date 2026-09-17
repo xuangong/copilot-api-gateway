@@ -6,6 +6,16 @@ export function renderI18nScript(): string {
 (function() {
   var translations = {
     en: {
+      "dash.responsesRetentionTitle": "Responses state",
+      "dash.responsesRetentionHint": "Save conversation state for clients that continue with previous_response_id. Requests with store: false are never saved.",
+      "dash.responsesRetentionEnable": "Save Responses state",
+      "dash.responsesRetentionDays": "Retention (days)",
+      "dash.responsesRetentionPreset": "{n} days",
+      "dash.responsesRetentionInvalid": "Enter a whole number from 1 to 3650 days.",
+      "dash.responsesRetentionExpiry": "Successful state reads renew retention unless store: false. Renewal is batched by UTC day, with up to one extra day of grace. Duration changes apply to new snapshots and subsequent renewals; existing deadlines are never shortened.",
+      "dash.responsesRetentionDisabledHint": "Stops saving and reading state. Existing snapshots will be removed in the background.",
+      "dash.responsesRetentionSummary": "Enabled · {n} days after last use",
+      "dash.responsesRetentionOff": "Off · no state saved",
       "dash.perf.title": "Streaming performance",
       "dash.perf.gateway": "Observed by the gateway",
       "dash.perf.browser": "Observed by this browser",
@@ -1031,6 +1041,16 @@ export function renderI18nScript(): string {
       "guide.footer": "Copilot API Gateway — one key for Claude, GPT and Gemini"
     },
     zh: {
+      "dash.responsesRetentionTitle": "Responses 状态保存",
+      "dash.responsesRetentionHint": "为使用 previous_response_id 续接对话的客户端保存状态。请求指定 store: false 时不会保存。",
+      "dash.responsesRetentionEnable": "保存 Responses 状态",
+      "dash.responsesRetentionDays": "保留时长（天）",
+      "dash.responsesRetentionPreset": "{n} 天",
+      "dash.responsesRetentionInvalid": "请输入 1 至 3650 的整数天数。",
+      "dash.responsesRetentionExpiry": "读取状态时续期，store: false 除外。按 UTC 天更新，最多额外保留一天。新快照和后续续期使用当前时长，已有到期时间不会缩短。",
+      "dash.responsesRetentionDisabledHint": "停止保存和读取状态，已有快照将由后台分批清理。",
+      "dash.responsesRetentionSummary": "已开启 · 使用后保留 {n} 天",
+      "dash.responsesRetentionOff": "已关闭 · 不保存状态",
       "dash.perf.title": "流式响应性能",
       "dash.perf.gateway": "网关观测",
       "dash.perf.browser": "当前浏览器观测",

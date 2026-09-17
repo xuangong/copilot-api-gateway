@@ -20,6 +20,7 @@ export interface ApiKeyModelMapping {
 }
 
 export interface ApiKeyDetail {
+  responses_retention_seconds: number
   id: string
   name: string
   key: string
@@ -51,6 +52,7 @@ export interface ApiKeyDetail {
 }
 
 export interface KeyPatchBody {
+  responses_retention_seconds?: number
   model_mappings_enabled?: boolean
   model_mappings?: ApiKeyModelMapping[]
   name?: string

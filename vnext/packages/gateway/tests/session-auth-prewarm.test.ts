@@ -203,6 +203,7 @@ test('an ownerless API key attaches only its safe routing auth context without p
   expect(await res.json()).toEqual({
     apiKeyId: 'key_ownerless',
     authKind: 'apiKey',
+    responsesRetentionSeconds: 0,
     isUser: false,
     routingPolicy: {
       modelMappingsEnabled: true,
@@ -224,6 +225,7 @@ test('an owned API key retains routing auth and pre-warms its Copilot context', 
     isUser: true,
     apiKeyId: 'key_owned',
     authKind: 'apiKey',
+    responsesRetentionSeconds: 0,
     routingPolicy: {
       modelMappingsEnabled: true,
       modelMappings: [{ source: 'gpt-5.6-sol', destination: 'gpt-5.6-sol-fast' }],
@@ -252,6 +254,7 @@ test('an owned API key retains routing auth when its Copilot pre-warm fetch fail
     isUser: true,
     apiKeyId: 'key_owned',
     authKind: 'apiKey',
+    responsesRetentionSeconds: 0,
     routingPolicy: {
       modelMappingsEnabled: true,
       modelMappings: [{ source: 'gpt-5.6-sol', destination: 'gpt-5.6-sol-fast' }],
