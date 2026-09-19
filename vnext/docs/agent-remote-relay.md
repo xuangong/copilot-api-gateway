@@ -260,3 +260,7 @@ isolated SQLite login. Browser acceptance then covered legacy login, provenance
 removed between GET and POST, and a valid login reaching the Relay callback,
 with zero CSP violations. Synthetic OAuth/Relay destinations were served on
 separate local origins; no production login or model request was used.
+
+### Account display profile
+
+Successful service-authorized `/api/agent-remote/renew` responses also include `profile: { name, email? }` from the current enabled user. Only these display fields are returned; user keys, password hashes, and other account fields are excluded. The Relay may display this identity with the authenticated subject as a fallback for older Gateways.

@@ -88,7 +88,7 @@ for (const operation of ["renew", "user-status"] as const) {
       const { expiresAt, authenticatedAt } = original
       const user = await repo.users.getById(original.subject)
       if (!user || user.disabled) return c.json({ error: "User access denied" }, 403)
-      return c.json({ active: true, subject: user.id, expiresAt, authenticatedAt, validUntil: Math.min(now + 120_000, expiresAt) })
+      return c.json({ active: true, subject: user.id, profile: { name: user.name, ...(user.email ? { email: user.email } : {}) }, expiresAt, authenticatedAt, validUntil: Math.min(now + 120_000, expiresAt) })
     } catch {
       return c.json({ error: "Agent Remote authority temporarily unavailable" }, 503)
     }

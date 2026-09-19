@@ -71,7 +71,7 @@ test("service renew returns a login-bounded authorization lease", async () => {
   expect(response.status).toBe(200)
   expect(response.headers.get("cache-control")).toBe("no-store")
   const lease = await response.json() as { active: boolean; subject: string; expiresAt: number; validUntil: number }
-  expect(lease).toMatchObject({ active: true, subject, expiresAt: sessionExpiresAt })
+  expect(lease).toMatchObject({ active: true, subject, expiresAt: sessionExpiresAt, profile: { name: "Lifecycle User" } })
   expect(lease.validUntil).toBeGreaterThanOrEqual(start + 120_000)
   expect(lease.validUntil).toBeLessThanOrEqual(Date.now() + 120_000)
   const shorterExpiry = Date.now() + 30_000
@@ -238,4 +238,14 @@ test("Gateway logout revokes only its original login and refuses cross-origin co
   expect(db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM agent_remote_continuations").get()?.count).toBe(0)
   expect(await repo.sessions.findByToken(other)).not.toBeNull()
   expect((await service("renew", { continuation: issued.continuation })).status).toBe(401)
+}, 5000)
+
+test("renew exposes only the account display profile", async () => {
+  await repo.users.update(subject, { name: "Updated User", email: "updated@example.com", userKey: "private-user-key", passwordHash: "private-hash" })
+  const issued = await grant()
+  const response = await service("renew", { continuation: issued.continuation })
+  const value = await response.json() as { profile: unknown }
+  expect(value.profile).toEqual({ name: "Updated User", email: "updated@example.com" })
+  expect(JSON.stringify(value)).not.toContain("private-")
+  expect((await service("renew", { continuation: issued.continuation }, {}, { origin: "https://browser.example" })).status).toBe(403)
 }, 5000)
