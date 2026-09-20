@@ -7,12 +7,15 @@ import { agentRemoteLifecycleRouter, continuationHash } from './lifecycle.ts'
 import { userSession } from "./user-session.ts"
 import { agentRemoteControlRouter, validHostId } from "./control.ts"
 
+import { agentRemoteHostKeysRouter } from "./host-keys.ts"
+
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
 
 export const agentRemoteRouter = new Hono()
 agentRemoteRouter.use('/agent-remote', secureResponse)
 agentRemoteRouter.use('/api/agent-remote/*', secureResponse)
 agentRemoteRouter.route('/', agentRemoteLifecycleRouter)
+agentRemoteRouter.route('/', agentRemoteHostKeysRouter)
 agentRemoteRouter.route('/', agentRemoteControlRouter)
 agentRemoteRouter.get('/api/agent-remote/config', c => {
   try { return c.json({ enabled: Boolean(configuration()) }) }

@@ -19,7 +19,7 @@ export async function continuationHash(value: string): Promise<string> {
   return Buffer.from(await crypto.subtle.digest("SHA-256", encoder.encode(value))).toString("base64url")
 }
 
-async function readBody(request: Request): Promise<Uint8Array<ArrayBuffer> | undefined> {
+export async function readBody(request: Request): Promise<Uint8Array<ArrayBuffer> | undefined> {
   if (Number(request.headers.get("content-length") ?? "0") > maxBodyBytes) return undefined
   const reader = request.body?.getReader()
   if (!reader) return new Uint8Array()
@@ -36,7 +36,7 @@ async function readBody(request: Request): Promise<Uint8Array<ArrayBuffer> | und
     return new Uint8Array(Buffer.concat(chunks))
   } finally { reader.releaseLock() }
 }
-async function verifyServiceProof(config: AgentRemoteConfiguration, authorization: string | undefined, operation: string, body: Uint8Array<ArrayBuffer>) {
+export async function verifyServiceProof(config: AgentRemoteConfiguration, authorization: string | undefined, operation: string, body: Uint8Array<ArrayBuffer>) {
   const token = /^Bearer ([A-Za-z0-9_.-]+)$/i.exec(authorization ?? "")?.[1]
   if (!token || token.length > 4096) return false
   try {

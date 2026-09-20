@@ -3,6 +3,7 @@ import { SharedPerformanceMetricsRepo } from "../performance-metrics"
 import type {
   ApiKey,
   ApiKeyRepo,
+  AgentHostKeyScope,
   ApiKeyModelMapping,
   CacheRepo,
   ClientPresence,
@@ -322,6 +323,35 @@ function buildKeyIdRangeQuery(table: string, cols: string, opts: { keyId?: ApiKe
 
 class SharedApiKeyRepo implements ApiKeyRepo {
   constructor(private x: SqlExecutor) {}
+
+  async ensureAgentHostKey(scope: AgentHostKeyScope, hostName: string): Promise<ApiKey | null> {
+    const { ownerId, relay, hostId } = scope
+    const rawKey = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex")
+    // The unique scope chooses the concurrent winner without ever replacing its key.
+    await this.x.run(
+      `INSERT INTO api_keys (id, name, key, created_at, owner_id, agent_remote_relay, agent_remote_host_id, web_search_enabled)
+       SELECT ?, ?, ?, ?, ?, ?, ?, 1
+       WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND disabled = 0)
+         AND NOT EXISTS (SELECT 1 FROM agent_remote_host_key_revocations WHERE owner_id = ? AND relay = ? AND host_id = ?)
+       ON CONFLICT DO NOTHING`,
+      [crypto.randomUUID(), `Agent Host: ${hostName} (${hostId})`, rawKey, new Date().toISOString(), ownerId, relay, hostId,
+        ownerId, ownerId, relay, hostId],
+    )
+    const row = await this.x.first(
+      `SELECT ${API_KEY_COLS} FROM api_keys
+       WHERE owner_id = ? AND agent_remote_relay = ? AND agent_remote_host_id = ?
+         AND EXISTS (SELECT 1 FROM users WHERE id = ? AND disabled = 0)`,
+      [ownerId, relay, hostId, ownerId],
+    )
+    return row ? toApiKey(row) : null
+  }
+
+  async revokeAgentHostKey({ ownerId, relay, hostId }: AgentHostKeyScope): Promise<void> {
+    await this.x.run(
+      `INSERT OR IGNORE INTO agent_remote_host_key_revocations (owner_id, relay, host_id, revoked_at) VALUES (?, ?, ?, ?)`,
+      [ownerId, relay, hostId, new Date().toISOString()],
+    )
+  }
 
   async list(): Promise<ApiKey[]> {
     return (await this.x.all(`SELECT ${API_KEY_COLS} FROM api_keys ORDER BY created_at`, [])).map(toApiKey)

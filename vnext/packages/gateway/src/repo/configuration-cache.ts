@@ -281,7 +281,7 @@ export function observeConfigurationWrites(repo: Repo, changed: () => void, stat
     } catch (error) { changed(); throw error }
   }
   const methods = {
-    apiKeys: ['save', 'patchModelMappings', 'delete', 'deleteAll'],
+    apiKeys: ['save', 'patchModelMappings', 'delete', 'deleteAll', 'ensureAgentHostKey', 'revokeAgentHostKey'],
     users: ['create', 'update', 'delete'],
     sessions: ['create', 'deleteByUserId', 'deleteExpired'],
     upstreams: ['save', 'delete', 'deleteAll'],

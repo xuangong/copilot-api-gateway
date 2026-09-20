@@ -134,7 +134,15 @@ export interface UserSession {
   authenticatedAt?: number
 }
 
+export interface AgentHostKeyScope {
+  ownerId: UserId
+  relay: string
+  hostId: string
+}
+
 export interface ApiKeyRepo {
+  ensureAgentHostKey(scope: AgentHostKeyScope, hostName: string): Promise<ApiKey | null>
+  revokeAgentHostKey(scope: AgentHostKeyScope): Promise<void>
   list(): Promise<ApiKey[]>
   listByOwner(ownerId: UserId): Promise<ApiKey[]>
   findByRawKey(rawKey: string): Promise<ApiKey | null>

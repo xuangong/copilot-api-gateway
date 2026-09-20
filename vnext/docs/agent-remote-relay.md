@@ -21,7 +21,7 @@ The Cloudflare configuration includes the two public origins. Set
 The optional routes remain unavailable until the secret is configured. Do not
 copy the Gateway's D1, KV, R2, or other bindings into the Agents Worker.
 
-For Docker, `docker-compose.vnext.yml` explicitly forwards all three Agent Remote
+For Docker, `docker-compose.vnext.yml` explicitly forwards the Agent Remote
 variables from the environment. Add them to a private `.env` and rebuild this
 worktree's image with Compose before starting it. For ARC local integration,
 build without starting the existing Gateway container:
@@ -48,7 +48,7 @@ not include paths, credentials, query strings or fragments. Generate the secret
 with `openssl rand -base64 32`; use the platform secret store.
 
 Bun/Docker reads these values from its environment. Cloudflare reads them through
-existing `initEnv` wiring; set the values on the Worker before deployment. Apply migrations through `0012_session_authentication_time.sql` before deploying this version. No
+existing `initEnv` wiring; set the values on the Worker before deployment. Apply migrations through `0014_agent_remote_host_keys.sql` before deploying this version. No
 cross-repository runtime package is needed. Missing configuration
 returns 503 on this optional integration's routes.
 
@@ -96,7 +96,7 @@ Apply additive migration `0011_agent_remote_continuations.sql` on both Bun and D
 before the Gateway update, then update the Relay. It adds nullable
 `user_sessions.agent_remote_id`, `agent_remote_continuations`, and
 `agent_remote_oauth_states`; existing users, sessions, Hosts and shares remain.
-Migration `0012_session_authentication_time.sql` adds the nullable authentication
+Migration `0014_agent_remote_host_keys.sql` adds the nullable authentication
 time without inferring a value for existing sessions, and deletes old continuations
 whose authentication provenance was not recorded. These browsers must sign in
 again; ordinary Gateway sessions and stored Hosts and shares are preserved.
@@ -264,3 +264,33 @@ separate local origins; no production login or model request was used.
 ### Account display profile
 
 Successful service-authorized `/api/agent-remote/renew` responses also include `profile: { name, email? }` from the current enabled user. Only these display fields are returned; user keys, password hashes, and other account fields are excluded. The Relay may display this identity with the authenticated subject as a fallback for older Gateways.
+
+
+## Docker Host inference credentials
+
+A durable Host can bootstrap Codex through its Relay without a second browser
+login. The Relay authenticates its device credential, resolves the owner and Host
+ID from durable state, and calls `POST /api/agent-remote/host-key`. This service
+endpoint accepts only a body-bound `arc-relay-service+jwt` proof with operation
+`host-key`; cookies and Origin headers are rejected. The JSON request is
+`{ "subject": "owner-id", "hostId": "host-id", "hostName": "Host display name" }`.
+
+The response is `{ "apiKey", "keyId", "baseUrl", "model" }`, with `baseUrl` equal
+to `AGENT_REMOTE_ISSUER + "/v1"`. Set `AGENT_REMOTE_CODEX_MODEL` to a model provided
+by that account's configured upstreams; the default is `gpt-5.6-sol`. This setting
+does not provision an upstream or guarantee model availability. Docker Compose
+forwards it, and Cloudflare accepts it through the existing environment adapter.
+
+Keys appear in the existing API key dashboard as
+`Agent Host: <hostName> (<hostId>)`. The owner, Relay origin, and Host ID form a
+unique persistent binding. Concurrent requests return the same key; dashboard
+rotation is returned on the next bootstrap. A disabled or missing user cannot
+receive credentials. Key responses are marked `Cache-Control: no-store`.
+
+`POST /api/agent-remote/revoke-host-key` accepts the same body and a service proof
+with operation `revoke-host-key`. It returns `{ "ok": true }` idempotently,
+including when no key was issued yet. Migration `0014` makes revocation atomic
+and records a durable tombstone. Dashboard deletion also creates a tombstone;
+subsequent issuance returns HTTP 410 and never recreates that Host's key. Revoke
+the Gateway key before deleting a Host from Relay state so failures remain
+retryable. Existing unrelated keys and upstreams are unaffected by the migration.

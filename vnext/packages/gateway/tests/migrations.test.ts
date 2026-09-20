@@ -23,6 +23,27 @@ const snapshot = (db: Database) =>
 const listSql = () => readdirSync(dir).filter((f) => f.endsWith(".sql"))
 
 describe("migration corpus", () => {
+  test("Host key migration preserves existing keys and records its upgrade only once", () => {
+    const db = new Database(":memory:")
+    try {
+      db.exec("CREATE TABLE _migrations (name TEXT PRIMARY KEY)")
+      for (const file of listSql().sort().filter(file => file < "0014_")) {
+        db.exec(readFileSync(`${dir}/${file}`, "utf8"))
+        db.run("INSERT INTO _migrations (name) VALUES (?)", [file])
+      }
+      db.run("INSERT INTO users (id, name, created_at, disabled) VALUES (?, ?, ?, ?)", ["existing", "Existing", "2026-09-20", 0])
+      db.run("INSERT INTO api_keys (id, name, key, created_at, owner_id) VALUES (?, ?, ?, ?, ?)", ["existing-key", "Existing key", "existing-secret", "2026-09-20", "existing"])
+      applyMigrations(db, dir)
+      applyMigrations(db, dir)
+      expect(db.query("SELECT id, key, owner_id, agent_remote_relay, agent_remote_host_id FROM api_keys").all()).toEqual([
+        { id: "existing-key", key: "existing-secret", owner_id: "existing", agent_remote_relay: null, agent_remote_host_id: null },
+      ])
+      expect(db.query("SELECT owner_id FROM agent_remote_host_key_revocations").all()).toEqual([])
+      expect(db.query("SELECT name FROM _migrations WHERE name = '0014_agent_remote_host_keys.sql'").all()).toHaveLength(1)
+    } finally { db.close() }
+  }, 5000)
+
+
   test("authentication time migration preserves logins without trusting token creation or old continuations", () => {
     const db = new Database(":memory:")
     try {
