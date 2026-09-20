@@ -81,6 +81,14 @@ describe("applyMigrations", () => {
     db.exec("DROP INDEX idx_user_sessions_agent_remote_id")
     db.exec("ALTER TABLE user_sessions DROP COLUMN agent_remote_id")
     db.exec("ALTER TABLE user_sessions DROP COLUMN authenticated_at")
+    db.exec("DROP TRIGGER agent_remote_host_key_binding_immutable")
+    db.exec("DROP TRIGGER agent_remote_host_key_deleted")
+    db.exec("DROP TRIGGER agent_remote_host_key_revoked")
+    db.exec("DROP TRIGGER agent_remote_host_key_no_resurrection")
+    db.exec("DROP TABLE agent_remote_host_key_revocations")
+    db.exec("DROP INDEX api_keys_agent_remote_host")
+    db.exec("ALTER TABLE api_keys DROP COLUMN agent_remote_relay")
+    db.exec("ALTER TABLE api_keys DROP COLUMN agent_remote_host_id")
     db.exec("DROP TABLE _migrations")
     // A ledger-less database predates every migration, so its quota columns
     // still carry the daily names 0003 renames away, and 0004's cost column

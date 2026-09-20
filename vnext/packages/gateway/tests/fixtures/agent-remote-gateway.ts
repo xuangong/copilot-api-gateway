@@ -13,13 +13,18 @@ initEnv(name => process.env[name] ?? '')
 const db = new Database(':memory:')
 const repo = new BunSqliteRepo(db)
 initRepo(repo)
+const accounts: { subject: UserId; sessionToken: SessionToken }[] = []
 for (const name of ['alice', 'bob']) {
   const id = `agent_remote_${name}` as UserId
   await repo.users.create({ id, name, email: `${name}@example.com`, createdAt: new Date().toISOString(), disabled: false })
-  await repo.sessions.create({ token: `ses_agent_remote_${name}` as SessionToken, userId: id, createdAt: new Date().toISOString(), authenticatedAt: Date.now(), expiresAt: new Date(Date.now() + 3600_000).toISOString() })
+  const sessionToken = `ses_agent_remote_${name}` as SessionToken
+  accounts.push({ subject: id, sessionToken })
+  await repo.sessions.create({ token: sessionToken, userId: id, createdAt: new Date().toISOString(), authenticatedAt: Date.now(), expiresAt: new Date(Date.now() + 3600_000).toISOString() })
 }
 const server = Bun.serve({ hostname, port: Number(process.env.PORT ?? 0), fetch: request => app.fetch(request) })
-await Bun.write(ready, JSON.stringify({ url: server.url.href }))
+const issuer = process.env.AGENT_REMOTE_ISSUER || `http://127.0.0.1:${server.port}`
+process.env.AGENT_REMOTE_ISSUER = issuer
+await Bun.write(ready, JSON.stringify({ url: server.url.href, issuer, accounts }))
 const close = () => { server.stop(true); db.close(); process.exit(0) }
 process.once('SIGTERM', close)
 process.once('SIGINT', close)

@@ -294,3 +294,31 @@ and records a durable tombstone. Dashboard deletion also creates a tombstone;
 subsequent issuance returns HTTP 410 and never recreates that Host's key. Revoke
 the Gateway key before deleting a Host from Relay state so failures remain
 retryable. Existing unrelated keys and upstreams are unaffected by the migration.
+
+### Standalone simulated-account server
+
+From `vnext/`, start a real HTTP server with an isolated in-memory SQLite database:
+
+```sh
+AGENT_REMOTE_READY_FILE=/tmp/agent-remote-gateway-ready.json \
+AGENT_REMOTE_RELAY_URL=http://127.0.0.1:8787 \
+AGENT_REMOTE_SIGNING_SECRET=local-test-only-signing-secret-at-least-32-bytes \
+PORT=0 bun run agent-remote:fixture
+```
+
+The readiness JSON contains the selected `url`, canonical `issuer`, and two
+`accounts` entries with `subject` and `sessionToken`. Without an explicit
+`AGENT_REMOTE_ISSUER`, the fixture uses its actual loopback port. Pass that issuer
+and the same test secret to the Relay. Use either synthetic session token as a
+Bearer credential when calling `POST /api/agent-remote/launch` with the Relay's
+login challenge. The normal login grant and pairing flow then continue over real
+HTTP/WebSocket connections; Google is never contacted. Both account subjects
+also work with the Host-key service proof endpoints.
+
+For Docker, set `AGENT_REMOTE_FIXTURE_DOCKER=1` to bind all container interfaces,
+and explicitly set `AGENT_REMOTE_ISSUER` to the externally reachable origin.
+The fixture has no inference upstream: it tests identity, pairing, key issuance,
+and revocation, while model calls require a separately configured test upstream.
+SIGTERM or SIGINT closes the server and discards all synthetic data. Never point
+this fixture at an existing Gateway database or expose it outside a local test
+network.
