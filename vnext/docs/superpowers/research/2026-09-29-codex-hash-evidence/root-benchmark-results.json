@@ -1,0 +1,776 @@
+{
+  "head": "b58ad7ff89ee1917607ee0e441366983f65940c5",
+  "runtime": "1.3.0",
+  "rows": [
+    {
+      "mode": "old",
+      "mib": 1,
+      "startup": {
+        "rss": 45006848,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 378742,
+        "arrayBuffers": 0
+      },
+      "id": "f6f4d094-73ab-44b1-bb2c-2929fb6bffef",
+      "before": {
+        "rss": 46170112,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 378742,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 2.8779579999999996,
+      "timerDelayMs": 2.2872080000000032,
+      "maxSchedulerGapMs": 2.2872080000000032,
+      "timerCallbacksBeforeHashComplete": 1,
+      "retained": {
+        "rss": 57540608,
+        "heapTotal": 1840128,
+        "heapUsed": 6347316,
+        "external": 399494,
+        "arrayBuffers": 144
+      },
+      "osPeakRssBytes": 57737216,
+      "repeat": 1
+    },
+    {
+      "mode": "old",
+      "mib": 1,
+      "startup": {
+        "rss": 41517056,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 378614,
+        "arrayBuffers": 0
+      },
+      "id": "f6f4d094-73ab-44b1-bb2c-2929fb6bffef",
+      "before": {
+        "rss": 42663936,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 378614,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 3.236042000000001,
+      "timerDelayMs": 2.7058750000000025,
+      "maxSchedulerGapMs": 2.7058750000000025,
+      "timerCallbacksBeforeHashComplete": 1,
+      "retained": {
+        "rss": 54034432,
+        "heapTotal": 1840128,
+        "heapUsed": 6349988,
+        "external": 399353,
+        "arrayBuffers": 144
+      },
+      "osPeakRssBytes": 54231040,
+      "repeat": 2
+    },
+    {
+      "mode": "old",
+      "mib": 1,
+      "startup": {
+        "rss": 41795584,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 380126,
+        "arrayBuffers": 0
+      },
+      "id": "f6f4d094-73ab-44b1-bb2c-2929fb6bffef",
+      "before": {
+        "rss": 42942464,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 380126,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 2.5035000000000025,
+      "timerDelayMs": 1.9569999999999972,
+      "maxSchedulerGapMs": 1.9569999999999972,
+      "timerCallbacksBeforeHashComplete": 1,
+      "retained": {
+        "rss": 53231616,
+        "heapTotal": 1840128,
+        "heapUsed": 6348924,
+        "external": 400865,
+        "arrayBuffers": 144
+      },
+      "osPeakRssBytes": 53477376,
+      "repeat": 3
+    },
+    {
+      "mode": "incremental",
+      "mib": 1,
+      "startup": {
+        "rss": 42582016,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 378751,
+        "arrayBuffers": 0
+      },
+      "id": "f6f4d094-73ab-44b1-bb2c-2929fb6bffef",
+      "before": {
+        "rss": 43728896,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 378751,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 2.683667,
+      "timerDelayMs": 2.1286249999999995,
+      "maxSchedulerGapMs": 2.1286249999999995,
+      "timerCallbacksBeforeHashComplete": 1,
+      "retained": {
+        "rss": 55115776,
+        "heapTotal": 1840128,
+        "heapUsed": 8452965,
+        "external": 402738,
+        "arrayBuffers": 144
+      },
+      "osPeakRssBytes": 55328768,
+      "repeat": 1
+    },
+    {
+      "mode": "incremental",
+      "mib": 1,
+      "startup": {
+        "rss": 41435136,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 378366,
+        "arrayBuffers": 0
+      },
+      "id": "f6f4d094-73ab-44b1-bb2c-2929fb6bffef",
+      "before": {
+        "rss": 42598400,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 378366,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 4.664417,
+      "timerDelayMs": 3.2665830000000007,
+      "maxSchedulerGapMs": 3.2665830000000007,
+      "timerCallbacksBeforeHashComplete": 1,
+      "retained": {
+        "rss": 52920320,
+        "heapTotal": 1856512,
+        "heapUsed": 8452580,
+        "external": 402366,
+        "arrayBuffers": 144
+      },
+      "osPeakRssBytes": 53313536,
+      "repeat": 2
+    },
+    {
+      "mode": "incremental",
+      "mib": 1,
+      "startup": {
+        "rss": 42745856,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 381030,
+        "arrayBuffers": 0
+      },
+      "id": "f6f4d094-73ab-44b1-bb2c-2929fb6bffef",
+      "before": {
+        "rss": 43909120,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 381030,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 3.4487500000000004,
+      "timerDelayMs": 2.9452089999999984,
+      "maxSchedulerGapMs": 2.9452089999999984,
+      "timerCallbacksBeforeHashComplete": 1,
+      "retained": {
+        "rss": 55328768,
+        "heapTotal": 1856512,
+        "heapUsed": 8455468,
+        "external": 405018,
+        "arrayBuffers": 144
+      },
+      "osPeakRssBytes": 55574528,
+      "repeat": 3
+    },
+    {
+      "mode": "old",
+      "mib": 10,
+      "startup": {
+        "rss": 41959424,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 378360,
+        "arrayBuffers": 0
+      },
+      "id": "75eda1b8-fae9-413e-adaf-c305092bb08d",
+      "before": {
+        "rss": 52543488,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 378360,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 31.235333000000004,
+      "timerDelayMs": 23.489167000000002,
+      "maxSchedulerGapMs": 23.489167000000002,
+      "timerCallbacksBeforeHashComplete": 6,
+      "retained": {
+        "rss": 158351360,
+        "heapTotal": 1840128,
+        "heapUsed": 53532870,
+        "external": 399598,
+        "arrayBuffers": 144
+      },
+      "osPeakRssBytes": 158597120,
+      "repeat": 1
+    },
+    {
+      "mode": "old",
+      "mib": 10,
+      "startup": {
+        "rss": 42008576,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 378360,
+        "arrayBuffers": 0
+      },
+      "id": "75eda1b8-fae9-413e-adaf-c305092bb08d",
+      "before": {
+        "rss": 52609024,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 378360,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 28.722333999999996,
+      "timerDelayMs": 20.8735,
+      "maxSchedulerGapMs": 20.8735,
+      "timerCallbacksBeforeHashComplete": 6,
+      "retained": {
+        "rss": 158466048,
+        "heapTotal": 1840128,
+        "heapUsed": 53533094,
+        "external": 399108,
+        "arrayBuffers": 144
+      },
+      "osPeakRssBytes": 158662656,
+      "repeat": 2
+    },
+    {
+      "mode": "old",
+      "mib": 10,
+      "startup": {
+        "rss": 42024960,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 378616,
+        "arrayBuffers": 0
+      },
+      "id": "75eda1b8-fae9-413e-adaf-c305092bb08d",
+      "before": {
+        "rss": 52609024,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 378616,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 91.25425,
+      "timerDelayMs": 68.938416,
+      "maxSchedulerGapMs": 68.938416,
+      "timerCallbacksBeforeHashComplete": 7,
+      "retained": {
+        "rss": 158400512,
+        "heapTotal": 1840128,
+        "heapUsed": 53537382,
+        "external": 399360,
+        "arrayBuffers": 144
+      },
+      "osPeakRssBytes": 158711808,
+      "repeat": 3
+    },
+    {
+      "mode": "incremental",
+      "mib": 10,
+      "startup": {
+        "rss": 41025536,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 378752,
+        "arrayBuffers": 0
+      },
+      "id": "75eda1b8-fae9-413e-adaf-c305092bb08d",
+      "before": {
+        "rss": 51625984,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 378752,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 254.371834,
+      "timerDelayMs": 57.795833,
+      "maxSchedulerGapMs": 57.795833,
+      "timerCallbacksBeforeHashComplete": 19,
+      "retained": {
+        "rss": 107167744,
+        "heapTotal": 1903616,
+        "heapUsed": 30665198,
+        "external": 21505821,
+        "arrayBuffers": 912
+      },
+      "osPeakRssBytes": 107364352,
+      "repeat": 1
+    },
+    {
+      "mode": "incremental",
+      "mib": 10,
+      "startup": {
+        "rss": 42532864,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 377857,
+        "arrayBuffers": 0
+      },
+      "id": "75eda1b8-fae9-413e-adaf-c305092bb08d",
+      "before": {
+        "rss": 53116928,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 377857,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 239.421667,
+      "timerDelayMs": 18.234334,
+      "maxSchedulerGapMs": 25.049916999999994,
+      "timerCallbacksBeforeHashComplete": 19,
+      "retained": {
+        "rss": 106283008,
+        "heapTotal": 1921024,
+        "heapUsed": 32816307,
+        "external": 21504445,
+        "arrayBuffers": 912
+      },
+      "osPeakRssBytes": 106479616,
+      "repeat": 2
+    },
+    {
+      "mode": "incremental",
+      "mib": 10,
+      "startup": {
+        "rss": 42614784,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 380648,
+        "arrayBuffers": 0
+      },
+      "id": "75eda1b8-fae9-413e-adaf-c305092bb08d",
+      "before": {
+        "rss": 53198848,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 380648,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 211.790208,
+      "timerDelayMs": 19.923624999999998,
+      "maxSchedulerGapMs": 38.346749999999986,
+      "timerCallbacksBeforeHashComplete": 19,
+      "retained": {
+        "rss": 101974016,
+        "heapTotal": 1904640,
+        "heapUsed": 35988295,
+        "external": 21507801,
+        "arrayBuffers": 912
+      },
+      "osPeakRssBytes": 102170624,
+      "repeat": 3
+    },
+    {
+      "mode": "old",
+      "mib": 50,
+      "startup": {
+        "rss": 42369024,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 378488,
+        "arrayBuffers": 0
+      },
+      "id": "72f66e64-706f-47d3-9db8-56020676eed5",
+      "before": {
+        "rss": 94896128,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 378488,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 215.625625,
+      "timerDelayMs": 148.799834,
+      "maxSchedulerGapMs": 148.799834,
+      "timerCallbacksBeforeHashComplete": 43,
+      "retained": {
+        "rss": 462733312,
+        "heapTotal": 1856512,
+        "heapUsed": 158393835,
+        "external": 401790,
+        "arrayBuffers": 144
+      },
+      "osPeakRssBytes": 567394304,
+      "repeat": 1
+    },
+    {
+      "mode": "old",
+      "mib": 50,
+      "startup": {
+        "rss": 42532864,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 380768,
+        "arrayBuffers": 0
+      },
+      "id": "72f66e64-706f-47d3-9db8-56020676eed5",
+      "before": {
+        "rss": 95076352,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 380768,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 186.481542,
+      "timerDelayMs": 143.76825,
+      "maxSchedulerGapMs": 143.76825,
+      "timerCallbacksBeforeHashComplete": 34,
+      "retained": {
+        "rss": 515489792,
+        "heapTotal": 1856512,
+        "heapUsed": 158399029,
+        "external": 404069,
+        "arrayBuffers": 144
+      },
+      "osPeakRssBytes": 620052480,
+      "repeat": 2
+    },
+    {
+      "mode": "old",
+      "mib": 50,
+      "startup": {
+        "rss": 41926656,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 380896,
+        "arrayBuffers": 0
+      },
+      "id": "72f66e64-706f-47d3-9db8-56020676eed5",
+      "before": {
+        "rss": 94453760,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 380896,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 207.049875,
+      "timerDelayMs": 154.47925,
+      "maxSchedulerGapMs": 154.47925,
+      "timerCallbacksBeforeHashComplete": 43,
+      "retained": {
+        "rss": 514768896,
+        "heapTotal": 1856512,
+        "heapUsed": 158396467,
+        "external": 404198,
+        "arrayBuffers": 144
+      },
+      "osPeakRssBytes": 619413504,
+      "repeat": 3
+    },
+    {
+      "mode": "incremental",
+      "mib": 50,
+      "startup": {
+        "rss": 42516480,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 378496,
+        "arrayBuffers": 0
+      },
+      "id": "72f66e64-706f-47d3-9db8-56020676eed5",
+      "before": {
+        "rss": 95043584,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 378496,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 1205.7230419999999,
+      "timerDelayMs": 73.071459,
+      "maxSchedulerGapMs": 73.071459,
+      "timerCallbacksBeforeHashComplete": 99,
+      "retained": {
+        "rss": 286752768,
+        "heapTotal": 1887232,
+        "heapUsed": 133492926,
+        "external": 105396127,
+        "arrayBuffers": 912
+      },
+      "osPeakRssBytes": 286949376,
+      "repeat": 1
+    },
+    {
+      "mode": "incremental",
+      "mib": 50,
+      "startup": {
+        "rss": 40648704,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 378624,
+        "arrayBuffers": 0
+      },
+      "id": "72f66e64-706f-47d3-9db8-56020676eed5",
+      "before": {
+        "rss": 93175808,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 378624,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 1494.2865840000002,
+      "timerDelayMs": 125.86779200000001,
+      "maxSchedulerGapMs": 125.86779200000001,
+      "timerCallbacksBeforeHashComplete": 99,
+      "retained": {
+        "rss": 283574272,
+        "heapTotal": 1887232,
+        "heapUsed": 116657005,
+        "external": 105395889,
+        "arrayBuffers": 912
+      },
+      "osPeakRssBytes": 283770880,
+      "repeat": 2
+    },
+    {
+      "mode": "incremental",
+      "mib": 50,
+      "startup": {
+        "rss": 41910272,
+        "heapTotal": 1819648,
+        "heapUsed": 238170,
+        "external": 380136,
+        "arrayBuffers": 0
+      },
+      "id": "72f66e64-706f-47d3-9db8-56020676eed5",
+      "before": {
+        "rss": 94453760,
+        "heapTotal": 1837056,
+        "heapUsed": 238170,
+        "external": 380136,
+        "arrayBuffers": 0
+      },
+      "hashDurationMs": 1035.72225,
+      "timerDelayMs": 65.01633300000002,
+      "maxSchedulerGapMs": 65.01633300000002,
+      "timerCallbacksBeforeHashComplete": 99,
+      "retained": {
+        "rss": 286179328,
+        "heapTotal": 1887232,
+        "heapUsed": 116658134,
+        "external": 105396909,
+        "arrayBuffers": 912
+      },
+      "osPeakRssBytes": 286375936,
+      "repeat": 3
+    }
+  ],
+  "summary": [
+    {
+      "mib": 1,
+      "mode": "old",
+      "osPeakRssBytes": {
+        "median": 54231040,
+        "range": [
+          53477376,
+          57737216
+        ]
+      },
+      "hashDurationMs": {
+        "median": 2.8779579999999996,
+        "range": [
+          2.5035000000000025,
+          3.236042000000001
+        ]
+      },
+      "timerDelayMs": {
+        "median": 2.2872080000000032,
+        "range": [
+          1.9569999999999972,
+          2.7058750000000025
+        ]
+      },
+      "maxSchedulerGapMs": {
+        "median": 2.2872080000000032,
+        "range": [
+          1.9569999999999972,
+          2.7058750000000025
+        ]
+      }
+    },
+    {
+      "mib": 1,
+      "mode": "incremental",
+      "osPeakRssBytes": {
+        "median": 55328768,
+        "range": [
+          53313536,
+          55574528
+        ]
+      },
+      "hashDurationMs": {
+        "median": 3.4487500000000004,
+        "range": [
+          2.683667,
+          4.664417
+        ]
+      },
+      "timerDelayMs": {
+        "median": 2.9452089999999984,
+        "range": [
+          2.1286249999999995,
+          3.2665830000000007
+        ]
+      },
+      "maxSchedulerGapMs": {
+        "median": 2.9452089999999984,
+        "range": [
+          2.1286249999999995,
+          3.2665830000000007
+        ]
+      }
+    },
+    {
+      "mib": 10,
+      "mode": "old",
+      "osPeakRssBytes": {
+        "median": 158662656,
+        "range": [
+          158597120,
+          158711808
+        ]
+      },
+      "hashDurationMs": {
+        "median": 31.235333000000004,
+        "range": [
+          28.722333999999996,
+          91.25425
+        ]
+      },
+      "timerDelayMs": {
+        "median": 23.489167000000002,
+        "range": [
+          20.8735,
+          68.938416
+        ]
+      },
+      "maxSchedulerGapMs": {
+        "median": 23.489167000000002,
+        "range": [
+          20.8735,
+          68.938416
+        ]
+      }
+    },
+    {
+      "mib": 10,
+      "mode": "incremental",
+      "osPeakRssBytes": {
+        "median": 106479616,
+        "range": [
+          102170624,
+          107364352
+        ]
+      },
+      "hashDurationMs": {
+        "median": 239.421667,
+        "range": [
+          211.790208,
+          254.371834
+        ]
+      },
+      "timerDelayMs": {
+        "median": 19.923624999999998,
+        "range": [
+          18.234334,
+          57.795833
+        ]
+      },
+      "maxSchedulerGapMs": {
+        "median": 38.346749999999986,
+        "range": [
+          25.049916999999994,
+          57.795833
+        ]
+      }
+    },
+    {
+      "mib": 50,
+      "mode": "old",
+      "osPeakRssBytes": {
+        "median": 619413504,
+        "range": [
+          567394304,
+          620052480
+        ]
+      },
+      "hashDurationMs": {
+        "median": 207.049875,
+        "range": [
+          186.481542,
+          215.625625
+        ]
+      },
+      "timerDelayMs": {
+        "median": 148.799834,
+        "range": [
+          143.76825,
+          154.47925
+        ]
+      },
+      "maxSchedulerGapMs": {
+        "median": 148.799834,
+        "range": [
+          143.76825,
+          154.47925
+        ]
+      }
+    },
+    {
+      "mib": 50,
+      "mode": "incremental",
+      "osPeakRssBytes": {
+        "median": 286375936,
+        "range": [
+          283770880,
+          286949376
+        ]
+      },
+      "hashDurationMs": {
+        "median": 1205.7230419999999,
+        "range": [
+          1035.72225,
+          1494.2865840000002
+        ]
+      },
+      "timerDelayMs": {
+        "median": 73.071459,
+        "range": [
+          65.01633300000002,
+          125.86779200000001
+        ]
+      },
+      "maxSchedulerGapMs": {
+        "median": 73.071459,
+        "range": [
+          65.01633300000002,
+          125.86779200000001
+        ]
+      }
+    }
+  ]
+}

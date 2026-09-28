@@ -117,6 +117,8 @@ interface Recorded {
   url: string
   method: string
   authorization: string | null
+  sessionId: string | null
+  threadId: string | null
   bodyText: string | null
 }
 
@@ -148,6 +150,8 @@ const makeHarness = (onResponses: FetcherHarness['onResponses']): FetcherHarness
       url: url.toString(),
       method,
       authorization: headers.get('authorization'),
+      sessionId: headers.get('session-id'),
+      threadId: headers.get('thread-id'),
       bodyText: typeof init?.body === 'string' ? init.body : null,
     }
     calls.push(record)
@@ -224,7 +228,123 @@ const settleBackground = async (): Promise<void> => {
   await new Promise((r) => setTimeout(r, 5))
 }
 
+const legacySessionId = async (instructions: string, seed: unknown): Promise<string> => {
+  const source = `${instructions}\u0001${JSON.stringify(seed)}`
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(source)))
+  const hex = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('')
+  const variant = ((parseInt(hex[16] ?? '0', 16) & 3) | 8).toString(16)
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`
+}
+
 // ─── Tests ─────────────────────────────────────────────────────────────────
+
+test('outgoing session header uses the legacy seed through first user and ignores tail', async () => {
+  repo.put(baseRecord())
+  const harness = makeHarness(() => okSSE())
+  const provider = new CodexProvider(baseRecord(), harness.fetcher)
+  const first = makeRequest()
+  const prefix = [
+    { type: 'message', role: 'developer', content: 'pre' },
+    { type: 'message', role: 'user', content: 'first' },
+  ]
+  first.payload = { model: 'gpt-5', input: prefix, instructions: 'rules\ud83d\ude00' }
+  expect((await provider.fetch(first)).status).toBe(200)
+  const second = makeRequest()
+  second.payload = {
+    model: 'gpt-5',
+    input: [...prefix, { type: 'message', role: 'assistant', content: 'later' }],
+    instructions: 'rules\ud83d\ude00',
+  }
+  expect((await provider.fetch(second)).status).toBe(200)
+  const calls = harness.calls.filter((call) => call.url.endsWith(CODEX_RESPONSES_PATH))
+  const firstBody = JSON.parse(calls[0]?.bodyText ?? '{}') as { input: unknown[]; instructions: string }
+  const expected = await legacySessionId(firstBody.instructions, firstBody.input.slice(0, 2))
+  expect(calls[0]?.sessionId).toBe(expected)
+  expect(calls[0]?.threadId).toBe(expected)
+  expect(calls[1]?.sessionId).toBe(expected)
+
+  const override = makeRequest()
+  override.headers.set('session-id', 'client-session')
+  expect((await provider.fetch(override)).status).toBe(200)
+  expect(harness.calls.filter((call) => call.url.endsWith(CODEX_RESPONSES_PATH))[2]?.sessionId).toBe('client-session')
+})
+
+test('seed stringify invokes stateful toJSON once separately from body stringify', async () => {
+  repo.put(baseRecord())
+  const harness = makeHarness(() => okSSE())
+  const provider = new CodexProvider(baseRecord(), harness.fetcher)
+  let calls = 0
+  const request = makeRequest()
+  request.payload = {
+    model: 'gpt-5',
+    input: [{ type: 'message', role: 'user', content: { toJSON: () => `value-${++calls}` } }],
+  }
+  expect((await provider.fetch(request)).status).toBe(200)
+  expect(calls).toBe(2)
+  expect(harness.calls.filter((call) => call.url.endsWith(CODEX_RESPONSES_PATH))).toHaveLength(1)
+})
+
+test('outgoing seed keeps native numeric formatting and object insertion order', async () => {
+  repo.put(baseRecord())
+  const harness = makeHarness(() => okSSE())
+  const provider = new CodexProvider(baseRecord(), harness.fetcher)
+  const request = makeRequest()
+  request.payload = {
+    model: 'gpt-5',
+    input: [{ type: 'message', role: 'user', content: { z: 1e21, a: 2 } }],
+  }
+  expect((await provider.fetch(request)).status).toBe(200)
+  const call = harness.calls.find((entry) => entry.url.endsWith(CODEX_RESPONSES_PATH))
+  const body = JSON.parse(call?.bodyText ?? '{}') as { instructions?: string; input: unknown[] }
+  expect(call?.sessionId).toBe(await legacySessionId(body.instructions ?? '', body.input))
+  expect(call?.bodyText).toContain('"z":1e+21,"a":2')
+})
+
+test('large outgoing seed header matches independent WebCrypto beyond fast-path threshold', async () => {
+  repo.put(baseRecord())
+  const harness = makeHarness(() => okSSE())
+  const provider = new CodexProvider(baseRecord(), harness.fetcher)
+  const request = makeRequest()
+  const instructions = 'z'.repeat(2 * 1024 * 1024)
+  const input = [{ type: 'message', role: 'user', content: 'large' }]
+  request.payload = {
+    model: 'gpt-5',
+    instructions,
+    input,
+  }
+  expect((await provider.fetch(request)).status).toBe(200)
+  const call = harness.calls.find((entry) => entry.url.endsWith(CODEX_RESPONSES_PATH))
+  expect(call?.sessionId).toBe(await legacySessionId(instructions, input))
+})
+
+test('string input and no first user preserve existing fallback behavior', async () => {
+  repo.put(baseRecord())
+  const harness = makeHarness(() => okSSE())
+  const provider = new CodexProvider(baseRecord(), harness.fetcher)
+  const stringInput = makeRequest()
+  stringInput.payload = { model: 'gpt-5', input: 'hello' }
+  await expect(provider.fetch(stringInput)).rejects.toThrow('opts.body.input.some is not a function')
+  const noUser = makeRequest()
+  noUser.payload = { model: 'gpt-5', input: [{ type: 'message', role: 'developer', content: 'only' }] }
+  expect((await provider.fetch(noUser)).status).toBe(200)
+  const calls = harness.calls.filter((entry) => entry.url.endsWith(CODEX_RESPONSES_PATH))
+  expect(calls).toHaveLength(1)
+  expect(calls[0]?.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+})
+
+test('cyclic and BigInt seeds fail before Codex HTTP dispatch', async () => {
+  repo.put(baseRecord())
+  const harness = makeHarness(() => okSSE())
+  const provider = new CodexProvider(baseRecord(), harness.fetcher)
+  const cycle: { self?: unknown } = {}
+  cycle.self = cycle
+  for (const content of [cycle, 1n]) {
+    const request = makeRequest()
+    request.payload = { model: 'gpt-5', input: [{ type: 'message', role: 'user', content }] }
+    await expect(provider.fetch(request)).rejects.toThrow()
+  }
+  expect(harness.calls.filter((call) => call.url.endsWith(CODEX_RESPONSES_PATH))).toHaveLength(0)
+})
 
 test('200 responses call → ok + quota snapshot persisted in background', async () => {
   repo.put(baseRecord())

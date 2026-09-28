@@ -1,9 +1,29 @@
+import { sha256Utf8Parts } from '@vibe-llm/provider-llm'
+
+const MAX_WEBCRYPTO_PART_UNITS = 2 * 1024 * 1024
+
 // Format the SHA-256 digest as a UUIDv4-shaped opaque identifier. This remains
 // for gateway-owned stable ids where we intentionally do not mimic Codex's
 // random persisted device id yet.
 export const sha256Uuid = async (input: string): Promise<string> => {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
-  const hex = Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('')
+  return uuidFromSha256(new Uint8Array(buf))
+}
+
+export const sha256UuidFromParts = async (parts: readonly string[]): Promise<string> => {
+  let units = 0
+  for (const part of parts) {
+    units += part.length
+    if (units > MAX_WEBCRYPTO_PART_UNITS) break
+  }
+  // This exception caps the joined string at 2 Mi UTF-16 units and its
+  // TextEncoder buffer at 6 MiB; larger seeds keep the bounded chunk path.
+  if (units <= MAX_WEBCRYPTO_PART_UNITS) return await sha256Uuid(parts.join(''))
+  return uuidFromSha256(await sha256Utf8Parts(parts))
+}
+
+const uuidFromSha256 = (digest: Uint8Array): string => {
+  const hex = Array.from(digest, (b) => b.toString(16).padStart(2, '0')).join('')
   const variantNibble = ((parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16)
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variantNibble}${hex.slice(17, 20)}-${hex.slice(20, 32)}`
 }

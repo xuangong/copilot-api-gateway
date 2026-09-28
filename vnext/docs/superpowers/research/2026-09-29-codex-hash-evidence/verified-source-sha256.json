@@ -1,0 +1,10 @@
+{
+  "vnext/bun.lock": "351f14becced70dc722e4be67de3fc3e1eb00af4e40eb74852359f447b931300",
+  "vnext/packages/provider-llm/package.json": "4f53e3c7d69d072aa48459aa6bf067171f352a64288bb2106418bfe686bd4ce3",
+  "vnext/packages/provider-llm/src/index.ts": "0a20d25ca005ff9df171a5f03edb7d4b0bbd47ff595de98395e2c7e7df492dab",
+  "vnext/packages/provider-llm/src/incremental-sha256.ts": "468723e4559b5c3a76f969ab65afe07d5cde877ed4b719cfd1fd54b1b5fe8f07",
+  "vnext/packages/provider-codex/src/ids.ts": "6daf65f0c85eea13cc9ea13ad77b286e130ee840cd877f445c3b3f449a3887d4",
+  "vnext/packages/provider-codex/src/fetch.ts": "3f006f772c2aba2aef7fe4824d3010a6f0a566e22a01b160726abdf5874951c3",
+  "vnext/packages/provider-codex/src/__tests__/ids.test.ts": "66e8b3507d391a96389be76995ba5dd1eded5c3938b08dbb19622f831a79445b",
+  "vnext/packages/provider-codex/src/__tests__/provider.integration.test.ts": "8ad0fff1a566d7f8c4057986795759f170c61db8c0f1117ba21658fbf725e513"
+}

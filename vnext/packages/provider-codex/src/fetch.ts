@@ -34,7 +34,7 @@ import {
   CODEX_USER_AGENT,
 } from './constants'
 import type { Fetcher } from './fetcher'
-import { sha256Uuid, uuidV7 } from './ids'
+import { sha256UuidFromParts, uuidV7 } from './ids'
 import type { CodexProviderModel } from './models'
 import { parseCodexQuotaHeaders, putCodexQuota } from './quota'
 import type { CodexAccountCredential, CodexQuotaSnapshotEntryMap } from './state'
@@ -367,7 +367,8 @@ const deriveSessionIdFromInput = async (body: CodexResponsesBody): Promise<strin
   const instructions = typeof body.instructions === 'string' ? body.instructions : ''
   // U+0001 separates the two seed components so an empty instructions can't
   // collide with the input prefix via string concatenation.
-  return await sha256Uuid(`${instructions}${JSON.stringify(seed)}`)
+  const seedJson = JSON.stringify(seed)
+  return await sha256UuidFromParts([instructions, '\u0001', seedJson])
 }
 
 const seedUpToFirstUserMessage = (
