@@ -129,6 +129,7 @@ export const MessagesResponseSchema = z.object({
   model: z.string(),
   content: z.array(ContentBlock),
   stop_reason: z.string().nullable().optional(),
+  stop_details: z.object({ category: z.string().nullable().optional(), explanation: z.string().nullable().optional() }).loose().nullable().optional(),
   stop_sequence: z.string().nullable().optional(),
   usage: z.object({
     input_tokens: z.number(),

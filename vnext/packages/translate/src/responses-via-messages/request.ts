@@ -31,7 +31,7 @@ interface ToolLike { name: string; description?: string; input_schema?: unknown;
 interface ResponsesMessageItem {
   type: 'message'
   role: 'user' | 'assistant' | 'system' | 'developer'
-  content: string | Array<{ type: string; text?: string }>
+  content: string | Array<{ type: string; text?: string; refusal?: string }>
 }
 
 interface ResponsesFunctionCallItem {
@@ -85,12 +85,14 @@ function translateUserContent(
 }
 
 function translateAssistantContent(
-  blocks: Array<{ type: string; text?: string }>,
+  blocks: Array<{ type: string; text?: string; refusal?: string }>,
 ): ContentBlockLike[] {
   const out: ContentBlockLike[] = []
   for (const block of blocks) {
     if (block.type === 'output_text') {
       out.push({ type: 'text', text: block.text ?? '' })
+    } else if (block.type === 'refusal') {
+      out.push({ type: 'text', text: block.refusal ?? '' })
     }
   }
   return out

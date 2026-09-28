@@ -45,6 +45,7 @@ export const MessageDeltaEventSchema = z.object({
   delta: z.object({
     stop_reason: z.string().nullable().optional(),
     stop_sequence: z.string().nullable().optional(),
+    stop_details: z.object({ category: z.string().nullable().optional(), explanation: z.string().nullable().optional() }).loose().nullable().optional(),
   }).loose(),
   usage: z.object({}).loose().optional(),
 }).loose()
@@ -228,6 +229,7 @@ export interface MessagesResult {
   content: MessagesAssistantContentBlock[]
   model: string
   stop_reason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | 'pause_turn' | 'refusal' | null
+  stop_details?: { category?: string | null; explanation?: string | null } | null
   stop_sequence: string | null
   usage: MessagesUsage
 }
@@ -286,6 +288,7 @@ export interface MessagesMessageDeltaEvent {
   delta: {
     stop_reason?: MessagesResult['stop_reason']
     stop_sequence?: string | null
+    stop_details?: MessagesResult['stop_details']
   }
   usage?: {
     input_tokens?: number

@@ -6,6 +6,7 @@
  * Direction: response = hub → client.
  */
 import type { MessagesResponse } from '@vibe-llm/protocols/messages'
+import { messagesRefusalExplanation } from '../shared/messages-refusal.ts'
 
 export interface ChatCompletionResponse {
   id: string
@@ -19,6 +20,7 @@ export interface ChatCompletionResponse {
       content: string | null
       tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>
       reasoning_text?: string
+      refusal?: string
     }
     finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter'
   }>
@@ -104,6 +106,7 @@ export function translateMessagesToChatBody(msg: MessagesResponse): ChatCompleti
           content: textParts.length > 0 ? textParts.join('') : null,
           ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
           ...(reasoningParts.length > 0 ? { reasoning_text: reasoningParts.join('') } : {}),
+          ...(msg.stop_reason === 'refusal' ? { refusal: messagesRefusalExplanation((msg as MessagesResponse & { stop_details?: { category?: string | null; explanation?: string | null } }).stop_details) } : {}),
         },
         finish_reason: mapStopReason(msg.stop_reason),
       },

@@ -33,7 +33,7 @@ type ChatMessage = ChatPayload['messages'][number]
 interface ResponsesMessageItem {
   type: 'message'
   role: 'user' | 'assistant'
-  content: string | Array<{ type: string; text?: string; image_url?: string; detail?: string }>
+  content: string | Array<{ type: string; text?: string; refusal?: string; image_url?: string; detail?: string }>
 }
 interface ResponsesFunctionCallItem { type: 'function_call'; call_id: string; name: string; arguments: string }
 interface ResponsesFunctionCallOutputItem { type: 'function_call_output'; call_id: string; output: string }
@@ -83,10 +83,22 @@ function translateInput(messages: ChatMessage[]): ResponsesInputItem[] {
       continue
     }
     if (m.role === 'assistant') {
-      const am = m as ChatMessage & { tool_calls?: Array<{ id: string; function: { name: string; arguments?: string } }> }
-      if (typeof am.content === 'string' && am.content.length > 0) {
-        out.push({ type: 'message', role: 'assistant', content: am.content })
+      const am = m as ChatMessage & { refusal?: string | null; tool_calls?: Array<{ id: string; function: { name: string; arguments?: string } }> }
+      const content: Array<{ type: string; text?: string; refusal?: string }> = []
+      if (typeof am.content === 'string' && am.content.length > 0) content.push({ type: 'output_text', text: am.content })
+      let hasRefusalPart = false
+      if (Array.isArray(am.content)) {
+        for (const part of am.content as Array<{ type?: string; text?: string; refusal?: string }>) {
+          if (part.type === 'text' && typeof part.text === 'string') content.push({ type: 'output_text', text: part.text })
+          if (part.type === 'refusal' && typeof part.refusal === 'string') {
+            content.push({ type: 'refusal', refusal: part.refusal })
+            hasRefusalPart = true
+          }
+        }
       }
+      if (am.refusal != null && !hasRefusalPart) content.push({ type: 'refusal', refusal: am.refusal })
+      if (content.length > 0) out.push({ type: 'message', role: 'assistant', content })
+      else if (!am.tool_calls?.length) out.push({ type: 'message', role: 'assistant', content: '' })
       if (am.tool_calls) {
         for (const tc of am.tool_calls) {
           out.push({

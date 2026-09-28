@@ -303,7 +303,9 @@ const renderEventsAsJson = async (
     if (hub === 'messages') {
       reassembled = await collectMessagesProtocolEventsToResult(events as never)
     } else if (hub === 'responses') {
-      reassembled = await collectResponsesProtocolEventsToResult(events as never)
+      const response = await collectResponsesProtocolEventsToResult(events as never)
+      if (response.status === 'failed') throw new Error(response.error?.message ?? 'Response failed.')
+      reassembled = response
     } else {
       reassembled = await collectChatCompletionsProtocolEventsToResult(events)
     }

@@ -24,6 +24,7 @@
 interface ChatChoiceDelta {
   role?: 'assistant'
   content?: string
+  refusal?: string
   tool_calls?: Array<{
     index: number
     id?: string
@@ -85,6 +86,9 @@ interface ResponsesEvent {
   message?: string
   error?: { message?: string }
   delta?: string
+  refusal?: string
+  content_index?: number
+  part?: { type?: string; refusal?: string }
   output_index?: number
   item?: {
     type?: string
@@ -181,6 +185,7 @@ export async function* translateResponsesToChatSSE(
   let usage: ResponsesUsage | undefined
   /** URLs already emitted as annotations, so repeat searches do not duplicate sources. */
   const citedUrls = new Set<string>()
+  const emittedRefusalParts = new Set<string>()
 
   for await (const ev of events as AsyncIterable<ResponsesEvent>) {
     if (ev.type === "error" || ev.type === "response.failed") {
@@ -201,6 +206,20 @@ export async function* translateResponsesToChatSSE(
     }
     if (ev.type === 'response.output_text.delta' && typeof ev.delta === 'string') {
       yield makeChunk(id, model, created, { content: ev.delta })
+      continue
+    }
+    if (ev.type === 'response.refusal.delta' && typeof ev.delta === 'string') {
+      emittedRefusalParts.add(`${ev.output_index ?? 0}:${ev.content_index ?? 0}`)
+      yield makeChunk(id, model, created, { refusal: ev.delta })
+      continue
+    }
+    if (ev.type === 'response.refusal.done' || ev.type === 'response.content_part.done' && ev.part?.type === 'refusal') {
+      const key = `${ev.output_index ?? 0}:${ev.content_index ?? 0}`
+      const refusal = ev.type === 'response.refusal.done' ? ev.refusal : ev.part?.refusal
+      if (!emittedRefusalParts.has(key) && typeof refusal === 'string') {
+        emittedRefusalParts.add(key)
+        yield makeChunk(id, model, created, { refusal })
+      }
       continue
     }
     if (ev.type === 'response.output_item.added' && ev.item?.type === 'function_call') {

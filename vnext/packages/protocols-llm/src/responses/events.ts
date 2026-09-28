@@ -508,6 +508,20 @@ export type ResponsesStreamEventVariant =
     text: string
   }
   | {
+    type: 'response.refusal.delta'
+    item_id: string
+    output_index: number
+    content_index: number
+    delta: string
+  }
+  | {
+    type: 'response.refusal.done'
+    item_id: string
+    output_index: number
+    content_index: number
+    refusal: string
+  }
+  | {
     type: 'response.output_text.annotation.added'
     output_index: number
     content_index: number

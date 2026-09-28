@@ -10,6 +10,7 @@
  * per-stream state when the consumer breaks out of the loop.
  */
 import type { MessagesEvent } from '@vibe-llm/protocols/messages'
+import { messagesRefusalResponsesError, type MessagesRefusalDetails } from '../shared/messages-refusal.ts'
 
 interface ResponseOutputItem {
   type: 'message' | 'reasoning' | 'function_call'
@@ -39,6 +40,7 @@ interface ResponsesResult {
   output_text?: string
   usage?: ResponsesUsage
   incomplete_details?: { reason: string } | null
+  error?: { code: string; message: string }
 }
 
 export type ResponsesStreamEvent =
@@ -80,6 +82,7 @@ interface State {
   cacheReadInputTokens?: number
   cacheCreationInputTokens?: number
   stopReason?: string | null
+  stopDetails?: MessagesRefusalDetails | null
   terminated: boolean
 }
 
@@ -142,6 +145,7 @@ function buildResult(state: State, status: ResponsesResult['status']): Responses
     output_text: state.accumulatedText,
     usage: buildUsage(state),
     ...(status === 'incomplete' ? { incomplete_details: { reason: 'max_output_tokens' } } : {}),
+    ...(status === 'failed' ? { error: messagesRefusalResponsesError(state.stopDetails) } : {}),
   }
 }
 
@@ -368,23 +372,24 @@ function handleContentBlockStop(ev: ContentBlockStopLike, state: State): Respons
 }
 
 interface MessageDeltaLike {
-  delta: { stop_reason?: string | null; stop_sequence?: string | null }
+  delta: { stop_reason?: string | null; stop_sequence?: string | null; stop_details?: MessagesRefusalDetails | null }
   usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
 }
 
 function handleMessageDelta(ev: MessageDeltaLike, state: State): ResponsesStreamEvent[] {
   if (ev.delta.stop_reason !== undefined) state.stopReason = ev.delta.stop_reason
+  if (ev.delta.stop_details !== undefined) state.stopDetails = ev.delta.stop_details
   accumulateUsage(state, ev.usage, true)
   return []
 }
 
 function handleMessageStop(state: State): ResponsesStreamEvent[] {
   state.terminated = true
-  const status: ResponsesResult['status'] = state.stopReason === 'max_tokens' ? 'incomplete' : 'completed'
+  const status: ResponsesResult['status'] = state.stopReason === 'refusal' ? 'failed' : state.stopReason === 'max_tokens' ? 'incomplete' : 'completed'
   const response = buildResult(state, status)
   return [
     {
-      type: status === 'completed' ? 'response.completed' : 'response.incomplete',
+      type: status === 'failed' ? 'response.failed' : status === 'completed' ? 'response.completed' : 'response.incomplete',
       sequence_number: nextSeq(state),
       response,
     },

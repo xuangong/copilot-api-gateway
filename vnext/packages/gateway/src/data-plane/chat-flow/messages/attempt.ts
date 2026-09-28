@@ -163,6 +163,7 @@ interface MessagesNonStreamEnvelope {
   content?: unknown
   model?: string
   stop_reason?: string | null
+  stop_details?: { category?: string | null; explanation?: string | null } | null
   stop_sequence?: string | null
   usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number }
 }
@@ -296,6 +297,7 @@ export async function* synthesizeMessagesFramesFromJson(
       delta: {
         stop_reason: (body.stop_reason ?? 'end_turn') as never,
         stop_sequence: body.stop_sequence ?? null,
+        ...(body.stop_details !== undefined ? { stop_details: body.stop_details } : {}),
       },
       ...(usage.output_tokens !== undefined ? { usage: { output_tokens: usage.output_tokens } } : {}),
     } as MessagesStreamEvent,

@@ -17,6 +17,7 @@ interface ChatCompletionMessage {
   content?: string | null
   tool_calls?: ChatCompletionToolCall[]
   reasoning_text?: string
+  refusal?: string | null
 }
 
 interface ChatCompletionChoice {
@@ -77,6 +78,7 @@ export function translateChatBodyToMessages(resp: ChatCompletionResultLike, fall
   if (typeof msg.content === 'string' && msg.content.length > 0) {
     blocks.push({ type: 'text', text: msg.content })
   }
+  if (msg.refusal != null) blocks.push({ type: 'text', text: msg.refusal })
   if (msg.tool_calls) {
     for (const tc of msg.tool_calls) {
       if (!tc.id || !tc.function?.name) continue
@@ -99,7 +101,7 @@ export function translateChatBodyToMessages(resp: ChatCompletionResultLike, fall
     role: 'assistant',
     model: resp.model ?? fallbackModel,
     content: blocks as never,
-    stop_reason: mapFinishReason(choice?.finish_reason),
+    stop_reason: choice?.finish_reason === 'length' ? 'max_tokens' : msg.refusal != null ? 'refusal' : mapFinishReason(choice?.finish_reason),
     stop_sequence: null,
     usage: {
       input_tokens: inputTokens,

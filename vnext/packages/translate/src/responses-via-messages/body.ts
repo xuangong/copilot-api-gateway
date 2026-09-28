@@ -7,6 +7,7 @@
  * `src/translators/responses-via-messages/response.ts`.
  */
 import type { MessagesResponse } from '@vibe-llm/protocols/messages'
+import { messagesRefusalResponsesError } from '../shared/messages-refusal.ts'
 
 interface AnthropicContentBlock {
   type: string
@@ -43,6 +44,7 @@ export interface ResponsesResultLike {
     input_tokens_details?: { cached_tokens: number }
   }
   incomplete_details?: { reason: string } | null
+  error?: { code: string; message: string }
 }
 
 function stringifyToolInput(input: Record<string, unknown> | undefined): string {
@@ -107,6 +109,7 @@ function mapContentToOutput(content: AnthropicContentBlock[]): {
 
 function mapStatus(stopReason: string | null | undefined): ResponsesResultLike['status'] {
   if (stopReason === 'max_tokens') return 'incomplete'
+  if (stopReason === 'refusal') return 'failed'
   return 'completed'
 }
 
@@ -140,5 +143,6 @@ export function translateMessagesToResponsesBody(resp: MessagesResponse): Respon
       ...(cached !== undefined ? { input_tokens_details: { cached_tokens: cached } } : {}),
     },
     ...(status === 'incomplete' ? { incomplete_details: { reason: 'max_output_tokens' } } : {}),
+    ...(status === 'failed' ? { error: messagesRefusalResponsesError((resp as MessagesResponse & { stop_details?: { category?: string | null; explanation?: string | null } }).stop_details) } : {}),
   }
 }

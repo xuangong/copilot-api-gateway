@@ -64,17 +64,6 @@ function parseToolArgs(args: string | undefined): Record<string, unknown> {
   }
 }
 
-function combineMessageText(content: ResponsesResultLike['output'][number]['content']): string {
-  if (!Array.isArray(content)) return ''
-  return content
-    .map((b) => {
-      if (b.type === 'output_text') return b.text ?? ''
-      if (b.type === 'refusal') return b.refusal ?? ''
-      return ''
-    })
-    .join('')
-}
-
 function mapOutputToContent(output: ResponsesResultLike['output']): MessagesContentBlock[] {
   const blocks: MessagesContentBlock[] = []
   for (const item of output) {
@@ -98,8 +87,10 @@ function mapOutputToContent(output: ResponsesResultLike['output']): MessagesCont
         }
         break
       case 'message': {
-        const text = combineMessageText(item.content)
-        if (text.length > 0) blocks.push({ type: 'text', text })
+        for (const part of item.content ?? []) {
+          if (part.type === 'output_text') blocks.push({ type: 'text', text: part.text ?? '' })
+          else if (part.type === 'refusal') blocks.push({ type: 'text', text: part.refusal ?? '' })
+        }
         break
       }
     }
@@ -112,6 +103,7 @@ function mapStopReason(resp: ResponsesResultLike): string | null {
     return 'max_tokens'
   }
   if (resp.status === 'completed') {
+    if (resp.output.some((item) => item.type === 'message' && item.content?.some((part) => part.type === 'refusal'))) return 'refusal'
     return resp.output.some((i) => i.type === 'function_call') ? 'tool_use' : 'end_turn'
   }
   return null

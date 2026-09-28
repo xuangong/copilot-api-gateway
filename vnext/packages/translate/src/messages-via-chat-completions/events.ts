@@ -28,6 +28,7 @@ interface ChatChunkLike {
     delta?: {
       role?: 'assistant'
       content?: string | null
+      refusal?: string | null
       tool_calls?: ChatToolCallDelta[]
       reasoning_text?: string
       reasoning_opaque?: string
@@ -61,6 +62,7 @@ interface State {
   outputTokens: number | undefined
   cachedInputTokens: number | undefined
   finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | null
+  sawRefusal: boolean
   terminated: boolean
 }
 
@@ -75,6 +77,7 @@ function createState(): State {
     outputTokens: undefined,
     cachedInputTokens: undefined,
     finishReason: null,
+    sawRefusal: false,
     terminated: false,
   }
 }
@@ -223,6 +226,15 @@ function translateOne(chunk: ChatChunkLike, state: State): MessagesEvent[] {
         })
       }
     }
+    if (typeof delta.refusal === 'string') {
+      state.sawRefusal = true
+      out.push(...openText(state))
+      if (state.textBlock && delta.refusal.length > 0) out.push({
+        type: 'content_block_delta',
+        index: state.textBlock.index,
+        delta: { type: 'text_delta', text: delta.refusal },
+      })
+    }
     if (delta.tool_calls && delta.tool_calls.length > 0) {
       for (const tc of delta.tool_calls) {
         const tcIdx = tc.index ?? 0
@@ -272,7 +284,7 @@ export async function* translateChatSSEToMessagesEvents(
       for (const ev of closeAllOpenBlocks(state)) yield ev
       yield {
         type: 'message_delta',
-        delta: { stop_reason: mapFinishReason(state.finishReason) ?? 'end_turn', stop_sequence: null },
+        delta: { stop_reason: state.finishReason === 'length' ? 'max_tokens' : state.sawRefusal ? 'refusal' : mapFinishReason(state.finishReason) ?? 'end_turn', stop_sequence: null },
         usage: {
           ...(state.outputTokens !== undefined ? { output_tokens: state.outputTokens } : {}),
           ...(state.inputTokens !== undefined ? { input_tokens: Math.max(0, state.inputTokens - (state.cachedInputTokens ?? 0)) } : {}),

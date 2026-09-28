@@ -70,6 +70,15 @@ interface RespTextDeltaEvent extends RespEventBase {
   delta: string
 }
 
+interface RespRefusalEvent extends RespEventBase {
+  type: 'response.refusal.delta' | 'response.refusal.done' | 'response.content_part.done'
+  output_index: number
+  content_index: number
+  delta?: string
+  refusal?: string
+  part?: { type: string; refusal?: string }
+}
+
 interface RespFnArgsDeltaEvent extends RespEventBase {
   type: 'response.function_call_arguments.delta'
   output_index: number
@@ -119,6 +128,7 @@ type RespEvent =
   | RespCreatedEvent
   | RespOutputItemAddedEvent
   | RespTextDeltaEvent
+  | RespRefusalEvent
   | RespFnArgsDeltaEvent
   | RespFnArgsDoneEvent
   | RespReasoningSummaryDeltaEvent
@@ -148,6 +158,8 @@ interface State {
   functionCallState: Map<number, FunctionCallState>
   /** Map of outputIndex → open `server_tool_use` block for a hosted search. */
   searchCallState: Map<number, { blockIndex: number; id: string; queryEmitted: boolean }>
+  refusalPartsSeen: Set<string>
+  refusalObserved: boolean
 }
 
 function createState(): State {
@@ -159,6 +171,8 @@ function createState(): State {
     openBlocks: new Set(),
     functionCallState: new Map(),
     searchCallState: new Map(),
+    refusalPartsSeen: new Set(),
+    refusalObserved: false,
   }
 }
 
@@ -351,6 +365,19 @@ function handleTextDelta(ev: RespTextDeltaEvent, state: State): MessagesEvent[] 
   return out
 }
 
+function handleRefusal(ev: RespRefusalEvent, state: State): MessagesEvent[] {
+  if (ev.type === 'response.content_part.done' && ev.part?.type !== 'refusal') return []
+  const key = `${ev.output_index}:${ev.content_index}`
+  state.refusalObserved = true
+  const text = ev.type === 'response.refusal.delta' ? ev.delta : ev.type === 'response.refusal.done' ? ev.refusal : ev.part?.refusal
+  if (ev.type !== 'response.refusal.delta' && state.refusalPartsSeen.has(key)) return []
+  if (ev.type === 'response.refusal.delta' || ev.type === 'response.refusal.done' || ev.type === 'response.content_part.done') state.refusalPartsSeen.add(key)
+  const out: MessagesEvent[] = []
+  const index = openTextBlock(state, ev.output_index, ev.content_index, out)
+  if (text) out.push({ type: 'content_block_delta', index, delta: { type: 'text_delta', text } })
+  return out
+}
+
 function handleFnArgsDelta(ev: RespFnArgsDeltaEvent, state: State): MessagesEvent[] {
   if (!ev.delta) return []
   const fcs = state.functionCallState.get(ev.output_index)
@@ -398,12 +425,16 @@ function mapStopReason(ev: RespCompletedEvent): string {
   if (ev.response.status === 'incomplete' && ev.response.incomplete_details?.reason === 'max_output_tokens') {
     return 'max_tokens'
   }
+  if (ev.response.output.some((item) => item.type === 'message' && item.content?.some((part) => part.type === 'refusal'))) return 'refusal'
   if (ev.response.output.some((i) => i.type === 'function_call')) return 'tool_use'
   return 'end_turn'
 }
 
 function handleCompleted(ev: RespCompletedEvent, state: State): MessagesEvent[] {
   const out: MessagesEvent[] = []
+  ev.response.output.forEach((item, outputIndex) => item.content?.forEach((part, contentIndex) => {
+    if (part.type === 'refusal') out.push(...handleRefusal({ type: 'response.refusal.done', output_index: outputIndex, content_index: contentIndex, refusal: part.refusal ?? '' }, state))
+  }))
   closeOpenBlocks(state, out)
   state.functionCallState.clear()
   state.searchCallState.clear()
@@ -411,7 +442,7 @@ function handleCompleted(ev: RespCompletedEvent, state: State): MessagesEvent[] 
   const cacheWrite = ev.response.usage?.input_tokens_details?.cache_write_tokens
   out.push({
     type: 'message_delta',
-    delta: { stop_reason: mapStopReason(ev), stop_sequence: null },
+    delta: { stop_reason: ev.response.status === 'incomplete' && ev.response.incomplete_details?.reason === 'max_output_tokens' ? 'max_tokens' : state.refusalObserved ? 'refusal' : mapStopReason(ev), stop_sequence: null },
     usage: {
       // Responses only reports token counts on the terminal envelope, long
       // after `message_start` was emitted from `response.created`. Restating
@@ -454,6 +485,10 @@ function translateOne(ev: RespEvent, state: State): MessagesEvent[] {
       return closeSearchCallBlock(ev, state)
     case 'response.output_text.delta':
       return handleTextDelta(ev, state)
+    case 'response.refusal.delta':
+    case 'response.refusal.done':
+    case 'response.content_part.done':
+      return handleRefusal(ev, state)
     case 'response.function_call_arguments.delta':
       return handleFnArgsDelta(ev, state)
     case 'response.function_call_arguments.done':
@@ -500,6 +535,7 @@ export async function* translateResponsesEventsToMessagesEvents(
     state.thinkingBlockByOutputIndex.clear()
     state.searchCallState.clear()
     state.functionCallState.clear()
+    state.refusalPartsSeen.clear()
     state.messageCompleted = true
   }
 }

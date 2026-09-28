@@ -102,6 +102,18 @@ function userBlocksFromContent(content: ChatContent): UserBlock[] {
 function assistantBlocks(m: ChatMessage): AssistantBlock[] {
   const blocks: AssistantBlock[] = []
   if (typeof m.content === 'string' && m.content) blocks.push({ type: 'text', text: m.content })
+  const assistant = m as ChatMessage & { refusal?: string | null }
+  let hasRefusalPart = false
+  if (Array.isArray(m.content)) {
+    for (const part of m.content as Array<{ type?: string; text?: string; refusal?: string }>) {
+      if (part.type === 'text' && typeof part.text === 'string') blocks.push({ type: 'text', text: part.text })
+      if (part.type === 'refusal' && typeof part.refusal === 'string') {
+        blocks.push({ type: 'text', text: part.refusal })
+        hasRefusalPart = true
+      }
+    }
+  }
+  if (assistant.refusal != null && !hasRefusalPart) blocks.push({ type: 'text', text: assistant.refusal })
   for (const call of m.tool_calls ?? []) {
     blocks.push({
       type: 'tool_use',

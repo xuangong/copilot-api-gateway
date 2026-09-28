@@ -19,7 +19,7 @@
  * detailed `usage.{input_tokens_details,output_tokens_details,total_tokens}`).
  */
 interface ChatToolCall { id: string; type: 'function'; function: { name: string; arguments: string } }
-interface ChatMessage { role: 'assistant'; content: string | null; tool_calls?: ChatToolCall[] }
+interface ChatMessage { role: 'assistant'; content: string | null; refusal?: string | null; tool_calls?: ChatToolCall[] }
 interface ChatBody {
   id: string
   model?: string
@@ -29,9 +29,10 @@ interface ChatBody {
 }
 
 interface ResponsesOutputContentPart {
-  type: 'output_text'
-  text: string
-  annotations: unknown[]
+  type: 'output_text' | 'refusal'
+  text?: string
+  refusal?: string
+  annotations?: unknown[]
 }
 interface ResponsesOutputItem {
   type: 'message' | 'function_call'
@@ -102,14 +103,17 @@ export function translateChatToResponsesBody(
   const output: ResponsesOutputItem[] = []
   let outputText = ''
 
-  if (choice && typeof choice.message.content === 'string' && choice.message.content.length > 0) {
-    outputText = choice.message.content
+  if (choice && (typeof choice.message.content === 'string' && choice.message.content.length > 0 || choice.message.refusal != null)) {
+    outputText = typeof choice.message.content === 'string' ? choice.message.content : ''
     output.push({
       type: 'message',
       id: generateMessageId(),
       status: 'completed',
       role: 'assistant',
-      content: [{ type: 'output_text', text: outputText, annotations: [] }],
+      content: [
+        ...(outputText ? [{ type: 'output_text' as const, text: outputText, annotations: [] }] : []),
+        ...(choice.message.refusal != null ? [{ type: 'refusal' as const, refusal: choice.message.refusal }] : []),
+      ],
     })
   }
   if (choice?.message.tool_calls) {

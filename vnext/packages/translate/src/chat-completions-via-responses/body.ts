@@ -11,7 +11,7 @@
 interface ResponsesOutputItem {
   type: 'message' | 'function_call'
   role?: string
-  content?: Array<{ type: string; text?: string }>
+  content?: Array<{ type: string; text?: string; refusal?: string }>
   call_id?: string
   name?: string
   arguments?: string
@@ -40,7 +40,7 @@ interface ChatCompletion {
   model: string
   choices: Array<{
     index: 0
-    message: { role: 'assistant'; content: string | null; tool_calls?: ChatToolCall[] }
+    message: { role: 'assistant'; content: string | null; refusal?: string; tool_calls?: ChatToolCall[] }
     finish_reason: 'stop' | 'length' | 'tool_calls'
   }>
   usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
@@ -49,11 +49,13 @@ interface ChatCompletion {
 export function translateResponsesToChatBody(body: unknown): ChatCompletion {
   const r = body as ResponsesBody
   const text: string[] = []
+  const refusals: string[] = []
   const toolCalls: ChatToolCall[] = []
   for (const item of r.output ?? []) {
     if (item.type === 'message' && Array.isArray(item.content)) {
       for (const part of item.content) {
         if (part.type === 'output_text' && typeof part.text === 'string') text.push(part.text)
+        if (part.type === 'refusal' && typeof part.refusal === 'string') refusals.push(part.refusal)
       }
     } else if (item.type === 'function_call') {
       toolCalls.push({
@@ -70,6 +72,7 @@ export function translateResponsesToChatBody(body: unknown): ChatCompletion {
 
   const content = text.length > 0 ? text.join('') : (toolCalls.length > 0 ? null : '')
   const message: ChatCompletion['choices'][number]['message'] = { role: 'assistant', content }
+  if (refusals.length > 0) message.refusal = refusals.join('')
   if (toolCalls.length > 0) message.tool_calls = toolCalls
 
   const out: ChatCompletion = {

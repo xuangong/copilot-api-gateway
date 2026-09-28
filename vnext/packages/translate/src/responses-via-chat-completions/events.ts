@@ -40,6 +40,7 @@ interface ChatChunk {
     delta: {
       role?: string
       content?: string
+      refusal?: string
       tool_calls?: Array<{
         index: number
         id?: string
@@ -61,9 +62,9 @@ export async function* translateChatToResponsesEvents(
   let created = Math.floor(Date.now() / 1000)
   let createdEmitted = false
   let messageOpened = false
-  let contentPartOpened = false
+  let activePart: { type: 'output_text' | 'refusal'; value: string; index: number } | undefined
+  const completedParts: Array<{ type: 'output_text'; text: string; annotations: unknown[] } | { type: 'refusal'; refusal: string }> = []
   let messageItemId = ''
-  let accumulatedText = ''
   let nextOutputIndex = 0
   let messageOutputIndex = -1
   const toolCalls = new Map<number, ToolCallState>() // chunk index → state
@@ -90,7 +91,8 @@ export async function* translateChatToResponsesEvents(
     const choice = raw.choices?.[0]
     if (!choice) continue
     const delta = choice.delta ?? {}
-    if (delta.content && delta.content.length > 0) {
+    for (const [partType, value] of [['output_text', delta.content], ['refusal', delta.refusal]] as const) {
+      if (typeof value !== 'string' || (partType === 'output_text' && value.length === 0)) continue
       if (!messageOpened) {
         messageOutputIndex = nextOutputIndex++
         // Synthesize a stable per-message id so subsequent content_part / text
@@ -103,23 +105,34 @@ export async function* translateChatToResponsesEvents(
         }
         messageOpened = true
       }
-      if (!contentPartOpened) {
+      if (activePart && activePart.type !== partType) {
+        const part = activePart.type === 'output_text'
+          ? { type: 'output_text' as const, text: activePart.value, annotations: [] }
+          : { type: 'refusal' as const, refusal: activePart.value }
+        yield activePart.type === 'output_text'
+          ? { type: 'response.output_text.done', item_id: messageItemId, output_index: messageOutputIndex, content_index: activePart.index, text: activePart.value }
+          : { type: 'response.refusal.done', item_id: messageItemId, output_index: messageOutputIndex, content_index: activePart.index, refusal: activePart.value }
+        yield { type: 'response.content_part.done', item_id: messageItemId, output_index: messageOutputIndex, content_index: activePart.index, part }
+        completedParts.push(part)
+        activePart = undefined
+      }
+      if (!activePart) {
+        activePart = { type: partType, value: '', index: completedParts.length }
         yield {
           type: 'response.content_part.added',
           item_id: messageItemId,
           output_index: messageOutputIndex,
-          content_index: 0,
-          part: { type: 'output_text', text: '', annotations: [] },
+          content_index: activePart.index,
+          part: partType === 'output_text' ? { type: 'output_text', text: '', annotations: [] } : { type: 'refusal', refusal: '' },
         }
-        contentPartOpened = true
       }
-      accumulatedText += delta.content
-      yield {
-        type: 'response.output_text.delta',
+      activePart.value += value
+      if (value.length > 0) yield {
+        type: partType === 'output_text' ? 'response.output_text.delta' : 'response.refusal.delta',
         item_id: messageItemId,
         output_index: messageOutputIndex,
-        content_index: 0,
-        delta: delta.content,
+        content_index: activePart.index,
+        delta: value,
       }
     }
     if (delta.tool_calls) {
@@ -161,21 +174,15 @@ export async function* translateChatToResponsesEvents(
   if (finish === null) throw new Error("Upstream Chat Completions stream ended without a finish_reason.")
 
   if (messageOpened) {
-    if (contentPartOpened) {
-      yield {
-        type: 'response.output_text.done',
-        item_id: messageItemId,
-        output_index: messageOutputIndex,
-        content_index: 0,
-        text: accumulatedText,
-      }
-      yield {
-        type: 'response.content_part.done',
-        item_id: messageItemId,
-        output_index: messageOutputIndex,
-        content_index: 0,
-        part: { type: 'output_text', text: accumulatedText, annotations: [] },
-      }
+    if (activePart) {
+      const part = activePart.type === 'output_text'
+        ? { type: 'output_text' as const, text: activePart.value, annotations: [] }
+        : { type: 'refusal' as const, refusal: activePart.value }
+      yield activePart.type === 'output_text'
+        ? { type: 'response.output_text.done', item_id: messageItemId, output_index: messageOutputIndex, content_index: activePart.index, text: activePart.value }
+        : { type: 'response.refusal.done', item_id: messageItemId, output_index: messageOutputIndex, content_index: activePart.index, refusal: activePart.value }
+      yield { type: 'response.content_part.done', item_id: messageItemId, output_index: messageOutputIndex, content_index: activePart.index, part }
+      completedParts.push(part)
     }
     yield {
       type: 'response.output_item.done',
@@ -185,7 +192,7 @@ export async function* translateChatToResponsesEvents(
         id: messageItemId,
         role: 'assistant',
         status: 'completed',
-        content: [{ type: 'output_text', text: accumulatedText, annotations: [] }],
+        content: completedParts,
       },
     }
   }

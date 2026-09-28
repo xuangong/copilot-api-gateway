@@ -8,6 +8,7 @@
  * Direction: events flow hub → client (assistant tokens, tool calls, usage).
  */
 import type { MessagesEvent } from '@vibe-llm/protocols/messages'
+import { messagesRefusalExplanation } from '../shared/messages-refusal.ts'
 
 export interface ChatUrlCitationAnnotation {
   type: 'url_citation'
@@ -24,6 +25,7 @@ export interface ChatSSEChunk {
     delta: {
       role?: 'assistant'
       content?: string
+      refusal?: string
       tool_calls?: Array<{ index: number; id?: string; type?: 'function'; function?: { name?: string; arguments?: string } }>
       reasoning_text?: string
       reasoning_opaque?: string
@@ -252,7 +254,7 @@ function translateOne(ev: MessagesEvent, state: State): ChatSSEChunk[] | 'DONE' 
     case 'content_block_stop':
       return []
     case 'message_delta': {
-      const evDelta = ev.delta as { stop_reason?: string | null }
+      const evDelta = ev.delta as { stop_reason?: string | null; stop_details?: { category?: string | null; explanation?: string | null } }
       const evUsage = ev.usage as
         | {
             input_tokens?: number
@@ -265,9 +267,11 @@ function translateOne(ev: MessagesEvent, state: State): ChatSSEChunk[] | 'DONE' 
       if (evUsage?.output_tokens !== undefined) state.outputTokens = Math.max(state.outputTokens ?? 0, evUsage.output_tokens)
       const finishReason = mapStopReason(evDelta.stop_reason ?? null)
       const finishChunk = makeChunk(state, {}, finishReason)
-      return state.outputTokens !== undefined || Object.keys(state.inputUsage).length > 0
-        ? [finishChunk, makeUsageChunk(state)]
+      const chunks = evDelta.stop_reason === 'refusal'
+        ? [makeChunk(state, { refusal: messagesRefusalExplanation(evDelta.stop_details) }), finishChunk]
         : [finishChunk]
+      if (state.outputTokens !== undefined || Object.keys(state.inputUsage).length > 0) chunks.push(makeUsageChunk(state))
+      return chunks
     }
     case 'message_stop':
       state.terminated = true

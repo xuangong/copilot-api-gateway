@@ -54,6 +54,7 @@ export const collectMessagesProtocolEventsToResult = async (
   let id = ''
   let model = ''
   let stop_reason: MessagesResult['stop_reason'] = null
+  let stop_details: MessagesResult['stop_details']
   let stop_sequence: string | null = null
   const usage: MessagesUsage = { input_tokens: 0, output_tokens: 0 }
   const blocks: PartialBlock[] = []
@@ -93,6 +94,7 @@ export const collectMessagesProtocolEventsToResult = async (
       }
     } else if (ev.type === 'message_delta') {
       if (ev.delta.stop_reason !== undefined) stop_reason = ev.delta.stop_reason
+      if (ev.delta.stop_details !== undefined) stop_details = ev.delta.stop_details
       if (ev.delta.stop_sequence !== undefined) stop_sequence = ev.delta.stop_sequence ?? null
       if (ev.usage && typeof ev.usage.output_tokens === 'number') {
         usage.output_tokens = ev.usage.output_tokens
@@ -115,6 +117,7 @@ export const collectMessagesProtocolEventsToResult = async (
     model,
     content: blocks.filter((b): b is PartialBlock => b !== undefined).map(blockToOutput) as unknown as MessagesResult['content'],
     stop_reason,
+    ...(stop_details !== undefined ? { stop_details } : {}),
     stop_sequence,
     usage,
   }
