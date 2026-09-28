@@ -13,12 +13,16 @@
  *  - `function_call` items merge into the previous assistant message's
  *    `tool_calls` (or open a new assistant w/ `content: null`).
  *    `function_call_output` items become `role: 'tool'` messages.
- *  - Tools: only `type: 'function'` with a `name` survive (Responses
- *    hosted tools have no Chat analogue and are dropped).
+ *  - Tool restrictions are validated before projection; unsupported custom
+ *    callable identity fails explicitly. Structured result images follow
+ *    their contiguous text-only tool results in a user message.
  *  - `max_output_tokens` maps to `max_tokens`.
  */
 import type { ChatPayload } from '@vibe-llm/protocols/chat'
 import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
+
+import { projectResponsesTools } from '../shared/responses-tools.ts'
+import { projectChatToolOutput, type ChatToolImagePart, type ResponsesToolOutput } from '../shared/responses-tool-output.ts'
 
 export interface ResponsesToChatRequestResult { target: ChatPayload }
 
@@ -28,7 +32,7 @@ interface ResponsesInputMessage {
   content: string | Array<{ type: string; text?: string }>
 }
 interface ResponsesFunctionCall { type: 'function_call'; call_id: string; name: string; arguments?: string }
-interface ResponsesFunctionCallOutput { type: 'function_call_output'; call_id: string; output?: string }
+type ResponsesFunctionCallOutput = ResponsesToolOutput
 type ResponsesInputItem = ResponsesInputMessage | ResponsesFunctionCall | ResponsesFunctionCallOutput
 
 interface ChatToolCall { id: string; type: 'function'; function: { name: string; arguments: string } }
@@ -54,7 +58,14 @@ function partsToChat(parts: Array<{ type: string; text?: string; image_url?: str
 
 function translateInput(items: ResponsesInputItem[]): ChatMessage[] {
   const out: ChatMessage[] = []
+  const pendingImages: ChatToolImagePart[] = []
+  const flushImages = () => {
+    if (pendingImages.length === 0) return
+    out.push({ role: 'user', content: [...pendingImages] })
+    pendingImages.length = 0
+  }
   for (const item of items) {
+    if (item.type !== 'function_call_output' && item.type !== 'custom_tool_call_output') flushImages()
     if (item.type === 'message') {
       if (item.role === 'system' || item.role === 'developer') {
         const text = typeof item.content === 'string' ? item.content : item.content.map((p) => p.text ?? '').join('')
@@ -91,10 +102,13 @@ function translateInput(items: ResponsesInputItem[]): ChatMessage[] {
       }
       continue
     }
-    if (item.type === 'function_call_output') {
-      out.push({ role: 'tool', tool_call_id: item.call_id, content: item.output ?? '' })
+    if (item.type === 'function_call_output' || item.type === 'custom_tool_call_output') {
+      const projected = projectChatToolOutput(item)
+      out.push({ role: 'tool', tool_call_id: item.call_id, content: projected.content })
+      pendingImages.push(...projected.images)
     }
   }
+  flushImages()
   return out
 }
 
@@ -126,6 +140,7 @@ function translateToolChoice(choice: ResponsesPayload['tool_choice']): ChatPaylo
 }
 
 export function translateResponsesToChat(payload: ResponsesPayload): ResponsesToChatRequestResult {
+  const selected = projectResponsesTools(payload)
   const messages: ChatMessage[] = []
   if (typeof payload.instructions === 'string' && payload.instructions.length > 0) {
     messages.push({ role: 'system', content: payload.instructions })
@@ -150,9 +165,9 @@ export function translateResponsesToChat(payload: ResponsesPayload): ResponsesTo
   const ext = payload as ResponsesPayload & { metadata?: Record<string, string> }
   if (ext.metadata) target.metadata = { ...ext.metadata }
   if (payload.max_output_tokens !== undefined) target.max_tokens = payload.max_output_tokens
-  const tools = translateTools(payload.tools)
+  const tools = translateTools(selected.tools)
   if (tools) target.tools = tools
-  const tc = translateToolChoice(payload.tool_choice)
+  const tc = translateToolChoice(selected.choice)
   if (tc !== undefined) target.tool_choice = tc
 
   return { target: target as unknown as ChatPayload }

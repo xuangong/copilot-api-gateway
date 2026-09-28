@@ -170,6 +170,7 @@ describe('responses-via-messages :: request', () => {
     const none = translateResponsesToMessages({ model: 'm', input: 'hi', tool_choice: 'none' } as unknown as ResponsesPayload)
     const named = translateResponsesToMessages({
       model: 'm', input: 'hi',
+      tools: [{ type: 'function', name: 'fn' }],
       tool_choice: { type: 'function', name: 'fn' },
     } as unknown as ResponsesPayload)
     expect((auto.target as unknown as { tool_choice?: unknown }).tool_choice).toEqual({ type: 'auto' })

@@ -16,6 +16,9 @@ import {
   type MessageLike as SharedMessageLike,
 } from '../shared/cache-breakpoints.ts'
 
+import { projectResponsesTools } from '../shared/responses-tools.ts'
+import { projectMessagesToolOutput, type ResponsesToolOutput } from '../shared/responses-tool-output.ts'
+
 const DEFAULT_MAX_TOKENS = 8192
 
 interface ContentBlockLike { type: string; text?: string; cache_control?: unknown }
@@ -38,11 +41,7 @@ interface ResponsesFunctionCallItem {
   arguments?: string
 }
 
-interface ResponsesFunctionCallOutputItem {
-  type: 'function_call_output'
-  call_id: string
-  output?: string
-}
+type ResponsesFunctionCallOutputItem = ResponsesToolOutput
 
 function extractSystemText(message: ResponsesMessageItem): string {
   if (typeof message.content === 'string') return message.content
@@ -167,12 +166,14 @@ function translateInput(input: ResponsesPayload['input']): TranslatedInput {
         } as unknown as ContentBlockLike)
         break
       }
-      case 'function_call_output': {
+      case 'function_call_output':
+      case 'custom_tool_call_output': {
         const fco = item
         appendUserBlock(messages, {
           type: 'tool_result',
           tool_use_id: fco.call_id,
-          content: fco.output,
+          content: projectMessagesToolOutput(fco),
+          ...(fco.type === 'function_call_output' && fco.status === 'incomplete' ? { is_error: true } : {}),
         } as unknown as ContentBlockLike)
         break
       }
@@ -228,6 +229,7 @@ export interface ResponsesToMessagesRequestResult {
 }
 
 export function translateResponsesToMessages(payload: ResponsesPayload): ResponsesToMessagesRequestResult {
+  const selected = projectResponsesTools(payload)
   const { messages, systemParts } = translateInput(payload.input)
 
   const systemPieces = [payload.instructions, ...systemParts].filter(
@@ -237,8 +239,8 @@ export function translateResponsesToMessages(payload: ResponsesPayload): Respons
   const effort = reasoning?.effort
   const max_tokens = payload.max_output_tokens ?? DEFAULT_MAX_TOKENS
 
-  const tools = translateTools(payload.tools)
-  const tool_choice = translateToolChoice(payload.tool_choice)
+  const tools = translateTools(selected.tools)
+  const tool_choice = translateToolChoice(selected.choice)
 
   applyLastToolCacheBreakpoint(tools)
   applyLastMessageCacheBreakpoint(messages as unknown as SharedMessageLike[])
