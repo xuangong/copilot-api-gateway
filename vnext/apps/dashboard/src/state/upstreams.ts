@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useToast } from "./toast"
 import * as api from "../api/upstreams"
 import type { UpstreamRecord } from "../api/types"
+import { ReorderController } from "./reorder-upstreams"
 
 function sortUpstreams(list: UpstreamRecord[]): UpstreamRecord[] {
   return [...list].sort((a, b) => {
@@ -13,6 +14,20 @@ function sortUpstreams(list: UpstreamRecord[]): UpstreamRecord[] {
 export function useUpstreams() {
   const { push: toast } = useToast()
   const [upstreams, setUpstreams] = useState<UpstreamRecord[]>([])
+  const toastRef = useRef(toast)
+  toastRef.current = toast
+  const reloadRef = useRef<() => Promise<void>>(async () => {})
+  const controllerRef = useRef<ReorderController | null>(null)
+  if (!controllerRef.current) {
+    controllerRef.current = new ReorderController(
+      [],
+      (id, sortOrder) => api.patchUpstream(id, { sortOrder }).then(() => {}),
+      (error) => toastRef.current(error instanceof Error ? error.message : String(error), "error"),
+      () => { void reloadRef.current() },
+      async () => sortUpstreams((await api.listUpstreams()).upstreams),
+    )
+  }
+  const controller = controllerRef.current
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [probeResults, setProbeResults] = useState<Record<string, api.ProbeResult>>({})
@@ -28,18 +43,24 @@ export function useUpstreams() {
     }
   }, [])
 
+  useEffect(() => controller.subscribe(() => setUpstreams(controller.snapshot())), [controller])
+
+  const reloadGeneration = useRef(0)
+
   const reload = useCallback(async () => {
+    const generation = ++reloadGeneration.current
     setLoading(true)
     try {
       const { upstreams } = await api.listUpstreams()
-      setUpstreams(sortUpstreams(upstreams))
+      if (generation === reloadGeneration.current) controller.replace(sortUpstreams(upstreams))
       loadModels()
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "error")
     } finally {
-      setLoading(false)
+      if (generation === reloadGeneration.current) setLoading(false)
     }
-  }, [toast, loadModels])
+  }, [toast, loadModels, controller])
+  reloadRef.current = reload
 
   useEffect(() => {
     reload()
@@ -87,43 +108,9 @@ export function useUpstreams() {
       await reload()
     })
 
-  const reorder = (id: string, direction: "up" | "down") =>
-    withBusy(id, async () => {
-      const target = upstreams.find((u) => u.id === id)
-      if (!target) return
-      // Reorder within the same owner-group only — the UI groups by owner
-      // and the global list mixes them, so cross-group neighbors give wrong
-      // sortOrder values.
-      const group = sortUpstreams(upstreams.filter((u) => (u.ownerId ?? "") === (target.ownerId ?? "")))
-      const idx = group.findIndex((u) => u.id === id)
-      if (idx === -1) return
-      let newSort: number
-      if (direction === "up") {
-        if (idx === 0) return
-        const above = group[idx - 1]
-        if (!above) return
-        const aboveAbove = idx >= 2 ? group[idx - 2] : null
-        // If neighbor has same sortOrder, force a strictly smaller value so
-        // the row actually moves (avoids the "(0+0)/2 = 0" no-op).
-        if (aboveAbove && aboveAbove.sortOrder !== above.sortOrder) {
-          newSort = (above.sortOrder + aboveAbove.sortOrder) / 2
-        } else {
-          newSort = above.sortOrder - 1
-        }
-      } else {
-        if (idx === group.length - 1) return
-        const below = group[idx + 1]
-        if (!below) return
-        const belowBelow = idx + 2 < group.length ? group[idx + 2] : null
-        if (belowBelow && belowBelow.sortOrder !== below.sortOrder) {
-          newSort = (below.sortOrder + belowBelow.sortOrder) / 2
-        } else {
-          newSort = below.sortOrder + 1
-        }
-      }
-      await api.patchUpstream(id, { sortOrder: newSort })
-      await reload()
-    })
+  const reorderTo = (id: string, targetId: string, ownerId: string) => controller.move(id, targetId, ownerId)
+  const reorder = (id: string, direction: "up" | "down", ownerId: string) =>
+    controller.moveStep(id, direction, ownerId)
 
   const probe = (id: string) =>
     withBusy(id, async () => {
@@ -195,6 +182,7 @@ export function useUpstreams() {
     ensureFlagCatalog,
     toggleEnabled,
     reorder,
+    reorderTo,
     probe,
     remove,
     setProbeResult: (id: string, r: api.ProbeResult) => setProbeResults((p) => ({ ...p, [id]: r })),

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, type DragEvent, type KeyboardEvent } from "react"
 import { ProviderAvatar } from "./KindChip"
 import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
@@ -18,6 +18,12 @@ interface Props {
   onToggleProxy?: () => void
   onToggleEnabled: () => void
   onReorder: (dir: "up" | "down") => void
+  dragging?: boolean
+  dropTarget?: boolean
+  onDragStart?: (event: DragEvent<HTMLButtonElement>) => void
+  onDragOver?: (event: DragEvent<HTMLDivElement>) => void
+  onDrop?: (event: DragEvent<HTMLDivElement>) => void
+  onDragEnd?: () => void
   onEdit: () => void
   onDuplicate: () => void
   onRefreshModels: () => void
@@ -38,6 +44,12 @@ export function UpstreamRow({
   onToggleProxy,
   onToggleEnabled,
   onReorder,
+  dragging = false,
+  dropTarget = false,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
   onEdit,
   onDuplicate,
   onRefreshModels,
@@ -55,6 +67,12 @@ export function UpstreamRow({
   const t = useT()
   const modelList = models ?? []
   const shown = expanded ? modelList : modelList.slice(0, 8)
+  const onHandleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault()
+      onReorder(event.key === "ArrowUp" ? "up" : "down")
+    }
+  }
 
   const copy = async (text: string) => {
     try {
@@ -82,7 +100,9 @@ export function UpstreamRow({
 
   return (
     <div
-      className={`bg-surface-900 rounded-lg p-3 sm:p-4 border transition-colors ${
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      className={`bg-surface-900 rounded-lg p-3 sm:p-4 border transition-colors ${dragging ? "opacity-50" : ""} ${dropTarget ? "ring-2 ring-accent-violet" : ""} ${
         editing
           ? "border-accent-violet/60"
           : expiredAt
@@ -112,8 +132,21 @@ export function UpstreamRow({
         </div>
 
         <div className="flex items-center gap-1 flex-wrap shrink-0">
-          <button onClick={() => onReorder("up")} disabled={locked || index === 0 || busy} className="btn-ghost text-xs px-2 py-1" title={t("dash.moveUp")}>↑</button>
-          <button onClick={() => onReorder("down")} disabled={locked || index === total - 1 || busy} className="btn-ghost text-xs px-2 py-1" title={t("dash.moveDown")}>↓</button>
+          <button
+            type="button"
+            draggable={!locked}
+            disabled={locked}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            onKeyDown={onHandleKeyDown}
+            aria-label={t("dash.reorderUpstreamHandle", { name: u.name })}
+            title={t("dash.reorderUpstreamHandle", { name: u.name })}
+            className="btn-ghost text-xs px-2 py-1 cursor-grab active:cursor-grabbing touch-none"
+          >
+            ⠿
+          </button>
+          <button onClick={() => onReorder("up")} disabled={locked || index === 0} className="btn-ghost text-xs px-2 py-1" title={t("dash.moveUp")}>↑</button>
+          <button onClick={() => onReorder("down")} disabled={locked || index === total - 1} className="btn-ghost text-xs px-2 py-1" title={t("dash.moveDown")}>↓</button>
           <label className={`flex items-center gap-1 text-xs text-themed-dim ml-1 select-none ${locked ? "cursor-not-allowed" : "cursor-pointer"}`}>
             <input type="checkbox" checked={u.enabled} onChange={onToggleEnabled} disabled={locked} />
             <span>{u.enabled ? t("dash.onLabel") : t("dash.offLabel")}</span>

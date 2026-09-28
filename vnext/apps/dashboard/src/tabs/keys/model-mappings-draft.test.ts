@@ -5,6 +5,7 @@ import {
   deleteDraftMapping,
   getVisibleFieldErrors,
   moveDraftMapping,
+  moveDraftMappingTo,
   resetDraftInteractions,
   resetModelMappingsDraft,
   setDraftSaveAttempted,
@@ -22,6 +23,17 @@ const server = {
 const available = new Set(["claude-opus", "gpt-5"]);
 
 describe("model mappings draft", () => {
+  test("drag order keeps row identity and cancel restores server order", () => {
+    const initial = createModelMappingsDraft({
+      ...server,
+      model_mappings: [...server.model_mappings, { source: "third", destination: "gpt-5" }],
+    });
+    const moved = moveDraftMappingTo(initial, initial.rows[0]?.rowId ?? "", initial.rows[2]?.rowId ?? "");
+    expect(moved.rows.map((row) => row.source)).toEqual(["fast", "third", "friendly-opus"]);
+    expect(moved.rows[2]?.rowId).toBe(initial.rows[0]?.rowId);
+    expect(moveDraftMappingTo(moved, moved.rows[0]?.rowId ?? "", "missing")).toBe(moved);
+    expect(resetModelMappingsDraft(moved, { ...server, model_mappings: [...server.model_mappings, { source: "third", destination: "gpt-5" }] }).rows.map((row) => row.source)).toEqual(["friendly-opus", "fast", "third"]);
+  });
   test("does not show errors for a newly added untouched row", () => {
     const draft = addDraftMapping(createModelMappingsDraft(server));
     const newRow = draft.rows.at(-1);

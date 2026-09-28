@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { ApiKeyDetail, ApiKeyModelMapping } from "../../api/keys";
 import { Combobox } from "../../components/Combobox";
 import { useT } from "../../state/i18n";
@@ -16,6 +16,7 @@ import {
   deleteDraftMapping,
   getVisibleFieldErrors,
   moveDraftMapping,
+  moveDraftMappingTo,
   resetDraftInteractions,
   resetModelMappingsDraft,
   setDraftSaveAttempted,
@@ -61,6 +62,24 @@ export function ModelMappingsPanel({
   const [draft, setDraft] = useState<ModelMappingsDraft>(() =>
     createModelMappingsDraft(keyRow),
   );
+  const dragSnapshot = useRef<ModelMappingsDraft | null>(null);
+  const pointerRowId = useRef<string | null>(null);
+  const [dragRowId, setDragRowId] = useState<string | null>(null);
+  const [dropRowId, setDropRowId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!dragRowId) return;
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (dragSnapshot.current) setDraft(dragSnapshot.current);
+      dragSnapshot.current = null;
+      pointerRowId.current = null;
+      setDragRowId(null);
+      setDropRowId(null);
+    };
+    document.addEventListener("keydown", onEscape);
+    return () => document.removeEventListener("keydown", onEscape);
+  }, [dragRowId]);
 
   useEffect(() => {
     setDraft((current) => resetModelMappingsDraft(current, keyRow));
@@ -101,6 +120,10 @@ export function ModelMappingsPanel({
     else startEdit(enabled);
   };
   const cancel = () => {
+    dragSnapshot.current = null;
+    pointerRowId.current = null;
+    setDragRowId(null);
+    setDropRowId(null);
     setDraft((current) => resetModelMappingsDraft(current, keyRow));
     setEditing(false);
   };
@@ -128,6 +151,17 @@ export function ModelMappingsPanel({
     }
   };
   const interactionDisabled = busy || saving;
+  const rowAtPointer = (event: ReactPointerEvent<HTMLButtonElement>): string | null =>
+    document.elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>("[data-mapping-row-id]")
+      ?.dataset.mappingRowId ?? null;
+  const cancelPointerMove = () => {
+    if (dragSnapshot.current) setDraft(dragSnapshot.current);
+    dragSnapshot.current = null;
+    pointerRowId.current = null;
+    setDragRowId(null);
+    setDropRowId(null);
+  };
 
   const status = keyRow.model_mappings_enabled
     ? t("dash.wsEnabledShort")
@@ -232,7 +266,8 @@ export function ModelMappingsPanel({
             return (
               <div
                 key={mapping.rowId}
-                className="rounded-lg bg-surface-700/50 p-3 space-y-2"
+                data-mapping-row-id={mapping.rowId}
+                className={`rounded-lg bg-surface-700/50 p-3 space-y-2 ${dragRowId === mapping.rowId ? "opacity-50" : ""} ${dropRowId === mapping.rowId ? "ring-2 ring-accent-violet" : ""}`}
               >
                 <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 items-start">
                   <div>
@@ -320,6 +355,46 @@ export function ModelMappingsPanel({
                     ))}
                   </div>
                   <div className="flex sm:pt-5 gap-1">
+                    <button
+                      type="button"
+                      disabled={interactionDisabled}
+                      onPointerDown={(event) => {
+                        if (event.button !== 0) return;
+                        dragSnapshot.current = draft;
+                        pointerRowId.current = mapping.rowId;
+                        setDragRowId(mapping.rowId);
+                        setDropRowId(null);
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                      }}
+                      onPointerMove={(event) => {
+                        if (!dragSnapshot.current || !pointerRowId.current) return;
+                        setDropRowId(rowAtPointer(event));
+                      }}
+                      onPointerUp={(event) => {
+                        const snapshot = dragSnapshot.current;
+                        const sourceId = pointerRowId.current;
+                        const targetId = rowAtPointer(event);
+                        if (snapshot && sourceId && targetId) {
+                          setDraft(moveDraftMappingTo(snapshot, sourceId, targetId));
+                          dragSnapshot.current = null;
+                          pointerRowId.current = null;
+                          setDragRowId(null);
+                          setDropRowId(null);
+                        } else cancelPointerMove();
+                      }}
+                      onPointerCancel={cancelPointerMove}
+                      onLostPointerCapture={cancelPointerMove}
+                      onKeyDown={(event) => {
+                        if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+                        event.preventDefault();
+                        setDraft((current) => moveDraftMapping(current, index, event.key === "ArrowUp" ? -1 : 1));
+                      }}
+                      aria-label={t("dash.reorderMappingHandle", { n: index + 1 })}
+                      title={t("dash.reorderMappingHandle", { n: index + 1 })}
+                      className="btn-ghost text-xs px-2 cursor-grab active:cursor-grabbing touch-none"
+                    >
+                      ⠿
+                    </button>
                     <button
                       type="button"
                       onClick={() =>

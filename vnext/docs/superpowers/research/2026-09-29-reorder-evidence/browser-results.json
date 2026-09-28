@@ -1,0 +1,127 @@
+[
+  {
+    "scenario": "upstream-pointer",
+    "sourceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext",
+    "mutations": [
+      {
+        "kind": "upstream",
+        "url": "http://127.0.0.1:64180/api/upstreams/up_d06_own_b",
+        "body": {
+          "sortOrder": 31
+        }
+      }
+    ],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "scenario": "upstream-keyboard",
+    "sourceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext",
+    "mutations": [
+      {
+        "kind": "upstream",
+        "url": "http://127.0.0.1:64209/api/upstreams/up_d06_own_b",
+        "body": {
+          "sortOrder": 31
+        }
+      }
+    ],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "scenario": "upstream-handle-keyboard",
+    "sourceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext",
+    "mutations": [
+      {
+        "kind": "upstream",
+        "url": "http://127.0.0.1:64245/api/upstreams/up_d06_own_b",
+        "body": {
+          "sortOrder": 31
+        }
+      }
+    ],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "scenario": "upstream-boundaries",
+    "sourceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext",
+    "mutations": [],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "scenario": "upstream-cancel",
+    "sourceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext",
+    "mutations": [],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "scenario": "upstream-failure",
+    "sourceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext",
+    "mutations": [
+      {
+        "kind": "upstream",
+        "url": "http://127.0.0.1:64312/api/upstreams/up_d06_own_b",
+        "body": {
+          "sortOrder": 9
+        }
+      }
+    ],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "scenario": "upstream-stale",
+    "sourceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext",
+    "mutations": [
+      {
+        "kind": "upstream",
+        "url": "http://127.0.0.1:64329/api/upstreams/up_d06_own_c",
+        "body": {
+          "sortOrder": 15
+        }
+      },
+      {
+        "kind": "upstream",
+        "url": "http://127.0.0.1:64329/api/upstreams/up_d06_own_b",
+        "body": {
+          "sortOrder": 9
+        }
+      }
+    ],
+    "errors": [],
+    "passed": true
+  },
+  {
+    "scenario": "mapping-draft",
+    "sourceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext",
+    "mutations": [
+      {
+        "kind": "mapping",
+        "url": "http://127.0.0.1:64354/api/keys/00000000-0000-4000-a000-0000000000c6",
+        "body": {
+          "model_mappings_enabled": true,
+          "model_mappings": [
+            {
+              "source": "d06-alias-b",
+              "destination": "d06-destination"
+            },
+            {
+              "source": "d06-alias-a",
+              "destination": "d06-destination"
+            },
+            {
+              "source": "d06-alias-c",
+              "destination": "d06-destination"
+            }
+          ]
+        }
+      }
+    ],
+    "errors": [],
+    "passed": true
+  }
+]

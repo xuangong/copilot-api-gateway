@@ -1,0 +1,101 @@
+// Isolated D06 browser fixture: real Bun Gateway, temporary SQLite and files.
+import { resolve } from "node:path"
+
+const sourceRoot = process.env.D06_SOURCE_ROOT
+if (!sourceRoot) throw new Error("D06_SOURCE_ROOT is required")
+const root = resolve(sourceRoot)
+const { bootstrapBunPlatform } = await import(`${root}/apps/platform-bun/src/bootstrap.ts`)
+const { app } = await import(`${root}/packages/gateway/src/app.ts`)
+const { getRepo } = await import(`${root}/packages/gateway/src/repo/index.ts`)
+
+bootstrapBunPlatform({ dbPath: `${process.cwd()}/fixture.sqlite`, filesRoot: `${process.cwd()}/files` })
+const repo = getRepo()
+const now = new Date().toISOString()
+const ownerId = "00000000-0000-4000-a000-0000000000a1"
+const foreignId = "00000000-0000-4000-a000-0000000000b2"
+const keyId = "00000000-0000-4000-a000-0000000000c6"
+const token = `ses_${crypto.randomUUID().replaceAll("-", "")}`
+await repo.users.create({ id: ownerId, name: "D06 Own Admin", email: "test@local.dev", createdAt: now, disabled: false })
+await repo.users.create({ id: foreignId, name: "D06 Foreign Owner", email: "other@local.dev", createdAt: now, disabled: false })
+await repo.sessions.create({ token, userId: ownerId, createdAt: now, authenticatedAt: Date.now(), expiresAt: new Date(Date.now() + 3600_000).toISOString() })
+
+const seedRows = [
+  { id: "up_d06_own_a", ownerId, name: "D06 Own A", enabled: true, sortOrder: 10 },
+  { id: "up_d06_own_b", ownerId, name: "D06 Own B", enabled: true, sortOrder: 20 },
+  { id: "up_d06_own_c", ownerId, name: "D06 Own C", enabled: true, sortOrder: 30 },
+  { id: "up_d06_own_d", ownerId, name: "D06 Own Disabled D", enabled: false, sortOrder: 10 },
+  { id: "up_d06_own_e", ownerId, name: "D06 Own Disabled E", enabled: false, sortOrder: 20 },
+  { id: "up_d06_foreign_a", ownerId: foreignId, name: "D06 Foreign A", enabled: true, sortOrder: 10 },
+  { id: "up_d06_foreign_b", ownerId: foreignId, name: "D06 Foreign B", enabled: false, sortOrder: 20 },
+] as const
+
+for (const row of seedRows) {
+  await repo.upstreams.save({
+    ...row, provider: "custom", state: null, createdAt: now, updatedAt: now,
+    config: {
+      name: row.name, baseUrl: "http://127.0.0.1:1/v1", authStyle: "none",
+      endpoints: ["responses"], models: [{ id: "d06-destination" }],
+    },
+    flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [],
+  })
+}
+await repo.apiKeys.save({
+  id: keyId, ownerId, name: "D06 Mapping Key", key: "sk_synthetic_d06_only", createdAt: now,
+  modelMappingsEnabled: true,
+  modelMappings: [
+    { source: "d06-alias-a", destination: "d06-destination" },
+    { source: "d06-alias-b", destination: "d06-destination" },
+    { source: "d06-alias-c", destination: "d06-destination" },
+  ],
+})
+
+let failure: { wait: boolean; release: () => void; promise: Promise<void> } | null = null
+let releaseHeld: (() => void) | null = null
+let intercepted = 0
+const server = Bun.serve({
+  hostname: "127.0.0.1", port: 0,
+  fetch: async request => {
+    const url = new URL(request.url)
+    if (url.pathname === "/__fixture/fail-next" && request.method === "POST") {
+      if (failure) return Response.json({ error: "already armed" }, { status: 409 })
+      const wait = url.searchParams.get("delayed") === "1"
+      let release = () => {}
+      const promise = new Promise<void>(resolve => { release = resolve })
+      failure = { wait, release, promise }
+      return Response.json({ armed: true, delayed: wait })
+    }
+    if (url.pathname === "/__fixture/release" && request.method === "POST") {
+      releaseHeld?.()
+      releaseHeld = null
+      return Response.json({ released: true })
+    }
+    if (url.pathname === "/__fixture/state") {
+      const upstreams = await repo.upstreams.list({ includeDisabled: true })
+      const key = await repo.apiKeys.getById(keyId)
+      return Response.json({
+        upstreams: upstreams.map(({ id, ownerId, enabled, sortOrder }) => ({ id, ownerId, enabled, sortOrder })),
+        mappings: key?.modelMappings ?? [], intercepted,
+      })
+    }
+    if (failure && request.method === "PATCH" && /^\/api\/upstreams\/[^/]+$/.test(url.pathname)) {
+      const body = await request.clone().json().catch(() => null)
+      if (body && typeof body === "object" && "sortOrder" in body) {
+        const selected = failure
+        failure = null
+        intercepted++
+        if (selected.wait) {
+          releaseHeld = selected.release
+          await selected.promise
+          releaseHeld = null
+        }
+        return Response.json({ error: "synthetic D06 sort failure" }, { status: 500 })
+      }
+    }
+    return app.fetch(request)
+  },
+})
+await Bun.write(`${process.cwd()}/connection.json`, JSON.stringify({ port: server.port, token, keyId, ownerId, foreignId, pid: process.pid, sourceRoot: root }))
+console.log(`D06 fixture ready on 127.0.0.1:${server.port}`)
+const stop = () => { releaseHeld?.(); failure?.release(); server.stop(true); process.exit(0) }
+process.once("SIGTERM", stop)
+process.once("SIGINT", stop)

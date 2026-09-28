@@ -137,6 +137,21 @@ export function moveDraftMapping(
   return { ...draft, rows };
 }
 
+export function moveDraftMappingTo(
+  draft: ModelMappingsDraft,
+  sourceRowId: string,
+  targetRowId: string,
+): ModelMappingsDraft {
+  const from = draft.rows.findIndex((row) => row.rowId === sourceRowId);
+  const to = draft.rows.findIndex((row) => row.rowId === targetRowId);
+  if (from < 0 || to < 0 || from === to) return draft;
+  const rows = [...draft.rows];
+  const [source] = rows.splice(from, 1);
+  if (!source) return draft;
+  rows.splice(to, 0, source);
+  return { ...draft, rows };
+}
+
 export function setDraftSaveAttempted(
   draft: ModelMappingsDraft,
 ): ModelMappingsDraft {

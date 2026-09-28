@@ -10,6 +10,7 @@ import { VENDOR_PRESETS } from "./vendorPresets"
 import { createPortableUpstreamDraft } from "./duplicate-draft"
 import type { PortableUpstreamDraft } from "./duplicate-draft"
 import type { UpstreamRecord } from "../../api/types"
+import { moveUpstream } from "../../state/reorder-upstreams"
 
 type CreateMode = {
   kind: "create"
@@ -26,6 +27,8 @@ interface OwnerGroup {
   isMine: boolean
 }
 
+interface DragPreview { sourceId: string; targetId: string | null }
+
 export function UpstreamsTab() {
   const store = useUpstreams()
   const { session } = useAuth()
@@ -36,6 +39,7 @@ export function UpstreamsTab() {
   const [deviceFlowOpen, setDeviceFlowOpen] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [presetMenuOpen, setPresetMenuOpen] = useState(false)
+  const [drag, setDrag] = useState<DragPreview | null>(null)
 
   // A menu that only closes by picking something strands the user on mobile,
   // where the toggle can scroll out of reach.
@@ -55,6 +59,15 @@ export function UpstreamsTab() {
       document.removeEventListener("mousedown", onPointer)
     }
   }, [presetMenuOpen])
+
+  useEffect(() => {
+    if (!drag) return
+    const cancel = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDrag(null)
+    }
+    document.addEventListener("keydown", cancel)
+    return () => document.removeEventListener("keydown", cancel)
+  }, [drag])
 
   const openCreate = (provider: "custom" | "azure" | "sdf", presetId?: string) => {
     setEditingId(null)
@@ -80,10 +93,22 @@ export function UpstreamsTab() {
 
   const myOwnerId = session?.userId != null ? String(session.userId) : ""
   const isAdmin = !!session?.isAdmin
+  const previewRows = useMemo(
+    () => drag?.targetId
+      ? moveUpstream(store.upstreams, drag.sourceId, drag.targetId, myOwnerId)
+      : store.upstreams,
+    [store.upstreams, drag, myOwnerId],
+  )
+  const canDropOn = (sourceId: string, target: UpstreamRecord) => {
+    const source = store.upstreams.find((row) => row.id === sourceId)
+    return !!source && source.id !== target.id &&
+      source.ownerId === myOwnerId && target.ownerId === myOwnerId &&
+      source.enabled === target.enabled
+  }
 
   const groups: OwnerGroup[] = useMemo(() => {
     const map = new Map<string, OwnerGroup>()
-    for (const u of store.upstreams) {
+    for (const u of previewRows) {
       const key = u.ownerId || ""
       let g = map.get(key)
       if (!g) {
@@ -106,7 +131,7 @@ export function UpstreamsTab() {
       if (a.isMine !== b.isMine) return a.isMine ? -1 : 1
       return a.label.localeCompare(b.label)
     })
-  }, [store.upstreams, myOwnerId, t])
+  }, [previewRows, myOwnerId, t])
 
   return (
     <div>
@@ -231,9 +256,30 @@ export function UpstreamsTab() {
                       <div key={u.id}>
                         <UpstreamRow
                           row={u}
-                          index={idx}
-                          total={g.rows.length}
+                          index={g.rows.slice(0, idx).filter((row) => row.enabled === u.enabled).length}
+                          total={g.rows.filter((row) => row.enabled === u.enabled).length}
                           busy={!!store.busy[u.id]}
+                          dragging={drag?.sourceId === u.id}
+                          dropTarget={drag?.targetId === u.id}
+                          onDragStart={(event) => {
+                            if (!g.isMine) { event.preventDefault(); return }
+                            event.dataTransfer.effectAllowed = "move"
+                            event.dataTransfer.setData("text/plain", u.id)
+                            setDrag({ sourceId: u.id, targetId: null })
+                          }}
+                          onDragOver={(event) => {
+                            if (!drag || !canDropOn(drag.sourceId, u)) return
+                            event.preventDefault()
+                            event.dataTransfer.dropEffect = "move"
+                            if (drag.targetId !== u.id) setDrag({ ...drag, targetId: u.id })
+                          }}
+                          onDrop={(event) => {
+                            if (!drag || !canDropOn(drag.sourceId, u)) return
+                            event.preventDefault()
+                            store.reorderTo(drag.sourceId, u.id, myOwnerId)
+                            setDrag(null)
+                          }}
+                          onDragEnd={() => setDrag(null)}
                           models={store.modelsByUpstream.get(u.id)}
                           editing={editingId === u.id}
                           readOnly={!g.isMine}
@@ -241,7 +287,7 @@ export function UpstreamsTab() {
                           proxyOpen={proxyId === u.id}
                           onToggleProxy={() => setProxyId((v) => (v === u.id ? null : u.id))}
                           onToggleEnabled={() => store.toggleEnabled(u)}
-                          onReorder={(d) => store.reorder(u.id, d)}
+                          onReorder={(d) => store.reorder(u.id, d, myOwnerId)}
                           onEdit={() => openEdit(u)}
                           onDuplicate={() => openDuplicate(u)}
                           onRefreshModels={() => store.probe(u.id)}

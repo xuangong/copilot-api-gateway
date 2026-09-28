@@ -1,0 +1,238 @@
+// D06 acceptance against the real temporary Gateway. Run each scenario in a fresh fixture.
+import { chromium } from "/Users/zhangxian/.nvm/versions/node/v22.23.2/lib/node_modules/playwright/index.mjs"
+import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
+import { dirname, join } from "node:path"
+
+const connection = process.env.D06_CONNECTION
+if (!connection) throw new Error("D06_CONNECTION is required")
+const { port, token, keyId, ownerId, foreignId, sourceRoot } = JSON.parse(readFileSync(connection, "utf8"))
+const base = `http://127.0.0.1:${port}`
+const scenario = process.argv[2] ?? "baseline"
+const ownEnabled = ["D06 Own A", "D06 Own B", "D06 Own C"]
+const ownDisabled = ["D06 Own Disabled D", "D06 Own Disabled E"]
+const initialMappings = ["d06-alias-a", "d06-alias-b", "d06-alias-c"]
+const browser = await chromium.launch({ headless: true })
+
+try {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+  await context.addCookies([{ name: "session_token", value: token, domain: "127.0.0.1", path: "/" }])
+  const page = await context.newPage()
+  const errors = []
+  const mutations = []
+  page.on("pageerror", error => errors.push(error.message))
+  page.on("request", request => {
+    const url = request.url()
+    if (url.startsWith(`${base}/api/upstreams/`) && request.method() === "PATCH") {
+      mutations.push({ kind: "upstream", url, body: request.postDataJSON() })
+    }
+    if (url === `${base}/api/keys/${keyId}` && request.method() === "PATCH") {
+      mutations.push({ kind: "mapping", url, body: request.postDataJSON() })
+    }
+  })
+  const state = async () => {
+    const response = await context.request.get(`${base}/__fixture/state`)
+    assert.equal(response.status(), 200)
+    return response.json()
+  }
+  const failNext = async delayed => {
+    const response = await context.request.post(`${base}/__fixture/fail-next${delayed ? "?delayed=1" : ""}`)
+    assert.equal(response.status(), 200)
+  }
+  const release = async () => {
+    const response = await context.request.post(`${base}/__fixture/release`)
+    assert.equal(response.status(), 200)
+  }
+  const persisted = async owner => {
+    const rows = (await state()).upstreams.filter(row => row.ownerId === owner)
+    return rows.sort((a, b) => Number(b.enabled) - Number(a.enabled) || a.sortOrder - b.sortOrder)
+  }
+  const persistedNames = async owner => (await persisted(owner)).map(row => {
+    const names = {
+      up_d06_own_a: "D06 Own A", up_d06_own_b: "D06 Own B", up_d06_own_c: "D06 Own C",
+      up_d06_own_d: "D06 Own Disabled D", up_d06_own_e: "D06 Own Disabled E",
+      up_d06_foreign_a: "D06 Foreign A", up_d06_foreign_b: "D06 Foreign B",
+    }
+    return names[row.id]
+  })
+  const card = name => page.locator("div.bg-surface-900").filter({ has: page.getByText(name, { exact: true }) }).first()
+  const domNames = async () => {
+    const texts = await page.locator("div.bg-surface-900 span.font-medium").allTextContents()
+    return texts.map(text => text.trim()).filter(text => text.startsWith("D06 "))
+  }
+  const sortMutations = () => mutations.filter(item => item.kind === "upstream" && "sortOrder" in item.body)
+  const handle = name => card(name).getByRole("button", { name: /drag|reorder/i })
+  const dragAfter = async (source, target) => {
+    const sourceHandle = handle(source)
+    assert.equal(await sourceHandle.count(), 1, `${source} must expose one accessible pointer reorder handle`)
+    await sourceHandle.dragTo(card(target), { targetPosition: { x: 36, y: 70 } })
+  }
+  const moveButton = (name, direction) => card(name).getByTitle(new RegExp(`^Move ${direction}$`, "i"))
+  const seed = await state()
+  assert.equal(seed.upstreams.length, 7)
+  assert.deepEqual(seed.mappings.map(row => row.source), initialMappings)
+  assert.deepEqual(await persistedNames(ownerId), [...ownEnabled, ...ownDisabled])
+  assert.deepEqual(await persistedNames(foreignId), ["D06 Foreign A", "D06 Foreign B"])
+
+  if (scenario === "mapping-draft") {
+    await page.goto(`${base}/dashboard#keys`)
+    await page.waitForLoadState("networkidle")
+    await page.getByText("D06 Mapping Key", { exact: true }).click()
+    const panel = page.locator("div.glass-card").filter({ has: page.getByText("Model mappings", { exact: true }) }).first()
+    await panel.getByRole("button", { name: "Edit", exact: true }).click()
+    const sources = () => panel.locator('input[id^="model-mapping-source-"]')
+    const sourceValues = async () => sources().evaluateAll(inputs => inputs.map(input => input.value))
+    assert.deepEqual(await sourceValues(), initialMappings)
+    const rows = panel.locator("div.rounded-lg.bg-surface-700\\/50")
+    const firstHandle = rows.nth(0).getByRole("button", { name: /drag|reorder/i })
+    assert.equal(await firstHandle.count(), 1, "mapping draft must expose an accessible pointer handle")
+    await firstHandle.dragTo(rows.nth(2), { targetPosition: { x: 30, y: 20 } })
+    assert.deepEqual(await sourceValues(), ["d06-alias-b", "d06-alias-c", "d06-alias-a"])
+    assert.deepEqual((await state()).mappings.map(row => row.source), initialMappings, "draft move must not PATCH")
+    assert.equal(mutations.length, 0)
+    await panel.getByRole("button", { name: "Cancel", exact: true }).click()
+    await panel.getByRole("button", { name: "Edit", exact: true }).click()
+    assert.deepEqual(await sourceValues(), initialMappings, "Cancel must reset the draft")
+    const cancelHandle = rows.nth(0).getByRole("button", { name: /drag|reorder/i })
+    await cancelHandle.scrollIntoViewIfNeeded()
+    const cancelBox = await cancelHandle.boundingBox()
+    const cancelTarget = await rows.nth(2).boundingBox()
+    assert.ok(cancelBox && cancelTarget)
+    await page.mouse.move(cancelBox.x + cancelBox.width / 2, cancelBox.y + cancelBox.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(cancelTarget.x + 30, cancelTarget.y + 20, { steps: 8 })
+    await page.keyboard.press("Escape")
+    await page.mouse.up()
+    assert.deepEqual(await sourceValues(), initialMappings, "Escape must cancel mapping pointer move")
+    assert.equal(mutations.length, 0)
+    await rows.nth(0).getByRole("button", { name: /drag|reorder/i }).focus()
+    await page.keyboard.press("ArrowDown")
+    assert.deepEqual(await sourceValues(), ["d06-alias-b", "d06-alias-a", "d06-alias-c"], "mapping handle supports ArrowDown")
+    await rows.nth(1).getByRole("button", { name: /drag|reorder/i }).focus()
+    await page.keyboard.press("ArrowUp")
+    assert.deepEqual(await sourceValues(), initialMappings, "mapping handle supports ArrowUp")
+    await rows.nth(0).getByRole("button", { name: /Move mapping 1 down/i }).focus()
+    await page.keyboard.press("Enter")
+    assert.deepEqual(await sourceValues(), ["d06-alias-b", "d06-alias-a", "d06-alias-c"])
+    const response = page.waitForResponse(r => r.url() === `${base}/api/keys/${keyId}` && r.request().method() === "PATCH")
+    await panel.getByRole("button", { name: "Save", exact: true }).click()
+    assert.equal((await response).status(), 200)
+    assert.deepEqual((await state()).mappings.map(row => row.source), ["d06-alias-b", "d06-alias-a", "d06-alias-c"])
+    assert.deepEqual(await persistedNames(ownerId), [...ownEnabled, ...ownDisabled], "mapping PATCH cannot alter upstream sortOrder")
+    assert.equal(sortMutations().length, 0)
+    assert.deepEqual(mutations.find(item => item.kind === "mapping")?.body.model_mappings.map(row => row.source),
+      ["d06-alias-b", "d06-alias-a", "d06-alias-c"])
+  } else {
+    await page.goto(`${base}/dashboard#upstreams`)
+    await page.waitForLoadState("networkidle")
+    await page.getByText("D06 Own A", { exact: true }).waitFor()
+    await page.getByText("D06 Foreign A", { exact: true }).waitFor()
+    assert.deepEqual((await domNames()).filter(name => name.startsWith("D06 Own")), [...ownEnabled, ...ownDisabled])
+    if (scenario === "baseline") {
+      await page.goto(`${base}/dashboard#keys`)
+      await page.waitForLoadState("networkidle")
+      await page.getByText("D06 Mapping Key", { exact: true }).click()
+      const mappingPanel = page.locator("div.glass-card").filter({ has: page.getByText("Model mappings", { exact: true }) }).first()
+      await mappingPanel.getByText("d06-alias-a", { exact: true }).waitFor()
+      assert.equal(await mappingPanel.getByText("d06-alias-b", { exact: true }).count(), 1)
+      assert.equal(await mappingPanel.getByText("d06-alias-c", { exact: true }).count(), 1)
+      assert.deepEqual(mutations, [], "baseline navigation must be read-only")
+      assert.deepEqual(errors, [])
+      console.log(JSON.stringify({ scenario, sourceRoot, rows: seed.upstreams.length,
+        enabled: ownEnabled.length, disabled: ownDisabled.length, foreign: 2,
+        pointerHandleCount: await handle("D06 Own B").count(),
+        mappingRows: seed.mappings.length, errors }, null, 2))
+    } else if (scenario === "upstream-pointer") {
+      await dragAfter("D06 Own B", "D06 Own C")
+      await page.waitForTimeout(400)
+      assert.deepEqual((await domNames()).filter(name => name.startsWith("D06 Own")),
+        ["D06 Own A", "D06 Own C", "D06 Own B", ...ownDisabled])
+      assert.deepEqual(await persistedNames(ownerId), ["D06 Own A", "D06 Own C", "D06 Own B", ...ownDisabled])
+      assert.equal(sortMutations().length, 1)
+      assert.ok(!("enabled" in sortMutations()[0].body), "move must not toggle enabled")
+      await page.reload()
+      await page.getByText("D06 Own B", { exact: true }).waitFor()
+      assert.deepEqual((await domNames()).filter(name => name.startsWith("D06 Own")),
+        ["D06 Own A", "D06 Own C", "D06 Own B", ...ownDisabled])
+    } else if (scenario === "upstream-keyboard" || scenario === "upstream-handle-keyboard") {
+      const button = scenario === "upstream-handle-keyboard" ? handle("D06 Own B") : moveButton("D06 Own B", "down")
+      assert.equal(await button.count(), 1, "keyboard move control needs an accessible name")
+      await button.focus()
+      await page.keyboard.press(scenario === "upstream-handle-keyboard" ? "ArrowDown" : "Enter")
+      await page.waitForTimeout(400)
+      assert.deepEqual(await persistedNames(ownerId), ["D06 Own A", "D06 Own C", "D06 Own B", ...ownDisabled])
+      assert.equal(sortMutations().length, 1)
+    } else if (scenario === "upstream-boundaries") {
+      assert.equal(await handle("D06 Foreign A").count() === 0 || await handle("D06 Foreign A").isDisabled(), true,
+        "foreign owner must have no enabled drag handle")
+      assert.equal(await moveButton("D06 Foreign A", "down").isDisabled(), true)
+      await dragAfter("D06 Own C", "D06 Own Disabled D")
+      await dragAfter("D06 Own B", "D06 Own B")
+      await page.waitForTimeout(200)
+      assert.deepEqual(await persistedNames(ownerId), [...ownEnabled, ...ownDisabled])
+      assert.equal(sortMutations().length, 0, "cross-partition and no-op drops must not PATCH")
+      assert.equal(await card("D06 Own B").getByRole("button", { name: "Edit", exact: true }).count(), 1,
+        "handle must not activate adjacent Edit")
+      assert.equal(await card("D06 Own B").locator("input[type=checkbox]").isChecked(), true)
+    } else if (scenario === "upstream-cancel") {
+      const source = handle("D06 Own B")
+      assert.equal(await source.count(), 1)
+      const box = await source.boundingBox()
+      const target = await card("D06 Own C").boundingBox()
+      assert.ok(box && target)
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 8 })
+      await page.keyboard.press("Escape")
+      await page.mouse.up()
+      assert.deepEqual(await persistedNames(ownerId), [...ownEnabled, ...ownDisabled])
+      assert.deepEqual((await domNames()).filter(name => name.startsWith("D06 Own")), [...ownEnabled, ...ownDisabled])
+      assert.equal(sortMutations().length, 0)
+    } else if (scenario === "upstream-failure") {
+      await failNext(false)
+      await moveButton("D06 Own B", "up").click()
+      await page.waitForTimeout(400)
+      assert.equal((await state()).intercepted, 1)
+      assert.deepEqual(await persistedNames(ownerId), [...ownEnabled, ...ownDisabled])
+      assert.deepEqual((await domNames()).filter(name => name.startsWith("D06 Own")), [...ownEnabled, ...ownDisabled],
+        "failed save must roll preview back")
+      assert.equal(sortMutations().length, 1)
+    } else if (scenario === "upstream-stale") {
+      await failNext(true)
+      await moveButton("D06 Own C", "up").click()
+      await page.waitForFunction(async () => {
+        const response = await fetch("/__fixture/state")
+        return (await response.json()).intercepted === 1
+      })
+      const second = moveButton("D06 Own B", "up")
+      const queued = await second.isDisabled()
+      if (!queued) await second.click()
+      await release()
+      if (queued) {
+        await second.waitFor({ state: "visible" })
+        await page.waitForFunction(() => {
+          const b = [...document.querySelectorAll("button")].find(node => node.title === "Move up" && node.closest(".bg-surface-900")?.textContent?.includes("D06 Own B"))
+          return b && !b.disabled
+        })
+        await second.click()
+      }
+      await page.waitForTimeout(500)
+      assert.deepEqual(await persistedNames(ownerId), ["D06 Own B", "D06 Own A", "D06 Own C", ...ownDisabled])
+      assert.deepEqual((await domNames()).filter(name => name.startsWith("D06 Own")),
+        ["D06 Own B", "D06 Own A", "D06 Own C", ...ownDisabled],
+        "older failure must not overwrite a newer reorder")
+      assert.equal(sortMutations().length, 2)
+    } else {
+      throw new Error(`Unknown scenario: ${scenario}`)
+    }
+    if (scenario !== "baseline") {
+      assert.deepEqual((await state()).mappings.map(row => row.source), initialMappings,
+        "upstream reorder must not change key mappings")
+    }
+  }
+  assert.deepEqual(errors, [], "browser page errors")
+  await page.screenshot({ path: join(dirname(connection), `${scenario}.png`), fullPage: true })
+  if (scenario !== "baseline") console.log(JSON.stringify({ scenario, sourceRoot, mutations, errors, passed: true }, null, 2))
+} finally {
+  await browser.close()
+}
