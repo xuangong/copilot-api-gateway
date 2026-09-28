@@ -1,0 +1,25 @@
+# A08 official SDK synthetic-transport validation
+
+## Scope and method
+
+- Target: committed A08 `d2d2a916` in clean `/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify`. The verification worktree advanced during this probe to `646afb2f`, a docs-only commit; `git diff d2d2a916..HEAD` across A08 protocol, translate and responder paths is empty, and the sampled translator file matches its `d2d2a916` SHA-256 (`c6163d91dffaa47e58492b4ebe1465bccc03ef2fce1be7f0a7db9b05c0fbb77e`). `git status --short` remained empty.
+- Probe: [a08-sdk-probe.ts](a08-sdk-probe.ts.txt), with complete gateway JSON/SSE wire and SDK observations in [a08-sdk-probe-output.txt](a08-sdk-probe-output.txt). It imports the actual committed protocol expander, translators and responders from the verification worktree, then provides their `Response` objects to official SDKs through injected `fetch`. Installed versions were `openai@6.33.0` and `@anthropic-ai/sdk@0.80.0` from `/tmp/vnext-reference-sdk-probe/node_modules`.
+- Reproduce: `cp vnext/docs/superpowers/research/2026-09-29-refusal-sdk-evidence/a08-sdk-probe.ts.txt /tmp/vnext-reference-sdk-probe/a08-sdk-probe.ts`, then run `bun /tmp/vnext-reference-sdk-probe/a08-sdk-probe.ts` from the clean verification worktree. The final run exited 0 and printed `PASS`. No HTTP server, network call, credential, upstream model, installation, or deployment was used. No Gemini SDK was installed in the probe environment, so no Gemini claim is made.
+
+## Observed behavior
+
+| Case | Gateway wire and official SDK observation |
+| --- | --- |
+| Explicit empty Responses refusal, JSON/SSE | JSON `output[0].content` contains `{type:"refusal",refusal:""}` and OpenAI `responses.create()` retains it. SSE contains `response.refusal.done` with `refusal:""`; low-level `responses.create(stream:true)` retains it and `responses.stream().finalResponse()` returns a completed response with the empty refusal part. |
+| Mixed Responses text/refusal/text, JSON/SSE | JSON and SSE keep `Before`, `Denied`, `After` in three ordered parts. OpenAI Responses high-level `finalResponse()` retains all three parts. |
+| Responses → Chat, JSON/SSE | JSON `message.refusal` is `""` or `"Denied"`, and official `chat.completions.create()` retains it. SSE low-level Chat chunks include `delta.refusal:""` or `"Denied"`, and finish with `stop`. For mixed content, `finalChatCompletion()` has `refusal:"Denied"` and `content:"BeforeAfter"`. See SDK limitation below for empty refusal aggregation. |
+| Responses → Messages, JSON/SSE | JSON and Anthropic `messages.create()` retain an empty text block or three ordered text blocks, with `stop_reason:"refusal"`. SSE low-level events retain block boundaries and refusal stop. Anthropic `messages.stream().finalMessage()` returns `[{text:""}]` or `[{text:"Before"},{text:"Denied"},{text:"After"}]`, each with `stop_reason:"refusal"`. |
+| Failed Responses JSON | Native Responses returns HTTP 200 with `status:"failed"`, `error.message:"Policy denied"`; OpenAI `responses.create()` returns the same failed envelope. Chat and Messages responders each return HTTP 502; official OpenAI Chat and Anthropic Messages SDKs each throw a 502 error containing `Policy denied`. No translated JSON success was observed. |
+| Failed native Responses SSE | Gateway emits `response.failed` as its final frame with `Policy denied`, without `response.completed`. Low-level OpenAI `responses.create(stream:true)` observes that failed event. See SDK limitation below for `finalResponse()`. |
+
+## Official OpenAI SDK high-level limits
+
+1. OpenAI Chat `finalChatCompletion()` loses an **explicit empty** refusal: it reports `message.refusal:null` although the gateway wire and `chat.completions.create(stream:true)` chunks both contain `delta.refusal:""`. The installed SDK's [ChatCompletionStream.ts](/tmp/vnext-reference-sdk-probe/node_modules/openai/src/lib/ChatCompletionStream.ts) lines 490–495 update the refusal snapshot only under the truthy `if (refusal)` condition. This is SDK aggregation behavior; changing the gateway to a fabricated nonempty refusal would change A08 semantics.
+2. OpenAI Responses `responses.stream().finalResponse()` returns the earlier `in_progress` snapshot for a stream terminated by `response.failed`, with no thrown exception. The low-level event remains correctly failed. In the installed SDK's [ResponseStream.ts](/tmp/vnext-reference-sdk-probe/node_modules/openai/src/lib/responses/ResponseStream.ts), lines 281–285 replace the snapshot only on `response.completed`; lines 150–160 finalize the remaining snapshot and lines 355–359 return it. Consumers must inspect the low-level terminal event or the nonstream JSON failed status for this SDK version. A gateway-added second error or fake completion would misstate the upstream outcome.
+
+These SDK observations do not establish live provider behavior, route authentication, or deployed service behavior. The tested A08 wire and low-level SDK behavior showed no new false-success translation, while the two OpenAI high-level aggregation APIs have the limits above.

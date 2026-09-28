@@ -1,0 +1,157 @@
+import assert from "node:assert/strict"
+import OpenAI from "openai"
+import Anthropic from "@anthropic-ai/sdk"
+import { eventFrame, type ProtocolFrame } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/packages/result/src/index.ts"
+import { llmEventResult } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/packages/protocols-llm/src/common/index.ts"
+import { responsesResultToEvents } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/packages/protocols-llm/src/responses/from-result.ts"
+import { respondResponses } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/packages/gateway/src/data-plane/chat-flow/responses/respond.ts"
+import { respondChatCompletions } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/packages/gateway/src/data-plane/chat-flow/chat-completions/respond.ts"
+import { respondMessages } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/packages/gateway/src/data-plane/chat-flow/messages/respond.ts"
+import { translateResponsesToChatBody, translateResponsesToChatSSE } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/packages/translate/src/chat-completions-via-responses/index.ts"
+import { translateResponsesToMessagesBody, translateResponsesEventsToMessagesEvents } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/packages/translate/src/messages-via-responses/index.ts"
+
+const identity = { incomingModel: "m", model: "m", upstream: "test", modelKey: "m", cost: null }
+const parts = {
+  empty: [{ type: "refusal", refusal: "" }],
+  mixed: [{ type: "output_text", text: "Before" }, { type: "refusal", refusal: "Denied" }, { type: "output_text", text: "After" }],
+}
+function result(name: "empty" | "mixed" | "failed") {
+  return {
+    id: `resp_${name}`, object: "response", model: "m",
+    status: name === "failed" ? "failed" : "completed",
+    output: name === "failed" ? [] : [{ type: "message", id: `msg_${name}`, role: "assistant", content: parts[name] }],
+    error: name === "failed" ? { code: "invalid_prompt", message: "Policy denied" } : null,
+    incomplete_details: null,
+  }
+}
+async function* frames(body: ReturnType<typeof result>, expanded: boolean): AsyncGenerator<ProtocolFrame<never>> {
+  if (expanded) {
+    for (const frame of responsesResultToEvents(body as never)) yield frame as ProtocolFrame<never>
+  } else {
+    yield eventFrame({ type: body.status === "failed" ? "response.failed" : "response.completed", response: body } as never)
+  }
+}
+async function render(target: "responses" | "chat" | "messages", name: "empty" | "mixed" | "failed", stream: boolean): Promise<Response> {
+  const source = result(name)
+  const data = frames(source, stream)
+  if (target === "responses") return respondResponses(llmEventResult(data, identity), { wantsStream: stream })
+  if (target === "chat") return respondChatCompletions(llmEventResult(
+    data,
+    { ...identity, translatorPair: { source: "chat_completions", hub: "responses" } },
+    undefined, undefined,
+    stream ? undefined : async body => translateResponsesToChatBody(body),
+    stream ? translateResponsesToChatSSE : undefined,
+  ), { wantsStream: stream, includeUsageChunk: false })
+  return respondMessages(llmEventResult(
+    data,
+    { ...identity, translatorPair: { source: "messages", hub: "responses" } },
+    undefined, undefined,
+    stream ? undefined : async body => translateResponsesToMessagesBody(body as never),
+    stream ? translateResponsesEventsToMessagesEvents : undefined,
+  ), { wantsStream: stream })
+}
+function sdkFetch(response: Response) {
+  return async () => response.clone()
+}
+function record(label: string, value: unknown) { console.log(JSON.stringify({ label, value })) }
+for (const name of ["empty", "mixed"] as const) {
+  for (const stream of [false, true]) {
+    const native = await render("responses", name, stream)
+    const nativeWire = await native.clone().text()
+    record(`responses ${name} ${stream ? "SSE" : "JSON"} wire`, { status: native.status, body: nativeWire })
+    const openai = new OpenAI({ apiKey: "synthetic-no-network", maxRetries: 0, fetch: sdkFetch(native) })
+    if (stream) {
+      const events = []
+      for await (const event of await openai.responses.create({ model: "m", input: "synthetic", stream: true })) events.push(event)
+      const final = await new OpenAI({ apiKey: "synthetic-no-network", maxRetries: 0, fetch: sdkFetch(native) }).responses.stream({ model: "m", input: "synthetic" }).finalResponse()
+      record(`responses ${name} SSE SDK`, { types: events.map(e => e.type), finalStatus: final.status, content: final.output?.[0]?.type === "message" ? final.output[0].content : null })
+      assert.equal(final.status, "completed")
+      assert.ok(events.some(e => e.type === "response.refusal.done" && e.refusal === (name === "empty" ? "" : "Denied")))
+      assert.ok(!events.some(e => e.type === "response.failed"))
+    } else {
+      const parsed = await openai.responses.create({ model: "m", input: "synthetic" })
+      record(`responses ${name} JSON SDK`, { status: parsed.status, content: parsed.output?.[0]?.type === "message" ? parsed.output[0].content : null })
+      assert.equal(parsed.status, "completed")
+      assert.equal(parsed.output?.[0]?.type === "message" ? parsed.output[0].content.some(p => p.type === "refusal" && p.refusal === (name === "empty" ? "" : "Denied")) : false, true)
+    }
+
+    const chat = await render("chat", name, stream)
+    const chatWire = await chat.clone().text()
+    record(`chat ${name} ${stream ? "SSE" : "JSON"} wire`, { status: chat.status, body: chatWire })
+    const chatSdk = new OpenAI({ apiKey: "synthetic-no-network", maxRetries: 0, fetch: sdkFetch(chat) })
+    if (stream) {
+      const chunks = []
+      for await (const chunk of await chatSdk.chat.completions.create({ model: "m", messages: [{ role: "user", content: "synthetic" }], stream: true })) chunks.push(chunk)
+      const final = await new OpenAI({ apiKey: "synthetic-no-network", maxRetries: 0, fetch: sdkFetch(chat) }).chat.completions.stream({ model: "m", messages: [{ role: "user", content: "synthetic" }] }).finalChatCompletion()
+      record(`chat ${name} SSE SDK`, { deltas: chunks.flatMap(c => c.choices.map(x => x.delta)), finishReasons: chunks.flatMap(c => c.choices.map(x => x.finish_reason)), finalMessage: final.choices[0]?.message, finalFinishReason: final.choices[0]?.finish_reason })
+      assert.ok(chunks.some(c => c.choices.some(x => x.delta.refusal === (name === "empty" ? "" : "Denied"))))
+      assert.ok(chunks.some(c => c.choices.some(x => x.finish_reason === "stop")))
+      // The SDK's high-level accumulator drops an explicit empty refusal.
+      // Keep the raw/low-level assertion above, and record this SDK limit.
+      assert.equal(final.choices[0]?.message.refusal, name === "empty" ? null : "Denied")
+      assert.equal(final.choices[0]?.message.content, name === "empty" ? null : "BeforeAfter")
+      assert.equal(final.choices[0]?.finish_reason, "stop")
+    } else {
+      const parsed = await chatSdk.chat.completions.create({ model: "m", messages: [{ role: "user", content: "synthetic" }] })
+      record(`chat ${name} JSON SDK`, { message: parsed.choices[0]?.message, finishReason: parsed.choices[0]?.finish_reason })
+      assert.equal(parsed.choices[0]?.message.refusal, name === "empty" ? "" : "Denied")
+      assert.equal(parsed.choices[0]?.message.content, name === "empty" ? "" : "BeforeAfter")
+    }
+
+    const messages = await render("messages", name, stream)
+    const messagesWire = await messages.clone().text()
+    record(`messages ${name} ${stream ? "SSE" : "JSON"} wire`, { status: messages.status, body: messagesWire })
+    const anthropic = new Anthropic({ apiKey: "synthetic-no-network", maxRetries: 0, fetch: sdkFetch(messages) })
+    const params = { model: "m", max_tokens: 10, messages: [{ role: "user" as const, content: "synthetic" }] }
+    if (stream) {
+      const events = []
+      for await (const event of await anthropic.messages.create({ ...params, stream: true })) events.push(event)
+      const final = await new Anthropic({ apiKey: "synthetic-no-network", maxRetries: 0, fetch: sdkFetch(messages) }).messages.stream(params).finalMessage()
+      record(`messages ${name} SSE SDK`, { types: events.map(e => e.type), blocks: events.filter(e => e.type === "content_block_start").map(e => e.content_block), stop: events.find(e => e.type === "message_delta"), finalContent: final.content, finalStopReason: final.stop_reason })
+      assert.equal(events.filter(e => e.type === "content_block_start").length, name === "empty" ? 1 : 3)
+      assert.ok(events.some(e => e.type === "message_delta" && e.delta.stop_reason === "refusal"))
+      assert.deepEqual(final.content.map(p => p.type === "text" ? p.text : null), name === "empty" ? [""] : ["Before", "Denied", "After"])
+      assert.equal(final.stop_reason, "refusal")
+    } else {
+      const parsed = await anthropic.messages.create(params)
+      record(`messages ${name} JSON SDK`, { content: parsed.content, stopReason: parsed.stop_reason })
+      assert.deepEqual(parsed.content.map(p => p.type === "text" ? p.text : null), name === "empty" ? [""] : ["Before", "Denied", "After"])
+      assert.equal(parsed.stop_reason, "refusal")
+    }
+  }
+}
+
+for (const target of ["responses", "chat", "messages"] as const) {
+  const wire = await render(target, "failed", false)
+  record(`${target} failed JSON wire`, { status: wire.status, body: await wire.clone().text() })
+  if (target === "responses") {
+    assert.equal(wire.status, 200)
+    const parsed = await new OpenAI({ apiKey: "synthetic-no-network", maxRetries: 0, fetch: sdkFetch(wire) }).responses.create({ model: "m", input: "synthetic" })
+    record("responses failed JSON SDK", { status: parsed.status, error: parsed.error })
+    assert.equal(parsed.status, "failed")
+    assert.equal(parsed.error?.message, "Policy denied")
+  } else {
+    assert.equal(wire.status, 502)
+    let caught: unknown
+    try {
+      if (target === "chat") await new OpenAI({ apiKey: "synthetic-no-network", maxRetries: 0, fetch: sdkFetch(wire) }).chat.completions.create({ model: "m", messages: [{ role: "user", content: "synthetic" }] })
+      else await new Anthropic({ apiKey: "synthetic-no-network", maxRetries: 0, fetch: sdkFetch(wire) }).messages.create({ model: "m", max_tokens: 10, messages: [{ role: "user", content: "synthetic" }] })
+    } catch (error) { caught = error }
+    record(`${target} failed JSON SDK`, { name: (caught as Error)?.name, message: (caught as Error)?.message, status: (caught as { status?: number })?.status })
+    assert.equal((caught as { status?: number })?.status, 502)
+    assert.match((caught as Error).message, /Policy denied/)
+  }
+}
+const failedSse = await render("responses", "failed", true)
+record("responses failed SSE wire", { status: failedSse.status, body: await failedSse.clone().text() })
+const failedSdk = new OpenAI({ apiKey: "synthetic-no-network", maxRetries: 0, fetch: sdkFetch(failedSse) })
+const failedEvents = []
+for await (const event of await failedSdk.responses.create({ model: "m", input: "synthetic", stream: true })) failedEvents.push(event)
+let failedFinal: unknown
+let failedFinalError: unknown
+try { failedFinal = await new OpenAI({ apiKey: "synthetic-no-network", maxRetries: 0, fetch: sdkFetch(failedSse) }).responses.stream({ model: "m", input: "synthetic" }).finalResponse() }
+catch (error) { failedFinalError = error }
+record("responses failed SSE SDK", { types: failedEvents.map(e => e.type), terminal: failedEvents.at(-1), finalResponse: failedFinal, finalResponseError: failedFinalError instanceof Error ? failedFinalError.message : failedFinalError })
+assert.equal(failedEvents.at(-1)?.type, "response.failed")
+assert.ok(!failedEvents.some(e => e.type === "response.completed"))
+console.log("PASS: official OpenAI 6.33.0 and Anthropic 0.80.0, synthetic fetch only, no live model/service/credentials/network")
