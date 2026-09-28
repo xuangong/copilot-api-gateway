@@ -139,9 +139,16 @@ const rawStringToBytes = (value: string): Uint8Array => {
 
 const rawStringFromBytes = (bytes: Uint8Array): string => {
   if (bytes.length % 2 !== 0) throw new TypeError('Raw opaque value has an odd byte length')
-  let value = ''
-  for (let offset = 0; offset < bytes.length; offset += 2) {
-    value += String.fromCharCode((bytes[offset]! << 8) | bytes[offset + 1]!)
+  // Bound retained string structures without normalizing BOMs or lone surrogates.
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const codeUnits = new Uint16Array(Math.min(bytes.length / 2, 8192))
+  const chunks: string[] = []
+  for (let offset = 0; offset < bytes.length; offset += codeUnits.length * 2) {
+    const length = Math.min(codeUnits.length, (bytes.length - offset) / 2)
+    for (let index = 0; index < length; index++) {
+      codeUnits[index] = view.getUint16(offset + index * 2)
+    }
+    chunks.push(String.fromCharCode(...codeUnits.subarray(0, length)))
   }
-  return value
+  return chunks.join('')
 }
