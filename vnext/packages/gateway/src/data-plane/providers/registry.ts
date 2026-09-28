@@ -173,7 +173,7 @@ const MODELS_REFRESH_MS = 120_000
 const MODELS_RETRY_MS = 30_000
 // Bump when provider discovery or projected catalog metadata changes. This is
 // independent of the per-upstream configuration hash below.
-export const MODEL_CATALOG_REVISION = 2
+export const MODEL_CATALOG_REVISION = 3
 interface ModelsSnapshot {
   codeRevision: number
   revision: string

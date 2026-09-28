@@ -20,9 +20,11 @@
 import { copilotPublicModelId } from "./variants"
 import type { ModelPricing } from "@vibe-llm/protocols/common"
 
+// verifiedOn dates only rows in copilotPricingCatalog, which mirrors the
+// audited GitHub page. Historical and internal fallback prices stay lookup-only.
 export const COPILOT_PRICING_SOURCE = {
   url: "https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing",
-  verifiedOn: "2026-08-27",
+  verifiedOn: "2026-09-29",
 } as const
 
 export interface PricingTier {
@@ -35,8 +37,8 @@ export interface PricingTier {
 
 export interface CopilotModelPricing {
   /**
-   * Model name exactly as printed in the docs, e.g. "GPT-5.5". Absent when the
-   * entry exists only to price a model the docs no longer list.
+   * Model name exactly as printed in the audited docs, e.g. "GPT-5.5".
+   * Absent on historical and internal lookup-only fallbacks.
    */
   readonly displayName?: string
   /** Matcher against the public model id. */
@@ -49,15 +51,12 @@ const only = (pricing: ModelPricing): readonly PricingTier[] => [{ label: "Defau
 const OPUS_4X_5: ModelPricing = { input: 5, input_cache_read: 0.5, input_cache_write: 6.25, output: 25 }
 const SONNET_4X: ModelPricing = { input: 3, input_cache_read: 0.3, input_cache_write: 3.75, output: 15 }
 const GEMINI_FLASH_PROMO: ModelPricing = { input: 0.75, input_cache_read: 0.075, output: 3.75 }
-// GitHub prices Sol at 50% off standard rates through 2026-09-03. The figures
-// here are the discounted ones the page prints, i.e. what is actually billed,
-// so this row needs re-checking after that date.
 const SOL: readonly PricingTier[] = [
-  { label: "Default", pricing: { input: 2, input_cache_read: 0.2, input_cache_write: 2.5, output: 10 } },
+  { label: "Default", pricing: { input: 4, input_cache_read: 0.4, input_cache_write: 5, output: 20 } },
   {
     label: "Long context",
     contextThreshold: 272_000,
-    pricing: { input: 4, input_cache_read: 0.4, input_cache_write: 5, output: 15 },
+    pricing: { input: 8, input_cache_read: 0.8, input_cache_write: 10, output: 30 },
   },
 ]
 const GROK_4X: readonly PricingTier[] = [
@@ -74,25 +73,28 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
   // ── Anthropic ────────────────────────────────────────────────────────────
   // Claude ids may appear in either dot form (`claude-opus-4.7`, Copilot raw)
   // or dash form (`claude-opus-4-7`, Anthropic public id), so the matchers
-  // accept `[.-]`. One entry per docs row, sharing a pricing constant.
-  { displayName: "Claude Opus 4.5", match: /^claude-opus-4[.-]5$/, tiers: only(OPUS_4X_5) },
-  { displayName: "Claude Opus 4.6", match: /^claude-opus-4[.-]6$/, tiers: only(OPUS_4X_5) },
+  // accept `[.-]`. Historical lookup-only rows share pricing constants.
+  { match: /^claude-opus-4[.-]5$/, tiers: only(OPUS_4X_5) },
+  { match: /^claude-opus-4[.-]6$/, tiers: only(OPUS_4X_5) },
   { displayName: "Claude Opus 4.7", match: /^claude-opus-4[.-]7$/, tiers: only(OPUS_4X_5) },
   { displayName: "Claude Opus 4.8", match: /^claude-opus-4[.-]8$/, tiers: only(OPUS_4X_5) },
-  { displayName: "Claude Opus 5", match: /^claude-opus-5([.-]\d)?$/, tiers: only(OPUS_4X_5) },
+  { displayName: "Claude Opus 4.8 (fast mode) (preview)", match: "claude-opus-4.8-fast", tiers: only({ input: 10, input_cache_read: 1, input_cache_write: 12.5, output: 50 }) },
+  { displayName: "Claude Opus 5", match: "claude-opus-5", tiers: only(OPUS_4X_5) },
+  { displayName: "Claude Opus 5.5", match: /^claude-opus-5[.-]5$/, tiers: only({ input: 4, input_cache_read: 0.2, input_cache_write: 5, output: 20 }) },
   { displayName: "Claude Sonnet 4", match: /^claude-sonnet-4$/, tiers: only(SONNET_4X) },
-  { displayName: "Claude Sonnet 4.5", match: /^claude-sonnet-4[.-]5$/, tiers: only(SONNET_4X) },
+  { match: /^claude-sonnet-4[.-]5$/, tiers: only(SONNET_4X) },
   { displayName: "Claude Sonnet 4.6", match: /^claude-sonnet-4[.-]6$/, tiers: only(SONNET_4X) },
   {
     displayName: "Claude Sonnet 5",
-    match: /^claude-sonnet-5([.-]\d)?$/,
+    match: "claude-sonnet-5",
     tiers: only({ input: 2, input_cache_read: 0.2, input_cache_write: 2.5, output: 10 }),
   },
   {
     displayName: "Claude Fable 5",
-    match: /^claude-fable-5([.-]\d)?$/,
+    match: "claude-fable-5",
     tiers: only({ input: 10, input_cache_read: 1, input_cache_write: 12.5, output: 50 }),
   },
+  { displayName: "Claude Fable 5.1", match: /^claude-fable-5[.-]1$/, tiers: only({ input: 10, input_cache_read: 0.25, input_cache_write: 12.5, output: 50 }) },
   {
     displayName: "Claude Haiku 4.5",
     match: /^claude-haiku-4[.-]5$/,
@@ -100,13 +102,29 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
   },
 
   // ── OpenAI ───────────────────────────────────────────────────────────────
-  // User-provided reference catalog, 2026-09-06: in 1000 / out 5000 /
-  // cache read 100 / cache write 1250, converted to USD per million tokens
-  // using the same scale as Terra and Luna. No context price bands supplied.
   {
     displayName: "GPT-6 Astra",
     match: "gpt-6-astra",
-    tiers: only({ input: 10, input_cache_read: 1, input_cache_write: 12.5, output: 50 }),
+    tiers: [
+      { label: "Default", pricing: { input: 10, input_cache_read: 1, input_cache_write: 12.5, output: 50 } },
+      { label: "Long context", contextThreshold: 272_000, pricing: { input: 20, input_cache_read: 2, input_cache_write: 25, output: 75 } },
+    ],
+  },
+  {
+    displayName: "GPT-6 Sol",
+    match: "gpt-6-sol",
+    tiers: [
+      { label: "Default", pricing: { input: 2, input_cache_read: 0.2, input_cache_write: 2.5, output: 10 } },
+      { label: "Long context", contextThreshold: 272_000, pricing: { input: 4, input_cache_read: 0.4, input_cache_write: 5, output: 15 } },
+    ],
+  },
+  {
+    displayName: "GPT-6 Luna",
+    match: "gpt-6-luna",
+    tiers: [
+      { label: "Default", pricing: { input: 0.1, input_cache_read: 0.01, input_cache_write: 0.125, output: 0.5 } },
+      { label: "Long context", contextThreshold: 272_000, pricing: { input: 0.2, input_cache_read: 0.02, input_cache_write: 0.25, output: 0.75 } },
+    ],
   },
   {
     displayName: "GPT-5.6 Sol",
@@ -119,14 +137,13 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
   // coincidence dressed up as a rule — do not "simplify" this back into
   // `SOL.map(x => x * 2)`.
   //
-  // The Default tier was confirmed against the catalog row on 2026-09-01
+  // This internal rate was confirmed against a separate catalog row on 2026-09-01
   // (in 400 / out 2000 / cache read 40 / cache write 500, in hundredths of a
   // cent per million). The Long context band is *not* in that table — the
   // catalog prints one 1M context column and no band split — so those four
   // figures remain unverified. They are unbilled today (`tiers[0]` is the only
   // tier billing reads) but would need checking before that changes.
   {
-    displayName: "GPT-5.6 Sol Fast (Internal only)",
     match: "gpt-5.6-sol-fast",
     tiers: [
       { label: "Default", pricing: { input: 4, input_cache_read: 0.4, input_cache_write: 5, output: 20 } },
@@ -224,7 +241,6 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
   { match: "gemini-2.5-pro", tiers: only({ input: 1.25, input_cache_read: 0.125, output: 10 }) },
   { match: "gemini-3-flash-preview", tiers: only({ input: 0.5, input_cache_read: 0.05, output: 3 }) },
   {
-    displayName: "Gemini 3.1 Pro",
     match: "gemini-3.1-pro-preview",
     tiers: [
       { label: "Default", pricing: { input: 2, input_cache_read: 0.2, output: 12 } },
@@ -240,7 +256,7 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
     match: "gemini-3.5-flash",
     tiers: only({ input: 1.5, input_cache_read: 0.15, output: 9 }),
   },
-  // Both flash rows carry a promotion GitHub says expires 2026-12-31; the
+  // Flash promotion rows expire 2026-12-31; the
   // standard rate is undisclosed, so they need re-checking after that date.
   {
     displayName: "Gemini 3.6 Flash",
@@ -252,39 +268,39 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
     match: "gemini-3.7-flash",
     tiers: only(GEMINI_FLASH_PROMO),
   },
+  { displayName: "Gemini 3.8 Flash", match: "gemini-3.8-flash", tiers: only(GEMINI_FLASH_PROMO) },
 
   // ── xAI ──────────────────────────────────────────────────────────────────
   { match: /^grok-code-fast/, tiers: only({ input: 0.2, output: 1.5 }) },
-  { displayName: "Grok 4.5", match: /^grok-4[.]5/, tiers: GROK_4X },
-  { displayName: "Grok 4.6", match: /^grok-4[.]6/, tiers: GROK_4X },
+  { displayName: "Grok 4.5", match: "grok-4.5", tiers: GROK_4X },
+  { displayName: "Grok 4.6", match: "grok-4.6", tiers: GROK_4X },
+  { displayName: "Grok 4.7", match: "grok-4.7", tiers: GROK_4X },
 
   // ── Microsoft ────────────────────────────────────────────────────────────
   {
     displayName: "MAI-Code-1.1-Flash",
-    match: /^mai-code-1[.]1-flash/,
+    match: "mai-code-1.1-flash",
     tiers: only({ input: 0.2, input_cache_read: 0.02, output: 1.2 }),
   },
   {
-    displayName: "MAI-Code-1-Flash",
-    match: /^mai-code-1-flash/,
+    match: "mai-code-1-flash",
     tiers: only({ input: 0.75, input_cache_read: 0.075, output: 4.5 }),
   },
 
   // ── Moonshot AI ──────────────────────────────────────────────────────────
   {
     displayName: "Kimi K2.7 Code",
-    match: /^kimi-k2[.]7-code/,
+    match: "kimi-k2.7-code",
     tiers: only({ input: 0.95, input_cache_read: 0.19, output: 4 }),
   },
   {
     displayName: "Kimi K3",
-    match: /^kimi-k3/,
+    match: "kimi-k3",
     tiers: only({ input: 3, input_cache_read: 0.3, output: 15 }),
   },
 
   // ── Fine-tuned (GitHub) ──────────────────────────────────────────────────
   {
-    displayName: "Raptor mini",
     match: "raptor-mini",
     tiers: only({ input: 0.25, input_cache_read: 0.025, output: 2 }),
   },
@@ -336,9 +352,9 @@ export interface CopilotPricingCatalog {
 }
 
 /**
- * The subset of the table that mirrors the docs page: entries carrying a
- * `displayName`. Billing-only entries (legacy and internal models the page no
- * longer lists) are filtered out. Regex matchers are never exposed.
+ * The audited public table: only entries carrying a `displayName`. Historical,
+ * internal, and billing-only fallbacks remain lookup-only. Regex matchers are
+ * never exposed.
  */
 export const copilotPricingCatalog = (): CopilotPricingCatalog => ({
   source: COPILOT_PRICING_SOURCE,

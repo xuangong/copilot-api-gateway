@@ -539,13 +539,13 @@ test('unversioned legacy catalogs are discarded after an upgrade', async () => {
   await expect(catalogIds()).rejects.toThrow()
 })
 
-test('an older code revision in L2 is discarded after restart', async () => {
+test('the prior pricing code revision in L2 is discarded after restart', async () => {
   const { upstream, l2 } = catalogFixture()
   await catalogIds()
   const key = `models:snapshot:${upstream.id}`
   const saved = await l2.get<Record<string, unknown>>(key)
   expect(saved).not.toBeNull()
-  await l2.set(key, { ...saved, codeRevision: 1 }, null)
+  await l2.set(key, { ...saved, codeRevision: 2 }, null)
   _clearModelsMemoForTest()
   failCatalog()
   await expect(catalogIds()).rejects.toThrow()

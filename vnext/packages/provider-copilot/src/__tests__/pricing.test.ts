@@ -96,10 +96,39 @@ test("display names are unique so no two rows render identically", () => {
   expect(new Set(names).size).toBe(names.length)
 })
 
-test("the catalog exposes only documented models", () => {
+test("the catalog excludes billing-only entries", () => {
   expect(copilotPricingCatalog().models.length).toBeLessThan(COPILOT_MODEL_PRICING.length)
   for (const model of copilotPricingCatalog().models) {
     expect(model.displayName.length).toBeGreaterThan(0)
+  }
+})
+
+test("the dated public catalog contains exactly the models in the audited GitHub pricing table", () => {
+  expect(copilotPricingCatalog().models.map((model) => model.displayName).sort()).toEqual([
+    "Claude Fable 5", "Claude Fable 5.1", "Claude Haiku 4.5",
+    "Claude Opus 4.7", "Claude Opus 4.8", "Claude Opus 4.8 (fast mode) (preview)",
+    "Claude Opus 5", "Claude Opus 5.5", "Claude Sonnet 4", "Claude Sonnet 4.6", "Claude Sonnet 5",
+    "GPT-5 mini", "GPT-5.3-Codex", "GPT-5.4", "GPT-5.4 mini", "GPT-5.4 nano",
+    "GPT-5.5", "GPT-5.6 Luna", "GPT-5.6 Sol", "GPT-5.6 Terra",
+    "GPT-6 Astra", "GPT-6 Luna", "GPT-6 Sol",
+    "Gemini 3.5 Flash", "Gemini 3.6 Flash", "Gemini 3.7 Flash", "Gemini 3.8 Flash",
+    "Grok 4.5", "Grok 4.6", "Grok 4.7",
+    "Kimi K2.7 Code", "Kimi K3", "MAI-Code-1.1-Flash",
+  ].sort())
+})
+
+test("historical and internal fallback rates remain available outside the dated catalog", () => {
+  const cases = [
+    ["claude-opus-4.5", { input: 5, input_cache_read: 0.5, input_cache_write: 6.25, output: 25 }],
+    ["claude-opus-4.6", { input: 5, input_cache_read: 0.5, input_cache_write: 6.25, output: 25 }],
+    ["claude-sonnet-4.5", { input: 3, input_cache_read: 0.3, input_cache_write: 3.75, output: 15 }],
+    ["gpt-5.6-sol-fast", { input: 4, input_cache_read: 0.4, input_cache_write: 5, output: 20 }],
+    ["gemini-3.1-pro-preview", { input: 2, input_cache_read: 0.2, output: 12 }],
+    ["mai-code-1-flash", { input: 0.75, input_cache_read: 0.075, output: 4.5 }],
+    ["raptor-mini", { input: 0.25, input_cache_read: 0.025, output: 2 }],
+  ] as const
+  for (const [modelId, expected] of cases) {
+    expect(pricingForCopilotModelKey(modelId)).toEqual(expected)
   }
 })
 
@@ -115,9 +144,12 @@ function catalogRow(displayName: string) {
   return row
 }
 
-test("GPT-6 Astra uses the reference catalog rates for display and usage pricing", () => {
+test("GPT-6 Astra uses the documented default and long-context display bands", () => {
   const pricing = { input: 10, input_cache_read: 1, input_cache_write: 12.5, output: 50 }
-  expect(catalogRow("GPT-6 Astra").tiers).toEqual([{ label: "Default", pricing }])
+  expect(catalogRow("GPT-6 Astra").tiers).toEqual([
+    { label: "Default", pricing },
+    { label: "Long context", contextThreshold: 272_000, pricing: { input: 20, input_cache_read: 2, input_cache_write: 25, output: 75 } },
+  ])
   expect(pricingForCopilotPublicModelId("gpt-6-astra")).toEqual(pricing)
   expect(pricingForCopilotModelKey("gpt-6-astra")).toEqual(pricing)
   expect(pricingForCopilotModelKey("gpt-6-astra-2026-09-06")).toEqual(pricing)
@@ -135,27 +167,22 @@ test("GPT-5.5 carries both published bands", () => {
   ])
 })
 
-// Sol shipped priced byte-identically to GPT-5.5 — a copy/paste that billed it
-// at 2.5x input and 3x output for five weeks. Pinning the real figures here.
-test("GPT-5.6 Sol carries the 50%-off promo rate, not GPT-5.5's", () => {
+test("GPT-5.6 Sol uses the post-promotion published rates", () => {
   const row = catalogRow("GPT-5.6 Sol")
   expect(row.tiers).toEqual([
     {
       label: "Default",
-      pricing: { input: 2, input_cache_read: 0.2, input_cache_write: 2.5, output: 10 },
+      pricing: { input: 4, input_cache_read: 0.4, input_cache_write: 5, output: 20 },
     },
     {
       label: "Long context",
       contextThreshold: 272_000,
-      pricing: { input: 4, input_cache_read: 0.4, input_cache_write: 5, output: 15 },
+      pricing: { input: 8, input_cache_read: 0.8, input_cache_write: 10, output: 30 },
     },
   ])
 })
 
-// The Default tier is pinned to literals, not to `Sol x 2`. It happens to be
-// double Sol today, but that is a coincidence — GitHub prices Opus 4.6/4.7 fast
-// at 6x their base — so asserting the ratio would enshrine a rule that does not
-// exist and would quietly "verify" a wrong number the next time Sol moves.
+// The internal Sol Fast row has separate provenance from today's public Sol price.
 test("Sol Fast's Default tier matches the published rates literally", () => {
   const fast = COPILOT_MODEL_PRICING.find((m) => m.match === "gpt-5.6-sol-fast")
   if (!fast) throw new Error("no gpt-5.6-sol-fast entry")
@@ -181,28 +208,26 @@ test("GPT-5.6 Luna's long-context band starts at 200K, not 272K", () => {
   })
 })
 
-test("Grok 4.5 and Gemini 3.1 Pro also have long-context bands", () => {
+test("Grok 4.5 public and Gemini 3.1 Pro historical fallback retain their long-context bands", () => {
   expect(catalogRow("Grok 4.5").tiers[1]).toEqual({
     label: "Long context",
     contextThreshold: 200_000,
     pricing: { input: 4, input_cache_read: 1, output: 12 },
   })
-  expect(catalogRow("Gemini 3.1 Pro").tiers[1]).toEqual({
+  const historicalGemini = COPILOT_MODEL_PRICING.find((model) => model.match === "gemini-3.1-pro-preview")
+  expect(historicalGemini?.tiers[1]).toEqual({
     label: "Long context",
     contextThreshold: 200_000,
     pricing: { input: 4, input_cache_read: 0.4, output: 18 },
   })
 })
 
-test("the merged claude matchers are split into one row per docs row", () => {
+test("the audited Claude rows are distinct in the public catalog", () => {
   const names = copilotPricingCatalog().models.map((m) => m.displayName)
   for (const n of [
-    "Claude Opus 4.5",
-    "Claude Opus 4.6",
     "Claude Opus 4.7",
     "Claude Opus 4.8",
     "Claude Sonnet 4",
-    "Claude Sonnet 4.5",
     "Claude Sonnet 4.6",
   ]) {
     expect(names).toContain(n)
@@ -243,9 +268,11 @@ test("legacy and internal models stay out of the catalog", () => {
   expect(pricingForCopilotPublicModelId("gpt-3.5-turbo")).not.toBeNull()
 })
 
-test("the catalog has one row per documented model", () => {
-  // 11 Anthropic + 11 OpenAI + 4 Google + 2 xAI + 2 Microsoft + 2 Moonshot + 1 fine-tuned
-  expect(copilotPricingCatalog().models.length).toBe(33)
+test("the catalog includes each newly verified price row", () => {
+  const names = copilotPricingCatalog().models.map((m) => m.displayName)
+  for (const name of ["Claude Opus 5.5", "Claude Fable 5.1", "GPT-6 Sol", "GPT-6 Luna", "Gemini 3.8 Flash", "Grok 4.7"]) {
+    expect(names).toContain(name)
+  }
 })
 
 test("both promo-priced Gemini flash rows share the promotional rate", () => {
@@ -265,4 +292,53 @@ test("Grok 4.6 prices identically to 4.5, bands included", () => {
     input_cache_read: 0.5,
     output: 6,
   })
+})
+
+test("Opus 5.5 and Fable 5.1 retain their distinct cache rates through raw variants", () => {
+  const opus5 = { input: 5, input_cache_read: 0.5, input_cache_write: 6.25, output: 25 }
+  const opus55 = { input: 4, input_cache_read: 0.2, input_cache_write: 5, output: 20 }
+  const fable5 = { input: 10, input_cache_read: 1, input_cache_write: 12.5, output: 50 }
+  const fable51 = { input: 10, input_cache_read: 0.25, input_cache_write: 12.5, output: 50 }
+  expect(pricingForCopilotPublicModelId("claude-opus-5")).toEqual(opus5)
+  expect(pricingForCopilotPublicModelId("claude-fable-5")).toEqual(fable5)
+  for (const id of ["claude-opus-5.5", "claude-opus-5-5"]) expect(pricingForCopilotPublicModelId(id)).toEqual(opus55)
+  for (const id of ["claude-fable-5.1", "claude-fable-5-1"]) expect(pricingForCopilotPublicModelId(id)).toEqual(fable51)
+  expect(pricingForCopilotModelKey("claude-opus-5.5-xhigh")).toEqual(opus55)
+  expect(pricingForCopilotModelKey("claude-fable-5.1-1m-internal")).toEqual(fable51)
+  expect(pricingForCopilotModelKey("claude-opus-5.5-20260929")).toEqual(opus55)
+})
+
+test("new exact GPT lookup rows expose published bands while billing resolves the default", () => {
+  const sol = { input: 2, input_cache_read: 0.2, input_cache_write: 2.5, output: 10 }
+  const luna = { input: 0.1, input_cache_read: 0.01, input_cache_write: 0.125, output: 0.5 }
+  expect(catalogRow("GPT-6 Sol").tiers).toEqual([
+    { label: "Default", pricing: sol },
+    { label: "Long context", contextThreshold: 272_000, pricing: { input: 4, input_cache_read: 0.4, input_cache_write: 5, output: 15 } },
+  ])
+  expect(catalogRow("GPT-6 Luna").tiers).toEqual([
+    { label: "Default", pricing: luna },
+    { label: "Long context", contextThreshold: 272_000, pricing: { input: 0.2, input_cache_read: 0.02, input_cache_write: 0.25, output: 0.75 } },
+  ])
+  expect(pricingForCopilotModelKey("gpt-6-sol")).toEqual(sol)
+  expect(pricingForCopilotModelKey("gpt-6-luna")).toEqual(luna)
+})
+
+test("new Gemini and Grok lookup rows use published promotional and long-context rates", () => {
+  expect(pricingForCopilotModelKey("gemini-3.8-flash")).toEqual({ input: 0.75, input_cache_read: 0.075, output: 3.75 })
+  expect(catalogRow("Grok 4.7").tiers).toEqual([
+    { label: "Default", pricing: { input: 2, input_cache_read: 0.5, output: 6 } },
+    { label: "Long context", contextThreshold: 200_000, pricing: { input: 4, input_cache_read: 1, output: 12 } },
+  ])
+  expect(pricingForCopilotModelKey("grok-4.7")).toEqual({ input: 2, input_cache_read: 0.5, output: 6 })
+})
+
+test("Opus 4.8 fast has an exact pricing lookup separate from the base model", () => {
+  expect(pricingForCopilotModelKey("claude-opus-4.8-fast")).toEqual({ input: 10, input_cache_read: 1, input_cache_write: 12.5, output: 50 })
+  expect(pricingForCopilotModelKey("claude-opus-4.8")).toEqual({ input: 5, input_cache_read: 0.5, input_cache_write: 6.25, output: 25 })
+})
+
+test("unpublished family versions and suffixes have no fallback price", () => {
+  for (const id of ["claude-opus-5.9", "claude-fable-5.9", "grok-4.50", "kimi-k30", "gpt-6-sol-extra", "gpt-6-luna-fast", "gemini-3.8-flash-extra", "grok-4.7-preview"]) {
+    expect(pricingForCopilotModelKey(id)).toBeNull()
+  }
 })
