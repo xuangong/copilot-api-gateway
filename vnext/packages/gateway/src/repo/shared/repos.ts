@@ -1,3 +1,4 @@
+import { queryUsageOverview, type UsageOverviewQuery } from "../usage-overview"
 import { SharedAgentRemoteContinuationRepo } from "./agent-remote-continuations.ts"
 import { SharedPerformanceMetricsRepo } from "../performance-metrics"
 import type {
@@ -322,6 +323,15 @@ function buildKeyIdRangeQuery(table: string, cols: string, opts: { keyId?: ApiKe
 }
 
 class SharedApiKeyRepo implements ApiKeyRepo {
+  async listAccessibleIds(userId: UserId): Promise<ApiKeyId[]> {
+    const rows = await this.x.all<{ id: ApiKeyId }>(
+      `SELECT id FROM api_keys WHERE owner_id = ? OR id IN
+        (SELECT key_id FROM key_assignments WHERE user_id = ?) ORDER BY id COLLATE BINARY`,
+      [userId, userId],
+    )
+    return rows.map(row => row.id)
+  }
+
   constructor(private x: SqlExecutor) {}
 
   async ensureAgentHostKey(scope: AgentHostKeyScope, hostName: string): Promise<ApiKey | null> {
@@ -658,6 +668,8 @@ function assembleUsageRecords(dimensions: readonly UsageDimensionRow[], requests
 }
 
 class SharedUsageRepo implements UsageRepo {
+  queryOverview(opts: UsageOverviewQuery) { return queryUsageOverview(this.x, opts) }
+
   constructor(private x: SqlExecutor) {}
 
   async record(r: UsageRecord): Promise<void> {

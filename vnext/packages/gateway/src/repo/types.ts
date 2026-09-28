@@ -1,3 +1,4 @@
+import type { UsageOverview, UsageOverviewQuery } from "./usage-overview"
 import type { PerformanceMetricsRepo } from "./performance-metrics"
 import type { BillingDimension, ModelPricing, UpstreamRecord } from "@vibe-llm/protocols/common"
 import type { ProxyRepo, ProxyBackoffRepo } from "@vibe-core/proxy-repo"
@@ -141,6 +142,8 @@ export interface AgentHostKeyScope {
 }
 
 export interface ApiKeyRepo {
+  /** Existing owned or assigned key IDs, resolved in one query. */
+  listAccessibleIds(userId: UserId): Promise<ApiKeyId[]>
   ensureAgentHostKey(scope: AgentHostKeyScope, hostName: string): Promise<ApiKey | null>
   revokeAgentHostKey(scope: AgentHostKeyScope): Promise<void>
   list(): Promise<ApiKey[]>
@@ -188,6 +191,7 @@ export interface UpstreamRepo {
 }
 
 export interface UsageRepo {
+  queryOverview(opts: UsageOverviewQuery): Promise<UsageOverview>
   /** Additive upsert: tokens += excluded.tokens, requests += excluded.requests. */
   record(r: UsageRecord): Promise<void>
   /** Replacement upsert (used by data-transfer import): clears bucket's

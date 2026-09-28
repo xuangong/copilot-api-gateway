@@ -94,3 +94,48 @@ export async function fetchTokenUsage(range: UsageRangeQuery): Promise<UsageRow[
 export function fetchUsageParticipants(): Promise<ParticipantRow[]> {
   return api<ParticipantRow[]>("/api/token-usage/participants")
 }
+
+// Staged API foundation only; existing detail consumers remain unchanged.
+export interface UsageOverviewQuery {
+  readonly start: string
+  readonly end: string
+  readonly bucket: "hour" | "day"
+  readonly axis: "key" | "client" | "model" | "incomingModel"
+  readonly limit?: number
+  /** Offset in raw binary axis order; not a snapshot. New/deleted categories may shift pages. */
+  readonly cursor?: string
+  readonly key_id?: string
+  readonly client?: string
+  readonly model?: string
+  readonly incoming_model?: string
+  readonly as_user?: string
+}
+export interface UsageOverviewMetrics {
+  readonly requests: number
+  readonly input: number
+  readonly output: number
+  readonly cacheRead: number
+  readonly cacheCreation: number
+  /** Known recorded cost: null prices contribute zero, not known-free usage. */
+  readonly costUSD: number
+  readonly hasRecords: boolean
+  readonly unpricedTokens: number
+  /** Known-dimension storage rows still unresolved after fallback, including zero quantities. */
+  readonly unpricedDimensionRows: number
+  readonly observedDimensions: readonly ("input" | "output" | "input_cache_read" | "input_cache_write" | "input_image" | "output_image")[]
+}
+export interface UsageOverview {
+  readonly range: Readonly<Pick<UsageOverviewQuery, "start" | "end" | "bucket">>
+  readonly total: UsageOverviewMetrics
+  /** UTC buckets with records. Missing buckets have no records. */
+  readonly buckets: readonly (UsageOverviewMetrics & { readonly bucket: string })[]
+  readonly breakdown: {
+    readonly axis: UsageOverviewQuery["axis"]
+    readonly rows: readonly (UsageOverviewMetrics & { readonly value: string })[]
+    readonly hasMore: boolean
+    readonly nextCursor: string | null
+  }
+}
+export function fetchUsageOverview(query: UsageOverviewQuery): Promise<UsageOverview> {
+  return api<UsageOverview>("/api/token-usage/overview", { query: { ...query } })
+}

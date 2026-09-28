@@ -1,0 +1,65 @@
+import { Miniflare } from '../../../vnext/node_modules/.bun/miniflare@4.20260601.0/node_modules/miniflare/dist/src/index.js'
+import { unstable_splitSqlQuery } from '../../../vnext/node_modules/.bun/wrangler@4.97.0+01d2f64f02d20ae6/node_modules/wrangler/wrangler-dist/cli.js'
+import { readdir, readFile, mkdtemp, rm } from 'node:fs/promises'
+import assert from 'node:assert/strict'
+import { fileURLToPath } from 'node:url'
+import { tmpdir } from 'node:os'
+import { spawnSync } from 'node:child_process'
+const root=fileURLToPath(new URL('../../../',import.meta.url))
+const scratch=await mkdtemp(`${tmpdir()}/d08-workerd-`)
+const bundle=`${scratch}/worker.mjs`
+const build=spawnSync('bun',['build',fileURLToPath(new URL('./task-D08-workerd-worker.ts',import.meta.url)),'--target=node',`--outfile=${bundle}`],{cwd:root,encoding:'utf8'})
+if(build.status!==0) throw new Error(build.stderr)
+const mf=new Miniflare({ modules:true,modulesRoot:scratch,scriptPath:bundle,compatibilityDate:'2026-06-01',compatibilityFlags:['nodejs_compat'],d1Databases:{DB:'d08-endpoint'},bindings:{SERVER_SECRET:'d08-secret'}})
+try {
+ const db=await mf.getD1Database('DB')
+ for(const name of (await readdir(`${root}/vnext/packages/gateway/migrations`)).filter(x=>x.endsWith('.sql')).sort()) {
+  for(const sql of unstable_splitSqlQuery(await readFile(`${root}/vnext/packages/gateway/migrations/${name}`,'utf8'))) await db.prepare(sql).run()
+ }
+ const now=new Date().toISOString(), expires=new Date(Date.now()+3600000).toISOString()
+ await db.prepare('INSERT INTO users (id,name,email,created_at) VALUES (?,?,?,?)').bind('admin','Admin','test@local.dev',now).run()
+ await db.prepare('INSERT INTO user_sessions (token,user_id,created_at,expires_at) VALUES (?,?,?,?)').bind('ses_d08_admin','admin',now,expires).run()
+ await db.prepare(`WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i<2999) INSERT INTO api_keys (id,name,key,created_at,owner_id) SELECT 'k'||i,'Synthetic','raw'||i,?,'admin' FROM n`).bind(now).run()
+ await db.prepare(`INSERT INTO usage_requests (key_id,incoming_model,model,upstream,model_key,client,hour,requests) SELECT id,'','model',NULL,'price','client','2026-09-01T00',1 FROM api_keys`).run()
+ await db.prepare(`INSERT INTO usage (key_id,incoming_model,model,upstream,model_key,client,hour,dimension,tokens,unit_price) SELECT id,'','model',NULL,'price','client','2026-09-01T00','input',100,0.125 FROM api_keys`).run()
+ await db.prepare(`INSERT INTO usage (key_id,incoming_model,model,upstream,model_key,client,hour,dimension,tokens,unit_price) SELECT id,'','model',NULL,'price','client','2026-09-01T00','input_cache_read',100,NULL FROM api_keys`).run()
+ const path='http://localhost/api/token-usage/overview?start=2026-09-01T00&end=2026-09-02T00&axis=key&limit=2'
+ const call=async (url=path,headers={cookie:'session_token=ses_d08_admin'})=>mf.dispatchFetch(url,{headers})
+ const response=await call(); const data=await response.json()
+ assert.equal(response.status,200,JSON.stringify(data));assert.equal(data.total.requests,3000);assert.equal(data.total.input,300000);assert.equal(data.total.cacheRead,300000)
+ assert.ok(Math.abs(data.total.costUSD-.075)<1e-12);assert.equal(data.total.unpricedTokens,0);assert.equal(data.breakdown.hasMore,true);assert.equal(data.breakdown.rows.length,2);assert.equal(data.buckets.length,1)
+ const next=await (await call(path+'&cursor='+data.breakdown.nextCursor)).json();assert.notEqual(next.breakdown.rows[0].value,data.breakdown.rows[0].value);assert.deepEqual(next.total,data.total)
+ assert.equal((await call(path,{})).status,401)
+ assert.equal((await call(path+'&bucket=invalid')).status,400)
+ // A non-admin exercises a 3000-key json_each bind in the real endpoint.
+ await db.prepare("UPDATE users SET email='user@example.invalid' WHERE id='admin'").run()
+ const ownedResponse=await call()
+ const scoped=await ownedResponse.json();assert.deepEqual(scoped.total,data.total)
+ const ownedStatements=Number(ownedResponse.headers.get('x-d08-sql-statements'))
+ // Change all keys to assigned-only scope and compare one versus 3000 assignments.
+ await db.prepare("INSERT INTO users (id,name,email,created_at) VALUES ('other','Other','other@example.invalid',?)").bind(now).run()
+ await db.prepare("UPDATE api_keys SET owner_id='other'").run()
+ await db.prepare("INSERT INTO key_assignments (key_id,user_id,assigned_by,assigned_at) VALUES ('k0','admin','other',?)").bind(now).run()
+ const singleResponse=await call()
+ const single=await singleResponse.json();assert.equal(single.total.requests,1)
+ const singleAssignedStatements=Number(singleResponse.headers.get('x-d08-sql-statements'))
+ await db.prepare("INSERT OR IGNORE INTO key_assignments (key_id,user_id,assigned_by,assigned_at) SELECT id,'admin','other',? FROM api_keys").bind(now).run()
+ await db.prepare("INSERT INTO key_assignments (key_id,user_id,assigned_by,assigned_at) VALUES ('missing','admin','other',?)").bind(now).run()
+ const assignedResponse=await call()
+ const assigned=await assignedResponse.json();assert.deepEqual(assigned.total,data.total)
+ const assignedStatements=Number(assignedResponse.headers.get('x-d08-sql-statements'))
+ assert.equal(assignedStatements,singleAssignedStatements)
+ assert.equal(assignedStatements,ownedStatements)
+ assert.ok(assignedStatements>0 && assignedStatements<=10)
+ const filteredResponse=await call(path+'&key_id=k0')
+ assert.equal((await filteredResponse.json()).total.requests,1)
+ assert.equal(Number(filteredResponse.headers.get('x-d08-sql-statements')),assignedStatements)
+ // Persist null-priced signed cancellation plus observed zero; completeness must remain false.
+ await db.prepare("UPDATE usage SET unit_price=NULL,tokens=CASE WHEN key_id='k0' THEN 100 WHEN key_id='k1' THEN -100 ELSE 0 END WHERE dimension='input'").run()
+ const unresolved=await (await call()).json()
+ assert.equal(unresolved.total.unpricedDimensionRows,6000)
+ assert.equal(unresolved.total.unpricedTokens,300000)
+ assert.equal(unresolved.buckets[0].unpricedDimensionRows,6000)
+ assert.equal(unresolved.breakdown.rows[0].unpricedDimensionRows,2)
+ console.log(JSON.stringify({runtime:'local workerd + D1',keys:3000,requests:data.total.requests,costUSD:data.total.costUSD,page:data.breakdown.rows.length,ownedStatements,singleAssignedStatements,assignedStatements,assignedOnlyKeys:3000,unresolvedRows:6000,passed:true}))
+} finally {await mf.dispose(); await rm(scratch,{recursive:true,force:true})}

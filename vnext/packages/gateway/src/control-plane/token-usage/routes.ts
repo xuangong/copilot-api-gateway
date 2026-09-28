@@ -1,3 +1,6 @@
+import { validateUsageOverview, type UsageOverviewQuery } from "../../repo/usage-overview"
+import { deriveViewContext } from "../lib/view-context"
+import { sharedKeyRef } from "../lib/redact-shared-view"
 /**
  * token-usage control-plane router — Week 5b port of
  * src/routes/dashboard.ts (GET /token-usage).
@@ -26,6 +29,7 @@ import { getOwnedKeyIdsForScope } from '../lib/view-context.ts'
 import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 
 export interface TokenUsageAuthCtx {
+  authKind?: "public" | "session" | "apiKey"
   isAdmin?: boolean
   userId?: UserId
   apiKeyId?: ApiKeyId
@@ -117,6 +121,44 @@ tokenUsageRouter.get('/token-usage/participants', async (c) => {
       }
     }),
   )
+})
+
+tokenUsageRouter.get("/token-usage/overview", async (c) => {
+  const auth = c.get("auth") ?? {}
+  if (!auth.isAdmin && !auth.userId && !auth.apiKeyId) return c.json({ error: "Unauthorized" }, 401)
+  const bucket = c.req.query("bucket") ?? "hour"
+  const axis = c.req.query("axis") ?? "model"
+  if (bucket !== "hour" && bucket !== "day") return c.json({ error: "Invalid bucket" }, 400)
+  if (axis !== "key" && axis !== "client" && axis !== "model" && axis !== "incomingModel") return c.json({ error: "Invalid axis" }, 400)
+  const requestedKey = c.req.query("key_id")
+  const query: UsageOverviewQuery = {
+    start: c.req.query("start") ?? "", end: c.req.query("end") ?? "", bucket, axis,
+    limit: c.req.query("limit") === undefined ? undefined : Number(c.req.query("limit")),
+    cursor: c.req.query("cursor"), client: c.req.query("client"), model: c.req.query("model"),
+    incomingModel: c.req.query("incoming_model"),
+  }
+  try { validateUsageOverview(query) } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Invalid query" }, 400)
+  }
+  const repo = getRepo()
+  // API-key credentials are always narrower than a coexisting session/admin.
+  if (auth.apiKeyId) return c.json(await repo.usage.queryOverview({ ...query, keyId: auth.apiKeyId }))
+  const view = await deriveViewContext(c, auth)
+  if ("denied" in view) return c.json({ error: "Not authorized to view this user's observability data" }, 403)
+  if (view.isViewingShared && view.ownerId) {
+    const owner = view.ownerId
+    const secret = getServerSecret(c.env as unknown as Record<string, string | undefined>)
+    const keys = await repo.apiKeys.listByOwner(owner)
+    const keyIds = keys.filter(k => requestedKey === undefined || sharedKeyRef(owner, k.id, secret) === requestedKey).map(k => k.id)
+    const result = await repo.usage.queryOverview({ ...query, keyIds })
+    return c.json({ ...result, breakdown: { ...result.breakdown,
+      rows: result.breakdown.rows.map(r => axis === "key" ? { ...r, value: sharedKeyRef(owner, r.value, secret) } : r),
+    } })
+  }
+  if (auth.isAdmin) return c.json(await repo.usage.queryOverview({ ...query, keyId: requestedKey as ApiKeyId | undefined }))
+  if (!auth.userId) return c.json({ error: "Unauthorized" }, 401)
+  const keyIds = await repo.apiKeys.listAccessibleIds(auth.userId)
+  return c.json(await repo.usage.queryOverview({ ...query, keyIds, keyId: requestedKey as ApiKeyId | undefined }))
 })
 
 tokenUsageRouter.get('/token-usage', async (c) => {

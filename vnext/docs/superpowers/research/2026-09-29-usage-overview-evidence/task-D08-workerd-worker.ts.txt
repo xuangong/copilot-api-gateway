@@ -1,0 +1,16 @@
+import { app } from "../../../vnext/packages/gateway/src/app.ts"
+import { initRepo } from "../../../vnext/packages/gateway/src/repo/index.ts"
+import { D1Repo, type D1Database } from "../../../vnext/apps/platform-cloudflare/src/d1-repo.ts"
+export default {
+  async fetch(request: Request, env: { DB: D1Database; SERVER_SECRET: string }) {
+    let statements = 0
+    const counted: D1Database = {
+      prepare(query) { statements++; return env.DB.prepare(query) },
+      batch(queries) { statements += queries.length; return env.DB.batch(queries) },
+    }
+    initRepo(new D1Repo(counted))
+    const response = await app.fetch(request, env)
+    response.headers.set("x-d08-sql-statements", String(statements))
+    return response
+  },
+}

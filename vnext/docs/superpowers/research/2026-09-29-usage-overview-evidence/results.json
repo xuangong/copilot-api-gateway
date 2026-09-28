@@ -1,0 +1,13 @@
+{
+  "runtime": "local workerd + D1",
+  "keys": 3000,
+  "requests": 3000,
+  "costUSD": 0.075,
+  "page": 2,
+  "ownedStatements": 7,
+  "singleAssignedStatements": 7,
+  "assignedStatements": 7,
+  "assignedOnlyKeys": 3000,
+  "unresolvedRows": 6000,
+  "passed": true
+}

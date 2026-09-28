@@ -1,0 +1,13 @@
+# D08 bounded overview API foundation acceptance (2026-09-29)
+
+The six-file API foundation on `df7d2b29` passed independent specification/quality review after one scoped fix round. Root final clean-tree `bun run ci:local` passed all gates: 4181 tests, 1 existing skip, 0 failures, all types/purity/lint (36 inherited warnings), Dashboard build and Workers dry-run. Focused real-SQL/auth/oracle coverage: 33 tests, 154 assertions.
+
+The additive `/api/token-usage/overview` returns full authorized filtered totals, bounded UTC time totals and one deterministic categorical page. It preserves historical fallback before storage identity collapse, explicit free versus unresolved prices, observed dimensions, signed costs and positive token display projection. `unpricedDimensionRows` cannot cancel across positive/negative/zero unknown-price rows. Cost remains REAL/JS number with tolerance, not an arbitrary-precision ledger. Three aggregate statements can read more database rows; no production performance gain is claimed.
+
+Root reproduced the final full-app route/session middleware on actual local workerd/Miniflare D1 using migrated synthetic data. A fixture wrapper forwards every prepare/batch to real D1 while counting calls; no database response is mocked. Endpoints with one assigned-only key, 3000 assigned-only keys plus a missing assignment, and 3000 owned keys each execute seven SQL statements. Exact key filtering remains scoped. Full totals are 3000 requests and USD 0.075 after historical price fallback; separate signed/zero fixtures retain 6000 unresolved storage rows. Authentication 401, malformed bucket 400, full totals across pagination and price metadata propagation pass.
+
+Tests additionally cover grant-derived shared access/HMAC refs, API-key precedence, historical admin orphan keys, empty/intersected key sets, six dimensions, request-only/token-only, legacy incoming model, NUL identities, exclusive range end and bounds. Offset cursors guarantee deterministic traversal only on an unchanged dataset; categories inserted/deleted during paging can shift offsets. The three statements do not claim a common snapshot.
+
+To reproduce, restore the archived scripts to `.superpowers/sdd/2026-09-29-reference-adoption-follow-up/` under the checkout with their original names, then run `node .../task-D08-workerd-endpoint.mjs`. They use the existing local Miniflare/Wrangler packages and a temporary D1/bundle, cleaned in finally. No production data or credentials are used.
+
+This is an API foundation. Existing UsageTab and Keys detail consumers remain unchanged in this commit; consumer adoption, full facets/distributions/series and local-zone rolling strip are explicitly subsequent work. Full D08 adoption is not complete.
