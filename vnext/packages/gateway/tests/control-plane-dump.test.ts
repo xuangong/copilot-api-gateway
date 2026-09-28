@@ -195,8 +195,14 @@ test('non-owner gets 403', async () => {
 test('admin bypass sees records for any owner', async () => {
   await saveKey('k1', 'u1', 3600)
   store.byKey.set('k1', [makeRecord('01A', 'k1', 100)])
-  const res = await buildApp({ isAdmin: true }).request('/api/keys/k1/records')
+  const res = await buildApp({ userId: 'admin', isAdmin: true }).request('/api/keys/k1/records')
   expect(res.status).toBe(200)
+})
+
+test('admin flag without a user identity cannot read records', async () => {
+  await saveKey('k1', 'u1', 3600)
+  const res = await buildApp({ isAdmin: true }).request('/api/keys/k1/records')
+  expect(res.status).toBe(403)
 })
 
 test('missing key returns 404', async () => {

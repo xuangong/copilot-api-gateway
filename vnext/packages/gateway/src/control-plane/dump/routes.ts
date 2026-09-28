@@ -30,7 +30,10 @@ const ownedDumpKey = async (c: Context): Promise<ApiKeyId | Response> => {
   const keyId = c.req.param('keyId')! as ApiKeyId
   const key = await getRepo().apiKeys.getById(keyId)
   if (!key) return c.json({ error: 'Key not found' }, 404)
-  if (!auth.isAdmin && key.ownerId !== auth.userId) {
+  const hasIdentity = typeof auth.userId === 'string' && auth.userId.trim().length > 0
+  const ownsKey = hasIdentity && typeof key.ownerId === 'string'
+    && key.ownerId.trim().length > 0 && key.ownerId === auth.userId
+  if (!hasIdentity || (auth.isAdmin !== true && !ownsKey)) {
     return c.json({ error: 'Forbidden' }, 403)
   }
   if (key.dumpRetentionSeconds === null || key.dumpRetentionSeconds === undefined) {
