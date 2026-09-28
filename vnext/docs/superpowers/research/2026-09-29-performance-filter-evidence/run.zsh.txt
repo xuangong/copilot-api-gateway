@@ -1,0 +1,17 @@
+#!/bin/zsh
+set -euo pipefail
+script_dir=${0:A:h}
+scratch_dir=$(mktemp -d "${TMPDIR:-/tmp/}vnext-d07-browser-XXXXXXXX")
+echo "D07 scratch: $scratch_dir"
+cd "$scratch_dir"
+env -i PATH="$PATH" HOME="$HOME" D07_SOURCE_ROOT="${D07_SOURCE_ROOT:-/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext}" bun "$script_dir/fixture.ts" >fixture.log 2>&1 &
+fixture_pid=$!
+cleanup() { kill "$fixture_pid" 2>/dev/null || true; wait "$fixture_pid" 2>/dev/null || true }
+trap cleanup EXIT INT TERM
+for n in {1..100}; do
+  [[ -f connection.json ]] && break
+  kill -0 "$fixture_pid" 2>/dev/null || { cat fixture.log; exit 1; }
+  sleep 0.1
+done
+[[ -f connection.json ]] || { cat fixture.log; exit 1; }
+env -i PATH="$PATH" HOME="$HOME" D07_CONNECTION="$scratch_dir/connection.json" node "$script_dir/validate.mjs"

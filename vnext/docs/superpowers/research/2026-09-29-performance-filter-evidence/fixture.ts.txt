@@ -1,0 +1,33 @@
+// Isolated real Gateway/SQLite fixture. Run with cwd in a NEW temporary directory.
+const sourceRoot = process.env.D07_SOURCE_ROOT ?? "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext"
+const { bootstrapBunPlatform } = await import(sourceRoot + "/apps/platform-bun/src/bootstrap.ts")
+const { app } = await import(sourceRoot + "/packages/gateway/src/app.ts")
+const { getRepo } = await import(sourceRoot + "/packages/gateway/src/repo/index.ts")
+
+bootstrapBunPlatform({ dbPath: process.cwd() + "/fixture.sqlite", filesRoot: process.cwd() + "/files" })
+const repo = getRepo()
+const now = new Date().toISOString()
+const hour = now.slice(0, 13)
+const ownerId = "00000000-0000-4000-a000-0000000000d7"
+const keyId = "00000000-0000-4000-a000-0000000000d8"
+const token = "ses_synthetic_d07_browser_only"
+await repo.users.create({ id: ownerId, name: "Synthetic D07 Admin", email: "d07@local.dev", createdAt: now, disabled: false })
+await repo.sessions.create({ token, userId: ownerId, createdAt: now, authenticatedAt: Date.now(), expiresAt: new Date(Date.now() + 3600000).toISOString() })
+await repo.apiKeys.save({ id: keyId, ownerId, name: "D07 named key", key: "sk_synthetic_d07_only", createdAt: now, modelMappingsEnabled: false, modelMappings: [], dumpRetentionSeconds: 3600 })
+
+const base = { keyId, incomingModel: "alias", model: "model-a", upstream: "up-a", sourceApi: "messages", targetApi: "responses", stream: true, runtimeLocation: "local", outcome: "success", inputBucket: "unknown", cacheStatus: "unknown", reasoningEffort: "unknown", requests: 1, metrics: {} }
+const rows = [
+  { model: "model-a", upstream: "up-a", outcome: "success", stream: true, requests: 11 },
+  { model: "model-b", upstream: "up-a", outcome: "success", stream: true, requests: 13 },
+  { model: "model-a", upstream: "up-a", outcome: "error", stream: true, requests: 17 },
+  { model: "model-b", upstream: "up-a", outcome: "cancelled", stream: true, requests: 19 },
+  { model: "model-a", upstream: "up-a", outcome: "success", stream: false, requests: 23 },
+  { model: "model-b", upstream: "up-b", outcome: "success", stream: true, requests: 29 },
+  { model: "unknown", upstream: "up-a", outcome: "success", stream: true, requests: 37 },
+] as const
+for (const row of rows) await repo.performanceMetrics.record({ hour, group: { ...base, ...row }, legacyRecorded: false })
+
+const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: req => app.fetch(req) })
+await Bun.write(process.cwd() + "/connection.json", JSON.stringify({ port: server.port, token, pid: process.pid, keyId, hour, sourceRoot }))
+console.log("D07 isolated Gateway ready")
+process.on("SIGTERM", () => { server.stop(true); process.exit(0) })

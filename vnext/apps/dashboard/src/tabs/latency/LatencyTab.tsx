@@ -1,10 +1,11 @@
 import { performanceLabels } from "../../state/performance-labels"
 import type { PerformanceMetricsGroup } from "@vibe-llm/protocols/common"
 import { usePerformance } from "../../state/performance"
+import { completePerformanceOptions } from "../../state/performance-data"
 import type { PerformanceFilters } from "../../state/performance-data"
 import type { LatencyRange } from "../../state/latency"
 import { useT } from "../../state/i18n"
-import { Select } from "../../components/Select"
+import { MultiSelect } from "../../components/MultiSelect"
 import { ExperienceSummary } from "./ExperienceSummary"
 import { ModelComparison } from "./ModelComparison"
 import { PerformanceDiagnostics } from "./PerformanceDiagnostics"
@@ -18,20 +19,22 @@ export function LatencyTab() {
   const ranges: Array<[LatencyRange, string]> = [["today", "dash.today"], ["week", "dash.weekShort"], ["7d", "dash.sevenDaysShort"], ["30d", "dash.thirtyDaysShort"]]
   const dynamicOptions = (field: keyof PerformanceMetricsGroup) => {
     const values = [...new Set(s.data.groups.flatMap(group => typeof group[field] === "string" ? [String(group[field])] : []))].sort()
-    return values.map(v => ({
+    const options = values.map(v => ({
       value: v,
-      label: field === "keyId" ? s.data.groups.find(group => group.keyId === v)?.keyName ?? v
+      label: field === "keyId" ? s.data.groups.find(group => group.keyId === v)?.keyName ?? s.keyNames[v] ?? v
         : (v === "unknown" || v === "hit" || v === "miss") ? labels[v] : v,
     }))
+    const rememberedLabels = field === "keyId" ? s.keyNames : { unknown: labels.unknown, hit: labels.hit, miss: labels.miss }
+    return completePerformanceOptions(options, s.filters[field as keyof PerformanceFilters] ?? [], rememberedLabels)
   }
   function filter(field: keyof PerformanceFilters, options: Array<{ value: string; label: string }>) {
     return <div key={field} className={"flex flex-col gap-1.5 min-w-0 " + (field === "model" ? "col-span-2 sm:col-span-1" : "")}>
       <span id={"performance-filter-" + field} className="text-xs text-themed-dim">{labels[field]}</span>
-      <Select ariaLabel={labels[field]} value={s.filters[field] ?? ""} onChange={v => s.setFilter(field, v)}
-        className="w-full min-w-0" options={[{ value: "", label: t("dash.perf.all") }, ...options]} />
+      <MultiSelect ariaLabel={labels[field]} value={s.filters[field] ?? []} onChange={values => s.setFilter(field, values)}
+        allLabel={t("dash.perf.all")} clearLabel={t("dash.perf.clear")} className="w-full min-w-0" options={options} />
     </div>
   }
-  const extraCount = EXTRA_FILTERS.filter(field => s.filters[field]).length
+  const extraCount = EXTRA_FILTERS.filter(field => (s.filters[field]?.length ?? 0) > 0).length
   const selectedCount = s.filtered.reduce((sum, group) => sum + group.requests, 0)
   return <div className="space-y-5" aria-busy={s.loading}>
     <div className="flex flex-wrap items-start justify-between gap-4">

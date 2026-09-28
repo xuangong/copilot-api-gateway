@@ -3,7 +3,7 @@ import type { PerformanceMetricsResponse } from "@vibe-llm/protocols/common"
 import { listPerformanceMetrics } from "../api/performance"
 import { computeTimeRange, formatWeekLabel, type LatencyRange } from "./latency"
 import { useZoneMode } from "./timezone"
-import { aggregateMetrics, comparisonGroups, filterPerformanceGroups, type PerformanceFilters } from "./performance-data"
+import { aggregateMetrics, comparisonGroups, countPerformanceOutcomes, DEFAULT_PERFORMANCE_FILTERS, filterPerformanceGroups, type PerformanceFilters } from "./performance-data"
 
 const EMPTY: PerformanceMetricsResponse = { version: 2, groups: [], legacyRequests: 0 }
 
@@ -15,7 +15,8 @@ export function usePerformance() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
-  const [filters, setFilters] = useState<PerformanceFilters>({ outcome: "success", mode: "stream" })
+  const [filters, setFilters] = useState<PerformanceFilters>(DEFAULT_PERFORMANCE_FILTERS)
+  const [keyNames, setKeyNames] = useState<Record<string, string>>({})
   useEffect(() => {
     let active = true
     setLoading(true)
@@ -23,7 +24,15 @@ export function usePerformance() {
     setData(EMPTY)
     const { start, end } = computeTimeRange(range, weekOffset, zone)
     listPerformanceMetrics(start, end)
-      .then(result => { if (active) setData(result) })
+      .then(result => {
+        if (!active) return
+        setData(result)
+        setKeyNames(current => {
+          const next = { ...current }
+          for (const group of result.groups) if (group.keyName) next[group.keyId] = group.keyName
+          return next
+        })
+      })
       .catch((err: unknown) => { if (active) setError(err instanceof Error ? err.message : String(err)) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
@@ -31,15 +40,11 @@ export function usePerformance() {
   const filtered = useMemo(() => filterPerformanceGroups(data.groups, filters), [data, filters])
   const metrics = useMemo(() => aggregateMetrics(filtered), [filtered])
   const comparisons = useMemo(() => comparisonGroups(filtered), [filtered])
-  const outcomeCounts = useMemo(() => {
-    const counts = { success: 0, error: 0, cancelled: 0 }
-    for (const group of filterPerformanceGroups(data.groups, { ...filters, outcome: "" })) counts[group.outcome] += group.requests
-    return counts
-  }, [data, filters])
+  const outcomeCounts = useMemo(() => countPerformanceOutcomes(data.groups, filters), [data, filters])
   return {
-    data, loading, error, filtered, metrics, comparisons, outcomeCounts, range, weekOffset, filters,
+    data, loading, error, filtered, metrics, comparisons, outcomeCounts, range, weekOffset, filters, keyNames,
     weekLabel: formatWeekLabel(weekOffset, zone),
-    setFilter: (field: keyof PerformanceFilters, value: string) => setFilters(current => ({ ...current, [field]: value })),
+    setFilter: (field: keyof PerformanceFilters, values: string[]) => setFilters(current => ({ ...current, [field]: values })),
     switchRange: (next: LatencyRange) => { setRange(next); setWeekOffset(0) },
     shiftWeek: (delta: number) => setWeekOffset(current => Math.min(0, current + delta)),
     refresh: () => setReload(current => current + 1),

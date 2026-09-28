@@ -2,15 +2,34 @@ import type { MetricDistribution, PerformanceMetricName, PerformanceMetricsGroup
 
 export type PerformanceFilters = Partial<Record<
   "keyId" | "incomingModel" | "model" | "upstream" | "sourceApi" | "targetApi" | "runtimeLocation" |
-  "outcome" | "inputBucket" | "cacheStatus" | "reasoningEffort" | "mode", string
+  "outcome" | "inputBucket" | "cacheStatus" | "reasoningEffort" | "mode", string[]
 >>
 
+export const DEFAULT_PERFORMANCE_FILTERS: PerformanceFilters = { outcome: ["success"], mode: ["stream"] }
+
+export function togglePerformanceFilter(values: readonly string[], value: string): string[] {
+  return values.includes(value) ? values.filter(entry => entry !== value) : [...values, value]
+}
+
+export function completePerformanceOptions(
+  options: Array<{ value: string; label: string }>, selected: readonly string[], rememberedLabels: Readonly<Record<string, string>> = {},
+): Array<{ value: string; label: string }> {
+  const available = new Set(options.map(option => option.value))
+  return [...options, ...selected.filter(value => !available.has(value)).map(value => ({ value, label: rememberedLabels[value] ?? value }))]
+}
+
 export function filterPerformanceGroups(groups: PerformanceMetricsGroup[], filters: PerformanceFilters): PerformanceMetricsGroup[] {
-  return groups.filter(group => Object.entries(filters).every(([field, value]) => {
-    if (!value) return true
-    if (field === "mode") return group.stream === (value === "stream")
-    return group[field as keyof PerformanceMetricsGroup] === value
+  return groups.filter(group => Object.entries(filters).every(([field, values]) => {
+    if (!values?.length) return true
+    if (field === "mode") return values.includes(group.stream ? "stream" : "sync")
+    return values.includes(String(group[field as keyof PerformanceMetricsGroup]))
   }))
+}
+
+export function countPerformanceOutcomes(groups: PerformanceMetricsGroup[], filters: PerformanceFilters) {
+  const counts = { success: 0, error: 0, cancelled: 0 }
+  for (const group of filterPerformanceGroups(groups, { ...filters, outcome: [] })) counts[group.outcome] += group.requests
+  return counts
 }
 
 export function aggregateMetrics(groups: PerformanceMetricsGroup[]): Partial<Record<PerformanceMetricName, MetricDistribution>> {

@@ -1,0 +1,14 @@
+{
+  "route": "real Gateway / SQLite",
+  "replacement": "one metrics response: empty version-2 JSON after Refresh",
+  "checks": [
+    "real route rows; default success + stream = 90",
+    "model-a OR model-b AND up-a = 24",
+    "success OR error; other dimensions retained = 41",
+    "Clear model only; upstream and outcomes retained = 78",
+    "unknown is a selectable value, distinct from empty/all",
+    "stale selected IDs and accessible labels survive EMPTY fetch and empty response",
+    "Clear key only; real route restored; other selections persist = 41",
+    "no page or console errors"
+  ]
+}

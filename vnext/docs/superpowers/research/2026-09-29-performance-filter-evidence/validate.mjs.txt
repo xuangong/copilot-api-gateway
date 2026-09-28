@@ -1,0 +1,198 @@
+import { chromium } from '/Users/zhangxian/.nvm/versions/node/v22.23.2/lib/node_modules/playwright/index.mjs'
+import fs from 'node:fs'
+import assert from 'node:assert/strict'
+
+const connection = JSON.parse(fs.readFileSync(process.env.D07_CONNECTION, 'utf8'))
+const base = `http://127.0.0.1:${connection.port}`
+const browser = await chromium.launch({ headless: true })
+const observations = { route: 'real Gateway / SQLite', replacement: 'none', checks: [] }
+const pageErrors = []
+const browserConsoleErrors = []
+let page
+
+const escapeRegex = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const label = async key => page.evaluate(key => window.t(key), key)
+const root = field => page.locator(`#performance-filter-${field}`).locator('..')
+const requestCount = async count => {
+  const suffix = await label('dash.perf.requests')
+  await page.getByText(new RegExp(`^${count.toLocaleString()}\\s+${escapeRegex(suffix)}$`)).first().waitFor()
+}
+const control = async field => {
+  const fieldLabel = await label(`dash.perf.${field}`)
+  const fieldRoot = root(field)
+  if (!(await fieldRoot.isVisible())) {
+    const details = fieldRoot.locator('xpath=ancestor::details[1]')
+    if (await details.count()) await details.locator('summary').click()
+  }
+  await fieldRoot.waitFor()
+  const native = fieldRoot.locator('select[multiple]')
+  if (await native.count()) return { fieldRoot, native }
+  const trigger = fieldRoot.getByRole('button', { name: fieldLabel, exact: true })
+  assert.equal(await trigger.count(), 1, `Missing accessible trigger for ${field}`)
+  return { fieldRoot, trigger }
+}
+const accessibleSelection = async (field, labels) => {
+  const { trigger, native } = await control(field)
+  if (native) return
+  const description = await trigger.evaluate(element => {
+    const described = (element.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean)
+      .map(id => document.getElementById(id)?.textContent ?? '').join(' ')
+    return [element.getAttribute('aria-label') ?? element.textContent, element.getAttribute('aria-description'), described].filter(Boolean).join(' ')
+  })
+  for (const value of labels) assert.ok(description.includes(value), `Collapsed ${field} must expose selected value ${value} to assistive technology`)
+}
+const option = async (field, optionName) => {
+  const { fieldRoot, native, trigger } = await control(field)
+  if (native) return { native, optionName }
+  await trigger.click()
+  const checkbox = fieldRoot.getByRole('checkbox', { name: optionName, exact: true })
+  if (await checkbox.count()) return { checkbox, trigger }
+  const toggle = fieldRoot.getByRole('button', { name: optionName, exact: true })
+  assert.equal(await toggle.count(), 1, `Missing labeled checkbox/toggle ${field}:${optionName}`)
+  assert.ok(await toggle.getAttribute('aria-pressed') !== null, `Toggle ${field}:${optionName} needs aria-pressed`)
+  return { toggle, trigger }
+}
+const setOption = async (field, optionName, selected) => {
+  const item = await option(field, optionName)
+  if (item.native) {
+    const values = await item.native.evaluate(el => Array.from(el.selectedOptions, o => o.value))
+    const value = await item.native.locator('option').filter({ hasText: optionName }).getAttribute('value')
+    await item.native.selectOption(selected ? [...values, value] : values.filter(v => v !== value))
+  } else if (item.checkbox) {
+    if (selected) await item.checkbox.check()
+    else await item.checkbox.uncheck()
+  } else if ((await item.toggle.getAttribute('aria-pressed')) !== String(selected)) {
+    await item.toggle.click()
+  }
+  if (item.trigger) await page.keyboard.press('Escape')
+}
+const selectByKeyboard = async (field, optionName) => {
+  const { fieldRoot, native, trigger } = await control(field)
+  if (native) {
+    // Native multiple selects already implement keyboard semantics in Chromium.
+    await native.focus()
+    const option = native.locator('option').filter({ hasText: optionName })
+    const value = await option.getAttribute('value')
+    await native.selectOption(value)
+    return
+  }
+  await trigger.focus()
+  await page.keyboard.press('Enter')
+  const checkbox = fieldRoot.getByRole('checkbox', { name: optionName, exact: true })
+  if (await checkbox.count()) {
+    await checkbox.focus()
+    await page.keyboard.press('Space')
+  } else {
+    const toggle = fieldRoot.getByRole('button', { name: optionName, exact: true })
+    await toggle.focus()
+    await page.keyboard.press('Space')
+  }
+  await page.keyboard.press('Escape')
+}
+const selected = async (field, optionName) => {
+  const item = await option(field, optionName)
+  let result
+  if (item.native) result = await item.native.locator('option').filter({ hasText: optionName }).evaluate(el => el.selected)
+  else if (item.checkbox) result = await item.checkbox.isChecked()
+  else result = (await item.toggle.getAttribute('aria-pressed')) === 'true'
+  if (item.trigger) await page.keyboard.press('Escape')
+  return result
+}
+const clear = async field => {
+  const { fieldRoot, native, trigger } = await control(field)
+  if (native) return native.selectOption([])
+  await trigger.click()
+  const clearButton = fieldRoot.getByRole('button', { name: /^(clear|清除|清空)(\s+selection)?$/i })
+  assert.equal(await clearButton.count(), 1, `Missing explicit Clear for ${field}`)
+  await clearButton.click()
+  await page.keyboard.press('Escape')
+}
+
+try {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1100 }, locale: 'en-US' })
+  await context.addCookies([{ name: 'session_token', value: connection.token, domain: '127.0.0.1', path: '/' }])
+  page = await context.newPage()
+  page.on('pageerror', error => pageErrors.push(error.message))
+  page.on('console', message => { if (message.type() === 'error') browserConsoleErrors.push(message.text()) })
+  const firstMetrics = page.waitForResponse(response => response.url().includes('/api/performance/metrics?') && response.status() === 200)
+  await page.goto(base + '/dashboard#latency')
+  const response = await firstMetrics
+  const data = await response.json()
+  assert.equal(data.version, 2)
+  assert.equal(data.groups.length, 7, 'Real route must return seven seeded groups')
+  assert.deepEqual(data.groups.map(group => group.requests).sort((a, b) => a - b), [11, 13, 17, 19, 23, 29, 37])
+  assert.ok(data.groups.every(group => group.keyId === connection.keyId && group.keyName === 'D07 named key'))
+  await requestCount(90)
+  assert.equal(await selected('mode', await label('dash.perf.stream')), true)
+  assert.equal(await selected('outcome', await label('dash.perf.success')), true)
+  await accessibleSelection('outcome', [await label('dash.perf.success')])
+  await accessibleSelection('mode', [await label('dash.perf.stream')])
+  observations.checks.push('real route rows; default success + stream = 90')
+
+  await selectByKeyboard('model', 'model-a')
+  assert.equal(await selected('model', 'model-a'), true)
+  await setOption('model', 'model-b', true)
+  await setOption('upstream', 'up-a', true)
+  await requestCount(24)
+  observations.checks.push('model-a OR model-b AND up-a = 24')
+
+  await setOption('outcome', await label('dash.perf.error'), true)
+  await requestCount(41)
+  assert.equal(await selected('outcome', await label('dash.perf.success')), true)
+  await accessibleSelection('outcome', [await label('dash.perf.success'), await label('dash.perf.error')])
+  observations.checks.push('success OR error; other dimensions retained = 41')
+
+  await clear('model')
+  await requestCount(78) // up-a, stream, success or error: 11+13+17+37
+  assert.equal(await selected('upstream', 'up-a'), true)
+  assert.equal(await selected('outcome', await label('dash.perf.error')), true)
+  await accessibleSelection('model', [await label('dash.perf.all')])
+  observations.checks.push('Clear model only; upstream and outcomes retained = 78')
+  await setOption('model', await label('dash.perf.unknown'), true)
+  await requestCount(37)
+  await clear('model')
+  await requestCount(78)
+  observations.checks.push('unknown is a selectable value, distinct from empty/all')
+  await setOption('model', 'model-a', true)
+  await setOption('model', 'model-b', true)
+  await requestCount(41)
+  await setOption('keyId', 'D07 named key', true)
+
+  // Only this second metrics response is synthetic. It creates an EMPTY fetch
+  // and then an empty refreshed result while the real Gateway serves the page.
+  let release
+  const hold = new Promise(resolve => { release = resolve })
+  await page.route('**/api/performance/metrics?*', async route => {
+    await hold
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: 2, groups: [], legacyRequests: 0 }) })
+  })
+  observations.replacement = 'one metrics response: empty version-2 JSON after Refresh'
+  await page.getByRole('button', { name: await label('dash.perf.refresh'), exact: true }).click()
+  await page.locator('[aria-busy="true"]').waitFor()
+  assert.equal(await selected('upstream', 'up-a'), true, 'Selected upstream lost during EMPTY fetch')
+  assert.equal(await selected('keyId', 'D07 named key'), true, 'Selected key label lost during EMPTY fetch')
+  release()
+  await page.locator('[aria-busy="false"]').waitFor()
+  assert.equal(await selected('upstream', 'up-a'), true, 'Stale upstream lost after empty refresh')
+  assert.equal(await selected('keyId', 'D07 named key'), true, 'Stale key label lost after empty refresh')
+  await accessibleSelection('keyId', ['D07 named key'])
+  observations.checks.push('stale selected IDs and accessible labels survive EMPTY fetch and empty response')
+
+  await clear('keyId')
+  assert.equal(await selected('upstream', 'up-a'), true)
+  assert.equal(await selected('model', 'model-a'), true)
+  assert.equal(await selected('model', 'model-b'), true)
+  await page.unroute('**/api/performance/metrics?*')
+  await page.getByRole('button', { name: await label('dash.perf.refresh'), exact: true }).click()
+  await requestCount(41)
+  observations.checks.push('Clear key only; real route restored; other selections persist = 41')
+
+  await page.keyboard.press('Tab')
+  assert.deepEqual(pageErrors, [])
+  assert.deepEqual(browserConsoleErrors, [])
+  observations.checks.push('no page or console errors')
+  await page.screenshot({ path: process.env.D07_CONNECTION.replace(/connection\.json$/, 'd07-final.png'), fullPage: true })
+  console.log(JSON.stringify(observations, null, 2))
+} finally {
+  await browser.close()
+}
