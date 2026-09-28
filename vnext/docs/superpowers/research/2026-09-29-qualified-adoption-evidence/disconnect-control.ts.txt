@@ -1,0 +1,46 @@
+import { CustomProvider } from "/Volumes/Projects/copilot-api-gateway/vnext/packages/provider-custom/src/provider.ts"
+let dispatchedSignal:AbortSignal|undefined; const originalProviderFetch=CustomProvider.prototype.fetch; CustomProvider.prototype.fetch=function(req){dispatchedSignal=req.signal;return originalProviderFetch.call(this,req)}
+import { createServer } from "node:http"
+import { setupTestPlatform } from '/Volumes/Projects/copilot-api-gateway/vnext/packages/gateway/tests/_setup-platform.ts'
+import { app } from '/Volumes/Projects/copilot-api-gateway/vnext/packages/gateway/src/app.ts'
+import { initBackground } from '/Volumes/Projects/copilot-api-gateway/vnext/packages/platform/src/index.ts'
+import { initDumpStore, initDumpBroker, getDumpStore } from '/Volumes/Projects/copilot-api-gateway/vnext/packages/gateway/src/shared/dump/registry.ts'
+import { FileDumpStore } from '/Volumes/Projects/copilot-api-gateway/vnext/packages/gateway/src/repo/dump-store.ts'
+import { BunSqliteDatabase } from '/Volumes/Projects/copilot-api-gateway/vnext/apps/platform-bun/src/bun-sqlite-database.ts'
+import { EventTargetChannelBroker } from '/Volumes/Projects/copilot-api-gateway/vnext/packages/gateway/src/shared/runtime/event-target-channel-broker.ts'
+import { dumpCodec } from '/Volumes/Projects/copilot-api-gateway/vnext/packages/gateway/src/shared/dump/codec.ts'
+import { getResponsesStore } from '/Volumes/Projects/copilot-api-gateway/vnext/packages/gateway/src/data-plane/runtime/responses-store.ts'
+const nativeFetch=globalThis.fetch; const seenSignals: AbortSignal[]=[]; globalThis.fetch=((url,init)=>{ if(String(url).includes('/v1/responses') && !String(url).includes(String(gateway?.port))) { init={...init,signal:dispatchedSignal}; if(init?.signal)seenSignals.push(init.signal) }; return nativeFetch(url,init) }) as typeof fetch;
+const p=setupTestPlatform(), pending: Promise<unknown>[]=[]
+initBackground({waitUntil: q=>pending.push(q)})
+const files=new Map()
+initDumpStore(new FileDumpStore(new BunSqliteDatabase(p.db),{async put(k,b){files.set(k,b instanceof Uint8Array?b:new Uint8Array(await new Response(b).arrayBuffer()))},async get(k){const b=files.get(k); return b?{body:new Blob([b]).stream(),size:b.length}:null},async delete(k){files.delete(k)}}))
+initDumpBroker(new EventTargetChannelBroker(dumpCodec))
+let upstreamAborted=0, upstreamCancelled=0, active=0, socketClosed=0
+const enc=new TextEncoder()
+const upstream=createServer((req,res)=>{
+ if(req.url!.endsWith('/models')){res.setHeader('content-type','application/json');res.end(JSON.stringify({data:[{id:'local-model'}]}));return}
+ active++
+ req.on('aborted',()=>upstreamAborted++);req.socket.once('close',()=>socketClosed++)
+ res.setHeader('content-type','text/event-stream')
+ res.write('data: '+JSON.stringify({type:'response.created',response:{id:'resp_local_cancel',object:'response',model:'local-model',status:'in_progress',output:[]}})+'\n\n')
+ const timer=setInterval(()=>res.write(': heartbeat\n\n'),20)
+ res.on('close',()=>{upstreamCancelled++;active--;clearInterval(timer)})
+})
+await new Promise<void>(resolve=>upstream.listen(0,'127.0.0.1',resolve))
+const upstreamPort=(upstream.address() as {port:number}).port
+const gateway=Bun.serve({port:0,hostname:'127.0.0.1',fetch:req=>app.fetch(req)})
+try{
+await p.repo.apiKeys.save({id:'local-key',name:'local',key:'isolated-fixture',createdAt:'2026-09-29',modelMappingsEnabled:false,modelMappings:[],dumpRetentionSeconds:60,responsesRetentionSeconds:86400})
+await p.repo.upstreams.save({id:'local-up',provider:'custom',name:'local',enabled:true,sortOrder:0,config:{name:'local',baseUrl:`http://127.0.0.1:${upstreamPort}/v1`,apiKey:'fixture',endpoints:['responses']},flagOverrides:{},disabledPublicModelIds:[],state:null,proxyFallbackList:[{id:'direct_fetch'}],createdAt:'2026-09-29',updatedAt:'2026-09-29'})
+const ac=new AbortController()
+const response=await fetch(`http://127.0.0.1:${gateway.port}/v1/responses`,{method:'POST',headers:{authorization:'Bearer isolated-fixture','content-type':'application/json'},body:JSON.stringify({model:'local-model',input:'local fixture',stream:true}),signal:ac.signal})
+const rid=response.headers.get('x-dump-record-id'), reader=response.body!.getReader(); await reader.read(); ac.abort()
+await Bun.sleep(1500)
+await Promise.race([Promise.allSettled(pending),Bun.sleep(1000)])
+const hour=new Date().toISOString().slice(0,13)
+const metrics=await p.repo.performanceMetrics.query({start:hour,end:hour})
+const dump=rid?await getDumpStore().get('local-key',rid):null
+const snapshots=await getResponsesStore().load('resp_local_cancel','local-key')
+console.log(JSON.stringify({upstreamAborted,upstreamCancelled,active,socketClosed,forwardedSignals:seenSignals.map(s=>s.aborted),pending:pending.length,metrics:metrics.groups.map(g=>({outcome:g.outcome,metrics:g.metrics})),dump:dump?{error:dump.meta.error,responseBytes:dump.meta.responseBytes}:null,snapshot:snapshots},null,2))
+}finally{gateway.stop(true);upstream.closeAllConnections();upstream.close();p.db.close(); process.exit(0)}

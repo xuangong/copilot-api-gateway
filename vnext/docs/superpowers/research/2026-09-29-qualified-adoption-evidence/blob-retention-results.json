@@ -1,0 +1,186 @@
+[
+  {
+    "runtime": "v22.23.2",
+    "mode": "blob",
+    "samples": [
+      {
+        "operations": 0,
+        "rss": 76759040,
+        "heapTotal": 12468224,
+        "heapUsed": 6990584,
+        "external": 3598165,
+        "arrayBuffers": 67958
+      },
+      {
+        "operations": 100,
+        "rss": 109150208,
+        "heapTotal": 12468224,
+        "heapUsed": 7082256,
+        "external": 3598205,
+        "arrayBuffers": 67958
+      },
+      {
+        "operations": 200,
+        "rss": 113590272,
+        "heapTotal": 12730368,
+        "heapUsed": 7208248,
+        "external": 3598205,
+        "arrayBuffers": 67958
+      },
+      {
+        "operations": 300,
+        "rss": 121126912,
+        "heapTotal": 12730368,
+        "heapUsed": 7260856,
+        "external": 3598205,
+        "arrayBuffers": 67958
+      },
+      {
+        "operations": 400,
+        "rss": 145014784,
+        "heapTotal": 12730368,
+        "heapUsed": 7287328,
+        "external": 3598205,
+        "arrayBuffers": 67958
+      }
+    ]
+  },
+  {
+    "runtime": "v22.23.2",
+    "mode": "stream",
+    "samples": [
+      {
+        "operations": 0,
+        "rss": 71270400,
+        "heapTotal": 11943936,
+        "heapUsed": 6919432,
+        "external": 3598165,
+        "arrayBuffers": 67958
+      },
+      {
+        "operations": 100,
+        "rss": 94568448,
+        "heapTotal": 12468224,
+        "heapUsed": 7005512,
+        "external": 3598205,
+        "arrayBuffers": 67958
+      },
+      {
+        "operations": 200,
+        "rss": 100352000,
+        "heapTotal": 12468224,
+        "heapUsed": 7122288,
+        "external": 3598205,
+        "arrayBuffers": 67958
+      },
+      {
+        "operations": 300,
+        "rss": 104660992,
+        "heapTotal": 12468224,
+        "heapUsed": 7146424,
+        "external": 3598205,
+        "arrayBuffers": 67958
+      },
+      {
+        "operations": 400,
+        "rss": 114507776,
+        "heapTotal": 12730368,
+        "heapUsed": 7181464,
+        "external": 3598205,
+        "arrayBuffers": 67958
+      }
+    ]
+  },
+  {
+    "runtime": "1.4.2",
+    "mode": "blob",
+    "samples": [
+      {
+        "operations": 0,
+        "rss": 37752832,
+        "heapTotal": 3659776,
+        "heapUsed": 706413,
+        "external": 214893,
+        "arrayBuffers": 0
+      },
+      {
+        "operations": 100,
+        "rss": 44826624,
+        "heapTotal": 4317184,
+        "heapUsed": 736594,
+        "external": 240786,
+        "arrayBuffers": 0
+      },
+      {
+        "operations": 200,
+        "rss": 40783872,
+        "heapTotal": 4317184,
+        "heapUsed": 735106,
+        "external": 239458,
+        "arrayBuffers": 0
+      },
+      {
+        "operations": 300,
+        "rss": 34324480,
+        "heapTotal": 4317184,
+        "heapUsed": 735266,
+        "external": 239458,
+        "arrayBuffers": 0
+      },
+      {
+        "operations": 400,
+        "rss": 35307520,
+        "heapTotal": 4317184,
+        "heapUsed": 737618,
+        "external": 241522,
+        "arrayBuffers": 0
+      }
+    ]
+  },
+  {
+    "runtime": "1.4.2",
+    "mode": "stream",
+    "samples": [
+      {
+        "operations": 0,
+        "rss": 29282304,
+        "heapTotal": 3659776,
+        "heapUsed": 705029,
+        "external": 215269,
+        "arrayBuffers": 0
+      },
+      {
+        "operations": 100,
+        "rss": 41447424,
+        "heapTotal": 4251648,
+        "heapUsed": 730098,
+        "external": 237474,
+        "arrayBuffers": 0
+      },
+      {
+        "operations": 200,
+        "rss": 37052416,
+        "heapTotal": 4251648,
+        "heapUsed": 728610,
+        "external": 236146,
+        "arrayBuffers": 0
+      },
+      {
+        "operations": 300,
+        "rss": 34852864,
+        "heapTotal": 4251648,
+        "heapUsed": 728770,
+        "external": 236146,
+        "arrayBuffers": 0
+      },
+      {
+        "operations": 400,
+        "rss": 34893824,
+        "heapTotal": 4251648,
+        "heapUsed": 731122,
+        "external": 238210,
+        "arrayBuffers": 0
+      }
+    ]
+  }
+]

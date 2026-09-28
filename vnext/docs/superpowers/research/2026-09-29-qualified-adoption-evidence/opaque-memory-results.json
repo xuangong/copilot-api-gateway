@@ -1,0 +1,266 @@
+[
+  {
+    "runtime": "Bun 1.3.0",
+    "mode": "current",
+    "jscHeapDelta": 12586229,
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 3178496,
+      "heapTotal": 12828672,
+      "heapUsed": 0,
+      "external": 1717,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 1
+  },
+  {
+    "runtime": "Bun 1.3.0",
+    "mode": "current",
+    "jscHeapDelta": 12586229,
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 1687552,
+      "heapTotal": 12828672,
+      "heapUsed": 0,
+      "external": 1717,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 2
+  },
+  {
+    "runtime": "Bun 1.3.0",
+    "mode": "current",
+    "jscHeapDelta": 12584818,
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 1769472,
+      "heapTotal": 12828672,
+      "heapUsed": 0,
+      "external": 530,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 3
+  },
+  {
+    "runtime": "Bun 1.3.0",
+    "mode": "reference",
+    "jscHeapDelta": 397589,
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 4145152,
+      "heapTotal": 0,
+      "heapUsed": 0,
+      "external": 394933,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 1
+  },
+  {
+    "runtime": "Bun 1.3.0",
+    "mode": "reference",
+    "jscHeapDelta": 397589,
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 3080192,
+      "heapTotal": 0,
+      "heapUsed": 0,
+      "external": 394933,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 2
+  },
+  {
+    "runtime": "Bun 1.3.0",
+    "mode": "reference",
+    "jscHeapDelta": 397589,
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 2179072,
+      "heapTotal": 0,
+      "heapUsed": 0,
+      "external": 394933,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 3
+  },
+  {
+    "runtime": "Node v22.23.2",
+    "mode": "current",
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 13713408,
+      "heapTotal": 25165824,
+      "heapUsed": 12560440,
+      "external": 4,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 1
+  },
+  {
+    "runtime": "Node v22.23.2",
+    "mode": "current",
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 13713408,
+      "heapTotal": 25427968,
+      "heapUsed": 12560440,
+      "external": 4,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 2
+  },
+  {
+    "runtime": "Node v22.23.2",
+    "mode": "current",
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 13762560,
+      "heapTotal": 25165824,
+      "heapUsed": 12560440,
+      "external": 4,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 3
+  },
+  {
+    "runtime": "Node v22.23.2",
+    "mode": "reference",
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 2211840,
+      "heapTotal": 4718592,
+      "heapUsed": 391344,
+      "external": 73732,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 1
+  },
+  {
+    "runtime": "Node v22.23.2",
+    "mode": "reference",
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 786432,
+      "heapTotal": 4718592,
+      "heapUsed": 391344,
+      "external": 24580,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 2
+  },
+  {
+    "runtime": "Node v22.23.2",
+    "mode": "reference",
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 2228224,
+      "heapTotal": 4718592,
+      "heapUsed": 391344,
+      "external": 73732,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 3
+  },
+  {
+    "runtime": "Bun 1.4.2",
+    "mode": "current",
+    "jscHeapDelta": 12585793,
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 9019392,
+      "heapTotal": 12779520,
+      "heapUsed": 12585793,
+      "external": 1505,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 1
+  },
+  {
+    "runtime": "Bun 1.4.2",
+    "mode": "current",
+    "jscHeapDelta": 12585825,
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 11923456,
+      "heapTotal": 12779520,
+      "heapUsed": 12585825,
+      "external": 1505,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 2
+  },
+  {
+    "runtime": "Bun 1.4.2",
+    "mode": "current",
+    "jscHeapDelta": 12585857,
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 11485184,
+      "heapTotal": 12779520,
+      "heapUsed": 12585857,
+      "external": 1537,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 3
+  },
+  {
+    "runtime": "Bun 1.4.2",
+    "mode": "reference",
+    "jscHeapDelta": 396675,
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 4272128,
+      "heapTotal": 0,
+      "heapUsed": 396675,
+      "external": 394115,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 1
+  },
+  {
+    "runtime": "Bun 1.4.2",
+    "mode": "reference",
+    "jscHeapDelta": 397315,
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 4657152,
+      "heapTotal": 0,
+      "heapUsed": 397315,
+      "external": 394755,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 2
+  },
+  {
+    "runtime": "Bun 1.4.2",
+    "mode": "reference",
+    "jscHeapDelta": 397315,
+    "codeUnits": 393216,
+    "delta": {
+      "rss": 4304896,
+      "heapTotal": 0,
+      "heapUsed": 397315,
+      "external": 394755,
+      "arrayBuffers": 0
+    },
+    "allCodeUnitsPreserved": true,
+    "trial": 3
+  }
+]

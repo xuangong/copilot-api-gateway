@@ -1,0 +1,18 @@
+import { randomFillSync } from 'node:crypto';
+const mode=process.argv[2] || 'blob';
+const gc=()=>typeof Bun==='undefined'?globalThis.gc():Bun.gc(true);
+const pause=()=>new Promise(resolve=>setTimeout(resolve,20));
+async function once() {
+ const bytes=randomFillSync(new Uint8Array(262144));
+ const input=mode==='blob'?new Blob([bytes]).stream():new ReadableStream({start(c){c.enqueue(bytes);c.close()}});
+ const output=await new Response(input.pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+ if(output.byteLength<262144)throw Error('unexpected test payload');
+}
+for(let i=0;i<10;i++)await once();
+const samples=[];
+for(let batch=0;batch<=4;batch++){
+ if(batch)for(let i=0;i<100;i++)await once();
+ for(let i=0;i<3;i++){gc();await pause();}
+ samples.push({operations:batch*100,...process.memoryUsage()});
+}
+console.log(JSON.stringify({runtime:typeof Bun==='undefined'?process.version:Bun.version,mode,samples}));

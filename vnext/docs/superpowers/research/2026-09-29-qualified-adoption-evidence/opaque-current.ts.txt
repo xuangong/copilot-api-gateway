@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+const mode="current";
+const rawStringFromBytes = (bytes: Uint8Array): string => {
+  if (bytes.length % 2 !== 0) throw new TypeError('Raw opaque value has an odd byte length')
+  let value = ''
+  for (let offset = 0; offset < bytes.length; offset += 2) {
+    value += String.fromCharCode((bytes[offset]! << 8) | bytes[offset + 1]!)
+  }
+  return value
+}
+
+const encodeOpaqueValue=(bytes)=>rawStringFromBytes(bytes);
+const jsc=typeof Bun!=='undefined'?await import('bun:jsc'):null;
+const expected=Array.from({length:64},(_,index)=>`${index}:`.padEnd(6144,'a'));
+const inputs=expected.map(value=>Buffer.from(value,'utf16le').swap16());
+const gc=()=>typeof Bun!=='undefined'?Bun.gc(true):globalThis.gc();
+for(const input of inputs) encodeOpaqueValue(input,'raw');
+gc();const before=process.memoryUsage(); const beforeJsc=jsc?.heapStats().heapSize;
+const retained=inputs.map(input=>encodeOpaqueValue(input,'raw'));
+globalThis.retainedForAudit=retained;
+gc();const after=process.memoryUsage(); const afterJsc=jsc?.heapStats().heapSize;
+const delta=Object.fromEntries(Object.keys(before).map(key=>[key,after[key]-before[key]]));
+assert.deepEqual(retained,expected);
+const all=Buffer.alloc(131072);for(let i=0;i<65536;i++)all.writeUInt16BE(i,i*2);
+const result=encodeOpaqueValue(all,'raw');for(let i=0;i<65536;i++)assert.equal(result.charCodeAt(i),i);
+console.log(JSON.stringify({runtime:typeof Bun!=='undefined'?`Bun ${Bun.version}`:`Node ${process.version}`,mode,jscHeapDelta:jsc?afterJsc-beforeJsc:undefined,codeUnits:393216,delta,allCodeUnitsPreserved:true}));

@@ -1,0 +1,58 @@
+POST /v1/responses → 200 24ms
+{
+  "upstreamAborted": 0,
+  "upstreamCancelled": 0,
+  "active": 1,
+  "socketClosed": 0,
+  "forwardedSignals": [],
+  "pending": 3,
+  "metrics": [
+    {
+      "outcome": "cancelled",
+      "metrics": {
+        "totalMs": {
+          "count": 1,
+          "sum": 27.152833999999984,
+          "min": 27.152833999999984,
+          "max": 27.152833999999984,
+          "buckets": [
+            {
+              "upper": 50,
+              "count": 1
+            }
+          ]
+        },
+        "upstreamMs": {
+          "count": 1,
+          "sum": 8.711583000000019,
+          "min": 8.711583000000019,
+          "max": 8.711583000000019,
+          "buckets": [
+            {
+              "upper": 10,
+              "count": 1
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "dump": {
+    "error": null,
+    "responseBytes": 194
+  },
+  "snapshot": {
+    "responseId": "resp_local_cancel",
+    "apiKeyId": "local-key",
+    "model": "local-model",
+    "items": [
+      {
+        "type": "message",
+        "role": "user",
+        "content": "local fixture"
+      }
+    ],
+    "createdAt": 1790611965966,
+    "expiresAt": 1790726400000
+  }
+}
