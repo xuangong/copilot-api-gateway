@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useReducer, useRef, useState } from "react"
 import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
 import { ApiError } from "../../api/client"
@@ -13,9 +13,9 @@ import {
   type ProxyRecord,
   type ProxyBackoffRow,
   type ProxyTestAnchor,
-  type ProxyTestResult,
 } from "../../api/proxies"
 import { ProxyForm } from "./ProxyForm"
+import { initialProxyTestState, reduceProxyTestState } from "./proxy-test-state"
 import {
   type ProxyDraft,
   defaultsFor,
@@ -55,8 +55,12 @@ export function ProxiesTab() {
   const [draft, setDraft] = useState<ProxyDraft>(EMPTY_DRAFT)
   const [creating, setCreating] = useState(false)
   const [anchor, setAnchor] = useState<ProxyTestAnchor>("ipify")
-  const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<ProxyTestResult | null>(null)
+  const [testState, dispatchTest] = useReducer(reduceProxyTestState, initialProxyTestState)
+  const testRevision = useRef(0)
+  const { pending: testing, result: testResult } = testState
+  const invalidateTest = () => {
+    dispatchTest({ type: "invalidate", revision: ++testRevision.current })
+  }
 
   const reload = useCallback(async () => {
     try {
@@ -75,7 +79,7 @@ export function ProxiesTab() {
   const startEdit = (p: ProxyRecord) => {
     setEditingId(p.id)
     setCreating(false)
-    setTestResult(null)
+    invalidateTest()
     const parsed = parseProxyUriSafe(p.url)
     setDraft({
       name: p.name,
@@ -92,7 +96,7 @@ export function ProxiesTab() {
     setCreating(false)
     setEditingId(null)
     setDraft(EMPTY_DRAFT)
-    setTestResult(null)
+    invalidateTest()
   }
 
   const submit = async () => {
@@ -114,20 +118,17 @@ export function ProxiesTab() {
 
   const runTest = async () => {
     const secs = draft.dialTimeoutSeconds.trim()
-    setTesting(true)
-    setTestResult(null)
+    const revision = ++testRevision.current
+    dispatchTest({ type: "start", revision })
     try {
-      setTestResult(
-        await testProxy({
-          url: draftUrl(draft).trim(),
-          dialTimeoutSeconds: secs ? Number(secs) : null,
-          anchor,
-        }),
-      )
+      const result = await testProxy({
+        url: draftUrl(draft).trim(),
+        dialTimeoutSeconds: secs ? Number(secs) : null,
+        anchor,
+      })
+      dispatchTest({ type: "finish", revision, result })
     } catch (e) {
-      setTestResult({ ok: false, error: e instanceof Error ? e.message : String(e) })
-    } finally {
-      setTesting(false)
+      dispatchTest({ type: "finish", revision, result: { ok: false, error: e instanceof Error ? e.message : String(e) } })
     }
   }
 
@@ -169,7 +170,7 @@ export function ProxiesTab() {
             setCreating(true)
             setEditingId(null)
             setDraft(EMPTY_DRAFT)
-            setTestResult(null)
+            invalidateTest()
           }}
           className="btn-primary !text-xs !py-1 !px-3 shrink-0"
         >
@@ -179,7 +180,7 @@ export function ProxiesTab() {
 
       {creating || editingId ? (
         <div className="bg-surface-900 border border-surface-600 rounded-lg p-3 space-y-2">
-          <ProxyForm draft={draft} onChange={setDraft} />
+          <ProxyForm draft={draft} onChange={(next) => { invalidateTest(); setDraft(next) }} />
 
           <div className="flex gap-2 items-center flex-wrap">
             <button
@@ -201,7 +202,7 @@ export function ProxiesTab() {
               onChange={(e) => {
                 // find() 把 string 收窄回 ProxyTestAnchor —— 守卫而非断言。
                 const a = ANCHORS.find((x) => x === e.target.value)
-                if (a) setAnchor(a)
+                if (a) { invalidateTest(); setAnchor(a) }
               }}
               title={t("dash.proxyAnchorLabel")}
               className="bg-surface-800 border border-surface-600 rounded px-2 py-1 text-xs"
