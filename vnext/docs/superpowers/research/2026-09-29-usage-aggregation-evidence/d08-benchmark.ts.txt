@@ -1,0 +1,125 @@
+import { Database } from "bun:sqlite"
+import { BunSqliteRepo } from "../../../vnext/apps/platform-bun/src/bun-sqlite-repo.ts"
+import { aggregateUsageForDisplay } from "../../../vnext/packages/gateway/src/control-plane/token-usage/aggregate.ts"
+
+type Row = { keyId: string; incomingModel: string; model: string; client: string; hour: string; requests: number; tokens: Record<string, number>; cost: number }
+type SqlRow = { key_id: string; incoming_model: string; model: string; client: string; hour: string; dimension?: string; tokens?: number; cost?: number; requests?: number }
+
+const [mode = "compare", scope = "all", sizeText = "30000"] = Bun.argv.slice(2)
+const size = Number(sizeText)
+if (!Number.isInteger(size) || size < 1 || size > 50000) throw new Error("invalid size")
+const db = new Database(":memory:")
+const repo = new BunSqliteRepo(db)
+const dim = db.prepare("INSERT INTO usage (key_id,incoming_model,model,upstream,model_key,client,hour,dimension,tokens,unit_price) VALUES (?,?,?,?,?,?,?,?,?,?)")
+const req = db.prepare("INSERT INTO usage_requests (key_id,incoming_model,model,upstream,model_key,client,hour,requests) VALUES (?,?,?,?,?,?,?,?)")
+db.transaction(() => {
+  for (let i = 0; i < size; i++) {
+    const g = Math.floor(i / 6)
+    const u = i % 6
+    const key = `key${g % 100}`
+    const tuple = [key, g % 17 === 0 ? "" : `alias${g % 4}`, "model", u % 2 ? null : `up${u}`, `price${u}-${g}`, g % 2 ? "client" : "", `2026-09-01T${String(g % 24).padStart(2, "0")}`]
+    req.run(...tuple, 1)
+    dim.run(...tuple, "input", 1 + (i % 997), u === 5 ? null : 0.125 + u / 10)
+    dim.run(...tuple, "input_cache_read", 1 + i % 31, u % 3 === 0 ? 0 : null)
+    if (i % 13 === 0) dim.run(...tuple, "input_cache_write", 2, null)
+    if (i % 17 === 0) dim.run(...tuple, "input_image", 3, null)
+    if (i % 7 !== 0) dim.run(...tuple, "output", 1 + i % 13, u === 4 ? null : 0.333333)
+    if (i % 11 === 0) dim.run(...tuple, "output_image", 1, null)
+  }
+  // Request-only and token-only buckets; explicit NUL and empty/null upstream identity.
+  req.run("orphan", "", "model", null, "m", "", "2026-09-01T00", 3)
+  dim.run("orphan", "", "model", null, "m", "", "2026-09-01T01", "input", 17, null)
+  dim.run("key0", "nul\u0000alias", "model", null, "nul\u0000price", "", "2026-09-01T02", "input", 9, 1e-9)
+  dim.run("key0", "nul\u0000alias", "model", null, "nul\u0000price", "", "2026-09-01T02", "input_image", 4, null)
+})()
+
+const opts = scope === "one-key" ? { keyIds: ["key0"], start: "2026-09-01T00", end: "2026-09-02T00" } :
+  scope === "empty" ? { keyIds: [], start: "2026-09-01T00", end: "2026-09-02T00" } :
+  { start: "2026-09-01T00", end: "2026-09-02T00" }
+if (!["all", "one-key", "empty"].includes(scope)) throw new Error("invalid scope")
+
+// A bounded overview would bind a JSON key list once per axis, never interpolate ids.
+const where = "hour >= ? AND hour < ?" + (scope === "all" ? "" : " AND key_id IN (SELECT value FROM json_each(?))")
+const binds: (string | number)[] = [opts.start, opts.end]
+if (scope !== "all") binds.push(JSON.stringify(opts.keyIds))
+const group = "key_id,incoming_model,model,client,hour"
+const price = `COALESCE(u.unit_price, CASE WHEN u.dimension IN ('input_cache_read','input_cache_write','input_image','output_image')
+  THEN (SELECT p.unit_price FROM usage p INDEXED BY idx_usage_identity
+    WHERE p.key_id=u.key_id AND p.incoming_model=u.incoming_model AND p.model=u.model
+      AND COALESCE(p.upstream,'')=COALESCE(u.upstream,'') AND p.model_key=u.model_key
+      AND p.client=u.client AND p.hour=u.hour
+      AND p.dimension=CASE WHEN u.dimension='output_image' THEN 'output' ELSE 'input' END)
+  END)`
+const dimSql = `SELECT ${group},dimension,SUM(tokens) tokens,SUM(tokens * COALESCE(${price},0))/1e6 cost,
+  SUM(CASE WHEN ${price} IS NULL THEN tokens ELSE 0 END) unpriced_tokens
+  FROM usage u WHERE ${where} GROUP BY ${group},dimension`
+const dimSqlOnce = `WITH resolved AS MATERIALIZED (
+  SELECT u.*, ${price} resolved_price FROM usage u WHERE ${where}
+) SELECT ${group},dimension,SUM(tokens) tokens,SUM(tokens * COALESCE(resolved_price,0))/1e6 cost,
+  SUM(CASE WHEN resolved_price IS NULL THEN tokens ELSE 0 END) unpriced_tokens
+  FROM resolved GROUP BY ${group},dimension`
+const reqSql = `SELECT ${group},SUM(requests) requests FROM usage_requests WHERE ${where} GROUP BY ${group}`
+
+async function jsPath(measureTransfer = false): Promise<{ result: Row[]; transferred: number; rows: number }> {
+  const records = await repo.usage.query(opts as Parameters<typeof repo.usage.query>[0])
+  const result = aggregateUsageForDisplay(records) as Row[]
+  if (!measureTransfer) return { result, transferred: 0, rows: 0 }
+  // Serialize raw scoped rows, matching the materialization boundary of the current repo query.
+  const rawDim = db.query(`SELECT * FROM usage WHERE ${where}`).all(...binds)
+  const rawReq = db.query(`SELECT * FROM usage_requests WHERE ${where}`).all(...binds)
+  return { result, transferred: Buffer.byteLength(JSON.stringify(rawDim)) + Buffer.byteLength(JSON.stringify(rawReq)), rows: rawDim.length + rawReq.length }
+}
+
+function sqlPath(measureTransfer = false, resolveOnce = false): { result: Row[]; transferred: number; rows: number; unpricedTokens: number } {
+  const ds = db.query(resolveOnce ? dimSqlOnce : dimSql).all(...binds) as (SqlRow & { unpriced_tokens: number })[]
+  const rs = db.query(reqSql).all(...binds) as SqlRow[]
+  const map = new Map<string, Row>()
+  const ensure = (r: SqlRow): Row => {
+    const key = JSON.stringify([r.key_id, r.incoming_model, r.model, r.client, r.hour])
+    let x = map.get(key)
+    if (!x) {
+      x = { keyId: r.key_id, incomingModel: r.incoming_model, model: r.model, client: r.client, hour: r.hour, requests: 0, tokens: {}, cost: 0 }
+      map.set(key, x)
+    }
+    return x
+  }
+  for (const d of ds) {
+    const row = ensure(d)
+    if ((d.tokens ?? 0) > 0 && d.dimension) row.tokens[d.dimension] = d.tokens ?? 0
+    row.cost += d.cost ?? 0
+  }
+  for (const r of rs) ensure(r).requests = r.requests ?? 0
+  const result = [...map.values()].sort((a, b) => a.hour.localeCompare(b.hour) || a.keyId.localeCompare(b.keyId) || a.incomingModel.localeCompare(b.incomingModel) || a.model.localeCompare(b.model) || a.client.localeCompare(b.client))
+  return { result, transferred: measureTransfer ? Buffer.byteLength(JSON.stringify(ds)) + Buffer.byteLength(JSON.stringify(rs)) : 0, rows: ds.length + rs.length, unpricedTokens: ds.reduce((n, d) => n + d.unpriced_tokens, 0) }
+}
+
+function compare(a: Row[], b: Row[]): { mismatches: number; maxCostDifference: number } {
+  if (a.length !== b.length) return { mismatches: Math.abs(a.length - b.length), maxCostDifference: Infinity }
+  let mismatches = 0
+  let maxCostDifference = 0
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!, y = b[i]!
+    const tokenEntries = (r: Row) => Object.entries(r.tokens).sort(([a],[b]) => a.localeCompare(b))
+    if (JSON.stringify([x.keyId,x.incomingModel,x.model,x.client,x.hour,x.requests,tokenEntries(x)]) !== JSON.stringify([y.keyId,y.incomingModel,y.model,y.client,y.hour,y.requests,tokenEntries(y)])) mismatches++
+    const diff = Math.abs(x.cost - y.cost)
+    maxCostDifference = Math.max(maxCostDifference, diff)
+    if (diff > Math.max(1e-12, Math.abs(x.cost) * 1e-10)) mismatches++
+  }
+  return { mismatches, maxCostDifference }
+}
+
+if (mode === "compare" || mode === "compare-once") {
+  const a = await jsPath(true)
+  const b = sqlPath(true, mode === "compare-once")
+  console.log(JSON.stringify({ mode, scope, size, currentRows: a.rows, sqlRows: b.rows, currentBytes: a.transferred, sqlBytes: b.transferred, unpricedTokens: b.unpricedTokens, ...compare(a.result,b.result) }))
+} else if (mode === "js" || mode === "sql" || mode === "sql-once") {
+  const times: number[] = []
+  let last: Awaited<ReturnType<typeof jsPath>> | ReturnType<typeof sqlPath> | undefined
+  for (let i = 0; i < 7; i++) {
+    Bun.gc(true)
+    const begin = performance.now()
+    last = mode === "js" ? await jsPath() : sqlPath(false, mode === "sql-once")
+    if (i > 0) times.push(performance.now() - begin)
+  }
+  console.log(JSON.stringify({ mode, scope, size, timesMs: times, rows: last?.rows, bytes: last?.transferred, rssMb: process.memoryUsage().rss / 1048576, heapMb: process.memoryUsage().heapUsed / 1048576 }))
+} else throw new Error("invalid mode")
