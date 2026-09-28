@@ -67,8 +67,9 @@ describe("applyMigrations", () => {
   // built by the pre-migration bootstrap and have no ledger.
   test("fills gaps in a pre-ledger database without touching its data", () => {
     const dir = mkdtempSync(join(tmpdir(), "migrate-pre-ledger-test-"))
-    const db = new Database(":memory:")
+    let db: Database | undefined
     try {
+      db = new Database(":memory:")
       // Reconstruct the pre-ledger fixture from the corpus before 0015 existed.
       copyMigrationRange(dir, 1, 14)
       applyMigrations(db, dir)
@@ -137,7 +138,7 @@ describe("applyMigrations", () => {
       expect(tables(db)).toContain("maintenance_cursors")
     } finally {
       try {
-        db.close()
+        db?.close()
       } finally {
         rmSync(dir, { recursive: true, force: true })
       }
