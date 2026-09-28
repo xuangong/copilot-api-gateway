@@ -157,3 +157,120 @@ for (const wantsStream of [true, false]) {
     expect(terminal.output).toEqual([item('a'), item('b', 'final'), item('extra')])
   })
 }
+
+for (const bridge of [false, true]) {
+  for (const wantsStream of [true, false]) {
+    const label = `${bridge ? 'bridged' : 'event'} ${wantsStream ? 'SSE' : 'JSON'}`
+    const input = async () => {
+      if (!bridge) return llmEventResult(frames(), identity)
+      const response = wantsStream
+        ? new Response((await Array.fromAsync(frames())).map((f) => f.type === 'event' ? `event: ${f.event.type}\ndata: ${JSON.stringify(f.event)}\n\n` : '').join(''), { headers: { 'content-type': 'text/event-stream' } })
+        : Response.json({ id: 'resp_1', output: [], status: 'completed', model: identity.model })
+      return { kind: 'bridged-response' as const, response }
+    }
+    test(`${label} waits for snapshot before exposing completed success`, async () => {
+      const gate = Promise.withResolvers<void>()
+      let called = false
+      let settled = false
+      let text = ''
+      const pending = respondResponses(await input(), {
+        wantsStream,
+        onCompleted: async () => { called = true; await gate.promise },
+      }).then(async (res) => { text = await res.text(); settled = true })
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      try {
+        expect(called).toBe(true)
+        expect(settled).toBe(false)
+      } finally { gate.resolve(); await pending }
+      expect(text).toContain('completed')
+    })
+    test(`${label} rejects snapshot failures without exposing private storage errors or success`, async () => {
+      const res = await respondResponses(await input(), {
+        wantsStream,
+        onCompleted: async () => { throw new Error('private prompt and sqlite credentials') },
+      })
+      const text = await res.text()
+      if (wantsStream) expect(text).toContain('event: error')
+      else expect(res.status).toBe(502)
+      expect(text).not.toContain('response.completed')
+      expect(text).not.toContain('private prompt')
+    })
+  }
+}
+
+test('abort during snapshot save suppresses terminal and stops consuming subsequent frames', async () => {
+  const gate = Promise.withResolvers<void>()
+  const entered = Promise.withResolvers<void>()
+  const abort = new AbortController()
+  let drained = false
+  async function* source(): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
+    yield* frames()
+    drained = true
+  }
+  const res = await respondResponses(llmEventResult(source(), identity), {
+    wantsStream: true, downstreamAbortController: abort,
+    onCompleted: async () => { entered.resolve(); await gate.promise },
+  })
+  const textPromise = res.text()
+  await Promise.race([entered.promise, new Promise((resolve) => setTimeout(resolve, 10))])
+  abort.abort()
+  gate.resolve()
+  expect(await textPromise).not.toContain('response.completed')
+  expect(drained).toBe(false)
+})
+
+for (const wantsStream of [true, false]) {
+  test(`interceptor replacement cannot bypass ${wantsStream ? "SSE" : "JSON"} persistence failure`, async () => {
+    const result = { ...llmEventResult(frames(), identity), __interceptorReplaced: true as const, finalMetadata: Promise.resolve({ modelIdentity: identity }) }
+    const response = await respondResponses(result, { wantsStream, onCompleted: async () => { throw new Error("private shortcut data") } })
+    const body = await response.text()
+    if (wantsStream) { expect(body).toContain("event: error"); expect(body).not.toContain("response.completed") }
+    else expect(response.status).toBe(502)
+    expect(body).not.toContain("private shortcut data")
+  })
+}
+
+for (const wantsStream of [true, false]) {
+  test(`request abort releases pending ${wantsStream ? "SSE" : "JSON"} save without waiting for storage`, async () => {
+    const entered = Promise.withResolvers<void>()
+    const save = Promise.withResolvers<void>()
+    const abort = new AbortController()
+    const result = respondResponses(llmEventResult(frames(), identity), {
+      wantsStream, downstreamAbortController: abort,
+      onCompleted: async () => { entered.resolve(); await save.promise },
+    }).then(async (response) => ({ status: response.status, body: await response.text() }))
+    await entered.promise
+    abort.abort()
+    try {
+      const output = await Promise.race([result, new Promise<null>((resolve) => setTimeout(() => resolve(null), 30))])
+      expect(output).not.toBeNull()
+      expect(output?.body).not.toContain("response.completed")
+      if (!wantsStream) expect(output?.status).toBe(502)
+    } finally { save.resolve(); await result }
+  })
+}
+
+test('bridged SSE abort closes downstream while both snapshot save and source cancellation remain pending', async () => {
+  const abort = new AbortController()
+  const entered = Promise.withResolvers<void>()
+  let cancellations = 0
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(`event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed', response: { id: 'pending_bridge', status: 'completed', output: [] } })}\n\n`))
+    },
+    cancel() { cancellations++; return new Promise<void>(() => {}) },
+  })
+  const response = await respondResponses({
+    kind: 'bridged-response', response: new Response(source, { headers: { 'content-type': 'text/event-stream' } }),
+  }, {
+    wantsStream: true, downstreamAbortController: abort,
+    onCompleted: () => { entered.resolve(); return new Promise<void>(() => {}) },
+  })
+  const text = response.text()
+  await entered.promise
+  abort.abort()
+  const output = await Promise.race([text, Bun.sleep(30).then(() => null)])
+  expect(output).toBe('')
+  expect(cancellations).toBe(1)
+  expect(source.locked).toBe(false)
+})

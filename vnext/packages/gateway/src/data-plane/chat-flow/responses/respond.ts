@@ -15,16 +15,12 @@ import { translateStream } from "../shared/translate-stream"
  *   - Non-streaming branch reassembles the frames into a `ResponsesResult`
  *     JSON envelope via `collectResponsesProtocolEventsToResult`.
  *
- * Snapshot sidecars (`attachStreamSidecar` / `attachNonStreamSidecar`) are
- * driven separately from this module — they tee the rendered Response and
- * persist a post-turn snapshot through `getResponsesStore()`, NOT through
- * the new telemetry channel. The sidecar must NOT touch `finalMetadata` or
- * `__interceptorReplaced`. respond.ts therefore returns a fully-rendered
- * Response and exposes the `mergedInputItems` so http.ts can wire
- * sidecar attachment in one place.
+ * Reusable completion awaits the request-scoped snapshot writer before SSE
+ * terminal delivery or JSON success. Telemetry remains a separate channel.
  *
  * Reference: messages/respond.ts (Spec 3 Part 3 Task 2).
  */
+import { parseSSEStream } from '@vibe-core/result/parse'
 import { waitUntil } from '@vibe-core/platform'
 import {
   upstreamErrorToResponse,
@@ -57,7 +53,17 @@ import { COMMENT_KEEPALIVE_FRAME, startSseKeepalive } from '../shared/sse-keepal
 import { collectChatCompletionsProtocolEventsToResult } from '../chat-completions/events/to-result'
 import { collectMessagesProtocolEventsToResult } from '../messages/events/reassemble'
 
+export interface CompletedResponsesSnapshot {
+  readonly id: string
+  readonly model?: string
+  readonly output: unknown[]
+}
+
+export type ResponsesCompletionWriter = (response: CompletedResponsesSnapshot, inputItems: readonly unknown[]) => Promise<void>
+
 export interface RespondResponsesOptions {
+  readonly onCompleted?: ResponsesCompletionWriter
+  readonly mergedInputItems?: readonly unknown[]
   readonly wantsStream: boolean
   /** Linked controller for downstream client cancel; same plumbing as messages. */
   readonly downstreamAbortController?: AbortController
@@ -75,6 +81,45 @@ export interface RespondResponsesOptions {
 export type RespondResponsesInput =
   | LlmExecuteResult<ProtocolFrame<ResponsesStreamEvent>>
   | { readonly kind: 'bridged-response'; readonly response: Response }
+
+const SNAPSHOT_FAILURE = "Unable to persist response continuation state."
+
+const reusableResponse = (body: unknown): body is CompletedResponsesSnapshot => {
+  if (!body || typeof body !== "object") return false
+  const response = body as Record<string, unknown>
+  return typeof response.id === "string" && response.id.length > 0 && Array.isArray(response.output)
+    && (response.status === "completed" || response.status === undefined)
+    && !response.error && !response.incomplete_details
+}
+
+async function persistCompleted(body: unknown, options: RespondResponsesOptions): Promise<void> {
+  const signal = options.downstreamAbortController?.signal
+  if (signal?.aborted) throw new Error("Response cancelled.")
+  if (!options.onCompleted || !reusableResponse(body)) return
+  const write = options.onCompleted
+  let onAbort: (() => void) | undefined
+  try {
+    const save = Promise.resolve().then(() => {
+      if (signal?.aborted) throw new Error("Response cancelled.")
+      return write(body, options.mergedInputItems ?? [])
+    })
+    if (signal) {
+      const aborted = new Promise<never>((_resolve, reject) => {
+        onAbort = () => reject(new Error("Response cancelled."))
+        signal.addEventListener("abort", onAbort, { once: true })
+      })
+      await Promise.race([save, aborted])
+    } else {
+      await save
+    }
+  } catch {
+    // Storage exceptions can contain SQL bindings, prompts, or credentials.
+    throw new Error(signal?.aborted ? "Response cancelled." : SNAPSHOT_FAILURE)
+  } finally {
+    if (onAbort) signal?.removeEventListener("abort", onAbort)
+  }
+  if (signal?.aborted) throw new Error("Response cancelled.")
+}
 
 const SSE_TEXT_ENCODER = new TextEncoder()
 
@@ -231,7 +276,12 @@ const renderEventsAsSSE = (
       const keepalive = startSseKeepalive(controller, COMMENT_KEEPALIVE_FRAME)
       try {
         for await (const frame of events) {
+          if (cancelled || state.cancelled) break
           const canonical = frame.type === "event" ? { ...frame, event: output.observe(frame.event) } : frame
+          if (canonical.type === "event" && canonical.event.type === "response.completed") {
+            await persistCompleted(canonical.event.response, options)
+          }
+          if (cancelled || state.cancelled) break
           const sse = responsesProtocolFrameToSSEFrame(canonical)
           if (sse !== null && !cancelled) {
             if (frame.type === "event") options.telemetryCtx?.metrics?.observeOutput("responses", frame.event)
@@ -241,7 +291,10 @@ const renderEventsAsSSE = (
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        if (!state.cancelled) options.dump?.failed(message)
+        if (!state.cancelled) {
+          state.failedAfter()
+          options.dump?.failed(message)
+        }
         if (!cancelled && !state.cancelled) controller.enqueue(
           encodeSseFrame(
             sseFrame(JSON.stringify({ type: 'error', message }), 'error'),
@@ -322,6 +375,7 @@ const renderEventsAsJson = async (
           model: state.publicModel,
         })
       : reassembled
+    await persistCompleted(finalBody, options)
     if (options.telemetryCtx || options.dump) {
       waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     }
@@ -388,12 +442,61 @@ const renderExecuteResult = async (
     : await renderEventsAsJson(result, options)
 }
 
+/** Legacy dispatch responses already own their model identity and telemetry.
+ * Gate their actual wire in one pass instead of cloning or draining a sidecar. */
+const renderBridgedResponse = async (response: Response, options: RespondResponsesOptions): Promise<Response> => {
+  if (!options.onCompleted || !response.ok) return response
+  const headers = new Headers(response.headers)
+  headers.delete("content-length")
+  const contentType = headers.get("content-type") ?? ""
+  if (contentType.includes("application/json")) {
+    try {
+      const body: unknown = await response.json()
+      await persistCompleted(body, options)
+      return Response.json(body, { status: response.status, headers })
+    } catch {
+      return Response.json({ error: { type: "api_error", message: SNAPSHOT_FAILURE } }, { status: 502 })
+    }
+  }
+  if (!contentType.includes("text/event-stream") || !response.body) {
+    void response.body?.cancel().catch(() => {})
+    return Response.json({ error: { type: "api_error", message: "Unsupported response format for continuation storage." } }, { status: 502 })
+  }
+  const abort = options.downstreamAbortController ?? new AbortController()
+  const body = response.body
+  let cancelled = false
+  return new Response(new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const output = new ResponsesFinalOutput()
+      const keepalive = startSseKeepalive(controller, COMMENT_KEEPALIVE_FRAME)
+      try {
+        for await (const frame of parseSSEStream(body, { signal: abort.signal })) {
+          if (abort.signal.aborted) break
+          if (frame.data === "[DONE]") continue
+          const parsed = JSON.parse(frame.data) as Record<string, unknown>
+          const event = output.observe((frame.event && !parsed.type ? { ...parsed, type: frame.event } : parsed) as unknown as ResponsesStreamEvent)
+          if (event.type === "response.completed") await persistCompleted(event.response, { ...options, downstreamAbortController: abort })
+          if (abort.signal.aborted) break
+          controller.enqueue(encodeSseFrame(sseFrame(JSON.stringify(event), frame.event ?? event.type)))
+          keepalive.touch()
+        }
+      } catch {
+        if (!abort.signal.aborted) controller.enqueue(encodeSseFrame(sseFrame(JSON.stringify({ type: "error", message: SNAPSHOT_FAILURE }), "error")))
+      } finally {
+        keepalive.stop()
+        if (!cancelled) controller.close()
+      }
+    },
+    cancel() { cancelled = true; abort.abort() },
+  }), { status: response.status, headers })
+}
+
 export const respondResponses = async (
   result: RespondResponsesInput,
   options: RespondResponsesOptions,
 ): Promise<Response> => {
   // bridged-response is the legacy `dispatch()` short-circuit from
   // attempt.ts; the wrapped Response is already client-shaped.
-  if (isBridgedResponse(result)) return result.response
+  if (isBridgedResponse(result)) return await renderBridgedResponse(result.response, options)
   return await renderExecuteResult(result, options)
 }

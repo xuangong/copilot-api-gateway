@@ -64,7 +64,7 @@ export const parseSSEStream = async function* (
   }
 
   if (signal?.aborted) {
-    await cancelReader(signal.reason)
+    void cancelReader(signal.reason)
     reader.releaseLock()
     return
   }
@@ -90,6 +90,11 @@ export const parseSSEStream = async function* (
     if (final && !signal?.aborted) yield final
   } finally {
     signal?.removeEventListener('abort', cancelReaderOnAbort)
-    try { await (cancelPromise ?? reader.cancel()) } finally { reader.releaseLock() }
+    try {
+      // Abort must not depend on a transport's unbounded cancellation cleanup.
+      // cancelReader observes rejection even when we detach from its promise.
+      if (signal?.aborted) void cancelReader(signal.reason)
+      else await (cancelPromise ?? reader.cancel())
+    } finally { reader.releaseLock() }
   }
 }

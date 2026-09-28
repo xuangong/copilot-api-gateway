@@ -98,3 +98,28 @@ test("SSE abort releases a pending read without dispatching unfinished data", as
   expect(await result).toEqual([])
   expect(cancelled).toBe(true)
 })
+
+for (const preAborted of [false, true]) {
+  for (const cleanup of ['never', 'reject'] as const) {
+    test(`SSE ${preAborted ? 'pre-aborted' : 'midstream abort'} releases its reader when cancellation will ${cleanup}`, async () => {
+      const abort = new AbortController()
+      let cancellations = 0
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(new TextEncoder().encode('data:first\n\ndata:unfinished')) },
+        cancel() {
+          cancellations++
+          return cleanup === 'never' ? new Promise<void>(() => {}) : Promise.reject(new Error('cancel cleanup failed'))
+        },
+      })
+      if (preAborted) abort.abort()
+      const frames = parseSSEStream(stream, { signal: abort.signal })
+      if (!preAborted) expect((await frames.next()).value?.data).toBe('first')
+      const next = frames.next()
+      if (!preAborted) abort.abort()
+      const result = await Promise.race([next, Bun.sleep(30).then(() => null)])
+      expect(result).toEqual({ done: true, value: undefined })
+      expect(cancellations).toBe(1)
+      expect(stream.locked).toBe(false)
+    })
+  }
+}

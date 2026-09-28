@@ -13,20 +13,12 @@ import { ClientDisconnect } from "../shared/client-disconnect"
  *      dump accumulator share the exact bytes).
  *   2. Parse raw body; reject malformed JSON with the legacy 400 envelope
  *      (routed through the dump finalize seam so error rows land too).
- *   3. Hand off to `serveResponses`. The kit auto-tees the terminal Response
- *      into the dump BEFORE it comes back here, so the snapshot sidecar
- *      layered below sees the already-tee'd body.
- *   4. For 2xx Responses (SSE or JSON), tee/clone the body via
- *      `attachStreamSidecar` / `attachNonStreamSidecar` so the post-turn
- *      snapshot lands without contaminating the new telemetry channel.
- *      The sidecar must NOT touch `finalMetadata` or
- *      `__interceptorReplaced` — those belong to the telemetry channel
- *      owned by `respond.ts`.
+ *   3. Hand off to `serveResponses`, which gates reusable completion on
+ *      snapshot persistence before the kit finalizes the request dump.
  */
 import type { Context } from 'hono'
 import type { Env } from '../../../app.ts'
 import { serveResponses } from './serve.ts'
-import { attachStreamSidecar, attachNonStreamSidecar } from './snapshot-sidecar.ts'
 import { invalidJsonResponse } from '../shared/error-wrap.ts'
 import { readAuth, readObsCtx } from '../shared/gateway-ctx.ts'
 import { openRequestDump, parseJsonBody } from '../shared/dump-open.ts'
@@ -56,14 +48,9 @@ async function responsesHandlerCore(
   const { requestBody, dump } = await openRequestDump(c, auth, c.req.method)
   let raw: unknown
   try { raw = parseJsonBody(requestBody.bytes) } catch { return dump ? dump.finalize(invalidJsonResponse()) : invalidJsonResponse() }
-  // Capture the client preference before provider interceptors can rewrite store.
-  const retentionSeconds = auth.responsesRetentionSeconds ?? 0
-  const saveSnapshot = retentionSeconds > 0 && !!auth.apiKeyId
-    && typeof raw === 'object' && raw !== null && !Array.isArray(raw)
-    && (raw as Record<string, unknown>).store !== false
   const obsCtx = readObsCtx(c, auth)
   const disconnect = new ClientDisconnect(c.req.raw.signal)
-  const { response, mergedInputItems } = await serveResponses({
+  const { response } = await serveResponses({
     raw,
     auth,
     obsCtx,
@@ -73,16 +60,5 @@ async function responsesHandlerCore(
     dump,
     action,
   })
-  if (response.status !== 200 || !saveSnapshot || action === 'compact') return disconnect.wrap(response)
-  const ct = response.headers.get('content-type') ?? ''
-  const fallbackModel = (raw as { model?: string }).model ?? ''
-  const apiKeyId = auth.apiKeyId ?? null
-  const requestId = obsCtx.requestId ?? null
-  if (ct.includes('text/event-stream') && response.body) {
-    return disconnect.wrap(attachStreamSidecar({ c, response, fallbackModel, apiKeyId, requestId, mergedInputItems, retentionSeconds }))
-  }
-  if (ct.includes('application/json')) {
-    return disconnect.wrap(attachNonStreamSidecar({ c, response, fallbackModel, apiKeyId, requestId, mergedInputItems, retentionSeconds }))
-  }
   return disconnect.wrap(response)
 }

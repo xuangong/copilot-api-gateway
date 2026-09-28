@@ -341,8 +341,7 @@ test('responses non-stream saves snapshot using upstream response.id', async () 
     }),
   }), {} as never)
   expect(res.status).toBe(200)
-  // give the post-turn save a tick to settle (it's awaited in-route, but we
-  // read the body to be sure the response has been emitted)
+  // Successful JSON is delivered only after the snapshot is committed.
   await res.text()
   const snap = await store.load('resp_saved_xyz', 'k1')
   expect(snap).not.toBeNull()
@@ -400,13 +399,98 @@ test('responses stream saves snapshot when response.completed fires', async () =
     }),
   }), {} as never)
   expect(res.status).toBe(200)
-  // Drain the stream so the sidecar save completes.
+  // The completed frame is delivered only after the snapshot is committed.
   const reader = res.body!.getReader()
   while (true) { const { done } = await reader.read(); if (done) break }
-  // sidecar save runs after the stream closes; give it a microtask tick
-  await new Promise((r) => setTimeout(r, 10))
   const snap = await store.load('resp_stream_1', 'k1')
   expect(snap).not.toBeNull()
   expect(JSON.stringify(snap!.items)).toContain('streamed user')
   expect(JSON.stringify(snap!.items)).toContain('streamed')
 })
+
+for (const stream of [false, true]) {
+  for (const saveFails of [false, true]) {
+    test(`HTTP ${stream ? 'SSE' : 'JSON'} gates completion on real SQLite save${saveFails ? ' failure' : ' and immediate continuation'}`, async () => {
+      const { Database } = await import('bun:sqlite')
+      const { mkdtempSync, rmSync } = await import('node:fs')
+      const { tmpdir } = await import('node:os')
+      const { join } = await import('node:path')
+      const { BunSqliteRepo } = await import('@vibe-llm/platform-bun/src/bun-sqlite-repo.ts')
+      const { BunSqliteDatabase } = await import('@vibe-llm/platform-bun/src/bun-sqlite-database.ts')
+      const { createBunResponsesStore } = await import('@vibe-llm/platform-bun/src/responses-store-factory.ts')
+      const directory = mkdtempSync(join(tmpdir(), 'responses-durability-'))
+      const db = new Database(join(directory, 'test.sqlite'))
+      new BunSqliteRepo(db)
+      const store = createBunResponsesStore(new BunSqliteDatabase(db))
+      const gate = Promise.withResolvers<void>()
+      let writes = 0
+      initRepo(stubRepo([stubUpstream()]))
+      initResponsesStore({
+        load: (...args) => store.load(...args),
+        save: async (snapshot) => { writes++; await gate.promise; await store.save(snapshot) },
+      })
+      if (saveFails) db.exec("CREATE TRIGGER fail_response_save BEFORE INSERT ON responses_snapshots BEGIN SELECT RAISE(FAIL, 'private storage credentials'); END")
+      let calls = 0
+      let continuation: Record<string, unknown> | undefined
+      const output = { type: 'message', id: 'message_1', role: 'assistant', content: [{ type: 'output_text', text: 'durable reply' }] }
+      installFetch(async (req) => {
+        if (new URL(req.url).pathname.endsWith('/models')) return Response.json({ data: [stubModel(MODEL_ID)] })
+        if (new URL(req.url).pathname.endsWith('/responses')) {
+          const payload = await req.json() as Record<string, unknown>
+          calls++
+          if (calls > 1) continuation = payload
+          const response = { id: `resp_durable_${calls}`, object: 'response', model: MODEL_ID, status: 'completed', output: [output] }
+          if (!payload.stream) return Response.json(response)
+          return new Response([
+            { type: 'response.created', response: { ...response, status: 'in_progress', output: [] } },
+            { type: 'response.output_item.done', output_index: 0, item: output },
+            { type: 'response.completed', response: { ...response, output: [] } },
+          ].map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } })
+        }
+        return new Response('not found', { status: 404 })
+      })
+      const wrapper = buildApp({ responsesRetentionSeconds: 86400, apiKeyId: 'k1', userId: 'u1', copilot: { copilotToken: COPILOT_TOKEN, accountType: 'individual' } })
+      const request = (body: Record<string, unknown>) => wrapper.fetch(new Request('http://x/v1/responses', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: MODEL_ID, ...body }),
+      }), {} as never)
+      let completed = false
+      const pending = request({ stream, input: 'first input' }).then(async (response) => {
+        const body = await response.text()
+        completed = true
+        return { response, body }
+      })
+      try {
+        for (let count = 0; writes === 0 && count < 50; count++) await new Promise((resolve) => setTimeout(resolve, 1))
+        expect(writes).toBe(1)
+        expect(completed).toBe(false)
+        expect(await store.load('resp_durable_1', 'k1')).toBeNull()
+        gate.resolve()
+        const { response, body } = await pending
+        expect(body).not.toContain('private storage credentials')
+        if (saveFails) {
+          if (stream) { expect(body).toContain('event: error'); expect(body).not.toContain('response.completed') }
+          else expect(response.status).toBe(502)
+          expect(await store.load('resp_durable_1', 'k1')).toBeNull()
+          expect(calls).toBe(1)
+        } else {
+          expect(response.status).toBe(200)
+          const next = await request({ previous_response_id: 'resp_durable_1', input: 'second input', store: false })
+          expect(next.status).toBe(200)
+          await next.text()
+          expect(continuation?.previous_response_id).toBeUndefined()
+          expect(continuation?.input).toEqual([
+            { type: 'message', role: 'user', content: 'first input' }, expect.objectContaining({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'durable reply' }] }),
+            { type: 'message', role: 'user', content: 'second input' },
+          ])
+          expect(await store.load('resp_durable_1', 'another-key')).toBeNull()
+          expect(writes).toBe(1)
+        }
+      } finally {
+        gate.resolve()
+        await pending
+        db.close()
+        rmSync(directory, { recursive: true, force: true })
+      }
+    })
+  }
+}

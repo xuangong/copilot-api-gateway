@@ -253,3 +253,19 @@ test('POST /responses/compact (unversioned alias) is mounted too', async () => {
   const body = await res.json() as { object: string }
   expect(body.object).toBe('response.compaction')
 })
+
+test('compact with retention enabled bypasses continuation snapshot writes', async () => {
+  initRepo(stubRepo([stubUpstream()]))
+  const store = new InMemoryResponsesSnapshotStore()
+  let writes = 0
+  initResponsesStore({ load: (...args) => store.load(...args), save: async () => { writes++; throw new Error('compact must not save') } })
+  installCopilotFetch()
+  const app = buildApp({ apiKeyId: 'key', responsesRetentionSeconds: 86400, copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
+  const response = await app.fetch(new Request('http://local/v1/responses/compact', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: MODEL_ID, input: 'earlier work', store: true }),
+  }), env)
+  expect(response.status).toBe(200)
+  expect((await response.json()).object).toBe('response.compaction')
+  expect(writes).toBe(0)
+})

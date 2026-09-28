@@ -7,17 +7,15 @@ import { PerformanceRecorder } from "../../observability/performance-recorder"
  * inline pipeline (parse → expandPreviousResponseId → telemetry → quota →
  * controller → attempt → respond) now flows through `serveTemplate(...)`;
  * this file declares the hooks, shapes auth, and maps the kit result back
- * to the existing `ResponsesServeResult` shape so `responses/http.ts`
- * keeps its `{ response, mergedInputItems } = await serveResponses(...)`
- * destructuring unchanged.
+ * to the existing `ResponsesServeResult` shape.
  *
  * Why preProcess? Responses must expand `previous_response_id` against the
  * responses store BEFORE binding selection (the upstream payload includes
  * the merged input history). The kit gives us a typed slot for exactly
  * this: `preProcess` runs between parse and quota, can mutate the payload,
  * and emits an `extra` value that threads through to `respond` AND the
- * wrapper's return. We use `extra = { mergedInputItems }` so http.ts can
- * persist the full input history in the snapshot sidecar.
+ * wrapper's return. The extra carries immutable expanded input and the
+ * request-scoped snapshot writer to the completion boundary in respond.ts.
  *
  * Why short-circuit on PreviousResponseNotFoundError? The OpenAI-verbatim
  * envelope (`code: 'previous_response_not_found'`, `param:
@@ -59,7 +57,8 @@ import {
   type ResponsesAttemptAuth,
   type ResponsesAttemptResult,
 } from './attempt.ts'
-import { respondResponses } from './respond.ts'
+import { createResponseSnapshotWriter } from './completion-snapshot.ts'
+import { respondResponses, type ResponsesCompletionWriter } from './respond.ts'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
 export interface ResponsesServeArgs {
@@ -101,7 +100,7 @@ type ResponsesPayload = Record<string, unknown> & {
 
 type ResponsesServeAuth = ResponsesAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy' | 'responsesRetentionSeconds'>
 
-type ResponsesExtra = { readonly mergedInputItems: unknown[]; readonly incomingModel: string; readonly upstreamPin?: string }
+type ResponsesExtra = { readonly mergedInputItems: unknown[]; readonly incomingModel: string; readonly upstreamPin?: string; readonly onCompleted?: ResponsesCompletionWriter }
 
 const responsesHooks: ServeTemplateHooks<
   ResponsesPayload,
@@ -130,7 +129,7 @@ const responsesHooks: ServeTemplateHooks<
     // Expand `previous_response_id` against the responses store. Mutates
     // payload.input in place (legacy contract from
     // `expandPreviousResponseId`); we read the expanded array off
-    // payload.input so the snapshot sidecar persists the full input
+    // payload.input so the snapshot writer persists the full input
     // history for the next turn.
     try {
       if (payload.previous_response_id && (ctx.auth.responsesRetentionSeconds ?? 0) <= 0) {
@@ -145,12 +144,17 @@ const responsesHooks: ServeTemplateHooks<
           ? ctx.auth.responsesRetentionSeconds : undefined,
       )
       const expanded = (payload as { input?: unknown }).input
-      const mergedInputItems = Array.isArray(expanded) ? (expanded as unknown[]) : []
+      const retentionSeconds = ctx.auth.responsesRetentionSeconds ?? 0
+      const onCompleted = retentionSeconds > 0 && ctx.auth.apiKeyId && payload.store !== false && ctx.extras.action !== "compact"
+        ? createResponseSnapshotWriter({ store, apiKeyId: ctx.auth.apiKeyId as ApiKeyId, retentionSeconds, fallbackModel: payload.model })
+        : undefined
+      const inputItems = Array.isArray(expanded) ? expanded : []
+      const mergedInputItems = onCompleted ? structuredClone(inputItems) : inputItems
       const resolved = resolveKeyModel(payload.model, ctx.auth.routingPolicy)
       return {
         kind: 'continue',
         payload: { ...payload, model: resolved.routedModel },
-        extra: { mergedInputItems, incomingModel: resolved.incomingModel, ...(resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {}) },
+        extra: { mergedInputItems, onCompleted, incomingModel: resolved.incomingModel, ...(resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {}) },
       } satisfies PreProcessResult<ResponsesPayload, ResponsesExtra>
     } catch (err) {
       // PreviousResponseNotFoundError carries only `status: 400` (no
@@ -193,6 +197,8 @@ const responsesHooks: ServeTemplateHooks<
 
   respond: (r, c) => respondResponses(r, {
     wantsStream: c.wantsStream,
+    onCompleted: c.extra?.onCompleted,
+    mergedInputItems: c.extra?.mergedInputItems,
     downstreamAbortController: c.downstreamAbortController,
     telemetryCtx: c.telemetryCtx,
     ...(c.dump !== undefined && c.dump !== null && { dump: c.dump as DumpAccumulator }),
