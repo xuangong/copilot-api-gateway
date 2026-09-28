@@ -1,0 +1,22 @@
+import { stringifyChunked } from './upstream/src/stringify-chunked.js'
+const encoder = new TextEncoder()
+let state = 0x12345678
+const random = () => ((state = (Math.imul(1664525, state) + 1013904223) >>> 0) / 2 ** 32)
+const scalars = [null, true, false, 0, -0, 1e21, 1e-7, -12.34, 'abc', '😀', '\ud800', '\udc00', '\n"\\', '𝄞']
+function tree(depth) {
+  if (depth === 0 || random() < .4) return scalars[Math.floor(random() * scalars.length)]
+  if (random() < .5) return Array.from({length: Math.floor(random() * 5)}, () => tree(depth - 1))
+  const out = {}
+  for (let i = 0; i < Math.floor(random() * 5); i++) out[['z', 'a', '0', '1', '😀'][i]] = tree(depth - 1)
+  return out
+}
+let mismatch = 0, maxChunkBytes = 0
+for (let i = 0; i < 1000; i++) {
+  const input = tree(4)
+  const chunks = [...stringifyChunked(input, {highWaterMark: 64 * 1024})]
+  const actual = Buffer.concat(chunks.map(x => Buffer.from(encoder.encode(x))))
+  const expected = Buffer.from(encoder.encode(JSON.stringify(input)))
+  if (!actual.equals(expected)) mismatch++
+  for (const chunk of chunks) maxChunkBytes = Math.max(maxChunkBytes, encoder.encode(chunk).byteLength)
+}
+console.log(JSON.stringify({runtime: Bun.version, corpus: 1000, mismatch, maxChunkBytes}))

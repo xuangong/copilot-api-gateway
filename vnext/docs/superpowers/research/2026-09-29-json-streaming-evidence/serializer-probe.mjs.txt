@@ -1,0 +1,26 @@
+import { stringifyChunked } from './upstream/src/stringify-chunked.js';
+const enc = new TextEncoder();
+const cases = [
+ ['plain', { z: 1e21, a: -0, b: Infinity, c: NaN, d: [undefined, , null] }],
+ ['unicode', { s: 'A😀B\ud800C\udc00\\"\n' }],
+ ['escapes', { s: '\u0000\u001f\u2028\u2029"\\' }],
+ ['boxed', { a: new String('x'), b: new Number(3), c: new Boolean(false) }],
+ ['toJSON key', { inner: { toJSON(key) { return key } } }],
+ ['toJSON root key', { toJSON(key) { return key } }],
+ ['top undefined', undefined],
+ ['top function', () => {}],
+ ['top symbol', Symbol('x')],
+ ['array function', [() => {}, Symbol('x'), undefined]],
+ ['symbol object', { a: Symbol('x'), b: 1 }],
+ ['long ascii', { s: 'x'.repeat(1024 * 1024) }],
+ ['long escaped', { s: '\n'.repeat(1024 * 1024) }],
+ ['long unicode', { s: '😀'.repeat(512 * 1024) }],
+];
+for (const [name, value] of cases) {
+  let native, ext, chunks, error;
+  try { native = JSON.stringify(value) } catch(e) { native = e.name }
+  try { chunks = [...stringifyChunked(value, {highWaterMark: 64 * 1024})]; ext = chunks.join('') } catch(e) { ext = e.name; error = e.message }
+  const maxChars = chunks ? Math.max(...chunks.map(x => x.length)) : null;
+  const maxBytes = chunks ? Math.max(...chunks.map(x => enc.encode(x).byteLength)) : null;
+  console.log(JSON.stringify({name, equal: native === ext, nativeLength: native?.length, extLength: ext?.length, chunkCount: chunks?.length, maxChars, maxBytes, nativeBrief: native?.length < 100 ? native : undefined, extBrief: ext?.length < 100 ? ext : undefined, error}));
+}
