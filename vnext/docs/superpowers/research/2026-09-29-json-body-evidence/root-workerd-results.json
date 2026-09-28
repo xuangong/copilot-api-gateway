@@ -1,0 +1,1 @@
+{"runtime":"local workerd","passed":true,"results":[{"mode":"native-buffered","length":1778049,"maxChunk":65536,"chunks":28,"replayAfterMutation":true,"aborted":true},{"mode":"trusted-json-snapshot","length":1778049,"maxChunk":53605,"chunks":35,"replayAfterMutation":true,"aborted":true}],"overflowNormalized":true}

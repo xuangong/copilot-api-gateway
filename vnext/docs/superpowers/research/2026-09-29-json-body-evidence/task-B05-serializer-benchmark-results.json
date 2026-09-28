@@ -1,0 +1,5372 @@
+[
+  {
+    "mode": "oracle",
+    "kind": "ascii",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "digest": "cf2e1c8fa47b340df5cebd0e8260cdf7b538d98cd6b561a7f7ba19afcd16cac5",
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32473088
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33603584
+    },
+    "timings": {
+      "constructMs": 0.23062500000000163,
+      "parseMs": 0.14237499999999947,
+      "oracleMs": 0.6582920000000012
+    },
+    "osMaxRss": 36290560,
+    "repetition": 0
+  },
+  {
+    "mode": "parse",
+    "kind": "ascii",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "startup": {
+      "heap": 796982,
+      "rss": 30195712
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32489472
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33619968
+    },
+    "retainedAfterGc": {
+      "heap": 796982,
+      "rss": 33751040
+    },
+    "timings": {
+      "constructMs": 0.2389170000000007,
+      "parseMs": 0.19216699999999953
+    },
+    "osMaxRss": 33996800,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "ascii",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "cf2e1c8fa47b340df5cebd0e8260cdf7b538d98cd6b561a7f7ba19afcd16cac5",
+    "maxChunk": 65536,
+    "chunks": 16,
+    "startup": {
+      "heap": 796982,
+      "rss": 30113792
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32407552
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33538048
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 35733504
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 37650432
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 37797888
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 37847040
+    },
+    "timings": {
+      "constructMs": 0.23016600000000054,
+      "parseMs": 0.16316600000000037,
+      "factoryMs": 0.25466699999999953,
+      "drainMs": 1.408042
+    },
+    "cpu": {
+      "user": 12871,
+      "system": 7094
+    },
+    "osMaxRss": 38109184,
+    "repetition": 0
+  },
+  {
+    "mode": "candidate",
+    "kind": "ascii",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "cf2e1c8fa47b340df5cebd0e8260cdf7b538d98cd6b561a7f7ba19afcd16cac5",
+    "maxChunk": 65536,
+    "chunks": 17,
+    "startup": {
+      "heap": 796982,
+      "rss": 30097408
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32391168
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 32391168
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 40878080
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 47300608
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 47415296
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 47513600
+    },
+    "timings": {
+      "constructMs": 0.27387499999999854,
+      "factoryMs": 1.4098750000000013,
+      "drainMs": 1.7920409999999993
+    },
+    "cpu": {
+      "user": 15720,
+      "system": 7856
+    },
+    "osMaxRss": 47775744,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "ascii",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "cf2e1c8fa47b340df5cebd0e8260cdf7b538d98cd6b561a7f7ba19afcd16cac5",
+    "maxChunk": 65536,
+    "chunks": 16,
+    "startup": {
+      "heap": 796982,
+      "rss": 30244864
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32538624
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33669120
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 35864576
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 37765120
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 37847040
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 37863424
+    },
+    "timings": {
+      "constructMs": 0.2499590000000005,
+      "parseMs": 0.1300840000000001,
+      "factoryMs": 0.2698330000000002,
+      "drainMs": 1.3412500000000005
+    },
+    "cpu": {
+      "user": 12996,
+      "system": 7048
+    },
+    "osMaxRss": 38125568,
+    "repetition": 1
+  },
+  {
+    "mode": "candidate",
+    "kind": "ascii",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "cf2e1c8fa47b340df5cebd0e8260cdf7b538d98cd6b561a7f7ba19afcd16cac5",
+    "maxChunk": 65536,
+    "chunks": 17,
+    "startup": {
+      "heap": 796982,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32440320
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 32440320
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 40960000
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 47382528
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 47497216
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 47529984
+    },
+    "timings": {
+      "constructMs": 0.21741700000000108,
+      "factoryMs": 1.4009999999999998,
+      "drainMs": 1.7925829999999987
+    },
+    "cpu": {
+      "user": 15150,
+      "system": 7849
+    },
+    "osMaxRss": 47792128,
+    "repetition": 1
+  },
+  {
+    "mode": "native",
+    "kind": "ascii",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "cf2e1c8fa47b340df5cebd0e8260cdf7b538d98cd6b561a7f7ba19afcd16cac5",
+    "maxChunk": 65536,
+    "chunks": 16,
+    "startup": {
+      "heap": 796982,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32440320
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33570816
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 35766272
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 37666816
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 37797888
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 37814272
+    },
+    "timings": {
+      "constructMs": 0.21595800000000054,
+      "parseMs": 0.13329200000000085,
+      "factoryMs": 0.2592079999999992,
+      "drainMs": 1.3053749999999997
+    },
+    "cpu": {
+      "user": 12939,
+      "system": 6994
+    },
+    "osMaxRss": 38076416,
+    "repetition": 2
+  },
+  {
+    "mode": "candidate",
+    "kind": "ascii",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "cf2e1c8fa47b340df5cebd0e8260cdf7b538d98cd6b561a7f7ba19afcd16cac5",
+    "maxChunk": 65536,
+    "chunks": 17,
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32473088
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 32473088
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 40943616
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 47382528
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 47529984
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 47579136
+    },
+    "timings": {
+      "constructMs": 0.30445800000000034,
+      "factoryMs": 1.5818750000000001,
+      "drainMs": 1.8863340000000015
+    },
+    "cpu": {
+      "user": 15530,
+      "system": 8225
+    },
+    "osMaxRss": 47841280,
+    "repetition": 2
+  },
+  {
+    "mode": "oracle",
+    "kind": "control",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "digest": "a476a67d24f4fbdab705ea4f7032c99c9dbc191f610f537ed3be7eeef3262b46",
+    "startup": {
+      "heap": 799782,
+      "rss": 30048256
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 32374784
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 33538048
+    },
+    "timings": {
+      "constructMs": 0.6095830000000007,
+      "parseMs": 1.8933330000000002,
+      "oracleMs": 1.1251669999999994
+    },
+    "osMaxRss": 36765696,
+    "repetition": 0
+  },
+  {
+    "mode": "parse",
+    "kind": "control",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "startup": {
+      "heap": 796982,
+      "rss": 30097408
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32423936
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33587200
+    },
+    "retainedAfterGc": {
+      "heap": 796982,
+      "rss": 33701888
+    },
+    "timings": {
+      "constructMs": 0.6465409999999991,
+      "parseMs": 1.9456250000000015
+    },
+    "osMaxRss": 33947648,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "control",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "a476a67d24f4fbdab705ea4f7032c99c9dbc191f610f537ed3be7eeef3262b46",
+    "maxChunk": 65536,
+    "chunks": 16,
+    "startup": {
+      "heap": 796982,
+      "rss": 30162944
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32489472
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33652736
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 36388864
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 38223872
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 38322176
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 38322176
+    },
+    "timings": {
+      "constructMs": 0.5858330000000009,
+      "parseMs": 1.8264590000000016,
+      "factoryMs": 0.7565419999999996,
+      "drainMs": 1.5261249999999986
+    },
+    "cpu": {
+      "user": 15786,
+      "system": 7234
+    },
+    "osMaxRss": 38584320,
+    "repetition": 0
+  },
+  {
+    "mode": "candidate",
+    "kind": "control",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "a476a67d24f4fbdab705ea4f7032c99c9dbc191f610f537ed3be7eeef3262b46",
+    "maxChunk": 65536,
+    "chunks": 17,
+    "startup": {
+      "heap": 796982,
+      "rss": 30162944
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32489472
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 32489472
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 41615360
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 48480256
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 48676864
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 48726016
+    },
+    "timings": {
+      "constructMs": 0.6775830000000003,
+      "factoryMs": 3.867374999999999,
+      "drainMs": 2.438042000000001
+    },
+    "cpu": {
+      "user": 18718,
+      "system": 8103
+    },
+    "osMaxRss": 48988160,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "control",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "a476a67d24f4fbdab705ea4f7032c99c9dbc191f610f537ed3be7eeef3262b46",
+    "maxChunk": 65536,
+    "chunks": 16,
+    "startup": {
+      "heap": 799782,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 32505856
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 33669120
+    },
+    "afterFactory": {
+      "heap": 799782,
+      "rss": 36405248
+    },
+    "afterDrain": {
+      "heap": 799782,
+      "rss": 38240256
+    },
+    "retainedWithBody": {
+      "heap": 799782,
+      "rss": 38354944
+    },
+    "retainedAfterRelease": {
+      "heap": 799782,
+      "rss": 38371328
+    },
+    "timings": {
+      "constructMs": 0.6325830000000003,
+      "parseMs": 2.048584,
+      "factoryMs": 0.7856670000000001,
+      "drainMs": 1.3375830000000004
+    },
+    "cpu": {
+      "user": 15634,
+      "system": 7525
+    },
+    "osMaxRss": 38633472,
+    "repetition": 1
+  },
+  {
+    "mode": "candidate",
+    "kind": "control",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "a476a67d24f4fbdab705ea4f7032c99c9dbc191f610f537ed3be7eeef3262b46",
+    "maxChunk": 65536,
+    "chunks": 17,
+    "startup": {
+      "heap": 799782,
+      "rss": 30097408
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 32423936
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 32423936
+    },
+    "afterFactory": {
+      "heap": 799782,
+      "rss": 41533440
+    },
+    "afterDrain": {
+      "heap": 799782,
+      "rss": 48480256
+    },
+    "retainedWithBody": {
+      "heap": 799782,
+      "rss": 48693248
+    },
+    "retainedAfterRelease": {
+      "heap": 799782,
+      "rss": 48709632
+    },
+    "timings": {
+      "constructMs": 0.6259999999999994,
+      "factoryMs": 3.82775,
+      "drainMs": 2.3078749999999992
+    },
+    "cpu": {
+      "user": 18228,
+      "system": 8101
+    },
+    "osMaxRss": 48971776,
+    "repetition": 1
+  },
+  {
+    "mode": "native",
+    "kind": "control",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "a476a67d24f4fbdab705ea4f7032c99c9dbc191f610f537ed3be7eeef3262b46",
+    "maxChunk": 65536,
+    "chunks": 16,
+    "startup": {
+      "heap": 799782,
+      "rss": 30162944
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 32489472
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 33652736
+    },
+    "afterFactory": {
+      "heap": 799782,
+      "rss": 36388864
+    },
+    "afterDrain": {
+      "heap": 799782,
+      "rss": 38223872
+    },
+    "retainedWithBody": {
+      "heap": 799782,
+      "rss": 38404096
+    },
+    "retainedAfterRelease": {
+      "heap": 799782,
+      "rss": 38436864
+    },
+    "timings": {
+      "constructMs": 0.6609160000000003,
+      "parseMs": 1.889667000000001,
+      "factoryMs": 0.8038330000000009,
+      "drainMs": 1.527583
+    },
+    "cpu": {
+      "user": 15596,
+      "system": 7036
+    },
+    "osMaxRss": 38699008,
+    "repetition": 2
+  },
+  {
+    "mode": "candidate",
+    "kind": "control",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "a476a67d24f4fbdab705ea4f7032c99c9dbc191f610f537ed3be7eeef3262b46",
+    "maxChunk": 65536,
+    "chunks": 17,
+    "startup": {
+      "heap": 796982,
+      "rss": 30162944
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32489472
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 32489472
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 41598976
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 48431104
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 48660480
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 48709632
+    },
+    "timings": {
+      "constructMs": 0.6232500000000005,
+      "factoryMs": 3.7705830000000002,
+      "drainMs": 2.4279579999999985
+    },
+    "cpu": {
+      "user": 18674,
+      "system": 8498
+    },
+    "osMaxRss": 48971776,
+    "repetition": 2
+  },
+  {
+    "mode": "oracle",
+    "kind": "cjk-emoji",
+    "mib": 1,
+    "sourceBytes": 1048573,
+    "length": 1048573,
+    "digest": "2b796459b2b8c8b2589257e636abcf63533ac6156dc032d0ef8102667e9f8744",
+    "startup": {
+      "heap": 796982,
+      "rss": 30113792
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 33030144
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33128448
+    },
+    "timings": {
+      "constructMs": 0.5905419999999992,
+      "parseMs": 0.07041700000000084,
+      "oracleMs": 1.3179170000000013
+    },
+    "osMaxRss": 36585472,
+    "repetition": 0
+  },
+  {
+    "mode": "parse",
+    "kind": "cjk-emoji",
+    "mib": 1,
+    "sourceBytes": 1048573,
+    "startup": {
+      "heap": 796982,
+      "rss": 30097408
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 33013760
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33112064
+    },
+    "retainedAfterGc": {
+      "heap": 796982,
+      "rss": 33243136
+    },
+    "timings": {
+      "constructMs": 0.6602499999999996,
+      "parseMs": 0.05612499999999976
+    },
+    "osMaxRss": 33488896,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "cjk-emoji",
+    "mib": 1,
+    "sourceBytes": 1048573,
+    "length": 1048573,
+    "contentLength": 1048573,
+    "digest": "2b796459b2b8c8b2589257e636abcf63533ac6156dc032d0ef8102667e9f8744",
+    "maxChunk": 65536,
+    "chunks": 16,
+    "startup": {
+      "heap": 796982,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 33046528
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33144832
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 36110336
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 38043648
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 38141952
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 38174720
+    },
+    "timings": {
+      "constructMs": 0.6441660000000002,
+      "parseMs": 0.06370899999999935,
+      "factoryMs": 0.8609580000000001,
+      "drainMs": 1.4657080000000011
+    },
+    "cpu": {
+      "user": 14128,
+      "system": 7638
+    },
+    "osMaxRss": 38436864,
+    "repetition": 0
+  },
+  {
+    "mode": "candidate",
+    "kind": "cjk-emoji",
+    "mib": 1,
+    "sourceBytes": 1048573,
+    "length": 1048573,
+    "contentLength": 1048573,
+    "digest": "2b796459b2b8c8b2589257e636abcf63533ac6156dc032d0ef8102667e9f8744",
+    "maxChunk": 57357,
+    "chunks": 19,
+    "startup": {
+      "heap": 796982,
+      "rss": 30081024
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32997376
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 32997376
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 41304064
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 48087040
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 48234496
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 48267264
+    },
+    "timings": {
+      "constructMs": 0.6450829999999996,
+      "factoryMs": 1.9996670000000005,
+      "drainMs": 2.596458
+    },
+    "cpu": {
+      "user": 16620,
+      "system": 8058
+    },
+    "osMaxRss": 48529408,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "cjk-emoji",
+    "mib": 1,
+    "sourceBytes": 1048573,
+    "length": 1048573,
+    "contentLength": 1048573,
+    "digest": "2b796459b2b8c8b2589257e636abcf63533ac6156dc032d0ef8102667e9f8744",
+    "maxChunk": 65536,
+    "chunks": 16,
+    "startup": {
+      "heap": 799782,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 33062912
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 33161216
+    },
+    "afterFactory": {
+      "heap": 799782,
+      "rss": 36126720
+    },
+    "afterDrain": {
+      "heap": 799782,
+      "rss": 38027264
+    },
+    "retainedWithBody": {
+      "heap": 799782,
+      "rss": 38141952
+    },
+    "retainedAfterRelease": {
+      "heap": 799782,
+      "rss": 38158336
+    },
+    "timings": {
+      "constructMs": 0.5945830000000001,
+      "parseMs": 0.05537499999999973,
+      "factoryMs": 0.7978749999999994,
+      "drainMs": 1.4012919999999998
+    },
+    "cpu": {
+      "user": 13772,
+      "system": 7405
+    },
+    "osMaxRss": 38420480,
+    "repetition": 1
+  },
+  {
+    "mode": "candidate",
+    "kind": "cjk-emoji",
+    "mib": 1,
+    "sourceBytes": 1048573,
+    "length": 1048573,
+    "contentLength": 1048573,
+    "digest": "2b796459b2b8c8b2589257e636abcf63533ac6156dc032d0ef8102667e9f8744",
+    "maxChunk": 57357,
+    "chunks": 19,
+    "startup": {
+      "heap": 796982,
+      "rss": 30195712
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 33112064
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33112064
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 41369600
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 48152576
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 48283648
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 48332800
+    },
+    "timings": {
+      "constructMs": 0.5317080000000001,
+      "factoryMs": 1.8889999999999993,
+      "drainMs": 2.629334
+    },
+    "cpu": {
+      "user": 16499,
+      "system": 7790
+    },
+    "osMaxRss": 48594944,
+    "repetition": 1
+  },
+  {
+    "mode": "native",
+    "kind": "cjk-emoji",
+    "mib": 1,
+    "sourceBytes": 1048573,
+    "length": 1048573,
+    "contentLength": 1048573,
+    "digest": "2b796459b2b8c8b2589257e636abcf63533ac6156dc032d0ef8102667e9f8744",
+    "maxChunk": 65536,
+    "chunks": 16,
+    "startup": {
+      "heap": 799782,
+      "rss": 30195712
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 33112064
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 33210368
+    },
+    "afterFactory": {
+      "heap": 799782,
+      "rss": 36175872
+    },
+    "afterDrain": {
+      "heap": 799782,
+      "rss": 38092800
+    },
+    "retainedWithBody": {
+      "heap": 799782,
+      "rss": 38191104
+    },
+    "retainedAfterRelease": {
+      "heap": 799782,
+      "rss": 38223872
+    },
+    "timings": {
+      "constructMs": 0.657,
+      "parseMs": 0.05920899999999918,
+      "factoryMs": 0.8655830000000009,
+      "drainMs": 1.4265830000000008
+    },
+    "cpu": {
+      "user": 13653,
+      "system": 7127
+    },
+    "osMaxRss": 38486016,
+    "repetition": 2
+  },
+  {
+    "mode": "candidate",
+    "kind": "cjk-emoji",
+    "mib": 1,
+    "sourceBytes": 1048573,
+    "length": 1048573,
+    "contentLength": 1048573,
+    "digest": "2b796459b2b8c8b2589257e636abcf63533ac6156dc032d0ef8102667e9f8744",
+    "maxChunk": 57357,
+    "chunks": 19,
+    "startup": {
+      "heap": 796982,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 33046528
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33046528
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 41320448
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 48119808
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 48283648
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 48332800
+    },
+    "timings": {
+      "constructMs": 0.6002499999999991,
+      "factoryMs": 2.0074170000000002,
+      "drainMs": 2.5118340000000003
+    },
+    "cpu": {
+      "user": 16876,
+      "system": 8360
+    },
+    "osMaxRss": 48594944,
+    "repetition": 2
+  },
+  {
+    "mode": "oracle",
+    "kind": "lone-surrogate",
+    "mib": 1,
+    "sourceBytes": 1048574,
+    "length": 1048574,
+    "digest": "9b14661d19fffead7f850bf3e772b53a8af718ce96a0ea81009dba8c20931203",
+    "startup": {
+      "heap": 796982,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 33112064
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33816576
+    },
+    "timings": {
+      "constructMs": 0.5253750000000004,
+      "parseMs": 0.7008750000000017,
+      "oracleMs": 1.1817090000000015
+    },
+    "osMaxRss": 37715968,
+    "repetition": 0
+  },
+  {
+    "mode": "parse",
+    "kind": "lone-surrogate",
+    "mib": 1,
+    "sourceBytes": 1048574,
+    "startup": {
+      "heap": 796982,
+      "rss": 30228480
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 33210368
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33914880
+    },
+    "retainedAfterGc": {
+      "heap": 796982,
+      "rss": 34062336
+    },
+    "timings": {
+      "constructMs": 0.5547090000000008,
+      "parseMs": 0.7077079999999984
+    },
+    "osMaxRss": 34308096,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "lone-surrogate",
+    "mib": 1,
+    "sourceBytes": 1048574,
+    "length": 1048574,
+    "contentLength": 1048574,
+    "digest": "9b14661d19fffead7f850bf3e772b53a8af718ce96a0ea81009dba8c20931203",
+    "maxChunk": 65536,
+    "chunks": 16,
+    "startup": {
+      "heap": 799782,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 33128448
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 33832960
+    },
+    "afterFactory": {
+      "heap": 799782,
+      "rss": 36896768
+    },
+    "afterDrain": {
+      "heap": 799782,
+      "rss": 38731776
+    },
+    "retainedWithBody": {
+      "heap": 799782,
+      "rss": 38830080
+    },
+    "retainedAfterRelease": {
+      "heap": 799782,
+      "rss": 38830080
+    },
+    "timings": {
+      "constructMs": 0.5304579999999994,
+      "parseMs": 0.7476669999999999,
+      "factoryMs": 0.7019169999999999,
+      "drainMs": 1.2942500000000017
+    },
+    "cpu": {
+      "user": 14138,
+      "system": 7273
+    },
+    "osMaxRss": 39092224,
+    "repetition": 0
+  },
+  {
+    "mode": "candidate",
+    "kind": "lone-surrogate",
+    "mib": 1,
+    "sourceBytes": 1048574,
+    "length": 1048574,
+    "contentLength": 1048574,
+    "digest": "9b14661d19fffead7f850bf3e772b53a8af718ce96a0ea81009dba8c20931203",
+    "maxChunk": 65528,
+    "chunks": 21,
+    "startup": {
+      "heap": 796982,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 33112064
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33112064
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 42205184
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 49856512
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 50036736
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 50053120
+    },
+    "timings": {
+      "constructMs": 0.5357920000000007,
+      "factoryMs": 2.460916000000001,
+      "drainMs": 2.184750000000001
+    },
+    "cpu": {
+      "user": 16652,
+      "system": 7903
+    },
+    "osMaxRss": 50331648,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "lone-surrogate",
+    "mib": 1,
+    "sourceBytes": 1048574,
+    "length": 1048574,
+    "contentLength": 1048574,
+    "digest": "9b14661d19fffead7f850bf3e772b53a8af718ce96a0ea81009dba8c20931203",
+    "maxChunk": 65536,
+    "chunks": 16,
+    "startup": {
+      "heap": 796982,
+      "rss": 30195712
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 33177600
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33882112
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 37289984
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 39108608
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 39239680
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 39305216
+    },
+    "timings": {
+      "constructMs": 0.572375000000001,
+      "parseMs": 0.7390000000000008,
+      "factoryMs": 0.7842919999999989,
+      "drainMs": 1.4972919999999998
+    },
+    "cpu": {
+      "user": 14200,
+      "system": 7476
+    },
+    "osMaxRss": 39567360,
+    "repetition": 1
+  },
+  {
+    "mode": "candidate",
+    "kind": "lone-surrogate",
+    "mib": 1,
+    "sourceBytes": 1048574,
+    "length": 1048574,
+    "contentLength": 1048574,
+    "digest": "9b14661d19fffead7f850bf3e772b53a8af718ce96a0ea81009dba8c20931203",
+    "maxChunk": 65528,
+    "chunks": 21,
+    "startup": {
+      "heap": 799782,
+      "rss": 30162944
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 33144832
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 33144832
+    },
+    "afterFactory": {
+      "heap": 799782,
+      "rss": 42319872
+    },
+    "afterDrain": {
+      "heap": 799782,
+      "rss": 49938432
+    },
+    "retainedWithBody": {
+      "heap": 799782,
+      "rss": 50200576
+    },
+    "retainedAfterRelease": {
+      "heap": 799782,
+      "rss": 50200576
+    },
+    "timings": {
+      "constructMs": 0.49924999999999997,
+      "factoryMs": 2.3594169999999988,
+      "drainMs": 2.529584
+    },
+    "cpu": {
+      "user": 16833,
+      "system": 7903
+    },
+    "osMaxRss": 50479104,
+    "repetition": 1
+  },
+  {
+    "mode": "native",
+    "kind": "lone-surrogate",
+    "mib": 1,
+    "sourceBytes": 1048574,
+    "length": 1048574,
+    "contentLength": 1048574,
+    "digest": "9b14661d19fffead7f850bf3e772b53a8af718ce96a0ea81009dba8c20931203",
+    "maxChunk": 65536,
+    "chunks": 16,
+    "startup": {
+      "heap": 796982,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 33128448
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33832960
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 37240832
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 39092224
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 39256064
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 39256064
+    },
+    "timings": {
+      "constructMs": 0.5110419999999998,
+      "parseMs": 0.6682500000000005,
+      "factoryMs": 0.6771250000000002,
+      "drainMs": 1.5829170000000001
+    },
+    "cpu": {
+      "user": 14302,
+      "system": 6871
+    },
+    "osMaxRss": 39518208,
+    "repetition": 2
+  },
+  {
+    "mode": "candidate",
+    "kind": "lone-surrogate",
+    "mib": 1,
+    "sourceBytes": 1048574,
+    "length": 1048574,
+    "contentLength": 1048574,
+    "digest": "9b14661d19fffead7f850bf3e772b53a8af718ce96a0ea81009dba8c20931203",
+    "maxChunk": 65528,
+    "chunks": 21,
+    "startup": {
+      "heap": 796982,
+      "rss": 30097408
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 33079296
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 33079296
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 41910272
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 49889280
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 50069504
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 50085888
+    },
+    "timings": {
+      "constructMs": 0.6325409999999998,
+      "factoryMs": 2.5599170000000004,
+      "drainMs": 2.386208999999999
+    },
+    "cpu": {
+      "user": 17144,
+      "system": 7996
+    },
+    "osMaxRss": 50364416,
+    "repetition": 2
+  },
+  {
+    "mode": "oracle",
+    "kind": "giant-key",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "digest": "2385c4c935fa37971e03267f310439d318b571704d4bce72993403872b2e8846",
+    "startup": {
+      "heap": 796982,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32423936
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 32489472
+    },
+    "timings": {
+      "constructMs": 0.9955829999999999,
+      "parseMs": 0.8404170000000004,
+      "oracleMs": 0.6124580000000002
+    },
+    "osMaxRss": 35176448,
+    "repetition": 0
+  },
+  {
+    "mode": "parse",
+    "kind": "giant-key",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "startup": {
+      "heap": 796982,
+      "rss": 30064640
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32358400
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 32423936
+    },
+    "retainedAfterGc": {
+      "heap": 796982,
+      "rss": 32538624
+    },
+    "timings": {
+      "constructMs": 1.0463330000000006,
+      "parseMs": 0.8837910000000004
+    },
+    "osMaxRss": 32784384,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "giant-key",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "2385c4c935fa37971e03267f310439d318b571704d4bce72993403872b2e8846",
+    "maxChunk": 65536,
+    "chunks": 16,
+    "startup": {
+      "heap": 796982,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32423936
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 32489472
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 34684928
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 36601856
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 36749312
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 36798464
+    },
+    "timings": {
+      "constructMs": 1.0222920000000002,
+      "parseMs": 0.87575,
+      "factoryMs": 0.30908400000000036,
+      "drainMs": 1.435709000000001
+    },
+    "cpu": {
+      "user": 14665,
+      "system": 7198
+    },
+    "osMaxRss": 37060608,
+    "repetition": 0
+  },
+  {
+    "mode": "candidate",
+    "kind": "giant-key",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "2385c4c935fa37971e03267f310439d318b571704d4bce72993403872b2e8846",
+    "maxChunk": 65536,
+    "chunks": 17,
+    "startup": {
+      "heap": 799782,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 32440320
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 32440320
+    },
+    "afterFactory": {
+      "heap": 799782,
+      "rss": 39976960
+    },
+    "afterDrain": {
+      "heap": 799782,
+      "rss": 46219264
+    },
+    "retainedWithBody": {
+      "heap": 799782,
+      "rss": 46366720
+    },
+    "retainedAfterRelease": {
+      "heap": 799782,
+      "rss": 46383104
+    },
+    "timings": {
+      "constructMs": 1.1035830000000004,
+      "factoryMs": 2.300917,
+      "drainMs": 2.010833
+    },
+    "cpu": {
+      "user": 17129,
+      "system": 7996
+    },
+    "osMaxRss": 46645248,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "giant-key",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "2385c4c935fa37971e03267f310439d318b571704d4bce72993403872b2e8846",
+    "maxChunk": 65536,
+    "chunks": 16,
+    "startup": {
+      "heap": 796982,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32423936
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 32489472
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 34701312
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 36634624
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 36749312
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 36765696
+    },
+    "timings": {
+      "constructMs": 0.984,
+      "parseMs": 0.7797079999999994,
+      "factoryMs": 0.25270800000000015,
+      "drainMs": 1.4110829999999996
+    },
+    "cpu": {
+      "user": 14424,
+      "system": 6678
+    },
+    "osMaxRss": 37027840,
+    "repetition": 1
+  },
+  {
+    "mode": "candidate",
+    "kind": "giant-key",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "2385c4c935fa37971e03267f310439d318b571704d4bce72993403872b2e8846",
+    "maxChunk": 65536,
+    "chunks": 17,
+    "startup": {
+      "heap": 799782,
+      "rss": 30097408
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 32391168
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 32391168
+    },
+    "afterFactory": {
+      "heap": 799782,
+      "rss": 39862272
+    },
+    "afterDrain": {
+      "heap": 799782,
+      "rss": 46170112
+    },
+    "retainedWithBody": {
+      "heap": 799782,
+      "rss": 46350336
+    },
+    "retainedAfterRelease": {
+      "heap": 799782,
+      "rss": 46383104
+    },
+    "timings": {
+      "constructMs": 1.0782500000000006,
+      "factoryMs": 2.3760829999999995,
+      "drainMs": 2.033959000000001
+    },
+    "cpu": {
+      "user": 17453,
+      "system": 8076
+    },
+    "osMaxRss": 46645248,
+    "repetition": 1
+  },
+  {
+    "mode": "native",
+    "kind": "giant-key",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "2385c4c935fa37971e03267f310439d318b571704d4bce72993403872b2e8846",
+    "maxChunk": 65536,
+    "chunks": 16,
+    "startup": {
+      "heap": 796982,
+      "rss": 30228480
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 32522240
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 32587776
+    },
+    "afterFactory": {
+      "heap": 796982,
+      "rss": 34783232
+    },
+    "afterDrain": {
+      "heap": 796982,
+      "rss": 36700160
+    },
+    "retainedWithBody": {
+      "heap": 796982,
+      "rss": 36814848
+    },
+    "retainedAfterRelease": {
+      "heap": 796982,
+      "rss": 36847616
+    },
+    "timings": {
+      "constructMs": 1.019292,
+      "parseMs": 0.8395410000000005,
+      "factoryMs": 0.24141700000000021,
+      "drainMs": 1.4478749999999998
+    },
+    "cpu": {
+      "user": 14380,
+      "system": 7206
+    },
+    "osMaxRss": 37109760,
+    "repetition": 2
+  },
+  {
+    "mode": "candidate",
+    "kind": "giant-key",
+    "mib": 1,
+    "sourceBytes": 1048576,
+    "length": 1048576,
+    "contentLength": 1048576,
+    "digest": "2385c4c935fa37971e03267f310439d318b571704d4bce72993403872b2e8846",
+    "maxChunk": 65536,
+    "chunks": 17,
+    "startup": {
+      "heap": 799782,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 32423936
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 32423936
+    },
+    "afterFactory": {
+      "heap": 799782,
+      "rss": 39878656
+    },
+    "afterDrain": {
+      "heap": 799782,
+      "rss": 46268416
+    },
+    "retainedWithBody": {
+      "heap": 799782,
+      "rss": 46415872
+    },
+    "retainedAfterRelease": {
+      "heap": 799782,
+      "rss": 46432256
+    },
+    "timings": {
+      "constructMs": 1.1079170000000005,
+      "factoryMs": 2.2418750000000003,
+      "drainMs": 2.067957999999999
+    },
+    "cpu": {
+      "user": 17356,
+      "system": 7905
+    },
+    "osMaxRss": 46694400,
+    "repetition": 2
+  },
+  {
+    "mode": "oracle",
+    "kind": "ascii",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "digest": "4359fb64bcb58649aee2ce59390ccbfa43ea5f7a5034a4fbeb2c78980514cb08",
+    "startup": {
+      "heap": 796982,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 51314688
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 61882368
+    },
+    "timings": {
+      "constructMs": 2.007541,
+      "parseMs": 1.6921250000000008,
+      "oracleMs": 7.907791999999999
+    },
+    "osMaxRss": 83542016,
+    "repetition": 0
+  },
+  {
+    "mode": "parse",
+    "kind": "ascii",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 51347456
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 61915136
+    },
+    "retainedAfterGc": {
+      "heap": 796982,
+      "rss": 62078976
+    },
+    "timings": {
+      "constructMs": 2.1449160000000003,
+      "parseMs": 1.2832079999999983
+    },
+    "osMaxRss": 62324736,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "ascii",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "4359fb64bcb58649aee2ce59390ccbfa43ea5f7a5034a4fbeb2c78980514cb08",
+    "maxChunk": 65536,
+    "chunks": 160,
+    "startup": {
+      "heap": 799670,
+      "rss": 30113792
+    },
+    "afterSource": {
+      "heap": 799670,
+      "rss": 51281920
+    },
+    "afterParse": {
+      "heap": 799670,
+      "rss": 61833216
+    },
+    "afterFactory": {
+      "heap": 32319121,
+      "rss": 83001344
+    },
+    "afterDrain": {
+      "heap": 32319121,
+      "rss": 100909056
+    },
+    "retainedWithBody": {
+      "heap": 32319121,
+      "rss": 101023744
+    },
+    "retainedAfterRelease": {
+      "heap": 32319121,
+      "rss": 101056512
+    },
+    "timings": {
+      "constructMs": 2.1846250000000005,
+      "parseMs": 1.2261249999999997,
+      "factoryMs": 2.6739580000000007,
+      "drainMs": 6.266541999999998
+    },
+    "cpu": {
+      "user": 24632,
+      "system": 11531
+    },
+    "osMaxRss": 101335040,
+    "repetition": 0
+  },
+  {
+    "mode": "candidate",
+    "kind": "ascii",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "4359fb64bcb58649aee2ce59390ccbfa43ea5f7a5034a4fbeb2c78980514cb08",
+    "maxChunk": 65536,
+    "chunks": 161,
+    "startup": {
+      "heap": 796982,
+      "rss": 30228480
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 51396608
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 51396608
+    },
+    "afterFactory": {
+      "heap": 20918426,
+      "rss": 103153664
+    },
+    "afterDrain": {
+      "heap": 29569918,
+      "rss": 110886912
+    },
+    "retainedWithBody": {
+      "heap": 29569918,
+      "rss": 110936064
+    },
+    "retainedAfterRelease": {
+      "heap": 29569918,
+      "rss": 110968832
+    },
+    "timings": {
+      "constructMs": 2.0095419999999997,
+      "factoryMs": 7.5849579999999985,
+      "drainMs": 8.479291999999997
+    },
+    "cpu": {
+      "user": 30635,
+      "system": 12312
+    },
+    "osMaxRss": 111247360,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "ascii",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "4359fb64bcb58649aee2ce59390ccbfa43ea5f7a5034a4fbeb2c78980514cb08",
+    "maxChunk": 65536,
+    "chunks": 160,
+    "startup": {
+      "heap": 799782,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 51314688
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 61865984
+    },
+    "afterFactory": {
+      "heap": 32319233,
+      "rss": 83001344
+    },
+    "afterDrain": {
+      "heap": 32319233,
+      "rss": 100843520
+    },
+    "retainedWithBody": {
+      "heap": 32319233,
+      "rss": 100958208
+    },
+    "retainedAfterRelease": {
+      "heap": 32319233,
+      "rss": 100974592
+    },
+    "timings": {
+      "constructMs": 2.0877499999999998,
+      "parseMs": 1.1452080000000002,
+      "factoryMs": 2.8228329999999993,
+      "drainMs": 6.451458000000001
+    },
+    "cpu": {
+      "user": 24871,
+      "system": 11059
+    },
+    "osMaxRss": 101253120,
+    "repetition": 1
+  },
+  {
+    "mode": "candidate",
+    "kind": "ascii",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "4359fb64bcb58649aee2ce59390ccbfa43ea5f7a5034a4fbeb2c78980514cb08",
+    "maxChunk": 65536,
+    "chunks": 161,
+    "startup": {
+      "heap": 796982,
+      "rss": 30162944
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 51331072
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 51331072
+    },
+    "afterFactory": {
+      "heap": 20918426,
+      "rss": 103251968
+    },
+    "afterDrain": {
+      "heap": 29559823,
+      "rss": 110379008
+    },
+    "retainedWithBody": {
+      "heap": 29559823,
+      "rss": 110444544
+    },
+    "retainedAfterRelease": {
+      "heap": 29559823,
+      "rss": 110444544
+    },
+    "timings": {
+      "constructMs": 2.1042499999999986,
+      "factoryMs": 7.940874999999998,
+      "drainMs": 8.476416
+    },
+    "cpu": {
+      "user": 31074,
+      "system": 12525
+    },
+    "osMaxRss": 110723072,
+    "repetition": 1
+  },
+  {
+    "mode": "native",
+    "kind": "ascii",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "4359fb64bcb58649aee2ce59390ccbfa43ea5f7a5034a4fbeb2c78980514cb08",
+    "maxChunk": 65536,
+    "chunks": 160,
+    "startup": {
+      "heap": 799782,
+      "rss": 30113792
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 51281920
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 61833216
+    },
+    "afterFactory": {
+      "heap": 32319233,
+      "rss": 83017728
+    },
+    "afterDrain": {
+      "heap": 32319233,
+      "rss": 100794368
+    },
+    "retainedWithBody": {
+      "heap": 32319233,
+      "rss": 100859904
+    },
+    "retainedAfterRelease": {
+      "heap": 32319233,
+      "rss": 100892672
+    },
+    "timings": {
+      "constructMs": 1.9104580000000002,
+      "parseMs": 1.1251250000000006,
+      "factoryMs": 3.1310000000000002,
+      "drainMs": 6.497083
+    },
+    "cpu": {
+      "user": 24535,
+      "system": 11211
+    },
+    "osMaxRss": 101171200,
+    "repetition": 2
+  },
+  {
+    "mode": "candidate",
+    "kind": "ascii",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "4359fb64bcb58649aee2ce59390ccbfa43ea5f7a5034a4fbeb2c78980514cb08",
+    "maxChunk": 65536,
+    "chunks": 161,
+    "startup": {
+      "heap": 799782,
+      "rss": 30212096
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 51380224
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 51380224
+    },
+    "afterFactory": {
+      "heap": 20920314,
+      "rss": 103202816
+    },
+    "afterDrain": {
+      "heap": 29561711,
+      "rss": 110936064
+    },
+    "retainedWithBody": {
+      "heap": 29561711,
+      "rss": 111034368
+    },
+    "retainedAfterRelease": {
+      "heap": 29561711,
+      "rss": 111050752
+    },
+    "timings": {
+      "constructMs": 1.9491669999999992,
+      "factoryMs": 7.8663750000000014,
+      "drainMs": 8.538666
+    },
+    "cpu": {
+      "user": 31005,
+      "system": 12247
+    },
+    "osMaxRss": 111329280,
+    "repetition": 2
+  },
+  {
+    "mode": "oracle",
+    "kind": "control",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "digest": "128ecfd23940e5c6b0290b5c9f557da1f254aa4de0d1d361ece7c0912dca1f1a",
+    "startup": {
+      "heap": 796982,
+      "rss": 30244864
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 51429376
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 61521920
+    },
+    "timings": {
+      "constructMs": 6.009833,
+      "parseMs": 18.851917,
+      "oracleMs": 9.755165999999996
+    },
+    "osMaxRss": 78954496,
+    "repetition": 0
+  },
+  {
+    "mode": "parse",
+    "kind": "control",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "startup": {
+      "heap": 796982,
+      "rss": 30113792
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 51298304
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 61390848
+    },
+    "retainedAfterGc": {
+      "heap": 796982,
+      "rss": 61538304
+    },
+    "timings": {
+      "constructMs": 5.753166,
+      "parseMs": 19.209999999999997
+    },
+    "osMaxRss": 61784064,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "control",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "128ecfd23940e5c6b0290b5c9f557da1f254aa4de0d1d361ece7c0912dca1f1a",
+    "maxChunk": 65536,
+    "chunks": 160,
+    "startup": {
+      "heap": 799782,
+      "rss": 30162944
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 51347456
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 61440000
+    },
+    "afterFactory": {
+      "heap": 37562991,
+      "rss": 78381056
+    },
+    "afterDrain": {
+      "heap": 37562991,
+      "rss": 95780864
+    },
+    "retainedWithBody": {
+      "heap": 37562991,
+      "rss": 95846400
+    },
+    "retainedAfterRelease": {
+      "heap": 37562991,
+      "rss": 95879168
+    },
+    "timings": {
+      "constructMs": 5.791416,
+      "parseMs": 19.113125000000004,
+      "factoryMs": 6.1045409999999976,
+      "drainMs": 6.02975
+    },
+    "cpu": {
+      "user": 48947,
+      "system": 12353
+    },
+    "osMaxRss": 96157696,
+    "repetition": 0
+  },
+  {
+    "mode": "candidate",
+    "kind": "control",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "128ecfd23940e5c6b0290b5c9f557da1f254aa4de0d1d361ece7c0912dca1f1a",
+    "maxChunk": 65536,
+    "chunks": 161,
+    "startup": {
+      "heap": 799782,
+      "rss": 30162944
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 51347456
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 51347456
+    },
+    "afterFactory": {
+      "heap": 14790968,
+      "rss": 102760448
+    },
+    "afterDrain": {
+      "heap": 32058518,
+      "rss": 118259712
+    },
+    "retainedWithBody": {
+      "heap": 32058518,
+      "rss": 118325248
+    },
+    "retainedAfterRelease": {
+      "heap": 32058518,
+      "rss": 118341632
+    },
+    "timings": {
+      "constructMs": 5.945166,
+      "factoryMs": 28.671875,
+      "drainMs": 13.196290999999995
+    },
+    "cpu": {
+      "user": 59145,
+      "system": 13764
+    },
+    "osMaxRss": 118620160,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "control",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "128ecfd23940e5c6b0290b5c9f557da1f254aa4de0d1d361ece7c0912dca1f1a",
+    "maxChunk": 65536,
+    "chunks": 160,
+    "startup": {
+      "heap": 799782,
+      "rss": 30064640
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 51249152
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 61341696
+    },
+    "afterFactory": {
+      "heap": 37562991,
+      "rss": 78282752
+    },
+    "afterDrain": {
+      "heap": 37562991,
+      "rss": 96010240
+    },
+    "retainedWithBody": {
+      "heap": 37562991,
+      "rss": 96075776
+    },
+    "retainedAfterRelease": {
+      "heap": 37562991,
+      "rss": 96092160
+    },
+    "timings": {
+      "constructMs": 5.9592089999999995,
+      "parseMs": 19.104208000000003,
+      "factoryMs": 6.501291999999999,
+      "drainMs": 6.5555419999999955
+    },
+    "cpu": {
+      "user": 50302,
+      "system": 11836
+    },
+    "osMaxRss": 96370688,
+    "repetition": 1
+  },
+  {
+    "mode": "candidate",
+    "kind": "control",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "128ecfd23940e5c6b0290b5c9f557da1f254aa4de0d1d361ece7c0912dca1f1a",
+    "maxChunk": 65536,
+    "chunks": 161,
+    "startup": {
+      "heap": 796982,
+      "rss": 30048256
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 51232768
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 51232768
+    },
+    "afterFactory": {
+      "heap": 14788168,
+      "rss": 102727680
+    },
+    "afterDrain": {
+      "heap": 32055718,
+      "rss": 118456320
+    },
+    "retainedWithBody": {
+      "heap": 32055718,
+      "rss": 118505472
+    },
+    "retainedAfterRelease": {
+      "heap": 32055718,
+      "rss": 118505472
+    },
+    "timings": {
+      "constructMs": 5.866167000000001,
+      "factoryMs": 29.222708000000004,
+      "drainMs": 12.845374999999997
+    },
+    "cpu": {
+      "user": 59402,
+      "system": 13473
+    },
+    "osMaxRss": 118784000,
+    "repetition": 1
+  },
+  {
+    "mode": "native",
+    "kind": "control",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "128ecfd23940e5c6b0290b5c9f557da1f254aa4de0d1d361ece7c0912dca1f1a",
+    "maxChunk": 65536,
+    "chunks": 160,
+    "startup": {
+      "heap": 796982,
+      "rss": 30113792
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 51298304
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 61390848
+    },
+    "afterFactory": {
+      "heap": 37560191,
+      "rss": 78315520
+    },
+    "afterDrain": {
+      "heap": 37560191,
+      "rss": 95928320
+    },
+    "retainedWithBody": {
+      "heap": 37560191,
+      "rss": 96026624
+    },
+    "retainedAfterRelease": {
+      "heap": 37560191,
+      "rss": 96026624
+    },
+    "timings": {
+      "constructMs": 5.665041,
+      "parseMs": 18.699708,
+      "factoryMs": 6.250083000000004,
+      "drainMs": 6.551499999999997
+    },
+    "cpu": {
+      "user": 49194,
+      "system": 11496
+    },
+    "osMaxRss": 96305152,
+    "repetition": 2
+  },
+  {
+    "mode": "candidate",
+    "kind": "control",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "128ecfd23940e5c6b0290b5c9f557da1f254aa4de0d1d361ece7c0912dca1f1a",
+    "maxChunk": 65536,
+    "chunks": 161,
+    "startup": {
+      "heap": 796982,
+      "rss": 30113792
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 51298304
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 51298304
+    },
+    "afterFactory": {
+      "heap": 14788424,
+      "rss": 102727680
+    },
+    "afterDrain": {
+      "heap": 32055974,
+      "rss": 118145024
+    },
+    "retainedWithBody": {
+      "heap": 32055974,
+      "rss": 118177792
+    },
+    "retainedAfterRelease": {
+      "heap": 32055974,
+      "rss": 118210560
+    },
+    "timings": {
+      "constructMs": 6.045124999999999,
+      "factoryMs": 28.657417000000002,
+      "drainMs": 13.518
+    },
+    "cpu": {
+      "user": 59615,
+      "system": 14076
+    },
+    "osMaxRss": 118489088,
+    "repetition": 2
+  },
+  {
+    "mode": "oracle",
+    "kind": "cjk-emoji",
+    "mib": 10,
+    "sourceBytes": 10485756,
+    "length": 10485756,
+    "digest": "06ebe90b563615f4e938e85595e864239e1ab1855658b8ad86d6c4a925b269ac",
+    "startup": {
+      "heap": 796982,
+      "rss": 30228480
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 57425920
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 57524224
+    },
+    "timings": {
+      "constructMs": 5.417334,
+      "parseMs": 0.5575829999999993,
+      "oracleMs": 12.583625
+    },
+    "osMaxRss": 86704128,
+    "repetition": 0
+  },
+  {
+    "mode": "parse",
+    "kind": "cjk-emoji",
+    "mib": 10,
+    "sourceBytes": 10485756,
+    "startup": {
+      "heap": 796982,
+      "rss": 30195712
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 57376768
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 57475072
+    },
+    "retainedAfterGc": {
+      "heap": 796982,
+      "rss": 57589760
+    },
+    "timings": {
+      "constructMs": 5.656083000000001,
+      "parseMs": 0.5299170000000011
+    },
+    "osMaxRss": 57835520,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "cjk-emoji",
+    "mib": 10,
+    "sourceBytes": 10485756,
+    "length": 10485756,
+    "contentLength": 10485756,
+    "digest": "06ebe90b563615f4e938e85595e864239e1ab1855658b8ad86d6c4a925b269ac",
+    "maxChunk": 65536,
+    "chunks": 160,
+    "startup": {
+      "heap": 799782,
+      "rss": 30081024
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 57278464
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 57376768
+    },
+    "afterFactory": {
+      "heap": 27826228,
+      "rss": 86048768
+    },
+    "afterDrain": {
+      "heap": 27826228,
+      "rss": 103972864
+    },
+    "retainedWithBody": {
+      "heap": 27826228,
+      "rss": 104054784
+    },
+    "retainedAfterRelease": {
+      "heap": 27826228,
+      "rss": 104087552
+    },
+    "timings": {
+      "constructMs": 5.568292,
+      "parseMs": 0.5425830000000005,
+      "factoryMs": 8.738042000000002,
+      "drainMs": 6.043792
+    },
+    "cpu": {
+      "user": 32923,
+      "system": 11396
+    },
+    "osMaxRss": 104366080,
+    "repetition": 0
+  },
+  {
+    "mode": "candidate",
+    "kind": "cjk-emoji",
+    "mib": 10,
+    "sourceBytes": 10485756,
+    "length": 10485756,
+    "contentLength": 10485756,
+    "digest": "06ebe90b563615f4e938e85595e864239e1ab1855658b8ad86d6c4a925b269ac",
+    "maxChunk": 57357,
+    "chunks": 183,
+    "startup": {
+      "heap": 796982,
+      "rss": 30081024
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 57262080
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 57262080
+    },
+    "afterFactory": {
+      "heap": 20347066,
+      "rss": 105725952
+    },
+    "afterDrain": {
+      "heap": 29094006,
+      "rss": 113688576
+    },
+    "retainedWithBody": {
+      "heap": 29094006,
+      "rss": 113754112
+    },
+    "retainedAfterRelease": {
+      "heap": 29094006,
+      "rss": 113786880
+    },
+    "timings": {
+      "constructMs": 5.839874999999999,
+      "factoryMs": 13.029958,
+      "drainMs": 13.983666
+    },
+    "cpu": {
+      "user": 44643,
+      "system": 13564
+    },
+    "osMaxRss": 114065408,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "cjk-emoji",
+    "mib": 10,
+    "sourceBytes": 10485756,
+    "length": 10485756,
+    "contentLength": 10485756,
+    "digest": "06ebe90b563615f4e938e85595e864239e1ab1855658b8ad86d6c4a925b269ac",
+    "maxChunk": 65536,
+    "chunks": 160,
+    "startup": {
+      "heap": 796982,
+      "rss": 30097408
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 57278464
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 57376768
+    },
+    "afterFactory": {
+      "heap": 27823428,
+      "rss": 86048768
+    },
+    "afterDrain": {
+      "heap": 27823428,
+      "rss": 104103936
+    },
+    "retainedWithBody": {
+      "heap": 27823428,
+      "rss": 104169472
+    },
+    "retainedAfterRelease": {
+      "heap": 27823428,
+      "rss": 104202240
+    },
+    "timings": {
+      "constructMs": 5.494083,
+      "parseMs": 0.6234999999999999,
+      "factoryMs": 8.951667,
+      "drainMs": 6.339000000000002
+    },
+    "cpu": {
+      "user": 33181,
+      "system": 11919
+    },
+    "osMaxRss": 104480768,
+    "repetition": 1
+  },
+  {
+    "mode": "candidate",
+    "kind": "cjk-emoji",
+    "mib": 10,
+    "sourceBytes": 10485756,
+    "length": 10485756,
+    "contentLength": 10485756,
+    "digest": "06ebe90b563615f4e938e85595e864239e1ab1855658b8ad86d6c4a925b269ac",
+    "maxChunk": 57357,
+    "chunks": 183,
+    "startup": {
+      "heap": 796982,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 57327616
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 57327616
+    },
+    "afterFactory": {
+      "heap": 20347066,
+      "rss": 105988096
+    },
+    "afterDrain": {
+      "heap": 29094006,
+      "rss": 112885760
+    },
+    "retainedWithBody": {
+      "heap": 29094006,
+      "rss": 112984064
+    },
+    "retainedAfterRelease": {
+      "heap": 29094006,
+      "rss": 113033216
+    },
+    "timings": {
+      "constructMs": 5.294957999999999,
+      "factoryMs": 12.448458,
+      "drainMs": 13.947167000000004
+    },
+    "cpu": {
+      "user": 44198,
+      "system": 12590
+    },
+    "osMaxRss": 113311744,
+    "repetition": 1
+  },
+  {
+    "mode": "native",
+    "kind": "cjk-emoji",
+    "mib": 10,
+    "sourceBytes": 10485756,
+    "length": 10485756,
+    "contentLength": 10485756,
+    "digest": "06ebe90b563615f4e938e85595e864239e1ab1855658b8ad86d6c4a925b269ac",
+    "maxChunk": 65536,
+    "chunks": 160,
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 57360384
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 57458688
+    },
+    "afterFactory": {
+      "heap": 27823428,
+      "rss": 86114304
+    },
+    "afterDrain": {
+      "heap": 27823428,
+      "rss": 104038400
+    },
+    "retainedWithBody": {
+      "heap": 27823428,
+      "rss": 104153088
+    },
+    "retainedAfterRelease": {
+      "heap": 27823428,
+      "rss": 104218624
+    },
+    "timings": {
+      "constructMs": 5.466540999999999,
+      "parseMs": 0.5796250000000001,
+      "factoryMs": 8.949333,
+      "drainMs": 6.148834000000001
+    },
+    "cpu": {
+      "user": 33210,
+      "system": 11607
+    },
+    "osMaxRss": 104497152,
+    "repetition": 2
+  },
+  {
+    "mode": "candidate",
+    "kind": "cjk-emoji",
+    "mib": 10,
+    "sourceBytes": 10485756,
+    "length": 10485756,
+    "contentLength": 10485756,
+    "digest": "06ebe90b563615f4e938e85595e864239e1ab1855658b8ad86d6c4a925b269ac",
+    "maxChunk": 57357,
+    "chunks": 183,
+    "startup": {
+      "heap": 796982,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 57311232
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 57311232
+    },
+    "afterFactory": {
+      "heap": 20347066,
+      "rss": 106201088
+    },
+    "afterDrain": {
+      "heap": 29094006,
+      "rss": 112476160
+    },
+    "retainedWithBody": {
+      "heap": 29094006,
+      "rss": 112525312
+    },
+    "retainedAfterRelease": {
+      "heap": 29094006,
+      "rss": 112541696
+    },
+    "timings": {
+      "constructMs": 5.618292,
+      "factoryMs": 12.509417,
+      "drainMs": 13.609917000000003
+    },
+    "cpu": {
+      "user": 44522,
+      "system": 12817
+    },
+    "osMaxRss": 112820224,
+    "repetition": 2
+  },
+  {
+    "mode": "oracle",
+    "kind": "lone-surrogate",
+    "mib": 10,
+    "sourceBytes": 10485758,
+    "length": 10485758,
+    "digest": "c59b14d77fc560c979152c445d44925bcfcfd6386b23355805a2938f5deac0ff",
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 58343424
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 64634880
+    },
+    "timings": {
+      "constructMs": 5.089208000000001,
+      "parseMs": 7.478250000000001,
+      "oracleMs": 10.768375000000002
+    },
+    "osMaxRss": 96780288,
+    "repetition": 0
+  },
+  {
+    "mode": "parse",
+    "kind": "lone-surrogate",
+    "mib": 10,
+    "sourceBytes": 10485758,
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 58343424
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 64634880
+    },
+    "retainedAfterGc": {
+      "heap": 796982,
+      "rss": 64765952
+    },
+    "timings": {
+      "constructMs": 5.0585,
+      "parseMs": 7.5579170000000016
+    },
+    "osMaxRss": 65011712,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "lone-surrogate",
+    "mib": 10,
+    "sourceBytes": 10485758,
+    "length": 10485758,
+    "contentLength": 10485758,
+    "digest": "c59b14d77fc560c979152c445d44925bcfcfd6386b23355805a2938f5deac0ff",
+    "maxChunk": 65536,
+    "chunks": 160,
+    "startup": {
+      "heap": 796982,
+      "rss": 30081024
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 58245120
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 64536576
+    },
+    "afterFactory": {
+      "heap": 56784082,
+      "rss": 96174080
+    },
+    "afterDrain": {
+      "heap": 56784082,
+      "rss": 114016256
+    },
+    "retainedWithBody": {
+      "heap": 56784082,
+      "rss": 114147328
+    },
+    "retainedAfterRelease": {
+      "heap": 56784082,
+      "rss": 114196480
+    },
+    "timings": {
+      "constructMs": 5.150333,
+      "parseMs": 7.856375,
+      "factoryMs": 7.232624999999999,
+      "drainMs": 6.24025
+    },
+    "cpu": {
+      "user": 38951,
+      "system": 12335
+    },
+    "osMaxRss": 114475008,
+    "repetition": 0
+  },
+  {
+    "mode": "candidate",
+    "kind": "lone-surrogate",
+    "mib": 10,
+    "sourceBytes": 10485758,
+    "length": 10485758,
+    "contentLength": 10485758,
+    "digest": "c59b14d77fc560c979152c445d44925bcfcfd6386b23355805a2938f5deac0ff",
+    "maxChunk": 65528,
+    "chunks": 213,
+    "startup": {
+      "heap": 796982,
+      "rss": 30113792
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 58294272
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 58294272
+    },
+    "afterFactory": {
+      "heap": 23470331,
+      "rss": 110936064
+    },
+    "afterDrain": {
+      "heap": 31090597,
+      "rss": 125370368
+    },
+    "retainedWithBody": {
+      "heap": 31090597,
+      "rss": 125468672
+    },
+    "retainedAfterRelease": {
+      "heap": 31090597,
+      "rss": 125485056
+    },
+    "timings": {
+      "constructMs": 4.906375000000001,
+      "factoryMs": 18.004458,
+      "drainMs": 12.615958
+    },
+    "cpu": {
+      "user": 47213,
+      "system": 13578
+    },
+    "osMaxRss": 125763584,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "lone-surrogate",
+    "mib": 10,
+    "sourceBytes": 10485758,
+    "length": 10485758,
+    "contentLength": 10485758,
+    "digest": "c59b14d77fc560c979152c445d44925bcfcfd6386b23355805a2938f5deac0ff",
+    "maxChunk": 65536,
+    "chunks": 160,
+    "startup": {
+      "heap": 796982,
+      "rss": 30064640
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 58228736
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 64520192
+    },
+    "afterFactory": {
+      "heap": 56784082,
+      "rss": 96157696
+    },
+    "afterDrain": {
+      "heap": 56784082,
+      "rss": 113983488
+    },
+    "retainedWithBody": {
+      "heap": 56784082,
+      "rss": 114130944
+    },
+    "retainedAfterRelease": {
+      "heap": 56784082,
+      "rss": 114147328
+    },
+    "timings": {
+      "constructMs": 5.19275,
+      "parseMs": 7.628749999999998,
+      "factoryMs": 7.277750000000001,
+      "drainMs": 6.049541000000001
+    },
+    "cpu": {
+      "user": 38309,
+      "system": 13413
+    },
+    "osMaxRss": 114425856,
+    "repetition": 1
+  },
+  {
+    "mode": "candidate",
+    "kind": "lone-surrogate",
+    "mib": 10,
+    "sourceBytes": 10485758,
+    "length": 10485758,
+    "contentLength": 10485758,
+    "digest": "c59b14d77fc560c979152c445d44925bcfcfd6386b23355805a2938f5deac0ff",
+    "maxChunk": 65528,
+    "chunks": 213,
+    "startup": {
+      "heap": 796982,
+      "rss": 30162944
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 58343424
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 58343424
+    },
+    "afterFactory": {
+      "heap": 23470587,
+      "rss": 111001600
+    },
+    "afterDrain": {
+      "heap": 31137731,
+      "rss": 125976576
+    },
+    "retainedWithBody": {
+      "heap": 31137731,
+      "rss": 126042112
+    },
+    "retainedAfterRelease": {
+      "heap": 31137731,
+      "rss": 126058496
+    },
+    "timings": {
+      "constructMs": 5.316208,
+      "factoryMs": 18.883459000000002,
+      "drainMs": 12.574000000000005
+    },
+    "cpu": {
+      "user": 49482,
+      "system": 14263
+    },
+    "osMaxRss": 126337024,
+    "repetition": 1
+  },
+  {
+    "mode": "native",
+    "kind": "lone-surrogate",
+    "mib": 10,
+    "sourceBytes": 10485758,
+    "length": 10485758,
+    "contentLength": 10485758,
+    "digest": "c59b14d77fc560c979152c445d44925bcfcfd6386b23355805a2938f5deac0ff",
+    "maxChunk": 65536,
+    "chunks": 160,
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 58343424
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 64634880
+    },
+    "afterFactory": {
+      "heap": 56784082,
+      "rss": 96256000
+    },
+    "afterDrain": {
+      "heap": 56784082,
+      "rss": 113704960
+    },
+    "retainedWithBody": {
+      "heap": 56784082,
+      "rss": 113754112
+    },
+    "retainedAfterRelease": {
+      "heap": 56784082,
+      "rss": 113803264
+    },
+    "timings": {
+      "constructMs": 5.315249999999999,
+      "parseMs": 7.2656670000000005,
+      "factoryMs": 7.163375000000002,
+      "drainMs": 6.375958000000001
+    },
+    "cpu": {
+      "user": 37953,
+      "system": 12728
+    },
+    "osMaxRss": 114081792,
+    "repetition": 2
+  },
+  {
+    "mode": "candidate",
+    "kind": "lone-surrogate",
+    "mib": 10,
+    "sourceBytes": 10485758,
+    "length": 10485758,
+    "contentLength": 10485758,
+    "digest": "c59b14d77fc560c979152c445d44925bcfcfd6386b23355805a2938f5deac0ff",
+    "maxChunk": 65528,
+    "chunks": 213,
+    "startup": {
+      "heap": 796982,
+      "rss": 30064640
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 58245120
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 58245120
+    },
+    "afterFactory": {
+      "heap": 23470331,
+      "rss": 114737152
+    },
+    "afterDrain": {
+      "heap": 31088604,
+      "rss": 126418944
+    },
+    "retainedWithBody": {
+      "heap": 31088604,
+      "rss": 126468096
+    },
+    "retainedAfterRelease": {
+      "heap": 31088604,
+      "rss": 126484480
+    },
+    "timings": {
+      "constructMs": 5.215291000000001,
+      "factoryMs": 18.275624999999998,
+      "drainMs": 12.249875000000003
+    },
+    "cpu": {
+      "user": 47309,
+      "system": 13698
+    },
+    "osMaxRss": 126763008,
+    "repetition": 2
+  },
+  {
+    "mode": "oracle",
+    "kind": "giant-key",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "digest": "87964e4108a1a4f03bea89cf2279dec7688ddfe22205ff364f177371eb58eeee",
+    "startup": {
+      "heap": 796982,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 51298304
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 51363840
+    },
+    "timings": {
+      "constructMs": 10.226042,
+      "parseMs": 8.784416,
+      "oracleMs": 6.331250000000001
+    },
+    "osMaxRss": 73007104,
+    "repetition": 0
+  },
+  {
+    "mode": "parse",
+    "kind": "giant-key",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "startup": {
+      "heap": 796982,
+      "rss": 30097408
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 51265536
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 51331072
+    },
+    "retainedAfterGc": {
+      "heap": 796982,
+      "rss": 51462144
+    },
+    "timings": {
+      "constructMs": 10.281624999999998,
+      "parseMs": 8.934124999999998
+    },
+    "osMaxRss": 51707904,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "giant-key",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "87964e4108a1a4f03bea89cf2279dec7688ddfe22205ff364f177371eb58eeee",
+    "maxChunk": 65536,
+    "chunks": 160,
+    "startup": {
+      "heap": 799782,
+      "rss": 30162944
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 51331072
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 51396608
+    },
+    "afterFactory": {
+      "heap": 32320101,
+      "rss": 72515584
+    },
+    "afterDrain": {
+      "heap": 32320101,
+      "rss": 90357760
+    },
+    "retainedWithBody": {
+      "heap": 32320101,
+      "rss": 90472448
+    },
+    "retainedAfterRelease": {
+      "heap": 32320101,
+      "rss": 90521600
+    },
+    "timings": {
+      "constructMs": 10.084,
+      "parseMs": 9.3675,
+      "factoryMs": 2.9380830000000024,
+      "drainMs": 6.157958000000004
+    },
+    "cpu": {
+      "user": 40551,
+      "system": 11274
+    },
+    "osMaxRss": 90800128,
+    "repetition": 0
+  },
+  {
+    "mode": "candidate",
+    "kind": "giant-key",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "87964e4108a1a4f03bea89cf2279dec7688ddfe22205ff364f177371eb58eeee",
+    "maxChunk": 65536,
+    "chunks": 161,
+    "startup": {
+      "heap": 796982,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 51314688
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 51314688
+    },
+    "afterFactory": {
+      "heap": 14776031,
+      "rss": 88915968
+    },
+    "afterDrain": {
+      "heap": 31973267,
+      "rss": 99139584
+    },
+    "retainedWithBody": {
+      "heap": 31973267,
+      "rss": 99188736
+    },
+    "retainedAfterRelease": {
+      "heap": 31973267,
+      "rss": 99188736
+    },
+    "timings": {
+      "constructMs": 10.309708,
+      "factoryMs": 14.381666999999997,
+      "drainMs": 9.012791999999997
+    },
+    "cpu": {
+      "user": 46283,
+      "system": 11895
+    },
+    "osMaxRss": 99467264,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "giant-key",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "87964e4108a1a4f03bea89cf2279dec7688ddfe22205ff364f177371eb58eeee",
+    "maxChunk": 65536,
+    "chunks": 160,
+    "startup": {
+      "heap": 799782,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 51298304
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 51363840
+    },
+    "afterFactory": {
+      "heap": 32320101,
+      "rss": 72499200
+    },
+    "afterDrain": {
+      "heap": 32320101,
+      "rss": 90390528
+    },
+    "retainedWithBody": {
+      "heap": 32320101,
+      "rss": 90488832
+    },
+    "retainedAfterRelease": {
+      "heap": 32320101,
+      "rss": 90505216
+    },
+    "timings": {
+      "constructMs": 10.167124999999999,
+      "parseMs": 8.865124999999999,
+      "factoryMs": 2.8043329999999997,
+      "drainMs": 6.397291999999997
+    },
+    "cpu": {
+      "user": 41173,
+      "system": 11414
+    },
+    "osMaxRss": 90783744,
+    "repetition": 1
+  },
+  {
+    "mode": "candidate",
+    "kind": "giant-key",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "87964e4108a1a4f03bea89cf2279dec7688ddfe22205ff364f177371eb58eeee",
+    "maxChunk": 65536,
+    "chunks": 161,
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 51347456
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 51347456
+    },
+    "afterFactory": {
+      "heap": 14776031,
+      "rss": 88915968
+    },
+    "afterDrain": {
+      "heap": 31972627,
+      "rss": 98828288
+    },
+    "retainedWithBody": {
+      "heap": 31972627,
+      "rss": 98910208
+    },
+    "retainedAfterRelease": {
+      "heap": 31972627,
+      "rss": 98942976
+    },
+    "timings": {
+      "constructMs": 10.341125,
+      "factoryMs": 15.054958,
+      "drainMs": 9.203209000000001
+    },
+    "cpu": {
+      "user": 47533,
+      "system": 12730
+    },
+    "osMaxRss": 99221504,
+    "repetition": 1
+  },
+  {
+    "mode": "native",
+    "kind": "giant-key",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "87964e4108a1a4f03bea89cf2279dec7688ddfe22205ff364f177371eb58eeee",
+    "maxChunk": 65536,
+    "chunks": 160,
+    "startup": {
+      "heap": 796982,
+      "rss": 30212096
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 51380224
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 51445760
+    },
+    "afterFactory": {
+      "heap": 32317301,
+      "rss": 72564736
+    },
+    "afterDrain": {
+      "heap": 32317301,
+      "rss": 90423296
+    },
+    "retainedWithBody": {
+      "heap": 32317301,
+      "rss": 90521600
+    },
+    "retainedAfterRelease": {
+      "heap": 32317301,
+      "rss": 90554368
+    },
+    "timings": {
+      "constructMs": 10.313375,
+      "parseMs": 8.786124999999998,
+      "factoryMs": 2.6268749999999983,
+      "drainMs": 6.584207999999997
+    },
+    "cpu": {
+      "user": 40770,
+      "system": 11154
+    },
+    "osMaxRss": 90832896,
+    "repetition": 2
+  },
+  {
+    "mode": "candidate",
+    "kind": "giant-key",
+    "mib": 10,
+    "sourceBytes": 10485760,
+    "length": 10485760,
+    "contentLength": 10485760,
+    "digest": "87964e4108a1a4f03bea89cf2279dec7688ddfe22205ff364f177371eb58eeee",
+    "maxChunk": 65536,
+    "chunks": 161,
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 51347456
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 51347456
+    },
+    "afterFactory": {
+      "heap": 14776031,
+      "rss": 88883200
+    },
+    "afterDrain": {
+      "heap": 31972627,
+      "rss": 99123200
+    },
+    "retainedWithBody": {
+      "heap": 31972627,
+      "rss": 99155968
+    },
+    "retainedAfterRelease": {
+      "heap": 31972627,
+      "rss": 99172352
+    },
+    "timings": {
+      "constructMs": 10.401417,
+      "factoryMs": 15.119542000000003,
+      "drainMs": 9.064833
+    },
+    "cpu": {
+      "user": 47012,
+      "system": 12407
+    },
+    "osMaxRss": 99450880,
+    "repetition": 2
+  },
+  {
+    "mode": "oracle",
+    "kind": "ascii",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "digest": "d7808489459f28c21f0c44889daa4b204241922abe40ecb3b4f8c76c948e57a6",
+    "startup": {
+      "heap": 796982,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135184384
+    },
+    "afterParse": {
+      "heap": 105713510,
+      "rss": 187727872
+    },
+    "timings": {
+      "constructMs": 10.594084,
+      "parseMs": 19.495458000000003,
+      "oracleMs": 38.27825000000001
+    },
+    "osMaxRss": 293240832,
+    "repetition": 0
+  },
+  {
+    "mode": "parse",
+    "kind": "ascii",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "startup": {
+      "heap": 799782,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 135184384
+    },
+    "afterParse": {
+      "heap": 105716309,
+      "rss": 187744256
+    },
+    "retainedAfterGc": {
+      "heap": 105716309,
+      "rss": 187809792
+    },
+    "timings": {
+      "constructMs": 10.629916999999999,
+      "parseMs": 6.165959000000001
+    },
+    "osMaxRss": 188055552,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "ascii",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "d7808489459f28c21f0c44889daa4b204241922abe40ecb3b4f8c76c948e57a6",
+    "maxChunk": 65536,
+    "chunks": 800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30113792
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135168000
+    },
+    "afterParse": {
+      "heap": 105713510,
+      "rss": 187711488
+    },
+    "afterFactory": {
+      "heap": 105713510,
+      "rss": 292716544
+    },
+    "afterDrain": {
+      "heap": 105713510,
+      "rss": 353812480
+    },
+    "retainedWithBody": {
+      "heap": 105713510,
+      "rss": 353878016
+    },
+    "retainedAfterRelease": {
+      "heap": 105713510,
+      "rss": 353878016
+    },
+    "timings": {
+      "constructMs": 10.77825,
+      "parseMs": 6.124958000000003,
+      "factoryMs": 11.86325,
+      "drainMs": 28.342875000000006
+    },
+    "cpu": {
+      "user": 57936,
+      "system": 28521
+    },
+    "osMaxRss": 354140160,
+    "repetition": 0
+  },
+  {
+    "mode": "candidate",
+    "kind": "ascii",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "d7808489459f28c21f0c44889daa4b204241922abe40ecb3b4f8c76c948e57a6",
+    "maxChunk": 65536,
+    "chunks": 801,
+    "startup": {
+      "heap": 799782,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 135233536
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 135233536
+    },
+    "afterFactory": {
+      "heap": 80615633,
+      "rss": 315228160
+    },
+    "afterDrain": {
+      "heap": 134690638,
+      "rss": 321404928
+    },
+    "retainedWithBody": {
+      "heap": 134690638,
+      "rss": 321470464
+    },
+    "retainedAfterRelease": {
+      "heap": 134690638,
+      "rss": 321470464
+    },
+    "timings": {
+      "constructMs": 10.456042000000002,
+      "factoryMs": 29.988875,
+      "drainMs": 34.564584
+    },
+    "cpu": {
+      "user": 87290,
+      "system": 28719
+    },
+    "osMaxRss": 321748992,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "ascii",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "d7808489459f28c21f0c44889daa4b204241922abe40ecb3b4f8c76c948e57a6",
+    "maxChunk": 65536,
+    "chunks": 800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30113792
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135168000
+    },
+    "afterParse": {
+      "heap": 105713510,
+      "rss": 187727872
+    },
+    "afterFactory": {
+      "heap": 105713510,
+      "rss": 292732928
+    },
+    "afterDrain": {
+      "heap": 105713510,
+      "rss": 353828864
+    },
+    "retainedWithBody": {
+      "heap": 105713510,
+      "rss": 353894400
+    },
+    "retainedAfterRelease": {
+      "heap": 105713510,
+      "rss": 353894400
+    },
+    "timings": {
+      "constructMs": 10.607582999999998,
+      "parseMs": 6.147459000000001,
+      "factoryMs": 12.062458000000003,
+      "drainMs": 26.11
+    },
+    "cpu": {
+      "user": 57105,
+      "system": 26858
+    },
+    "osMaxRss": 354156544,
+    "repetition": 1
+  },
+  {
+    "mode": "candidate",
+    "kind": "ascii",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "d7808489459f28c21f0c44889daa4b204241922abe40ecb3b4f8c76c948e57a6",
+    "maxChunk": 65536,
+    "chunks": 801,
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135233536
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 135233536
+    },
+    "afterFactory": {
+      "heap": 80611457,
+      "rss": 315490304
+    },
+    "afterDrain": {
+      "heap": 134678163,
+      "rss": 321372160
+    },
+    "retainedWithBody": {
+      "heap": 134678163,
+      "rss": 321421312
+    },
+    "retainedAfterRelease": {
+      "heap": 134678163,
+      "rss": 321437696
+    },
+    "timings": {
+      "constructMs": 10.409042000000001,
+      "factoryMs": 29.228458000000003,
+      "drainMs": 33.39104100000001
+    },
+    "cpu": {
+      "user": 86020,
+      "system": 27061
+    },
+    "osMaxRss": 321716224,
+    "repetition": 1
+  },
+  {
+    "mode": "native",
+    "kind": "ascii",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "d7808489459f28c21f0c44889daa4b204241922abe40ecb3b4f8c76c948e57a6",
+    "maxChunk": 65536,
+    "chunks": 800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135184384
+    },
+    "afterParse": {
+      "heap": 105713510,
+      "rss": 187727872
+    },
+    "afterFactory": {
+      "heap": 105713510,
+      "rss": 292732928
+    },
+    "afterDrain": {
+      "heap": 105713510,
+      "rss": 353697792
+    },
+    "retainedWithBody": {
+      "heap": 105713510,
+      "rss": 353812480
+    },
+    "retainedAfterRelease": {
+      "heap": 105713510,
+      "rss": 353845248
+    },
+    "timings": {
+      "constructMs": 10.854292000000001,
+      "parseMs": 5.891250000000003,
+      "factoryMs": 12.358125000000001,
+      "drainMs": 25.634124999999997
+    },
+    "cpu": {
+      "user": 56874,
+      "system": 26665
+    },
+    "osMaxRss": 354107392,
+    "repetition": 2
+  },
+  {
+    "mode": "candidate",
+    "kind": "ascii",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "d7808489459f28c21f0c44889daa4b204241922abe40ecb3b4f8c76c948e57a6",
+    "maxChunk": 65536,
+    "chunks": 801,
+    "startup": {
+      "heap": 796982,
+      "rss": 30162944
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135217152
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 135217152
+    },
+    "afterFactory": {
+      "heap": 80612577,
+      "rss": 315162624
+    },
+    "afterDrain": {
+      "heap": 134687582,
+      "rss": 321519616
+    },
+    "retainedWithBody": {
+      "heap": 134687582,
+      "rss": 321568768
+    },
+    "retainedAfterRelease": {
+      "heap": 134687582,
+      "rss": 321585152
+    },
+    "timings": {
+      "constructMs": 10.507583,
+      "factoryMs": 28.649167,
+      "drainMs": 32.692542
+    },
+    "cpu": {
+      "user": 85073,
+      "system": 26168
+    },
+    "osMaxRss": 321863680,
+    "repetition": 2
+  },
+  {
+    "mode": "oracle",
+    "kind": "control",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "digest": "f15e2cb4cbc14a25247172f0c7d801d5f3d24d36ae596500784cdb8e0d36754c",
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135249920
+    },
+    "afterParse": {
+      "heap": 79499116,
+      "rss": 178978816
+    },
+    "timings": {
+      "constructMs": 29.91675,
+      "parseMs": 94.299417,
+      "oracleMs": 49.37812500000001
+    },
+    "osMaxRss": 284475392,
+    "repetition": 0
+  },
+  {
+    "mode": "parse",
+    "kind": "control",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135200768
+    },
+    "afterParse": {
+      "heap": 79499115,
+      "rss": 168968192
+    },
+    "retainedAfterGc": {
+      "heap": 79499115,
+      "rss": 169050112
+    },
+    "timings": {
+      "constructMs": 30.334708,
+      "parseMs": 94.19370800000002
+    },
+    "osMaxRss": 169295872,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "control",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "f15e2cb4cbc14a25247172f0c7d801d5f3d24d36ae596500784cdb8e0d36754c",
+    "maxChunk": 65536,
+    "chunks": 800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135200768
+    },
+    "afterParse": {
+      "heap": 79499116,
+      "rss": 168968192
+    },
+    "afterFactory": {
+      "heap": 79499116,
+      "rss": 273989632
+    },
+    "afterDrain": {
+      "heap": 79499116,
+      "rss": 334413824
+    },
+    "retainedWithBody": {
+      "heap": 79499116,
+      "rss": 334479360
+    },
+    "retainedAfterRelease": {
+      "heap": 79499116,
+      "rss": 334479360
+    },
+    "timings": {
+      "constructMs": 29.517125,
+      "parseMs": 93.46562499999999,
+      "factoryMs": 30.282332999999994,
+      "drainMs": 25.982541999999995
+    },
+    "cpu": {
+      "user": 179883,
+      "system": 27118
+    },
+    "osMaxRss": 334741504,
+    "repetition": 0
+  },
+  {
+    "mode": "candidate",
+    "kind": "control",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "f15e2cb4cbc14a25247172f0c7d801d5f3d24d36ae596500784cdb8e0d36754c",
+    "maxChunk": 65536,
+    "chunks": 801,
+    "startup": {
+      "heap": 796982,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135200768
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 135200768
+    },
+    "afterFactory": {
+      "heap": 80667100,
+      "rss": 324485120
+    },
+    "afterDrain": {
+      "heap": 134821057,
+      "rss": 335839232
+    },
+    "retainedWithBody": {
+      "heap": 134821057,
+      "rss": 335888384
+    },
+    "retainedAfterRelease": {
+      "heap": 134821057,
+      "rss": 335888384
+    },
+    "timings": {
+      "constructMs": 29.996249999999996,
+      "factoryMs": 135.386917,
+      "drainMs": 52.69687499999998
+    },
+    "cpu": {
+      "user": 225841,
+      "system": 29788
+    },
+    "osMaxRss": 336166912,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "control",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "f15e2cb4cbc14a25247172f0c7d801d5f3d24d36ae596500784cdb8e0d36754c",
+    "maxChunk": 65536,
+    "chunks": 800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30048256
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135118848
+    },
+    "afterParse": {
+      "heap": 79499116,
+      "rss": 178831360
+    },
+    "afterFactory": {
+      "heap": 79499116,
+      "rss": 283836416
+    },
+    "afterDrain": {
+      "heap": 79499116,
+      "rss": 343965696
+    },
+    "retainedWithBody": {
+      "heap": 79499116,
+      "rss": 344014848
+    },
+    "retainedAfterRelease": {
+      "heap": 79499116,
+      "rss": 344031232
+    },
+    "timings": {
+      "constructMs": 30.283333000000002,
+      "parseMs": 94.13787500000001,
+      "factoryMs": 30.932084000000003,
+      "drainMs": 26.565125000000023
+    },
+    "cpu": {
+      "user": 180703,
+      "system": 28974
+    },
+    "osMaxRss": 344293376,
+    "repetition": 1
+  },
+  {
+    "mode": "candidate",
+    "kind": "control",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "f15e2cb4cbc14a25247172f0c7d801d5f3d24d36ae596500784cdb8e0d36754c",
+    "maxChunk": 65536,
+    "chunks": 801,
+    "startup": {
+      "heap": 796982,
+      "rss": 30212096
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135282688
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 135282688
+    },
+    "afterFactory": {
+      "heap": 80667077,
+      "rss": 314376192
+    },
+    "afterDrain": {
+      "heap": 134821002,
+      "rss": 327368704
+    },
+    "retainedWithBody": {
+      "heap": 134821002,
+      "rss": 327467008
+    },
+    "retainedAfterRelease": {
+      "heap": 134821002,
+      "rss": 327467008
+    },
+    "timings": {
+      "constructMs": 29.664125,
+      "factoryMs": 134.9885,
+      "drainMs": 52.226
+    },
+    "cpu": {
+      "user": 225326,
+      "system": 30282
+    },
+    "osMaxRss": 327745536,
+    "repetition": 1
+  },
+  {
+    "mode": "native",
+    "kind": "control",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "f15e2cb4cbc14a25247172f0c7d801d5f3d24d36ae596500784cdb8e0d36754c",
+    "maxChunk": 65536,
+    "chunks": 800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30113792
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135184384
+    },
+    "afterParse": {
+      "heap": 79499116,
+      "rss": 178880512
+    },
+    "afterFactory": {
+      "heap": 79499116,
+      "rss": 283901952
+    },
+    "afterDrain": {
+      "heap": 79499116,
+      "rss": 343851008
+    },
+    "retainedWithBody": {
+      "heap": 79499116,
+      "rss": 343916544
+    },
+    "retainedAfterRelease": {
+      "heap": 79499116,
+      "rss": 343932928
+    },
+    "timings": {
+      "constructMs": 30.163791999999997,
+      "parseMs": 97.317666,
+      "factoryMs": 30.73837499999999,
+      "drainMs": 25.335082999999997
+    },
+    "cpu": {
+      "user": 181154,
+      "system": 30402
+    },
+    "osMaxRss": 344195072,
+    "repetition": 2
+  },
+  {
+    "mode": "candidate",
+    "kind": "control",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "f15e2cb4cbc14a25247172f0c7d801d5f3d24d36ae596500784cdb8e0d36754c",
+    "maxChunk": 65536,
+    "chunks": 801,
+    "startup": {
+      "heap": 796982,
+      "rss": 30113792
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135184384
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 135184384
+    },
+    "afterFactory": {
+      "heap": 80667077,
+      "rss": 324255744
+    },
+    "afterDrain": {
+      "heap": 134820778,
+      "rss": 336379904
+    },
+    "retainedWithBody": {
+      "heap": 134820778,
+      "rss": 336461824
+    },
+    "retainedAfterRelease": {
+      "heap": 134820778,
+      "rss": 336494592
+    },
+    "timings": {
+      "constructMs": 30.201708,
+      "factoryMs": 136.93029199999998,
+      "drainMs": 51.939166
+    },
+    "cpu": {
+      "user": 225872,
+      "system": 30928
+    },
+    "osMaxRss": 336773120,
+    "repetition": 2
+  },
+  {
+    "mode": "oracle",
+    "kind": "cjk-emoji",
+    "mib": 50,
+    "sourceBytes": 52428797,
+    "length": 52428797,
+    "digest": "8e1418a402f1ec7abdd43e37958a588647da50f3775f37956d23c28fe637da4b",
+    "startup": {
+      "heap": 796982,
+      "rss": 30081024
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 165117952
+    },
+    "afterParse": {
+      "heap": 90734741,
+      "rss": 165281792
+    },
+    "timings": {
+      "constructMs": 28.501875,
+      "parseMs": 2.999583000000001,
+      "oracleMs": 59.73354200000001
+    },
+    "osMaxRss": 308248576,
+    "repetition": 0
+  },
+  {
+    "mode": "parse",
+    "kind": "cjk-emoji",
+    "mib": 50,
+    "sourceBytes": 52428797,
+    "startup": {
+      "heap": 796982,
+      "rss": 30162944
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 165199872
+    },
+    "afterParse": {
+      "heap": 90734740,
+      "rss": 165363712
+    },
+    "retainedAfterGc": {
+      "heap": 90734740,
+      "rss": 165445632
+    },
+    "timings": {
+      "constructMs": 28.393709,
+      "parseMs": 3.196417000000004
+    },
+    "osMaxRss": 165691392,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "cjk-emoji",
+    "mib": 50,
+    "sourceBytes": 52428797,
+    "length": 52428797,
+    "contentLength": 52428797,
+    "digest": "8e1418a402f1ec7abdd43e37958a588647da50f3775f37956d23c28fe637da4b",
+    "maxChunk": 65536,
+    "chunks": 800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30113792
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 165150720
+    },
+    "afterParse": {
+      "heap": 90734741,
+      "rss": 165347328
+    },
+    "afterFactory": {
+      "heap": 90734741,
+      "rss": 307806208
+    },
+    "afterDrain": {
+      "heap": 90734741,
+      "rss": 368345088
+    },
+    "retainedWithBody": {
+      "heap": 90734741,
+      "rss": 368427008
+    },
+    "retainedAfterRelease": {
+      "heap": 90734741,
+      "rss": 368427008
+    },
+    "timings": {
+      "constructMs": 28.614000000000004,
+      "parseMs": 2.8451670000000036,
+      "factoryMs": 41.42750000000001,
+      "drainMs": 27.597167
+    },
+    "cpu": {
+      "user": 99882,
+      "system": 28347
+    },
+    "osMaxRss": 368689152,
+    "repetition": 0
+  },
+  {
+    "mode": "candidate",
+    "kind": "cjk-emoji",
+    "mib": 50,
+    "sourceBytes": 52428797,
+    "length": 52428797,
+    "contentLength": 52428797,
+    "digest": "8e1418a402f1ec7abdd43e37958a588647da50f3775f37956d23c28fe637da4b",
+    "maxChunk": 57357,
+    "chunks": 915,
+    "startup": {
+      "heap": 796982,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 165183488
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 165183488
+    },
+    "afterFactory": {
+      "heap": 69573691,
+      "rss": 294682624
+    },
+    "afterDrain": {
+      "heap": 139641158,
+      "rss": 304644096
+    },
+    "retainedWithBody": {
+      "heap": 139641158,
+      "rss": 304709632
+    },
+    "retainedAfterRelease": {
+      "heap": 139641158,
+      "rss": 304726016
+    },
+    "timings": {
+      "constructMs": 28.424666000000002,
+      "factoryMs": 51.964417,
+      "drainMs": 60.92116700000001
+    },
+    "cpu": {
+      "user": 151639,
+      "system": 27415
+    },
+    "osMaxRss": 304988160,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "cjk-emoji",
+    "mib": 50,
+    "sourceBytes": 52428797,
+    "length": 52428797,
+    "contentLength": 52428797,
+    "digest": "8e1418a402f1ec7abdd43e37958a588647da50f3775f37956d23c28fe637da4b",
+    "maxChunk": 65536,
+    "chunks": 800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 165216256
+    },
+    "afterParse": {
+      "heap": 90734741,
+      "rss": 165363712
+    },
+    "afterFactory": {
+      "heap": 90734741,
+      "rss": 307855360
+    },
+    "afterDrain": {
+      "heap": 90734741,
+      "rss": 368623616
+    },
+    "retainedWithBody": {
+      "heap": 90734741,
+      "rss": 368689152
+    },
+    "retainedAfterRelease": {
+      "heap": 90734741,
+      "rss": 368705536
+    },
+    "timings": {
+      "constructMs": 28.117333,
+      "parseMs": 2.9992500000000035,
+      "factoryMs": 42.16374999999999,
+      "drainMs": 25.533374999999992
+    },
+    "cpu": {
+      "user": 99687,
+      "system": 27839
+    },
+    "osMaxRss": 368967680,
+    "repetition": 1
+  },
+  {
+    "mode": "candidate",
+    "kind": "cjk-emoji",
+    "mib": 50,
+    "sourceBytes": 52428797,
+    "length": 52428797,
+    "contentLength": 52428797,
+    "digest": "8e1418a402f1ec7abdd43e37958a588647da50f3775f37956d23c28fe637da4b",
+    "maxChunk": 57357,
+    "chunks": 915,
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 165216256
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 165216256
+    },
+    "afterFactory": {
+      "heap": 69573714,
+      "rss": 294715392
+    },
+    "afterDrain": {
+      "heap": 139641181,
+      "rss": 307757056
+    },
+    "retainedWithBody": {
+      "heap": 139641181,
+      "rss": 307789824
+    },
+    "retainedAfterRelease": {
+      "heap": 139641181,
+      "rss": 307806208
+    },
+    "timings": {
+      "constructMs": 28.473958,
+      "factoryMs": 51.397667,
+      "drainMs": 60.98604200000001
+    },
+    "cpu": {
+      "user": 152043,
+      "system": 27068
+    },
+    "osMaxRss": 308068352,
+    "repetition": 1
+  },
+  {
+    "mode": "native",
+    "kind": "cjk-emoji",
+    "mib": 50,
+    "sourceBytes": 52428797,
+    "length": 52428797,
+    "contentLength": 52428797,
+    "digest": "8e1418a402f1ec7abdd43e37958a588647da50f3775f37956d23c28fe637da4b",
+    "maxChunk": 65536,
+    "chunks": 800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 165183488
+    },
+    "afterParse": {
+      "heap": 90734741,
+      "rss": 165330944
+    },
+    "afterFactory": {
+      "heap": 90734741,
+      "rss": 307806208
+    },
+    "afterDrain": {
+      "heap": 90734741,
+      "rss": 368623616
+    },
+    "retainedWithBody": {
+      "heap": 90734741,
+      "rss": 368721920
+    },
+    "retainedAfterRelease": {
+      "heap": 90734741,
+      "rss": 368754688
+    },
+    "timings": {
+      "constructMs": 28.500625,
+      "parseMs": 2.933917000000001,
+      "factoryMs": 44.6295,
+      "drainMs": 26.701750000000004
+    },
+    "cpu": {
+      "user": 100357,
+      "system": 29753
+    },
+    "osMaxRss": 369016832,
+    "repetition": 2
+  },
+  {
+    "mode": "candidate",
+    "kind": "cjk-emoji",
+    "mib": 50,
+    "sourceBytes": 52428797,
+    "length": 52428797,
+    "contentLength": 52428797,
+    "digest": "8e1418a402f1ec7abdd43e37958a588647da50f3775f37956d23c28fe637da4b",
+    "maxChunk": 57357,
+    "chunks": 915,
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 165216256
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 165216256
+    },
+    "afterFactory": {
+      "heap": 69573691,
+      "rss": 294109184
+    },
+    "afterDrain": {
+      "heap": 139641046,
+      "rss": 304906240
+    },
+    "retainedWithBody": {
+      "heap": 139641046,
+      "rss": 304955392
+    },
+    "retainedAfterRelease": {
+      "heap": 139641046,
+      "rss": 304955392
+    },
+    "timings": {
+      "constructMs": 28.565458000000003,
+      "factoryMs": 51.959999999999994,
+      "drainMs": 60.04779199999999
+    },
+    "cpu": {
+      "user": 151873,
+      "system": 26602
+    },
+    "osMaxRss": 305217536,
+    "repetition": 2
+  },
+  {
+    "mode": "oracle",
+    "kind": "lone-surrogate",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "digest": "4ddb5ca46db0749319f3bcb48ff13db9a5fadb0bd00dba1ec325a3bcfa45dab2",
+    "startup": {
+      "heap": 796982,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 170164224
+    },
+    "afterParse": {
+      "heap": 123189791,
+      "rss": 203915264
+    },
+    "timings": {
+      "constructMs": 25.601750000000003,
+      "parseMs": 36.076125,
+      "oracleMs": 53.58125
+    },
+    "osMaxRss": 361906176,
+    "repetition": 0
+  },
+  {
+    "mode": "parse",
+    "kind": "lone-surrogate",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "startup": {
+      "heap": 799782,
+      "rss": 30212096
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 170229760
+    },
+    "afterParse": {
+      "heap": 123192590,
+      "rss": 205209600
+    },
+    "retainedAfterGc": {
+      "heap": 123192590,
+      "rss": 205307904
+    },
+    "timings": {
+      "constructMs": 25.395958,
+      "parseMs": 35.769375000000004
+    },
+    "osMaxRss": 205553664,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "lone-surrogate",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "4ddb5ca46db0749319f3bcb48ff13db9a5fadb0bd00dba1ec325a3bcfa45dab2",
+    "maxChunk": 65536,
+    "chunks": 800,
+    "startup": {
+      "heap": 799782,
+      "rss": 30162944
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 170180608
+    },
+    "afterParse": {
+      "heap": 123192591,
+      "rss": 205160448
+    },
+    "afterFactory": {
+      "heap": 123192591,
+      "rss": 345849856
+    },
+    "afterDrain": {
+      "heap": 123192591,
+      "rss": 406257664
+    },
+    "retainedWithBody": {
+      "heap": 123192591,
+      "rss": 406306816
+    },
+    "retainedAfterRelease": {
+      "heap": 123192591,
+      "rss": 406323200
+    },
+    "timings": {
+      "constructMs": 25.577458000000004,
+      "parseMs": 37.85504100000001,
+      "factoryMs": 33.512375000000006,
+      "drainMs": 26.910916999999984
+    },
+    "cpu": {
+      "user": 124584,
+      "system": 31391
+    },
+    "osMaxRss": 406585344,
+    "repetition": 0
+  },
+  {
+    "mode": "candidate",
+    "kind": "lone-surrogate",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "4ddb5ca46db0749319f3bcb48ff13db9a5fadb0bd00dba1ec325a3bcfa45dab2",
+    "maxChunk": 49158,
+    "chunks": 1067,
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 170196992
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 170196992
+    },
+    "afterFactory": {
+      "heap": 146240244,
+      "rss": 457244672
+    },
+    "afterDrain": {
+      "heap": 186402311,
+      "rss": 462454784
+    },
+    "retainedWithBody": {
+      "heap": 186402311,
+      "rss": 462520320
+    },
+    "retainedAfterRelease": {
+      "heap": 186402311,
+      "rss": 462569472
+    },
+    "timings": {
+      "constructMs": 25.592542,
+      "factoryMs": 86.735292,
+      "drainMs": 56.673292000000004
+    },
+    "cpu": {
+      "user": 169298,
+      "system": 43414
+    },
+    "osMaxRss": 462831616,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "lone-surrogate",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "4ddb5ca46db0749319f3bcb48ff13db9a5fadb0bd00dba1ec325a3bcfa45dab2",
+    "maxChunk": 65536,
+    "chunks": 800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30064640
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 170082304
+    },
+    "afterParse": {
+      "heap": 123189791,
+      "rss": 205094912
+    },
+    "afterFactory": {
+      "heap": 123189791,
+      "rss": 380043264
+    },
+    "afterDrain": {
+      "heap": 123189791,
+      "rss": 440434688
+    },
+    "retainedWithBody": {
+      "heap": 123189791,
+      "rss": 440516608
+    },
+    "retainedAfterRelease": {
+      "heap": 123189791,
+      "rss": 440516608
+    },
+    "timings": {
+      "constructMs": 25.275582999999997,
+      "parseMs": 36.744167,
+      "factoryMs": 34.934833999999995,
+      "drainMs": 25.324124999999995
+    },
+    "cpu": {
+      "user": 122815,
+      "system": 31522
+    },
+    "osMaxRss": 440778752,
+    "repetition": 1
+  },
+  {
+    "mode": "candidate",
+    "kind": "lone-surrogate",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "4ddb5ca46db0749319f3bcb48ff13db9a5fadb0bd00dba1ec325a3bcfa45dab2",
+    "maxChunk": 49158,
+    "chunks": 1067,
+    "startup": {
+      "heap": 796982,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 170164224
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 170164224
+    },
+    "afterFactory": {
+      "heap": 146240270,
+      "rss": 456998912
+    },
+    "afterDrain": {
+      "heap": 186402305,
+      "rss": 462798848
+    },
+    "retainedWithBody": {
+      "heap": 186402305,
+      "rss": 462848000
+    },
+    "retainedAfterRelease": {
+      "heap": 186402305,
+      "rss": 462864384
+    },
+    "timings": {
+      "constructMs": 25.271875,
+      "factoryMs": 81.51599999999999,
+      "drainMs": 53.344542000000004
+    },
+    "cpu": {
+      "user": 165789,
+      "system": 36453
+    },
+    "osMaxRss": 463126528,
+    "repetition": 1
+  },
+  {
+    "mode": "native",
+    "kind": "lone-surrogate",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "4ddb5ca46db0749319f3bcb48ff13db9a5fadb0bd00dba1ec325a3bcfa45dab2",
+    "maxChunk": 65536,
+    "chunks": 800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 170164224
+    },
+    "afterParse": {
+      "heap": 123189791,
+      "rss": 205160448
+    },
+    "afterFactory": {
+      "heap": 123189791,
+      "rss": 345866240
+    },
+    "afterDrain": {
+      "heap": 123189791,
+      "rss": 406077440
+    },
+    "retainedWithBody": {
+      "heap": 123189791,
+      "rss": 406159360
+    },
+    "retainedAfterRelease": {
+      "heap": 123189791,
+      "rss": 406175744
+    },
+    "timings": {
+      "constructMs": 25.4465,
+      "parseMs": 36.385333,
+      "factoryMs": 33.788084,
+      "drainMs": 25.441833000000003
+    },
+    "cpu": {
+      "user": 122832,
+      "system": 30069
+    },
+    "osMaxRss": 406437888,
+    "repetition": 2
+  },
+  {
+    "mode": "candidate",
+    "kind": "lone-surrogate",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "4ddb5ca46db0749319f3bcb48ff13db9a5fadb0bd00dba1ec325a3bcfa45dab2",
+    "maxChunk": 49158,
+    "chunks": 1067,
+    "startup": {
+      "heap": 796982,
+      "rss": 30081024
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 170098688
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 170098688
+    },
+    "afterFactory": {
+      "heap": 146240269,
+      "rss": 457097216
+    },
+    "afterDrain": {
+      "heap": 186402304,
+      "rss": 462684160
+    },
+    "retainedWithBody": {
+      "heap": 186402304,
+      "rss": 462733312
+    },
+    "retainedAfterRelease": {
+      "heap": 186402304,
+      "rss": 462798848
+    },
+    "timings": {
+      "constructMs": 24.937333000000002,
+      "factoryMs": 82.74375,
+      "drainMs": 51.84412499999999
+    },
+    "cpu": {
+      "user": 165788,
+      "system": 35220
+    },
+    "osMaxRss": 463060992,
+    "repetition": 2
+  },
+  {
+    "mode": "oracle",
+    "kind": "giant-key",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "digest": "1334e297d86f75db051021d76a0063b69e2dd71fa1902077ec3c84dcc6f147c9",
+    "startup": {
+      "heap": 796982,
+      "rss": 30146560
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135200768
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 135266304
+    },
+    "timings": {
+      "constructMs": 50.703333,
+      "parseMs": 42.659333999999994,
+      "oracleMs": 30.463167000000013
+    },
+    "osMaxRss": 240812032,
+    "repetition": 0
+  },
+  {
+    "mode": "parse",
+    "kind": "giant-key",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30130176
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135184384
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 135249920
+    },
+    "retainedAfterGc": {
+      "heap": 796982,
+      "rss": 135364608
+    },
+    "timings": {
+      "constructMs": 53.13983399999999,
+      "parseMs": 42.749959000000004
+    },
+    "osMaxRss": 135610368,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "giant-key",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "1334e297d86f75db051021d76a0063b69e2dd71fa1902077ec3c84dcc6f147c9",
+    "maxChunk": 65536,
+    "chunks": 800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30162944
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135217152
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 135282688
+    },
+    "afterFactory": {
+      "heap": 105716749,
+      "rss": 240353280
+    },
+    "afterDrain": {
+      "heap": 105716749,
+      "rss": 300777472
+    },
+    "retainedWithBody": {
+      "heap": 105716749,
+      "rss": 300859392
+    },
+    "retainedAfterRelease": {
+      "heap": 105716749,
+      "rss": 300875776
+    },
+    "timings": {
+      "constructMs": 50.25775,
+      "parseMs": 42.664792000000006,
+      "factoryMs": 11.326166,
+      "drainMs": 25.232084
+    },
+    "cpu": {
+      "user": 133334,
+      "system": 23497
+    },
+    "osMaxRss": 301137920,
+    "repetition": 0
+  },
+  {
+    "mode": "candidate",
+    "kind": "giant-key",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "1334e297d86f75db051021d76a0063b69e2dd71fa1902077ec3c84dcc6f147c9",
+    "maxChunk": 65536,
+    "chunks": 801,
+    "startup": {
+      "heap": 799782,
+      "rss": 30113792
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 135168000
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 135168000
+    },
+    "afterFactory": {
+      "heap": 80518642,
+      "rss": 262782976
+    },
+    "afterDrain": {
+      "heap": 134532705,
+      "rss": 268353536
+    },
+    "retainedWithBody": {
+      "heap": 134532705,
+      "rss": 268402688
+    },
+    "retainedAfterRelease": {
+      "heap": 134532705,
+      "rss": 268402688
+    },
+    "timings": {
+      "constructMs": 52.149875,
+      "factoryMs": 68.83820899999999,
+      "drainMs": 34.878082999999975
+    },
+    "cpu": {
+      "user": 164416,
+      "system": 30116
+    },
+    "osMaxRss": 268681216,
+    "repetition": 0
+  },
+  {
+    "mode": "native",
+    "kind": "giant-key",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "1334e297d86f75db051021d76a0063b69e2dd71fa1902077ec3c84dcc6f147c9",
+    "maxChunk": 65536,
+    "chunks": 800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30113792
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135168000
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 135233536
+    },
+    "afterFactory": {
+      "heap": 105716749,
+      "rss": 240304128
+    },
+    "afterDrain": {
+      "heap": 105716749,
+      "rss": 300908544
+    },
+    "retainedWithBody": {
+      "heap": 105716749,
+      "rss": 300990464
+    },
+    "retainedAfterRelease": {
+      "heap": 105716749,
+      "rss": 300990464
+    },
+    "timings": {
+      "constructMs": 50.698875,
+      "parseMs": 42.51433300000001,
+      "factoryMs": 11.816166999999993,
+      "drainMs": 25.140583000000007
+    },
+    "cpu": {
+      "user": 133745,
+      "system": 24850
+    },
+    "osMaxRss": 301252608,
+    "repetition": 1
+  },
+  {
+    "mode": "candidate",
+    "kind": "giant-key",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "1334e297d86f75db051021d76a0063b69e2dd71fa1902077ec3c84dcc6f147c9",
+    "maxChunk": 65536,
+    "chunks": 801,
+    "startup": {
+      "heap": 796982,
+      "rss": 30081024
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135135232
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 135135232
+    },
+    "afterFactory": {
+      "heap": 80516098,
+      "rss": 262733824
+    },
+    "afterDrain": {
+      "heap": 134530545,
+      "rss": 268369920
+    },
+    "retainedWithBody": {
+      "heap": 134530545,
+      "rss": 268419072
+    },
+    "retainedAfterRelease": {
+      "heap": 134530545,
+      "rss": 268435456
+    },
+    "timings": {
+      "constructMs": 50.625375,
+      "factoryMs": 64.275583,
+      "drainMs": 35.77670800000001
+    },
+    "cpu": {
+      "user": 160985,
+      "system": 26810
+    },
+    "osMaxRss": 268713984,
+    "repetition": 1
+  },
+  {
+    "mode": "native",
+    "kind": "giant-key",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "1334e297d86f75db051021d76a0063b69e2dd71fa1902077ec3c84dcc6f147c9",
+    "maxChunk": 65536,
+    "chunks": 800,
+    "startup": {
+      "heap": 796982,
+      "rss": 30179328
+    },
+    "afterSource": {
+      "heap": 796982,
+      "rss": 135233536
+    },
+    "afterParse": {
+      "heap": 796982,
+      "rss": 135299072
+    },
+    "afterFactory": {
+      "heap": 105716749,
+      "rss": 240369664
+    },
+    "afterDrain": {
+      "heap": 105716749,
+      "rss": 301252608
+    },
+    "retainedWithBody": {
+      "heap": 105716749,
+      "rss": 301318144
+    },
+    "retainedAfterRelease": {
+      "heap": 105716749,
+      "rss": 301334528
+    },
+    "timings": {
+      "constructMs": 50.741833,
+      "parseMs": 43.529916,
+      "factoryMs": 11.906333000000004,
+      "drainMs": 27.646834000000013
+    },
+    "cpu": {
+      "user": 135614,
+      "system": 27187
+    },
+    "osMaxRss": 301596672,
+    "repetition": 2
+  },
+  {
+    "mode": "candidate",
+    "kind": "giant-key",
+    "mib": 50,
+    "sourceBytes": 52428800,
+    "length": 52428800,
+    "contentLength": 52428800,
+    "digest": "1334e297d86f75db051021d76a0063b69e2dd71fa1902077ec3c84dcc6f147c9",
+    "maxChunk": 65536,
+    "chunks": 801,
+    "startup": {
+      "heap": 799782,
+      "rss": 30195712
+    },
+    "afterSource": {
+      "heap": 799782,
+      "rss": 135249920
+    },
+    "afterParse": {
+      "heap": 799782,
+      "rss": 135249920
+    },
+    "afterFactory": {
+      "heap": 80518875,
+      "rss": 262602752
+    },
+    "afterDrain": {
+      "heap": 134533322,
+      "rss": 268288000
+    },
+    "retainedWithBody": {
+      "heap": 134533322,
+      "rss": 268337152
+    },
+    "retainedAfterRelease": {
+      "heap": 134533322,
+      "rss": 268386304
+    },
+    "timings": {
+      "constructMs": 50.065916,
+      "factoryMs": 64.78608399999999,
+      "drainMs": 34.15404099999999
+    },
+    "cpu": {
+      "user": 159389,
+      "system": 26535
+    },
+    "osMaxRss": 268664832,
+    "repetition": 2
+  }
+]

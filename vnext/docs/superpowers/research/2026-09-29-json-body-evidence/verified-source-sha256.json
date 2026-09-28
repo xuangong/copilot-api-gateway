@@ -1,0 +1,10 @@
+{
+  "vnext/packages/provider-llm/src/index.ts": "f82390083ec99cea941467d037cf8ced807bb37da4cd6f6076edc8fb94812015",
+  "vnext/packages/provider-llm/src/json-body.ts": "fbe9640be28954979f383dc9cdcc65c6b2125efbe6b4a67ff57494e047ec7f7f",
+  "vnext/packages/provider-llm/src/json-snapshot.ts": "1c786a92023de2db6c45bd4cc621c57339295319a9cfd0905684f05b3154a5b2",
+  "vnext/packages/provider-llm/src/json-ext-traversal.ts": "d02dc4ba799e711b080f5469211a9ef2a09d4a9443ae5b819e8c8ae154cdf4d6",
+  "vnext/packages/provider-llm/src/vendor/json-ext-LICENSE": "f1f8656800605835965b43a777c1b459d2756d0429913f17c8c7a817729926c1",
+  "vnext/packages/provider-llm/src/vendor/json-ext-PROVENANCE.md": "4f8b8ddde36b0f8ebdd50a61f73ec463cc648c9d19c6d8ee13a903422106d128",
+  "vnext/packages/provider-llm/src/__tests__/json-body.test.ts": "ed63833fa71c3f100627a6acc1c1b600bb3689357125e9b41f718ce97f497b25",
+  "vnext/packages/provider-llm/src/__tests__/json-ext-traversal.test.ts": "4cc272e93348f06b47c9454585d1f5595ed463124d95907109d2b669d1366e9b"
+}

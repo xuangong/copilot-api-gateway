@@ -12,3 +12,5 @@ export * from "./empty-namespace-descriptions"
 
 export * from './responses-format-guard'
 export * from './incremental-sha256'
+export { createJsonBody, createJsonBodyFromText } from './json-body'
+export type { ReplayableJsonBody } from './json-body'
