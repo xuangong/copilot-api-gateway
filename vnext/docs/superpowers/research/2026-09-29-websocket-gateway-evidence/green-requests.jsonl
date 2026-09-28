@@ -1,0 +1,4 @@
+{"at":"2026-09-28T20:44:35.957Z","component":"gateway","method":"GET","path":"/health","upgrade":null,"status":200}
+{"at":"2026-09-28T20:44:46.155Z","component":"gateway","method":"GET","path":"/v1/responses","upgrade":"websocket","status":426}
+{"at":"2026-09-28T20:44:46.198Z","component":"upstream","method":"POST","path":"/v1/responses"}
+{"at":"2026-09-28T20:44:46.205Z","component":"gateway","method":"POST","path":"/v1/responses","upgrade":null,"status":200}

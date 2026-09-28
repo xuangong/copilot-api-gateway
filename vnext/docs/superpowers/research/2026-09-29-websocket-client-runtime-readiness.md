@@ -36,3 +36,7 @@ The scripted client-runtime gap is now closed; gateway-facing acceptance remains
 The same pinned source was archived into the plan scratch workspace and built using public Cargo/Git dependencies, Rust 1.95.0, four build jobs, and independent HOME/CODEX_HOME/XDG/Cargo/target directories. No live CLI, daemon, credentials, or original source checkout was changed. [Exact commands, isolation, results and log hashes](2026-09-29-websocket-client-fixture-results.md).
 
 The initial 426 fixture compiled and started one test, then failed with a test-thread stack overflow (SIGABRT, exit 101). With `RUST_MIN_STACK=16777216`, the exact 426 fallback and prewarm-reuse filters each ran one test and passed (zero failures; 1725 filtered). `CODEX_SANDBOX_NETWORK_DISABLED` was absent; prewarm logs show two `response.create` requests on connection 0. The archived source, cache and compiled test artifacts remain available for actual gateway acceptance. These are scripted-server client results, not vNext compatibility or zero-inference evidence.
+
+## Actual gateway fallback acceptance
+
+The scoped C11 HTTP 426 path is now verified with the pinned client against real vNext Bun bootstrap/app and temporary SQLite/key state: exactly one upgrade GET (426), one POST (200), one counted synthetic upstream call, and successful client completion. [Red/green evidence and retained fixture sources](2026-09-29-websocket-gateway-evidence/README.md). Supported C12 WebSocket execution/warmup and live Workers acceptance remain pending.
