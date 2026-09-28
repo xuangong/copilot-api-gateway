@@ -111,6 +111,7 @@ export interface TranslateContext {
    * Responses payload to rebuild a full envelope).
    */
   sourcePayload?: Record<string, unknown>
+  customToolNames?: readonly string[]
 }
 
 /**
@@ -206,8 +207,8 @@ const PAIR_RESPONSES_TO_MESSAGES: PairTranslator<
   Arg0<typeof translateMessagesToResponsesBody>
 > = {
   translateRequest: (payload) => translateResponsesToMessages(payload).target,
-  translateEvents: (events) => translateMessagesToResponsesEvents(events),
-  translateBody: (body) => translateMessagesToResponsesBody(body),
+  translateEvents: (events, ctx) => translateMessagesToResponsesEvents(events, { customToolNames: ctx.customToolNames }),
+  translateBody: (body, ctx) => translateMessagesToResponsesBody(body, { customToolNames: ctx.customToolNames }),
 }
 
 /** Pair 4: Anthropic Messages client → OpenAI Responses hub. */
@@ -271,11 +272,11 @@ const PAIR_RESPONSES_TO_CHAT: PairTranslator<
   Arg0<typeof translateChatToResponsesBody>
 > = {
   translateRequest: (payload) => translateResponsesToChat(payload).target,
-  translateEvents: (events) => translateChatToResponsesEvents(events),
+  translateEvents: (events, ctx) => translateChatToResponsesEvents(events, { customToolNames: ctx.customToolNames }),
   translateBody: (body, ctx) =>
     translateChatToResponsesBody(
       body,
-      ctx.sourcePayload !== undefined ? { sourcePayload: ctx.sourcePayload } : {},
+      { sourcePayload: ctx.sourcePayload, customToolNames: ctx.customToolNames },
     ),
 }
 

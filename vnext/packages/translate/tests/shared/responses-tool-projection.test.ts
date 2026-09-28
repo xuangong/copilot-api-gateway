@@ -83,12 +83,30 @@ for (const [kind, translate] of [
       expect(() => run({ input: [{ type: "function_call", name: "first", call_id: "c", namespace: "ns", arguments: "{}" }] })).toThrow(TranslatorValidationError)
     })
 
-    test("rejects custom declarations, choices and calls without reverse custom context", () => {
-      const tools = [{ type: "custom", name: "script" }]
-      expect(() => run({ tools })).toThrow(/custom/)
-      expect(() => run({ tools, tool_choice: { type: "allowed_tools", mode: "auto", tools } })).toThrow(/custom/)
-      expect(() => run({ tools, tool_choice: { type: "custom", name: "script" } })).toThrow(/custom/)
-      expect(() => run({ input: [{ type: "custom_tool_call", name: "script", call_id: "c", input: "echo hi" }] })).toThrow(/custom/)
+    test("projects flat custom declaration, choice and historical call through one string input", () => {
+      const tools = [{ type: "custom", name: "script", format: { type: "text" } }]
+      const target = run({ tools, tool_choice: { type: "custom", name: "script" }, input: [
+        { type: "custom_tool_call", name: "old-script", call_id: "c", input: "echo hi" },
+      ] })
+      if (kind === "chat") {
+        expect(target.tools).toMatchObject([{ type: "function", function: { name: "script", parameters: { required: ["input"], properties: { input: { type: "string" } } } } }])
+        expect(target.tool_choice).toEqual({ type: "function", function: { name: "script" } })
+        expect(target.messages).toMatchObject([{ role: "assistant", tool_calls: [{ id: "c", function: { name: "old-script", arguments: '{"input":"echo hi"}' } }] }])
+      } else {
+        expect(target.tools).toMatchObject([{ name: "script", input_schema: { required: ["input"], properties: { input: { type: "string" } } } }])
+        expect(target.tool_choice).toEqual({ type: "tool", name: "script" })
+        expect(target.messages).toMatchObject([{ role: "assistant", content: [{ type: "tool_use", id: "c", name: "old-script", input: { input: "echo hi" } }] }])
+      }
+      const selected = run({ tools: [{ type: "custom", name: "script" }, ...declarations], tool_choice: {
+        type: "allowed_tools", mode: "auto", tools: [{ type: "custom", name: "script" }],
+      } })
+      expect(selected.tools).toHaveLength(1)
+    })
+
+    test("rejects constrained custom format and malformed or namespaced historical calls", () => {
+      expect(() => run({ tools: [{ type: "custom", name: "script", format: { type: "grammar", syntax: "lark", definition: "start: /./" } }] })).toThrow(TranslatorValidationError)
+      expect(() => run({ input: [{ type: "custom_tool_call", name: "script", call_id: "c", input: 12 }] })).toThrow(TranslatorValidationError)
+      expect(() => run({ input: [{ type: "custom_tool_call", name: "script", call_id: "c", input: "x", namespace: "ns" }] })).toThrow(TranslatorValidationError)
     })
 
     test.each(["function_call_output", "custom_tool_call_output"])("preserves structured %s IDs, empty text and status semantics", type => {

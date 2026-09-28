@@ -19,6 +19,7 @@
  * detailed `usage.{input_tokens_details,output_tokens_details,total_tokens}`).
  */
 import { chatReasoningText } from '../shared/chat-reasoning-text.ts'
+import { unwrapCustomInput } from '../shared/responses-via/custom-tool-wrap.ts'
 
 interface ChatToolCall { id: string; type: 'function'; function: { name: string; arguments: string } }
 interface ChatMessage { role: 'assistant'; content: string | null; refusal?: string | null; tool_calls?: ChatToolCall[] }
@@ -37,7 +38,7 @@ interface ResponsesOutputContentPart {
   annotations?: unknown[]
 }
 interface ResponsesOutputItem {
-  type: 'message' | 'function_call' | 'reasoning'
+  type: 'message' | 'function_call' | 'custom_tool_call' | 'reasoning'
   id?: string
   status?: 'completed' | 'incomplete'
   role?: 'assistant'
@@ -45,6 +46,7 @@ interface ResponsesOutputItem {
   call_id?: string
   name?: string
   arguments?: string
+  input?: string
   summary?: Array<{ type: 'summary_text'; text: string }>
 }
 
@@ -97,10 +99,11 @@ const generateMessageId = (): string => {
 
 export function translateChatToResponsesBody(
   body: unknown,
-  ctx?: { sourcePayload?: SourcePayload },
+  ctx?: { sourcePayload?: SourcePayload; customToolNames?: readonly string[] },
 ): ResponsesBody {
   const c = body as ChatBody
   const choice = c.choices[0]
+  const status: 'completed' | 'incomplete' = choice?.finish_reason === 'length' ? 'incomplete' : 'completed'
   const source: SourcePayload = ctx?.sourcePayload ?? {}
 
   const output: ResponsesOutputItem[] = []
@@ -124,16 +127,14 @@ export function translateChatToResponsesBody(
   }
   if (choice?.message.tool_calls) {
     for (const tc of choice.message.tool_calls) {
-      output.push({
-        type: 'function_call',
-        call_id: tc.id,
-        name: tc.function.name,
-        arguments: tc.function.arguments,
-      })
+      if (ctx?.customToolNames?.includes(tc.function.name)) {
+        output.push({ type: 'custom_tool_call', call_id: tc.id, name: tc.function.name, input: unwrapCustomInput(tc.function.arguments), status })
+      } else {
+        output.push({ type: 'function_call', call_id: tc.id, name: tc.function.name, arguments: tc.function.arguments, status })
+      }
     }
   }
 
-  const status: 'completed' | 'incomplete' = choice?.finish_reason === 'length' ? 'incomplete' : 'completed'
   const out: ResponsesBody = {
     id: c.id,
     object: 'response',

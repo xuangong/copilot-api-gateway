@@ -20,6 +20,7 @@ import { projectResponsesTools } from '../shared/responses-tools.ts'
 import { projectMessagesToolOutput, type ResponsesToolOutput } from '../shared/responses-tool-output.ts'
 import { messagesReasoningFromEffort } from '../shared/messages-reasoning-effort.ts'
 import { agentMessageContent } from '../shared/responses-via/agent-message.ts'
+import { customToolParameters } from '../shared/responses-via/custom-tool-wrap.ts'
 
 const DEFAULT_MAX_TOKENS = 8192
 
@@ -37,10 +38,11 @@ interface ResponsesMessageItem {
 }
 
 interface ResponsesFunctionCallItem {
-  type: 'function_call'
+  type: 'function_call' | 'custom_tool_call'
   call_id: string
   name: string
   arguments?: string
+  input?: string
 }
 
 type ResponsesFunctionCallOutputItem = ResponsesToolOutput
@@ -168,13 +170,14 @@ function translateInput(input: ResponsesPayload['input']): TranslatedInput {
         }
         break
       }
-      case 'function_call': {
+      case 'function_call':
+      case 'custom_tool_call': {
         const fc = item
         appendAssistantBlock(messages, {
           type: 'tool_use',
           id: fc.call_id,
           name: fc.name,
-          input: parseToolArgs(fc.arguments),
+          input: fc.type === 'custom_tool_call' ? { input: fc.input } : parseToolArgs(fc.arguments),
         } as unknown as ContentBlockLike)
         break
       }
@@ -200,11 +203,11 @@ function translateTools(tools: ResponsesPayload['tools']): ToolLike[] | undefine
   if (!tools || tools.length === 0) return undefined
   const out: ToolLike[] = []
   for (const raw of tools as ResponsesToolLike[]) {
-    if (raw.type !== 'function' || !raw.name) continue
+    if ((raw.type !== 'function' && raw.type !== 'custom') || !raw.name) continue
     out.push({
       name: raw.name,
       ...(raw.description ? { description: raw.description } : {}),
-      ...(raw.parameters ? { input_schema: raw.parameters } : {}),
+      ...(raw.type === 'custom' ? { input_schema: customToolParameters() } : raw.parameters ? { input_schema: raw.parameters } : {}),
     })
   }
   return out.length > 0 ? out : undefined

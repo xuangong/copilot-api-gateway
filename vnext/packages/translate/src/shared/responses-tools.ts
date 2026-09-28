@@ -65,7 +65,15 @@ export function projectResponsesTools(payload: ResponsesPayload): { tools: Respo
   validateCallableKinds(tools ?? [])
   for (const tool of tools ?? []) {
     if (tool.type === "custom") {
-      throw new TranslatorValidationError("Cannot translate custom tool declarations without reverse callable context", "tools")
+      const value = tool as Record<string, unknown>
+      if (typeof value.name !== "string" || value.name.length === 0 || value.namespace !== undefined) {
+        throw new TranslatorValidationError("Cannot translate namespaced or unnamed custom tools", "tools")
+      }
+      const format = value.format
+      const spec = record(format)
+      if (format !== undefined && (spec?.type !== "text" || Object.keys(spec).some(key => key !== "type"))) {
+        throw new TranslatorValidationError("Cannot enforce custom.format in target function tools", "tools.format")
+      }
     }
     if (tool.type === "namespace" || (tool.type === "function" && tool.namespace !== undefined)) {
       throw new TranslatorValidationError("Cannot translate namespaced tools without an identity mapping", "tools")
@@ -83,7 +91,11 @@ export function projectResponsesTools(payload: ResponsesPayload): { tools: Respo
         throw new TranslatorValidationError("Cannot translate historical tool inventories without declaration expansion", "input")
       }
       if (item.type === "custom_tool_call") {
-        throw new TranslatorValidationError("Cannot translate custom tool calls without reverse callable context", "input")
+        const call = item as Record<string, unknown>
+        if (typeof call.call_id !== "string" || !call.call_id || typeof call.name !== "string" || !call.name
+          || typeof call.input !== "string" || call.namespace !== undefined) {
+          throw new TranslatorValidationError("Cannot translate malformed or namespaced custom tool call", "input")
+        }
       }
       if (item.type === "function_call" && item.namespace !== undefined) {
         throw new TranslatorValidationError("Cannot translate namespaced calls without an identity mapping", "input")
@@ -91,4 +103,9 @@ export function projectResponsesTools(payload: ResponsesPayload): { tools: Respo
     }
   }
   return { tools, choice }
+}
+
+export function selectedCustomToolNames(payload: ResponsesPayload): readonly string[] {
+  const selected = projectResponsesTools(payload)
+  return Object.freeze((selected.tools ?? []).filter(tool => tool.type === "custom").map(tool => tool.name).filter((name): name is string => typeof name === "string"))
 }

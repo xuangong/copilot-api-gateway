@@ -8,6 +8,7 @@
  */
 import type { MessagesResponse } from '@vibe-llm/protocols/messages'
 import { messagesRefusalResponsesError } from '../shared/messages-refusal.ts'
+import { unwrapCustomInput } from '../shared/responses-via/custom-tool-wrap.ts'
 
 interface AnthropicContentBlock {
   type: string
@@ -19,11 +20,12 @@ interface AnthropicContentBlock {
 }
 
 interface ResponseOutputItem {
-  type: 'message' | 'reasoning' | 'function_call'
+  type: 'message' | 'reasoning' | 'function_call' | 'custom_tool_call'
   id?: string
   call_id?: string
   name?: string
   arguments?: string
+  input?: string
   status?: 'completed'
   role?: 'assistant'
   content?: Array<{ type: 'output_text'; text: string }>
@@ -59,7 +61,7 @@ function stringifyToolInput(input: Record<string, unknown> | undefined): string 
   }
 }
 
-function mapContentToOutput(content: AnthropicContentBlock[]): {
+function mapContentToOutput(content: AnthropicContentBlock[], customToolNames: readonly string[]): {
   items: ResponseOutputItem[]
   outputText: string
 } {
@@ -92,14 +94,11 @@ function mapContentToOutput(content: AnthropicContentBlock[]): {
       }
       case 'tool_use': {
         if (!block.id || !block.name) break
-        items.push({
-          type: 'function_call',
-          id: `fc_${nextIndex++}`,
-          call_id: block.id,
-          name: block.name,
-          arguments: stringifyToolInput(block.input),
-          status: 'completed',
-        })
+        if (customToolNames.includes(block.name)) {
+          items.push({ type: 'custom_tool_call', id: `fc_${nextIndex++}`, call_id: block.id, name: block.name, input: unwrapCustomInput(block.input), status: 'completed' })
+        } else {
+          items.push({ type: 'function_call', id: `fc_${nextIndex++}`, call_id: block.id, name: block.name, arguments: stringifyToolInput(block.input), status: 'completed' })
+        }
         break
       }
     }
@@ -113,9 +112,9 @@ function mapStatus(stopReason: string | null | undefined): ResponsesResultLike['
   return 'completed'
 }
 
-export function translateMessagesToResponsesBody(resp: MessagesResponse): ResponsesResultLike {
+export function translateMessagesToResponsesBody(resp: MessagesResponse, ctx?: { customToolNames?: readonly string[] }): ResponsesResultLike {
   const content = resp.content as unknown as AnthropicContentBlock[]
-  const { items, outputText } = mapContentToOutput(content)
+  const { items, outputText } = mapContentToOutput(content, ctx?.customToolNames ?? [])
   const usage = resp.usage as {
     input_tokens?: number
     output_tokens?: number

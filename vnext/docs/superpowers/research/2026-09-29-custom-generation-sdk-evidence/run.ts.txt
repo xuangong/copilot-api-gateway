@@ -1,0 +1,280 @@
+/** A06 red/green acceptance: official Responses SDK -> real gateway app.fetch -> counted synthetic Custom upstream. */
+import { mkdirSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import OpenAI from "/Volumes/Projects/copilot-api-gateway/node_modules/.ignored/openai/index.mjs"
+
+const sourceRoot = "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify"
+const scratch = join(import.meta.dir, "runs", `${new Date().toISOString().replaceAll(":", "-")}-${process.pid}`)
+mkdirSync(scratch, { recursive: true })
+function gitOutput(...args: string[]): string {
+  const result = Bun.spawnSync({ cmd: ["git", "-C", sourceRoot, ...args] })
+  if (result.exitCode !== 0) throw new Error(`git ${args.join(" ")} failed: ${new TextDecoder().decode(result.stderr)}`)
+  return new TextDecoder().decode(result.stdout).trimEnd()
+}
+const sourceHead = gitOutput("rev-parse", "HEAD")
+const sourceStatus = gitOutput("status", "--porcelain=v1").split("\n").filter(Boolean)
+const { bootstrapBunPlatform } = await import(`${sourceRoot}/vnext/apps/platform-bun/src/bootstrap.ts`)
+const { getRepo } = await import(`${sourceRoot}/vnext/packages/gateway/src/repo/index.ts`)
+const { app } = await import(`${sourceRoot}/vnext/packages/gateway/src/app.ts`)
+
+const TOOL_NAME = "emit_payload"
+const NEGATIVE_MARKER = "A06_NEGATIVE_UNCLOSED_TOOL_USE"
+const INPUT = "Line \"quoted\" \\ path 你好🙂"
+const WRAPPER = JSON.stringify({ input: INPUT })
+  .replaceAll("你", "\\u4f60").replaceAll("好", "\\u597d").replaceAll("🙂", "\\ud83d\\ude42")
+const escapeStarts = ["\\u4f60", "\\u597d", "\\ud83d", "\\ude42"].map(escape => WRAPPER.indexOf(escape))
+if (escapeStarts.some(index => index < 0)) throw new Error("escaped Unicode fixture missing")
+const cuts = [escapeStarts[0] + 2, escapeStarts[0] + 5, escapeStarts[1] + 3, escapeStarts[2] + 4, escapeStarts[3] + 4]
+const boundaries = [0, ...cuts, WRAPPER.length]
+const FRAGMENTS = cuts.map((_, index) => WRAPPER.slice(boundaries[index], boundaries[index + 1]))
+FRAGMENTS.push(WRAPPER.slice(boundaries.at(-2), boundaries.at(-1)))
+if (FRAGMENTS.join("") !== WRAPPER || FRAGMENTS.some(f => f.length === 0)) throw new Error("invalid fragmented fixture")
+
+type Target = "chat_completions" | "messages"
+type UpstreamCall = { target: Target; path: string; body: Record<string, unknown>; negative: boolean }
+const calls: UpstreamCall[] = []
+const json = (value: unknown) => JSON.stringify(value)
+const sse = (event: string, data: unknown) => `event: ${event}\ndata: ${json(data)}\n\n`
+
+function chatBody(model: string) {
+  return {
+    id: "chatcmpl_a06_json", object: "chat.completion", model,
+    choices: [{ index: 0, message: { role: "assistant", content: null,
+      tool_calls: [{ id: "call_a06_json", type: "function", function: { name: TOOL_NAME, arguments: WRAPPER } }],
+    }, finish_reason: "tool_calls" }],
+    usage: { prompt_tokens: 5, completion_tokens: 9, total_tokens: 14 },
+  }
+}
+function messagesBody(model: string) {
+  return {
+    id: "msg_a06_json", type: "message", role: "assistant", model,
+    content: [{ type: "tool_use", id: "call_a06_json", name: TOOL_NAME, input: { input: INPUT } }],
+    stop_reason: "tool_use", stop_sequence: null, usage: { input_tokens: 5, output_tokens: 9 },
+  }
+}
+function chatStream(model: string) {
+  const frames: string[] = []
+  for (const [index, fragment] of FRAGMENTS.entries()) {
+    frames.push(`data: ${json({
+      id: "chatcmpl_a06_stream", object: "chat.completion.chunk", model,
+      choices: [{ index: 0, delta: { ...(index === 0 ? { role: "assistant" } : {}),
+        tool_calls: [{ index: 0, ...(index === 0 ? { id: "call_a06_stream", type: "function" } : {}),
+          function: { ...(index === 0 ? { name: TOOL_NAME } : {}), arguments: fragment } }],
+      }, finish_reason: null }],
+    })}\n\n`)
+  }
+  frames.push(`data: ${json({ id: "chatcmpl_a06_stream", object: "chat.completion.chunk", model,
+    choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] })}\n\n`)
+  frames.push("data: [DONE]\n\n")
+  return frames.join("")
+}
+function messagesStream(model: string) {
+  const frames = [
+    sse("message_start", { type: "message_start", message: { id: "msg_a06_stream", type: "message", role: "assistant", model,
+      content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 5, output_tokens: 0 } } }),
+    sse("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "call_a06_stream", name: TOOL_NAME, input: {} } }),
+    ...FRAGMENTS.map(partial_json => sse("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json } })),
+    sse("content_block_stop", { type: "content_block_stop", index: 0 }),
+    sse("message_delta", { type: "message_delta", delta: { stop_reason: "tool_use", stop_sequence: null }, usage: { output_tokens: 9 } }),
+    sse("message_stop", { type: "message_stop" }),
+  ]
+  return frames.join("")
+}
+function incompleteMessagesStream(model: string) {
+  return [
+    sse("message_start", { type: "message_start", message: { id: "msg_a06_unclosed", type: "message", role: "assistant", model,
+      content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 5, output_tokens: 0 } } }),
+    sse("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "call_a06_unclosed", name: TOOL_NAME, input: {} } }),
+    sse("content_block_delta", { type: "content_block_delta", index: 0,
+      delta: { type: "input_json_delta", partial_json: '{"input":"unfinished' } }),
+    sse("message_stop", { type: "message_stop" }),
+  ].join("")
+}
+
+const upstream = Bun.serve({
+  hostname: "127.0.0.1", port: 0,
+  async fetch(request) {
+    const path = new URL(request.url).pathname
+    const body = request.method === "POST" ? await request.json() as Record<string, unknown> : {}
+    const target = path === "/v1/chat/completions" ? "chat_completions" : path === "/v1/messages" ? "messages" : null
+    if (request.method !== "POST" || !target) return new Response("unexpected path", { status: 404 })
+    const negative = target === "messages" && json(body).includes(NEGATIVE_MARKER)
+    calls.push({ target, path, body, negative })
+    const model = target === "chat_completions" ? "a06-chat" : "a06-messages"
+    if (body.stream === true) {
+      return new Response(target === "chat_completions" ? chatStream(model)
+        : negative ? incompleteMessagesStream(model) : messagesStream(model),
+        { headers: { "content-type": "text/event-stream" } })
+    }
+    return Response.json(target === "chat_completions" ? chatBody(model) : messagesBody(model))
+  },
+})
+
+const results: Record<string, unknown> = {
+  sourceHead, sourceDirty: sourceStatus.length > 0, sourceStatus,
+  sdk: "openai 6.33.0", gateway: "in-process real app.fetch",
+  runDirectory: scratch, fixture: { toolName: TOOL_NAME, input: INPUT, escapedWrapper: WRAPPER, fragments: FRAGMENTS,
+    negativeMarker: NEGATIVE_MARKER }, cases: [],
+}
+const cases = results.cases as Array<Record<string, unknown>>
+function assert(value: unknown, label: string): asserts value {
+  if (!value) throw new Error(`ASSERT: ${label}`)
+}
+const fixtureKey = "sk_a06_synthetic_only"
+
+try {
+  bootstrapBunPlatform({ dbPath: join(scratch, "a06-sdk.sqlite"), filesRoot: join(scratch, "files") })
+  const now = new Date().toISOString()
+  await getRepo().apiKeys.save({ id: "a06-fixture-key" as never, name: "A06 synthetic fixture", key: fixtureKey,
+    createdAt: now, modelMappingsEnabled: false, modelMappings: [], webSearchEnabled: false })
+  for (const [target, model] of [["chat_completions", "a06-chat"], ["messages", "a06-messages"]] as const) {
+    await getRepo().upstreams.save({ id: `custom:a06-${target}` as never, provider: "custom", name: `A06 ${target}`,
+      enabled: true, sortOrder: 0, config: { name: `A06 ${target}`, baseUrl: `http://127.0.0.1:${upstream.port}/v1`,
+        authStyle: "none", endpoints: [target], models: [model] }, flagOverrides: {}, disabledPublicModelIds: [],
+      state: null, proxyFallbackList: [{ id: "direct_fetch" }], createdAt: now, updatedAt: now })
+  }
+  const client = new OpenAI({ apiKey: fixtureKey, baseURL: "http://127.0.0.1/a06-gateway/v1", maxRetries: 0,
+    fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      assert(new URL(request.url).pathname === "/a06-gateway/v1/responses", "SDK used Responses path")
+      return app.fetch(new Request("http://a06-gateway.test/v1/responses", request))
+    },
+  })
+
+  async function runCase(target: Target, kind: "custom" | "function", stream: boolean) {
+    const model = target === "chat_completions" ? "a06-chat" : "a06-messages"
+    const label = `${target} ${kind} ${stream ? "SSE" : "JSON"}`
+    const countBefore = calls.length
+    const tool = kind === "custom"
+      ? { type: "custom", name: TOOL_NAME, format: { type: "text" }, description: "Unconstrained text only" }
+      : { type: "function", name: TOOL_NAME, parameters: { type: "object", properties: { input: { type: "string" } }, required: ["input"] } }
+    const request = { model, stream, input: [{ role: "user", content: "Produce the synthetic tool input" }],
+      tools: [tool], tool_choice: { type: kind, name: TOOL_NAME } }
+    const record: Record<string, unknown> = { label, countBefore }
+    try {
+      const response = await client.responses.create(request as never)
+      if (!stream) {
+        const output = (response as { output: Array<Record<string, unknown>> }).output
+        record.response = { object: (response as { object?: string }).object, output }
+        assert(output.length === 1, `${label} one output item`)
+        const item = output[0]
+        assert(item.type === (kind === "custom" ? "custom_tool_call" : "function_call"), `${label} output kind ${item.type}`)
+        assert(item.call_id === "call_a06_json" && item.name === TOOL_NAME, `${label} call identity`)
+        assert(kind === "custom" ? item.input === INPUT
+          : typeof item.arguments === "string" && (JSON.parse(item.arguments) as { input?: string }).input === INPUT,
+        `${label} input/arguments`)
+        if (target === "chat_completions" && kind === "function") {
+          assert(item.status === "completed", `${label} terminal function item status completed`)
+        }
+      } else {
+        const events: Array<Record<string, unknown>> = []
+        for await (const event of response as AsyncIterable<Record<string, unknown>>) events.push(event)
+        record.events = events
+        const itemType = kind === "custom" ? "custom_tool_call" : "function_call"
+        const added = events.find(e => e.type === "response.output_item.added" && (e.item as { type?: string })?.type === itemType)
+        const done = events.find(e => e.type === "response.output_item.done" && (e.item as { type?: string })?.type === itemType)
+        const complete = events.find(e => e.type === "response.completed")
+        assert(added && done && complete, `${label} added/done/completed lifecycle`)
+        if (kind === "custom") {
+          const deltas = events.filter(e => e.type === "response.custom_tool_call_input.delta")
+          const inputDone = events.find(e => e.type === "response.custom_tool_call_input.done")
+          assert(deltas.length > 0 && inputDone, `${label} custom input delta/done`)
+          assert(deltas.map(e => e.delta).join("") === INPUT && inputDone.input === INPUT, `${label} unwrapped Unicode input`)
+          assert(deltas.every(e => e.item_id === inputDone.item_id && e.output_index === inputDone.output_index), `${label} stable input item identity`)
+          assert((done.item as { input?: string; call_id?: string }).input === INPUT
+            && (done.item as { call_id?: string }).call_id === "call_a06_stream", `${label} closed custom item`)
+          assert((complete.response as { output?: Array<{ type?: string; input?: string }> }).output?.some(i => i.type === "custom_tool_call" && i.input === INPUT), `${label} terminal custom output`)
+        } else {
+          assert(!events.some(e => String(e.type).startsWith("response.custom_tool_call_input.")), `${label} no custom input events`)
+          assert((done.item as { call_id?: string }).call_id === "call_a06_stream", `${label} function call identity`)
+          if (target === "chat_completions") {
+            assert((done.item as { status?: string }).status === "completed", `${label} done function item status completed`)
+            assert((complete.response as { output?: Array<{ type?: string; status?: string }> }).output
+              ?.some(item => item.type === "function_call" && item.status === "completed"), `${label} terminal function item status completed`)
+          }
+        }
+      }
+      assert(calls.length === countBefore + 1, `${label} one upstream POST`)
+      const call = calls.at(-1)!
+      assert(call.target === target, `${label} target endpoint`)
+      const body = call.body
+      const tools = body.tools as Array<Record<string, unknown>>
+      assert(Array.isArray(tools) && tools.length === 1, `${label} one selected target tool`)
+      if (target === "chat_completions") {
+        const functionWire = tools[0].function as { name?: string; parameters?: { properties?: { input?: { type?: string } }; required?: string[] } }
+        assert(tools[0].type === "function" && functionWire.name === TOOL_NAME, `${label} Chat function carrier`)
+        assert((body.tool_choice as { type?: string; function?: { name?: string } })?.function?.name === TOOL_NAME, `${label} Chat named choice`)
+        if (kind === "custom") assert(functionWire.parameters?.properties?.input?.type === "string" && functionWire.parameters?.required?.includes("input"), `${label} Chat custom wrapper schema`)
+      } else {
+        const functionWire = tools[0] as { name?: string; input_schema?: { properties?: { input?: { type?: string } }; required?: string[] } }
+        assert(functionWire.name === TOOL_NAME, `${label} Messages function carrier`)
+        assert((body.tool_choice as { type?: string; name?: string })?.name === TOOL_NAME, `${label} Messages named choice`)
+        if (kind === "custom") assert(functionWire.input_schema?.properties?.input?.type === "string" && functionWire.input_schema?.required?.includes("input"), `${label} Messages custom wrapper schema`)
+      }
+      record.upstream = call
+      record.pass = true
+    } catch (error) {
+      record.pass = false
+      record.error = { name: (error as Error).name, message: (error as Error).message,
+        status: (error as { status?: number }).status }
+      record.countAfter = calls.length
+    }
+    cases.push(record)
+  }
+
+  for (const target of ["chat_completions", "messages"] as const) {
+    await runCase(target, "custom", false)
+    await runCase(target, "function", false)
+    await runCase(target, "custom", true)
+    await runCase(target, "function", true)
+  }
+  {
+    const label = "messages custom SSE unclosed tool_use"
+    const countBefore = calls.length
+    const record: Record<string, unknown> = { label, countBefore }
+    const request = {
+      model: "a06-messages", stream: true, input: [{ role: "user", content: NEGATIVE_MARKER }],
+      tools: [{ type: "custom", name: TOOL_NAME, format: { type: "text" } }],
+      tool_choice: { type: "custom", name: TOOL_NAME },
+    }
+    const events: Array<Record<string, unknown>> = []
+    let streamError: { name: string; message: string; status?: number } | undefined
+    try {
+      const stream = await client.responses.create(request as never)
+      for await (const event of stream as AsyncIterable<Record<string, unknown>>) events.push(event)
+    } catch (error) {
+      streamError = { name: (error as Error).name, message: (error as Error).message,
+        status: (error as { status?: number }).status }
+    }
+    record.events = events
+    record.streamError = streamError ?? null
+    record.countAfter = calls.length
+    record.upstream = calls.at(-1)
+    try {
+      assert(calls.length === countBefore + 1, `${label} exactly one upstream POST`)
+      assert(calls.at(-1)?.target === "messages" && calls.at(-1)?.negative === true
+        && calls.at(-1)?.body.stream === true, `${label} marked native Messages stream`)
+      assert(!events.some(event => event.type === "response.completed"), `${label} no false response.completed`)
+      assert(streamError || events.some(event => event.type === "response.failed" || event.type === "error"),
+        `${label} SDK observes stream error or failure`)
+      record.pass = true
+    } catch (error) {
+      record.pass = false
+      record.error = { name: (error as Error).name, message: (error as Error).message }
+    }
+    cases.push(record)
+  }
+  results.pass = cases.every(c => c.pass === true)
+  if (!results.pass) process.exitCode = 1
+} catch (error) {
+  results.pass = false
+  results.fixtureError = { name: (error as Error).name, message: (error as Error).message, stack: (error as Error).stack }
+  process.exitCode = 1
+} finally {
+  results.upstreamCalls = calls
+  const value = JSON.stringify(results, null, 2)
+  writeFileSync(join(scratch, "results.json"), value)
+  writeFileSync(join(import.meta.dir, "results-latest.json"), value)
+  console.log(`A06 SDK result: ${join(scratch, "results.json")}`)
+  upstream.stop(true)
+}

@@ -24,6 +24,7 @@ import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
 import { projectResponsesTools } from '../shared/responses-tools.ts'
 import { projectChatToolOutput, type ChatToolImagePart, type ResponsesToolOutput } from '../shared/responses-tool-output.ts'
 import { agentMessageContent } from '../shared/responses-via/agent-message.ts'
+import { customToolParameters, wrapCustomInput } from '../shared/responses-via/custom-tool-wrap.ts'
 
 export interface ResponsesToChatRequestResult { target: ChatPayload }
 
@@ -32,7 +33,7 @@ interface ResponsesInputMessage {
   role: 'user' | 'assistant' | 'system' | 'developer'
   content: string | Array<{ type: string; text?: string }>
 }
-interface ResponsesFunctionCall { type: 'function_call'; call_id: string; name: string; arguments?: string }
+interface ResponsesFunctionCall { type: 'function_call' | 'custom_tool_call'; call_id: string; name: string; arguments?: string; input?: string }
 type ResponsesFunctionCallOutput = ResponsesToolOutput
 type ResponsesInputItem = ResponsesInputMessage | ResponsesFunctionCall | ResponsesFunctionCallOutput | { type: 'agent_message' }
 
@@ -98,13 +99,13 @@ function translateInput(items: ResponsesInputItem[]): ChatMessage[] {
         continue
       }
     }
-    if (item.type === 'function_call') {
+    if (item.type === 'function_call' || item.type === 'custom_tool_call') {
       // Merge into the previous assistant message if it has no tool_calls yet,
       // otherwise create a new assistant message with content:null.
       const prev = out[out.length - 1]
       const tc: ChatToolCall = {
         id: item.call_id, type: 'function',
-        function: { name: item.name, arguments: item.arguments ?? '{}' },
+        function: { name: item.name, arguments: item.type === 'custom_tool_call' ? wrapCustomInput(item.input ?? '') : item.arguments ?? '{}' },
       }
       if (prev && prev.role === 'assistant') {
         const a = prev as ChatMsgAssistant
@@ -129,13 +130,13 @@ function translateTools(tools: ResponsesPayload['tools']): ChatPayload['tools'] 
   if (!tools) return undefined
   const out: NonNullable<ChatPayload['tools']> = []
   for (const t of tools as Array<{ type: string; name?: string; description?: string; parameters?: unknown }>) {
-    if (t.type !== 'function' || !t.name) continue
+    if ((t.type !== 'function' && t.type !== 'custom') || !t.name) continue
     out.push({
       type: 'function',
       function: {
         name: t.name,
         ...(t.description ? { description: t.description } : {}),
-        ...(t.parameters !== undefined ? { parameters: t.parameters } : {}),
+        ...(t.type === 'custom' ? { parameters: customToolParameters() } : t.parameters !== undefined ? { parameters: t.parameters } : {}),
       },
     } as NonNullable<ChatPayload['tools']>[number])
   }
@@ -145,7 +146,7 @@ function translateTools(tools: ResponsesPayload['tools']): ChatPayload['tools'] 
 function translateToolChoice(choice: ResponsesPayload['tool_choice']): ChatPayload['tool_choice'] | undefined {
   if (choice === undefined) return undefined
   if (choice === 'auto' || choice === 'required' || choice === 'none') return choice
-  if (typeof choice === 'object' && (choice as { type?: string }).type === 'function') {
+  if (choice !== null && typeof choice === 'object' && ((choice as { type?: string }).type === 'function' || (choice as { type?: string }).type === 'custom')) {
     const c = choice as { name: string }
     return { type: 'function', function: { name: c.name } } as NonNullable<ChatPayload['tool_choice']>
   }

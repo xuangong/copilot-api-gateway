@@ -11,13 +11,15 @@
  */
 import type { MessagesEvent } from '@vibe-llm/protocols/messages'
 import { messagesRefusalResponsesError, type MessagesRefusalDetails } from '../shared/messages-refusal.ts'
+import { unwrapCustomInput } from '../shared/responses-via/custom-tool-wrap.ts'
 
 interface ResponseOutputItem {
-  type: 'message' | 'reasoning' | 'function_call'
+  type: 'message' | 'reasoning' | 'function_call' | 'custom_tool_call'
   id?: string
   call_id?: string
   name?: string
   arguments?: string
+  input?: string
   status?: 'in_progress' | 'completed'
   summary?: Array<{ type: 'summary_text'; text: string }>
   content?: Array<{ type: 'output_text'; text: string }>
@@ -54,6 +56,8 @@ export type ResponsesStreamEvent =
   | { type: 'response.content_part.done'; sequence_number: number; output_index: number; item_id: string; content_index: number; part: { type: 'output_text'; text: string } }
   | { type: 'response.function_call_arguments.delta'; sequence_number: number; output_index: number; item_id: string; delta: string }
   | { type: 'response.function_call_arguments.done'; sequence_number: number; output_index: number; item_id: string; arguments: string }
+  | { type: 'response.custom_tool_call_input.delta'; sequence_number: number; output_index: number; item_id: string; delta: string }
+  | { type: 'response.custom_tool_call_input.done'; sequence_number: number; output_index: number; item_id: string; input: string }
   | { type: 'response.reasoning_summary_part.added'; sequence_number: number; output_index: number; item_id: string; summary_index: number; part: { type: 'summary_text'; text: string } }
   | { type: 'response.reasoning_summary_text.delta'; sequence_number: number; output_index: number; item_id: string; summary_index: number; delta: string }
   | { type: 'response.reasoning_summary_text.done'; sequence_number: number; output_index: number; item_id: string; summary_index: number; text: string }
@@ -70,6 +74,7 @@ type BlockInfo =
   | { kind: 'tool_use'; outputIndex: number; itemId: string; toolCallId: string; name: string; args: string }
 
 interface State {
+  customToolNames: readonly string[]
   responseId: string
   model: string
   sequenceNumber: number
@@ -86,8 +91,9 @@ interface State {
   terminated: boolean
 }
 
-function createState(responseId: string, model: string): State {
+function createState(responseId: string, model: string, customToolNames: readonly string[]): State {
   return {
+    customToolNames,
     responseId,
     model,
     sequenceNumber: 0,
@@ -218,14 +224,15 @@ function handleContentBlockStart(ev: ContentBlockStartLike, state: State): Respo
     case 'tool_use': {
       const tb = ev.content_block as { type: 'tool_use'; id: string; name: string }
       const outputIndex = state.outputIndex++
-      const itemId = `fc_${outputIndex}`
+      const custom = state.customToolNames.includes(tb.name)
+      const itemId = `${custom ? 'ct' : 'fc'}_${outputIndex}`
       state.blockMap.set(ev.index, { kind: 'tool_use', outputIndex, itemId, toolCallId: tb.id, name: tb.name, args: '' })
       const item: ResponseOutputItem = {
-        type: 'function_call',
+        type: custom ? 'custom_tool_call' : 'function_call',
         id: itemId,
         call_id: tb.id,
         name: tb.name,
-        arguments: '',
+        ...(custom ? { input: '' } : { arguments: '' }),
         status: 'in_progress',
       }
       out.push({ type: 'response.output_item.added', sequence_number: nextSeq(state), output_index: outputIndex, item })
@@ -280,6 +287,7 @@ function handleContentBlockDelta(ev: ContentBlockDeltaLike, state: State): Respo
       if (ev.delta.type !== 'input_json_delta') return []
       const part = ev.delta.partial_json ?? ''
       info.args += part
+      if (state.customToolNames.includes(info.name)) return []
       return [
         {
           type: 'response.function_call_arguments.delta',
@@ -351,22 +359,23 @@ function handleContentBlockStop(ev: ContentBlockStopLike, state: State): Respons
     return out
   }
   // tool_use
+  const custom = state.customToolNames.includes(info.name)
+  const input = custom ? unwrapCustomInput(info.args) : undefined
   const item: ResponseOutputItem = {
-    type: 'function_call',
+    type: custom ? 'custom_tool_call' : 'function_call',
     id: info.itemId,
     call_id: info.toolCallId,
     name: info.name,
-    arguments: info.args,
+    ...(custom ? { input } : { arguments: info.args }),
     status: 'completed',
   }
   state.completedItems.push(item)
-  out.push({
-    type: 'response.function_call_arguments.done',
-    sequence_number: nextSeq(state),
-    output_index: info.outputIndex,
-    item_id: info.itemId,
-    arguments: info.args,
-  })
+  if (custom) {
+    out.push({ type: 'response.custom_tool_call_input.delta', sequence_number: nextSeq(state), output_index: info.outputIndex, item_id: info.itemId, delta: input ?? '' })
+    out.push({ type: 'response.custom_tool_call_input.done', sequence_number: nextSeq(state), output_index: info.outputIndex, item_id: info.itemId, input: input ?? '' })
+  } else {
+    out.push({ type: 'response.function_call_arguments.done', sequence_number: nextSeq(state), output_index: info.outputIndex, item_id: info.itemId, arguments: info.args })
+  }
   out.push({ type: 'response.output_item.done', sequence_number: nextSeq(state), output_index: info.outputIndex, item })
   return out
 }
@@ -384,6 +393,9 @@ function handleMessageDelta(ev: MessageDeltaLike, state: State): ResponsesStream
 }
 
 function handleMessageStop(state: State): ResponsesStreamEvent[] {
+  if (state.blockMap.size > 0) {
+    return handleError('Messages stream stopped with an unclosed content block.', 'stream_truncated', state)
+  }
   state.terminated = true
   const status: ResponsesResult['status'] = state.stopReason === 'refusal' ? 'failed' : state.stopReason === 'max_tokens' ? 'incomplete' : 'completed'
   const response = buildResult(state, status)
@@ -416,6 +428,7 @@ function synthResponseId(): string {
 export interface ResponsesEventsTranslateOptions {
   responseId?: string
   model?: string
+  customToolNames?: readonly string[]
 }
 
 function translateOne(ev: MessagesEvent, state: State): ResponsesStreamEvent[] {
@@ -448,7 +461,7 @@ export async function* translateMessagesToResponsesEvents(
   events: AsyncIterable<MessagesEvent>,
   options: ResponsesEventsTranslateOptions = {},
 ): AsyncGenerator<ResponsesStreamEvent> {
-  const state = createState(options.responseId ?? synthResponseId(), options.model ?? '')
+  const state = createState(options.responseId ?? synthResponseId(), options.model ?? '', options.customToolNames ?? [])
   try {
     for await (const ev of events) {
       const out = translateOne(ev, state)

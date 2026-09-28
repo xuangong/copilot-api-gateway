@@ -19,6 +19,8 @@
  * "hub-events → hub-JSON → translateBody" path described in spec §3.7.
  */
 import { TranslatorValidationError } from '@vibe-llm/translate/errors'
+import { selectedCustomToolNames } from '@vibe-llm/translate/shared/responses-tools'
+import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
 import {
   llmEventResult,
   llmInternalErrorResult,
@@ -69,12 +71,24 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
   args: TraverseTranslationArgs<HubFrame, SourceFrame>,
 ): Promise<LlmExecuteResult<ProtocolFrame<SourceFrame>>> {
   let hubPayload: Record<string, unknown>
+  let sourceSnapshot = args.sourcePayload
+  let customToolNames: readonly string[] = []
   try {
     hubPayload = (await args.translator.translateRequest(args.sourcePayload, {
       signal: args.signal ?? new AbortController().signal,
       fallbackMaxOutputTokens: args.fallbackMaxOutputTokens,
       model: args.model,
     })) as Record<string, unknown>
+    if (args.sourceProtocol === 'responses' && (args.hubProtocol === 'chat_completions' || args.hubProtocol === 'messages')) {
+      customToolNames = selectedCustomToolNames(args.sourcePayload as unknown as ResponsesPayload)
+      // Reverse translation only needs these request-side envelope fields. Keep
+      // their values stable if an inner interceptor mutates the source object.
+      sourceSnapshot = Object.fromEntries(
+        ['instructions', 'metadata', 'parallel_tool_calls', 'temperature', 'tool_choice', 'tools', 'top_p']
+          .filter(key => key in args.sourcePayload)
+          .map(key => [key, structuredClone(args.sourcePayload[key])]),
+      )
+    }
   } catch (err) {
     if (err instanceof TranslatorValidationError) {
       return llmInternalErrorResult(400, err, undefined, 'translator-validation')
@@ -167,13 +181,20 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
         signal: ctx?.signal ?? new AbortController().signal,
         fallbackMaxOutputTokens: ctx?.fallbackMaxOutputTokens,
         model: ctx?.model,
-        sourcePayload: args.sourcePayload,
+        sourcePayload: sourceSnapshot,
+        customToolNames,
       })) as LlmEventResult<ProtocolFrame<SourceFrame>>['translateBody'],
     // translateEvents: respond.ts streaming branch unwraps hub frames, runs
     // these through the translator, then re-wraps as source frames before SSE
     // encoding. The translator function here consumes BARE hub events (not
     // ProtocolFrame envelopes) and yields BARE source events.
-    args.translator.translateEvents as LlmEventResult<ProtocolFrame<SourceFrame>>['translateEvents'],
+    ((events, ctx) => args.translator.translateEvents(events, {
+      signal: ctx?.signal ?? new AbortController().signal,
+      fallbackMaxOutputTokens: ctx?.fallbackMaxOutputTokens,
+      model: ctx?.model,
+      sourcePayload: sourceSnapshot,
+      customToolNames,
+    })) as LlmEventResult<ProtocolFrame<SourceFrame>>['translateEvents'],
     resolveModelIdentity,
   )
   return innerEvents.__interceptorReplaced

@@ -24,6 +24,7 @@
  */
 import { chatCompletionsErrorPayloadMessage } from "@vibe-llm/protocols/chat"
 import { chatReasoningText } from '../shared/chat-reasoning-text.ts'
+import { unwrapCustomInput } from '../shared/responses-via/custom-tool-wrap.ts'
 
 interface ChatChunk {
   id?: string
@@ -53,10 +54,11 @@ interface ChatChunk {
   }>
 }
 
-interface ToolCallState { outputIndex: number; id: string; name: string }
+interface ToolCallState { outputIndex: number; itemId: string; id: string; name: string; args: string; opened: boolean }
 
 export async function* translateChatToResponsesEvents(
   events: AsyncIterable<unknown>,
+  options: { customToolNames?: readonly string[] } = {},
 ): AsyncGenerator<unknown, void, unknown> {
   let id = ''
   let model = ''
@@ -72,6 +74,7 @@ export async function* translateChatToResponsesEvents(
   let reasoningText = ''
   let reasoningItemId = ''
   const toolCalls = new Map<number, ToolCallState>() // chunk index → state
+  const completedItems: Array<{ outputIndex: number; item: Record<string, unknown> }> = []
   let finish: 'stop' | 'length' | 'tool_calls' | 'function_call' | null = null
 
   let usage: ChatChunk['usage']
@@ -156,28 +159,26 @@ export async function* translateChatToResponsesEvents(
         if (!state) {
           state = {
             outputIndex: nextOutputIndex++,
+            itemId: `fc_${Math.random().toString(36).slice(2, 24)}`,
             id: tc.id ?? '',
-            name: tc.function?.name ?? '',
+            name: '',
+            args: '',
+            opened: false,
           }
           toolCalls.set(tc.index, state)
-          yield {
-            type: 'response.output_item.added',
-            output_index: state.outputIndex,
-            item: {
-              type: 'function_call',
-              call_id: state.id,
-              name: state.name,
-              arguments: '',
-            },
-          }
+        }
+        if (tc.id) state.id = tc.id
+        if (tc.function?.name) state.name += tc.function.name
+        if (!state.opened && !options.customToolNames?.length) {
+          state.opened = true
+          yield { type: 'response.output_item.added', output_index: state.outputIndex,
+            item: { type: 'function_call', id: state.itemId, call_id: state.id, name: state.name, arguments: '', status: 'in_progress' } }
         }
         const argDelta = tc.function?.arguments
-        if (typeof argDelta === 'string' && argDelta.length > 0) {
-          yield {
-            type: 'response.function_call_arguments.delta',
-            output_index: state.outputIndex,
-            delta: argDelta,
-          }
+        if (typeof argDelta === 'string') {
+          state.args += argDelta
+          if (state.opened && argDelta.length > 0) yield { type: 'response.function_call_arguments.delta',
+            output_index: state.outputIndex, item_id: state.itemId, delta: argDelta }
         }
       }
     }
@@ -191,7 +192,9 @@ export async function* translateChatToResponsesEvents(
   if (reasoningOutputIndex >= 0) {
     yield { type: 'response.reasoning_summary_text.done', item_id: reasoningItemId, output_index: reasoningOutputIndex, summary_index: 0, text: reasoningText }
     yield { type: 'response.reasoning_summary_part.done', item_id: reasoningItemId, output_index: reasoningOutputIndex, summary_index: 0, part: { type: 'summary_text', text: reasoningText } }
-    yield { type: 'response.output_item.done', output_index: reasoningOutputIndex, item: { type: 'reasoning', id: reasoningItemId, summary: [{ type: 'summary_text', text: reasoningText }] } }
+    const item = { type: 'reasoning', id: reasoningItemId, summary: [{ type: 'summary_text', text: reasoningText }] }
+    completedItems.push({ outputIndex: reasoningOutputIndex, item })
+    yield { type: 'response.output_item.done', output_index: reasoningOutputIndex, item }
   }
   if (messageOpened) {
     if (activePart) {
@@ -204,31 +207,44 @@ export async function* translateChatToResponsesEvents(
       yield { type: 'response.content_part.done', item_id: messageItemId, output_index: messageOutputIndex, content_index: activePart.index, part }
       completedParts.push(part)
     }
+    const item = {
+      type: 'message', id: messageItemId, role: 'assistant', status: 'completed', content: completedParts,
+    }
+    completedItems.push({ outputIndex: messageOutputIndex, item })
     yield {
       type: 'response.output_item.done',
       output_index: messageOutputIndex,
-      item: {
-        type: 'message',
-        id: messageItemId,
-        role: 'assistant',
-        status: 'completed',
-        content: completedParts,
-      },
+      item,
     }
   }
+  const status = finish === 'length' ? 'incomplete' : 'completed'
   for (const state of toolCalls.values()) {
-    yield {
-      type: 'response.output_item.done',
-      output_index: state.outputIndex,
-      item: { type: 'function_call', call_id: state.id, name: state.name },
+    const custom = options.customToolNames?.includes(state.name) ?? false
+    const input = custom ? unwrapCustomInput(state.args) : undefined
+    const added = custom
+      ? { type: 'custom_tool_call', id: state.itemId, call_id: state.id, name: state.name, input: '', status: 'in_progress' }
+      : { type: 'function_call', id: state.itemId, call_id: state.id, name: state.name, arguments: '', status: 'in_progress' }
+    const item = custom
+      ? { ...added, input, status }
+      : { ...added, arguments: state.args, status }
+    if (!state.opened) {
+      yield { type: 'response.output_item.added', output_index: state.outputIndex, item: added }
+      yield custom
+        ? { type: 'response.custom_tool_call_input.delta', output_index: state.outputIndex, item_id: state.itemId, delta: input }
+        : { type: 'response.function_call_arguments.delta', output_index: state.outputIndex, item_id: state.itemId, delta: state.args }
     }
+    yield custom
+      ? { type: 'response.custom_tool_call_input.done', output_index: state.outputIndex, item_id: state.itemId, input }
+      : { type: 'response.function_call_arguments.done', output_index: state.outputIndex, item_id: state.itemId, arguments: state.args }
+    completedItems.push({ outputIndex: state.outputIndex, item })
+    yield { type: 'response.output_item.done', output_index: state.outputIndex, item }
   }
 
-  const status = finish === 'length' ? 'incomplete' : 'completed'
   const completed: Record<string, unknown> = {
     type: status === 'incomplete' ? 'response.incomplete' : 'response.completed',
     response: {
       id, model, created_at: created, status,
+      output: completedItems.sort((a, b) => a.outputIndex - b.outputIndex).map(entry => entry.item),
       ...(usage ? { usage: {
         ...(usage.prompt_tokens !== undefined ? { input_tokens: usage.prompt_tokens } : {}),
         ...(usage.completion_tokens !== undefined ? { output_tokens: usage.completion_tokens } : {}),

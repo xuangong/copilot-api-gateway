@@ -1,0 +1,1421 @@
+{
+  "sourceHead": "4dc04175d2cbe52b5f9d0b5502fb6d227bbdcefb",
+  "sourceDirty": true,
+  "sourceStatus": [
+    " M vnext/packages/gateway/src/data-plane/chat-flow/shared/traverse-translation.ts",
+    " M vnext/packages/gateway/src/data-plane/dispatch/translator-registry.ts",
+    " M vnext/packages/translate/src/responses-via-chat-completions/body.ts",
+    " M vnext/packages/translate/src/responses-via-chat-completions/events.ts",
+    " M vnext/packages/translate/src/responses-via-chat-completions/request.ts",
+    " M vnext/packages/translate/src/responses-via-messages/body.ts",
+    " M vnext/packages/translate/src/responses-via-messages/events.ts",
+    " M vnext/packages/translate/src/responses-via-messages/request.ts",
+    " M vnext/packages/translate/src/shared/responses-tools.ts",
+    " M vnext/packages/translate/tests/responses-via-chat-completions/body.test.ts",
+    " M vnext/packages/translate/tests/shared/responses-tool-projection.test.ts",
+    "?? vnext/packages/gateway/src/data-plane/chat-flow/shared/custom-translation.test.ts",
+    "?? vnext/packages/translate/src/shared/responses-via/custom-tool-wrap.ts",
+    "?? vnext/packages/translate/tests/responses-custom-generation.test.ts"
+  ],
+  "sdk": "openai 6.33.0",
+  "gateway": "in-process real app.fetch",
+  "runDirectory": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/.superpowers/sdd/2026-09-29-reference-adoption-follow-up/a06-generation-sdk/runs/2026-09-28T21-27-40.131Z-9241",
+  "fixture": {
+    "toolName": "emit_payload",
+    "input": "Line \"quoted\" \\ path 你好🙂",
+    "escapedWrapper": "{\"input\":\"Line \\\"quoted\\\" \\\\ path \\u4f60\\u597d\\ud83d\\ude42\"}",
+    "fragments": [
+      "{\"input\":\"Line \\\"quoted\\\" \\\\ path \\u",
+      "4f6",
+      "0\\u5",
+      "97d\\ud8",
+      "3d\\ude",
+      "42\"}"
+    ],
+    "negativeMarker": "A06_NEGATIVE_UNCLOSED_TOOL_USE"
+  },
+  "cases": [
+    {
+      "label": "chat_completions custom JSON",
+      "countBefore": 0,
+      "response": {
+        "object": "response",
+        "output": [
+          {
+            "type": "custom_tool_call",
+            "call_id": "call_a06_json",
+            "name": "emit_payload",
+            "input": "Line \"quoted\" \\ path 你好🙂",
+            "status": "completed"
+          }
+        ]
+      },
+      "upstream": {
+        "target": "chat_completions",
+        "path": "/v1/chat/completions",
+        "body": {
+          "model": "a06-chat",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Produce the synthetic tool input"
+            }
+          ],
+          "stream": false,
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "emit_payload",
+                "description": "Unconstrained text only",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          ],
+          "tool_choice": {
+            "type": "function",
+            "function": {
+              "name": "emit_payload"
+            }
+          }
+        },
+        "negative": false
+      },
+      "pass": true
+    },
+    {
+      "label": "chat_completions function JSON",
+      "countBefore": 1,
+      "response": {
+        "object": "response",
+        "output": [
+          {
+            "type": "function_call",
+            "call_id": "call_a06_json",
+            "name": "emit_payload",
+            "arguments": "{\"input\":\"Line \\\"quoted\\\" \\\\ path \\u4f60\\u597d\\ud83d\\ude42\"}",
+            "status": "completed"
+          }
+        ]
+      },
+      "upstream": {
+        "target": "chat_completions",
+        "path": "/v1/chat/completions",
+        "body": {
+          "model": "a06-chat",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Produce the synthetic tool input"
+            }
+          ],
+          "stream": false,
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "emit_payload",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                }
+              }
+            }
+          ],
+          "tool_choice": {
+            "type": "function",
+            "function": {
+              "name": "emit_payload"
+            }
+          }
+        },
+        "negative": false
+      },
+      "pass": true
+    },
+    {
+      "label": "chat_completions custom SSE",
+      "countBefore": 2,
+      "events": [
+        {
+          "type": "response.created",
+          "response": {
+            "id": "chatcmpl_a06_stream",
+            "model": "a06-chat",
+            "created_at": 1790630860,
+            "status": "in_progress"
+          }
+        },
+        {
+          "type": "response.in_progress",
+          "response": {
+            "id": "chatcmpl_a06_stream",
+            "model": "a06-chat",
+            "created_at": 1790630860,
+            "status": "in_progress"
+          }
+        },
+        {
+          "type": "response.output_item.added",
+          "output_index": 0,
+          "item": {
+            "type": "custom_tool_call",
+            "id": "fc_x8bl6mf5xz",
+            "call_id": "call_a06_stream",
+            "name": "emit_payload",
+            "input": "",
+            "status": "in_progress"
+          }
+        },
+        {
+          "type": "response.custom_tool_call_input.delta",
+          "output_index": 0,
+          "item_id": "fc_x8bl6mf5xz",
+          "delta": "Line \"quoted\" \\ path 你好🙂"
+        },
+        {
+          "type": "response.custom_tool_call_input.done",
+          "output_index": 0,
+          "item_id": "fc_x8bl6mf5xz",
+          "input": "Line \"quoted\" \\ path 你好🙂"
+        },
+        {
+          "type": "response.output_item.done",
+          "output_index": 0,
+          "item": {
+            "type": "custom_tool_call",
+            "id": "fc_x8bl6mf5xz",
+            "call_id": "call_a06_stream",
+            "name": "emit_payload",
+            "input": "Line \"quoted\" \\ path 你好🙂",
+            "status": "completed"
+          }
+        },
+        {
+          "type": "response.completed",
+          "response": {
+            "id": "chatcmpl_a06_stream",
+            "model": "a06-chat",
+            "created_at": 1790630860,
+            "status": "completed",
+            "output": [
+              {
+                "type": "custom_tool_call",
+                "id": "fc_x8bl6mf5xz",
+                "call_id": "call_a06_stream",
+                "name": "emit_payload",
+                "input": "Line \"quoted\" \\ path 你好🙂",
+                "status": "completed"
+              }
+            ]
+          }
+        }
+      ],
+      "upstream": {
+        "target": "chat_completions",
+        "path": "/v1/chat/completions",
+        "body": {
+          "model": "a06-chat",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Produce the synthetic tool input"
+            }
+          ],
+          "stream": true,
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "emit_payload",
+                "description": "Unconstrained text only",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          ],
+          "tool_choice": {
+            "type": "function",
+            "function": {
+              "name": "emit_payload"
+            }
+          },
+          "stream_options": {
+            "include_usage": true
+          }
+        },
+        "negative": false
+      },
+      "pass": true
+    },
+    {
+      "label": "chat_completions function SSE",
+      "countBefore": 3,
+      "events": [
+        {
+          "type": "response.created",
+          "response": {
+            "id": "chatcmpl_a06_stream",
+            "model": "a06-chat",
+            "created_at": 1790630860,
+            "status": "in_progress"
+          }
+        },
+        {
+          "type": "response.in_progress",
+          "response": {
+            "id": "chatcmpl_a06_stream",
+            "model": "a06-chat",
+            "created_at": 1790630860,
+            "status": "in_progress"
+          }
+        },
+        {
+          "type": "response.output_item.added",
+          "output_index": 0,
+          "item": {
+            "type": "function_call",
+            "id": "fc_ge5ddbl5868",
+            "call_id": "call_a06_stream",
+            "name": "emit_payload",
+            "arguments": "",
+            "status": "in_progress"
+          }
+        },
+        {
+          "type": "response.function_call_arguments.delta",
+          "output_index": 0,
+          "item_id": "fc_ge5ddbl5868",
+          "delta": "{\"input\":\"Line \\\"quoted\\\" \\\\ path \\u"
+        },
+        {
+          "type": "response.function_call_arguments.delta",
+          "output_index": 0,
+          "item_id": "fc_ge5ddbl5868",
+          "delta": "4f6"
+        },
+        {
+          "type": "response.function_call_arguments.delta",
+          "output_index": 0,
+          "item_id": "fc_ge5ddbl5868",
+          "delta": "0\\u5"
+        },
+        {
+          "type": "response.function_call_arguments.delta",
+          "output_index": 0,
+          "item_id": "fc_ge5ddbl5868",
+          "delta": "97d\\ud8"
+        },
+        {
+          "type": "response.function_call_arguments.delta",
+          "output_index": 0,
+          "item_id": "fc_ge5ddbl5868",
+          "delta": "3d\\ude"
+        },
+        {
+          "type": "response.function_call_arguments.delta",
+          "output_index": 0,
+          "item_id": "fc_ge5ddbl5868",
+          "delta": "42\"}"
+        },
+        {
+          "type": "response.function_call_arguments.done",
+          "output_index": 0,
+          "item_id": "fc_ge5ddbl5868",
+          "arguments": "{\"input\":\"Line \\\"quoted\\\" \\\\ path \\u4f60\\u597d\\ud83d\\ude42\"}"
+        },
+        {
+          "type": "response.output_item.done",
+          "output_index": 0,
+          "item": {
+            "type": "function_call",
+            "id": "fc_ge5ddbl5868",
+            "call_id": "call_a06_stream",
+            "name": "emit_payload",
+            "arguments": "{\"input\":\"Line \\\"quoted\\\" \\\\ path \\u4f60\\u597d\\ud83d\\ude42\"}",
+            "status": "completed"
+          }
+        },
+        {
+          "type": "response.completed",
+          "response": {
+            "id": "chatcmpl_a06_stream",
+            "model": "a06-chat",
+            "created_at": 1790630860,
+            "status": "completed",
+            "output": [
+              {
+                "type": "function_call",
+                "id": "fc_ge5ddbl5868",
+                "call_id": "call_a06_stream",
+                "name": "emit_payload",
+                "arguments": "{\"input\":\"Line \\\"quoted\\\" \\\\ path \\u4f60\\u597d\\ud83d\\ude42\"}",
+                "status": "completed"
+              }
+            ]
+          }
+        }
+      ],
+      "upstream": {
+        "target": "chat_completions",
+        "path": "/v1/chat/completions",
+        "body": {
+          "model": "a06-chat",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Produce the synthetic tool input"
+            }
+          ],
+          "stream": true,
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "emit_payload",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                }
+              }
+            }
+          ],
+          "tool_choice": {
+            "type": "function",
+            "function": {
+              "name": "emit_payload"
+            }
+          },
+          "stream_options": {
+            "include_usage": true
+          }
+        },
+        "negative": false
+      },
+      "pass": true
+    },
+    {
+      "label": "messages custom JSON",
+      "countBefore": 4,
+      "response": {
+        "object": "response",
+        "output": [
+          {
+            "type": "custom_tool_call",
+            "id": "fc_0",
+            "call_id": "call_a06_json",
+            "name": "emit_payload",
+            "input": "Line \"quoted\" \\ path 你好🙂",
+            "status": "completed"
+          }
+        ]
+      },
+      "upstream": {
+        "target": "messages",
+        "path": "/v1/messages",
+        "body": {
+          "model": "a06-messages",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Produce the synthetic tool input",
+                  "cache_control": {
+                    "type": "ephemeral"
+                  }
+                }
+              ]
+            }
+          ],
+          "max_tokens": 8192,
+          "stream": false,
+          "tools": [
+            {
+              "name": "emit_payload",
+              "description": "Unconstrained text only",
+              "input_schema": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "input"
+                ],
+                "additionalProperties": false
+              },
+              "cache_control": {
+                "type": "ephemeral"
+              }
+            }
+          ],
+          "tool_choice": {
+            "type": "tool",
+            "name": "emit_payload"
+          }
+        },
+        "negative": false
+      },
+      "pass": true
+    },
+    {
+      "label": "messages function JSON",
+      "countBefore": 5,
+      "response": {
+        "object": "response",
+        "output": [
+          {
+            "type": "function_call",
+            "id": "fc_0",
+            "call_id": "call_a06_json",
+            "name": "emit_payload",
+            "arguments": "{\"input\":\"Line \\\"quoted\\\" \\\\ path 你好🙂\"}",
+            "status": "completed"
+          }
+        ]
+      },
+      "upstream": {
+        "target": "messages",
+        "path": "/v1/messages",
+        "body": {
+          "model": "a06-messages",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Produce the synthetic tool input",
+                  "cache_control": {
+                    "type": "ephemeral"
+                  }
+                }
+              ]
+            }
+          ],
+          "max_tokens": 8192,
+          "stream": false,
+          "tools": [
+            {
+              "name": "emit_payload",
+              "input_schema": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "input"
+                ]
+              },
+              "cache_control": {
+                "type": "ephemeral"
+              }
+            }
+          ],
+          "tool_choice": {
+            "type": "tool",
+            "name": "emit_payload"
+          }
+        },
+        "negative": false
+      },
+      "pass": true
+    },
+    {
+      "label": "messages custom SSE",
+      "countBefore": 6,
+      "events": [
+        {
+          "type": "response.created",
+          "sequence_number": 0,
+          "response": {
+            "id": "resp_87690432ed2b4ea4930da071",
+            "object": "response",
+            "model": "a06-messages",
+            "status": "in_progress",
+            "output": [],
+            "output_text": "",
+            "usage": {
+              "input_tokens": 5
+            }
+          }
+        },
+        {
+          "type": "response.in_progress",
+          "sequence_number": 1,
+          "response": {
+            "id": "resp_87690432ed2b4ea4930da071",
+            "object": "response",
+            "model": "a06-messages",
+            "status": "in_progress",
+            "output": [],
+            "output_text": "",
+            "usage": {
+              "input_tokens": 5
+            }
+          }
+        },
+        {
+          "type": "response.output_item.added",
+          "sequence_number": 2,
+          "output_index": 0,
+          "item": {
+            "type": "custom_tool_call",
+            "id": "ct_0",
+            "call_id": "call_a06_stream",
+            "name": "emit_payload",
+            "input": "",
+            "status": "in_progress"
+          }
+        },
+        {
+          "type": "response.custom_tool_call_input.delta",
+          "sequence_number": 3,
+          "output_index": 0,
+          "item_id": "ct_0",
+          "delta": "Line \"quoted\" \\ path 你好🙂"
+        },
+        {
+          "type": "response.custom_tool_call_input.done",
+          "sequence_number": 4,
+          "output_index": 0,
+          "item_id": "ct_0",
+          "input": "Line \"quoted\" \\ path 你好🙂"
+        },
+        {
+          "type": "response.output_item.done",
+          "sequence_number": 5,
+          "output_index": 0,
+          "item": {
+            "type": "custom_tool_call",
+            "id": "ct_0",
+            "call_id": "call_a06_stream",
+            "name": "emit_payload",
+            "input": "Line \"quoted\" \\ path 你好🙂",
+            "status": "completed"
+          }
+        },
+        {
+          "type": "response.completed",
+          "sequence_number": 6,
+          "response": {
+            "id": "resp_87690432ed2b4ea4930da071",
+            "object": "response",
+            "model": "a06-messages",
+            "status": "completed",
+            "output": [
+              {
+                "type": "custom_tool_call",
+                "id": "ct_0",
+                "call_id": "call_a06_stream",
+                "name": "emit_payload",
+                "input": "Line \"quoted\" \\ path 你好🙂",
+                "status": "completed"
+              }
+            ],
+            "output_text": "",
+            "usage": {
+              "input_tokens": 5,
+              "output_tokens": 9,
+              "total_tokens": 14
+            }
+          }
+        }
+      ],
+      "upstream": {
+        "target": "messages",
+        "path": "/v1/messages",
+        "body": {
+          "model": "a06-messages",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Produce the synthetic tool input",
+                  "cache_control": {
+                    "type": "ephemeral"
+                  }
+                }
+              ]
+            }
+          ],
+          "max_tokens": 8192,
+          "stream": true,
+          "tools": [
+            {
+              "name": "emit_payload",
+              "description": "Unconstrained text only",
+              "input_schema": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "input"
+                ],
+                "additionalProperties": false
+              },
+              "cache_control": {
+                "type": "ephemeral"
+              }
+            }
+          ],
+          "tool_choice": {
+            "type": "tool",
+            "name": "emit_payload"
+          }
+        },
+        "negative": false
+      },
+      "pass": true
+    },
+    {
+      "label": "messages function SSE",
+      "countBefore": 7,
+      "events": [
+        {
+          "type": "response.created",
+          "sequence_number": 0,
+          "response": {
+            "id": "resp_049961f1e210427a8109d3db",
+            "object": "response",
+            "model": "a06-messages",
+            "status": "in_progress",
+            "output": [],
+            "output_text": "",
+            "usage": {
+              "input_tokens": 5
+            }
+          }
+        },
+        {
+          "type": "response.in_progress",
+          "sequence_number": 1,
+          "response": {
+            "id": "resp_049961f1e210427a8109d3db",
+            "object": "response",
+            "model": "a06-messages",
+            "status": "in_progress",
+            "output": [],
+            "output_text": "",
+            "usage": {
+              "input_tokens": 5
+            }
+          }
+        },
+        {
+          "type": "response.output_item.added",
+          "sequence_number": 2,
+          "output_index": 0,
+          "item": {
+            "type": "function_call",
+            "id": "fc_0",
+            "call_id": "call_a06_stream",
+            "name": "emit_payload",
+            "arguments": "",
+            "status": "in_progress"
+          }
+        },
+        {
+          "type": "response.function_call_arguments.delta",
+          "sequence_number": 3,
+          "output_index": 0,
+          "item_id": "fc_0",
+          "delta": "{\"input\":\"Line \\\"quoted\\\" \\\\ path \\u"
+        },
+        {
+          "type": "response.function_call_arguments.delta",
+          "sequence_number": 4,
+          "output_index": 0,
+          "item_id": "fc_0",
+          "delta": "4f6"
+        },
+        {
+          "type": "response.function_call_arguments.delta",
+          "sequence_number": 5,
+          "output_index": 0,
+          "item_id": "fc_0",
+          "delta": "0\\u5"
+        },
+        {
+          "type": "response.function_call_arguments.delta",
+          "sequence_number": 6,
+          "output_index": 0,
+          "item_id": "fc_0",
+          "delta": "97d\\ud8"
+        },
+        {
+          "type": "response.function_call_arguments.delta",
+          "sequence_number": 7,
+          "output_index": 0,
+          "item_id": "fc_0",
+          "delta": "3d\\ude"
+        },
+        {
+          "type": "response.function_call_arguments.delta",
+          "sequence_number": 8,
+          "output_index": 0,
+          "item_id": "fc_0",
+          "delta": "42\"}"
+        },
+        {
+          "type": "response.function_call_arguments.done",
+          "sequence_number": 9,
+          "output_index": 0,
+          "item_id": "fc_0",
+          "arguments": "{\"input\":\"Line \\\"quoted\\\" \\\\ path \\u4f60\\u597d\\ud83d\\ude42\"}"
+        },
+        {
+          "type": "response.output_item.done",
+          "sequence_number": 10,
+          "output_index": 0,
+          "item": {
+            "type": "function_call",
+            "id": "fc_0",
+            "call_id": "call_a06_stream",
+            "name": "emit_payload",
+            "arguments": "{\"input\":\"Line \\\"quoted\\\" \\\\ path \\u4f60\\u597d\\ud83d\\ude42\"}",
+            "status": "completed"
+          }
+        },
+        {
+          "type": "response.completed",
+          "sequence_number": 11,
+          "response": {
+            "id": "resp_049961f1e210427a8109d3db",
+            "object": "response",
+            "model": "a06-messages",
+            "status": "completed",
+            "output": [
+              {
+                "type": "function_call",
+                "id": "fc_0",
+                "call_id": "call_a06_stream",
+                "name": "emit_payload",
+                "arguments": "{\"input\":\"Line \\\"quoted\\\" \\\\ path \\u4f60\\u597d\\ud83d\\ude42\"}",
+                "status": "completed"
+              }
+            ],
+            "output_text": "",
+            "usage": {
+              "input_tokens": 5,
+              "output_tokens": 9,
+              "total_tokens": 14
+            }
+          }
+        }
+      ],
+      "upstream": {
+        "target": "messages",
+        "path": "/v1/messages",
+        "body": {
+          "model": "a06-messages",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Produce the synthetic tool input",
+                  "cache_control": {
+                    "type": "ephemeral"
+                  }
+                }
+              ]
+            }
+          ],
+          "max_tokens": 8192,
+          "stream": true,
+          "tools": [
+            {
+              "name": "emit_payload",
+              "input_schema": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "input"
+                ]
+              },
+              "cache_control": {
+                "type": "ephemeral"
+              }
+            }
+          ],
+          "tool_choice": {
+            "type": "tool",
+            "name": "emit_payload"
+          }
+        },
+        "negative": false
+      },
+      "pass": true
+    },
+    {
+      "label": "messages custom SSE unclosed tool_use",
+      "countBefore": 8,
+      "events": [
+        {
+          "type": "response.created",
+          "sequence_number": 0,
+          "response": {
+            "id": "resp_0ce681b427cf4ed8a66a534e",
+            "object": "response",
+            "model": "a06-messages",
+            "status": "in_progress",
+            "output": [],
+            "output_text": "",
+            "usage": {
+              "input_tokens": 5
+            }
+          }
+        },
+        {
+          "type": "response.in_progress",
+          "sequence_number": 1,
+          "response": {
+            "id": "resp_0ce681b427cf4ed8a66a534e",
+            "object": "response",
+            "model": "a06-messages",
+            "status": "in_progress",
+            "output": [],
+            "output_text": "",
+            "usage": {
+              "input_tokens": 5
+            }
+          }
+        },
+        {
+          "type": "response.output_item.added",
+          "sequence_number": 2,
+          "output_index": 0,
+          "item": {
+            "type": "custom_tool_call",
+            "id": "ct_0",
+            "call_id": "call_a06_unclosed",
+            "name": "emit_payload",
+            "input": "",
+            "status": "in_progress"
+          }
+        },
+        {
+          "type": "error",
+          "sequence_number": 3,
+          "message": "Messages stream stopped with an unclosed content block.",
+          "code": "stream_truncated"
+        }
+      ],
+      "streamError": null,
+      "countAfter": 9,
+      "upstream": {
+        "target": "messages",
+        "path": "/v1/messages",
+        "body": {
+          "model": "a06-messages",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "A06_NEGATIVE_UNCLOSED_TOOL_USE",
+                  "cache_control": {
+                    "type": "ephemeral"
+                  }
+                }
+              ]
+            }
+          ],
+          "max_tokens": 8192,
+          "stream": true,
+          "tools": [
+            {
+              "name": "emit_payload",
+              "input_schema": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "input"
+                ],
+                "additionalProperties": false
+              },
+              "cache_control": {
+                "type": "ephemeral"
+              }
+            }
+          ],
+          "tool_choice": {
+            "type": "tool",
+            "name": "emit_payload"
+          }
+        },
+        "negative": true
+      },
+      "pass": true
+    }
+  ],
+  "pass": true,
+  "upstreamCalls": [
+    {
+      "target": "chat_completions",
+      "path": "/v1/chat/completions",
+      "body": {
+        "model": "a06-chat",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Produce the synthetic tool input"
+          }
+        ],
+        "stream": false,
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "emit_payload",
+              "description": "Unconstrained text only",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "input"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        ],
+        "tool_choice": {
+          "type": "function",
+          "function": {
+            "name": "emit_payload"
+          }
+        }
+      },
+      "negative": false
+    },
+    {
+      "target": "chat_completions",
+      "path": "/v1/chat/completions",
+      "body": {
+        "model": "a06-chat",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Produce the synthetic tool input"
+          }
+        ],
+        "stream": false,
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "emit_payload",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "input"
+                ]
+              }
+            }
+          }
+        ],
+        "tool_choice": {
+          "type": "function",
+          "function": {
+            "name": "emit_payload"
+          }
+        }
+      },
+      "negative": false
+    },
+    {
+      "target": "chat_completions",
+      "path": "/v1/chat/completions",
+      "body": {
+        "model": "a06-chat",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Produce the synthetic tool input"
+          }
+        ],
+        "stream": true,
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "emit_payload",
+              "description": "Unconstrained text only",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "input"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        ],
+        "tool_choice": {
+          "type": "function",
+          "function": {
+            "name": "emit_payload"
+          }
+        },
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "negative": false
+    },
+    {
+      "target": "chat_completions",
+      "path": "/v1/chat/completions",
+      "body": {
+        "model": "a06-chat",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Produce the synthetic tool input"
+          }
+        ],
+        "stream": true,
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "emit_payload",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "input"
+                ]
+              }
+            }
+          }
+        ],
+        "tool_choice": {
+          "type": "function",
+          "function": {
+            "name": "emit_payload"
+          }
+        },
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "negative": false
+    },
+    {
+      "target": "messages",
+      "path": "/v1/messages",
+      "body": {
+        "model": "a06-messages",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Produce the synthetic tool input",
+                "cache_control": {
+                  "type": "ephemeral"
+                }
+              }
+            ]
+          }
+        ],
+        "max_tokens": 8192,
+        "stream": false,
+        "tools": [
+          {
+            "name": "emit_payload",
+            "description": "Unconstrained text only",
+            "input_schema": {
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "input"
+              ],
+              "additionalProperties": false
+            },
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ],
+        "tool_choice": {
+          "type": "tool",
+          "name": "emit_payload"
+        }
+      },
+      "negative": false
+    },
+    {
+      "target": "messages",
+      "path": "/v1/messages",
+      "body": {
+        "model": "a06-messages",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Produce the synthetic tool input",
+                "cache_control": {
+                  "type": "ephemeral"
+                }
+              }
+            ]
+          }
+        ],
+        "max_tokens": 8192,
+        "stream": false,
+        "tools": [
+          {
+            "name": "emit_payload",
+            "input_schema": {
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "input"
+              ]
+            },
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ],
+        "tool_choice": {
+          "type": "tool",
+          "name": "emit_payload"
+        }
+      },
+      "negative": false
+    },
+    {
+      "target": "messages",
+      "path": "/v1/messages",
+      "body": {
+        "model": "a06-messages",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Produce the synthetic tool input",
+                "cache_control": {
+                  "type": "ephemeral"
+                }
+              }
+            ]
+          }
+        ],
+        "max_tokens": 8192,
+        "stream": true,
+        "tools": [
+          {
+            "name": "emit_payload",
+            "description": "Unconstrained text only",
+            "input_schema": {
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "input"
+              ],
+              "additionalProperties": false
+            },
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ],
+        "tool_choice": {
+          "type": "tool",
+          "name": "emit_payload"
+        }
+      },
+      "negative": false
+    },
+    {
+      "target": "messages",
+      "path": "/v1/messages",
+      "body": {
+        "model": "a06-messages",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Produce the synthetic tool input",
+                "cache_control": {
+                  "type": "ephemeral"
+                }
+              }
+            ]
+          }
+        ],
+        "max_tokens": 8192,
+        "stream": true,
+        "tools": [
+          {
+            "name": "emit_payload",
+            "input_schema": {
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "input"
+              ]
+            },
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ],
+        "tool_choice": {
+          "type": "tool",
+          "name": "emit_payload"
+        }
+      },
+      "negative": false
+    },
+    {
+      "target": "messages",
+      "path": "/v1/messages",
+      "body": {
+        "model": "a06-messages",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "A06_NEGATIVE_UNCLOSED_TOOL_USE",
+                "cache_control": {
+                  "type": "ephemeral"
+                }
+              }
+            ]
+          }
+        ],
+        "max_tokens": 8192,
+        "stream": true,
+        "tools": [
+          {
+            "name": "emit_payload",
+            "input_schema": {
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "input"
+              ],
+              "additionalProperties": false
+            },
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ],
+        "tool_choice": {
+          "type": "tool",
+          "name": "emit_payload"
+        }
+      },
+      "negative": true
+    }
+  ]
+}

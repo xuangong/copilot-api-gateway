@@ -61,10 +61,25 @@ describe('translateChatToResponsesBody', () => {
         role: 'assistant', content: null,
         tool_calls: [{ id: 'call_a', type: 'function', function: { name: 'f', arguments: '{"x":1}' } }],
       }, finish_reason: 'tool_calls' }],
-    }) as { output: Array<{ type: string; call_id?: string; name?: string; arguments?: string }> }
+    }) as { output: Array<{ type: string; call_id?: string; name?: string; arguments?: string; status?: string }> }
     expect(out.output).toEqual([
-      { type: 'function_call', call_id: 'call_a', name: 'f', arguments: '{"x":1}' },
+      { type: 'function_call', call_id: 'call_a', name: 'f', arguments: '{"x":1}', status: 'completed' },
     ] as never)
+  })
+
+  test.each(['tool_calls', 'length'] as const)('JSON ordinary and custom tool statuses follow %s', finish_reason => {
+    const out = translateChatToResponsesBody({
+      id: 'r', model: 'm', choices: [{ index: 0, message: { role: 'assistant', content: null, tool_calls: [
+        { id: 'custom_id', type: 'function', function: { name: 'execute', arguments: '{"input":"yes"}' } },
+        { id: 'function_id', type: 'function', function: { name: 'ordinary', arguments: '{"x":1}' } },
+      ] }, finish_reason }],
+    }, { customToolNames: ['execute'] })
+    const status = finish_reason === 'length' ? 'incomplete' : 'completed'
+    expect(out.status).toBe(status)
+    expect(out.output).toMatchObject([
+      { type: 'custom_tool_call', call_id: 'custom_id', name: 'execute', input: 'yes', status },
+      { type: 'function_call', call_id: 'function_id', name: 'ordinary', arguments: '{"x":1}', status },
+    ])
   })
 
   test('finish:length → status:incomplete', () => {
