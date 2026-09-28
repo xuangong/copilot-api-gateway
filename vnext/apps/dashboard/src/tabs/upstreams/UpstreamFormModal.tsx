@@ -5,6 +5,7 @@ import { useAuth } from "../../state/auth"
 import * as api from "../../api/upstreams"
 import type { UpstreamRecord } from "../../api/types"
 import { findPreset } from "./vendorPresets"
+import { formatModelsText, parseModelsText } from "./model-text"
 
 type Provider = "copilot" | "azure" | "custom" | "sdf"
 
@@ -150,13 +151,7 @@ function buildInitial(mode: Props["mode"]): { provider: Provider; form: FormStat
     cos?: { serviceTier?: string }
     passport?: { enabled?: boolean; apiBase?: string }
   }
-  type ModelEntry = string | { id: string; name?: string }
-  const modelsList: ModelEntry[] = Array.isArray((cfg as { models?: ModelEntry[] }).models)
-    ? (cfg as { models: ModelEntry[] }).models
-    : []
-  const modelsText = modelsList
-    .map((m) => (typeof m === "string" ? m : `${m.id}${m.name ? ` # ${m.name}` : ""}`))
-    .join("\n")
+  const modelsText = formatModelsText(cfg.models)
   const azureDepsText =
     (Array.isArray((cfg as { deployments?: { name: string; model?: string }[] }).deployments)
       ? (cfg as { deployments: { name: string; model?: string }[] }).deployments
@@ -225,18 +220,6 @@ function sdfTuning(form: FormState) {
       apiBase: form.sdfPassportApiBase.trim() || SDF_DEFAULTS.passportApiBase,
     },
   }
-}
-
-function parseModelsText(txt: string): (string | { id: string; name: string })[] | undefined {  if (!txt.trim()) return undefined
-  return txt
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const hashAt = line.indexOf("#")
-      if (hashAt === -1) return line
-      return { id: line.slice(0, hashAt).trim(), name: line.slice(hashAt + 1).trim() }
-    })
 }
 
 function parseAzureDeployments(txt: string): { name: string; model: string }[] | undefined {
