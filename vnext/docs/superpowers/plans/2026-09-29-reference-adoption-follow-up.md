@@ -1,6 +1,6 @@
 # Reference Adoption Follow-up Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement an individually scoped work package task-by-task. This document is the tracking index; unchecked implementation items are not authorization to execute them.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement an individually scoped work package task-by-task. This document is the tracking index. The user authorized the implementation pass on September 29; apply its global constraints and preserve the explicitly conditional decisions.
 
 **Goal:** Preserve the useful June–September reference-project changes as an actionable vNext backlog, resolve the uncertain adoption decisions, and deliver each accepted change with evidence of its user-visible behavior.
 
@@ -31,6 +31,7 @@
 
 ## Follow-through designs
 
+- [Pinned WebSocket client acceptance](../research/2026-09-29-websocket-client-contract.md): first-party Codex wire/warmup/fallback evidence; actual gateway/client loopback validation remains required.
 - [Provider foundations and capability delivery](../research/2026-09-29-provider-adoption-design.md): catalog fencing, safe credential lifecycle/import, per-call metadata, affinity, Lite, Fast and client WebSocket sequencing.
 - [Diagnostics, request bodies and usage experiments](../research/2026-09-29-diagnostics-adoption-design.md): bounded capture/export, replayable bodies, measured SQL tradeoffs and setup transaction design.
 
@@ -47,7 +48,7 @@ Priority means execution order, not an assertion that every source-level risk ha
 | A03 | completed / awaited completion snapshot, 354 initial and 123 fix tests; reviewed | Commit enabled continuation storage before promising a reusable response. Slow/failing storage cannot race an immediate continuation or silently claim durable success. Keep retention-off behavior unchanged. | `978dca440`, `2e1790afa`, `d816824f1` | `packages/gateway/src/data-plane/chat-flow/responses/{serve,respond,completion-snapshot}.ts`, `data-plane/dispatch/responses-store-bridge.ts` |
 | A04 | completed / e4b2d04f, subset and selector validation | Preserve `allowed_tools` subsets and mode; reject unrepresentable selectors, missing declarations, and ambiguous flat function/custom names. | `478c4efc5`, `1d7dcd923` | `packages/translate/src/responses-via-{chat-completions,messages}/request.ts` |
 | A05 | P1 / open | Dispatch hosted tools using completed callable identity, including namespace; keep client collisions, forced choices, historical calls, and injected aliases stable. | `544613969` | `packages/gateway/src/data-plane/chat-flow/responses/interceptors/server-tool-shim.ts` |
-| A06 | partial / e4b2d04f, structured outputs; custom generation blocked on reverse callable context | Preserve custom tool declarations/calls/results and structured function/custom outputs; preserve call IDs and contiguous results, map images to legal target carriers, reject unsupported projections. | `c54fa4d34`, `b077a6ef1` | `packages/translate/src/responses-via-{chat-completions,messages}/` |
+| A06 | partial / e4b2d04f, structured outputs; reverse callable context and generation implementation queued | Preserve custom tool declarations/calls/results and structured function/custom outputs; preserve call IDs and contiguous results, map images to legal target carriers, reject unsupported projections. | `c54fa4d34`, `b077a6ef1` | `packages/translate/src/responses-via-{chat-completions,messages}/` |
 | A07 | P1 / open | Preserve readable agent-message delivery and author/recipient provenance without granting user authority; validate and escape projected metadata. | `f2123d771` | `packages/translate/src/responses-via-{chat-completions,messages}/request.ts` |
 | A08 | completed / JSON, SSE, replay and failed-status preservation; reviewed | Preserve refusals across JSON, SSE, and replay; a refusal must not become an empty successful Responses result. | `5076ab63f` | `packages/protocols-llm/src/`, `packages/translate/src/` |
 | A09 | completed / 8b30cd6b, 23 tests and review | Extend existing HTTP context-window rewriting to Responses SSE errors so Messages clients receive recognizable prompt-too-long failures. | `c42a81293` | `packages/translate/src/messages-via-responses/events.ts`, gateway Messages interceptors |
@@ -75,25 +76,25 @@ Priority means execution order, not an assertion that every source-level risk ha
 
 | ID | Priority / state | Deliverable and acceptance condition | Reference revisions | Primary vNext surface |
 |---|---|---|---|---|
-| C01 | P2 / design required | Authenticated client-carried opaque origin and explicit compatibility identities; prefer compatible candidates and distinguish required state from optional degradation. Handle signed thinking as a complete block. | `200c82f1b`, `fb5a8da3d`, `a2349daca`, `5ba518abd`, `24003d3dd` | active chat-flow candidate selection, protocol opaque carriers, provider catalogs |
+| C01 | P2 / design ready; implementation queued | Authenticated client-carried opaque origin and explicit compatibility identities; prefer compatible candidates and distinguish required state from optional degradation. Handle signed thinking as a complete block. | `200c82f1b`, `fb5a8da3d`, `a2349daca`, `5ba518abd`, `24003d3dd` | active chat-flow candidate selection, protocol opaque carriers, provider catalogs |
 | C02 | P2 / open | Extend existing stale L1/L2 catalogs with cross-instance refresh coordination, configuration/version fences and persistent backoff. Decide cold-cache behavior explicitly. | `5b7f99ae0` | `packages/gateway/src/data-plane/providers/registry.ts` and repository/platform contracts |
 | C03 | P2 / open | Version code-derived catalog schema/capabilities and show cached models on editor open; explicit refresh reports failures without deleting known routes. | `dfbf066b1`, `3be39e378` | registry, upstream catalog routes, `UpstreamFormModal.tsx` |
 | C04 | P2 / open | Preserve custom discovery chat metadata and derive original-image capability from the actual upstream through aliases and public/Codex catalogs. | `1b15195ad`, `04233190c` | provider-custom/Codex models, registry and `data-plane/codex/synthesize.ts` |
-| C05 | P2 / design required | Implement Copilot Fast tier as one catalog/raw-model/response/pricing contract; preserve display names and avoid inventing lanes on unsupported endpoints. | `6b7d4fb3e`, `0eb0f55ad` | Copilot variants/interceptors and Codex catalog synthesis |
+| C05 | P2 / design ready; per-call foundation first | Implement Copilot Fast tier as one catalog/raw-model/response/pricing contract; preserve display names and avoid inventing lanes on unsupported endpoints. | `6b7d4fb3e`, `0eb0f55ad` | Copilot variants/interceptors and Codex catalog synthesis |
 | C06 | P2 / open | Add progressive real usage while preserving existing final usage drain, missing counters, refusal and event ordering. Gate unsupported continuous-usage extensions appropriately. | `14f0b7725` | Messages-via-Chat request/events and stream-options interceptors |
 | C07 | P2 / provider project | Add Responses Lite only when selected by upstream catalog; verify encoding, identity, streaming, compact, and authentication retry behavior. | `e7b3d6fc9` | `packages/provider-codex/src/{models,fetch}.ts` |
 | C08 | P2 / provider project | Support additional credential import shapes with preview and correct optional-refresh/identity/expiry semantics; do not merely loosen validation. | `fadd9aabb` | provider-codex auth/config/fetch and import UI |
 | C09 | P3 / open | Show last-observed quota with freshness metadata while preserving rate-limit gates. | `2953c9e01` | provider-codex quota and dashboard |
 | C10 | P2 / verification workflow | Audit new catalog models and precise pricing matches against primary sources, preserve operator-supplied values, and separate richer tier billing from table updates. | `07dd802ac` | provider model/pricing sources and catalog revision |
 | C11 | completed capability/config / 46725acb | Advertise only implemented ingress WS capability; explicit custom-provider supports_websockets=false while unsupported. Version-test precise upgrade fallback responses. | E01 gateway and Codex source/probes | Codex catalog synthesis, generated client config, routes |
-| C12 | P2 / separate design | Client WS to shared execution with per-turn authorization, terminal-last durable ordering, cancellation/cleanup lifetime, failed-state eviction and bounded backpressure. Defer native upstream WS/multiplexing. | E01; 67b5db157, 81ad72ea5, e929bd339, 56dddc6dc | platform adapters, chat-flow kit, Responses storage |
+| C12 | P2 / design and pinned client contract ready | Client WS to shared execution with per-turn authorization, terminal-last durable ordering, cancellation/cleanup lifetime, failed-state eviction and bounded backpressure. Defer native upstream WS/multiplexing. | E01; 67b5db157, 81ad72ea5, e929bd339, 56dddc6dc | platform adapters, chat-flow kit, Responses storage |
 
 ### D. Diagnostics and operator experience
 
 | ID | Priority / state | Deliverable and acceptance condition | Reference revisions | Primary vNext surface |
 |---|---|---|---|---|
 | D01 | completed / editor and backend normalization verified | Preserve complete valid custom model entries through editor load/save; pricing-only entries cannot turn into the literal ID `undefined`. | `48f200f66` (principle and tests) | `apps/dashboard/src/tabs/upstreams/UpstreamFormModal.tsx`, provider-custom config |
-| D02 | P2 / design required | Capture bounded per-attempt upstream HTTP exchanges before protocol parsing, including incomplete prefixes, binary bodies, and retry boundaries. | `911b25337` | dump schema/store, provider HTTP boundary, diagnostics |
+| D02 | P2 / design ready; bounded capture implementation queued | Capture bounded per-attempt upstream HTTP exchanges before protocol parsing, including incomplete prefixes, binary bodies, and retry boundaries. | `911b25337` | dump schema/store, provider HTTP boundary, diagnostics |
 | D03 | P2 / open | Expose existing authorized dump browsing and single-record export; redact credentials in every export format without mutating the stored original. | `911b25337`, `463dc4611` | dashboard requests UI, dump control-plane routes |
 | D04 | completed / stale-result regressions, dashboard typecheck | Bind proxy test feedback to the tested draft; edits invalidate old results and stale in-flight responses cannot overwrite new draft feedback. | `aac6e2cd4` | `apps/dashboard/src/tabs/proxies/ProxiesTab.tsx` |
 | D05 | P3 / open | Create a new-upstream draft from an existing configuration while preserving permission boundaries and resetting nonportable OAuth state. | `95051a965` | upstream dashboard and create contract |
@@ -101,7 +102,7 @@ Priority means execution order, not an assertion that every source-level risk ha
 | D07 | P3 / open | Multi-select performance filters use OR within dimensions and AND across dimensions and retain removable stale options. | `605942a6c` | dashboard performance state and charts |
 | D08 | P2 / local D1 benefit measured; bounded overview ready to implement | Push expensive overview aggregation into bounded SQL without losing ownership filters or decimal precision; include later D1 query-limit fixes. | `05609bfa2`, `6c231fc1f`, `7155c817a` | gateway usage/performance repositories |
 | D09 | P3 / open | Extend existing CLI snippets with verified model-tier variables; test generated configurations without replacing a live user configuration. | `682289834` | key configuration panel and snippets |
-| D10 | P3 / separate feature | One-command CLI setup must preserve unrelated settings and include scoped short-lived credentials, revision checks, backups, and rollback. | `b65db0b9e` | setup control-plane and generated shell/PowerShell clients |
+| D10 | P3 / transactional design ready; implementation queued | One-command CLI setup must preserve unrelated settings and include scoped short-lived credentials, revision checks, backups, and rollback. | `b65db0b9e` | setup control-plane and generated shell/PowerShell clients |
 
 ## E. Qualified recommendations: research now
 
