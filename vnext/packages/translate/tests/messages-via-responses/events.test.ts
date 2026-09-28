@@ -356,3 +356,41 @@ describe('messages-via-responses :: events', () => {
     expect(delta.usage.cache_read_input_tokens).toBe(73)
   })
 })
+
+it("maps Responses context-window SSE failures to recognizable Messages errors", async () => {
+  const error = { code: "context_length_exceeded", message: "context exceeded" }
+  for (const event of [
+    { type: "response.failed", response: { error } },
+    { type: "error", ...error },
+    { type: "error", error },
+    { type: "error", code: "model_max_prompt_tokens_exceeded", message: "too many tokens" },
+  ]) {
+    const events = await collect(translateResponsesEventsToMessagesEvents(fromArray([event])))
+    expect(events.find((event) => event.type === "error")).toMatchObject({
+      type: "error", error: { type: "invalid_request_error", message: expect.stringContaining("prompt is too long") },
+    })
+    expect(events.some((event) => event.type === "message_stop")).toBe(false)
+  }
+})
+
+it('checks both top-level and nested context codes without envelope masking', async () => {
+  for (const event of [
+    { type: 'error', code: 'context_length_exceeded', message: 'top', error: { code: 'server_error', message: 'nested' } },
+    { type: 'error', code: 'server_error', message: 'top', error: { code: 'model_max_prompt_tokens_exceeded', message: 'nested' } },
+  ]) {
+    const events = await collect(translateResponsesEventsToMessagesEvents(fromArray([event])))
+    expect(events.find((event) => event.type === 'error')).toMatchObject({
+      type: 'error', error: { type: 'invalid_request_error', message: expect.stringContaining('prompt is too long') },
+    })
+  }
+})
+
+it('preserves ordinary top-level error messages and falls back to nested messages', async () => {
+  for (const [event, message] of [
+    [{ type: 'error', message: 'top-level failure', error: { message: 'nested detail' } }, 'top-level failure'],
+    [{ type: 'error', error: { message: 'nested fallback' } }, 'nested fallback'],
+  ] as const) {
+    const events = await collect(translateResponsesEventsToMessagesEvents(fromArray([event])))
+    expect(events.find((event) => event.type === 'error')).toEqual({ type: 'error', error: { type: 'api_error', message } })
+  }
+})

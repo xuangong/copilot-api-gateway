@@ -150,3 +150,5 @@ export { parseMessagesStream, type ParseMessagesStreamOptions } from './stream.t
 // mid-tier models. Reference:
 // copilot-gateway/packages/protocols/src/messages/index.ts.
 export const MESSAGES_FALLBACK_MAX_TOKENS = 8192
+
+export { PROMPT_TOO_LONG_MESSAGE, messageIsContextExceeded, isContextExceededError } from "./context-window-error"

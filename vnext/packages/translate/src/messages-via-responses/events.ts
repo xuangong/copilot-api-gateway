@@ -11,7 +11,7 @@
  * Cancellation: implemented as an async generator with try/finally so
  * per-stream state is cleared when the consumer breaks out of the loop.
  */
-import type { MessagesEvent } from '@vibe-llm/protocols/messages'
+import { isContextExceededError, PROMPT_TOO_LONG_MESSAGE, type MessagesEvent } from '@vibe-llm/protocols/messages'
 
 // ─── Inbound (Responses) event shape ───
 
@@ -105,11 +105,13 @@ interface RespCompletedEvent extends RespEventBase {
 
 interface RespFailedEvent extends RespEventBase {
   type: 'response.failed'
-  response: { error?: { message?: string } }
+  response: { error?: { message?: string; code?: string } }
 }
 
 interface RespErrorEvent extends RespEventBase {
   type: 'error'
+  code?: string
+  error?: { message?: string; code?: string }
   message?: string
 }
 
@@ -427,13 +429,15 @@ function handleCompleted(ev: RespCompletedEvent, state: State): MessagesEvent[] 
   return out
 }
 
-function handleStreamError(state: State, message: string): MessagesEvent[] {
+function handleStreamError(state: State, message: string, ...errors: unknown[]): MessagesEvent[] {
   const out: MessagesEvent[] = []
   closeOpenBlocks(state, out)
   state.functionCallState.clear()
   state.searchCallState.clear()
   state.messageCompleted = true
-  out.push({ type: 'error', error: { type: 'api_error', message } })
+  out.push({ type: 'error', error: errors.some(isContextExceededError)
+    ? { type: 'invalid_request_error', message: PROMPT_TOO_LONG_MESSAGE }
+    : { type: 'api_error', message } })
   return out
 }
 
@@ -460,9 +464,9 @@ function translateOne(ev: RespEvent, state: State): MessagesEvent[] {
     case 'response.incomplete':
       return handleCompleted(ev, state)
     case 'response.failed':
-      return handleStreamError(state, ev.response.error?.message ?? 'Response failed.')
+      return handleStreamError(state, ev.response.error?.message ?? 'Response failed.', ev.response.error)
     case 'error':
-      return handleStreamError(state, ev.message ?? 'Stream error.')
+      return handleStreamError(state, ev.message ?? ev.error?.message ?? 'Stream error.', ev, ev.error)
     case 'ping':
       return [{ type: 'ping' }]
     default:
