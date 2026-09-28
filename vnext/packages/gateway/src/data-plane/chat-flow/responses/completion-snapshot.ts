@@ -9,8 +9,9 @@ export function createResponseSnapshotWriter(args: {
   readonly apiKeyId: ApiKeyId
   readonly retentionSeconds: number
   readonly fallbackModel: string
+  readonly compactTriggered?: boolean
 }): ResponsesCompletionWriter {
-  const { store, apiKeyId, retentionSeconds, fallbackModel } = args
+  const { store, apiKeyId, retentionSeconds, fallbackModel, compactTriggered } = args
   return async (response, inputItems) => {
     await savePostTurnSnapshot(store, {
       responseId: response.id as ResponsesItemId,
@@ -19,6 +20,7 @@ export function createResponseSnapshotWriter(args: {
       model: typeof response.model === "string" ? response.model : fallbackModel,
       inputItems: [...inputItems],
       outputItems: response.output,
+      compactTriggered,
     })
   }
 }

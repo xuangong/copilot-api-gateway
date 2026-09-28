@@ -122,3 +122,46 @@ test('save: anonymous owner uses null apiKeyId', async () => {
   expect(await store.load('resp_save_2', null)).not.toBeNull()
   expect(await store.load('resp_save_2', 'k1')).toBeNull()
 })
+
+test('save: completed triggered compaction replaces history with the entire compact output window', async () => {
+  const store = new InMemoryResponsesSnapshotStore()
+  const compactWindow = [
+    { type: 'message', role: 'assistant', content: 'retained neighbor' },
+    { type: 'compaction_summary', encrypted_content: 'opaque-one', id: 'cmp_1' },
+    { type: 'compaction', encrypted_content: 'opaque-two', id: 'cmp_2' },
+    { type: 'message', role: 'user', content: 'retained tail' },
+  ]
+  await savePostTurnSnapshot(store, {
+    retentionSeconds: 86400, responseId: 'resp_compacted', apiKeyId: 'k1', model: 'gpt-x',
+    compactTriggered: true,
+    inputItems: [
+      { type: 'message', role: 'user', content: 'old history' },
+      { type: 'compaction_trigger' },
+    ],
+    outputItems: compactWindow,
+  })
+  expect((await store.load('resp_compacted', 'k1'))?.items).toEqual(compactWindow)
+})
+
+test('save: a trigger without a compact output retains ordinary input plus output', async () => {
+  const store = new InMemoryResponsesSnapshotStore()
+  const inputItems = [{ type: 'compaction_trigger' }]
+  const outputItems = [{ type: 'message', role: 'assistant', content: 'ordinary response' }]
+  await savePostTurnSnapshot(store, {
+    retentionSeconds: 86400, responseId: 'resp_no_compact', apiKeyId: 'k1', model: 'gpt-x',
+    compactTriggered: true,
+    inputItems, outputItems,
+  })
+  expect((await store.load('resp_no_compact', 'k1'))?.items).toEqual([...inputItems, ...outputItems])
+})
+
+test('save: a historical trigger cannot replace a later ordinary turn', async () => {
+  const store = new InMemoryResponsesSnapshotStore()
+  const inputItems = [{ type: 'compaction_trigger' }, { type: 'message', role: 'user', content: 'later' }]
+  const outputItems = [{ type: 'compaction', encrypted_content: 'foreign' }]
+  await savePostTurnSnapshot(store, {
+    retentionSeconds: 86400, responseId: 'resp_later', apiKeyId: 'k1', model: 'gpt-x',
+    compactTriggered: false, inputItems, outputItems,
+  })
+  expect((await store.load('resp_later', 'k1'))?.items).toEqual([...inputItems, ...outputItems])
+})

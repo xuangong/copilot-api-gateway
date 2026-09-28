@@ -96,6 +96,52 @@ test('expandShimCompactionItems: shim-encoded compaction expands inline', () => 
   expect((out.input[0] as { role: string }).role).toBe('user')
 })
 
+test('flag off still expands a legacy own compaction_summary before native Responses dispatch', async () => {
+  const inner: ResponsesInputItem = {
+    type: 'message', role: 'user',
+    content: [{ type: 'input_text', text: `${SUMMARY_PREFIX}\nlegacy summary` }],
+  }
+  const own = {
+    type: 'compaction_summary', encrypted_content: encodeBase64UrlJson([inner]), id: 'cmp_legacy',
+  } as unknown as ResponsesInputItem
+  const i = mkInv(basePayload([own, { type: 'compaction_trigger' } as unknown as ResponsesInputItem]))
+  await withResponsesCompactShim(i, baseCtx, okRun)
+  expect((i.payload as unknown as CanonicalResponsesPayload).input).toEqual([
+    inner, { type: 'compaction_trigger' },
+  ])
+  expect(i.action).toBe('generate')
+})
+
+test('flag off preserves foreign opaque compaction fields and bytes', async () => {
+  const foreign = {
+    type: 'compaction_summary', encrypted_content: encodeBase64UrlJson({ foreign: true }),
+    id: 'cmp_foreign', provider_metadata: { untouched: 'yes' },
+  } as unknown as ResponsesInputItem
+  const payload = basePayload([foreign])
+  const i = mkInv(payload)
+  await withResponsesCompactShim(i, baseCtx, okRun)
+  expect(i.payload).toBe(payload)
+  expect((i.payload as unknown as CanonicalResponsesPayload).input[0]).toBe(foreign)
+})
+
+for (const type of ['compaction', 'compaction_summary'] as const) {
+  test(`flag off preserves foreign typed-array ${type} bytes and provider fields`, async () => {
+    const encryptedContent = encodeBase64UrlJson([
+      { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'foreign summary' }] },
+    ])
+    const foreign = {
+      type, encrypted_content: encryptedContent, id: `cmp_foreign_${type}`,
+      provider_metadata: { marker: 'retain-me' },
+    } as unknown as ResponsesInputItem
+    const payload = basePayload([foreign])
+    const i = mkInv(payload)
+    await withResponsesCompactShim(i, baseCtx, okRun)
+    expect(i.payload).toBe(payload)
+    expect((i.payload as unknown as CanonicalResponsesPayload).input).toEqual([foreign])
+    expect((i.payload as unknown as CanonicalResponsesPayload).input[0]).toBe(foreign)
+  })
+}
+
 test('expandShimCompactionItems: foreign encrypted_content round-trips untouched', () => {
   const foreign = { type: 'compaction', encrypted_content: 'not-base64url-json' } as unknown as ResponsesInputItem
   const p = basePayload([foreign])

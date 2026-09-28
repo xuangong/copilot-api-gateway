@@ -48,14 +48,23 @@ export async function savePostTurnSnapshot(
     model: string
     inputItems: unknown[]
     outputItems: unknown[]
+    compactTriggered?: boolean
   },
 ): Promise<void> {
   const now = Date.now()
+  const isItemType = (item: unknown, type: string): boolean =>
+    typeof item === 'object' && item !== null && 'type' in item && item.type === type
+  const hasCompactOutput = args.outputItems.some(item =>
+    isItemType(item, 'compaction') || isItemType(item, 'compaction_summary'))
   await store.save({
     responseId: args.responseId,
     apiKeyId: args.apiKeyId,
     model: args.model,
-    items: [...args.inputItems, ...args.outputItems],
+    // A completed trigger's returned output is the canonical continuation
+    // window, including any retained neighbors and every compact item.
+    items: args.compactTriggered && hasCompactOutput
+      ? [...args.outputItems]
+      : [...args.inputItems, ...args.outputItems],
     createdAt: now,
     expiresAt: snapshotExpiresAt(now, args.retentionSeconds),
   })

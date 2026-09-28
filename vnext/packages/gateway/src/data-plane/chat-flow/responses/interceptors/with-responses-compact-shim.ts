@@ -25,9 +25,11 @@
 //     (Codex CLI's RemoteCompactionV2 path: a `generate` call whose input
 //     ends in a control item that semantically requests compaction).
 //
-// Flow when engaged and compact-shaped:
-//   1. Inbound: walk `payload.input` for `compaction` items whose
-//      `encrypted_content` decodes as our base64url-JSON marker. Each match
+// Inbound expansion always runs; outbound summarization runs only when
+// engaged and compact-shaped:
+//   1. Inbound: walk `payload.input` for `compaction` or
+//      `compaction_summary` items whose
+//      `encrypted_content` decodes as our legacy base64url-JSON shape. Each match
 //      is replaced inline with the items it originally encoded — so a
 //      subsequent turn that echoes back the synthesized compaction sees the
 //      summarized history.
@@ -93,18 +95,28 @@ type ChainRun = () => Promise<ResponsesRunResult>
 
 // ── Inbound expansion ─────────────────────────────────────────────────────────
 
-// Structural validator: a shim payload is an array of input-item objects each
-// carrying a `type` field. Strict enough that a foreign opaque blob can't
-// accidentally decode + parse + validate.
-const isShimCompactionPayload = (value: unknown): value is ResponsesInputItem[] =>
-  Array.isArray(value) && value.every(item =>
-    isJsonObject(item) && typeof (item as { type?: unknown }).type === 'string')
+// Legacy envelopes have no marker. Match the exact shape emitted by
+// buildCompactionEnvelope, including its prefix, to avoid interpreting an
+// unrelated provider's decodable typed-item array as our summary.
+const isShimCompactionPayload = (value: unknown): value is ResponsesInputItem[] => {
+  if (!Array.isArray(value) || value.length !== 1) return false
+  const item: unknown = value[0]
+  if (!isJsonObject(item) || Object.keys(item).length !== 3) return false
+  if (item.type !== 'message' || item.role !== 'user') return false
+  if (!Array.isArray(item.content) || item.content.length !== 1) return false
+  const block: unknown = item.content[0]
+  if (!isJsonObject(block) || Object.keys(block).length !== 2) return false
+  return block.type === 'input_text'
+    && typeof block.text === 'string'
+    && block.text.startsWith(`${SUMMARY_PREFIX}\n`)
+    && block.text.length > SUMMARY_PREFIX.length + 1
+}
 
 export const expandShimCompactionItems = (payload: CanonicalResponsesPayload): CanonicalResponsesPayload => {
   const rewritten: ResponsesInputItem[] = []
   let changed = false
   for (const item of payload.input) {
-    if (item.type !== 'compaction') {
+    if (item.type !== 'compaction' && (item as { type: string }).type !== 'compaction_summary') {
       rewritten.push(item)
       continue
     }
@@ -284,6 +296,11 @@ export const containsCompactionTrigger = (input: readonly ResponsesInputItem[]):
   input.some(item => (item as { type: string }).type === 'compaction_trigger')
 
 export const withResponsesCompactShim: ResponsesInterceptor = async (inv, ctx, run) => {
+  // Prior own-format envelopes must be expanded even when this upstream no
+  // longer opts into shim generation. Foreign opaque items remain unchanged.
+  const canonical = inv.payload as unknown as CanonicalResponsesPayload
+  inv.payload = expandShimCompactionItems(canonical) as unknown as typeof inv.payload
+
   // The shim is engaged when the operator turned it on for this upstream,
   // OR when the target endpoint is not Responses (Messages / Chat
   // Completions have no compaction wire and would crash on the unknown
@@ -291,11 +308,6 @@ export const withResponsesCompactShim: ResponsesInterceptor = async (inv, ctx, r
   const flagOn = inv.enabledFlags.has('responses-compact-shim')
   const structurallyRequired = ctx.targetEndpoint !== undefined && ctx.targetEndpoint !== 'responses'
   if (!flagOn && !structurallyRequired) return run()
-
-  // Inbound: expand any prior shim-encoded compactions back into their
-  // original items so the upstream sees the summarized history.
-  const canonical = inv.payload as unknown as CanonicalResponsesPayload
-  inv.payload = expandShimCompactionItems(canonical) as unknown as typeof inv.payload
 
   // Compact-shaped requests are either the native `/responses/compact`
   // action or a `generate` call whose input ends in a `compaction_trigger`.

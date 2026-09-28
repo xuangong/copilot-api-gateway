@@ -126,6 +126,8 @@ const responsesHooks: ServeTemplateHooks<
   },
 
   preProcess: async (payload, ctx) => {
+    const compactTriggered = Array.isArray(payload.input) && payload.input.some(item =>
+      typeof item === 'object' && item !== null && 'type' in item && item.type === 'compaction_trigger')
     // Expand `previous_response_id` against the responses store. Mutates
     // payload.input in place (legacy contract from
     // `expandPreviousResponseId`); we read the expanded array off
@@ -146,7 +148,7 @@ const responsesHooks: ServeTemplateHooks<
       const expanded = (payload as { input?: unknown }).input
       const retentionSeconds = ctx.auth.responsesRetentionSeconds ?? 0
       const onCompleted = retentionSeconds > 0 && ctx.auth.apiKeyId && payload.store !== false && ctx.extras.action !== "compact"
-        ? createResponseSnapshotWriter({ store, apiKeyId: ctx.auth.apiKeyId as ApiKeyId, retentionSeconds, fallbackModel: payload.model })
+        ? createResponseSnapshotWriter({ store, apiKeyId: ctx.auth.apiKeyId as ApiKeyId, retentionSeconds, fallbackModel: payload.model, compactTriggered })
         : undefined
       const inputItems = Array.isArray(expanded) ? expanded : []
       const mergedInputItems = onCompleted ? structuredClone(inputItems) : inputItems
