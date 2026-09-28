@@ -1,0 +1,57 @@
+{
+  "observed": [
+    {
+      "type": "message_start",
+      "input": 10,
+      "output": 0
+    },
+    {
+      "type": "message_delta",
+      "input": 10
+    },
+    {
+      "type": "content_block_start",
+      "input": 10
+    },
+    {
+      "type": "content_block_delta",
+      "input": 10
+    },
+    {
+      "type": "message_delta",
+      "input": 10,
+      "output": 1
+    },
+    {
+      "type": "content_block_stop",
+      "input": 10,
+      "output": 1
+    },
+    {
+      "type": "message_delta",
+      "input": 7,
+      "output": 2
+    },
+    {
+      "type": "message_delta",
+      "input": 7,
+      "output": 2
+    },
+    {
+      "type": "message_stop",
+      "input": 7,
+      "output": 2
+    }
+  ],
+  "finalUsage": {
+    "input_tokens": 7,
+    "output_tokens": 2,
+    "cache_read_input_tokens": 3
+  },
+  "finalText": [
+    {
+      "type": "text",
+      "text": "hi"
+    }
+  ]
+}

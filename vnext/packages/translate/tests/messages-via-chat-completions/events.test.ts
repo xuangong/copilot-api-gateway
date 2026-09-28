@@ -11,6 +11,154 @@ async function collect<T>(src: AsyncIterable<T>): Promise<T[]> {
 async function* fromArray<T>(items: T[]): AsyncGenerator<T> { for (const it of items) yield it }
 
 describe('messages-via-chat-completions :: events', () => {
+  it('defers role-only startup until usage and puts observed counters in message_start', async () => {
+    const events = await collect(translateChatSSEToMessagesEvents(fromArray([
+      { id: 'u', model: 'm', choices: [{ delta: { role: 'assistant', tool_calls: [] } }] },
+      { choices: [], usage: { prompt_tokens: 12, completion_tokens: 0, prompt_tokens_details: { cached_tokens: 2 } } },
+      { choices: [{ delta: { content: 'hi' } }] },
+      { choices: [{ delta: {}, finish_reason: 'stop' }] },
+    ])))
+    expect(events[0]).toMatchObject({ type: 'message_start', message: {
+      id: 'u', model: 'm', usage: { input_tokens: 10, output_tokens: 0, cache_read_input_tokens: 2 },
+    } })
+    expect(events.map(e => e.type).slice(0, 4)).toEqual([
+      'message_start', 'message_delta', 'content_block_start', 'content_block_delta',
+    ])
+  })
+
+  it('streams actual content immediately after role-only chunks when usage is absent', async () => {
+    let consumed = 0
+    async function* chunks() {
+      consumed++
+      yield { id: 'u', model: 'm', choices: [{ delta: { role: 'assistant' } }] }
+      consumed++
+      yield { choices: [{ delta: { content: 'hi' } }] }
+      consumed++
+      yield { choices: [{ delta: {}, finish_reason: 'stop' }] }
+    }
+    const stream = translateChatSSEToMessagesEvents(chunks())
+    const first = await stream.next()
+    expect(consumed).toBe(2)
+    const events = [first.value, ...await collect(stream)].filter((e): e is MessagesEvent => e !== undefined)
+    expect(events.map(e => e.type)).toEqual([
+      'message_start', 'content_block_start', 'content_block_delta',
+      'content_block_stop', 'message_delta', 'message_stop',
+    ])
+    expect(events[0]).toMatchObject({ type: 'message_start', message: { id: 'u', model: 'm' } })
+  })
+
+  it('places measured output and zero cache in start when usage rides on first content chunk', async () => {
+    const events = await collect(translateChatSSEToMessagesEvents(fromArray([
+      { id: 'u', model: 'm', choices: [{ delta: { content: 'hi' } }], usage: {
+        prompt_tokens: 8, completion_tokens: 1, prompt_tokens_details: { cached_tokens: 0 },
+      } },
+      { choices: [{ delta: {}, finish_reason: 'stop' }] },
+    ])))
+    expect(events[0]).toMatchObject({ type: 'message_start', message: { usage: {
+      input_tokens: 8, output_tokens: 1, cache_read_input_tokens: 0,
+    } } })
+  })
+
+  it('opens explicit empty refusal immediately and retains refusal stop', async () => {
+    const events = await collect(translateChatSSEToMessagesEvents(fromArray([
+      { id: 'u', choices: [{ delta: { role: 'assistant' } }] },
+      { choices: [{ delta: { refusal: '' } }] },
+      { choices: [{ delta: {}, finish_reason: 'stop' }] },
+    ])))
+    expect(events.map(e => e.type)).toEqual([
+      'message_start', 'content_block_start', 'content_block_stop', 'message_delta', 'message_stop',
+    ])
+    expect(events.at(-2)).toMatchObject({ type: 'message_delta', delta: { stop_reason: 'refusal' } })
+  })
+
+  it('emits observed usage in wire order across usage-first, content, finish, and tail chunks', async () => {
+    const events = await collect(translateChatSSEToMessagesEvents(fromArray([
+      { id: 'u', model: 'm', choices: [], usage: { prompt_tokens: 10 } },
+      { choices: [{ delta: { content: 'a' } }], usage: { completion_tokens: 0 } },
+      { choices: [{ delta: { content: 'b' } }], usage: { completion_tokens: 2 } },
+      { choices: [{ delta: {}, finish_reason: 'stop' }], usage: { completion_tokens: 2 } },
+      { choices: [], usage: { prompt_tokens_details: { cached_tokens: 3 } } },
+      { choices: [], usage: { completion_tokens: 4 } },
+    ])))
+    expect(events.map(e => e.type)).toEqual([
+      'message_start', 'message_delta',
+      'content_block_start', 'content_block_delta', 'message_delta',
+      'content_block_delta', 'message_delta',
+      'content_block_stop', 'message_delta', 'message_delta',
+      'message_delta', 'message_stop',
+    ])
+    const deltas = events.filter((e): e is Extract<MessagesEvent, { type: 'message_delta' }> => e.type === 'message_delta')
+    expect(deltas.map(e => e.usage)).toEqual([
+      { input_tokens: 10 },
+      { input_tokens: 10, output_tokens: 0 },
+      { input_tokens: 10, output_tokens: 2 },
+      { input_tokens: 7, output_tokens: 2, cache_read_input_tokens: 3 },
+      { input_tokens: 7, output_tokens: 4, cache_read_input_tokens: 3 },
+      { input_tokens: 7, output_tokens: 4, cache_read_input_tokens: 3 },
+    ])
+    expect(deltas.slice(0, -1).every(e => e.delta.stop_reason === undefined)).toBe(true)
+    expect(deltas.at(-1)?.delta.stop_reason).toBe('end_turn')
+  })
+
+  it('does not turn absent usage into an observed zero or duplicate unchanged samples', async () => {
+    const events = await collect(translateChatSSEToMessagesEvents(fromArray([
+      { id: 'u', choices: [{ delta: { content: 'x' } }] },
+      { choices: [], usage: {} },
+      { choices: [], usage: { prompt_tokens_details: { cached_tokens: 0 } } },
+      { choices: [], usage: { prompt_tokens_details: { cached_tokens: 0 } } },
+      { choices: [{ delta: {}, finish_reason: 'stop' }] },
+    ])))
+    const deltas = events.filter((e): e is Extract<MessagesEvent, { type: 'message_delta' }> => e.type === 'message_delta')
+    expect(deltas.map(e => e.usage)).toEqual([{ cache_read_input_tokens: 0 }, { cache_read_input_tokens: 0 }])
+    expect(deltas[0]?.delta.stop_reason).toBeUndefined()
+  })
+
+  it('keeps the last observed usage on failure without emitting a successful terminal', async () => {
+    const events: MessagesEvent[] = []
+    try {
+      for await (const event of translateChatSSEToMessagesEvents(fromArray([
+        { id: 'u', choices: [{ delta: { content: 'x' } }] },
+        { choices: [], usage: { completion_tokens: 2 } },
+        { error: { message: 'upstream failed' } },
+      ]))) events.push(event)
+      throw new Error('expected failure')
+    } catch (error) {
+      expect((error as Error).message).toBe('upstream failed')
+    }
+    expect(events.map(e => e.type)).toEqual(['message_start', 'content_block_start', 'content_block_delta', 'message_delta'])
+    expect(events.at(-1)).toMatchObject({ type: 'message_delta', usage: { output_tokens: 2 } })
+  })
+
+  it('reports observed usage before EOF failure and never invents a terminal', async () => {
+    const events: MessagesEvent[] = []
+    await expect((async () => {
+      for await (const event of translateChatSSEToMessagesEvents(fromArray([
+        { id: 'u', choices: [], usage: { completion_tokens: 0 } },
+      ]))) events.push(event)
+    })()).rejects.toThrow('finish_reason')
+    expect(events.map(e => e.type)).toEqual(['message_start', 'message_delta'])
+    expect(events[1]).toMatchObject({ usage: { output_tokens: 0 } })
+  })
+
+  it('cancels after progressive usage without draining or sending a terminal', async () => {
+    let upstreamReturned = false
+    async function* upstream() {
+      try {
+        yield { id: 'u', choices: [], usage: { completion_tokens: 1 } }
+        yield { choices: [{ delta: { content: 'unread' }, finish_reason: 'stop' }] }
+      } finally {
+        upstreamReturned = true
+      }
+    }
+    const events: MessagesEvent[] = []
+    for await (const event of translateChatSSEToMessagesEvents(upstream())) {
+      events.push(event)
+      if (event.type === 'message_delta') break
+    }
+    expect(events.map(e => e.type)).toEqual(['message_start', 'message_delta'])
+    expect(upstreamReturned).toBe(true)
+  })
+
   it("waits for trailing usage, subtracts cached input, and preserves missing output", async () => {
     for (const present of [true, false]) {
       const events = await collect(translateChatSSEToMessagesEvents(fromArray([
@@ -80,7 +228,7 @@ describe('messages-via-chat-completions :: events', () => {
       .filter((e): e is Extract<MessagesEvent, { type: 'content_block_delta' }> => e.type === 'content_block_delta')
       .map((e) => (e.delta as { partial_json?: string }).partial_json ?? '')
     expect(partials.join('')).toBe('{"x":1}')
-    const md = events.find((e) => e.type === 'message_delta') as Extract<MessagesEvent, { type: 'message_delta' }>
+    const md = events.filter((e) => e.type === 'message_delta').at(-1) as Extract<MessagesEvent, { type: 'message_delta' }>
     expect(md.delta.stop_reason).toBe('tool_use')
   })
 
@@ -103,7 +251,7 @@ describe('messages-via-chat-completions :: events', () => {
       { id: 'c', choices: [{ index: 0, delta: {}, finish_reason: 'length' }] },
     ]
     const events = await collect(translateChatSSEToMessagesEvents(fromArray(chunks)))
-    const md = events.find((e) => e.type === 'message_delta') as Extract<MessagesEvent, { type: 'message_delta' }>
+    const md = events.filter((e) => e.type === 'message_delta').at(-1) as Extract<MessagesEvent, { type: 'message_delta' }>
     expect(md.delta.stop_reason).toBe('max_tokens')
     expect((md.usage as { output_tokens?: number; cache_read_input_tokens?: number })?.output_tokens).toBe(5)
     expect((md.usage as { output_tokens?: number; cache_read_input_tokens?: number })?.cache_read_input_tokens).toBe(3)

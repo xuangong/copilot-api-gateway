@@ -48,6 +48,18 @@ const blockToOutput = (block: PartialBlock): Record<string, unknown> => {
   return { ...(block.start ?? {}), type: block.type }
 }
 
+const mergeUsage = (target: MessagesUsage, sample: Partial<MessagesUsage> | undefined): void => {
+  if (!sample) return
+  if (typeof sample.input_tokens === 'number') target.input_tokens = sample.input_tokens
+  if (typeof sample.output_tokens === 'number') target.output_tokens = sample.output_tokens
+  if (typeof sample.cache_creation_input_tokens === 'number') {
+    target.cache_creation_input_tokens = sample.cache_creation_input_tokens
+  }
+  if (typeof sample.cache_read_input_tokens === 'number') {
+    target.cache_read_input_tokens = sample.cache_read_input_tokens
+  }
+}
+
 export const collectMessagesProtocolEventsToResult = async (
   frames: AsyncIterable<ProtocolFrame<MessagesStreamEvent>>,
 ): Promise<MessagesResult> => {
@@ -66,15 +78,7 @@ export const collectMessagesProtocolEventsToResult = async (
     if (ev.type === 'message_start') {
       id = ev.message.id
       model = ev.message.model
-      const u = ev.message.usage
-      usage.input_tokens = u.input_tokens ?? 0
-      usage.output_tokens = u.output_tokens ?? 0
-      if (typeof u.cache_creation_input_tokens === 'number') {
-        usage.cache_creation_input_tokens = u.cache_creation_input_tokens
-      }
-      if (typeof u.cache_read_input_tokens === 'number') {
-        usage.cache_read_input_tokens = u.cache_read_input_tokens
-      }
+      mergeUsage(usage, ev.message.usage)
     } else if (ev.type === 'content_block_start') {
       const cb = ev.content_block as { type?: string; text?: string } & Record<string, unknown>
       blocks[ev.index] = {
@@ -96,9 +100,7 @@ export const collectMessagesProtocolEventsToResult = async (
       if (ev.delta.stop_reason !== undefined) stop_reason = ev.delta.stop_reason
       if (ev.delta.stop_details !== undefined) stop_details = ev.delta.stop_details
       if (ev.delta.stop_sequence !== undefined) stop_sequence = ev.delta.stop_sequence ?? null
-      if (ev.usage && typeof ev.usage.output_tokens === 'number') {
-        usage.output_tokens = ev.usage.output_tokens
-      }
+      mergeUsage(usage, ev.usage)
     } else if (ev.type === 'message_stop') {
       saw_stop = true
     } else if (ev.type === 'error') {

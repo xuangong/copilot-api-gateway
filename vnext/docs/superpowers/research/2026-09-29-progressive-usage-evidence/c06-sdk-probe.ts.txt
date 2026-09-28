@@ -1,0 +1,17 @@
+import Anthropic from '/tmp/vnext-reference-sdk-probe/node_modules/@anthropic-ai/sdk/index.mjs'
+import { translateChatSSEToMessagesEvents } from '/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/packages/translate/src/messages-via-chat-completions/events.ts'
+
+async function* chunks() {
+  yield { id: 'msg_probe', model: 'probe-model', choices: [], usage: { prompt_tokens: 10 } }
+  yield { choices: [{ index: 0, delta: { content: 'hi' } }], usage: { completion_tokens: 1 } }
+  yield { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }
+  yield { choices: [], usage: { completion_tokens: 2, prompt_tokens_details: { cached_tokens: 3 } } }
+}
+let body = ''
+for await (const event of translateChatSSEToMessagesEvents(chunks())) body += `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
+const client = new Anthropic({ apiKey: 'probe', baseURL: 'http://localhost.invalid', fetch: async () => new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } }) })
+const stream = client.messages.stream({ model: 'probe-model', max_tokens: 10, messages: [{ role: 'user', content: 'hi' }] })
+const observed: Array<{ type: string; input?: number; output?: number }> = []
+stream.on('streamEvent', (event, snapshot) => observed.push({ type: event.type, input: snapshot.usage.input_tokens, output: snapshot.usage.output_tokens }))
+const final = await stream.finalMessage()
+console.log(JSON.stringify({ observed, finalUsage: final.usage, finalText: final.content }))

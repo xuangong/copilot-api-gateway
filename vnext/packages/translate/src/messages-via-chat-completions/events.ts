@@ -118,8 +118,8 @@ function emitMessageStart(state: State): MessagesEvent {
       stop_sequence: null,
       usage: {
         ...(state.inputTokens !== undefined ? { input_tokens: Math.max(0, state.inputTokens - (state.cachedInputTokens ?? 0)) } : {}),
-        output_tokens: 0,
-        ...((state.cachedInputTokens ?? 0) > 0 ? { cache_read_input_tokens: state.cachedInputTokens } : {}),
+        output_tokens: state.outputTokens ?? 0,
+        ...(state.cachedInputTokens !== undefined ? { cache_read_input_tokens: state.cachedInputTokens } : {}),
       } as never,
     },
   }
@@ -191,23 +191,40 @@ function translateOne(chunk: ChatChunkLike, state: State): MessagesEvent[] {
   if (chunk.id && !state.messageId) state.messageId = chunk.id
   if (chunk.model && !state.model) state.model = chunk.model
 
+  let usageChanged = false
   if (chunk.usage) {
-    if (chunk.usage.prompt_tokens != null) state.inputTokens = chunk.usage.prompt_tokens
-    if (chunk.usage.completion_tokens != null) state.outputTokens = chunk.usage.completion_tokens
+    if (chunk.usage.prompt_tokens != null && chunk.usage.prompt_tokens !== state.inputTokens) {
+      state.inputTokens = chunk.usage.prompt_tokens
+      usageChanged = true
+    }
+    if (chunk.usage.completion_tokens != null && chunk.usage.completion_tokens !== state.outputTokens) {
+      state.outputTokens = chunk.usage.completion_tokens
+      usageChanged = true
+    }
     if (chunk.usage.prompt_tokens_details?.cached_tokens != null) {
-      state.cachedInputTokens = chunk.usage.prompt_tokens_details.cached_tokens
+      const cached = chunk.usage.prompt_tokens_details.cached_tokens
+      if (cached !== state.cachedInputTokens) {
+        state.cachedInputTokens = cached
+        usageChanged = true
+      }
     }
   }
 
-  if (!chunk.choices || chunk.choices.length === 0) return out
-  const choice = chunk.choices[0]
-  if (!choice) return out
-  const delta = choice.delta
+  const choice = chunk.choices?.[0]
+  const delta = choice?.delta
+  const reasoning = delta ? chatReasoningText(delta) : undefined
 
-  if (!state.emittedMessageStart) out.push(emitMessageStart(state))
+  const opensMessage = usageChanged
+    || Boolean(choice?.finish_reason)
+    || (typeof delta?.content === 'string' && delta.content.length > 0)
+    || Boolean(reasoning)
+    || typeof delta?.refusal === 'string'
+    || Boolean(delta?.tool_calls?.some(tc => tc.id || tc.function?.name || (
+      state.toolBlocks.has(tc.index ?? 0) && typeof tc.function?.arguments === 'string' && tc.function.arguments.length > 0
+    )))
+  if (opensMessage && !state.emittedMessageStart) out.push(emitMessageStart(state))
 
   if (delta) {
-    const reasoning = chatReasoningText(delta)
     if (reasoning) {
       out.push(...openThinking(state))
       if (state.thinkingBlock) {
@@ -256,11 +273,20 @@ function translateOne(chunk: ChatChunkLike, state: State): MessagesEvent[] {
     }
   }
 
-  if (choice.finish_reason) {
+  if (choice?.finish_reason) {
     state.finishReason = choice.finish_reason
     out.push(...closeAllOpenBlocks(state))
-
   }
+
+  if (usageChanged) out.push({
+    type: 'message_delta',
+    delta: {},
+    usage: {
+      ...(state.outputTokens !== undefined ? { output_tokens: state.outputTokens } : {}),
+      ...(state.inputTokens !== undefined ? { input_tokens: Math.max(0, state.inputTokens - (state.cachedInputTokens ?? 0)) } : {}),
+      ...(state.cachedInputTokens !== undefined ? { cache_read_input_tokens: state.cachedInputTokens } : {}),
+    } as never,
+  })
 
   return out
 }

@@ -53,12 +53,14 @@ describe('messages-via-gemini :: events', () => {
       .join('')
     expect(textDeltas).toBe('Hello world')
 
-    // message_delta with end_turn + usage
-    const md = events.find((e) => e.type === 'message_delta') as
-      | { type: 'message_delta'; delta: { stop_reason?: string }; usage?: { output_tokens?: number } }
-      | undefined
-    expect(md?.delta?.stop_reason).toBe('end_turn')
-    expect(md?.usage?.output_tokens).toBe(2)
+    // Observed usage precedes the terminal delta, which carries the stop reason.
+    const deltas = events.filter((e) => e.type === 'message_delta') as Array<
+      { type: 'message_delta'; delta: { stop_reason?: string }; usage?: { output_tokens?: number } }
+    >
+    expect(deltas.length).toBeGreaterThan(1)
+    expect(deltas[0]?.delta.stop_reason).toBeUndefined()
+    expect(deltas.at(-1)?.delta.stop_reason).toBe('end_turn')
+    expect(deltas.at(-1)?.usage?.output_tokens).toBe(2)
 
     // message_stop terminal
     expect(events.at(-1)?.type).toBe('message_stop')
@@ -96,10 +98,10 @@ describe('messages-via-gemini :: events', () => {
     expect(inputDelta?.delta?.partial_json).toContain('"k"')
 
     // Finish: tool_use stop_reason
-    const md = events.find((e) => e.type === 'message_delta') as
-      | { delta: { stop_reason?: string } }
-      | undefined
-    expect(md?.delta?.stop_reason).toBe('tool_use')
+    const deltas = events.filter((e) => e.type === 'message_delta') as Array<{ delta: { stop_reason?: string } }>
+    expect(deltas.length).toBeGreaterThan(1)
+    expect(deltas[0]?.delta.stop_reason).toBeUndefined()
+    expect(deltas.at(-1)?.delta.stop_reason).toBe('tool_use')
   })
 
   it('maps finishReason=MAX_TOKENS to stop_reason=max_tokens', async () => {
@@ -111,10 +113,10 @@ describe('messages-via-gemini :: events', () => {
       },
     ]
     const events = await collect(translateGeminiToMessagesEvents(fromArray(chunks), { model: 'g' }))
-    const md = events.find((e) => e.type === 'message_delta') as
-      | { delta: { stop_reason?: string } }
-      | undefined
-    expect(md?.delta?.stop_reason).toBe('max_tokens')
+    const deltas = events.filter((e) => e.type === 'message_delta') as Array<{ delta: { stop_reason?: string } }>
+    expect(deltas.length).toBeGreaterThan(1)
+    expect(deltas[0]?.delta.stop_reason).toBeUndefined()
+    expect(deltas.at(-1)?.delta.stop_reason).toBe('max_tokens')
   })
 
   it('emits a thinking block when parts[].thought is true', async () => {
