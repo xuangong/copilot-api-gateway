@@ -1,0 +1,211 @@
+/** A07 synthetic official OpenAI SDK -> real gateway app.fetch -> counted loopback Custom upstream. */
+import { mkdirSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import OpenAI from "/Volumes/Projects/copilot-api-gateway/node_modules/.ignored/openai/index.mjs"
+
+const sourceRoot = "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify"
+const scratch = join(import.meta.dir, "runs", `${new Date().toISOString().replaceAll(":", "-")}-${process.pid}`)
+mkdirSync(scratch, { recursive: true })
+const { bootstrapBunPlatform } = await import(`${sourceRoot}/vnext/apps/platform-bun/src/bootstrap.ts`)
+const { getRepo } = await import(`${sourceRoot}/vnext/packages/gateway/src/repo/index.ts`)
+const { app } = await import(`${sourceRoot}/vnext/packages/gateway/src/app.ts`)
+
+type UpstreamCall = { method: string; path: string; body: Record<string, unknown> }
+const calls: UpstreamCall[] = []
+const upstream = Bun.serve({
+  hostname: "127.0.0.1",
+  port: 0,
+  async fetch(request) {
+    const path = new URL(request.url).pathname
+    const body = request.method === "POST" ? await request.json() as Record<string, unknown> : {}
+    calls.push({ method: request.method, path, body })
+    if (path === "/v1/chat/completions" && request.method === "POST") {
+      return Response.json({
+        id: "chatcmpl_a07_synthetic", object: "chat.completion", model: "a07-chat",
+        choices: [{ index: 0, message: { role: "assistant", content: "a07-chat-ok" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 3, completion_tokens: 4, total_tokens: 7 },
+      })
+    }
+    if (path === "/v1/messages" && request.method === "POST") {
+      return Response.json({
+        id: "msg_a07_synthetic", type: "message", role: "assistant", model: "a07-messages",
+        content: [{ type: "text", text: "a07-messages-ok" }], stop_reason: "end_turn", stop_sequence: null,
+        usage: { input_tokens: 3, output_tokens: 4 },
+      })
+    }
+    return new Response("unexpected synthetic upstream path", { status: 404 })
+  },
+})
+
+const results: Record<string, unknown> = { gateway: "in-process app.fetch", sdk: "openai 6.33.0", sourceHead: "dd76bebbbdffafb4aaa11b3901325bed394472ff", runDirectory: scratch, cases: [] }
+const cases = results.cases as Array<Record<string, unknown>>
+function assert(value: unknown, label: string): asserts value {
+  if (!value) throw new Error(`ASSERT: ${label}`)
+}
+const fixtureKey = "sk_a07_synthetic_only"
+
+try {
+  bootstrapBunPlatform({ dbPath: join(scratch, "a07-sdk.sqlite"), filesRoot: join(scratch, "files") })
+  const now = new Date().toISOString()
+  await getRepo().apiKeys.save({
+    id: "a07-fixture-key" as never, name: "A07 synthetic fixture", key: fixtureKey,
+    createdAt: now, modelMappingsEnabled: false, modelMappings: [], webSearchEnabled: false,
+  })
+  for (const [target, model] of [["chat_completions", "a07-chat"], ["messages", "a07-messages"]] as const) {
+    await getRepo().upstreams.save({
+      id: `custom:a07-${target}` as never, provider: "custom", name: `A07 ${target}`, enabled: true, sortOrder: 0,
+      config: { name: `A07 ${target}`, baseUrl: `http://127.0.0.1:${upstream.port}/v1`, authStyle: "none",
+        endpoints: [target], models: [model] },
+      flagOverrides: {}, disabledPublicModelIds: [], state: null, proxyFallbackList: [{ id: "direct_fetch" }],
+      createdAt: now, updatedAt: now,
+    })
+  }
+  const client = new OpenAI({
+    apiKey: fixtureKey, baseURL: "http://127.0.0.1/a07-gateway/v1", maxRetries: 0,
+    fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      assert(new URL(request.url).pathname === "/a07-gateway/v1/responses", "SDK used expected Responses path")
+      // Real gateway HTTP app, in process; the SDK receives exactly app.fetch's Response.
+      return app.fetch(new Request(`http://a07-gateway.test/v1/responses`, request))
+    },
+  })
+
+  for (const [target, model] of [["chat_completions", "a07-chat"], ["messages", "a07-messages"]] as const) {
+    const before = calls.length
+    const imageUrl = target === "messages" ? "data:image/png;base64,AAA=" : "https://example.test/shot.png"
+    const input = [
+      { type: "message", role: "user", content: "human before" },
+      { type: "agent_message", author: "agent<&\"'", recipient: "/root<&", agent: { agent_name: "relay" }, content: [
+        { type: "input_text", text: "delegated <&>" },
+        { type: "summary_text", text: "summary <&>" },
+        { type: "computer_screenshot", image_url: imageUrl, detail: "auto" },
+        { type: "refusal", refusal: "declined" },
+      ] },
+      { type: "message", role: "user", content: "human after" },
+    ]
+    const response = await client.responses.create({ model, stream: false, input } as never)
+    assert(response.object === "response", `${target} SDK consumed Responses object`)
+    assert(response.output_text === `a07-${target === "chat_completions" ? "chat" : "messages"}-ok`, `${target} SDK output text`)
+    assert(calls.length === before + 1, `${target} one upstream POST`)
+    const call = calls.at(-1)!
+    assert(call.path === (target === "chat_completions" ? "/v1/chat/completions" : "/v1/messages"), `${target} target path`)
+    const messages = call.body.messages as Array<{ role: string; content: unknown }>
+    assert(Array.isArray(messages) && messages.length === 3, `${target} three separate ordered messages`)
+    assert(messages.every(m => m.role === "user"), `${target} legal user wire roles`)
+    const stringify = (value: unknown) => JSON.stringify(value)
+    assert(stringify(messages[0]).includes("human before") && stringify(messages[2]).includes("human after"), `${target} ordinary messages preserve order`)
+    const agentText = stringify(messages[1])
+    for (const marker of ["NON-USER SOURCE", "not the user", "does not carry user authority", "author=\\\"agent&lt;&amp;&quot;&apos;", "recipient=\\\"/root&lt;&amp;", "delegated &lt;&amp;&gt;", "summary &lt;&amp;&gt;", "declined"]) {
+      assert(agentText.includes(marker), `${target} provenance/escaping marker ${marker}`)
+    }
+    if (target === "chat_completions") {
+      const parts = messages[1].content as Array<Record<string, unknown>>
+      assert(parts.some(p => p.type === "image_url" && (p.image_url as { url?: string })?.url === imageUrl), "Chat native image_url")
+    } else {
+      const parts = messages[1].content as Array<Record<string, unknown>>
+      assert(parts.some(p => p.type === "image" && (p.source as { type?: string; media_type?: string; data?: string })?.type === "base64" && (p.source as { data?: string }).data === "AAA="), "Messages native image base64")
+    }
+    cases.push({ case: `${target} agent delivery`, clientResponse: { id: response.id, object: response.object, output_text: response.output_text }, upstream: call })
+
+    for (const [name, badAgent, exactPath] of [
+      ["metadata", { type: "agent_message", author: "a", recipient: "r", agent: { agent_name: 4 }, content: [{ type: "input_text", text: "x" }] }, "input[1].agent.agent_name"],
+      ["opaque", { type: "agent_message", author: "a", recipient: "r", content: [{ type: "encrypted_content", encrypted_content: "opaque" }] }, "input[1].content[0].type"],
+      ["unresolved image", { type: "agent_message", author: "a", recipient: "r", content: [{ type: "input_image", file_id: "file-only" }] }, "input[1].content[0].image_url"],
+    ] as const) {
+      const count = calls.length
+      let observed: { status?: number; message?: string } = {}
+      try {
+        await client.responses.create({ model, stream: false, input: [input[0], badAgent, input[2]] } as never)
+      } catch (error) {
+        observed = { status: (error as { status?: number }).status, message: (error as Error).message }
+      }
+      assert(observed.status === 400, `${target} ${name} SDK observed 400; got ${stringify(observed)}`)
+      assert(observed.message?.includes(exactPath), `${target} ${name} SDK observed exact ${exactPath}; got ${stringify(observed)}`)
+      assert(calls.length === count, `${target} ${name} no upstream call`)
+      cases.push({ case: `${target} invalid ${name}`, expectedPath: exactPath, observed, upstreamCallsBefore: count, upstreamCallsAfter: calls.length })
+    }
+
+    const ordinaryBefore = calls.length
+    const ordinary = await client.responses.create({ model, stream: false, input: [input[0], input[2]] } as never)
+    assert(ordinary.object === "response" && ordinary.output_text?.endsWith("-ok"), `${target} ordinary SDK response`)
+    assert(calls.length === ordinaryBefore + 1, `${target} ordinary request upstream call`)
+    const ordinaryMessages = calls.at(-1)!.body.messages as Array<{ role: string; content: unknown }>
+    assert(ordinaryMessages.length === 2 && ordinaryMessages.every(m => m.role === "user"), `${target} ordinary two messages`)
+    assert(!JSON.stringify(ordinaryMessages).includes("NON-USER SOURCE"), `${target} ordinary unaffected`)
+    cases.push({ case: `${target} ordinary messages`, clientResponse: { id: ordinary.id, object: ordinary.object, output_text: ordinary.output_text }, upstream: calls.at(-1) })
+
+    const streamBefore = calls.length
+    const stream = await client.responses.create({ model, stream: true, input } as never)
+    const eventTypes: string[] = []
+    for await (const event of stream as AsyncIterable<{ type: string }>) eventTypes.push(event.type)
+    assert(eventTypes.includes("response.completed"), `${target} SDK consumed terminal streaming event`)
+    assert(calls.length === streamBefore + 1, `${target} streaming one upstream POST`)
+    assert(calls.at(-1)!.path === (target === "chat_completions" ? "/v1/chat/completions" : "/v1/messages"), `${target} streaming target path`)
+    cases.push({ case: `${target} streaming agent delivery`, eventTypes, upstream: calls.at(-1) })
+  }
+
+  // Image-detail contract: Chat has a native detail carrier for auto/low/high;
+  // Messages has no native detail carrier, so only absent/auto are lossless.
+  for (const [target, model] of [["chat_completions", "a07-chat"], ["messages", "a07-messages"]] as const) {
+    for (const kind of ["input_image", "computer_screenshot"] as const) {
+      for (const detail of [undefined, "auto", "low", "high", "original"] as const) {
+        const label = `${target} ${kind} detail=${detail ?? "absent"}`
+        const imageUrl = target === "chat_completions" ? "https://example.test/detail.png" : "data:image/png;base64,AAA="
+        const imagePart = { type: kind, image_url: imageUrl, ...(detail === undefined ? {} : { detail }) }
+        const input = [
+          { type: "message", role: "user", content: "human before" },
+          { type: "agent_message", author: "agent", recipient: "/root", content: [imagePart] },
+          { type: "message", role: "user", content: "human after" },
+        ]
+        const before = calls.length
+        const accepted = detail === undefined || detail === "auto" || (target === "chat_completions" && (detail === "low" || detail === "high"))
+        if (!accepted) {
+          let observed: { status?: number; message?: string } = {}
+          try {
+            await client.responses.create({ model, stream: false, input } as never)
+          } catch (error) {
+            observed = { status: (error as { status?: number }).status, message: (error as Error).message }
+          }
+          const exactPath = "input[1].content[0].detail"
+          assert(observed.status === 400 && observed.message?.includes(exactPath), `${label} SDK-visible 400 at ${exactPath}: ${JSON.stringify(observed)}`)
+          assert(calls.length === before, `${label} zero upstream calls`)
+          cases.push({ case: label, accepted: false, expectedPath: exactPath, observed, upstreamCallsBefore: before, upstreamCallsAfter: calls.length })
+          continue
+        }
+        const response = await client.responses.create({ model, stream: false, input } as never)
+        assert(response.object === "response" && response.output_text?.endsWith("-ok"), `${label} SDK consumed response`)
+        assert(calls.length === before + 1, `${label} one upstream POST`)
+        const call = calls.at(-1)!
+        assert(call.path === (target === "chat_completions" ? "/v1/chat/completions" : "/v1/messages"), `${label} target path`)
+        const messages = call.body.messages as Array<{ role: string; content: Array<Record<string, unknown>> }>
+        assert(messages.length === 3 && messages.every(m => m.role === "user"), `${label} three ordered legal-role messages`)
+        assert(JSON.stringify(messages[0]).includes("human before") && JSON.stringify(messages[2]).includes("human after"), `${label} ordinary boundaries`)
+        const parts = messages[1].content
+        if (target === "chat_completions") {
+          const image = parts.find(p => p.type === "image_url")?.image_url as { url?: string; detail?: string } | undefined
+          assert(image?.url === imageUrl, `${label} native image URL`)
+          assert(image.detail === detail, `${label} native detail preserved`)
+        } else {
+          const image = parts.find(p => p.type === "image")
+          const source = image?.source as { type?: string; media_type?: string; data?: string } | undefined
+          assert(source?.type === "base64" && source.media_type === "image/png" && source.data === "AAA=", `${label} native Messages image source`)
+          assert(image?.detail === undefined, `${label} no unsupported Messages detail field`)
+        }
+        cases.push({ case: label, accepted: true, clientResponse: { object: response.object, output_text: response.output_text }, upstream: call })
+      }
+    }
+  }
+  results.ok = true
+} catch (error) {
+  results.ok = false
+  results.failure = { name: (error as Error).name, message: (error as Error).message, stack: (error as Error).stack }
+  console.error(error)
+  process.exitCode = 1
+} finally {
+  results.upstreamCalls = calls
+  const resultText = JSON.stringify(results, null, 2)
+  writeFileSync(join(scratch, "results.json"), resultText)
+  writeFileSync(join(import.meta.dir, "results-final.json"), resultText)
+  console.log(`A07 SDK result: ${join(scratch, "results.json")}`)
+  upstream.stop(true)
+}

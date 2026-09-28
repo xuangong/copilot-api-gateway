@@ -23,6 +23,7 @@ import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
 
 import { projectResponsesTools } from '../shared/responses-tools.ts'
 import { projectChatToolOutput, type ChatToolImagePart, type ResponsesToolOutput } from '../shared/responses-tool-output.ts'
+import { agentMessageContent } from '../shared/responses-via/agent-message.ts'
 
 export interface ResponsesToChatRequestResult { target: ChatPayload }
 
@@ -33,10 +34,10 @@ interface ResponsesInputMessage {
 }
 interface ResponsesFunctionCall { type: 'function_call'; call_id: string; name: string; arguments?: string }
 type ResponsesFunctionCallOutput = ResponsesToolOutput
-type ResponsesInputItem = ResponsesInputMessage | ResponsesFunctionCall | ResponsesFunctionCallOutput
+type ResponsesInputItem = ResponsesInputMessage | ResponsesFunctionCall | ResponsesFunctionCallOutput | { type: 'agent_message' }
 
 interface ChatToolCall { id: string; type: 'function'; function: { name: string; arguments: string } }
-interface ChatMsgUser { role: 'user'; content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }
+interface ChatMsgUser { role: 'user'; content: string | Array<{ type: string; text?: string; image_url?: { url: string; detail?: 'auto' | 'low' | 'high' } }> }
 interface ChatMsgAssistant { role: 'assistant'; content: string | null; tool_calls?: ChatToolCall[] }
 interface ChatMsgTool { role: 'tool'; tool_call_id: string; content: string }
 interface ChatMsgSystem { role: 'system'; content: string }
@@ -64,8 +65,20 @@ function translateInput(items: ResponsesInputItem[]): ChatMessage[] {
     out.push({ role: 'user', content: [...pendingImages] })
     pendingImages.length = 0
   }
-  for (const item of items) {
+  for (const [index, item] of items.entries()) {
     if (item.type !== 'function_call_output' && item.type !== 'custom_tool_call_output') flushImages()
+    if (item.type === 'agent_message') {
+      const content = agentMessageContent(item, `input[${index}]`, 'chat').map((part) =>
+        part.type === 'input_text'
+          ? { type: 'text', text: part.text }
+          : { type: 'image_url', image_url: {
+            url: part.image_url,
+            ...(part.detail !== undefined ? { detail: part.detail } : {}),
+          } },
+      )
+      out.push({ role: 'user', content })
+      continue
+    }
     if (item.type === 'message') {
       if (item.role === 'system' || item.role === 'developer') {
         const text = typeof item.content === 'string' ? item.content : item.content.map((p) => p.text ?? '').join('')

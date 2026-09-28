@@ -1,10 +1,10 @@
 # C11 actual pinned-client gateway acceptance fixture
 
-Date: 2026-09-29. Status: **prepared and honestly red** against vNext without the scoped 426 change. This is a scratch-only acceptance harness; no vNext product source, original Codex checkout, live CLI/config, paid upstream, or deployment was changed.
+Date: 2026-09-29. Status: **red-to-green acceptance completed** for the scoped C11 426 change. The initial failing baseline and final successful result are recorded below. This is a scratch-only acceptance harness; no vNext product source, original Codex checkout, live CLI/config, paid upstream, or deployment was changed.
 
 ## Reusable fixture and command
 
-Run `bash .superpowers/sdd/2026-09-29-reference-adoption-follow-up/codex-client-runtime/run-c11-gateway-acceptance.sh` from the `reference-adoption` worktree. It defaults to loading the Bun `bootstrapBunPlatform`, `getRepo`, and real `app.fetch` from `/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify`. To test another worktree after its C11 implementation, set `C11_GATEWAY_SOURCE_ROOT=/absolute/path/to/worktree` before the same command. The runner prints the unique run directory and returns Cargo's test exit status; exit 101 is expected for the current red baseline and must not be treated as a passing test.
+Run `bash .superpowers/sdd/2026-09-29-reference-adoption-follow-up/codex-client-runtime/run-c11-gateway-acceptance.sh` from the `reference-adoption` worktree. It defaults to loading the Bun `bootstrapBunPlatform`, `getRepo`, and real `app.fetch` from `/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify`. To test another worktree after its C11 implementation, set `C11_GATEWAY_SOURCE_ROOT=/absolute/path/to/worktree` before the same command. The runner prints the unique run directory and returns Cargo's test exit status; exit 0 is required for the fixed source; the initial red baseline returned 101 and is retained below.
 
 Files retained in `codex-client-runtime/`:
 
@@ -14,9 +14,9 @@ Files retained in `codex-client-runtime/`:
 
 The exact executable environment and command lines are in the runner; no new Cargo dependency or lockfile change is needed. `bash -n run-c11-gateway-acceptance.sh` passes.
 
-## Red baseline observed
+## Initial red baseline observed
 
-Latest run: `codex-client-runtime/runs/c11.X8FkwH/`, using `reference-adoption-verify` HEAD `e7cc5383d8475d1baf14817ef8ca4aacaabdbc65`. Its `counts.json` is `{"get":2,"post":1,"upstream":1,"getStatuses":[404,404],"postStatuses":[200]}`. `logs/gateway-acceptance-requests.jsonl` independently records two real `GET /v1/responses` requests with `Upgrade: websocket`, both 404; then one real POST 200 and one local upstream POST. `logs/gateway-post-body.txt` captures gateway SSE with `response.created` and `response.completed` for the same response ID. The Codex terminal-error assertion passed; the test then failed at the expected `get == 1` assertion. Cargo reported `running 1 test`, `0 passed; 1 failed; 1726 filtered out`, exit 101. The test was not skipped.
+Initial red run: `codex-client-runtime/runs/c11.X8FkwH/`, using `reference-adoption-verify` HEAD `e7cc5383d8475d1baf14817ef8ca4aacaabdbc65`. Its `counts.json` is `{"get":2,"post":1,"upstream":1,"getStatuses":[404,404],"postStatuses":[200]}`. `logs/gateway-acceptance-requests.jsonl` independently records two real `GET /v1/responses` requests with `Upgrade: websocket`, both 404; then one real POST 200 and one local upstream POST. `logs/gateway-post-body.txt` captures gateway SSE with `response.created` and `response.completed` for the same response ID. The Codex terminal-error assertion passed; the test then failed at the expected `get == 1` assertion. Cargo reported `running 1 test`, `0 passed; 1 failed; 1726 filtered out`, exit 101. The test was not skipped.
 
 Each run directory retains `gateway-acceptance.sqlite`, `gateway-acceptance-runtime.json`, `health.json`, `counts.json`, `test-exit-status.txt`, and server/client logs. The latest SQLite `PRAGMA quick_check` returned `ok`. The runner's trap stopped its dedicated Bun process; the latest gateway/upstream ports have no listener. `reference-adoption-verify` had concurrent unrelated uncommitted `server-tool-shim.ts` and hosted-identity test edits when inspected; this fixture did not modify them. Root should use the source-root override to point green acceptance at the worktree carrying the actual C11 fix.
 

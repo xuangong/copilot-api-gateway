@@ -19,6 +19,7 @@ import {
 import { projectResponsesTools } from '../shared/responses-tools.ts'
 import { projectMessagesToolOutput, type ResponsesToolOutput } from '../shared/responses-tool-output.ts'
 import { messagesReasoningFromEffort } from '../shared/messages-reasoning-effort.ts'
+import { agentMessageContent } from '../shared/responses-via/agent-message.ts'
 
 const DEFAULT_MAX_TOKENS = 8192
 
@@ -119,9 +120,9 @@ function appendAssistantBlock(messages: MessageLike[], block: ContentBlockLike):
   messages.push({ role: 'assistant', content: [block] })
 }
 
-function appendUserBlock(messages: MessageLike[], block: ContentBlockLike): void {
+function appendUserBlock(messages: MessageLike[], block: ContentBlockLike, separateFrom?: MessageLike): void {
   const last = messages[messages.length - 1]
-  if (last?.role === 'user' && Array.isArray(last.content)) {
+  if (last?.role === 'user' && last !== separateFrom && Array.isArray(last.content)) {
     last.content.push(block)
     return
   }
@@ -139,9 +140,17 @@ function translateInput(input: ResponsesPayload['input']): TranslatedInput {
   }
   const messages: MessageLike[] = []
   const systemParts: string[] = []
-  for (const raw of input as Array<{ type: string }>) {
-    const item = raw as unknown as ResponsesMessageItem | ResponsesFunctionCallItem | ResponsesFunctionCallOutputItem
+  let lastAgentDelivery: MessageLike | undefined
+  for (const [index, raw] of (input as Array<{ type: string }>).entries()) {
+    const item = raw as unknown as ResponsesMessageItem | ResponsesFunctionCallItem | ResponsesFunctionCallOutputItem | { type: 'agent_message' }
     switch (item.type) {
+      case 'agent_message': {
+        const blocks = translateUserContent(agentMessageContent(raw, `input[${index}]`, 'messages'))
+        const delivery: MessageLike = { role: 'user', content: blocks }
+        messages.push(delivery)
+        lastAgentDelivery = delivery
+        break
+      }
       case 'message': {
         const msg = item
         if (msg.role === 'system' || msg.role === 'developer') {
@@ -177,7 +186,7 @@ function translateInput(input: ResponsesPayload['input']): TranslatedInput {
           tool_use_id: fco.call_id,
           content: projectMessagesToolOutput(fco),
           ...(fco.type === 'function_call_output' && fco.status === 'incomplete' ? { is_error: true } : {}),
-        } as unknown as ContentBlockLike)
+        } as unknown as ContentBlockLike, lastAgentDelivery)
         break
       }
     }
