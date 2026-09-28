@@ -181,19 +181,25 @@ tokenUsageRouter.get('/token-usage', async (c) => {
   }
 
   // Shared view: owned-only keys, redact keyIds
-  if (auth.isViewingShared && auth.ownerId) {
-    const ids = await getOwnedKeyIdsForScope(auth.ownerId)
+  if (!auth.apiKeyId && auth.isViewingShared && auth.ownerId) {
+    const ownerId = auth.ownerId
+    const ids = await getOwnedKeyIdsForScope(ownerId)
     if (ids.length === 0) return c.json([])
-    const ownedKeys = await repo.apiKeys.listByOwner(auth.ownerId)
-    const records = await repo.usage.query({ keyIds: ids as ApiKeyId[], start, end })
+    const ownedKeys = await repo.apiKeys.listByOwner(ownerId)
+    const secret = getServerSecret(c.env as unknown as Record<string, string | undefined>)
+    const matchingIds = keyId
+      ? ids.filter((id) => sharedKeyRef(ownerId, id, secret) === keyId)
+      : ids
+    if (matchingIds.length === 0) return c.json([])
+    const records = await repo.usage.query({ keyIds: matchingIds as ApiKeyId[], start, end })
     const nameMap = new Map<string, string>(ownedKeys.map((k) => [k.id, k.name]))
     const enriched = enrichWithKeyName(aggregateUsageForDisplay(records), nameMap)
     return c.json(
       redactForSharedView({
         kind: 'tokenUsage',
         payload: enriched,
-        ownerId: auth.ownerId,
-        secret: getServerSecret(c.env as unknown as Record<string, string | undefined>),
+        ownerId,
+        secret,
       }),
     )
   }
@@ -201,19 +207,22 @@ tokenUsageRouter.get('/token-usage', async (c) => {
   let queryOpts: { keyId?: ApiKeyId; keyIds?: ApiKeyId[]; start: string; end: string }
   let keys: ApiKey[]
 
-  if (auth.isAdmin) {
-    queryOpts = { keyId, start, end }
-    keys = await repo.apiKeys.list()
-  } else if (auth.apiKeyId) {
+  if (auth.apiKeyId) {
     // An API key is narrower than a coexisting session identity. Ignore a
     // caller-supplied key_id rather than letting it widen the scope.
     queryOpts = { keyId: auth.apiKeyId, start, end }
     const key = await repo.apiKeys.getById(auth.apiKeyId)
     keys = key ? [key] : []
+  } else if (auth.isAdmin) {
+    queryOpts = { keyId, start, end }
+    keys = await repo.apiKeys.list()
   } else if (auth.userId) {
     const userKeys = await getUserKeys(auth.userId)
     if (userKeys.length === 0) return c.json([])
-    queryOpts = { keyIds: userKeys.map((k) => k.id), start, end }
+    if (keyId && !userKeys.some((k) => k.id === keyId)) return c.json([])
+    queryOpts = keyId
+      ? { keyId, start, end }
+      : { keyIds: userKeys.map((k) => k.id), start, end }
     keys = userKeys
   } else {
     return c.json({ error: 'Unauthorized' }, 401)
@@ -223,7 +232,7 @@ tokenUsageRouter.get('/token-usage', async (c) => {
   const nameMap = new Map<string, string>(keys.map((k) => [k.id, k.name]))
   const display = aggregateUsageForDisplay(records)
 
-  if (auth.isAdmin) {
+  if (auth.isAdmin && !auth.apiKeyId) {
     const ownerIdMap = new Map<string, UserId | undefined>(keys.map((k) => [k.id, k.ownerId]))
     const userIds = new Set(keys.map((k) => k.ownerId).filter(Boolean) as UserId[])
     const users = await Promise.all([...userIds].map((id) => repo.users.getById(id)))

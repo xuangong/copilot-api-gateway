@@ -13,3 +13,7 @@ Root inspected the cropped ready/error screenshots; both exclude key secrets and
 To reproduce, restore scripts from `.txt`, set `D08_SOURCE_ROOT` to a freshly built checkout's `vnext`, and run `run.sh`. The locally installed Playwright path is reused. Synthetic runtime connection files/databases remain untracked and are not archived.
 
 The panel consumes only the full overview total, including non-cancelling unknown-price metadata. Quota enforcement and UsageTab remain unchanged. Raw enforcement arithmetic for signed historical quantities differs from the positive display projection; this package preserves same-scope dashboard arithmetic and does not claim to unify accounting. Full D08 UsageTab migration remains queued.
+
+## Later legacy-route correction
+
+The subsequent [detail-filter correction](../2026-09-29-usage-detail-filter-evidence/README.md) fixes the ordinary-session endpoint to return 5 for the selected owned key. This directory preserves pre-fix acceptance at `9fd40412`; restore that revision when reproducing its historical assertion of 16. The selected-key quota overview/UI assertions remain valid.

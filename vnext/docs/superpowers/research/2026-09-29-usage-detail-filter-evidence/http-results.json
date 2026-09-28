@@ -1,0 +1,12 @@
+{
+  "runtime": "real Bun Gateway + SQLite HTTP",
+  "sourceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext",
+  "requests": {
+    "owned": 5,
+    "assigned": 11,
+    "empty": 0,
+    "all": 16,
+    "foreign": 0
+  },
+  "passed": true
+}
