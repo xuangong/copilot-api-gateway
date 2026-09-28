@@ -38,6 +38,7 @@ export interface DumpUpstreamRef {
 export type DumpErrorMeta =
   | { kind: "upstream" | "gateway" }
   | { kind: "failed"; reason: string }
+  | { kind: "cancelled"; reason: "client_cancelled" }
 
 export interface DumpMetadata {
   id: DumpRecordId

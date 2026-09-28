@@ -96,6 +96,7 @@ export async function eventResultMetadata<T>(
 export class SourceStreamState {
   modelKey: string
   readonly publicModel: string
+  cancelled = false
   failed = false
   persisted = false
   usage: UsageInfo

@@ -117,3 +117,43 @@ test('Responses translateBody receives the observed effective model', async () =
   await (await respondResponses(result, { wantsStream: false })).json()
   expect(model).toBe('gpt-5.6-sol-fast')
 })
+
+test('Responses caller cancellation records dump and observed usage without awaiting finalMetadata', async () => {
+  const abort = new AbortController()
+  let cancelled = 0
+  let failed = 0
+  let tokens: unknown
+  const dump = { frame: () => {}, cancelled: () => { cancelled++ }, failed: () => { failed++ }, success: (_identity: unknown, usage: unknown) => { tokens = usage } }
+  async function* source(): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
+    yield eventFrame({ type: 'response.incomplete', response: { id: 'cancel', object: 'response', model: identity.model, output: [], status: 'in_progress', error: null, incomplete_details: null, usage: { input_tokens: 7, output_tokens: 2, total_tokens: 9 } } })
+    await new Promise<void>((resolve) => abort.signal.addEventListener('abort', () => resolve(), { once: true }))
+    throw new Error('abort reason must not be an upstream failure')
+  }
+  const result = { ...llmEventResult(source(), identity), finalMetadata: new Promise<never>(() => {}) }
+  const response = await respondResponses(result, { wantsStream: true, downstreamAbortController: abort, dump: dump as never })
+  const reader = response.body?.getReader()
+  expect(reader).toBeDefined()
+  await reader?.read()
+  await reader?.cancel('private caller reason')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(cancelled).toBeGreaterThan(0)
+  expect(failed).toBe(0)
+  expect(tokens).toMatchObject({ input: 7, output: 2 })
+})
+
+for (const wantsStream of [true, false]) {
+  test(`Responses ${wantsStream ? 'SSE' : 'JSON'} terminal merges closed outputs and keeps richer terminal values`, async () => {
+    const item = (id: string, text = id) => ({ type: 'message' as const, id, role: 'assistant' as const, content: [{ type: 'output_text' as const, text }] })
+    async function* source(): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
+      yield eventFrame({ type: 'response.output_item.done', output_index: 1, item: item('b', 'old') })
+      yield eventFrame({ type: 'response.output_item.done', output_index: 0, item: item('a') })
+      yield eventFrame({ type: 'response.completed', response: { id: 'merged', object: 'response', model: identity.model, output: [item('b', 'final'), item('extra')], status: 'completed', error: null, incomplete_details: null } })
+    }
+    const response = await respondResponses(llmEventResult(source(), identity), { wantsStream })
+    const text = await response.text()
+    const terminal: ResponsesResult = wantsStream
+      ? (JSON.parse(text.split('\n').filter((line) => line.startsWith('data: ')).at(-1)?.slice(6) ?? '{}') as { response: ResponsesResult }).response
+      : JSON.parse(text) as ResponsesResult
+    expect(terminal.output).toEqual([item('a'), item('b', 'final'), item('extra')])
+  })
+}

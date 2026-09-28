@@ -13,6 +13,7 @@
  */
 import {
   isResponsesTerminalEvent,
+  ResponsesFinalOutput,
   responsesResultFromStreamEvent,
   type ResponsesResult,
   type ResponsesStreamEvent,
@@ -22,12 +23,13 @@ import type { ProtocolFrame } from '@vibe-core/result'
 export const collectResponsesProtocolEventsToResult = async (
   frames: AsyncIterable<ProtocolFrame<ResponsesStreamEvent>>,
 ): Promise<ResponsesResult> => {
+  const output = new ResponsesFinalOutput()
   let final: ResponsesResult | null = null
   let sawTerminal = false
 
   for await (const frame of frames) {
     if (frame.type !== 'event') continue
-    const ev = frame.event
+    const ev = output.observe(frame.event)
     const snapshot = responsesResultFromStreamEvent(ev)
     if (snapshot) final = snapshot
     if (isResponsesTerminalEvent(ev)) {

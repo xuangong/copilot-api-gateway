@@ -127,7 +127,12 @@ export class DumpAccumulator {
     if (upstream !== undefined) this.upstreamId = upstream
   }
 
+  cancelled(): void {
+    this.errorMeta = { kind: "cancelled", reason: "client_cancelled" }
+  }
+
   failed(reason: unknown): void {
+    if (this.errorMeta?.kind === "cancelled") return
     this.errorMeta = { kind: "failed", reason: typeof reason === "string" ? reason : oneLineError(reason) }
   }
 

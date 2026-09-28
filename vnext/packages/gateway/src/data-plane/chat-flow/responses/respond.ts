@@ -38,7 +38,7 @@ import {
   type ProtocolFrame,
   type SseFrame,
 } from '@vibe-core/result'
-import type { ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
+import { ResponsesFinalOutput, type ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
 import { forwardUpstreamError } from '../../errors/forward'
 import {
   SourceStreamState,
@@ -121,8 +121,10 @@ async function* consumeWithState<T>(
       yield frame
     }
   } catch (err) {
-    state.failedAfter()
-    dump?.failed(err)
+    if (!state.cancelled) {
+      state.failedAfter()
+      dump?.failed(err)
+    }
     throw err
   }
 }
@@ -142,21 +144,24 @@ async function persistFromEventResult<T>(
 ): Promise<void> {
   if (state.persisted) return
   state.persisted = true
-  telemetryCtx?.metrics?.finish(state.failed ? "error" : "success")
-  const md = await eventResultMetadata(result, telemetryCtx)
-  const finalIdentity = result.finalMetadata
+  telemetryCtx?.metrics?.finish(state.cancelled ? "cancelled" : state.failed ? "error" : "success")
+  const md = state.cancelled
+    ? { modelIdentity: { ...result.modelIdentity, ...(telemetryCtx ? { incomingModel: telemetryCtx.incomingModel } : {}) }, performance: result.performance }
+    : await eventResultMetadata(result, telemetryCtx)
+  const finalIdentity = result.finalMetadata && !state.cancelled
     ? md.modelIdentity
     : finalModelIdentity(md.modelIdentity, state.modelKey, result.resolveModelIdentity)
   if (dump) {
-    if (state.failed) dump.failed('responses stream failed')
-    else dump.success(finalIdentity, state.usage.tokens)
+    dump.success(finalIdentity, state.usage.tokens)
+    if (state.cancelled) dump.cancelled()
+    else if (state.failed) dump.failed('responses stream failed')
   }
   if (telemetryCtx) {
     await recordUsage(telemetryCtx, finalIdentity, state.usage.tokens)
     await recordPerformance(
       telemetryCtx,
       md.performance,
-      state.failed,
+      state.failed && !state.cancelled,
       undefined,
       performanceTargetFromTranslatorPair(finalIdentity),
       finalIdentity,
@@ -200,10 +205,14 @@ const renderEventsAsSSE = (
 ): Response => {
   const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
   const onClientAbort = (): void => {
+    if (state.cancelled) return
+    state.cancelled = true
+    options.dump?.cancelled()
     options.telemetryCtx?.metrics?.finish("cancelled")
     if (options.telemetryCtx || options.dump) waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
   }
   options.downstreamAbortController?.signal.addEventListener("abort", onClientAbort, { once: true })
+  if (options.downstreamAbortController?.signal.aborted) onClientAbort()
   // Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
   // sees source-shape frames; same-protocol falls through unchanged.
   const upstreamFrames: AsyncIterable<ProtocolFrame<ResponsesStreamEvent>> = result.translateEvents
@@ -215,13 +224,15 @@ const renderEventsAsSSE = (
       )
     : result.events
   const events = consumeWithState(upstreamFrames, state, options.dump)
+  const output = new ResponsesFinalOutput()
   let cancelled = false
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       const keepalive = startSseKeepalive(controller, COMMENT_KEEPALIVE_FRAME)
       try {
         for await (const frame of events) {
-          const sse = responsesProtocolFrameToSSEFrame(frame)
+          const canonical = frame.type === "event" ? { ...frame, event: output.observe(frame.event) } : frame
+          const sse = responsesProtocolFrameToSSEFrame(canonical)
           if (sse !== null && !cancelled) {
             if (frame.type === "event") options.telemetryCtx?.metrics?.observeOutput("responses", frame.event)
             if (!cancelled) controller.enqueue(encodeSseFrame(sse))
@@ -230,8 +241,8 @@ const renderEventsAsSSE = (
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        options.dump?.failed(message)
-        if (!cancelled) controller.enqueue(
+        if (!state.cancelled) options.dump?.failed(message)
+        if (!cancelled && !state.cancelled) controller.enqueue(
           encodeSseFrame(
             sseFrame(JSON.stringify({ type: 'error', message }), 'error'),
           ),
@@ -247,9 +258,8 @@ const renderEventsAsSSE = (
     },
     cancel(_reason) {
       cancelled = true
-      options.telemetryCtx?.metrics?.finish("cancelled")
+      onClientAbort()
       options.downstreamAbortController?.abort()
-      if (options.telemetryCtx || options.dump) waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     },
   })
   return new Response(body, {
@@ -281,6 +291,15 @@ const renderEventsAsJson = async (
   options: RespondResponsesOptions,
 ): Promise<Response> => {
   const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
+  const onClientAbort = (): void => {
+    if (state.cancelled) return
+    state.cancelled = true
+    options.dump?.cancelled()
+    options.telemetryCtx?.metrics?.finish("cancelled")
+    if (options.telemetryCtx || options.dump) waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
+  }
+  options.downstreamAbortController?.signal.addEventListener("abort", onClientAbort, { once: true })
+  if (options.downstreamAbortController?.signal.aborted) onClientAbort()
   const events = consumeWithState(result.events, state, options.dump)
   try {
     // Dispatch reassembly on hub protocol — same-protocol (or absent) →
@@ -308,16 +327,18 @@ const renderEventsAsJson = async (
     }
     return Response.json(finalBody)
   } catch (err) {
-    state.failedAfter()
+    if (!state.cancelled) state.failedAfter()
     if (options.telemetryCtx || options.dump) {
       waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     }
     const message = err instanceof Error ? err.message : String(err)
-    options.dump?.failed(message)
+    if (!state.cancelled) options.dump?.failed(message)
     return Response.json(
       { error: { type: 'api_error', message } },
       { status: 502 },
     )
+  } finally {
+    options.downstreamAbortController?.signal.removeEventListener("abort", onClientAbort)
   }
 }
 

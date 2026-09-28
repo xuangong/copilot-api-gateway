@@ -1,5 +1,6 @@
 // packages/gateway/src/data-plane/chat-flow/responses/snapshot-sidecar.ts
 import type { Context } from 'hono'
+import { ResponsesFinalOutput, type ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
 import { parseResponsesSSEStream } from '@vibe-llm/provider-copilot'
 import { savePostTurnSnapshot } from '../../dispatch/responses-store-bridge.ts'
 import { getResponsesStore } from '../../../data-plane/runtime/responses-store.ts'
@@ -36,23 +37,26 @@ export function attachStreamSidecar(args: SidecarArgs): Response {
   const { fallbackModel, apiKeyId, requestId, mergedInputItems } = args
 
   const sidecarPromise = (async () => {
+    let completed = false
     let responseId: string | null = null
     let model = fallbackModel
-    const outputItems: unknown[] = []
+    const output = new ResponsesFinalOutput()
+    let outputItems: unknown[] = []
     try {
       for await (const evt of parseResponsesSSEStream(forSidecar)) {
-        const e = evt as { type?: string; response?: { id?: string; model?: string }; item?: unknown }
+        const canonical = output.observe(evt as ResponsesStreamEvent)
+        const e = canonical as { type?: string; response?: { id?: string; model?: string }; item?: unknown }
         if (e.type === 'response.created' && e.response?.id) {
           responseId = e.response.id
           if (e.response.model) model = e.response.model
-        } else if (e.type === 'response.output_item.done' && e.item) {
-          outputItems.push(e.item)
         } else if (e.type === 'response.completed') {
+          completed = true
+          if ('response' in canonical) outputItems = canonical.response.output
           if (e.response?.id && !responseId) responseId = e.response.id
           if (e.response?.model) model = e.response.model
         }
       }
-      if (responseId) {
+      if (completed && responseId) {
         await savePostTurnSnapshot(store, {
           responseId: responseId as ResponsesItemId,
           apiKeyId,
@@ -87,10 +91,16 @@ export function attachNonStreamSidecar(args: SidecarArgs): Response {
     try {
       const json = await cloned.json() as {
         id?: string
+        status?: string
+        error?: unknown
+        incomplete_details?: unknown
         model?: string
         output?: unknown[]
       }
-      if (typeof json.id === 'string' && Array.isArray(json.output)) {
+      // Legacy JSON adapters omit status on successful results. Explicit
+      // partial/error envelopes must never become reusable turn snapshots.
+      const completed = json.status === 'completed' || (json.status === undefined && !json.error && !json.incomplete_details)
+      if (completed && typeof json.id === 'string' && Array.isArray(json.output)) {
         await savePostTurnSnapshot(store, {
           responseId: json.id as ResponsesItemId,
           apiKeyId,

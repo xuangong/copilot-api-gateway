@@ -138,3 +138,5 @@ export {
   unwrapCopilotItemId,
   type DecodedCopilotItemIdCarrier,
 } from './item-id-carrier.ts'
+
+export { ResponsesFinalOutput } from './final-output.ts'

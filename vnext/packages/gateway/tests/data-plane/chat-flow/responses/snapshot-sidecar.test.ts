@@ -235,3 +235,42 @@ test('snapshot-sidecar.ts does NOT reference finalMetadata or __interceptorRepla
   expect(source).not.toContain('finalMetadata')
   expect(source).not.toContain('__interceptorReplaced')
 })
+
+for (const type of ['response.created', 'response.incomplete', 'response.failed']) {
+  test(`does not save ${type} as a completed stream snapshot`, async () => {
+    const store = new InMemoryResponsesSnapshotStore()
+    initResponsesStore(store)
+    const { c, pending } = fakeCtxWithWaitUntil()
+    const response = new Response(['response.created', type].map((type) => `data: ${JSON.stringify({ type, response: { id: 'unfinished', model: 'm', output: [] } })}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } })
+    await attachStreamSidecar({ c, response, fallbackModel: 'm', apiKeyId: 'kid', requestId: null, retentionSeconds: 86400, mergedInputItems: [] }).text()
+    await Promise.all(pending)
+    expect(await store.load('unfinished', 'kid')).toBeNull()
+  })
+}
+for (const status of ['in_progress', 'incomplete', 'failed']) {
+  test(`does not save JSON ${status} as completed snapshot`, async () => {
+    const store = new InMemoryResponsesSnapshotStore()
+    initResponsesStore(store)
+    const { c, pending } = fakeCtxWithWaitUntil()
+    const response = Response.json({ id: 'unfinished', status, output: [] })
+    await attachNonStreamSidecar({ c, response, fallbackModel: 'm', apiKeyId: 'kid', requestId: null, retentionSeconds: 86400, mergedInputItems: [] }).text()
+    await Promise.all(pending)
+    expect(await store.load('unfinished', 'kid')).toBeNull()
+  })
+}
+
+test('snapshot merges out-of-order closed items and authoritative terminal-only items', async () => {
+  const store = new InMemoryResponsesSnapshotStore()
+  initResponsesStore(store)
+  const { c, pending } = fakeCtxWithWaitUntil()
+  const item = (id: string, text = id) => ({ type: 'message', id, role: 'assistant', content: [{ type: 'output_text', text }] })
+  const events = [
+    { type: 'response.output_item.done', output_index: 1, item: item('b', 'old') },
+    { type: 'response.output_item.done', output_index: 0, item: item('a') },
+    { type: 'response.completed', response: { id: 'canonical', model: 'm', status: 'completed', output: [item('b', 'final'), item('extra')] } },
+  ]
+  const response = new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } })
+  await attachStreamSidecar({ c, response, fallbackModel: 'm', apiKeyId: 'kid', requestId: null, retentionSeconds: 86400, mergedInputItems: [] }).text()
+  await Promise.all(pending)
+  expect((await store.load('canonical', 'kid'))?.items).toEqual([item('a'), item('b', 'final'), item('extra')])
+})
