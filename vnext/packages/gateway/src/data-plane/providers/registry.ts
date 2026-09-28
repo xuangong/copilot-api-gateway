@@ -113,17 +113,19 @@ function genericModelEndpoints(
   supported: readonly EndpointKey[],
 ): ModelEndpoints {
   const capType = model.capabilities?.type?.toLowerCase()
-  if (capType === 'embeddings' || capType === 'embedding') return { embeddings: {} }
+  if (capType === 'embeddings' || capType === 'embedding') {
+    return supported.includes('embeddings') ? { embeddings: {} } : {}
+  }
   const id = model.id.toLowerCase()
   if (id.split(/[/_\-.]+/).some((tok) => EMBEDDING_TOKENS.has(tok))) {
-    return { embeddings: {} }
+    return supported.includes('embeddings') ? { embeddings: {} } : {}
   }
   if (capType === 'image' || capType === 'images' ||
       id.startsWith('gpt-image') || id.startsWith('dall-e') || id.includes('image-gen')) {
     const out: ModelEndpoints = {}
     if (supported.includes('images_generations')) out.images_generations = {}
     if (supported.includes('images_edits')) out.images_edits = {}
-    return Object.keys(out).length > 0 ? out : { images_generations: {} }
+    return out
   }
   const out: ModelEndpoints = {}
   if (supported.includes('chat_completions')) out.chat_completions = {}
@@ -134,7 +136,6 @@ function genericModelEndpoints(
   if (supported.includes('messages_count_tokens')) out.messages_count_tokens = {}
   if (supported.includes('embeddings')) out.embeddings = {}
   if (supported.includes('alpha_search')) out.alpha_search = {}
-  if (Object.keys(out).length === 0) out.chat_completions = {}
   return out
 }
 
@@ -173,7 +174,7 @@ const MODELS_REFRESH_MS = 120_000
 const MODELS_RETRY_MS = 30_000
 // Bump when provider discovery or projected catalog metadata changes. This is
 // independent of the per-upstream configuration hash below.
-export const MODEL_CATALOG_REVISION = 3
+export const MODEL_CATALOG_REVISION = 4
 interface ModelsSnapshot {
   codeRevision: number
   revision: string
@@ -414,6 +415,7 @@ export async function listUpstreamModels(
     chat_completions: '/v1/chat/completions',
     embeddings: '/v1/embeddings',
     images_generations: '/v1/images/generations',
+    images_edits: '/v1/images/edits',
   }
   const dedupe = opts.dedupe !== false
   for (const binding of bindings) {
@@ -436,6 +438,9 @@ export async function listUpstreamModels(
       _upstream: binding.upstream,
       _provider: binding.kind,
     }
+    const supportedEndpoints = Object.keys(binding.model.endpoints ?? {})
+      .map((k) => ENDPOINT_PATHS[k])
+      .filter((v): v is string => Boolean(v))
     if (binding.model.raw) {
       // Root parity (src/providers/registry.ts:listUpstreamModels): spread the
       // upstream model JSON verbatim so vendor fields (`capabilities.family`,
@@ -444,13 +449,11 @@ export async function listUpstreamModels(
       const raw = binding.model.raw as Record<string, unknown>
       const chat = raw.chat as { image_detail_original?: boolean; modalities?: { input?: string[] } } | undefined
       data.push({ ...raw,
+        ...(!Object.hasOwn(raw, 'supported_endpoints') ? { supported_endpoints: supportedEndpoints } : {}),
         ...(chat ? { chat: { ...chat, image_detail_original: supportsOriginalImageDetail({ chat }) } } : {}),
         ...provenance } as unknown as Model)
       continue
     }
-    const supportedEndpoints = Object.keys(binding.model.endpoints ?? {})
-      .map((k) => ENDPOINT_PATHS[k])
-      .filter((v): v is string => Boolean(v))
     data.push({
       id: binding.model.id,
       object: 'model',

@@ -13,6 +13,8 @@ import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import type { ModelEndpoints } from '@vibe-llm/protocols/common'
 import { MemoryCache } from '@vibe-core/cache'
 import { initCache } from '../src/data-plane/cache/index.ts'
+import { modelsRouter } from '../src/data-plane/models/routes.ts'
+import { buildCatalog, type RawModel } from '../../../apps/dashboard/src/state/models.ts'
 
 const stubModel = (id: string, type = 'text'): Model => ({
   id,
@@ -247,6 +249,121 @@ const customUpstream = (overrides: Partial<UpstreamRecord> = {}): UpstreamRecord
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
   ...overrides,
+})
+
+test('GET /api/models projects configured Custom endpoints into dashboard selectors', async () => {
+  initRepo(stubRepo([
+    customUpstream({
+      id: 'custom:claude',
+      config: { name: 'claude-service', baseUrl: 'https://api.example.com/v1', apiKey: 'test',
+        endpoints: ['messages'], models: ['claude-sonnet-4-6'] },
+    }),
+    customUpstream({
+      id: 'custom:gpt', sortOrder: 1,
+      config: { name: 'gpt-service', baseUrl: 'https://api.example.com/v1', apiKey: 'test',
+        endpoints: ['responses'], models: ['gpt-5'] },
+    }),
+  ]))
+  const response = await modelsRouter.request('/api/models')
+  expect(response.status).toBe(200)
+  const body = await response.json() as { data: RawModel[] }
+  expect(body.data.map((model) => [model.id, model.supported_endpoints])).toEqual([
+    ['claude-sonnet-4-6', ['/v1/messages']],
+    ['gpt-5', ['/responses']],
+  ])
+  const catalog = buildCatalog(body.data)
+  expect(catalog.claudeBig).toContain('claude-sonnet-4-6')
+  expect(catalog.claudeSmall).toContain('claude-sonnet-4-6')
+  expect(catalog.codex).toContain('gpt-5')
+})
+
+test('derived endpoint metadata follows owner, disabled model, and pin selection', async () => {
+  const first = customUpstream({
+    id: 'custom:first', ownerId: 'owner-a' as UpstreamRecord['ownerId'],
+    config: { name: 'first', baseUrl: 'https://api.example.com/v1', apiKey: 'test',
+      endpoints: ['messages'], models: ['claude-first', 'claude-disabled'] },
+    disabledPublicModelIds: ['claude-disabled'],
+  })
+  const second = customUpstream({
+    id: 'custom:second', ownerId: 'owner-b' as UpstreamRecord['ownerId'],
+    config: { name: 'second', baseUrl: 'https://api.example.com/v1', apiKey: 'test',
+      endpoints: ['responses'], models: ['gpt-second'] },
+  })
+  initRepo({ upstreams: {
+    list: async (opts: { ownerId?: string } = {}) =>
+      opts.ownerId === undefined ? [first, second] : [first, second].filter((upstream) => upstream.ownerId === opts.ownerId),
+  } } as unknown as Repo)
+
+  const owned = (await listUpstreamModels({ ownerId: 'owner-a', pin: 'custom:first' })).data
+  expect(owned.map((model) => [model.id, (model as Model & { supported_endpoints?: string[] }).supported_endpoints])).toEqual([
+    ['claude-first', ['/v1/messages']],
+  ])
+  expect((await listUpstreamModels({ ownerId: 'owner-a', pin: 'custom:second' })).data).toEqual([])
+  const all = (await listUpstreamModels({ allOwners: true, dedupe: false })).data
+  expect(all.map((model) => model.id)).toEqual(['claude-first', 'gpt-second'])
+})
+
+test('restricted Custom models never advertise embedding, image, or chat routes they cannot bind', async () => {
+  initRepo(stubRepo([
+    customUpstream({
+      id: 'custom:messages',
+      config: { name: 'messages-only', baseUrl: 'https://api.example.com/v1', apiKey: 'test',
+        endpoints: ['messages'], models: ['text-embedding-3-small', 'gpt-image-1', 'claude-sonnet-4-6'] },
+    }),
+    customUpstream({
+      id: 'custom:images', sortOrder: 1,
+      config: { name: 'images-only', baseUrl: 'https://api.example.com/v1', apiKey: 'test',
+        endpoints: ['images_generations'], models: ['claude-chat-only', 'gpt-image-1'] },
+    }),
+  ]))
+  const response = await modelsRouter.request('/api/models?dedupe=0')
+  expect(response.status).toBe(200)
+  const body = await response.json() as { data: RawModel[] }
+  expect(body.data.map((model) => [model.id, model._upstream, model.supported_endpoints])).toEqual([
+    ['text-embedding-3-small', 'custom:messages', []],
+    ['gpt-image-1', 'custom:messages', []],
+    ['claude-sonnet-4-6', 'custom:messages', ['/v1/messages']],
+    ['claude-chat-only', 'custom:images', []],
+    ['gpt-image-1', 'custom:images', ['/v1/images/generations']],
+  ])
+  expect(buildCatalog(body.data).claudeBig).toEqual(['claude-sonnet-4-6'])
+})
+
+test('discovered capability types do not override restricted Custom endpoints', async () => {
+  initRepo(stubRepo([customUpstream({ config: {
+    name: 'messages-only', baseUrl: 'https://api.example.com/v1', apiKey: 'test', endpoints: ['messages'],
+  } })]))
+  stubFetch([
+    stubModel('vector-model', 'embeddings'),
+    stubModel('visual-model', 'image'),
+  ])
+  const body = await (await modelsRouter.request('/api/models')).json() as { data: RawModel[] }
+  expect(body.data.map((model) => [model.id, model.supported_endpoints])).toEqual([
+    ['vector-model', []],
+    ['visual-model', []],
+  ])
+})
+
+test('Custom discovery publishes only bound endpoint metadata while retaining vendor fields', async () => {
+  initRepo(stubRepo([customUpstream({ config: {
+    name: 'my-llm', baseUrl: 'https://api.example.com/v1', apiKey: 'test', endpoints: ['chat_completions'],
+  } })]))
+  stubFetch([{ ...stubModel('claude-sonnet-4-6'), vendor: 'vendor-name',
+    capabilities: { ...stubModel('claude-sonnet-4-6').capabilities, family: 'vendor-family' },
+  }])
+  const body = await (await modelsRouter.request('/api/models')).json() as { data: Array<RawModel & { vendor: string; capabilities: { family: string } }> }
+  expect(body.data[0]).toMatchObject({
+    id: 'claude-sonnet-4-6', vendor: 'vendor-name', capabilities: { family: 'vendor-family' },
+    supported_endpoints: ['/v1/chat/completions'],
+  })
+  expect(buildCatalog(body.data).claudeBig).toEqual([])
+})
+
+test('raw explicit supported_endpoints remains authoritative in public catalog', async () => {
+  initRepo(stubRepo([stubUpstream()]))
+  stubFetch([{ ...stubModel('gpt-5'), supported_endpoints: [] } as Model])
+  const rows = (await listUpstreamModels({ copilot: { copilotToken: 'test', accountType: 'individual' } })).data
+  expect((rows[0] as Model & { supported_endpoints?: string[] }).supported_endpoints).toEqual([])
 })
 
 const azureUpstream = (overrides: Partial<UpstreamRecord> = {}): UpstreamRecord => ({
