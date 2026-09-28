@@ -1,0 +1,167 @@
+import { Miniflare } from '../../../vnext/node_modules/.bun/miniflare@4.20260601.0/node_modules/miniflare/dist/src/index.js'
+import { unstable_splitSqlQuery } from '../../../vnext/node_modules/.bun/wrangler@4.97.0+01d2f64f02d20ae6/node_modules/wrangler/wrangler-dist/cli.js'
+import { readdir, readFile } from 'node:fs/promises'
+import { performance } from 'node:perf_hooks'
+
+const size = Number(process.argv[2] ?? '10000')
+const scope = process.argv[3] ?? 'all'
+if (!Number.isInteger(size) || size < 1 || size > 10000 || !['all','one-key'].includes(scope)) throw new Error('invalid args')
+const runtime = new Miniflare({
+  modules: true,
+  compatibilityDate: '2025-06-01',
+  d1Databases: { DB: `d08-synthetic-${process.pid}` },
+  script: 'export default { fetch() { return new Response("synthetic local D1") } }',
+})
+const dimensions = ['input','input_cache_read','input_cache_write','input_image','output','output_image']
+const fallback = { input_cache_read: 'input', input_cache_write: 'input', input_image: 'input', output_image: 'output' }
+const groupId = r => JSON.stringify([r.key_id,r.incoming_model,r.model,r.client,r.hour])
+const bucketId = r => JSON.stringify([r.key_id,r.incoming_model,r.model,r.upstream ?? '',r.model_key,r.client,r.hour])
+const format = r => ({ keyId:r.key_id,incomingModel:r.incoming_model,model:r.model,client:r.client,hour:r.hour,requests:0,tokens:{},cost:0 })
+const order = (a,b) => a.hour.localeCompare(b.hour) || a.keyId.localeCompare(b.keyId) || a.incomingModel.localeCompare(b.incomingModel) || a.model.localeCompare(b.model) || a.client.localeCompare(b.client)
+const start='2026-09-01T00', end='2026-09-02T00'
+const where = 'hour >= ? AND hour < ?' + (scope==='all'?'':' AND key_id IN (SELECT value FROM json_each(?))')
+const binds = scope==='all'?[start,end]:[start,end,JSON.stringify(['key0'])]
+const group='key_id,incoming_model,model,client,hour'
+const price = `COALESCE(u.unit_price,CASE WHEN u.dimension IN ('input_cache_read','input_cache_write','input_image','output_image')
+  THEN (SELECT p.unit_price FROM usage p INDEXED BY idx_usage_identity
+    WHERE p.key_id=u.key_id AND p.incoming_model=u.incoming_model AND p.model=u.model
+    AND COALESCE(p.upstream,'')=COALESCE(u.upstream,'') AND p.model_key=u.model_key
+    AND p.client=u.client AND p.hour=u.hour
+    AND p.dimension=CASE WHEN u.dimension='output_image' THEN 'output' ELSE 'input' END)
+  END)`
+const sqlDims=`WITH resolved AS MATERIALIZED (SELECT u.*, ${price} resolved_price FROM usage u WHERE ${where})
+  SELECT ${group},dimension,SUM(tokens) tokens,SUM(tokens*COALESCE(resolved_price,0))/1e6 cost,
+  SUM(CASE WHEN resolved_price IS NULL THEN tokens ELSE 0 END) unpriced_tokens
+  FROM resolved GROUP BY ${group},dimension`
+const sqlReq=`SELECT ${group},SUM(requests) requests FROM usage_requests WHERE ${where} GROUP BY ${group}`
+const oldDims=`SELECT key_id,incoming_model,model,upstream,model_key,client,hour,dimension,tokens,unit_price FROM usage WHERE ${where} ORDER BY hour`
+const oldReq=`SELECT key_id,incoming_model,model,upstream,model_key,client,hour,requests FROM usage_requests WHERE ${where} ORDER BY hour`
+
+const bytes = x => Buffer.byteLength(JSON.stringify(x))
+function oldShape(ds,rs) {
+  const buckets=new Map()
+  function ensure(r) {
+    const id=bucketId(r)
+    let bucket=buckets.get(id)
+    if(!bucket) { bucket={identity:r,prices:{},tokens:{},requests:0}; buckets.set(id,bucket) }
+    return bucket
+  }
+  for(const d of ds) {
+    const bucket=ensure(d)
+    bucket.tokens[d.dimension]=d.tokens
+    if(d.unit_price!==null) bucket.prices[d.dimension]=d.unit_price
+  }
+  for(const r of rs) ensure(r).requests=r.requests
+  const display=new Map()
+  for(const bucket of buckets.values()) {
+    const id=groupId(bucket.identity)
+    let row=display.get(id)
+    if(!row) { row=format(bucket.identity); display.set(id,row) }
+    row.requests+=bucket.requests
+    let cost=0
+    for(const d of dimensions) {
+      const tokens=bucket.tokens[d]??0
+      if(tokens>0) row.tokens[d]=(row.tokens[d]??0)+tokens
+      if(tokens!==0) {
+        const price=bucket.prices[d]??bucket.prices[fallback[d]]??null
+        if(price!==null) cost+=tokens*price
+      }
+    }
+    row.cost+=cost/1e6
+  }
+  return [...display.values()].sort(order)
+}
+function sqlShape(ds,rs) {
+  const display=new Map()
+  function ensure(r) {
+    const id=groupId(r)
+    let row=display.get(id)
+    if(!row) { row=format(r); display.set(id,row) }
+    return row
+  }
+  for(const d of ds) {
+    const row=ensure(d)
+    if(d.tokens>0) row.tokens[d.dimension]=d.tokens
+    row.cost+=d.cost
+  }
+  for(const r of rs) ensure(r).requests=r.requests
+  return [...display.values()].sort(order)
+}
+function compare(a,b) {
+  if(a.length!==b.length) throw new Error(`row mismatch ${a.length} vs ${b.length}`)
+  let maxCostDiff=0
+  for(let i=0;i<a.length;i++) {
+    const x=a[i],y=b[i]
+    const normalize=r=>JSON.stringify([r.keyId,r.incomingModel,r.model,r.client,r.hour,r.requests,Object.entries(r.tokens).sort()])
+    if(normalize(x)!==normalize(y)) throw new Error(`non-cost mismatch at ${i}`)
+    const diff=Math.abs(x.cost-y.cost)
+    maxCostDiff=Math.max(maxCostDiff,diff)
+    if(diff>Math.max(1e-12,Math.abs(x.cost)*1e-10)) throw new Error(`cost mismatch at ${i}: ${x.cost} vs ${y.cost}`)
+  }
+  return maxCostDiff
+}
+
+try {
+  const db=await runtime.getD1Database('DB')
+  const migrationsDir = new URL('../../../vnext/packages/gateway/migrations/',import.meta.url)
+  const applied=[]
+  for(const name of (await readdir(migrationsDir)).filter(x=>x.endsWith('.sql')).sort()) {
+    const sql=await readFile(new URL(name,migrationsDir),'utf8')
+    for(const statement of unstable_splitSqlQuery(sql)) await db.prepare(statement).run()
+    applied.push(name)
+  }
+  // Setup is deliberately outside the timed region. Recursive CTE chunks keep
+  // D1 IPC/setup overhead bounded while preserving the actual migrated schema.
+  for(let offset=0;offset<size;offset+=500) {
+    const high=Math.min(offset+499,size-1)
+    const seq=`WITH RECURSIVE n(i) AS (SELECT ${offset} UNION ALL SELECT i+1 FROM n WHERE i<${high}), d(k) AS (VALUES (0),(1),(2),(3),(4),(5))`
+    const fields=`'key'||(CAST(i/6 AS INTEGER)%100), CASE WHEN CAST(i/6 AS INTEGER)%17=0 THEN '' ELSE 'alias'||(CAST(i/6 AS INTEGER)%4) END,
+      'model',CASE WHEN i%2=1 THEN NULL ELSE 'up'||(i%6) END,'price'||i,
+      CASE WHEN CAST(i/6 AS INTEGER)%2=1 THEN 'client' ELSE '' END,
+      '2026-09-01T'||printf('%02d',CAST(i/6 AS INTEGER)%24)`
+    await db.prepare(`${seq} INSERT INTO usage_requests(key_id,incoming_model,model,upstream,model_key,client,hour,requests) SELECT ${fields},1 FROM n`).run()
+    await db.prepare(`${seq} INSERT INTO usage(key_id,incoming_model,model,upstream,model_key,client,hour,dimension,tokens,unit_price)
+      SELECT ${fields},CASE d.k WHEN 0 THEN 'input' WHEN 1 THEN 'input_cache_read' WHEN 2 THEN 'input_cache_write'
+      WHEN 3 THEN 'input_image' WHEN 4 THEN 'output' ELSE 'output_image' END,
+      CASE d.k WHEN 0 THEN 1+i%997 WHEN 1 THEN 1+i%31 WHEN 2 THEN 2 WHEN 3 THEN 3 WHEN 4 THEN 1+i%13 ELSE 1 END,
+      CASE d.k WHEN 0 THEN CASE WHEN i%6=5 THEN NULL ELSE 0.125+(i%6)/10.0 END
+      WHEN 1 THEN CASE WHEN i%3=0 THEN 0 ELSE NULL END
+      WHEN 4 THEN CASE WHEN i%6=4 THEN NULL ELSE 0.333333 END ELSE NULL END
+      FROM n CROSS JOIN d
+      WHERE d.k IN (0,1) OR (d.k=2 AND i%13=0) OR (d.k=3 AND i%17=0) OR (d.k=4 AND i%7<>0) OR (d.k=5 AND i%11=0)`).run()
+  }
+  await db.prepare("INSERT INTO usage_requests(key_id,incoming_model,model,upstream,model_key,client,hour,requests) VALUES ('orphan','','model',NULL,'only-request','','2026-09-01T00',3)").run()
+  await db.prepare("INSERT INTO usage(key_id,incoming_model,model,upstream,model_key,client,hour,dimension,tokens,unit_price) VALUES ('orphan','','model',NULL,'only-token','','2026-09-01T01','input',17,NULL)").run()
+  const countUsage=(await db.prepare('SELECT COUNT(*) n FROM usage').first()).n
+  const countRequests=(await db.prepare('SELECT COUNT(*) n FROM usage_requests').first()).n
+  const runOld=async()=>{
+    const t=performance.now()
+    const d=await db.prepare(oldDims).bind(...binds).all()
+    const r=await db.prepare(oldReq).bind(...binds).all()
+    const result=oldShape(d.results,r.results)
+    return {ms:performance.now()-t,result,rows:d.results.length+r.results.length,bytes:bytes(d.results)+bytes(r.results),meta:[d.meta,r.meta]}
+  }
+  const runSql=async()=>{
+    const t=performance.now()
+    const d=await db.prepare(sqlDims).bind(...binds).all()
+    const r=await db.prepare(sqlReq).bind(...binds).all()
+    const result=sqlShape(d.results,r.results)
+    return {ms:performance.now()-t,result,rows:d.results.length+r.results.length,bytes:bytes(d.results)+bytes(r.results),unpricedTokens:d.results.reduce((n,x)=>n+x.unpriced_tokens,0),meta:[d.meta,r.meta]}
+  }
+  const oldTimes=[],sqlTimes=[]
+  let oldResult,sqlResult
+  for(let repeat=0;repeat<4;repeat++) {
+    for(const mode of (repeat%2===0?['old','sql']:['sql','old'])) {
+      const result=mode==='old'?await runOld():await runSql()
+      if(mode==='old') { oldResult=result; if(repeat>0) oldTimes.push(result.ms) }
+      else { sqlResult=result; if(repeat>0) sqlTimes.push(result.ms) }
+    }
+  }
+  const maxCostDiff=compare(oldResult.result,sqlResult.result)
+  const output={platform:'local Miniflare 4.20260601.0 D1/workerd',size,scope,migrations:applied.length,lastMigration:applied.at(-1),countUsage,countRequests,
+    displayRows:oldResult.result.length,maxCostDiff,old:{timesMs:oldTimes,rows:oldResult.rows,bytes:oldResult.bytes,meta:oldResult.meta},
+    sql:{timesMs:sqlTimes,rows:sqlResult.rows,bytes:sqlResult.bytes,unpricedTokens:sqlResult.unpricedTokens,meta:sqlResult.meta}}
+  console.log(JSON.stringify(output))
+} finally {
+  await runtime.dispose()
+}

@@ -1,0 +1,452 @@
+[
+  {
+    "platform": "local Miniflare 4.20260601.0 D1/workerd",
+    "size": 10000,
+    "scope": "all",
+    "migrations": 15,
+    "lastMigration": "0015_dump_maintenance.sql",
+    "countUsage": 30841,
+    "countRequests": 10001,
+    "displayRows": 701,
+    "maxCostDiff": 1.3010426069826053e-18,
+    "old": {
+      "timesMs": [
+        268.36275000000023,
+        281.05999999999995,
+        264.5811249999997
+      ],
+      "rows": 40842,
+      "bytes": 7508261,
+      "meta": [
+        {
+          "served_by": "miniflare.db",
+          "duration": 28,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 30841,
+          "rows_written": 0
+        },
+        {
+          "served_by": "miniflare.db",
+          "duration": 8,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 10001,
+          "rows_written": 0
+        }
+      ]
+    },
+    "sql": {
+      "timesMs": [
+        93.57025000000021,
+        109.20274999999992,
+        110.93470900000011
+      ],
+      "rows": 4339,
+      "bytes": 724708,
+      "unpricedTokens": 866706,
+      "meta": [
+        {
+          "served_by": "miniflare.db",
+          "duration": 84,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 101328,
+          "rows_written": 0
+        },
+        {
+          "served_by": "miniflare.db",
+          "duration": 4,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 20002,
+          "rows_written": 0
+        }
+      ]
+    },
+    "repeat": 0
+  },
+  {
+    "platform": "local Miniflare 4.20260601.0 D1/workerd",
+    "size": 10000,
+    "scope": "all",
+    "migrations": 15,
+    "lastMigration": "0015_dump_maintenance.sql",
+    "countUsage": 30841,
+    "countRequests": 10001,
+    "displayRows": 701,
+    "maxCostDiff": 1.3010426069826053e-18,
+    "old": {
+      "timesMs": [
+        268.96137499999986,
+        272.92975000000024,
+        265.7851249999999
+      ],
+      "rows": 40842,
+      "bytes": 7508261,
+      "meta": [
+        {
+          "served_by": "miniflare.db",
+          "duration": 27,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 30841,
+          "rows_written": 0
+        },
+        {
+          "served_by": "miniflare.db",
+          "duration": 7,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 10001,
+          "rows_written": 0
+        }
+      ]
+    },
+    "sql": {
+      "timesMs": [
+        105.90162499999997,
+        96.84333300000026,
+        102.44908299999997
+      ],
+      "rows": 4339,
+      "bytes": 724708,
+      "unpricedTokens": 866706,
+      "meta": [
+        {
+          "served_by": "miniflare.db",
+          "duration": 74,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 101328,
+          "rows_written": 0
+        },
+        {
+          "served_by": "miniflare.db",
+          "duration": 5,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 20002,
+          "rows_written": 0
+        }
+      ]
+    },
+    "repeat": 1
+  },
+  {
+    "platform": "local Miniflare 4.20260601.0 D1/workerd",
+    "size": 10000,
+    "scope": "all",
+    "migrations": 15,
+    "lastMigration": "0015_dump_maintenance.sql",
+    "countUsage": 30841,
+    "countRequests": 10001,
+    "displayRows": 701,
+    "maxCostDiff": 1.3010426069826053e-18,
+    "old": {
+      "timesMs": [
+        266.89166699999987,
+        279.52033299999994,
+        262.0245420000001
+      ],
+      "rows": 40842,
+      "bytes": 7508261,
+      "meta": [
+        {
+          "served_by": "miniflare.db",
+          "duration": 26,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 30841,
+          "rows_written": 0
+        },
+        {
+          "served_by": "miniflare.db",
+          "duration": 7,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 10001,
+          "rows_written": 0
+        }
+      ]
+    },
+    "sql": {
+      "timesMs": [
+        86.67795799999999,
+        98.5305000000003,
+        83.64437499999985
+      ],
+      "rows": 4339,
+      "bytes": 724708,
+      "unpricedTokens": 866706,
+      "meta": [
+        {
+          "served_by": "miniflare.db",
+          "duration": 56,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 101328,
+          "rows_written": 0
+        },
+        {
+          "served_by": "miniflare.db",
+          "duration": 4,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 20002,
+          "rows_written": 0
+        }
+      ]
+    },
+    "repeat": 2
+  },
+  {
+    "platform": "local Miniflare 4.20260601.0 D1/workerd",
+    "size": 10000,
+    "scope": "one-key",
+    "migrations": 15,
+    "lastMigration": "0015_dump_maintenance.sql",
+    "countUsage": 30841,
+    "countRequests": 10001,
+    "displayRows": 7,
+    "maxCostDiff": 8.673617379884035e-19,
+    "old": {
+      "timesMs": [
+        9.219000000000051,
+        9.147333000000117,
+        9.747125000000096
+      ],
+      "rows": 416,
+      "bytes": 74767,
+      "meta": [
+        {
+          "served_by": "miniflare.db",
+          "duration": 0,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 631,
+          "rows_written": 0
+        },
+        {
+          "served_by": "miniflare.db",
+          "duration": 0,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 207,
+          "rows_written": 0
+        }
+      ]
+    },
+    "sql": {
+      "timesMs": [
+        8.069124999999985,
+        6.608416999999918,
+        7.146416000000045
+      ],
+      "rows": 45,
+      "bytes": 7310,
+      "unpricedTokens": 7294,
+      "meta": [
+        {
+          "served_by": "miniflare.db",
+          "duration": 1,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 1034,
+          "rows_written": 0
+        },
+        {
+          "served_by": "miniflare.db",
+          "duration": 0,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 207,
+          "rows_written": 0
+        }
+      ]
+    },
+    "repeat": 0
+  },
+  {
+    "platform": "local Miniflare 4.20260601.0 D1/workerd",
+    "size": 10000,
+    "scope": "one-key",
+    "migrations": 15,
+    "lastMigration": "0015_dump_maintenance.sql",
+    "countUsage": 30841,
+    "countRequests": 10001,
+    "displayRows": 7,
+    "maxCostDiff": 8.673617379884035e-19,
+    "old": {
+      "timesMs": [
+        9.099749999999858,
+        9.49633400000016,
+        9.003541999999925
+      ],
+      "rows": 416,
+      "bytes": 74767,
+      "meta": [
+        {
+          "served_by": "miniflare.db",
+          "duration": 1,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 631,
+          "rows_written": 0
+        },
+        {
+          "served_by": "miniflare.db",
+          "duration": 0,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 207,
+          "rows_written": 0
+        }
+      ]
+    },
+    "sql": {
+      "timesMs": [
+        7.7144590000000335,
+        6.1546659999999065,
+        7.0069579999999405
+      ],
+      "rows": 45,
+      "bytes": 7310,
+      "unpricedTokens": 7294,
+      "meta": [
+        {
+          "served_by": "miniflare.db",
+          "duration": 0,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 1034,
+          "rows_written": 0
+        },
+        {
+          "served_by": "miniflare.db",
+          "duration": 0,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 207,
+          "rows_written": 0
+        }
+      ]
+    },
+    "repeat": 1
+  },
+  {
+    "platform": "local Miniflare 4.20260601.0 D1/workerd",
+    "size": 10000,
+    "scope": "one-key",
+    "migrations": 15,
+    "lastMigration": "0015_dump_maintenance.sql",
+    "countUsage": 30841,
+    "countRequests": 10001,
+    "displayRows": 7,
+    "maxCostDiff": 8.673617379884035e-19,
+    "old": {
+      "timesMs": [
+        10.720833000000084,
+        13.04691600000001,
+        8.297000000000025
+      ],
+      "rows": 416,
+      "bytes": 74767,
+      "meta": [
+        {
+          "served_by": "miniflare.db",
+          "duration": 0,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 631,
+          "rows_written": 0
+        },
+        {
+          "served_by": "miniflare.db",
+          "duration": 0,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 207,
+          "rows_written": 0
+        }
+      ]
+    },
+    "sql": {
+      "timesMs": [
+        9.207083000000011,
+        12.561750000000075,
+        8.734624999999824
+      ],
+      "rows": 45,
+      "bytes": 7310,
+      "unpricedTokens": 7294,
+      "meta": [
+        {
+          "served_by": "miniflare.db",
+          "duration": 0,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 1034,
+          "rows_written": 0
+        },
+        {
+          "served_by": "miniflare.db",
+          "duration": 0,
+          "changes": 0,
+          "last_row_id": 30841,
+          "changed_db": false,
+          "size_after": 7286784,
+          "rows_read": 207,
+          "rows_written": 0
+        }
+      ]
+    },
+    "repeat": 2
+  }
+]

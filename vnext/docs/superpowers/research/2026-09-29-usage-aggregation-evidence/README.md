@@ -1,6 +1,6 @@
 # D08 bounded usage aggregation evaluation
 
-Date: 2026-09-29. Recommendation: **defer replacing the production usage path**. A safe, implementable SQL overview reduces materialized rows and process peak RSS in the synthetic full-range case, but was consistently slower. Keep `repo.usage.query` plus `aggregateUsageForDisplay` until a bounded endpoint passes the authorization/semantic matrix and a Workers/D1 plus dashboard workload demonstrates a useful end-to-end benefit.
+Date: 2026-09-29. Recommendation after the local D1 follow-up: **adopt D08 as a separate bounded overview implementation for validation, while retaining the current production detail path**. A safe SQL overview reduces materialized rows and process peak RSS in synthetic SQLite; local Miniflare D1 also shows a substantial end-to-end gain on a 10k-bucket all-key sample. The authorization/semantic matrix, full endpoint, dashboard workload, and production D1 behavior remain unverified.
 
 ## Source contract checked
 
@@ -32,7 +32,7 @@ The 30k full-scope comparison materialized **122,519 source rows / 22,755,506 JS
 
 Full-scope and one-key SQL output matched the current display rows exactly for identity, request counts, and positive token counts. Every per-row cost was within `max(1e-12, abs(currentCost)*1e-10)`; the greatest observed absolute difference was `5.21e-18` full-scope and `1.74e-18` one-key. The fixture's SQL unpriced-token counter was 2,600,688 full-scope, verifying that null price is still distinguishable from priced zero. This is a fixture parity check, not a historical-data proof. An explicit empty-key probe returned zero SQL rows while existing `repo.usage.query({keyIds: []})` returned all scoped-time rows, confirming the helper hazard.
 
-## Decision and next gate
+## Initial SQLite decision and next gate
 
 The SQL design is implementable with the existing schema and preserves the tested historical fallback and fractional REAL prices. Materialization and peak RSS improve substantially for a wide all-key range, but the best safe SQL variant was about 1.5× slower at 30k buckets and the narrow-key case gained negligible memory. No endpoint/auth/UI code, Worker/D1 execution, date/bucket validation, pagination, or end-to-end response measurement was performed. The current production path should remain. If memory pressure or D1 row-transfer cost makes D08 a priority, build it as a separate bounded overview, keep detail available, and require real-SQL semantic fixtures for every dimension and owner scope plus Workers/D1 and dashboard workload measurements before adoption.
 
@@ -40,7 +40,7 @@ The SQL design is implementable with the existing schema and preserves the teste
 
 The empty-list widening demonstrated above is a **latent repository helper hazard, not a proven exposure through the current production route**. The complete production `repo.usage.query` call sites found under `vnext/` are the token-usage route and monthly quota check. The quota check passes a single authenticated `keyId` (`data-plane/observability/quota.ts:52`). In `control-plane/token-usage/routes.ts:142-146`, shared view derives owned IDs and returns `[]` before querying when none exist. In `routes.ts:171-180`, the session-user branch likewise returns `[]` before constructing `keyIds` from owned/assigned keys. API-key callers always pass their authenticated `keyId` (`routes.ts:165-170`), including when a session also exists. Admins intentionally query all keys or one requested key (`routes.ts:162-164`). Thus no production route branch identified passes `keyIds: []` to the generic helper; no synthetic route test was needed to classify reachability. The direct repository probe still establishes that a future caller without the early guard could widen scope because `buildKeyIdRangeQuery` only filters lists with `length > 0` (`repo/shared/repos.ts:304-320`). A new overview method should encode empty-list behavior at the repository boundary.
 
-Copy `d08-benchmark.ts.txt` to a temporary `.ts` file and update its source import paths, then run from the worktree root (the commands below show the original scratch location):
+Reproduce from the worktree root:
 
 ```sh
 bun .superpowers/sdd/2026-09-29-reference-adoption-follow-up/task-D08-benchmark.ts compare all 30000
@@ -48,3 +48,26 @@ bun .superpowers/sdd/2026-09-29-reference-adoption-follow-up/task-D08-benchmark.
 ```
 
 The raw repeated-run summaries are `d08-benchmark-results.json` and `d08-benchmark-once-results.json` in this directory. No production files, dependencies, live databases, commits, or deployments were changed by this evaluation.
+
+## Local D1/workerd follow-up
+
+`d08-d1-probe.mjs.txt` runs the already installed Miniflare `4.20260601.0` and workerd `1.20260601.1` through the actual local D1 binding. It applies all 15 current gateway SQL migrations through `0015_dump_maintenance.sql` to a fresh synthetic database. Fixture setup runs before timing and uses 500-row recursive CTE chunks to avoid excessive IPC. The full-range case has 10,000 storage buckets, 30,840 dimension rows plus a token-only row, and 10,000 request rows plus a request-only row; the query range is one day. The script also tests one-key filtering using `json_each(?)`. No live database, deployment, new package, or production source is touched.
+
+The current-style path runs two full-row D1 `.all()` queries and reconstructs full buckets in JS before display aggregation. The SQL path resolves same-bucket price fallback in a materialized CTE, groups dimension and request tables separately, and shapes the returned rows in JS. Both parse all D1 results; timing includes D1 IPC, result delivery, and JS shaping but excludes fixture setup, migration, and final JSON output. They alternate order, each with one warm-up and three timed calls per process, across three independent processes. The script reimplements the current JS assembly from source rather than invoking the production route, so this is a query/shape comparison, not an HTTP dashboard benchmark.
+
+| 10k-bucket scope | Path | Three process median latency values | D1 result rows | JSON-estimated result bytes |
+| --- | --- | ---: | ---: | ---: |
+| All keys | Current-style full rows + JS | 266.89, 268.36, 268.96 ms | 40,842 | 7,508,261 |
+| All keys | Safe SQL overview + JS shape | 86.68, 102.45, 109.20 ms | 4,339 | 724,708 |
+| One key | Current-style full rows + JS | 9.10, 9.22, 10.72 ms | 416 | 74,767 |
+| One key | Safe SQL overview + JS shape | 7.01, 7.15, 9.21 ms | 45 | 7,310 |
+
+The all-key SQL path reduced returned result bytes by 90.3% and improved measured local D1 query-plus-shape time by roughly 2.4–3.1× across process medians. The one-key case was a small and noisier gain. All display identities, request counts, and positive token counts matched exactly; the maximum absolute cost difference was `1.31e-18` all-key and `8.68e-19` one-key. The SQL result preserved 866,706 unpriced tokens in the full-scope fixture as an explicit counter. No unsupported SQL feature or query limit was encountered at this bounded size.
+
+D1 metadata exposes a cost tradeoff: full-range `rows_read` was 40,842 for the two current-style queries versus 121,330 for the two SQL queries, primarily from full-identity fallback lookups. Reported database `duration` was about 33–36 ms current-style versus 60–88 ms SQL across the captured processes. Thus the measured end-to-end win is from less data crossing into and being processed by JS, while the database does more work. These are local Miniflare metadata values, not a production billing or latency forecast. Multiple overview axes could multiply SQL read work; query count, pagination, and totals must remain bounded.
+
+**Updated decision:** the D1 result establishes a useful transfer and local end-to-end benefit for wide bounded ranges, so a separate `/token-usage/overview` implementation is justified for review. Keep `/token-usage` available for detail and do not switch the dashboard until real-SQL historical/unknown-price fixtures, all owner/auth branches, date and page bounds, actual dashboard response shape, and a local workerd endpoint test pass. A production D1 workload is still unmeasured; automatic replacement is not justified by this synthetic probe.
+
+Reproduce the platform measurement from the worktree root with `node .superpowers/sdd/2026-09-29-reference-adoption-follow-up/task-D08-d1-probe.mjs 10000 all` (or `one-key`). The captured independent-process output, including query metadata, is `d08-d1-results.json` beside the script.
+
+The reproduction commands retain original scratch paths. Copy preserved `.txt` source files to their executable extensions and update absolute worktree/dependency paths before rerunning.
