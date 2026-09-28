@@ -11,6 +11,7 @@ import { withVendorDeepSeekResponsesNormalize } from './with-vendor-deepseek-nor
 import { withVendorQwenResponsesNormalize } from './with-vendor-qwen-normalized'
 import { withResponsesCompactShim } from './with-responses-compact-shim'
 import { withImageGenerationToolInjected } from './with-image-generation-tool-injected'
+import { withEmptyToolsToolChoiceNone } from './with-empty-tools-tool-choice-none'
 
 export type { ResponsesInterceptor } from './types'
 export { withResponsesServerToolShim } from './server-tool-shim'
@@ -68,6 +69,7 @@ export const responsesInterceptors: readonly ResponsesInterceptor[] = [
   withPromptCacheKeyStripped,
   withImageGenerationToolInjected,
   withResponsesServerToolShim([webSearchServerTool, imageGenerationServerTool], defaultPrivatePayloadStore),
+  withEmptyToolsToolChoiceNone,
   withRoleCompatibilityApplied,
   withReasoningDisabledOnForcedToolChoice,
   withVendorDeepSeekResponsesNormalize,

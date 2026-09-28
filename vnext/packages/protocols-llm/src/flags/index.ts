@@ -107,6 +107,12 @@ export const OPTIONAL_FLAGS = [
     defaultFor: [],
   },
   {
+    id: "empty-tools-tool-choice-none",
+    label: "Set tool choice to none for an empty tools list",
+    description: "When a request explicitly sends tools: [], send the protocol's native no-tools choice after hosted tool preparation. Opt in per upstream.",
+    defaultFor: [],
+  },
+  {
     id: "strip-prompt-cache-key",
     label: "Strip `prompt_cache_key` from /responses",
     description: "Drop the top-level `prompt_cache_key` request argument before it reaches the upstream. OpenAI-native and truly OpenAI-compatible Responses upstreams accept it for prefix-cache attribution; upstreams that validate unknown arguments strictly (Azure DeepSeek, etc.) answer 400. Opt-in.",

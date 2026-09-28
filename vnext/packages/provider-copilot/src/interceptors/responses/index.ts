@@ -5,6 +5,7 @@ import { withSafetyIdentifierStripped } from "./with-safety-identifier-stripped"
 import { withServiceTierStripped } from "./with-service-tier-stripped"
 import { withResponsesVisionHeader } from "./with-vision-header"
 import { withInlineImagesCompressed } from "./with-inline-images-compressed"
+import { withEmptyNamespaceDescriptionsFilled } from "./with-empty-namespace-descriptions-filled"
 
 export const responsesPayloadInterceptors: readonly CopilotInterceptor[] = [
   withStoreForcedFalse,
@@ -13,4 +14,5 @@ export const responsesPayloadInterceptors: readonly CopilotInterceptor[] = [
   withServiceTierStripped,
   withResponsesVisionHeader,
   withInlineImagesCompressed,
+  withEmptyNamespaceDescriptionsFilled,
 ]

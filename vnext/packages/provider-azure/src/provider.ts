@@ -14,6 +14,7 @@
 import type { EndpointKey, ModelPricing } from '@vibe-llm/protocols/common'
 import {
   HTTPError,
+  fillEmptyNamespaceDescriptions,
   probeViaModels,
   type LlmModelProvider,
   type ProbeResult,
@@ -145,7 +146,7 @@ export class AzureProvider implements LlmModelProvider {
     // worry about case-sensitivity collisions on the way down.
     const body: NonNullable<RequestInit['body']> = req.payload instanceof FormData
       ? req.payload
-      : JSON.stringify(req.payload ?? {})
+      : JSON.stringify(req.endpoint === 'responses' ? fillEmptyNamespaceDescriptions(req.payload ?? {}) : req.payload ?? {})
     const res = await this.send(
       req.endpoint,
       { method: 'POST', body, headers: req.headers, signal: req.signal },

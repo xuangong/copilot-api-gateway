@@ -9,6 +9,7 @@ import { withVendorDeepSeekChatCompletionsNormalize } from './with-vendor-deepse
 import { withVendorQwenChatCompletionsNormalize } from './with-vendor-qwen-normalized'
 import { withVendorKimiChatCompletionsNormalize } from './with-vendor-kimi-normalized'
 import { withReasoningContentDialect } from './with-reasoning-content-dialect'
+import { withEmptyToolsToolChoiceNone } from './with-empty-tools-tool-choice-none'
 
 // Unified Chat Completions interceptor registry.
 //
@@ -55,6 +56,7 @@ import { withReasoningContentDialect } from './with-reasoning-content-dialect'
 //     per vendor.
 export const chatCompletionsInterceptors: readonly ChatCompletionsInterceptor[] = [
   withChatCompletionsWebSearchShim,
+  withEmptyToolsToolChoiceNone,
   withUsageStreamOptionsIncluded,
   withToolArgumentWhitespaceAborted,
   withPromptCacheKeyStripped,

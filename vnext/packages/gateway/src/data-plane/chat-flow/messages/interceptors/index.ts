@@ -7,6 +7,7 @@ import { withReasoningDisabledOnForcedToolChoice } from './with-reasoning-disabl
 import { withRoleCompatibilityApplied } from './with-role-compatibility-applied'
 import { withSpeedFast } from './with-speed-fast'
 import { withThinkingDisplayPromoted } from './with-thinking-display-promoted'
+import { withEmptyToolsToolChoiceNone } from './with-empty-tools-tool-choice-none'
 
 export type { MessagesInterceptor } from './types'
 
@@ -58,6 +59,7 @@ export const messagesInterceptors: readonly MessagesInterceptor[] = [
   withBillingAttributionStripped,
   withEagerInputStreamingStripped,
   withMessagesWebSearchShim,
+  withEmptyToolsToolChoiceNone,
   withRoleCompatibilityApplied,
   withReasoningDisabledOnForcedToolChoice,
 ]
