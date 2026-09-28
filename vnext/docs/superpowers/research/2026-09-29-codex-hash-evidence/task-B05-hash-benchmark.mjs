@@ -1,3 +1,4 @@
+/* global Bun */
 // Run one mode/size in a fresh Bun process under /usr/bin/time -l.
 import { sha256Uuid, sha256UuidFromParts } from '../../../../packages/provider-codex/src/ids.ts'
 
