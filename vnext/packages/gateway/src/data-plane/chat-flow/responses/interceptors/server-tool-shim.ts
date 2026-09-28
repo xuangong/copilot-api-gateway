@@ -292,6 +292,18 @@ export const resolveServerToolName = (baseName: string, tools: readonly Response
   )
 }
 
+const historicalClientCallableUsesName = (name: string, input: readonly ResponsesInputItem[]): boolean =>
+  input.some((item) => {
+    if (item.type === 'additional_tools' || item.type === 'tool_search_output') {
+      return Array.isArray(item.tools) && item.tools.some((tool: unknown) =>
+        typeof tool === 'object' && tool !== null &&
+        ('type' in tool) && (tool.type === 'function' || tool.type === 'custom') &&
+        ('name' in tool) && tool.name === name)
+    }
+    return (item.type === 'function_call' || item.type === 'custom_tool_call') &&
+      item.namespace === undefined && item.name === name
+  })
+
 // Azure and Copilot both deduplicate repeated hosted-tool declarations as one
 // family and retain the last complete declaration, including aliases and
 // configuration. The replacement occupies the first declaration's array slot
@@ -485,9 +497,10 @@ export const consumeTurnStreaming = async function* (
     number,
     {
       intercepted: InterceptedFunctionCall
-      dispatcher: ServerToolDispatcher
+      addedItem: Extract<ResponsesOutputItem, { type: 'function_call' }>
       reservedOutputIndex: number
       argumentsJson: string
+      bufferedEvents: ResponsesStreamEvent[]
     }
   >()
 
@@ -582,23 +595,23 @@ export const consumeTurnStreaming = async function* (
       const upstreamIndex = event.output_index
       const item = event.item
       if (item.type === 'function_call') {
-        const dispatcher = dispatchers.get(item.name)
-        if (dispatcher !== undefined) {
-          interceptedByUpstreamIndex.set(upstreamIndex, {
-            dispatcher,
-            reservedOutputIndex: merge.outputIndex++,
-            argumentsJson: '',
-            intercepted: {
-              callId: item.call_id,
-              name: item.name,
-              arguments: {},
-            },
-          })
-          continue
-        }
+        // The completed item owns dispatch identity; added/delta frames may
+        // still carry an empty or unrelated name, or an interim namespace.
+        interceptedByUpstreamIndex.set(upstreamIndex, {
+          addedItem: item,
+          reservedOutputIndex: merge.outputIndex++,
+          argumentsJson: '',
+          bufferedEvents: [],
+          intercepted: {
+            callId: item.call_id,
+            name: item.name,
+            arguments: {},
+          },
+        })
+        continue
       }
 
-      if (item.type === 'function_call' || item.type === 'custom_tool_call') sawClientToolCall = true
+      if (item.type === 'custom_tool_call') sawClientToolCall = true
 
       const downstreamIndex = merge.outputIndex++
       openItems.set(upstreamIndex, downstreamIndex)
@@ -625,14 +638,45 @@ export const consumeTurnStreaming = async function* (
       const upstreamIndex = event.output_index
       const intercepted = interceptedByUpstreamIndex.get(upstreamIndex)
       if (intercepted !== undefined) {
-        if (event.item.type === 'function_call') intercepted.argumentsJson = event.item.arguments
+        if (event.item.type !== 'function_call' ||
+          event.item.call_id !== intercepted.intercepted.callId ||
+          (intercepted.addedItem.id !== undefined && event.item.id !== undefined &&
+            event.item.id !== intercepted.addedItem.id)) {
+          throw new Error('Server-tool candidate changed its item type, call ID, or item ID before completion.')
+        }
+        const completedNamespace = 'namespace' in event.item ? event.item.namespace : undefined
+        const finalDispatcher = completedNamespace === undefined
+          ? dispatchers.get(event.item.name)
+          : undefined
+        if (finalDispatcher === undefined) {
+          const downstreamIndex = intercepted.reservedOutputIndex
+          const itemId = intercepted.addedItem.id ?? event.item.id
+          const doneItem = itemId === undefined ? event.item : { ...event.item, id: itemId }
+          openItems.set(upstreamIndex, downstreamIndex)
+          if (itemId !== undefined) openItemIds.set(upstreamIndex, itemId)
+          sawClientToolCall = true
+          yield stamp({
+            type: 'response.output_item.added', output_index: downstreamIndex,
+            item: { ...doneItem, arguments: '', status: 'in_progress' },
+          })
+          for (const buffered of intercepted.bufferedEvents) {
+            const rewritten = rewriteOutputIndex(buffered, openItems, openItemIds, merge)
+            if (rewritten !== null) yield stamp(rewritten)
+          }
+          yield stamp({ type: 'response.output_item.done', output_index: downstreamIndex, item: doneItem })
+          merge.accumulatedOutput.set(downstreamIndex, doneItem)
+          interceptedByUpstreamIndex.delete(upstreamIndex)
+          continue
+        }
+        intercepted.intercepted.name = event.item.name
+        intercepted.argumentsJson = event.item.arguments
         intercepted.intercepted.arguments = parseServerToolArguments(intercepted.argumentsJson)
         serverToolTrace('dispatch', {
           tool: intercepted.intercepted.name,
           iteration: loopState.iterationCount,
           remainingToolCalls: loopState.remainingToolCalls ?? null,
         })
-        const slots = intercepted.dispatcher({ intercepted: intercepted.intercepted, loopState })
+        const slots = finalDispatcher({ intercepted: intercepted.intercepted, loopState })
         if (loopState.remainingToolCalls !== undefined) loopState.remainingToolCalls -= 1
         const dispatchedSlots: DispatchedServerToolSlot[] = []
         for (const [slotIndex, slot] of slots.entries()) {
@@ -661,6 +705,7 @@ export const consumeTurnStreaming = async function* (
       const intercepted = interceptedByUpstreamIndex.get(event.output_index)
       if (intercepted !== undefined) {
         intercepted.argumentsJson += event.delta
+        intercepted.bufferedEvents.push(event)
         continue
       }
       const rewritten = rewriteOutputIndex(event, openItems, openItemIds, merge)
@@ -672,6 +717,7 @@ export const consumeTurnStreaming = async function* (
       const intercepted = interceptedByUpstreamIndex.get(event.output_index)
       if (intercepted !== undefined) {
         intercepted.argumentsJson = event.arguments
+        intercepted.bufferedEvents.push(event)
         continue
       }
       const rewritten = rewriteOutputIndex(event, openItems, openItemIds, merge)
@@ -680,10 +726,11 @@ export const consumeTurnStreaming = async function* (
     }
 
     const maybeIndexedForIntercepted = event as ResponsesStreamEvent & { output_index?: unknown }
-    if (
-      typeof maybeIndexedForIntercepted.output_index === 'number' &&
-      interceptedByUpstreamIndex.has(maybeIndexedForIntercepted.output_index)
-    ) {
+    const pending = typeof maybeIndexedForIntercepted.output_index === 'number'
+      ? interceptedByUpstreamIndex.get(maybeIndexedForIntercepted.output_index)
+      : undefined
+    if (pending !== undefined) {
+      pending.bufferedEvents.push(event)
       continue
     }
 
@@ -1067,6 +1114,15 @@ export const withResponsesServerToolShim = (
     const currentTools = Array.isArray(ctx.payload.tools) ? (ctx.payload.tools as ResponsesTool[]) : []
     const toolName = resolveServerToolName(prepared.baseToolName, currentTools)
     const { hosted } = prepared
+    if (hosted !== undefined && historicalClientCallableUsesName(
+      toolName, Array.isArray(ctx.payload.input) ? ctx.payload.input as ResponsesInputItem[] : [],
+    )) {
+      return invalidRequestEnvelope(
+        `Historical client callable '${toolName}' conflicts with the hosted tool function name.`,
+        'input',
+        undefined,
+      )
+    }
     let canonicalHostedTool: ResponsesHostedToolLoose | undefined = undefined
     if (hosted !== undefined) {
       const rewrite = rewriteToolsForHostedShim(currentTools, hosted, toolName)
@@ -1127,6 +1183,7 @@ export const withResponsesServerToolShim = (
     (typeof finalToolChoice === 'object' &&
       finalToolChoice !== null &&
       finalToolChoice.type === 'function' &&
+      finalToolChoice.namespace === undefined &&
       typeof finalToolChoice.name === 'string' &&
       dispatchers.has(finalToolChoice.name))
 
