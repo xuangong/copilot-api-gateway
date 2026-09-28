@@ -61,3 +61,40 @@ describe('parseSSEStream', () => {
     expect(frames.length).toBeLessThanOrEqual(1)
   })
 })
+
+test("SSE accepts optional spacing, multiline fields, comments and empty event reset", async () => {
+  const source = "event:stale\n\nevent:message\ndata:hello\ndata: world\n: keepalive\ndata:  indented\n\ndata\n\ndata:tail"
+  expect(await collect(parseSSEStream(streamFromString(source)))).toEqual([
+    { type: "sse", event: "message", data: "hello\nworld\n indented" },
+    { type: "sse", data: "" },
+    { type: "sse", data: "tail" },
+  ])
+})
+
+test("SSE handles split UTF-8 and every CR/LF boundary", async () => {
+  const bytes = new TextEncoder().encode("\ufeffevent:message\rdata:你好\r\n\r\ndata:second\r\r")
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const byte of bytes) controller.enqueue(Uint8Array.of(byte))
+      controller.close()
+    },
+  })
+  expect(await collect(parseSSEStream(stream))).toEqual([
+    { type: "sse", event: "message", data: "你好" },
+    { type: "sse", data: "second" },
+  ])
+})
+
+test("SSE abort releases a pending read without dispatching unfinished data", async () => {
+  const abort = new AbortController()
+  let cancelled = false
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) { controller.enqueue(new TextEncoder().encode("data:partial\n")) },
+    cancel() { cancelled = true },
+  })
+  const result = collect(parseSSEStream(stream, { signal: abort.signal }))
+  await Bun.sleep(1)
+  abort.abort()
+  expect(await result).toEqual([])
+  expect(cancelled).toBe(true)
+})
