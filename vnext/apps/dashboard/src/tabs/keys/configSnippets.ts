@@ -82,6 +82,7 @@ export function codexTomlSnippet(model: string, baseUrl: string): string {
     'base_url = "' + baseUrl + '/"',
     'env_key = "OPENAI_API_KEY"',
     'wire_api = "responses"',
+    'supports_websockets = false',
   ].join("\n")
 }
 

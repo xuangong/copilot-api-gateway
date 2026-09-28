@@ -54,7 +54,7 @@ const BASELINE = {
   shell_type: 'shell_command',
   support_verbosity: false,
   default_verbosity: null,
-  prefer_websockets: true,
+  prefer_websockets: false,
   supported_in_api: true,
   supports_reasoning_summaries: false,
   apply_patch_tool_type: null,
@@ -122,6 +122,8 @@ export const synthesizeCatalogEntry = (
 
   const entry: CatalogModel = {
     ...source,
+    // Upstream transport support does not imply a gateway upgrade endpoint.
+    prefer_websockets: false,
     slug: model.id,
     display_name: displayName,
     supported_reasoning_levels: advertisedReasoning,
