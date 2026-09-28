@@ -8,6 +8,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { collectBody, collectBodyBytes, makeFakeDuplex, respondAndEnd } from './test-utils.ts';
 import { parseHttpResponse, toWebResponse } from '../parser.ts';
+import { deflateSync, gzipSync } from 'node:zlib';
 
 describe('parseHttpResponse — status-line grammar', () => {
   it('accepts HTTP/1.0 200 OK', async () => {
@@ -804,6 +805,79 @@ describe('parseHttpResponse — wire-faithful return shape', () => {
 });
 
 describe('toWebResponse', () => {
+  it('keeps identity bytes and headers intact', async () => {
+    const raw = await parseHttpResponse(respondAndEnd('HTTP/1.1 200 OK\r\nContent-Encoding: identity\r\nContent-Length: 5\r\n\r\nhello'));
+    const response = toWebResponse(raw);
+    expect(await response.text()).toBe('hello');
+    expect(response.headers.get('content-encoding')).toBe('identity');
+    expect(response.headers.get('content-length')).toBe('5');
+  });
+  for (const [coding, compress] of [['gzip', gzipSync], ['deflate', deflateSync]] as const) {
+    it(`streams ${coding} Content-Length bodies and clears encoded metadata`, async () => {
+      const payload = new TextEncoder().encode('hello compressed response');
+      const encoded = compress(payload);
+      const fake = makeFakeDuplex();
+      fake.respond(`HTTP/1.1 200 OK\r\nContent-Encoding: ${coding.toUpperCase()}\r\nContent-Length: ${encoded.length}\r\n\r\n`);
+      fake.respond(encoded);
+      fake.endResponse();
+      const raw = await parseHttpResponse(fake.readable);
+      const response = toWebResponse(raw);
+      expect(response.headers.get('content-encoding')).toBeNull();
+      expect(response.headers.get('content-length')).toBeNull();
+      expect(raw.headers.get('content-encoding')).toBe(coding.toUpperCase());
+      expect(await response.text()).toBe('hello compressed response');
+    });
+
+    it(`decodes ${coding} after chunked framing`, async () => {
+      const encoded = compress(new TextEncoder().encode('chunked compressed response'));
+      const fake = makeFakeDuplex();
+      fake.respond(`HTTP/1.1 200 OK\r\nContent-Encoding: ${coding}\r\nTransfer-Encoding: chunked\r\n\r\n`);
+      fake.respond(`${encoded.length.toString(16)}\r\n`);
+      fake.respond(encoded);
+      fake.respond('\r\n0\r\n\r\n');
+      fake.endResponse();
+      expect(await toWebResponse(await parseHttpResponse(fake.readable)).text()).toBe('chunked compressed response');
+    });
+  }
+
+  it('rejects unknown or stacked content coding and cancels the raw body', async () => {
+    for (const coding of ['br', 'gzip, deflate']) {
+      let cancelled = false;
+      const body = new ReadableStream<Uint8Array>({ cancel() { cancelled = true; } });
+      expect(() => toWebResponse({ status: 200, statusText: 'OK', headers: new Headers({ 'Content-Encoding': coding }), body }))
+        .toThrow(expect.objectContaining({ code: 'UNSUPPORTED_CONTENT_ENCODING' }));
+      await Promise.resolve();
+      expect(cancelled).toBe(true);
+    }
+  });
+
+  it('surfaces malformed gzip as a body read error', async () => {
+    const body = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new Uint8Array([1, 2, 3])); c.close(); } });
+    const response = toWebResponse({ status: 200, statusText: 'OK', headers: new Headers({ 'Content-Encoding': 'gzip' }), body });
+    await expect(response.arrayBuffer()).rejects.toThrow();
+  });
+
+  it('emits decoded bytes before compressed source EOF and cancels upstream', async () => {
+    const payload = new Uint8Array(100_000).fill(65);
+    const encoded = gzipSync(payload);
+    let sourceCancelled = false;
+    let release: (() => void) | undefined;
+    const source = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(encoded.subarray(0, encoded.length - 8));
+        release = () => { c.enqueue(encoded.subarray(encoded.length - 8)); c.close(); };
+      },
+      cancel() { sourceCancelled = true; },
+    });
+    const response = toWebResponse({ status: 200, statusText: 'OK', headers: new Headers({ 'Content-Encoding': 'gzip' }), body: source });
+    const reader = response.body!.getReader();
+    const first = await Promise.race([reader.read(), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('decode waited for EOF')), 1000))]);
+    expect(first.value?.byteLength).toBeGreaterThan(0);
+    await reader.cancel();
+    for (let i = 0; i < 20 && !sourceCancelled; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    expect(sourceCancelled).toBe(true);
+    void release;
+  });
   it('passes 200..599 through with the parsed status and headers', async () => {
     const r = toWebResponse(await parseHttpResponse(respondAndEnd(
       'HTTP/1.1 503 Service Unavailable\r\nRetry-After: 30\r\nContent-Length: 0\r\n\r\n',

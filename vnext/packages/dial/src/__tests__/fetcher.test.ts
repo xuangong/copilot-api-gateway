@@ -7,7 +7,8 @@
 import { test, expect } from 'bun:test'
 import { createFetcher } from '../fetcher.ts'
 import type { ProxyEntry } from '../proxy-catalog.ts'
-import { ProxyDialError, type ProxyConfig, type SocketDial } from '@vibe-core/proxy'
+import { ProxyDialError, type ProxyConfig } from '@vibe-core/proxy'
+import type { SocketDial } from '@vibe-core/platform'
 import {
   BACKOFF_BASE_SECONDS,
   type BackoffRow,
@@ -404,4 +405,174 @@ test('the IPv6 envelope is stripped before the target reaches the dialer', async
   })
   await fetcher('https://[2001:db8::1]:8443/v1', { method: 'GET' })
   expect(host).toBe('2001:db8::1')
+})
+
+const workerdFailure = new Error('proxy request failed, cannot connect to the specified address: blocked')
+const classifiedSocketDial: SocketDial = {
+  connect: async () => { throw workerdFailure },
+  shouldConnectErrorFallbackToFetch: (error: unknown) => error === workerdFailure,
+}
+const classifiedFailure = () => new ProxyDialError('tcp failed', 'tcp-connect', { cause: workerdFailure })
+
+test('classified pre-dispatch direct-connect failure uses one implicit fetch without backoff writes', async () => {
+  const { repo, rows } = fakeBackoffs()
+  const calls: string[] = []
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'u', fallbackList: [], runtimeLocation: 'TEST', proxyById: new Map(),
+    runProxied: async () => { throw new Error('unused') },
+    runDirectFetch: async () => { calls.push('fetch'); return new Response('fallback') },
+    runDirectConnect: async () => { calls.push('connect'); throw classifiedFailure() },
+    socketDial: () => classifiedSocketDial,
+  })
+  expect(await (await fetcher('https://api.openai.com', { method: 'GET' })).text()).toBe('fallback')
+  expect(calls).toEqual(['connect', 'fetch'])
+  expect(rows.size).toBe(0)
+})
+
+test('a later configured proxy succeeds before an implicit fetch', async () => {
+  const { repo } = fakeBackoffs()
+  const calls: string[] = []
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'u', fallbackList: [{ id: 'direct_connect' }, { id: 'a' }],
+    runtimeLocation: 'TEST', proxyById: new Map([['a', proxyA]]),
+    runProxied: async () => { calls.push('proxy'); return new Response('proxy') },
+    runDirectFetch: async () => { calls.push('fetch'); return new Response('fetch') },
+    runDirectConnect: async () => { calls.push('connect'); throw classifiedFailure() },
+    socketDial: () => classifiedSocketDial,
+  })
+  expect(await (await fetcher('https://api.openai.com', { method: 'GET' })).text()).toBe('proxy')
+  expect(calls).toEqual(['connect', 'proxy'])
+})
+
+test('uncertain proxy failure after classified direct-connect blocks implicit fetch', async () => {
+  const { repo } = fakeBackoffs()
+  let fetches = 0
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'u', fallbackList: [{ id: 'direct_connect' }, { id: 'a' }],
+    runtimeLocation: 'TEST', proxyById: new Map([['a', proxyA]]),
+    runProxied: async () => { throw new ProxyDialError('uncertain proxy failure', 'inner-tls') },
+    runDirectFetch: async () => { fetches++; return new Response('fetch') },
+    runDirectConnect: async () => { throw classifiedFailure() }, socketDial: () => classifiedSocketDial,
+  })
+  await expect(fetcher('https://api.openai.com', { method: 'GET' })).rejects.toBeInstanceOf(AggregateError)
+  expect(fetches).toBe(0)
+})
+
+test('a proxy-only chain has no qualified direct attempt and cannot use implicit fetch', async () => {
+  const { repo } = fakeBackoffs()
+  let fetches = 0
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'u', fallbackList: [{ id: 'a' }],
+    runtimeLocation: 'TEST', proxyById: new Map([['a', proxyA]]),
+    runProxied: async () => { throw new ProxyDialError('proxy failed', 'tcp-connect', { cause: workerdFailure }) },
+    runDirectFetch: async () => { fetches++; return new Response('fetch') },
+    runDirectConnect: async () => { throw new Error('direct must not run') },
+    socketDial: () => classifiedSocketDial,
+  })
+  await expect(fetcher('https://api.openai.com', { method: 'GET' })).rejects.toBeInstanceOf(ProxyDialError)
+  expect(fetches).toBe(0)
+})
+
+test('configured direct_fetch keeps its order after colo filtering', async () => {
+  const { repo } = fakeBackoffs()
+  const calls: string[] = []
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'u',
+    fallbackList: [{ id: 'direct_fetch', colos: ['LHR'] }, { id: 'direct_connect', colos: ['SJC'] }],
+    runtimeLocation: 'SJC', proxyById: new Map(),
+    runProxied: async () => new Response('proxy'),
+    runDirectFetch: async () => { calls.push('fetch'); return new Response('fetch') },
+    runDirectConnect: async () => { calls.push('connect'); throw classifiedFailure() },
+    socketDial: () => classifiedSocketDial,
+  })
+  expect(await (await fetcher('https://api.openai.com', { method: 'GET' })).text()).toBe('fetch')
+  expect(calls).toEqual(['connect', 'fetch'])
+})
+
+test('implicit fetch replays FormData bytes and matching multipart boundary', async () => {
+  const { repo } = fakeBackoffs()
+  const form = new FormData()
+  form.set('field', 'value')
+  let observed: RequestInit | undefined
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'u', fallbackList: [], runtimeLocation: 'TEST', proxyById: new Map(),
+    runProxied: async () => new Response('proxy'),
+    runDirectFetch: async (_url, init) => { observed = init; return new Response('fetch') },
+    runDirectConnect: async () => { throw classifiedFailure() }, socketDial: () => classifiedSocketDial,
+  })
+  await fetcher('https://api.openai.com', { method: 'POST', body: form })
+  expect(observed?.body).toBeInstanceOf(Uint8Array)
+  const contentType = new Headers(observed?.headers).get('content-type')
+  expect(contentType).toMatch(/^multipart\/form-data; boundary=.+/)
+  const boundary = contentType?.split('boundary=')[1]
+  expect(new TextDecoder().decode(observed?.body as Uint8Array)).toStartWith(`--${boundary}\r\n`)
+})
+
+test.each([400, 503])('implicit fetch %d response is final', async status => {
+  const { repo } = fakeBackoffs()
+  let fetches = 0
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'u', fallbackList: [], runtimeLocation: 'TEST', proxyById: new Map(),
+    runProxied: async () => new Response('proxy'),
+    runDirectFetch: async () => { fetches++; return new Response('error', { status }) },
+    runDirectConnect: async () => { throw classifiedFailure() }, socketDial: () => classifiedSocketDial,
+  })
+  expect((await fetcher('https://api.openai.com', { method: 'GET' })).status).toBe(status)
+  expect(fetches).toBe(1)
+})
+
+test('implicit fetch rejection is final after one attempt', async () => {
+  const { repo } = fakeBackoffs()
+  const failure = new Error('fetch failed')
+  let fetches = 0
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'u', fallbackList: [], runtimeLocation: 'TEST', proxyById: new Map(),
+    runProxied: async () => new Response('proxy'),
+    runDirectFetch: async () => { fetches++; throw failure },
+    runDirectConnect: async () => { throw classifiedFailure() }, socketDial: () => classifiedSocketDial,
+  })
+  await expect(fetcher('https://api.openai.com', { method: 'GET' })).rejects.toBe(failure)
+  expect(fetches).toBe(1)
+})
+
+test('configured direct_fetch keeps its operator order with no implicit retry', async () => {
+  const { repo } = fakeBackoffs()
+  const calls: string[] = []
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'u', fallbackList: [{ id: 'direct_connect' }, { id: 'direct_fetch' }],
+    runtimeLocation: 'TEST', proxyById: new Map(), runProxied: async () => new Response('proxy'),
+    runDirectFetch: async () => { calls.push('fetch'); throw new Error('fetch failed') },
+    runDirectConnect: async () => { calls.push('connect'); throw classifiedFailure() },
+    socketDial: () => classifiedSocketDial,
+  })
+  await expect(fetcher('https://api.openai.com', { method: 'GET' })).rejects.toBeInstanceOf(AggregateError)
+  expect(calls).toEqual(['connect', 'fetch'])
+})
+
+test('ordinary TCP error and inner TLS error do not enable implicit fetch', async () => {
+  for (const stage of ['tcp-connect', 'inner-tls'] as const) {
+    const { repo } = fakeBackoffs()
+    let fetches = 0
+    const fetcher = createFetcher({
+      proxyBackoffs: repo, upstreamId: 'u', fallbackList: [], runtimeLocation: 'TEST', proxyById: new Map(),
+      runProxied: async () => new Response('proxy'), runDirectFetch: async () => { fetches++; return new Response('fetch') },
+      runDirectConnect: async () => { throw new ProxyDialError('failed', stage, { cause: new Error('ordinary') }) },
+      socketDial: () => classifiedSocketDial,
+    })
+    await expect(fetcher('https://api.openai.com', { method: 'GET' })).rejects.toBeInstanceOf(ProxyDialError)
+    expect(fetches).toBe(0)
+  }
+})
+
+test('caller abort after classified rejection prevents implicit fetch', async () => {
+  const { repo } = fakeBackoffs()
+  const controller = new AbortController()
+  let fetches = 0
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'u', fallbackList: [], runtimeLocation: 'TEST', proxyById: new Map(),
+    runProxied: async () => new Response('proxy'), runDirectFetch: async () => { fetches++; return new Response('fetch') },
+    runDirectConnect: async () => { controller.abort(); throw classifiedFailure() }, socketDial: () => classifiedSocketDial,
+  })
+  await expect(fetcher('https://api.openai.com', { method: 'GET', signal: controller.signal })).rejects.toThrow()
+  expect(fetches).toBe(0)
 })

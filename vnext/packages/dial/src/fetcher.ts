@@ -16,8 +16,8 @@ import {
   type ProxyRequestTarget,
   type RunDirectConnectRequestOptions,
   type RunProxiedRequestOptions,
-  type SocketDial,
 } from '@vibe-core/proxy'
+import type { SocketDial } from '@vibe-core/platform'
 import {
   DIRECT_CONNECT_ID,
   DIRECT_FETCH_ID,
@@ -107,6 +107,7 @@ export const createFetcher = (input: CreateFetcherInput): Fetcher => {
       url,
       createReplayableRequest(url, init),
       directFetchBeforeMaterialized,
+      hasDirectFetch,
     )
   }
 }
@@ -117,12 +118,14 @@ const runFallbacks = async (
   url: string,
   request: ReplayableRequest,
   directFetchBeforeMaterialized: boolean,
+  hasDirectFetch: boolean,
 ): Promise<Response> => {
   // A direct-fetch attempt before a materialized transport can consume
   // Blob/FormData bodies. Build the replayable byte form first so every later
   // attempt observes one body.
   if (directFetchBeforeMaterialized) await request.materialized()
   const errors: unknown[] = []
+  const implicitFetch = { attempted: false, allPreDispatch: true }
 
   // Backoff rows only ever exist for operator-managed proxies, so a list made
   // entirely of built-in transports has nothing to look up. Skipping the read
@@ -139,14 +142,20 @@ const runFallbacks = async (
   for (const id of list) {
     if (skip.has(id)) continue
     triedThisCall.add(id)
-    const result = await tryOne(id, input, request, url, errors)
+    const result = await tryOne(id, input, request, url, errors, implicitFetch)
     if (result) return result
   }
 
   for (const id of list) {
     if (triedThisCall.has(id)) continue
-    const result = await tryOne(id, input, request, url, errors)
+    const result = await tryOne(id, input, request, url, errors, implicitFetch)
     if (result) return result
+  }
+
+  if (!hasDirectFetch && implicitFetch.attempted && implicitFetch.allPreDispatch && !request.signal?.aborted) {
+    // Only classified socket.opened rejections reached here. The configured
+    // two-pass chain is exhausted; runtime fetch is the one final attempt.
+    return input.runDirectFetch(url, request.fetchInit())
   }
 
   // A single fallback entry that failed once produces just one error — surface
@@ -161,7 +170,11 @@ const tryOne = async (
   request: ReplayableRequest,
   url: string,
   errors: unknown[],
+  implicitFetch: { attempted: boolean; allPreDispatch: boolean },
 ): Promise<Response | null> => {
+  implicitFetch.attempted = true
+  if (id !== DIRECT_CONNECT_ID) implicitFetch.allPreDispatch = false
+  let directSocketDial: SocketDial | undefined
   try {
     if (id === DIRECT_FETCH_ID) {
       // Direct egress is the runtime's fetch — it never raises ProxyDialError,
@@ -170,8 +183,9 @@ const tryOne = async (
     }
     if (id === DIRECT_CONNECT_ID) {
       const materialized = await request.materialized()
+      directSocketDial = input.socketDial()
       return await input.runDirectConnect(materialized.target, materialized.request, {
-        socketDial: input.socketDial(),
+        socketDial: directSocketDial,
         signal: request.signal,
       })
     }
@@ -222,6 +236,10 @@ const tryOne = async (
       return null
     }
     if (id === DIRECT_CONNECT_ID) {
+      if (!(err instanceof ProxyDialError && err.stage === 'tcp-connect' &&
+        directSocketDial?.shouldConnectErrorFallbackToFetch?.(err.cause) === true)) {
+        implicitFetch.allPreDispatch = false
+      }
       if (err instanceof ProxyDialError) {
         errors.push(err)
         return null

@@ -1,0 +1,10 @@
+import { parseHttpResponse, toWebResponse } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/packages/http/src/parser.ts"
+export default {
+ async fetch(request: Request): Promise<Response> {
+  const coding = request.headers.get("x-test-coding") ?? "gzip"
+  const bytes = new Uint8Array(await request.arrayBuffer())
+  const head = new TextEncoder().encode(`HTTP/1.1 200 OK\r\nContent-Encoding: ${coding}\r\nContent-Length: ${bytes.length}\r\nContent-Type: text/plain\r\n\r\n`)
+  const source = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(head); c.enqueue(bytes); c.close() } })
+  return toWebResponse(await parseHttpResponse(source))
+ }
+}

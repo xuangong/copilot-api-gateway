@@ -2,6 +2,9 @@
 // wire-faithful → Web Response bridge.
 
 import { copy } from './bytes.ts';
+import { createGunzip, createInflate } from 'node:zlib';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { decodeChunked } from './chunked.ts';
 import { HttpProtocolError } from './errors.ts';
 import { STATUS_LINE, TCHAR, trimFieldValueOws, validateFieldValueBytes } from './grammar.ts';
@@ -39,7 +42,27 @@ export const toWebResponse = (raw: RawHttpResponse): Response => {
     raw.body.cancel().catch(() => {});
     return new Response(null, { status: raw.status, statusText: raw.statusText, headers: raw.headers });
   }
-  return new Response(raw.body, { status: raw.status, statusText: raw.statusText, headers: raw.headers });
+  const headers = new Headers(raw.headers);
+  const coding = headers.get('content-encoding')?.trim().toLowerCase();
+  let body = raw.body;
+  if (coding && coding !== 'identity') {
+    if (coding !== 'gzip' && coding !== 'deflate') {
+      void raw.body.cancel().catch(() => {});
+      throw new HttpProtocolError(`unsupported Content-Encoding: ${coding}`, 'UNSUPPORTED_CONTENT_ENCODING');
+    }
+    if (typeof DecompressionStream !== 'undefined') {
+      body = raw.body.pipeThrough(new DecompressionStream(coding) as unknown as TransformStream<Uint8Array, Uint8Array>);
+    } else {
+      const decoder = coding === 'gzip' ? createGunzip() : createInflate();
+      // pipeline owns both ends: canceling the Web output also tears down the
+      // framed source. Observe its rejection while the reader sees stream errors.
+      void pipeline(Readable.fromWeb(raw.body as unknown as import('node:stream/web').ReadableStream<Uint8Array>), decoder).catch(() => {});
+      body = Readable.toWeb(decoder) as unknown as ReadableStream<Uint8Array>;
+    }
+    headers.delete('content-encoding');
+    headers.delete('content-length');
+  }
+  return new Response(body, { status: raw.status, statusText: raw.statusText, headers });
 };
 
 /**

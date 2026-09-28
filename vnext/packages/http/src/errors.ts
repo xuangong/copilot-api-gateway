@@ -24,7 +24,8 @@ export type HttpProtocolErrorCode =
   | 'WS_MESSAGE_TOO_LARGE'
   | 'EOF'
   | 'TRAILING_BODY_BYTES'
-  | 'HEAD_REQUEST_REJECTED';
+  | 'HEAD_REQUEST_REJECTED'
+  | 'UNSUPPORTED_CONTENT_ENCODING';
 
 export class HttpProtocolError extends Error {
   override readonly name = 'HttpProtocolError';

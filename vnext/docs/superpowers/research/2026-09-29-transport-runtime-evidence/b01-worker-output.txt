@@ -1,0 +1,2 @@
+{"coding":"gzip","status":200,"decodedBytes":78000,"headersRemoved":true,"byteEqual":true}
+{"coding":"deflate","status":200,"decodedBytes":78000,"headersRemoved":true,"byteEqual":true}
