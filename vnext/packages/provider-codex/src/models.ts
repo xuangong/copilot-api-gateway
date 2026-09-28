@@ -36,6 +36,7 @@ export interface CodexRawModel {
   input_modalities?: readonly ('text' | 'image')[]
   reasoning_efforts?: readonly string[]
   default_reasoning_effort?: string
+  image_detail_original?: boolean
 }
 
 export interface CodexProviderModel {
@@ -49,6 +50,7 @@ export interface CodexProviderModel {
   chat?: {
     modalities?: { input: readonly ('text' | 'image')[]; output: readonly ['text'] }
     reasoning?: { effort: { supported: readonly string[]; default: string } }
+    image_detail_original: boolean
   }
 }
 
@@ -141,6 +143,13 @@ const assertRawModel = (value: unknown): CodexRawModel => {
     raw.default_reasoning_effort = value.default_reasoning_level
   }
 
+  if (value.supports_image_detail_original !== undefined) {
+    if (typeof value.supports_image_detail_original !== 'boolean') {
+      throw new TypeError(`Codex model entry ${slug} supports_image_detail_original not a boolean`)
+    }
+    raw.image_detail_original = value.supports_image_detail_original
+  }
+
   return raw
 }
 
@@ -149,7 +158,9 @@ const assertRawModel = (value: unknown): CodexRawModel => {
 // API-rate pricing even though Codex itself bills as a flat-fee subscription.
 export const codexRawToProviderModel = (raw: CodexRawModel): CodexProviderModel => {
   const pricing = pricingForCodexModelKey(raw.id)
-  const chat: CodexProviderModel['chat'] = {}
+  const chat: NonNullable<CodexProviderModel['chat']> = {
+    image_detail_original: raw.image_detail_original ?? false,
+  }
   if (raw.input_modalities && raw.input_modalities.length > 0) {
     chat.modalities = { input: raw.input_modalities, output: ['text'] }
   }

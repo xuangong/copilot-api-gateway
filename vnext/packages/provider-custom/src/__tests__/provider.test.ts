@@ -62,6 +62,19 @@ describe('CustomProvider constructor', () => {
 })
 
 describe('CustomProvider.getModels', () => {
+  test('preserves validated chat metadata from discovery and manual config', async () => {
+    const chat = { modalities: { input: ['text', 'image'], output: ['text'] }, image_detail_original: true } as const
+    const manual = new CustomProvider({ name: 'x', baseUrl: 'https://x', apiKey: 'k', models: [{ id: 'manual', chat }] })
+    expect((await manual.getModels()).data[0]).toMatchObject({ chat })
+    const discovered = new CustomProvider({ name: 'x', baseUrl: 'https://x', apiKey: 'k' }, async () => Response.json({ data: [{ id: 'remote', chat }] }))
+    expect((await discovered.getModels()).data[0]).toMatchObject({ chat })
+  })
+
+  test('rejects malformed discovered chat metadata instead of advertising it', async () => {
+    const discovered = new CustomProvider({ name: 'x', baseUrl: 'https://x', apiKey: 'k' },
+      async () => Response.json({ data: [{ id: 'remote', chat: { image_detail_original: 'yes' } }] }))
+    await expect(discovered.getModels()).rejects.toThrow(/image_detail_original/)
+  })
   const realFetch = globalThis.fetch
 
   test('manual models list bypasses live /models call', async () => {

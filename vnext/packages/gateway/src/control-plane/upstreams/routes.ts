@@ -39,7 +39,7 @@ import {
   getFlagCatalog,
   defaultsForUpstream,
 } from '../../data-plane/flags/index.ts'
-import { createProviderFromUpstream, refreshModelsCache } from '../../data-plane/providers/registry.ts'
+import { createProviderFromUpstream, readCachedModels, refreshModelsCache } from '../../data-plane/providers/registry.ts'
 import { resolveControlPlaneFetcher } from './proxy-resolution.ts'
 import { getRuntimeLocation } from '@vibe-core/platform'
 import { normalizeProxyFallbackList } from '@vibe-core/proxy-repo'
@@ -642,6 +642,14 @@ upstreamsRouter.get('/:id/models', async (c) => {
     getRepo().upstreams.getById(c.req.param('id') as UpstreamId),
   )
   if (!upstream) return jsonError('upstream not found', 404)
+  if (c.req.query('refresh') !== '1') {
+    const models = await readCachedModels(upstream)
+    return c.json({
+      models: (models?.data ?? []).map((m) => ({ id: m.id, name: m.name ?? m.id })),
+      disabledPublicModelIds: upstream.disabledPublicModelIds,
+      cached: models !== null,
+    })
+  }
   // Same split as /:id/test — a fetcher that cannot be built is an
   // infrastructure fault reported with its own context, not the 502 "failed to
   // list models" the catch below reports for a real dial.
@@ -656,7 +664,7 @@ upstreamsRouter.get('/:id/models', async (c) => {
     if (!provider) {
       return jsonError(`unable to construct ${upstream.provider} provider for upstream ${upstream.id}`, 502)
     }
-    const models = await provider.getModels()
+    const models = await refreshModelsCache(upstream, provider)
     const list = (models.data ?? []).map((m) => ({ id: m.id, name: m.name ?? m.id }))
     return c.json({ models: list, disabledPublicModelIds: upstream.disabledPublicModelIds })
   } catch (err) {

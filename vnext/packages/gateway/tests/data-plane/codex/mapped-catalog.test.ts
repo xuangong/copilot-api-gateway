@@ -20,3 +20,15 @@ test.each(["coding", "gpt-alternate"])("Codex alias %s inherits its destination'
     service_tiers: ["default", "fast"], base_instructions: "Target instructions",
   })])
 })
+
+test.each([true, false, undefined])("Codex alias carries the selected upstream image detail fact %s", (supported) => {
+  const target = { id: "gpt-target", chat: {
+    modalities: { input: ["text", "image"] as const },
+    ...(supported === undefined ? {} : { image_detail_original: supported }),
+  } }
+  const alias = { ...target, id: "coding", _mapped_to: "gpt-target" }
+  const output = assembleCodexCatalog({ models: [{
+    slug: "gpt-target", input_modalities: ["text", "image"], supports_image_detail_original: true,
+  }] }, [alias])
+  expect(output.models[0]?.supports_image_detail_original).toBe(supported === true)
+})

@@ -15,6 +15,8 @@ import {
   type AuthCtx,
 } from '../src/control-plane/upstreams/routes.ts'
 import { listUpstreamModels } from '../src/data-plane/providers/registry.ts'
+import { initCache } from '../src/data-plane/cache/index.ts'
+import { MemoryCache } from '@vibe-core/cache'
 
 function inMemoryRepo() {
   const upstreams = new Map<string, UpstreamRecord>()
@@ -478,6 +480,49 @@ test('GET /api/upstreams/:id/models missing → 404', async () => {
   expect(res.status).toBe(404)
 })
 
+test('editor model GET reads the shared cache; explicit refresh failure retains it', async () => {
+  initCache(new MemoryCache())
+  const upstream: UpstreamRecord = {
+    id: 'up_editor_catalog', provider: 'custom', name: 'editor', enabled: true, sortOrder: 0,
+    config: { name: 'editor', baseUrl: 'https://editor.example/v1', apiKey: 'secret' },
+    flagOverrides: {}, disabledPublicModelIds: ['hidden'], state: null,
+    proxyFallbackList: [{ id: 'direct_fetch' }], createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+  }
+  await store.repo.upstreams.save(upstream)
+  const original = globalThis.fetch
+  let calls = 0
+  globalThis.fetch = (async () => { calls++; return Response.json({ data: [{ id: 'known', name: 'Known' }] }) }) as typeof fetch
+  try {
+    const app = buildApp({ isAdmin: true })
+    expect((await app.request(`/api/upstreams/${upstream.id}/models`)).status).toBe(200)
+    expect(calls).toBe(0)
+    const refreshed = await app.request(`/api/upstreams/${upstream.id}/models?refresh=1`)
+    expect(refreshed.status).toBe(200)
+    expect((await refreshed.json() as { models: Array<{ id: string }> }).models.map((m) => m.id)).toEqual(['known'])
+    expect(calls).toBe(1)
+    const changed = { ...upstream, config: { ...upstream.config as Record<string, unknown>, baseUrl: 'https://edited.example/v1' } }
+    await store.repo.upstreams.save(changed)
+    const edited = await app.request(`/api/upstreams/${upstream.id}/models`)
+    expect((await edited.json() as { models: Array<{ id: string }> }).models).toEqual([])
+    await store.repo.upstreams.save(upstream)
+    globalThis.fetch = (async () => { calls++; return new Response('down', { status: 400 }) }) as typeof fetch
+    const cached = await app.request(`/api/upstreams/${upstream.id}/models`)
+    expect((await cached.json() as { models: Array<{ id: string }>; disabledPublicModelIds: string[] }).models.map((m) => m.id)).toEqual(['known'])
+    expect(calls).toBe(1)
+    expect((await app.request(`/api/upstreams/${upstream.id}/models?refresh=1`)).status).toBe(502)
+    const retained = await app.request(`/api/upstreams/${upstream.id}/models`)
+    expect((await retained.json() as { models: Array<{ id: string }> }).models.map((m) => m.id)).toEqual(['known'])
+  } finally { globalThis.fetch = original }
+})
+
+test('explicit editor refresh still denies foreign and missing upstreams equally', async () => {
+  const victim = copilotUpstream({ ownerId: 'u1' })
+  await store.repo.upstreams.save(victim)
+  const app = buildApp({ isUser: true, userId: 'u2' })
+  expect((await app.request(`/api/upstreams/${victim.id}/models?refresh=1`)).status).toBe(404)
+  expect((await app.request('/api/upstreams/missing/models?refresh=1')).status).toBe(404)
+})
+
 // Cross-tenant regression for the four owner-scoped upstream routes, which now
 // share loadOwned instead of each re-deriving the comparison. A foreign upstream
 // and a nonexistent one must be answered identically; otherwise the status code
@@ -827,7 +872,7 @@ test('GET /:id/models reports a chain it cannot resolve instead of degrading to 
 
   const res = await withStubbedDirectFetch(
     { object: 'list', data: [{ id: 'm1' }] },
-    () => buildApp({ isAdmin: true }).request(`/api/upstreams/${upstream.id}/models`),
+    () => buildApp({ isAdmin: true }).request(`/api/upstreams/${upstream.id}/models?refresh=1`),
   )
 
   expect(res.status).toBe(400)
@@ -887,7 +932,7 @@ test('the admin routes dial through the upstream chain and name a dangling proxy
     async () => {
       const app = buildApp({ isAdmin: true })
       const testRes = await app.request(`/api/upstreams/${upstream.id}/test`, { method: 'POST' })
-      const modelsRes = await app.request(`/api/upstreams/${upstream.id}/models`)
+      const modelsRes = await app.request(`/api/upstreams/${upstream.id}/models?refresh=1`)
       return {
         testBody: await testRes.json() as { ok?: boolean; error?: string },
         modelsRes,

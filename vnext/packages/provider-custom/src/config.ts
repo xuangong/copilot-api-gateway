@@ -12,6 +12,78 @@ import { parseEndpoints, normalizeStringRecord } from '@vibe-llm/provider-llm'
 
 export type CustomAuthStyle = 'bearer' | 'anthropic' | 'none'
 
+export interface CustomChatMetadata {
+  modalities?: { input: readonly ('text' | 'image')[]; output: readonly ('text' | 'image')[] }
+  image_detail_original?: boolean
+  reasoning?: {
+    effort?: { supported: readonly string[]; default: string }
+    budget_tokens?: { min?: number; max?: number }
+    adaptive?: boolean
+    mandatory?: boolean
+  }
+}
+
+export function parseCustomChatMetadata(value: unknown, field = 'chat'): CustomChatMetadata | undefined {
+  if (value === undefined) return undefined
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${field} must be an object`)
+  const raw = value as Record<string, unknown>
+  const chat: CustomChatMetadata = {}
+  if (raw.image_detail_original !== undefined) {
+    if (typeof raw.image_detail_original !== 'boolean') throw new Error(`${field}.image_detail_original must be a boolean`)
+    chat.image_detail_original = raw.image_detail_original
+  }
+  if (raw.modalities !== undefined) {
+    if (!raw.modalities || typeof raw.modalities !== 'object' || Array.isArray(raw.modalities)) {
+      throw new Error(`${field}.modalities must be an object`)
+    }
+    const modalities = raw.modalities as Record<string, unknown>
+    const valid = (v: unknown): v is ('text' | 'image')[] =>
+      Array.isArray(v) && v.every((m) => m === 'text' || m === 'image')
+    if (!valid(modalities.input) || !valid(modalities.output)) {
+      throw new Error(`${field}.modalities input and output must contain text or image`)
+    }
+    chat.modalities = { input: modalities.input, output: modalities.output }
+  }
+  if (raw.reasoning !== undefined) {
+    if (!raw.reasoning || typeof raw.reasoning !== 'object' || Array.isArray(raw.reasoning)) {
+      throw new Error(`${field}.reasoning must be an object`)
+    }
+    const reasoning = raw.reasoning as Record<string, unknown>
+    const parsed: NonNullable<CustomChatMetadata['reasoning']> = {}
+    if (reasoning.effort !== undefined) {
+      if (!reasoning.effort || typeof reasoning.effort !== 'object' || Array.isArray(reasoning.effort)) {
+        throw new Error(`${field}.reasoning.effort must be an object`)
+      }
+      const effort = reasoning.effort as Record<string, unknown>
+      if (!Array.isArray(effort.supported) || !effort.supported.every((v) => typeof v === 'string' && v.length > 0)
+        || typeof effort.default !== 'string' || !effort.supported.includes(effort.default)) {
+        throw new Error(`${field}.reasoning.effort must contain a supported default`)
+      }
+      parsed.effort = { supported: effort.supported, default: effort.default }
+    }
+    if (reasoning.budget_tokens !== undefined) {
+      if (!reasoning.budget_tokens || typeof reasoning.budget_tokens !== 'object' || Array.isArray(reasoning.budget_tokens)) {
+        throw new Error(`${field}.reasoning.budget_tokens must be an object`)
+      }
+      const budget = reasoning.budget_tokens as Record<string, unknown>
+      const validBound = (v: unknown) => v === undefined || (typeof v === 'number' && Number.isFinite(v) && v >= 0)
+      if (!validBound(budget.min) || !validBound(budget.max)) throw new Error(`${field}.reasoning.budget_tokens has invalid bounds`)
+      parsed.budget_tokens = {
+        ...(budget.min !== undefined ? { min: budget.min as number } : {}),
+        ...(budget.max !== undefined ? { max: budget.max as number } : {}),
+      }
+    }
+    for (const key of ['adaptive', 'mandatory'] as const) {
+      if (reasoning[key] !== undefined) {
+        if (typeof reasoning[key] !== 'boolean') throw new Error(`${field}.reasoning.${key} must be a boolean`)
+        parsed[key] = reasoning[key] as boolean
+      }
+    }
+    chat.reasoning = parsed
+  }
+  return chat
+}
+
 export const CUSTOM_AUTH_STYLES = [
   'bearer',
   'anthropic',
@@ -55,7 +127,7 @@ export interface CustomProviderConfig {
   modelsEndpoint?: string
   models?: ReadonlyArray<
     | string
-    | { id: string; name?: string; ownedBy?: string }
+    | { id: string; name?: string; ownedBy?: string; chat?: CustomChatMetadata }
     | { upstreamModelId: string; cost?: ModelPricing }
   >
 }
@@ -160,7 +232,7 @@ function parseManualModels(value: unknown): CustomProviderConfig['models'] {
     throw new Error('models must be an array of strings or { id, name?, ownedBy? }')
   }
   const out: Array<
-    { id: string; name?: string; ownedBy?: string } | { upstreamModelId: string; cost?: ModelPricing }
+    { id: string; name?: string; ownedBy?: string; chat?: CustomChatMetadata } | { upstreamModelId: string; cost?: ModelPricing }
   > = []
   for (const entry of value) {
     if (typeof entry === 'string') {
@@ -170,12 +242,12 @@ function parseManualModels(value: unknown): CustomProviderConfig['models'] {
       continue
     }
     if (entry && typeof entry === 'object' && typeof (entry as { id?: unknown }).id === 'string') {
-      const e = entry as { id: string; name?: unknown; ownedBy?: unknown }
+      const e = entry as { id: string; name?: unknown; ownedBy?: unknown; chat?: unknown }
       const id = e.id.trim()
       if (!id) throw new Error('models[].id must be a non-empty string')
       const name = typeof e.name === 'string' ? e.name : undefined
       const ownedBy = typeof e.ownedBy === 'string' ? e.ownedBy : undefined
-      out.push({ id, name, ownedBy })
+      out.push({ id, name, ownedBy, ...(e.chat !== undefined ? { chat: parseCustomChatMetadata(e.chat, 'models[].chat') } : {}) })
       continue
     }
     // Pricing-only entry: carries no display metadata, it only attaches a cost

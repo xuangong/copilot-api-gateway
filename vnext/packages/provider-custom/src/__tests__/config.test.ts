@@ -108,6 +108,11 @@ describe('validateUpstreamPath', () => {
 })
 
 describe('normalizeCustomConfig', () => {
+  test('rejects malformed manual chat metadata', () => {
+    expect(() => normalizeCustomConfig({ name: 'x', baseUrl: 'https://x', apiKey: 'k',
+      models: [{ id: 'manual', chat: { image_detail_original: 'yes' } }] }))
+      .toThrow(/image_detail_original/)
+  })
   const base = { name: 'ds', baseUrl: 'https://api.deepseek.com/v1/', apiKey: 'sk-1' }
 
   test('trims the name and strips trailing slashes from baseUrl', () => {

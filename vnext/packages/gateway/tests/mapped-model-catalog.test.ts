@@ -23,6 +23,7 @@ interface CatalogRow {
   _upstream: string
   _mapped_to?: string
   capabilities?: { limits?: { max_context_window_tokens?: number } }
+  chat?: { image_detail_original?: boolean }
 }
 
 function upstream(id = "up_catalog", ownerId = OWNER): UpstreamRecord {
@@ -149,12 +150,13 @@ test("a later rule with the same source cannot make an unreachable first match a
   expect((await catalog()).map((row) => row.id)).toEqual([TARGET, "valid"])
 })
 
-test("a source is omitted when a later rule redirects its target to an unavailable model", async () => {
+test("an unavailable redirection omits both the raw source and its dependent alias", async () => {
   await saveKey([
     { source: "client-alias", destination: TARGET },
     { source: TARGET, destination: "missing" },
   ])
-  expect((await catalog()).map((row) => row.id)).toEqual([TARGET])
+  expect(await catalog(`/api/models?keyId=${KEY_ID}`, "owner-session-key")).toEqual([])
+  expect((await app.request("/v1/models", { headers: { "x-api-key": KEY } })).status).toBe(404)
 })
 
 test("disabled and foreign upstreams cannot make an alias available", async () => {
@@ -169,6 +171,101 @@ test("dedupe=0 preserves each target upstream for aliases without duplicating ru
   const rows = await catalog(`/api/models?keyId=${KEY_ID}&dedupe=0`)
   expect(rows.filter((row) => row.id === "client-alias").map((row) => row._upstream).sort()).toEqual(["up_catalog", "up_second"])
   expect((await catalog()).map((row) => row.id)).toEqual([TARGET, "client-alias"])
+})
+
+test.each([false, undefined, "text-only" as const])("a key alias only advertises original image detail when every routeable upstream supports it: %s", async (second) => {
+  await repo.upstreams.save(upstream("up_second"))
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input)
+    const isSecond = url.includes("up_second.test")
+    return Response.json({ data: [{ id: TARGET, name: TARGET, chat: {
+      modalities: { input: isSecond && second === "text-only" ? ["text"] : ["text", "image"], output: ["text"] },
+      ...(isSecond && second === undefined ? {} : { image_detail_original: isSecond ? second === "text-only" : true }),
+    } }] })
+  }) as typeof fetch
+  const rows = await catalog()
+  expect(rows.find((row) => row.id === TARGET)?.chat?.image_detail_original).toBe(false)
+  expect(rows.find((row) => row.id === "client-alias")?.chat?.image_detail_original).toBe(false)
+})
+
+test("per-upstream alias rows retain each selected upstream's image detail fact", async () => {
+  await repo.upstreams.save(upstream("up_second"))
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input)
+    return Response.json({ data: [{ id: TARGET, name: TARGET, chat: {
+      modalities: { input: ["text", "image"], output: ["text"] },
+      image_detail_original: url.includes("up_second.test"),
+    } }] })
+  }) as typeof fetch
+  const rows = await catalog("/api/models?keyId=catalog-key&dedupe=0", "owner-session-key")
+  expect(rows.filter((row) => row.id === "client-alias").map((row) => [row._upstream, row.chat?.image_detail_original])).toEqual([
+    ["up_catalog", false], ["up_second", true],
+  ])
+})
+
+test.each([
+  { sourceSupportsOriginal: true, targetSupportsOriginal: false },
+  { sourceSupportsOriginal: false, targetSupportsOriginal: true },
+])("an existing mapped source advertises its target's image detail in public and Codex catalogs: %s", async ({ sourceSupportsOriginal, targetSupportsOriginal }) => {
+  await saveKey([{ source: "gpt-source", destination: TARGET }])
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input)
+    if (!url.endsWith("/models")) return new Response("not found", { status: 404 })
+    return Response.json({ data: [
+      { id: "gpt-source", name: "Source", chat: {
+        modalities: { input: ["text", "image"], output: ["text"] }, image_detail_original: sourceSupportsOriginal,
+      } },
+      { id: TARGET, name: "Target", chat: {
+        modalities: { input: ["text", "image"], output: ["text"] }, image_detail_original: targetSupportsOriginal,
+      } },
+    ] })
+  }) as typeof fetch
+
+  const publicRows = (await catalog()).filter((row) => row.id === "gpt-source")
+  expect(publicRows).toHaveLength(1)
+  expect(publicRows[0]).toMatchObject({
+    id: "gpt-source", _mapped_to: TARGET, chat: { image_detail_original: targetSupportsOriginal },
+  })
+
+  const response = await app.request("/v1/models", { headers: { "x-api-key": KEY, "user-agent": "codex-tui/0.144.1" } })
+  expect(response.status).toBe(200)
+  const body = await response.json() as { models: Array<{ slug: string; supports_image_detail_original: boolean }> }
+  const codexRows = body.models.filter((row) => row.slug === "gpt-source")
+  expect(codexRows).toHaveLength(1)
+  expect(codexRows[0]?.supports_image_detail_original).toBe(targetSupportsOriginal)
+})
+
+test("an existing mapped source excludes every raw source from multi-upstream capability aggregation", async () => {
+  await repo.upstreams.save(upstream("up_second"))
+  await saveKey([{ source: "gpt-source", destination: TARGET }])
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input)
+    if (!url.endsWith("/models")) return new Response("not found", { status: 404 })
+    const second = url.includes("up_second.test")
+    return Response.json({ data: [
+      { id: "gpt-source", name: "Source", chat: {
+        modalities: { input: ["text", "image"], output: ["text"] }, image_detail_original: true,
+      } },
+      { id: TARGET, name: "Target", chat: {
+        modalities: { input: ["text", "image"], output: ["text"] }, image_detail_original: second,
+      } },
+    ] })
+  }) as typeof fetch
+
+  const perUpstream = await catalog(`/api/models?keyId=${KEY_ID}&dedupe=0`, "owner-session-key")
+  expect(perUpstream.filter((row) => row.id === "gpt-source").map((row) => [
+    row._upstream, row._mapped_to, row.chat?.image_detail_original,
+  ])).toEqual([
+    ["up_catalog", TARGET, false], ["up_second", TARGET, true],
+  ])
+  const publicRows = (await catalog()).filter((row) => row.id === "gpt-source")
+  expect(publicRows).toHaveLength(1)
+  expect(publicRows[0]?.chat?.image_detail_original).toBe(false)
+
+  const response = await app.request("/v1/models", { headers: { "x-api-key": KEY, "user-agent": "codex-tui/0.144.1" } })
+  expect(response.status).toBe(200)
+  const body = await response.json() as { models: Array<{ slug: string; supports_image_detail_original: boolean }> }
+  expect(body.models.find((row) => row.slug === "gpt-source")?.supports_image_detail_original).toBe(false)
 })
 
 test.each(["owner", "assignee", "admin"])("a %s session sees the selected key's mapping sources", async (viewer) => {

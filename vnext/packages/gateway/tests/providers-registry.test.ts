@@ -530,18 +530,25 @@ test('an edited upstream cannot inherit the previous configuration snapshot', as
   await expect(catalogIds()).rejects.toThrow()
 })
 
-test('legacy catalogs are retained across restarts even when their first refresh fails', async () => {
-  const { upstream, l2, advance } = catalogFixture()
+test('unversioned legacy catalogs are discarded after an upgrade', async () => {
+  const { upstream, l2 } = catalogFixture()
   await l2.set(`models:${upstream.id}@${upstream.updatedAt}`, {
     object: 'list', data: [stubModel('gpt-6-astra')],
   }, 120)
   failCatalog()
-  expect(await catalogIds()).toEqual(['gpt-6-astra'])
-  await drainRefresh()
-  advance(365 * 24 * 60 * 60 * 1000)
+  await expect(catalogIds()).rejects.toThrow()
+})
+
+test('an older code revision in L2 is discarded after restart', async () => {
+  const { upstream, l2 } = catalogFixture()
+  await catalogIds()
+  const key = `models:snapshot:${upstream.id}`
+  const saved = await l2.get<Record<string, unknown>>(key)
+  expect(saved).not.toBeNull()
+  await l2.set(key, { ...saved, codeRevision: 1 }, null)
   _clearModelsMemoForTest()
-  expect(await catalogIds()).toEqual(['gpt-6-astra'])
-  await drainRefresh()
+  failCatalog()
+  await expect(catalogIds()).rejects.toThrow()
 })
 
 test('loading L2 into a new isolate does not postpone its refresh deadline', async () => {

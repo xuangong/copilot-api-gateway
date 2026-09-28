@@ -1,0 +1,26 @@
+const root = "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext"
+const { bootstrapBunPlatform } = await import(root + "/apps/platform-bun/src/bootstrap.ts")
+const { app } = await import(root + "/packages/gateway/src/app.ts")
+const { getRepo } = await import(root + "/packages/gateway/src/repo/index.ts")
+bootstrapBunPlatform({ dbPath: process.cwd() + "/fixture.sqlite", filesRoot: process.cwd() + "/files" })
+const repo = getRepo()
+const now = new Date().toISOString()
+const ownerId = "00000000-0000-4000-a000-0000000000a1"
+const token = "ses_synthetic_browser_review_only"
+await repo.users.create({ id: ownerId, name: "Synthetic UI Admin", email: "test@local.dev", createdAt: now, disabled: false })
+await repo.sessions.create({ token, userId: ownerId, createdAt: now, authenticatedAt: Date.now(), expiresAt: new Date(Date.now() + 3600000).toISOString() })
+let providerCalls = 0
+let providerFails = false
+const provider = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => { providerCalls++; return providerFails ? Response.json({ error: "synthetic discovery failure" }, { status: 503 }) : Response.json({ object: "list", data: [{ id: "fixture-model", name: "Fixture Model", chat: { modalities: { input: ["text", "image"], output: ["text"] }, image_detail_original: true } }] }) } })
+await repo.upstreams.save({ id: "up_fixture_custom", ownerId, provider: "custom", name: "Synthetic Custom", enabled: true, sortOrder: 0, config: { name: "Synthetic Custom", baseUrl: `http://127.0.0.1:${provider.port}/v1`, apiKey: "synthetic-key-only" }, state: null, flagOverrides: {}, disabledPublicModelIds: [], createdAt: now, updatedAt: now })
+await repo.apiKeys.save({ id: "00000000-0000-4000-a000-0000000000c3", ownerId, name: "Synthetic retention key", key: "sk_synthetic_dashboard_only", createdAt: now, modelMappingsEnabled: false, modelMappings: [], dumpRetentionSeconds: 3600 })
+const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: async (req) => {
+ if (new URL(req.url).pathname === "/__fixture/control") {
+  if (req.method === "POST") providerFails = Boolean((await req.json()).fail)
+  return Response.json({ calls: providerCalls, fail: providerFails })
+ }
+ return app.fetch(req)
+} })
+await Bun.write(process.cwd() + "/connection.json", JSON.stringify({ port: server.port, token, pid: process.pid }))
+console.log("Isolated loopback dashboard ready")
+process.on("SIGTERM", () => { server.stop(true); provider.stop(true); process.exit(0) })

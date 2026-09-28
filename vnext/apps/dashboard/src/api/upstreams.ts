@@ -162,7 +162,8 @@ export interface UpstreamCatalog {
   models: { id: string; name: string }[]
   disabledPublicModelIds: string[]
 }
-export function getUpstreamCatalog(id: string): Promise<UpstreamCatalog> {
-  return api<UpstreamCatalog>(`/api/upstreams/${encodeURIComponent(id)}/models`)
+export function getUpstreamCatalog(id: string, refresh = false): Promise<UpstreamCatalog> {
+  return api<UpstreamCatalog>(`/api/upstreams/${encodeURIComponent(id)}/models`, {
+    query: refresh ? { refresh: "1" } : undefined,
+  })
 }
-

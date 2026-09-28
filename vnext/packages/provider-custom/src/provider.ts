@@ -20,6 +20,8 @@ import {
   type CustomAuthStyle,
   type CustomPathOverrideKey,
   type CustomProviderConfig,
+  type CustomChatMetadata,
+  parseCustomChatMetadata,
 } from './config.ts'
 
 export type { CustomProviderConfig } from './config.ts'
@@ -47,7 +49,7 @@ export class CustomProvider implements LlmModelProvider {
   private readonly defaultHeaders: Record<string, string>
   private readonly pathOverrides: Partial<Record<CustomPathOverrideKey, string>>
   private readonly modelsEndpoint: string
-  private readonly manualModels?: ReadonlyArray<{ id: string; name?: string; ownedBy?: string }>
+  private readonly manualModels?: ReadonlyArray<{ id: string; name?: string; ownedBy?: string; chat?: CustomChatMetadata }>
   private readonly manualPricing: Map<string, ModelPricing>
   private autoPricing: Map<string, ModelPricing> = new Map()
   /**
@@ -78,11 +80,11 @@ export class CustomProvider implements LlmModelProvider {
     // two shapes are discriminated by which key is present.
     const displayEntries = cfg.models?.filter(
       (m) => typeof m === 'string' || 'id' in m,
-    ) as ReadonlyArray<string | { id: string; name?: string; ownedBy?: string }> | undefined
+    ) as ReadonlyArray<string | { id: string; name?: string; ownedBy?: string; chat?: CustomChatMetadata }> | undefined
     this.manualModels = displayEntries?.map((m) =>
       typeof m === 'string'
         ? { id: m, name: undefined, ownedBy: undefined }
-        : { id: m.id, name: m.name, ownedBy: m.ownedBy },
+        : { id: m.id, name: m.name, ownedBy: m.ownedBy, chat: parseCustomChatMetadata(m.chat, 'models[].chat') },
     )
     this.fetcher = fetcher
     this.manualPricing = new Map()
@@ -107,6 +109,7 @@ export class CustomProvider implements LlmModelProvider {
           version: m.id,
           model_picker_enabled: true,
           preview: false,
+          ...(m.chat ? { chat: m.chat } : {}),
           capabilities: {
             family: 'custom', limits: {}, object: 'model_capabilities',
             supports: {}, tokenizer: 'unknown', type: 'text',
@@ -334,6 +337,7 @@ function normalizeModelsResponse(raw: unknown, providerName: string): ProviderMo
       version: optStr(item.version) ?? id,
       model_picker_enabled: true,
       preview: false,
+      ...(item.chat !== undefined ? { chat: parseCustomChatMetadata(item.chat, `models[${id}].chat`) } : {}),
       capabilities: {
         family: optStr(capsIn.family) ?? 'custom',
         limits,

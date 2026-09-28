@@ -33,6 +33,7 @@
  */
 import type { CatalogModel, CodexCatalogCapabilities, CodexReasoningLevel } from './catalog.ts'
 import { synthesizedBaseInstructions } from './synthesized-base-instructions.ts'
+import { supportsOriginalImageDetail } from '../providers/catalog-image-detail.ts'
 
 // See BASELINE.context_window rationale in reference synthesize.ts — codex's
 // `auto_compact_token_limit()` derives `(cw * 9) / 10`, absent/zero blows up.
@@ -78,6 +79,7 @@ const BASELINE = {
  *
  *   - `id` — public model id, becomes the Codex `slug`
  *   - `name` — optional display label
+ *   - `chat.image_detail_original` — selected upstream's image detail fact
  *   - `capabilities.limits.max_context_window_tokens` — sole registry-derived
  *     window overlay in vNext (there is no separate `limits.max_output_tokens`
  *     field consumed by Codex's catalog wire)
@@ -85,6 +87,10 @@ const BASELINE = {
 export interface CodexSynthesizeModel {
   id: string
   name?: string
+  chat?: {
+    image_detail_original?: boolean
+    modalities?: { input: readonly ('text' | 'image')[] }
+  }
   capabilities?: {
     limits?: {
       max_context_window_tokens?: number
@@ -119,6 +125,9 @@ export const synthesizeCatalogEntry = (
     ?? BASELINE.max_context_window) as number
 
   const displayName = model.name ?? (source.display_name as string | undefined) ?? model.id
+  const inputModalities = model.chat?.modalities?.input
+    ?? (source.input_modalities as readonly ('text' | 'image')[] | undefined)
+    ?? BASELINE.input_modalities
 
   const entry: CatalogModel = {
     ...source,
@@ -126,6 +135,8 @@ export const synthesizeCatalogEntry = (
     prefer_websockets: false,
     slug: model.id,
     display_name: displayName,
+    input_modalities: [...inputModalities],
+    supports_image_detail_original: supportsOriginalImageDetail(model),
     supported_reasoning_levels: advertisedReasoning,
     context_window: contextWindow,
     max_context_window: maxContextWindow,

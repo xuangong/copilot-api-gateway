@@ -22,7 +22,7 @@ import type { ApiKeyRoutingPolicy } from '../../shared/api-key-model-mappings.ts
 import { getDataPlaneRepo as getRepo } from '../../repo/index.ts'
 import { isCodexUserAgent } from '../codex/catalog.ts'
 import { loadCodexCatalog } from '../codex/models.ts'
-import { withKeyModelAliases } from './key-model-catalog.ts'
+import { collapseModelCatalog, withKeyModelAliases } from './key-model-catalog.ts'
 
 async function listAvailableModels(opts: ListUpstreamModelsOptions, format?: 'gemini') {
   let incomplete = false
@@ -159,12 +159,12 @@ modelsRouter.get('/api/models', async (c) => {
     catalogAuth = keyAuth
   }
 
-  const models = await listAvailableModels({ ownerId: catalogAuth.userId, copilot: catalogAuth.copilot, dedupe, allOwners })
-  return c.json(allOwners ? models : withKeyModelAliases(models, catalogAuth.routingPolicy, dedupe))
+  const models = await listAvailableModels({ ownerId: catalogAuth.userId, copilot: catalogAuth.copilot, dedupe: false, allOwners })
+  return c.json(allOwners ? (dedupe ? collapseModelCatalog(models) : models) : withKeyModelAliases(models, catalogAuth.routingPolicy, dedupe))
 })
 
 async function handleList(auth: DataPlaneAuthCtx) {
-  const raw = await listAvailableModels({ ownerId: auth.userId, copilot: auth.copilot })
+  const raw = await listAvailableModels({ ownerId: auth.userId, copilot: auth.copilot, dedupe: false })
   const models = withKeyModelAliases(raw, auth.routingPolicy)
   if (!models.data.length && !auth.copilot?.copilotToken) {
     return { ok: false, models } as const

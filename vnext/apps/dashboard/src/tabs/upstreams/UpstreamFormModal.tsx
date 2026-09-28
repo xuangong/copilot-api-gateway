@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
 import { useAuth } from "../../state/auth"
@@ -6,6 +6,7 @@ import * as api from "../../api/upstreams"
 import type { UpstreamRecord } from "../../api/types"
 import { findPreset } from "./vendorPresets"
 import { formatModelsText, parseModelsText } from "./model-text"
+import { CatalogRequestGate, catalogDraftIdentity } from "./catalog-request-gate"
 
 type Provider = "copilot" | "azure" | "custom" | "sdf"
 
@@ -249,6 +250,16 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
 
   const [catalog, setCatalog] = useState<{ id: string; name: string }[] | null>(null)
   const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogRefreshing, setCatalogRefreshing] = useState(false)
+  const catalogGate = useRef(new CatalogRequestGate())
+  const modeRef = useRef(mode)
+  const catalogIdRef = useRef(editingId)
+  const catalogDraftRef = useRef(catalogDraftIdentity(form))
+  modeRef.current = mode
+  catalogIdRef.current = editingId
+  catalogDraftRef.current = catalogDraftIdentity(form)
+  const catalogDraftChanged = catalogDraftRef.current !== catalogDraftIdentity(initial.form)
   const [disabledIds, setDisabledIds] = useState<string[]>(
     mode.kind === "edit" ? [...(mode.row.disabledPublicModelIds ?? [])] : [],
   )
@@ -259,22 +270,44 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
   }, [ensureFlagCatalog, toast])
 
   useEffect(() => {
-    if (!editingId) return
-    let cancelled = false
-    api.getUpstreamCatalog(editingId).then(
-      (c) => {
-        if (!cancelled) setCatalog(c.models)
-      },
-      (err) => {
-        if (!cancelled) setCatalogError(err instanceof Error ? err.message : String(err))
-      },
-    )
-    return () => {
-      cancelled = true
-    }
-    // Keyed on the id, not on `mode`: the parent builds that object inline, so
-    // depending on it refetches the catalog on every render of the list.
+    const nextMode = modeRef.current
+    setForm(buildInitial(nextMode).form)
+    setDisabledIds(nextMode.kind === "edit" ? [...(nextMode.row.disabledPublicModelIds ?? [])] : [])
+    setCatalog(null)
+    setCatalogError(null)
+    catalogGate.current.invalidate()
   }, [editingId])
+
+  const loadCatalog = useCallback(async (id: string, refresh: boolean) => {
+    const draft = catalogDraftRef.current
+    const ticket = catalogGate.current.begin(id, draft)
+    if (refresh) setCatalogRefreshing(true)
+    else setCatalogLoading(true)
+    try {
+      const response = await api.getUpstreamCatalog(id, refresh)
+      if (!catalogGate.current.accepts(ticket, catalogIdRef.current ?? '', catalogDraftRef.current)) return
+      setCatalog(response.models)
+      setCatalogError(null)
+    } catch (error) {
+      if (!catalogGate.current.accepts(ticket, catalogIdRef.current ?? '', catalogDraftRef.current)) return
+      setCatalogError(error instanceof Error ? error.message : String(error))
+    } finally {
+      if (catalogGate.current.accepts(ticket, catalogIdRef.current ?? '', catalogDraftRef.current)) {
+        setCatalogLoading(false)
+        setCatalogRefreshing(false)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    const gate = catalogGate.current
+    gate.invalidate()
+    setCatalogLoading(false)
+    setCatalogRefreshing(false)
+    if (!editingId || catalogDraftChanged) return
+    void loadCatalog(editingId, false)
+    return () => { gate.invalidate() }
+  }, [editingId, catalogDraftChanged, loadCatalog])
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -759,10 +792,26 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
               {t("dash.disabledModelsLabel")}
             </h4>
             <p className="text-xs text-themed-dim mb-2">{t("dash.disabledModelsHint")}</p>
-            {editing && catalog === null && !catalogError && (
+            {editing && (
+              <button
+                type="button"
+                className="btn-ghost text-xs mb-2"
+                disabled={catalogRefreshing || catalogDraftChanged}
+                onClick={() => { if (editingId) void loadCatalog(editingId, true) }}
+              >
+                {catalogRefreshing ? t("dash.disabledModelsLoading") : t("dash.refreshLabel")}
+              </button>
+            )}
+            {editing && catalogDraftChanged && (
+              <p className="text-xs text-themed-dim">{t("dash.modelsSaveBeforeRefresh")}</p>
+            )}
+            {editing && catalog === null && catalogLoading && !catalogError && (
               <p className="text-xs text-themed-dim">{t("dash.disabledModelsLoading")}</p>
             )}
             {catalogError && <p className="text-xs text-accent-red">{catalogError}</p>}
+            {editing && catalog?.length === 0 && !catalogLoading && (
+              <p className="text-xs text-themed-dim">{t("dash.noCachedModels")}</p>
+            )}
             {editing && catalog && (
               <select
                 multiple

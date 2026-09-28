@@ -23,6 +23,7 @@ import { sdfProviderPlugin } from '@vibe-llm/provider-sdf'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
 import { createPerRequestFetcher } from '../dial/per-request.ts'
 import type { Fetcher } from '@vibe-core/upstream'
+import { supportsOriginalImageDetail } from './catalog-image-detail.ts'
 
 export interface CreateProviderOptions {
   copilotToken: string
@@ -170,7 +171,11 @@ function modelToBindingModel(
 /** A refresh deadline never expires the last successful catalog. */
 const MODELS_REFRESH_MS = 120_000
 const MODELS_RETRY_MS = 30_000
+// Bump when provider discovery or projected catalog metadata changes. This is
+// independent of the per-upstream configuration hash below.
+export const MODEL_CATALOG_REVISION = 2
 interface ModelsSnapshot {
+  codeRevision: number
   revision: string
   refreshedAt: number
   models: ModelsResponse
@@ -217,7 +222,10 @@ export function refreshModelsCache(
   const refresh = (async () => {
     const models = await provider.getModels()
     if (!validModels(models)) throw new Error('Invalid upstream model catalog')
-    const snapshot: ModelsSnapshot = { revision: modelsRevision(upstream), refreshedAt: Date.now(), models }
+    const snapshot: ModelsSnapshot = {
+      codeRevision: MODEL_CATALOG_REVISION,
+      revision: modelsRevision(upstream), refreshedAt: Date.now(), models,
+    }
     rememberModels(key, { ...snapshot, refreshAfter: snapshot.refreshedAt + MODELS_REFRESH_MS })
     try {
       await getCache().set(modelsSnapshotKey(upstream), snapshot, null)
@@ -230,26 +238,14 @@ export function refreshModelsCache(
   return refresh
 }
 
-async function getCachedModels(
-  upstream: UpstreamRecord<unknown>,
-  provider: LlmModelProvider,
-): Promise<ModelsResponse> {
+async function loadModelsSnapshot(upstream: UpstreamRecord<unknown>): Promise<ModelsMemo | null> {
   const key = modelsCacheKey(upstream)
-  const now = Date.now()
   let snapshot = modelsMemo.get(key)
-  if (snapshot && snapshot.refreshAfter > now) return snapshot.models
-
   if (!snapshot) try {
     const l2 = await getCache().get<ModelsSnapshot>(modelsSnapshotKey(upstream))
-    if (l2?.revision === modelsRevision(upstream) && Number.isFinite(l2.refreshedAt) && validModels(l2.models)) {
+    if (l2?.codeRevision === MODEL_CATALOG_REVISION && l2.revision === modelsRevision(upstream)
+      && Number.isFinite(l2.refreshedAt) && validModels(l2.models)) {
       snapshot = { ...l2, refreshAfter: l2.refreshedAt + MODELS_REFRESH_MS }
-    } else if (!snapshot) {
-      // Preserve pre-upgrade TTL entries too, before their original expiry.
-      const legacy = await getCache().get<ModelsResponse>(`models:${upstream.id}@${upstream.updatedAt}`)
-      if (legacy && validModels(legacy)) {
-        snapshot = { revision: modelsRevision(upstream), refreshedAt: 0, refreshAfter: 0, models: legacy }
-        await getCache().set(modelsSnapshotKey(upstream), snapshot, null)
-      }
     }
   } catch {
     // A degraded L2 never invalidates the local snapshot.
@@ -257,8 +253,22 @@ async function getCachedModels(
   // Another caller may have refreshed/backed off while this request read L2.
   const current = modelsMemo.get(key)
   if (current && (!snapshot || current.refreshedAt >= snapshot.refreshedAt)) snapshot = current
+  if (snapshot) rememberModels(key, snapshot)
+  return snapshot ?? null
+}
+
+/** Editor reads known catalog data without contacting the upstream. */
+export async function readCachedModels(upstream: UpstreamRecord<unknown>): Promise<ModelsResponse | null> {
+  return (await loadModelsSnapshot(upstream))?.models ?? null
+}
+
+async function getCachedModels(
+  upstream: UpstreamRecord<unknown>,
+  provider: LlmModelProvider,
+): Promise<ModelsResponse> {
+  const key = modelsCacheKey(upstream)
+  const snapshot = await loadModelsSnapshot(upstream)
   if (!snapshot) return refreshModelsCache(upstream, provider)
-  rememberModels(key, snapshot)
   if (snapshot.refreshAfter > Date.now()) return snapshot.models
 
   // Return known routes immediately while the next complete catalog is fetched.
@@ -393,7 +403,7 @@ export async function listUpstreamModels(
 ): Promise<ModelsResponse> {
   const bindings = await listProviderBindings(opts)
   const data: ModelsResponse['data'] = []
-  const seen = new Set<string>()
+  const seen = new Map<string, number>()
   // Map binding.model.endpoints (internal EndpointKey) → SDK-facing path tokens
   // so dashboard filters that look at `supported_endpoints` (`/v1/messages`,
   // `/responses`, `/v1/chat/completions`, `/v1/embeddings`) keep working.
@@ -407,8 +417,20 @@ export async function listUpstreamModels(
   }
   const dedupe = opts.dedupe !== false
   for (const binding of bindings) {
-    if (dedupe && seen.has(binding.model.id)) continue
-    seen.add(binding.model.id)
+    const previousIndex = seen.get(binding.model.id)
+    if (dedupe && previousIndex !== undefined) {
+      // One public id may route to several enabled upstreams. Codex can only
+      // advertise a single boolean, so every candidate must prove support.
+      const previous = data[previousIndex] as Model & { chat?: { image_detail_original?: boolean; modalities?: { input?: string[] } } } | undefined
+      const candidate = binding.model.raw as { chat?: { image_detail_original?: boolean; modalities?: { input?: string[] } } } | undefined
+      if (previous) previous.chat = {
+        ...previous.chat,
+        image_detail_original: supportsOriginalImageDetail(previous)
+          && supportsOriginalImageDetail(candidate ?? {}),
+      }
+      continue
+    }
+    if (previousIndex === undefined) seen.set(binding.model.id, data.length)
     // Provenance — non-standard, SDKs ignore.
     const provenance = {
       _upstream: binding.upstream,
@@ -419,7 +441,11 @@ export async function listUpstreamModels(
       // upstream model JSON verbatim so vendor fields (`capabilities.family`,
       // `supports.*`, `tokenizer`, `model_picker_category`, `policy`,
       // `supported_endpoints`, `preview`) round-trip unchanged.
-      data.push({ ...(binding.model.raw as Record<string, unknown>), ...provenance } as unknown as Model)
+      const raw = binding.model.raw as Record<string, unknown>
+      const chat = raw.chat as { image_detail_original?: boolean; modalities?: { input?: string[] } } | undefined
+      data.push({ ...raw,
+        ...(chat ? { chat: { ...chat, image_detail_original: supportsOriginalImageDetail({ chat }) } } : {}),
+        ...provenance } as unknown as Model)
       continue
     }
     const supportedEndpoints = Object.keys(binding.model.endpoints ?? {})

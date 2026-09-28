@@ -10,3 +10,17 @@ test("Codex catalog never advertises unavailable gateway WebSockets", () => {
     expect(model.slug).toBe("alias")
   }
 })
+
+test.each([true, false, undefined])("Codex catalog uses the selected upstream image detail fact %s", (supported) => {
+  const source = { slug: "gpt-5", supports_image_detail_original: true, input_modalities: ["text", "image"] }
+  const row = { id: "alias", chat: supported === undefined ? undefined : { image_detail_original: supported, modalities: { input: ["text", "image"] } } }
+  expect(synthesizeCatalogEntry(row, source).supports_image_detail_original).toBe(supported === true)
+})
+
+test("Codex does not advertise original image detail for a text-only upstream", () => {
+  const entry = synthesizeCatalogEntry({ id: "text-only", chat: {
+    image_detail_original: true, modalities: { input: ["text"] },
+  } }, { slug: "gpt-5", input_modalities: ["text", "image"], supports_image_detail_original: true })
+  expect(entry.input_modalities).toEqual(["text"])
+  expect(entry.supports_image_detail_original).toBe(false)
+})
