@@ -17,7 +17,7 @@
  *    (`max_output_tokens` → `length`) or, if any tool call was seen,
  *    `tool_calls`; otherwise `stop`. If the upstream stream ends without
  *    `response.completed`, finish stays `null` until the final chunk and
- *    is then defaulted to `stop` to preserve a valid Chat SSE finish.
+ *    fails the stream instead of synthesizing a successful Chat SSE finish.
  *  - `response.output_item.done` for a `web_search_call` carries the sources
  *    the search resolved; they become `delta.annotations` (see below).
  */
@@ -78,9 +78,12 @@ interface ResponsesEvent {
     model?: string
     created_at?: number
     status?: string
+    error?: { message?: string }
     incomplete_details?: { reason?: string }
     usage?: ResponsesUsage
   }
+  message?: string
+  error?: { message?: string }
   delta?: string
   output_index?: number
   item?: {
@@ -180,6 +183,9 @@ export async function* translateResponsesToChatSSE(
   const citedUrls = new Set<string>()
 
   for await (const ev of events as AsyncIterable<ResponsesEvent>) {
+    if (ev.type === "error" || ev.type === "response.failed") {
+      throw new Error(ev.message ?? ev.error?.message ?? ev.response?.error?.message ?? "Upstream Responses stream failed.")
+    }
     if (ev.type === 'response.created') {
       id = ev.response?.id ?? id
       model = ev.response?.model ?? model
@@ -224,7 +230,7 @@ export async function* translateResponsesToChatSSE(
       })
       continue
     }
-    if (ev.type === 'response.completed') {
+    if (ev.type === 'response.completed' || ev.type === 'response.incomplete') {
       const reason = ev.response?.incomplete_details?.reason
       if (reason === 'max_output_tokens') finish = 'length'
       else if (sawToolCall) finish = 'tool_calls'
@@ -234,8 +240,7 @@ export async function* translateResponsesToChatSSE(
     }
   }
 
-  // If the upstream stream ended without `response.completed`, fall back to
-  // `stop` so the emitted Chat SSE always carries a valid finish_reason.
+  if (finish === null) throw new Error("Upstream Responses stream ended without completion.")
   const finalFinish: ChatSSEChunk['choices'][number]['finish_reason'] =
     finish === 'length' || finish === 'tool_calls' || finish === 'stop'
       ? finish

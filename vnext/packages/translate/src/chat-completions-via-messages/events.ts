@@ -274,9 +274,10 @@ function translateOne(ev: MessagesEvent, state: State): ChatSSEChunk[] | 'DONE' 
       return 'DONE'
     case 'ping':
       return []
-    case 'error':
-      state.terminated = true
-      return [makeChunk(state, {}, 'stop')]
+    case 'error': {
+      const error = ev as unknown as { error?: { message?: string } }
+      throw new Error(error.error?.message ?? "Upstream Messages stream failed.")
+    }
   }
   return []
 }
@@ -292,6 +293,7 @@ export async function* translateMessagesToChatSSE(
       for (const chunk of out) yield chunk
       if (state.terminated) return
     }
+    if (!state.terminated) throw new Error("Upstream Messages stream ended without message_stop.")
   } finally {
     // Release per-stream state on cancellation/early break.
     state.toolCalls.clear()

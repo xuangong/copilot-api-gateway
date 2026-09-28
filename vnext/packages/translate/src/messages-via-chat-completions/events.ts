@@ -10,6 +10,7 @@
  * Cancellation: implemented as an async generator with try/finally to
  * release per-stream state when the consumer breaks out of the loop.
  */
+import { chatCompletionsErrorPayloadMessage } from "@vibe-llm/protocols/chat"
 import type { MessagesEvent } from '@vibe-llm/protocols/messages'
 
 interface ChatToolCallDelta {
@@ -257,11 +258,14 @@ export async function* translateChatSSEToMessagesEvents(
   try {
     for await (const raw of chunks) {
       if (!raw || typeof raw !== 'object') continue
+      const error = chatCompletionsErrorPayloadMessage(raw)
+      if (error) throw new Error(error)
       const chunk = raw as ChatChunkLike
       const out = translateOne(chunk, state)
       for (const ev of out) yield ev
       if (state.terminated) return
     }
+    if (state.finishReason === null) throw new Error("Upstream Chat Completions stream ended without a finish_reason.")
     // Chat usage can arrive after finish_reason, so settle only after the tail.
     if (!state.terminated) {
       if (!state.emittedMessageStart) yield emitMessageStart(state)

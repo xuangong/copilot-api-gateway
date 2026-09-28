@@ -71,7 +71,7 @@ describe('translateChatToResponsesEvents', () => {
     ]
     const events = await collect(translateChatToResponsesEvents(feed(chunks))) as Array<{ type: string; response?: { status?: string; incomplete_details?: { reason?: string } } }>
     const completed = events.at(-1)!
-    expect(completed.type).toBe('response.completed')
+    expect(completed.type).toBe('response.incomplete')
     expect(completed.response?.status).toBe('incomplete')
     expect(completed.response?.incomplete_details?.reason).toBe('max_output_tokens')
   })

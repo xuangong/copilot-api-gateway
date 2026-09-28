@@ -15,6 +15,7 @@ export interface UpstreamTelemetryCtx {
 
 export interface UpstreamTerminalState {
   readonly failed: boolean
+  readonly cancelled: boolean
   readonly usage: unknown
   readonly firstByteLatencyMs: number | null
   readonly totalLatencyMs: number
@@ -31,9 +32,9 @@ const isTerminalFrame = <T>(
 ): { terminal: boolean; failed: boolean } => {
   if (frame.type === 'done') return { terminal: protocol === 'chat_completions', failed: false }
   const ev = frame.event as Record<string, unknown>
+  if (ev.type === 'error' || (protocol === 'chat_completions' && ev.error != null)) return { terminal: true, failed: true }
   if (protocol === 'messages') {
     if (ev.type === 'message_stop') return { terminal: true, failed: false }
-    if (ev.type === 'error') return { terminal: true, failed: true }
   }
   if (protocol === 'responses') {
     if (ev.type === 'response.completed' || ev.type === 'response.incomplete') return { terminal: true, failed: false }
@@ -69,36 +70,59 @@ export function withUpstreamTelemetry<T>(
   let resolveMeta!: (s: UpstreamTerminalState) => void
   const finalMetadata = new Promise<UpstreamTerminalState>((res) => { resolveMeta = res })
   const startedAt = performance.now()
+  let firstByteLatencyMs: number | null = null
+  let accumulatedUsage: unknown = null
+  let resolved = false
+  const settle = (failed: boolean, cancelled = false): void => {
+    if (resolved) return
+    resolved = true
+    ctx.abortSignal?.removeEventListener("abort", onAbort)
+    resolveMeta({ failed, cancelled, usage: accumulatedUsage, firstByteLatencyMs, totalLatencyMs: performance.now() - startedAt })
+  }
+  const onAbort = (): void => settle(false, true)
+  ctx.abortSignal?.addEventListener("abort", onAbort, { once: true })
+  if (ctx.abortSignal?.aborted) onAbort()
 
   async function* run(): AsyncGenerator<ProtocolFrame<T>> {
-    let firstByteLatencyMs: number | null = null
-    let accumulatedUsage: unknown = null
-    let resolved = false
-    const settle = (failed: boolean): void => {
-      if (resolved) return
-      resolved = true
-      resolveMeta({
-        failed,
-        usage: accumulatedUsage,
-        firstByteLatencyMs,
-        totalLatencyMs: performance.now() - startedAt,
-      })
-    }
+    let successfulTerminal: ProtocolFrame<T> | undefined
+    let failureEmitted = false
     try {
+      if (ctx.abortSignal?.aborted) return
       for await (const frame of stream) {
+        if (ctx.abortSignal?.aborted) return
         if (firstByteLatencyMs === null) firstByteLatencyMs = performance.now() - startedAt
         const usage = extractUsage(frame)
         if (usage) accumulatedUsage = usage
         const { terminal, failed } = isTerminalFrame(frame, ctx.protocol)
-        yield frame
-        if (terminal) { settle(failed); return }
+        if (failed) {
+          failureEmitted = true
+          settle(true)
+          yield frame
+          return
+        }
+        // Delay success until the tail drains: a late error invalidates it.
+        if (terminal) successfulTerminal = frame
+        else if (frame.type !== "done") yield frame
       }
-      settle(true) // eof without terminal = failed
+      if (ctx.abortSignal?.aborted) return
+      if (!successfulTerminal) throw new Error(`Upstream ${ctx.protocol} stream ended without a terminal event.`)
+      settle(false)
+      yield successfulTerminal
     } catch (err) {
+      if (ctx.abortSignal?.aborted || failureEmitted) return
       settle(true)
       throw err
+    } finally {
+      // Consumer return/break is cancellation even without an AbortSignal.
+      settle(false, true)
     }
   }
 
-  return { events: run(), finalMetadata }
+  const events = run()
+  const returnEvents = events.return.bind(events)
+  events.return = async (value) => {
+    settle(false, true)
+    return returnEvents(value)
+  }
+  return { events, finalMetadata }
 }

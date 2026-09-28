@@ -1,0 +1,10 @@
+{"label":"A12 native completed + EOF, no DONE","hasDone":false,"types":["response.created","response.completed"],"finalStatus":"completed"}
+{"label":"SDK control: raw nonterminal EOF","hasDone":false,"types":["response.created"],"finalStatus":"in_progress"}
+{"label":"A01 gateway nonterminal EOF","hasDone":false,"types":["response.created","error"],"finalError":"[object Object]"}
+{"label":"A01 completed then late error","hasDone":false,"types":["response.created","error"],"finalError":"[object Object]"}
+{"label":"A01 native response.failed","hasDone":false,"types":["response.created","response.failed"],"finalStatus":"in_progress"}
+{"label":"A01 Chat to Responses truncated","hasDone":false,"types":["response.created","response.in_progress","error"],"finalError":"[object Object]"}
+{"label":"native Anthropic error","sdkError":"{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"probe upstream failure\"}}"}
+{"label":"Responses failure to Anthropic","sdkError":"{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"probe upstream failure\"}}"}
+{"label":"Responses failure to OpenAI Chat","sdkError":"probe upstream failure"}
+PASS: official openai 6.33.0 and @anthropic-ai/sdk 0.80.0; no network/credentials/inference

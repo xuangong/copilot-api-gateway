@@ -16,13 +16,14 @@
  *    incremental `arguments` string.
  *  - After Chat `finish_reason` and any trailing usage, an `output_item.done` is
  *    emitted for the message (if opened) and each tool call. The final
- *    `response.completed` carries `status: 'incomplete'` with reason
- *    `max_output_tokens` when finish was `length`; otherwise `completed`.
+ *    `response.incomplete` carries `status: 'incomplete'` with reason
+ *    `max_output_tokens` when finish was `length`; otherwise `response.completed`.
  *  - `finish` starts as `null` (no fallback) — Chat upstreams reliably set
  *    `finish_reason` on the final chunk, so the null sentinel only signals
- *    "stream ended without a finish reason," which still maps to
- *    `completed` in the emitted lifecycle.
+ *    "stream ended without a finish reason," which fails the stream instead of synthesizing completion.
  */
+import { chatCompletionsErrorPayloadMessage } from "@vibe-llm/protocols/chat"
+
 interface ChatChunk {
   id?: string
   model?: string
@@ -70,6 +71,8 @@ export async function* translateChatToResponsesEvents(
 
   let usage: ChatChunk['usage']
   for await (const raw of events as AsyncIterable<ChatChunk>) {
+    const error = chatCompletionsErrorPayloadMessage(raw)
+    if (error) throw new Error(error)
     if (raw.usage) usage = { ...usage, ...raw.usage }
     if (raw.id && !id) id = raw.id
     if (raw.model && !model) model = raw.model
@@ -86,7 +89,7 @@ export async function* translateChatToResponsesEvents(
 
     const choice = raw.choices?.[0]
     if (!choice) continue
-    const delta = choice.delta
+    const delta = choice.delta ?? {}
     if (delta.content && delta.content.length > 0) {
       if (!messageOpened) {
         messageOutputIndex = nextOutputIndex++
@@ -155,6 +158,8 @@ export async function* translateChatToResponsesEvents(
     }
   }
 
+  if (finish === null) throw new Error("Upstream Chat Completions stream ended without a finish_reason.")
+
   if (messageOpened) {
     if (contentPartOpened) {
       yield {
@@ -194,7 +199,7 @@ export async function* translateChatToResponsesEvents(
 
   const status = finish === 'length' ? 'incomplete' : 'completed'
   const completed: Record<string, unknown> = {
-    type: 'response.completed',
+    type: status === 'incomplete' ? 'response.incomplete' : 'response.completed',
     response: {
       id, model, created_at: created, status,
       ...(usage ? { usage: {

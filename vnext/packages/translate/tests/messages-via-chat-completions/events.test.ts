@@ -112,14 +112,11 @@ describe('messages-via-chat-completions :: events', () => {
     expect(ms.message.usage?.input_tokens).toBeUndefined()
   })
 
-  it('synthesizes a terminal sequence when upstream stream ends without finish_reason', async () => {
+  it('fails when upstream stream ends without finish_reason', async () => {
     const chunks = [
       { id: 'c', model: 'm', choices: [{ index: 0, delta: { content: 'x' } }] },
     ]
-    const events = await collect(translateChatSSEToMessagesEvents(fromArray(chunks)))
-    const types = events.map((e) => e.type)
-    expect(types[types.length - 1]).toBe('message_stop')
-    expect(types).toContain('message_delta')
+    await expect(collect(translateChatSSEToMessagesEvents(fromArray(chunks)))).rejects.toThrow("finish_reason")
   })
 
   it('runs the finally block when the consumer breaks early (cancellation)', async () => {

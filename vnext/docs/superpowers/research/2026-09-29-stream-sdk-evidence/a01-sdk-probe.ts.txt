@@ -1,0 +1,80 @@
+import assert from "node:assert/strict"
+import OpenAI from "openai"
+import Anthropic from "@anthropic-ai/sdk"
+import { withUpstreamTelemetry } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/packages/gateway/src/data-plane/chat-flow/shared/upstream-telemetry.ts"
+import { respondResponses } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/packages/gateway/src/data-plane/chat-flow/responses/respond.ts"
+import { respondMessages } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/packages/gateway/src/data-plane/chat-flow/messages/respond.ts"
+import { respondChatCompletions } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/packages/gateway/src/data-plane/chat-flow/chat-completions/respond.ts"
+import { llmEventResult } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/packages/protocols-llm/src/common/index.ts"
+import { translateChatToResponsesEvents } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/packages/translate/src/responses-via-chat-completions/events.ts"
+import { translateResponsesEventsToMessagesEvents } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/packages/translate/src/messages-via-responses/events.ts"
+import { translateResponsesToChatSSE } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/packages/translate/src/chat-completions-via-responses/events.ts"
+import type { ProtocolFrame } from "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/packages/result/src/index.ts"
+
+const identity = { incomingModel: "m", model: "m", upstream: "test", modelKey: "m", cost: null }
+const shell = { id: "resp_probe", object: "response", model: "m", output: [], status: "in_progress", error: null, incomplete_details: null }
+const created = { type: "response.created", sequence_number: 0, response: shell }
+const complete = { type: "response.completed", sequence_number: 1, response: { ...shell, status: "completed" } }
+const failed = { type: "response.failed", sequence_number: 1, response: { ...shell, status: "failed", error: { code: "server_error", message: "probe upstream failure" } } }
+async function* frames(events: unknown[]): AsyncGenerator<ProtocolFrame<never>> {
+  for (const event of events) yield { type: "event", event: event as never }
+}
+async function wire(events: unknown[], source: "responses" | "messages" | "chat_completions" = "responses", target = source): Promise<string> {
+  const upstream = withUpstreamTelemetry(frames(events), { protocol: source })
+  const translator = target === source ? undefined : target === "responses" ? translateChatToResponsesEvents : target === "messages" ? translateResponsesEventsToMessagesEvents : translateResponsesToChatSSE
+  const result = llmEventResult(upstream.events, identity, undefined, undefined, undefined, translator)
+  const response = target === "responses" ? await respondResponses(result, { wantsStream: true })
+    : target === "messages" ? await respondMessages(result, { wantsStream: true })
+    : await respondChatCompletions(result, { wantsStream: true, includeUsageChunk: true })
+  return response.text()
+}
+const transport = (text: string) => async () => new Response(text, { headers: { "content-type": "text/event-stream" } })
+const client = (text: string) => new OpenAI({ apiKey: "synthetic-no-network", maxRetries: 0, fetch: transport(text) })
+const parameters = { model: "m", input: "synthetic" }
+async function inspect(label: string, text: string) {
+  const types: string[] = []
+  let iterationError: string | undefined
+  try { for await (const event of await client(text).responses.create({ ...parameters, stream: true })) types.push(event.type) }
+  catch (error) { iterationError = error instanceof Error ? error.message : String(error) }
+  let finalStatus: string | undefined
+  let finalError: string | undefined
+  try { finalStatus = (await client(text).responses.stream(parameters).finalResponse()).status }
+  catch (error) { finalError = error instanceof Error ? error.message : String(error) }
+  console.log(JSON.stringify({ label, hasDone: text.includes("[DONE]"), types, iterationError, finalStatus, finalError }))
+  return { types, iterationError, finalStatus, finalError }
+}
+const success = await inspect("A12 native completed + EOF, no DONE", await wire([created, complete]))
+assert.equal(success.finalStatus, "completed")
+assert.equal(success.finalError, undefined)
+assert.deepEqual(success.types, ["response.created", "response.completed"])
+const rawEOF = await inspect("SDK control: raw nonterminal EOF", `event: response.created\ndata: ${JSON.stringify(created)}\n\n`)
+assert.equal(rawEOF.finalStatus, "in_progress")
+const truncated = await inspect("A01 gateway nonterminal EOF", await wire([created]))
+assert.ok(truncated.types.includes("error"))
+assert.ok(truncated.finalError)
+const late = await inspect("A01 completed then late error", await wire([created, complete, { type: "error", message: "late failure" }]))
+assert.ok(!late.types.includes("response.completed"))
+assert.ok(late.finalError)
+const nativeFailure = await inspect("A01 native response.failed", await wire([created, failed]))
+assert.ok(nativeFailure.types.includes("response.failed"))
+assert.ok(!nativeFailure.types.includes("response.completed"))
+const translated = await inspect("A01 Chat to Responses truncated", await wire([{ id: "c", model: "m", choices: [{ index: 0, delta: { role: "assistant" } }] }], "chat_completions", "responses"))
+assert.ok(translated.finalError)
+for (const [label, text] of [
+  ["native Anthropic error", await wire([{ type: "error", error: { type: "api_error", message: "probe upstream failure" } }], "messages")],
+  ["Responses failure to Anthropic", await wire([created, failed], "responses", "messages")],
+] as const) {
+  const anthropic = new Anthropic({ apiKey: "synthetic-no-network", maxRetries: 0, fetch: transport(text) })
+  let error: unknown
+  try { for await (const event of await anthropic.messages.create({ model: "m", max_tokens: 10, messages: [{ role: "user", content: "synthetic" }], stream: true })) void event }
+  catch (caught) { error = caught }
+  assert.ok(error instanceof Error)
+  console.log(JSON.stringify({ label, sdkError: error.message }))
+}
+const chatWire = await wire([created, failed], "responses", "chat_completions")
+let chatError: unknown
+try { for await (const event of await client(chatWire).chat.completions.create({ model: "m", messages: [{ role: "user", content: "synthetic" }], stream: true })) void event }
+catch (error) { chatError = error }
+assert.ok(chatError instanceof Error)
+console.log(JSON.stringify({ label: "Responses failure to OpenAI Chat", sdkError: chatError.message }))
+console.log("PASS: official openai 6.33.0 and @anthropic-ai/sdk 0.80.0; no network/credentials/inference")
