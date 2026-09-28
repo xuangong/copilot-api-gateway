@@ -73,4 +73,80 @@ describe('fetchWithRetry', () => {
       fetchWithRetry('https://example.com', { timeout: 5, maxRetries: 0 }),
     ).rejects.toThrow(/timeout after 5ms/)
   })
+
+  test('a timed-out attempt retries and can return a later successful response', async () => {
+    responses.push(() => new Promise<Response>((_resolve, reject) => {
+      calls[0]?.init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })
+    }))
+    responses.push(() => new Response('ok'))
+    const result = await fetchWithRetry('https://example.com', {
+      timeout: 5, maxRetries: 1, retryDelay: 1,
+    })
+    expect(await result.text()).toBe('ok')
+    expect(calls).toHaveLength(2)
+  })
+
+  test('pre-aborted caller stops before the first fetch and preserves its reason', async () => {
+    const controller = new AbortController()
+    const reason = new Error('client left')
+    controller.abort(reason)
+    await expect(fetchWithRetry('https://example.com', {
+      signal: controller.signal, timeout: 50, maxRetries: 2,
+    })).rejects.toBe(reason)
+    expect(calls).toHaveLength(0)
+  })
+
+  test('caller abort interrupts a pending timed fetch without retrying', async () => {
+    const controller = new AbortController()
+    const reason = new Error('client left')
+    responses.push(() => new Promise<Response>((_resolve, reject) => {
+      calls[0]?.init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })
+    }))
+    const pending = fetchWithRetry('https://example.com', {
+      signal: controller.signal, timeout: 1000, maxRetries: 2, retryDelay: 1000,
+    })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    controller.abort(reason)
+    await expect(pending).rejects.toBe(reason)
+    expect(calls).toHaveLength(1)
+  })
+
+  test('caller abort interrupts retry backoff and releases the discarded body', async () => {
+    const controller = new AbortController()
+    const reason = new Error('client left')
+    let bodyCancelled = false
+    const response = new Response(new ReadableStream({
+      cancel() { bodyCancelled = true },
+    }), { status: 503 })
+    responses.push(() => response)
+    const pending = fetchWithRetry('https://example.com', {
+      signal: controller.signal, retryDelay: 1000,
+    })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    controller.abort(reason)
+    await expect(pending).rejects.toBe(reason)
+    expect(bodyCancelled).toBe(true)
+    expect(calls).toHaveLength(1)
+  })
+
+  test('caller abort remains connected to response body after headers with timeout', async () => {
+    const controller = new AbortController()
+    responses.push(() => {
+      const signal = calls[0]?.init?.signal
+      const body = new ReadableStream<Uint8Array>({
+        start(stream) {
+          signal?.addEventListener('abort', () => stream.error(signal.reason), { once: true })
+        },
+      })
+      return new Response(body)
+    })
+    const response = await fetchWithRetry('https://example.com', {
+      signal: controller.signal, timeout: 1000, maxRetries: 0,
+    })
+    const reason = new Error('client left')
+    const reading = response.text()
+    controller.abort(reason)
+    await expect(reading).rejects.toBe(reason)
+    expect(calls[0]?.init?.signal?.aborted).toBe(true)
+  })
 })

@@ -1,14 +1,4 @@
-/**
- * fetchWithRetry — exponential backoff retry on 429/5xx, AbortController-based
- * timeout. Lifted verbatim from @vibe-llm/provider-copilot/src/lib/fetch-retry.ts
- * (which itself was lifted from packages/gateway/src/control-plane/lib/fetch-retry.ts).
- *
- * Behavior, retry curve, timeout semantics: unchanged.
- *
- * Stage C added the optional `fetcher` param so callers (providers) can inject
- * a fallback-aware fetch. Default is the runtime `fetch`, so no behaviour
- * change for existing call sites.
- */
+/** Exponential backoff on 429/5xx with per-attempt timeout and caller cancellation. */
 // Matches `Fetcher` in @vibe-core/upstream exactly, so the gateway's
 // fallback-aware fetcher can be injected here without a cast. `url` is a
 // string (not string | URL) because that is what every implementation of it
@@ -26,29 +16,48 @@ export interface FetchOptions extends RequestInit {
   fetchImpl?: FetchLike
 }
 
+function waitForRetry(delay: number, signal?: AbortSignal | null): Promise<void> {
+  if (signal?.aborted) return Promise.reject(signal.reason)
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(signal?.reason)
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort)
+      resolve()
+    }, delay)
+    signal?.addEventListener("abort", onAbort, { once: true })
+  })
+}
+
 export async function fetchWithRetry(
   input: string | URL,
   init?: FetchOptions,
 ): Promise<Response> {
   const { maxRetries = 3, retryDelay = 1000, timeout, fetchImpl = fetch, ...requestInit } = init ?? {}
+  const callerSignal = init?.signal
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (callerSignal?.aborted) throw callerSignal.reason
+    const timeoutController = timeout ? new AbortController() : undefined
+    const signal = timeoutController
+      ? callerSignal ? AbortSignal.any([callerSignal, timeoutController.signal]) : timeoutController.signal
+      : callerSignal
+    const timeoutId = timeoutController
+      ? setTimeout(() => timeoutController.abort(), timeout)
+      : undefined
     try {
-      let controller: AbortController | undefined
-      let timeoutId: ReturnType<typeof setTimeout> | undefined
-
-      if (timeout) {
-        controller = new AbortController()
-        timeoutId = setTimeout(() => controller!.abort(), timeout)
-      }
-
-      const signal = controller?.signal ?? init?.signal
       const response = await fetchImpl(String(input), {
         ...requestInit,
         signal,
       }).finally(() => {
-        if (timeoutId) clearTimeout(timeoutId)
+        if (timeoutId !== undefined) clearTimeout(timeoutId)
       })
+      if (callerSignal?.aborted) {
+        void response.body?.cancel().catch(() => {})
+        throw callerSignal.reason
+      }
 
       if (response.status >= 400 && response.status < 500 && response.status !== 429) {
         return response
@@ -60,14 +69,17 @@ export async function fetchWithRetry(
           return response
         }
         const delay = Math.min(retryDelay * Math.pow(2, attempt), 10000)
+        void response.body?.cancel().catch(() => {})
         console.log(`[fetch] Attempt ${attempt + 1} got HTTP ${response.status}, retrying in ${delay}ms...`)
-        await new Promise((r) => setTimeout(r, delay))
+        await waitForRetry(delay, callerSignal)
         continue
       }
 
       return response
     } catch (error) {
-      const isTimeout = error instanceof Error && error.name === "AbortError"
+      if (timeoutId !== undefined) clearTimeout(timeoutId)
+      if (callerSignal?.aborted) throw callerSignal.reason
+      const isTimeout = timeoutController?.signal.aborted === true
       const errMsg = isTimeout ? `timeout after ${timeout}ms` : (error instanceof Error ? error.message : String(error))
 
       if (attempt === maxRetries) {
@@ -80,7 +92,7 @@ export async function fetchWithRetry(
 
       const delay = Math.min(retryDelay * Math.pow(2, attempt), 10000)
       console.log(`[fetch] Attempt ${attempt + 1} failed (${errMsg}), retrying in ${delay}ms...`)
-      await new Promise((r) => setTimeout(r, delay))
+      await waitForRetry(delay, callerSignal)
     }
   }
 

@@ -241,6 +241,7 @@ export class CustomProvider implements LlmModelProvider {
         method: init.method ?? 'POST',
         headers: outHeaders,
         body: init.body,
+        signal: init.signal,
         timeout: opts.timeout,
         // CFW divergence from main: disable shared-http retries. Workers
         // subrequest CPU budgets don't tolerate up to 3 retries with
@@ -249,6 +250,7 @@ export class CustomProvider implements LlmModelProvider {
         fetchImpl: this.fetcher,
       })
     } catch (err) {
+      if (init.signal?.aborted) throw init.signal.reason
       const msg = err instanceof Error ? err.message : String(err)
       throw new HTTPError(
         `Failed to ${operationName} via ${this.name}: ${msg}`,

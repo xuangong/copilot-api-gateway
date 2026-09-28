@@ -219,6 +219,7 @@ export class SdfProvider implements LlmModelProvider {
         method: 'POST',
         headers: outHeaders,
         body: rewrittenBody,
+        signal: req.signal,
         timeout: req.timeout,
         // Match Custom/Azure: clients retry; Workers subrequest budget
         // doesn't tolerate extra retries with backoff.
@@ -226,6 +227,7 @@ export class SdfProvider implements LlmModelProvider {
         fetchImpl: this.fetcher,
       })
     } catch (err) {
+      if (req.signal?.aborted) throw req.signal.reason
       const msg = err instanceof Error ? err.message : String(err)
       throw new HTTPError(
         `Failed to ${operationName} via ${this.name}: ${msg}`,
