@@ -1,0 +1,201 @@
+{
+  "sqlite_version": "3.53.4",
+  "queries": {
+    "before": "DELETE FROM dump_records WHERE rowid IN (\n           SELECT records.rowid FROM dump_records AS records\n           WHERE records.key_id = ?\n             AND NOT EXISTS (\n               SELECT 1 FROM api_keys\n               WHERE api_keys.id = records.key_id\n                 AND api_keys.dump_retention_seconds IS NOT NULL\n             )\n           ORDER BY records.created_at, records.rowid\n           LIMIT ?\n         ) RETURNING id",
+    "after": "DELETE FROM dump_records WHERE rowid IN (\n           SELECT records.rowid FROM dump_records AS records\n           WHERE records.key_id = ?\n           ORDER BY records.created_at, records.rowid\n           LIMIT CASE WHEN EXISTS (\n             SELECT 1 FROM api_keys\n             WHERE api_keys.id = ? AND api_keys.dump_retention_seconds IS NOT NULL\n           ) THEN 0 ELSE ? END\n         ) RETURNING id"
+  },
+  "measurements": [
+    {
+      "source": "before",
+      "key_state": "retained",
+      "history_rows": 1000,
+      "vm_steps": 17043,
+      "deleted": 0,
+      "remaining": 1000,
+      "plan": [
+        "SEARCH dump_records USING INTEGER PRIMARY KEY (rowid=?)",
+        "LIST SUBQUERY 2",
+        "SEARCH records USING COVERING INDEX idx_dump_records_key_created (key_id=?)",
+        "CORRELATED SCALAR SUBQUERY 1",
+        "SEARCH api_keys USING INDEX sqlite_autoindex_api_keys_1 (id=?)",
+        "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+      ]
+    },
+    {
+      "source": "before",
+      "key_state": "retained",
+      "history_rows": 10000,
+      "vm_steps": 170043,
+      "deleted": 0,
+      "remaining": 10000,
+      "plan": [
+        "SEARCH dump_records USING INTEGER PRIMARY KEY (rowid=?)",
+        "LIST SUBQUERY 2",
+        "SEARCH records USING COVERING INDEX idx_dump_records_key_created (key_id=?)",
+        "CORRELATED SCALAR SUBQUERY 1",
+        "SEARCH api_keys USING INDEX sqlite_autoindex_api_keys_1 (id=?)",
+        "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+      ]
+    },
+    {
+      "source": "before",
+      "key_state": "cleared",
+      "history_rows": 1000,
+      "vm_steps": 2160,
+      "deleted": 25,
+      "remaining": 975,
+      "plan": [
+        "SEARCH dump_records USING INTEGER PRIMARY KEY (rowid=?)",
+        "LIST SUBQUERY 2",
+        "SEARCH records USING COVERING INDEX idx_dump_records_key_created (key_id=?)",
+        "CORRELATED SCALAR SUBQUERY 1",
+        "SEARCH api_keys USING INDEX sqlite_autoindex_api_keys_1 (id=?)",
+        "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+      ]
+    },
+    {
+      "source": "before",
+      "key_state": "cleared",
+      "history_rows": 10000,
+      "vm_steps": 2160,
+      "deleted": 25,
+      "remaining": 9975,
+      "plan": [
+        "SEARCH dump_records USING INTEGER PRIMARY KEY (rowid=?)",
+        "LIST SUBQUERY 2",
+        "SEARCH records USING COVERING INDEX idx_dump_records_key_created (key_id=?)",
+        "CORRELATED SCALAR SUBQUERY 1",
+        "SEARCH api_keys USING INDEX sqlite_autoindex_api_keys_1 (id=?)",
+        "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+      ]
+    },
+    {
+      "source": "before",
+      "key_state": "deleted",
+      "history_rows": 1000,
+      "vm_steps": 2082,
+      "deleted": 25,
+      "remaining": 975,
+      "plan": [
+        "SEARCH dump_records USING INTEGER PRIMARY KEY (rowid=?)",
+        "LIST SUBQUERY 2",
+        "SEARCH records USING COVERING INDEX idx_dump_records_key_created (key_id=?)",
+        "CORRELATED SCALAR SUBQUERY 1",
+        "SEARCH api_keys USING INDEX sqlite_autoindex_api_keys_1 (id=?)",
+        "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+      ]
+    },
+    {
+      "source": "before",
+      "key_state": "deleted",
+      "history_rows": 10000,
+      "vm_steps": 2082,
+      "deleted": 25,
+      "remaining": 9975,
+      "plan": [
+        "SEARCH dump_records USING INTEGER PRIMARY KEY (rowid=?)",
+        "LIST SUBQUERY 2",
+        "SEARCH records USING COVERING INDEX idx_dump_records_key_created (key_id=?)",
+        "CORRELATED SCALAR SUBQUERY 1",
+        "SEARCH api_keys USING INDEX sqlite_autoindex_api_keys_1 (id=?)",
+        "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+      ]
+    },
+    {
+      "source": "after",
+      "key_state": "retained",
+      "history_rows": 1000,
+      "vm_steps": 51,
+      "deleted": 0,
+      "remaining": 1000,
+      "plan": [
+        "SEARCH dump_records USING INTEGER PRIMARY KEY (rowid=?)",
+        "LIST SUBQUERY 2",
+        "SCALAR SUBQUERY 1",
+        "SEARCH api_keys USING INDEX sqlite_autoindex_api_keys_1 (id=?)",
+        "SEARCH records USING COVERING INDEX idx_dump_records_key_created (key_id=?)",
+        "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+      ]
+    },
+    {
+      "source": "after",
+      "key_state": "retained",
+      "history_rows": 10000,
+      "vm_steps": 51,
+      "deleted": 0,
+      "remaining": 10000,
+      "plan": [
+        "SEARCH dump_records USING INTEGER PRIMARY KEY (rowid=?)",
+        "LIST SUBQUERY 2",
+        "SCALAR SUBQUERY 1",
+        "SEARCH api_keys USING INDEX sqlite_autoindex_api_keys_1 (id=?)",
+        "SEARCH records USING COVERING INDEX idx_dump_records_key_created (key_id=?)",
+        "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+      ]
+    },
+    {
+      "source": "after",
+      "key_state": "cleared",
+      "history_rows": 1000,
+      "vm_steps": 1833,
+      "deleted": 25,
+      "remaining": 975,
+      "plan": [
+        "SEARCH dump_records USING INTEGER PRIMARY KEY (rowid=?)",
+        "LIST SUBQUERY 2",
+        "SCALAR SUBQUERY 1",
+        "SEARCH api_keys USING INDEX sqlite_autoindex_api_keys_1 (id=?)",
+        "SEARCH records USING COVERING INDEX idx_dump_records_key_created (key_id=?)",
+        "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+      ]
+    },
+    {
+      "source": "after",
+      "key_state": "cleared",
+      "history_rows": 10000,
+      "vm_steps": 1833,
+      "deleted": 25,
+      "remaining": 9975,
+      "plan": [
+        "SEARCH dump_records USING INTEGER PRIMARY KEY (rowid=?)",
+        "LIST SUBQUERY 2",
+        "SCALAR SUBQUERY 1",
+        "SEARCH api_keys USING INDEX sqlite_autoindex_api_keys_1 (id=?)",
+        "SEARCH records USING COVERING INDEX idx_dump_records_key_created (key_id=?)",
+        "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+      ]
+    },
+    {
+      "source": "after",
+      "key_state": "deleted",
+      "history_rows": 1000,
+      "vm_steps": 1830,
+      "deleted": 25,
+      "remaining": 975,
+      "plan": [
+        "SEARCH dump_records USING INTEGER PRIMARY KEY (rowid=?)",
+        "LIST SUBQUERY 2",
+        "SCALAR SUBQUERY 1",
+        "SEARCH api_keys USING INDEX sqlite_autoindex_api_keys_1 (id=?)",
+        "SEARCH records USING COVERING INDEX idx_dump_records_key_created (key_id=?)",
+        "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+      ]
+    },
+    {
+      "source": "after",
+      "key_state": "deleted",
+      "history_rows": 10000,
+      "vm_steps": 1830,
+      "deleted": 25,
+      "remaining": 9975,
+      "plan": [
+        "SEARCH dump_records USING INTEGER PRIMARY KEY (rowid=?)",
+        "LIST SUBQUERY 2",
+        "SCALAR SUBQUERY 1",
+        "SEARCH api_keys USING INDEX sqlite_autoindex_api_keys_1 (id=?)",
+        "SEARCH records USING COVERING INDEX idx_dump_records_key_created (key_id=?)",
+        "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+      ]
+    }
+  ]
+}

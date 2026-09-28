@@ -1,0 +1,13 @@
+import { unstable_splitSqlQuery } from '/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/node_modules/.bun/wrangler@4.97.0+01d2f64f02d20ae6/node_modules/wrangler/wrangler-dist/cli.js'
+import { Miniflare } from '/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/node_modules/.bun/miniflare@4.20260601.0/node_modules/miniflare/dist/src/index.js'
+import { readdir, readFile } from 'node:fs/promises'
+const dir='/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/packages/gateway/migrations'
+const runtime = new Miniflare({ modules:true, compatibilityDate:'2025-06-01', d1Databases:{ DB:'reference-adoption-smoke' }, script:'export default { fetch() { return new Response("synthetic local D1") } }' })
+try {
+  const db=await runtime.getD1Database('DB')
+  for (const name of (await readdir(dir)).filter(x=>x.endsWith('.sql')).sort()) {
+    for (const statement of unstable_splitSqlQuery(await readFile(dir+'/'+name,'utf8'))) await db.prepare(statement).run()
+    console.log('applied '+name)
+  }
+  console.log(JSON.stringify(await db.prepare("SELECT type,name FROM sqlite_master WHERE name LIKE '%dump%' OR name LIKE '%spilled%' ORDER BY type,name").all()))
+} finally { await runtime.dispose() }

@@ -1,4 +1,5 @@
-import { sweepResponsesSnapshots } from "@vibe-llm/gateway/maintenance"
+import { getFileProvider } from "@vibe-core/platform"
+import { sweepMaintenance } from "@vibe-llm/gateway/maintenance"
 import { app } from "@vibe-llm/gateway"
 import { bootstrapBunPlatform } from "./bootstrap.ts"
 
@@ -13,9 +14,9 @@ const sweep = async () => {
   if (sweeping) return
   sweeping = true
   try {
-    await sweepResponsesSnapshots(db, Date.now())
+    await sweepMaintenance(db, getFileProvider(), Date.now())
   } catch {
-    console.warn(JSON.stringify({ evt: "responses_expiration_sweep_failed" }))
+    console.warn(JSON.stringify({ evt: "maintenance_sweep_failed" }))
   } finally {
     sweeping = false
   }

@@ -1,0 +1,16 @@
+applied 0001_baseline.sql
+applied 0002_drop_duplicate_cache_index.sql
+applied 0003_quota_per_month.sql
+applied 0004_quota_cost_per_month.sql
+applied 0005_web_search_jina_per_key.sql
+applied 0006_web_search_passthrough_per_key.sql
+applied 0007_api_key_model_mappings.sql
+applied 0008_usage_incoming_model.sql
+applied 0009_performance_metrics.sql
+applied 0010_configuration_revision.sql
+applied 0011_agent_remote_continuations.sql
+applied 0012_session_authentication_time.sql
+applied 0013_responses_retention.sql
+applied 0014_agent_remote_host_keys.sql
+applied 0015_dump_maintenance.sql
+{"success":true,"meta":{"served_by":"miniflare.db","duration":1,"changes":0,"last_row_id":1,"changed_db":false,"size_after":454656,"rows_read":149,"rows_written":0},"results":[{"type":"index","name":"idx_dump_files_collectible"},{"type":"index","name":"idx_dump_records_key_created"},{"type":"index","name":"idx_dump_request_file"},{"type":"index","name":"idx_dump_response_file"},{"type":"index","name":"idx_spilled_files_collectible"},{"type":"index","name":"idx_spilled_files_owned_owner"},{"type":"index","name":"sqlite_autoindex_dump_records_1"},{"type":"index","name":"sqlite_autoindex_spilled_files_1"},{"type":"table","name":"dump_records"},{"type":"table","name":"spilled_files"},{"type":"trigger","name":"dump_records_adopt_request_insert"},{"type":"trigger","name":"dump_records_adopt_response_insert"},{"type":"trigger","name":"dump_records_guard_reference_update"},{"type":"trigger","name":"dump_records_guard_replace"},{"type":"trigger","name":"dump_records_guard_request_insert"},{"type":"trigger","name":"dump_records_guard_response_insert"},{"type":"trigger","name":"dump_records_retire_request_delete"},{"type":"trigger","name":"dump_records_retire_response_delete"},{"type":"view","name":"dump_file_references"}]}

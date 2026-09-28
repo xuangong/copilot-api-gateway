@@ -167,40 +167,56 @@ export class FileDumpStore implements DumpStore {
         .bind(keyId, record.meta.id, Date.now() + SPILLED_FILE_STAGE_GRACE_MS, JSON.stringify(staged))
         .run()
     }
-    const requestDescriptor = record.request.body.decodedByteLength === 0
-      ? null
-      : await putPreparedBody(this.files, requestFileKey!, record.request.body)
+    try {
+      const requestDescriptor = record.request.body.decodedByteLength === 0
+        ? null
+        : await putPreparedBody(this.files, requestFileKey!, record.request.body)
 
-    let responseDescriptor: BodyDescriptor | null = null
-    if (record.response.body.type === "bytes") {
-      if (record.response.body.body.byteLength > 0) {
-        responseDescriptor = await putRawBody(this.files, responseFileKey!, record.response.body.body, "bytes")
+      let responseDescriptor: BodyDescriptor | null = null
+      if (record.response.body.type === "bytes") {
+        if (record.response.body.body.byteLength > 0) {
+          responseDescriptor = await putRawBody(this.files, responseFileKey!, record.response.body.body, "bytes")
+        }
+      } else if (record.response.body.type === "stream") {
+        responseDescriptor = await putRawBody(this.files, responseFileKey!, new TextEncoder().encode(JSON.stringify(record.response.body.events)), "events")
       }
-    } else if (record.response.body.type === "stream") {
-      responseDescriptor = await putRawBody(this.files, responseFileKey!, new TextEncoder().encode(JSON.stringify(record.response.body.events)), "events")
+
+      // Strip the in-memory `upstream` field; the ref is rebuilt from the join
+      // at read time so renames and deletes are honored on historical rows.
+      const { upstream: _upstream, ...metaToStore } = record.meta
+
+      // Files before row — a partial failure leaves orphan files the sweep
+      // collects, never an orphan row whose detail fetch would 404.
+      await this.db.prepare(
+        `INSERT INTO dump_records
+         (key_id, id, created_at, upstream_id, meta_json, request_headers_json, response_headers_json, request_body_descriptor, response_body_descriptor)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        keyId,
+        record.meta.id,
+        record.meta.completedAt,
+        record.meta.upstream?.id ?? null,
+        JSON.stringify(metaToStore),
+        JSON.stringify(record.request.headers),
+        record.response.body.type === "none" ? null : JSON.stringify(record.response.headers),
+        requestDescriptor === null ? null : JSON.stringify(requestDescriptor),
+        responseDescriptor === null ? null : JSON.stringify(responseDescriptor),
+      ).run()
+    } catch (error) {
+      // A put can outlive staging grace: collection may have already removed
+      // its file/metadata before the put finishes and INSERT is rejected.
+      // Recreate a retired tombstone and fence any collector still finishing
+      // its SQL delete. Unique file keys prevent touching another writer.
+      if (staged.length > 0) {
+        await this.db.prepare(`INSERT INTO spilled_files (file_key, owner_kind, owner_key, state, collect_after)
+          SELECT json_extract(value, '$.fileKey'), json_extract(value, '$.ownerKind'), json_array(?, ?), 'retired', 0
+          FROM json_each(?) WHERE true
+          ON CONFLICT(file_key) DO UPDATE SET state = 'retired', collect_after = 0, claim_token = NULL, claimed_at = NULL
+          WHERE spilled_files.state != 'owned'`)
+          .bind(keyId, record.meta.id, JSON.stringify(staged)).run()
+      }
+      throw error
     }
-
-    // Strip the in-memory `upstream` field; the ref is rebuilt from the join
-    // at read time so renames and deletes are honored on historical rows.
-    const { upstream: _upstream, ...metaToStore } = record.meta
-
-    // Files before row — a partial failure leaves orphan files the sweep
-    // collects, never an orphan row whose detail fetch would 404.
-    await this.db.prepare(
-      `INSERT INTO dump_records
-       (key_id, id, created_at, upstream_id, meta_json, request_headers_json, response_headers_json, request_body_descriptor, response_body_descriptor)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(
-      keyId,
-      record.meta.id,
-      record.meta.completedAt,
-      record.meta.upstream?.id ?? null,
-      JSON.stringify(metaToStore),
-      JSON.stringify(record.request.headers),
-      record.response.body.type === "none" ? null : JSON.stringify(record.response.headers),
-      requestDescriptor === null ? null : JSON.stringify(requestDescriptor),
-      responseDescriptor === null ? null : JSON.stringify(responseDescriptor),
-    ).run()
   }
 
   async list(keyId: ApiKeyId, opts: DumpListOptions): Promise<DumpMetadata[]> {
@@ -315,21 +331,21 @@ export class FileDumpStore implements DumpStore {
     if (activeDeleted >= limit) return activeDeleted
     // Orphans (key hard-deleted / retention cleared to NULL): sweep all rows
     // still tied to `keyId` when the api_keys row no longer opts in.
+    // Evaluate retention in the statement's LIMIT before seeking history. A
+    // row predicate (even an uncorrelated one) still scans every retained row.
     const inactive = await this.db
       .prepare(
         `DELETE FROM dump_records WHERE rowid IN (
            SELECT records.rowid FROM dump_records AS records
            WHERE records.key_id = ?
-             AND NOT EXISTS (
-               SELECT 1 FROM api_keys
-               WHERE api_keys.id = records.key_id
-                 AND api_keys.dump_retention_seconds IS NOT NULL
-             )
            ORDER BY records.created_at, records.rowid
-           LIMIT ?
+           LIMIT CASE WHEN EXISTS (
+             SELECT 1 FROM api_keys
+             WHERE api_keys.id = ? AND api_keys.dump_retention_seconds IS NOT NULL
+           ) THEN 0 ELSE ? END
          ) RETURNING id`,
       )
-      .bind(keyId, limit - activeDeleted)
+      .bind(keyId, keyId, limit - activeDeleted)
       .all<{ id: string }>()
     return activeDeleted + inactive.results.length
   }

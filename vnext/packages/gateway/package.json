@@ -6,7 +6,7 @@
   "exports": {
     ".": "./src/app.ts",
     "./repo": "./src/repo/public.ts",
-    "./maintenance": "./src/responses-maintenance.ts",
+    "./maintenance": "./src/maintenance.ts",
     "./bootstrap": "./src/bootstrap.ts",
     "./migrations": "./src/migrations-dir.ts"
   },

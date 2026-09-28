@@ -1,0 +1,25 @@
+import { unstable_splitSqlQuery } from '/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/node_modules/.bun/wrangler@4.97.0+01d2f64f02d20ae6/node_modules/wrangler/wrangler-dist/cli.js'
+import { Miniflare } from '/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/node_modules/.bun/miniflare@4.20260601.0/node_modules/miniflare/dist/src/index.js'
+import { readdir, readFile } from 'node:fs/promises'
+const dir='/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/packages/gateway/migrations'
+const runtime = new Miniflare({ modules:true, compatibilityDate:'2025-06-01', d1Databases:{ DB:'reference-adoption-smoke' }, script:'export default { fetch() { return new Response("synthetic local D1") } }' })
+try {
+  const db=await runtime.getD1Database('DB')
+  for (const name of (await readdir(dir)).filter(x=>x.endsWith('.sql')).sort()) {
+    for (const statement of unstable_splitSqlQuery(await readFile(dir+'/'+name,'utf8'))) await db.prepare(statement).run()
+    console.log('applied '+name)
+  }
+  const { queries }=JSON.parse(await readFile('/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/docs/superpowers/research/2026-09-29-storage-maintenance-evidence/b07-query-vm-evidence.json','utf8'))
+  await db.prepare("INSERT INTO api_keys (id,name,key,created_at,dump_retention_seconds) VALUES ('key','synthetic','synthetic','2026-09-29',3600)").run()
+  for(let i=0;i<30;i++) await db.prepare("INSERT INTO dump_records (key_id,id,created_at,meta_json,request_headers_json) VALUES ('key',?,10000000,'{}','[]')").bind(String(i)).run()
+  const retained=await db.prepare(queries.after).bind('key','key',25).all()
+  if(retained.results.length!==0) throw new Error('retained history was deleted')
+  await db.prepare("UPDATE api_keys SET dump_retention_seconds=NULL WHERE id='key'").run()
+  const cleared=await db.prepare(queries.after).bind('key','key',25).all()
+  if(cleared.results.length!==25) throw new Error('cleared history quota mismatch')
+  await db.prepare("DELETE FROM api_keys WHERE id='key'").run()
+  const deleted=await db.prepare(queries.after).bind('key','key',25).all()
+  if(deleted.results.length!==5) throw new Error('deleted key remainder mismatch')
+  console.log(JSON.stringify({retainedDeleted:retained.results.length,clearedDeleted:cleared.results.length,deletedKeyDeleted:deleted.results.length,localD1:true}))
+
+} finally { await runtime.dispose() }

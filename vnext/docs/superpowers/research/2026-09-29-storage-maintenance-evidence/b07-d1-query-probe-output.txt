@@ -1,0 +1,16 @@
+applied 0001_baseline.sql
+applied 0002_drop_duplicate_cache_index.sql
+applied 0003_quota_per_month.sql
+applied 0004_quota_cost_per_month.sql
+applied 0005_web_search_jina_per_key.sql
+applied 0006_web_search_passthrough_per_key.sql
+applied 0007_api_key_model_mappings.sql
+applied 0008_usage_incoming_model.sql
+applied 0009_performance_metrics.sql
+applied 0010_configuration_revision.sql
+applied 0011_agent_remote_continuations.sql
+applied 0012_session_authentication_time.sql
+applied 0013_responses_retention.sql
+applied 0014_agent_remote_host_keys.sql
+applied 0015_dump_maintenance.sql
+{"retainedDeleted":0,"clearedDeleted":25,"deletedKeyDeleted":5,"localD1":true}

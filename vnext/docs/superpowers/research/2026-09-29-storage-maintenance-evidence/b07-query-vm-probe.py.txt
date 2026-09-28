@@ -1,0 +1,48 @@
+"""Measure the exact inactive DELETE extracted from pre/post production source."""
+import json
+import re
+import sqlite3
+from pathlib import Path
+
+root = Path(__file__).resolve().parents[3]
+scratch = Path(__file__).resolve().parent
+sources = {
+    "before": scratch / "task-B07-scan-fix-before-dump-store.ts",
+    "after": root / "vnext/packages/gateway/src/repo/dump-store.ts",
+}
+queries = {}
+for label, path in sources.items():
+    matches = re.findall(r"`(DELETE FROM dump_records WHERE rowid IN \(.*?\) RETURNING id)`", path.read_text(), re.S)
+    assert len(matches) == 2, (path, len(matches))
+    queries[label] = matches[1]
+
+result = {"sqlite_version": sqlite3.sqlite_version, "queries": queries, "measurements": []}
+for label, sql in queries.items():
+    for state in ("retained", "cleared", "deleted"):
+        for size in (1000, 10000):
+            db = sqlite3.connect(":memory:")
+            for migration in sorted((root / "vnext/packages/gateway/migrations").glob("*.sql")):
+                db.executescript(migration.read_text())
+            if state != "deleted":
+                db.execute("INSERT INTO api_keys (id, name, key, created_at, dump_retention_seconds) VALUES ('key', 'test', 'test', '2026-09-29', ?)",
+                           (3600 if state == "retained" else None,))
+            db.executemany("INSERT INTO dump_records (key_id, id, created_at, meta_json, request_headers_json) VALUES ('key', ?, ?, '{}', '[]')",
+                           [(str(i), 10_000_000 - i) for i in range(size)])
+            binds = ("key", 25) if label == "before" else ("key", "key", 25)
+            steps = [0]
+            def tick():
+                steps[0] += 1
+                return 0
+            db.set_progress_handler(tick, 1)
+            deleted = db.execute(sql, binds).fetchall()
+            db.set_progress_handler(None, 0)
+            plan = [row[3] for row in db.execute("EXPLAIN QUERY PLAN " + sql, binds)]
+            remaining = db.execute("SELECT COUNT(*) FROM dump_records").fetchone()[0]
+            expected = 0 if state == "retained" else 25
+            assert len(deleted) == expected and remaining == size - expected
+            if label == "after" and state == "retained":
+                assert steps[0] < 100, steps
+            result["measurements"].append({"source": label, "key_state": state, "history_rows": size,
+                                           "vm_steps": steps[0], "deleted": len(deleted), "remaining": remaining, "plan": plan})
+            db.close()
+print(json.dumps(result, indent=2))
