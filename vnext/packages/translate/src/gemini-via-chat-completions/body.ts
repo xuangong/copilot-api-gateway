@@ -16,6 +16,7 @@ import type {
   GeminiUsageMetadata,
 } from '../shared/gemini-via/types.ts'
 import { translateChatToGeminiEvents } from './events.ts'
+import { chatReasoningText } from '../shared/chat-reasoning-text.ts'
 
 export interface TranslateChatToGeminiBodyOptions {
   /** Embedded into the resulting `modelVersion` field. */
@@ -72,8 +73,9 @@ const synthesizeChunks = function* (body: ChatCompletionsBodyResponse): Generato
     }))
 
     const delta: Record<string, unknown> = { role: 'assistant' }
-    if (typeof message.reasoning_text === 'string' && message.reasoning_text) {
-      delta.reasoning_text = message.reasoning_text
+    const reasoning = chatReasoningText(message)
+    if (reasoning) {
+      delta.reasoning_text = reasoning
     }
     if (typeof message.reasoning_opaque === 'string' && message.reasoning_opaque) {
       delta.reasoning_opaque = message.reasoning_opaque

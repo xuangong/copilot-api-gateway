@@ -28,6 +28,7 @@ import type {
   ChatCompletionsStreamEvent,
 } from '@vibe-llm/protocols/chat'
 import { eventFrame } from '@vibe-core/result'
+import { chatReasoningText } from '@vibe-llm/translate/shared/chat-reasoning-text'
 
 const synthesizeFromItems = (
   items: ChatCompletionsReasoningItem[] | null | undefined,
@@ -70,14 +71,15 @@ const rewriteInboundDeltas = (chunk: ChatCompletionsStreamEvent): ChatCompletion
     const delta = choice.delta as ChatCompletionsStreamEvent['choices'][number]['delta'] & {
       reasoning_content?: unknown
     }
-    if (typeof delta.reasoning_content !== 'string') return choice
-    const { reasoning_content, ...rest } = delta
+    const reasoning = chatReasoningText(delta)
+    if (reasoning === undefined || typeof delta.reasoning_text === 'string') return choice
+    const { reasoning_content: _reasoningContent, ...rest } = delta
     changed = true
     return {
       ...choice,
       delta: {
         ...rest,
-        ...(delta.reasoning_text === undefined ? { reasoning_text: reasoning_content } : {}),
+        reasoning_text: reasoning,
       },
     }
   })

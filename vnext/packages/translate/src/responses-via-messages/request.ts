@@ -18,6 +18,7 @@ import {
 
 import { projectResponsesTools } from '../shared/responses-tools.ts'
 import { projectMessagesToolOutput, type ResponsesToolOutput } from '../shared/responses-tool-output.ts'
+import { messagesReasoningFromEffort } from '../shared/messages-reasoning-effort.ts'
 
 const DEFAULT_MAX_TOKENS = 8192
 
@@ -239,6 +240,7 @@ export function translateResponsesToMessages(payload: ResponsesPayload): Respons
   )
   const reasoning = payload.reasoning as { effort?: string } | undefined
   const effort = reasoning?.effort
+  const messagesReasoning = messagesReasoningFromEffort(effort)
   const max_tokens = payload.max_output_tokens ?? DEFAULT_MAX_TOKENS
 
   const tools = translateTools(selected.tools)
@@ -258,7 +260,7 @@ export function translateResponsesToMessages(payload: ResponsesPayload): Respons
       ? (responsesFormat.schema as Record<string, unknown>)
       : undefined
   const outputConfig: Record<string, unknown> = {}
-  if (effort) outputConfig.effort = effort
+  if (messagesReasoning.effort) outputConfig.effort = messagesReasoning.effort
   if (formatSchema) outputConfig.format = { type: 'json_schema', schema: formatSchema }
   const hasOutputConfig = Object.keys(outputConfig).length > 0
 
@@ -273,6 +275,7 @@ export function translateResponsesToMessages(payload: ResponsesPayload): Respons
     ...(systemBlocks ? { system: systemBlocks } : {}),
     ...(tools ? { tools } : {}),
     ...(hasOutputConfig ? { output_config: outputConfig } : {}),
+    ...(messagesReasoning.thinking ? { thinking: messagesReasoning.thinking } : {}),
   }
   if (payload.temperature != null) target.temperature = payload.temperature
   if (payload.top_p != null) target.top_p = payload.top_p

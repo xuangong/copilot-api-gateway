@@ -10,6 +10,7 @@
  */
 import type { ChatPayload } from '@vibe-llm/protocols/chat'
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
+import { effortFromMessages } from '../shared/messages-reasoning-effort.ts'
 import { TranslatorValidationError } from '../errors.ts'
 
 type ChatMessage = ChatPayload['messages'][number]
@@ -242,16 +243,9 @@ function translateToolChoice(choice: AnthropicToolChoice | undefined, tools: Cha
   }
 }
 
-function translateEffort(payload: MessagesPayload): 'low' | 'medium' | 'high' | undefined {
-  const thinking = payload.thinking as { budget_tokens?: number } | undefined
-  const budget = thinking?.budget_tokens
-  if (budget != null && budget > 0) return FINISH_BUDGET_TO_EFFORT(budget)
-  return undefined
-}
-
 export function translateMessagesToChat(payload: MessagesPayload): ChatPayload {
   const tools = translateTools(payload.tools)
-  const reasoning_effort = translateEffort(payload)
+  const reasoning_effort = effortFromMessages(payload, FINISH_BUDGET_TO_EFFORT)
   const messages = translateInput(payload.messages as MessagesPayload['messages'], payload.system)
   const ext = payload as MessagesPayload & { temperature?: number; top_p?: number; stop_sequences?: string[]; tool_choice?: AnthropicToolChoice }
 

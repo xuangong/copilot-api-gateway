@@ -3,6 +3,13 @@ import { translateMessagesToResponses } from '@vibe-llm/translate/messages-via-r
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
 
 describe('messages-via-responses :: request', () => {
+  it('maps disabled thinking to none before a conflicting explicit effort', () => {
+    const base = { model: 'm', max_tokens: 64, messages: [{ role: 'user', content: 'hi' }] }
+    expect(translateMessagesToResponses({ ...base, thinking: { type: 'disabled' } } as never).target.reasoning).toEqual({ effort: 'none' })
+    expect(translateMessagesToResponses({ ...base, thinking: { type: 'disabled' }, output_config: { effort: 'high' } } as never).target.reasoning).toEqual({ effort: 'none' })
+    expect(translateMessagesToResponses({ ...base, output_config: { effort: 'max' } } as never).target.reasoning).toEqual({ effort: 'max' })
+    expect(translateMessagesToResponses(base as never).target.reasoning).toBeUndefined()
+  })
   it.each([
     [1, 16], [8, 16], [15, 16], [16, 16], [128, 128],
   ])('adapts Messages max_tokens=%i to a valid Responses output budget of %i', (maxTokens, expected) => {

@@ -3,6 +3,17 @@ import { translateResponsesToMessages } from '@vibe-llm/translate/responses-via-
 import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
 
 describe('responses-via-messages :: request', () => {
+  it('uses native disabled thinking for none while retaining structured output', () => {
+    const out = translateResponsesToMessages({
+      model: 'm', input: 'hello', reasoning: { effort: 'none' },
+      text: { format: { type: 'json_schema', name: 'answer', schema: { type: 'object' } } },
+    } as never).target
+    expect(out.thinking).toEqual({ type: 'disabled' })
+    expect((out as { output_config?: { effort?: string; format?: unknown } }).output_config?.effort).toBeUndefined()
+    expect((out as { output_config?: { format?: unknown } }).output_config?.format).toEqual({ type: 'json_schema', schema: { type: 'object' } })
+    const future = translateResponsesToMessages({ model: 'm', input: 'hello', reasoning: { effort: 'max' } } as never).target
+    expect((future as { output_config?: { effort?: string } }).output_config?.effort).toBe('max')
+  })
   // Regression: images used to be dropped outright. Anthropic does take them —
   // a data URL splits into a base64 source, anything else rides as a url source.
   it('translates input_image into an Anthropic image block', () => {

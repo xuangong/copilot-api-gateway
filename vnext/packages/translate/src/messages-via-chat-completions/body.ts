@@ -5,6 +5,7 @@
  * Direction: response = hub → client.
  */
 import type { MessagesResponse } from '@vibe-llm/protocols/messages'
+import { chatReasoningText } from '../shared/chat-reasoning-text.ts'
 
 interface ChatCompletionToolCall {
   id?: string
@@ -74,7 +75,8 @@ export function translateChatBodyToMessages(resp: ChatCompletionResultLike, fall
   const msg = choice?.message ?? {}
   const blocks: Array<Record<string, unknown>> = []
 
-  if (msg.reasoning_text) blocks.push({ type: 'thinking', thinking: msg.reasoning_text })
+  const reasoning = chatReasoningText(msg)
+  if (reasoning) blocks.push({ type: 'thinking', thinking: reasoning })
   if (typeof msg.content === 'string' && msg.content.length > 0) {
     blocks.push({ type: 'text', text: msg.content })
   }

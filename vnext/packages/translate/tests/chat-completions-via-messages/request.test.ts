@@ -4,6 +4,17 @@ import { EPHEMERAL_CACHE_CONTROL } from '@vibe-llm/translate/shared/cache-breakp
 import { TranslatorValidationError } from '@vibe-llm/translate/errors'
 
 describe('chat-completions-via-messages :: request', () => {
+  it('maps none to native disabled thinking and preserves other effort levels', () => {
+    const base = { model: 'm', messages: [{ role: 'user', content: 'hi' }] }
+    const off = translateChatToMessages({ ...base, reasoning_effort: 'none' } as never)
+    expect(off.thinking).toEqual({ type: 'disabled' })
+    expect((off as { output_config?: { effort?: string } }).output_config?.effort).toBeUndefined()
+    const future = translateChatToMessages({ ...base, reasoning_effort: 'max' } as never)
+    expect((future as { output_config?: { effort?: string } }).output_config?.effort).toBe('max')
+    const absent = translateChatToMessages(base as never)
+    expect(absent.thinking).toBeUndefined()
+    expect((absent as { output_config?: unknown }).output_config).toBeUndefined()
+  })
   it('translates a minimal text-only chat payload to a Messages payload', () => {
     const out = translateChatToMessages({
       model: 'claude-3-5-sonnet',

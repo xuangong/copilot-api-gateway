@@ -11,6 +11,7 @@
  * tool; custom tools become Responses functions with `strict: false`.
  */
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
+import { effortFromMessages } from '../shared/messages-reasoning-effort.ts'
 import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
 import { TranslatorValidationError } from '../errors.ts'
 
@@ -247,17 +248,12 @@ function translateToolChoice(
   }
 }
 
-function translateEffort(payload: MessagesPayload): 'low' | 'medium' | 'high' | 'xhigh' | undefined {
-  const cfg = (payload as MessagesPayload & { output_config?: { effort?: 'low' | 'medium' | 'high' | 'xhigh' } }).output_config
-  if (cfg?.effort) return cfg.effort
-  const thinking = payload.thinking as { budget_tokens?: number } | undefined
-  const budget = thinking?.budget_tokens
-  if (budget != null && budget > 0) {
+function translateEffort(payload: MessagesPayload): string | undefined {
+  return effortFromMessages(payload, (budget) => {
     if (budget <= 2048) return 'low'
     if (budget <= 8192) return 'medium'
     return 'high'
-  }
-  return undefined
+  })
 }
 
 function translateOutputFormat(payload: MessagesPayload): { format: { type: 'json_schema'; name: string; strict: true; schema: Record<string, unknown> } } | undefined {

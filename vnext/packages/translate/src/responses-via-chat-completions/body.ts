@@ -18,6 +18,8 @@
  * `id`/`status`, `annotations:[]`, `error:null`, `incomplete_details:null`,
  * detailed `usage.{input_tokens_details,output_tokens_details,total_tokens}`).
  */
+import { chatReasoningText } from '../shared/chat-reasoning-text.ts'
+
 interface ChatToolCall { id: string; type: 'function'; function: { name: string; arguments: string } }
 interface ChatMessage { role: 'assistant'; content: string | null; refusal?: string | null; tool_calls?: ChatToolCall[] }
 interface ChatBody {
@@ -35,7 +37,7 @@ interface ResponsesOutputContentPart {
   annotations?: unknown[]
 }
 interface ResponsesOutputItem {
-  type: 'message' | 'function_call'
+  type: 'message' | 'function_call' | 'reasoning'
   id?: string
   status?: 'completed' | 'incomplete'
   role?: 'assistant'
@@ -43,6 +45,7 @@ interface ResponsesOutputItem {
   call_id?: string
   name?: string
   arguments?: string
+  summary?: Array<{ type: 'summary_text'; text: string }>
 }
 
 interface ResponsesUsage {
@@ -102,6 +105,9 @@ export function translateChatToResponsesBody(
 
   const output: ResponsesOutputItem[] = []
   let outputText = ''
+
+  const reasoning = choice ? chatReasoningText(choice.message) : undefined
+  if (reasoning) output.push({ type: 'reasoning', id: `rs_${generateMessageId().slice(4)}`, summary: [{ type: 'summary_text', text: reasoning }] })
 
   if (choice && (typeof choice.message.content === 'string' && choice.message.content.length > 0 || choice.message.refusal != null)) {
     outputText = typeof choice.message.content === 'string' ? choice.message.content : ''

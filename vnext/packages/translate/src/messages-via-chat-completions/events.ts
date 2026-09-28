@@ -12,6 +12,7 @@
  */
 import { chatCompletionsErrorPayloadMessage } from "@vibe-llm/protocols/chat"
 import type { MessagesEvent } from '@vibe-llm/protocols/messages'
+import { chatReasoningText } from '../shared/chat-reasoning-text.ts'
 
 interface ChatToolCallDelta {
   index: number
@@ -206,13 +207,14 @@ function translateOne(chunk: ChatChunkLike, state: State): MessagesEvent[] {
   if (!state.emittedMessageStart) out.push(emitMessageStart(state))
 
   if (delta) {
-    if (delta.reasoning_text) {
+    const reasoning = chatReasoningText(delta)
+    if (reasoning) {
       out.push(...openThinking(state))
       if (state.thinkingBlock) {
         out.push({
           type: 'content_block_delta',
           index: state.thinkingBlock.index,
-          delta: { type: 'thinking_delta', thinking: delta.reasoning_text },
+          delta: { type: 'thinking_delta', thinking: reasoning },
         })
       }
     }

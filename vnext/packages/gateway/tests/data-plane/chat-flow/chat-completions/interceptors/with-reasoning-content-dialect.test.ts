@@ -144,6 +144,34 @@ test('strips reasoning_items even when no summaries produce text', async () => {
 
 // ── Inbound ─────────────────────────────────────────────────────
 
+test('inbound normalization keeps canonical empty text and native passthrough aliases', async () => {
+  const enabled = await withReasoningContentDialect(
+    inv({ model: 'm', messages: [] }), baseCtx,
+    runWith(deltaChunk({ reasoning_text: '', reasoning_content: 'vendor', reasoning: 'last' })),
+  )
+  const normalized = (await collect(enabled))[0]
+  if (normalized?.type !== 'event') throw new Error('expected event')
+  expect((normalized.event.choices[0]?.delta as Record<string, unknown>).reasoning_text).toBe('')
+
+  const native = await withReasoningContentDialect(
+    inv({ model: 'm', messages: [] }, new Set()), baseCtx,
+    runWith(deltaChunk({ reasoning_content: 'vendor', reasoning: 'last' })),
+  )
+  const passthrough = (await collect(native))[0]
+  if (passthrough?.type !== 'event') throw new Error('expected event')
+  expect(passthrough.event.choices[0]?.delta).toMatchObject({ reasoning_content: 'vendor', reasoning: 'last' })
+})
+
+test('normalizes inbound reasoning alias when reasoning_content is absent', async () => {
+  const result = await withReasoningContentDialect(
+    inv({ model: 'm', messages: [] }), baseCtx,
+    runWith(deltaChunk({ reasoning: 'last' })),
+  )
+  const frame = (await collect(result))[0]
+  if (frame?.type !== 'event') throw new Error('expected event')
+  expect(frame.event.choices[0]?.delta).toMatchObject({ reasoning_text: 'last' })
+})
+
 test('renames inbound delta reasoning_content → reasoning_text', async () => {
   const i = inv({ model: 'deepseek-reasoner', messages: [] })
   const result = await withReasoningContentDialect(

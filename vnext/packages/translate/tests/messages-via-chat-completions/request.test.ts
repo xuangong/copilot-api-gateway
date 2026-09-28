@@ -3,6 +3,12 @@ import { translateMessagesToChat } from '@vibe-llm/translate/messages-via-chat-c
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
 
 describe('messages-via-chat-completions :: request', () => {
+  it('maps disabled thinking to none even with a conflicting effort or no budget', () => {
+    const base = { model: 'm', max_tokens: 64, messages: [{ role: 'user', content: 'hi' }] }
+    expect(translateMessagesToChat({ ...base, thinking: { type: 'disabled' } } as never).reasoning_effort).toBe('none')
+    expect(translateMessagesToChat({ ...base, thinking: { type: 'disabled' }, output_config: { effort: 'high' } } as never).reasoning_effort).toBe('none')
+    expect(translateMessagesToChat(base as never).reasoning_effort).toBeUndefined()
+  })
   it('translates a string-only user message to a Chat user with string content', () => {
     const p = {
       model: 'gpt-4o', max_tokens: 100,

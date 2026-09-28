@@ -17,6 +17,8 @@ import {
   systemWithCacheBreakpoint,
 } from '../shared/cache-breakpoints.ts'
 import { TranslatorValidationError } from '../errors.ts'
+import { messagesReasoningFromEffort } from '../shared/messages-reasoning-effort.ts'
+import { chatReasoningText } from '../shared/chat-reasoning-text.ts'
 
 const MESSAGES_FALLBACK_MAX_TOKENS = 4096
 
@@ -35,9 +37,10 @@ type ChatContent = ChatMessage['content']
 interface AnthropicTextBlock { type: 'text'; text: string }
 interface AnthropicImageBlock { type: 'image'; source: { type: 'base64' | 'url'; media_type?: string; data?: string; url?: string } }
 interface AnthropicToolUseBlock { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+interface AnthropicThinkingBlock { type: 'thinking'; thinking: string }
 interface AnthropicToolResultBlock { type: 'tool_result'; tool_use_id: string; content?: string }
 type UserBlock = AnthropicTextBlock | AnthropicImageBlock | AnthropicToolResultBlock
-type AssistantBlock = AnthropicTextBlock | AnthropicToolUseBlock
+type AssistantBlock = AnthropicTextBlock | AnthropicToolUseBlock | AnthropicThinkingBlock
 type ContentBlock = UserBlock | AssistantBlock
 interface AnthropicMessage { role: 'user' | 'assistant'; content: string | ContentBlock[] }
 
@@ -101,6 +104,8 @@ function userBlocksFromContent(content: ChatContent): UserBlock[] {
 
 function assistantBlocks(m: ChatMessage): AssistantBlock[] {
   const blocks: AssistantBlock[] = []
+  const reasoning = chatReasoningText(m)
+  if (reasoning) blocks.push({ type: 'thinking', thinking: reasoning })
   if (typeof m.content === 'string' && m.content) blocks.push({ type: 'text', text: m.content })
   const assistant = m as ChatMessage & { refusal?: string | null }
   let hasRefusalPart = false
@@ -229,9 +234,9 @@ export function translateChatToMessages(
   )
   applyLastToolCacheBreakpoint(tools)
   applyLastMessageCacheBreakpoint(messages)
-  const thinking = payload.reasoning_effort && EFFORT_TO_BUDGET[payload.reasoning_effort]
-    ? { type: 'enabled' as const, budget_tokens: EFFORT_TO_BUDGET[payload.reasoning_effort] }
-    : undefined
+  const reasoning = messagesReasoningFromEffort(payload.reasoning_effort)
+  const budget = payload.reasoning_effort ? EFFORT_TO_BUDGET[payload.reasoning_effort] : undefined
+  const thinking = reasoning.thinking ?? (budget ? { type: 'enabled' as const, budget_tokens: budget } : undefined)
 
   const rf = payload.response_format as { type?: string; json_schema?: { schema?: unknown } } | undefined
   const formatSchema =
@@ -241,8 +246,11 @@ export function translateChatToMessages(
     && !Array.isArray(rf.json_schema.schema)
       ? (rf.json_schema.schema as Record<string, unknown>)
       : undefined
-  const output_config = formatSchema
-    ? { format: { type: 'json_schema' as const, schema: formatSchema } }
+  const output_config = reasoning.effort || formatSchema
+    ? {
+        ...(reasoning.effort ? { effort: reasoning.effort } : {}),
+        ...(formatSchema ? { format: { type: 'json_schema' as const, schema: formatSchema } } : {}),
+      }
     : undefined
 
   const out: Record<string, unknown> = {

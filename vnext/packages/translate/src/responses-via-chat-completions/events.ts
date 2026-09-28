@@ -23,6 +23,7 @@
  *    "stream ended without a finish reason," which fails the stream instead of synthesizing completion.
  */
 import { chatCompletionsErrorPayloadMessage } from "@vibe-llm/protocols/chat"
+import { chatReasoningText } from '../shared/chat-reasoning-text.ts'
 
 interface ChatChunk {
   id?: string
@@ -67,6 +68,9 @@ export async function* translateChatToResponsesEvents(
   let messageItemId = ''
   let nextOutputIndex = 0
   let messageOutputIndex = -1
+  let reasoningOutputIndex = -1
+  let reasoningText = ''
+  let reasoningItemId = ''
   const toolCalls = new Map<number, ToolCallState>() // chunk index → state
   let finish: 'stop' | 'length' | 'tool_calls' | 'function_call' | null = null
 
@@ -91,6 +95,17 @@ export async function* translateChatToResponsesEvents(
     const choice = raw.choices?.[0]
     if (!choice) continue
     const delta = choice.delta ?? {}
+    const reasoning = chatReasoningText(delta)
+    if (reasoning) {
+      if (reasoningOutputIndex < 0) {
+        reasoningOutputIndex = nextOutputIndex++
+        reasoningItemId = `rs_${Math.random().toString(36).slice(2, 24)}`
+        yield { type: 'response.output_item.added', output_index: reasoningOutputIndex, item: { type: 'reasoning', id: reasoningItemId, summary: [] } }
+        yield { type: 'response.reasoning_summary_part.added', item_id: reasoningItemId, output_index: reasoningOutputIndex, summary_index: 0, part: { type: 'summary_text', text: '' } }
+      }
+      reasoningText += reasoning
+      yield { type: 'response.reasoning_summary_text.delta', item_id: reasoningItemId, output_index: reasoningOutputIndex, summary_index: 0, delta: reasoning }
+    }
     for (const [partType, value] of [['output_text', delta.content], ['refusal', delta.refusal]] as const) {
       if (typeof value !== 'string' || (partType === 'output_text' && value.length === 0)) continue
       if (!messageOpened) {
@@ -173,6 +188,11 @@ export async function* translateChatToResponsesEvents(
 
   if (finish === null) throw new Error("Upstream Chat Completions stream ended without a finish_reason.")
 
+  if (reasoningOutputIndex >= 0) {
+    yield { type: 'response.reasoning_summary_text.done', item_id: reasoningItemId, output_index: reasoningOutputIndex, summary_index: 0, text: reasoningText }
+    yield { type: 'response.reasoning_summary_part.done', item_id: reasoningItemId, output_index: reasoningOutputIndex, summary_index: 0, part: { type: 'summary_text', text: reasoningText } }
+    yield { type: 'response.output_item.done', output_index: reasoningOutputIndex, item: { type: 'reasoning', id: reasoningItemId, summary: [{ type: 'summary_text', text: reasoningText }] } }
+  }
   if (messageOpened) {
     if (activePart) {
       const part = activePart.type === 'output_text'

@@ -22,6 +22,7 @@ import type {
   GeminiStreamEvent,
   GeminiUsageMetadata,
 } from '../shared/gemini-via/types.ts'
+import { chatReasoningText } from '../shared/chat-reasoning-text.ts'
 import {
   appendGeminiThoughtSignature,
   flushGeminiThoughtSignature,
@@ -212,8 +213,9 @@ const buildCandidate = (
   const parts: GeminiPart[] = []
   const delta = choice.delta ?? {}
 
-  if (typeof delta.reasoning_text === 'string' && delta.reasoning_text) {
-    parts.push({ text: delta.reasoning_text, thought: true })
+  const reasoning = chatReasoningText(delta)
+  if (reasoning) {
+    parts.push({ text: reasoning, thought: true })
   }
 
   if (typeof delta.reasoning_opaque === 'string' && delta.reasoning_opaque) {
