@@ -1,3 +1,5 @@
+import { responsesFormatGuard, responsesFormatMismatchMessage } from '@vibe-llm/provider-llm'
+import { TranslatorValidationError } from '@vibe-llm/translate/errors'
 import { fetchWithPerformance, observeUpstreamFrames, observeUpstreamJson } from "../shared/performance-upstream"
 // vnext/packages/gateway/src/data-plane/chat-flow/messages/attempt.ts
 /**
@@ -380,10 +382,15 @@ export const messagesAttempt = {
 
     let upstreamResp: ProviderResponse | undefined
 
+    const preservesFormat = responsesFormatGuard(invocation.sourceApi, invocation.endpoint, invocation.payload)
+
     const terminal = async (): Promise<LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>> => {
       const upstreamPayload = await sel.translator.translateRequest(invocation.payload, {
         signal: args.ctx.downstreamAbortSignal ?? new AbortController().signal,
       })
+      if (!preservesFormat(upstreamPayload)) {
+        return llmInternalErrorResult(400, new TranslatorValidationError(responsesFormatMismatchMessage, 'text.format'), undefined, 'translator-validation')
+      }
       const headers = new Headers({ 'content-type': 'application/json' })
       for (const [k, v] of Object.entries(invocation.headers)) headers.set(k, v)
       const providerReq: ProviderRequest = {
@@ -391,6 +398,7 @@ export const messagesAttempt = {
         payload: upstreamPayload,
         headers,
         sourceApi: 'anthropic',
+        sourceProtocol: invocation.sourceApi,
         flags: { isStreaming: invocation.payload.stream === true },
         signal: args.ctx.downstreamAbortSignal,
       }

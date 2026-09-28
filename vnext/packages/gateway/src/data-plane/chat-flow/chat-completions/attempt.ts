@@ -1,3 +1,6 @@
+import { invocationSourceApi } from '../shared/invocation-source-api'
+import { responsesFormatGuard, responsesFormatMismatchMessage } from '@vibe-llm/provider-llm'
+import { TranslatorValidationError } from '@vibe-llm/translate/errors'
 import { getTranslator } from '../../dispatch/translator-registry.ts'
 import { MODEL_CATALOG_UNAVAILABLE } from '../../errors/model-catalog.ts'
 import { fetchWithPerformance, observeUpstreamFrames, observeUpstreamJson } from "../shared/performance-upstream"
@@ -142,7 +145,7 @@ export const chatCompletionsAttempt = {
     const invocation: Invocation = {
       endpoint: 'chat_completions',
       enabledFlags: new Set(sel.binding.enabledFlags ?? []),
-      sourceApi: 'chat_completions',
+      sourceApi: invocationSourceApi(args.telemetryCtx.sourceApi, 'chat_completions'),
       payload: args.payload as Record<string, unknown>,
       headers: { ...(args.inheritedHeaders ?? {}) },
     }
@@ -153,10 +156,15 @@ export const chatCompletionsAttempt = {
     // upstream stream lingers until GC.
     let upstreamResp: ProviderResponse | undefined
 
+    const preservesFormat = responsesFormatGuard(invocation.sourceApi, invocation.endpoint, invocation.payload)
+
     const terminal = async (): Promise<LlmExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>> => {
       const upstreamPayload = await sel.translator.translateRequest(invocation.payload, {
         signal: args.ctx.downstreamAbortSignal ?? new AbortController().signal,
       })
+      if (!preservesFormat(upstreamPayload)) {
+        return llmInternalErrorResult(400, new TranslatorValidationError(responsesFormatMismatchMessage, 'text.format'), undefined, 'translator-validation')
+      }
       const headers = new Headers({ 'content-type': 'application/json' })
       for (const [k, v] of Object.entries(invocation.headers)) headers.set(k, v)
       const providerReq: ProviderRequest = {
@@ -164,6 +172,7 @@ export const chatCompletionsAttempt = {
         payload: upstreamPayload,
         headers,
         sourceApi: 'openai',
+        sourceProtocol: invocation.sourceApi,
         flags: { isStreaming: invocation.payload.stream === true },
         signal: args.ctx.downstreamAbortSignal,
       }

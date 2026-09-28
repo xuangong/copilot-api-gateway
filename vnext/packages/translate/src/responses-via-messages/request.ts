@@ -16,6 +16,7 @@ import {
   type MessageLike as SharedMessageLike,
 } from '../shared/cache-breakpoints.ts'
 
+import { projectResponsesTextFormat, responsesOutputConfig } from '../shared/responses-text-format.ts'
 import { projectResponsesTools } from '../shared/responses-tools.ts'
 import { projectMessagesToolOutput, type ResponsesToolOutput } from '../shared/responses-tool-output.ts'
 import { messagesReasoningFromEffort } from '../shared/messages-reasoning-effort.ts'
@@ -244,6 +245,8 @@ export interface ResponsesToMessagesRequestResult {
 }
 
 export function translateResponsesToMessages(payload: ResponsesPayload): ResponsesToMessagesRequestResult {
+  const outputConfig = responsesOutputConfig(payload)
+  const format = projectResponsesTextFormat(payload, 'messages')
   const selected = projectResponsesTools(payload)
   const { messages, systemParts } = translateInput(payload.input)
 
@@ -261,19 +264,8 @@ export function translateResponsesToMessages(payload: ResponsesPayload): Respons
   applyLastToolCacheBreakpoint(tools)
   applyLastMessageCacheBreakpoint(messages as unknown as SharedMessageLike[])
 
-  // output_config: bundle reasoning effort + structured-output schema.
-  const text = payload.text as { format?: { type?: string; schema?: unknown } } | undefined
-  const responsesFormat = text?.format
-  const formatSchema =
-    responsesFormat?.type === 'json_schema'
-    && responsesFormat.schema
-    && typeof responsesFormat.schema === 'object'
-    && !Array.isArray(responsesFormat.schema)
-      ? (responsesFormat.schema as Record<string, unknown>)
-      : undefined
-  const outputConfig: Record<string, unknown> = {}
   if (messagesReasoning.effort) outputConfig.effort = messagesReasoning.effort
-  if (formatSchema) outputConfig.format = { type: 'json_schema', schema: formatSchema }
+  if (format) outputConfig.format = format
   const hasOutputConfig = Object.keys(outputConfig).length > 0
 
   const systemText = systemPieces.length > 0 ? systemPieces.join('\n\n') : undefined

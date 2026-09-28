@@ -84,7 +84,7 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
       // Reverse translation only needs these request-side envelope fields. Keep
       // their values stable if an inner interceptor mutates the source object.
       sourceSnapshot = Object.fromEntries(
-        ['instructions', 'metadata', 'parallel_tool_calls', 'temperature', 'tool_choice', 'tools', 'top_p']
+        ['instructions', 'metadata', 'parallel_tool_calls', 'temperature', 'tool_choice', 'tools', 'top_p', 'text']
           .filter(key => key in args.sourcePayload)
           .map(key => [key, structuredClone(args.sourcePayload[key])]),
       )
@@ -99,6 +99,20 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
       undefined,
       'translator-internal',
     )
+  }
+
+  // Native targets cannot echo Responses text configuration. Keep the source
+  // value independent of provider mutations for JSON and SSE envelopes.
+  const sourceText = args.sourceProtocol === 'responses' ? sourceSnapshot.text : undefined
+  const echoText = <T>(body: T): T => sourceText !== undefined && body !== null && typeof body === 'object'
+    ? { ...body, text: structuredClone(sourceText) }
+    : body
+  const echoEventText = async function* (events: AsyncIterable<unknown>): AsyncIterable<unknown> {
+    for await (const event of events) {
+      if (sourceText !== undefined && event !== null && typeof event === 'object' && 'response' in event) {
+        yield { ...event, response: echoText(event.response) }
+      } else yield event
+    }
   }
 
   const inner = await args.innerAttempt({
@@ -176,25 +190,25 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     // responses-via-chat-completions/body.ts) that echo back fields like
     // `instructions`, `metadata`, `tool_choice`, `tools` which the upstream
     // Chat-Completions response never carries.
-    ((hubJson, ctx) =>
-      args.translator.translateBody(hubJson, {
+    (async (hubJson, ctx) =>
+      echoText(await args.translator.translateBody(hubJson, {
         signal: ctx?.signal ?? new AbortController().signal,
         fallbackMaxOutputTokens: ctx?.fallbackMaxOutputTokens,
         model: ctx?.model,
         sourcePayload: sourceSnapshot,
         customToolNames,
-      })) as LlmEventResult<ProtocolFrame<SourceFrame>>['translateBody'],
+      }))) as LlmEventResult<ProtocolFrame<SourceFrame>>['translateBody'],
     // translateEvents: respond.ts streaming branch unwraps hub frames, runs
     // these through the translator, then re-wraps as source frames before SSE
     // encoding. The translator function here consumes BARE hub events (not
     // ProtocolFrame envelopes) and yields BARE source events.
-    ((events, ctx) => args.translator.translateEvents(events, {
+    ((events, ctx) => echoEventText(args.translator.translateEvents(events, {
       signal: ctx?.signal ?? new AbortController().signal,
       fallbackMaxOutputTokens: ctx?.fallbackMaxOutputTokens,
       model: ctx?.model,
       sourcePayload: sourceSnapshot,
       customToolNames,
-    })) as LlmEventResult<ProtocolFrame<SourceFrame>>['translateEvents'],
+    }))) as LlmEventResult<ProtocolFrame<SourceFrame>>['translateEvents'],
     resolveModelIdentity,
   )
   return innerEvents.__interceptorReplaced

@@ -39,6 +39,8 @@ export interface ProviderRequest {
   /** Mutable along the interceptor chain. Terminal HTTP reads the final state. */
   headers: Headers
   sourceApi: SourceApi
+  /** Server-derived inbound protocol provenance; never read from the request body. */
+  sourceProtocol?: 'messages' | 'chat_completions' | 'responses' | 'gemini'
   flags?: ProviderRequestFlags
   signal?: AbortSignal
   /** Optional log-friendly label. Defaults to `call ${endpoint}` in the provider. */

@@ -81,7 +81,7 @@ describe('responses-via-messages :: request', () => {
   it('uses native disabled thinking for none while retaining structured output', () => {
     const out = translateResponsesToMessages({
       model: 'm', input: 'hello', reasoning: { effort: 'none' },
-      text: { format: { type: 'json_schema', name: 'answer', schema: { type: 'object' } } },
+      text: { format: { type: 'json_schema', name: 'answer', strict: true, schema: { type: 'object' } } },
     } as never).target
     expect(out.thinking).toEqual({ type: 'disabled' })
     expect((out as { output_config?: { effort?: string; format?: unknown } }).output_config?.effort).toBeUndefined()
@@ -270,7 +270,7 @@ describe('responses-via-messages :: request', () => {
       model: 'm',
       input: 'hi',
       reasoning: { effort: 'high' },
-      text: { format: { type: 'json_schema', schema: { type: 'object' } } },
+      text: { format: { type: 'json_schema', name: 'answer', strict: true, schema: { type: 'object' } } },
     } as unknown as ResponsesPayload
     const out = translateResponsesToMessages(p)
     expect((out.target as unknown as { output_config?: unknown }).output_config).toEqual({

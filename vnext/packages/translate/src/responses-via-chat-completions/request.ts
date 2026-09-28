@@ -21,6 +21,7 @@
 import type { ChatPayload } from '@vibe-llm/protocols/chat'
 import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
 
+import { projectResponsesTextFormat } from '../shared/responses-text-format.ts'
 import { projectResponsesTools } from '../shared/responses-tools.ts'
 import { projectChatToolOutput, type ChatToolImagePart, type ResponsesToolOutput } from '../shared/responses-tool-output.ts'
 import { agentMessageContent } from '../shared/responses-via/agent-message.ts'
@@ -154,6 +155,7 @@ function translateToolChoice(choice: ResponsesPayload['tool_choice']): ChatPaylo
 }
 
 export function translateResponsesToChat(payload: ResponsesPayload): ResponsesToChatRequestResult {
+  const responseFormat = projectResponsesTextFormat(payload, 'chat')
   const selected = projectResponsesTools(payload)
   const messages: ChatMessage[] = []
   if (typeof payload.instructions === 'string' && payload.instructions.length > 0) {
@@ -174,6 +176,7 @@ export function translateResponsesToChat(payload: ResponsesPayload): ResponsesTo
     messages,
     stream: payload.stream ?? true,
   }
+  if (responseFormat) target.response_format = responseFormat
   if (payload.temperature !== undefined) target.temperature = payload.temperature
   if (payload.top_p !== undefined) target.top_p = payload.top_p
   const ext = payload as ResponsesPayload & { metadata?: Record<string, string> }

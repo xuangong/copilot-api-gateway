@@ -1,3 +1,4 @@
+import { responsesFormatGuard, responsesFormatMismatchMessage } from '@vibe-llm/provider-llm'
 import { rememberRawModels } from "./raw-models-cache"
 /**
  * CopilotProvider — extracted to @vibe-llm/provider-copilot in Plan 2c.
@@ -176,13 +177,15 @@ export class CopilotProvider implements LlmModelProvider {
     const interceptors = this.interceptorsFor(req.endpoint)
     const requireModel = req.requireModel ?? req.endpoint !== 'messages_count_tokens'
 
-    const response = await runInterceptors(inv, ctx, interceptors, () =>
+    const preservesFormat = responsesFormatGuard(req.sourceProtocol, req.endpoint, req.payload)
+    const response = await runInterceptors(inv, ctx, interceptors, () => {
+      if (!preservesFormat(inv.payload)) return Promise.resolve(Response.json({ error: { type: "invalid_request_error", message: responsesFormatMismatchMessage, param: "text.format", code: null } }, { status: 400 }))
       // Only the terminal call is retried, not the whole chain: interceptors
       // mutate inv.payload in place, so re-running them would apply their
       // rewrites twice. By this point the payload is final, and callCopilotAPI
       // throws on a non-2xx before any body reaches the caller — so a streaming
       // request has emitted nothing yet and the retry is invisible downstream.
-      this.withAuthRetry(() =>
+      return this.withAuthRetry(() =>
         callCopilotAPI({
           endpoint: path,
           payload: inv.payload,
@@ -195,8 +198,8 @@ export class CopilotProvider implements LlmModelProvider {
           requireModel,
           fetcher: this.fetcher,
         }),
-      ),
-    )
+      )
+    })
     return { status: response.status, headers: response.headers, body: response.body }
   }
 

@@ -1,0 +1,223 @@
+/** A15 acceptance: installed official SDK -> real app.fetch -> counted local synthetic targets. */
+import { createHash } from "node:crypto"
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import OpenAI from "/Volumes/Projects/copilot-api-gateway/node_modules/.ignored/openai/index.mjs"
+
+const sourceRoot = "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify"
+const scratch = join(import.meta.dir, "runs", `${new Date().toISOString().replaceAll(":", "-")}-${process.pid}`)
+mkdirSync(scratch, { recursive: true })
+function gitOutput(...args: string[]): string {
+  const result = Bun.spawnSync({ cmd: ["git", "-C", sourceRoot, ...args] })
+  if (result.exitCode !== 0) throw new Error(`git ${args.join(" ")} failed`)
+  return new TextDecoder().decode(result.stdout).trimEnd()
+}
+const sourceHead = gitOutput("rev-parse", "HEAD")
+const sourceStatus = gitOutput("status", "--porcelain=v1").split("\n").filter(Boolean)
+writeFileSync(join(scratch, "source-diff.patch"), gitOutput("diff", "--binary"))
+const sourcePaths = [
+  "vnext/packages/translate/src/responses-via-chat-completions/request.ts",
+  "vnext/packages/translate/src/responses-via-messages/request.ts",
+  "vnext/packages/gateway/src/data-plane/chat-flow/shared/traverse-translation.ts",
+]
+const sourceHashes = Object.fromEntries(sourcePaths.map(path => [path, createHash("sha256").update(readFileSync(join(sourceRoot, path))).digest("hex")]))
+writeFileSync(join(scratch, "harness.ts"), readFileSync(import.meta.filename))
+const { bootstrapBunPlatform } = await import(`${sourceRoot}/vnext/apps/platform-bun/src/bootstrap.ts`)
+const { getRepo } = await import(`${sourceRoot}/vnext/packages/gateway/src/repo/index.ts`)
+const { app } = await import(`${sourceRoot}/vnext/packages/gateway/src/app.ts`)
+
+type Target = "chat_completions" | "messages"
+type Obj = Record<string, unknown>
+type Fixture = { label: string; payload: Obj; native?: Obj; errorField?: string; effort?: string }
+type UpstreamCall = { target: Target; path: string; body: Obj }
+const calls: UpstreamCall[] = []
+const json = (value: unknown) => JSON.stringify(value)
+const sse = (event: string, data: unknown) => `event: ${event}\ndata: ${json(data)}\n\n`
+const OUTPUT = '{"answer":"格式验收🙂"}'
+const SCHEMA = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"], additionalProperties: false }
+const schemaFormat = (extra: Obj = {}) => ({ type: "json_schema", name: "answer_v1", schema: SCHEMA, ...extra })
+const chatNative = (format: Obj) => {
+  const { type, ...json_schema } = format
+  return { type, json_schema }
+}
+const messageNative = { type: "json_schema", schema: SCHEMA }
+function responseBody(target: Target, model: string) {
+  return target === "chat_completions"
+    ? { id: "chatcmpl_a15", object: "chat.completion", model, choices: [{ index: 0, message: { role: "assistant", content: OUTPUT }, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 5, total_tokens: 8 } }
+    : { id: "msg_a15", type: "message", role: "assistant", model, content: [{ type: "text", text: OUTPUT }], stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 3, output_tokens: 5 } }
+}
+function streamBody(target: Target, model: string) {
+  if (target === "chat_completions") return [
+    { id: "chatcmpl_a15", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { role: "assistant", content: OUTPUT.slice(0, 10) }, finish_reason: null }] },
+    { id: "chatcmpl_a15", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content: OUTPUT.slice(10) }, finish_reason: null }] },
+    { id: "chatcmpl_a15", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
+  ].map(frame => `data: ${json(frame)}\n\n`).join("") + "data: [DONE]\n\n"
+  return [
+    sse("message_start", { type: "message_start", message: { id: "msg_a15", type: "message", role: "assistant", model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 3, output_tokens: 0 } } }),
+    sse("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
+    ...[OUTPUT.slice(0, 10), OUTPUT.slice(10)].map(text => sse("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } })),
+    sse("content_block_stop", { type: "content_block_stop", index: 0 }),
+    sse("message_delta", { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 5 } }),
+    sse("message_stop", { type: "message_stop" }),
+  ].join("")
+}
+const upstream = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+  const path = new URL(request.url).pathname
+  const target = path === "/v1/chat/completions" ? "chat_completions" : path === "/v1/messages" ? "messages" : null
+  if (request.method !== "POST" || !target) return new Response("unexpected path", { status: 404 })
+  const body = await request.json() as Obj
+  calls.push({ target, path, body })
+  const model = target === "chat_completions" ? "a15-chat" : "a15-messages"
+  return body.stream === true ? new Response(streamBody(target, model), { headers: { "content-type": "text/event-stream" } }) : Response.json(responseBody(target, model))
+} })
+
+const common: Fixture[] = [
+  { label: "absent", payload: {} },
+  { label: "text-empty", payload: { text: {} } },
+  { label: "text-explicit", payload: { text: { format: { type: "text" } } } },
+  ...[
+    ["null-text", { text: null }, "text"],
+    ["array-text", { text: [] }, "text"],
+    ["primitive-text", { text: "bad" }, "text"],
+    ["null-format", { text: { format: null } }, "text.format"],
+    ["array-format", { text: { format: [] } }, "text.format"],
+    ["primitive-format", { text: { format: "bad" } }, "text.format"],
+    ["missing-type", { text: { format: {} } }, "text.format.type"],
+    ["unknown-type", { text: { format: { type: "xml" } } }, "text.format.type"],
+    ["text-extra-schema", { text: { format: { type: "text", schema: SCHEMA } } }, "text.format.schema"],
+    ["schema-missing-name", { text: { format: { type: "json_schema", schema: SCHEMA, strict: true } } }, "text.format.name"],
+    ["schema-invalid-name", { text: { format: schemaFormat({ name: "bad name", strict: true }) } }, "text.format.name"],
+    ["schema-empty-name", { text: { format: schemaFormat({ name: "", strict: true }) } }, "text.format.name"],
+    ["schema-long-name", { text: { format: schemaFormat({ name: "x".repeat(65), strict: true }) } }, "text.format.name"],
+    ["schema-array", { text: { format: schemaFormat({ schema: [], strict: true }) } }, "text.format.schema"],
+    ["schema-null", { text: { format: schemaFormat({ schema: null, strict: true }) } }, "text.format.schema"],
+    ["strict-null", { text: { format: schemaFormat({ strict: null }) } }, "text.format.strict"],
+    ["strict-string", { text: { format: schemaFormat({ strict: "true" }) } }, "text.format.strict"],
+    ["description-number", { text: { format: schemaFormat({ strict: true, description: 3 }) } }, "text.format.description"],
+    ["nested-chat-schema", { text: { format: schemaFormat({ strict: true, json_schema: { name: "other", schema: SCHEMA } }) } }, "text.format.json_schema"],
+  ].map(([label, payload, errorField]) => ({ label, payload, errorField } as Fixture)),
+]
+function fixtures(target: Target): Fixture[] {
+  if (target === "chat_completions") return [...common,
+    { label: "json-object", payload: { text: { format: { type: "json_object" } } }, native: { type: "json_object" } },
+    ...[undefined, false, true].flatMap(strict => [undefined, "Return a concise answer"].map(description => {
+      const format = schemaFormat({ ...(strict === undefined ? {} : { strict }), ...(description === undefined ? {} : { description }) })
+      return { label: `schema-strict-${String(strict)}-description-${description === undefined ? "absent" : "present"}`, payload: { text: { format } }, native: chatNative(format) }
+    })),
+    { label: "conflicting-response-format", payload: { text: { format: schemaFormat({ strict: true }) }, response_format: { type: "json_object" } }, errorField: "response_format" },
+  ]
+  return [...common,
+    { label: "strict-schema", payload: { text: { format: schemaFormat({ strict: true }) } }, native: messageNative },
+    { label: "strict-schema-effort", payload: { text: { format: schemaFormat({ strict: true }) }, reasoning: { effort: "high" } }, native: messageNative, effort: "high" },
+    { label: "strict-schema-existing-output-config", payload: { text: { format: schemaFormat({ strict: true }) }, output_config: { effort: "medium" } }, native: messageNative, effort: "medium" },
+    { label: "unsupported-json-object", payload: { text: { format: { type: "json_object" } } }, errorField: "text.format.type" },
+    { label: "unsupported-strict-false", payload: { text: { format: schemaFormat({ strict: false }) } }, errorField: "text.format.strict" },
+    { label: "unsupported-strict-absent", payload: { text: { format: schemaFormat() } }, errorField: "text.format.strict" },
+    { label: "unsupported-description", payload: { text: { format: schemaFormat({ strict: true, description: "Guide model behavior" }) } }, errorField: "text.format.description" },
+    { label: "unsupported-empty-description", payload: { text: { format: schemaFormat({ strict: true, description: "" }) } }, errorField: "text.format.description" },
+    { label: "conflicting-output-format", payload: { text: { format: schemaFormat({ strict: true }) }, output_config: { format: { type: "json_schema", schema: { type: "string" } } } }, errorField: "output_config.format" },
+  ]
+}
+function stable(value: unknown): string {
+  function ordered(input: unknown): unknown {
+    if (Array.isArray(input)) return input.map(ordered)
+    if (input && typeof input === "object") return Object.fromEntries(Object.entries(input).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, ordered(item)]))
+    return input
+  }
+  return json(ordered(value))
+}
+const cases: Obj[] = []
+const results: Obj = { sourceRoot, sourceHead, sourceStatus, sourceHashes, sdk: "openai 6.33.0", gateway: "real app.fetch", runDirectory: scratch, syntheticOutput: OUTPUT, cases }
+const fixtureKey = "sk_a15_synthetic_only"
+try {
+  bootstrapBunPlatform({ dbPath: join(scratch, "a15-sdk.sqlite"), filesRoot: join(scratch, "files") })
+  const now = new Date().toISOString()
+  await getRepo().apiKeys.save({ id: "a15-fixture-key" as never, name: "A15 synthetic fixture", key: fixtureKey, createdAt: now, modelMappingsEnabled: false, modelMappings: [], webSearchEnabled: false })
+  for (const [target, model] of [["chat_completions", "a15-chat"], ["messages", "a15-messages"]] as const) {
+    await getRepo().upstreams.save({ id: `custom:a15-${target}` as never, provider: "custom", name: `A15 ${target}`, enabled: true, sortOrder: 0, config: { name: `A15 ${target}`, baseUrl: `http://127.0.0.1:${upstream.port}/v1`, authStyle: "none", endpoints: [target], models: [model] }, flagOverrides: {}, disabledPublicModelIds: [], state: null, proxyFallbackList: [{ id: "direct_fetch" }], createdAt: now, updatedAt: now })
+  }
+  let wire: Obj = {}
+  const client = new OpenAI({ apiKey: fixtureKey, baseURL: "http://127.0.0.1/a15-gateway/v1", maxRetries: 0, fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input, init)
+    if (new URL(request.url).pathname !== "/a15-gateway/v1/responses") throw new Error("unexpected SDK path")
+    const response = await app.fetch(new Request("http://a15-gateway.test/v1/responses", request))
+    wire = { status: response.status, contentType: response.headers.get("content-type") }
+    if (response.status >= 400) wire.body = await response.clone().text()
+    return response
+  } })
+  for (const target of ["chat_completions", "messages"] as const) for (const fixture of fixtures(target)) for (const stream of [false, true]) {
+    const request = { model: target === "chat_completions" ? "a15-chat" : "a15-messages", input: "Return the synthetic JSON answer", stream, ...structuredClone(fixture.payload) }
+    const original = stable(request)
+    const before = calls.length
+    const record: Obj = { label: `${target} ${fixture.label} ${stream ? "SSE" : "JSON"}`, target, stream, request: structuredClone(request), expectedNative: fixture.native ?? null, expectedErrorField: fixture.errorField ?? null }
+    const failures: string[] = []
+    const check = (condition: unknown, message: string) => { if (!condition) failures.push(message) }
+    let terminal: Obj | undefined
+    let sdkError: Obj | undefined
+    const events: Obj[] = []
+    wire = {}
+    try {
+      const response = await client.responses.create(request as never)
+      if (stream) {
+        for await (const event of response as AsyncIterable<Obj>) events.push(event)
+        terminal = events.find(event => event.type === "response.completed")?.response as Obj | undefined
+      } else terminal = response as unknown as Obj
+    } catch (error) {
+      const failure = error as Error & { status?: number; error?: unknown; param?: string }
+      sdkError = { name: failure.name, message: failure.message, status: failure.status, error: failure.error, param: failure.param }
+    }
+    record.wire = wire
+    record.sdkError = sdkError ?? null
+    record.terminal = terminal ?? null
+    if (stream) record.events = events
+    record.upstreamCalls = calls.slice(before)
+    record.upstreamCount = calls.length - before
+    check(stable(request) === original, "SDK source request remains unchanged")
+    if (fixture.errorField) {
+      check(wire.status === 400 && sdkError?.status === 400, "precise HTTP/SDK 400")
+      check(calls.length === before, "zero upstream calls")
+      const errorText = String(wire.body ?? "")
+      const escapedPath = fixture.errorField.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      check(new RegExp(`(^|[^a-zA-Z0-9_.])${escapedPath}($|[^a-zA-Z0-9_.])`).test(errorText), `error reports source path ${fixture.errorField}`)
+      check(terminal === undefined, "rejected request has no completed response")
+    } else {
+      check(!sdkError && wire.status === 200, "SDK request succeeds")
+      check(calls.length === before + 1, "exactly one upstream call")
+      const call = calls[before]
+      check(call?.target === target, "correct upstream protocol")
+      const outputConfig = call?.body.output_config as Obj | undefined
+      const native = target === "chat_completions" ? call?.body.response_format : outputConfig?.format
+      check(fixture.native ? stable(native) === stable(fixture.native) : native === undefined || stable(native) === stable({ type: "text" }), "exact native format fidelity")
+      if (fixture.effort) check(outputConfig?.effort === fixture.effort, "independent output_config.effort preserved")
+      check(terminal?.status === "completed", "SDK terminal response is completed")
+      if (!stream) check(terminal?.object === "response", "JSON response object discriminator")
+      const terminalOutput = terminal?.output as Array<{ type?: string; status?: string; content?: Array<{ type?: string; text?: string }> }> | undefined
+      check(terminalOutput?.filter(item => item.type === "message").flatMap(item => item.content ?? []).filter(part => part.type === "output_text").map(part => part.text).join("") === OUTPUT, "SDK terminal text preserved")
+      check(terminalOutput?.some(item => item.type === "message" && item.status === "completed"), "SDK terminal message is completed")
+      if (fixture.native) check(stable(terminal?.text) === stable(fixture.payload.text), "source text.format echoed without metadata loss")
+      if (stream) {
+        check(events.filter(event => event.type === "response.completed").length === 1, "exactly one response.completed")
+        check(events.filter(event => event.type === "response.output_text.delta").map(event => event.delta).join("") === OUTPUT, "SDK streamed text preserved")
+      }
+    }
+    record.failures = failures
+    record.pass = failures.length === 0
+    cases.push(record)
+  }
+  results.pass = cases.every(test => test.pass === true)
+  results.summary = { total: cases.length, passed: cases.filter(test => test.pass).length, failed: cases.filter(test => !test.pass).length, upstreamCalls: calls.length }
+  if (!results.pass) process.exitCode = 1
+} catch (error) {
+  results.pass = false
+  results.fixtureError = { name: (error as Error).name, message: (error as Error).message, stack: (error as Error).stack }
+  process.exitCode = 1
+} finally {
+  results.sourceStatusAfter = gitOutput("status", "--porcelain=v1").split("\n").filter(Boolean)
+  results.sourceHashesAfter = Object.fromEntries(sourcePaths.map(path => [path, createHash("sha256").update(readFileSync(join(sourceRoot, path))).digest("hex")]))
+  const value = JSON.stringify(results, null, 2)
+  writeFileSync(join(scratch, "results.json"), value)
+  writeFileSync(join(import.meta.dir, "results-latest.json"), value)
+  console.log(`A15 SDK result: ${join(scratch, "results.json")}`)
+  console.log(JSON.stringify(results.summary ?? results.fixtureError))
+  upstream.stop(true)
+}
