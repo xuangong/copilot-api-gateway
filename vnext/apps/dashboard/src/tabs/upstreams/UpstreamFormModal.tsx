@@ -7,12 +7,14 @@ import type { UpstreamRecord } from "../../api/types"
 import { findPreset } from "./vendorPresets"
 import { formatModelsText, parseModelsText } from "./model-text"
 import { CatalogRequestGate, catalogDraftIdentity } from "./catalog-request-gate"
+import { isFreshCredential } from "./duplicate-draft"
+import type { PortableUpstreamDraft } from "./duplicate-draft"
 
 type Provider = "copilot" | "azure" | "custom" | "sdf"
 
 interface Props {
   mode:
-    | { kind: "create"; provider: Exclude<Provider, "copilot">; presetId?: string }
+    | { kind: "create"; provider: Exclude<Provider, "copilot">; presetId?: string; draft?: PortableUpstreamDraft }
     | { kind: "edit"; row: UpstreamRecord }
   flagCatalog: api.FlagCatalog | null
   ensureFlagCatalog: () => Promise<api.FlagCatalog>
@@ -115,7 +117,7 @@ const PATH_OVERRIDE_KEYS = [
 ] as const
 
 function buildInitial(mode: Props["mode"]): { provider: Provider; form: FormState } {
-  if (mode.kind === "create") {
+  if (mode.kind === "create" && !mode.draft) {
     const preset = mode.provider === "custom" ? findPreset(mode.presetId) : undefined
     if (preset) {
       return {
@@ -145,8 +147,9 @@ function buildInitial(mode: Props["mode"]): { provider: Provider; form: FormStat
       },
     }
   }
-  const u = mode.row
-  const cfg = u.config ?? {}
+  const u = mode.kind === "edit" ? mode.row : mode.draft
+  if (!u) throw new Error("Duplicate draft required")
+  const cfg = u.config as UpstreamRecord["config"]
   const sdf = cfg as {
     taxonomy?: { experience?: string; agent?: string; inferenceStep?: string; trafficType?: string }
     cos?: { serviceTier?: string }
@@ -252,6 +255,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [catalogRefreshing, setCatalogRefreshing] = useState(false)
+  const headingRef = useRef<HTMLDivElement>(null)
   const catalogGate = useRef(new CatalogRequestGate())
   const modeRef = useRef(mode)
   const catalogIdRef = useRef(editingId)
@@ -261,7 +265,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
   catalogDraftRef.current = catalogDraftIdentity(form)
   const catalogDraftChanged = catalogDraftRef.current !== catalogDraftIdentity(initial.form)
   const [disabledIds, setDisabledIds] = useState<string[]>(
-    mode.kind === "edit" ? [...(mode.row.disabledPublicModelIds ?? [])] : [],
+    mode.kind === "edit" ? [...(mode.row.disabledPublicModelIds ?? [])] : [...(mode.draft?.disabledPublicModelIds ?? [])],
   )
   const [extraIdInput, setExtraIdInput] = useState("")
 
@@ -270,9 +274,13 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
   }, [ensureFlagCatalog, toast])
 
   useEffect(() => {
+    if (mode.kind === "create" && mode.draft) headingRef.current?.focus()
+  }, [mode])
+
+  useEffect(() => {
     const nextMode = modeRef.current
     setForm(buildInitial(nextMode).form)
-    setDisabledIds(nextMode.kind === "edit" ? [...(nextMode.row.disabledPublicModelIds ?? [])] : [])
+    setDisabledIds(nextMode.kind === "edit" ? [...(nextMode.row.disabledPublicModelIds ?? [])] : [...(nextMode.draft?.disabledPublicModelIds ?? [])])
     setCatalog(null)
     setCatalogError(null)
     catalogGate.current.invalidate()
@@ -389,7 +397,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
       if (!editingId) {
         if (provider === "custom") {
           const needsKey = form.authStyle !== "none"
-          if (!form.baseUrl.trim() || (needsKey && !form.apiKey.trim())) {
+          if (!form.baseUrl.trim() || (needsKey && !isFreshCredential(form.apiKey))) {
             toast(t("dash.errBaseUrlApiKeyRequired"), "error")
             return
           }
@@ -400,14 +408,14 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
             authStyle: form.authStyle,
             pathOverrides: form.pathOverrides,
           }
-          if (form.apiKey.trim()) (config as { apiKey: string }).apiKey = form.apiKey.trim()
+          if (isFreshCredential(form.apiKey)) (config as { apiKey: string }).apiKey = form.apiKey.trim()
           if (form.modelsEndpoint.trim()) {
             (config as { modelsEndpoint: string }).modelsEndpoint = form.modelsEndpoint.trim()
           }
           const models = parseModelsText(form.modelsText)
           if (models) (config as { models: unknown }).models = models
         } else if (provider === "sdf") {
-          if (!form.substrateToken.trim()) {
+          if (!isFreshCredential(form.substrateToken)) {
             toast(t("dash.errSubstrateTokenRequired"), "error")
             return
           }
@@ -417,7 +425,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
             ...sdfTuning(form),
           }
         } else {
-          if (!form.endpoint.trim() || !form.azureApiKey.trim() || !form.deployment.trim()) {
+          if (!form.endpoint.trim() || !isFreshCredential(form.azureApiKey) || !form.deployment.trim()) {
             toast(t("dash.errEndpointApiKeyDeploymentRequired"), "error")
             return
           }
@@ -438,6 +446,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           config,
           flagOverrides: form.flagOverrides,
           disabledPublicModelIds: disabledIds,
+          proxyFallbackList: mode.kind === "create" ? mode.draft?.proxyFallbackList : undefined,
           // Default new upstreams to the current user so admins don't
           // accidentally create read-only "global" rows. Backend also
           // defends against missing ownerId.
@@ -491,7 +500,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
 
   const title = (
     <span>
-      {editing ? t("dash.editUpstream") : t("dash.addUpstream")} <span className="capitalize">{provider}</span> {t("dash.upstreamSuffix")}
+      {editing ? t("dash.editUpstream") : mode.kind === "create" && mode.draft ? t("dash.duplicateUpstream") : t("dash.addUpstream")} <span className="capitalize">{provider}</span> {t("dash.upstreamSuffix")}
     </span>
   )
 
@@ -501,7 +510,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
       style={{ background: "var(--surface-800)", border: "1px solid var(--border-color)" }}
     >
       <div className="flex items-center justify-between mb-3">
-        <div className="text-themed font-semibold text-sm">{title}</div>
+        <div ref={headingRef} className="text-themed font-semibold text-sm" tabIndex={mode.kind === "create" && mode.draft ? -1 : undefined}>{title}</div>
         <button
           onClick={onClose}
           className="text-themed-dim hover:text-themed text-xs"
@@ -511,6 +520,9 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
         </button>
       </div>
       <div className="space-y-3">
+        {mode.kind === "create" && mode.draft ? (
+          <p className="text-xs text-themed-dim">{t("dash.duplicateCredentialsHint")}</p>
+        ) : null}
         {preset?.noteKey ? (
           <p
             className="text-xs text-themed rounded p-2"

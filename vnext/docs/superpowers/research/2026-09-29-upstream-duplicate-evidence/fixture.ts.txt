@@ -1,0 +1,62 @@
+// D05 browser-only fixture. Run from a new empty scratch directory.
+import { resolve } from "node:path"
+
+const sourceRoot = process.env.D05_SOURCE_ROOT
+if (!sourceRoot) throw new Error("D05_SOURCE_ROOT is required")
+const root = resolve(sourceRoot)
+const { bootstrapBunPlatform } = await import(`${root}/apps/platform-bun/src/bootstrap.ts`)
+const { app } = await import(`${root}/packages/gateway/src/app.ts`)
+const { getRepo } = await import(`${root}/packages/gateway/src/repo/index.ts`)
+
+bootstrapBunPlatform({ dbPath: `${process.cwd()}/fixture.sqlite`, filesRoot: `${process.cwd()}/files` })
+const repo = getRepo()
+const now = new Date().toISOString()
+const ownerId = "00000000-0000-4000-a000-0000000000a1"
+const foreignId = "00000000-0000-4000-a000-0000000000b2"
+const token = `ses_${crypto.randomUUID().replaceAll("-", "")}`
+await repo.users.create({ id: ownerId, name: "Synthetic UI Admin", email: "test@local.dev", createdAt: now, disabled: false })
+await repo.users.create({ id: foreignId, name: "Synthetic Other Owner", email: "other@local.dev", createdAt: now, disabled: false })
+await repo.sessions.create({ token, userId: ownerId, createdAt: now, authenticatedAt: Date.now(), expiresAt: new Date(Date.now() + 3600_000).toISOString() })
+await repo.apiKeys.save({ id: "00000000-0000-4000-a000-0000000000c3", ownerId, name: "Synthetic UI key", key: "sk_synthetic_d05_only", createdAt: now, modelMappingsEnabled: false, modelMappings: [] })
+
+const shared = { enabled: true, sortOrder: 0, state: null, createdAt: now, updatedAt: now }
+await repo.upstreams.save({
+  ...shared, id: "up_d05_custom_own", ownerId, provider: "custom", name: "D05 Own Custom",
+  config: {
+    name: "D05 Own Custom", baseUrl: "http://127.0.0.1:1/v1", authStyle: "none",
+    endpoints: ["chat_completions", "responses"], pathOverrides: { responses: "/custom/responses" },
+    models: [{ id: "d05-model", name: "Synthetic Model",
+      chat: { modalities: { input: ["text", "image"], output: ["text"] },
+        reasoning: { budget_tokens: { min: 1024, max: 8192 }, adaptive: true } } },
+      { upstreamModelId: "d05-model", cost: { input: 0.125, input_cache_read: 0.025, input_cache_write: 0.2,
+        input_image: 0.3, output: 0.5, output_image: 0.75 } }],
+  },
+  flagOverrides: { "retry-cyber-policy": false }, disabledPublicModelIds: ["d05-disabled-model"],
+  proxyFallbackList: [{ id: "direct_fetch", colos: ["NRT", "LAX"] }],
+})
+await repo.upstreams.save({
+  ...shared, id: "up_d05_azure_own", ownerId, provider: "azure", name: "D05 Own Azure",
+  config: { name: "D05 Own Azure", endpoint: "https://synthetic.invalid", apiKey: "synthetic-azure-secret",
+    deployment: "d05-deployment", apiVersion: "2024-08-01-preview", endpoints: ["chat_completions"],
+    deployments: [{ name: "d05-deployment", model: "d05-model" }] },
+  flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [],
+})
+await repo.upstreams.save({
+  ...shared, id: "up_d05_sdf_own", ownerId, provider: "sdf", name: "D05 Own SDF",
+  config: { name: "D05 Own SDF", substrateToken: "synthetic-sdf-secret",
+    taxonomy: { experience: "BizChat", agent: "Synthetic", inferenceStep: "GenerateResponse", trafficType: "Test" },
+    cos: { serviceTier: "default" }, passport: { enabled: true, apiBase: "https://sdf.passport.microsoft.net" } },
+  flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [],
+})
+await repo.upstreams.save({
+  ...shared, id: "up_d05_custom_foreign", ownerId: foreignId, provider: "custom", name: "D05 Foreign Custom",
+  config: { name: "D05 Foreign Custom", baseUrl: "http://127.0.0.1:1/v1", authStyle: "none", endpoints: ["responses"] },
+  flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [],
+})
+
+const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: request => app.fetch(request) })
+await Bun.write(`${process.cwd()}/connection.json`, JSON.stringify({ port: server.port, token, pid: process.pid, sourceRoot: root }))
+console.log(`D05 fixture ready on 127.0.0.1:${server.port}`)
+const stop = () => { server.stop(true); process.exit(0) }
+process.once("SIGTERM", stop)
+process.once("SIGINT", stop)

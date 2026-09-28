@@ -1,0 +1,27 @@
+#!/bin/zsh
+set -euo pipefail
+
+here=${0:A:h}
+mode=${1:-baseline}
+case "$mode" in baseline|acceptance) ;; *) print -u2 "usage: run.sh [baseline|acceptance]"; exit 2 ;; esac
+source_root=${D05_SOURCE_ROOT:-/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext}
+test -f "$source_root/packages/gateway/src/app.ts"
+mkdir -p "$here/runs"
+run_dir=$(mktemp -d "$here/runs/run.XXXXXX")
+chmod 700 "$run_dir"
+print "D05_RUN_DIR=$run_dir"
+cd "$run_dir"
+env -i PATH="$PATH" HOME="$HOME" D05_SOURCE_ROOT="$source_root" bun "$here/fixture.ts" > "$run_dir/server.log" 2>&1 &
+fixture_pid=$!
+cleanup() {
+  kill "$fixture_pid" 2>/dev/null || true
+  wait "$fixture_pid" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+for attempt in {1..100}; do
+  if [[ -s "$run_dir/connection.json" ]]; then break; fi
+  if ! kill -0 "$fixture_pid" 2>/dev/null; then cat "$run_dir/server.log"; exit 1; fi
+  sleep 0.1
+done
+test -s "$run_dir/connection.json" || { cat "$run_dir/server.log"; exit 1; }
+env -i PATH="$PATH" HOME="$HOME" D05_CONNECTION="$run_dir/connection.json" node "$here/validate.mjs" "$mode"

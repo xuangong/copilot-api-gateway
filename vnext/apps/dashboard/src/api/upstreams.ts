@@ -77,6 +77,7 @@ export interface CreateUpstreamBody {
   config: Record<string, unknown>
   flagOverrides?: Record<string, boolean>
   disabledPublicModelIds?: string[]
+  proxyFallbackList?: ProxyFallbackEntry[]
   ownerId?: string
 }
 export function createUpstream(body: CreateUpstreamBody): Promise<UpstreamRecord> {

@@ -19,6 +19,7 @@ interface Props {
   onToggleEnabled: () => void
   onReorder: (dir: "up" | "down") => void
   onEdit: () => void
+  onDuplicate: () => void
   onRefreshModels: () => void
   onReauth: () => void
   onDelete: () => void
@@ -38,6 +39,7 @@ export function UpstreamRow({
   onToggleEnabled,
   onReorder,
   onEdit,
+  onDuplicate,
   onRefreshModels,
   onReauth,
   onDelete,
@@ -117,6 +119,17 @@ export function UpstreamRow({
             <span>{u.enabled ? t("dash.onLabel") : t("dash.offLabel")}</span>
           </label>
           <button onClick={onEdit} disabled={locked || busy} className="btn-ghost text-xs px-2 py-1">{editing ? t("dash.closeBtn") : t("dash.edit")}</button>
+          {u.provider !== "copilot" ? (
+            <button
+              type="button"
+              onClick={onDuplicate}
+              disabled={locked || busy}
+              className="btn-ghost text-xs px-2 py-1"
+              aria-label={`${t("dash.duplicateUpstream")} ${u.name}`}
+            >
+              {t("dash.duplicateUpstream")}
+            </button>
+          ) : null}
           <button onClick={onRefreshModels} disabled={locked || busy} className="btn-ghost text-xs px-2 py-1" title={t("dash.refetchModelsTip")}>
             {busy ? "…" : t("dash.refetchModelsLabel")}
           </button>

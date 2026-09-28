@@ -316,13 +316,26 @@ function tokenExpiredAt(upstream: UpstreamRecord<unknown>): string | undefined {
   return new Date(exp * 1000).toISOString()
 }
 
-function redactConfig(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(redactConfig)
+function safeModelBudgetTokens(value: unknown): value is { min?: number; max?: number } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  return Object.entries(value).every(([key, bound]) =>
+    (key === 'min' || key === 'max') && typeof bound === 'number' && Number.isFinite(bound) && bound >= 0)
+}
+
+function redactConfig(value: unknown, path: readonly string[], customModels: boolean): unknown {
+  if (Array.isArray(value)) return value.map((item) => redactConfig(item, [...path, '[]'], customModels))
   if (!value || typeof value !== 'object') return value
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(value)) {
-    if (/token|apikey|api_key|authorization|password|secret/i.test(k)) out[k] = v ? '***' : v
-    else out[k] = redactConfig(v)
+    if (path.length === 0 && k === 'defaultHeaders' && v && typeof v === 'object' && !Array.isArray(v)) {
+      out[k] = Object.fromEntries(Object.entries(v).map(([header, headerValue]) => [header, headerValue ? '***' : headerValue]))
+    } else if (k === 'budget_tokens' && customModels && path.join('.') === 'models.[].chat.reasoning' && safeModelBudgetTokens(v)) {
+      out[k] = { ...v }
+    } else if (/token|api[-_]?key|authorization|password|secret|credential/i.test(k)) {
+      out[k] = v ? '***' : v
+    } else {
+      out[k] = redactConfig(v, [...path, k], customModels)
+    }
   }
   return out
 }
@@ -334,7 +347,7 @@ function serializeUpstream(upstream: UpstreamRecord<unknown>): Omit<UpstreamReco
   const expiredAt = tokenExpiredAt(upstream)
   return {
     ...upstream,
-    config: redactConfig(upstream.config) as Record<string, unknown>,
+    config: redactConfig(upstream.config, [], upstream.provider === 'custom') as Record<string, unknown>,
     ...(expiredAt ? { tokenExpiredAt: expiredAt } : {}),
   }
 }

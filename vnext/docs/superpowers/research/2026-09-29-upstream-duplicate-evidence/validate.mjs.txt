@@ -1,0 +1,138 @@
+// Actual Gateway + SQLite + Chromium checks. Run acceptance after building the selected D05 UI.
+import { chromium } from "/Users/zhangxian/.nvm/versions/node/v22.23.2/lib/node_modules/playwright/index.mjs"
+import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
+
+const connection = process.env.D05_CONNECTION
+if (!connection) throw new Error("D05_CONNECTION is required")
+const { port, token, sourceRoot } = JSON.parse(readFileSync(connection, "utf8"))
+const base = `http://127.0.0.1:${port}`
+const mode = process.argv[2] ?? "baseline"
+const browser = await chromium.launch({ headless: true })
+try {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+  await context.addCookies([{ name: "session_token", value: token, domain: "127.0.0.1", path: "/" }])
+  const page = await context.newPage()
+  const pageErrors = []
+  const requests = []
+  page.on("pageerror", error => pageErrors.push(error.message))
+  page.on("request", request => {
+    if (request.url().startsWith(`${base}/api/upstreams`) && ["POST", "PATCH"].includes(request.method())) {
+      requests.push({ method: request.method(), url: request.url(), body: request.postDataJSON() })
+    }
+  })
+  const list = async () => {
+    const response = await context.request.get(`${base}/api/upstreams?includeDisabled=1`)
+    assert.equal(response.status(), 200)
+    return (await response.json()).upstreams
+  }
+  const seeded = await list()
+  assert.equal(seeded.length, 4)
+  const byId = id => seeded.find(row => row.id === id)
+  assert.equal(byId("up_d05_custom_own").config.authStyle, "none")
+  assert.deepEqual(byId("up_d05_custom_own").proxyFallbackList, [{ id: "direct_fetch", colos: ["NRT", "LAX"] }])
+  assert.deepEqual(byId("up_d05_custom_own").config.models[1].cost, {
+    input: 0.125, input_cache_read: 0.025, input_cache_write: 0.2,
+    input_image: 0.3, output: 0.5, output_image: 0.75,
+  }, "GET must retain every seeded pricing dimension")
+  assert.deepEqual(byId("up_d05_custom_own").config.models[0].chat.reasoning,
+    { budget_tokens: { min: 1024, max: 8192 }, adaptive: true },
+    "GET must retain nested reasoning metadata")
+  assert.equal(byId("up_d05_azure_own").config.apiKey, "***")
+  assert.equal(byId("up_d05_sdf_own").config.substrateToken, "***")
+  await page.goto(`${base}/dashboard#upstreams`)
+  await page.waitForLoadState("networkidle")
+  await page.getByText("D05 Own Custom", { exact: true }).waitFor()
+  await page.getByText("D05 Foreign Custom", { exact: true }).waitFor()
+  const screenshot = fileURLToPath(new URL(`./${mode}-dashboard.png`, `file://${connection}`))
+  await page.screenshot({ path: screenshot, fullPage: true })
+  assert.deepEqual(pageErrors, [])
+
+  if (mode === "baseline") {
+    console.log(JSON.stringify({ mode, sourceRoot, rows: seeded.length, own: 3, foreign: 1,
+      duplicateButtons: await page.getByRole("button", { name: /Duplicate/i }).count(),
+      pageErrors, screenshot }, null, 2))
+  } else if (mode === "acceptance") {
+    const card = name => page.locator("div.bg-surface-900").filter({ has: page.getByText(name, { exact: true }) }).first()
+    const duplicateForm = provider => page.locator("div.rounded-lg.mt-2")
+      .filter({ has: page.getByText(new RegExp(`^Duplicate\\s+${provider}\\s+Upstream$`, "i")) })
+    const source = byId("up_d05_custom_own")
+    const before = JSON.stringify(source)
+    const foreignDuplicate = card("D05 Foreign Custom")
+      .getByRole("button", { name: "Duplicate D05 Foreign Custom", exact: true })
+    assert.equal(await foreignDuplicate.count(), 1)
+    assert.equal(await foreignDuplicate.isDisabled(), true,
+      "foreign-owner row must not permit Duplicate")
+    await card("D05 Own Custom")
+      .getByRole("button", { name: "Duplicate D05 Own Custom", exact: true }).click()
+    const form = duplicateForm("Custom")
+    const create = form.getByRole("button", { name: "Create", exact: true })
+    await create.waitFor()
+    await page.screenshot({ path: fileURLToPath(new URL("./duplicate-draft.png", `file://${connection}`)), fullPage: true })
+    const inputs = form.locator("input")
+    assert.equal(await inputs.nth(0).inputValue(), `${source.name} (copy)`)
+    assert.equal(await inputs.nth(1).inputValue(), source.config.baseUrl)
+    assert.equal(await form.locator('input[type="password"]').first().inputValue(), "")
+    assert.equal((await form.locator("select").first().inputValue()), "none")
+    assert.deepEqual(await list(), seeded, "opening a draft must not mutate source storage")
+    await inputs.nth(0).fill("D05 Cloned Custom")
+    const modelText = form.locator("textarea").first()
+    const changedModels = JSON.parse(await modelText.inputValue())
+    assert.deepEqual(changedModels, source.config.models, "duplicate draft must retain full model metadata")
+    changedModels[1].cost.output = 0.625
+    await modelText.fill(JSON.stringify(changedModels, null, 2))
+    assert.deepEqual(await list(), seeded, "editing a clone draft must not mutate the source")
+    const posted = page.waitForResponse(response => response.url() === `${base}/api/upstreams` && response.request().method() === "POST")
+    await create.click()
+    assert.equal((await posted).status(), 201)
+    const after = await list()
+    assert.equal(after.length, 5)
+    assert.equal(JSON.stringify(after.find(row => row.id === source.id)), before, "source must stay byte-for-byte equivalent in JSON")
+    const clone = after.find(row => row.name === "D05 Cloned Custom")
+    assert.ok(clone && clone.id !== source.id)
+    assert.deepEqual(clone.config.models, changedModels,
+      "persisted clone must retain all pricing dimensions and reasoning metadata")
+    assert.equal(clone.ownerId, source.ownerId)
+    assert.deepEqual(clone.disabledPublicModelIds, source.disabledPublicModelIds)
+    assert.deepEqual(clone.flagOverrides, source.flagOverrides)
+    assert.deepEqual(clone.proxyFallbackList, source.proxyFallbackList)
+    assert.equal(requests.filter(item => item.method === "PATCH" && item.url.endsWith(source.id)).length, 0)
+    const post = requests.find(item => item.method === "POST" && item.url === `${base}/api/upstreams`)
+    assert.ok(post)
+    assert.deepEqual(post.body.config.models, changedModels,
+      "POST must carry all pricing dimensions and reasoning metadata")
+    assert.deepEqual(post.body.flagOverrides, source.flagOverrides)
+    assert.deepEqual(post.body.disabledPublicModelIds, source.disabledPublicModelIds)
+    assert.deepEqual(post.body.proxyFallbackList, source.proxyFallbackList)
+    assert.ok(!("id" in post.body) && !("state" in post.body))
+    assert.ok(!JSON.stringify(post.body).includes("***"))
+
+    // Credential sources may be inspected as redacted rows; never reuse markers.
+    for (const [name, provider] of [["D05 Own Azure", "Azure"], ["D05 Own SDF", "Sdf"]]) {
+      await card(name).getByRole("button", { name: `Duplicate ${name}`, exact: true }).click()
+      const draftForm = duplicateForm(provider)
+      const draftCreate = draftForm.getByRole("button", { name: "Create", exact: true })
+      await draftCreate.waitFor()
+      assert.equal(await draftForm.locator("input").first().inputValue(), `${name} (copy)`)
+      const password = draftForm.locator('input[type="password"]')
+      assert.ok(await password.count() > 0)
+      for (let i = 0; i < await password.count(); i++) assert.equal(await password.nth(i).inputValue(), "")
+      const countBefore = requests.filter(item => item.method === "POST").length
+      await draftCreate.click()
+      assert.equal(requests.filter(item => item.method === "POST").length, countBefore,
+        `${name} must require a new synthetic credential before save`)
+      await draftForm.getByRole("button", { name: "Close", exact: true }).click()
+    }
+    await page.reload()
+    await page.getByText("D05 Cloned Custom", { exact: true }).waitFor()
+    assert.ok((await list()).some(row => row.id === clone.id), "clone must remain after reload")
+    assert.deepEqual(pageErrors, [])
+    console.log(JSON.stringify({ mode, sourceUnchanged: true, cloneCreatedByPost: true,
+      noPatchToSource: true, portableFieldsPreserved: true, credentialsCleared: true, pageErrors, screenshot }, null, 2))
+  } else {
+    throw new Error(`Unknown mode: ${mode}`)
+  }
+} finally {
+  await browser.close()
+}

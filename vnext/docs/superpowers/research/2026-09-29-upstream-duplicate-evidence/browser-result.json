@@ -1,0 +1,12 @@
+{
+  "mode": "acceptance",
+  "sourceUnchanged": true,
+  "cloneCreatedByPost": true,
+  "noPatchToSource": true,
+  "portableFieldsPreserved": true,
+  "credentialsCleared": true,
+  "pageErrors": [],
+  "screenshot": "upstream-actions.png",
+  "sourceBase": "4449d6a2",
+  "sourceDelta": "D05 final nine-file package"
+}

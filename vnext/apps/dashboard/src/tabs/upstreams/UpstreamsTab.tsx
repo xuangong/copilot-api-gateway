@@ -7,9 +7,17 @@ import { UpstreamFormModal } from "./UpstreamFormModal"
 import { ProxyChainModal } from "./ProxyChainModal"
 import { DeviceFlowModal } from "./DeviceFlowModal"
 import { VENDOR_PRESETS } from "./vendorPresets"
+import { createPortableUpstreamDraft } from "./duplicate-draft"
+import type { PortableUpstreamDraft } from "./duplicate-draft"
 import type { UpstreamRecord } from "../../api/types"
 
-type CreateMode = { kind: "create"; provider: "custom" | "azure" | "sdf"; presetId?: string }
+type CreateMode = {
+  kind: "create"
+  provider: "custom" | "azure" | "sdf"
+  presetId?: string
+  draft?: PortableUpstreamDraft
+  sourceId?: string
+}
 
 interface OwnerGroup {
   ownerId: string
@@ -59,6 +67,15 @@ export function UpstreamsTab() {
     setCreateMode(null)
     await store.ensureFlagCatalog().catch(() => null)
     setEditingId((cur) => (cur === row.id ? null : row.id))
+  }
+
+  const openDuplicate = (row: UpstreamRecord) => {
+    if (row.ownerId !== myOwnerId || row.provider === "copilot") return
+    const draft = createPortableUpstreamDraft(row, t("dash.duplicateName", { name: row.name }))
+    setEditingId(null)
+    setProxyId(null)
+    setPresetMenuOpen(false)
+    setCreateMode({ kind: "create", provider: draft.provider, draft, sourceId: row.id })
   }
 
   const myOwnerId = session?.userId != null ? String(session.userId) : ""
@@ -158,7 +175,7 @@ export function UpstreamsTab() {
         {createMode ? (
           <Expand>
             <UpstreamFormModal
-              key={createMode.presetId ?? createMode.provider}
+              key={createMode.sourceId ?? createMode.presetId ?? createMode.provider}
               mode={createMode}
               flagCatalog={store.flagCatalog}
               ensureFlagCatalog={store.ensureFlagCatalog}
@@ -226,6 +243,7 @@ export function UpstreamsTab() {
                           onToggleEnabled={() => store.toggleEnabled(u)}
                           onReorder={(d) => store.reorder(u.id, d)}
                           onEdit={() => openEdit(u)}
+                          onDuplicate={() => openDuplicate(u)}
                           onRefreshModels={() => store.probe(u.id)}
                           onReauth={() => setDeviceFlowOpen(true)}
                           onDelete={async () => {
