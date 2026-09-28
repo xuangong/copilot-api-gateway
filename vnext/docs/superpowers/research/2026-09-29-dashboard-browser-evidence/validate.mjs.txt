@@ -1,0 +1,45 @@
+import { chromium } from '/Users/zhangxian/.nvm/versions/node/v22.23.2/lib/node_modules/playwright/index.mjs'
+import fs from 'node:fs'
+import assert from 'node:assert/strict'
+const d=JSON.parse(fs.readFileSync(new URL('./connection.json',import.meta.url)))
+const base=`http://127.0.0.1:${d.port}`
+const browser=await chromium.launch({headless:true})
+try {
+ const context=await browser.newContext({viewport:{width:1440,height:1000}})
+ await context.addCookies([{name:'session_token',value:d.token,domain:'127.0.0.1',path:'/'}])
+ const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message))
+ await context.request.patch(base+'/api/upstreams/up_fixture_custom',{data:{config:{models:[{id:'fixture-model',name:'Fixture Model',ownedBy:'fixture-vendor'},{upstreamModelId:'fixture-model',cost:{input:0.125,output:0.5}}]}}})
+ const original=(await (await context.request.get(base+'/api/upstreams')).json()).upstreams[0].config.models
+ await page.goto(base+'/dashboard#upstreams');await page.waitForLoadState('networkidle')
+ await page.getByRole('button',{name:'Edit',exact:true}).click()
+ assert.deepEqual(JSON.parse(await page.locator('textarea').inputValue()),original)
+ const saved=page.waitForResponse(r=>r.url().endsWith('/api/upstreams/up_fixture_custom')&&r.request().method()==='PATCH')
+ await page.getByRole('button',{name:'Save',exact:true}).click();assert.equal((await saved).status(),200)
+ await page.getByRole('button',{name:'Edit',exact:true}).waitFor()
+ const after=(await (await context.request.get(base+'/api/upstreams')).json()).upstreams[0].config.models
+ assert.deepEqual(after,original)
+ await page.getByRole('button',{name:'Edit',exact:true}).click()
+ assert.deepEqual(JSON.parse(await page.locator('textarea').inputValue()),original)
+ await page.screenshot({path:new URL('./d01-model-roundtrip.png',import.meta.url).pathname,fullPage:true})
+ await page.getByRole('button',{name:'Cancel',exact:true}).click()
+ await page.getByRole('button',{name:'Proxies',exact:true}).click()
+ await page.getByRole('button',{name:'+ New node…'}).click()
+ await page.locator('select').first().selectOption('http')
+ await page.getByLabel(/^Name/).fill('Synthetic proxy')
+ await page.getByPlaceholder('node1.example.com').fill('127.0.0.1')
+ let release;let arrived;const arrival=new Promise(r=>arrived=r);const gate=new Promise(r=>release=r)
+ await page.route('**/api/proxies/test',async route=>{arrived();await gate;await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,egressIp:'192.0.2.123'})})})
+ await page.getByRole('button',{name:'Test connectivity',exact:true}).click();await arrival
+ await page.getByPlaceholder('node1.example.com').fill('127.0.0.2');release()
+ await page.waitForLoadState('networkidle')
+ assert.equal(await page.getByText('192.0.2.123',{exact:false}).count(),0)
+ await page.unroute('**/api/proxies/test')
+ await page.route('**/api/proxies/test',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,egressIp:'192.0.2.124'})}))
+ await page.getByRole('button',{name:'Test connectivity',exact:true}).click()
+ await page.getByText(/192\.0\.2\.124/).waitFor()
+ await page.getByPlaceholder('node1.example.com').fill('127.0.0.3')
+ assert.equal(await page.getByText(/192\.0\.2\.124/).count(),0)
+ await page.screenshot({path:new URL('./d04-stale-proxy-result.png',import.meta.url).pathname,fullPage:true})
+ assert.deepEqual(errors,[])
+ console.log(JSON.stringify({D01:'manual model JSON preserved after real save and reopen',D04:'stale in-flight success ignored; displayed success cleared on edit',pageErrors:errors,backend:'actual gateway + Bun bootstrap + temporary SQLite',proxyProbe:'browser-intercepted synthetic replies; no external probe'},null,2))
+} finally {await browser.close()}
