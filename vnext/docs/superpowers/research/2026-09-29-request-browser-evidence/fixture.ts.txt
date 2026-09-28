@@ -1,0 +1,268 @@
+// Synthetic D03 browser fixture: real Gateway, SQLite, sessions and dump sidecars.
+import { resolve } from "node:path"
+
+const sourceRoot = process.env.D03_SOURCE_ROOT
+if (!sourceRoot) throw new Error("D03_SOURCE_ROOT is required")
+const root = resolve(sourceRoot)
+const { bootstrapBunPlatform } = await import(`${root}/apps/platform-bun/src/bootstrap.ts`)
+const { app } = await import(`${root}/packages/gateway/src/app.ts`)
+const { getRepo } = await import(`${root}/packages/gateway/src/repo/index.ts`)
+const { getDumpStore, getDumpBroker } = await import(`${root}/packages/gateway/src/shared/dump/registry.ts`)
+const { getFileProvider } = await import(`${root}/packages/platform/src/index.ts`)
+
+const { db } = bootstrapBunPlatform({ dbPath: `${process.cwd()}/fixture.sqlite`, filesRoot: `${process.cwd()}/files` })
+const repo = getRepo()
+const store = getDumpStore()
+const now = Date.now()
+const createdAt = new Date(now).toISOString()
+const users = {
+  owner: { id: "d03_owner", email: "d03-owner@example.invalid" },
+  admin: { id: "d03_admin", email: "test@local.dev" },
+  foreign: { id: "d03_foreign", email: "d03-foreign@example.invalid" },
+  assignee: { id: "d03_assignee", email: "d03-assignee@example.invalid" },
+} as const
+const tokens: Record<keyof typeof users, string> = {
+  owner: `ses_${crypto.randomUUID().replaceAll("-", "")}`,
+  admin: `ses_${crypto.randomUUID().replaceAll("-", "")}`,
+  foreign: `ses_${crypto.randomUUID().replaceAll("-", "")}`,
+  assignee: `ses_${crypto.randomUUID().replaceAll("-", "")}`,
+}
+for (const [role, user] of Object.entries(users) as [keyof typeof users, typeof users[keyof typeof users]][]) {
+  await repo.users.create({ id: user.id, name: `D03 ${role}`, email: user.email, createdAt, disabled: false })
+  await repo.sessions.create({ token: tokens[role], userId: user.id, createdAt,
+    authenticatedAt: now, expiresAt: new Date(now + 3_600_000).toISOString() })
+}
+
+const keys = {
+  enabled: "d03_enabled", disabled: "d03_disabled", empty: "d03_empty",
+  foreign: "d03_foreign_key", ownerless: "d03_ownerless",
+} as const
+for (const [kind, id] of Object.entries(keys) as [keyof typeof keys, string][]) {
+  const ownerId = kind === "ownerless" ? undefined : kind === "foreign" ? users.foreign.id : users.owner.id
+  await repo.apiKeys.save({ id, ownerId, name: `D03 ${kind}`, key: `sk_synthetic_${id}`, createdAt,
+    modelMappingsEnabled: false, modelMappings: [], dumpRetentionSeconds: kind === "disabled" ? null : 3_600 })
+}
+await repo.keyAssignments.assign(keys.enabled, users.assignee.id, users.owner.id)
+
+const ids = {
+  newest: "01H0000000000000000000D033",
+  older: "01H0000000000000000000D032",
+  oldest: "01H0000000000000000000D031",
+  expired: "01H0000000000000000000D03E",
+  missing: "01H0000000000000000000D03M",
+  foreign: "01H0000000000000000000D03F",
+  disabled: "01H0000000000000000000D03X",
+} as const
+const encoder = new TextEncoder()
+const marker = "D03_SYNTHETIC_SECRET_DO_NOT_EXPORT"
+const controlToken = crypto.randomUUID()
+async function put(keyId: string, id: string, completedAt: number, body: string) {
+  const request = encoder.encode(body)
+  const response = encoder.encode(JSON.stringify({ ok: true, private: marker }))
+  await store.put(keyId, {
+    meta: { id, startedAt: completedAt - 9, completedAt, method: "POST",
+      path: `/v1/responses?token=${marker}`, status: 200, upstream: null, model: null,
+      inputTokens: 2, outputTokens: 3, requestBytes: request.length, responseBytes: response.length,
+      durationMs: 9, error: null },
+    request: { method: "POST", path: `/v1/responses?token=${marker}`,
+      headers: [["aUtHoRiZaTiOn", `Bearer ${marker}`], ["Content-Type", "application/json"]],
+      body: await store.prepareRequestBody(request) },
+    response: { status: 200, headers: [["Set-Cookie", `sid=${marker}`], ["Content-Type", "application/json"]],
+      body: { type: "bytes", body: response } },
+  })
+}
+await put(keys.enabled, ids.oldest, now - 1200, JSON.stringify({ prompt: "old", secret: marker }))
+await put(keys.enabled, ids.older, now - 600, JSON.stringify({ prompt: "middle", secret: marker }))
+await put(keys.enabled, ids.newest, now - 100, JSON.stringify({ prompt: "new", secret: marker }))
+await put(keys.enabled, ids.expired, now - 3_700_000, JSON.stringify({ prompt: "expired", secret: marker }))
+await put(keys.enabled, ids.missing, now - 50, JSON.stringify({ prompt: "missing", secret: marker }))
+const fillerIds: string[] = []
+for (let i = 0; i < 25; i++) {
+  const id = `01H00000000000000000D03P${i.toString().padStart(2, "0")}`
+  fillerIds.push(id)
+  await put(keys.enabled, id, now - 2_000 - i, JSON.stringify({ prompt: `page-${i}`, secret: marker }))
+}
+await put(keys.foreign, ids.foreign, now - 80, JSON.stringify({ prompt: "foreign", secret: marker }))
+await put(keys.disabled, ids.disabled, now - 70, JSON.stringify({ prompt: "disabled", secret: marker }))
+
+const missingRow = await db.prepare("SELECT request_body_descriptor FROM dump_records WHERE key_id = ? AND id = ?")
+  .bind(keys.enabled, ids.missing).first<{ request_body_descriptor: string }>()
+if (!missingRow) throw new Error("missing-sidecar fixture row not found")
+const descriptor = JSON.parse(missingRow.request_body_descriptor) as { key: string }
+await getFileProvider().delete(descriptor.key)
+
+let heldDetail: { keyId: string; recordId: string; release: () => void; promise: Promise<void> } | null = null
+let heldList: { release: () => void; promise: Promise<void> } | null = null
+let heldExport: { release: () => void; promise: Promise<void> } | null = null
+let heldReconnectStream: { release: () => void; promise: Promise<void> } | null = null
+let heldReached = 0
+let heldReleased = 0
+let heldListReached = 0
+let heldListReleased = 0
+let heldExportReached = 0
+let heldExportReleased = 0
+let heldExportForwarded = 0
+let heldReconnectStreamReached = 0
+let failedPage = 0
+let failNextPage = false
+let streamsOpened = 0
+let streamsClosed = 0
+let appended = 0
+let replayed = 0
+let reconnects = 0
+const intercepted: string[] = []
+const controlAuthorized = (request: Request): boolean => request.headers.get("x-fixture-control") === controlToken
+const server = Bun.serve({ hostname: "127.0.0.1", port: 0, idleTimeout: 255, fetch: async request => {
+  const url = new URL(request.url)
+  if (url.pathname.startsWith("/__fixture/")) {
+    if (!controlAuthorized(request)) return new Response(null, { status: 403 })
+    if (url.pathname === "/__fixture/state" && request.method === "GET") {
+      return Response.json({ heldReached, heldReleased, streamsOpened, streamsClosed, appended, replayed, reconnects,
+        heldListReached, heldListReleased, heldExportReached, heldExportReleased, heldExportForwarded,
+        heldReconnectStreamReached,
+        failedPage, intercepted, held: heldDetail !== null, listHeld: heldList !== null,
+        exportHeld: heldExport !== null, reconnectStreamHeld: heldReconnectStream !== null })
+    }
+    if (url.pathname === "/__fixture/hold-detail" && request.method === "POST") {
+      if (heldDetail) return Response.json({ error: "already holding" }, { status: 409 })
+      const keyId = url.searchParams.get("key")
+      const recordId = url.searchParams.get("record")
+      if (keyId !== keys.enabled || recordId !== ids.newest) return new Response(null, { status: 400 })
+      let release = () => {}
+      const promise = new Promise<void>(resolve => { release = resolve })
+      heldDetail = { keyId, recordId, release, promise }
+      intercepted.push("hold-detail:armed")
+      return Response.json({ armed: true })
+    }
+    if (url.pathname === "/__fixture/release-detail" && request.method === "POST") {
+      heldDetail?.release()
+      heldDetail = null
+      heldReleased++
+      intercepted.push("hold-detail:released")
+      return Response.json({ released: true })
+    }
+    if (url.pathname === "/__fixture/hold-list" && request.method === "POST") {
+      if (heldList) return Response.json({ error: "already holding" }, { status: 409 })
+      let release = () => {}
+      const promise = new Promise<void>(resolve => { release = resolve })
+      heldList = { release, promise }
+      intercepted.push("hold-list:armed")
+      return Response.json({ armed: true })
+    }
+    if (url.pathname === "/__fixture/release-list" && request.method === "POST") {
+      heldList?.release()
+      heldList = null
+      heldListReleased++
+      intercepted.push("hold-list:released")
+      return Response.json({ released: true })
+    }
+    if (url.pathname === "/__fixture/hold-export" && request.method === "POST") {
+      if (heldExport) return Response.json({ error: "already holding" }, { status: 409 })
+      let release = () => {}
+      const promise = new Promise<void>(resolve => { release = resolve })
+      heldExport = { release, promise }
+      intercepted.push("hold-export:armed")
+      return Response.json({ armed: true })
+    }
+    if (url.pathname === "/__fixture/release-export" && request.method === "POST") {
+      heldExport?.release()
+      heldExport = null
+      heldExportReleased++
+      intercepted.push("hold-export:released")
+      return Response.json({ released: true })
+    }
+    if (url.pathname === "/__fixture/fail-next-page" && request.method === "POST") {
+      failNextPage = true
+      intercepted.push("page-failure:armed")
+      return Response.json({ armed: true })
+    }
+    if (url.pathname === "/__fixture/release-stream" && request.method === "POST") {
+      heldReconnectStream?.release()
+      heldReconnectStream = null
+      intercepted.push("reconnect-stream:released")
+      return Response.json({ released: true })
+    }
+    if (url.pathname === "/__fixture/append" && request.method === "POST") {
+      if (appended !== 0) return new Response(null, { status: 409 })
+      const id = "01H0000000000000000000D03L"
+      await put(keys.enabled, id, Date.now(), JSON.stringify({ prompt: "live", secret: marker }))
+      const meta = (await store.list(keys.enabled, { limit: 1 }))[0]
+      if (!meta || meta.id !== id) return new Response(null, { status: 500 })
+      await getDumpBroker().publish(keys.enabled, meta)
+      appended++
+      intercepted.push("append:stored-and-published")
+      return Response.json({ id })
+    }
+    if (url.pathname === "/__fixture/replay" && request.method === "POST") {
+      const id = url.searchParams.get("record")
+      const rows = await store.list(keys.enabled, { limit: 200 })
+      const meta = rows.find(row => row.id === id)
+      if (!meta) return new Response(null, { status: 404 })
+      await getDumpBroker().publish(keys.enabled, meta)
+      replayed++
+      intercepted.push("replay:published-existing-id")
+      return Response.json({ id })
+    }
+    if (url.pathname === "/__fixture/reconnect" && request.method === "POST") {
+      if (heldReconnectStream) return Response.json({ error: "already reconnecting" }, { status: 409 })
+      let release = () => {}
+      const promise = new Promise<void>(resolve => { release = resolve })
+      heldReconnectStream = { release, promise }
+      await getDumpBroker().closeChannel(keys.enabled, "synthetic reconnect")
+      reconnects++
+      intercepted.push("reconnect:closed-channel")
+      return Response.json({ closed: true })
+    }
+    return new Response(null, { status: 404 })
+  }
+  const match = url.pathname.match(/^\/api\/keys\/([^/]+)\/records\/([^/]+)$/)
+  if (match && heldDetail?.keyId === match[1] && heldDetail.recordId === match[2]) {
+    const current = heldDetail
+    heldReached++
+    intercepted.push("hold-detail:reached")
+    await current.promise
+  }
+  if (url.pathname === `/api/keys/${keys.enabled}/records` && url.searchParams.get("limit") === "25" && heldList) {
+    const current = heldList
+    heldListReached++
+    intercepted.push("hold-list:reached")
+    await current.promise
+  }
+  if (url.pathname === `/api/keys/${keys.enabled}/records` && url.searchParams.has("before") && failNextPage) {
+    failNextPage = false
+    failedPage++
+    intercepted.push("page-failure:returned-500")
+    return Response.json({ error: "Synthetic D03 page failure" }, { status: 500 })
+  }
+  if (url.pathname === `/api/keys/${keys.enabled}/records/${ids.newest}/export` && heldExport) {
+    const current = heldExport
+    heldExportReached++
+    intercepted.push("hold-export:reached")
+    await current.promise
+    heldExportForwarded++
+    intercepted.push("hold-export:forwarded-to-gateway")
+  }
+  if (/^\/api\/keys\/[^/]+\/stream$/.test(url.pathname)) {
+    if (url.pathname === `/api/keys/${keys.enabled}/stream` && heldReconnectStream) {
+      const current = heldReconnectStream
+      heldReconnectStreamReached++
+      intercepted.push("reconnect-stream:reached")
+      await current.promise
+    }
+    streamsOpened++
+    intercepted.push("stream:opened")
+    request.signal.addEventListener("abort", () => {
+      streamsClosed++
+      intercepted.push("stream:aborted")
+    }, { once: true })
+  }
+  return app.fetch(request)
+} })
+await Bun.write(`${process.cwd()}/connection.json`, JSON.stringify({
+  port: server.port, tokens, users: Object.fromEntries(Object.entries(users).map(([role, user]) => [role, user.id])),
+  keys, ids, fillerIds, controlToken, sourceRoot: root, pid: process.pid,
+}))
+console.log(`D03 fixture ready on 127.0.0.1:${server.port}`)
+const stop = () => { heldDetail?.release(); heldList?.release(); heldExport?.release(); heldReconnectStream?.release(); server.stop(true); process.exit(0) }
+process.once("SIGTERM", stop)
+process.once("SIGINT", stop)

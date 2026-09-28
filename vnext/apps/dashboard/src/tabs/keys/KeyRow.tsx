@@ -10,9 +10,10 @@ interface Props {
   busy: boolean
   onSelect: () => void
   onDelete: () => void
+  onRequests?: () => void
 }
 
-export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete }: Props) {
+export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete, onRequests }: Props) {
   const [copied, setCopied] = useState(false)
   const t = useT()
 
@@ -91,6 +92,15 @@ export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete }: P
       </td>
       <td className="py-3 pr-2 text-right">
         <div className="flex items-center justify-end gap-1">
+          {onRequests ? (
+            <button
+              type="button"
+              onClick={(event) => { event.stopPropagation(); onRequests() }}
+              className="text-xs text-accent-violet hover:underline px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-violet"
+            >
+              {t("dash.requests.action")}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={handleCopy}

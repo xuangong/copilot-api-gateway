@@ -1,0 +1,259 @@
+// D03 acceptance preparation. `ui` selectors must be calibrated after D03 lands.
+import { chromium } from "/Users/zhangxian/.nvm/versions/node/v22.23.2/lib/node_modules/playwright/index.mjs"
+import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
+
+const connection = process.env.D03_CONNECTION
+if (!connection) throw new Error("D03_CONNECTION is required")
+const { port, tokens, keys, ids, fillerIds, controlToken, sourceRoot } = JSON.parse(readFileSync(connection, "utf8"))
+const base = `http://127.0.0.1:${port}`
+const scenario = process.argv[2] ?? "baseline"
+const browser = await chromium.launch({ headless: true })
+const errors = []
+try {
+  const contexts = {}
+  for (const [role, token] of Object.entries(tokens)) {
+    contexts[role] = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true })
+    await contexts[role].addCookies([{ name: "session_token", value: token, domain: "127.0.0.1", path: "/" }])
+  }
+  contexts.anonymous = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+  const path = (key, suffix = "records") => `${base}/api/keys/${key}/${suffix}`
+  const control = async (name, method = "GET", query = "") => {
+    const response = await contexts.owner.request.fetch(`${base}/__fixture/${name}${query}`, {
+      method, headers: { "x-fixture-control": controlToken },
+    })
+    assert.equal(response.status(), 200, `fixture control ${name} failed`)
+    return response.json()
+  }
+  const waitUntil = async (condition, label) => {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (await condition()) return
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    assert.fail(`timed out waiting for ${label}`)
+  }
+  const status = async (role, key, suffix) => (await contexts[role].request.get(path(key, suffix))).status()
+  const list = async (role, key, query = "") => {
+    const response = await contexts[role].request.get(path(key) + query)
+    assert.equal(response.status(), 200)
+    return (await response.json()).records
+  }
+
+  const allSeeded = await list("owner", keys.enabled)
+  assert.equal(allSeeded.length, 29)
+  assert.deepEqual(allSeeded.slice(0, 4).map(row => row.id), [ids.missing, ids.newest, ids.older, ids.oldest])
+  assert.deepEqual(allSeeded.slice(4).map(row => row.id), fillerIds)
+  assert.deepEqual((await list("owner", keys.enabled, `?limit=2`)).map(row => row.id),
+    [ids.missing, ids.newest])
+  assert.deepEqual((await list("owner", keys.enabled, `?limit=2&before=${ids.newest}`)).map(row => row.id),
+    [ids.older, ids.oldest])
+  assert.deepEqual(await list("owner", keys.empty), [])
+  assert.equal(await status("owner", keys.enabled, `records/${ids.newest}`), 200)
+  assert.equal(await status("admin", keys.enabled), 200)
+  assert.equal(await status("admin", keys.ownerless), 200)
+  assert.equal(await status("anonymous", keys.ownerless), 403)
+  assert.equal(await status("anonymous", keys.enabled), 403)
+  assert.equal(await status("assignee", keys.enabled), 403)
+  assert.equal(await status("foreign", keys.enabled), 403)
+  assert.equal(await status("owner", keys.foreign), 403)
+  assert.equal(await status("owner", keys.disabled), 404)
+  assert.equal(await status("owner", keys.enabled, `records/${ids.foreign}`), 404)
+  assert.equal(await status("owner", keys.enabled, `records/${ids.expired}`), 404)
+  const missing = await contexts.owner.request.get(path(keys.enabled, `records/${ids.missing}`))
+  assert.equal(missing.status(), 409)
+  assert.deepEqual(await missing.json(), { error: "Captured body is no longer available." })
+
+  const page = await contexts.owner.newPage()
+  page.on("pageerror", error => errors.push(error.message))
+  await page.goto(`${base}/dashboard#keys`)
+  await page.getByText("D03 enabled", { exact: true }).waitFor()
+  await page.getByText("D03 disabled", { exact: true }).waitFor()
+  await page.getByText("D03 empty", { exact: true }).waitFor()
+  assert.deepEqual(errors, [])
+  if (scenario === "baseline") {
+    console.log(JSON.stringify({ scenario, sourceRoot, visibleRecords: 29, expiredHidden: true,
+      ownerAndAdminAllowed: true, anonymousForeignAssigneeDenied: true,
+      missingSidecarStatus: missing.status(), browserErrors: errors.length,
+      requestsActionCount: await page.getByRole("button", { name: /^Requests$/i }).count() }, null, 2))
+  } else if (scenario === "ui") {
+    // Current D03 UI exposes key-row buttons and a single named Requests panel.
+    const row = page.getByRole("row").filter({ hasText: "D03 enabled" })
+    const action = row.getByRole("button", { name: /^Requests$/i })
+    assert.equal(await action.count(), 1, "enabled owned key needs one accessible Requests action")
+    const panel = page.getByRole("region", { name: /D03 enabled/ })
+    const recordButton = id => panel.getByRole("button", { name: new RegExp(id) })
+    await action.focus()
+    await page.keyboard.press("Enter")
+    await recordButton(ids.newest).waitFor()
+    await recordButton(ids.older).waitFor()
+    assert.equal(await recordButton(ids.expired).count(), 0)
+    const pageRequests = []
+    page.on("request", request => {
+      if (request.url().startsWith(path(keys.enabled) + "?") && request.method() === "GET") {
+        pageRequests.push(new URL(request.url()))
+      }
+    })
+    const detail = recordButton(ids.newest)
+    assert.equal(await detail.count(), 1, "calibrate record detail control against shipped UI")
+    await detail.focus()
+    await page.keyboard.press("Enter")
+    await panel.getByRole("heading", { name: "Raw client request" }).waitFor()
+    await panel.getByRole("heading", { name: "Canonical output" }).waitFor()
+    const downloadButton = page.getByRole("button", { name: /Download redacted JSON/i })
+    const originalBefore = await contexts.owner.request.get(path(keys.enabled, `records/${ids.newest}`))
+    assert.equal(originalBefore.status(), 200)
+    const originalBytes = await originalBefore.body()
+    const downloadPromise = page.waitForEvent("download")
+    await downloadButton.click()
+    const download = await downloadPromise
+    const exportResponse = await contexts.owner.request.get(path(keys.enabled, `records/${ids.newest}/export`))
+    assert.equal(exportResponse.status(), 200)
+    assert.match(exportResponse.headers()["cache-control"] ?? "", /no-store/i)
+    assert.match(exportResponse.headers()["content-disposition"] ?? "", /attachment/i)
+    const exportJson = await exportResponse.text()
+    assert.doesNotMatch(exportJson, /D03_SYNTHETIC_SECRET_DO_NOT_EXPORT/)
+    assert.doesNotMatch(exportJson, /Set-Cookie|Authorization|prompt|private/i)
+    assert.ok(download.suggestedFilename().endsWith(".json"))
+    assert.doesNotMatch(readFileSync(await download.path(), "utf8"), /D03_SYNTHETIC_SECRET_DO_NOT_EXPORT/)
+    const originalAfter = await contexts.owner.request.get(path(keys.enabled, `records/${ids.newest}`))
+    assert.equal(originalAfter.status(), 200)
+    assert.deepEqual(await originalAfter.body(), originalBytes, "export must not modify ordinary detail bytes")
+
+    // Selecting B must cancel A's in-flight export and reset the button state for B.
+    const raceDownloads = []
+    const failedExports = []
+    page.on("download", item => raceDownloads.push(item))
+    page.on("requestfailed", request => {
+      if (request.url() === path(keys.enabled, `records/${ids.newest}/export`)) failedExports.push(request.failure())
+    })
+    await control("hold-export", "POST")
+    await downloadButton.click()
+    await waitUntil(async () => (await control("state")).heldExportReached === 1, "held A export")
+    await recordButton(ids.older).click()
+    await panel.getByRole("heading", { name: new RegExp(ids.older) }).waitFor()
+    await waitUntil(async () => await downloadButton.isEnabled(), "B download control reset")
+    assert.equal(await panel.getByRole("button", { name: /Downloading/i }).count(), 0,
+      "B must not inherit A's downloading state")
+    await control("release-export", "POST")
+    await waitUntil(async () => failedExports.length === 1, "aborted A export request")
+    await waitUntil(async () => (await control("state")).heldExportForwarded === 1,
+      "released A export forwarded to Gateway")
+    await page.waitForTimeout(150)
+    assert.equal(raceDownloads.length, 0, "A attachment must not download after selecting B")
+    const bDownloadPromise = page.waitForEvent("download")
+    await downloadButton.click()
+    const bDownload = await bDownloadPromise
+    assert.equal(bDownload.suggestedFilename(), `request-${ids.older}.json`)
+    assert.doesNotMatch(readFileSync(await bDownload.path(), "utf8"), /D03_SYNTHETIC_SECRET_DO_NOT_EXPORT/)
+    assert.equal(raceDownloads.length, 1, "only the explicit B download may be emitted")
+    assert.equal(await status("anonymous", keys.enabled, `records/${ids.newest}/export`), 403)
+    assert.equal(await status("assignee", keys.enabled, `records/${ids.newest}/export`), 403)
+    assert.equal(await status("owner", keys.enabled, `records/${ids.foreign}/export`), 404)
+    assert.equal(await status("owner", keys.disabled, `records/${ids.disabled}/export`), 404)
+    assert.equal(await status("owner", keys.enabled, `records/${ids.expired}/export`), 404)
+    const missingControl = recordButton(ids.missing)
+    await missingControl.click()
+    const missingAlert = panel.getByRole("alert").filter({ hasText: "Captured body is no longer available" })
+    await missingAlert.waitFor()
+    assert.doesNotMatch(await missingAlert.innerText(), /dump\/|\.gz|D03_SYNTHETIC_SECRET/)
+    assert.equal(await panel.getByRole("heading", { name: "Raw client request" }).count(), 0)
+
+    // The server snapshot and first page overlap. Publishing the same ID must not create duplicates.
+    const initialState = await control("state")
+    await waitUntil(async () => (await control("state")).streamsOpened > initialState.streamsOpened || initialState.streamsOpened > 0,
+      "initial EventSource")
+    const live = await control("append", "POST")
+    await panel.getByRole("button", { name: new RegExp(live.id) }).waitFor()
+    await control("replay", "POST", `?record=${encodeURIComponent(live.id)}`)
+    await control("replay", "POST", `?record=${encodeURIComponent(ids.newest)}`)
+    assert.equal(await recordButton(live.id).count(), 1)
+    assert.equal(await recordButton(ids.newest).count(), 1)
+    const beforeReconnect = await control("state")
+    await control("reconnect", "POST")
+    const transportWarning = panel.getByRole("status").filter({ hasText: "Live updates disconnected" })
+    await transportWarning.waitFor()
+    await waitUntil(async () => (await control("state")).heldReconnectStreamReached === 1,
+      "held reconnect stream")
+    const more = panel.getByRole("button", { name: "Load older requests" })
+    await more.waitFor()
+    await control("fail-next-page", "POST")
+    await more.click()
+    const pageFailure = panel.getByRole("alert").filter({ hasText: "Synthetic D03 page failure" })
+    await pageFailure.waitFor()
+    await control("release-stream", "POST")
+    await waitUntil(async () => (await control("state")).streamsOpened > beforeReconnect.streamsOpened,
+      "EventSource reconnect")
+    await waitUntil(async () => await recordButton(live.id).count() === 1, "reconnect duplicate reconciliation")
+    assert.equal(await recordButton(ids.newest).count(), 1)
+    await transportWarning.waitFor({ state: "detached" })
+    assert.equal(await pageFailure.count(), 1, "valid live snapshot must not hide unrelated page failure")
+    await more.click()
+    await waitUntil(async () => pageRequests.filter(url => url.searchParams.has("before")).length === 2,
+      "failed and retried load-more requests")
+    const cursorRequests = pageRequests.filter(url => url.searchParams.has("before"))
+    assert.deepEqual(cursorRequests.map(url => url.searchParams.get("before")), [allSeeded[24].id, allSeeded[24].id],
+      "Load more must use the server-owned first-page cursor")
+    await pageFailure.waitFor({ state: "detached" })
+    await waitUntil(async () => (await control("state")).intercepted.includes("replay:published-existing-id"), "replay recorded")
+    assert.equal(await recordButton(fillerIds.at(-1)).count(), 1)
+    assert.equal(await panel.locator("button[aria-expanded]").count(), 30,
+      "page/live/reconnect overlap must leave each retained ID once")
+
+    // Hold an old detail response while switching to another key. Releasing it must not repopulate the new panel.
+    await control("hold-detail", "POST", `?key=${keys.enabled}&record=${ids.newest}`)
+    await detail.click()
+    await waitUntil(async () => (await control("state")).heldReached === 1, "held detail request")
+    const streamsBeforeSwitch = await control("state")
+    await page.getByRole("row").filter({ hasText: "D03 empty" }).getByRole("button", { name: /^Requests$/i }).click()
+    const emptyPanel = page.getByRole("region", { name: /D03 empty/ })
+    await emptyPanel.getByText("No retained requests", { exact: false }).waitFor()
+    await waitUntil(async () => (await control("state")).streamsClosed > streamsBeforeSwitch.streamsClosed,
+      "old EventSource abort after key switch")
+    await control("release-detail", "POST")
+    assert.equal(await emptyPanel.getByText(ids.newest, { exact: false }).count(), 0,
+      "late old-key detail must not populate new key")
+    assert.equal(await emptyPanel.getByRole("heading", { name: /Record / }).count(), 0)
+    await action.click()
+    await recordButton(ids.newest).waitFor()
+    assert.equal(await recordButton(ids.newest).count(), 1,
+      "reopening live and page results must not duplicate a record")
+    const streamsBeforeClose = await control("state")
+    await panel.getByRole("button", { name: "Close Requests" }).click()
+    await panel.waitFor({ state: "detached" })
+    await waitUntil(async () => (await control("state")).streamsClosed > streamsBeforeClose.streamsClosed,
+      "EventSource abort after Close Requests")
+    // A blocked old list must not keep the next key loading or leak its rows after release.
+    await control("hold-list", "POST")
+    await action.click()
+    await waitUntil(async () => (await control("state")).heldListReached === 1, "held old-key page")
+    await page.getByRole("row").filter({ hasText: "D03 empty" }).getByRole("button", { name: /^Requests$/i }).click()
+    await emptyPanel.getByText("No retained requests", { exact: false }).waitFor()
+    await control("release-list", "POST")
+    assert.equal(await emptyPanel.getByText(ids.newest, { exact: false }).count(), 0,
+      "late old-key list must not populate the new key")
+    await emptyPanel.getByRole("button", { name: "Close Requests" }).click()
+    const streamsBeforeDisabled = await control("state")
+    await page.getByRole("row").filter({ hasText: "D03 disabled" }).getByRole("button", { name: /^Requests$/i }).click()
+    const disabledPanel = page.getByRole("region", { name: /D03 disabled/ })
+    await disabledPanel.getByRole("alert").filter({ hasText: "Dump capture is not enabled" }).waitFor()
+    assert.equal(await disabledPanel.locator("button[aria-expanded]").count(), 0)
+    assert.equal((await control("state")).streamsOpened, streamsBeforeDisabled.streamsOpened,
+      "capture-disabled list failure must not open EventSource")
+    const adminPage = await contexts.admin.newPage()
+    await adminPage.goto(`${base}/dashboard#keys`)
+    await adminPage.getByRole("row").filter({ hasText: "D03 foreign" }).first().waitFor()
+    assert.equal(await adminPage.getByRole("row").filter({ hasText: "D03 foreign" })
+      .getByRole("button", { name: /^Requests$/i }).count(), 1)
+    const assigneePage = await contexts.assignee.newPage()
+    await assigneePage.goto(`${base}/dashboard#keys`)
+    await assigneePage.getByText("D03 enabled", { exact: true }).waitFor()
+    assert.equal(await assigneePage.getByRole("row").filter({ hasText: "D03 enabled" })
+      .getByRole("button", { name: /^Requests$/i }).count(), 0)
+    const fixtureState = await control("state")
+    console.log(JSON.stringify({ scenario, sourceRoot, result: "passed", browserErrors: errors.length,
+      fixtureInterceptions: fixtureState.intercepted, streamsOpened: fixtureState.streamsOpened,
+      streamsClosed: fixtureState.streamsClosed }))
+  }
+} finally {
+  await browser.close()
+}

@@ -1,0 +1,52 @@
+[
+  {
+    "scenario": "baseline",
+    "sourceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext",
+    "visibleRecords": 29,
+    "expiredHidden": true,
+    "ownerAndAdminAllowed": true,
+    "anonymousForeignAssigneeDenied": true,
+    "missingSidecarStatus": 409,
+    "browserErrors": 0,
+    "requestsActionCount": 3,
+    "fixtureStopped": true
+  },
+  {
+    "scenario": "ui",
+    "sourceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext",
+    "result": "passed",
+    "browserErrors": 0,
+    "fixtureInterceptions": [
+      "stream:opened",
+      "hold-export:armed",
+      "hold-export:reached",
+      "hold-export:released",
+      "hold-export:forwarded-to-gateway",
+      "append:stored-and-published",
+      "replay:published-existing-id",
+      "replay:published-existing-id",
+      "reconnect:closed-channel",
+      "reconnect-stream:reached",
+      "page-failure:armed",
+      "page-failure:returned-500",
+      "reconnect-stream:released",
+      "stream:opened",
+      "hold-detail:armed",
+      "hold-detail:reached",
+      "stream:aborted",
+      "stream:opened",
+      "hold-detail:released",
+      "stream:aborted",
+      "stream:opened",
+      "stream:aborted",
+      "hold-list:armed",
+      "hold-list:reached",
+      "stream:opened",
+      "hold-list:released",
+      "stream:aborted"
+    ],
+    "streamsOpened": 5,
+    "streamsClosed": 4,
+    "fixtureStopped": true
+  }
+]

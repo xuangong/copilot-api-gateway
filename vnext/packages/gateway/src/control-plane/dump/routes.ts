@@ -14,7 +14,8 @@ import type { Env } from '../../app.ts'
 import { getRepo } from '../../repo/index.ts'
 import { getDumpBroker, getDumpStore } from '../../shared/dump/registry.ts'
 import { dumpRecordToWire } from '../../shared/dump/wire.ts'
-import type { DumpRecordId } from '../../shared/dump/types.ts'
+import { dumpRecordToExport } from '../../shared/dump/export.ts'
+import type { DumpRecordId, StoredDumpRecord } from '../../shared/dump/types.ts'
 import type { ApiKeyId } from '../../repo/branded-ids.ts'
 
 const LIST_LIMIT_DEFAULT = 100
@@ -49,6 +50,17 @@ const parsePositiveInt = (v: string | undefined, fallback: number, max: number):
   return Math.min(n, max)
 }
 
+const readRecord = async (c: Context, keyId: ApiKeyId, recordId: DumpRecordId): Promise<StoredDumpRecord | null | Response> => {
+  try {
+    return await getDumpStore().get(keyId, recordId)
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('dump body missing for key=')) {
+      return c.json({ error: 'Captured body is no longer available.' }, 409)
+    }
+    return c.json({ error: 'Captured record could not be read.' }, 500)
+  }
+}
+
 export const dumpRoutes = new Hono<{ Bindings: Env }>()
   .get('/:keyId/records', async (c) => {
     const owned = await ownedDumpKey(c)
@@ -65,9 +77,27 @@ export const dumpRoutes = new Hono<{ Bindings: Env }>()
     const owned = await ownedDumpKey(c)
     if (owned instanceof Response) return owned
     const recordId = c.req.param('recordId')! as DumpRecordId
-    const record = await getDumpStore().get(owned, recordId)
+    const record = await readRecord(c, owned, recordId)
+    if (record instanceof Response) return record
     if (!record) return c.json({ error: 'Record not found' }, 404)
     return c.json(dumpRecordToWire(record))
+  })
+  .get('/:keyId/records/:recordId/export', async (c) => {
+    const owned = await ownedDumpKey(c)
+    if (owned instanceof Response) return owned
+    const id = c.req.param('recordId')
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return c.json({ error: 'Invalid record ID' }, 400)
+    const record = await readRecord(c, owned, id as DumpRecordId)
+    if (record instanceof Response) return record
+    if (!record) return c.json({ error: 'Record not found' }, 404)
+    return new Response(JSON.stringify(dumpRecordToExport(record)), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'Content-Disposition': `attachment; filename="request-${id}.json"`,
+      },
+    })
   })
   .get('/:keyId/stream', async (c) => {
     // Browsers cannot set custom headers on EventSource, so this route is

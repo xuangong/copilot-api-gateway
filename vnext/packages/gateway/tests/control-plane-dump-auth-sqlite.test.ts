@@ -30,6 +30,10 @@ class MemoryFiles implements FileProvider {
   async delete(key: string): Promise<void> {
     this.files.delete(key)
   }
+
+  clear(): void {
+    this.files.clear()
+  }
 }
 
 const now = () => new Date().toISOString()
@@ -46,7 +50,8 @@ test("dump readers require an explicit owner or admin identity through app.fetch
   try {
     const repo = new BunSqliteRepo(db)
     initRepo(repo)
-    const store = new FileDumpStore(new BunSqliteDatabase(db), new MemoryFiles())
+    const files = new MemoryFiles()
+    const store = new FileDumpStore(new BunSqliteDatabase(db), files)
     resetDumpRegistryForTests()
     initDumpStore(store)
 
@@ -121,6 +126,25 @@ test("dump readers require an explicit owner or admin identity through app.fetch
       expect((await request(route)).status).toBe(403)
       expect((await request(route, "invalid")).status).toBe(403)
     }
+    const exportPath = "/api/keys/dump_owned/records/01H0000000000000000000AAAA/export"
+    expect((await request(exportPath)).status).toBe(403)
+    expect((await request(exportPath, "dump_assignee")).status).toBe(403)
+    expect((await request(exportPath, "dump_other")).status).toBe(403)
+    const original = await (await request("/api/keys/dump_owned/records/01H0000000000000000000AAAA", "dump_owner")).json()
+    const exported = await request(exportPath, "dump_owner")
+    expect(exported.status).toBe(200)
+    expect(exported.headers.get("Cache-Control")).toBe("no-store")
+    expect(exported.headers.get("Content-Disposition")).toContain("attachment")
+    expect((await exported.json() as { format: string }).format).toBe("gateway-dump-redacted-v1")
+    expect(await (await request("/api/keys/dump_owned/records/01H0000000000000000000AAAA", "dump_owner")).json()).toEqual(original)
+    expect((await request(exportPath, "dump_admin")).status).toBe(200)
+    expect((await request("/api/keys/dump_ownerless/records/01H0000000000000000000NONE/export", "dump_admin")).status).toBe(200)
+    expect((await request("/api/keys/dump_ownerless/records/01H0000000000000000000NONE/export")).status).toBe(403)
+    const invalidFilename = await request("/api/keys/dump_owned/records/bad.id/export", "dump_owner")
+    expect(invalidFilename.status).toBe(400)
+    expect(invalidFilename.headers.get("Content-Disposition")).toBeNull()
+    expect((await request("/api/keys/dump_owned/records/01H0000000000000000000NONE/export", "dump_owner")).status).toBe(404)
+    expect((await request("/api/keys/dump_disabled/records/01H0000000000000000000OFF0/export", "dump_owner")).status).toBe(404)
 
     for (const identity of ["dump_assignee", "dump_other"]) {
       expect((await request("/api/keys/dump_owned/records", identity)).status).toBe(403)
@@ -149,6 +173,27 @@ test("dump readers require an explicit owner or admin identity through app.fetch
     expect((await request("/api/keys/dump_owned/records/01H0000000000000000000OLD0", "dump_owner")).status).toBe(404)
     expect((await request("/api/keys/dump_disabled/records", "dump_owner")).status).toBe(404)
     expect((await request("/api/keys/dump_disabled/records/01H0000000000000000000OFF0", "dump_owner")).status).toBe(404)
+    const missingId = dumpRecordId("01H0000000000000000000MISS")
+    await store.put(apiKeyId("dump_owned"), {
+      meta: {
+        id: missingId, startedAt: t, completedAt: t, method: "POST", path: "/v1/responses",
+        status: 200, upstream: null, model: null, inputTokens: null, outputTokens: null,
+        requestBytes: 6, responseBytes: 0, durationMs: 0, error: null,
+      },
+      request: {
+        method: "POST", path: "/v1/responses", headers: [],
+        body: await store.prepareRequestBody(new TextEncoder().encode("secret")),
+      },
+      response: { status: 200, headers: [], body: { type: "none" } },
+    })
+    files.clear()
+    for (const suffix of ["", "/export"]) {
+      const response = await request(`/api/keys/dump_owned/records/${missingId}${suffix}`, "dump_owner")
+      expect(response.status).toBe(409)
+      const body = await response.text()
+      expect(body).toContain("Captured body is no longer available")
+      expect(body).not.toContain("dumps/v1/")
+    }
   } finally {
     db.close()
     resetDumpRegistryForTests()

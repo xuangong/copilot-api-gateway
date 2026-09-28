@@ -5,12 +5,14 @@ import { useKeys } from "../../state/keys"
 import { JustCreatedKeyModal } from "./JustCreatedKeyModal"
 import { KeyDetailPanel } from "./KeyDetailPanel"
 import { KeyRow } from "./KeyRow"
+import { RequestsPanel } from "../requests/RequestsPanel"
 
 export function KeysTab() {
   const { session } = useAuth()
   const store = useKeys()
   const t = useT()
   const [newKeyName, setNewKeyName] = useState("")
+  const [requestsKeyId, setRequestsKeyId] = useState<string | null>(null)
 
   const isAdmin = session?.isAdmin === true
   const isUser = session?.isUser === true
@@ -108,6 +110,8 @@ export function KeysTab() {
                       store.setSelectedKeyId(store.selectedKeyId === k.id ? null : k.id)
                     }
                     onDelete={() => store.deleteKey(k.id, k.name)}
+                    onRequests={isAdmin || (isUser && k.is_owner && k.owner_id != null && String(session?.userId) === k.owner_id)
+                      ? () => setRequestsKeyId(k.id) : undefined}
                   />
                 ))}
               </tbody>
@@ -115,6 +119,15 @@ export function KeysTab() {
           ) : null}
         </div>
       </div>
+
+      {requestsKeyId && store.keys.find((key) => key.id === requestsKeyId) ? (
+        <RequestsPanel
+          key={requestsKeyId}
+          keyId={requestsKeyId}
+          keyName={store.keys.find((key) => key.id === requestsKeyId)?.name ?? requestsKeyId}
+          onClose={() => setRequestsKeyId(null)}
+        />
+      ) : null}
 
       {store.selectedKey ? (
         <KeyDetailPanel
