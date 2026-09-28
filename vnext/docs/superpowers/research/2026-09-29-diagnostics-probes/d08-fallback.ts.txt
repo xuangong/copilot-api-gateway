@@ -1,0 +1,10 @@
+import { Database } from 'bun:sqlite'
+import { BunSqliteRepo } from '/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/apps/platform-bun/src/bun-sqlite-repo.ts'
+import { aggregateUsageForDisplay } from '/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/packages/gateway/src/control-plane/token-usage/aggregate.ts'
+const db=new Database(':memory:');const repo=new BunSqliteRepo(db)
+const ins=db.prepare('INSERT INTO usage (key_id,incoming_model,model,upstream,model_key,client,hour,dimension,tokens,unit_price) VALUES (?,?,?,?,?,?,?,?,?,?)')
+for(const [d,t,p] of [['input',100,0.125],['input_cache_read',100,null],['output_image',5,null]])ins.run('k','a','m',null,'p','','2026-09-01T00',d,t,p)
+const old=aggregateUsageForDisplay(await repo.usage.query({start:'2026-09-01T00',end:'2026-09-02T00'}))[0]
+const naive=db.query('SELECT SUM(tokens*COALESCE(unit_price,0))/1e6 cost FROM usage').get()
+const resolved=db.query(`WITH prices AS (SELECT *,MAX(CASE WHEN dimension='input' THEN unit_price END) OVER(PARTITION BY key_id,incoming_model,model,COALESCE(upstream,''),model_key,client,hour) input_price,MAX(CASE WHEN dimension='output' THEN unit_price END) OVER(PARTITION BY key_id,incoming_model,model,COALESCE(upstream,''),model_key,client,hour) output_price FROM usage) SELECT SUM(tokens*COALESCE(unit_price,CASE WHEN dimension IN ('input_cache_read','input_cache_write','input_image') THEN input_price WHEN dimension='output_image' THEN output_price END,0))/1e6 cost FROM prices`).get()
+console.log(JSON.stringify({old,naive,resolved}))

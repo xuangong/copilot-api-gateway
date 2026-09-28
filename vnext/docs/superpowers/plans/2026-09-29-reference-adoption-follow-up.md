@@ -29,6 +29,11 @@
 - Review window: 2026-06-28 through 2026-09-28. Follow-up created 2026-09-29 (Asia/Shanghai).
 - Earlier deterministic probes reproduced lost tool restrictions/history, hosted namespace collisions, compressed-body decoding failure, missing SSE frames, refusal/status loss, reasoning-off loss, premature success, and model-editor metadata loss. Reproduce against the implementation baseline before fixing.
 
+## Follow-through designs
+
+- [Provider foundations and capability delivery](../research/2026-09-29-provider-adoption-design.md): catalog fencing, safe credential lifecycle/import, per-call metadata, affinity, Lite, Fast and client WebSocket sequencing.
+- [Diagnostics, request bodies and usage experiments](../research/2026-09-29-diagnostics-adoption-design.md): bounded capture/export, replayable bodies, measured SQL tradeoffs and setup transaction design.
+
 ## Work packages
 
 Priority means execution order, not an assertion that every source-level risk has happened in production. `P1` addresses correctness or resource lifecycle; `P2` adds resilience/capability; `P3` improves convenience or needs measurement.

@@ -1,0 +1,38 @@
+import { Database } from 'bun:sqlite'
+import { BunSqliteRepo } from '/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/apps/platform-bun/src/bun-sqlite-repo.ts'
+import { aggregateUsageForDisplay } from '/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/packages/gateway/src/control-plane/token-usage/aggregate.ts'
+const db = new Database(':memory:')
+const repo = new BunSqliteRepo(db)
+const dim = db.prepare('INSERT INTO usage (key_id,incoming_model,model,upstream,model_key,client,hour,dimension,tokens,unit_price) VALUES (?,?,?,?,?,?,?,?,?,?)')
+const req = db.prepare('INSERT INTO usage_requests (key_id,incoming_model,model,upstream,model_key,client,hour,requests) VALUES (?,?,?,?,?,?,?,?)')
+db.transaction(() => {
+ for(let i=0;i<50000;i++) {
+  const g=Math.floor(i/10), u=i%10
+  const tuple=[`key${g%100}`,`alias${Math.floor(g/100)%5}`,'model',`up${u}`,`price${u}`,'synthetic',`2026-09-01T${String(Math.floor(g/500)).padStart(2,'0')}`]
+  req.run(...tuple,1)
+  dim.run(...tuple,'input',i%1000+1,u===9?null:0.125+u/10)
+  if(u!==8) dim.run(...tuple,'output',i%13+1,u===7?null:0.333333)
+ }
+})()
+const mode=process.argv[2]
+Bun.gc(true)
+const before=process.memoryUsage().heapUsed
+const start=performance.now()
+const opts={start:'2026-09-01T00',end:'2026-09-02T00'}
+let result
+if(mode==='js') result=aggregateUsageForDisplay(await repo.usage.query(opts))
+else {
+ const keys='key_id,incoming_model,model,client,hour'
+ const ds=db.query(`SELECT ${keys},dimension,SUM(tokens) tokens,SUM(CASE WHEN unit_price IS NOT NULL THEN tokens*unit_price ELSE 0 END)/1e6 cost FROM usage WHERE hour>=? AND hour<? GROUP BY ${keys},dimension`).all(opts.start,opts.end)
+ const rs=db.query(`SELECT ${keys},SUM(requests) requests FROM usage_requests WHERE hour>=? AND hour<? GROUP BY ${keys}`).all(opts.start,opts.end)
+ const map=new Map()
+ const ensure=(r)=>{const k=JSON.stringify([r.key_id,r.incoming_model,r.model,r.client,r.hour]);let x=map.get(k);if(!x){x={keyId:r.key_id,incomingModel:r.incoming_model,model:r.model,client:r.client,hour:r.hour,requests:0,tokens:{},cost:0};map.set(k,x)}return x}
+ for(const d of ds){const r=ensure(d);if(d.tokens>0)r.tokens[d.dimension]=d.tokens;r.cost+=d.cost}
+ for(const r of rs)ensure(r).requests=r.requests
+ result=[...map.values()].sort((a,b)=>a.hour.localeCompare(b.hour)||a.keyId.localeCompare(b.keyId)||a.incomingModel.localeCompare(b.incomingModel)||a.model.localeCompare(b.model)||a.client.localeCompare(b.client))
+ console.log(JSON.stringify({sqlRows:ds.length+rs.length}))
+}
+const ms=performance.now()-start
+const after=process.memoryUsage().heapUsed
+console.log(JSON.stringify({mode,rows:result.length,ms,heapDelta:after-before,requests:result.reduce((s,r)=>s+r.requests,0),cost:result.reduce((s,r)=>s+r.cost,0),sourceRows:145000,runtime:Bun.version}))
+await Bun.write(`/tmp/reference-adoption-d08-${mode}.json`,JSON.stringify(result))
