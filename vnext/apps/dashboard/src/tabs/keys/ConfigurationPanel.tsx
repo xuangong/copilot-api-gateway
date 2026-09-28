@@ -5,6 +5,7 @@ import type { ModelCatalog } from "../../state/models"
 import { useToast } from "../../state/toast"
 import { Select } from "../../components/Select"
 import {
+  availableClaudeTierSelection,
   claudeCodeSettingsSnippet,
   claudeCodeShellSnippet,
   codexEnvSnippet,
@@ -12,6 +13,7 @@ import {
   codexTomlSnippet,
   geminiSnippet,
 } from "./configSnippets"
+import type { ClaudeTierSelections } from "./configSnippets"
 
 interface Props {
   keyRow: ApiKeyDetail
@@ -86,6 +88,7 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
   const [tab, setTab] = useState<ConfigTab>("claude")
   const [claudeBig, setClaudeBig] = useState<string>("")
   const [claudeSmall, setClaudeSmall] = useState<string>("")
+  const [claudeTiers, setClaudeTiers] = useState<ClaudeTierSelections>({})
   const [claudeFormat, setClaudeFormat] = useState<ClaudeFormat>("shell")
   const [codexModel, setCodexModel] = useState<string>("")
   const [geminiModel, setGeminiModel] = useState<string>("")
@@ -103,6 +106,23 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
       setClaudeSmall(catalog.claudeSmall[0]!)
     }
   }, [catalog.claudeSmall, claudeSmall])
+  const selectedClaudeTiers: ClaudeTierSelections = {
+    opus: availableClaudeTierSelection(claudeTiers.opus ?? "", catalog.claudeBig),
+    sonnet: availableClaudeTierSelection(claudeTiers.sonnet ?? "", catalog.claudeBig),
+    haiku: availableClaudeTierSelection(claudeTiers.haiku ?? "", catalog.claudeBig),
+  }
+  useEffect(() => {
+    setClaudeTiers((previous) => {
+      const next: ClaudeTierSelections = {
+        opus: availableClaudeTierSelection(previous.opus ?? "", catalog.claudeBig),
+        sonnet: availableClaudeTierSelection(previous.sonnet ?? "", catalog.claudeBig),
+        haiku: availableClaudeTierSelection(previous.haiku ?? "", catalog.claudeBig),
+      }
+      return next.opus === (previous.opus ?? "") &&
+        next.sonnet === (previous.sonnet ?? "") &&
+        next.haiku === (previous.haiku ?? "") ? previous : next
+    })
+  }, [catalog.claudeBig])
   useEffect(() => {
     if (catalog.codex.length > 0 && !catalog.codex.includes(codexModel)) {
       setCodexModel(catalog.codex[0]!)
@@ -179,6 +199,7 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
                   <Select
                     value={claudeBig}
                     onChange={setClaudeBig}
+                    ariaLabel={t("dash.model")}
                     className="min-w-[220px]"
                     options={catalog.claudeBig.map((m) => ({ value: m, label: m }))}
                   />
@@ -188,10 +209,34 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
                   <Select
                     value={claudeSmall}
                     onChange={setClaudeSmall}
+                    ariaLabel={t("dash.smallFastModel")}
                     className="min-w-[220px]"
                     options={catalog.claudeSmall.map((m) => ({ value: m, label: m }))}
                   />
                 </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
+                {([
+                  { tier: "opus", label: t("dash.claudeDefaultOpusModel") },
+                  { tier: "sonnet", label: t("dash.claudeDefaultSonnetModel") },
+                  { tier: "haiku", label: t("dash.claudeDefaultHaikuModel") },
+                ] as const).map(({ tier, label }) => {
+                  return (
+                    <div key={tier} className="flex items-center gap-2 min-w-0">
+                      <label className="text-xs text-themed-dim whitespace-nowrap">{label}</label>
+                      <Select
+                        value={selectedClaudeTiers[tier] ?? ""}
+                        onChange={(value) => setClaudeTiers((previous) => ({ ...previous, [tier]: value }))}
+                        ariaLabel={label}
+                        className="min-w-[220px]"
+                        options={[
+                          { value: "", label: t("dash.claudeDefaultUnselected") },
+                          ...catalog.claudeBig.map((model) => ({ value: model, label: model })),
+                        ]}
+                      />
+                    </div>
+                  )
+                })}
               </div>
               <div className="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5 mb-3 w-fit">
                 <button
@@ -223,7 +268,7 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
                     {t("dash.addToBashrc")}
                   </p>
                   {(() => {
-                    const txt = claudeCodeShellSnippet(claudeBig, claudeSmall, baseUrl, keyValue, catalog.mappedModelIds)
+                    const txt = claudeCodeShellSnippet(claudeBig, claudeSmall, baseUrl, keyValue, catalog.mappedModelIds, selectedClaudeTiers)
                     return (
                       <CodeBlock
                         language="bash"
@@ -240,7 +285,7 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
                     {t("dash.mergeIntoSettings")}
                   </p>
                   {(() => {
-                    const txt = claudeCodeSettingsSnippet(claudeBig, claudeSmall, baseUrl, keyValue, catalog.mappedModelIds)
+                    const txt = claudeCodeSettingsSnippet(claudeBig, claudeSmall, baseUrl, keyValue, catalog.mappedModelIds, selectedClaudeTiers)
                     return (
                       <CodeBlock
                         language="json"

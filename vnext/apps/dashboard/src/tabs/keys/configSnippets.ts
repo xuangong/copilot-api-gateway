@@ -10,6 +10,26 @@ export interface ClaudeDecomposed {
   context1m: boolean
 }
 
+export interface ClaudeTierSelections {
+  opus?: string
+  sonnet?: string
+  haiku?: string
+}
+
+export function availableClaudeTierSelection(value: string, available: readonly string[]): string {
+  return available.includes(value) ? value : ""
+}
+
+function shellValue(value: string): string {
+  return /^[A-Za-z0-9_./:@%+=,-]+$/.test(value) ? value : "'" + value.replaceAll("'", "'\\''") + "'"
+}
+
+function addClaudeTierDefaults(env: Record<string, string>, tiers: ClaudeTierSelections): void {
+  if (tiers.opus) env.ANTHROPIC_DEFAULT_OPUS_MODEL = tiers.opus
+  if (tiers.sonnet) env.ANTHROPIC_DEFAULT_SONNET_MODEL = tiers.sonnet
+  if (tiers.haiku) env.ANTHROPIC_DEFAULT_HAIKU_MODEL = tiers.haiku
+}
+
 export function decomposeClaudeId(id: string, mappedModelIds: readonly string[] = []): ClaudeDecomposed {
   if (mappedModelIds.includes(id)) return { baseId: id, context1m: false }
   if (!id || !id.startsWith("claude-")) return { baseId: id || "", context1m: false }
@@ -32,26 +52,7 @@ export function decomposeClaudeId(id: string, mappedModelIds: readonly string[] 
   return { baseId: rest, effort, context1m }
 }
 
-export function claudeCodeShellSnippet(big: string, small: string, baseUrl: string, key: string, mappedModelIds: readonly string[] = []): string {
-  const b = decomposeClaudeId(big, mappedModelIds)
-  const s = decomposeClaudeId(small, mappedModelIds)
-  const lines = [
-    "export ANTHROPIC_BASE_URL=" + baseUrl,
-    "export ANTHROPIC_AUTH_TOKEN=" + key,
-    "export ANTHROPIC_MODEL=" + b.baseId,
-    "export ANTHROPIC_SMALL_FAST_MODEL=" + s.baseId,
-  ]
-  const headerParts: string[] = []
-  if (b.context1m) headerParts.push("anthropic-beta: context-1m-2025-08-07")
-  if (b.effort) headerParts.push("x-copilot-reasoning-effort: " + b.effort)
-  if (headerParts.length > 0) {
-    // Bash $'...' (ANSI-C quoting) interprets \n as a real newline.
-    lines.push("export ANTHROPIC_CUSTOM_HEADERS=$'" + headerParts.join("\\n") + "'")
-  }
-  return lines.join("\n")
-}
-
-export function claudeCodeSettingsSnippet(big: string, small: string, baseUrl: string, key: string, mappedModelIds: readonly string[] = []): string {
+export function claudeCodeShellSnippet(big: string, small: string, baseUrl: string, key: string, mappedModelIds: readonly string[] = [], tiers: ClaudeTierSelections = {}): string {
   const b = decomposeClaudeId(big, mappedModelIds)
   const s = decomposeClaudeId(small, mappedModelIds)
   const env: Record<string, string> = {
@@ -60,6 +61,28 @@ export function claudeCodeSettingsSnippet(big: string, small: string, baseUrl: s
     ANTHROPIC_MODEL: b.baseId,
     ANTHROPIC_SMALL_FAST_MODEL: s.baseId,
   }
+  addClaudeTierDefaults(env, tiers)
+  const headerParts: string[] = []
+  if (b.context1m) headerParts.push("anthropic-beta: context-1m-2025-08-07")
+  if (b.effort) headerParts.push("x-copilot-reasoning-effort: " + b.effort)
+  const lines = Object.entries(env).map(([name, value]) => `export ${name}=${shellValue(value)}`)
+  if (headerParts.length > 0) {
+    // Header parts are fixed literals derived from recognized composite suffixes.
+    lines.push("export ANTHROPIC_CUSTOM_HEADERS=$'" + headerParts.join("\\n") + "'")
+  }
+  return lines.join("\n")
+}
+
+export function claudeCodeSettingsSnippet(big: string, small: string, baseUrl: string, key: string, mappedModelIds: readonly string[] = [], tiers: ClaudeTierSelections = {}): string {
+  const b = decomposeClaudeId(big, mappedModelIds)
+  const s = decomposeClaudeId(small, mappedModelIds)
+  const env: Record<string, string> = {
+    ANTHROPIC_BASE_URL: baseUrl,
+    ANTHROPIC_AUTH_TOKEN: key,
+    ANTHROPIC_MODEL: b.baseId,
+    ANTHROPIC_SMALL_FAST_MODEL: s.baseId,
+  }
+  addClaudeTierDefaults(env, tiers)
   const headerParts: string[] = []
   if (b.context1m) headerParts.push("anthropic-beta: context-1m-2025-08-07")
   if (b.effort) headerParts.push("x-copilot-reasoning-effort: " + b.effort)

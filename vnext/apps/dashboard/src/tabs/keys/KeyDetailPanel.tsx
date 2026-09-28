@@ -95,6 +95,7 @@ export function KeyDetailPanel({
       />
 
       <ConfigurationPanel
+        key={keyRow.id}
         keyRow={keyRow}
         catalog={modelCatalogState.catalog}
         catalogLoading={modelCatalogState.loading}
