@@ -1,5 +1,5 @@
 import { api, ApiError } from "./client"
-import { adaptUsageRow, type ServerUsageRow } from "./usage"
+import { adaptUsageRow, fetchUsageOverview, type ServerUsageRow, type UsageOverviewMetrics } from "./usage"
 
 // Shape returned by GET /api/keys (see src/routes/api-keys.ts keyToJson()).
 export interface KeyRefDescriptor {
@@ -165,6 +165,24 @@ export async function getMonthTokenUsage(keyId: string): Promise<TokenUsageRecor
     query: { start: monthStartHour(0), end: monthStartHour(1), key_id: keyId },
   })
   return rows.map(adaptUsageRow)
+}
+
+export async function getMonthUsageTotal(
+  keyId: string,
+  now = new Date(),
+  signal?: AbortSignal,
+): Promise<UsageOverviewMetrics> {
+  const monthStartHour = (delta: number) =>
+    new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + delta, 1)).toISOString().slice(0, 10) + "T00"
+  const overview = await fetchUsageOverview({
+    start: monthStartHour(0),
+    end: monthStartHour(1),
+    key_id: keyId,
+    bucket: "day",
+    axis: "key",
+    limit: 1,
+  }, signal)
+  return overview.total
 }
 
 /** One fixed query run on the key's own engines — see the gateway's

@@ -1,0 +1,124 @@
+// D08 isolated browser fixture: real Gateway, SQLite, sessions, and usage rows.
+// Only the explicit loopback controls below delay or fail an HTTP response.
+import { resolve } from "node:path"
+
+const sourceRoot = process.env.D08_SOURCE_ROOT
+if (!sourceRoot) throw new Error("D08_SOURCE_ROOT is required")
+const root = resolve(sourceRoot)
+const { bootstrapBunPlatform } = await import(`${root}/apps/platform-bun/src/bootstrap.ts`)
+const { app } = await import(`${root}/packages/gateway/src/app.ts`)
+const { getRepo } = await import(`${root}/packages/gateway/src/repo/index.ts`)
+
+bootstrapBunPlatform({ dbPath: `${process.cwd()}/fixture.sqlite`, filesRoot: `${process.cwd()}/files` })
+const repo = getRepo()
+const now = new Date()
+const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
+const hour = (date: Date) => date.toISOString().slice(0, 13)
+const start = hour(monthStart)
+const end = hour(nextMonth)
+const inMonth = hour(new Date(monthStart.getTime() + 3_600_000))
+const createdAt = now.toISOString()
+const users = {
+  viewer: { id: "d08_viewer", email: "d08-viewer@example.invalid" },
+  other: { id: "d08_other", email: "d08-other@example.invalid" },
+  admin: { id: "d08_admin", email: "test@local.dev" },
+} as const
+const tokens = {
+  viewer: `ses_${crypto.randomUUID().replaceAll("-", "")}`,
+  other: `ses_${crypto.randomUUID().replaceAll("-", "")}`,
+  admin: `ses_${crypto.randomUUID().replaceAll("-", "")}`,
+}
+for (const [role, user] of Object.entries(users) as [keyof typeof users, typeof users[keyof typeof users]][]) {
+  await repo.users.create({ id: user.id, name: `D08 ${role}`, email: user.email, createdAt, disabled: false })
+  await repo.sessions.create({ token: tokens[role], userId: user.id, createdAt,
+    authenticatedAt: now.getTime(), expiresAt: new Date(now.getTime() + 3_600_000).toISOString() })
+}
+const keys = { owned: "d08_owned", assigned: "d08_assigned", empty: "d08_empty" } as const
+for (const [kind, id] of Object.entries(keys) as [keyof typeof keys, string][]) {
+  await repo.apiKeys.save({ id, ownerId: kind === "assigned" ? users.other.id : users.viewer.id,
+    name: `D08 ${kind}`, key: `sk_synthetic_${id}`, createdAt, modelMappingsEnabled: false,
+    modelMappings: [], quotaRequestsPerMonth: kind === "owned" ? 10 : 20,
+    quotaTokensPerMonth: kind === "owned" ? 1000 : 2000,
+    quotaCostPerMonth: kind === "owned" ? 1 : 2 })
+}
+await repo.keyAssignments.assign(keys.assigned, users.viewer.id, users.other.id)
+
+const usageRows = [
+  { keyId: keys.owned, incomingModel: "alias-one", model: "model-one", modelKey: "price-one", upstream: "upstream-one",
+    client: "browser", hour: start, requests: 2,
+    tokens: { input: 100, output: 20, input_cache_read: 40, input_cache_write: 8, input_image: 5, output_image: 3 },
+    cost: { input: 0.25, output: 0.5, input_cache_read: 0.02, input_cache_write: 0.1, input_image: 0.4, output_image: 0.6 } },
+  { keyId: keys.owned, incomingModel: "alias-two", model: "model-two", modelKey: "price-two", upstream: "upstream-two",
+    client: "sdk", hour: inMonth, requests: 3,
+    tokens: { input: 50, output: 10, input_cache_read: 20, input_cache_write: 4, input_image: 2, output_image: 1 },
+    cost: { input: 0.1, output: 0.2, input_cache_read: 0.01, input_cache_write: 0.04, input_image: 0.05, output_image: 0.06 } },
+  { keyId: keys.assigned, incomingModel: "alias-shared", model: "model-shared", modelKey: "price-shared", upstream: "upstream-shared",
+    client: "assigned-client", hour: inMonth, requests: 11,
+    tokens: { input: 200, output: 30, input_cache_read: 60, input_cache_write: 10, input_image: 4, output_image: 2 },
+    cost: { input: 0.1, output: 0.2, input_cache_read: 0.01, input_cache_write: 0.02, input_image: 0.03, output_image: 0.04 } },
+] as const
+for (const row of usageRows) await repo.usage.record(row)
+// Boundary row proves the first hour of next month is excluded.
+await repo.usage.record({ ...usageRows[0], hour: end, requests: 99 })
+
+type Hold = { key: string; consumed: boolean; release: () => void; promise: Promise<void> }
+let hold: Hold | null = null
+let failKey: string | null = null
+let heldReached = 0
+let heldForwarded = 0
+let failed = 0
+const observed: Array<{ path: string; key: string | null; start: string | null; end: string | null }> = []
+const controlToken = crypto.randomUUID()
+const server = Bun.serve({ hostname: "127.0.0.1", port: 0, idleTimeout: 255, fetch: async request => {
+  const url = new URL(request.url)
+  if (url.pathname.startsWith("/__fixture/")) {
+    if (request.headers.get("x-fixture-control") !== controlToken) return new Response(null, { status: 403 })
+    if (url.pathname === "/__fixture/state" && request.method === "GET") {
+      return Response.json({ heldReached, heldForwarded, failed, holding: hold !== null, observed })
+    }
+    if (url.pathname === "/__fixture/hold" && request.method === "POST") {
+      const key = url.searchParams.get("key")
+      if (!key || !Object.values(keys).includes(key as typeof keys[keyof typeof keys]) || hold) return new Response(null, { status: 400 })
+      let release = () => {}
+      const promise = new Promise<void>(resolve => { release = resolve })
+      hold = { key, consumed: false, release, promise }
+      return Response.json({ armed: true })
+    }
+    if (url.pathname === "/__fixture/release" && request.method === "POST") {
+      hold?.release()
+      hold = null
+      return Response.json({ released: true })
+    }
+    if (url.pathname === "/__fixture/fail" && request.method === "POST") {
+      const key = url.searchParams.get("key")
+      if (!key || !Object.values(keys).includes(key as typeof keys[keyof typeof keys])) return new Response(null, { status: 400 })
+      failKey = key
+      return Response.json({ armed: true })
+    }
+    return new Response(null, { status: 404 })
+  }
+  if (url.pathname === "/api/token-usage/overview" || url.pathname === "/api/token-usage") {
+    const key = url.searchParams.get("key_id")
+    observed.push({ path: url.pathname, key, start: url.searchParams.get("start"), end: url.searchParams.get("end") })
+    if (url.pathname.endsWith("/overview") && key === hold?.key && !hold.consumed) {
+      const current = hold
+      current.consumed = true
+      heldReached++
+      await current.promise
+      heldForwarded++
+    }
+    if (url.pathname.endsWith("/overview") && key === failKey) {
+      failKey = null
+      failed++
+      return Response.json({ error: "Synthetic D08 quota failure" }, { status: 503 })
+    }
+  }
+  return app.fetch(request)
+} })
+await Bun.write(`${process.cwd()}/connection.json`, JSON.stringify({ port: server.port, tokens, keys,
+  range: { start, end }, controlToken, sourceRoot: root, pid: process.pid }))
+console.log(`D08 fixture ready on 127.0.0.1:${server.port}`)
+const stop = () => { hold?.release(); server.stop(true); process.exit(0) }
+process.once("SIGTERM", stop)
+process.once("SIGINT", stop)

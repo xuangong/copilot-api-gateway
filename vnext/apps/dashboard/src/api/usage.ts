@@ -136,6 +136,6 @@ export interface UsageOverview {
     readonly nextCursor: string | null
   }
 }
-export function fetchUsageOverview(query: UsageOverviewQuery): Promise<UsageOverview> {
-  return api<UsageOverview>("/api/token-usage/overview", { query: { ...query } })
+export function fetchUsageOverview(query: UsageOverviewQuery, signal?: AbortSignal): Promise<UsageOverview> {
+  return api<UsageOverview>("/api/token-usage/overview", { query: { ...query }, signal })
 }

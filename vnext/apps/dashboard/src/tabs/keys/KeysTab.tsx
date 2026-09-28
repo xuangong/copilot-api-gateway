@@ -137,6 +137,8 @@ export function KeysTab() {
           isUser={isUser}
           busy={!!store.busy[store.selectedKey.id]}
           quotaUsage={store.quotaUsage}
+          quotaLoad={store.quotaLoad}
+          onQuotaRetry={store.retryQuota}
           wsUsage={store.wsUsage}
           wsUsageRange={store.wsUsageRange}
           onWsUsageRangeChange={store.setWsUsageRange}

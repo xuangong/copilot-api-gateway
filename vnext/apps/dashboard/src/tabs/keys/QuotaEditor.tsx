@@ -2,11 +2,13 @@ import { useState } from "react"
 import type { ApiKeyDetail } from "../../api/keys"
 import { WEIGHTED_FORMULA_PARTS, formatWeight } from "../../components/weighted-formula"
 import { useT } from "../../state/i18n"
-import type { QuotaUsage } from "../../state/keys"
+import type { QuotaLoad, QuotaUsage } from "../../state/key-quota"
 
 interface Props {
   keyRow: ApiKeyDetail
-  usage: QuotaUsage
+  usage: QuotaUsage | null
+  load: QuotaLoad
+  onRetry: () => void
   canEdit: boolean
   busy: boolean
   onSave: (req: number | null, token: number | null, cost: number | null) => Promise<boolean>
@@ -26,7 +28,7 @@ function unlimitedFillPercent(used: number): number {
   return Math.max(3, Math.min(95, pct))
 }
 
-export function QuotaEditor({ keyRow, usage, canEdit, busy, onSave }: Props) {
+export function QuotaEditor({ keyRow, usage, load, onRetry, canEdit, busy, onSave }: Props) {
   const [editing, setEditing] = useState(false)
   const [reqInput, setReqInput] = useState<string>("")
   const [tokenInput, setTokenInput] = useState<string>("")
@@ -122,6 +124,18 @@ export function QuotaEditor({ keyRow, usage, canEdit, busy, onSave }: Props) {
         </div>
       ) : null}
 
+      {load.status === "loading" ? (
+        <p role="status" className="text-xs text-themed-dim mb-3">
+          {t(usage ? "dash.quotaRefreshingStale" : "dash.quotaLoading")}
+        </p>
+      ) : null}
+      {load.status === "error" ? (
+        <div role="alert" className="flex items-center gap-3 text-xs text-accent-red mb-3">
+          <span>{t(usage ? "dash.quotaErrorStale" : "dash.quotaError")}: {load.error}</span>
+          <button type="button" onClick={onRetry} className="btn-ghost text-xs">{t("dash.quotaRetry")}</button>
+        </div>
+      ) : null}
+      {usage ? <>
       <div className="mb-5">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-themed-secondary">{t("dash.requestsPerMonthLabel")}</span>
@@ -241,6 +255,17 @@ export function QuotaEditor({ keyRow, usage, canEdit, busy, onSave }: Props) {
         )}
       </div>
 
+      </> : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 text-xs text-themed-dim">
+          <p>{t("dash.requestsPerMonthLabel")}: — / {keyRow.quota_requests_per_month ?? "∞"}</p>
+          <p>{t("dash.weightedTokensPerMonthLabel")}: — / {keyRow.quota_tokens_per_month ?? "∞"}</p>
+          <p>{t("dash.costPerMonthLabel")}: — / {keyRow.quota_cost_per_month ?? "∞"}</p>
+        </div>
+      )}
+      {usage && usage.unpricedDimensionRows > 0 ? (
+        <p className="text-[10px] text-themed-dim mb-3">{t("dash.quotaUnpriced", { rows: usage.unpricedDimensionRows })}</p>
+      ) : null}
+      <p className="text-[10px] text-themed-dim mb-3">{t("dash.quotaRecordedCost")}</p>
       <div className="rounded-lg bg-surface-800/60 border border-white/[0.04] p-3">
         <p className="text-[10px] text-themed-dim leading-relaxed">
           <span className="text-themed-secondary font-medium">{t("dash.tokenQuotaFormulaLabel")}</span>

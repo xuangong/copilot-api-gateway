@@ -1,5 +1,5 @@
 import type { ApiKeyDetail, KeyPatchBody, WebSearchRange, WebSearchUsage } from "../../api/keys"
-import type { QuotaUsage } from "../../state/keys"
+import type { QuotaLoad, QuotaUsage } from "../../state/key-quota"
 import { useModelCatalog } from "../../state/models"
 import { AssigneesPanel, SharedByOwnerPanel } from "./AssigneesPanel"
 import { ConfigurationPanel } from "./ConfigurationPanel"
@@ -14,7 +14,9 @@ interface Props {
   isAdmin: boolean
   isUser: boolean
   busy: boolean
-  quotaUsage: QuotaUsage
+  quotaUsage: QuotaUsage | null
+  quotaLoad: QuotaLoad
+  onQuotaRetry: () => void
   wsUsage: WebSearchUsage
   wsUsageRange: WebSearchRange
   onWsUsageRangeChange: (r: WebSearchRange) => void
@@ -31,6 +33,8 @@ export function KeyDetailPanel({
   isUser,
   busy,
   quotaUsage,
+  quotaLoad,
+  onQuotaRetry,
   wsUsage,
   wsUsageRange,
   onWsUsageRangeChange,
@@ -54,6 +58,8 @@ export function KeyDetailPanel({
       <QuotaEditor
         keyRow={keyRow}
         usage={quotaUsage}
+        load={quotaLoad}
+        onRetry={onQuotaRetry}
         canEdit={canManage}
         busy={busy}
         onSave={async (req, token, cost) =>

@@ -1,0 +1,186 @@
+{
+  "result": "passed",
+  "sourceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext",
+  "range": {
+    "start": "2026-09-01T00",
+    "end": "2026-10-01T00"
+  },
+  "expected": {
+    "d08_owned": {
+      "requests": 5,
+      "weighted": 348,
+      "cost": 4.792e-05
+    },
+    "d08_assigned": {
+      "requests": 11,
+      "weighted": 382.5,
+      "cost": 2.7000000000000002e-05
+    },
+    "d08_empty": {
+      "requests": 0,
+      "weighted": 0,
+      "cost": 0
+    }
+  },
+  "overviewRequestCount": 11,
+  "detailRequestCount": 0,
+  "legacyViewerDetail": {
+    "requests": 16,
+    "weighted": 730.5,
+    "cost": 7.492e-05
+  },
+  "fixture": {
+    "heldReached": 2,
+    "heldForwarded": 2,
+    "failed": 2,
+    "holding": false,
+    "observed": [
+      {
+        "path": "/api/token-usage",
+        "key": "d08_owned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_owned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_owned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage",
+        "key": "d08_assigned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_assigned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_assigned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage",
+        "key": "d08_empty",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_empty",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_empty",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_owned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage",
+        "key": "d08_owned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_owned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_assigned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_owned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_empty",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_empty",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_owned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_owned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_owned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_owned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_owned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      },
+      {
+        "path": "/api/token-usage",
+        "key": null,
+        "start": "2026-09-28T16",
+        "end": "2026-09-29T16"
+      },
+      {
+        "path": "/api/token-usage",
+        "key": null,
+        "start": "2026-09-28T00",
+        "end": "2026-09-29T00"
+      },
+      {
+        "path": "/api/token-usage/overview",
+        "key": "d08_owned",
+        "start": "2026-09-01T00",
+        "end": "2026-10-01T00"
+      }
+    ]
+  },
+  "browserErrors": 0,
+  "fixtureStopped": true
+}

@@ -1,32 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { computeWeightedTokens } from "@vibe-llm/protocols/quota"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useToast } from "./toast"
 import * as api from "../api/keys"
 import type { ApiKeyDetail, WebSearchRange, WebSearchUsage } from "../api/keys"
-
-export interface QuotaUsage {
-  reqLimit: number | null
-  reqUsed: number
-  reqPercent: number
-  tokenLimit: number | null
-  tokenUsed: number
-  tokenPercent: number
-  costLimit: number | null
-  costUsed: number
-  costPercent: number
-}
-
-const ZERO_QUOTA: QuotaUsage = {
-  reqLimit: null,
-  reqUsed: 0,
-  reqPercent: 0,
-  tokenLimit: null,
-  tokenUsed: 0,
-  tokenPercent: 0,
-  costLimit: null,
-  costUsed: 0,
-  costPercent: 0,
-}
+import { beginQuotaLoad, failQuotaLoad, finishQuotaLoad, IDLE_QUOTA, projectQuotaUsage, type QuotaLoad } from "./key-quota"
 
 const ZERO_WS_USAGE: WebSearchUsage = {
   range: "1d",
@@ -53,7 +29,10 @@ export function useKeys() {
   const [creating, setCreating] = useState(false)
   const [justCreated, setJustCreated] = useState<JustCreatedKey | null>(null)
 
-  const [quotaUsage, setQuotaUsage] = useState<QuotaUsage>(ZERO_QUOTA)
+  const [quotaLoad, setQuotaLoad] = useState<QuotaLoad>(IDLE_QUOTA)
+  const [quotaRetry, setQuotaRetry] = useState(0)
+  const [quotaReload, setQuotaReload] = useState(0)
+  const quotaRequestId = useRef(0)
   const [wsUsage, setWsUsage] = useState<WebSearchUsage>(ZERO_WS_USAGE)
   const [wsUsageRange, setWsUsageRangeState] = useState<WebSearchRange>("1d")
 
@@ -62,6 +41,7 @@ export function useKeys() {
     try {
       const list = await api.listKeys()
       setKeys(list)
+      setQuotaReload((n) => n + 1)
       setSelectedKeyId((cur) => (cur && list.some((k) => k.id === cur) ? cur : cur))
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "error")
@@ -200,64 +180,40 @@ export function useKeys() {
     [reload, toast],
   )
 
-  // Recompute quota usage whenever the selected key changes.
+  const retryQuota = useCallback(() => setQuotaRetry((n) => n + 1), [])
+  const selectedQuotaKeyId = selectedKey?.id
+
+  // Keep the last successful total only while the same key is selected.
   useEffect(() => {
-    let cancelled = false
-    if (!selectedKey) {
-      setQuotaUsage(ZERO_QUOTA)
+    const requestId = ++quotaRequestId.current
+    if (!selectedQuotaKeyId) {
+      setQuotaLoad(IDLE_QUOTA)
       return
     }
-    const reqLimit = selectedKey.quota_requests_per_month ?? null
-    const tokenLimit = selectedKey.quota_tokens_per_month ?? null
-    const costLimit = selectedKey.quota_cost_per_month ?? null
+    const controller = new AbortController()
+    const keyId = selectedQuotaKeyId
+    setQuotaLoad((previous) => beginQuotaLoad(previous, keyId, requestId))
     api
-      .getMonthTokenUsage(selectedKey.id)
-      .then((records) => {
-        if (cancelled) return
-        let reqUsed = 0
-        let weightedTokens = 0
-        let costUsed = 0
-        for (const r of records) {
-          reqUsed += r.requests
-          weightedTokens += computeWeightedTokens(
-            r.cacheReadTokens ?? 0,
-            r.cacheCreationTokens ?? 0,
-            r.inputTokens ?? 0,
-            r.outputTokens ?? 0,
-          )
-          costUsed += r.cost?.totalUSD ?? 0
+      .getMonthUsageTotal(keyId, new Date(), controller.signal)
+      .then((total) => {
+        if (!controller.signal.aborted && quotaRequestId.current === requestId) {
+          setQuotaLoad((previous) => finishQuotaLoad(previous, keyId, requestId, total))
         }
-        setQuotaUsage({
-          reqLimit,
-          reqUsed,
-          reqPercent: reqLimit ? Math.round((reqUsed / reqLimit) * 100) : 0,
-          tokenLimit,
-          tokenUsed: weightedTokens,
-          tokenPercent: tokenLimit ? Math.round((weightedTokens / tokenLimit) * 100) : 0,
-          costLimit,
-          costUsed,
-          costPercent: costLimit ? Math.round((costUsed / costLimit) * 100) : 0,
-        })
       })
-      .catch(() => {
-        if (!cancelled) {
-          setQuotaUsage({
-            reqLimit,
-            reqUsed: 0,
-            reqPercent: 0,
-            tokenLimit,
-            tokenUsed: 0,
-            tokenPercent: 0,
-            costLimit,
-            costUsed: 0,
-            costPercent: 0,
-          })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted && quotaRequestId.current === requestId) {
+          setQuotaLoad((previous) => failQuotaLoad(previous, keyId, requestId, error instanceof Error ? error.message : String(error)))
         }
       })
     return () => {
-      cancelled = true
+      controller.abort()
     }
-  }, [selectedKey])
+  }, [selectedQuotaKeyId, quotaRetry, quotaReload])
+
+  const selectedQuotaLoad = quotaLoad.keyId === selectedKey?.id ? quotaLoad : IDLE_QUOTA
+  const quotaUsage = selectedKey && selectedQuotaLoad.total
+    ? projectQuotaUsage(selectedKey, selectedQuotaLoad.total)
+    : null
 
   // Recompute web-search usage when selected key or range changes.
   useEffect(() => {
@@ -294,6 +250,8 @@ export function useKeys() {
     setSelectedKeyId,
     selectedKey,
     quotaUsage,
+    quotaLoad: selectedQuotaLoad,
+    retryQuota,
     wsUsage,
     wsUsageRange,
     setWsUsageRange,

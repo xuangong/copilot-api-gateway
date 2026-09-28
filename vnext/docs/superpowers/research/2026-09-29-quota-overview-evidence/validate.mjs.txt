@@ -1,0 +1,216 @@
+import { chromium } from "/Users/zhangxian/.nvm/versions/node/v22.23.2/lib/node_modules/playwright/index.mjs"
+import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
+import { dirname, join } from "node:path"
+
+const connection = process.env.D08_CONNECTION
+if (!connection) throw new Error("D08_CONNECTION is required")
+const runDir = dirname(connection)
+const { port, tokens, keys, range, controlToken, sourceRoot } = JSON.parse(readFileSync(connection, "utf8"))
+const base = `http://127.0.0.1:${port}`
+const browser = await chromium.launch({ headless: true })
+const errors = []
+const overviewRequests = []
+const detailRequests = []
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
+const close = (actual, expected, label) => assert.ok(
+  Math.abs(actual - expected) <= Math.max(1e-12, Math.abs(expected) * 1e-10),
+  `${label}: ${actual} != ${expected}`,
+)
+
+try {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1100 } })
+  await context.addCookies([{ name: "session_token", value: tokens.viewer, domain: "127.0.0.1", path: "/" }])
+  const other = await browser.newContext()
+  await other.addCookies([{ name: "session_token", value: tokens.other, domain: "127.0.0.1", path: "/" }])
+  const admin = await browser.newContext()
+  await admin.addCookies([{ name: "session_token", value: tokens.admin, domain: "127.0.0.1", path: "/" }])
+  const control = async (command, key) => {
+    const url = `${base}/__fixture/${command}${key ? `?key=${encodeURIComponent(key)}` : ""}`
+    const response = await context.request.fetch(url, {
+      method: command === "state" ? "GET" : "POST",
+      headers: { "x-fixture-control": controlToken },
+    })
+    assert.equal(response.status(), 200, `fixture control ${command}`)
+    return response.json()
+  }
+  const waitUntil = async (predicate, label) => {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (await predicate()) return
+      await delay(50)
+    }
+    assert.fail(`timed out waiting for ${label}`)
+  }
+  const quotaUrl = (key, overview) => {
+    const url = new URL(`${base}/api/token-usage${overview ? "/overview" : ""}`)
+    url.searchParams.set("start", range.start)
+    url.searchParams.set("end", range.end)
+    url.searchParams.set("key_id", key)
+    if (overview) {
+      url.searchParams.set("bucket", "day")
+      url.searchParams.set("axis", "key")
+      url.searchParams.set("limit", "1")
+    }
+    return url.toString()
+  }
+  const fetchJson = async (request, url) => {
+    const response = await request.get(url)
+    assert.equal(response.status(), 200, url)
+    return response.json()
+  }
+  const projectDetail = rows => rows.reduce((sum, row) => {
+    const t = row.tokens ?? {}
+    const input = (t.input ?? 0) + (t.input_image ?? 0)
+    const output = (t.output ?? 0) + (t.output_image ?? 0)
+    sum.requests += row.requests ?? 0
+    sum.weighted += (t.input_cache_read ?? 0) * .1 + (t.input_cache_write ?? 0) * 1.25 + input + output * 5
+    sum.cost += typeof row.cost === "number" ? row.cost : row.cost?.totalUSD ?? 0
+    return sum
+  }, { requests: 0, weighted: 0, cost: 0 })
+  const projectOverview = data => ({ requests: data.total.requests,
+    weighted: data.total.cacheRead * .1 + data.total.cacheCreation * 1.25 + data.total.input + data.total.output * 5,
+    cost: data.total.costUSD })
+  const expected = {}
+  for (const key of Object.values(keys)) {
+    const [detail, overview] = await Promise.all([
+      fetchJson(admin.request, quotaUrl(key, false)),
+      fetchJson(admin.request, quotaUrl(key, true)),
+    ])
+    const old = projectDetail(detail)
+    const next = projectOverview(overview)
+    assert.equal(next.requests, old.requests, `${key} requests`)
+    close(next.weighted, old.weighted, `${key} weighted tokens`)
+    close(next.cost, old.cost, `${key} recorded cost`)
+    assert.equal(overview.total.hasRecords, key !== keys.empty)
+    expected[key] = next
+    const viewerOverview = await fetchJson(context.request, quotaUrl(key, true))
+    assert.deepEqual(projectOverview(viewerOverview), next, `viewer overview for ${key}`)
+  }
+  assert.equal(expected[keys.owned].requests, 5, "next-month boundary must be exclusive")
+  assert.equal(expected[keys.assigned].requests, 11)
+  assert.equal(expected[keys.empty].requests, 0)
+  const forbidden = await fetchJson(other.request, quotaUrl(keys.owned, true))
+  assert.equal(forbidden.total.hasRecords, false, "out-of-scope key has empty overview")
+  assert.equal(forbidden.total.requests, 0)
+  // The old ordinary-session detail endpoint ignores key_id and returns all
+  // accessible keys. Keep this measured discrepancy separate from per-key SQL
+  // arithmetic parity above; the selected-key browser consumer must be scoped.
+  const legacyViewerDetail = projectDetail(await fetchJson(context.request, quotaUrl(keys.owned, false)))
+  assert.equal(legacyViewerDetail.requests, 16, "record inherited ordinary-session detail scope discrepancy")
+
+  const page = await context.newPage()
+  page.on("pageerror", error => errors.push(error.message))
+  page.on("request", request => {
+    const url = new URL(request.url())
+    if (url.pathname === "/api/token-usage/overview" && url.searchParams.has("key_id")) overviewRequests.push(url)
+    if (url.pathname === "/api/token-usage" && url.searchParams.has("key_id")) detailRequests.push(url)
+  })
+  await page.goto(`${base}/dashboard#keys`)
+  const keyRow = kind => page.getByRole("row").filter({ hasText: `D08 ${kind}` })
+  const quota = page.locator(".glass-card").filter({ hasText: /Monthly quota|每月配额/ })
+  const quotaText = async () => await quota.innerText()
+  const isUsed = async (key, limit) => {
+    const text = await quotaText()
+    const used = expected[key]
+    assert.match(text, new RegExp(`${used.requests}\\s*\\/\\s*${limit}`), `requests for ${key}`)
+    assert.match(text, new RegExp(`${Math.round(used.weighted).toLocaleString()}\\s*\\/`), `weighted tokens for ${key}`)
+    assert.match(text, new RegExp(`\\$${used.cost.toFixed(4)}\\s*\\/`), `recorded cost for ${key}`)
+  }
+  const assertNetwork = () => {
+    assert.equal(detailRequests.length, 0, "Keys quota must not fetch selected-key detail")
+    assert.ok(overviewRequests.length > 0, "Keys quota must fetch overview")
+    for (const url of overviewRequests) {
+      assert.equal(url.searchParams.get("start"), range.start)
+      assert.equal(url.searchParams.get("end"), range.end)
+      assert.equal(url.searchParams.get("bucket"), "day")
+      assert.equal(url.searchParams.get("axis"), "key")
+      assert.equal(url.searchParams.get("limit"), "1")
+      assert.ok(Object.values(keys).includes(url.searchParams.get("key_id")))
+      assert.equal(url.searchParams.has("as_user"), false)
+    }
+  }
+  await keyRow("owned").waitFor()
+  await keyRow("assigned").waitFor()
+  await keyRow("empty").waitFor()
+
+  // First selection has no cached result. Hold A, then let B complete before A.
+  await control("hold", keys.owned)
+  await keyRow("owned").click()
+  await quota.getByRole("status").filter({ hasText: /Loading this month|正在加载本月用量/ }).waitFor()
+  assert.match(await quotaText(), /—\s*\//, "loading without cache renders unavailable used values")
+  await waitUntil(async () => (await control("state")).heldReached === 1, "held A overview")
+  await keyRow("assigned").click()
+  await waitUntil(async () => (await quotaText()).includes("11 / 20"), "B quota ready")
+  await isUsed(keys.assigned, 20)
+  await control("release")
+  await waitUntil(async () => (await control("state")).heldForwarded === 1, "old A released to real Gateway")
+  await delay(150)
+  await isUsed(keys.assigned, 20)
+  assert.doesNotMatch(await quotaText(), /5\s*\/\s*10/, "late A cannot overwrite B")
+
+  // A fresh owned selection succeeds, then a never-loaded empty key fails before a real zero retry.
+  await keyRow("owned").click()
+  await waitUntil(async () => (await quotaText()).includes("5 / 10"), "A quota ready")
+  await isUsed(keys.owned, 10)
+  await quota.screenshot({ path: join(runDir, "owned-quota-ready.png") })
+  await control("fail", keys.empty)
+  await keyRow("empty").click()
+  await quota.getByRole("alert").filter({ hasText: /Synthetic D08 quota failure/ }).waitFor()
+  assert.match(await quotaText(), /—\s*\/\s*20/, "failed empty-key usage is unavailable")
+  assert.doesNotMatch(await quotaText(), /5\s*\/\s*10|0\s*\/\s*20/, "error is neither old A nor known zero")
+  await quota.screenshot({ path: join(runDir, "empty-quota-error.png") })
+  await quota.getByRole("button", { name: /Retry usage|重试用量查询/i }).click()
+  await waitUntil(async () => (await quotaText()).includes("0 / 20"), "empty scoped retry ready")
+  await isUsed(keys.empty, 20)
+
+  // Editing an owned limit refreshes the same key. A newer refresh must win over an older held one.
+  await keyRow("owned").click()
+  await waitUntil(async () => (await quotaText()).includes("5 / 10"), "A before edit")
+  await control("hold", keys.owned)
+  await quota.getByRole("button", { name: /^Edit$|^编辑$/i }).click()
+  await quota.locator('input[type="number"]').first().fill("12")
+  await quota.getByRole("button", { name: /^Save$|^保存$/i }).click()
+  await waitUntil(async () => (await control("state")).heldReached === 2, "same-key held refresh")
+  await quota.getByRole("status").filter({ hasText: /Refreshing usage|正在刷新用量/ }).waitFor()
+  assert.match(await quotaText(), /5\s*\/\s*12/, "same-key stale count shown with edited limit")
+  await quota.getByRole("button", { name: /^Edit$|^编辑$/i }).click()
+  await quota.locator('input[type="number"]').first().fill("15")
+  await quota.getByRole("button", { name: /^Save$|^保存$/i }).click()
+  await waitUntil(async () => (await quotaText()).includes("5 / 15"), "newer same-key refresh ready")
+  await quota.getByRole("status").filter({ hasText: /Refreshing usage|正在刷新用量/ }).waitFor({ state: "detached" })
+  await control("release")
+  await waitUntil(async () => (await control("state")).heldForwarded === 2, "older same-key refresh released")
+  await delay(150)
+  await isUsed(keys.owned, 15)
+
+  // A failed same-key refresh keeps the previous valid answer, labels it stale, and retries.
+  await control("fail", keys.owned)
+  await quota.getByRole("button", { name: /^Edit$|^编辑$/i }).click()
+  await quota.locator('input[type="number"]').first().fill("18")
+  await quota.getByRole("button", { name: /^Save$|^保存$/i }).click()
+  await quota.getByRole("alert").filter({ hasText: /Synthetic D08 quota failure/ }).waitFor()
+  assert.match(await quotaText(), /5\s*\/\s*18/, "same-key stale count retained after error")
+  await quota.getByRole("button", { name: /Retry usage|重试用量查询/i }).click()
+  await waitUntil(async () => (await quotaText()).includes("5 / 18"), "same-key retry ready")
+  await quota.getByRole("alert").filter({ hasText: /Synthetic D08 quota failure/ }).waitFor({ state: "detached" })
+
+  await keyRow("owned").click()
+  assert.equal(await quota.count(), 0, "deselect removes quota panel")
+  assertNetwork()
+
+  // Change the actual Usage preference, then select quota again and inspect its request range.
+  const requestsBeforeZone = overviewRequests.length
+  await page.goto(`${base}/dashboard#usage`)
+  await page.getByRole("button", { name: /^UTC$/ }).click()
+  assert.equal(await page.evaluate(() => localStorage.getItem("usage.timeZone")), "utc")
+  await page.goto(`${base}/dashboard#keys`)
+  await keyRow("owned").click()
+  await waitUntil(async () => (await quotaText()).includes("5 / 18"), "UTC preference quota ready")
+  assert.ok(overviewRequests.length > requestsBeforeZone)
+  assertNetwork()
+  assert.deepEqual(errors, [])
+  console.log(JSON.stringify({ result: "passed", sourceRoot, range, expected, overviewRequestCount: overviewRequests.length,
+    detailRequestCount: detailRequests.length, legacyViewerDetail, fixture: await control("state"), browserErrors: errors.length }, null, 2))
+} finally {
+  await browser.close()
+}
