@@ -2,6 +2,18 @@
 
 User-approved scope: fix the measured resource regression and old/new catalog/affinity rollback incompatibility. This implements the P0 actions in the September 30 measurement report. No production rollout, destructive restore, or credential rotation. Main-tree user changes and original frozen benchmark artifacts must remain unchanged.
 
+## Current checkpoint
+
+- [x] Implement and independently review the resource repairs through `12a7a762`, preserving the original collaboration overlay.
+- [x] Run exact frozen full CI: 5,240 passed, 2 skipped, 0 failed; other CI stages passed. Same-lock dependency reuse remains a clean-install gap.
+- [x] Complete the declared ordinary 4,000-request comparison: all semantic/transport and exactly-once checks pass. Resource acceptance fails CPU p50 in 2/5 pairs, memory p99 in 4/5, and client p95 in 3/10 cells. CPU p95 improves in all five pairs without overriding those failures.
+- [x] Repeat large-body and altered-history checks: 80/80 ascending and 20/20 reversed-order successes; all dispatches exactly once, twenty success-only sampled windows, unchanged delayed-refresh hashes.
+- [x] Record all favorable and adverse results, source/runtime boundaries and current architecture ruling in the [resource evidence](../research/2026-09-30-cfw-resource-remediation/README.md).
+- [ ] Identify and reduce remaining ordinary allocation/background holding costs with controlled capture and frame/read diagnostics. Task 1 remains open.
+- [ ] Pass joint enabled-feature resource qualification, remaining fault/cancellation/protocol coverage and one-hour mixed soak.
+- [ ] Complete catalog legacy-writer and affinity rollback compatibility (Tasks 2 and 3).
+- [ ] Complete combined qualification and integrate reviewed passing work into vNext (Task 4). No production deployment or push in this phase.
+
 ## Acceptance
 
 - Joint CFW resource acceptance must balance response time, CPU and memory under unchanged feature/retention settings. Shorter background wall time cannot cancel CPU or memory regression. Keep the original paired gates and distinguish sampled shared-isolate memory from a per-request upper bound.
