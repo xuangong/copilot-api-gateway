@@ -1,0 +1,195 @@
+RUN 1
+{"encrypted":false,"status":200,"statusSeen":200,"content":"early-tail","generated":1507328,"cancelled":1,"closes":1}
+{"encrypted":false,"status":413,"statusSeen":413,"content":"early-tail","generated":1441792,"cancelled":1,"closes":1}
+{
+  cipherSuite: "TLS_AES_256_GCM_SHA384",
+  connTlsVersion: "TLS1_3",
+  selectedAlpn: undefined,
+} processed server hello
+{
+  keyType: "SECP256R1",
+} computed shared keys
+received change cipher spec
+{
+  len: 6,
+  extData: {},
+} received encrypted extensions
+{
+  len: 1,
+} parsed certificates
+{
+  len: 260,
+} received certificate verify
+{
+  alg: "RSA_PSS_RSAE_SHA256",
+} parsed certificate verify
+received server finish
+server finish verified
+{
+  len: 396,
+} received session ticket
+{
+  len: 396,
+} received session ticket
+{"encrypted":true,"status":200,"statusSeen":200,"content":"early-tail","generated":65536,"cancelled":1,"closes":1}
+{
+  cipherSuite: "TLS_AES_256_GCM_SHA384",
+  connTlsVersion: "TLS1_3",
+  selectedAlpn: undefined,
+} processed server hello
+{
+  keyType: "SECP256R1",
+} computed shared keys
+received change cipher spec
+{
+  len: 6,
+  extData: {},
+} received encrypted extensions
+{
+  len: 1,
+} parsed certificates
+{
+  len: 260,
+} received certificate verify
+{
+  alg: "RSA_PSS_RSAE_SHA256",
+} parsed certificate verify
+received server finish
+server finish verified
+{
+  len: 396,
+} received session ticket
+{
+  len: 396,
+} received session ticket
+{"encrypted":true,"status":413,"statusSeen":413,"content":"early-tail","generated":65536,"cancelled":1,"closes":1}
+RUN 2
+{"encrypted":false,"status":200,"statusSeen":200,"content":"early-tail","generated":2490368,"cancelled":1,"closes":1}
+{"encrypted":false,"status":413,"statusSeen":413,"content":"early-tail","generated":1245184,"cancelled":1,"closes":1}
+{
+  cipherSuite: "TLS_AES_256_GCM_SHA384",
+  connTlsVersion: "TLS1_3",
+  selectedAlpn: undefined,
+} processed server hello
+{
+  keyType: "SECP256R1",
+} computed shared keys
+received change cipher spec
+{
+  len: 6,
+  extData: {},
+} received encrypted extensions
+{
+  len: 1,
+} parsed certificates
+{
+  len: 260,
+} received certificate verify
+{
+  alg: "RSA_PSS_RSAE_SHA256",
+} parsed certificate verify
+received server finish
+server finish verified
+{
+  len: 396,
+} received session ticket
+{
+  len: 396,
+} received session ticket
+{"encrypted":true,"status":200,"statusSeen":200,"content":"early-tail","generated":65536,"cancelled":1,"closes":1}
+{
+  cipherSuite: "TLS_AES_256_GCM_SHA384",
+  connTlsVersion: "TLS1_3",
+  selectedAlpn: undefined,
+} processed server hello
+{
+  keyType: "SECP256R1",
+} computed shared keys
+received change cipher spec
+{
+  len: 6,
+  extData: {},
+} received encrypted extensions
+{
+  len: 1,
+} parsed certificates
+{
+  len: 260,
+} received certificate verify
+{
+  alg: "RSA_PSS_RSAE_SHA256",
+} parsed certificate verify
+received server finish
+server finish verified
+{
+  len: 396,
+} received session ticket
+{
+  len: 396,
+} received session ticket
+{"encrypted":true,"status":413,"statusSeen":413,"content":"early-tail","generated":65536,"cancelled":1,"closes":1}
+RUN 3
+{"encrypted":false,"status":200,"statusSeen":200,"content":"early-tail","generated":2490368,"cancelled":1,"closes":1}
+{"encrypted":false,"status":413,"statusSeen":413,"content":"early-tail","generated":1703936,"cancelled":1,"closes":1}
+{
+  cipherSuite: "TLS_AES_256_GCM_SHA384",
+  connTlsVersion: "TLS1_3",
+  selectedAlpn: undefined,
+} processed server hello
+{
+  keyType: "SECP256R1",
+} computed shared keys
+received change cipher spec
+{
+  len: 6,
+  extData: {},
+} received encrypted extensions
+{
+  len: 1,
+} parsed certificates
+{
+  len: 260,
+} received certificate verify
+{
+  alg: "RSA_PSS_RSAE_SHA256",
+} parsed certificate verify
+received server finish
+server finish verified
+{
+  len: 396,
+} received session ticket
+{
+  len: 396,
+} received session ticket
+{"encrypted":true,"status":200,"statusSeen":200,"content":"early-tail","generated":65536,"cancelled":1,"closes":1}
+{
+  cipherSuite: "TLS_AES_256_GCM_SHA384",
+  connTlsVersion: "TLS1_3",
+  selectedAlpn: undefined,
+} processed server hello
+{
+  keyType: "SECP256R1",
+} computed shared keys
+received change cipher spec
+{
+  len: 6,
+  extData: {},
+} received encrypted extensions
+{
+  len: 1,
+} parsed certificates
+{
+  len: 260,
+} received certificate verify
+{
+  alg: "RSA_PSS_RSAE_SHA256",
+} parsed certificate verify
+received server finish
+server finish verified
+{
+  len: 396,
+} received session ticket
+{
+  len: 396,
+} received session ticket
+{"encrypted":true,"status":413,"statusSeen":413,"content":"early-tail","generated":65536,"cancelled":1,"closes":1}

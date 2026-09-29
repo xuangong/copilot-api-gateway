@@ -10,7 +10,7 @@ import { dialSocks5 } from './protocols/socks5.ts';
 import { dialTrojan } from './protocols/trojan.ts';
 import { dialVlessTcpTls, dialVlessWsTls } from './protocols/vless.ts';
 import type { ProxyConfig } from './proxy-config.ts';
-import type { DialedSocket, DialOptions, DialResult, DialTarget, ProxyRequestTarget } from './types.ts';
+import type { DialedSocket, DialOptions, DialResult, DialTarget, ProxyRequestTarget, SocketDial } from './types.ts';
 import { fetchOnStream, signalAbortReason, userspaceTls, type DuplexStream, type HttpRequest, type TlsStream } from '@vibe-core/http';
 
 /**
@@ -119,8 +119,32 @@ export const runProxiedRequest = async (
   request: HttpRequest,
   options: RunProxiedRequestOptions,
 ): Promise<Response> => {
-  const dialed = await dial(config, target, options);
-  return await runRequestOnStream(dialed, target, request, options);
+  const sockets = new Set<DialedSocket>();
+  let closed = false;
+  let closePromise: Promise<void> | undefined;
+  const close = (): Promise<void> => {
+    if (!closePromise) {
+      closed = true;
+      closePromise = Promise.allSettled([...sockets].map(socket => socket.close())).then(() => {});
+    }
+    return closePromise;
+  };
+  const socketDial: SocketDial = {
+    ...options.socketDial,
+    async connect(host, port, dialOptions) {
+      const socket = await options.socketDial.connect(host, port, dialOptions);
+      sockets.add(socket);
+      if (closed) await socket.close();
+      return socket;
+    },
+  };
+  try {
+    const dialed = await dial(config, target, { ...options, socketDial });
+    return await runRequestOnStream(dialed, target, request, options, close);
+  } catch (error) {
+    await close();
+    throw error;
+  }
 };
 
 /**
@@ -149,8 +173,7 @@ export const runDirectConnectRequest = async (
   );
 
   try {
-    const response = await runRequestOnStream(socket, target, request, options);
-    return closeSocketWithResponse(response, socket);
+    return await runRequestOnStream(socket, target, request, options, () => socket.close());
   } catch (error) {
     await socket.close().catch(() => {});
     throw error;
@@ -162,6 +185,7 @@ const runRequestOnStream = async (
   target: ProxyRequestTarget,
   request: HttpRequest,
   options: RunProxiedRequestOptions,
+  closeTransport: (reason?: unknown) => Promise<void>,
 ): Promise<Response> => {
   let stream: DuplexStream = { readable: dialed.readable, writable: dialed.writable };
   try {
@@ -205,60 +229,16 @@ const runRequestOnStream = async (
       const hostValue = target.port === defaultPort ? hostUriPart : `${hostUriPart}:${target.port}`;
       headers = { ...headers, Host: hostValue };
     }
-    return await fetchOnStream(stream, { ...request, headers }, fetchPrefix);
+    return await fetchOnStream(stream, { ...request, headers }, fetchPrefix, {
+      signal: options.signal,
+      closeTransport,
+    });
   } catch (err) {
-    // Any throw past `dial()` means the active stream will never be returned
-    // to the caller. Cancel the topmost layer (the post-TLS readable when
-    // userspaceTls succeeded, otherwise the dialed readable) so the cancel
-    // cascade reaches every wrapper's teardown — userspaceTls's plainReadable
-    // cancel hook ends the TLS layer and closes the transport writer; each
-    // protocol's IIFE / framing pump observes the underlying read failure
-    // and closes the socket.
-    void stream.readable.cancel(err).catch(() => {});
+    // Concrete close unblocks a parser-owned readable and any blocked write.
+    // An unlocked top-level wrapper can also be cancelled to release TLS and
+    // proxy framing state; a locked wrapper belongs to its active parser.
+    void closeTransport(err).catch(() => {});
+    if (!stream.readable.locked) void stream.readable.cancel(err).catch(() => {});
     throw err;
   }
-};
-
-const closeSocketWithResponse = (response: Response, socket: DialedSocket): Response => {
-  let closePromise: Promise<void> | null = null;
-  const close = (): Promise<void> => {
-    closePromise ??= socket.close().catch(() => {});
-    return closePromise;
-  };
-
-  if (response.body === null) {
-    void close();
-    return response;
-  }
-
-  const reader = response.body.getReader();
-  const body = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const result = await reader.read();
-        if (result.done) {
-          controller.close();
-          void close();
-        } else {
-          controller.enqueue(result.value);
-        }
-      } catch (error) {
-        controller.error(error);
-        void close();
-      }
-    },
-    async cancel(reason) {
-      try {
-        await reader.cancel(reason);
-      } finally {
-        await close();
-      }
-    },
-  });
-
-  return new Response(body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
-  });
 };

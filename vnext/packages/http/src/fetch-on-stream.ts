@@ -4,6 +4,8 @@ import { concat, utf8Bytes } from './bytes.ts';
 import { HttpProtocolError } from './errors.ts';
 import { TCHAR, validateFieldValueBytes, validateRequestTargetBytes } from './grammar.ts';
 import { parseHttpResponse, toWebResponse } from './parser.ts';
+import { signalAbortReason } from './abort.ts';
+import { assertReplayBodyLength, isReplayableBody, ReplayBodyError } from '@vibe-core/platform';
 import type { DuplexStream, HttpRequest } from './types.ts';
 
 // Plaintext chunk size used when streaming the request body to the writer.
@@ -12,11 +14,22 @@ import type { DuplexStream, HttpRequest } from './types.ts';
 // microtask cost.
 const BODY_WRITE_CHUNK_SIZE = 16384;
 
+export interface FetchOnStreamOptions {
+  signal?: AbortSignal;
+  /** Idempotently closes the concrete socket, even when stream halves are locked. */
+  closeTransport: (reason?: unknown) => void | Promise<void>;
+}
+
 export const fetchOnStream = async (
   stream: DuplexStream,
   request: HttpRequest,
-  prefix?: Uint8Array,
+  prefix: Uint8Array | undefined,
+  options: FetchOnStreamOptions,
 ): Promise<Response> => {
+  if (!options || typeof options.closeTransport !== 'function') {
+    throw new TypeError('fetchOnStream requires a concrete closeTransport callback');
+  }
+  if (options.signal?.aborted) throw signalAbortReason(options.signal);
   // RFC 9110 §6.4.1: a HEAD response carries no body even when
   // Content-Length is set. Detecting that here is a one-line carve-out,
   // but the chunked/length body parsers below would otherwise hang
@@ -56,7 +69,7 @@ export const fetchOnStream = async (
   );
 
   // Normalize the request header block in a single pass:
-  //   - drop Content-Length / Transfer-Encoding — the buffered body's
+  //   - drop Content-Length / Transfer-Encoding — the local body's
   //     exact length is the source of truth at this layer, and a chunked
   //     encoding from the runtime fetch path would leave the body wrapped
   //     in chunk markers we cannot decode here.
@@ -97,8 +110,10 @@ export const fetchOnStream = async (
   // Without Content-Length on a body-bearing request, RFC 9112 §6 has the
   // server treat the message as zero-length — a serialized POST emitted
   // with no framing at all silently loses its body on strict upstreams.
-  const bodyLen = request.body?.byteLength ?? 0;
-  if (bodyLen > 0) headers['Content-Length'] = String(bodyLen);
+  const replayBody = isReplayableBody(request.body) ? request.body : undefined;
+  if (replayBody) assertReplayBodyLength(replayBody.contentLength);
+  const bodyLen = replayBody?.contentLength ?? (request.body instanceof Uint8Array ? request.body.byteLength : 0);
+  if (bodyLen > 0 || replayBody) headers['Content-Length'] = String(bodyLen);
 
   const requestLine = `${request.method} ${request.path} HTTP/1.1\r\n`;
   let head = requestLine;
@@ -106,28 +121,220 @@ export const fetchOnStream = async (
   head += '\r\n';
   const headBytes = utf8Bytes(head);
 
-  const writer = stream.writable.getWriter();
-  try {
-    if (prefix && prefix.byteLength > 0) {
-      await writer.write(concat(prefix, headBytes));
-    } else {
-      await writer.write(headBytes);
+  const transportReader = stream.readable.getReader();
+  let readerReleased = false;
+  const releaseTransportReader = (): void => {
+    if (readerReleased) return;
+    try { transportReader.releaseLock(); readerReleased = true; } catch { /* a read is still pending */ }
+  };
+  const parserInput = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      let terminal = false;
+      try {
+        const result = await transportReader.read();
+        if (result.done) {
+          terminal = true;
+          try { controller.close(); } catch { /* cancelled while read was pending */ }
+        } else {
+          try { controller.enqueue(result.value); }
+          catch { terminal = true; /* cancelled while read was pending */ }
+        }
+      } catch (error) {
+        terminal = true;
+        try { controller.error(error); } catch { /* already cancelled */ }
+      } finally {
+        if (terminal) releaseTransportReader();
+      }
+    },
+    async cancel(reason) {
+      try { await transportReader.cancel(reason); }
+      finally { releaseTransportReader(); }
+    },
+  }, { highWaterMark: 0 });
+  let writer: WritableStreamDefaultWriter<Uint8Array>;
+  try { writer = stream.writable.getWriter(); }
+  catch (error) { releaseTransportReader(); throw error; }
+  let source: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let state: 'uploading' | 'upload-complete' | 'remote-final' | 'failed' = 'uploading';
+  let failure: unknown;
+  let delivered = false;
+  let bodyController: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const responseReaderRef: { current?: ReadableStreamDefaultReader<Uint8Array> } = {};
+  let parsedResponse: Response | undefined;
+  let sourceCancel: Promise<void> | undefined;
+  const releaseResponseReader = (): void => {
+    try { responseReaderRef.current?.releaseLock(); } catch { /* a read is still pending */ }
+  };
+  let closePromise: Promise<void> | undefined;
+  const close = (reason?: unknown): Promise<void> => {
+    if (!closePromise) {
+      // Invoke the concrete close synchronously: it must unblock an already
+      // issued write before any upload task is awaited.
+      let concreteClose: Promise<void>;
+      try { concreteClose = Promise.resolve(options.closeTransport(reason)); }
+      catch (error) { concreteClose = Promise.reject(error); }
+      const cancelRead = transportReader.cancel(reason);
+      closePromise = Promise.allSettled([concreteClose, cancelRead]).then(() => { releaseTransportReader(); });
+      void closePromise.catch(() => {});
     }
-    if (request.body?.byteLength) {
-      let off = 0;
-      while (off < request.body.byteLength) {
-        const slice = request.body.subarray(off, Math.min(off + BODY_WRITE_CHUNK_SIZE, request.body.byteLength));
-        await writer.write(slice);
-        off += slice.byteLength;
+    return closePromise;
+  };
+  const stopSource = (reason?: unknown): void => {
+    if (source && !sourceCancel) {
+      sourceCancel = source.cancel(reason);
+      void sourceCancel.catch(() => {});
+    }
+  };
+  const fail = (error: unknown): void => {
+    if (state === 'failed' || state === 'remote-final') return;
+    state = 'failed';
+    failure = error;
+    void close(error);
+    stopSource(error);
+  };
+  let rejectAbort: (reason: unknown) => void = () => {};
+  const abortPromise = new Promise<never>((_resolve, reject) => { rejectAbort = reject; });
+  void abortPromise.catch(() => {});
+  const onAbort = (): void => {
+    const signal = options.signal;
+    if (!signal) return;
+    const reason = signalAbortReason(signal);
+    fail(reason);
+    void close(reason);
+    stopSource(reason);
+    if (delivered) {
+      try { bodyController?.error(reason); } catch { /* body already ended */ }
+      if (responseReaderRef.current) {
+        void responseReaderRef.current.cancel(reason).then(releaseResponseReader, releaseResponseReader);
       }
     }
-  } finally {
-    // Release on every exit so a write rejection doesn't pin the lock —
-    // Web Streams errors the stream on rejection but does NOT release the
-    // writer, which would then make the caller's writable.abort() fail
-    // with "Cannot abort a stream that already has a writer".
-    writer.releaseLock();
+    rejectAbort(reason);
+  };
+  options.signal?.addEventListener('abort', onAbort, { once: true });
+  if (options.signal?.aborted) onAbort();
+
+  const upload = async (): Promise<void> => {
+    try {
+      await writer.write(prefix?.byteLength ? concat(prefix, headBytes) : headBytes);
+      if (state !== 'uploading') return;
+      if (replayBody) {
+        try { source = replayBody.open(options.signal).getReader(); }
+        catch (cause) { throw new ReplayBodyError('PRODUCER', 'replay body open failed', { cause }); }
+        let written = 0;
+        while (state === 'uploading') {
+          let result: { done: boolean; value?: Uint8Array };
+          try { result = await source.read(); }
+          catch (cause) { throw new ReplayBodyError('PRODUCER', 'replay body read failed', { cause }); }
+          if (state !== 'uploading') return;
+          if (result.done) {
+            if (written !== bodyLen) throw new ReplayBodyError('UNDERRUN', `replay body ended after ${written}/${bodyLen} bytes`);
+            state = 'upload-complete';
+            return;
+          }
+          const chunk = result.value;
+          if (!(chunk instanceof Uint8Array)) throw new ReplayBodyError('PRODUCER', 'replay body produced a non-byte chunk');
+          if (chunk.byteLength > bodyLen - written) {
+            throw new ReplayBodyError('OVERRUN', `replay body exceeded ${bodyLen} bytes`);
+          }
+          for (let off = 0; off < chunk.byteLength && state === 'uploading'; off += BODY_WRITE_CHUNK_SIZE) {
+            const slice = chunk.subarray(off, Math.min(off + BODY_WRITE_CHUNK_SIZE, chunk.byteLength));
+            await writer.write(slice);
+            if (state !== 'uploading') return;
+            written += slice.byteLength;
+          }
+        }
+      } else if (request.body instanceof Uint8Array) {
+        for (let off = 0; off < request.body.byteLength && state === 'uploading'; off += BODY_WRITE_CHUNK_SIZE) {
+          await writer.write(request.body.subarray(off, Math.min(off + BODY_WRITE_CHUNK_SIZE, request.body.byteLength)));
+        }
+      }
+      if (state === 'uploading') state = 'upload-complete';
+    } catch (error) {
+      // The producer or writer has already failed in this continuation. Mark
+      // it before `finally` yields and before a queued final-head callback can
+      // claim the exchange as a successful early response.
+      if (state === 'uploading' || state === 'upload-complete') fail(error);
+      throw error;
+    } finally {
+      if (source) {
+        if (state !== 'upload-complete') stopSource(failure);
+        try { source.releaseLock(); } catch { /* pending cancel will settle */ }
+      }
+      writer.releaseLock();
+    }
+  };
+
+  // Both promises have rejection observers immediately; whichever terminal
+  // event is observed first sets the state before the other continuation runs.
+  const uploadTask = upload();
+  const uploadFailure = uploadTask.then(
+    () => new Promise<never>(() => {}),
+    error => {
+      if (state === 'remote-final') return new Promise<never>(() => {});
+      throw error;
+    },
+  );
+  void uploadFailure.catch(() => {});
+  const parsed = parseHttpResponse(parserInput).then(raw => {
+    if (state === 'failed') throw failure;
+    if (state === 'uploading') {
+      state = 'remote-final';
+      stopSource();
+    }
+    parsedResponse = toWebResponse(raw);
+    return parsedResponse;
+  }, error => {
+    fail(error);
+    throw error;
+  });
+  void parsed.catch(() => {});
+
+  let response: Response;
+  try {
+    response = await Promise.race([parsed, uploadFailure, abortPromise]);
+    if (options.signal?.aborted) throw signalAbortReason(options.signal);
+  } catch (error) {
+    fail(error);
+    void close(error);
+    stopSource(error);
+    if (parsedResponse?.body) void parsedResponse.body.cancel(error).catch(() => {});
+    options.signal?.removeEventListener('abort', onAbort);
+    await Promise.allSettled([uploadTask, parsed, sourceCancel, closePromise]);
+    throw error;
   }
 
-  return toWebResponse(await parseHttpResponse(stream.readable));
+  const finish = async (reason?: unknown): Promise<void> => {
+    void close(reason);
+    stopSource(reason);
+    options.signal?.removeEventListener('abort', onAbort);
+    await Promise.allSettled([uploadTask, sourceCancel, closePromise]);
+    releaseResponseReader();
+  };
+  if (response.body === null) {
+    await finish();
+    return response;
+  }
+  const reader = response.body.getReader();
+  responseReaderRef.current = reader;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) { bodyController = controller; },
+    async pull(controller) {
+      try {
+        const result = await reader.read();
+        if (result.done) {
+          await finish();
+          controller.close();
+        } else controller.enqueue(result.value);
+      } catch (error) {
+        await finish(error);
+        try { controller.error(error); } catch { /* abort already errored it */ }
+      }
+    },
+    async cancel(reason) {
+      void close(reason);
+      await Promise.allSettled([reader.cancel(reason), finish(reason)]);
+    },
+  });
+  delivered = true;
+  return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
 };

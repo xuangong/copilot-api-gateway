@@ -1,0 +1,122 @@
+[
+  {
+    "run": 1,
+    "encrypted": false,
+    "status": 200,
+    "statusSeen": 200,
+    "content": "early-tail",
+    "generated": 1507328,
+    "cancelled": 1,
+    "closes": 1
+  },
+  {
+    "run": 1,
+    "encrypted": false,
+    "status": 413,
+    "statusSeen": 413,
+    "content": "early-tail",
+    "generated": 1441792,
+    "cancelled": 1,
+    "closes": 1
+  },
+  {
+    "run": 1,
+    "encrypted": true,
+    "status": 200,
+    "statusSeen": 200,
+    "content": "early-tail",
+    "generated": 65536,
+    "cancelled": 1,
+    "closes": 1
+  },
+  {
+    "run": 1,
+    "encrypted": true,
+    "status": 413,
+    "statusSeen": 413,
+    "content": "early-tail",
+    "generated": 65536,
+    "cancelled": 1,
+    "closes": 1
+  },
+  {
+    "run": 2,
+    "encrypted": false,
+    "status": 200,
+    "statusSeen": 200,
+    "content": "early-tail",
+    "generated": 2490368,
+    "cancelled": 1,
+    "closes": 1
+  },
+  {
+    "run": 2,
+    "encrypted": false,
+    "status": 413,
+    "statusSeen": 413,
+    "content": "early-tail",
+    "generated": 1245184,
+    "cancelled": 1,
+    "closes": 1
+  },
+  {
+    "run": 2,
+    "encrypted": true,
+    "status": 200,
+    "statusSeen": 200,
+    "content": "early-tail",
+    "generated": 65536,
+    "cancelled": 1,
+    "closes": 1
+  },
+  {
+    "run": 2,
+    "encrypted": true,
+    "status": 413,
+    "statusSeen": 413,
+    "content": "early-tail",
+    "generated": 65536,
+    "cancelled": 1,
+    "closes": 1
+  },
+  {
+    "run": 3,
+    "encrypted": false,
+    "status": 200,
+    "statusSeen": 200,
+    "content": "early-tail",
+    "generated": 2490368,
+    "cancelled": 1,
+    "closes": 1
+  },
+  {
+    "run": 3,
+    "encrypted": false,
+    "status": 413,
+    "statusSeen": 413,
+    "content": "early-tail",
+    "generated": 1703936,
+    "cancelled": 1,
+    "closes": 1
+  },
+  {
+    "run": 3,
+    "encrypted": true,
+    "status": 200,
+    "statusSeen": 200,
+    "content": "early-tail",
+    "generated": 65536,
+    "cancelled": 1,
+    "closes": 1
+  },
+  {
+    "run": 3,
+    "encrypted": true,
+    "status": 413,
+    "statusSeen": 413,
+    "content": "early-tail",
+    "generated": 65536,
+    "cancelled": 1,
+    "closes": 1
+  }
+]

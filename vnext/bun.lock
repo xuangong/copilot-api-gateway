@@ -125,6 +125,7 @@
         "@peculiar/asn1-cms": "^2.3.14",
         "@peculiar/asn1-rsa": "^2.3.14",
         "@reclaimprotocol/tls": "0.1.2",
+        "@vibe-core/platform": "workspace:*",
       },
     },
     "packages/platform": {

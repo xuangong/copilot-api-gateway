@@ -15,7 +15,7 @@ import type { ProxyRequestTarget } from '@vibe-core/proxy'
 
 export interface MaterializedRequest {
   target: ProxyRequestTarget
-  request: HttpRequest
+  request: HttpRequest & { body?: Uint8Array }
 }
 
 export interface ReplayableRequest {
@@ -103,7 +103,7 @@ const buildMaterializedRequest = async (
     port: u.port ? Number(u.port) : u.protocol === 'https:' ? 443 : 80,
     tls: u.protocol === 'https:',
   }
-  const request: HttpRequest = {
+  const request: MaterializedRequest['request'] = {
     method: init.method ?? 'GET',
     path: `${u.pathname}${u.search}`,
     headers,

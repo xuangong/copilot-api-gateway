@@ -7,9 +7,9 @@
  *
  * Ported from copilot-gateway/packages/gateway/src/dial/fetcher.ts.
  */
-import { createReplayableRequest, type ReplayableRequest } from './replayable-request.ts'
+import { createReplayableRequest, type MaterializedRequest, type ReplayableRequest } from './replayable-request.ts'
 import type { ProxyEntry } from './proxy-catalog.ts'
-import { isAbortError, type HttpRequest } from '@vibe-core/http'
+import { isAbortError } from '@vibe-core/http'
 import {
   ProxyDialError,
   type ProxyConfig,
@@ -40,13 +40,13 @@ export interface CreateFetcherInput {
   runProxied: (
     config: ProxyConfig,
     target: ProxyRequestTarget,
-    request: HttpRequest,
+    request: MaterializedRequest['request'],
     options: RunProxiedRequestOptions,
   ) => Promise<Response>
   runDirectFetch: (url: string, init: RequestInit) => Promise<Response>
   runDirectConnect: (
     target: ProxyRequestTarget,
-    request: HttpRequest,
+    request: MaterializedRequest['request'],
     options: RunDirectConnectRequestOptions,
   ) => Promise<Response>
   /**

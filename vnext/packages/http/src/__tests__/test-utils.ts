@@ -16,13 +16,24 @@ export interface FakeDuplex {
   endResponse(): void;
 }
 
+const fakeClosers = new WeakMap<ReadableStream<Uint8Array>, () => void>();
+
+/** Close the fixture's server side even while its readable is parser-locked. */
+export const closeFakeDuplex = (readable: ReadableStream<Uint8Array>): void => {
+  const close = fakeClosers.get(readable);
+  if (!close) throw new Error('no concrete fake close for readable');
+  close();
+};
+
 export const makeFakeDuplex = (): FakeDuplex => {
   let writeBuffer = new Uint8Array(0);
+  let closed = false;
   let writableClosedResolve!: () => void;
   const writableClosedPromise = new Promise<void>(r => { writableClosedResolve = r; });
 
   const writable = new WritableStream<Uint8Array>({
     write(chunk) {
+      if (closed) throw new Error('fake transport closed');
       const next = new Uint8Array(writeBuffer.byteLength + chunk.byteLength);
       next.set(writeBuffer, 0);
       next.set(chunk, writeBuffer.byteLength);
@@ -35,6 +46,11 @@ export const makeFakeDuplex = (): FakeDuplex => {
   let controller!: ReadableStreamDefaultController<Uint8Array>;
   const readable = new ReadableStream<Uint8Array>({
     start(c) { controller = c; },
+  });
+  fakeClosers.set(readable, () => {
+    if (closed) return;
+    closed = true;
+    try { controller.close(); } catch { /* already ended by fixture */ }
   });
 
   const enc = new TextEncoder();

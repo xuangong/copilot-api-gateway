@@ -22,17 +22,39 @@ import {
 // stops trying to drain a dead leg.
 const socketToWritable = (socket: net.Socket): WritableStream<Uint8Array> => {
   let controller: WritableStreamDefaultController | null = null
-  const onError = (err: Error): void => { controller?.error(err) }
+  let terminalError: Error | undefined
+  const pendingWrites = new Set<(error: Error) => void>()
+  const settlePending = (error: Error): void => {
+    for (const settle of pendingWrites) settle(error)
+  }
+  const onError = (err: Error): void => {
+    terminalError = err
+    settlePending(err)
+    controller?.error(err)
+  }
   socket.on("error", onError)
-  socket.once("close", () => { socket.off("error", onError) })
+  socket.once("close", () => {
+    terminalError ??= new Error("socket closed before write completed")
+    settlePending(terminalError)
+    socket.off("error", onError)
+  })
   return new WritableStream<Uint8Array>({
     start(c) { controller = c },
     write(chunk) {
+      if (socket.destroyed) return Promise.reject(terminalError ?? new Error("socket closed before write completed"))
       return new Promise<void>((resolve, reject) => {
-        socket.write(chunk, err => {
-          if (err) reject(err)
+        let settled = false
+        const settle = (error?: Error | null): void => {
+          if (settled) return
+          settled = true
+          pendingWrites.delete(onClosed)
+          if (error) reject(error)
           else resolve()
-        })
+        }
+        const onClosed = (error: Error): void => { settle(error) }
+        pendingWrites.add(onClosed)
+        try { socket.write(chunk, settle) }
+        catch (error) { settle(error instanceof Error ? error : new Error(String(error))) }
       })
     },
     close() {
