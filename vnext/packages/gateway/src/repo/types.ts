@@ -1,3 +1,4 @@
+import type { ApiKeyAffinitySecret } from "./affinity-secret.ts"
 import type { CatalogRepo } from "./catalogs.ts"
 import type { UsageOverview, UsageOverviewQuery } from "./usage-overview"
 import type { PerformanceMetricsRepo } from "./performance-metrics"
@@ -144,6 +145,8 @@ export interface AgentHostKeyScope {
 }
 
 export interface ApiKeyRepo {
+  /** Authoritative private read; ownerless keys have no affinity identity. */
+  getOrCreateAffinitySecret(id: ApiKeyId, ownerId: UserId | undefined): Promise<ApiKeyAffinitySecret | null>
   /** Existing owned or assigned key IDs, resolved in one query. */
   listAccessibleIds(userId: UserId): Promise<ApiKeyId[]>
   ensureAgentHostKey(scope: AgentHostKeyScope, hostName: string): Promise<ApiKey | null>

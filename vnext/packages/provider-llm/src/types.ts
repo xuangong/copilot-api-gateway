@@ -1,3 +1,5 @@
+import type { BindingModel } from "./binding"
+import type { OpaqueCompatibilityDeclaration } from "./opaque-affinity"
 /**
  * @vibe-llm/provider-llm/types — LLM business overlay over the framework
  * UpstreamAdapter contract from @vibe-core/upstream.
@@ -106,6 +108,10 @@ export type InboundHeaderMatcher = string | RegExp
  * Also narrows fetch's request type from `unknown` to `ProviderRequest`.
  */
 export interface LlmModelProvider extends UpstreamAdapter {
+  /** Pure trusted-provider declaration for a discovered candidate. Never infer
+   * this from caller input or arbitrary remote catalog fields. The registry
+   * validates and reconstructs it on every binding rebuild, including cache hits. */
+  getOpaqueCompatibilityForModel?(model: Readonly<BindingModel>): OpaqueCompatibilityDeclaration | undefined
   /** Seed instance-local model resolution from the shared successful catalog. */
   setModelCatalog?(models: ProviderModelsResponse): void
   readonly kind: UpstreamKind

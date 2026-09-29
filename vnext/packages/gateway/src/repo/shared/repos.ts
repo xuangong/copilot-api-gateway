@@ -1,3 +1,4 @@
+import { getOrCreateAffinitySecret } from "../affinity-secret.ts"
 import { SharedCatalogRepo } from "./catalogs.ts"
 import { queryUsageOverview, type UsageOverviewQuery } from "../usage-overview"
 import { SharedAgentRemoteContinuationRepo } from "./agent-remote-continuations.ts"
@@ -329,6 +330,10 @@ function buildKeyIdRangeQuery(table: string, cols: string, opts: { keyId?: ApiKe
 }
 
 class SharedApiKeyRepo implements ApiKeyRepo {
+  getOrCreateAffinitySecret(id: ApiKeyId, ownerId: UserId | undefined) {
+    return getOrCreateAffinitySecret(this.x, id, ownerId)
+  }
+
   async listAccessibleIds(userId: UserId): Promise<ApiKeyId[]> {
     const rows = await this.x.all<{ id: ApiKeyId }>(
       `SELECT id FROM api_keys WHERE owner_id = ? OR id IN

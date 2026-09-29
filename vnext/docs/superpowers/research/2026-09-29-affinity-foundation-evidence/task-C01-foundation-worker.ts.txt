@@ -1,0 +1,49 @@
+import * as analysis from "__ROOT__/vnext/packages/gateway/src/shared/affinity/analysis.ts"
+import { runAnalysisCases } from "__ANALYSIS_CASES__"
+import * as carrier from "__ROOT__/vnext/packages/gateway/src/shared/affinity/carrier.ts"
+import { runCodecCases } from "__CASES__"
+import { app } from "__ROOT__/vnext/packages/gateway/src/app.ts"
+import { getRepo, initRepo } from "__ROOT__/vnext/packages/gateway/src/repo/index.ts"
+import { initCache, initResponsesStore, initDumpSubsystem } from "__ROOT__/vnext/packages/gateway/src/bootstrap.ts"
+import { D1Repo, type D1Database } from "__ROOT__/vnext/apps/platform-cloudflare/src/d1-repo.ts"
+import { R2FileProvider, type R2BucketLike } from "__ROOT__/vnext/apps/platform-cloudflare/src/r2-file-provider.ts"
+import { initSqlDatabase, initFileProvider, initEnv, initBackground, initRuntimeLocation, type SqlDatabase } from "__ROOT__/vnext/packages/platform/src/index.ts"
+import { MemoryCache } from "__ROOT__/vnext/packages/cache/src/index.ts"
+import { InMemoryResponsesSnapshotStore } from "__ROOT__/vnext/packages/responses-store/src/index.ts"
+let booted = false
+const pending = new Set<Promise<unknown>>()
+export default {
+ async fetch(request: Request, env: { DB: D1Database & SqlDatabase; FILES: R2BucketLike }, ctx: { waitUntil(p: Promise<unknown>): void }) {
+  if (!booted) {
+   initSqlDatabase(env.DB); initFileProvider(new R2FileProvider(env.FILES))
+   initEnv(() => ""); initRuntimeLocation("cloudflare")
+   initRepo(new D1Repo(env.DB)); initCache(new MemoryCache())
+   initResponsesStore(new InMemoryResponsesSnapshotStore()); initDumpSubsystem(); booted = true
+  }
+  initBackground({ waitUntil(p) { pending.add(p); ctx.waitUntil(p); void p.finally(() => pending.delete(p)).catch(() => {}) } })
+  if (new URL(request.url).pathname === "/__fixture/drain") {
+   for (let i=0; pending.size && i<20; i++) await Promise.allSettled([...pending])
+   return Response.json({ pending: pending.size })
+  }
+  if (new URL(request.url).pathname === "/__fixture/affinity") {
+   const repo=getRepo(), id="synthetic-key", owner="synthetic-owner"
+   const values=await Promise.all(Array.from({length:16},()=>repo.apiKeys.getOrCreateAffinitySecret(id,owner)))
+   const first=values[0]; if(!first)throw new Error("Secret missing")
+   const fingerprint=(value: typeof first)=>JSON.stringify([value.version,value.keyId,Array.from(value.secret)])
+   if(!values.every(value=>value && fingerprint(value)===fingerprint(first)))throw new Error("Concurrent secret differed")
+   if(await repo.apiKeys.getOrCreateAffinitySecret(id,"foreign-owner")!==null)throw new Error("Foreign owner read")
+   if(await repo.apiKeys.getOrCreateAffinitySecret(id,undefined)!==null)throw new Error("Ownerless identity fallback")
+   const second=await repo.apiKeys.getOrCreateAffinitySecret("other-key",owner)
+   if(!second||fingerprint(second)===fingerprint(first))throw new Error("Shared key secret")
+   const dto=await repo.apiKeys.getById(id);if(!dto)throw new Error("Key missing")
+   if(JSON.stringify(dto).includes("affinity"))throw new Error("Private DTO fields")
+   await repo.apiKeys.save({...dto,name:"Renamed synthetic key",key:"rotated-synthetic-raw-key"})
+   const after=await repo.apiKeys.getOrCreateAffinitySecret(id,owner)
+   if(!after||fingerprint(after)!==fingerprint(first))throw new Error("Save reset private secret")
+   const outputs=[await repo.apiKeys.list(),await repo.apiKeys.listByOwner(owner),await repo.apiKeys.findByRawKey("rotated-synthetic-raw-key")]
+   if(JSON.stringify(outputs).includes("affinity")||JSON.stringify(outputs).includes(first.keyId))throw new Error("Private list DTO fields")
+   return Response.json({codec:await runCodecCases(carrier),analysis:await runAnalysisCases(carrier,analysis),repository:{concurrentWinner:16,ownerFenced:true,distinctKeys:true,savedAndRotated:true,privateDtos:true}})
+  }
+  return app.fetch(request, env)
+ },
+}

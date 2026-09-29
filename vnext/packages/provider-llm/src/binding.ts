@@ -10,7 +10,11 @@ import type { UpstreamBinding } from '@vibe-core/upstream'
 import type { ModelEndpoints, ModelPricing, UpstreamKind } from '@vibe-llm/protocols/common'
 import type { LlmModelProvider } from './types'
 
+import type { OpaqueCompatibilityDeclaration } from "./opaque-affinity"
+
 export interface BindingModel {
+  /** Trusted declaration only; never project this from arbitrary remote raw metadata. */
+  opaqueCompatibility?: OpaqueCompatibilityDeclaration
   id: string
   /** Provider wire/pricing key when it differs from the client-facing alias. */
   providerModelKey?: string

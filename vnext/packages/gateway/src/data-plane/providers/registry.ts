@@ -1,3 +1,4 @@
+import { parseOpaqueCompatibilityDeclaration } from "@vibe-llm/provider-llm"
 import { catalogWithCopilotVariants } from "@vibe-llm/provider-copilot"
 import { CatalogCoordinator, CatalogDeadline, CatalogUnavailableError, type CatalogResult } from "./catalog-coordinator.ts"
 import { getRequestSignal } from "../../shared/request-signal.ts"
@@ -147,19 +148,19 @@ function genericModelEndpoints(
   return out
 }
 
-function modelToBindingModel(
+export function modelToBindingModel(
   model: ModelsResponse['data'][number],
   kind: UpstreamKind,
-  supportedEndpoints: readonly EndpointKey[],
+  provider: Pick<LlmModelProvider, "supportedEndpoints" | "getOpaqueCompatibilityForModel">,
 ): LlmProviderBinding['model'] {
   const endpoints = kind === 'copilot'
     ? copilotModelEndpoints(model as Model)
-    : genericModelEndpoints(model as Model, supportedEndpoints)
+    : genericModelEndpoints(model as Model, provider.supportedEndpoints)
   const providerData = (model as { providerData?: { upstreamModelId?: unknown } }).providerData
   const providerModelKey = typeof providerData?.upstreamModelId === 'string'
     ? providerData.upstreamModelId
     : undefined
-  return {
+  const projected: LlmProviderBinding["model"] = {
     id: model.id,
     ...(providerModelKey !== undefined ? { providerModelKey } : {}),
     displayName: model.name,
@@ -174,11 +175,14 @@ function modelToBindingModel(
     }),
     raw: model as unknown as Record<string, unknown>,
   }
+  const declaration = provider.getOpaqueCompatibilityForModel?.(projected)
+  if (declaration !== undefined) projected.opaqueCompatibility = parseOpaqueCompatibilityDeclaration(declaration)
+  return projected
 }
 
 
-// Version 6 discovers authoritative Codex Responses Lite metadata; older catalogs must refresh.
-export const MODEL_CATALOG_REVISION = 6
+// Version 7 rebuilds strictly validated provider-owned opaque compatibility metadata; raw fields grant no authority.
+export const MODEL_CATALOG_REVISION = 7
 let coordinators = new WeakMap<Repo, CatalogCoordinator>()
 
 function withCatalogSignal(fetcher: Fetcher, signal: AbortSignal): Fetcher {
@@ -326,7 +330,7 @@ export async function listProviderBindings(
         bindings.push({
           upstream: upstream.id,
           kind: upstream.provider,
-          model: modelToBindingModel(model as Model, upstream.provider, provider.supportedEndpoints),
+          model: modelToBindingModel(model as Model, upstream.provider, provider),
           enabledFlags,
           provider,
         })
@@ -361,7 +365,7 @@ export async function listProviderBindings(
         bindings.push({
           upstream: 'copilot:request',
           kind: 'copilot',
-          model: modelToBindingModel(model as Model, 'copilot', provider.supportedEndpoints),
+          model: modelToBindingModel(model as Model, 'copilot', provider),
           enabledFlags,
           provider,
         })

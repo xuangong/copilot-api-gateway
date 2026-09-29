@@ -1,0 +1,52 @@
+{
+  "passed": true,
+  "bun": {
+    "codec": {
+      "allUtf16CodeUnits": 65536,
+      "roundtripCases": 5,
+      "authenticatedBindings": true,
+      "malformedAndOversizedRejected": true,
+      "foreignUnchanged": true,
+      "metadataEncrypted": true
+    },
+    "analysis": {
+      "wholeThinkingAuthenticated": true,
+      "optionalWholeBlockRemoval": true,
+      "requiredAndReplacementFenced": true,
+      "compactionAlias": true,
+      "immutableCandidates": true,
+      "rankedAuthorizedOnly": true,
+      "foreignAndIdentitylessPreserved": true,
+      "toolAdjacentRejected": true
+    }
+  },
+  "workerd": {
+    "codec": {
+      "allUtf16CodeUnits": 65536,
+      "roundtripCases": 5,
+      "authenticatedBindings": true,
+      "malformedAndOversizedRejected": true,
+      "foreignUnchanged": true,
+      "metadataEncrypted": true
+    },
+    "analysis": {
+      "wholeThinkingAuthenticated": true,
+      "optionalWholeBlockRemoval": true,
+      "requiredAndReplacementFenced": true,
+      "compactionAlias": true,
+      "immutableCandidates": true,
+      "rankedAuthorizedOnly": true,
+      "foreignAndIdentitylessPreserved": true,
+      "toolAdjacentRejected": true
+    },
+    "repository": {
+      "concurrentWinner": 16,
+      "ownerFenced": true,
+      "distinctKeys": true,
+      "savedAndRotated": true,
+      "privateDtos": true
+    }
+  },
+  "actualSessionApiPrivate": true,
+  "outbound": 0
+}
