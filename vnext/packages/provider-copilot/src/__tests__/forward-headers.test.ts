@@ -64,3 +64,54 @@ test("the Claude Code agent identity lands intact, integration id stripped", asy
   expect(headers.get("x-interaction-type")).toBe("messages-proxy")
   expect(headers.has("copilot-integration-id")).toBe(false)
 })
+
+test("first attempt rejects an invalid extra header before native body serialization", async () => {
+  const trace: string[] = []
+  const payload = { model: "gpt-4o", toJSON() { trace.push("serialize"); return this } }
+  const extraHeaders = Object.defineProperty({}, "bad header", {
+    enumerable: true,
+    get() { trace.push("header"); return "value" },
+  }) as Record<string, string>
+  await expect(callCopilotAPI({
+    endpoint: "/embeddings", payload, operationName: "test",
+    copilotToken: "tok", accountType: "individual", extraHeaders,
+    fetcher: async () => { throw new Error("fetch must not run") },
+  })).rejects.toThrow()
+  expect(trace).toEqual(["header"])
+})
+
+test("native JSON.stringify errors still occur before transport", async () => {
+  const cycle: Record<string, unknown> = { model: "gpt-4o" }
+  cycle.self = cycle
+  const bodies = [cycle, { model: "gpt-4o", input: 1n }]
+  let sends = 0
+  for (const payload of bodies) {
+    await expect(callCopilotAPI({
+      endpoint: "/embeddings", payload, operationName: "test",
+      copilotToken: "tok", accountType: "individual",
+      fetcher: async () => { sends++; return new Response("{}") },
+    })).rejects.toBeInstanceOf(TypeError)
+  }
+  expect(sends).toBe(0)
+})
+
+test("HTTP status retry sends the same text after caller graph mutation", async () => {
+  const content = { value: "first", toJSON() { serializations++; return this.value } }
+  let serializations = 0
+  const bodies: Array<BodyInit | null | undefined> = []
+  const response = await callCopilotAPI({
+    endpoint: "/embeddings", payload: { model: "gpt-4o", input: content }, operationName: "test",
+    copilotToken: "tok", accountType: "individual",
+    fetcher: async (_url, init) => {
+      bodies.push(init.body)
+      if (bodies.length === 1) {
+        content.value = "changed"
+        return new Response("temporary", { status: 500 })
+      }
+      return new Response("{}", { status: 200 })
+    },
+  })
+  expect(response.status).toBe(200)
+  expect(serializations).toBe(1)
+  expect(bodies).toEqual(["{\"model\":\"gpt-4o\",\"input\":\"first\"}", "{\"model\":\"gpt-4o\",\"input\":\"first\"}"])
+})

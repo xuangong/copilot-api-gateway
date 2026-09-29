@@ -15,7 +15,7 @@ import { rememberRawModels } from "./raw-models-cache"
  */
 import type { AccountType } from './account-type'
 import { defaultsForUpstream } from '@vibe-llm/protocols/flags'
-import { callCopilotAPI } from './forward'
+import { callCopilotAPI, type PreparedCopilotCall } from './forward'
 import { getModels, type ModelsResponse } from './models'
 import { pricingForCopilotModelKey } from './pricing'
 import type { EndpointKey, ModelPricing } from '@vibe-llm/protocols/common'
@@ -180,6 +180,7 @@ export class CopilotProvider implements LlmModelProvider {
     const preservesFormat = responsesFormatGuard(req.sourceProtocol, req.endpoint, req.payload)
     const response = await runInterceptors(inv, ctx, interceptors, () => {
       if (!preservesFormat(inv.payload)) return Promise.resolve(Response.json({ error: { type: "invalid_request_error", message: responsesFormatMismatchMessage, param: "text.format", code: null } }, { status: 400 }))
+      const preparedCall: PreparedCopilotCall = { ready: false, body: undefined, isStreaming: false }
       // Only the terminal call is retried, not the whole chain: interceptors
       // mutate inv.payload in place, so re-running them would apply their
       // rewrites twice. By this point the payload is final, and callCopilotAPI
@@ -197,6 +198,7 @@ export class CopilotProvider implements LlmModelProvider {
           extraHeaders: inv.headers,
           requireModel,
           fetcher: this.fetcher,
+          preparedCall,
         }),
       )
     })

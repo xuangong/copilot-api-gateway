@@ -119,7 +119,11 @@ interface Recorded {
   authorization: string | null
   sessionId: string | null
   threadId: string | null
+  clientRequestId: string | null
+  windowId: string | null
+  turnMetadata: string | null
   bodyText: string | null
+  bodyInit: BodyInit | null | undefined
 }
 
 interface FetcherHarness {
@@ -152,7 +156,11 @@ const makeHarness = (onResponses: FetcherHarness['onResponses']): FetcherHarness
       authorization: headers.get('authorization'),
       sessionId: headers.get('session-id'),
       threadId: headers.get('thread-id'),
+      clientRequestId: headers.get('x-client-request-id'),
+      windowId: headers.get('x-codex-window-id'),
+      turnMetadata: headers.get('x-codex-turn-metadata'),
       bodyText: typeof init?.body === 'string' ? init.body : null,
+      bodyInit: init?.body,
     }
     calls.push(record)
     const u = url.toString()
@@ -406,6 +414,42 @@ test('401 → invalidate + refresh + retry once → 200', async () => {
   expect(fresh!.state.accounts[0]!.refresh_token).toBe('rt_rotated')
 })
 
+for (const action of ['generate', 'compact'] as const) {
+  test(`${action} 401 retry preserves one seed and final body preparation`, async () => {
+    repo.put(baseRecord())
+    let serializations = 0
+    const content = { value: 'first', toJSON() { serializations++; return this.value } }
+    const request = makeRequest(action)
+    request.payload = {
+      model: 'gpt-5',
+      input: [{ type: 'message', role: 'user', content }],
+    }
+    const harness = makeHarness((_call, attempt) => {
+      if (attempt === 1) {
+        content.value = 'changed after send'
+        return new Response('{"error":{"code":"expired_token","message":"stale"}}', { status: 401 })
+      }
+      return action === 'generate' ? okSSE() : okJson({ id: 'resp_1', object: 'response', output: [] })
+    })
+    const provider = new CodexProvider(baseRecord(), harness.fetcher)
+
+    expect((await provider.fetch(request)).status).toBe(200)
+    const path = action === 'generate' ? CODEX_RESPONSES_PATH : CODEX_RESPONSES_COMPACT_PATH
+    const calls = harness.calls.filter((call) => call.url.endsWith(path))
+    expect(calls).toHaveLength(2)
+    expect(serializations).toBe(2) // seed JSON and final body JSON are separate native operations
+    expect(calls[1]?.bodyText).toBe(calls[0]?.bodyText)
+    expect(calls[0]?.bodyText).toContain('"content":"first"')
+    expect(calls[1]?.sessionId).toBe(calls[0]?.sessionId)
+    expect(calls[1]?.threadId).toBe(calls[0]?.threadId)
+    expect(calls[1]?.clientRequestId).toBe(calls[0]?.clientRequestId)
+    expect(calls[1]?.windowId).toBe(calls[0]?.windowId)
+    expect(calls[1]?.turnMetadata).toBe(calls[0]?.turnMetadata)
+    expect(calls.map((call) => call.authorization)).toEqual(['Bearer at_initial', 'Bearer at_refreshed'])
+    expect(harness.calls.filter((call) => call.url === CODEX_OAUTH_TOKEN_URL)).toHaveLength(1)
+  })
+}
+
 test('401 twice → propagated to caller', async () => {
   repo.put(baseRecord())
   const harness = makeHarness(() =>
@@ -499,6 +543,55 @@ test('alpha_search 401 → refresh + retry once → 200', async () => {
   expect(alphaCalls).toHaveLength(2)
   expect(alphaCalls[0]!.authorization).toBe('Bearer at_initial')
   expect(alphaCalls[1]!.authorization).toBe('Bearer at_refreshed')
+})
+
+test('alpha_search 401 retry preserves its generated turn and first body text', async () => {
+  repo.put(baseRecord())
+  let serializations = 0
+  const commands = { value: 'first', toJSON() { serializations++; return { query: this.value } } }
+  const request = makeAlphaSearchRequest()
+  request.payload = { model: 'gpt-5', id: 'req_alpha_1', commands }
+  const harness = makeHarness((_call, attempt) => {
+    if (attempt === 1) {
+      commands.value = 'changed after send'
+      return new Response('{"error":{"code":"expired_token","message":"stale"}}', { status: 401 })
+    }
+    return okJson({ encrypted_output: null, output: 'ok' })
+  })
+  const provider = new CodexProvider(baseRecord(), harness.fetcher)
+
+  expect((await provider.fetch(request)).status).toBe(200)
+  const calls = harness.calls.filter((call) => call.url.endsWith(CODEX_ALPHA_SEARCH_PATH))
+  expect(calls).toHaveLength(2)
+  expect(serializations).toBe(1)
+  expect(calls[1]?.bodyText).toBe(calls[0]?.bodyText)
+  expect(calls[0]?.bodyText).toContain('"commands":{"query":"first"}')
+  expect(calls[1]?.sessionId).toBe('req_alpha_1')
+  expect(calls[1]?.clientRequestId).toBe('req_alpha_1')
+  expect(calls[1]?.windowId).toBe(calls[0]?.windowId)
+  expect(calls.map((call) => call.authorization)).toEqual(['Bearer at_initial', 'Bearer at_refreshed'])
+})
+
+test('alpha_search preserves a native undefined JSON representation across 401', async () => {
+  repo.put(baseRecord())
+  let serializations = 0
+  const request = makeAlphaSearchRequest()
+  request.payload = {
+    model: 'gpt-5', id: 'req_alpha_1',
+    toJSON() { serializations++; return undefined },
+  }
+  const harness = makeHarness((_call, attempt) =>
+    attempt === 1
+      ? new Response('{"error":{"code":"expired_token","message":"stale"}}', { status: 401 })
+      : okJson({ encrypted_output: null, output: 'ok' }),
+  )
+  const provider = new CodexProvider(baseRecord(), harness.fetcher)
+
+  expect((await provider.fetch(request)).status).toBe(200)
+  const calls = harness.calls.filter((call) => call.url.endsWith(CODEX_ALPHA_SEARCH_PATH))
+  expect(calls).toHaveLength(2)
+  expect(serializations).toBe(1)
+  expect(calls.map((call) => call.bodyInit)).toEqual([undefined, undefined])
 })
 
 test('alpha_search 401 twice → propagated to caller', async () => {

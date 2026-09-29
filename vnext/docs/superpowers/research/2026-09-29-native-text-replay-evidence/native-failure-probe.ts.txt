@@ -1,0 +1,148 @@
+import assert from 'node:assert/strict'
+import { callCopilotAPI as candidateCopilotCall } from '../packages/provider-copilot/src/forward'
+import { CopilotProvider as CandidateCopilotProvider } from '../packages/provider-copilot/src/provider'
+import { callCopilotAPI as baselineCopilotCall } from './baseline-copilot-forward'
+import { CopilotProvider as BaselineCopilotProvider } from './baseline-copilot-provider'
+import { callCodexAlphaSearch as candidateAlpha } from '../packages/provider-codex/src/fetch'
+import { callCodexAlphaSearch as baselineAlpha } from './baseline-codex-fetch'
+import { HTTPError } from '@vibe-llm/provider-llm'
+import { initUpstreamRepo } from '@vibe-core/upstream-repo'
+import { initBackground, __resetPlatformForTests } from '@vibe-core/platform'
+import { CODEX_BACKEND_BASE, CODEX_ALPHA_SEARCH_PATH, CODEX_OAUTH_TOKEN_URL } from '../packages/provider-codex/src/constants'
+
+type TraceResult = { reasonSame: boolean; trace: string[]; sends: number; refreshes: number }
+type FailureKind = 'getter' | 'toJSON' | 'proxy' | 'auth-shaped-toJSON'
+
+function failingNested(kind: FailureKind, trace: string[], reason: Error): object {
+  if (kind === 'getter') {
+    return Object.defineProperty({}, 'value', { enumerable: true, get() { trace.push('getter'); throw reason } })
+  }
+  if (kind === 'proxy') {
+    return new Proxy({}, {
+      get(_target, key) { trace.push(`proxy-get:${String(key)}`); if (key === 'toJSON') throw reason; return undefined },
+    })
+  }
+  return { toJSON() { trace.push('toJSON'); throw reason } }
+}
+
+async function copilotFailure(kind: FailureKind, candidate: boolean): Promise<TraceResult> {
+  const trace: string[] = []
+  const reason = kind === 'auth-shaped-toJSON'
+    ? new HTTPError('auth-shaped serialization failure', new Response('{}', { status: 401 }))
+    : new Error(`sentinel-${kind}`)
+  const payload = { model: 'gpt-4o', input: failingNested(kind, trace, reason) }
+  let sends = 0
+  let refreshes = 0
+  const fetcher = async () => { sends++; return new Response('{}') }
+  let caught: unknown
+  try {
+    if (kind === 'auth-shaped-toJSON') {
+      const Provider = candidate ? CandidateCopilotProvider : BaselineCopilotProvider
+      const provider = new Provider({
+        copilotToken: 'stale', accountType: 'individual',
+        refreshSession: async () => { refreshes++; return { token: 'fresh' } },
+      }, fetcher)
+      await provider.fetch({ endpoint: 'embeddings', payload, headers: new Headers(), sourceApi: 'openai' })
+    } else {
+      const call = candidate ? candidateCopilotCall : baselineCopilotCall
+      await call({ endpoint: '/embeddings', payload, operationName: 'probe', copilotToken: 'stale', accountType: 'individual', fetcher })
+    }
+  } catch (error) { caught = error }
+  return { reasonSame: caught === reason, trace, sends, refreshes }
+}
+
+function codexRepo() {
+  let state: any = { accounts: [{
+    chatgptAccountId: 'acct_A', refresh_token: 'rt_A', state: 'active',
+    state_updated_at: '2026-01-01T00:00:00.000Z', openaiDeviceId: 'dev_A',
+    accessToken: { token: 'at_A', expiresAt: Date.now() + 3_600_000, refreshedAt: '2026-01-01T00:00:00.000Z' },
+    quotaSnapshot: null,
+  }] }
+  initUpstreamRepo(() => ({
+    getById: async () => ({ id: 'ups_probe', state: structuredClone(state) }),
+    saveState: async (_id: string, updater: (current: any) => any) => { state = updater(structuredClone(state)) },
+  } as any))
+  initBackground({ waitUntil: (promise) => { void promise.catch(() => {}) } })
+  // Provider.fetch reads a request-local credential copy from its repo.
+  return structuredClone(state.accounts[0])
+}
+
+async function codexFailure(kind: Exclude<FailureKind, 'auth-shaped-toJSON'>, candidate: boolean): Promise<TraceResult> {
+  const account = codexRepo()
+  const trace: string[] = []
+  const reason = new Error(`sentinel-${kind}`)
+  const commands = failingNested(kind, trace, reason)
+  let sends = 0
+  const call = candidate ? candidateAlpha : baselineAlpha
+  let caught: unknown
+  try {
+    await call({
+      upstreamId: 'ups_probe', account, model: { id: 'gpt-5' } as any,
+      headers: new Headers(), body: { id: 'req_probe', commands },
+      effects: { persistRefreshTokenRotation: async () => {}, persistTerminalState: async () => {} },
+      fetcher: async () => { sends++; return new Response('{}') },
+    })
+  } catch (error) { caught = error }
+  __resetPlatformForTests()
+  return { reasonSame: caught === reason, trace, sends, refreshes: 0 }
+}
+
+async function codexHeaderMutation(candidate: boolean) {
+  const account = codexRepo()
+  const calls: Array<{ accountHeader: string | null; bearer: string | null; body: unknown }> = []
+  const call = candidate ? candidateAlpha : baselineAlpha
+  let refreshes = 0
+  const priorWarn = console.warn
+  const warnings: string[] = []
+  console.warn = (...parts) => warnings.push(parts.join(' '))
+  try {
+    const response = await call({
+      upstreamId: 'ups_probe', account, model: { id: 'gpt-5' } as any,
+      headers: new Headers(), body: { id: 'req_probe', commands: { query: 'x' } },
+      effects: { persistRefreshTokenRotation: async () => {}, persistTerminalState: async () => {} },
+      fetcher: async (url, init) => {
+        if (String(url) === CODEX_OAUTH_TOKEN_URL) {
+          refreshes++
+          return new Response(JSON.stringify({ access_token: 'at_B', refresh_token: 'rt_B', id_token: 'idt_B', expires_in: 3600 }), { status: 200 })
+        }
+        assert.equal(String(url), `${CODEX_BACKEND_BASE}${CODEX_ALPHA_SEARCH_PATH}`)
+        const headers = new Headers(init?.headers)
+        calls.push({ accountHeader: headers.get('chatgpt-account-id'), bearer: headers.get('authorization'), body: init?.body })
+        if (calls.length === 1) {
+          account.chatgptAccountId = 'acct_B'
+          return new Response('{"error":{"code":"expired_token","message":"stale"}}', { status: 401 })
+        }
+        return new Response('{}', { status: 200 })
+      },
+    })
+    assert.equal(response.status, 200)
+  } finally {
+    console.warn = priorWarn
+    __resetPlatformForTests()
+  }
+  return { accountHeaders: calls.map(call => call.accountHeader), bearers: calls.map(call => call.bearer), bodiesEqual: calls[0]?.body === calls[1]?.body, refreshes, warnings }
+}
+
+const differential: Record<string, unknown> = {}
+for (const kind of ['getter', 'toJSON', 'proxy', 'auth-shaped-toJSON'] as const) {
+  const baseline = await copilotFailure(kind, false)
+  const candidate = await copilotFailure(kind, true)
+  assert.deepEqual(candidate, baseline, `Copilot ${kind} changed first-attempt failure`)
+  assert.equal(candidate.reasonSame, true)
+  differential[`copilot-${kind}`] = { baseline, candidate }
+}
+for (const kind of ['getter', 'toJSON', 'proxy'] as const) {
+  const baseline = await codexFailure(kind, false)
+  const candidate = await codexFailure(kind, true)
+  assert.deepEqual(candidate, baseline, `Codex ${kind} changed first-attempt failure`)
+  assert.equal(candidate.reasonSame, true)
+  differential[`codex-${kind}`] = { baseline, candidate }
+}
+const baselineAccount = await codexHeaderMutation(false)
+const candidateAccount = await codexHeaderMutation(true)
+assert.deepEqual(baselineAccount.accountHeaders, ['acct_A', 'acct_B'])
+assert.deepEqual(candidateAccount.accountHeaders, ['acct_A', 'acct_A'])
+assert.deepEqual(candidateAccount.bearers, ['Bearer at_A', 'Bearer at_B'])
+assert.equal(candidateAccount.bodiesEqual, true)
+differential['codex-account-mutation'] = { baseline: baselineAccount, candidate: candidateAccount }
+console.log(JSON.stringify({ result: 'PASS', differential }, null, 2))

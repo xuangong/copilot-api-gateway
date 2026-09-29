@@ -1,0 +1,47 @@
+import assert from "node:assert/strict"
+import { pathToFileURL } from "node:url"
+const root = process.env.VNEXT_PROBE_ROOT
+assert(root)
+const { CopilotProvider } = await import(pathToFileURL(`${root}/vnext/packages/provider-copilot/src/provider.ts`).href)
+const { createFetcher } = await import(pathToFileURL(`${root}/vnext/packages/dial/src/fetcher.ts`).href)
+const { ProxyDialError } = await import(pathToFileURL(`${root}/vnext/packages/proxy/src/index.ts`).href)
+let serializations = 0
+let refreshes = 0
+const content = { value: "initial 😀 \ud800", toJSON() { serializations++; return this.value } }
+const seen: Array<{ kind: string; body: string; token: string | null; requestId: string | null }> = []
+const statuses = [401, 500, 200]
+let directCalls = 0
+const capture = (kind: string, body: Uint8Array, headers: Headers) => {
+  seen.push({ kind, body: new TextDecoder().decode(body), token: headers.get("authorization"), requestId: headers.get("x-request-id") })
+}
+const fetcher = createFetcher({
+  proxyBackoffs: { listForUpstream: async () => [], recordDialFailure: async () => {}, recordDialSuccess: async () => {} },
+  upstreamId: "fixture-upstream", fallbackList: [{ id: "direct_connect" }, { id: "direct_fetch" }],
+  proxyById: new Map(), runtimeLocation: "FIXTURE",
+  runProxied: async () => { throw new Error("unexpected proxy") },
+  runDirectConnect: async (_target: unknown, request: { body?: Uint8Array; headers: HeadersInit }) => {
+    capture("raw", request.body ?? new Uint8Array(), new Headers(request.headers))
+    content.value = "mutated after first dispatch"
+    throw new ProxyDialError("fixture pre-dispatch failure", "tcp-connect")
+  },
+  runDirectFetch: async (_url: string, init: RequestInit) => {
+    capture("fetch", new Uint8Array(await new Response(init.body).arrayBuffer()), new Headers(init.headers))
+    return new Response("{}", { status: statuses[directCalls++] ?? 500 })
+  },
+  socketDial: () => ({ connect: async () => { throw new Error("unexpected socket") } }),
+})
+const provider = new CopilotProvider({ copilotToken: "fixture-stale", accountType: "individual", refreshSession: async () => {
+  refreshes++; return { token: "fixture-fresh", baseUrl: "https://fixture.invalid" }
+} }, fetcher)
+const response = await provider.fetch({ endpoint: "embeddings", payload: { model: "gpt-4o", input: content }, headers: new Headers(), sourceApi: "openai" })
+assert.equal(response.status, 200)
+assert.equal(serializations, 1)
+assert.equal(refreshes, 1)
+assert.equal(seen.length, 6)
+assert.equal(new Set(seen.map(x => x.body)).size, 1)
+assert.equal(seen[0]?.body, JSON.stringify({ model: "gpt-4o", input: "initial 😀 \ud800" }))
+assert.deepEqual(seen.map(x => x.kind), ["raw", "fetch", "raw", "fetch", "raw", "fetch"])
+assert.deepEqual(seen.map(x => x.token), ["Bearer fixture-stale", "Bearer fixture-stale", "Bearer fixture-fresh", "Bearer fixture-fresh", "Bearer fixture-fresh", "Bearer fixture-fresh"])
+assert.notEqual(seen[0]?.requestId, seen[2]?.requestId)
+assert.equal(seen[2]?.requestId, seen[4]?.requestId)
+console.log(JSON.stringify({ result: "PASS", serializations, refreshes, transportAttempts: seen.length, statuses, sameBytes: true, authHeadersRotated: true, httpRetryIdentityStable: true, runtime: Bun.version }))

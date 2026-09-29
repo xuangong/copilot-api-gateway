@@ -1,0 +1,167 @@
+{
+  "result": "PASS",
+  "differential": {
+    "copilot-getter": {
+      "baseline": {
+        "reasonSame": true,
+        "trace": [
+          "getter"
+        ],
+        "sends": 0,
+        "refreshes": 0
+      },
+      "candidate": {
+        "reasonSame": true,
+        "trace": [
+          "getter"
+        ],
+        "sends": 0,
+        "refreshes": 0
+      }
+    },
+    "copilot-toJSON": {
+      "baseline": {
+        "reasonSame": true,
+        "trace": [
+          "toJSON"
+        ],
+        "sends": 0,
+        "refreshes": 0
+      },
+      "candidate": {
+        "reasonSame": true,
+        "trace": [
+          "toJSON"
+        ],
+        "sends": 0,
+        "refreshes": 0
+      }
+    },
+    "copilot-proxy": {
+      "baseline": {
+        "reasonSame": true,
+        "trace": [
+          "proxy-get:toJSON"
+        ],
+        "sends": 0,
+        "refreshes": 0
+      },
+      "candidate": {
+        "reasonSame": true,
+        "trace": [
+          "proxy-get:toJSON"
+        ],
+        "sends": 0,
+        "refreshes": 0
+      }
+    },
+    "copilot-auth-shaped-toJSON": {
+      "baseline": {
+        "reasonSame": true,
+        "trace": [
+          "toJSON",
+          "toJSON"
+        ],
+        "sends": 0,
+        "refreshes": 1
+      },
+      "candidate": {
+        "reasonSame": true,
+        "trace": [
+          "toJSON",
+          "toJSON"
+        ],
+        "sends": 0,
+        "refreshes": 1
+      }
+    },
+    "codex-getter": {
+      "baseline": {
+        "reasonSame": true,
+        "trace": [
+          "getter"
+        ],
+        "sends": 0,
+        "refreshes": 0
+      },
+      "candidate": {
+        "reasonSame": true,
+        "trace": [
+          "getter"
+        ],
+        "sends": 0,
+        "refreshes": 0
+      }
+    },
+    "codex-toJSON": {
+      "baseline": {
+        "reasonSame": true,
+        "trace": [
+          "toJSON"
+        ],
+        "sends": 0,
+        "refreshes": 0
+      },
+      "candidate": {
+        "reasonSame": true,
+        "trace": [
+          "toJSON"
+        ],
+        "sends": 0,
+        "refreshes": 0
+      }
+    },
+    "codex-proxy": {
+      "baseline": {
+        "reasonSame": true,
+        "trace": [
+          "proxy-get:toJSON"
+        ],
+        "sends": 0,
+        "refreshes": 0
+      },
+      "candidate": {
+        "reasonSame": true,
+        "trace": [
+          "proxy-get:toJSON"
+        ],
+        "sends": 0,
+        "refreshes": 0
+      }
+    },
+    "codex-account-mutation": {
+      "baseline": {
+        "accountHeaders": [
+          "acct_A",
+          "acct_B"
+        ],
+        "bearers": [
+          "Bearer at_A",
+          "Bearer at_B"
+        ],
+        "bodiesEqual": true,
+        "refreshes": 1,
+        "warnings": [
+          "invalidateCodexAccessToken: Codex account acct_B not found in upstream ups_probe",
+          "putCodexAccessToken: Codex account acct_B not found in upstream ups_probe"
+        ]
+      },
+      "candidate": {
+        "accountHeaders": [
+          "acct_A",
+          "acct_A"
+        ],
+        "bearers": [
+          "Bearer at_A",
+          "Bearer at_B"
+        ],
+        "bodiesEqual": true,
+        "refreshes": 1,
+        "warnings": [
+          "invalidateCodexAccessToken: Codex account acct_B not found in upstream ups_probe",
+          "putCodexAccessToken: Codex account acct_B not found in upstream ups_probe"
+        ]
+      }
+    }
+  }
+}

@@ -454,36 +454,63 @@ const buildCodexResponsesBody = (
 // classification. The returned Response is what the caller relays:
 //   - 2xx: caller streams/parses the body
 //   - 429: quota is already snapshotted; return verbatim
-//   - 401: `token_invalidated` → synthetic 503 (terminal); other 401 rebuilt
-//     with a re-readable body so the caller can retry with a fresh token
+//   - 401: `token_invalidated` → synthetic 503 (terminal); other 401 resends
+//     the prepared body with a fresh token
 //   - other: returned verbatim
+
+interface PreparedCodexHttpCall {
+  body: Record<string, unknown>
+  identity: CodexRequestIdentity
+  turnMetadataJson: string | null
+  bodyPrepared: boolean
+  bodyText: string | undefined
+  accountId: string
+}
+
+const codexHttpCall = (
+  body: Record<string, unknown>,
+  identity: CodexRequestIdentity,
+  turnMetadataJson: string | null,
+): PreparedCodexHttpCall => ({
+  body,
+  identity,
+  turnMetadataJson,
+  bodyPrepared: false,
+  bodyText: undefined,
+  accountId: '',
+})
 
 const dispatchCodexHttpCall = async (
   opts: CodexBackendCallBase,
   accessToken: string,
   path: string,
   accept: string,
-  body: Record<string, unknown>,
-  identity: CodexRequestIdentity,
-  turnMetadataJson: string | null,
+  prepared: PreparedCodexHttpCall,
 ): Promise<Response> => {
   const headers = new Headers()
   headers.set('authorization', `Bearer ${accessToken}`)
-  headers.set('chatgpt-account-id', opts.account.chatgptAccountId)
+  const accountId = prepared.bodyPrepared ? prepared.accountId : opts.account.chatgptAccountId
+  headers.set('chatgpt-account-id', accountId)
   headers.set('originator', CODEX_ORIGINATOR)
   headers.set('user-agent', CODEX_USER_AGENT)
   headers.set('accept', accept)
   headers.set('content-type', 'application/json')
-  headers.set('session-id', identity.sessionId)
-  headers.set('thread-id', identity.threadId)
-  headers.set('x-client-request-id', identity.clientRequestId)
-  headers.set('x-codex-window-id', identity.windowId)
-  if (turnMetadataJson !== null) headers.set('x-codex-turn-metadata', turnMetadataJson)
+  headers.set('session-id', prepared.identity.sessionId)
+  headers.set('thread-id', prepared.identity.threadId)
+  headers.set('x-client-request-id', prepared.identity.clientRequestId)
+  headers.set('x-codex-window-id', prepared.identity.windowId)
+  if (prepared.turnMetadataJson !== null) headers.set('x-codex-turn-metadata', prepared.turnMetadataJson)
+
+  if (!prepared.bodyPrepared) {
+    prepared.bodyText = JSON.stringify(prepared.body)
+    prepared.accountId = accountId
+    prepared.bodyPrepared = true
+  }
 
   const response = await opts.fetcher(`${CODEX_BACKEND_BASE}${path}`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(body),
+    body: prepared.bodyText,
     signal: opts.signal,
   })
 
@@ -552,38 +579,41 @@ const performStreamingResponsesCall = async (
   opts: CallCodexResponsesOptions,
   accessToken: string,
   alreadyRetried: boolean,
+  preparedCall?: PreparedCodexHttpCall,
 ): Promise<Response> => {
-  const clientTurnMetadata = parseClientTurnMetadataJson(
-    trimHeader(opts.headers, 'x-codex-turn-metadata'),
-  )
-  const clientMetadata = clientCodexClientMetadata(opts.body)
-  const identity = await buildCodexRequestIdentity(
-    opts,
-    opts.body,
-    clientMetadata,
-    clientTurnMetadata,
-  )
-  const hasCompactionTrigger = (opts.body.input as ResponsesInputItem[]).some(
-    (item: ResponsesInputItem) => (item as { type?: unknown }).type === 'compaction_trigger',
-  )
-  const metadata: CodexTurnMetadataOptions = hasCompactionTrigger
-    ? CODEX_RESPONSES_COMPACTION_V2_TURN_METADATA
-    : { requestKind: 'turn' }
-  const turnMetadataJson = buildCodexTurnMetadataJson(identity, metadata, clientTurnMetadata)
+  let prepared = preparedCall
+  if (!prepared) {
+    const clientTurnMetadata = parseClientTurnMetadataJson(
+      trimHeader(opts.headers, 'x-codex-turn-metadata'),
+    )
+    const clientMetadata = clientCodexClientMetadata(opts.body)
+    const identity = await buildCodexRequestIdentity(
+      opts,
+      opts.body,
+      clientMetadata,
+      clientTurnMetadata,
+    )
+    const hasCompactionTrigger = (opts.body.input as ResponsesInputItem[]).some(
+      (item: ResponsesInputItem) => (item as { type?: unknown }).type === 'compaction_trigger',
+    )
+    const metadata: CodexTurnMetadataOptions = hasCompactionTrigger
+      ? CODEX_RESPONSES_COMPACTION_V2_TURN_METADATA
+      : { requestKind: 'turn' }
+    const turnMetadataJson = buildCodexTurnMetadataJson(identity, metadata, clientTurnMetadata)
+    prepared = codexHttpCall(buildCodexResponsesBody(opts, identity, turnMetadataJson), identity, turnMetadataJson)
+  }
   const response = await dispatchCodexHttpCall(
     opts,
     accessToken,
     CODEX_RESPONSES_PATH,
     'text/event-stream',
-    buildCodexResponsesBody(opts, identity, turnMetadataJson),
-    identity,
-    turnMetadataJson,
+    prepared,
   )
 
   if (response.status === 401 && !alreadyRetried) {
     const fresh = await refreshAccessTokenForRetry(opts)
     if (!fresh.ok) return fresh.response
-    return await performStreamingResponsesCall(opts, fresh.accessToken, true)
+    return await performStreamingResponsesCall(opts, fresh.accessToken, true, prepared)
   }
 
   if (response.ok) return ensureSseContentType(response)
@@ -596,33 +626,36 @@ const performUnaryCompactCall = async (
   opts: CallCodexResponsesCompactOptions,
   accessToken: string,
   alreadyRetried: boolean,
+  preparedCall?: PreparedCodexHttpCall,
 ): Promise<Response> => {
-  const clientTurnMetadata = parseClientTurnMetadataJson(
-    trimHeader(opts.headers, 'x-codex-turn-metadata'),
-  )
-  const clientMetadata = clientCodexClientMetadata(opts.body)
-  const identity = await buildCodexRequestIdentity(
-    opts,
-    opts.body,
-    clientMetadata,
-    clientTurnMetadata,
-  )
-  const metadata: CodexTurnMetadataOptions = { requestKind: 'compaction' }
-  const turnMetadataJson = buildCodexTurnMetadataJson(identity, metadata, clientTurnMetadata)
+  let prepared = preparedCall
+  if (!prepared) {
+    const clientTurnMetadata = parseClientTurnMetadataJson(
+      trimHeader(opts.headers, 'x-codex-turn-metadata'),
+    )
+    const clientMetadata = clientCodexClientMetadata(opts.body)
+    const identity = await buildCodexRequestIdentity(
+      opts,
+      opts.body,
+      clientMetadata,
+      clientTurnMetadata,
+    )
+    const metadata: CodexTurnMetadataOptions = { requestKind: 'compaction' }
+    const turnMetadataJson = buildCodexTurnMetadataJson(identity, metadata, clientTurnMetadata)
+    prepared = codexHttpCall({ ...opts.body, model: opts.model.id }, identity, turnMetadataJson)
+  }
   const response = await dispatchCodexHttpCall(
     opts,
     accessToken,
     CODEX_RESPONSES_COMPACT_PATH,
     'application/json',
-    { ...opts.body, model: opts.model.id },
-    identity,
-    turnMetadataJson,
+    prepared,
   )
 
   if (response.status === 401 && !alreadyRetried) {
     const fresh = await refreshAccessTokenForRetry(opts)
     if (!fresh.ok) return fresh.response
-    return await performUnaryCompactCall(opts, fresh.accessToken, true)
+    return await performUnaryCompactCall(opts, fresh.accessToken, true, prepared)
   }
 
   return response
@@ -634,34 +667,37 @@ const performAlphaSearchCall = async (
   opts: CallCodexAlphaSearchOptions,
   accessToken: string,
   alreadyRetried: boolean,
+  preparedCall?: PreparedCodexHttpCall,
 ): Promise<Response> => {
-  const requestId = stringField(opts.body, 'id')
-  if (requestId === null) {
-    throw new Error('Normalized Codex alpha search request is missing id')
+  let prepared = preparedCall
+  if (!prepared) {
+    const requestId = stringField(opts.body, 'id')
+    if (requestId === null) {
+      throw new Error('Normalized Codex alpha search request is missing id')
+    }
+    const identity: CodexRequestIdentity = {
+      installationId: opts.account.openaiDeviceId,
+      sessionId: requestId,
+      threadId: requestId,
+      clientRequestId: requestId,
+      turnId: uuidV7(),
+      windowId: `${requestId}:0`,
+    }
+    const turnMetadataJson = trimHeader(opts.headers, 'x-codex-turn-metadata')
+    prepared = codexHttpCall({ ...opts.body, model: opts.model.id }, identity, turnMetadataJson)
   }
-  const identity: CodexRequestIdentity = {
-    installationId: opts.account.openaiDeviceId,
-    sessionId: requestId,
-    threadId: requestId,
-    clientRequestId: requestId,
-    turnId: uuidV7(),
-    windowId: `${requestId}:0`,
-  }
-  const turnMetadataJson = trimHeader(opts.headers, 'x-codex-turn-metadata')
   const response = await dispatchCodexHttpCall(
     opts,
     accessToken,
     CODEX_ALPHA_SEARCH_PATH,
     'application/json',
-    { ...opts.body, model: opts.model.id },
-    identity,
-    turnMetadataJson,
+    prepared,
   )
 
   if (response.status === 401 && !alreadyRetried) {
     const fresh = await refreshAccessTokenForRetry(opts)
     if (!fresh.ok) return fresh.response
-    return await performAlphaSearchCall(opts, fresh.accessToken, true)
+    return await performAlphaSearchCall(opts, fresh.accessToken, true, prepared)
   }
 
   return response
@@ -725,4 +761,3 @@ const ensureSseContentType = (response: Response): Response => {
     headers,
   })
 }
-

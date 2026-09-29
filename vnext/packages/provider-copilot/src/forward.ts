@@ -19,6 +19,13 @@ interface CallCopilotAPIOptions {
   timeout?: number // Request timeout in milliseconds
   extraHeaders?: Record<string, string>
   fetcher?: Fetcher
+  preparedCall?: PreparedCopilotCall
+}
+
+export interface PreparedCopilotCall {
+  ready: boolean
+  body: string | undefined
+  isStreaming: boolean
 }
 
 /**
@@ -35,28 +42,31 @@ export async function callCopilotAPI({
   timeout,
   extraHeaders,
   fetcher,
+  preparedCall,
 }: CallCopilotAPIOptions): Promise<Response> {
   if (!copilotToken) {
     throw new Error("Copilot token not found")
   }
 
-  if (requireModel && (!payload.model || typeof payload.model !== "string")) {
-    throw new Error("Model is required and must be a string")
-  }
+  if (!preparedCall?.ready) {
+    if (requireModel && (!payload.model || typeof payload.model !== "string")) {
+      throw new Error("Model is required and must be a string")
+    }
 
-  // Normalize Claude model IDs: Anthropic SDK uses dashes (claude-opus-4-6-1m)
-  // but Copilot API uses dots (claude-opus-4.6-1m). Convert version separators.
-  if (typeof payload.model === "string" && payload.model.startsWith("claude-")) {
-    // Match patterns like claude-opus-4-6-1m or claude-sonnet-4-5
-    // Version numbers use dashes in SDK but dots in Copilot
-    payload.model = payload.model.replace(
-      /^(claude-(?:opus|sonnet|haiku)-)((\d)-(\d)(-1m)?)$/,
-      (_match, prefix, _ver, major, minor, suffix = "") => `${prefix}${major}.${minor}${suffix}`,
-    )
+    // Normalize Claude model IDs: Anthropic SDK uses dashes (claude-opus-4-6-1m)
+    // but Copilot API uses dots (claude-opus-4.6-1m). Convert version separators.
+    if (typeof payload.model === "string" && payload.model.startsWith("claude-")) {
+      // Match patterns like claude-opus-4-6-1m or claude-sonnet-4-5
+      // Version numbers use dashes in SDK but dots in Copilot
+      payload.model = payload.model.replace(
+        /^(claude-(?:opus|sonnet|haiku)-)((\d)-(\d)(-1m)?)$/,
+        (_match, prefix, _ver, major, minor, suffix = "") => `${prefix}${major}.${minor}${suffix}`,
+      )
+    }
   }
 
   const baseUrl = baseUrlOverride ?? getCopilotBaseUrl(accountType)
-  const isStreaming = payload.stream === true
+  const isStreaming = preparedCall?.ready ? preparedCall.isStreaming : payload.stream === true
   const requestId = crypto.randomUUID().slice(0, 8)
 
   // Log sync requests for debugging (they can hang)
@@ -76,10 +86,16 @@ export async function callCopilotAPI({
 
   let response: Response
   try {
+    const body = preparedCall?.ready ? preparedCall.body : JSON.stringify(payload)
+    if (preparedCall && !preparedCall.ready) {
+      preparedCall.body = body
+      preparedCall.isStreaming = isStreaming
+      preparedCall.ready = true
+    }
     response = await fetchWithRetry(`${baseUrl}${endpoint}`, {
       method: "POST",
       headers,
-      body: JSON.stringify(payload),
+      body,
       timeout,
       fetchImpl: fetcher,
     })

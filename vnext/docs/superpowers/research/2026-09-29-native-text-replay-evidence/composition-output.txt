@@ -1,0 +1,3 @@
+Failed to call embeddings: 401 {}
+[fetch] Attempt 1 got HTTP 500, retrying in 1000ms...
+{"result":"PASS","serializations":1,"refreshes":1,"transportAttempts":6,"statuses":[401,500,200],"sameBytes":true,"authHeadersRotated":true,"httpRetryIdentityStable":true,"runtime":"1.3.0"}

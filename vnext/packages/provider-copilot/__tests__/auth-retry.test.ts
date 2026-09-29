@@ -139,3 +139,112 @@ test('fetch — a tenant-advertised base URL from the refresh is adopted', async
 
   expect(calls[1]?.url).toBe('https://copilot-api.msft.ghe.com/chat/completions')
 })
+
+test('fetch — auth refresh resends the first native body text with fresh auth headers', async () => {
+  const calls: Array<{ url: string; token: string | null; body: BodyInit | null | undefined; requestId: string | null; taskId: string | null; integrationId: string | null }> = []
+  const input = { value: 'first', toJSON() { serializations++; return this.value } }
+  let serializations = 0
+  let streamReads = 0
+  const payload = Object.defineProperty({ model: 'gpt-4o', input }, 'stream', {
+    get() { streamReads++; return false },
+  })
+  const fetcher: Fetcher = async (url, init) => {
+    const headers = new Headers(init.headers)
+    calls.push({
+      url: String(url),
+      token: headers.get('authorization'),
+      body: init.body,
+      requestId: headers.get('x-request-id'),
+      taskId: headers.get('x-agent-task-id'),
+      integrationId: headers.get('copilot-integration-id'),
+    })
+    if (calls.length === 1) {
+      input.value = 'changed after send'
+      return new Response(DENIED, { status: 403 })
+    }
+    return new Response('{}', { status: 200 })
+  }
+  const provider = new CopilotProvider({
+    copilotToken: 'stale', accountType: 'individual',
+    refreshSession: async () => ({ token: 'fresh', baseUrl: 'https://tenant.example' }),
+  }, fetcher)
+
+  const response = await provider.fetch({
+    endpoint: 'embeddings',
+    payload,
+    headers: new Headers({ 'copilot-integration-id': '' }),
+    sourceApi: 'openai',
+  })
+
+  expect(response.status).toBe(200)
+  expect(serializations).toBe(1)
+  expect(streamReads).toBe(1)
+  expect(calls.map((call) => call.body)).toEqual(['{"model":"gpt-4o","input":"first"}', '{"model":"gpt-4o","input":"first"}'])
+  expect(calls.map((call) => call.token)).toEqual(['Bearer stale', 'Bearer fresh'])
+  expect(calls[1]?.url).toBe('https://tenant.example/embeddings')
+  expect(calls[0]?.requestId).toBe(calls[0]?.taskId)
+  expect(calls[1]?.requestId).toBe(calls[1]?.taskId)
+  expect(calls[0]?.requestId).not.toBe(calls[1]?.requestId)
+  expect(calls.map((call) => call.integrationId)).toEqual([null, null])
+})
+
+test('fetch — a successful undefined JSON representation stays undefined after refresh', async () => {
+  const bodies: Array<BodyInit | null | undefined> = []
+  let serializations = 0
+  const fetcher: Fetcher = async (_url, init) => {
+    bodies.push(init.body)
+    return new Response(bodies.length === 1 ? DENIED : '{}', { status: bodies.length === 1 ? 401 : 200 })
+  }
+  const provider = new CopilotProvider({
+    copilotToken: 'stale', accountType: 'individual',
+    refreshSession: async () => ({ token: 'fresh' }),
+  }, fetcher)
+
+  const response = await provider.fetch({
+    endpoint: 'embeddings',
+    payload: { model: 'gpt-4o', toJSON() { serializations++; return undefined } },
+    headers: new Headers(),
+    sourceApi: 'openai',
+  })
+
+  expect(response.status).toBe(200)
+  expect(serializations).toBe(1)
+  expect(bodies).toEqual([undefined, undefined])
+})
+
+test('concurrent auth retries keep each request body isolated', async () => {
+  const attempts = new Map<string, string[]>()
+  const inputs = {
+    a: { value: 'a-first', toJSON() { aSerializations++; return this.value } },
+    b: { value: 'b-first', toJSON() { bSerializations++; return this.value } },
+  }
+  let aSerializations = 0
+  let bSerializations = 0
+  let refreshes = 0
+  const fetcher: Fetcher = async (_url, init) => {
+    const body = String(init.body)
+    const parsed = JSON.parse(body) as { id: 'a' | 'b' }
+    const seen = attempts.get(parsed.id) ?? []
+    seen.push(body)
+    attempts.set(parsed.id, seen)
+    if (seen.length === 1) {
+      inputs[parsed.id].value = `${parsed.id}-changed`
+      return new Response(DENIED, { status: 403 })
+    }
+    return new Response('{}', { status: 200 })
+  }
+  const provider = new CopilotProvider({
+    copilotToken: 'stale', accountType: 'individual',
+    refreshSession: async () => ({ token: `fresh-${++refreshes}` }),
+  }, fetcher)
+  const call = (id: 'a' | 'b') => provider.fetch({
+    endpoint: 'embeddings', payload: { model: 'gpt-4o', id, input: inputs[id] },
+    headers: new Headers(), sourceApi: 'openai',
+  })
+
+  const responses = await Promise.all([call('a'), call('b')])
+  expect(responses.map((response) => response.status)).toEqual([200, 200])
+  expect(attempts.get('a')).toEqual(['{"model":"gpt-4o","id":"a","input":"a-first"}', '{"model":"gpt-4o","id":"a","input":"a-first"}'])
+  expect(attempts.get('b')).toEqual(['{"model":"gpt-4o","id":"b","input":"b-first"}', '{"model":"gpt-4o","id":"b","input":"b-first"}'])
+  expect([aSerializations, bSerializations]).toEqual([1, 1])
+})

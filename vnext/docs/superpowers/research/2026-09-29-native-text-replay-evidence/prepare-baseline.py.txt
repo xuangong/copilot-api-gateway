@@ -1,0 +1,30 @@
+from pathlib import Path
+import re
+import subprocess
+
+root = Path(__file__).resolve().parents[2]
+scratch = Path(__file__).resolve().parent
+base = "46aacfacc87f06f36d439017319861601b889be4"
+node_modules = scratch / "node_modules"
+node_modules.mkdir(exist_ok=True)
+for namespace, package in (("@vibe-llm", "provider-copilot"), ("@vibe-core", "provider-codex")):
+    link = node_modules / namespace
+    if not link.exists() and not link.is_symlink():
+        link.symlink_to(root / "vnext" / "packages" / package / "node_modules" / namespace, target_is_directory=True)
+files = {
+    "provider-copilot/src/forward.ts": "baseline-copilot-forward.ts",
+    "provider-copilot/src/provider.ts": "baseline-copilot-provider.ts",
+    "provider-codex/src/fetch.ts": "baseline-codex-fetch.ts",
+}
+for relative, output in files.items():
+    source = subprocess.check_output(
+        ["git", "show", f"{base}:vnext/packages/{relative}"], cwd=root, text=True
+    )
+    package = relative.split("/")[0]
+    def change(match):
+        path = match.group(2)
+        if output == "baseline-copilot-provider.ts" and path == "forward":
+            return f"from {match.group(1)}./baseline-copilot-forward{match.group(1)}"
+        return f"from {match.group(1)}../packages/{package}/src/{path}{match.group(1)}"
+    source = re.sub(r"from (['\"])\./([^'\"]+)\1", change, source)
+    (scratch / output).write_text(source)

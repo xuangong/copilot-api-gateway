@@ -1,0 +1,15 @@
+# Native prepared text replay acceptance
+
+Controlled Bun 1.3.0 composition against the clean verification worktree based on `46aacfac` plus the six-file native preparation patch. Uses actual `CopilotProvider`, `fetchWithRetry`, and dial `createFetcher` with injected synthetic transports; no sockets, live provider, credentials, or production data are used.
+
+The request experiences raw direct-connect rejection followed by direct-fetch fallback for each outer call, then HTTP statuses 401, 500, 200. A caller-owned nested object is mutated at the first transport dispatch. All six transport inputs retain identical bytes, final serialization occurs once, auth refresh occurs once, bearer headers change on auth retry, and generated request identity remains stable through the HTTP retry. The fixture contains an emoji and lone UTF-16 surrogate. Expected synthetic 401/500 diagnostics are retained in the output.
+
+Run by copying `composition-probe.ts.txt` to an ignored scratch `.ts` file and setting `VNEXT_PROBE_ROOT` to the target repository before invoking Bun. This verifies application/dial representation and retry composition, not socket wire behavior, Workers behavior, reduced memory usage, or the live upstream service. Codex Responses/compact/alpha auth and identity coverage resides in the committed provider integration tests; no new Codex HTTP retry policy is introduced.
+
+## Native exception and account-header follow-up
+
+An independent reviewer ran eight focused differential cases against source extracted from `46aacfac`: getter, `toJSON`, and Proxy exceptions in Copilot and Codex, an auth-shaped thrown `toJSON` exception in Copilot, and Codex account-header mutation after the first 401. Exception identity, first-attempt traces and existing exceptional retry classification match baseline. The candidate retains the initial account header while rotating the bearer token. The synthetic account mutation produces the same two cache-mismatch warnings in both revisions; it is not a clean live credential refresh claim. Current credential mutation/effect fencing is separately tracked under C08.
+
+Reproduce in an ignored `vnext/.scratch-b05-review/` directory: copy `prepare-baseline.py.txt` to `prepare-baseline.py` and `native-failure-probe.ts.txt` to `probe.ts`; create its `node_modules` directory, linking `@vibe-core` to the absolute `vnext/packages/provider-codex/node_modules/@vibe-core` and `@vibe-llm` to the absolute `vnext/packages/provider-copilot/node_modules/@vibe-llm`. From repository root run `python3 vnext/.scratch-b05-review/prepare-baseline.py`; from `vnext/` run `bun .scratch-b05-review/probe.ts`. The extracted baseline files are generated, not product changes. All observed results are in `native-failure-output.json`.
+
+Final clean `ci:local`: 4,270 tests passed, one skipped, zero failed; all type/purity/lint/build/Workers dry-run gates passed, with 36 inherited lint warnings. Independent spec and quality review accepted the package; its specific exotic-input evidence gap was closed by these probes.
