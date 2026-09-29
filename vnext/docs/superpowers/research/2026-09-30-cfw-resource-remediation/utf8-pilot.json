@@ -1,0 +1,486 @@
+{
+  "commit": "90ebb5ac157bd78284144ba8cd58b343779e778d",
+  "status": "Intermediate; CPU remains above baseline despite eliminating the major hotspot.",
+  "run": "utf8-baseline-pilot",
+  "units": {
+    "cpuTime": "microseconds",
+    "memoryUsageBytes": "bytes",
+    "wallTime": "microseconds"
+  },
+  "sampling": "Adaptive invocation samples; shared-isolate memory",
+  "summary": {
+    "offered": 600,
+    "expected": 600,
+    "dispatch": {
+      "settle_ms": 500,
+      "late_dispatch_limitation": "Single bounded settle; timeout/aborted work needs follow-up observation",
+      "exactly_once_failures": 0,
+      "available": true,
+      "observed_logical_ids": 600,
+      "total_dispatches": 600,
+      "duplicate_dispatches": [],
+      "missing": [],
+      "instrumentation": "One awaited isolated upstream D1 INSERT before response, equal for A/B"
+    },
+    "summary": [
+      {
+        "cell": [
+          "A",
+          0,
+          "responses",
+          "responses",
+          "ok",
+          65536,
+          false
+        ],
+        "offered": 50,
+        "attempted": 50,
+        "completed": 50,
+        "transport_completed": 50,
+        "semantic_success": 50,
+        "timeouts": 0,
+        "passed": 50,
+        "failed": 0,
+        "saturation_drops": 0,
+        "p50_ms": 107.20875000000069,
+        "p95_ms": 812.4770420000002,
+        "p99_ms": null,
+        "p99_available": false,
+        "ttfe_p50_ms": 107.20862500000021,
+        "lateness_p95_ms": 2.3311249999997017
+      },
+      {
+        "cell": [
+          "A",
+          0,
+          "responses",
+          "responses",
+          "ok",
+          65536,
+          true
+        ],
+        "offered": 50,
+        "attempted": 50,
+        "completed": 50,
+        "transport_completed": 50,
+        "semantic_success": 50,
+        "timeouts": 0,
+        "passed": 50,
+        "failed": 0,
+        "saturation_drops": 0,
+        "p50_ms": 133.13491600000089,
+        "p95_ms": 173.9772499999999,
+        "p99_ms": null,
+        "p99_available": false,
+        "ttfe_p50_ms": 112.89554099999987,
+        "lateness_p95_ms": 2.226582999999664
+      },
+      {
+        "cell": [
+          "B",
+          0,
+          "responses",
+          "responses",
+          "ok",
+          65536,
+          false
+        ],
+        "offered": 50,
+        "attempted": 50,
+        "completed": 50,
+        "transport_completed": 50,
+        "semantic_success": 50,
+        "timeouts": 0,
+        "passed": 50,
+        "failed": 0,
+        "saturation_drops": 0,
+        "p50_ms": 94.86183299999902,
+        "p95_ms": 617.033875000001,
+        "p99_ms": null,
+        "p99_available": false,
+        "ttfe_p50_ms": 94.86170800000036,
+        "lateness_p95_ms": 1.9466659999998228
+      },
+      {
+        "cell": [
+          "B",
+          0,
+          "responses",
+          "responses",
+          "ok",
+          65536,
+          true
+        ],
+        "offered": 50,
+        "attempted": 50,
+        "completed": 50,
+        "transport_completed": 50,
+        "semantic_success": 50,
+        "timeouts": 0,
+        "passed": 50,
+        "failed": 0,
+        "saturation_drops": 0,
+        "p50_ms": 125.74216700000397,
+        "p95_ms": 179.60491600000023,
+        "p99_ms": null,
+        "p99_available": false,
+        "ttfe_p50_ms": 109.3771659999984,
+        "lateness_p95_ms": 2.2240840000013122
+      },
+      {
+        "cell": [
+          "B",
+          1,
+          "responses",
+          "responses",
+          "ok",
+          65536,
+          false
+        ],
+        "offered": 50,
+        "attempted": 50,
+        "completed": 50,
+        "transport_completed": 50,
+        "semantic_success": 50,
+        "timeouts": 0,
+        "passed": 50,
+        "failed": 0,
+        "saturation_drops": 0,
+        "p50_ms": 130.48079199999484,
+        "p95_ms": 243.98112499999843,
+        "p99_ms": null,
+        "p99_available": false,
+        "ttfe_p50_ms": 130.4806249999965,
+        "lateness_p95_ms": 2.2755839999954333
+      },
+      {
+        "cell": [
+          "B",
+          1,
+          "responses",
+          "responses",
+          "ok",
+          65536,
+          true
+        ],
+        "offered": 50,
+        "attempted": 50,
+        "completed": 50,
+        "transport_completed": 50,
+        "semantic_success": 50,
+        "timeouts": 0,
+        "passed": 50,
+        "failed": 0,
+        "saturation_drops": 0,
+        "p50_ms": 126.07033299999603,
+        "p95_ms": 162.52070800000365,
+        "p99_ms": null,
+        "p99_available": false,
+        "ttfe_p50_ms": 109.00508299999638,
+        "lateness_p95_ms": 2.204750000004424
+      },
+      {
+        "cell": [
+          "A",
+          1,
+          "responses",
+          "responses",
+          "ok",
+          65536,
+          false
+        ],
+        "offered": 50,
+        "attempted": 50,
+        "completed": 50,
+        "transport_completed": 50,
+        "semantic_success": 50,
+        "timeouts": 0,
+        "passed": 50,
+        "failed": 0,
+        "saturation_drops": 0,
+        "p50_ms": 91.64795800000138,
+        "p95_ms": 294.04529199999524,
+        "p99_ms": null,
+        "p99_available": false,
+        "ttfe_p50_ms": 91.64770800000406,
+        "lateness_p95_ms": 2.4755000000004657
+      },
+      {
+        "cell": [
+          "A",
+          1,
+          "responses",
+          "responses",
+          "ok",
+          65536,
+          true
+        ],
+        "offered": 50,
+        "attempted": 50,
+        "completed": 50,
+        "transport_completed": 50,
+        "semantic_success": 50,
+        "timeouts": 0,
+        "passed": 50,
+        "failed": 0,
+        "saturation_drops": 0,
+        "p50_ms": 122.20783299999312,
+        "p95_ms": 171.3529589999962,
+        "p99_ms": null,
+        "p99_available": false,
+        "ttfe_p50_ms": 105.41112499999872,
+        "lateness_p95_ms": 2.1786660000070697
+      },
+      {
+        "cell": [
+          "A",
+          2,
+          "responses",
+          "responses",
+          "ok",
+          65536,
+          false
+        ],
+        "offered": 50,
+        "attempted": 50,
+        "completed": 50,
+        "transport_completed": 50,
+        "semantic_success": 50,
+        "timeouts": 0,
+        "passed": 50,
+        "failed": 0,
+        "saturation_drops": 0,
+        "p50_ms": 89.17799999999988,
+        "p95_ms": 184.08208400000876,
+        "p99_ms": null,
+        "p99_available": false,
+        "ttfe_p50_ms": 89.17775000000256,
+        "lateness_p95_ms": 2.029917000007117
+      },
+      {
+        "cell": [
+          "A",
+          2,
+          "responses",
+          "responses",
+          "ok",
+          65536,
+          true
+        ],
+        "offered": 50,
+        "attempted": 50,
+        "completed": 50,
+        "transport_completed": 50,
+        "semantic_success": 50,
+        "timeouts": 0,
+        "passed": 50,
+        "failed": 0,
+        "saturation_drops": 0,
+        "p50_ms": 166.35912500000268,
+        "p95_ms": 236.50604200000816,
+        "p99_ms": null,
+        "p99_available": false,
+        "ttfe_p50_ms": 149.9639590000006,
+        "lateness_p95_ms": 2.3356670000066515
+      },
+      {
+        "cell": [
+          "B",
+          2,
+          "responses",
+          "responses",
+          "ok",
+          65536,
+          false
+        ],
+        "offered": 50,
+        "attempted": 50,
+        "completed": 50,
+        "transport_completed": 50,
+        "semantic_success": 50,
+        "timeouts": 0,
+        "passed": 50,
+        "failed": 0,
+        "saturation_drops": 0,
+        "p50_ms": 94.04520799999591,
+        "p95_ms": 171.5925419999985,
+        "p99_ms": null,
+        "p99_available": false,
+        "ttfe_p50_ms": 94.04512500000419,
+        "lateness_p95_ms": 2.1285829999978887
+      },
+      {
+        "cell": [
+          "B",
+          2,
+          "responses",
+          "responses",
+          "ok",
+          65536,
+          true
+        ],
+        "offered": 50,
+        "attempted": 50,
+        "completed": 50,
+        "transport_completed": 50,
+        "semantic_success": 50,
+        "timeouts": 0,
+        "passed": 50,
+        "failed": 0,
+        "saturation_drops": 0,
+        "p50_ms": 172.51433299999917,
+        "p95_ms": 315.7747920000111,
+        "p99_ms": null,
+        "p99_available": false,
+        "ttfe_p50_ms": 155.76987499999814,
+        "lateness_p95_ms": 2.3117090000014286
+      }
+    ]
+  },
+  "windows": [
+    {
+      "window": "block-0-A",
+      "raw_sha256": "5161cd9a96668f3ba2b893c82aad2b0de295cb218f120fa08d563187fa179b59",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 95,
+          "quantiles": {
+            "cpuTimeP50": 13542,
+            "cpuTimeP95": 22765,
+            "cpuTimeP99": 67751,
+            "memoryUsageBytesP50": 34804250,
+            "memoryUsageBytesP90": 43812296,
+            "memoryUsageBytesP95": 44438864,
+            "memoryUsageBytesP99": 45534696,
+            "memoryUsageBytesP999": 45534696,
+            "wallTimeP50": 484296,
+            "wallTimeP95": 1117191,
+            "wallTimeP99": 2049772
+          }
+        }
+      ]
+    },
+    {
+      "window": "block-0-B",
+      "raw_sha256": "6717128973eafe67f9bc9a4f14fa26e00623725a48713a2acc9ba27e202f9ecf",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 102,
+          "quantiles": {
+            "cpuTimeP50": 13978,
+            "cpuTimeP95": 27978,
+            "cpuTimeP99": 92539,
+            "memoryUsageBytesP50": 50648508,
+            "memoryUsageBytesP90": 55947696,
+            "memoryUsageBytesP95": 56994350,
+            "memoryUsageBytesP99": 57917270,
+            "memoryUsageBytesP999": 58894990,
+            "wallTimeP50": 1098260,
+            "wallTimeP95": 1716982,
+            "wallTimeP99": 1945398
+          }
+        }
+      ]
+    },
+    {
+      "window": "block-1-A",
+      "raw_sha256": "25851d4dfbd714a0d467a8bfbd9a7d97f897bfbca30c78246740f89b4bff6f01",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 101,
+          "quantiles": {
+            "cpuTimeP50": 8270,
+            "cpuTimeP95": 17528,
+            "cpuTimeP99": 19424,
+            "memoryUsageBytesP50": 32996526,
+            "memoryUsageBytesP90": 40966440,
+            "memoryUsageBytesP95": 42939600,
+            "memoryUsageBytesP99": 43188250,
+            "memoryUsageBytesP999": 43505380,
+            "wallTimeP50": 443254,
+            "wallTimeP95": 1285370,
+            "wallTimeP99": 1395384
+          }
+        }
+      ]
+    },
+    {
+      "window": "block-1-B",
+      "raw_sha256": "11900b5904d3b9c5b305678cf1b5b49917672552af30640108ada4abac110a22",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 102,
+          "quantiles": {
+            "cpuTimeP50": 13219,
+            "cpuTimeP95": 17197,
+            "cpuTimeP99": 18636,
+            "memoryUsageBytesP50": 59666990,
+            "memoryUsageBytesP90": 66979230,
+            "memoryUsageBytesP95": 68433740,
+            "memoryUsageBytesP99": 68474690,
+            "memoryUsageBytesP999": 68482880,
+            "wallTimeP50": 1157529,
+            "wallTimeP95": 1685593,
+            "wallTimeP99": 2425267
+          }
+        }
+      ]
+    },
+    {
+      "window": "block-2-A",
+      "raw_sha256": "818888df4e7c7e8a8d80a86b4292f1ebd4fa93672518c34c7078ef3f358a0c7d",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 104,
+          "quantiles": {
+            "cpuTimeP50": 8254,
+            "cpuTimeP95": 15017,
+            "cpuTimeP99": 18632,
+            "memoryUsageBytesP50": 47425584,
+            "memoryUsageBytesP90": 50678630,
+            "memoryUsageBytesP95": 51224684,
+            "memoryUsageBytesP99": 51813636,
+            "memoryUsageBytesP999": 51825830,
+            "wallTimeP50": 404884,
+            "wallTimeP95": 822133,
+            "wallTimeP99": 1260963
+          }
+        }
+      ]
+    },
+    {
+      "window": "block-2-B",
+      "raw_sha256": "11ff088df219956d1d8d43617ae319ba7f19f5aad64fb8d890bb1aeb49d2f359",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 62,
+          "quantiles": {
+            "cpuTimeP50": 13530,
+            "cpuTimeP95": 17325,
+            "cpuTimeP99": 48582,
+            "memoryUsageBytesP50": 48620590,
+            "memoryUsageBytesP90": 53490890,
+            "memoryUsageBytesP95": 53913508,
+            "memoryUsageBytesP99": 54426464,
+            "memoryUsageBytesP999": 54426464,
+            "wallTimeP50": 1100135,
+            "wallTimeP95": 2075422,
+            "wallTimeP99": 2322260
+          }
+        }
+      ]
+    }
+  ]
+}

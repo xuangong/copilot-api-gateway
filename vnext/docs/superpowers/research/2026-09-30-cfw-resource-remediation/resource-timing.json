@@ -1,0 +1,287 @@
+{
+  "diagnostic_only": true,
+  "source_commit": "82160a0b5cc7128ad675cc2a1f9cef38c87aaea4",
+  "raw_sha256": "2a3b98a638096741510489665914c4fd4c616156ff50a12e5d8e4d4a37ddcb37",
+  "requests": 12,
+  "warmup_requests": 2,
+  "measured_requests": 10,
+  "semantic_successes": 12,
+  "background_all_fulfilled": true,
+  "dispatch": {
+    "expected_logical_ids": 12,
+    "observed_logical_ids": 12,
+    "total_dispatches": 12,
+    "exactly_once": true,
+    "note": "Read-only exact-ID query after the diagnostic workload. Timing IDs use a prefix shorter than the fixture count HTTP API accepts."
+  },
+  "total_completion_ms": {
+    "min": 926,
+    "max": 1132,
+    "mean": 1026.8
+  },
+  "sum_r2_ms": {
+    "min": 624,
+    "max": 867,
+    "mean": 733.5
+  },
+  "rows": [
+    {
+      "index": 2,
+      "stream": false,
+      "completed_ms": 952,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 221,
+          "elapsed_ms": 230,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 451,
+          "elapsed_ms": 260,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 711,
+          "elapsed_ms": 209,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "stream": true,
+      "completed_ms": 1114,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 256,
+          "elapsed_ms": 229,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 485,
+          "elapsed_ms": 235,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 720,
+          "elapsed_ms": 361,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "stream": false,
+      "completed_ms": 1118,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 219,
+          "elapsed_ms": 224,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 443,
+          "elapsed_ms": 419,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 862,
+          "elapsed_ms": 224,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "stream": true,
+      "completed_ms": 972,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 286,
+          "elapsed_ms": 207,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 493,
+          "elapsed_ms": 222,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 715,
+          "elapsed_ms": 226,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "stream": false,
+      "completed_ms": 963,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 252,
+          "elapsed_ms": 203,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 455,
+          "elapsed_ms": 231,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 686,
+          "elapsed_ms": 243,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "stream": true,
+      "completed_ms": 993,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 329,
+          "elapsed_ms": 211,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 540,
+          "elapsed_ms": 212,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 752,
+          "elapsed_ms": 201,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "stream": false,
+      "completed_ms": 1132,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 234,
+          "elapsed_ms": 427,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 661,
+          "elapsed_ms": 220,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 881,
+          "elapsed_ms": 218,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "stream": true,
+      "completed_ms": 1108,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 310,
+          "elapsed_ms": 243,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 553,
+          "elapsed_ms": 301,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 854,
+          "elapsed_ms": 219,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "stream": false,
+      "completed_ms": 926,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 214,
+          "elapsed_ms": 225,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 439,
+          "elapsed_ms": 217,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 656,
+          "elapsed_ms": 237,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "stream": true,
+      "completed_ms": 990,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 278,
+          "elapsed_ms": 231,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 509,
+          "elapsed_ms": 222,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 731,
+          "elapsed_ms": 228,
+          "ok": true
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "R2 spans are wall time, not billed CPU.",
+    "Wrapper drains response and awaits background work; not formal latency qualification.",
+    "Baseline R2 spans and actual placement were not matched.",
+    "Native R2 buffers may overlap after parallelization; independent memory qualification required.",
+    "Initial urllib attempt returned HTTP 403 without usable timing data; subsequent Bun workload succeeded.",
+    "Runner script hash archived after run; wrapper hashes recorded before deployment."
+  ]
+}

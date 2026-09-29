@@ -1,0 +1,239 @@
+{
+  "commit": "208e7ed30c761b1077266ea2794a6f3b55d01a36",
+  "run": "prepared-uploads-baseline-pilot",
+  "status": "Intermediate diagnostic; platform wall-time median improved versus previous pilot, but candidate CPU remains materially above deployed baseline.",
+  "units": {
+    "cpuTime": "microseconds",
+    "memoryUsageBytes": "bytes",
+    "wallTime": "microseconds"
+  },
+  "sampling": "Cloudflare adaptive invocation samples; shared-isolate memory",
+  "capture": {
+    "diagnostic_only": false,
+    "dump_retention_seconds": 0,
+    "responses_retention_seconds": 0,
+    "retention_note": "Zero enables unlimited capture; this is the capture-enabled acceptance workload."
+  },
+  "request_records_sha256": "f6257e9b7f23aba01856fe9f926ac76dc9523dd0c0fff8c615ed22805dbd6079",
+  "command": {
+    "exit_code": 0,
+    "seconds": 121.35987901687622,
+    "args": [
+      "--blocks",
+      "3",
+      "--count",
+      "50",
+      "--rate",
+      "5",
+      "--concurrency",
+      "16",
+      "--protocols",
+      "responses",
+      "--upstreams",
+      "responses",
+      "--scenarios",
+      "ok",
+      "--sizes",
+      "65536",
+      "--modes",
+      "json,sse",
+      "--max-requests",
+      "600"
+    ]
+  },
+  "cells": [
+    {
+      "variant": "A",
+      "stream": false,
+      "offered": 150,
+      "successful": 150,
+      "dropped": 0,
+      "p50_ms": 133.78779199999917,
+      "p95_ms": 2260.8682499999995
+    },
+    {
+      "variant": "A",
+      "stream": true,
+      "offered": 150,
+      "successful": 150,
+      "dropped": 0,
+      "p50_ms": 122.87041699999827,
+      "p95_ms": 202.24654200000805
+    },
+    {
+      "variant": "B",
+      "stream": false,
+      "offered": 150,
+      "successful": 150,
+      "dropped": 0,
+      "p50_ms": 97.17695800000001,
+      "p95_ms": 547.7813339999993
+    },
+    {
+      "variant": "B",
+      "stream": true,
+      "offered": 150,
+      "successful": 150,
+      "dropped": 0,
+      "p50_ms": 136.68454099999508,
+      "p95_ms": 316.1588330000013
+    }
+  ],
+  "windows": [
+    {
+      "window": "block-0-A",
+      "raw_sha256": "24a6479112eb787439db090bffc3da2300756add227aa405e72d29b7275d6343",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 98,
+          "quantiles": {
+            "cpuTimeP50": 8451,
+            "cpuTimeP95": 12674,
+            "cpuTimeP99": 32756,
+            "memoryUsageBytesP50": 31212056,
+            "memoryUsageBytesP90": 42803776,
+            "memoryUsageBytesP95": 43875696,
+            "memoryUsageBytesP99": 44018200,
+            "memoryUsageBytesP999": 44018200,
+            "wallTimeP50": 397678,
+            "wallTimeP95": 765604,
+            "wallTimeP99": 883435
+          }
+        }
+      ]
+    },
+    {
+      "window": "block-0-B",
+      "raw_sha256": "5a036176f0d8a4554de95c8af0d439812b2f24e106dcb9044cf1e8b34942bddd",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 104,
+          "quantiles": {
+            "cpuTimeP50": 18062,
+            "cpuTimeP95": 79237,
+            "cpuTimeP99": 90724,
+            "memoryUsageBytesP50": 46204030,
+            "memoryUsageBytesP90": 50042840,
+            "memoryUsageBytesP95": 50486252,
+            "memoryUsageBytesP99": 51460570,
+            "memoryUsageBytesP999": 51828212,
+            "wallTimeP50": 624130,
+            "wallTimeP95": 1129985,
+            "wallTimeP99": 1328131
+          }
+        }
+      ]
+    },
+    {
+      "window": "block-1-A",
+      "raw_sha256": "e803940ffbce23686bc0a07f200055276045733d41ac1fc0cbdf2a58bb21de70",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 105,
+          "quantiles": {
+            "cpuTimeP50": 8226,
+            "cpuTimeP95": 11254,
+            "cpuTimeP99": 12947,
+            "memoryUsageBytesP50": 36846730,
+            "memoryUsageBytesP90": 44651024,
+            "memoryUsageBytesP95": 45089948,
+            "memoryUsageBytesP99": 45573616,
+            "memoryUsageBytesP999": 45822092,
+            "wallTimeP50": 380412,
+            "wallTimeP95": 638636,
+            "wallTimeP99": 904075
+          }
+        }
+      ]
+    },
+    {
+      "window": "block-1-B",
+      "raw_sha256": "4adfb89cd1358f930133bd3d34680d35abbd49896ab0dfcabeaa6abfe85f1875",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 100,
+          "quantiles": {
+            "cpuTimeP50": 15880,
+            "cpuTimeP95": 24440,
+            "cpuTimeP99": 50078,
+            "memoryUsageBytesP50": 52984770,
+            "memoryUsageBytesP90": 57843612,
+            "memoryUsageBytesP95": 58498584,
+            "memoryUsageBytesP99": 59151824,
+            "memoryUsageBytesP999": 59904990,
+            "wallTimeP50": 634320,
+            "wallTimeP95": 988110,
+            "wallTimeP99": 1057781
+          }
+        }
+      ]
+    },
+    {
+      "window": "block-2-A",
+      "raw_sha256": "7adb4dec4cfb35e144549f29454a88332ad4e99f1d5e39f46fb22f4b62248e85",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 102,
+          "quantiles": {
+            "cpuTimeP50": 8444,
+            "cpuTimeP95": 20496,
+            "cpuTimeP99": 50076,
+            "memoryUsageBytesP50": 28784032,
+            "memoryUsageBytesP90": 46921336,
+            "memoryUsageBytesP95": 49839990,
+            "memoryUsageBytesP99": 51360170,
+            "memoryUsageBytesP999": 51376550,
+            "wallTimeP50": 410010,
+            "wallTimeP95": 943488,
+            "wallTimeP99": 1245419
+          }
+        }
+      ]
+    },
+    {
+      "window": "block-2-B",
+      "raw_sha256": "edee0226f83d94131fa7d5912a0bf4f6a9e8db0b5a02fc6939df8b0a1b5b3586",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 100,
+          "quantiles": {
+            "cpuTimeP50": 15064,
+            "cpuTimeP95": 21487,
+            "cpuTimeP99": 22720,
+            "memoryUsageBytesP50": 38175920,
+            "memoryUsageBytesP90": 50308816,
+            "memoryUsageBytesP95": 50914640,
+            "memoryUsageBytesP99": 52651016,
+            "memoryUsageBytesP999": 52686204,
+            "wallTimeP50": 613220,
+            "wallTimeP95": 1062732,
+            "wallTimeP99": 1460603
+          }
+        }
+      ]
+    }
+  ],
+  "dispatch": {
+    "settle_ms": 500,
+    "late_dispatch_limitation": "Single bounded settle; timeout/aborted work needs follow-up observation",
+    "exactly_once_failures": 0,
+    "available": true,
+    "observed_logical_ids": 600,
+    "total_dispatches": 600,
+    "duplicate_dispatches": [],
+    "missing": [],
+    "instrumentation": "One awaited isolated upstream D1 INSERT before response, equal for A/B"
+  }
+}

@@ -1,0 +1,1220 @@
+{
+  "qualification": "Intermediate 93161c65; ordinary resource acceptance failed. Adaptive samples and shared-isolate memory, not per-request heap.",
+  "windows": [
+    {
+      "run": "container-large",
+      "window": "block-0-A",
+      "raw_sha256": "2a5eec8f7530505899c182239a27b4034b599baa5bf213d8d941f64a3ee76c60",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "exceededMemory",
+          "requests": 1,
+          "cpu_ms": {
+            "cpuTimeP50": 541.401,
+            "cpuTimeP95": 541.401,
+            "cpuTimeP99": 541.401
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 212.7867,
+            "memoryUsageBytesP90": 212.7867,
+            "memoryUsageBytesP95": 212.7867,
+            "memoryUsageBytesP99": 212.7867,
+            "memoryUsageBytesP999": 212.7867
+          }
+        },
+        {
+          "outcome": "success",
+          "requests": 8,
+          "cpu_ms": {
+            "cpuTimeP50": 53.919,
+            "cpuTimeP95": 776.662,
+            "cpuTimeP99": 776.662
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 41.6429,
+            "memoryUsageBytesP90": 151.8513,
+            "memoryUsageBytesP95": 151.8513,
+            "memoryUsageBytesP99": 151.8513,
+            "memoryUsageBytesP999": 151.8513
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-large",
+      "window": "block-0-B",
+      "raw_sha256": "21e1ce2d0c5ad73ca49965384958af1fbfce6ab20f47803e6f6c87f80665ab47",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 12,
+          "cpu_ms": {
+            "cpuTimeP50": 48.021,
+            "cpuTimeP95": 594.259,
+            "cpuTimeP99": 594.259
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 47.7707,
+            "memoryUsageBytesP90": 141.239,
+            "memoryUsageBytesP95": 141.2428,
+            "memoryUsageBytesP99": 141.2428,
+            "memoryUsageBytesP999": 141.2428
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-large",
+      "window": "block-1-A",
+      "raw_sha256": "36756bec2141aa46d1e02f177e5db6280d09a0349c22a09d8718a8b4a1e7f1f0",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "exceededMemory",
+          "requests": 1,
+          "cpu_ms": {
+            "cpuTimeP50": 520.372,
+            "cpuTimeP95": 520.372,
+            "cpuTimeP99": 520.372
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 212.2867,
+            "memoryUsageBytesP90": 212.2867,
+            "memoryUsageBytesP95": 212.2867,
+            "memoryUsageBytesP99": 212.2867,
+            "memoryUsageBytesP999": 212.2867
+          }
+        },
+        {
+          "outcome": "success",
+          "requests": 7,
+          "cpu_ms": {
+            "cpuTimeP50": 81.333,
+            "cpuTimeP95": 660.262,
+            "cpuTimeP99": 660.262
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 46.6099,
+            "memoryUsageBytesP90": 151.8513,
+            "memoryUsageBytesP95": 151.8513,
+            "memoryUsageBytesP99": 151.8513,
+            "memoryUsageBytesP999": 151.8513
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-large",
+      "window": "block-1-B",
+      "raw_sha256": "7367be2d931dac721fc969f90b845380784312f1034637185186c2d919628700",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 9,
+          "cpu_ms": {
+            "cpuTimeP50": 55.109,
+            "cpuTimeP95": 622.203,
+            "cpuTimeP99": 622.203
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 134.1505,
+            "memoryUsageBytesP90": 141.2428,
+            "memoryUsageBytesP95": 141.2428,
+            "memoryUsageBytesP99": 141.2428,
+            "memoryUsageBytesP999": 141.2428
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-large",
+      "window": "block-2-A",
+      "raw_sha256": "2cc06cbd744e38dcd1c73d5bc441e0cb0e92577251d7eaedb8b1578e55d94494",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "exceededMemory",
+          "requests": 1,
+          "cpu_ms": {
+            "cpuTimeP50": 482.254,
+            "cpuTimeP95": 482.254,
+            "cpuTimeP99": 482.254
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 212.5367,
+            "memoryUsageBytesP90": 212.5367,
+            "memoryUsageBytesP95": 212.5367,
+            "memoryUsageBytesP99": 212.5367,
+            "memoryUsageBytesP999": 212.5367
+          }
+        },
+        {
+          "outcome": "success",
+          "requests": 8,
+          "cpu_ms": {
+            "cpuTimeP50": 65.804,
+            "cpuTimeP95": 780.552,
+            "cpuTimeP99": 780.552
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 43.796,
+            "memoryUsageBytesP90": 151.8513,
+            "memoryUsageBytesP95": 151.8513,
+            "memoryUsageBytesP99": 151.8513,
+            "memoryUsageBytesP999": 151.8513
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-large",
+      "window": "block-2-B",
+      "raw_sha256": "0a0ecb38ac3a582b3a1d2d14f323dc26cc9697af04d4c18d4485aae48a2ef32b",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 13,
+          "cpu_ms": {
+            "cpuTimeP50": 44.749,
+            "cpuTimeP95": 542.79,
+            "cpuTimeP99": 542.79
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 78.1225,
+            "memoryUsageBytesP90": 141.0141,
+            "memoryUsageBytesP95": 141.229,
+            "memoryUsageBytesP99": 141.229,
+            "memoryUsageBytesP999": 141.229
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-large",
+      "window": "block-3-A",
+      "raw_sha256": "ab598fa2510a2f281035d7f222243e8c3d7a0322d3aca7ccc2f6f715324de8e5",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "exceededMemory",
+          "requests": 1,
+          "cpu_ms": {
+            "cpuTimeP50": 532.268,
+            "cpuTimeP95": 532.268,
+            "cpuTimeP99": 532.268
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 212.2867,
+            "memoryUsageBytesP90": 212.2867,
+            "memoryUsageBytesP95": 212.2867,
+            "memoryUsageBytesP99": 212.2867,
+            "memoryUsageBytesP999": 212.2867
+          }
+        },
+        {
+          "outcome": "success",
+          "requests": 9,
+          "cpu_ms": {
+            "cpuTimeP50": 91.872,
+            "cpuTimeP95": 733.904,
+            "cpuTimeP99": 733.904
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 46.8599,
+            "memoryUsageBytesP90": 151.8513,
+            "memoryUsageBytesP95": 151.8513,
+            "memoryUsageBytesP99": 151.8513,
+            "memoryUsageBytesP999": 151.8513
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-large",
+      "window": "block-3-B",
+      "raw_sha256": "ec8bfda9d57d63e219dd61dc1108e885c95d4640f506e337b191ed1d4bd37512",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 9,
+          "cpu_ms": {
+            "cpuTimeP50": 43.8,
+            "cpuTimeP95": 610.398,
+            "cpuTimeP99": 610.398
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 133.4799,
+            "memoryUsageBytesP90": 141.229,
+            "memoryUsageBytesP95": 141.229,
+            "memoryUsageBytesP99": 141.229,
+            "memoryUsageBytesP999": 141.229
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-large",
+      "window": "block-4-A",
+      "raw_sha256": "b15cddb3b0d948331abd1bce487c40e069659733abc7be9f75fd4c3a1ef7dd74",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "exceededMemory",
+          "requests": 1,
+          "cpu_ms": {
+            "cpuTimeP50": 487.284,
+            "cpuTimeP95": 487.284,
+            "cpuTimeP99": 487.284
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 212.5367,
+            "memoryUsageBytesP90": 212.5367,
+            "memoryUsageBytesP95": 212.5367,
+            "memoryUsageBytesP99": 212.5367,
+            "memoryUsageBytesP999": 212.5367
+          }
+        },
+        {
+          "outcome": "success",
+          "requests": 8,
+          "cpu_ms": {
+            "cpuTimeP50": 72.564,
+            "cpuTimeP95": 794.953,
+            "cpuTimeP99": 794.953
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 43.5459,
+            "memoryUsageBytesP90": 151.8513,
+            "memoryUsageBytesP95": 151.8513,
+            "memoryUsageBytesP99": 151.8513,
+            "memoryUsageBytesP999": 151.8513
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-large",
+      "window": "block-4-B",
+      "raw_sha256": "306f96f94b65d736dc90dfdf456e159d568f3cd06b08c88773bcdcf9cb13876d",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 9,
+          "cpu_ms": {
+            "cpuTimeP50": 51.545,
+            "cpuTimeP95": 750.849,
+            "cpuTimeP99": 750.849
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 134.1505,
+            "memoryUsageBytesP90": 141.2406,
+            "memoryUsageBytesP95": 141.2406,
+            "memoryUsageBytesP99": 141.2406,
+            "memoryUsageBytesP999": 141.2406
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-pilot",
+      "window": "block-0-A",
+      "raw_sha256": "76b12ea15b2bfb6617d4ed55facf97cde1f6a665b92852a0e3393ab0e6a0c595",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 100,
+          "cpu_ms": {
+            "cpuTimeP50": 9.292,
+            "cpuTimeP95": 18.447,
+            "cpuTimeP99": 40.715
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 34.9227,
+            "memoryUsageBytesP90": 42.8576,
+            "memoryUsageBytesP95": 43.1967,
+            "memoryUsageBytesP99": 44.157,
+            "memoryUsageBytesP999": 44.2137
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-pilot",
+      "window": "block-0-B",
+      "raw_sha256": "a36a0fbb30cf6dcb799f2366a034ec560021ca26f55332587d9757397598e065",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 98,
+          "cpu_ms": {
+            "cpuTimeP50": 59.025,
+            "cpuTimeP95": 108.027,
+            "cpuTimeP99": 178.192
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 43.4517,
+            "memoryUsageBytesP90": 47.7077,
+            "memoryUsageBytesP95": 48.0797,
+            "memoryUsageBytesP99": 49.0969,
+            "memoryUsageBytesP999": 49.0969
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-pilot",
+      "window": "block-1-A",
+      "raw_sha256": "8ffeb1928a6398a9d48612928403c266a9f774a5c543f9222df2fcb73027d479",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 105,
+          "cpu_ms": {
+            "cpuTimeP50": 8.781,
+            "cpuTimeP95": 11.751,
+            "cpuTimeP99": 16.768
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 33.8512,
+            "memoryUsageBytesP90": 43.429,
+            "memoryUsageBytesP95": 44.1764,
+            "memoryUsageBytesP99": 44.7957,
+            "memoryUsageBytesP999": 45.193
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-pilot",
+      "window": "block-1-B",
+      "raw_sha256": "d65432e38504f475d2ff80b0bb98e28d213349b9a49c66fe068f675bfdc2b21d",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 97,
+          "cpu_ms": {
+            "cpuTimeP50": 58.446,
+            "cpuTimeP95": 81.595,
+            "cpuTimeP99": 93.833
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 53.1925,
+            "memoryUsageBytesP90": 57.5536,
+            "memoryUsageBytesP95": 58.4781,
+            "memoryUsageBytesP99": 58.9116,
+            "memoryUsageBytesP999": 58.9116
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-pilot",
+      "window": "block-2-A",
+      "raw_sha256": "d488b21b90f9909f92a2c9c572c805791ad0b33a0a74eab0912d08d6cbf9aaf5",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 101,
+          "cpu_ms": {
+            "cpuTimeP50": 8.71,
+            "cpuTimeP95": 13.565,
+            "cpuTimeP99": 15.498
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 46.8965,
+            "memoryUsageBytesP90": 48.8552,
+            "memoryUsageBytesP95": 49.2287,
+            "memoryUsageBytesP99": 49.6744,
+            "memoryUsageBytesP999": 49.7116
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-pilot",
+      "window": "block-2-B",
+      "raw_sha256": "ceb74e7403deacd7be9ba081422403ceeaef0df12d0c6cbb430206a43f53cc81",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 101,
+          "cpu_ms": {
+            "cpuTimeP50": 57.477,
+            "cpuTimeP95": 75.199,
+            "cpuTimeP99": 88.22
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 45.9409,
+            "memoryUsageBytesP90": 53.5555,
+            "memoryUsageBytesP95": 54.0167,
+            "memoryUsageBytesP99": 54.4095,
+            "memoryUsageBytesP999": 54.8237
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-large",
+      "window": "block-0-A",
+      "raw_sha256": "53c4efc4957de5df1b2ebfac3c955caab9d48d747552c18e1f0d91ba32ea4d1c",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 8,
+          "cpu_ms": {
+            "cpuTimeP50": 18.621,
+            "cpuTimeP95": 339.865,
+            "cpuTimeP99": 339.865
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 27.3555,
+            "memoryUsageBytesP90": 179.8243,
+            "memoryUsageBytesP95": 179.8243,
+            "memoryUsageBytesP99": 179.8243,
+            "memoryUsageBytesP999": 179.8243
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-large",
+      "window": "block-0-B",
+      "raw_sha256": "7333376a799769562402fef1eefd6ef1c42cb195d6aab233159711ce544e51fb",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 7,
+          "cpu_ms": {
+            "cpuTimeP50": 217.896,
+            "cpuTimeP95": 863.306,
+            "cpuTimeP99": 863.306
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 78.1256,
+            "memoryUsageBytesP90": 136.7044,
+            "memoryUsageBytesP95": 136.7044,
+            "memoryUsageBytesP99": 136.7044,
+            "memoryUsageBytesP999": 136.7044
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-large",
+      "window": "block-1-A",
+      "raw_sha256": "c85c4435daf42edcb8892087056b9a222c3b508da8ed1ea1c62006fb0852f90c",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 12,
+          "cpu_ms": {
+            "cpuTimeP50": 9.743,
+            "cpuTimeP95": 352.139,
+            "cpuTimeP99": 352.139
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 27.3584,
+            "memoryUsageBytesP90": 180.1323,
+            "memoryUsageBytesP95": 181.2353,
+            "memoryUsageBytesP99": 181.2353,
+            "memoryUsageBytesP999": 181.2353
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-large",
+      "window": "block-1-B",
+      "raw_sha256": "8dc807a7b490b5f956c1b616f1ed3bf62e49833070286796fa31bbcb086f2e64",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 9,
+          "cpu_ms": {
+            "cpuTimeP50": 82.924,
+            "cpuTimeP95": 888.949,
+            "cpuTimeP99": 888.949
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 140.8064,
+            "memoryUsageBytesP90": 189.8449,
+            "memoryUsageBytesP95": 189.8449,
+            "memoryUsageBytesP99": 189.8449,
+            "memoryUsageBytesP999": 189.8449
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-large",
+      "window": "block-2-A",
+      "raw_sha256": "e6e1221e97a181d326611b0eecbfe6916e0fe25213fec7d776165ea0ae0eefde",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 9,
+          "cpu_ms": {
+            "cpuTimeP50": 49.682,
+            "cpuTimeP95": 356.074,
+            "cpuTimeP99": 356.074
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 51.3008,
+            "memoryUsageBytesP90": 180.1323,
+            "memoryUsageBytesP95": 180.1323,
+            "memoryUsageBytesP99": 180.1323,
+            "memoryUsageBytesP999": 180.1323
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-large",
+      "window": "block-2-B",
+      "raw_sha256": "b10849f71fe2c980240d194548945bdab22d798c1714c9816667460d6aff21ad",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 8,
+          "cpu_ms": {
+            "cpuTimeP50": 69.711,
+            "cpuTimeP95": 884.223,
+            "cpuTimeP99": 884.223
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 75.7668,
+            "memoryUsageBytesP90": 132.9005,
+            "memoryUsageBytesP95": 132.9005,
+            "memoryUsageBytesP99": 132.9005,
+            "memoryUsageBytesP999": 132.9005
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-large",
+      "window": "block-3-A",
+      "raw_sha256": "c09bdd50b582ec5adfa6b468f939f4bca57f383f7412f662760492052ea87a7a",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 12,
+          "cpu_ms": {
+            "cpuTimeP50": 9.115,
+            "cpuTimeP95": 324.512,
+            "cpuTimeP99": 324.512
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 81.6361,
+            "memoryUsageBytesP90": 180.4655,
+            "memoryUsageBytesP95": 180.4689,
+            "memoryUsageBytesP99": 180.4689,
+            "memoryUsageBytesP999": 180.4689
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-large",
+      "window": "block-3-B",
+      "raw_sha256": "3640b39615a5fbd37fb6fbac1b17242fd513f68e9d79b5e84fbdcd93096f2aab",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 9,
+          "cpu_ms": {
+            "cpuTimeP50": 132.218,
+            "cpuTimeP95": 906.085,
+            "cpuTimeP99": 906.085
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 78.3734,
+            "memoryUsageBytesP90": 134.602,
+            "memoryUsageBytesP95": 134.602,
+            "memoryUsageBytesP99": 134.602,
+            "memoryUsageBytesP999": 134.602
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-large",
+      "window": "block-4-A",
+      "raw_sha256": "b9dd3ddcb6b59914ad4a115e3f751853518f59b4c6135ef33f62b7445904b590",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 9,
+          "cpu_ms": {
+            "cpuTimeP50": 19.49,
+            "cpuTimeP95": 316.542,
+            "cpuTimeP99": 316.542
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 159.0534,
+            "memoryUsageBytesP90": 180.8629,
+            "memoryUsageBytesP95": 180.8629,
+            "memoryUsageBytesP99": 180.8629,
+            "memoryUsageBytesP999": 180.8629
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-large",
+      "window": "block-4-B",
+      "raw_sha256": "d046e5a16b5311c02ce2091c8e222519534a152979af88942beab1e081e4eadd",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 9,
+          "cpu_ms": {
+            "cpuTimeP50": 89.719,
+            "cpuTimeP95": 814.953,
+            "cpuTimeP99": 814.953
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 37.6043,
+            "memoryUsageBytesP90": 188.9046,
+            "memoryUsageBytesP95": 188.9046,
+            "memoryUsageBytesP99": 188.9046,
+            "memoryUsageBytesP999": 188.9046
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-reversed",
+      "window": "block-0-A",
+      "raw_sha256": "1ebdf9c4bb534d01d8611472f5706e0e0364a0f4da19a96e1342251a1ffd3bba",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 3,
+          "cpu_ms": {
+            "cpuTimeP50": 290.669,
+            "cpuTimeP95": 362.784,
+            "cpuTimeP99": 362.784
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 51.3078,
+            "memoryUsageBytesP90": 179.3242,
+            "memoryUsageBytesP95": 179.3242,
+            "memoryUsageBytesP99": 179.3242,
+            "memoryUsageBytesP999": 179.3242
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-reversed",
+      "window": "block-0-B",
+      "raw_sha256": "2938e48393cf602eb0d25eb94308b3491c76634861cb03fbda7cb7e871bfd623",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 4,
+          "cpu_ms": {
+            "cpuTimeP50": 3.1,
+            "cpuTimeP95": 972.423,
+            "cpuTimeP99": 972.423
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 128.6934,
+            "memoryUsageBytesP90": 188.8449,
+            "memoryUsageBytesP95": 188.8449,
+            "memoryUsageBytesP99": 188.8449,
+            "memoryUsageBytesP999": 188.8449
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-reversed",
+      "window": "block-1-A",
+      "raw_sha256": "67b7f9fde21258dbb073ee9828722c7844fe1bc2b83ee6e2dcafd70384875552",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 4,
+          "cpu_ms": {
+            "cpuTimeP50": 1.379,
+            "cpuTimeP95": 381.19,
+            "cpuTimeP99": 381.19
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 51.3039,
+            "memoryUsageBytesP90": 179.344,
+            "memoryUsageBytesP95": 179.344,
+            "memoryUsageBytesP99": 179.344,
+            "memoryUsageBytesP999": 179.344
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-reversed",
+      "window": "block-1-B",
+      "raw_sha256": "f040d337bffd572421f39cc17f8685420cee51e5a8d84b4cb20e633870fb3c04",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 3,
+          "cpu_ms": {
+            "cpuTimeP50": 803.309,
+            "cpuTimeP95": 983.704,
+            "cpuTimeP99": 983.704
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 132.852,
+            "memoryUsageBytesP90": 132.9005,
+            "memoryUsageBytesP95": 132.9005,
+            "memoryUsageBytesP99": 132.9005,
+            "memoryUsageBytesP999": 132.9005
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-reversed",
+      "window": "block-2-A",
+      "raw_sha256": "f09e1968a8d2425d093d9fb85359ad0f9ac3f9e7d02c9ffa8e6a8a873c228049",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 3,
+          "cpu_ms": {
+            "cpuTimeP50": 287.172,
+            "cpuTimeP95": 298.101,
+            "cpuTimeP99": 298.101
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 179.344,
+            "memoryUsageBytesP90": 179.3629,
+            "memoryUsageBytesP95": 179.3629,
+            "memoryUsageBytesP99": 179.3629,
+            "memoryUsageBytesP999": 179.3629
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-reversed",
+      "window": "block-2-B",
+      "raw_sha256": "ee0c571f6165e41b19cbd388924b5f2364d615053df5983680834dc8abfc8fc8",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 3,
+          "cpu_ms": {
+            "cpuTimeP50": 745.397,
+            "cpuTimeP95": 891.451,
+            "cpuTimeP99": 891.451
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 130.852,
+            "memoryUsageBytesP90": 188.9046,
+            "memoryUsageBytesP95": 188.9046,
+            "memoryUsageBytesP99": 188.9046,
+            "memoryUsageBytesP999": 188.9046
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-reversed",
+      "window": "block-3-A",
+      "raw_sha256": "971ba27b2bde7d81f8eb1a02c9ac5f39f10b30fbe101f5644170bf1a38ccd5b5",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 4,
+          "cpu_ms": {
+            "cpuTimeP50": 0.923,
+            "cpuTimeP95": 331.489,
+            "cpuTimeP99": 331.489
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 179.3242,
+            "memoryUsageBytesP90": 179.344,
+            "memoryUsageBytesP95": 179.344,
+            "memoryUsageBytesP99": 179.344,
+            "memoryUsageBytesP999": 179.344
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-reversed",
+      "window": "block-3-B",
+      "raw_sha256": "312437dccad4f9af1d3b17dc5c167ab71ec81a254b82caf4eaae0474b0a1d9dc",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 3,
+          "cpu_ms": {
+            "cpuTimeP50": 840.139,
+            "cpuTimeP95": 868.684,
+            "cpuTimeP99": 868.684
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 132.852,
+            "memoryUsageBytesP90": 132.9005,
+            "memoryUsageBytesP95": 132.9005,
+            "memoryUsageBytesP99": 132.9005,
+            "memoryUsageBytesP999": 132.9005
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-reversed",
+      "window": "block-4-A",
+      "raw_sha256": "fb9497ac3d87b73a63fdea56dc907703ce9c7648f2040fc30755646831fec2c4",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 2,
+          "cpu_ms": {
+            "cpuTimeP50": 0.923,
+            "cpuTimeP95": 354.301,
+            "cpuTimeP99": 354.301
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 179.344,
+            "memoryUsageBytesP90": 179.3629,
+            "memoryUsageBytesP95": 179.3629,
+            "memoryUsageBytesP99": 179.3629,
+            "memoryUsageBytesP999": 179.3629
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-baseline-reversed",
+      "window": "block-4-B",
+      "raw_sha256": "41dc9ec34253d12bdd37ff893e80247022e9c8958c9a09152637e66c92585721",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 3,
+          "cpu_ms": {
+            "cpuTimeP50": 927.238,
+            "cpuTimeP95": 955.094,
+            "cpuTimeP99": 955.094
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 132.852,
+            "memoryUsageBytesP90": 188.9046,
+            "memoryUsageBytesP95": 188.9046,
+            "memoryUsageBytesP99": 188.9046,
+            "memoryUsageBytesP999": 188.9046
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-route-probe",
+      "window": "block-0-health-A",
+      "raw_sha256": "16d144b2ec9dd34c655f1ee6de84c7fd7714ca13aa6a59ede5ba196673a690a8",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 27,
+          "cpu_ms": {
+            "cpuTimeP50": 0.67,
+            "cpuTimeP95": 1.629,
+            "cpuTimeP99": 20.783
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 26.7534,
+            "memoryUsageBytesP90": 26.7534,
+            "memoryUsageBytesP95": 26.7534,
+            "memoryUsageBytesP99": 26.7534,
+            "memoryUsageBytesP999": 26.7534
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-route-probe",
+      "window": "block-0-health-B",
+      "raw_sha256": "effd1231c0f97f32336d7f8ac4fbf855643dd2af3a88d7ff45caf181c86284ca",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 30,
+          "cpu_ms": {
+            "cpuTimeP50": 0.836,
+            "cpuTimeP95": 1.021,
+            "cpuTimeP99": 3.212
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 19.9936,
+            "memoryUsageBytesP90": 20.2436,
+            "memoryUsageBytesP95": 20.2436,
+            "memoryUsageBytesP99": 20.2436,
+            "memoryUsageBytesP999": 20.2436
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-route-probe",
+      "window": "block-0-v1models-A",
+      "raw_sha256": "f968c0f7df9f8015d54bfa6536c4094be76fec5879bf1642bd6f604cbbb6b0e9",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 43,
+          "cpu_ms": {
+            "cpuTimeP50": 1.692,
+            "cpuTimeP95": 2.791,
+            "cpuTimeP99": 25.624
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 27.0451,
+            "memoryUsageBytesP90": 27.3223,
+            "memoryUsageBytesP95": 27.3223,
+            "memoryUsageBytesP99": 27.3223,
+            "memoryUsageBytesP999": 27.3223
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-route-probe",
+      "window": "block-0-v1models-B",
+      "raw_sha256": "07796aed2bac99523dd19f2a74eacb99d845ed662029110c9c20f4535e2394cf",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 47,
+          "cpu_ms": {
+            "cpuTimeP50": 1.604,
+            "cpuTimeP95": 3.775,
+            "cpuTimeP99": 12.911
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 21.4937,
+            "memoryUsageBytesP90": 21.9937,
+            "memoryUsageBytesP95": 21.9937,
+            "memoryUsageBytesP99": 21.9937,
+            "memoryUsageBytesP999": 21.9937
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-route-probe",
+      "window": "block-1-health-A",
+      "raw_sha256": "1e350c3eaa8b42e6a4817e27a67503b986f1fff463b8bb7fe8250c79906e925d",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 88,
+          "cpu_ms": {
+            "cpuTimeP50": 0.541,
+            "cpuTimeP95": 0.7,
+            "cpuTimeP99": 0.7
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 27.5723,
+            "memoryUsageBytesP90": 27.5723,
+            "memoryUsageBytesP95": 27.5723,
+            "memoryUsageBytesP99": 27.5723,
+            "memoryUsageBytesP999": 27.5723
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-route-probe",
+      "window": "block-1-health-B",
+      "raw_sha256": "ad82539383207005b64ef5f4bd060022b61a3dae29b243feccfa527278d51b08",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 25,
+          "cpu_ms": {
+            "cpuTimeP50": 0.967,
+            "cpuTimeP95": 3.775,
+            "cpuTimeP99": 3.775
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 21.2436,
+            "memoryUsageBytesP90": 21.2436,
+            "memoryUsageBytesP95": 21.2436,
+            "memoryUsageBytesP99": 21.2436,
+            "memoryUsageBytesP999": 21.2436
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-route-probe",
+      "window": "block-1-v1models-A",
+      "raw_sha256": "7dbe1b0acdea376d224ff9daf7ecfaa3550107400389f7e15f6042f8436df383",
+      "errors": null,
+      "sample_rows": []
+    },
+    {
+      "run": "container-route-probe",
+      "window": "block-1-v1models-B",
+      "raw_sha256": "365b78c79518165e6a65d93cac18eb77b40e260e643ba598f7de23d670940e16",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 25,
+          "cpu_ms": {
+            "cpuTimeP50": 0.993,
+            "cpuTimeP95": 2.414,
+            "cpuTimeP99": 2.414
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 21.2436,
+            "memoryUsageBytesP90": 21.2436,
+            "memoryUsageBytesP95": 21.2436,
+            "memoryUsageBytesP99": 21.2436,
+            "memoryUsageBytesP999": 21.2436
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-route-probe",
+      "window": "block-2-health-A",
+      "raw_sha256": "ec1097b4fdca99c6153063ce89b219631ee3cd6e9ce99b3ed9f7fdc074e980a8",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 1,
+          "cpu_ms": {
+            "cpuTimeP50": 0.683,
+            "cpuTimeP95": 0.683,
+            "cpuTimeP99": 0.683
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 29.6349,
+            "memoryUsageBytesP90": 29.6349,
+            "memoryUsageBytesP95": 29.6349,
+            "memoryUsageBytesP99": 29.6349,
+            "memoryUsageBytesP999": 29.6349
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-route-probe",
+      "window": "block-2-health-B",
+      "raw_sha256": "55409c69d6d54e2601216390079f5f98b53b9d880cfbbdeb0594441380ab123c",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 34,
+          "cpu_ms": {
+            "cpuTimeP50": 0.562,
+            "cpuTimeP95": 1.049,
+            "cpuTimeP99": 1.049
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 21.2436,
+            "memoryUsageBytesP90": 21.2436,
+            "memoryUsageBytesP95": 21.2436,
+            "memoryUsageBytesP99": 21.2436,
+            "memoryUsageBytesP999": 21.2436
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-route-probe",
+      "window": "block-2-v1models-A",
+      "raw_sha256": "913cbb761bbb624bbe2be249e09fcb59eae2ab1c0367df9ef33bcffe2d3a44c7",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 14,
+          "cpu_ms": {
+            "cpuTimeP50": 1.621,
+            "cpuTimeP95": 5.42,
+            "cpuTimeP99": 5.42
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 30.6642,
+            "memoryUsageBytesP90": 30.6684,
+            "memoryUsageBytesP95": 30.6684,
+            "memoryUsageBytesP99": 30.6684,
+            "memoryUsageBytesP999": 30.6684
+          }
+        }
+      ]
+    },
+    {
+      "run": "container-route-probe",
+      "window": "block-2-v1models-B",
+      "raw_sha256": "f38cba2740ff217cfc787aa15d8b90247fdf3b1e62f24cc46354cdf2827f9ca2",
+      "errors": null,
+      "sample_rows": [
+        {
+          "outcome": "success",
+          "requests": 20,
+          "cpu_ms": {
+            "cpuTimeP50": 1.006,
+            "cpuTimeP95": 2.9,
+            "cpuTimeP99": 2.988
+          },
+          "memory_mib": {
+            "memoryUsageBytesP50": 20.9936,
+            "memoryUsageBytesP90": 21.2436,
+            "memoryUsageBytesP95": 21.2436,
+            "memoryUsageBytesP99": 21.2436,
+            "memoryUsageBytesP999": 21.2436
+          }
+        }
+      ]
+    }
+  ]
+}

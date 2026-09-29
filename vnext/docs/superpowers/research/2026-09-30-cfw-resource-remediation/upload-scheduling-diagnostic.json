@@ -1,0 +1,540 @@
+{
+  "diagnostic_only": true,
+  "source_commit": "208e7ed30c761b1077266ea2794a6f3b55d01a36",
+  "comparison": "Same deployment, script and bindings; sequentially prepared uploads; serial versus parallel native puts selected per request",
+  "boundaries": [
+    "Both modes use the same per-call ALS proxy; serial mode adds Promise chaining",
+    "Each request drains its small fixture response and its own registered waitUntil work before delivery; latency includes background completion, not production TTFE",
+    "Global idle endpoint is isolate-local and is not used as the window barrier",
+    "This controls redeployment drift, but not exact isolate/placement or GC history",
+    "Shared-isolate adaptive memory is not a per-request upper bound; adaptive request totals are not exact HTTP attempt counts"
+  ],
+  "command": {
+    "exit_code": 0,
+    "seconds": 131.525151014328,
+    "args": [
+      "--blocks",
+      "3",
+      "--count",
+      "50",
+      "--rate",
+      "5",
+      "--concurrency",
+      "16",
+      "--protocols",
+      "responses",
+      "--upstreams",
+      "responses",
+      "--scenarios",
+      "ok",
+      "--sizes",
+      "65536",
+      "--modes",
+      "json,sse",
+      "--max-requests",
+      "600"
+    ]
+  },
+  "offered": 600,
+  "passed": 600,
+  "failed": 0,
+  "drops": 0,
+  "dispatch": {
+    "settle_ms": 500,
+    "late_dispatch_limitation": "Single bounded settle; timeout/aborted work needs follow-up observation",
+    "exactly_once_failures": 0,
+    "available": true,
+    "observed_logical_ids": 600,
+    "total_dispatches": 600,
+    "duplicate_dispatches": [],
+    "missing": [],
+    "instrumentation": "One awaited isolated upstream D1 INSERT before response, equal for A/B"
+  },
+  "upload_observations": [
+    {
+      "observation": {
+        "active": 0,
+        "background": 2,
+        "maximum": 1,
+        "mode": "serial",
+        "rejected": 0,
+        "starts": 3
+      },
+      "count": 11
+    },
+    {
+      "observation": {
+        "active": 0,
+        "background": 1,
+        "maximum": 1,
+        "mode": "serial",
+        "rejected": 0,
+        "starts": 3
+      },
+      "count": 282
+    },
+    {
+      "observation": {
+        "active": 0,
+        "background": 1,
+        "maximum": 3,
+        "mode": "parallel",
+        "rejected": 0,
+        "starts": 3
+      },
+      "count": 284
+    },
+    {
+      "observation": {
+        "active": 0,
+        "background": 2,
+        "maximum": 3,
+        "mode": "parallel",
+        "rejected": 0,
+        "starts": 3
+      },
+      "count": 16
+    },
+    {
+      "observation": {
+        "active": 0,
+        "background": 4,
+        "maximum": 1,
+        "mode": "serial",
+        "rejected": 0,
+        "starts": 3
+      },
+      "count": 6
+    },
+    {
+      "observation": {
+        "active": 0,
+        "background": 3,
+        "maximum": 1,
+        "mode": "serial",
+        "rejected": 0,
+        "starts": 3
+      },
+      "count": 1
+    }
+  ],
+  "client_cells": [
+    {
+      "cell": [
+        "A",
+        0,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        false
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 1280.7580419999995,
+      "p95_ms": 2563.3382920000004,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 1280.757917,
+      "lateness_p95_ms": 2.4103750000003856
+    },
+    {
+      "cell": [
+        "A",
+        0,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        true
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 1161.8856669999986,
+      "p95_ms": 1593.1582909999997,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 1161.8711669999993,
+      "lateness_p95_ms": 2.2401669999999285
+    },
+    {
+      "cell": [
+        "B",
+        0,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        false
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 637.5755419999987,
+      "p95_ms": 803.583458000001,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 637.575417,
+      "lateness_p95_ms": 2.127707999999984
+    },
+    {
+      "cell": [
+        "B",
+        0,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        true
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 699.2486250000002,
+      "p95_ms": 858.8296249999985,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 699.2354170000035,
+      "lateness_p95_ms": 2.1196659999986878
+    },
+    {
+      "cell": [
+        "B",
+        1,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        false
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 644.434792,
+      "p95_ms": 1001.9456659999996,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 644.4347500000003,
+      "lateness_p95_ms": 2.442625000003318
+    },
+    {
+      "cell": [
+        "B",
+        1,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        true
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 665.8452919999982,
+      "p95_ms": 998.515625,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 665.8391669999983,
+      "lateness_p95_ms": 2.2062500000029104
+    },
+    {
+      "cell": [
+        "A",
+        1,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        false
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 1138.8634579999925,
+      "p95_ms": 1315.8895420000044,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 1138.8633749999863,
+      "lateness_p95_ms": 2.1534169999940787
+    },
+    {
+      "cell": [
+        "A",
+        1,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        true
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 1198.1949999999924,
+      "p95_ms": 1850.7613750000019,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 1198.1810839999962,
+      "lateness_p95_ms": 5.414458999992348
+    },
+    {
+      "cell": [
+        "A",
+        2,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        false
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 1114.8709999999992,
+      "p95_ms": 1432.5459160000028,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 1114.8708340000012,
+      "lateness_p95_ms": 2.0133329999953276
+    },
+    {
+      "cell": [
+        "A",
+        2,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        true
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 1219.2669580000074,
+      "p95_ms": 1477.675000000003,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 1219.255083000011,
+      "lateness_p95_ms": 1.996292000010726
+    },
+    {
+      "cell": [
+        "B",
+        2,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        false
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 650.9867090000043,
+      "p95_ms": 923.6114169999928,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 650.9865839999984,
+      "lateness_p95_ms": 2.169084000008297
+    },
+    {
+      "cell": [
+        "B",
+        2,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        true
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 685.583083000005,
+      "p95_ms": 1118.6991249999992,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 685.5772500000021,
+      "lateness_p95_ms": 2.9315409999981057
+    }
+  ],
+  "platform": [
+    {
+      "block": 0,
+      "mode": "serial",
+      "status": "success",
+      "adaptive_counts": {
+        "errors": 0,
+        "requests": 105,
+        "subrequests": 102
+      },
+      "cpu_p50_ms": 17.512,
+      "cpu_p95_ms": 49.887,
+      "memory_p99_MiB": 43.21738052368164,
+      "platform_wall_p50_ms": 1082.412,
+      "platform_wall_p95_ms": 1599.708,
+      "raw_sha256": "d95b7012d12cbe88f94f5ebfc93c395570ed914f17cbe30be7acb13dc78e65bc"
+    },
+    {
+      "block": 0,
+      "mode": "parallel",
+      "status": "success",
+      "adaptive_counts": {
+        "errors": 0,
+        "requests": 112,
+        "subrequests": 108
+      },
+      "cpu_p50_ms": 12.89,
+      "cpu_p95_ms": 20.431,
+      "memory_p99_MiB": 44.64943885803223,
+      "platform_wall_p50_ms": 576.38,
+      "platform_wall_p95_ms": 719.365,
+      "raw_sha256": "ce706238e96cad839f89d5387dae468fadc39fcfaf06de4e2ef37e51a0fd7fae"
+    },
+    {
+      "block": 1,
+      "mode": "serial",
+      "status": "success",
+      "adaptive_counts": {
+        "errors": 0,
+        "requests": 102,
+        "subrequests": 99
+      },
+      "cpu_p50_ms": 15.729,
+      "cpu_p95_ms": 32.966,
+      "memory_p99_MiB": 42.011505126953125,
+      "platform_wall_p50_ms": 1077.689,
+      "platform_wall_p95_ms": 1535.769,
+      "raw_sha256": "79a7565e5ab366bd108e52d639d9fd7dc03e536f3fa3ce9bf2dfa4b82c7da974"
+    },
+    {
+      "block": 1,
+      "mode": "parallel",
+      "status": "success",
+      "adaptive_counts": {
+        "errors": 0,
+        "requests": 105,
+        "subrequests": 101
+      },
+      "cpu_p50_ms": 13.029,
+      "cpu_p95_ms": 24.186,
+      "memory_p99_MiB": 46.11336708068848,
+      "platform_wall_p50_ms": 589.55,
+      "platform_wall_p95_ms": 938.185,
+      "raw_sha256": "6fa41f8bd57429ee9fbf3c6293c6b1beee09ced057fea3c33d855e006b958a14"
+    },
+    {
+      "block": 2,
+      "mode": "serial",
+      "status": "success",
+      "adaptive_counts": {
+        "errors": 0,
+        "requests": 102,
+        "subrequests": 101
+      },
+      "cpu_p50_ms": 17.012,
+      "cpu_p95_ms": 24.885,
+      "memory_p99_MiB": 35.537099838256836,
+      "platform_wall_p50_ms": 1081.401,
+      "platform_wall_p95_ms": 1370.278,
+      "raw_sha256": "b541a6cd1b73fb84bc12a98ac4dbdefbf44bbb92041f62b011a8c9b7be02e08e"
+    },
+    {
+      "block": 2,
+      "mode": "parallel",
+      "status": "success",
+      "adaptive_counts": {
+        "errors": 0,
+        "requests": 69,
+        "subrequests": 68
+      },
+      "cpu_p50_ms": 17.29,
+      "cpu_p95_ms": 25.606,
+      "memory_p99_MiB": 38.20821762084961,
+      "platform_wall_p50_ms": 604.788,
+      "platform_wall_p95_ms": 861.854,
+      "raw_sha256": "675bc347545aaad470fb893512cb39ba83b8c27189be118ca57fccd1794dfa3b"
+    }
+  ],
+  "raw_sha256": {
+    "requests.jsonl": "1899a5d8d5e7586d80742ecb2da3837f885138bcc95fe12f55b6cae8e2753951",
+    "runner.log": "af4f766165cb1ffe9dfdfc56dcf5e329688ba8783781a47accff43ae76dc58e7",
+    "manifest.json": "5060e1b8e099d2d142544b5ef8269e324670145e2980e0055bbed8427196135d",
+    "command.json": "4891f8005f0c3ebc53a9e011769bf4c20a9eb40cae8f39d272578a954c91d213",
+    "launch-provenance.json": "5c9b2f671e9ab66f96a96d39ee9fac94380171f9aa9b015f30e3e410979b5051"
+  }
+}

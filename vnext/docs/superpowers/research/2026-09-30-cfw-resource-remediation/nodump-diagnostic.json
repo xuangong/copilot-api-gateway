@@ -1,0 +1,234 @@
+{
+  "commit": "cb3147f4f7410da61e7418cf537fc55b76e5d903",
+  "run": "base64-nodump-diagnostic",
+  "status": "Intermediate diagnostic; remaining CPU and memory overhead is under investigation.",
+  "units": {
+    "cpuTime": "microseconds",
+    "memoryUsageBytes": "bytes",
+    "wallTime": "microseconds"
+  },
+  "sampling": "Adaptive invocation samples; shared-isolate memory",
+  "request_records_sha256": "94fa05cb8efaadedef13c29d7c0bf0ed98f10d1ba3a59a7aa8cb61fa121d14cd",
+  "command": {
+    "exit_code": 1,
+    "seconds": 125.91929173469543,
+    "args": [
+      "--blocks",
+      "3",
+      "--count",
+      "50",
+      "--rate",
+      "5",
+      "--concurrency",
+      "16",
+      "--protocols",
+      "responses",
+      "--upstreams",
+      "responses",
+      "--scenarios",
+      "ok",
+      "--sizes",
+      "65536",
+      "--modes",
+      "json,sse",
+      "--max-requests",
+      "600"
+    ]
+  },
+  "cells": [
+    {
+      "variant": "A",
+      "stream": false,
+      "offered": 150,
+      "successful": 150,
+      "dropped": 0,
+      "p50_ms": 88.61829200000011,
+      "p95_ms": 181.2328339999949
+    },
+    {
+      "variant": "A",
+      "stream": true,
+      "offered": 150,
+      "successful": 150,
+      "dropped": 0,
+      "p50_ms": 124.38616599999659,
+      "p95_ms": 171.80241600000045
+    },
+    {
+      "variant": "B",
+      "stream": false,
+      "offered": 150,
+      "successful": 150,
+      "dropped": 0,
+      "p50_ms": 88.90412500000093,
+      "p95_ms": 226.00950000000012
+    },
+    {
+      "variant": "B",
+      "stream": true,
+      "offered": 150,
+      "successful": 150,
+      "dropped": 0,
+      "p50_ms": 122.2021670000031,
+      "p95_ms": 128.90400000000227
+    }
+  ],
+  "windows": [
+    {
+      "window": "block-0-A",
+      "raw_sha256": "06e164f326198676eeebbe7712fd3494a71580f9748516d10554c7ab98553dba",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 98,
+          "quantiles": {
+            "cpuTimeP50": 6302,
+            "cpuTimeP95": 10230,
+            "cpuTimeP99": 30336,
+            "memoryUsageBytesP50": 40392100,
+            "memoryUsageBytesP90": 43126336,
+            "memoryUsageBytesP95": 44306556,
+            "memoryUsageBytesP99": 44700704,
+            "memoryUsageBytesP999": 44700704,
+            "wallTimeP50": 185957,
+            "wallTimeP95": 227894,
+            "wallTimeP99": 719054
+          }
+        }
+      ]
+    },
+    {
+      "window": "block-0-B",
+      "raw_sha256": "0ba316338d354ab0657e338cc7e36bb44b024f97bc14a874dc02c2fd50d96c94",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 101,
+          "quantiles": {
+            "cpuTimeP50": 7084,
+            "cpuTimeP95": 11218,
+            "cpuTimeP99": 18877,
+            "memoryUsageBytesP50": 42018864,
+            "memoryUsageBytesP90": 48551764,
+            "memoryUsageBytesP95": 48756300,
+            "memoryUsageBytesP99": 48993750,
+            "memoryUsageBytesP999": 49454532,
+            "wallTimeP50": 200430,
+            "wallTimeP95": 245932,
+            "wallTimeP99": 430443
+          }
+        }
+      ]
+    },
+    {
+      "window": "block-1-A",
+      "raw_sha256": "a147e5c6b353c7d768436e986fc28ce94e30114a32c711552699f28a9020bc71",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 104,
+          "quantiles": {
+            "cpuTimeP50": 5041,
+            "cpuTimeP95": 8583,
+            "cpuTimeP99": 10657,
+            "memoryUsageBytesP50": 37958296,
+            "memoryUsageBytesP90": 45290544,
+            "memoryUsageBytesP95": 45796124,
+            "memoryUsageBytesP99": 45972840,
+            "memoryUsageBytesP999": 46133176,
+            "wallTimeP50": 181704,
+            "wallTimeP95": 214183,
+            "wallTimeP99": 287296
+          }
+        }
+      ]
+    },
+    {
+      "window": "block-1-B",
+      "raw_sha256": "d45dd8cc69bb035ac180a05a35ed661dea4e6ae14b7c854f7171a94fbb57d6a6",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 104,
+          "quantiles": {
+            "cpuTimeP50": 6804,
+            "cpuTimeP95": 9257,
+            "cpuTimeP99": 12762,
+            "memoryUsageBytesP50": 50805212,
+            "memoryUsageBytesP90": 52737324,
+            "memoryUsageBytesP95": 53124224,
+            "memoryUsageBytesP99": 53308280,
+            "memoryUsageBytesP999": 53329330,
+            "wallTimeP50": 196888,
+            "wallTimeP95": 248355,
+            "wallTimeP99": 329820
+          }
+        }
+      ]
+    },
+    {
+      "window": "block-2-A",
+      "raw_sha256": "2e10ac2ab8be8b56e9beb592e07b4c755de33668ec7a86e3fa7012269aecc9f0",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 102,
+          "quantiles": {
+            "cpuTimeP50": 6237,
+            "cpuTimeP95": 8370,
+            "cpuTimeP99": 8965,
+            "memoryUsageBytesP50": 29758022,
+            "memoryUsageBytesP90": 45983440,
+            "memoryUsageBytesP95": 46986230,
+            "memoryUsageBytesP99": 48239764,
+            "memoryUsageBytesP999": 48586172,
+            "wallTimeP50": 190409,
+            "wallTimeP95": 213407,
+            "wallTimeP99": 238781
+          }
+        }
+      ]
+    },
+    {
+      "window": "block-2-B",
+      "raw_sha256": "d9c0843432921d040446fcc15817705486ac0537612af9f08c061bf550094681",
+      "errors": null,
+      "rows": [
+        {
+          "outcome": "success",
+          "requests": 101,
+          "quantiles": {
+            "cpuTimeP50": 7083,
+            "cpuTimeP95": 10953,
+            "cpuTimeP99": 17169,
+            "memoryUsageBytesP50": 40809936,
+            "memoryUsageBytesP90": 47494770,
+            "memoryUsageBytesP95": 48560184,
+            "memoryUsageBytesP99": 49076052,
+            "memoryUsageBytesP999": 49131136,
+            "wallTimeP50": 199933,
+            "wallTimeP95": 259746,
+            "wallTimeP99": 394336
+          }
+        }
+      ]
+    }
+  ],
+  "recovery": {
+    "original_runner_exit_code": 1,
+    "reason": "Post-workload dispatch count GET ECONNRESET; all client rows retained.",
+    "recovered_at": "2026-09-29T18:23:49.212903+00:00",
+    "client_records": 600,
+    "client_successes": 600,
+    "counts_available": true,
+    "observed_logical_ids": 600,
+    "total_dispatches": 600,
+    "exactly_once_failures": 0,
+    "unexpected_dispatch_ids": 0
+  }
+}

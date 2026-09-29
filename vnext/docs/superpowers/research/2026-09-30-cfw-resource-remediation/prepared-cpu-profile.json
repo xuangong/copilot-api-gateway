@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "experiment": "dump-on ordinary 64 KiB Responses CPU hot path, local workerd A/B",
+  "source": {
+    "baseline_commit": "e660fb4dfcf1734d10f89e52e2d739b2985c634b",
+    "candidate_commit": "208e7ed30c761b1077266ea2794a6f3b55d01a36",
+    "candidate_overlay_predeploy_match": true,
+    "candidate_overlay_includes_three_untracked_collaboration_shims": true,
+    "deployed_source_manifest_sha256": {
+      "baseline": "78cf8975bb291732961268035f1cba2d352e705e8660fe02ce6f2955083491eb",
+      "candidate": "c8e9781442680e108245b799adab33f6a768ac40cb4215c6ca4ec6da2ab80881"
+    },
+    "listed_source_files": {
+      "baseline": 1389,
+      "candidate": 2278
+    },
+    "manifest_missing_or_mismatched_files": 0,
+    "earlier_clean_candidate_export_used": false
+  },
+  "sampling": {
+    "runtime": "Wrangler 4.97.0 local workerd Inspector",
+    "local_state": "independent D1/KV/R2 state with one synthetic upstream",
+    "dump_retention_seconds_readback": {
+      "baseline": 0,
+      "candidate": 0
+    },
+    "input_payload_ascii_characters": 65536,
+    "protocol": "Responses JSON and SSE",
+    "per_variant_mode": {
+      "sequential_warmup_requests": 12,
+      "sequential_profiled_requests": 80
+    },
+    "profiler_requested_interval_microseconds": 100,
+    "all_profiled_responses_http_200": true,
+    "profile_passes_per_variant_mode": 1
+  },
+  "wall_time_not_cpu_ms": {
+    "json": {
+      "a": {
+        "p50": 16.43,
+        "p95": 33.54
+      },
+      "b": {
+        "p50": 15.71,
+        "p95": 21.86
+      }
+    },
+    "sse": {
+      "a": {
+        "p50": 53.84,
+        "p95": 59.57
+      },
+      "b": {
+        "p50": 57.1,
+        "p95": 66.33
+      }
+    }
+  },
+  "inspector_samples_not_billed_cpu": {
+    "json": {
+      "a": {
+        "total": 1248,
+        "emitted_bundle_self": 282
+      },
+      "b": {
+        "total": 1571,
+        "emitted_bundle_self": 475
+      }
+    },
+    "sse": {
+      "a": {
+        "total": 1657,
+        "emitted_bundle_self": 416
+      },
+      "b": {
+        "total": 2166,
+        "emitted_bundle_self": 680
+      }
+    }
+  },
+  "candidate_hotspots": [
+    {
+      "source": "packages/gateway/src/shared/dump/upstream-attempts.ts",
+      "operation": "safeUpstreamExchangesForPersistence body validation slices and regex-scans about 87 KiB base64 request prefix",
+      "candidate_emitted_bundle_line": 60259,
+      "position_ticks": {
+        "json": 38,
+        "sse": 35
+      }
+    },
+    {
+      "source": "packages/gateway/src/repo/dump-store.ts",
+      "operation": "validates, serializes and gzips upstream sidecar before a third local R2 put and D1 descriptor write",
+      "candidate_emitted_bundle_line": 60904,
+      "position_ticks": {
+        "json": 12,
+        "sse": 4
+      }
+    },
+    {
+      "source": "packages/gateway/src/shared/dump/upstream-attempts.ts",
+      "operation": "SSE upstream response observation wrapper adds bounded prefix capture; reader.read is an await and not a synchronous CPU attribution",
+      "causal_estimate": null
+    }
+  ],
+  "post_run_local_d1": {
+    "baseline": {
+      "dump_records": 185,
+      "spilled_files": 370
+    },
+    "candidate": {
+      "dump_records": 185,
+      "spilled_files": 555,
+      "non_null_upstream_sidecar_descriptors": 185
+    }
+  },
+  "interpretation_limits": [
+    "Inspector position ticks and wall times are not Cloudflare billed CPU.",
+    "Local R2 and D1 do not reproduce production R2 buffering or latency.",
+    "One pass and broad A/B source differences do not isolate the prepared-uploads change or explain all cloud CPU residual."
+  ],
+  "archive": {
+    "file_manifest_sha256": "5634821f889fe7d0714170e9699574513bdcb4fe9523feff49cfa509b4acb3b7",
+    "preserved_file_count": 30
+  }
+}

@@ -1,0 +1,290 @@
+{
+  "diagnostic_only": true,
+  "source_commit": "208e7ed30c761b1077266ea2794a6f3b55d01a36",
+  "raw_sha256": "1821bd380cd051b27c1093babafec9f698acf72f934f42f9434182cb051be000",
+  "requests": 12,
+  "warmup_requests": 2,
+  "measured_requests": 10,
+  "semantic_successes": 12,
+  "background_all_fulfilled": true,
+  "dispatch": {
+    "expected_logical_ids": 12,
+    "observed_logical_ids": 12,
+    "total_dispatches": 12,
+    "exactly_once": true
+  },
+  "total_completion_ms": {
+    "min": 488,
+    "max": 1013,
+    "mean": 645.7
+  },
+  "sum_r2_ms": {
+    "min": 766,
+    "max": 1303,
+    "mean": 907.1
+  },
+  "r2_envelope_ms": {
+    "min": 266,
+    "max": 785,
+    "mean": 389.8
+  },
+  "overlapping_rows": 10,
+  "rows": [
+    {
+      "index": 2,
+      "stream": false,
+      "completed_ms": 532,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 203,
+          "elapsed_ms": 250,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 203,
+          "elapsed_ms": 253,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 203,
+          "elapsed_ms": 300,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "stream": true,
+      "completed_ms": 531,
+      "stages": [
+        {
+          "stage": "r2_put_up",
+          "started_ms": 224,
+          "elapsed_ms": 246,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 224,
+          "elapsed_ms": 249,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_req",
+          "started_ms": 224,
+          "elapsed_ms": 278,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "stream": false,
+      "completed_ms": 578,
+      "stages": [
+        {
+          "stage": "r2_put_up",
+          "started_ms": 200,
+          "elapsed_ms": 254,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_req",
+          "started_ms": 200,
+          "elapsed_ms": 258,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 200,
+          "elapsed_ms": 351,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "stream": true,
+      "completed_ms": 566,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 225,
+          "elapsed_ms": 247,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 225,
+          "elapsed_ms": 266,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 225,
+          "elapsed_ms": 314,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "stream": false,
+      "completed_ms": 488,
+      "stages": [
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 194,
+          "elapsed_ms": 236,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 194,
+          "elapsed_ms": 264,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_req",
+          "started_ms": 194,
+          "elapsed_ms": 266,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "stream": true,
+      "completed_ms": 610,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 224,
+          "elapsed_ms": 229,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 224,
+          "elapsed_ms": 293,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 224,
+          "elapsed_ms": 359,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "stream": false,
+      "completed_ms": 862,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 200,
+          "elapsed_ms": 287,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 200,
+          "elapsed_ms": 320,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 200,
+          "elapsed_ms": 636,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "stream": true,
+      "completed_ms": 561,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 237,
+          "elapsed_ms": 232,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 237,
+          "elapsed_ms": 260,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 237,
+          "elapsed_ms": 297,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "stream": false,
+      "completed_ms": 1013,
+      "stages": [
+        {
+          "stage": "r2_put_up",
+          "started_ms": 202,
+          "elapsed_ms": 252,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_req",
+          "started_ms": 202,
+          "elapsed_ms": 266,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 202,
+          "elapsed_ms": 785,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "stream": true,
+      "completed_ms": 716,
+      "stages": [
+        {
+          "stage": "r2_put_req",
+          "started_ms": 378,
+          "elapsed_ms": 242,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_up",
+          "started_ms": 378,
+          "elapsed_ms": 269,
+          "ok": true
+        },
+        {
+          "stage": "r2_put_resp",
+          "started_ms": 378,
+          "elapsed_ms": 312,
+          "ok": true
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "R2 spans are wall time, not CPU or isolate memory.",
+    "This wrapper drains response and awaits background work; excluded from formal qualification.",
+    "Sequential diagnostic cohorts on the same D lab resources are not simultaneous; network/service timing may drift.",
+    "No matched baseline R2 spans; the complete A/B difference is not attributed."
+  ]
+}
