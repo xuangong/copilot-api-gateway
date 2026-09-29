@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/app.ts",
     "./repo": "./src/repo/public.ts",
+    "./responses-session": "./src/data-plane/chat-flow/responses/public-session.ts",
     "./maintenance": "./src/maintenance.ts",
     "./bootstrap": "./src/bootstrap.ts",
     "./migrations": "./src/migrations-dir.ts"

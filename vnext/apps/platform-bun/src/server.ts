@@ -2,6 +2,7 @@ import { getFileProvider } from "@vibe-core/platform"
 import { sweepMaintenance } from "@vibe-llm/gateway/maintenance"
 import { app } from "@vibe-llm/gateway"
 import { bootstrapBunPlatform } from "./bootstrap.ts"
+import { createResponsesWebSocketHandlers } from "./responses-websocket.ts"
 
 const dbPath = process.env.VNEXT_DB_PATH ?? ".vnext-local.sqlite"
 const { db } = bootstrapBunPlatform({
@@ -32,12 +33,7 @@ Bun.serve({
   // streaming, so a model that thinks quietly gets its connection reset
   // mid-answer. 255 is the documented maximum.
   idleTimeout: 255,
-  fetch: (req, server) => {
-    // Even 255s is short for a long-thinking upstream (300s+ of silence has
-    // been measured), so drop the timer entirely on the data plane.
-    if (new URL(req.url).pathname.startsWith("/v1/")) server.timeout(req, 0)
-    return app.fetch(req)
-  },
+  ...createResponsesWebSocketHandlers({ app }),
 })
 console.log(`vnext gateway (bun) listening on http://localhost:${port}`)
 console.log(`  sqlite file: ${dbPath}`)

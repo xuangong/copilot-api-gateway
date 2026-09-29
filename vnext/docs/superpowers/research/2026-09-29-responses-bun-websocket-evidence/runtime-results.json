@@ -1,0 +1,295 @@
+{
+  "task-C12-F1-app-runtime.mjs": {
+    "exitCode": 0,
+    "passed": true,
+    "log": "/tmp/task-C12-F1-app-runtime-f3-frozen.log",
+    "result": {
+      "passed": true,
+      "runtime": "actual authenticated Bun HTTP + independent Node upstream + real SQLite",
+      "nodeVersion": "v26.0.0",
+      "cases": [
+        "provider-late-output-suppressed-sse",
+        "provider-late-output-suppressed-json",
+        "late-error-invalidates-success-sse",
+        "late-error-invalidates-success-json",
+        "chat-trailing-usage-sse",
+        "chat-trailing-usage-json",
+        "up_responses-stalled-tail-sse-failure-socket-close",
+        "up_responses-stalled-tail-json-failure-socket-close",
+        "up_chat-stalled-tail-sse-failure-socket-close",
+        "up_chat-stalled-tail-json-failure-socket-close",
+        "chat-n2-first-choice-finish-does-not-start-global-tail",
+        "tail-overflow-frames-sse-fails",
+        "tail-overflow-frames-json-fails",
+        "tail-overflow-bytes-sse-fails",
+        "tail-overflow-bytes-json-fails",
+        "save-awaited-before-terminal-immediate-continuation",
+        "storage-failure-no-success-sanitized",
+        "cancelled-save-never-delivers-success-physical-save-settles",
+        "usage-unknown-wire-presence-no-fabricated-SQL-quantity",
+        "usage-zero-wire-presence-no-fabricated-SQL-quantity",
+        "HTTP-error-dump-body-preserved-in-real-files-and-SQL",
+        "HTTP-error-preserves-actual-hub-in-SQL"
+      ],
+      "calls": 22,
+      "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c12-f1-http-qss89t"
+    }
+  },
+  "task-C12-F1-d1-runtime.mjs": {
+    "exitCode": 0,
+    "passed": true,
+    "log": "/tmp/task-C12-F1-d1-runtime-f3-frozen.log",
+    "result": {
+      "passed": true,
+      "runtime": "actual authenticated workerd/WebCrypto/D1 Responses turn",
+      "cases": [
+        "late-output-sse",
+        "late-error-sse",
+        "tail-frames-sse",
+        "late-usage-sse",
+        "late-output-json",
+        "late-error-json",
+        "tail-frames-json",
+        "late-usage-json"
+      ],
+      "calls": 12,
+      "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c12-f1-d1-Qtsp2x"
+    }
+  },
+  "task-C12-F2-session-runtime.mjs": {
+    "exitCode": 0,
+    "passed": true,
+    "log": "/tmp/task-C12-F2-session-runtime-f3-frozen.log",
+    "result": {
+      "passed": true,
+      "runtime": "real shared session + SQLite/second connection + independent Node HTTP/SSE upstream; synthetic native transport acceptance only",
+      "cases": [
+        "warmup-zero-inference-full-input-tools-instructions-restored",
+        "same-connection-store-false-private-continuation",
+        "durable-warmup-rejected-without-inference",
+        "real-Chat-hub-shared-turn-and-trailing-usage",
+        "malformed-and-overlap-preserve-active-generation-no-queue",
+        "failed-generation-settles-and-allows-fresh-request",
+        "session-close-aborts-real-independent-upstream-socket",
+        "dropped-native-send-aborts-upstream-without-inference-retry",
+        "connection-local-canonical-carrier-replay-reaches-owner-upstream-raw",
+        "separate-SQL-connection-key-revocation-rechecked",
+        "separate-SQL-connection-owner-disable-rechecked"
+      ],
+      "calls": 10,
+      "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c12-f2-session-4LMGa2"
+    }
+  },
+  "task-C12-F2-pressure-runtime.mjs": {
+    "exitCode": 0,
+    "passed": true,
+    "log": "/tmp/task-C12-F2-pressure-runtime-f3-frozen.log",
+    "result": {
+      "passed": true,
+      "cases": [
+        "observable-highwater-gates-inference-until-drain",
+        "already-enqueued-backpressured-frame-not-retransmitted",
+        "absolute-pressure-timeout-without-inference-5005ms",
+        "binary-frame-closes-and-aborts-actual-upstream",
+        "unobservable-control-replies-have-cumulative-byte-bound",
+        "invalid-pressure-state-fails-closed-before-inference"
+      ],
+      "controlBytes": 65520,
+      "runtime": "real session/SQLite/independent Node upstream; synthetic transport pressure only",
+      "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c12-f2-session-WZlv5g"
+    }
+  },
+  "task-C12-F3-native-runtime.mjs": {
+    "exitCode": 0,
+    "passed": true,
+    "log": "/tmp/task-C12-F3-native-runtime-f3-frozen.log",
+    "result": {
+      "passed": true,
+      "cases": [
+        "four-native-upgrade-routes-auth-before101-and-ordinaryGET-preserved",
+        "HTTP-POST-still-shares-real-Responses-pipeline",
+        "native-zero-inference-warmup-fullstate-and-private-local-continuation",
+        "durable-native-terminal-immediate-successor-admitted",
+        "native-malformed-and-overlap-do-not-cancel-active-generation",
+        "native-upstream-failure-then-full-request-recovery",
+        "native-abrupt-client-termination-aborts-independent-upstream",
+        "native-binary-frame-reject-and-upstream-abort",
+        "native-maxPayloadLength-closes-before-inference",
+        "native-next-message-rechecks-external-SQL-key-revocation",
+        "native-next-message-rechecks-external-SQL-owner-disable"
+      ],
+      "native": {
+        "opens": 14,
+        "closes": 9,
+        "drains": 0,
+        "sends": 79,
+        "peakBuffer": 0
+      },
+      "runtime": "real Bun production callbacks + native WS + real SQLite/second connection + independent Node HTTP/SSE",
+      "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c12-f2-session-Nlzxfc"
+    }
+  },
+  "task-C12-F3-pressure-runtime.mjs": {
+    "exitCode": 0,
+    "passed": true,
+    "log": "/tmp/task-C12-F3-pressure-runtime-f3-frozen.log",
+    "result": {
+      "passed": true,
+      "runtime": "1.3.0",
+      "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify",
+      "limits": {
+        "nativeHighWaterBytes": 1048576,
+        "drainTimeoutMs": 5000
+      },
+      "cases": [
+        "native-paused-TCP-reader-bounded-buffer-5s-close-and-upstream-abort",
+        "native-paused-TCP-reader-abrupt-disconnect-aborts-upstream"
+      ],
+      "timeout": {
+        "handshake": {
+          "handshakeBytes": 166,
+          "coalescedFrameBytes": 0
+        },
+        "sends": [
+          {
+            "at": 429.283709,
+            "type": "response.created",
+            "sequence": 0,
+            "bytes": 198,
+            "before": 0,
+            "after": 0,
+            "result": 198
+          },
+          {
+            "at": 431.157584,
+            "type": "response.output_text.delta",
+            "sequence": 1,
+            "probeIndex": 0,
+            "bytes": 240147,
+            "before": 0,
+            "after": 0,
+            "result": 240147
+          },
+          {
+            "at": 432.085834,
+            "type": "response.output_text.delta",
+            "sequence": 2,
+            "probeIndex": 1,
+            "bytes": 240147,
+            "before": 0,
+            "after": 153304,
+            "result": -1
+          },
+          {
+            "at": 436.978459,
+            "type": "response.output_text.delta",
+            "sequence": 3,
+            "probeIndex": 2,
+            "bytes": 240147,
+            "before": 0,
+            "after": 221435,
+            "result": -1
+          }
+        ],
+        "peakBuffered": 221435,
+        "bufferSamples": 17,
+        "drains": [
+          {
+            "at": 436.861375,
+            "bytes": 0
+          }
+        ],
+        "closeCalls": [
+          {
+            "at": 5442.715167,
+            "code": 1008,
+            "reason": "Response session closed."
+          }
+        ],
+        "upstream": {
+          "kind": "close",
+          "id": "pressure_1",
+          "mode": "pressure-timeout",
+          "writes": 48,
+          "finished": false,
+          "at": 5442.997917
+        },
+        "elapsedFromLastSendMs": 5006
+      },
+      "abrupt": {
+        "handshake": {
+          "handshakeBytes": 166,
+          "coalescedFrameBytes": 0
+        },
+        "sends": [
+          {
+            "at": 5446.575125,
+            "type": "response.created",
+            "sequence": 0,
+            "bytes": 198,
+            "before": 0,
+            "after": 0,
+            "result": 198
+          },
+          {
+            "at": 5448.131459,
+            "type": "response.output_text.delta",
+            "sequence": 1,
+            "probeIndex": 0,
+            "bytes": 240147,
+            "before": 0,
+            "after": 0,
+            "result": 240147
+          },
+          {
+            "at": 5448.949167,
+            "type": "response.output_text.delta",
+            "sequence": 2,
+            "probeIndex": 1,
+            "bytes": 240147,
+            "before": 0,
+            "after": 153102,
+            "result": -1
+          },
+          {
+            "at": 5450.463584,
+            "type": "response.output_text.delta",
+            "sequence": 3,
+            "probeIndex": 2,
+            "bytes": 240147,
+            "before": 0,
+            "after": 221435,
+            "result": -1
+          }
+        ],
+        "peakBuffered": 221435,
+        "drains": [
+          {
+            "at": 5450.389084,
+            "bytes": 0
+          }
+        ],
+        "closeCalls": [],
+        "nativeCloses": [
+          {
+            "at": 5456.88,
+            "code": 1006,
+            "reason": ""
+          }
+        ],
+        "upstream": {
+          "kind": "close",
+          "id": "pressure_2",
+          "mode": "pressure-abrupt-abort",
+          "writes": 25,
+          "finished": false,
+          "at": 5459.175209
+        },
+        "abortLatencyMs": 5
+      },
+      "negativeSendObserved": true,
+      "caveat": "send acceptance and buffered bytes are server-side observations, not peer delivery or acknowledgement",
+      "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c12-f2-session-3vmyM5"
+    }
+  }
+}

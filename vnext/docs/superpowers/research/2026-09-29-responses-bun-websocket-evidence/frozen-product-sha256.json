@@ -1,0 +1,11 @@
+{
+  "base": "970ac243230186982567517dd8784fd12e2473f2",
+  "paths": {
+    "vnext/apps/platform-bun/src/server.ts": "d7a6ef2138ae692892fc6170e670542ccffae7bb268220c7d8318c549ddf64fa",
+    "vnext/apps/platform-bun/src/responses-websocket.ts": "fa5d9acbfbb09aa9b97f7abbfa12125667383cb2f16a70ebcd69ec76dc751c30",
+    "vnext/apps/platform-bun/src/__tests__/responses-websocket.test.ts": "3a4ab86181cd008d0165054b1f1532f104d08fb5752d273f30f721acd7b00297",
+    "vnext/packages/gateway/package.json": "5bd97a1414f0f3f5e90106de2e14d1b86a214c7e0194c3c6eb95a891c8de7644",
+    "vnext/packages/gateway/src/data-plane/chat-flow/responses/upgrade.ts": "6d5ec21508a94d2f1932414386a2e05481492bf9cc08d0a14f718b65f28d407d",
+    "vnext/packages/gateway/src/data-plane/chat-flow/responses/public-session.ts": "b04351073b0964d61320811acb4dd764b275db27bd532a15561847efe5b0edc2"
+  }
+}

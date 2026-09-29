@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "clientRevision": "8ff74cc9",
+  "run": "c12-client.YSZJi9",
+  "filters": {
+    "gateway_c12_warmup_generated_continuation": "1 passed; 0 failed",
+    "gateway_c12_terminal_failure_recovers_full_request": "1 passed; 0 failed"
+  },
+  "realGateway": "Bun production callbacks; fresh frozen process; temporary SQLite; independent Node HTTP/SSE upstream",
+  "warning": "Inherited unused wiremock::matchers::body_json import in pinned Codex core/tests/suite/openai_file_mcp.rs:47; not gateway product code",
+  "log": "/tmp/vnext-c12-f3-codex-frozen.log"
+}
