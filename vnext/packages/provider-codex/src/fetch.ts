@@ -20,11 +20,12 @@
 
 import {
   ensureCodexAccessToken,
-  invalidateCodexAccessToken,
   mintCodexAccessToken,
-  putCodexAccessToken,
+  refreshCodexAccessTokenForRetry,
+  type CodexAccessTokenLease,
 } from './access-token'
 import { CodexOAuthSessionTerminatedError } from './auth/oauth'
+import { codexBearerEffect, persistCodexTerminalState, readCodexCredential, type CodexCredentialTarget } from './credential-effects'
 import {
   CODEX_ALPHA_SEARCH_PATH,
   CODEX_BACKEND_BASE,
@@ -96,22 +97,13 @@ export const toCompactPayloadShape = (
   }),
 })
 
-// ─── Effects: repo-side state transitions ──────────────────────────────────
-// Refresh-token rotations and terminal-state flips travel through the repo
-// via these hooks so provider.ts owns the saveState<CodexUpstreamState> call
-// shape. Access-token / quota writes flow through their own helpers.
-export interface CodexCallEffects {
-  persistRefreshTokenRotation(newRefreshToken: string): Promise<void>
-  persistTerminalState(state: 'session_terminated' | 'refresh_failed', message: string): Promise<void>
-}
-
 interface CodexBackendCallBase {
   upstreamId: string
   account: CodexAccountCredential
+  credential: CodexCredentialTarget
   model: CodexProviderModel
   headers: Headers
   signal?: AbortSignal
-  effects: CodexCallEffects
   fetcher: Fetcher
   executionFetcher?: Fetcher
 }
@@ -165,12 +157,13 @@ export const callCodexAlphaSearch = async (
 
 const prepareCodexCall = async (
   opts: CodexBackendCallBase,
-): Promise<{ ok: true; accessToken: string } | { ok: false; response: Response }> => {
-  if (opts.account.state !== 'active') {
-    return { ok: false, response: synthetic503(`Codex upstream is ${opts.account.state}`) }
+): Promise<{ ok: true; accessToken: CodexAccessTokenLease } | { ok: false; response: Response }> => {
+  const { account } = await readCodexCredential(opts.upstreamId, opts.account.chatgptAccountId, opts.credential)
+  if (account.state !== 'active') {
+    return { ok: false, response: synthetic503(`Codex upstream is ${account.state}`) }
   }
   const now = new Date()
-  const blockedUntil = rateLimitedUntil(opts.account.quotaSnapshot, now)
+  const blockedUntil = rateLimitedUntil(account.quotaSnapshot, now)
   if (blockedUntil !== null) {
     return {
       ok: false,
@@ -182,11 +175,12 @@ const prepareCodexCall = async (
       opts.upstreamId,
       opts.account.chatgptAccountId,
       (refresh) => mintAccessToken(opts, refresh),
+      false,
+      opts.credential,
     )
-    return { ok: true, accessToken: entry.token }
+    return { ok: true, accessToken: entry }
   } catch (err) {
     if (err instanceof CodexOAuthSessionTerminatedError) {
-      await opts.effects.persistTerminalState('refresh_failed', err.upstreamMessage)
       return { ok: false, response: synthetic503(`Codex refresh failed: ${err.upstreamMessage}`) }
     }
     throw err
@@ -194,7 +188,7 @@ const prepareCodexCall = async (
 }
 
 const mintAccessToken = (opts: CodexBackendCallBase, refreshToken: string) =>
-  mintCodexAccessToken(refreshToken, opts.fetcher, opts.effects.persistRefreshTokenRotation)
+  mintCodexAccessToken(refreshToken, opts.fetcher)
 
 // ─── Pre-flight quota gate ─────────────────────────────────────────────────
 // Returns the ISO instant this account is blocked until, or null when it is
@@ -483,13 +477,13 @@ const codexHttpCall = (
 
 const dispatchCodexHttpCall = async (
   opts: CodexBackendCallBase,
-  accessToken: string,
+  accessToken: CodexAccessTokenLease,
   path: string,
   accept: string,
   prepared: PreparedCodexHttpCall,
 ): Promise<Response> => {
   const headers = new Headers()
-  headers.set('authorization', `Bearer ${accessToken}`)
+  headers.set('authorization', `Bearer ${accessToken.token}`)
   const accountId = prepared.bodyPrepared ? prepared.accountId : opts.account.chatgptAccountId
   headers.set('chatgpt-account-id', accountId)
   headers.set('originator', CODEX_ORIGINATOR)
@@ -522,7 +516,7 @@ const dispatchCodexHttpCall = async (
       isRateLimited: false,
     })
     waitUntil(
-      putCodexQuota(opts.upstreamId, opts.account.chatgptAccountId, snapshot),
+      putCodexQuota(accessToken, snapshot),
     )
     return response
   }
@@ -534,7 +528,7 @@ const dispatchCodexHttpCall = async (
       isRateLimited: true,
     })
     waitUntil(
-      putCodexQuota(opts.upstreamId, opts.account.chatgptAccountId, snapshot),
+      putCodexQuota(accessToken, snapshot),
     )
     return response
   }
@@ -543,7 +537,7 @@ const dispatchCodexHttpCall = async (
     const bodyText = await response.text()
     const { code, message } = parseUpstreamError(bodyText)
     if (code === 'token_invalidated') {
-      await opts.effects.persistTerminalState('session_terminated', message)
+      await persistCodexTerminalState(codexBearerEffect(accessToken), 'session_terminated', message)
       return synthetic503(`Codex session terminated: ${message}`)
     }
     return new Response(bodyText, { status: 401, headers: response.headers })
@@ -552,22 +546,16 @@ const dispatchCodexHttpCall = async (
   return response
 }
 
-// Force-mint a fresh access token after a 401. See reference-project comment
-// for full rationale — TL;DR: read-then-maybe-mint can re-observe the invalid
-// token because a sibling's own mint lands its `put` after our `invalidate`.
+// Recovery selects authoritative credentials before touching the failed bearer.
 const refreshAccessTokenForRetry = async (
   opts: CodexBackendCallBase,
-): Promise<{ ok: true; accessToken: string } | { ok: false; response: Response }> => {
-  await invalidateCodexAccessToken(opts.upstreamId, opts.account.chatgptAccountId)
+  failed: CodexAccessTokenLease,
+): Promise<{ ok: true; accessToken: CodexAccessTokenLease } | { ok: false; response: Response }> => {
   try {
-    const minted = await mintAccessToken(opts, opts.account.refresh_token)
-    waitUntil(
-      putCodexAccessToken(opts.upstreamId, opts.account.chatgptAccountId, minted),
-    )
-    return { ok: true, accessToken: minted.token }
+    const accessToken = await refreshCodexAccessTokenForRetry(failed, refresh => mintAccessToken(opts, refresh))
+    return { ok: true, accessToken }
   } catch (err) {
     if (err instanceof CodexOAuthSessionTerminatedError) {
-      await opts.effects.persistTerminalState('refresh_failed', err.upstreamMessage)
       return { ok: false, response: synthetic503(`Codex refresh failed: ${err.upstreamMessage}`) }
     }
     throw err
@@ -578,7 +566,7 @@ const refreshAccessTokenForRetry = async (
 
 const performStreamingResponsesCall = async (
   opts: CallCodexResponsesOptions,
-  accessToken: string,
+  accessToken: CodexAccessTokenLease,
   alreadyRetried: boolean,
   preparedCall?: PreparedCodexHttpCall,
 ): Promise<Response> => {
@@ -612,7 +600,7 @@ const performStreamingResponsesCall = async (
   )
 
   if (response.status === 401 && !alreadyRetried) {
-    const fresh = await refreshAccessTokenForRetry(opts)
+    const fresh = await refreshAccessTokenForRetry(opts, accessToken)
     if (!fresh.ok) return fresh.response
     return await performStreamingResponsesCall(opts, fresh.accessToken, true, prepared)
   }
@@ -625,7 +613,7 @@ const performStreamingResponsesCall = async (
 
 const performUnaryCompactCall = async (
   opts: CallCodexResponsesCompactOptions,
-  accessToken: string,
+  accessToken: CodexAccessTokenLease,
   alreadyRetried: boolean,
   preparedCall?: PreparedCodexHttpCall,
 ): Promise<Response> => {
@@ -654,7 +642,7 @@ const performUnaryCompactCall = async (
   )
 
   if (response.status === 401 && !alreadyRetried) {
-    const fresh = await refreshAccessTokenForRetry(opts)
+    const fresh = await refreshAccessTokenForRetry(opts, accessToken)
     if (!fresh.ok) return fresh.response
     return await performUnaryCompactCall(opts, fresh.accessToken, true, prepared)
   }
@@ -666,7 +654,7 @@ const performUnaryCompactCall = async (
 
 const performAlphaSearchCall = async (
   opts: CallCodexAlphaSearchOptions,
-  accessToken: string,
+  accessToken: CodexAccessTokenLease,
   alreadyRetried: boolean,
   preparedCall?: PreparedCodexHttpCall,
 ): Promise<Response> => {
@@ -696,7 +684,7 @@ const performAlphaSearchCall = async (
   )
 
   if (response.status === 401 && !alreadyRetried) {
-    const fresh = await refreshAccessTokenForRetry(opts)
+    const fresh = await refreshAccessTokenForRetry(opts, accessToken)
     if (!fresh.ok) return fresh.response
     return await performAlphaSearchCall(opts, fresh.accessToken, true, prepared)
   }

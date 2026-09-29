@@ -1,0 +1,10 @@
+{
+  "runtime": "actual local workerd+D1Repo with production Codex plugin",
+  "candidate": "pre-fix frozen C08 credential-effects candidate",
+  "defectReproduced": true,
+  "case": "owner change before first catalog credential capture",
+  "observed": "NO_ERROR",
+  "syntheticSends": 1,
+  "expected": "UpstreamReplacedError before any send",
+  "scope": "No external network or real credentials"
+}

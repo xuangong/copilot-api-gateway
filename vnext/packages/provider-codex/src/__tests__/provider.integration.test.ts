@@ -36,8 +36,8 @@ import type { ProviderRequest } from '@vibe-llm/provider-llm'
 class InMemoryUpstreamRepo implements UpstreamRepo {
   private rows = new Map<string, UpstreamRecord<unknown> & { rowIncarnation: string }>()
 
-  put(record: UpstreamRecord<unknown>): void {
-    this.rows.set(record.id, { ...structuredClone(record), rowIncarnation: crypto.randomUUID() })
+  put(record: UpstreamRecord<unknown> & { rowIncarnation: string }): void {
+    this.rows.set(record.id, structuredClone(record))
   }
 
   async getById<TState = unknown>(id: string): Promise<(UpstreamRecord<TState> & { rowIncarnation: string }) | null> {
@@ -62,7 +62,8 @@ const ACCOUNT_ID = 'acct_test'
 
 const baseRecord = (
   quotaSnapshot: CodexUpstreamState['accounts'][number]['quotaSnapshot'] = null,
-): UpstreamRecord<CodexUpstreamState> => ({
+): UpstreamRecord<CodexUpstreamState> & { rowIncarnation: string } => ({
+  rowIncarnation: "codex-provider-fixture-row",
   id: UPSTREAM_ID,
   provider: 'codex',
   name: 'test-codex',

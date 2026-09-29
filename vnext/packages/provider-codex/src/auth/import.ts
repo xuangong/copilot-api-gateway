@@ -32,6 +32,7 @@ const buildCodexImportResult = (params: {
       {
         chatgptAccountId: params.identity.chatgptAccountId,
         refresh_token: params.refreshToken,
+        credentialRevision: crypto.randomUUID(),
         state: 'active',
         state_updated_at: params.now,
         // Mint a fresh per-account installation id at import time. Codex CLI's

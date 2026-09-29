@@ -1,0 +1,15 @@
+{
+  "vnext/packages/gateway/tests/codex-credential-effects.sqlite.test.ts": "996ab0f680bfda14de15e063de017bae56ee1860e5b166f016e5fca4cec9a5f5",
+  "vnext/packages/gateway/tests/integration/shared-provider-state.test.ts": "1cdf15f8a3990aca8a801362bfed0c81609b718661be59547f38c8f4c00ba128",
+  "vnext/packages/provider-codex/src/__tests__/access-token.test.ts": "bb39f012a3664c23f297fa9556e86062eaac369da6b54322e0078b645947b11a",
+  "vnext/packages/provider-codex/src/__tests__/credential-revision.test.ts": "279919c9681ac9003cd6cf592c6bdc6cde846ab04f13a8d0de87a0a675c9751f",
+  "vnext/packages/provider-codex/src/__tests__/provider.integration.test.ts": "35b8709f33b4ce0c48ac110c0996a9a87863be80d9d5acc1df4de2f810bc99bf",
+  "vnext/packages/provider-codex/src/access-token.ts": "b1528a42ed0340820214d04ab60ec9402ea6cfcac191f4029098a70ee2dbf32e",
+  "vnext/packages/provider-codex/src/auth/import.ts": "a65f59ebf219d194381e26ded0ec67de3aa8edc63df20f380fcb5dc86b62ef8c",
+  "vnext/packages/provider-codex/src/credential-effects.ts": "a2b6be990f413c23f3e67dfb0809d83395a25dfc38029d3882da4a93c77991b4",
+  "vnext/packages/provider-codex/src/fetch.ts": "dc72cdffd2fab6b8ababa257183934876dec1d33ce6264efadd4679a11456969",
+  "vnext/packages/provider-codex/src/index.ts": "411788c3a5886a9ca654f6a5824f977cf2ed222596ee5200adcbcfaae0f481ab",
+  "vnext/packages/provider-codex/src/provider.ts": "bf5d90e7410ce63f4d39e7beecebe454f112711955c6fa62621182b8f84db1e0",
+  "vnext/packages/provider-codex/src/quota.ts": "77610e543b09297897bf3d38f195c042f8a7e18089bdc0870874502d6d913245",
+  "vnext/packages/provider-codex/src/state.ts": "6f181986ada5ab379a89cef8ea201c43778daab9105cde09a4fb36fb11002977"
+}

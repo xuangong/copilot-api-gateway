@@ -30,6 +30,8 @@ export type CodexQuotaSnapshotEntryMap = Record<string, CodexQuotaSnapshotEntry>
 // CodexUpstreamConfig.accounts via `chatgptAccountId`.
 export interface CodexAccountCredential {
   chatgptAccountId: string
+  // Missing on legacy rows; only explicit import/reimport advances identity.
+  credentialRevision?: string
   // OpenAI rotates refresh_token on every /oauth/token call. Stored in the
   // upstreams row (not KV) so KV eviction never forces operator re-import.
   refresh_token: string
@@ -70,6 +72,7 @@ export const replaceCodexAccount = (
 
 const ALLOWED_CREDENTIAL_KEYS_MAP: Record<keyof CodexAccountCredential, true> = {
   chatgptAccountId: true,
+  credentialRevision: true,
   refresh_token: true,
   state: true,
   state_message: true,
@@ -165,6 +168,10 @@ const assertCodexAccountCredential = (value: unknown, where: string): void => {
   }
   if (typeof obj.refresh_token !== 'string' || obj.refresh_token === '') {
     throw new TypeError(`${where}.refresh_token must be a non-empty string`)
+  }
+  if (obj.credentialRevision !== undefined &&
+      (typeof obj.credentialRevision !== 'string' || obj.credentialRevision.trim() === '')) {
+    throw new TypeError(`${where}.credentialRevision must be a non-empty string when present`)
   }
   if (
     obj.state !== 'active' &&

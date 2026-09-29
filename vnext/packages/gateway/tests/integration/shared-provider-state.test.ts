@@ -1,13 +1,18 @@
 import { expect, test } from 'bun:test'
 import { setupTestPlatform } from '../_setup-platform.ts'
 import { getDataPlaneRepo } from '../../src/repo/index.ts'
-import { ensureCodexAccessToken, CodexOAuthSessionTerminatedError, putCodexQuota, readCodexUpstreamState } from '@vibe-llm/provider-codex'
+import { ensureCodexAccessToken, CodexOAuthSessionTerminatedError, putCodexQuota, readCodexUpstreamState, readCodexCredential } from '@vibe-llm/provider-codex'
 import { ensureClaudeCodeAccessToken, putClaudeCodeQuota, readClaudeCodeUpstreamState, parseClaudeCodeQuotaHeaders } from '@vibe-llm/provider-claude-code'
 import { refreshModelsCache, listUpstreamModels } from '../../src/data-plane/providers/registry.ts'
 import type { LlmModelProvider } from '@vibe-llm/provider-llm'
 
 const accountId = '00000000-0000-4000-8000-000000000001'
-const codexState = () => readCodexUpstreamState({ accounts: [{ chatgptAccountId: accountId, refresh_token: 'old-refresh', state: 'active', state_updated_at: '2026-01-01', openaiDeviceId: accountId, accessToken: null, quotaSnapshot: null }] })
+const codexState = () => readCodexUpstreamState({ accounts: [{ chatgptAccountId: accountId, refresh_token: 'old-refresh', state: 'active', state_updated_at: '2026-01-01', openaiDeviceId: accountId, accessToken: { token: 'old-access', expiresAt: Date.now() + 3_600_000, refreshedAt: '2026-01-01' }, quotaSnapshot: null }] })
+const codexObservation = async () => {
+  const { credential, account } = await readCodexCredential('codex', accountId)
+  if (!account.accessToken) throw new Error('fixture observation requires a bearer')
+  return { ...account.accessToken, credential }
+}
 const claudeState = () => readClaudeCodeUpstreamState({ accounts: [{ accountUuid: accountId, tokenKind: 'oauth', refreshToken: 'old-refresh', state: 'active', stateUpdatedAt: '2026-01-01', accessToken: null, quotaSnapshot: null, usageProbeSnapshot: null }] })
 const row = (provider: string, state: unknown) => ({
   id: provider, provider, name: provider, enabled: true, sortOrder: 0,
@@ -19,6 +24,9 @@ const row = (provider: string, state: unknown) => ({
 for (const siblingHasAccessToken of [true, false]) test(`Codex refresh race rereads authoritative rotated credentials (cached access: ${siblingHasAccessToken})`, async () => {
   const { repo, db } = setupTestPlatform()
   const state = codexState()
+  const initial = state.accounts[0]
+  if (!initial) throw new Error('missing fixture account')
+  initial.accessToken = null
   await repo.upstreams.save(row('codex', state) as never)
   await getDataPlaneRepo().upstreams.getById('codex')
   const minted = { token: 'winner-access', expiresAt: Date.now() + 3_600_000, refreshedAt: new Date().toISOString() }
@@ -36,7 +44,7 @@ for (const siblingHasAccessToken of [true, false]) test(`Codex refresh race rere
         db.query('UPDATE upstreams SET state_json = ? WHERE id = ?').run(JSON.stringify(winner), 'codex')
         throw new CodexOAuthSessionTerminatedError({ code: 'invalid_grant', message: 'fixture rotation' })
       }
-      return minted
+      return { accessToken: minted, refreshToken: 'next-refresh' }
     })
     expect(result.token).toBe('winner-access')
     expect(calls).toEqual(siblingHasAccessToken ? ['old-refresh'] : ['old-refresh', 'winner-refresh'])
@@ -73,7 +81,7 @@ for (const provider of ['codex', 'claude-code']) test(`${provider} quota writes 
     if (!upstream) throw new Error('missing fixture upstream')
     await refreshModelsCache(upstream, { getModels: async () => ({ object: 'list', data: [{ id: 'fixture-model', object: 'model', capabilities: { type: 'chat' } }] }) } as unknown as LlmModelProvider)
     const revision = await repo.configurationRevision!()
-    if (provider === 'codex') await putCodexQuota(provider, accountId, { observed_at: new Date().toISOString(), primary_used_percent: 20 })
+    if (provider === 'codex') await putCodexQuota(await codexObservation(), { observed_at: new Date().toISOString(), primary_used_percent: 20 })
     else await putClaudeCodeQuota(provider, parseClaudeCodeQuotaHeaders(new Headers({ 'anthropic-ratelimit-unified-status': 'allowed' })))
     expect(await repo.configurationRevision!()).toBe(revision)
     const executor = (repo.apiKeys as unknown as { x: Record<string, (...args: unknown[]) => unknown> }).x
@@ -101,6 +109,7 @@ for (const sameUpstream of [false, true]) test(`concurrent state writes retain h
   await repo.upstreams.save(row('claude-code', claudeState()) as never)
   const view = getDataPlaneRepo()
   await view.upstreams.list()
+  const observation = await codexObservation()
   const getById = repo.upstreams.getById.bind(repo.upstreams)
   let reads = 0
   let release: () => void = () => {}
@@ -113,9 +122,9 @@ for (const sameUpstream of [false, true]) test(`concurrent state writes retain h
   }
   try {
     await Promise.all([
-      putCodexQuota('codex', accountId, { observed_at: new Date().toISOString(), primary_used_percent: 10 }),
+      putCodexQuota(observation, { observed_at: new Date().toISOString(), primary_used_percent: 10 }),
       sameUpstream
-        ? putCodexQuota('codex', accountId, { observed_at: new Date().toISOString(), secondary_used_percent: 20 })
+        ? putCodexQuota(observation, { observed_at: new Date().toISOString(), secondary_used_percent: 20 })
         : putClaudeCodeQuota('claude-code', parseClaudeCodeQuotaHeaders(new Headers({ 'anthropic-ratelimit-unified-status': 'allowed' }))),
     ])
     repo.upstreams.getById = getById
@@ -163,7 +172,7 @@ test('state write discovering remote proxy references reloads one coherent confi
   // Same DB, bypass local mutation hooks to model another instance's edit.
   db.query("INSERT INTO proxies (id, name, url, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run('remote-proxy', 'remote', 'http://localhost:1234', '2026-01-01', '2026-01-01')
   db.query('UPDATE upstreams SET proxy_fallback_list_json = ? WHERE id = ?').run(JSON.stringify([{ id: 'remote-proxy' }]), 'codex')
-  await putCodexQuota('codex', accountId, { observed_at: new Date().toISOString() })
+  await putCodexQuota(await codexObservation(), { observed_at: new Date().toISOString() })
   expect((await view.proxies.getById('remote-proxy'))?.id).toBe('remote-proxy')
   expect((await view.upstreams.getById('codex'))?.proxyFallbackList).toEqual([{ id: 'remote-proxy' }])
   db.close()

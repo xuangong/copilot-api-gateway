@@ -1,211 +1,125 @@
-// Codex OAuth access-token lifecycle: mint / cache / invalidate / refresh-race
-// recovery. Ported from copilot-gateway/packages/provider-codex/src/access-token.ts.
-//
-// vNext adaptations:
-//   - Repo access swapped to `@vibe-core/upstream-repo` (getUpstreamRepo).
-//   - `UpstreamGoneError` imported from `@vibe-core/upstream-repo`.
-//   - `Fetcher` imported from local ./fetcher (vNext-owned type, not from
-//     an external `@floway-dev/provider` boundary).
-
-import { getUpstreamRepo, getAuthoritativeUpstreamRepo, UpstreamGoneError } from '@vibe-core/upstream-repo'
-import { CodexOAuthSessionTerminatedError, refreshCodexAccessToken } from './auth/oauth'
-import type { Fetcher } from './fetcher'
+import type { UpstreamWriteTarget } from "@vibe-core/upstream-repo"
+import { CodexOAuthSessionTerminatedError, refreshCodexAccessToken } from "./auth/oauth"
+import type { Fetcher } from "./fetcher"
+import type { CodexAccessTokenEntry } from "./state"
 import {
-  findCodexAccountIndex,
-  readCodexUpstreamState,
-  replaceCodexAccount,
-  type CodexAccessTokenEntry,
-  type CodexUpstreamState,
-} from './state'
+  codexBearerEffect, ignoreGoneCodexEffect, persistCodexTerminalState,
+  readCodexCredential, updateCodexCredential,
+  type CodexAccessTokenLease, type CodexCredentialSnapshot,
+} from "./credential-effects"
 
-export type { CodexAccessTokenEntry }
+export type { CodexAccessTokenEntry, CodexAccessTokenLease }
 
-// Refresh window: a cached token within this much of expiry counts as
-// already-expired so the next call mints a fresh one rather than racing the
-// upstream clock. Matches the data-plane's pre-call freshness gate.
+export interface CodexMintResult {
+  accessToken: CodexAccessTokenEntry
+  refreshToken: string
+}
+
+export type CodexTokenMint = (refreshToken: string) => Promise<CodexMintResult>
+
 const REFRESH_SKEW_MS = 5 * 60 * 1000
+const isAccessTokenFresh = (entry: CodexAccessTokenEntry): boolean => entry.expiresAt > Date.now() + REFRESH_SKEW_MS
+const usableLease = (snapshot: CodexCredentialSnapshot): CodexAccessTokenLease | null => {
+  const entry = snapshot.account.accessToken
+  return snapshot.account.state === "active" && entry && entry.expiresAt > Date.now()
+    ? { ...entry, credential: snapshot.credential } : null
+}
 
-const isAccessTokenFresh = (entry: CodexAccessTokenEntry): boolean =>
-  entry.expiresAt > Date.now() + REFRESH_SKEW_MS
-
-// The whole change is expressed against the state the repo hands us, so a
-// write that loses its race is simply replayed against the winner's document
-// and both changes survive. Storage failures propagate so the request path
-// surfaces them rather than silently running on a stale cached token.
-const persistAccessToken = async (
-  upstreamId: string,
-  accountId: string,
-  entry: CodexAccessTokenEntry | null,
-  where: string,
-): Promise<void> => {
-  // The mutator is replayed on a lost race, so the diagnostic is recorded and
-  // emitted once afterwards rather than logged from inside it.
-  let accountMissing = false
-  try {
-    await getUpstreamRepo().saveState<CodexUpstreamState>(upstreamId, (current) => {
-      const state = readCodexUpstreamState(current)
-      const idx = findCodexAccountIndex(state, accountId)
-      if (idx < 0) {
-        accountMissing = true
-        return current as CodexUpstreamState
-      }
-      accountMissing = false
-      // Invalidating an already-null slot has nothing to write — the case where
-      // a 401 retry races a concurrent refresh that already cleared the token.
-      if (entry === null && state.accounts[idx]!.accessToken === null) return current as CodexUpstreamState
-      return replaceCodexAccount(state, idx, (account) => ({ ...account, accessToken: entry }))
-    })
-  } catch (err) {
-    // A minted access token is bookkeeping the next request re-derives, so an
-    // operator deleting the upstream mid-request is not worth failing that
-    // request over. Every other storage failure still propagates.
-    if (!(err instanceof UpstreamGoneError)) throw err
-    console.warn(`${where}: Codex upstream ${upstreamId} disappeared mid-request`)
-    return
-  }
-  if (accountMissing) {
-    console.warn(`${where}: Codex account ${accountId} not found in upstream ${upstreamId}`)
+export class CodexCredentialUnavailableError extends Error {
+  constructor() {
+    super("Codex credential has no usable current access token")
+    this.name = "CodexCredentialUnavailableError"
   }
 }
 
-export const putCodexAccessToken = async (
-  upstreamId: string,
-  accountId: string,
-  entry: CodexAccessTokenEntry,
-): Promise<void> => {
-  await persistAccessToken(upstreamId, accountId, entry, 'putCodexAccessToken')
+export const invalidateCodexAccessToken = async (lease: CodexAccessTokenLease): Promise<void> => {
+  await ignoreGoneCodexEffect(updateCodexCredential(codexBearerEffect(lease), account => ({ ...account, accessToken: null })))
 }
 
-export const invalidateCodexAccessToken = async (
-  upstreamId: string,
-  accountId: string,
-): Promise<void> => {
-  await persistAccessToken(upstreamId, accountId, null, 'invalidateCodexAccessToken')
-}
-
-// Process-local coalescing of concurrent ensure calls. On a cold start N
-// requests on the same isolate would all see `accessToken === null` and each
-// POST /oauth/token; the upstream rotates on every call so only one survives
-// and the rest fall into `recoverFromRefreshRace`, burning N round-trips for
-// one usable token. Coalescing here collapses the within-isolate herd to a
-// single mint. Key includes `force` so a dashboard `force: true` click never
-// rides on a concurrent lazy call's cache-hit result (and vice versa);
-// concurrent forces still collapse.
-//
-// Scope: per-isolate only. Cross-isolate siblings still race and are caught
-// by `recoverFromRefreshRace`.
-const inFlightEnsures = new Map<string, Promise<CodexAccessTokenEntry>>()
+// Coalescing reduces duplicate work for the exact stored credential. CAS, not
+// this process-local map, decides which cross-instance mint may commit.
+const inFlightEnsures = new Map<string, Promise<CodexAccessTokenLease>>()
 
 export const ensureCodexAccessToken = async (
   upstreamId: string,
   accountId: string,
-  mint: (refreshToken: string) => Promise<CodexAccessTokenEntry>,
-  // When true, skip the "cached access_token is still fresh" fast-path and
-  // always mint a fresh one. Dashboard's Refresh button sets this so the
-  // operator sees the row's tokens actually rotate; the data plane leaves it
-  // false so a live request served from cache stays cheap.
+  mint: CodexTokenMint,
   force = false,
-): Promise<CodexAccessTokenEntry> => {
-  const key = `${upstreamId}:${accountId}:${force ? 'force' : 'lazy'}`
+  expected?: UpstreamWriteTarget,
+): Promise<CodexAccessTokenLease> => {
+  const snapshot = await readCodexCredential(upstreamId, accountId, expected)
+  const { credential, account } = snapshot
+  const key = JSON.stringify([upstreamId, accountId, credential.rowIncarnation, credential.ownerId,
+    credential.credentialRevision, account.refresh_token, account.accessToken?.token, force])
   const existing = inFlightEnsures.get(key)
   if (existing) return await existing
-  const promise = ensureCodexAccessTokenInner(upstreamId, accountId, mint, true, force)
+  const promise = ensureInner(snapshot, mint, force, true)
   inFlightEnsures.set(key, promise)
-  try {
-    return await promise
-  } finally {
-    inFlightEnsures.delete(key)
-  }
+  try { return await promise } finally { inFlightEnsures.delete(key) }
 }
 
-const ensureCodexAccessTokenInner = async (
-  upstreamId: string,
-  accountId: string,
-  mint: (refreshToken: string) => Promise<CodexAccessTokenEntry>,
-  recoveryAllowed: boolean,
+const ensureInner = async (
+  snapshot: CodexCredentialSnapshot,
+  mint: CodexTokenMint,
   force: boolean,
-): Promise<CodexAccessTokenEntry> => {
-  const repo = force || !recoveryAllowed ? getAuthoritativeUpstreamRepo() : getUpstreamRepo()
-  const fresh = await repo.getById(upstreamId)
-  if (!fresh) throw new Error(`Codex upstream ${upstreamId} not found`)
-  const state = readCodexUpstreamState(fresh.state)
-  const account = state.accounts.find((a) => a.chatgptAccountId === accountId)
-  if (!account) throw new Error(`Codex account ${accountId} not found in upstream ${upstreamId}`)
-  if (account.accessToken && isAccessTokenFresh(account.accessToken) && !force) {
-    return account.accessToken
+  recoveryAllowed: boolean,
+): Promise<CodexAccessTokenLease> => {
+  const { credential, account } = snapshot
+  if (account.state !== "active") throw new CodexCredentialUnavailableError()
+  if (!force && account.accessToken && isAccessTokenFresh(account.accessToken)) {
+    return { ...account.accessToken, credential }
   }
-
-  let minted: CodexAccessTokenEntry
+  const effect = { credential, tokenKind: "refresh" as const, token: account.refresh_token }
+  let minted: CodexMintResult
   try {
     minted = await mint(account.refresh_token)
-  } catch (err) {
-    if (
-      err instanceof CodexOAuthSessionTerminatedError &&
-      err.code === 'invalid_grant' &&
-      recoveryAllowed
-    ) {
-      const recovered = await recoverFromRefreshRace(upstreamId, accountId, account.refresh_token, mint)
-      if (recovered) return recovered
+  } catch (error) {
+    if (error instanceof CodexOAuthSessionTerminatedError) {
+      const current = await readCodexCredential(credential.upstreamId, credential.accountId, credential)
+      const changed = current.credential.credentialRevision !== credential.credentialRevision ||
+        current.account.refresh_token !== account.refresh_token
+      if (changed) {
+        const winner = usableLease(current)
+        if (winner) return winner
+        // Preserve the existing single invalid_grant recovery with the current
+        // refresh token and a newly captured effect identity.
+        if (error.code === "invalid_grant" && recoveryAllowed && current.account.state === "active") {
+          return await ensureInner(current, mint, false, false)
+        }
+      }
+      await persistCodexTerminalState(effect, "refresh_failed", error.upstreamMessage)
     }
-    throw err
+    throw error
   }
-  await persistAccessToken(upstreamId, accountId, minted, 'ensureCodexAccessToken')
-  return minted
+  await updateCodexCredential(effect, current => ({
+    ...current, refresh_token: minted.refreshToken, accessToken: minted.accessToken,
+    state_updated_at: minted.accessToken.refreshedAt,
+  }))
+  // A losing CAS can be a no-op when reimport/rotation won. Never return the
+  // local mint in place of the authoritative row's current usable token.
+  const current = await readCodexCredential(credential.upstreamId, credential.accountId, credential)
+  const winner = usableLease(current)
+  if (!winner) throw new CodexCredentialUnavailableError()
+  return winner
 }
 
-// `invalid_grant` ambiguity: dead refresh token, or a sibling worker raced
-// us and we hold the rotated-out copy. Re-read state for the same `accountId`
-// slot and compare. The "sibling rotated but no cached access token yet"
-// subcase (e.g. a concurrent `invalidateCodexAccessToken` cleared it)
-// re-enters the refresh flow once with the fresh RT in hand; the depth guard
-// prevents runaway recursion if recovery itself observes a stale view.
-// Returns `null` when the original error should be re-raised as a real
-// session termination.
-const recoverFromRefreshRace = async (
-  upstreamId: string,
-  accountId: string,
-  usedRefreshToken: string,
-  mint: (refreshToken: string) => Promise<CodexAccessTokenEntry>,
-): Promise<CodexAccessTokenEntry | null> => {
-  const reread = await getAuthoritativeUpstreamRepo().getById(upstreamId)
-  if (!reread) return null
-  const rereadState = readCodexUpstreamState(reread.state)
-  const rereadAccount = rereadState.accounts.find((a) => a.chatgptAccountId === accountId)
-  if (!rereadAccount) return null
-  if (rereadAccount.state !== 'active') return null
-  if (rereadAccount.refresh_token === usedRefreshToken) return null
-  console.info(
-    `Codex refresh-race recovered for upstream ${upstreamId} account ${accountId}: sibling rotated, using their access token`,
-  )
-  if (rereadAccount.accessToken && isAccessTokenFresh(rereadAccount.accessToken)) {
-    return rereadAccount.accessToken
-  }
-  // Sibling rotated the refresh token but no usable access token sits in
-  // state — most likely an `invalidateCodexAccessToken` ran between the
-  // sibling's rotation and our re-read. Re-enter the refresh flow once with
-  // the live RT; the re-entrant call sees the rotated row and goes straight
-  // through the standard mint path. The depth guard suppresses a second
-  // recovery attempt — if `invalid_grant` strikes again the refresh token
-  // really is dead and we want the terminal flip.
-  return await ensureCodexAccessTokenInner(upstreamId, accountId, mint, false, false)
+export const refreshCodexAccessTokenForRetry = async (
+  failed: CodexAccessTokenLease,
+  mint: CodexTokenMint,
+): Promise<CodexAccessTokenLease> => {
+  const target = failed.credential
+  const current = await readCodexCredential(target.upstreamId, target.accountId, target)
+  const winner = usableLease(current)
+  if (winner && (winner.token !== failed.token || winner.credential.credentialRevision !== target.credentialRevision)) return winner
+  await invalidateCodexAccessToken(failed)
+  // A sibling can rotate between the first read and invalidation CAS.
+  return await ensureCodexAccessToken(target.upstreamId, target.accountId, mint, false, target)
 }
 
-// Mints a fresh access token via /oauth/token and routes the rotated
-// refresh_token through the caller's persistence hook. Awaiting the rotation
-// persistence (rather than fire-and-forget) is deliberate: under concurrent
-// rotations each call's new refresh_token must reach the hook before the next
-// attempt reads state, otherwise an unhandled rejection can swallow the
-// rotated token and the upstream eventually returns app_session_terminated.
-export const mintCodexAccessToken = async (
-  refreshToken: string,
-  fetcher: Fetcher,
-  persistRefreshTokenRotation: (newRefreshToken: string) => Promise<void>,
-): Promise<CodexAccessTokenEntry> => {
+export const mintCodexAccessToken = async (refreshToken: string, fetcher: Fetcher): Promise<CodexMintResult> => {
   const tokens = await refreshCodexAccessToken(refreshToken, fetcher)
-  await persistRefreshTokenRotation(tokens.refresh_token)
   return {
-    token: tokens.access_token,
-    expiresAt: Date.now() + tokens.expires_in * 1000,
-    refreshedAt: new Date().toISOString(),
+    refreshToken: tokens.refresh_token,
+    accessToken: { token: tokens.access_token, expiresAt: Date.now() + tokens.expires_in * 1000, refreshedAt: new Date().toISOString() },
   }
 }

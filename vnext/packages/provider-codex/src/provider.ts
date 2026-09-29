@@ -15,12 +15,9 @@
  *     interceptors land in F5. The dispatch is inlined; runInterceptors is
  *     not invoked.
  *   - Access-token / quota / models / catalog logic is unchanged in shape.
- *   - Effects (persistRefreshTokenRotation, persistTerminalState) route
- *     through `getUpstreamRepo().saveState<CodexUpstreamState>` instead of
- *     `getProviderRepo().upstreams.saveState`.
+ *   - Credential effects capture row identity, revision and the used token.
  */
 import { ensureCodexAccessToken, mintCodexAccessToken } from './access-token'
-import { CodexOAuthSessionTerminatedError } from './auth/oauth'
 import { assertCodexUpstreamRecord, type CodexUpstreamConfig } from './config'
 import {
   callCodexAlphaSearch,
@@ -28,7 +25,6 @@ import {
   callCodexResponsesCompact,
   toCompactPayloadShape,
   type CanonicalResponsesCompactPayload,
-  type CodexCallEffects,
 } from './fetch'
 import { directFetcher, type Fetcher } from './fetcher'
 import { codexResponsesBoundary } from './interceptors/responses'
@@ -38,16 +34,10 @@ import {
   type CodexProviderModel,
 } from './models'
 import { pricingForCodexModelKey } from './pricing'
-import {
-  assertCodexUpstreamState,
-  findCodexAccountIndex,
-  readCodexUpstreamState,
-  replaceCodexAccount,
-  type CodexAccountCredential,
-  type CodexUpstreamState,
-} from './state'
+import { assertCodexUpstreamState } from './state'
 import { runInterceptors } from '@vibe-core/service'
-import { getUpstreamRepo, UpstreamGoneError } from '@vibe-core/upstream-repo'
+import { readCodexCredential } from "./credential-effects"
+import type { UpstreamWriteTarget } from "@vibe-core/upstream-repo"
 import type {
   EndpointKey,
   Invocation,
@@ -66,7 +56,6 @@ import {
   type ProviderModelsResponse,
   type SourceApi,
 } from '@vibe-llm/provider-llm'
-import type { CanonicalResponsesPayload } from '@vibe-llm/protocols/responses'
 
 const CODEX_SUPPORTED: readonly EndpointKey[] = ['responses', 'alpha_search']
 
@@ -75,85 +64,28 @@ export class CodexProvider implements LlmModelProvider {
   readonly name: string
   readonly supportedEndpoints = CODEX_SUPPORTED
   private readonly upstreamId: string
+  private readonly writeTarget: UpstreamWriteTarget
   private readonly config: CodexUpstreamConfig
   private readonly fetcher: Fetcher
   private readonly executionFetcher?: ExecutionFetcherForRequest
-  private readonly effects: CodexCallEffects
   private catalogCache: CodexProviderModel[] | null = null
 
   constructor(record: UpstreamRecord<unknown>, fetcher: Fetcher = directFetcher, executionFetcher?: ExecutionFetcherForRequest) {
     assertCodexUpstreamRecord(record)
     assertCodexUpstreamState(record.state)
+    // The plugin receives the already-authorized stored row. Looking up an
+    // incarnation by ID later could adopt another owner's replacement row.
+    if (!("rowIncarnation" in record) || typeof record.rowIncarnation !== "string" || record.rowIncarnation.trim() === "") {
+      throw new TypeError("Codex provider requires a stored upstream row incarnation")
+    }
     this.upstreamId = record.id
+    this.writeTarget = {
+      rowIncarnation: record.rowIncarnation, ownerId: record.ownerId, provider: record.provider,
+    }
     this.config = record.config
     this.name = record.name
     this.fetcher = fetcher
     this.executionFetcher = executionFetcher
-    this.effects = this.buildEffects()
-  }
-
-  private buildEffects(): CodexCallEffects {
-    const accountId = this.config.accounts[0].chatgptAccountId
-    const upstreamId = this.upstreamId
-    const locate = (raw: unknown) => {
-      const state = readCodexUpstreamState(raw)
-      const idx = findCodexAccountIndex(state, accountId)
-      if (idx < 0) {
-        throw new Error(
-          `Codex upstream ${upstreamId} state has no credential for account ${accountId}`,
-        )
-      }
-      return { state, idx }
-    }
-    return {
-      persistRefreshTokenRotation: async (newRefreshToken) => {
-        const rotatedAt = new Date().toISOString()
-        try {
-          await getUpstreamRepo().saveState<CodexUpstreamState>(upstreamId, (current) => {
-            const { state, idx } = locate(current)
-            return replaceCodexAccount(state, idx, (account) => ({
-              ...account,
-              refresh_token: newRefreshToken,
-              state_updated_at: rotatedAt,
-            }))
-          })
-        } catch (err) {
-          if (err instanceof UpstreamGoneError) return
-          throw err
-        }
-      },
-      persistTerminalState: async (newState, message) => {
-        const flippedAt = new Date().toISOString()
-        try {
-          await getUpstreamRepo().saveState<CodexUpstreamState>(upstreamId, (current) => {
-            const { state, idx } = locate(current)
-            return replaceCodexAccount(state, idx, (account) => ({
-              ...account,
-              state: newState,
-              state_message: message,
-              state_updated_at: flippedAt,
-              accessToken: null,
-            }))
-          })
-        } catch (err) {
-          if (err instanceof UpstreamGoneError) return
-          throw err
-        }
-      },
-    }
-  }
-
-  private async readActiveAccount(): Promise<CodexAccountCredential> {
-    const fresh = await getUpstreamRepo().getById<CodexUpstreamState>(this.upstreamId)
-    if (!fresh) throw new Error(`Codex upstream ${this.upstreamId} disappeared mid-request`)
-    const state = readCodexUpstreamState(fresh.state)
-    const idx = findCodexAccountIndex(state, this.config.accounts[0].chatgptAccountId)
-    if (idx < 0) {
-      throw new Error(
-        `Codex upstream ${this.upstreamId} state has no credential for account ${this.config.accounts[0].chatgptAccountId}`,
-      )
-    }
-    return state.accounts[idx]!
   }
 
   setModelCatalog(models: ProviderModelsResponse): void {
@@ -163,17 +95,11 @@ export class CodexProvider implements LlmModelProvider {
   async getModels(): Promise<ProviderModelsResponse> {
     if (!this.catalogCache) {
       const accountId = this.config.accounts[0].chatgptAccountId
-      let access: { token: string }
-      try {
-        access = await ensureCodexAccessToken(this.upstreamId, accountId, (refresh) =>
-          mintCodexAccessToken(refresh, this.fetcher, this.effects.persistRefreshTokenRotation),
-        )
-      } catch (err) {
-        if (err instanceof CodexOAuthSessionTerminatedError) {
-          await this.effects.persistTerminalState('refresh_failed', err.upstreamMessage)
-        }
-        throw err
-      }
+      const access = await ensureCodexAccessToken(this.upstreamId, accountId, refresh =>
+        mintCodexAccessToken(refresh, this.fetcher),
+        false,
+        this.writeTarget,
+      )
       const raw = await fetchCodexCatalog({
         accessToken: access.token,
         accountId,
@@ -225,15 +151,15 @@ export class CodexProvider implements LlmModelProvider {
     }
 
     const upstreamResp = await runInterceptors(inv, ctx, codexResponsesBoundary, async () => {
-      const account = await this.readActiveAccount()
+      const { account, credential } = await readCodexCredential(this.upstreamId, this.config.accounts[0].chatgptAccountId, this.writeTarget)
       const { model: _ignored, ...wireBody } = inv.payload as Record<string, unknown>
       const backendCallBase = {
         upstreamId: this.upstreamId,
         account,
+        credential,
         model,
         headers: new Headers(inv.headers),
         signal: req.signal,
-        effects: this.effects,
         fetcher: this.fetcher,
         executionFetcher: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req),
       }
@@ -274,15 +200,15 @@ export class CodexProvider implements LlmModelProvider {
   // passed through opaquely; the fetch layer injects the account model + id.
   private async callAlphaSearch(req: ProviderRequest): Promise<ProviderResponse> {
     const model = await this.resolveModel(req.payload)
-    const account = await this.readActiveAccount()
+    const { account, credential } = await readCodexCredential(this.upstreamId, this.config.accounts[0].chatgptAccountId, this.writeTarget)
     const { model: _ignored, ...body } = req.payload as Record<string, unknown>
     const upstreamResp = await callCodexAlphaSearch({
       upstreamId: this.upstreamId,
       account,
+      credential,
       model,
       headers: new Headers(req.headers),
       signal: req.signal,
-      effects: this.effects,
       fetcher: this.fetcher,
       executionFetcher: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req),
       body,

@@ -5,12 +5,8 @@
 // `getUpstreamRepo().*` (see @vibe-core/upstream-repo, wired up in F3-prep).
 
 import { getUpstreamRepo } from '@vibe-core/upstream-repo'
-import {
-  findCodexAccountIndex,
-  readCodexUpstreamState,
-  replaceCodexAccount,
-  type CodexUpstreamState,
-} from './state'
+import { codexBearerEffect, ignoreGoneCodexEffect, updateCodexCredential, type CodexAccessTokenLease } from "./credential-effects"
+import { readCodexUpstreamState } from './state'
 
 export interface CodexQuotaSnapshot {
   observed_at: string
@@ -148,27 +144,15 @@ export const getCodexQuota = async (
 }
 
 export const putCodexQuota = async (
-  upstreamId: string,
-  accountId: string,
+  lease: CodexAccessTokenLease,
   snapshot: CodexQuotaSnapshot,
 ): Promise<void> => {
-  // Stamped before the write so a replay against a winning sibling produces
-  // the same document rather than a later `fetchedAt`.
   const fetchedAt = Date.now()
-  await getUpstreamRepo().saveState<CodexUpstreamState>(upstreamId, (current) => {
-    const state = readCodexUpstreamState(current)
-    const idx = findCodexAccountIndex(state, accountId)
-    if (idx < 0) {
-      throw new Error(
-        `putCodexQuota: Codex account ${accountId} not found in upstream ${upstreamId}`,
-      )
-    }
-    return replaceCodexAccount(state, idx, (account) => ({
-      ...account,
-      quotaSnapshot: {
-        ...(account.quotaSnapshot ?? {}),
-        [codexQuotaActiveLimitKey(snapshot)]: { fetchedAt, data: snapshot },
-      },
-    }))
-  })
+  await ignoreGoneCodexEffect(updateCodexCredential(codexBearerEffect(lease), account => ({
+    ...account,
+    quotaSnapshot: {
+      ...(account.quotaSnapshot ?? {}),
+      [codexQuotaActiveLimitKey(snapshot)]: { fetchedAt, data: snapshot },
+    },
+  })))
 }

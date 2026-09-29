@@ -1,4 +1,4 @@
-// Unit tests for access-token.ts — put / invalidate / ensure (incl. refresh-
+// Unit tests for access-token.ts — atomic mint / invalidate / ensure (incl. refresh-
 // race recovery). Adapted from the reference project's `access-token_test.ts`
 // (vitest + createUpstreamStateRepoStub) to Bun's test runner + the vNext
 // InMemoryUpstreamRepo used elsewhere in this package. See
@@ -9,10 +9,10 @@ import { afterEach, beforeEach, expect, test, describe, mock } from 'bun:test'
 import {
   ensureCodexAccessToken,
   invalidateCodexAccessToken,
-  putCodexAccessToken,
   type CodexAccessTokenEntry,
 } from '../access-token'
 import { CodexOAuthSessionTerminatedError } from '../auth/oauth'
+import { readCodexCredential, type CodexAccessTokenLease } from '../credential-effects'
 import type { CodexUpstreamState } from '../state'
 import type { UpstreamRepo } from '@vibe-core/upstream-repo'
 import { initUpstreamRepo, UpstreamGoneError } from '@vibe-core/upstream-repo'
@@ -118,30 +118,25 @@ afterEach(() => {
   __resetPlatformForTests()
 })
 
-describe('putCodexAccessToken', () => {
-  test('persists the entry into the account slot, leaving the rest alone', async () => {
-    const entry: CodexAccessTokenEntry = { token: 'at_new', expiresAt: FAR_FUTURE_MS, refreshedAt: '2026-06-01T00:00:00.000Z' }
-    await putCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, entry)
-    expect(repo.writes.length).toBe(1)
-    expect(storedState()).toEqual({ accounts: [{ ...baseAccount(), accessToken: entry }] })
-  })
+const leaseFor = async (entry: CodexAccessTokenEntry): Promise<CodexAccessTokenLease> => ({
+  ...entry, credential: (await readCodexCredential(UPSTREAM_ID, ACCOUNT_ID)).credential,
+})
 
-  test('propagates storage failures so the request path surfaces them', async () => {
+const mintedEntry = (): CodexAccessTokenEntry => ({ token: 'at_new', expiresAt: FAR_FUTURE_MS, refreshedAt: 'now' })
+
+describe('atomic mint persistence', () => {
+  test('propagates storage failures instead of returning an uncommitted mint', async () => {
     repo.failNextSave(new Error('D1 boom'))
-    const entry: CodexAccessTokenEntry = { token: 'at_new', expiresAt: FAR_FUTURE_MS, refreshedAt: 'now' }
-    await expect(putCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, entry)).rejects.toThrow('D1 boom')
+    await expect(ensureCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, async () => ({
+      accessToken: mintedEntry(), refreshToken: 'rotated',
+    }))).rejects.toThrow('D1 boom')
   })
 
-  test('tolerates an upstream that disappeared mid-flight', async () => {
-    repo.row = null
-    const entry: CodexAccessTokenEntry = { token: 'at_new', expiresAt: FAR_FUTURE_MS, refreshedAt: 'now' }
-    await putCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, entry)
-    expect(repo.writes).toEqual([])
-  })
-
-  test('warns and writes nothing when the requested account is not in the pool', async () => {
-    const entry: CodexAccessTokenEntry = { token: 'at_new', expiresAt: FAR_FUTURE_MS, refreshedAt: 'now' }
-    await putCodexAccessToken(UPSTREAM_ID, 'acc_other', entry)
+  test('rejects a mint when its row disappears before commit', async () => {
+    await expect(ensureCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, async () => {
+      repo.row = null
+      return { accessToken: mintedEntry(), refreshToken: 'rotated' }
+    })).rejects.toBeInstanceOf(UpstreamGoneError)
     expect(repo.writes).toEqual([])
   })
 })
@@ -150,12 +145,12 @@ describe('invalidateCodexAccessToken', () => {
   test('clears a populated access-token slot', async () => {
     const entry: CodexAccessTokenEntry = { token: 'at_x', expiresAt: FAR_FUTURE_MS, refreshedAt: 'now' }
     repo.row = makeRecord({ accounts: [{ ...baseAccount(), accessToken: entry }] })
-    await invalidateCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID)
+    await invalidateCodexAccessToken(await leaseFor(entry))
     expect(storedState().accounts[0]!.accessToken).toBeNull()
   })
 
   test('writes nothing when the slot is already null', async () => {
-    await invalidateCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID)
+    await invalidateCodexAccessToken(await leaseFor(mintedEntry()))
     expect(repo.writes).toEqual([])
   })
 })
@@ -164,17 +159,17 @@ describe('ensureCodexAccessToken', () => {
   test('returns the cached token when still fresh and skips mint', async () => {
     const entry: CodexAccessTokenEntry = { token: 'at_x', expiresAt: FAR_FUTURE_MS, refreshedAt: 'now' }
     repo.row = makeRecord({ accounts: [{ ...baseAccount(), accessToken: entry }] })
-    const mint = mock(() => Promise.resolve(entry))
+    const mint = mock(() => Promise.resolve({ accessToken: entry, refreshToken: 'rt_rotated' }))
     const out = await ensureCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, mint)
-    expect(out).toEqual(entry)
+    expect(out).toMatchObject(entry)
     expect(mint).not.toHaveBeenCalled()
   })
 
   test('mints when nothing is cached, then persists', async () => {
     const minted: CodexAccessTokenEntry = { token: 'at_minted', expiresAt: FAR_FUTURE_MS, refreshedAt: 'now' }
-    const mint = mock((_rt: string) => Promise.resolve(minted))
+    const mint = mock((_rt: string) => Promise.resolve({ accessToken: minted, refreshToken: 'rt_rotated' }))
     const out = await ensureCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, mint)
-    expect(out).toEqual(minted)
+    expect(out).toMatchObject(minted)
     expect(mint).toHaveBeenCalledWith('rt_v1')
     expect(storedState().accounts[0]!.accessToken).toEqual(minted)
   })
@@ -187,22 +182,22 @@ describe('ensureCodexAccessToken', () => {
       ],
     })
     const minted: CodexAccessTokenEntry = { token: 'at_minted', expiresAt: FAR_FUTURE_MS, refreshedAt: 'now' }
-    const mint = mock((_rt: string) => Promise.resolve(minted))
+    const mint = mock((_rt: string) => Promise.resolve({ accessToken: minted, refreshToken: 'rt_rotated' }))
     const out = await ensureCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, mint)
-    expect(out).toEqual(minted)
+    expect(out).toMatchObject(minted)
     expect(mint).toHaveBeenCalledWith('rt_v1')
   })
 
   test('throws when the upstream row is missing', async () => {
     repo.row = null
     const mint = mock(() => Promise.reject(new Error('should not run')))
-    await expect(ensureCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, mint)).rejects.toThrow(/not found/)
+    await expect(ensureCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, mint)).rejects.toBeInstanceOf(UpstreamGoneError)
     expect(mint).not.toHaveBeenCalled()
   })
 
   test('throws when the requested account is not in the pool', async () => {
     const mint = mock(() => Promise.reject(new Error('should not run')))
-    await expect(ensureCodexAccessToken(UPSTREAM_ID, 'acc_other', mint)).rejects.toThrow(/acc_other/)
+    await expect(ensureCodexAccessToken(UPSTREAM_ID, 'acc_other', mint)).rejects.toThrow(/account not found/)
     expect(mint).not.toHaveBeenCalled()
   })
 
@@ -227,12 +222,12 @@ describe('ensureCodexAccessToken', () => {
       Promise.reject(new CodexOAuthSessionTerminatedError({ code: 'invalid_grant', message: 'replayed' })),
     )
     const out = await ensureCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, mint)
-    expect(out).toEqual(siblingEntry)
+    expect(out).toMatchObject(siblingEntry)
     expect(mint).toHaveBeenCalledTimes(1)
     expect(repo.writes).toEqual([])
   })
 
-  test('invalid_grant + stored RT unchanged → rethrows for caller to flip terminal', async () => {
+  test('invalid_grant + stored RT unchanged → persists guarded terminal state and rethrows', async () => {
     const mint = mock(() =>
       Promise.reject(new CodexOAuthSessionTerminatedError({ code: 'invalid_grant', message: 'revoked' })),
     )
@@ -240,18 +235,17 @@ describe('ensureCodexAccessToken', () => {
       CodexOAuthSessionTerminatedError,
     )
     expect(mint).toHaveBeenCalledTimes(1)
-    expect(repo.writes).toEqual([])
+    expect(storedState().accounts[0]?.state).toBe('refresh_failed')
   })
 
-  test('app_session_terminated never attempts race recovery — single getById, original rethrown', async () => {
+  test('app_session_terminated rereads before guarded terminal persistence, without another mint', async () => {
     const mint = mock(() =>
       Promise.reject(new CodexOAuthSessionTerminatedError({ code: 'app_session_terminated', message: 'gone' })),
     )
     await expect(ensureCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, mint)).rejects.toBeInstanceOf(
       CodexOAuthSessionTerminatedError,
     )
-    // Exactly one getById — no recovery re-read.
-    expect(repo.getByIdCalls).toBe(1)
-    expect(repo.writes).toEqual([])
+    expect(mint).toHaveBeenCalledTimes(1)
+    expect(storedState().accounts[0]?.state).toBe('refresh_failed')
   })
 })
