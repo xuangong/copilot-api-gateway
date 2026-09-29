@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "freezeRevision": 3,
+  "baselineHead": "4e7b07e18374edbd76e98f78c184490119ac1fd9",
+  "worktree": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify",
+  "files": {
+    "vnext/apps/platform-bun/src/bun-sqlite-repo.ts": "18fa2797145825d35375db3d1acbad90ef61af2e3c14bba2100f80fd0c086875",
+    "vnext/apps/platform-cloudflare/src/d1-repo.ts": "9d4a6329d69565aaa4ff67497e35d8f22b1c64fdf9603f93258a48248fa38894",
+    "vnext/apps/platform-cloudflare/src/setup-leases.d1.test.ts": "afc034a69425f7c882478e99201a644bd8a9ff60acdb7ab4fc650d5308dc0931",
+    "vnext/packages/gateway/migrations/0021_setup_leases.sql": "80b17c2ba30716b803fb0c6ee83ac846e0729ab2c8ebd755d3e855b60c545d27",
+    "vnext/packages/gateway/src/app.ts": "8f5cb962cb579423892fe759eba39ac22359b59d22d376d5bd844533797e1af0",
+    "vnext/packages/gateway/src/control-plane/auth/session-auth.ts": "9be891150d4fc4ab3175dd9731bc0a4e795f7cd96ca0d7485a2bb2a3bd6a9f21",
+    "vnext/packages/gateway/src/control-plane/routes.ts": "c7491b5844e5916cfa71bfdef7bc7efe3ca059ca9f0281e4822c2f053a748ac8",
+    "vnext/packages/gateway/src/control-plane/setup/artifact.ts": "a9fbaed82f58469fedcee4cc4c40f2f260fe0ac5c7e3753b5c3fe28dbc05cdca",
+    "vnext/packages/gateway/src/control-plane/setup/routes.ts": "4e37fe71e0a2df8ead747423eb73b73d7df2a20e6346574ef29f1b5b52e34307",
+    "vnext/packages/gateway/src/repo/branded-ids.ts": "7366e534486b6dc0bf4a6b05350a37ba671d9c70f2e1b7f2ae51e54760952c58",
+    "vnext/packages/gateway/src/repo/shared/repos.ts": "7e3924e2407bda76e83417f57d7a8f3563117913da1c5fc71300cda7122bcdfd",
+    "vnext/packages/gateway/src/repo/shared/setup-leases.ts": "61fa08b8eea2b4261d4a692552e2151b006e8cc434305e1e8df004f9b8e06d00",
+    "vnext/packages/gateway/src/repo/types.ts": "bfb10d9b901596d4d4fe862a5048ca605ddd2a5fbf5418c58a4372ecce0192cb",
+    "vnext/packages/gateway/tests/control-plane-setup.test.ts": "8ba6ed8294898b8ecbc5a0720edfbd411e86266e13eea65ef695968eee014a7c",
+    "vnext/packages/gateway/tests/repo/setup-leases.test.ts": "ead829f1753d6cf0463879a09d9261c8eee9ccc63ef55a353e861833a1162bfe",
+    "vnext/packages/gateway/tests/schema-baseline.txt": "bceefcc18ea61c945e6ab54ca8b9100287bb40a1fc88519dfdc44f073de5ba4b",
+    "vnext/packages/gateway/tests/setup-artifact.test.ts": "55bb1dd50d4c3d404f34813e7674b92aa52831c85d9d24ce11d8aad501306b8c"
+  }
+}

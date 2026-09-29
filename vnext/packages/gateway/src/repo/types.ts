@@ -4,7 +4,7 @@ import type { UsageOverview, UsageOverviewQuery } from "./usage-overview"
 import type { PerformanceMetricsRepo } from "./performance-metrics"
 import type { BillingDimension, ModelPricing, UpstreamRecord, UpstreamKind } from "@vibe-llm/protocols/common"
 import type { ProxyRepo, ProxyBackoffRepo } from "@vibe-core/proxy-repo"
-import type { ApiKeyId, DeviceCodeToken, GitHubAccountId, InviteCodeId, ResponsesItemId, SessionToken, UpstreamId, UserId } from "./branded-ids.ts"
+import type { ApiKeyId, DeviceCodeToken, GitHubAccountId, InviteCodeId, ResponsesItemId, SessionToken, SetupLeaseId, UpstreamId, UserId } from "./branded-ids.ts"
 import type { ApiKeyModelMapping } from '../shared/api-key-model-mappings.ts'
 import type { UpstreamWriteTarget, StoredUpstreamRecord as CoreStoredUpstreamRecord } from '@vibe-core/upstream-repo'
 
@@ -136,6 +136,33 @@ export interface UserSession {
   expiresAt: string
   /** Original credential verification time in epoch milliseconds; never token creation. */
   authenticatedAt?: number
+}
+
+export interface SetupLease {
+  tokenHash: string
+  id: SetupLeaseId
+  minterUserId: UserId
+  keyId: ApiKeyId
+  keyOwnerId: UserId | null
+  client: "claude" | "codex"
+  platform: "posix" | "windows"
+  settingsJson: string
+  configurationRevision: number
+  keyFingerprint: string
+  artifactDigest: string
+  createdAt: string
+  expiresAt: string
+  consumedAt: string | null
+  revokedAt: string | null
+}
+
+export interface SetupLeaseRepo {
+  create(lease: SetupLease): Promise<void>
+  findByTokenHash(tokenHash: string): Promise<SetupLease | null>
+  findById(id: SetupLeaseId): Promise<SetupLease | null>
+  revoke(id: SetupLeaseId, keyId: ApiKeyId, now: string): Promise<void>
+  /** One conditional SQL winner, fenced against current revision/key/owner/minter. */
+  consume(lease: SetupLease, rawKey: string, now: string, adminEmails: readonly string[]): Promise<boolean>
 }
 
 export interface AgentHostKeyScope {
@@ -521,6 +548,7 @@ export interface Repo {
   users: UserRepo
   inviteCodes: InviteCodeRepo
   sessions: SessionRepo
+  setupLeases: SetupLeaseRepo
   agentRemoteContinuations: AgentRemoteContinuationRepo
   presence: ClientPresenceRepo
   webSearchUsage: WebSearchUsageRepo

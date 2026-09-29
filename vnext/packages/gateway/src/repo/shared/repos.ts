@@ -2,6 +2,7 @@ import { getOrCreateAffinitySecret } from "../affinity-secret.ts"
 import { SharedCatalogRepo } from "./catalogs.ts"
 import { queryUsageOverview, type UsageOverviewQuery } from "../usage-overview"
 import { SharedAgentRemoteContinuationRepo } from "./agent-remote-continuations.ts"
+import { SharedSetupLeaseRepo } from "./setup-leases.ts"
 import { SharedPerformanceMetricsRepo } from "../performance-metrics"
 import type {
   ApiKey,
@@ -1300,6 +1301,7 @@ export function buildSharedRepo(x: SqlExecutor): Repo {
     users: new SharedUserRepo(x),
     inviteCodes: new SharedInviteCodeRepo(x),
     sessions: new SharedSessionRepo(x),
+    setupLeases: new SharedSetupLeaseRepo(x),
     agentRemoteContinuations: new SharedAgentRemoteContinuationRepo(x),
     presence: new SharedClientPresenceRepo(x),
     webSearchUsage: new SharedWebSearchUsageRepo(x),

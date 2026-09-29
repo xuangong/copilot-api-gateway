@@ -8,6 +8,7 @@ import { getRepo, withConfigurationSnapshot } from './repo/index.ts'
 import { ConfigurationUnavailableError } from './repo/configuration-cache.ts'
 import { devAuthMiddleware } from './control-plane/auth/dev-auth.ts'
 import { sessionAuthMiddleware } from './control-plane/auth/session-auth.ts'
+import { setupExchangeRouter } from './control-plane/setup/routes.ts'
 import { dmrRouter } from './data-plane/dmr/routes.ts'
 import { isDmrCompatEnabled } from './data-plane/dmr/config.ts'
 
@@ -26,7 +27,9 @@ app.use('*', async (c, next) => {
   const start = Date.now()
   await next()
   const ms = Date.now() - start
-  console.log(`${c.req.method} ${new URL(c.req.url).pathname} → ${c.res.status} ${ms}ms`)
+  const path = new URL(c.req.url).pathname
+  const loggedPath = /^\/api\/(?:setup(?:\/|$)|keys\/[^/]+\/setup(?:\/|$))/.test(path) ? '/api/setup' : path
+  console.log(`${c.req.method} ${loggedPath} → ${c.res.status} ${ms}ms`)
 })
 
 app.use('*', async (c, next) => {
@@ -79,9 +82,10 @@ app.use('*', async (c, next) => {
 
 // Workstation control accepts real user sessions without inference auth or prewarming.
 app.route('/', agentRemoteRouter)
+app.route('/', setupExchangeRouter)
 
 app.use('*', sessionAuthMiddleware)
-app.use('*', devAuthMiddleware)
+app.use('*', (c, next) => /^\/api\/keys\/[^/]+\/setup\//.test(c.req.path) ? next() : devAuthMiddleware(c, next))
 
 // Docker Model Runner compatibility. Inert unless DMR_COMPAT is set, in which
 // case the whole data plane is re-exposed under DMR's prefixes so clients that

@@ -44,6 +44,7 @@ export class BunSqliteRepo implements Repo {
   users: Repo["users"]
   inviteCodes: Repo["inviteCodes"]
   sessions: Repo["sessions"]
+  setupLeases: Repo["setupLeases"]
   agentRemoteContinuations: Repo["agentRemoteContinuations"]
   presence: Repo["presence"]
   webSearchUsage: Repo["webSearchUsage"]
@@ -71,6 +72,7 @@ export class BunSqliteRepo implements Repo {
     this.users = shared.users
     this.inviteCodes = shared.inviteCodes
     this.sessions = shared.sessions
+    this.setupLeases = shared.setupLeases
     this.agentRemoteContinuations = shared.agentRemoteContinuations
     this.presence = shared.presence
     this.webSearchUsage = shared.webSearchUsage

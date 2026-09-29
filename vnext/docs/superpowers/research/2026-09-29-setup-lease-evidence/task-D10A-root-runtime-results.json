@@ -1,0 +1,26 @@
+[
+  {
+    "runtime": "bun",
+    "client": "claude",
+    "exitCode": 0,
+    "log": "/tmp/vnext-d10a-bun-claude-frozen.log"
+  },
+  {
+    "runtime": "bun",
+    "client": "codex",
+    "exitCode": 0,
+    "log": "/tmp/vnext-d10a-bun-codex-frozen.log"
+  },
+  {
+    "runtime": "workerd",
+    "client": "claude",
+    "exitCode": 0,
+    "log": "/tmp/vnext-d10a-workerd-claude-frozen.log"
+  },
+  {
+    "runtime": "workerd",
+    "client": "codex",
+    "exitCode": 0,
+    "log": "/tmp/vnext-d10a-workerd-codex-frozen.log"
+  }
+]

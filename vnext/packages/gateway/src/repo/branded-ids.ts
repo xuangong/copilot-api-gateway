@@ -15,6 +15,7 @@ export type UserId = string & { readonly [__brand]: 'UserId' }
 export type ProxyId = string & { readonly [__brand]: 'ProxyId' }
 export type InviteCodeId = string & { readonly [__brand]: 'InviteCodeId' }
 export type SessionToken = string & { readonly [__brand]: 'SessionToken' }
+export type SetupLeaseId = string & { readonly [__brand]: 'SetupLeaseId' }
 export type DeviceCodeToken = string & { readonly [__brand]: 'DeviceCodeToken' }
 export type ResponsesItemId = string & { readonly [__brand]: 'ResponsesItemId' }
 export type GitHubAccountId = number & { readonly [__brand]: 'GitHubAccountId' }

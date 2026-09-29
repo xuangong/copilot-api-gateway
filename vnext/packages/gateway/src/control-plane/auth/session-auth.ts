@@ -49,13 +49,18 @@ function extractKey(c: Context): string | null {
 }
 
 export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
+  // Setup exchange is mounted before this middleware and has its own bearer
+  // parser. A lease never falls through to a public/legacy credential surface.
+  const key = extractKey(c)
+  if (c.req.header('x-setup-lease') !== undefined || key?.startsWith('stl_')) {
+    return c.json({ error: 'Setup leases are only accepted by setup exchange' }, 401, { 'Cache-Control': 'no-store' })
+  }
   // Don't override an already-populated auth context (e.g. dev-auth).
   const existing = c.get('auth' as never) as FullAuthCtx | undefined
   if (existing && (existing.userId || existing.apiKeyId)) {
     await next()
     return
   }
-  const key = extractKey(c)
   if (!key) {
     await next()
     return
@@ -71,7 +76,8 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
   )
   const quotaObservationPath = c.req.method === 'GET' && /^\/api\/upstreams\/[^/]+\/codex\/quota$/.test(c.req.path)
   const capabilityRead = c.req.method === 'GET' && c.req.path === '/api/capabilities'
-  if (ctx && resolvedUserId && !hasConfigurationSnapshot() && !credentialManagementPath && !quotaObservationPath && !capabilityRead) {
+  const setupManagement = /^\/api\/keys\/[^/]+\/setup\//.test(c.req.path)
+  if (ctx && resolvedUserId && !hasConfigurationSnapshot() && !credentialManagementPath && !quotaObservationPath && !capabilityRead && !setupManagement) {
     // Resolve the user's copilot upstream so data-plane handlers (web search,
     // image generation) can reach into auth.copilot/githubToken without each
     // route having to repeat the lookup.

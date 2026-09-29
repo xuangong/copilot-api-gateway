@@ -30,6 +30,7 @@ import { dumpRoutes } from './dump/routes.ts'
 import { pricingRouter } from './pricing/routes.ts'
 import { proxiesRouter, proxyOptionsRouter } from './proxies/routes.ts'
 import { capabilitiesRouter } from './capabilities/routes.ts'
+import { setupRouter } from './setup/routes.ts'
 
 export const controlPlane = new Hono<{ Bindings: Env }>()
 
@@ -37,6 +38,7 @@ controlPlane.route('/api', capabilitiesRouter)
 controlPlane.route('/api/upstreams', upstreamsRouter)
 controlPlane.route('/api', upstreamMiscRouter)
 controlPlane.route('/api/keys', apiKeysRouter)
+controlPlane.route('/api/keys', setupRouter)
 // /api/keys/:keyId/records, /:keyId/records/:recordId, /:keyId/stream
 controlPlane.route('/api/keys', dumpRoutes)
 controlPlane.route('/api/observability-shares', observabilitySharesRouter)
