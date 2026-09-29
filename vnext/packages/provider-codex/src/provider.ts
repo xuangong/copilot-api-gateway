@@ -17,7 +17,7 @@
  *   - Access-token / quota / models / catalog logic is unchanged in shape.
  *   - Credential effects capture row identity, revision and the used token.
  */
-import { ensureCodexAccessToken, mintCodexAccessToken } from './access-token'
+import { ensureCodexAccessToken, mintCodexAccessToken, rejectCodexAccessToken } from './access-token'
 import { assertCodexUpstreamRecord, type CodexUpstreamConfig } from './config'
 import {
   callCodexAlphaSearch,
@@ -29,6 +29,7 @@ import {
 import { directFetcher, type Fetcher } from './fetcher'
 import { codexResponsesBoundary } from './interceptors/responses'
 import {
+  CodexCatalogAuthError,
   codexRawToProviderModel,
   fetchCodexCatalog,
   type CodexProviderModel,
@@ -36,7 +37,7 @@ import {
 import { pricingForCodexModelKey } from './pricing'
 import { assertCodexUpstreamState } from './state'
 import { runInterceptors } from '@vibe-core/service'
-import { readCodexCredential } from "./credential-effects"
+import { codexBearerEffect, persistCodexTerminalState, readCodexCredential } from "./credential-effects"
 import type { UpstreamWriteTarget } from "@vibe-core/upstream-repo"
 import type {
   EndpointKey,
@@ -95,16 +96,37 @@ export class CodexProvider implements LlmModelProvider {
   async getModels(): Promise<ProviderModelsResponse> {
     if (!this.catalogCache) {
       const accountId = this.config.accounts[0].chatgptAccountId
-      const access = await ensureCodexAccessToken(this.upstreamId, accountId, refresh =>
-        mintCodexAccessToken(refresh, this.fetcher),
+      const discoverySignal = (this.fetcher as Fetcher & { readonly signal?: AbortSignal }).signal
+      const access = await ensureCodexAccessToken(this.upstreamId, accountId, (refresh, signal) =>
+        mintCodexAccessToken(refresh, this.fetcher, signal),
         false,
         this.writeTarget,
+        discoverySignal,
+        this.fetcher,
       )
-      const raw = await fetchCodexCatalog({
-        accessToken: access.token,
-        accountId,
-        fetcher: this.fetcher,
-      })
+      let raw: Awaited<ReturnType<typeof fetchCodexCatalog>>
+      try {
+        raw = await fetchCodexCatalog({
+          accessToken: access.token,
+          accountId,
+          fetcher: this.fetcher,
+          signal: discoverySignal,
+        })
+        if (discoverySignal?.aborted) throw new DOMException('Codex catalog request aborted', 'AbortError')
+      } catch (error) {
+        if (discoverySignal?.aborted) throw new DOMException('Codex catalog request aborted', 'AbortError')
+        if (error instanceof CodexCatalogAuthError) {
+          if (error.code === 'token_invalidated') {
+            await persistCodexTerminalState(codexBearerEffect(access), 'session_terminated', 'token_invalidated')
+            throw new Error('Codex catalog session_terminated')
+          }
+          if (!access.renewable) {
+            await rejectCodexAccessToken(access)
+            throw new Error('Codex catalog access_rejected')
+          }
+        }
+        throw error
+      }
       this.catalogCache = raw.map(codexRawToProviderModel)
     }
     return { object: 'list', data: this.catalogCache }

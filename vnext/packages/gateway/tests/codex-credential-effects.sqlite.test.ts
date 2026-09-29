@@ -8,6 +8,7 @@ import { initUpstreamRepo, getAuthoritativeUpstreamRepo } from "@vibe-core/upstr
 import { __resetPlatformForTests, initBackground } from "@vibe-core/platform"
 import {
   CodexProvider, CODEX_OAUTH_TOKEN_URL, CODEX_MODELS_PATH,
+  CodexOAuthSessionTerminatedError,
   readCodexUpstreamState, type CodexUpstreamState, type Fetcher,
   ensureCodexAccessToken, invalidateCodexAccessToken, putCodexQuota, readCodexCredential,
   persistCodexTerminalState, codexBearerEffect,
@@ -333,20 +334,169 @@ test("ownerless rows retain the same guarded rotation and observation behavior",
   expect((await f.read())?.refresh_token).toBe("refresh-global")
 })
 
-test("a losing mint with no usable authoritative bearer fails without publishing its result", async () => {
+test("a losing mint refreshes a reimported renewable bearer with unknown expiry before dispatch", async () => {
   const f = await fixture(state(null))
-  await expect(ensureCodexAccessToken("codex-race", "account", async () => {
+  const refreshed: string[] = []
+  const lease = await ensureCodexAccessToken("codex-race", "account", async refreshToken => {
+    refreshed.push(refreshToken)
+    if (refreshToken === "replacement-refresh") return mintResult("replacement")
     const replacement = state(null)
     const account = replacement.accounts[0]
     if (!account) throw new Error("missing fixture account")
     account.credentialRevision = "replacement"
     account.refresh_token = "replacement-refresh"
+    account.accessToken = { token: "imported-unknown", expiresAt: null, refreshedAt: "2026-09-29" }
     await f.second.upstreams.save(record(replacement))
     return mintResult("old")
-  })).rejects.toMatchObject({ name: "CodexCredentialUnavailableError" })
-  expect((await f.read())?.accessToken).toBeNull()
-  expect((await f.read())?.refresh_token).toBe("replacement-refresh")
+  })
+  expect(refreshed).toEqual(["refresh-old", "replacement-refresh"])
+  expect(lease.token).toBe("access-replacement")
+  expect((await f.read())?.accessToken?.token).toBe("access-replacement")
+  expect((await f.read())?.refresh_token).toBe("refresh-replacement")
 })
+
+test("canceling one mint does not cancel a sibling; its late ignored-abort result cannot commit", async () => {
+  const f = await fixture(state(null))
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const completed = Promise.withResolvers<void>()
+  const controller = new AbortController()
+  const canceled = ensureCodexAccessToken("codex-race", "account", async (_refresh, signal) => {
+    expect(signal).toBeDefined()
+    entered.resolve()
+    await release.promise
+    completed.resolve()
+    return mintResult("canceled")
+  }, false, undefined, controller.signal)
+  await entered.promise
+  const sibling = await ensureCodexAccessToken("codex-race", "account", async () => mintResult("sibling"))
+  controller.abort()
+  await expect(canceled).rejects.toMatchObject({ name: "AbortError" })
+  release.resolve()
+  await completed.promise
+  await Bun.sleep(0)
+  expect(sibling.token).toBe("access-sibling")
+  expect((await f.read())?.accessToken?.token).toBe("access-sibling")
+  expect((await f.read())?.refresh_token).toBe("refresh-sibling")
+})
+
+test("abort during terminal OAuth recovery read settles promptly and cannot mark the credential failed", async () => {
+  const f = await fixture(state(null))
+  const read = f.first.upstreams.getById.bind(f.first.upstreams)
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  let reads = 0
+  f.first.upstreams.getById = async <T>(id: string) => {
+    const row = await read<T>(id)
+    if (++reads === 2) { entered.resolve(); await release.promise }
+    return row
+  }
+  const controller = new AbortController()
+  const pending = ensureCodexAccessToken("codex-race", "account", async () => {
+    throw new CodexOAuthSessionTerminatedError({ code: "invalid_grant", message: "fixture-terminal" })
+  }, false, undefined, controller.signal)
+  await entered.promise
+  controller.abort()
+  expect(await Promise.race([pending.then(() => "resolved", error => error.name), Bun.sleep(100).then(() => "pending")])).toBe("AbortError")
+  release.resolve()
+  await Bun.sleep(50)
+  expect((await f.read())?.state).toBe("active")
+  expect((await f.read())?.refresh_token).toBe("refresh-old")
+})
+
+test("abort after terminal effect submission but before real SQLite updater preparation prevents the write", async () => {
+  const f = await fixture(state(null))
+  const save = f.first.upstreams.saveState.bind(f.first.upstreams)
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const finished = Promise.withResolvers<void>()
+  f.first.upstreams.saveState = async (id, updater, target) => {
+    entered.resolve()
+    await release.promise
+    try { return await save(id, updater, target) } finally { finished.resolve() }
+  }
+  const controller = new AbortController()
+  const pending = ensureCodexAccessToken("codex-race", "account", async () => {
+    throw new CodexOAuthSessionTerminatedError({ code: "invalid_grant", message: "fixture-terminal" })
+  }, false, undefined, controller.signal)
+  await entered.promise
+  controller.abort()
+  expect(await Promise.race([pending.then(() => "resolved", error => error.name), Bun.sleep(100).then(() => "pending")])).toBe("AbortError")
+  release.resolve()
+  await finished.promise
+  expect((await f.read())?.state).toBe("active")
+  expect((await f.read())?.accessToken).toBeNull()
+})
+
+test("abort during authoritative success-winner read cannot return the minted lease", async () => {
+  const f = await fixture(state(null))
+  const read = f.first.upstreams.getById.bind(f.first.upstreams)
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  let reads = 0
+  f.first.upstreams.getById = async <T>(id: string) => {
+    const row = await read<T>(id)
+    if (++reads === 2) { entered.resolve(); await release.promise }
+    return row
+  }
+  const controller = new AbortController()
+  const pending = ensureCodexAccessToken("codex-race", "account", async () => mintResult("minted"), false, undefined, controller.signal)
+  await entered.promise
+  controller.abort()
+  expect(await Promise.race([pending.then(() => "resolved", error => error.name), Bun.sleep(100).then(() => "pending")])).toBe("AbortError")
+  release.resolve()
+  await Bun.sleep(50)
+  expect((await f.read())?.accessToken?.token).toBe("access-minted")
+})
+
+test("independent catalog fetchers do not share an OAuth failure lifecycle", async () => {
+  const f = await fixture(state(null))
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const failed = await provider(async url => {
+    if (url === CODEX_OAUTH_TOKEN_URL) {
+      entered.resolve()
+      await release.promise
+      return Response.json({ error: "server_error" }, { status: 500 })
+    }
+    return catalog()
+  }, state(null), false)
+  const healthy = await provider(async url => url === CODEX_OAUTH_TOKEN_URL ? oauth() : catalog(), state(null), false)
+  const older = failed.getModels()
+  await entered.promise
+  expect((await healthy.getModels()).data).toHaveLength(1)
+  release.resolve()
+  await expect(older).rejects.toThrow()
+  expect((await f.read())?.accessToken?.token).toBe("access-minted")
+})
+
+for (const recreate of [false, true]) {
+  for (const structured of [false, true]) {
+    test(`late catalog ${structured ? "token_invalidated" : "generic 401"} preserves ${recreate ? "recreated row" : "reimported revision"}`, async () => {
+      const initial = state()
+      const account = initial.accounts[0]
+      if (!account) throw new Error("missing fixture account")
+      if (!structured) account.refresh_token = null
+      const f = await fixture(initial)
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const p = await provider(async () => {
+        entered.resolve()
+        await release.promise
+        return Response.json({ error: { code: structured ? "token_invalidated" : "other", message: "secret-upstream-body" } }, { status: 401 })
+      }, initial, false)
+      const pending = p.getModels()
+      await entered.promise
+      await f.replace(recreate, !recreate)
+      release.resolve()
+      await expect(pending).rejects.toThrow()
+      const current = await f.read()
+      expect(current?.state).toBe("active")
+      expect(current?.accessToken?.token).toBe("access-replacement")
+      expect(current?.refresh_token).toBe("refresh-replacement")
+    })
+  }
+}
 
 test("inactive credentials never mint or return a cached bearer", async () => {
   const initial = state()

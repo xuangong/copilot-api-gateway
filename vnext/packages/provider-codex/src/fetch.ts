@@ -22,6 +22,9 @@ import {
   ensureCodexAccessToken,
   mintCodexAccessToken,
   refreshCodexAccessTokenForRetry,
+  CodexAccessRejectedError,
+  CodexCredentialExpiredError,
+  CodexCredentialUnavailableError,
   type CodexAccessTokenLease,
 } from './access-token'
 import { CodexOAuthSessionTerminatedError } from './auth/oauth'
@@ -160,7 +163,7 @@ const prepareCodexCall = async (
 ): Promise<{ ok: true; accessToken: CodexAccessTokenLease } | { ok: false; response: Response }> => {
   const { account } = await readCodexCredential(opts.upstreamId, opts.account.chatgptAccountId, opts.credential)
   if (account.state !== 'active') {
-    return { ok: false, response: synthetic503(`Codex upstream is ${account.state}`) }
+    return { ok: false, response: synthetic503(account.state === 'access_rejected' ? 'access_rejected' : 'credential_unavailable') }
   }
   const now = new Date()
   const blockedUntil = rateLimitedUntil(account.quotaSnapshot, now)
@@ -174,21 +177,31 @@ const prepareCodexCall = async (
     const entry = await ensureCodexAccessToken(
       opts.upstreamId,
       opts.account.chatgptAccountId,
-      (refresh) => mintAccessToken(opts, refresh),
+      (refresh, signal) => mintAccessToken(opts, refresh, signal),
       false,
       opts.credential,
+      opts.signal,
     )
     return { ok: true, accessToken: entry }
   } catch (err) {
     if (err instanceof CodexOAuthSessionTerminatedError) {
-      return { ok: false, response: synthetic503(`Codex refresh failed: ${err.upstreamMessage}`) }
+      return { ok: false, response: synthetic503('refresh_failed') }
+    }
+    if (err instanceof CodexCredentialExpiredError) {
+      return { ok: false, response: synthetic503('credential_expired') }
+    }
+    if (err instanceof CodexAccessRejectedError) {
+      return { ok: false, response: synthetic503('access_rejected') }
+    }
+    if (err instanceof CodexCredentialUnavailableError) {
+      return { ok: false, response: synthetic503('credential_unavailable') }
     }
     throw err
   }
 }
 
-const mintAccessToken = (opts: CodexBackendCallBase, refreshToken: string) =>
-  mintCodexAccessToken(refreshToken, opts.fetcher)
+const mintAccessToken = (opts: CodexBackendCallBase, refreshToken: string, signal?: AbortSignal) =>
+  mintCodexAccessToken(refreshToken, opts.fetcher, signal)
 
 // ─── Pre-flight quota gate ─────────────────────────────────────────────────
 // Returns the ISO instant this account is blocked until, or null when it is
@@ -535,10 +548,10 @@ const dispatchCodexHttpCall = async (
 
   if (response.status === 401) {
     const bodyText = await response.text()
-    const { code, message } = parseUpstreamError(bodyText)
+    const { code } = parseUpstreamError(bodyText)
     if (code === 'token_invalidated') {
-      await persistCodexTerminalState(codexBearerEffect(accessToken), 'session_terminated', message)
-      return synthetic503(`Codex session terminated: ${message}`)
+      await persistCodexTerminalState(codexBearerEffect(accessToken), 'session_terminated', 'token_invalidated')
+      return synthetic503('session_terminated')
     }
     return new Response(bodyText, { status: 401, headers: response.headers })
   }
@@ -552,11 +565,14 @@ const refreshAccessTokenForRetry = async (
   failed: CodexAccessTokenLease,
 ): Promise<{ ok: true; accessToken: CodexAccessTokenLease } | { ok: false; response: Response }> => {
   try {
-    const accessToken = await refreshCodexAccessTokenForRetry(failed, refresh => mintAccessToken(opts, refresh))
+    const accessToken = await refreshCodexAccessTokenForRetry(failed, (refresh, signal) => mintAccessToken(opts, refresh, signal), opts.signal)
     return { ok: true, accessToken }
   } catch (err) {
     if (err instanceof CodexOAuthSessionTerminatedError) {
-      return { ok: false, response: synthetic503(`Codex refresh failed: ${err.upstreamMessage}`) }
+      return { ok: false, response: synthetic503('refresh_failed') }
+    }
+    if (err instanceof CodexAccessRejectedError) {
+      return { ok: false, response: synthetic503('access_rejected') }
     }
     throw err
   }
@@ -694,25 +710,18 @@ const performAlphaSearchCall = async (
 
 // ─── Small utilities ───────────────────────────────────────────────────────
 
-const parseUpstreamError = (rawText: string): { code: string | null; message: string } => {
+const parseUpstreamError = (rawText: string): { code: string | null } => {
   try {
-    const obj = JSON.parse(rawText) as {
-      error?: { code?: unknown; message?: unknown }
-      detail?: unknown
-    }
+    const obj: unknown = JSON.parse(rawText)
+    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return { code: null }
+    const error = (obj as Record<string, unknown>).error
     const code =
-      obj.error && typeof obj.error === 'object' && typeof obj.error.code === 'string'
-        ? obj.error.code
+      error && typeof error === 'object' && !Array.isArray(error) && typeof (error as Record<string, unknown>).code === 'string'
+        ? (error as Record<string, string>).code ?? null
         : null
-    const message =
-      obj.error && typeof obj.error === 'object' && typeof obj.error.message === 'string'
-        ? obj.error.message
-        : typeof obj.detail === 'string'
-          ? obj.detail
-          : rawText.slice(0, 256)
-    return { code, message }
+    return { code }
   } catch {
-    return { code: null, message: rawText.slice(0, 256) }
+    return { code: null }
   }
 }
 

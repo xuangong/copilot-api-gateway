@@ -4,7 +4,7 @@
 
 import type { CodexQuotaSnapshot } from './quota'
 
-export type CodexAccountCredentialHealth = 'active' | 'session_terminated' | 'refresh_failed'
+export type CodexAccountCredentialHealth = 'active' | 'session_terminated' | 'refresh_failed' | 'access_rejected'
 
 // Short-lived OAuth access token minted by exchanging the stored refresh_token
 // against /oauth/token. The refresh_token itself stays on CodexAccountCredential
@@ -12,7 +12,7 @@ export type CodexAccountCredentialHealth = 'active' | 'session_terminated' | 're
 // (and its expiry) belong in state alongside it.
 export interface CodexAccessTokenEntry {
   token: string
-  expiresAt: number       // unix ms
+  expiresAt: number | null // unix ms; null means unknown
   refreshedAt: string     // ISO 8601
 }
 
@@ -34,7 +34,7 @@ export interface CodexAccountCredential {
   credentialRevision?: string
   // OpenAI rotates refresh_token on every /oauth/token call. Stored in the
   // upstreams row (not KV) so KV eviction never forces operator re-import.
-  refresh_token: string
+  refresh_token: string | null
   state: CodexAccountCredentialHealth
   state_message?: string
   // ISO 8601, written on every state transition (initial import, rotation,
@@ -110,8 +110,8 @@ const assertCodexAccessTokenEntry = (value: unknown, where: string): void => {
   if (typeof obj.token !== 'string' || obj.token === '') {
     throw new TypeError(`${where}.token must be a non-empty string`)
   }
-  if (typeof obj.expiresAt !== 'number' || !Number.isFinite(obj.expiresAt)) {
-    throw new TypeError(`${where}.expiresAt must be a finite number`)
+  if (obj.expiresAt !== null && (typeof obj.expiresAt !== 'number' || !Number.isFinite(obj.expiresAt))) {
+    throw new TypeError(`${where}.expiresAt must be a finite number or null`)
   }
   if (typeof obj.refreshedAt !== 'string' || obj.refreshedAt === '') {
     throw new TypeError(`${where}.refreshedAt must be a non-empty string`)
@@ -166,8 +166,8 @@ const assertCodexAccountCredential = (value: unknown, where: string): void => {
   if (typeof obj.chatgptAccountId !== 'string' || obj.chatgptAccountId === '') {
     throw new TypeError(`${where}.chatgptAccountId must be a non-empty string`)
   }
-  if (typeof obj.refresh_token !== 'string' || obj.refresh_token === '') {
-    throw new TypeError(`${where}.refresh_token must be a non-empty string`)
+  if (obj.refresh_token !== null && (typeof obj.refresh_token !== 'string' || obj.refresh_token.trim() === '')) {
+    throw new TypeError(`${where}.refresh_token must be a non-empty string or null`)
   }
   if (obj.credentialRevision !== undefined &&
       (typeof obj.credentialRevision !== 'string' || obj.credentialRevision.trim() === '')) {
@@ -176,10 +176,11 @@ const assertCodexAccountCredential = (value: unknown, where: string): void => {
   if (
     obj.state !== 'active' &&
     obj.state !== 'session_terminated' &&
-    obj.state !== 'refresh_failed'
+    obj.state !== 'refresh_failed' &&
+    obj.state !== 'access_rejected'
   ) {
     throw new TypeError(
-      `${where}.state must be one of 'active' | 'session_terminated' | 'refresh_failed', got ${String(obj.state)}`,
+      `${where}.state must be one of 'active' | 'session_terminated' | 'refresh_failed' | 'access_rejected', got ${String(obj.state)}`,
     )
   }
   if (obj.state_message !== undefined && typeof obj.state_message !== 'string') {
@@ -193,6 +194,9 @@ const assertCodexAccountCredential = (value: unknown, where: string): void => {
   }
   if (obj.accessToken !== undefined && obj.accessToken !== null) {
     assertCodexAccessTokenEntry(obj.accessToken, `${where}.accessToken`)
+  }
+  if (obj.state === 'active' && obj.refresh_token === null && (obj.accessToken === undefined || obj.accessToken === null)) {
+    throw new TypeError(`${where} needs an access or refresh token`)
   }
   if (obj.quotaSnapshot !== undefined && obj.quotaSnapshot !== null) {
     assertCodexQuotaSnapshotEntryMap(obj.quotaSnapshot, `${where}.quotaSnapshot`)

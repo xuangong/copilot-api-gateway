@@ -1,0 +1,18 @@
+{
+  "vnext/packages/gateway/src/control-plane/upstreams/public-dto.ts": "cd25c2c3a5fcb0e5ff848b108a1ab5e0f6d438fe6c3dc28207f1e058c3e1311d",
+  "vnext/packages/gateway/tests/codex-credential-effects.sqlite.test.ts": "3f5a1b63792ed3bb8fd86bf5ca3a89fc32ec3191bf6a3db0d6f1decf03e37b2b",
+  "vnext/packages/gateway/tests/codex-public-dto.test.ts": "e1d2c55c53e71b0cd868bfab15e2c23337167a039b3d15ce47a557b04e35f5e4",
+  "vnext/packages/provider-codex/src/__tests__/access-token.test.ts": "919bdf75cb596df580911da6603118946e7538ca6bb2d055489d523a67a10986",
+  "vnext/packages/provider-codex/src/__tests__/auth/import.test.ts": "7985fb2dc0c0388c03309a039f18d7dacd095f8d9e9fa770b5233d83f6bbdbd1",
+  "vnext/packages/provider-codex/src/__tests__/provider.integration.test.ts": "47af2ba5e58ce2024e1041975342573f003ce21d69e3709a0d81e73fc8d81760",
+  "vnext/packages/provider-codex/src/access-token.ts": "ce2e6805dc873e5d3c88365106953cd977d63d83941bcd4049faf1517948c2f3",
+  "vnext/packages/provider-codex/src/auth/credential.ts": "87d45b8c82ea8a0ae9c647db53d03a378ae5c7bda4eb7bd1fc078d24a8f48097",
+  "vnext/packages/provider-codex/src/auth/import.ts": "742286c7a984b4e70e51499cb1a0db5a5d240cde5f87b6ee0c7f74f70a2fb935",
+  "vnext/packages/provider-codex/src/auth/jwt.ts": "b423fb0b5155415d91383d1b55acec5e8da65950269e474c82bdab31dc8bfa32",
+  "vnext/packages/provider-codex/src/config.ts": "2f87201ae92a256426356113b986e1ef477b91ec7a2a58a8a5c88c0a856a7856",
+  "vnext/packages/provider-codex/src/credential-effects.ts": "ddab599ec52d1c6aaad67959eee4c084378d71a47c4bed2b9190d8ab7833faeb",
+  "vnext/packages/provider-codex/src/fetch.ts": "2c447522dbe7ceb5b47392d0320fb362ff1f87ed32f2b8ad30ce720a8ec6bfa1",
+  "vnext/packages/provider-codex/src/models.ts": "bb1900463952947ce4a4793d0fcf01890a309cd063f3bfb22518f0680655bd51",
+  "vnext/packages/provider-codex/src/provider.ts": "6f938cfdaa109f5394e4e9bc21bcc698b4092e2dcbdd5abbd05f5f78ee9790ec",
+  "vnext/packages/provider-codex/src/state.ts": "763e24d1b0b24c051bbce712b47c97411e6cd00f2dca40573f784558128b00ee"
+}

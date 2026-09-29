@@ -54,6 +54,13 @@ export interface CodexProviderModel {
   }
 }
 
+export class CodexCatalogAuthError extends Error {
+  constructor(readonly code: string | null) {
+    super('Codex catalog authentication failed')
+    this.name = 'CodexCatalogAuthError'
+  }
+}
+
 // `fetcher` is required so the catalog refresh traverses the same proxy /
 // dial chain configured for request-time traffic.
 export const fetchCodexCatalog = async (opts: {
@@ -77,8 +84,21 @@ export const fetchCodexCatalog = async (opts: {
     },
   )
   if (!response.ok) {
-    const body = await response.text()
-    throw new Error(`Codex /models fetch failed: ${response.status} ${body.slice(0, 200)}`)
+    if (response.status === 401) {
+      let code: string | null = null
+      try {
+        const payload: unknown = await response.json()
+        if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+          const error = (payload as Record<string, unknown>).error
+          if (error && typeof error === 'object' && !Array.isArray(error)) {
+            const value = (error as Record<string, unknown>).code
+            if (typeof value === 'string') code = value
+          }
+        }
+      } catch { /* An opaque 401 is still an authentication failure. */ }
+      throw new CodexCatalogAuthError(code)
+    }
+    throw new Error(`Codex catalog fetch failed (${response.status})`)
   }
   const parsed = (await response.json()) as { models?: unknown }
   if (!Array.isArray(parsed.models)) throw new Error('Codex /models response missing models array')

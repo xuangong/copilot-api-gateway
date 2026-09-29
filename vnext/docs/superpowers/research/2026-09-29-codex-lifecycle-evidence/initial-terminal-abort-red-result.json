@@ -1,0 +1,8 @@
+{
+  "runtime": "actual local workerd + D1Repo",
+  "candidate": "initial-product-sha256.json",
+  "passed": false,
+  "stage": "terminal-read-abort",
+  "error": "Terminal reread did not settle on abort",
+  "purpose": "Expected failure reproduction against the initial candidate, before fix1"
+}

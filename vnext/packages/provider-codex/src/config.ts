@@ -5,10 +5,10 @@ import type { CodexUpstreamState } from './state'
 // import. Mutating credentials (refresh_token, access_token, credential
 // health) live in CodexUpstreamState instead.
 export interface CodexAccountIdentity {
-  email: string
+  email: string | null
   chatgptAccountId: string
-  chatgptUserId: string
-  planType: string
+  chatgptUserId: string | null
+  planType: string | null
 }
 
 // Codex config is an account pool. v1 always carries exactly one entry —
@@ -64,8 +64,10 @@ function assertCodexUpstreamConfig(value: unknown): asserts value is CodexUpstre
     }
     for (const key of identityKeys) {
       const v = acc[key]
-      if (typeof v !== 'string' || v === '') {
-        throw new TypeError(`${where}.${key} must be a non-empty string`)
+      if (key === 'chatgptAccountId') {
+        if (typeof v !== 'string' || v.trim() === '') throw new TypeError(`${where}.${key} must be a non-empty string`)
+      } else if (v !== null && (typeof v !== 'string' || v.trim() === '')) {
+        throw new TypeError(`${where}.${key} must be a non-empty string or null`)
       }
     }
   }

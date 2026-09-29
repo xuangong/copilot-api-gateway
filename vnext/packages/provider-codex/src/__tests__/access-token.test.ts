@@ -7,6 +7,8 @@
 
 import { afterEach, beforeEach, expect, test, describe, mock } from 'bun:test'
 import {
+  CodexCredentialExpiredError,
+  CodexNonrenewableCredentialError,
   ensureCodexAccessToken,
   invalidateCodexAccessToken,
   type CodexAccessTokenEntry,
@@ -119,7 +121,7 @@ afterEach(() => {
 })
 
 const leaseFor = async (entry: CodexAccessTokenEntry): Promise<CodexAccessTokenLease> => ({
-  ...entry, credential: (await readCodexCredential(UPSTREAM_ID, ACCOUNT_ID)).credential,
+  ...entry, credential: (await readCodexCredential(UPSTREAM_ID, ACCOUNT_ID)).credential, renewable: true,
 })
 
 const mintedEntry = (): CodexAccessTokenEntry => ({ token: 'at_new', expiresAt: FAR_FUTURE_MS, refreshedAt: 'now' })
@@ -156,6 +158,47 @@ describe('invalidateCodexAccessToken', () => {
 })
 
 describe('ensureCodexAccessToken', () => {
+  test('access-only bearer remains usable inside renewable refresh skew', async () => {
+    const entry = { token: 'access-only', expiresAt: Date.now() + 30_000, refreshedAt: 'import' }
+    repo.row = makeRecord({ accounts: [{ ...baseAccount(), refresh_token: null, accessToken: entry }] })
+    const mint = mock(() => Promise.reject(new Error('OAuth must not run')))
+    expect((await ensureCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, mint)).token).toBe('access-only')
+    expect(mint).not.toHaveBeenCalled()
+  })
+
+  test('access-only bearer with unknown expiry remains usable without mint', async () => {
+    const entry = { token: 'unknown-expiry', expiresAt: null, refreshedAt: 'import' }
+    repo.row = makeRecord({ accounts: [{ ...baseAccount(), refresh_token: null, accessToken: entry }] })
+    const mint = mock(() => Promise.reject(new Error('OAuth must not run')))
+    expect((await ensureCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, mint)).token).toBe('unknown-expiry')
+    expect(mint).not.toHaveBeenCalled()
+  })
+
+  test('forced refresh on access-only bearer is typed and preserves the bearer', async () => {
+    const entry = { token: 'access-only', expiresAt: FAR_FUTURE_MS, refreshedAt: 'import' }
+    repo.row = makeRecord({ accounts: [{ ...baseAccount(), refresh_token: null, accessToken: entry }] })
+    const mint = mock(() => Promise.reject(new Error('OAuth must not run')))
+    await expect(ensureCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, mint, true)).rejects.toBeInstanceOf(CodexNonrenewableCredentialError)
+    expect(storedState().accounts[0]?.accessToken).toEqual(entry)
+    expect(mint).not.toHaveBeenCalled()
+  })
+
+  test('expired access-only bearer is typed and never dispatched for mint', async () => {
+    const entry = { token: 'expired', expiresAt: Date.now() - 1000, refreshedAt: 'import' }
+    repo.row = makeRecord({ accounts: [{ ...baseAccount(), refresh_token: null, accessToken: entry }] })
+    const mint = mock(() => Promise.reject(new Error('OAuth must not run')))
+    await expect(ensureCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, mint)).rejects.toBeInstanceOf(CodexCredentialExpiredError)
+    expect(mint).not.toHaveBeenCalled()
+  })
+
+  test('renewable unknown-expiry bearer refreshes before first use', async () => {
+    const entry = { token: 'unknown-expiry', expiresAt: null, refreshedAt: 'import' }
+    repo.row = makeRecord({ accounts: [{ ...baseAccount(), accessToken: entry }] })
+    const mint = mock(async (_refresh: string) => ({ accessToken: mintedEntry(), refreshToken: 'rotated' }))
+    expect((await ensureCodexAccessToken(UPSTREAM_ID, ACCOUNT_ID, mint)).token).toBe('at_new')
+    expect(mint).toHaveBeenCalledWith('rt_v1')
+  })
+
   test('returns the cached token when still fresh and skips mint', async () => {
     const entry: CodexAccessTokenEntry = { token: 'at_x', expiresAt: FAR_FUTURE_MS, refreshedAt: 'now' }
     repo.row = makeRecord({ accounts: [{ ...baseAccount(), accessToken: entry }] })

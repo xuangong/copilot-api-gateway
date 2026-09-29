@@ -105,6 +105,15 @@ const baseRecord = (
   updatedAt: '2026-01-01T00:00:00.000Z',
 })
 
+const accessOnlyRecord = (): UpstreamRecord<CodexUpstreamState> & { rowIncarnation: string } => {
+  const row = baseRecord()
+  row.state.accounts[0] = {
+    ...row.state.accounts[0]!, refresh_token: null, credentialRevision: 'access-only-revision',
+    accessToken: { token: 'access-only-bearer', expiresAt: null, refreshedAt: '2026-01-01T00:00:00.000Z' },
+  }
+  return row
+}
+
 const CATALOG_JSON = {
   models: [
     { slug: 'gpt-5', display_name: 'GPT-5', context_window: 128000 },
@@ -246,6 +255,109 @@ const legacySessionId = async (instructions: string, seed: unknown): Promise<str
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
+
+test.each([
+  ['generate', () => makeRequest()],
+  ['compact', () => makeRequest('compact')],
+  ['alpha-search', () => makeAlphaSearchRequest()],
+] as const)('%s access-only generic 401 rejects exact bearer without OAuth or replay', async (_name, request) => {
+  const row = accessOnlyRecord()
+  repo.put(row)
+  const harness = makeHarness(() => new Response('{"error":{"code":"expired_token","message":"secret-upstream-body"}}', { status: 401 }))
+  const response = await new CodexProvider(row, harness.fetcher).fetch(request())
+  expect(response.status).toBe(503)
+  expect(await new Response(response.body).text()).toContain('access_rejected')
+  expect(harness.calls.filter(call => call.url === CODEX_OAUTH_TOKEN_URL)).toHaveLength(0)
+  expect(harness.calls.filter(call => call.method === 'POST')).toHaveLength(1)
+  expect((await repo.getById<CodexUpstreamState>(UPSTREAM_ID))?.state.accounts[0]?.state).toBe('access_rejected')
+})
+
+test('catalog access-only generic 401 rejects bearer without replay or leaking upstream body', async () => {
+  const row = accessOnlyRecord()
+  repo.put(row)
+  const calls: string[] = []
+  const provider = new CodexProvider(row, async url => {
+    calls.push(url.toString())
+    return new Response('{"error":{"code":"expired_token","message":"secret-upstream-body"}}', { status: 401 })
+  })
+  await expect(provider.getModels()).rejects.toThrow(/access_rejected/)
+  expect(calls).toHaveLength(1)
+  expect((await repo.getById<CodexUpstreamState>(UPSTREAM_ID))?.state.accounts[0]?.state).toBe('access_rejected')
+})
+
+test('catalog structured token_invalidated terminates renewable bearer without replay', async () => {
+  const row = baseRecord()
+  repo.put(row)
+  let calls = 0
+  const provider = new CodexProvider(row, async () => {
+    calls++
+    return Response.json({ error: { code: 'token_invalidated', message: 'secret-upstream-body' } }, { status: 401 })
+  })
+  await expect(provider.getModels()).rejects.toThrow(/session_terminated/)
+  expect(calls).toBe(1)
+  expect((await repo.getById<CodexUpstreamState>(UPSTREAM_ID))?.state.accounts[0]?.state).toBe('session_terminated')
+})
+
+test('canceled catalog fetch passes its signal and ignores a late terminal 401', async () => {
+  const row = baseRecord()
+  repo.put(row)
+  const controller = new AbortController()
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<Response>()
+  let wireSignal: AbortSignal | undefined
+  const fetcher = Object.assign(async (_url: string, init?: RequestInit) => {
+    wireSignal = init?.signal ?? undefined
+    entered.resolve()
+    return await release.promise
+  }, { signal: controller.signal })
+  const provider = new CodexProvider(row, fetcher)
+  const pending = provider.getModels()
+  await entered.promise
+  controller.abort()
+  release.resolve(Response.json({ error: { code: 'token_invalidated' } }, { status: 401 }))
+  await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+  expect(wireSignal).toBe(controller.signal)
+  expect((await repo.getById<CodexUpstreamState>(UPSTREAM_ID))?.state.accounts[0]?.state).toBe('active')
+})
+
+test.each([
+  ['generate', () => makeRequest()],
+  ['compact', () => makeRequest('compact')],
+  ['alpha-search', () => makeAlphaSearchRequest()],
+] as const)('%s cancellation during OAuth mint aborts the request before terminal dispatch', async (_name, make) => {
+  const row = baseRecord()
+  repo.put(row)
+  let startedResolve: () => void = () => {}
+  const started = new Promise<void>(resolve => { startedResolve = resolve })
+  const oauth = { finish: null as ((response: Response) => void) | null, signal: null as AbortSignal | null }
+  let terminalCalls = 0
+  const fetcher: Fetcher = async (url, init) => {
+    const path = url.toString()
+    if (path.includes(CODEX_MODELS_PATH)) return okJson(CATALOG_JSON)
+    if (path === CODEX_OAUTH_TOKEN_URL) {
+      oauth.signal = init?.signal ?? null
+      return await new Promise<Response>(resolve => { oauth.finish = resolve; startedResolve() })
+    }
+    terminalCalls++
+    return okSSE()
+  }
+  const provider = new CodexProvider(row, fetcher)
+  await provider.getModels()
+  const stale = baseRecord()
+  stale.state.accounts[0] = { ...stale.state.accounts[0]!, accessToken: null }
+  repo.put(stale)
+  const controller = new AbortController()
+  const pending = provider.fetch({ ...make(), signal: controller.signal })
+  const outcome = pending.then(() => 'completed', () => 'aborted')
+  await started
+  controller.abort()
+  const quick = await Promise.race([outcome, new Promise<string>(resolve => setTimeout(() => resolve('still pending'), 100))])
+  oauth.finish?.(okJson({ access_token: 'fresh', refresh_token: 'rotated', id_token: 'id', expires_in: 3600 }))
+  await outcome
+  expect(quick).toBe('aborted')
+  expect(oauth.signal?.aborted).toBe(true)
+  expect(terminalCalls).toBe(0)
+})
 
 test('catalog and OAuth refresh stay ordinary while both 401 attempts use endpoint-selected terminal egress', async () => {
   repo.put(baseRecord())
@@ -511,7 +623,7 @@ test('terminal 401 (token_invalidated) → 503 + persistTerminalState', async ()
   const fresh = await repo.getById<CodexUpstreamState>(UPSTREAM_ID)
   const acct = fresh!.state.accounts[0]!
   expect(acct.state).toBe('session_terminated')
-  expect(acct.state_message).toBe('session dead')
+  expect(acct.state_message).toBe('token_invalidated')
   expect(acct.accessToken).toBeNull()
 })
 

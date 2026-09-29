@@ -1,0 +1,125 @@
+{
+  "runtime": "actual local workerd+D1Repo optional-refresh credential lifecycle acceptance",
+  "migrations": [
+    "0001_baseline.sql",
+    "0002_drop_duplicate_cache_index.sql",
+    "0003_quota_per_month.sql",
+    "0004_quota_cost_per_month.sql",
+    "0005_web_search_jina_per_key.sql",
+    "0006_web_search_passthrough_per_key.sql",
+    "0007_api_key_model_mappings.sql",
+    "0008_usage_incoming_model.sql",
+    "0009_performance_metrics.sql",
+    "0010_configuration_revision.sql",
+    "0011_agent_remote_continuations.sql",
+    "0012_session_authentication_time.sql",
+    "0013_responses_retention.sql",
+    "0014_agent_remote_host_keys.sql",
+    "0015_dump_maintenance.sql",
+    "0016_dump_upstream_exchanges.sql",
+    "0017_upstream_row_incarnation.sql",
+    "0018_catalog_coordination.sql",
+    "0019_catalog_attempt_outcomes.sql"
+  ],
+  "passed": true,
+  "results": {
+    "accessOnlyParser": true,
+    "known-near-expiry": true,
+    "unknown-expiry": true,
+    "expiredRejectedBeforeMint": true,
+    "renewableUnknownRefreshes": true,
+    "responses-generic": {
+      "attempts": 1,
+      "oauth": 0,
+      "health": "access_rejected"
+    },
+    "responses-terminal": {
+      "attempts": 1,
+      "oauth": 0,
+      "health": "session_terminated"
+    },
+    "responses-late-reimport": {
+      "attempts": 1,
+      "oauth": 0,
+      "health": "active"
+    },
+    "compact-generic": {
+      "attempts": 1,
+      "oauth": 0,
+      "health": "access_rejected"
+    },
+    "compact-terminal": {
+      "attempts": 1,
+      "oauth": 0,
+      "health": "session_terminated"
+    },
+    "compact-late-reimport": {
+      "attempts": 1,
+      "oauth": 0,
+      "health": "active"
+    },
+    "alpha-generic": {
+      "attempts": 1,
+      "oauth": 0,
+      "health": "access_rejected"
+    },
+    "alpha-terminal": {
+      "attempts": 1,
+      "oauth": 0,
+      "health": "session_terminated"
+    },
+    "alpha-late-reimport": {
+      "attempts": 1,
+      "oauth": 0,
+      "health": "active"
+    },
+    "mint-abort-responses": {
+      "oauth": 1,
+      "execution": 0,
+      "aborted": true
+    },
+    "mint-abort-compact": {
+      "oauth": 1,
+      "execution": 0,
+      "aborted": true
+    },
+    "mint-abort-alpha": {
+      "oauth": 1,
+      "execution": 0,
+      "aborted": true
+    },
+    "terminal-read-abort": {
+      "prompt": true,
+      "health": "active"
+    },
+    "terminal-effect-abort": {
+      "prompt": true,
+      "health": "active"
+    },
+    "success-winner-abort": {
+      "prompt": true,
+      "health": "active"
+    },
+    "catalog-generic": {
+      "attempts": 1,
+      "health": "access_rejected"
+    },
+    "catalog-terminal": {
+      "attempts": 1,
+      "health": "session_terminated"
+    },
+    "catalog-renewable-generic": {
+      "attempts": 1,
+      "health": "active"
+    },
+    "catalog-late-reimport": {
+      "attempts": 1,
+      "health": "active"
+    },
+    "catalog-row-replacement": {
+      "attempts": 1,
+      "health": "active"
+    }
+  },
+  "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c08-lifecycle-d1-5stntt"
+}

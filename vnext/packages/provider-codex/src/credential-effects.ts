@@ -21,6 +21,7 @@ export interface CodexCredentialSnapshot {
 
 export interface CodexAccessTokenLease extends CodexAccessTokenEntry {
   credential: CodexCredentialTarget
+  renewable: boolean
 }
 
 export interface CodexCredentialEffect {
@@ -86,9 +87,16 @@ export const persistCodexTerminalState = async (
   effect: CodexCredentialEffect,
   state: "session_terminated" | "refresh_failed",
   message: string,
+  signal?: AbortSignal,
 ): Promise<void> => {
+  const assertNotAborted = (): void => {
+    if (signal?.aborted) throw new DOMException("Codex request aborted", "AbortError")
+  }
+  assertNotAborted()
   const updatedAt = new Date().toISOString()
-  await ignoreGoneCodexEffect(updateCodexCredential(effect, account => ({
-    ...account, state, state_message: message, state_updated_at: updatedAt, accessToken: null,
-  })))
+  await ignoreGoneCodexEffect(updateCodexCredential(effect, account => {
+    assertNotAborted()
+    return { ...account, state, state_message: message, state_updated_at: updatedAt, accessToken: null }
+  }))
+  assertNotAborted()
 }

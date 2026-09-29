@@ -1,6 +1,12 @@
-// Decode-only id_token claim extraction. Signature verification is intentionally
-// skipped: the token reached us over TLS from auth.openai.com itself; spending
-// effort on signature-validating a token we just fetched would be theatre.
+// Imported JWT claims are decode-only metadata. Upstream authentication is
+// decided by OpenAI; these claims never authorize a gateway user or owner.
+export interface CodexTokenClaims {
+  email: string | null
+  chatgptAccountId: string | null
+  chatgptUserId: string | null
+  planType: string | null
+  expiresAt: number | null
+}
 
 export interface CodexIdTokenIdentity {
   email: string
@@ -9,64 +15,73 @@ export interface CodexIdTokenIdentity {
   planType: string
 }
 
-export const parseCodexIdTokenClaims = (idToken: string): CodexIdTokenIdentity => {
-  const segments = idToken.split('.')
-  if (segments.length !== 3)
-    throw new Error(`id_token must have 3 segments, got ${segments.length}`)
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
 
+const optionalClaim = (source: Record<string, unknown>, key: string, label: string): string | null => {
+  const value = source[key]
+  if (value === undefined || value === null) return null
+  if (typeof value !== "string" || value.trim() === "") throw new TypeError(`${label} has invalid ${key} claim`)
+  return value
+}
+
+const decodePayload = (token: string, label: string): Record<string, unknown> => {
+  const segments = token.split(".")
+  if (segments.length !== 3) throw new TypeError(`${label} is not a JWT`)
+  const segment = segments[1]
+  if (!segment || !/^[A-Za-z0-9_-]+$/.test(segment)) throw new TypeError(`${label} has invalid JWT payload`)
   let payload: unknown
   try {
-    payload = JSON.parse(decodeBase64UrlToUtf8(segments[1]!))
-  } catch (cause) {
-    throw new Error('id_token payload is not base64url-encoded JSON', {
-      cause: cause as Error,
-    })
+    const standard = segment.replace(/-/g, "+").replace(/_/g, "/")
+    const binary = atob(standard + "=".repeat((4 - standard.length % 4) % 4))
+    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
+    payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+  } catch {
+    throw new TypeError(`${label} has invalid JWT payload`)
   }
+  if (!isRecord(payload)) throw new TypeError(`${label} has invalid JWT payload`)
+  return payload
+}
 
-  if (!isObject(payload)) throw new Error('id_token payload is not an object')
-
-  const auth = payload['https://api.openai.com/auth']
-  if (!isObject(auth)) throw new Error('id_token missing https://api.openai.com/auth claim')
-
-  // Real-world OpenAI id_tokens carry `email` at the top level; the
-  // `https://api.openai.com/profile` claim is sometimes also populated. We
-  // accept either source so the import works against every observed shape.
-  const profile = payload['https://api.openai.com/profile']
-  const email =
-    (isObject(profile) ? pickStringOptional(profile, 'email') : null) ??
-    pickStringOptional(payload, 'email')
-  if (email === null) throw new Error('id_token missing email claim')
-
+export const parseCodexTokenClaims = (token: string, label = "token"): CodexTokenClaims => {
+  const payload = decodePayload(token, label)
+  const rawAuth = payload["https://api.openai.com/auth"]
+  const rawProfile = payload["https://api.openai.com/profile"]
+  if (rawAuth !== undefined && !isRecord(rawAuth)) throw new TypeError(`${label} has invalid auth claim`)
+  if (rawProfile !== undefined && !isRecord(rawProfile)) throw new TypeError(`${label} has invalid profile claim`)
+  const auth = isRecord(rawAuth) ? rawAuth : {}
+  const profile = isRecord(rawProfile) ? rawProfile : {}
+  const rawExpiry = payload.exp
+  let expiresAt: number | null = null
+  if (rawExpiry !== undefined && rawExpiry !== 0) {
+    if (typeof rawExpiry !== "number" || !Number.isFinite(rawExpiry) || rawExpiry < 0 || !Number.isFinite(rawExpiry * 1000)) {
+      throw new TypeError(`${label} has invalid exp claim`)
+    }
+    expiresAt = rawExpiry * 1000
+  }
   return {
-    email,
-    chatgptAccountId: pickString(auth, 'chatgpt_account_id'),
-    chatgptUserId: pickString(auth, 'chatgpt_user_id'),
-    planType: pickString(auth, 'chatgpt_plan_type'),
+    email: optionalClaim(profile, "email", label) ?? optionalClaim(payload, "email", label),
+    chatgptAccountId: optionalClaim(auth, "chatgpt_account_id", label),
+    chatgptUserId: optionalClaim(auth, "chatgpt_user_id", label),
+    planType: optionalClaim(auth, "chatgpt_plan_type", label),
+    expiresAt,
   }
 }
 
-// atob rejects unpadded base64; OpenAI id_tokens arrive unpadded, so we pad.
-const decodeBase64UrlToUtf8 = (value: string): string => {
-  const standard = value.replace(/-/g, '+').replace(/_/g, '/')
-  const padded = standard + '='.repeat((4 - (standard.length % 4)) % 4)
-  const binary = atob(padded)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
-  return new TextDecoder().decode(bytes)
-}
+export const tryParseCodexAccessTokenClaims = (accessToken: string): CodexTokenClaims | null =>
+  accessToken.split(".").length === 3 ? parseCodexTokenClaims(accessToken, "access_token") : null
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
-const pickString = (record: Record<string, unknown>, key: string): string => {
-  const value = record[key]
-  if (typeof value !== 'string' || value === '')
-    throw new Error(`id_token missing or empty ${key} claim`)
-  return value
-}
-
-const pickStringOptional = (record: Record<string, unknown>, key: string): string | null => {
-  const value = record[key]
-  if (typeof value !== 'string' || value === '') return null
-  return value
+// OAuth callback tokens must still carry the complete identity that the
+// existing callback has always required.
+export const parseCodexIdTokenClaims = (idToken: string): CodexIdTokenIdentity => {
+  const claims = parseCodexTokenClaims(idToken, "id_token")
+  if (!claims.email || !claims.chatgptAccountId || !claims.chatgptUserId || !claims.planType) {
+    throw new TypeError("id_token is missing required identity claims")
+  }
+  return {
+    email: claims.email,
+    chatgptAccountId: claims.chatgptAccountId,
+    chatgptUserId: claims.chatgptUserId,
+    planType: claims.planType,
+  }
 }

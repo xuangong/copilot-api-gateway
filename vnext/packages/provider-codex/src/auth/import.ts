@@ -1,124 +1,185 @@
-import type { CodexUpstreamConfig } from '../config'
-import type { CodexUpstreamState } from '../state'
-import type { CodexIdTokenIdentity } from './jwt'
-import { parseCodexIdTokenClaims } from './jwt'
-import { exchangeCodexAuthorizationCode } from './oauth'
-import type { Fetcher } from '../fetcher'
+import type { CodexUpstreamConfig } from "../config"
+import type { CodexUpstreamState } from "../state"
+import type { Fetcher } from "../fetcher"
+import { normalizeCodexCredential, type CodexCredentialInput, type NormalizedCodexCredential } from "./credential"
+import { parseCodexIdTokenClaims } from "./jwt"
+import { exchangeCodexAuthorizationCode } from "./oauth"
 
 export interface CodexImportResult {
   config: CodexUpstreamConfig
   state: CodexUpstreamState
 }
 
-const buildCodexImportResult = (params: {
-  identity: CodexIdTokenIdentity
-  accessToken: string
-  refreshToken: string
-  expiresAt: number
-  now: string
-}): CodexImportResult => ({
-  config: {
-    accounts: [
-      {
-        email: params.identity.email,
-        chatgptAccountId: params.identity.chatgptAccountId,
-        chatgptUserId: params.identity.chatgptUserId,
-        planType: params.identity.planType,
-      },
-    ],
-  },
-  state: {
-    accounts: [
-      {
-        chatgptAccountId: params.identity.chatgptAccountId,
-        refresh_token: params.refreshToken,
-        credentialRevision: crypto.randomUUID(),
-        state: 'active',
-        state_updated_at: params.now,
-        // Mint a fresh per-account installation id at import time. Codex CLI's
-        // `$CODEX_HOME/installation_id` is a UUIDv4 written once per device
-        // and reused forever; we mirror the shape and lifetime per gateway-
-        // managed account so each account looks like one persisted Codex
-        // install rather than a fingerprint that rotates per call.
-        openaiDeviceId: crypto.randomUUID(),
-        accessToken: {
-          token: params.accessToken,
-          expiresAt: params.expiresAt,
-          refreshedAt: params.now,
-        },
-        quotaSnapshot: null,
-      },
-    ],
-  },
-})
-
-// Imports a verbatim ~/.codex/auth.json. The CLI's on-disk format wraps
-// tokens under `.tokens`. We re-derive identity from id_token rather than
-// trusting the file's account_id / email / plan, so this path produces the
-// same shape as importCodexFromCallback.
-export const importCodexFromAuthJson = async (rawJson: string): Promise<CodexImportResult> => {
-  const pickNonEmptyString = (
-    record: Record<string, unknown>,
-    key: string,
-    prefix: string,
-  ): string => {
-    const value = record[key]
-    if (typeof value !== 'string' || value === '')
-      throw new TypeError(`${prefix}.${key} must be a non-empty string`)
-    return value
-  }
-
-  let authJson: unknown
-  try {
-    authJson = JSON.parse(rawJson)
-  } catch (cause) {
-    throw new Error('auth.json is not valid JSON', { cause: cause as Error })
-  }
-  if (typeof authJson !== 'object' || authJson === null)
-    throw new TypeError('auth.json must be a JSON object')
-  const obj = authJson as Record<string, unknown>
-  const tokens = obj.tokens
-  if (typeof tokens !== 'object' || tokens === null) throw new TypeError('auth.json.tokens missing')
-  const t = tokens as Record<string, unknown>
-  const accessToken = pickNonEmptyString(t, 'access_token', 'auth.json.tokens')
-  const refreshToken = pickNonEmptyString(t, 'refresh_token', 'auth.json.tokens')
-  const idToken = pickNonEmptyString(t, 'id_token', 'auth.json.tokens')
-
-  const identity = parseCodexIdTokenClaims(idToken)
-  // auth.json carries the access_token + refresh_token but no `expires_in`
-  // for the access_token. Stamp a conservative 7-day fallback so the
-  // freshness gate in the access-token module forces a /oauth/token refresh
-  // on the first data-plane call.
-  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
-  return buildCodexImportResult({
-    identity,
-    accessToken,
-    refreshToken,
-    expiresAt: Date.now() + sevenDaysMs,
-    now: new Date().toISOString(),
-  })
+export interface CodexJsonPreviewCandidate {
+  sourceIndex: number
+  name: string | null
+  email: string | null
+  chatgptAccountId: string | null
+  chatgptUserId: string | null
+  planType: string | null
+  renewable: boolean
+  expiresAt: number | null
+  importable: boolean
+  issues: string[]
 }
 
-// Exchange the authorization code for tokens, then derive identity from the
-// returned id_token. The token exchange is the only network hop on this
-// path (identity parses locally from the id_token), so `fetcher` is where
-// the caller picks egress for the whole import.
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+const requireRecord = (value: unknown, label: string): Record<string, unknown> => {
+  if (!isRecord(value)) throw new TypeError(`${label} must be an object`)
+  return value
+}
+
+const buildImport = (credential: NormalizedCodexCredential, now = new Date().toISOString()): CodexImportResult => ({
+  config: { accounts: [credential.identity] },
+  state: { accounts: [{
+    chatgptAccountId: credential.identity.chatgptAccountId,
+    refresh_token: credential.refreshToken,
+    credentialRevision: crypto.randomUUID(),
+    state: "active",
+    state_updated_at: now,
+    openaiDeviceId: crypto.randomUUID(),
+    accessToken: credential.accessToken === null ? null : {
+      token: credential.accessToken,
+      expiresAt: credential.expiresAt,
+      refreshedAt: now,
+    },
+    quotaSnapshot: null,
+  }] },
+})
+
+export const parseSourceExpiry = (value: unknown, label = "expires_at"): number | null => {
+  if (value === undefined || value === null || value === "" || value === 0 || value === "0") return null
+  let millis: number
+  if (typeof value === "number") {
+    millis = value * 1000
+  } else if (typeof value === "string" && /^\d+$/.test(value)) {
+    millis = Number(value) * 1000
+  } else if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    millis = Date.parse(value)
+  } else {
+    throw new TypeError(`${label} must be epoch seconds or ISO timestamp`)
+  }
+  if (!Number.isFinite(millis) || millis <= 0) throw new TypeError(`${label} must be a finite positive time`)
+  return millis
+}
+
+interface Source {
+  sourceIndex: number
+  name: string | null
+  supported: boolean
+  normalize: () => NormalizedCodexCredential
+}
+
+const credentialInput = (record: Record<string, unknown>, root: Record<string, unknown>): CodexCredentialInput => ({
+  accessToken: record.access_token as string | null | undefined,
+  refreshToken: record.refresh_token as string | null | undefined,
+  idToken: record.id_token as string | null | undefined,
+  chatgptAccountId: (record.chatgpt_account_id ?? record.account_id ?? root.chatgpt_account_id ?? root.account_id) as string | null | undefined,
+  email: (record.email ?? root.email) as string | null | undefined,
+  chatgptUserId: (record.chatgpt_user_id ?? root.chatgpt_user_id) as string | null | undefined,
+  planType: (record.plan_type ?? root.plan_type) as string | null | undefined,
+  expiresAt: parseSourceExpiry(record.expires_at ?? root.expires_at),
+})
+
+const supportedCodexTags = (...values: unknown[]): boolean => values.every(value => {
+  if (!isRecord(value)) return true
+  const matches = (key: string, expected: string): boolean => {
+    const tag = value[key]
+    return tag === undefined || tag === null || (typeof tag === "string" && tag.trim().toLowerCase() === expected)
+  }
+  return matches("platform", "openai") && matches("type", "oauth")
+})
+
+const makeSource = (value: unknown, index: number, label: string, ancestors: readonly unknown[] = []): Source => {
+  const record = isRecord(value) ? value : null
+  return {
+    sourceIndex: index,
+    name: typeof record?.name === "string" && record.name.trim() ? record.name : null,
+    supported: supportedCodexTags(...ancestors, value, record?.credentials),
+    normalize: () => {
+      const account = requireRecord(value, label)
+      return normalizeCodexCredential(credentialInput(requireRecord(account.credentials, `${label}.credentials`), account))
+    },
+  }
+}
+
+const accountSources = (value: unknown, label: string, ancestors: readonly unknown[]): Source[] => {
+  if (!Array.isArray(value)) throw new TypeError(`${label} must be an array`)
+  if (value.length > 100) throw new TypeError("Codex credential JSON has too many accounts")
+  return value.map((entry, index) => makeSource(entry, index, `${label}[${index}]`, ancestors))
+}
+
+const parseSources = (rawJson: string): Source[] => {
+  if (new TextEncoder().encode(rawJson).byteLength > 1024 * 1024) throw new TypeError("Codex credential JSON is too large")
+  let parsed: unknown
+  try { parsed = JSON.parse(rawJson) } catch { throw new TypeError("Codex credential JSON is invalid") }
+  const root = requireRecord(parsed, "Codex credential JSON")
+  const data = root.data
+  const kinds = [
+    Object.hasOwn(root, "tokens") ? "tokens" : null,
+    Object.hasOwn(root, "credentials") ? "credentials" : null,
+    Object.hasOwn(root, "accounts") ? "accounts" : null,
+    isRecord(data) && Object.hasOwn(data, "accounts") ? "nested" : null,
+    Object.hasOwn(root, "access_token") || Object.hasOwn(root, "refresh_token") ? "flat" : null,
+  ].filter((kind): kind is string => kind !== null)
+  if (kinds.length === 0) throw new TypeError("Codex credential JSON has no supported envelope")
+  if (kinds.length > 1) throw new TypeError("Codex credential JSON is ambiguous")
+  switch (kinds[0]) {
+    case "tokens": return [{ sourceIndex: 0, name: null, supported: supportedCodexTags(root, root.tokens),
+      normalize: () => normalizeCodexCredential(credentialInput(requireRecord(root.tokens, "tokens"), root)) }]
+    case "credentials": return [makeSource(root, 0, "root")]
+    case "accounts": return accountSources(root.accounts, "accounts", [root])
+    case "nested": return accountSources(isRecord(data) ? data.accounts : null, "data.accounts", [root, data])
+    default: return [{ sourceIndex: 0, name: null, supported: supportedCodexTags(root),
+      normalize: () => normalizeCodexCredential(credentialInput(root, root)) }]
+  }
+}
+
+export const previewCodexJson = async (rawJson: string): Promise<CodexJsonPreviewCandidate[]> =>
+  parseSources(rawJson).flatMap<CodexJsonPreviewCandidate>(source => {
+    if (!source.supported) return []
+    try {
+      const credential = source.normalize()
+      return [{
+        sourceIndex: source.sourceIndex, name: source.name,
+        ...credential.identity, renewable: credential.refreshToken !== null,
+        expiresAt: credential.expiresAt, importable: true, issues: [],
+      }]
+    } catch (error) {
+      return [{
+        sourceIndex: source.sourceIndex, name: source.name,
+        email: null, chatgptAccountId: null, chatgptUserId: null, planType: null,
+        renewable: false, expiresAt: null, importable: false,
+        issues: [error instanceof Error ? error.message : "Codex credential is invalid"],
+      }]
+    }
+  })
+
+export const importCodexFromJson = async (rawJson: string, sourceIndex: number): Promise<CodexImportResult> => {
+  if (!Number.isSafeInteger(sourceIndex) || sourceIndex < 0) throw new TypeError("Codex source index is invalid")
+  const source = parseSources(rawJson).find(candidate => candidate.sourceIndex === sourceIndex)
+  if (!source || !source.supported) throw new TypeError("Codex source index is unavailable")
+  return buildImport(source.normalize())
+}
+
+export const importCodexFromAuthJson = async (rawJson: string): Promise<CodexImportResult> =>
+  importCodexFromJson(rawJson, 0)
+
 export const importCodexFromCallback = async (opts: {
   code: string
   codeVerifier: string
   fetcher: Fetcher
 }): Promise<CodexImportResult> => {
-  const tokens = await exchangeCodexAuthorizationCode({
-    code: opts.code,
-    codeVerifier: opts.codeVerifier,
-    fetcher: opts.fetcher,
-  })
+  const tokens = await exchangeCodexAuthorizationCode(opts)
   const identity = parseCodexIdTokenClaims(tokens.id_token)
-  return buildCodexImportResult({
-    identity,
+  const credential = normalizeCodexCredential({
     accessToken: tokens.access_token,
     refreshToken: tokens.refresh_token,
+    idToken: tokens.id_token,
+    chatgptAccountId: identity.chatgptAccountId,
     expiresAt: Date.now() + tokens.expires_in * 1000,
-    now: new Date().toISOString(),
   })
+  return buildImport(credential)
 }
