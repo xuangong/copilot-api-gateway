@@ -1,3 +1,4 @@
+import { cloneAffinityInput } from "./input-copy"
 import { chatReasoningText } from "@vibe-llm/translate/shared/chat-reasoning-text"
 import { decodeOpaqueValue, splitOpaqueTrailer } from "@vibe-llm/protocols/common"
 import { affinityTargetMatch, parseAffinityExecutionTarget } from "@vibe-llm/provider-llm"
@@ -195,7 +196,7 @@ export interface AffinityAnalysis {
 /** Run after A14 plaintext-envelope expansion and policy authorization, before
  * candidate dispatch. No stable API-key codec means the existing raw behavior. */
 export async function analyzeAffinityRequest(protocol: AffinityProtocol, body: Readonly<JsonObject>, codec?: AffinityCodec): Promise<AffinityAnalysis> {
-  const snapshot: JsonObject = structuredClone({ ...body })
+  const snapshot: JsonObject = cloneAffinityInput({ ...body })
   const owned: OwnedBlock[] = []
   if (codec) for (const block of await blocks(protocol, snapshot)) {
     const item = at(snapshot, block.path)
@@ -222,7 +223,7 @@ export async function analyzeAffinityRequest(protocol: AffinityProtocol, body: R
     return result
   }
   return Object.freeze({
-    cloneSource: () => structuredClone(snapshot),
+    cloneSource: () => cloneAffinityInput(snapshot),
     hasOwned: owned.length > 0,
     hasRequiredOwned: owned.some(block => block.required),
     classify,
@@ -233,7 +234,7 @@ export async function analyzeAffinityRequest(protocol: AffinityProtocol, body: R
     },
     materialize(target: AffinityExecutionTarget | undefined): JsonObject {
       if (classify(target) === "unavailable") throw new AffinityRoutingUnavailableError()
-      const copy = structuredClone(snapshot)
+      const copy = cloneAffinityInput(snapshot)
       // Descending paths avoid index shifts during whole-block removal.
       const removedMessages = new Set<number>()
       for (const block of [...owned].reverse()) {
