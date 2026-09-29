@@ -1,0 +1,27 @@
+{
+  "runtime": "actual local workerd app + D1 + synthetic outbound service",
+  "passed": true,
+  "sessionOnly": true,
+  "previewPure": true,
+  "stableSelection": true,
+  "bodyAndRowCaps": true,
+  "streamCap": {
+    "status": 413,
+    "canceled": true,
+    "sent": 17
+  },
+  "oneRowImport": true,
+  "reimportPreservationAndGeneration": true,
+  "accountConflict": true,
+  "foreignMissing404": true,
+  "accessOnlyRefreshNoMutation": true,
+  "renewableRefresh": true,
+  "configuredEgressFailureNoFallback": true,
+  "explicitRefreshCancellation": {
+    "status": 499,
+    "aborted": true,
+    "elapsedMs": 80
+  },
+  "outbound": 2,
+  "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c08-import-runtime-9MwAnM"
+}

@@ -27,6 +27,7 @@ interface Props {
   onEdit: () => void
   onDuplicate: () => void
   onRefreshModels: () => void
+  onRefreshCredential: () => void
   onReauth: () => void
   onDelete: () => void
 }
@@ -53,6 +54,7 @@ export function UpstreamRow({
   onEdit,
   onDuplicate,
   onRefreshModels,
+  onRefreshCredential,
   onReauth,
   onDelete,
 }: Props) {
@@ -97,6 +99,14 @@ export function UpstreamRow({
   // Set only when the server could read a past `exp` out of this upstream's
   // credential. Absence is not a clean bill of health — see the field's doc.
   const expiredAt = u.tokenExpiredAt ? new Date(u.tokenExpiredAt).toLocaleString() : null
+  const credential = u.provider === "codex" ? u.credentialStatus : undefined
+  const credentialHealthKey = credential ? {
+    active: "dash.codexHealthActive",
+    access_rejected: "dash.codexHealthAccessRejected",
+    session_terminated: "dash.codexHealthSessionTerminated",
+    refresh_failed: "dash.codexHealthRefreshFailed",
+    credential_expired: "dash.codexHealthExpired",
+  }[credential.health] : null
 
   return (
     <div
@@ -128,6 +138,13 @@ export function UpstreamRow({
             <div className="text-xs text-themed-dim font-mono truncate">
               {ghUser?.login ? `@${ghUser.login}` : u.id}
             </div>
+            {credential && credentialHealthKey ? (
+              <div className="text-xs text-themed-dim mt-1">
+                {t(credentialHealthKey)} · {t(credential.renewable ? "dash.codexRenewable" : "dash.codexAccessOnly")} · {credential.expiryKnown && credential.expiresAt !== null
+                  ? t("dash.codexExpiresAt", { at: new Date(credential.expiresAt).toLocaleString() })
+                  : t("dash.codexExpiryUnknown")}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -166,6 +183,11 @@ export function UpstreamRow({
           <button onClick={onRefreshModels} disabled={locked || busy} className="btn-ghost text-xs px-2 py-1" title={t("dash.refetchModelsTip")}>
             {busy ? "…" : t("dash.refetchModelsLabel")}
           </button>
+          {credential?.renewable ? (
+            <button type="button" onClick={onRefreshCredential} disabled={locked || busy} className="btn-ghost text-xs px-2 py-1">
+              {t("dash.codexRefreshCredential")}
+            </button>
+          ) : null}
           {u.provider === "copilot" ? (
             <button onClick={onReauth} disabled={locked} className="btn-ghost text-xs px-2 py-1 disabled:opacity-50" title={t("dash.reauthTip")}>{t("dash.reauthBtn")}</button>
           ) : null}

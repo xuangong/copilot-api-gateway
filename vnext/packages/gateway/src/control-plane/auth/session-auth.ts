@@ -131,7 +131,12 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
     // Swallow — handlers see no auth context and decide what to do.
   }
 
-  if (ctx && resolvedUserId && !hasConfigurationSnapshot()) {
+  const credentialManagementPath = c.req.method === 'POST' && (
+    c.req.path === '/api/upstreams/codex/preview' ||
+    c.req.path === '/api/upstreams/codex/import' ||
+    /^\/api\/upstreams\/[^/]+\/credentials\/refresh$/.test(c.req.path)
+  )
+  if (ctx && resolvedUserId && !hasConfigurationSnapshot() && !credentialManagementPath) {
     // Resolve the user's copilot upstream so data-plane handlers (web search,
     // image generation) can reach into auth.copilot/githubToken without each
     // route having to repeat the lookup.

@@ -1,0 +1,38 @@
+{
+  "passed": true,
+  "sourceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext",
+  "checks": [
+    "partial-row-preview-selection",
+    "paste-create",
+    "file-replace",
+    "metadata-installation-preserved",
+    "generation-once",
+    "refresh-known-expiry",
+    "refresh-no-generation",
+    "success-cancel-clear-raw",
+    "no-browser-storage-secrets",
+    "no-page-errors",
+    "stale-preview-edit-ignored",
+    "target-unmount-cleared"
+  ],
+  "facts": {
+    "oauthCalls": 1,
+    "rows": [
+      {
+        "id": "up_codex_synthetic_codex_113eb2b1",
+        "name": "Synthetic Codex",
+        "enabled": true,
+        "catalogGeneration": 1,
+        "selectedCredential": false,
+        "replacementCredential": false,
+        "mintedCredential": true,
+        "stableInstallation": true,
+        "changedRevision": true,
+        "sameMetadata": true,
+        "initialCatalogGeneration": 0
+      }
+    ]
+  },
+  "pageErrors": [],
+  "out": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/.superpowers/sdd/2026-09-29-reference-adoption-follow-up/c08-import-browser-acceptance/runs/run.K1EO3g"
+}

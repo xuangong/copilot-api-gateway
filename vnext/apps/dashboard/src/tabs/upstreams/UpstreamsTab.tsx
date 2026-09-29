@@ -14,7 +14,7 @@ import { moveUpstream } from "../../state/reorder-upstreams"
 
 type CreateMode = {
   kind: "create"
-  provider: "custom" | "azure" | "sdf"
+  provider: "custom" | "azure" | "sdf" | "codex"
   presetId?: string
   draft?: PortableUpstreamDraft
   sourceId?: string
@@ -69,7 +69,7 @@ export function UpstreamsTab() {
     return () => document.removeEventListener("keydown", cancel)
   }, [drag])
 
-  const openCreate = (provider: "custom" | "azure" | "sdf", presetId?: string) => {
+  const openCreate = (provider: "custom" | "azure" | "sdf" | "codex", presetId?: string) => {
     setEditingId(null)
     setPresetMenuOpen(false)
     // Remount the form when the preset changes, otherwise `useMemo` on `mode`
@@ -147,6 +147,7 @@ export function UpstreamsTab() {
               card's p-4 padding instead of clipping mid-button. */}
           <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>button]:shrink-0">
             <button onClick={() => setDeviceFlowOpen(true)} className="btn-primary text-sm">{t("dash.addCopilot")}</button>
+            <button onClick={() => openCreate("codex")} className="btn-ghost text-sm">{t("dash.addCodexImport")}</button>
             <button
               onClick={() => setPresetMenuOpen((v) => !v)}
               className="btn-ghost text-sm"
@@ -291,6 +292,7 @@ export function UpstreamsTab() {
                           onEdit={() => openEdit(u)}
                           onDuplicate={() => openDuplicate(u)}
                           onRefreshModels={() => store.probe(u.id)}
+                          onRefreshCredential={() => store.refreshCredential(u.id)}
                           onReauth={() => setDeviceFlowOpen(true)}
                           onDelete={async () => {
                             await store.remove(u)

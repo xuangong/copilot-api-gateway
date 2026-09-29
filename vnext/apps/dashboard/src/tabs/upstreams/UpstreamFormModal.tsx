@@ -9,12 +9,13 @@ import { formatModelsText, parseModelsText } from "./model-text"
 import { CatalogRequestGate, catalogDraftIdentity } from "./catalog-request-gate"
 import { isFreshCredential } from "./duplicate-draft"
 import type { PortableUpstreamDraft } from "./duplicate-draft"
+import { CodexImportPanel } from "./CodexImportPanel"
 
 type Provider = UpstreamRecord["provider"]
 
 interface Props {
   mode:
-    | { kind: "create"; provider: "azure" | "custom" | "sdf"; presetId?: string; draft?: PortableUpstreamDraft }
+    | { kind: "create"; provider: "azure" | "custom" | "sdf" | "codex"; presetId?: string; draft?: PortableUpstreamDraft }
     | { kind: "edit"; row: UpstreamRecord }
   flagCatalog: api.FlagCatalog | null
   ensureFlagCatalog: () => Promise<api.FlagCatalog>
@@ -725,6 +726,17 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           </div>
         ) : null}
 
+        {provider === "codex" ? (
+          <CodexImportPanel
+            targetId={editingId}
+            name={form.name}
+            ownerId={session?.userId != null ? String(session.userId) : undefined}
+            flagOverrides={form.flagOverrides}
+            disabledPublicModelIds={disabledIds}
+            onImported={onSaved}
+          />
+        ) : null}
+
         {(provider === "custom" || provider === "azure") ? (
           <div className="border-t border-themed pt-3 mt-3">
             <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">{t("dash.servedEndpointsLabel")}</h4>
@@ -938,9 +950,11 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
         <button onClick={onClose} className="btn-ghost text-sm">
           {t("dash.cancel")}
         </button>
-        <button onClick={submit} disabled={saving} className="btn-primary text-sm">
-          {editing ? t("dash.save") : t("dash.createBtnLong")}
-        </button>
+        {(provider !== "codex" || editing) ? (
+          <button onClick={submit} disabled={saving} className="btn-primary text-sm">
+            {editing ? t("dash.save") : t("dash.createBtnLong")}
+          </button>
+        ) : null}
       </div>
     </div>
   )

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useToast } from "./toast"
+import { useT } from "./i18n"
 import * as api from "../api/upstreams"
 import type { UpstreamRecord } from "../api/types"
 import { ReorderController } from "./reorder-upstreams"
@@ -13,6 +14,7 @@ function sortUpstreams(list: UpstreamRecord[]): UpstreamRecord[] {
 
 export function useUpstreams() {
   const { push: toast } = useToast()
+  const t = useT()
   const [upstreams, setUpstreams] = useState<UpstreamRecord[]>([])
   const toastRef = useRef(toast)
   toastRef.current = toast
@@ -136,6 +138,13 @@ export function useUpstreams() {
       }
     })
 
+  const refreshCredential = (id: string) =>
+    withBusy(id, async () => {
+      await api.refreshCodexCredential(id)
+      toast(t("dash.codexRefreshed"), "success")
+      await reload()
+    })
+
   const remove = async (u: UpstreamRecord): Promise<boolean> => {
     if (u.provider === "copilot") {
       const userId = u.config?.user?.id
@@ -184,6 +193,7 @@ export function useUpstreams() {
     reorder,
     reorderTo,
     probe,
+    refreshCredential,
     remove,
     setProbeResult: (id: string, r: api.ProbeResult) => setProbeResults((p) => ({ ...p, [id]: r })),
   }

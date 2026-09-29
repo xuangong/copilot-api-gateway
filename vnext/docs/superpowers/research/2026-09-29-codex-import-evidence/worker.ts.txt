@@ -1,0 +1,52 @@
+import { app } from "__ROOT__/vnext/packages/gateway/src/app.ts"
+import { initRepo } from "__ROOT__/vnext/packages/gateway/src/repo/index.ts"
+import { initCache, initResponsesStore, initDumpSubsystem } from "__ROOT__/vnext/packages/gateway/src/bootstrap.ts"
+import { D1Repo, type D1Database } from "__ROOT__/vnext/apps/platform-cloudflare/src/d1-repo.ts"
+import { R2FileProvider, type R2BucketLike } from "__ROOT__/vnext/apps/platform-cloudflare/src/r2-file-provider.ts"
+import { initSqlDatabase, initFileProvider, initEnv, initBackground, initRuntimeLocation, type SqlDatabase } from "__ROOT__/vnext/packages/platform/src/index.ts"
+import { MemoryCache } from "__ROOT__/vnext/packages/cache/src/index.ts"
+import { InMemoryResponsesSnapshotStore } from "__ROOT__/vnext/packages/responses-store/src/index.ts"
+let booted = false
+const pending = new Set<Promise<unknown>>()
+export default {
+ async fetch(request: Request, env: { DB: D1Database & SqlDatabase; FILES: R2BucketLike }, ctx: { waitUntil(p: Promise<unknown>): void }) {
+  if (!booted) {
+   initSqlDatabase(env.DB); initFileProvider(new R2FileProvider(env.FILES))
+   initEnv(() => ""); initRuntimeLocation("cloudflare")
+   initRepo(new D1Repo(env.DB)); initCache(new MemoryCache())
+   initResponsesStore(new InMemoryResponsesSnapshotStore()); initDumpSubsystem(); booted = true
+  }
+  initBackground({ waitUntil(p) { pending.add(p); ctx.waitUntil(p); void p.finally(() => pending.delete(p)).catch(() => {}) } })
+  if (new URL(request.url).pathname === "/__fixture/stream-cap") {
+   let canceled=false, sent=0
+   const body=new ReadableStream<Uint8Array>({ pull(controller) {
+    sent++;controller.enqueue(new Uint8Array(65536).fill(32))
+    if(sent===20)controller.close()
+   }, cancel() { canceled=true } })
+   const result=await app.fetch(new Request("http://local/api/upstreams/codex/preview", {
+    method:"POST",headers:{cookie:"session_token=ses_owner","content-type":"application/json","content-length":"1"},body,
+   }),env)
+   await result.text()
+   return Response.json({status:result.status,canceled,sent})
+  }
+  if (new URL(request.url).pathname === "/__fixture/cancel-refresh") {
+   const id = new URL(request.url).searchParams.get("id")
+   if (!id) return new Response("missing fixture id", { status: 400 })
+   const controller = new AbortController()
+   const timer = setTimeout(() => controller.abort(), 40)
+   const started = performance.now()
+   try {
+    const result = await app.fetch(new Request(`http://local/api/upstreams/${encodeURIComponent(id)}/credentials/refresh`, {
+     method: "POST", headers: { cookie: "session_token=ses_owner" }, signal: controller.signal,
+    }), env)
+    await result.text()
+    return Response.json({ status: result.status, aborted: controller.signal.aborted, elapsedMs: performance.now()-started })
+   } finally { clearTimeout(timer) }
+  }
+  if (new URL(request.url).pathname === "/__fixture/drain") {
+   for (let i=0; pending.size && i<20; i++) await Promise.allSettled([...pending])
+   return Response.json({ pending: pending.size })
+  }
+  return app.fetch(request, env)
+ },
+}

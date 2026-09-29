@@ -1,0 +1,16 @@
+{
+  "vnext/apps/dashboard/src/api/types.ts": "fd73de8c8de786e652e0392ccb82c8f17472b0ca6b3fa271f8236c01ae4eb92d",
+  "vnext/apps/dashboard/src/api/upstreams.ts": "9f071df465de9509a0e0a6e4a5699b246e8c68320f71592b4b901b52069cf869",
+  "vnext/apps/dashboard/src/state/upstreams.ts": "8bef0a9e2809dffe3bb73b023c6ae769746e6c3d8e455916958568b1b50c2cc9",
+  "vnext/apps/dashboard/src/tabs/upstreams/CodexImportPanel.tsx": "0cf5cab1cf68d7cd2b5351086551c897d71dbcb4a4ad9d1cb3d4acd4a85cea8b",
+  "vnext/apps/dashboard/src/tabs/upstreams/UpstreamFormModal.tsx": "5a2484fcd6efc9bf77a11c02378a5befc89f9eb31e5cd52fdee223b009e8d3a1",
+  "vnext/apps/dashboard/src/tabs/upstreams/UpstreamRow.tsx": "dbd3cbfbc8998648a8aaa503bc29ce80939da0d2311d62b26b1bc939d6c1180c",
+  "vnext/apps/dashboard/src/tabs/upstreams/UpstreamsTab.tsx": "71e28c40d7727a4ca713e5a1f8432deaf46d1ff9fc20ca1ae062cc5de7edbe8f",
+  "vnext/apps/dashboard/src/tabs/upstreams/codex-import-draft.test.ts": "11f62229cb117b2b331041830ddf4ee67231c4934e34be467bcaa55cf0c4dcc4",
+  "vnext/apps/dashboard/src/tabs/upstreams/codex-import-draft.ts": "a47abb15159a446f62bb3ea918d8fb9225e30b0083fcf84a05e3f2c834a951c1",
+  "vnext/packages/gateway/src/control-plane/auth/session-auth.ts": "fe9d2377023ac425dacb1a72ef4940ab7747d50fdf92b0af8c036a32ca5e27d2",
+  "vnext/packages/gateway/src/control-plane/upstreams/codex-credentials-routes.ts": "e97716369751749ed46363297bf667629a8968cb8737e3f31aca9f89bb832604",
+  "vnext/packages/gateway/src/control-plane/upstreams/routes.ts": "14d4a053ee9445b15fa0ad1279661b267ed9aaa3d82a5bed3bda1b13b5ed0377",
+  "vnext/packages/gateway/src/shared/edge/ui-pages/i18n.ts": "d7356b0bfb56c564baabffcffecce0ddacdef6a177047208042f0d681d3b1eaf",
+  "vnext/packages/gateway/tests/control-plane-codex-import.sqlite.test.ts": "3bab3cc9f6e27aabea926cea519af8e500ad44359fdf7a101a89d9f7c442f9db"
+}

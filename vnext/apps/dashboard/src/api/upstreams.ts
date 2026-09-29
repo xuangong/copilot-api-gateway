@@ -84,6 +84,37 @@ export function createUpstream(body: CreateUpstreamBody): Promise<{ upstream: Up
   return api<{ upstream: UpstreamRecord }>("/api/upstreams", { method: "POST", body })
 }
 
+export interface CodexPreviewCandidate {
+  sourceIndex: number
+  name: string | null
+  email: string | null
+  chatgptAccountId: string | null
+  chatgptUserId: string | null
+  planType: string | null
+  renewable: boolean
+  expiresAt: number | null
+  importable: boolean
+  issues: string[]
+}
+
+export function previewCodexDocument(document: string, signal?: AbortSignal): Promise<{ candidates: CodexPreviewCandidate[] }> {
+  return api("/api/upstreams/codex/preview", { method: "POST", body: { document }, signal })
+}
+
+export type CodexImportRequest = { document: string; sourceIndex: number } & (
+  | { upstreamId: string }
+  | { name: string; ownerId?: string; enabled?: boolean; sortOrder?: number; flagOverrides?: Record<string, boolean>;
+      disabledPublicModelIds?: string[]; proxyFallbackList?: ProxyFallbackEntry[] }
+)
+
+export function importCodexDocument(body: CodexImportRequest, signal?: AbortSignal): Promise<{ upstream: UpstreamRecord }> {
+  return api("/api/upstreams/codex/import", { method: "POST", body, signal })
+}
+
+export function refreshCodexCredential(id: string): Promise<{ upstream: UpstreamRecord }> {
+  return api(`/api/upstreams/${encodeURIComponent(id)}/credentials/refresh`, { method: "POST" })
+}
+
 export function deleteUpstream(id: string): Promise<{ ok: true }> {
   return api(`/api/upstreams/${encodeURIComponent(id)}`, { method: "DELETE" })
 }

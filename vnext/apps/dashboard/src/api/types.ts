@@ -47,6 +47,13 @@ export interface UpstreamRecord {
   // here. Present means expired; absent means "not expired, or unknowable", and
   // deliberately not a health signal (a live-looking token can still be revoked).
   tokenExpiredAt?: string
+  credentialStatus?: {
+    health: "active" | "access_rejected" | "session_terminated" | "refresh_failed" | "credential_expired"
+    renewable: boolean
+    expiresAt: number | null
+    expiryKnown: boolean
+    quotaObservedAt: number | null
+  }
   createdAt: string
   updatedAt: string
 }
