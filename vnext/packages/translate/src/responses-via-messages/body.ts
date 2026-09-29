@@ -14,12 +14,15 @@ interface AnthropicContentBlock {
   type: string
   text?: string
   thinking?: string
+  signature?: string
+  data?: string
   id?: string
   name?: string
   input?: Record<string, unknown>
 }
 
 interface ResponseOutputItem {
+  encrypted_content?: string
   type: 'message' | 'reasoning' | 'function_call' | 'custom_tool_call'
   id?: string
   call_id?: string
@@ -83,13 +86,18 @@ function mapContentToOutput(content: AnthropicContentBlock[], customToolNames: r
         break
       }
       case 'thinking': {
-        const text = (block.thinking ?? '').trim()
-        if (!text) break
+        const text = block.thinking ?? ''
+        if (!text && block.signature === undefined) break
         items.push({
           type: 'reasoning',
           id: `rs_${nextIndex++}`,
           summary: [{ type: 'summary_text', text }],
+          ...(block.signature !== undefined ? { encrypted_content: block.signature } : {}),
         })
+        break
+      }
+      case 'redacted_thinking': {
+        if (block.data !== undefined) items.push({ type: 'reasoning', id: `rs_${nextIndex++}`, summary: [], encrypted_content: block.data })
         break
       }
       case 'tool_use': {

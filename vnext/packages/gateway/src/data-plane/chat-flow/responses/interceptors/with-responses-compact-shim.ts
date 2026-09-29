@@ -1,3 +1,4 @@
+import type { GatewayRequestContext } from "../../shared/gateway-ctx.ts"
 // Compact-shim — simulates a `response.compaction` envelope against upstreams
 // that have no native compaction wire.
 //
@@ -210,6 +211,7 @@ const syntheticEventsFromResult = async function* (
 const simulateCompaction = async (
   inv: Parameters<ResponsesInterceptor>[0],
   run: ChainRun,
+  registerPlaintextCompaction?: GatewayRequestContext["registerPlaintextCompaction"],
 ): Promise<ResponsesRunResult> => {
   const originalPayload = inv.payload as unknown as CanonicalResponsesPayload
 
@@ -285,6 +287,7 @@ const simulateCompaction = async (
   }
   const cmpId = createRandomResponsesItemId('compaction')
   const synthesized = buildCompactionEnvelope(cmpId, summaryText, collected)
+  for (const item of synthesized.output) registerPlaintextCompaction?.(item as { id?: string; encrypted_content?: string })
 
   return {
     ...upstreamResult,
@@ -315,5 +318,5 @@ export const withResponsesCompactShim: ResponsesInterceptor = async (inv, ctx, r
   const isCompactShaped = inv.action === 'compact' || containsCompactionTrigger(expandedInput)
   if (!isCompactShaped) return run()
 
-  return simulateCompaction(inv, run)
+  return simulateCompaction(inv, run, (ctx as GatewayRequestContext).registerPlaintextCompaction)
 }

@@ -15,6 +15,7 @@ import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 /** Gateway-only execution context; protocol contracts do not own diagnostic state. */
 export interface GatewayRequestContext extends RequestContext {
   readonly dump?: DumpAccumulator | null
+  readonly registerPlaintextCompaction?: (item: { id?: string; encrypted_content?: string }) => void
 }
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import type { DispatchObsCtx } from './obs-ctx.ts'

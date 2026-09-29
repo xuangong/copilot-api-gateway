@@ -50,7 +50,7 @@ export const copilotProviderPlugin: LlmProviderPlugin = {
             const session = await getToken(githubToken, accountType, githubHost, fetcher, { forceRefresh: true })
             return { token: session.token, baseUrl: session.apiEndpoint }
           },
-        }, fetcher, executionFetcher)
+        }, fetcher, executionFetcher, ctx.affinityAuthority)
       }
       try {
         const session = await getToken(githubToken, accountType, githubHost, fetcher)
@@ -72,6 +72,7 @@ export const copilotProviderPlugin: LlmProviderPlugin = {
           },
           fetcher,
           executionFetcher,
+          ctx.affinityAuthority,
         )
       } catch (err) {
         if (!ctx.copilotFallback) throw err

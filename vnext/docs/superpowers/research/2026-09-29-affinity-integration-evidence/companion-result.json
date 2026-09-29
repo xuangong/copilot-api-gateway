@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "runtime": "actual authenticated Bun/SQLite Messages via Responses stream",
+  "cases": [
+    "partial-final-companion-complete",
+    "complete-companion-raw-replay",
+    "conflicting-companion-no-signed-success"
+  ],
+  "calls": 3,
+  "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-app-runtime-T9M5Gu"
+}

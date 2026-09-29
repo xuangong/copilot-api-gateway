@@ -1,3 +1,4 @@
+import { configurationAffinityAuthority } from "./affinity-authority"
 import { parseOpaqueCompatibilityDeclaration } from "@vibe-llm/provider-llm"
 import { catalogWithCopilotVariants } from "@vibe-llm/provider-copilot"
 import { CatalogCoordinator, CatalogDeadline, CatalogUnavailableError, type CatalogResult } from "./catalog-coordinator.ts"
@@ -90,6 +91,9 @@ export async function createProviderFromUpstream(
   return plugin.createFromUpstream(upstream, {
     getCachedCopilotToken,
     deferCredentials: true,
+    ...((upstream.provider === "custom" || upstream.provider === "azure" || upstream.provider === "copilot")
+      && "rowIncarnation" in upstream && "catalogGeneration" in upstream
+      ? { affinityAuthority: configurationAffinityAuthority(upstream as StoredUpstreamRecord, getAuthoritativeRepo().upstreams) } : {}),
     copilotFallback: copilot,
     fetcherForUpstream,
     executionFetcherForUpstream,

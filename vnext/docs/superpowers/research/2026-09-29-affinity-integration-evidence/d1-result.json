@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "runtime": "actual app/workerd/WebCrypto/D1 durable store",
+  "cases": [
+    "authenticated-egress",
+    "wrong-key-zero-egress",
+    "pin-conflict-zero-egress",
+    "immediate-durable-continuation",
+    "config-replacement-zero-egress"
+  ],
+  "calls": 2,
+  "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-app-d1-ymI2U1"
+}

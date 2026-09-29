@@ -9,6 +9,7 @@ export const azureProviderPlugin: LlmProviderPlugin = {
       upstream.config as unknown as AzureProviderConfig,
       ctx.fetcherForUpstream?.(upstream.id),
       executionFactory ? request => executionFactory(upstream.id, request) : undefined,
+      ctx.affinityAuthority,
     )
   },
 }

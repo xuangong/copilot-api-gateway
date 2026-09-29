@@ -1,3 +1,6 @@
+import { expandShimCompactionItems } from "./interceptors/with-responses-compact-shim"
+import type { CanonicalResponsesPayload } from "@vibe-llm/protocols/responses"
+import { createRequestAffinity, type RequestAffinity } from "../../shared/affinity-request"
 import { PerformanceRecorder } from "../../observability/performance-recorder"
 // vnext/packages/gateway/src/data-plane/chat-flow/responses/serve.ts
 /**
@@ -100,7 +103,7 @@ type ResponsesPayload = Record<string, unknown> & {
 
 type ResponsesServeAuth = ResponsesAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy' | 'responsesRetentionSeconds'>
 
-type ResponsesExtra = { readonly mergedInputItems: unknown[]; readonly incomingModel: string; readonly upstreamPin?: string; readonly onCompleted?: ResponsesCompletionWriter }
+type ResponsesExtra = { readonly affinity?: RequestAffinity; readonly mergedInputItems: unknown[]; readonly incomingModel: string; readonly upstreamPin?: string; readonly onCompleted?: ResponsesCompletionWriter }
 
 const responsesHooks: ServeTemplateHooks<
   ResponsesPayload,
@@ -145,6 +148,7 @@ const responsesHooks: ServeTemplateHooks<
         payload.store !== false && (ctx.auth.responsesRetentionSeconds ?? 0) > 0
           ? ctx.auth.responsesRetentionSeconds : undefined,
       )
+      payload = expandShimCompactionItems(payload as unknown as CanonicalResponsesPayload) as unknown as ResponsesPayload
       const expanded = (payload as { input?: unknown }).input
       const retentionSeconds = ctx.auth.responsesRetentionSeconds ?? 0
       const onCompleted = retentionSeconds > 0 && ctx.auth.apiKeyId && payload.store !== false && ctx.extras.action !== "compact"
@@ -153,10 +157,11 @@ const responsesHooks: ServeTemplateHooks<
       const inputItems = Array.isArray(expanded) ? expanded : []
       const mergedInputItems = onCompleted ? structuredClone(inputItems) : inputItems
       const resolved = resolveKeyModel(payload.model, ctx.auth.routingPolicy)
+      const affinity = await createRequestAffinity("responses", { ...payload, model: resolved.routedModel }, ctx.auth)
       return {
         kind: 'continue',
         payload: { ...payload, model: resolved.routedModel },
-        extra: { mergedInputItems, onCompleted, incomingModel: resolved.incomingModel, ...(resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {}) },
+        extra: { affinity, mergedInputItems, onCompleted, incomingModel: resolved.incomingModel, ...(resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {}) },
       } satisfies PreProcessResult<ResponsesPayload, ResponsesExtra>
     } catch (err) {
       // PreviousResponseNotFoundError carries only `status: 400` (no
@@ -189,6 +194,7 @@ const responsesHooks: ServeTemplateHooks<
 
   runAttempt: (a) => responsesAttempt.generate({
     payload: a.payload,
+    affinity: a.extra?.affinity,
     auth: a.extra?.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
     ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId },
     dump: a.dump as DumpAccumulator | null,
@@ -200,6 +206,7 @@ const responsesHooks: ServeTemplateHooks<
 
   respond: (r, c) => respondResponses(r, {
     wantsStream: c.wantsStream,
+    affinity: c.extra?.affinity,
     onCompleted: c.extra?.onCompleted,
     mergedInputItems: c.extra?.mergedInputItems,
     downstreamAbortController: c.downstreamAbortController,

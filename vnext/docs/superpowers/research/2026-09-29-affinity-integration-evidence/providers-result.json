@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "runtime": "actual Bun providers + loopback HTTP + real SQLite authority",
+  "cases": [
+    "copilot-fast-exact-and-replacement-zero-io",
+    "copilot-context-header-exact-and-replacement-zero-io",
+    "copilot-effort-header-exact-and-replacement-zero-io",
+    "azure-deployment-exact-and-replacement-zero-io",
+    "copilot-401-replacement-no-refresh-retry",
+    "aborted-preparation-zero-io"
+  ],
+  "inferenceCalls": 5,
+  "sessionPreparations": 4,
+  "refreshes": 0,
+  "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-provider-runtime-aGRysh"
+}

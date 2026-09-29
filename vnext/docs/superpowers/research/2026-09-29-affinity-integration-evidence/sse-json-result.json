@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "runtime": "actual authenticated Bun/SQLite source JSON from explicit upstream SSE",
+  "cases": [
+    "messages-json-via-messages-sse-and-replay",
+    "responses-json-via-messages-sse-and-replay",
+    "messages-json-via-responses-sse-and-replay",
+    "responses-json-via-responses-sse-and-replay"
+  ],
+  "calls": 8,
+  "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-app-runtime-kN1ZGj"
+}

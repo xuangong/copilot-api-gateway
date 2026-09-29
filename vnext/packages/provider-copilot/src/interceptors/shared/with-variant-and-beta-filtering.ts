@@ -1,3 +1,4 @@
+import type { ModelsResponse } from "../../models"
 // src/providers/copilot/interceptors/shared/with-variant-and-beta-filtering.ts
 import type { AccountType } from "../../account-type"
 import { getCachedRawModels } from "../../raw-models-cache"
@@ -52,11 +53,12 @@ export const createVariantAndBetaFilteringInterceptor = (
   fetcher?: Fetcher,
   onSelection?: (selection: CopilotVariantSelection) => void,
   sourceProtocol?: string,
+  acceptedModels?: ModelsResponse,
 ): CopilotInterceptor => {
   return async (inv, _ctx, run) => {
     const kind = KIND_BY_ENDPOINT[inv.endpoint]
     if (kind !== null && kind !== undefined) {
-      const error = await applyVariantAndBetaFiltering(inv, kind, getCopilotToken(), accountType, getBaseUrl(), fetcher, onSelection, sourceProtocol)
+      const error = await applyVariantAndBetaFiltering(inv, kind, getCopilotToken(), accountType, getBaseUrl(), fetcher, onSelection, sourceProtocol, acceptedModels)
       if (error) return error
     }
     return run()
@@ -72,6 +74,7 @@ const applyVariantAndBetaFiltering = async (
   fetcher?: Fetcher,
   onSelection?: (selection: CopilotVariantSelection) => void,
   sourceProtocol?: string,
+  acceptedModels?: ModelsResponse,
 ): Promise<Response | undefined> => {
   const { payload, headers } = inv
   const rawModelId = typeof payload.model === "string" ? payload.model : undefined
@@ -100,9 +103,9 @@ const applyVariantAndBetaFiltering = async (
   const wantFast = payload.speed === "fast" || payload.service_tier === "priority"
   const requiresFast = wantFast && (sourceProtocol === "messages" || (!sourceProtocol && kind === "messages"))
   let selection: CopilotVariantSelection | undefined
-  if (modelId && copilotToken && (modelId.startsWith("claude-") || wantFast || modelId.endsWith("-fast"))) {
+  if (modelId && (copilotToken || acceptedModels) && (modelId.startsWith("claude-") || wantFast || modelId.endsWith("-fast"))) {
     try {
-      const rawModels = await getCachedRawModels(copilotToken, accountType, baseUrl, fetcher)
+      const rawModels = acceptedModels ?? await getCachedRawModels(copilotToken, accountType, baseUrl, fetcher)
       const exactPin = rawModels.data.find(model => model.id === rawModelId)
       selection = selectCopilotVariant(rawModels, exactPin?.id ?? modelId, inv.endpoint, {
         context1m: wantContext1m, reasoningEffort: effectiveEffort, fast: wantFast,

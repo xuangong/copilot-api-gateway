@@ -1,3 +1,5 @@
+import { AffinityRoutingUnavailableError } from "../../../shared/affinity/analysis.ts"
+import { fetchAffinityUpstream, selectAffinityCandidate, materializeAffinity, affinityFence, acceptAffinityExecution, type RequestAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
 import { selectedTierFrames } from "../shared/execution-tier"
 import type { GatewayRequestContext } from "../shared/gateway-ctx.ts"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
@@ -90,6 +92,8 @@ export type ResponsesAttemptResult =
 export type ResponsesAttemptAuth = SelectBindingAuth
 
 export interface ResponsesAttemptArgs {
+  readonly affinity?: RequestAffinity
+  readonly affinityMaterialized?: boolean
   readonly dump?: DumpAccumulator | null
   readonly payload: Record<string, unknown> & { model: string; stream?: boolean; input?: unknown; tools?: unknown }
   readonly auth: ResponsesAttemptAuth
@@ -136,13 +140,13 @@ export type SelectResponsesBindingResult =
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
 
 export type SelectResponsesBinding = (
-  args: { model: string; auth: ResponsesAttemptAuth; dump?: DumpAccumulator | null },
+  args: { model: string; affinity?: RequestAffinity; affinityOptions?: AffinityPreparationOptions; auth: ResponsesAttemptAuth; dump?: DumpAccumulator | null },
 ) => Promise<SelectResponsesBindingResult>
 
 const pickTargetForResponses = (endpoints: ModelEndpoints): EndpointKey | null =>
   selectPair('responses', endpoints)
 
-const defaultSelectBinding: SelectResponsesBinding = async ({ model, auth, dump }) => {
+const defaultSelectBinding: SelectResponsesBinding = async ({ model, auth, dump, affinity, affinityOptions }) => {
   const { candidates, sawModel, bareModel, catalogUnavailable } = await enumerateBindingCandidates({
     model,
     pickTarget: pickTargetForResponses,
@@ -155,7 +159,7 @@ const defaultSelectBinding: SelectResponsesBinding = async ({ model, auth, dump 
   })
   if (catalogUnavailable) return { kind: 'catalog-unavailable', bareModel }
   if (!sawModel) return { kind: 'model-not-found', bareModel }
-  const first = candidates[0]
+  const first = await selectAffinityCandidate(candidates, affinity, bareModel, affinityOptions)
   if (!first) return { kind: 'no-eligible-binding', bareModel }
   const translator = getTranslator('responses', first.targetEndpoint)
   if (!translator) return { kind: 'no-translator', bareModel, targetEndpoint: first.targetEndpoint }
@@ -222,7 +226,13 @@ export async function* synthesizeResponsesFramesFromJson(
 export const responsesAttempt = {
   generate: async (args: ResponsesAttemptArgs): Promise<ResponsesAttemptResult> => {
     const selectFn = args.selectBinding ?? defaultSelectBinding
-    const sel = await selectFn({ model: args.payload.model, auth: args.auth, dump: args.dump })
+    let sel: Awaited<ReturnType<typeof selectFn>>
+    try {
+      sel = await selectFn({ model: args.payload.model, auth: args.auth, dump: args.dump, affinity: args.affinity, affinityOptions: { signal: args.ctx.downstreamAbortSignal, inheritedHeaders: args.inheritedHeaders, action: args.action } })
+    } catch (error) {
+      if (error instanceof AffinityRoutingUnavailableError) return llmInternalErrorResult(error.status, error)
+      throw error
+    }
 
     if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(MODEL_CATALOG_UNAVAILABLE))
     if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
@@ -239,7 +249,7 @@ export const responsesAttempt = {
       // `web_search_call` items, a translated one cannot.
       sourceApi: invocationSourceApi(args.telemetryCtx.sourceApi, 'responses'),
       action: args.action,
-      payload: args.payload as Record<string, unknown>,
+      payload: materializeAffinity(args.affinityMaterialized ? undefined : args.affinity, args.payload, sel.bareModel),
       headers: { ...(args.inheritedHeaders ?? {}) },
     }
     // Provider-declared interceptors go last, i.e. innermost: they wrap the
@@ -280,6 +290,8 @@ export const responsesAttempt = {
             return (await hubAttempt.generate({
               selectBinding: async () => ({ ...sel, translator: getTranslator(hubProtocol, hubProtocol)! }),
               payload: innerArgs.payload as never,
+              affinity: args.affinity,
+              affinityMaterialized: true,
               auth: innerArgs.auth as never,
               ctx: { downstreamAbortSignal: innerArgs.signal } as never,
               dump: innerArgs.dump,
@@ -307,6 +319,7 @@ export const responsesAttempt = {
       const headers = new Headers({ 'content-type': 'application/json' })
       for (const [k, v] of Object.entries(invocation.headers)) headers.set(k, v)
       const providerReq: ProviderRequest = {
+        beforeInference: affinityFence(args.affinity),
         endpoint: 'responses',
         payload: upstreamPayload,
         headers,
@@ -318,7 +331,8 @@ export const responsesAttempt = {
       }
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const publicModel = sel.bareModel
-      upstreamResp = await fetchWithPerformance(args.telemetryCtx.metrics, "responses", providerReq, () => sel.binding.provider.fetch(providerReq))
+      upstreamResp = await fetchWithPerformance(args.telemetryCtx.metrics, "responses", providerReq, () => fetchAffinityUpstream(args.affinity, providerReq, request => sel.binding.provider.fetch(request)))
+      if (upstreamResp.status >= 200 && upstreamResp.status < 300) acceptAffinityExecution(args.affinity, upstreamResp)
       const execution = upstreamResp.execution ? Object.freeze({ ...upstreamResp.execution }) : undefined
       const providerModelKey = execution?.modelKey ?? initialProviderModelKey(bindingForTelemetry, publicModel)
       if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
@@ -339,7 +353,7 @@ export const responsesAttempt = {
       // `response.failed` (failed).
       const isClientStreaming = invocation.payload.stream === true
       const upstreamContentType = upstreamResp.headers.get('content-type') ?? ''
-      const upstreamLooksJson = !isClientStreaming || upstreamContentType.includes('application/json')
+      const upstreamLooksJson = !upstreamContentType.includes('text/event-stream') && (!isClientStreaming || upstreamContentType.includes('application/json'))
 
       let frames: AsyncIterable<ProtocolFrame<ResponsesStreamEvent>>
       if (upstreamLooksJson) {
@@ -385,6 +399,9 @@ export const responsesAttempt = {
       // globally-owned upstreams and mis-reports a reachable model as absent.
       const chainCtx: GatewayRequestContext = {
         ...args.ctx,
+        registerPlaintextCompaction: item => {
+          if (item.id && item.encrypted_content) args.affinity?.plaintextCompactions?.add(JSON.stringify([item.id, item.encrypted_content]))
+        },
         dump: args.dump,
         incomingModel: args.telemetryCtx.incomingModel,
         targetEndpoint: sel.targetEndpoint,

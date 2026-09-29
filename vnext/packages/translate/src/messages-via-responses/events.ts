@@ -38,6 +38,7 @@ interface RespWebSearchResult {
 }
 
 interface RespOutputItem {
+  encrypted_content?: string
   type: string
   id?: string
   call_id?: string
@@ -148,6 +149,8 @@ interface FunctionCallState {
 }
 
 interface State {
+  reasoningDone: Set<number>
+  thinkingText: Map<number, string>
   messageCompleted: boolean
   nextBlockIndex: number
   /** Map of "outputIndex:contentIndex" → block index (re-open same text block). */
@@ -164,6 +167,7 @@ interface State {
 
 function createState(): State {
   return {
+    reasoningDone: new Set(), thinkingText: new Map(),
     messageCompleted: false,
     nextBlockIndex: 0,
     textBlockByKey: new Map(),
@@ -178,9 +182,14 @@ function createState(): State {
 
 function closeOpenBlocks(state: State, out: MessagesEvent[]): void {
   for (const blockIndex of state.openBlocks) {
+    // Responses may finalize reasoning after a following text/tool item starts.
+    // Keep its Messages block open until the signature arrives.
+    const pendingThinking = [...state.thinkingBlockByOutputIndex].some(([outputIndex, index]) =>
+      index === blockIndex && !state.reasoningDone.has(outputIndex))
+    if (pendingThinking) continue
     out.push({ type: 'content_block_stop', index: blockIndex })
+    state.openBlocks.delete(blockIndex)
   }
-  state.openBlocks.clear()
 }
 
 function openTextBlock(
@@ -413,11 +422,39 @@ function handleReasoningSummaryDelta(
   if (!ev.delta) return []
   const out: MessagesEvent[] = []
   const blockIndex = openThinkingBlock(state, ev.output_index, out)
+  state.thinkingText.set(ev.output_index, (state.thinkingText.get(ev.output_index) ?? "") + ev.delta)
   out.push({
     type: 'content_block_delta',
     index: blockIndex,
     delta: { type: 'thinking_delta', thinking: ev.delta } as never,
   })
+  return out
+}
+
+function closeReasoningItem(ev: RespOutputItemDoneEvent, state: State): MessagesEvent[] {
+  if (ev.item.type !== "reasoning" || state.reasoningDone.has(ev.output_index)) return []
+  state.reasoningDone.add(ev.output_index)
+  const out: MessagesEvent[] = []
+  const text = (ev.item.summary ?? []).map(part => part.text ?? "").join("")
+  if (!ev.item.summary?.length && !state.thinkingText.has(ev.output_index) && ev.item.encrypted_content !== undefined) {
+    closeOpenBlocks(state, out)
+    const index = state.nextBlockIndex++
+    out.push({ type: "content_block_start", index, content_block: { type: "redacted_thinking", data: ev.item.encrypted_content } } as MessagesEvent)
+    out.push({ type: "content_block_stop", index })
+    return out
+  }
+  if (!text && ev.item.encrypted_content === undefined && !state.thinkingText.has(ev.output_index)) return out
+  const index = openThinkingBlock(state, ev.output_index, out)
+  const streamed = state.thinkingText.get(ev.output_index) ?? ""
+  if (ev.item.summary !== undefined) {
+    if (!text.startsWith(streamed)) throw new Error("Invalid opaque reasoning companion")
+    const suffix = text.slice(streamed.length)
+    if (suffix) out.push({ type: "content_block_delta", index, delta: { type: "thinking_delta", thinking: suffix } } as MessagesEvent)
+    state.thinkingText.set(ev.output_index, text)
+  }
+  if (ev.item.encrypted_content !== undefined) out.push({ type: "content_block_delta", index, delta: { type: "signature_delta", signature: ev.item.encrypted_content } } as MessagesEvent)
+  out.push({ type: "content_block_stop", index })
+  state.openBlocks.delete(index)
   return out
 }
 
@@ -435,6 +472,8 @@ function handleCompleted(ev: RespCompletedEvent, state: State): MessagesEvent[] 
   ev.response.output.forEach((item, outputIndex) => item.content?.forEach((part, contentIndex) => {
     if (part.type === 'refusal') out.push(...handleRefusal({ type: 'response.refusal.done', output_index: outputIndex, content_index: contentIndex, refusal: part.refusal ?? '' }, state))
   }))
+  ev.response.output.forEach((item, output_index) => out.push(...closeReasoningItem({ type: "response.output_item.done", item, output_index }, state)))
+  for (const outputIndex of state.thinkingBlockByOutputIndex.keys()) state.reasoningDone.add(outputIndex)
   closeOpenBlocks(state, out)
   state.functionCallState.clear()
   state.searchCallState.clear()
@@ -462,6 +501,7 @@ function handleCompleted(ev: RespCompletedEvent, state: State): MessagesEvent[] 
 
 function handleStreamError(state: State, message: string, ...errors: unknown[]): MessagesEvent[] {
   const out: MessagesEvent[] = []
+  for (const outputIndex of state.thinkingBlockByOutputIndex.keys()) state.reasoningDone.add(outputIndex)
   closeOpenBlocks(state, out)
   state.functionCallState.clear()
   state.searchCallState.clear()
@@ -482,7 +522,7 @@ function translateOne(ev: RespEvent, state: State): MessagesEvent[] {
     case 'response.output_item.done':
       // Only a hosted search needs closing work here; every other block is
       // lazy-closed when the next one opens or when the stream completes.
-      return closeSearchCallBlock(ev, state)
+      return ev.item.type === "reasoning" ? closeReasoningItem(ev, state) : closeSearchCallBlock(ev, state)
     case 'response.output_text.delta':
       return handleTextDelta(ev, state)
     case 'response.refusal.delta':

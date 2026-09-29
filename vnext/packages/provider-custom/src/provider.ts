@@ -9,6 +9,7 @@ import {
   HTTPError,
   probeViaModels,
   type LlmModelProvider,
+  type ProviderAffinityAuthority,
   type ProbeResult,
   type ProviderModelsResponse,
   type ProviderRequest,
@@ -64,7 +65,7 @@ export class CustomProvider implements LlmModelProvider {
   private readonly fetcher: Fetcher
   private readonly executionFetcher?: ExecutionFetcherForRequest
 
-  constructor(cfg: CustomProviderConfig, fetcher: Fetcher = directFetcher, executionFetcher?: ExecutionFetcherForRequest) {
+  constructor(cfg: CustomProviderConfig, fetcher: Fetcher = directFetcher, executionFetcher?: ExecutionFetcherForRequest, private readonly affinityAuthority?: ProviderAffinityAuthority) {
     const authStyle = cfg.authStyle ?? 'bearer'
     if (authStyle !== 'none' && !cfg.apiKey) {
       throw new Error('Custom provider requires an apiKey')
@@ -163,7 +164,34 @@ export class CustomProvider implements LlmModelProvider {
     this.autoPricing = map
   }
 
+  private affinityModel(req: Readonly<ProviderRequest>): string | undefined {
+    req.signal?.throwIfAborted()
+    if (!req.payload || typeof req.payload !== "object" || Array.isArray(req.payload) || req.payload instanceof FormData) return undefined
+    const payload = req.payload as Record<string, unknown>
+    const model = typeof payload.model === "string" ? payload.model : undefined
+    return model
+  }
+
+  async prepareAffinityExecution(req: Readonly<ProviderRequest>) {
+    const model = this.affinityModel(req)
+    return model ? this.affinityAuthority?.prepare(model) : undefined
+  }
+
   async fetch(req: ProviderRequest): Promise<ProviderResponse> {
+    const model = this.affinityModel(req)
+    const affinityExecution = req.beforeInference ? await this.prepareAffinityExecution(req)
+      : model ? this.affinityAuthority?.capture(model) : undefined
+    const ordinary = resolveExecutionFetcher(this.fetcher, this.executionFetcher, req)
+    const fenced: Fetcher = async (url, init) => {
+      req.signal?.throwIfAborted()
+      if (req.beforeInference) {
+        if (!affinityExecution || !this.affinityAuthority) throw new Error("Selected opaque-state execution target is no longer available")
+        await this.affinityAuthority.assertCurrent(affinityExecution)
+        await req.beforeInference(affinityExecution)
+      }
+      req.signal?.throwIfAborted()
+      return ordinary(url, init)
+    }
     const path = this.resolvePath(req.endpoint)
     // Wrap into a Request once. Custom has no interceptor chain, so headers
     // and payload pass straight through. FormData payloads (images_edits)
@@ -176,10 +204,10 @@ export class CustomProvider implements LlmModelProvider {
     const res = await this.send(
       path,
       { method: 'POST', body, headers: req.headers, signal: req.signal },
-      { operationName: req.operationName, timeout: req.timeout, fetcher: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req) },
+      { operationName: req.operationName, timeout: req.timeout, fetcher: fenced },
       `call ${req.endpoint}`,
     )
-    return { status: res.status, headers: res.headers, body: res.body }
+    return { status: res.status, headers: res.headers, body: res.body, affinityExecution }
   }
 
   /**

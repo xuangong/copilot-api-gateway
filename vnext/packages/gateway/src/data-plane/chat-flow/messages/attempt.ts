@@ -1,3 +1,5 @@
+import { AffinityRoutingUnavailableError } from "../../../shared/affinity/analysis.ts"
+import { fetchAffinityUpstream, selectAffinityCandidate, materializeAffinity, affinityFence, acceptAffinityExecution, type RequestAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
 import { selectedTierFrames } from "../shared/execution-tier"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 import { responsesFormatGuard, responsesFormatMismatchMessage } from '@vibe-llm/provider-llm'
@@ -80,6 +82,8 @@ export type MessagesAttemptAuth = SelectBindingAuth
  * messages → messages).
  */
 export interface MessagesAttemptArgs {
+  readonly affinity?: RequestAffinity
+  readonly affinityMaterialized?: boolean
   readonly dump?: DumpAccumulator | null
   readonly payload: Record<string, unknown> & { model: string; stream?: boolean }
   readonly auth: MessagesAttemptAuth
@@ -128,13 +132,13 @@ export type SelectMessagesBindingResult =
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
 
 export type SelectMessagesBinding = (
-  args: { model: string; auth: MessagesAttemptAuth; dump?: DumpAccumulator | null },
+  args: { model: string; affinity?: RequestAffinity; affinityOptions?: AffinityPreparationOptions; auth: MessagesAttemptAuth; dump?: DumpAccumulator | null },
 ) => Promise<SelectMessagesBindingResult>
 
 const pickTargetForMessages = (endpoints: ModelEndpoints): EndpointKey | null =>
   selectPair('messages', endpoints)
 
-const defaultSelectBinding: SelectMessagesBinding = async ({ model, auth, dump }) => {
+const defaultSelectBinding: SelectMessagesBinding = async ({ model, auth, dump, affinity, affinityOptions }) => {
   const { candidates, sawModel, bareModel, catalogUnavailable } = await enumerateBindingCandidates({
     model,
     pickTarget: pickTargetForMessages,
@@ -147,7 +151,7 @@ const defaultSelectBinding: SelectMessagesBinding = async ({ model, auth, dump }
   })
   if (catalogUnavailable) return { kind: 'catalog-unavailable', bareModel }
   if (!sawModel) return { kind: 'model-not-found', bareModel }
-  const first = candidates[0]
+  const first = await selectAffinityCandidate(candidates, affinity, bareModel, affinityOptions)
   if (!first) return { kind: 'no-eligible-binding', bareModel }
   const translator = getTranslator('messages', first.targetEndpoint)
   if (!translator) return { kind: 'no-translator', bareModel, targetEndpoint: first.targetEndpoint }
@@ -319,7 +323,13 @@ export async function* synthesizeMessagesFramesFromJson(
 export const messagesAttempt = {
   generate: async (args: MessagesAttemptArgs): Promise<MessagesAttemptResult> => {
     const selectFn = args.selectBinding ?? defaultSelectBinding
-    const sel = await selectFn({ model: args.payload.model, auth: args.auth, dump: args.dump })
+    let sel: Awaited<ReturnType<typeof selectFn>>
+    try {
+      sel = await selectFn({ model: args.payload.model, auth: args.auth, dump: args.dump, affinity: args.affinity, affinityOptions: { signal: args.ctx.downstreamAbortSignal, inheritedHeaders: args.inheritedHeaders, inboundHeaders: args.inboundHeaders } })
+    } catch (error) {
+      if (error instanceof AffinityRoutingUnavailableError) return llmInternalErrorResult(error.status, error)
+      throw error
+    }
 
     // Root parity: 404 envelope uses the legacy "No messages upstream available
     // for model: <id>. Run GET /v1/models for available ids." message so SDK
@@ -339,7 +349,7 @@ export const messagesAttempt = {
       const hubAttempt = (args.hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
       return await traverseTranslation({
         dump: args.dump,
-        sourcePayload: args.payload as Record<string, unknown>,
+        sourcePayload: materializeAffinity(args.affinityMaterialized ? undefined : args.affinity, args.payload, sel.bareModel),
         sourceProtocol: 'messages',
         hubProtocol,
         translator: sel.translator,
@@ -347,6 +357,8 @@ export const messagesAttempt = {
           return (await hubAttempt.generate({
             selectBinding: async () => ({ ...sel, translator: getTranslator(hubProtocol, hubProtocol)! }),
             payload: innerArgs.payload as never,
+              affinity: args.affinity,
+              affinityMaterialized: true,
             auth: innerArgs.auth as never,
             // Hosted tools in the hub still need this key's search settings.
             ctx: { ...args.ctx, downstreamAbortSignal: innerArgs.signal },
@@ -356,7 +368,7 @@ export const messagesAttempt = {
             snapshotMode: innerArgs.snapshotMode,
           } as never)) as never
         },
-        inheritedHeaders: args.inheritedHeaders ?? {},
+        inheritedHeaders: { ...allowedInboundHeaders(args.inboundHeaders, sel.binding.provider), ...(args.inheritedHeaders ?? {}) },
         inheritedTelemetryCtx: args.telemetryCtx,
         auth: args.auth,
         signal: args.ctx.downstreamAbortSignal,
@@ -378,7 +390,7 @@ export const messagesAttempt = {
       // `telemetryCtx.sourceApi` is the only value threaded intact through
       // `traverseTranslation`, so it is the source of truth here.
       sourceApi: invocationSourceApi(args.telemetryCtx.sourceApi, 'messages'),
-      payload: args.payload as Record<string, unknown>,
+      payload: materializeAffinity(args.affinityMaterialized ? undefined : args.affinity, args.payload, sel.bareModel),
       // Client headers first, gateway-derived headers second: `inheritedHeaders`
       // comes from the translation path and is authoritative, so it wins any
       // name collision with what the caller sent.
@@ -400,6 +412,7 @@ export const messagesAttempt = {
       const headers = new Headers({ 'content-type': 'application/json' })
       for (const [k, v] of Object.entries(invocation.headers)) headers.set(k, v)
       const providerReq: ProviderRequest = {
+        beforeInference: affinityFence(args.affinity),
         endpoint: 'messages',
         payload: upstreamPayload,
         headers,
@@ -410,7 +423,8 @@ export const messagesAttempt = {
       }
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const publicModel = sel.bareModel
-      upstreamResp = await fetchWithPerformance(args.telemetryCtx.metrics, "messages", providerReq, () => sel.binding.provider.fetch(providerReq))
+      upstreamResp = await fetchWithPerformance(args.telemetryCtx.metrics, "messages", providerReq, () => fetchAffinityUpstream(args.affinity, providerReq, request => sel.binding.provider.fetch(request)))
+      if (upstreamResp.status >= 200 && upstreamResp.status < 300) acceptAffinityExecution(args.affinity, upstreamResp)
       const execution = upstreamResp.execution ? Object.freeze({ ...upstreamResp.execution }) : undefined
       const providerModelKey = execution?.modelKey ?? initialProviderModelKey(bindingForTelemetry, publicModel)
       if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
@@ -430,7 +444,7 @@ export const messagesAttempt = {
       // / `error` (failed).
       const isClientStreaming = invocation.payload.stream === true
       const upstreamContentType = upstreamResp.headers.get('content-type') ?? ''
-      const upstreamLooksJson = !isClientStreaming || upstreamContentType.includes('application/json')
+      const upstreamLooksJson = !upstreamContentType.includes('text/event-stream') && (!isClientStreaming || upstreamContentType.includes('application/json'))
 
       let frames: AsyncIterable<ProtocolFrame<MessagesStreamEvent>>
       if (upstreamLooksJson) {

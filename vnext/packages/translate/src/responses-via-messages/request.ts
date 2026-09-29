@@ -25,7 +25,7 @@ import { customToolParameters } from '../shared/responses-via/custom-tool-wrap.t
 
 const DEFAULT_MAX_TOKENS = 8192
 
-interface ContentBlockLike { type: string; text?: string; cache_control?: unknown }
+interface ContentBlockLike { thinking?: string; signature?: string; data?: string; type: string; text?: string; cache_control?: unknown }
 interface MessageLike {
   role: 'user' | 'assistant'
   content: string | ContentBlockLike[]
@@ -145,8 +145,14 @@ function translateInput(input: ResponsesPayload['input']): TranslatedInput {
   const systemParts: string[] = []
   let lastAgentDelivery: MessageLike | undefined
   for (const [index, raw] of (input as Array<{ type: string }>).entries()) {
-    const item = raw as unknown as ResponsesMessageItem | ResponsesFunctionCallItem | ResponsesFunctionCallOutputItem | { type: 'agent_message' }
+    const item = raw as unknown as ResponsesMessageItem | ResponsesFunctionCallItem | ResponsesFunctionCallOutputItem | { type: 'agent_message' } | { type: 'reasoning'; summary?: Array<{ text?: string }>; encrypted_content?: string }
     switch (item.type) {
+      case "reasoning": {
+        if (item.encrypted_content !== undefined) appendAssistantBlock(messages, item.summary?.length
+          ? { type: "thinking", thinking: item.summary.map(part => part.text ?? "").join(""), signature: item.encrypted_content }
+          : { type: "redacted_thinking", data: item.encrypted_content })
+        break
+      }
       case 'agent_message': {
         const blocks = translateUserContent(agentMessageContent(raw, `input[${index}]`, 'messages'))
         const delivery: MessageLike = { role: 'user', content: blocks }

@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "runtime": "actual authenticated Bun/HTTP/SQLite lazy affinity",
+  "cases": [
+    "ordinary-no-secret-initialization",
+    "key-owner-change-before-first-signature-rejected",
+    "captured-old-target-never-authorizes-replacement-replay"
+  ],
+  "calls": 3,
+  "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-lazy-runtime-A1MFec"
+}

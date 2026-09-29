@@ -26,13 +26,15 @@ interface AnthropicToolResultBlock {
   tool_use_id: string
   content?: string | Array<{ type: string; text?: string }>
 }
-interface AnthropicThinkingBlock { type: 'thinking'; thinking?: string }
+interface AnthropicThinkingBlock { type: 'thinking'; thinking?: string; signature?: string }
+interface AnthropicRedactedBlock { type: 'redacted_thinking'; data: string }
 type ContentBlock =
   | AnthropicTextBlock
   | AnthropicImageBlock
   | AnthropicToolUseBlock
   | AnthropicToolResultBlock
   | AnthropicThinkingBlock
+  | AnthropicRedactedBlock
 
 interface MessageLike {
   role: 'user' | 'assistant' | 'system'
@@ -43,6 +45,7 @@ interface MessagesTool { name: string; description?: string; input_schema?: unkn
 interface AnthropicToolChoice { type?: 'auto' | 'any' | 'tool' | 'none'; name?: string }
 
 type ResponseInputItem =
+  | { type: "reasoning"; summary: Array<{ type: "summary_text"; text: string }>; encrypted_content: string }
   | { type: 'message'; role: 'user' | 'assistant' | 'system'; content: string | Array<Record<string, unknown>> }
   | { type: 'function_call'; call_id: string; name: string; arguments: string }
   | { type: 'function_call_output'; call_id: string; output: string }
@@ -150,8 +153,14 @@ function translateAssistantMessage(message: MessageLike): ResponseInputItem[] {
     if (block.type === 'text') {
       pending.push({ type: 'output_text', text: block.text })
     }
-    // thinking blocks are surface-output only — Responses input has no slot
-    // for past reasoning, so they're dropped on the request side.
+    if (block.type === "thinking" && block.signature !== undefined) {
+      flushPending(pending, out, "assistant")
+      out.push({ type: "reasoning", summary: [{ type: "summary_text", text: block.thinking ?? "" }], encrypted_content: block.signature })
+    }
+    if (block.type === "redacted_thinking") {
+      flushPending(pending, out, "assistant")
+      out.push({ type: "reasoning", summary: [], encrypted_content: block.data })
+    }
   }
   flushPending(pending, out, 'assistant')
   return out

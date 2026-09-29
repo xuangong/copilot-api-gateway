@@ -55,3 +55,50 @@ test("no codec leaves raw behavior; foreign and owned synthetic items are distin
   const plan = await analyzeAffinityRequest("responses", { input: [{ type: "reasoning", encrypted_content: synthetic }, ...body.input] }, codec)
   expect(plan.materialize(target)).toEqual(body)
 })
+
+test("unknown provider identity removes only reconstructible owned blocks and retains foreign state", async () => {
+  const reasoning = await stampAffinityItem("responses", { type: "reasoning", encrypted_content: "own" }, target, codec)
+  const foreign = { type: "reasoning", encrypted_content: "foreign" }
+  const optional = await analyzeAffinityRequest("responses", { input: [reasoning, foreign] }, codec)
+  expect(optional.classify(undefined)).toBe("degraded")
+  expect(optional.materialize(undefined).input).toEqual([foreign])
+  const required = await stampAffinityItem("responses", { type: "compaction", encrypted_content: "required" }, target, codec)
+  const plan = await analyzeAffinityRequest("responses", { input: [required] }, codec)
+  expect(plan.classify(undefined)).toBe("unavailable")
+  expect(() => plan.materialize(undefined)).toThrow(AffinityRoutingUnavailableError)
+})
+
+test("nested agent state is required, index independent, and binds routing and visible companion", async () => {
+  const raw = { type: "agent_message", author: "worker", recipient: "lead", agent: "one", content: [{ type: "text", text: "answer" }, { type: "encrypted_content", encrypted_content: "first" }, { type: "encrypted_content", encrypted_content: "second" }] }
+  const item = await stampAffinityItem("responses", raw, target, codec)
+  const plan = await analyzeAffinityRequest("responses", { input: [{ type: "message", content: "prefix" }, item] }, codec)
+  expect(plan.hasRequiredOwned).toBe(true)
+  expect(plan.classify(other)).toBe("unavailable")
+  expect(plan.materialize(target).input).toEqual([{ type: "message", content: "prefix" }, raw])
+  const moved = await analyzeAffinityRequest("responses", { input: [item] }, codec)
+  expect(moved.materialize(target).input).toEqual([raw])
+  for (const changed of [{ ...item, recipient: "elsewhere" }, { ...item, content: [{ type: "text", text: "changed" }, ...(item.content as unknown[]).slice(1)] }]) {
+    await expect(analyzeAffinityRequest("responses", { input: [changed] }, codec)).rejects.toBeInstanceOf(InvalidAffinityStateError)
+  }
+})
+
+test("nested opaque group rejects valid-slot duplication but allows opaque-slot exchange", async () => {
+  const raw = { type: "agent_message", author: "worker", content: [{ type: "encrypted_content", encrypted_content: "A" }, { type: "encrypted_content", encrypted_content: "B" }] }
+  const signed = await stampAffinityItem("responses", raw, target, codec)
+  const values = signed.content as Array<Record<string, unknown>>
+  await expect(analyzeAffinityRequest("responses", { input: [{ ...signed, content: [values[0], values[0]] }] }, codec)).rejects.toBeInstanceOf(InvalidAffinityStateError)
+  const exchanged = await analyzeAffinityRequest("responses", { input: [{ ...signed, content: [values[1], values[0]] }] }, codec)
+  expect(exchanged.materialize(target).input).toEqual([{ ...raw, content: [...raw.content].reverse() }])
+})
+
+
+test("legacy single nested slot remains valid while legacy multi-slot carriers fail closed", async () => {
+  for (const count of [1, 2]) {
+    const content = Array.from({ length: count }, () => ({ type: "encrypted_content" }))
+    const field = { domain: "responses/agent_message/encrypted_content", block: JSON.stringify({ content }) }
+    const signed = await codec.encode("legacy", target, field)
+    const body = { input: [{ type: "agent_message", content: content.map(block => ({ ...block, encrypted_content: signed })) }] }
+    if (count === 1) expect((await analyzeAffinityRequest("responses", body, codec)).classify(target)).toBe("exact")
+    else await expect(analyzeAffinityRequest("responses", body, codec)).rejects.toBeInstanceOf(InvalidAffinityStateError)
+  }
+})

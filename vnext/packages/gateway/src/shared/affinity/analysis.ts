@@ -1,6 +1,7 @@
+import { decodeOpaqueValue, splitOpaqueTrailer } from "@vibe-llm/protocols/common"
 import { affinityTargetMatch, parseAffinityExecutionTarget } from "@vibe-llm/provider-llm"
 import type { AffinityExecutionTarget } from "@vibe-llm/provider-llm"
-import { InvalidAffinityStateError } from "./carrier.ts"
+import { AFFINITY_MARKER, MAX_AFFINITY_WIRE_CHARS, MAX_AFFINITY_PAYLOAD_BYTES, InvalidAffinityStateError } from "./carrier.ts"
 import type { AffinityCodec, AffinityField, DecodedAffinity } from "./carrier.ts"
 
 export type AffinityProtocol = "responses" | "messages"
@@ -13,6 +14,7 @@ interface OwnedBlock extends Block { decoded: Array<{ key: string; state: Extrac
 
 export class AffinityRoutingUnavailableError extends Error {
   readonly code = "affinity_routing_unavailable"
+  readonly status = 503
   constructor() {
     super("No authorized compatible route for opaque state")
     this.name = "AffinityRoutingUnavailableError"
@@ -57,6 +59,34 @@ function slots(protocol: AffinityProtocol, item: JsonObject): Slot[] {
   return keys.filter(key => typeof item[key] === "string").map(key => ({ key, field: { domain: `${protocol}/${domainType}/${key}`, block } }))
 }
 
+async function agentField(item: JsonObject, carried: boolean): Promise<AffinityField> {
+  const content = Array.isArray(item.content) ? item.content.map(value => object(value)
+    ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== "encrypted_content")) : value) : []
+  const values = Array.isArray(item.content) ? item.content.flatMap(value =>
+    object(value) && value.type === "encrypted_content" && typeof value.encrypted_content === "string" ? [value.encrypted_content] : []) : []
+  const companion = { author: item.author, recipient: item.recipient, agent: item.agent, content }
+  if (values.length < 2) return { domain: "responses/agent_message/encrypted_content", block: JSON.stringify(canonical(companion)) }
+  // Original bytes are public in the opaque carrier. Their untrusted digests
+  // construct AAD only: every carried slot must then authenticate that same group.
+  // A sorted multiset binds duplication/substitution without binding positions.
+  const commitment = await Promise.all(values.map(async value => {
+    let bytes: Uint8Array
+    if (carried && value.startsWith(AFFINITY_MARKER)) {
+      if (!value.startsWith(`${AFFINITY_MARKER}1:`) || value.length > MAX_AFFINITY_WIRE_CHARS) throw new InvalidAffinityStateError()
+      const split = splitOpaqueTrailer(value.slice(AFFINITY_MARKER.length + 2), 28)
+      if (!split || split.original.length > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
+      bytes = split.original
+    } else {
+      if (value.length > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
+      bytes = decodeOpaqueValue(value).bytes
+    }
+    if (bytes.length > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
+    const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes).buffer)
+    return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("")
+  }))
+  return { domain: "responses/agent_message/encrypted_content/group-v2", block: JSON.stringify(canonical({ ...companion, opaqueGroup: commitment.sort() })) }
+}
+
 /** Egress building block only. Call after actual execution identity is finalized. */
 export async function stampAffinityItem(protocol: AffinityProtocol, item: Readonly<JsonObject>, target: AffinityExecutionTarget, codec: AffinityCodec): Promise<JsonObject> {
   const copy: JsonObject = structuredClone({ ...item })
@@ -64,18 +94,32 @@ export async function stampAffinityItem(protocol: AffinityProtocol, item: Readon
     const value = copy[slot.key]
     if (typeof value === "string") copy[slot.key] = await codec.encode(value, target, slot.field)
   }
+  if (protocol === "responses" && item.type === "agent_message" && Array.isArray(copy.content)) {
+    const field = await agentField(item, false)
+    for (const block of copy.content) if (object(block) && block.type === "encrypted_content" && typeof block.encrypted_content === "string") {
+      block.encrypted_content = await codec.encode(block.encrypted_content, target, field)
+    }
+  }
   return copy
 }
 
-function blocks(protocol: AffinityProtocol, body: JsonObject): Block[] {
+async function blocks(protocol: AffinityProtocol, body: JsonObject): Promise<Block[]> {
   const found: Block[] = []
   if (protocol === "responses") {
     if (!Array.isArray(body.input)) return found
-    body.input.forEach((item, index) => {
-      if (!object(item)) return
+    for (const [index, item] of body.input.entries()) {
+      if (!object(item)) continue
+      if (item.type === "agent_message" && Array.isArray(item.content)) {
+        const field = await agentField(item, true)
+        item.content.forEach((block, blockIndex) => {
+          if (object(block) && block.type === "encrypted_content" && typeof block.encrypted_content === "string") found.push({
+            path: ["input", index, "content", blockIndex], slots: [{ key: "encrypted_content", field }], required: true, unsafeToRemove: true,
+          })
+        })
+      }
       found.push({ path: ["input", index], slots: slots(protocol, item),
         required: ["compaction", "compaction_summary", "context_compaction", "program", "program_output"].includes(String(item.type)), unsafeToRemove: false })
-    })
+    }
   } else {
     if (!Array.isArray(body.messages)) return found
     const messages = body.messages
@@ -94,12 +138,28 @@ function blocks(protocol: AffinityProtocol, body: JsonObject): Block[] {
   return found
 }
 
+export function containsAffinityMarker(protocol: AffinityProtocol, body: Readonly<JsonObject>): boolean {
+  const marked = (value: unknown) => typeof value === "string" && value.startsWith(AFFINITY_MARKER)
+  if (protocol === "responses") return Array.isArray(body.input) && body.input.some(item => {
+    if (!object(item)) return false
+    if (item.type === "agent_message" && Array.isArray(item.content)) return item.content.some(block => object(block) && block.type === "encrypted_content" && marked(block.encrypted_content))
+    if (["reasoning", "compaction", "compaction_summary", "context_compaction", "program", "program_output"].includes(String(item.type))) {
+      return marked(item.encrypted_content) || ((item.type === "program" || item.type === "program_output") && marked(item.fingerprint))
+    }
+    return false
+  })
+  return Array.isArray(body.messages) && body.messages.some(message => object(message) && Array.isArray(message.content)
+    && message.content.some(block => object(block) && (block.type === "thinking" ? marked(block.signature) : block.type === "redacted_thinking" && marked(block.data))))
+}
+
 export interface AffinityAnalysis {
-  classify(target: AffinityExecutionTarget): AffinityCandidateClass
+  readonly hasOwned: boolean
+  readonly hasRequiredOwned: boolean
+  classify(target: AffinityExecutionTarget | undefined): AffinityCandidateClass
   /** Input candidates must already satisfy owner/key/alias/disabled/pin policy. */
-  rankAuthorizedCandidates<T>(candidates: readonly T[], targetOf: (candidate: T) => AffinityExecutionTarget): T[]
+  rankAuthorizedCandidates<T>(candidates: readonly T[], targetOf: (candidate: T) => AffinityExecutionTarget | undefined): T[]
   /** Fresh clone per attempt. Required mismatch fails before provider invocation. */
-  materialize(target: AffinityExecutionTarget): JsonObject
+  materialize(target: AffinityExecutionTarget | undefined): JsonObject
 }
 
 /** Run after A14 plaintext-envelope expansion and policy authorization, before
@@ -107,7 +167,7 @@ export interface AffinityAnalysis {
 export async function analyzeAffinityRequest(protocol: AffinityProtocol, body: Readonly<JsonObject>, codec?: AffinityCodec): Promise<AffinityAnalysis> {
   const snapshot: JsonObject = structuredClone({ ...body })
   const owned: OwnedBlock[] = []
-  if (codec) for (const block of blocks(protocol, snapshot)) {
+  if (codec) for (const block of await blocks(protocol, snapshot)) {
     const item = at(snapshot, block.path)
     if (!object(item)) throw new InvalidAffinityStateError()
     const decoded: OwnedBlock["decoded"] = []
@@ -119,26 +179,28 @@ export async function analyzeAffinityRequest(protocol: AffinityProtocol, body: R
     }
     if (decoded.length) owned.push({ ...block, decoded })
   }
-  const shouldRemove = (block: OwnedBlock, target: AffinityExecutionTarget) => block.decoded.some(({ state }) => state.synthetic || affinityTargetMatch(state.target, target) === "incompatible")
-  const classify = (input: AffinityExecutionTarget): AffinityCandidateClass => {
-    const target = parseAffinityExecutionTarget(input)
+  const shouldRemove = (block: OwnedBlock, target: AffinityExecutionTarget | undefined) => block.decoded.some(({ state }) => state.synthetic || !target || affinityTargetMatch(state.target, target) === "incompatible")
+  const classify = (input: AffinityExecutionTarget | undefined): AffinityCandidateClass => {
+    const target = input === undefined ? undefined : parseAffinityExecutionTarget(input)
     let result: AffinityCandidateClass = "exact"
     for (const block of owned) {
       if (shouldRemove(block, target)) {
         if (block.required || block.unsafeToRemove) return "unavailable"
         result = "degraded"
-      } else if (result === "exact" && block.decoded.some(({ state }) => affinityTargetMatch(state.target, target) === "compatible")) result = "compatible"
+      } else if (target && result === "exact" && block.decoded.some(({ state }) => affinityTargetMatch(state.target, target) === "compatible")) result = "compatible"
     }
     return result
   }
   return Object.freeze({
+    hasOwned: owned.length > 0,
+    hasRequiredOwned: owned.some(block => block.required),
     classify,
-    rankAuthorizedCandidates<T>(candidates: readonly T[], targetOf: (candidate: T) => AffinityExecutionTarget): T[] {
+    rankAuthorizedCandidates<T>(candidates: readonly T[], targetOf: (candidate: T) => AffinityExecutionTarget | undefined): T[] {
       const ranks = { exact: 0, compatible: 1, degraded: 2, unavailable: 3 }
       return candidates.map((candidate, index) => ({ candidate, index, rank: ranks[classify(targetOf(candidate))] }))
         .filter(entry => entry.rank < 3).sort((a, b) => a.rank - b.rank || a.index - b.index).map(entry => entry.candidate)
     },
-    materialize(target: AffinityExecutionTarget): JsonObject {
+    materialize(target: AffinityExecutionTarget | undefined): JsonObject {
       if (classify(target) === "unavailable") throw new AffinityRoutingUnavailableError()
       const copy = structuredClone(snapshot)
       // Descending paths avoid index shifts during whole-block removal.

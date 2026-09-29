@@ -14,6 +14,7 @@ const buffer = (bytes: Uint8Array): ArrayBuffer => new Uint8Array(bytes).buffer
 
 export class InvalidAffinityStateError extends Error {
   readonly code = "invalid_affinity_state"
+  readonly status = 400
   constructor() {
     super("Invalid authenticated opaque state")
     this.name = "InvalidAffinityStateError"

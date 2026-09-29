@@ -24,6 +24,8 @@ import type { CopilotInterceptor, Invocation, RequestContext, ResponsesStreamInt
 import { runInterceptors } from "@vibe-core/service"
 import type {
   LlmModelProvider,
+  ProviderAffinityAuthority,
+  AffinityExecutionTarget,
   ProbeResult,
   ProviderRequest,
   ProviderResponse,
@@ -114,7 +116,7 @@ export class CopilotProvider implements LlmModelProvider {
   private readonly chatCompletionsChain: readonly CopilotInterceptor[]
   private readonly embeddingsChain: readonly CopilotInterceptor[]
 
-  constructor(cfg: CopilotProviderConfig, fetcher: Fetcher = directFetcher, executionFetcher?: ExecutionFetcherForRequest) {
+  constructor(cfg: CopilotProviderConfig, fetcher: Fetcher = directFetcher, executionFetcher?: ExecutionFetcherForRequest, private readonly affinityAuthority?: ProviderAffinityAuthority) {
     this.copilotToken = cfg.copilotToken
     this.accountType = cfg.accountType
     this.baseUrl = cfg.baseUrl
@@ -131,7 +133,7 @@ export class CopilotProvider implements LlmModelProvider {
     this.embeddingsChain = embeddingsPayloadInterceptors
   }
 
-  setModelCatalog(models: ModelsResponse): void { this.modelCatalog = models }
+  setModelCatalog(models: ModelsResponse): void { this.modelCatalog = structuredClone(models) }
 
   private async prepare(): Promise<void> {
     if (this.prepareSession) {
@@ -157,7 +159,33 @@ export class CopilotProvider implements LlmModelProvider {
     return pricingForCopilotModelKey(modelKey)
   }
 
+  async prepareAffinityExecution(req: Readonly<ProviderRequest>) {
+    req.signal?.throwIfAborted()
+    if (!this.modelCatalog || !this.affinityAuthority || !req.payload || typeof req.payload !== "object") return undefined
+    const headers: Record<string, string> = {}
+    req.headers.forEach((value, key) => { headers[key] = value })
+    let selected: CopilotVariantSelection | undefined
+    const interceptor = createVariantAndBetaFilteringInterceptor(() => "", this.accountType, () => this.baseUrl, undefined,
+      value => { selected = value }, req.sourceProtocol, this.modelCatalog)
+    await interceptor({ endpoint: req.endpoint, enabledFlags: defaultsForUpstream("copilot"), sourceApi: mapSourceApi(req.sourceApi),
+      payload: structuredClone(req.payload) as Record<string, unknown>, headers },
+      { requestStartedAt: Date.now(), downstreamAbortSignal: req.signal }, async () => new Response(null))
+    req.signal?.throwIfAborted()
+    return selected ? this.affinityAuthority.prepare(selected.modelKey) : undefined
+  }
+
   async fetch(req: ProviderRequest): Promise<ProviderResponse> {
+    let affinityExecution: AffinityExecutionTarget | undefined = req.beforeInference ? await this.prepareAffinityExecution(req) : undefined
+    const guard = async () => {
+      req.signal?.throwIfAborted()
+      if (req.beforeInference) {
+        if (!affinityExecution || !this.affinityAuthority) throw new Error("Selected opaque-state execution target is no longer available")
+        await this.affinityAuthority.assertCurrent(affinityExecution)
+        await req.beforeInference(affinityExecution)
+      }
+      req.signal?.throwIfAborted()
+    }
+    await guard()
     await this.prepare()
     const path = COPILOT_PATHS[req.endpoint]
     if (!path) throw new Error(`CopilotProvider does not support endpoint: ${req.endpoint}`)
@@ -180,15 +208,23 @@ export class CopilotProvider implements LlmModelProvider {
     let selection: CopilotVariantSelection | undefined
     const variantFiltering = createVariantAndBetaFilteringInterceptor(
       () => this.copilotToken, this.accountType, () => this.baseUrl, this.fetcher,
-      selected => { selection = Object.freeze({ ...selected }) }, req.sourceProtocol,
+      selected => { selection = Object.freeze({ ...selected }) }, req.sourceProtocol, this.modelCatalog,
     )
     const chain = this.interceptorsFor(req.endpoint)
     const interceptors = req.endpoint === "embeddings" ? chain : [variantFiltering, ...chain]
     const requireModel = req.requireModel ?? req.endpoint !== 'messages_count_tokens'
 
     const preservesFormat = responsesFormatGuard(req.sourceProtocol, req.endpoint, req.payload)
-    const response = await runInterceptors(inv, ctx, interceptors, () => {
+    const response = await runInterceptors(inv, ctx, interceptors, async () => {
       if (!preservesFormat(inv.payload)) return Promise.resolve(Response.json({ error: { type: "invalid_request_error", message: responsesFormatMismatchMessage, param: "text.format", code: null } }, { status: 400 }))
+      affinityExecution = selection ? req.beforeInference
+        ? await this.affinityAuthority?.prepare(selection.modelKey)
+        : this.affinityAuthority?.capture(selection.modelKey) : undefined
+      await guard()
+      const fenced: Fetcher = async (url, init) => {
+        await guard()
+        return resolveExecutionFetcher(this.fetcher, this.executionFetcher, req)(url, init)
+      }
       const preparedCall: PreparedCopilotCall = { ready: false, body: undefined, isStreaming: false }
       // Only the terminal call is retried, not the whole chain: interceptors
       // mutate inv.payload in place, so re-running them would apply their
@@ -206,12 +242,13 @@ export class CopilotProvider implements LlmModelProvider {
           timeout: req.timeout,
           extraHeaders: inv.headers,
           requireModel,
-          fetcher: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req),
+          fetcher: fenced,
           preparedCall,
         }),
+        guard,
       )
     })
-    return { status: response.status, headers: response.headers, body: response.body,
+    return { status: response.status, headers: response.headers, body: response.body, affinityExecution,
       ...(response.ok && selection ? { execution: selection } : {}),
     }
   }
@@ -228,12 +265,13 @@ export class CopilotProvider implements LlmModelProvider {
    * when it declines to issue a new token (cooldown) the unchanged token tells
    * us to give up rather than repeat a request that will fail identically.
    */
-  private async withAuthRetry<T>(op: () => Promise<T>): Promise<T> {
+  private async withAuthRetry<T>(op: () => Promise<T>, beforeRefresh?: () => Promise<void>): Promise<T> {
     try {
       return await op()
     } catch (err) {
       if (!this.refreshSession || !isAuthRejection(err)) throw err
 
+      await beforeRefresh?.()
       const staleToken = this.copilotToken
       let refreshed: { token: string; baseUrl?: string }
       try {

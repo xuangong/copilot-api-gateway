@@ -35,7 +35,7 @@ const blockToOutput = (block: PartialBlock): Record<string, unknown> => {
     return { type: 'text', text: block.text ?? '' }
   }
   if (block.type === 'tool_use' || block.type === 'server_tool_use') {
-    let input: Record<string, unknown> = {}
+    let input: unknown = block.start?.input ?? {}
     if (block.inputJson) {
       try {
         input = JSON.parse(block.inputJson) as Record<string, unknown>
@@ -92,11 +92,15 @@ export const collectMessagesProtocolEventsToResult = async (
     } else if (ev.type === 'content_block_delta') {
       const block = blocks[ev.index]
       if (!block) continue
-      const d = ev.delta as { type?: string; text?: string; partial_json?: string }
+      const d = ev.delta as { type?: string; text?: string; partial_json?: string; thinking?: string; signature?: string }
       if (d.type === 'text_delta' && typeof d.text === 'string') {
         block.text = (block.text ?? '') + d.text
       } else if (d.type === 'input_json_delta' && typeof d.partial_json === 'string') {
         block.inputJson = (block.inputJson ?? '') + d.partial_json
+      } else if (block.type === 'thinking' && d.type === 'thinking_delta' && typeof d.thinking === 'string') {
+        block.start = { ...block.start, thinking: String(block.start?.thinking ?? '') + d.thinking }
+      } else if (block.type === 'thinking' && d.type === 'signature_delta' && typeof d.signature === 'string') {
+        block.start = { ...block.start, signature: String(block.start?.signature ?? '') + d.signature }
       }
     } else if (ev.type === 'message_delta') {
       if (ev.delta.stop_reason !== undefined) stop_reason = ev.delta.stop_reason

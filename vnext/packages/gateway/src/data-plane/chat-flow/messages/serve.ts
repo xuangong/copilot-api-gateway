@@ -1,3 +1,4 @@
+import { createRequestAffinity, type RequestAffinity } from "../../shared/affinity-request"
 import { PerformanceRecorder } from "../../observability/performance-recorder"
 // vnext/packages/gateway/src/data-plane/chat-flow/messages/serve.ts
 /**
@@ -55,7 +56,7 @@ export interface MessagesServeArgs {
 type MessagesPayload = Record<string, unknown> & { model: string; stream?: boolean }
 
 type MessagesServeAuth = MessagesAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
-type MessagesExtra = { readonly incomingModel: string; readonly upstreamPin?: string }
+type MessagesExtra = { readonly affinity?: RequestAffinity; readonly incomingModel: string; readonly upstreamPin?: string }
 
 const messagesHooks: ServeTemplateHooks<
   MessagesPayload,
@@ -85,10 +86,11 @@ const messagesHooks: ServeTemplateHooks<
 
   preProcess: async (payload, ctx) => {
     const resolved = resolveKeyModel(payload.model, ctx.auth.routingPolicy)
+    const affinity = await createRequestAffinity("messages", { ...payload, model: resolved.routedModel }, ctx.auth)
     return {
       kind: 'continue',
       payload: { ...payload, model: resolved.routedModel },
-      extra: { incomingModel: resolved.incomingModel, ...(resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {}) },
+      extra: { affinity, incomingModel: resolved.incomingModel, ...(resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {}) },
     }
   },
 
@@ -96,6 +98,7 @@ const messagesHooks: ServeTemplateHooks<
 
   runAttempt: (a) => messagesAttempt.generate({
     payload: a.payload,
+    affinity: a.extra?.affinity,
     // Structural typing: extra apiKeyId on auth is ignored by attempt.
     auth: a.extra?.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
     // apiKeyId reaches the interceptors the same way the Responses flow does
@@ -112,6 +115,7 @@ const messagesHooks: ServeTemplateHooks<
 
   respond: (r, c) => respondMessages(r, {
     wantsStream: c.wantsStream,
+    affinity: c.extra?.affinity,
     downstreamAbortController: c.downstreamAbortController,
     telemetryCtx: c.telemetryCtx,
     ...(c.dump !== undefined && c.dump !== null && { dump: c.dump as DumpAccumulator }),

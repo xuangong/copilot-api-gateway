@@ -1,0 +1,26 @@
+{
+  "passed": true,
+  "runtime": "actual authenticated Bun gateway/SQLite Responses via independent Node HTTP upstream",
+  "nodeVersion": "v26.0.0",
+  "cases": [
+    "cross-translator-overflow-rejected-early",
+    "upstream-stream-cancelled",
+    "no-success-terminal",
+    "error-not-cancelled-metrics",
+    "no-success-snapshot"
+  ],
+  "outcomes": [
+    {
+      "streaming": true,
+      "chunksSent": 10,
+      "upstreamCancelled": true
+    },
+    {
+      "streaming": false,
+      "chunksSent": 9,
+      "upstreamCancelled": true
+    }
+  ],
+  "totalChunksPerRequest": 40,
+  "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-app-runtime-CQAUA5"
+}

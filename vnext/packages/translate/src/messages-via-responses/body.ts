@@ -19,6 +19,7 @@ interface ResponsesResultLike {
     call_id?: string
     name?: string
     arguments?: string
+    encrypted_content?: string
     summary?: Array<{ text?: string }>
     content?: Array<{ type: string; text?: string; refusal?: string }>
   }>
@@ -72,8 +73,8 @@ function mapOutputToContent(output: ResponsesResultLike['output']): MessagesCont
         const thinking = (item.summary ?? [])
           .map((p) => p.text ?? '')
           .join('')
-          .trim()
-        if (thinking) blocks.push({ type: 'thinking', thinking })
+        if (thinking || item.summary?.length) blocks.push({ type: 'thinking', thinking, ...(item.encrypted_content !== undefined ? { signature: item.encrypted_content } : {}) })
+        else if (item.encrypted_content !== undefined) blocks.push({ type: 'redacted_thinking', data: item.encrypted_content })
         break
       }
       case 'function_call':

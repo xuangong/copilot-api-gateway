@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "runtime": "actual authenticated Bun/SQLite native Messages JSON",
+  "cases": [
+    "ordinary-tool-json-fields-not-opaque",
+    "ordinary-tool-sse-fields-not-opaque",
+    "source-json-upstream-sse-fields-preserved"
+  ],
+  "calls": 3,
+  "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-app-runtime-gLeUW1"
+}

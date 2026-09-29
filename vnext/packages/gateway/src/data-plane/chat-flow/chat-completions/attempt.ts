@@ -1,3 +1,4 @@
+import { fetchAffinityUpstream, affinityFence, acceptAffinityExecution, type RequestAffinity } from "../../shared/affinity-request"
 import { selectedTierFrames } from "../shared/execution-tier"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 import { invocationSourceApi } from '../shared/invocation-source-api'
@@ -50,6 +51,8 @@ export type ChatCompletionsAttemptResult = LlmExecuteResult<ProtocolFrame<ChatCo
 export type ChatCompletionsAttemptAuth = SelectBindingAuth
 
 export interface ChatCompletionsAttemptArgs {
+  readonly affinity?: RequestAffinity
+  readonly affinityMaterialized?: boolean
   readonly dump?: DumpAccumulator | null
   readonly payload: Record<string, unknown> & { model: string; stream?: boolean }
   readonly auth: ChatCompletionsAttemptAuth
@@ -130,6 +133,8 @@ export const chatCompletionsAttempt = {
           return (await hubAttempt.generate({
             selectBinding: async () => ({ ...sel, translator: getTranslator(hubProtocol, hubProtocol)! }),
             payload: innerArgs.payload as never,
+            affinity: args.affinity,
+            affinityMaterialized: true,
             auth: innerArgs.auth as never,
             ctx: { downstreamAbortSignal: innerArgs.signal } as never,
             dump: innerArgs.dump,
@@ -173,6 +178,7 @@ export const chatCompletionsAttempt = {
       const headers = new Headers({ 'content-type': 'application/json' })
       for (const [k, v] of Object.entries(invocation.headers)) headers.set(k, v)
       const providerReq: ProviderRequest = {
+        beforeInference: affinityFence(args.affinity),
         endpoint: 'chat_completions',
         payload: upstreamPayload,
         headers,
@@ -187,7 +193,8 @@ export const chatCompletionsAttempt = {
       // upstream.name + upstreamModel.id + provider.getPricingForModelKey).
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const publicModel = sel.bareModel
-      upstreamResp = await fetchWithPerformance(args.telemetryCtx.metrics, "chat_completions", providerReq, () => binding.provider.fetch(providerReq))
+      upstreamResp = await fetchWithPerformance(args.telemetryCtx.metrics, "chat_completions", providerReq, () => fetchAffinityUpstream(args.affinity, providerReq, request => binding.provider.fetch(request)))
+      if (upstreamResp.status >= 200 && upstreamResp.status < 300) acceptAffinityExecution(args.affinity, upstreamResp)
       const execution = upstreamResp.execution ? Object.freeze({ ...upstreamResp.execution }) : undefined
       const providerModelKey = execution?.modelKey ?? initialProviderModelKey(bindingForTelemetry, publicModel)
       if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
@@ -214,9 +221,9 @@ export const chatCompletionsAttempt = {
       // hand the body to `parseChatCompletionsStream` lazily — buffering would
       // serialize the upstream and defeat first-byte-latency telemetry.
       const upstreamContentType = upstreamResp.headers.get('content-type') ?? ''
-      const upstreamIsJson =
-        invocation.payload.stream !== true ||
-        upstreamContentType.includes('application/json')
+      const upstreamIsJson = !upstreamContentType.includes('text/event-stream') && (
+        invocation.payload.stream !== true || upstreamContentType.includes('application/json')
+      )
       const stream = upstreamIsJson
         ? await readUpstreamJsonAsFrames(upstreamResp.body, upstreamResp)
         : parseChatCompletionsStream(upstreamResp.body, { signal: args.ctx.downstreamAbortSignal })

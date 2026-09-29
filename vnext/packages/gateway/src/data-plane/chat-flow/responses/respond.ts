@@ -1,3 +1,5 @@
+import { AffinityEgress, guardAffinityFrames } from "../../../shared/affinity/egress"
+import type { RequestAffinity } from "../../shared/affinity-request"
 import { translateStream } from "../shared/translate-stream"
 // vnext/packages/gateway/src/data-plane/chat-flow/responses/respond.ts
 /**
@@ -62,6 +64,7 @@ export interface CompletedResponsesSnapshot {
 export type ResponsesCompletionWriter = (response: CompletedResponsesSnapshot, inputItems: readonly unknown[]) => Promise<void>
 
 export interface RespondResponsesOptions {
+  readonly affinity?: RequestAffinity
   readonly onCompleted?: ResponsesCompletionWriter
   readonly mergedInputItems?: readonly unknown[]
   readonly wantsStream: boolean
@@ -262,14 +265,15 @@ const renderEventsAsSSE = (
   // sees source-shape frames; same-protocol falls through unchanged.
   const upstreamFrames: AsyncIterable<ProtocolFrame<ResponsesStreamEvent>> = result.translateEvents
     ? applyTranslatorEventsForStreaming(
-        result.events as unknown as AsyncIterable<ProtocolFrame<unknown>>,
+        guardAffinityFrames(result.events, options.affinity) as unknown as AsyncIterable<ProtocolFrame<unknown>>,
         result.translateEvents,
         options.downstreamAbortController?.signal,
         result.modelIdentity.model,
       )
-    : result.events
+    : guardAffinityFrames(result.events, options.affinity)
   const events = consumeWithState(upstreamFrames, state, options.dump)
   const output = new ResponsesFinalOutput()
+  const affinityEgress = new AffinityEgress(options.affinity)
   let cancelled = false
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -277,7 +281,7 @@ const renderEventsAsSSE = (
       try {
         for await (const frame of events) {
           if (cancelled || state.cancelled) break
-          const canonical = frame.type === "event" ? { ...frame, event: output.observe(frame.event) } : frame
+          const canonical = frame.type === "event" ? { ...frame, event: await affinityEgress.responseEvent(output.observe(frame.event)) } : frame
           if (canonical.type === "event" && canonical.event.type === "response.completed") {
             await persistCompleted(canonical.event.response, options)
           }
@@ -353,7 +357,7 @@ const renderEventsAsJson = async (
   }
   options.downstreamAbortController?.signal.addEventListener("abort", onClientAbort, { once: true })
   if (options.downstreamAbortController?.signal.aborted) onClientAbort()
-  const events = consumeWithState(result.events, state, options.dump)
+  const events = consumeWithState(guardAffinityFrames(result.events, options.affinity), state, options.dump)
   try {
     // Dispatch reassembly on hub protocol — same-protocol (or absent) →
     // responses reassembler; cross-protocol → hub reassembler so the
@@ -369,12 +373,13 @@ const renderEventsAsJson = async (
     }
     // If a translator-supplied body translator is attached, convert the
     // hub-shaped JSON back to the source (responses) JSON envelope.
-    const finalBody = result.translateBody
+    const translatedBody = result.translateBody
       ? await result.translateBody(reassembled, {
           signal: options.downstreamAbortController?.signal ?? new AbortController().signal,
           model: state.publicModel,
         })
       : reassembled
+    const finalBody = await new AffinityEgress(options.affinity).body("responses", translatedBody)
     await persistCompleted(finalBody, options)
     if (options.telemetryCtx || options.dump) {
       waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
@@ -445,13 +450,14 @@ const renderExecuteResult = async (
 /** Legacy dispatch responses already own their model identity and telemetry.
  * Gate their actual wire in one pass instead of cloning or draining a sidecar. */
 const renderBridgedResponse = async (response: Response, options: RespondResponsesOptions): Promise<Response> => {
-  if (!options.onCompleted || !response.ok) return response
+  if ((!options.onCompleted && !options.affinity?.actual) || !response.ok) return response
+  const affinityEgress = new AffinityEgress(options.affinity)
   const headers = new Headers(response.headers)
   headers.delete("content-length")
   const contentType = headers.get("content-type") ?? ""
   if (contentType.includes("application/json")) {
     try {
-      const body: unknown = await response.json()
+      const body = await affinityEgress.body("responses", await response.json())
       await persistCompleted(body, options)
       return Response.json(body, { status: response.status, headers })
     } catch {
@@ -474,7 +480,7 @@ const renderBridgedResponse = async (response: Response, options: RespondRespons
           if (abort.signal.aborted) break
           if (frame.data === "[DONE]") continue
           const parsed = JSON.parse(frame.data) as Record<string, unknown>
-          const event = output.observe((frame.event && !parsed.type ? { ...parsed, type: frame.event } : parsed) as unknown as ResponsesStreamEvent)
+          const event = await affinityEgress.responseEvent(output.observe((frame.event && !parsed.type ? { ...parsed, type: frame.event } : parsed) as unknown as ResponsesStreamEvent))
           if (event.type === "response.completed") await persistCompleted(event.response, { ...options, downstreamAbortController: abort })
           if (abort.signal.aborted) break
           controller.enqueue(encodeSseFrame(sseFrame(JSON.stringify(event), frame.event ?? event.type)))

@@ -9,6 +9,7 @@
  */
 import type { AccountType, UpstreamKind, UpstreamRecord } from '@vibe-llm/protocols/common'
 import type { Fetcher, UpstreamPlugin } from '@vibe-core/upstream'
+import type { AffinityExecutionTarget } from './opaque-affinity'
 import type { LlmModelProvider, ProviderRequest } from './types'
 
 export type ExecutionFetcherForRequest = (request: Pick<ProviderRequest, 'endpoint' | 'action'>) => Fetcher
@@ -23,7 +24,17 @@ export function resolveExecutionFetcher(
   try { return executionFactory(request) ?? ordinary } catch { return ordinary }
 }
 
+export interface ProviderAffinityAuthority {
+  /** Immutable accepted configuration actually held by this provider instance.
+   * Ordinary calls may capture provenance; owned replay must prepare/assert. */
+  capture(model: string): AffinityExecutionTarget | undefined
+  prepare(model: string): Promise<AffinityExecutionTarget | undefined>
+  assertCurrent(target: AffinityExecutionTarget): Promise<void>
+}
+
 export interface ProviderPluginContext {
+  affinityAuthority?: ProviderAffinityAuthority
+
   /** Gateway routing constructs providers before selection; defer credential I/O. */
   deferCredentials?: boolean
   /** Exchange a stored github_token for a short-lived copilot session.

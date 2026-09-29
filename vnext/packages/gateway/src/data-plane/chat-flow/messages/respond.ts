@@ -1,3 +1,5 @@
+import { AffinityEgress, guardAffinityFrames } from "../../../shared/affinity/egress"
+import type { RequestAffinity } from "../../shared/affinity-request"
 import { translateStream } from "../shared/translate-stream"
 // vnext/packages/gateway/src/data-plane/chat-flow/messages/respond.ts
 /**
@@ -62,6 +64,7 @@ import { collectResponsesProtocolEventsToResult } from '../responses/events/reas
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
 export interface RespondMessagesOptions {
+  readonly affinity?: RequestAffinity
   readonly wantsStream: boolean
   /**
    * Optional abort signal used to cancel an in-flight SSE source generator
@@ -225,13 +228,13 @@ const renderEventsAsSSE = (
   // sees source-shape frames; same-protocol falls through unchanged.
   const upstreamFrames: AsyncIterable<ProtocolFrame<MessagesStreamEvent>> = result.translateEvents
     ? applyTranslatorEventsForStreaming(
-        result.events as unknown as AsyncIterable<ProtocolFrame<unknown>>,
+        guardAffinityFrames(result.events, options.affinity) as unknown as AsyncIterable<ProtocolFrame<unknown>>,
         result.translateEvents,
         options.downstreamAbortController?.signal,
         result.modelIdentity.model,
       )
-    : result.events
-  const events = consumeWithState(upstreamFrames, state, options.dump)
+    : guardAffinityFrames(result.events, options.affinity)
+  const events = consumeWithState(new AffinityEgress(options.affinity).messages(upstreamFrames), state, options.dump)
   let cancelled = false
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -298,7 +301,7 @@ const renderEventsAsJson = async (
   options: RespondMessagesOptions,
 ): Promise<Response> => {
   const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model, result.modelIdentity.executedModelKey)
-  const events = consumeWithState(result.events, state, options.dump)
+  const events = consumeWithState(guardAffinityFrames(result.events, options.affinity), state, options.dump)
   try {
     // Dispatch reassembly on hub protocol — same-protocol (or absent) →
     // messages reassembler; cross-protocol → hub reassembler so the
@@ -316,7 +319,7 @@ const renderEventsAsJson = async (
     }
     // If a translator-supplied body translator is attached, convert the
     // hub-shaped JSON back to the source (messages) JSON envelope.
-    const finalBody = result.translateBody
+    const translatedBody = result.translateBody
       ? await result.translateBody(reassembled, {
           signal: options.downstreamAbortController?.signal ?? new AbortController().signal,
           model: state.publicModel,
@@ -325,7 +328,7 @@ const renderEventsAsJson = async (
     if (state && (options.telemetryCtx || options.dump)) {
       waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     }
-    return Response.json(finalBody)
+    return Response.json(await new AffinityEgress(options.affinity).body("messages", translatedBody))
   } catch (err) {
     state.failedAfter()
     if (state && (options.telemetryCtx || options.dump)) {

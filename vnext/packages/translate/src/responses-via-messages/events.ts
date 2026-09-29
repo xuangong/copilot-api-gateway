@@ -14,6 +14,7 @@ import { messagesRefusalResponsesError, type MessagesRefusalDetails } from '../s
 import { unwrapCustomInput } from '../shared/responses-via/custom-tool-wrap.ts'
 
 interface ResponseOutputItem {
+  encrypted_content?: string
   type: 'message' | 'reasoning' | 'function_call' | 'custom_tool_call'
   id?: string
   call_id?: string
@@ -70,8 +71,8 @@ export type ResponsesStreamEvent =
 
 type BlockInfo =
   | { kind: 'text'; outputIndex: number; itemId: string; text: string }
-  | { kind: 'thinking'; outputIndex: number; itemId: string; text: string }
-  | { kind: 'tool_use'; outputIndex: number; itemId: string; toolCallId: string; name: string; args: string }
+  | { kind: 'thinking'; outputIndex: number; itemId: string; text: string; signature: string; redacted?: boolean }
+  | { kind: 'tool_use'; outputIndex: number; itemId: string; toolCallId: string; name: string; args: string; initialArgs?: string }
 
 interface State {
   customToolNames: readonly string[]
@@ -177,7 +178,7 @@ function handleMessageStart(ev: MessageStartLike, state: State): ResponsesStream
 
 interface ContentBlockStartLike {
   index: number
-  content_block: { type: string; id?: string; name?: string }
+  content_block: { type: string; id?: string; name?: string; thinking?: string; signature?: string; data?: string }
 }
 
 function handleContentBlockStart(ev: ContentBlockStartLike, state: State): ResponsesStreamEvent[] {
@@ -205,10 +206,11 @@ function handleContentBlockStart(ev: ContentBlockStartLike, state: State): Respo
       })
       return out
     }
+    case 'redacted_thinking':
     case 'thinking': {
       const outputIndex = state.outputIndex++
       const itemId = `rs_${outputIndex}`
-      state.blockMap.set(ev.index, { kind: 'thinking', outputIndex, itemId, text: '' })
+      state.blockMap.set(ev.index, { kind: 'thinking', outputIndex, itemId, text: ev.content_block.thinking ?? '', signature: ev.content_block.signature ?? ev.content_block.data ?? '', redacted: ev.content_block.type === 'redacted_thinking' })
       const item: ResponseOutputItem = { type: 'reasoning', id: itemId, summary: [] }
       out.push({ type: 'response.output_item.added', sequence_number: nextSeq(state), output_index: outputIndex, item })
       out.push({
@@ -222,11 +224,11 @@ function handleContentBlockStart(ev: ContentBlockStartLike, state: State): Respo
       return out
     }
     case 'tool_use': {
-      const tb = ev.content_block as { type: 'tool_use'; id: string; name: string }
+      const tb = ev.content_block as { type: 'tool_use'; id: string; name: string; input?: Record<string, unknown> }
       const outputIndex = state.outputIndex++
       const custom = state.customToolNames.includes(tb.name)
       const itemId = `${custom ? 'ct' : 'fc'}_${outputIndex}`
-      state.blockMap.set(ev.index, { kind: 'tool_use', outputIndex, itemId, toolCallId: tb.id, name: tb.name, args: '' })
+      state.blockMap.set(ev.index, { kind: 'tool_use', outputIndex, itemId, toolCallId: tb.id, name: tb.name, args: '', initialArgs: tb.input && Object.keys(tb.input).length ? JSON.stringify(tb.input) : undefined })
       const item: ResponseOutputItem = {
         type: custom ? 'custom_tool_call' : 'function_call',
         id: itemId,
@@ -245,7 +247,7 @@ function handleContentBlockStart(ev: ContentBlockStartLike, state: State): Respo
 
 interface ContentBlockDeltaLike {
   index: number
-  delta: { type: string; text?: string; thinking?: string; partial_json?: string }
+  delta: { type: string; text?: string; thinking?: string; signature?: string; partial_json?: string }
 }
 
 function handleContentBlockDelta(ev: ContentBlockDeltaLike, state: State): ResponsesStreamEvent[] {
@@ -269,6 +271,7 @@ function handleContentBlockDelta(ev: ContentBlockDeltaLike, state: State): Respo
       ]
     }
     case 'thinking': {
+      if (ev.delta.type === 'signature_delta') { info.signature += ev.delta.signature ?? ''; return [] }
       if (ev.delta.type !== 'thinking_delta') return []
       const text = ev.delta.thinking ?? ''
       info.text += text
@@ -337,7 +340,7 @@ function handleContentBlockStop(ev: ContentBlockStopLike, state: State): Respons
     return out
   }
   if (info.kind === 'thinking') {
-    const item: ResponseOutputItem = { type: 'reasoning', id: info.itemId, summary: [{ type: 'summary_text', text: info.text }] }
+    const item: ResponseOutputItem = { type: 'reasoning', id: info.itemId, summary: info.redacted ? [] : [{ type: 'summary_text', text: info.text }], ...(info.signature ? { encrypted_content: info.signature } : {}) }
     state.completedItems.push(item)
     out.push({
       type: 'response.reasoning_summary_text.done',
@@ -360,6 +363,10 @@ function handleContentBlockStop(ev: ContentBlockStopLike, state: State): Respons
   }
   // tool_use
   const custom = state.customToolNames.includes(info.name)
+  if (!info.args && info.initialArgs) {
+    info.args = info.initialArgs
+    if (!custom) out.push({ type: 'response.function_call_arguments.delta', sequence_number: nextSeq(state), output_index: info.outputIndex, item_id: info.itemId, delta: info.args })
+  }
   const input = custom ? unwrapCustomInput(info.args) : undefined
   const item: ResponseOutputItem = {
     type: custom ? 'custom_tool_call' : 'function_call',
