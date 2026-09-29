@@ -35,7 +35,7 @@ import { PerformanceRecorder } from "../../observability/performance-recorder"
  * Reference: Spec 10 §3.3 (preProcess), §3.4 (responses notes).
  */
 import {
-  serveTemplate,
+  prepareTemplate,
   type KitAuthCtx,
   type KitDumpSink,
   type KitObsCtx,
@@ -61,7 +61,8 @@ import {
   type ResponsesAttemptResult,
 } from './attempt.ts'
 import { createResponseSnapshotWriter } from './completion-snapshot.ts'
-import { respondResponses, type ResponsesCompletionWriter } from './respond.ts'
+import { respondResponses, renderResponsesTurn, type ResponsesCompletionWriter } from './respond.ts'
+import { createResponsesTurn, type ResponsesTurn } from './turn.ts'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
 export interface ResponsesServeArgs {
@@ -196,7 +197,7 @@ const responsesHooks: ServeTemplateHooks<
     payload: a.payload,
     affinity: a.extra?.affinity,
     auth: a.extra?.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
-    ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId },
+    ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId, abortUpstream: a.extras.abortUpstream as (() => void) | undefined },
     dump: a.dump as DumpAccumulator | null,
     telemetryCtx: a.telemetryCtx,
     requestId: a.extras.requestId as string,
@@ -215,7 +216,25 @@ const responsesHooks: ServeTemplateHooks<
   }),
 }
 
-export async function serveResponses(args: ResponsesServeArgs): Promise<ResponsesServeResult> {
+export function startResponsesTurn(args: ResponsesServeArgs): ResponsesTurn {
+  const abortController = new AbortController()
+  const upstreamAbortController = new AbortController()
+  const onAbort = (): void => abortController.abort(args.signal?.reason)
+  if (args.signal?.aborted) onAbort()
+  else args.signal?.addEventListener("abort", onAbort, { once: true })
+  const raw = args.raw as { stream?: unknown } | null
+  const turn = createResponsesTurn(async () => {
+    const prepared = await prepareResponses(args, upstreamAbortController)
+    const common = { wantsStream: args.action !== "compact" && raw?.stream === true, downstreamAbortController: abortController, upstreamAbortController, finalizeDump: true, dump: args.dump as DumpAccumulator | null }
+    if (prepared.kind === "response") return { result: { kind: "bridged-response" as const, response: prepared.response }, options: common }
+    const c = prepared.context
+    return { result: prepared.result, options: { ...common, affinity: c.extra?.affinity, onCompleted: c.extra?.onCompleted, mergedInputItems: c.extra?.mergedInputItems, telemetryCtx: c.telemetryCtx } }
+  }, { wantsStream: args.action !== "compact" && raw?.stream === true, downstreamAbortController: abortController, upstreamAbortController, finalizeDump: true, dump: args.dump as DumpAccumulator | null })
+  void turn.completion.finally(() => args.signal?.removeEventListener("abort", onAbort))
+  return turn
+}
+
+async function prepareResponses(args: ResponsesServeArgs, upstreamAbortController: AbortController) {
   const auth: ResponsesServeAuth = {
     ownerId: args.auth.userId,
     copilot: args.auth.copilot,
@@ -223,22 +242,26 @@ export async function serveResponses(args: ResponsesServeArgs): Promise<Response
     routingPolicy: args.auth.routingPolicy,
     responsesRetentionSeconds: args.auth.responsesRetentionSeconds,
   }
-  const { response, extra } = await serveTemplate(
+  return await prepareTemplate(
     responsesHooks,
     {
       raw: args.raw,
       auth,
       obsCtx: { ...args.obsCtx, performanceRecorder: new PerformanceRecorder(false, undefined, args.obsCtx.performanceStartedAt), performanceAbortSignal: args.signal } as KitObsCtx,
-      signal: args.signal,
+      signal: upstreamAbortController.signal,
       // requestId / userAgent ride through extras so the image-gen
       // shortcut inside responsesAttempt can stamp them on upstream
       // image calls. They were dedicated args on the old serve; the
       // kit's RunAttemptArgs only standardises payload/auth/telemetry,
       // so per-endpoint passthroughs live in `extras`.
-      extras: { requestId: args.requestId, userAgent: args.userAgent, action: args.action },
+      extras: { requestId: args.requestId, userAgent: args.userAgent, action: args.action, abortUpstream: () => upstreamAbortController.abort() },
       dump: args.dump ?? null,
     },
     kitDeps,
   )
-  return { response, mergedInputItems: extra?.mergedInputItems ?? [] }
+}
+
+export async function serveResponses(args: ResponsesServeArgs): Promise<ResponsesServeResult> {
+  const turn = startResponsesTurn(args)
+  return { response: await renderResponsesTurn(turn), mergedInputItems: [...turn.mergedInputItems] }
 }

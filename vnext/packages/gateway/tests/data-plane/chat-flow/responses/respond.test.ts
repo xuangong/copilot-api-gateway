@@ -124,8 +124,11 @@ test('Responses caller cancellation records dump and observed usage without awai
   let failed = 0
   let tokens: unknown
   const dump = { frame: () => {}, cancelled: () => { cancelled++ }, failed: () => { failed++ }, success: (_identity: unknown, usage: unknown) => { tokens = usage } }
+  const observed = Promise.withResolvers<void>()
   async function* source(): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
+    yield eventFrame({ type: 'response.created', response: { id: 'cancel' } } as ResponsesStreamEvent)
     yield eventFrame({ type: 'response.incomplete', response: { id: 'cancel', object: 'response', model: identity.model, output: [], status: 'in_progress', error: null, incomplete_details: null, usage: { input_tokens: 7, output_tokens: 2, total_tokens: 9 } } })
+    observed.resolve()
     await new Promise<void>((resolve) => abort.signal.addEventListener('abort', () => resolve(), { once: true }))
     throw new Error('abort reason must not be an upstream failure')
   }
@@ -134,6 +137,7 @@ test('Responses caller cancellation records dump and observed usage without awai
   const reader = response.body?.getReader()
   expect(reader).toBeDefined()
   await reader?.read()
+  await observed.promise
   await reader?.cancel('private caller reason')
   await new Promise((resolve) => setTimeout(resolve, 0))
   expect(cancelled).toBeGreaterThan(0)
@@ -198,7 +202,7 @@ for (const bridge of [false, true]) {
   }
 }
 
-test('abort during snapshot save suppresses terminal and stops consuming subsequent frames', async () => {
+test('abort during snapshot save suppresses terminal after bounded tail observation', async () => {
   const gate = Promise.withResolvers<void>()
   const entered = Promise.withResolvers<void>()
   const abort = new AbortController()
@@ -216,7 +220,7 @@ test('abort during snapshot save suppresses terminal and stops consuming subsequ
   abort.abort()
   gate.resolve()
   expect(await textPromise).not.toContain('response.completed')
-  expect(drained).toBe(false)
+  expect(drained).toBe(true)
 })
 
 for (const wantsStream of [true, false]) {
@@ -250,9 +254,9 @@ for (const wantsStream of [true, false]) {
   })
 }
 
-test('bridged SSE abort closes downstream while both snapshot save and source cancellation remain pending', async () => {
+test('bridged SSE stalled terminal fails without saving and releases a pending cancellation', async () => {
   const abort = new AbortController()
-  const entered = Promise.withResolvers<void>()
+  let saves = 0
   let cancellations = 0
   const source = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -264,13 +268,13 @@ test('bridged SSE abort closes downstream while both snapshot save and source ca
     kind: 'bridged-response', response: new Response(source, { headers: { 'content-type': 'text/event-stream' } }),
   }, {
     wantsStream: true, downstreamAbortController: abort,
-    onCompleted: () => { entered.resolve(); return new Promise<void>(() => {}) },
+    onCompleted: async () => { saves++ },
   })
-  const text = response.text()
-  await entered.promise
-  abort.abort()
-  const output = await Promise.race([text, Bun.sleep(30).then(() => null)])
-  expect(output).toBe('')
+  const output = await Promise.race([response.text(), Bun.sleep(3_300).then(() => null)])
+  expect(output).toContain('event: error')
+  expect(output).not.toContain('response.completed')
+  expect(saves).toBe(0)
   expect(cancellations).toBe(1)
   expect(source.locked).toBe(false)
-})
+  expect(abort.signal.aborted).toBe(false)
+}, 4_000)

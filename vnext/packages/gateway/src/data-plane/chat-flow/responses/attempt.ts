@@ -293,7 +293,7 @@ export const responsesAttempt = {
               affinity: args.affinity,
               affinityMaterialized: true,
               auth: innerArgs.auth as never,
-              ctx: { downstreamAbortSignal: innerArgs.signal } as never,
+              ctx: { downstreamAbortSignal: innerArgs.signal, abortUpstream: args.ctx.abortUpstream } as never,
               dump: innerArgs.dump,
               telemetryCtx: innerArgs.inheritedTelemetryCtx,
               inheritedHeaders: innerArgs.inheritedHeaders,
@@ -374,6 +374,7 @@ export const responsesAttempt = {
       frames = selectedTierFrames("responses", frames, execution?.serviceTier)
       const { events: decorated } = withUpstreamTelemetry(observeUpstreamFrames(upstreamResp, frames, upstreamLooksJson), {
         abortSignal: args.ctx.downstreamAbortSignal,
+        onFailure: args.ctx.abortUpstream,
         protocol: 'responses',
       })
       const identityInput = { incomingModel: args.telemetryCtx.incomingModel, publicModel }

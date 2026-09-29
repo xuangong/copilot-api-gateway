@@ -1,0 +1,465 @@
+import { AffinityEgress, guardAffinityFrames } from "../../../shared/affinity/egress"
+import type { RequestAffinity } from "../../shared/affinity-request"
+import { translateStream } from "../shared/translate-stream"
+import { StreamTail, closeStream, settleStreamMetadata } from "../shared/stream-tail"
+import { parseSSEStream } from "@vibe-core/result/parse"
+import { waitUntil } from "@vibe-core/platform"
+import { eventFrame, type ProtocolFrame } from "@vibe-core/result"
+import { upstreamErrorToResponse, type LlmEventResult, type LlmExecuteResult } from "@vibe-llm/protocols/common"
+import { ResponsesFinalOutput, type ResponsesStreamEvent } from "@vibe-llm/protocols/responses"
+import { forwardUpstreamError } from "../../errors/forward"
+import { SourceStreamState, eventResultMetadata, finalModelIdentity, normalizeStreamEventModel, performanceTargetFromTranslatorPair, recordPerformance, recordUsage } from "../shared/respond-telemetry"
+import type { TelemetryRequestContext } from "../shared/telemetry-ctx"
+import type { DumpAccumulator } from "../../../shared/dump/accumulator"
+import { collectChatCompletionsProtocolEventsToResult } from "../chat-completions/events/to-result"
+import { collectResponsesProtocolEventsToResult } from "./events/reassemble"
+import { collectMessagesProtocolEventsToResult } from "../messages/events/reassemble"
+
+export interface CompletedResponsesSnapshot {
+  readonly id: string
+  readonly model?: string
+  readonly output: unknown[]
+}
+
+export type ResponsesCompletionWriter = (response: CompletedResponsesSnapshot, inputItems: readonly unknown[]) => Promise<void>
+
+export interface ResponsesTurnOptions {
+  readonly affinity?: RequestAffinity
+  readonly onCompleted?: ResponsesCompletionWriter
+  readonly mergedInputItems?: readonly unknown[]
+  readonly wantsStream: boolean
+  readonly upstreamAbortController?: AbortController
+  readonly finalizeDump?: boolean
+  /** Linked controller for downstream client cancel; same plumbing as messages. */
+  readonly downstreamAbortController?: AbortController
+  /** Optional — when provided, respond.ts persists usage + perf rows. */
+  readonly telemetryCtx?: TelemetryRequestContext
+  /** Optional per-request dump accumulator. */
+  readonly dump?: DumpAccumulator | null
+}
+
+/**
+ * Mirrors {@link ResponsesAttemptResult} from `./attempt.ts`. Declared inline
+ * so this module stays decoupled from the attempt surface — the union is part
+ * of the chat-flow public contract, not the leaf's implementation.
+ */
+export type RespondResponsesInput =
+  | LlmExecuteResult<ProtocolFrame<ResponsesStreamEvent>>
+  | { readonly kind: 'bridged-response'; readonly response: Response }
+
+const SNAPSHOT_FAILURE = "Unable to persist response continuation state."
+
+const reusableResponse = (body: unknown): body is CompletedResponsesSnapshot => {
+  if (!body || typeof body !== "object") return false
+  const response = body as Record<string, unknown>
+  return typeof response.id === "string" && response.id.length > 0 && Array.isArray(response.output)
+    && (response.status === "completed" || response.status === undefined)
+    && !response.error && !response.incomplete_details
+}
+
+async function persistCompleted(body: unknown, options: ResponsesTurnOptions, trackSave: (save: Promise<void>) => void): Promise<void> {
+  const signal = options.downstreamAbortController?.signal
+  if (signal?.aborted) throw new Error("Response cancelled.")
+  if (!options.onCompleted || !reusableResponse(body)) return
+  const save = Promise.resolve().then(() => options.onCompleted?.(body, options.mergedInputItems ?? []))
+  trackSave(save)
+  let onAbort: (() => void) | undefined
+  try {
+    await Promise.race([save, new Promise<never>((_resolve, reject) => {
+      if (signal) {
+        onAbort = () => reject(new Error("Response cancelled."))
+        signal.addEventListener("abort", onAbort, { once: true })
+        if (signal.aborted) onAbort()
+      }
+    })])
+  } catch { throw new Error(signal?.aborted ? "Response cancelled." : SNAPSHOT_FAILURE) }
+  finally { if (onAbort) signal?.removeEventListener("abort", onAbort) }
+  if (signal?.aborted) throw new Error("Response cancelled.")
+}
+
+/**
+ * Wraps the protocol-frame stream so each frame's usage + reported model are
+ * captured into `SourceStreamState`. Throws are propagated AFTER flagging
+ * the state as failed so respond-telemetry's `recordPerformance` writes
+ * `failed=true`. Probes `event.model`, `event.response.model`, and
+ * `event.message.model` for a single generator that works across protocols
+ * even when an upstream emits an unexpected shape (defence in depth, same
+ * as messages/respond.ts).
+ */
+async function* consumeWithState<T>(
+  events: AsyncIterable<ProtocolFrame<T>>,
+  state: SourceStreamState,
+  dump?: DumpAccumulator | null,
+): AsyncGenerator<ProtocolFrame<T>> {
+  try {
+    for await (const frame of events) {
+      if (frame.type === 'event') {
+        const evObj = frame.event as {
+          model?: unknown
+          modelVersion?: unknown
+          response?: { model?: unknown }
+          message?: { model?: unknown }
+        }
+        state.rememberModelKey(evObj.model ?? evObj.modelVersion ?? evObj.response?.model ?? evObj.message?.model)
+        state.rememberFailure(frame.event, 'responses')
+        const normalized = normalizeStreamEventModel(frame.event, state.publicModel)
+        state.rememberUsage(normalized)
+        const output = normalized === frame.event ? frame : { ...frame, event: normalized as T }
+        dump?.frame(output as ProtocolFrame<unknown>)
+        yield output
+        continue
+      }
+      dump?.frame(frame as ProtocolFrame<unknown>)
+      yield frame
+    }
+  } catch (err) {
+    if (!state.cancelled) {
+      state.failedAfter()
+      dump?.failed(err)
+    }
+    throw err
+  }
+}
+
+/**
+ * Persists usage + performance rows from a drained `LlmEventResult`. Prefers
+ * the interceptor-replaced `finalMetadata` over `result.modelIdentity` so
+ * an interceptor that replaces the stream (the image-generation shortcut)
+ * gets its own corrected identity. Otherwise the model key observed
+ * in-stream supersedes the binding-time guess.
+ */
+async function persistFromEventResult<T>(
+  result: LlmEventResult<ProtocolFrame<T>>,
+  state: SourceStreamState,
+  telemetryCtx: TelemetryRequestContext | undefined,
+  dump?: DumpAccumulator | null,
+): Promise<boolean> {
+  if (state.persisted) return true
+  state.persisted = true
+  telemetryCtx?.metrics?.finish(state.cancelled ? "cancelled" : state.failed ? "error" : "success")
+  const fallback = { modelIdentity: { ...result.modelIdentity, ...(telemetryCtx ? { incomingModel: telemetryCtx.incomingModel } : {}) }, performance: result.performance }
+  const metadata = state.cancelled ? { settled: true as const, value: fallback }
+    : await settleStreamMetadata(eventResultMetadata(result, telemetryCtx))
+  const md = metadata.settled ? metadata.value : fallback
+  const finalIdentity = result.finalMetadata && !state.cancelled && metadata.settled
+    ? md.modelIdentity
+    : finalModelIdentity(md.modelIdentity, state.modelKey, result.resolveModelIdentity)
+  if (dump) {
+    dump.success(finalIdentity, state.usage.tokens)
+    if (state.cancelled) dump.cancelled()
+    else if (state.failed) dump.failed('responses stream failed')
+  }
+  if (telemetryCtx) {
+    await recordUsage(telemetryCtx, finalIdentity, state.usage.tokens)
+    await recordPerformance(
+      telemetryCtx,
+      md.performance,
+      state.failed && !state.cancelled,
+      undefined,
+      performanceTargetFromTranslatorPair(finalIdentity),
+      finalIdentity,
+    )
+  }
+  return metadata.settled
+}
+
+// Translation and source-domain affinity both precede transport serialization.
+async function* applyTranslatorEventsForStreaming(
+  hubFrames: AsyncIterable<ProtocolFrame<unknown>>,
+  translateEvents: NonNullable<LlmEventResult<unknown>['translateEvents']>,
+  signal: AbortSignal | undefined,
+  model: string | undefined,
+  onFailure?: () => void,
+): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
+  for await (const event of translateStream(hubFrames, translateEvents, signal, model, onFailure)) yield eventFrame(event as ResponsesStreamEvent)
+}
+
+async function readLegacyJson(response: Response, signal: AbortSignal): Promise<unknown> {
+  if (!response.body) return null
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let text = ""
+  const onAbort = (): void => { void reader.cancel().catch(() => {}) }
+  signal.addEventListener("abort", onAbort, { once: true })
+  if (signal.aborted) onAbort()
+  try {
+    while (!signal.aborted) {
+      const next = await reader.read()
+      if (next.done) break
+      text += decoder.decode(next.value, { stream: true })
+    }
+    if (signal.aborted) throw new Error("Response cancelled.")
+    return JSON.parse(text + decoder.decode()) as unknown
+  } finally {
+    signal.removeEventListener("abort", onAbort)
+    reader.releaseLock()
+  }
+}
+
+export const isResponsesTurnTerminal = (event: ResponsesStreamEvent): boolean =>
+  ["response.completed", "response.incomplete", "response.failed", "error"].includes(event.type)
+
+export function responsesTerminalBody(event: ResponsesStreamEvent): unknown {
+  if (event.type !== "error") return (event as { response?: unknown }).response
+  const error = event as { error?: unknown; message?: string }
+  return error.error ? { error: error.error } : { error: { type: "api_error", message: error.message ?? "Response stream failed." } }
+}
+
+export interface ResponsesTurnCompletion {
+  readonly outcome: "completed" | "incomplete" | "failed" | "cancelled"
+  readonly response?: CompletedResponsesSnapshot
+  readonly cleanupComplete: boolean
+}
+
+export interface ResponsesTurnMetadata {
+  readonly status: number
+  readonly headers?: Headers
+  readonly body?: unknown
+}
+
+export interface ResponsesTurn {
+  readonly events: AsyncGenerator<ResponsesStreamEvent>
+  readonly abortController: AbortController
+  readonly completion: Promise<ResponsesTurnCompletion>
+  readonly ready: Promise<ResponsesTurnMetadata>
+  readonly wantsStream: boolean
+  readonly mergedInputItems: readonly unknown[]
+  recordSentPayloadBytes(byteLength: number): void
+}
+
+export interface PreparedResponsesTurn {
+  readonly result: RespondResponsesInput
+  readonly options: ResponsesTurnOptions
+}
+
+/** Created before preparation starts, so a platform can own completion from
+ * turn start. The iterator has one consumer and no producer-side event queue. */
+export function createResponsesTurn(
+  input: RespondResponsesInput | (() => Promise<PreparedResponsesTurn>),
+  initialOptions: ResponsesTurnOptions,
+): ResponsesTurn {
+  const abortController = initialOptions.downstreamAbortController ?? new AbortController()
+  const upstreamAbortController = initialOptions.upstreamAbortController ?? new AbortController()
+  let options = { ...initialOptions, downstreamAbortController: abortController, upstreamAbortController }
+  const completed = Promise.withResolvers<ResponsesTurnCompletion>()
+  const ready = Promise.withResolvers<ResponsesTurnMetadata>()
+  let result: RespondResponsesInput | undefined
+  let state: SourceStreamState | undefined
+  let source: AsyncIterator<ProtocolFrame<ResponsesStreamEvent>> | undefined
+  let rawIterator: AsyncIterator<ProtocolFrame<ResponsesStreamEvent>> | undefined
+  let running = false
+  let settled = false
+  let cleanupComplete = true
+  let outcome: ResponsesTurnCompletion["outcome"] = "failed"
+  let reusable: CompletedResponsesSnapshot | undefined
+  let pendingSave: Promise<void> | undefined
+  let canonicalBody: unknown
+  let terminalDelivered = false
+  let finalizing: Promise<void> | undefined
+  let metadata: ResponsesTurnMetadata = { status: 200 }
+  const onAbort = (): void => {
+    upstreamAbortController.abort(abortController.signal.reason)
+    if (state) state.cancelled = true
+    options.dump?.cancelled()
+    options.telemetryCtx?.metrics?.finish("cancelled")
+    void preparation.then(async () => {
+      if (running) await stopEvents()
+      else await finalize()
+    }).catch(() => {})
+  }
+  abortController.signal.addEventListener("abort", onAbort, { once: true })
+  const preparation = Promise.resolve().then(async () => {
+    if (typeof input === "function" && abortController.signal.aborted) {
+      ready.resolve({ status: 499, body: { error: { type: "api_error", message: "Response cancelled." } } })
+      return
+    }
+    const prepared = typeof input === "function" ? await input() : { result: input, options }
+    result = prepared.result
+    options = { ...prepared.options, downstreamAbortController: abortController, upstreamAbortController }
+    if (!("kind" in result) && result.type === "events") {
+      state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model, result.modelIdentity.executedModelKey)
+      state.cancelled = abortController.signal.aborted
+      const iterator = result.events[Symbol.asyncIterator]()
+      let returned: Promise<IteratorResult<ProtocolFrame<ResponsesStreamEvent>>> | undefined
+      rawIterator = {
+        next: () => iterator.next(),
+        return: () => returned ??= Promise.resolve().then(() => iterator.return?.() ?? { done: true as const, value: undefined }),
+      }
+    }
+    if ("kind" in result) {
+      metadata = { status: result.response.status, headers: new Headers(result.response.headers) }
+      if (!result.response.headers.get("content-type")?.includes("text/event-stream")) metadata = { ...metadata, body: await readLegacyJson(result.response, upstreamAbortController.signal) }
+    } else if (result.type === "upstream-error") {
+      const response = await forwardUpstreamError(upstreamErrorToResponse(result), "responses")
+      metadata = { status: response.status, headers: new Headers(response.headers), body: await response.json() }
+      options.dump?.error("upstream", result.performance?.upstream ?? undefined)
+    } else if (result.type === "internal-error") {
+      metadata = { status: result.status, body: { error: { type: "api_error", message: result.error.message } } }
+      options.dump?.failed(result.error.message)
+    }
+    const headers = new Headers(metadata.headers)
+    if (options.telemetryCtx?.metrics?.synthetic) headers.set("x-gateway-stream-timing", "unavailable")
+    if (options.finalizeDump && options.dump?.recordId) {
+      headers.set("x-dump-record-id", options.dump.recordId)
+      headers.set("x-dump-key-id", options.dump.keyId)
+    }
+    metadata = { ...metadata, headers }
+    ready.resolve(metadata)
+  }).catch(error => {
+    metadata = { status: 502, headers: new Headers(), body: { error: { type: "api_error", message: error instanceof Error ? error.message : "Response preparation failed." } } }
+    ready.resolve(metadata)
+  })
+
+  function finalize(): Promise<void> {
+    finalizing ??= (async () => {
+      if (settled) return
+      const closed = await Promise.all([...(source ? [closeStream(source)] : []), ...(rawIterator ? [closeStream(rawIterator)] : [])])
+      cleanupComplete = closed.every(Boolean)
+      if (result && "kind" in result && result.response.body && !result.response.body.locked && upstreamAbortController.signal.aborted) {
+        cleanupComplete = (await settleStreamMetadata(result.response.body.cancel())).settled && cleanupComplete
+      }
+      if (pendingSave) await pendingSave.catch(() => {})
+      try {
+        if (result && !("kind" in result)) {
+          if (result.type === "events" && state) {
+            if (options.telemetryCtx || options.dump) cleanupComplete = await persistFromEventResult(result, state, options.telemetryCtx, options.dump) && cleanupComplete
+          } else if (result.type !== "events" && options.telemetryCtx) {
+            await recordPerformance(options.telemetryCtx, result.performance, true, undefined, result.type === "upstream-error" ? result.targetApi : undefined)
+          }
+        }
+      } finally {
+        if (options.finalizeDump) {
+          const status = metadata.status >= 400 ? metadata.status : outcome === "failed" && !options.wantsStream ? 502 : metadata.status
+          await options.dump?.finalizeTurn?.(status, [...(metadata.headers ?? new Headers()).entries()], canonicalBody)
+        }
+      }
+    })().catch(() => { cleanupComplete = false }).finally(() => {
+      settled = true
+      abortController.signal.removeEventListener("abort", onAbort)
+      completed.resolve({ outcome: abortController.signal.aborted ? "cancelled" : outcome, ...(reusable && !abortController.signal.aborted && outcome === "completed" ? { response: reusable } : {}), cleanupComplete })
+    })
+    return finalizing
+  }
+
+  async function* normalized(): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
+    if (!result || metadata.status >= 400) {
+      yield eventFrame({ type: "error", ...(metadata.body as object) } as ResponsesStreamEvent)
+      return
+    }
+    if ("kind" in result) {
+      if (metadata.body !== undefined) {
+        const body = metadata.body as { status?: string }
+        const type = body.status === "failed" ? "response.failed" : body.status === "incomplete" ? "response.incomplete" : "response.completed"
+        yield eventFrame({ type, response: metadata.body } as ResponsesStreamEvent)
+      } else if (result.response.body) {
+        // Legacy dispatch input only. Normal execution and future WS never
+        // construct or parse an HTTP response to obtain canonical events.
+        for await (const frame of parseSSEStream(result.response.body, { signal: upstreamAbortController.signal })) {
+          if (frame.data === "[DONE]") continue
+          const event = JSON.parse(frame.data) as Record<string, unknown>
+          yield eventFrame((frame.event && !event.type ? { ...event, type: frame.event } : event) as unknown as ResponsesStreamEvent)
+        }
+      }
+      return
+    }
+    if (result.type !== "events" || !state) return
+    const ownedFrames = rawIterator ? { [Symbol.asyncIterator]: () => rawIterator as AsyncIterator<ProtocolFrame<ResponsesStreamEvent>> } : result.events
+    const guarded = guardAffinityFrames(ownedFrames, options.affinity)
+    if (!options.wantsStream && result.translateBody) {
+      const observed = consumeWithState(guarded, state, options.dump)
+      const hub = result.modelIdentity.translatorPair?.hub
+      const body = hub === "chat_completions" ? await collectChatCompletionsProtocolEventsToResult(observed as never)
+        : hub === "messages" ? await collectMessagesProtocolEventsToResult(observed as never)
+        : await collectResponsesProtocolEventsToResult(observed)
+      const translated = await result.translateBody(body, { signal: upstreamAbortController.signal, model: state.publicModel })
+      const status = (translated as { status?: string }).status
+      yield eventFrame({ type: status === "failed" ? "response.failed" : status === "incomplete" ? "response.incomplete" : "response.completed", response: translated } as ResponsesStreamEvent)
+      return
+    }
+    const frames = result.translateEvents
+      ? applyTranslatorEventsForStreaming(guarded, result.translateEvents, upstreamAbortController.signal, result.modelIdentity.model, () => upstreamAbortController.abort())
+      : guarded
+    yield* consumeWithState(frames, state, options.dump)
+  }
+
+  async function* run(): AsyncGenerator<ResponsesStreamEvent> {
+    running = true
+    let terminal: ResponsesStreamEvent | undefined
+    const output = new ResponsesFinalOutput()
+    const tail = new StreamTail()
+    try {
+      await preparation
+      if (abortController.signal.aborted) return
+      source = normalized()[Symbol.asyncIterator]()
+      const egress = new AffinityEgress(options.affinity)
+      while (!abortController.signal.aborted) {
+        const next = await tail.next(source, abortController.signal)
+        if (next.done) break
+        tail.observe(next.value)
+        if (next.value.type !== "event") continue
+        const event = next.value.event
+        if (terminal) {
+          if (event.type === "error" || event.type === "response.failed") { terminal = event; break }
+          continue
+        }
+        if (isResponsesTurnTerminal(event)) {
+          terminal = output.observe(event)
+          if (event.type === "error" || event.type === "response.failed") break
+          tail.start()
+          continue
+        }
+        const observed = output.observe(event)
+        if (!options.wantsStream) continue
+        const canonical = await egress.responseEvent(observed)
+        if (!abortController.signal.aborted) { options.telemetryCtx?.metrics?.observeOutput("responses", canonical); yield canonical }
+      }
+      if (abortController.signal.aborted) return
+      if (!terminal) throw new Error("responses stream ended without terminal lifecycle frame")
+      terminal = await egress.responseEvent(terminal)
+      if (terminal.type === "response.completed") {
+        await persistCompleted(terminal.response, options, save => { pendingSave = save })
+        outcome = reusableResponse(terminal.response) ? "completed" : "incomplete"
+        if (outcome === "completed") reusable = terminal.response as CompletedResponsesSnapshot
+      } else outcome = terminal.type === "response.incomplete" ? "incomplete" : "failed"
+      if (outcome === "failed") { state?.failedAfter(); upstreamAbortController.abort() }
+      if (!abortController.signal.aborted) {
+        canonicalBody = responsesTerminalBody(terminal)
+        options.telemetryCtx?.metrics?.observeOutput("responses", terminal)
+        terminalDelivered = true
+        yield terminal
+      }
+    } catch (error) {
+      upstreamAbortController.abort(error)
+      if (!abortController.signal.aborted) {
+        outcome = "failed"
+        state?.failedAfter()
+        const message = error instanceof Error ? error.message : "Response stream failed."
+        options.dump?.failed(message)
+        const failure = { type: "error", message } as ResponsesStreamEvent
+        canonicalBody = responsesTerminalBody(failure)
+        yield failure
+      }
+    } finally {
+      if (!terminal && !upstreamAbortController.signal.aborted) upstreamAbortController.abort()
+      await finalize()
+    }
+  }
+  const events = run()
+  const returnEvents = events.return.bind(events)
+  const throwEvents = events.throw.bind(events)
+  const stopEvents = () => returnEvents(undefined)
+  events.return = async value => {
+    if (!settled && !terminalDelivered) abortController.abort()
+    if (!running) { await preparation; await finalize() }
+    return returnEvents(value)
+  }
+  events.throw = async error => {
+    abortController.abort()
+    if (!running) { await preparation; await finalize() }
+    return throwEvents(error)
+  }
+  // Register the complete ownership promise now, including pre-consumption abort.
+  waitUntil(completed.promise.then(() => {}))
+  if (abortController.signal.aborted) onAbort()
+  return { events, abortController, completion: completed.promise, ready: ready.promise, wantsStream: initialOptions.wantsStream, get mergedInputItems() { return options.mergedInputItems ?? [] }, recordSentPayloadBytes: size => options.dump?.recordSentPayloadBytes?.(size) }
+}

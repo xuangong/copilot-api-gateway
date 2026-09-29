@@ -162,7 +162,7 @@ export interface ServeTemplateResult<TExtra> {
   readonly extra: TExtra | undefined
 }
 
-export async function serveTemplate<
+export async function prepareTemplate<
   TPayload,
   TAttemptResult,
   TExtra = undefined,
@@ -172,7 +172,10 @@ export async function serveTemplate<
   hooks: ServeTemplateHooks<TPayload, TAttemptResult, TExtra, TAuth, TTelemetryCtx>,
   input: ServeTemplateInput<TAuth>,
   deps: ServeTemplateDeps<TAuth, TTelemetryCtx, TPayload, TExtra>,
-): Promise<ServeTemplateResult<TExtra>> {
+): Promise<
+  | { readonly kind: 'response'; readonly response: Response; readonly extra: TExtra | undefined }
+  | { readonly kind: 'attempt'; readonly result: TAttemptResult; readonly context: RespondCtx<TPayload, TExtra, TTelemetryCtx>; readonly extra: TExtra | undefined }
+> {
   const requestStartedAt = Date.now()
 
   // 1. Parse.
@@ -183,7 +186,7 @@ export async function serveTemplate<
     const e = err as Error & { status?: number; body?: unknown }
     const render = hooks.parseErrorRender ?? ((x: typeof e) => deps.jsonErrorWrap(x.status ?? 400, x.body ?? { error: { message: x.message } }))
     const errResp = render(e)
-    return { response: input.dump ? input.dump.finalize(errResp) : errResp, extra: undefined }
+    return { kind: 'response', response: errResp, extra: undefined }
   }
 
   // 1b. Stamp the requested model onto the dump sink as soon as parse
@@ -205,12 +208,12 @@ export async function serveTemplate<
       const e = err as Error & { status?: number; body?: unknown }
       const errResp = deps.jsonErrorWrap(e.status ?? 400, e.body ?? { error: { message: e.message } })
       return {
-        response: input.dump ? input.dump.finalize(errResp) : errResp,
+        kind: 'response', response: errResp,
         extra: undefined,
       }
     }
     if (pre.kind === 'short-circuit') {
-      return { response: input.dump ? input.dump.finalize(pre.response) : pre.response, extra: pre.extra }
+      return { kind: 'response', response: pre.response, extra: pre.extra }
     }
     payload = pre.payload
     extra = pre.extra
@@ -232,7 +235,7 @@ export async function serveTemplate<
 
   // 5. quota gate.
   const quotaResp = await deps.runQuotaGate(input.auth.apiKeyId)
-  if (quotaResp) return { response: input.dump ? input.dump.finalize(quotaResp) : quotaResp, extra }
+  if (quotaResp) return { kind: 'response', response: quotaResp, extra }
 
   // 6. Linked AbortController.
   const controller = new AbortController()
@@ -253,22 +256,18 @@ export async function serveTemplate<
     extras: input.extras,
   })
 
-  // 8. respond.
-  const response = await hooks.respond(result, {
-    payload,
-    extra: extra as TExtra,
-    wantsStream,
-    downstreamAbortController: controller,
-    telemetryCtx,
-    extras: input.extras,
-    dump: input.dump ?? null,
-  })
+  return { kind: 'attempt', result, extra, context: {
+    payload, extra: extra as TExtra, wantsStream, downstreamAbortController: controller,
+    telemetryCtx, extras: input.extras, dump: input.dump ?? null,
+  } }
+}
 
-  // 9. Auto-tee the terminal Response into the dump sink so every
-  //    endpoint gets the same exit seam. Respond hooks handle the
-  //    mid-flight frame/success/error calls themselves.
-  const finalResponse = input.dump ? input.dump.finalize(response) : response
-
-  // 10. return.
-  return { response: finalResponse, extra }
+export async function serveTemplate<TPayload, TAttemptResult, TExtra = undefined, TAuth extends KitAuthCtx = KitAuthCtx, TTelemetryCtx = unknown>(
+  hooks: ServeTemplateHooks<TPayload, TAttemptResult, TExtra, TAuth, TTelemetryCtx>,
+  input: ServeTemplateInput<TAuth>,
+  deps: ServeTemplateDeps<TAuth, TTelemetryCtx, TPayload, TExtra>,
+): Promise<ServeTemplateResult<TExtra>> {
+  const prepared = await prepareTemplate(hooks, input, deps)
+  const response = prepared.kind === 'response' ? prepared.response : await hooks.respond(prepared.result, prepared.context)
+  return { response: input.dump ? input.dump.finalize(response) : response, extra: prepared.extra }
 }

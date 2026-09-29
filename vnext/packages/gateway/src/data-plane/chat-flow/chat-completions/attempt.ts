@@ -145,7 +145,7 @@ export const chatCompletionsAttempt = {
             affinity: args.affinity,
             affinityMaterialized: true,
             auth: innerArgs.auth as never,
-            ctx: { downstreamAbortSignal: innerArgs.signal } as never,
+            ctx: { downstreamAbortSignal: innerArgs.signal, abortUpstream: args.ctx.abortUpstream } as never,
             dump: innerArgs.dump,
             telemetryCtx: innerArgs.inheritedTelemetryCtx,
             inheritedHeaders: innerArgs.inheritedHeaders,
@@ -238,7 +238,9 @@ export const chatCompletionsAttempt = {
         : parseChatCompletionsStream(upstreamResp.body, { signal: args.ctx.downstreamAbortSignal })
       const { events: decorated } = withUpstreamTelemetry(observeUpstreamFrames(upstreamResp, selectedTierFrames("chat_completions", stream, execution?.serviceTier), upstreamIsJson), {
         abortSignal: args.ctx.downstreamAbortSignal,
+        onFailure: args.ctx.abortUpstream,
         protocol: 'chat_completions',
+        expectedChoices: typeof invocation.payload.n === 'number' ? invocation.payload.n : 1,
       })
       const identityInput = { incomingModel: args.telemetryCtx.incomingModel, publicModel }
       const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, identityInput, execution)

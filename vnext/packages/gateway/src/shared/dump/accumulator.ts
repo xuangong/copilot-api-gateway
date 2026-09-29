@@ -187,6 +187,15 @@ export class DumpAccumulator {
   // The background drain → record assembly → store put → broker publish is
   // scheduled through `waitUntil` so dump write failures cannot turn a
   // successful upstream call into a 502.
+  // The turn supplies its canonical body when no provider frame log exists.
+  // This fallback never reads or tees a transport response.
+  async finalizeTurn(status: number, headers: ReadonlyArray<readonly [string, string]>, canonicalBody?: unknown): Promise<void> {
+    const bytes = this.events.length === 0 && canonicalBody !== undefined
+      ? new TextEncoder().encode(JSON.stringify(canonicalBody)) : new Uint8Array()
+    await this.write({ status, headers: headers.map(([k, v]) => [k, v]), isStream: this.events.length > 0,
+      bytes, payloadBytes: this.sentPayloadBytes, streamError: null })
+  }
+
   finalize(status: number, headers: ReadonlyArray<readonly [string, string]>): void
   finalize(response: Response): Response
   finalize(...args: [number, ReadonlyArray<readonly [string, string]>] | [Response]): void | Response {

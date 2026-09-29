@@ -459,6 +459,7 @@ export const messagesAttempt = {
       frames = selectedTierFrames("messages", frames, execution?.serviceTier)
       const { events: decorated } = withUpstreamTelemetry(observeUpstreamFrames(upstreamResp, frames, upstreamLooksJson), {
         abortSignal: args.ctx.downstreamAbortSignal,
+        onFailure: args.ctx.abortUpstream,
         protocol: 'messages',
       })
       const identityInput = { incomingModel: args.telemetryCtx.incomingModel, publicModel }

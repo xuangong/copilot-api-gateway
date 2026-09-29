@@ -24,6 +24,7 @@ export interface Invocation {
 }
 
 export interface RequestContext {
+  readonly abortUpstream?: () => void
   readonly requestStartedAt: number
   readonly downstreamAbortSignal?: AbortSignal
   // Optional caller api key id. Threaded from `attempt.ts` where the

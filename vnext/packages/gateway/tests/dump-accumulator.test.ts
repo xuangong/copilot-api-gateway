@@ -403,3 +403,41 @@ test('cancelled dump survives later abort failure and preserves observed tokens'
   expect(meta?.inputTokens).toBe(7)
   expect(meta?.outputTokens).toBe(2)
 })
+
+for (const scenario of ["legacy-json", "snapshot-error", "upstream-error"] as const) {
+  test(`turn-owned dump preserves canonical no-frame body: ${scenario}`, async () => {
+    const { createResponsesTurn } = await import("../src/data-plane/chat-flow/responses/turn")
+    const { renderResponsesTurn } = await import("../src/data-plane/chat-flow/responses/respond")
+    const ctx = await setupCtx(3600)
+    const c = await makeContext("/v1/responses")
+    const dump = openDumpAccumulator(c, "POST", apiKey(3600), { bytes: new TextEncoder().encode("{}"), streamError: null })
+    if (!dump) throw new Error("dump expected")
+    const completed = { id: "resp-legacy", object: "response", status: "completed", model: "m", output: [] }
+    const upstreamError = { error: { message: "slow down" } }
+    const turn = createResponsesTurn(scenario === "upstream-error"
+      ? { type: "upstream-error", status: 429, headers: new Headers(), body: new TextEncoder().encode(JSON.stringify(upstreamError)) }
+      : { kind: "bridged-response", response: Response.json(completed) }, {
+      wantsStream: false, dump, finalizeDump: true,
+      ...(scenario === "snapshot-error" ? { onCompleted: async () => { throw new Error("private storage detail") } } : {}),
+    })
+    try {
+      const response = await renderResponsesTurn(turn)
+      const wire = await response.text()
+      expect(response.status).toBe(scenario === "upstream-error" ? 429 : scenario === "snapshot-error" ? 502 : 200)
+      expect(JSON.parse(wire)).toEqual(scenario === "upstream-error" ? upstreamError : scenario === "snapshot-error"
+        ? { error: { type: "api_error", message: "Unable to persist response continuation state." } } : completed)
+      expect((await turn.completion).cleanupComplete).toBe(true)
+      await ctx.drain()
+      const stored = await ctx.store.get("k1", dump.recordId)
+      expect(stored?.response.status).toBe(response.status)
+      expect(stored?.meta.responseBytes).toBe(new TextEncoder().encode(wire).byteLength)
+      expect(stored?.response.body.type).toBe("bytes")
+      if (stored?.response.body.type !== "bytes") throw new Error("canonical body bytes expected")
+      expect(new TextDecoder().decode(stored.response.body.body)).toBe(wire)
+    } finally {
+      turn.abortController.abort()
+      await ctx.drain()
+      ctx.raw.close()
+    }
+  })
+}

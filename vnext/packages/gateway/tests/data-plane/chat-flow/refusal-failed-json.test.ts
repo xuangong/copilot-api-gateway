@@ -1,4 +1,5 @@
-import { expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, test } from "bun:test"
+import { __resetPlatformForTests, initBackground } from "@vibe-core/platform"
 import { eventFrame, type ProtocolFrame } from '@vibe-core/result'
 import { llmEventResult, type TelemetryModelIdentity } from '@vibe-llm/protocols/common'
 import type { ResponsesResult, ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
@@ -7,6 +8,15 @@ import { translateResponsesToMessagesBody } from '@vibe-llm/translate/messages-v
 import { respondChatCompletions } from '../../../src/data-plane/chat-flow/chat-completions/respond.ts'
 import { respondMessages } from '../../../src/data-plane/chat-flow/messages/respond.ts'
 import { respondResponses } from '../../../src/data-plane/chat-flow/responses/respond.ts'
+
+const pending: Promise<unknown>[] = []
+beforeEach(() => {
+  initBackground({ waitUntil: promise => { pending.push(promise) } })
+})
+afterEach(async () => {
+  try { while (pending.length) await Promise.all(pending.splice(0)) }
+  finally { __resetPlatformForTests() }
+})
 
 const baseIdentity: TelemetryModelIdentity = {
   incomingModel: 'm', model: 'm', upstream: 'test', modelKey: 'm', cost: null,

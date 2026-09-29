@@ -3,14 +3,18 @@
  * and exposes a `finalMetadata` promise that resolves to the terminal-state
  * snapshot (`failed`, accumulated `usage`) once the stream drains.
  *
- * No callbacks, no I/O. Replaces the Spec-2 recorder interface.
+ * Owns bounded terminal observation. The optional failure callback cancels the
+ * request-owned producer without reclassifying it as client cancellation.
  */
+import { StreamTail, closeStream } from "./stream-tail"
 import type { ProtocolFrame } from '@vibe-core/result'
 import { isOpenAIUsageOnlyEventShape } from '@vibe-llm/protocols/common'
 
 export interface UpstreamTelemetryCtx {
   readonly abortSignal?: AbortSignal
   readonly protocol: 'chat_completions' | 'messages' | 'responses'
+  readonly expectedChoices?: number
+  readonly onFailure?: () => void
 }
 
 export interface UpstreamTerminalState {
@@ -86,9 +90,17 @@ export function withUpstreamTelemetry<T>(
   async function* run(): AsyncGenerator<ProtocolFrame<T>> {
     let successfulTerminal: ProtocolFrame<T> | undefined
     let failureEmitted = false
+    const iterator = stream[Symbol.asyncIterator]()
+    const tail = new StreamTail()
+    const finishedChoices = new Set<number>()
+    let chatFinished = false
     try {
       if (ctx.abortSignal?.aborted) return
-      for await (const frame of stream) {
+      while (true) {
+        const next = await tail.next(iterator, ctx.abortSignal)
+        if (next.done) break
+        const frame = next.value
+        tail.observe(frame)
         if (ctx.abortSignal?.aborted) return
         if (firstByteLatencyMs === null) firstByteLatencyMs = performance.now() - startedAt
         const usage = extractUsage(frame)
@@ -101,8 +113,18 @@ export function withUpstreamTelemetry<T>(
           return
         }
         // Delay success until the tail drains: a late error invalidates it.
-        if (terminal) successfulTerminal = frame
-        else if (frame.type !== "done") yield frame
+        if (terminal) {
+          successfulTerminal ??= frame
+          tail.start()
+        } else if (frame.type !== "done") {
+          const isChatUsage = isOpenAIUsageOnlyEventShape(frame.event)
+          if (!successfulTerminal && (!chatFinished || isChatUsage)) yield frame
+          if (ctx.protocol === "chat_completions") {
+            const choices = (frame.event as { choices?: Array<{ index?: number; finish_reason?: unknown }> }).choices
+            for (const choice of choices ?? []) if (choice.finish_reason != null) finishedChoices.add(choice.index ?? 0)
+            if (finishedChoices.size >= (ctx.expectedChoices ?? 1)) { chatFinished = true; tail.start() }
+          }
+        }
       }
       if (ctx.abortSignal?.aborted) return
       if (!successfulTerminal) throw new Error(`Upstream ${ctx.protocol} stream ended without a terminal event.`)
@@ -111,10 +133,12 @@ export function withUpstreamTelemetry<T>(
     } catch (err) {
       if (ctx.abortSignal?.aborted || failureEmitted) return
       settle(true)
+      ctx.onFailure?.()
       throw err
     } finally {
       // Consumer return/break is cancellation even without an AbortSignal.
       settle(false, true)
+      await closeStream(iterator)
     }
   }
 

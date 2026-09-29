@@ -134,3 +134,9 @@ test('chat withToolArgumentWhitespaceAborted: passes through non-events results'
   }))
   expect(result.type).toBe('upstream-error')
 })
+
+test('usage-only placeholder choice without delta survives the whitespace guard', async () => {
+  const usage = { id: 'c1', object: 'chat.completion.chunk', created: 0, model: 'm', choices: [{ index: 0 }], usage: { completion_tokens: 3 } } as ChatCompletionsStreamEvent
+  const frames = await collect(await withToolArgumentWhitespaceAborted(baseInv, baseCtx, runEvents(usage)))
+  expect(frames[0]).toEqual(eventFrame(usage))
+})

@@ -31,7 +31,7 @@ const isWhitespaceExceeded = (
   whitespaceByIndex: Map<number, number>,
 ): boolean => {
   for (const choice of chunk.choices) {
-    const toolCalls = choice.delta.tool_calls
+    const toolCalls = choice.delta?.tool_calls
     if (!toolCalls) continue
 
     for (const toolCall of toolCalls) {

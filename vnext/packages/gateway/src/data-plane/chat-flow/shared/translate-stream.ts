@@ -1,3 +1,4 @@
+import { StreamTail, closeStream } from "./stream-tail"
 import type { ProtocolFrame } from "@vibe-core/result"
 import type { LlmEventResult } from "@vibe-llm/protocols/common"
 
@@ -9,6 +10,7 @@ export async function* translateStream(
   translate: NonNullable<LlmEventResult<unknown>["translateEvents"]>,
   signal: AbortSignal | undefined,
   model: string | undefined,
+  onFailure?: () => void,
 ): AsyncGenerator<unknown> {
   const iterator = frames[Symbol.asyncIterator]()
   async function* events(): AsyncGenerator<unknown> {
@@ -19,8 +21,13 @@ export async function* translateStream(
     }
   }
   const pending: unknown[] = []
+  const tail = new StreamTail()
+  const translated = translate(events(), { signal: signal ?? new AbortController().signal, model })[Symbol.asyncIterator]()
   try {
-    for await (const event of translate(events(), { signal: signal ?? new AbortController().signal, model })) {
+    while (true) {
+      const next = await tail.next(translated, signal)
+      if (next.done) break
+      const event = next.value
       const type = typeof event === "object" && event !== null ? (event as { type?: unknown }).type : undefined
       if (type === "error" || type === "response.failed") {
         if (!signal?.aborted) yield event
@@ -30,12 +37,13 @@ export async function* translateStream(
       const completes = ["message_stop", "response.completed", "response.incomplete"].includes(String(type))
         || value?.choices?.some((choice) => choice.finish_reason != null)
         || (type === "message_delta" && value.delta?.stop_reason != null)
-      if (completes || pending.length > 0) pending.push(event)
+      if (completes || pending.length > 0) { tail.start(); tail.observe(event); pending.push(event) }
       else if (!signal?.aborted) yield event
     }
     while (!signal?.aborted) {
-      const next = await iterator.next()
+      const next = await tail.next(iterator, signal)
       if (next.done) break
+      tail.observe(next.value)
       if (next.value.type === "event") {
         const event = next.value.event as { type?: string; message?: string; error?: { message?: string }; response?: { error?: { message?: string } } }
         if (event.type === "error" || event.type === "response.failed" || event.error != null) {
@@ -44,7 +52,10 @@ export async function* translateStream(
       }
     }
     if (!signal?.aborted) yield* pending
+  } catch (error) {
+    onFailure?.()
+    throw error
   } finally {
-    await iterator.return?.()
+    await Promise.all([closeStream(iterator), closeStream(translated)])
   }
 }
