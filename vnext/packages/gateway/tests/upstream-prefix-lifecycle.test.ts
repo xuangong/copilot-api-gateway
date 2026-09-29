@@ -37,11 +37,11 @@ test("failed snapshot conversion retains all prefixes for an exact retry", () =>
   first.observePreparedRequest({ prefix: Uint8Array.of(1), totalBytes: 1 })
   second.observePreparedRequest({ prefix: Uint8Array.of(2), totalBytes: 1 })
   const before = retainedBufferBytes([collector, first, second])
-  const concat = Buffer.concat
+  const toString = Buffer.prototype.toString
   let calls = 0
-  const fault = spyOn(Buffer, "concat").mockImplementation((list, length) => {
-    if (++calls === 3) throw new Error("snapshot conversion failed")
-    return concat(list, length)
+  const fault = spyOn(Buffer.prototype, "toString").mockImplementation(function (this: Buffer, ...args) {
+    if (this.byteLength > 0 && ++calls === 2) throw new Error("snapshot conversion failed")
+    return toString.apply(this, args)
   })
   try {
     expect(() => collector.finish()).toThrow("snapshot conversion failed")

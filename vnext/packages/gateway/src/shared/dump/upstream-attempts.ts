@@ -2,6 +2,7 @@
 // parses a protocol, or drains a stream on the capture branch.
 
 import { Buffer } from "node:buffer"
+import { boundedUtf8 } from "./bounded-utf8.ts"
 
 export const UPSTREAM_ATTEMPT_LIMITS = Object.freeze({
   attempts: 8,
@@ -101,16 +102,29 @@ const safeOperation = (operation: string | undefined): string =>
 class BytePrefix {
   private readonly pages: Uint8Array[] = []
   private length = 0
+  private ownedLength = 0
 
   get byteLength(): number { return this.length }
+
+  // Only collector-created exact buffers enter here. External bytes always append.
+  own(input: Uint8Array): void {
+    if (this.length !== 0) throw new Error("prefix already contains bytes")
+    this.pages.length = 0
+    if (input.byteLength > 0) this.pages.push(input)
+    this.ownedLength = this.length = input.byteLength
+  }
 
   append(input: Uint8Array, limit: number): number {
     let copied = 0
     const allowed = Math.max(0, Math.min(input.byteLength, limit - this.length))
     while (copied < allowed) {
-      const pageIndex = Math.floor(this.length / 4096)
-      const pageOffset = this.length % 4096
-      if (!this.pages[pageIndex]) this.pages.push(new Uint8Array(Math.min(4096, limit - pageIndex * 4096)))
+      // The first owned chunk is sealed, including its short tail. Writable
+      // pages begin after that chunk and never overwrite or recopy its bytes.
+      const writableLength = this.length - this.ownedLength
+      const writableIndex = Math.floor(writableLength / 4096)
+      const pageIndex = writableIndex + (this.ownedLength > 0 ? 1 : 0)
+      const pageOffset = writableLength % 4096
+      if (!this.pages[pageIndex]) this.pages.push(new Uint8Array(Math.min(4096, limit - this.ownedLength - writableIndex * 4096)))
       const page = this.pages[pageIndex]
       if (!page) break
       const count = Math.min(allowed - copied, page.byteLength - pageOffset)
@@ -122,13 +136,17 @@ class BytePrefix {
   }
 
   base64(): string {
-    // The captured length excludes unused bytes in the final bounded page.
+    if (this.length === 0) return ""
+    // A single owned chunk or copied page can be viewed without another copy.
+    // In either case, exclude unused capacity beyond the captured byte length.
+    const page = this.pages[0]!
+    if (this.pages.length === 1) return Buffer.from(page.buffer, page.byteOffset, this.length).toString("base64")
     return Buffer.concat(this.pages, this.length).toString("base64")
   }
 
   release(): void {
     this.pages.length = 0
-    this.length = 0
+    this.length = this.ownedLength = 0
   }
 }
 
@@ -234,9 +252,13 @@ export class UpstreamExchangeCollector {
     }
   }
 
+  private captureLimit(prefix: BytePrefix, perSideLimit: number): number {
+    return Math.min(perSideLimit, prefix.byteLength + UPSTREAM_ATTEMPT_LIMITS.totalBodyBytes - this.capturedBodyBytes)
+  }
+
   private capture(prefix: BytePrefix, bytes: Uint8Array, perSideLimit: number): boolean {
     if (this.finished !== null) return true
-    const limit = Math.min(perSideLimit, prefix.byteLength + UPSTREAM_ATTEMPT_LIMITS.totalBodyBytes - this.capturedBodyBytes)
+    const limit = this.captureLimit(prefix, perSideLimit)
     const before = prefix.byteLength
     try {
       prefix.append(bytes, limit)
@@ -247,6 +269,21 @@ export class UpstreamExchangeCollector {
       return false
     } finally {
       this.capturedBodyBytes += prefix.byteLength - before
+    }
+  }
+
+  observePreparedText(item: MutableAttempt, text: string): void {
+    if (this.finished !== null) return
+    const prefix = item.requestPrefix
+    const available = this.captureLimit(prefix, UPSTREAM_ATTEMPT_LIMITS.requestPrefix) - prefix.byteLength
+    const prepared = boundedUtf8(text, available)
+    item.requestSource = "prepared"
+    item.requestObserved = prepared.totalBytes
+    if (prefix.byteLength === 0) {
+      prefix.own(prepared.prefix)
+      this.capturedBodyBytes += prepared.prefix.byteLength
+    } else {
+      this.capture(prefix, prepared.prefix, UPSTREAM_ATTEMPT_LIMITS.requestPrefix)
     }
   }
 
@@ -373,6 +410,9 @@ export class UpstreamExchangeCollector {
 export class UpstreamAttemptCapture {
   constructor(private readonly collector: UpstreamExchangeCollector, private readonly item: MutableAttempt) {}
   get id(): string { return this.item.id }
+  observePreparedText(text: string): void {
+    this.collector.observePreparedText(this.item, text)
+  }
   observePreparedRequest(input: { readonly prefix: Uint8Array; readonly totalBytes: number }): void {
     this.collector.observePreparedRequest(this.item, input)
   }
