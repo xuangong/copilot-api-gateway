@@ -1,0 +1,43 @@
+import assert from "node:assert/strict"
+import { pathToFileURL } from "node:url"
+const root = process.env.VNEXT_PROBE_ROOT
+assert(root)
+const baseline = await import("./task-D02-dial-baseline/fetcher.ts")
+const candidate = await import(pathToFileURL(`${root}/vnext/packages/dial/src/fetcher.ts`).href)
+const { ProxyDialError } = await import(pathToFileURL(`${root}/vnext/packages/proxy/src/index.ts`).href)
+const { ProxyDialError: BaselineProxyDialError } = await import("./task-D02-dial-baseline/node_modules/@vibe-core/proxy/src/index.ts")
+const results = []
+for (const mode of ["direct", "direct-error", "signal-getter", "body-getter", "raw", "raw-fetch", "missing-proxy", "abort"]) {
+ const run = async (create: typeof candidate.createFetcher, DialError: typeof ProxyDialError) => {
+  const trace: string[] = []
+  const response = new Response("fixture body", { status: 429 })
+  const signal = new AbortController().signal
+  const init: RequestInit = {
+   method: "POST",
+   get signal() { trace.push("signal"); if(mode === "signal-getter") throw new Error("signal fixture"); return signal },
+   get body() { trace.push("body"); if(mode === "body-getter") throw new Error("body fixture"); return "fixture 😀" },
+  }
+  const raw = mode === "raw" || mode === "raw-fetch" || mode === "body-getter"
+  const fetcher = create({
+   upstreamId:"fixture", fallbackList:[{id:mode === "missing-proxy" ? "missing" : raw ? "direct_connect" : "direct_fetch"}],
+   runtimeLocation:"TEST",proxyById:new Map(),
+   proxyBackoffs:{listForUpstream:async()=>{trace.push("backoffs");return []},recordDialFailure:async()=>{trace.push("failure")},recordDialSuccess:async()=>{trace.push("success")}},
+   socketDial:()=>({connect:async()=>{throw new Error("unused")},shouldConnectErrorFallbackToFetch:()=>true}),
+   runProxied:async()=>{throw new Error("unused")},
+   runDirectConnect:async(_target,request)=>{trace.push("raw:"+new TextDecoder().decode(request.body));if(mode === "raw-fetch")throw new DialError("fixture", "tcp-connect");return response},
+   runDirectFetch:async(_url,actual)=>{trace.push("fetch:"+String(actual.body));if(mode === "direct-error")throw new Error("fetch fixture");if(mode === "abort")throw new DOMException("fixture abort","AbortError");return response},
+  })
+  let synchronous = true
+  try {
+   const pending=fetcher("https://fixture.invalid/v1/responses",init)
+   synchronous=false
+   const result=await pending
+   return {trace,identical:result===response,status:result.status,text:await result.text()}
+  } catch(error) { return {trace,synchronous,name:error instanceof Error?error.name:"unknown",message:error instanceof Error?error.message:"unknown"} }
+ }
+ const before=await run(baseline.createFetcher, BaselineProxyDialError)
+ const after=await run(candidate.createFetcher, ProxyDialError)
+ assert.deepEqual(after,before,mode)
+ results.push({mode,...after})
+}
+console.log(JSON.stringify({result:"PASS",boundary:"injected transport differential; observer absent",baseline:"19f0bff2",cases:results,runtime:Bun.version},null,2))

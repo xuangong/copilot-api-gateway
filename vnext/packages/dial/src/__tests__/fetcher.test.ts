@@ -6,6 +6,7 @@
  */
 import { test, expect } from 'bun:test'
 import { createFetcher } from '../fetcher.ts'
+import type { DialObserver, DialAttemptInput } from '../fetcher.ts'
 import type { ProxyEntry } from '../proxy-catalog.ts'
 import { ProxyDialError, type ProxyConfig } from '@vibe-core/proxy'
 import type { SocketDial } from '@vibe-core/platform'
@@ -575,4 +576,276 @@ test('caller abort after classified rejection prevents implicit fetch', async ()
   })
   await expect(fetcher('https://api.openai.com', { method: 'GET', signal: controller.signal })).rejects.toThrow()
   expect(fetches).toBe(0)
+})
+
+const observedCalls = () => {
+  const calls: Array<{ parent: number; upstreamId: string; children: DialAttemptInput[] }> = []
+  const errors: string[] = []
+  const observer: DialObserver = {
+    beginCall({ upstreamId }) {
+      const call = { parent: calls.length + 1, upstreamId, children: [] as DialAttemptInput[] }
+      calls.push(call)
+      return {
+        beginAttempt(attempt) {
+          call.children.push(attempt)
+          return {
+            onResponse(response) { return response },
+            onFetchError(category) { errors.push(category) },
+          }
+        },
+      }
+    },
+  }
+  return { observer, calls, errors }
+}
+
+test('one observed outer call links each actual fallback dispatch in order', async () => {
+  const { repo } = fakeBackoffs()
+  const { observer, calls, errors } = observedCalls()
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'upstream', fallbackList: [{ id: 'a' }, { id: 'direct_fetch' }],
+    runtimeLocation: 'TEST', proxyById: new Map([['a', proxyA]]), observer,
+    runProxied: async () => { throw new ProxyDialError('failed', 'tcp-connect') },
+    runDirectFetch: async () => new Response('final', { status: 503 }),
+    runDirectConnect: okDirectConnect, socketDial: () => stubSocketDial,
+  })
+  expect((await fetcher('https://api.openai.com/v1', { method: 'POST', body: '界' })).status).toBe(503)
+  expect(calls).toHaveLength(1)
+  expect(calls[0]?.upstreamId).toBe('upstream')
+  expect(calls[0]?.children.map(child => [child.transport, child.transportId, child.method])).toEqual([
+    ['proxy', 'a', 'POST'], ['direct_fetch', 'direct_fetch', 'POST'],
+  ])
+  expect(calls[0]?.children[0]?.body).toMatchObject({ kind: 'bytes' })
+  expect(calls[0]?.children[1]?.body).toMatchObject({ kind: 'bytes' })
+  expect(errors).toEqual(['network'])
+})
+
+test('backed-off proxy gets a child only when pass two actually dispatches it', async () => {
+  const { repo } = fakeBackoffs()
+  await repo.recordDialFailure('a', 'upstream', 'old')
+  const { observer, calls } = observedCalls()
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'upstream', fallbackList: [{ id: 'a' }],
+    runtimeLocation: 'TEST', proxyById: new Map([['a', proxyA]]), observer,
+    runProxied: async () => new Response('pass two'),
+    runDirectFetch: async () => new Response('unexpected'),
+    runDirectConnect: okDirectConnect, socketDial: () => stubSocketDial,
+  })
+  expect(await (await fetcher('https://api.openai.com', { method: 'GET' })).text()).toBe('pass two')
+  expect(calls[0]?.children.map(child => child.transportId)).toEqual(['a'])
+})
+
+test('separate Fetcher invocations keep separate parent groups', async () => {
+  const { repo } = fakeBackoffs()
+  const { observer, calls } = observedCalls()
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'upstream', fallbackList: [{ id: 'direct_fetch' }],
+    runtimeLocation: 'TEST', proxyById: new Map(), observer,
+    runProxied: async () => new Response('unexpected'),
+    runDirectFetch: async () => new Response('ok'),
+    runDirectConnect: okDirectConnect, socketDial: () => stubSocketDial,
+  })
+  await fetcher('https://api.openai.com/first', { method: 'GET' })
+  await fetcher('https://api.openai.com/second', { method: 'POST', body: 'x' })
+  expect(calls.map(call => [call.parent, call.children.map(child => child.url)])).toEqual([
+    [1, ['https://api.openai.com/first']],
+    [2, ['https://api.openai.com/second']],
+  ])
+})
+
+test('implicit direct fetch is observed after classified direct-connect failure', async () => {
+  const { repo } = fakeBackoffs()
+  const { observer, calls, errors } = observedCalls()
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'upstream', fallbackList: [], runtimeLocation: 'TEST',
+    proxyById: new Map(), observer,
+    runProxied: async () => new Response('unexpected'),
+    runDirectFetch: async () => new Response('fallback'),
+    runDirectConnect: async () => { throw classifiedFailure() },
+    socketDial: () => classifiedSocketDial,
+  })
+  expect(await (await fetcher('https://api.openai.com', { method: 'GET' })).text()).toBe('fallback')
+  expect(calls[0]?.children.map(child => child.transport)).toEqual(['direct_connect', 'direct_fetch'])
+  expect(errors).toEqual(['network'])
+})
+
+test('pre-dispatch failures do not fabricate transport children', async () => {
+  const { repo } = fakeBackoffs()
+  const calls: string[] = []
+  const observer: DialObserver = { beginCall() { return {
+    onPreDispatchFailure(category) { calls.push(category) },
+    beginAttempt() { calls.push('child'); return undefined },
+  } } }
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'upstream', fallbackList: [{ id: 'missing' }],
+    runtimeLocation: 'TEST', proxyById: new Map(), observer,
+    runProxied: async () => new Response('unexpected'),
+    runDirectFetch: async () => new Response('unexpected'),
+    runDirectConnect: okDirectConnect, socketDial: () => stubSocketDial,
+  })
+  await expect(fetcher('https://api.openai.com', { method: 'GET' })).rejects.toThrow()
+  expect(calls).toEqual(['config'])
+})
+
+test('observer failures cannot change fallback, abort, or proxy backoff', async () => {
+  const { repo } = fakeBackoffs()
+  const observer: DialObserver = { beginCall() { return {
+    beginAttempt() { throw new ProxyDialError('observer failed', 'tcp-connect') },
+  } } }
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'upstream', fallbackList: [{ id: 'a' }, { id: 'direct_fetch' }],
+    runtimeLocation: 'TEST', proxyById: new Map([['a', proxyA]]), observer,
+    runProxied: async () => new Response('proxy succeeded'),
+    runDirectFetch: async () => new Response('unexpected'),
+    runDirectConnect: okDirectConnect, socketDial: () => stubSocketDial,
+  })
+  expect(await (await fetcher('https://api.openai.com', { method: 'GET' })).text()).toBe('proxy succeeded')
+  expect(await repo.listForUpstream('upstream')).toEqual([])
+})
+
+test('observer sees direct native text without forcing a body read', async () => {
+  const { repo } = fakeBackoffs()
+  const { observer, calls } = observedCalls()
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'upstream', fallbackList: [{ id: 'direct_fetch' }],
+    runtimeLocation: 'TEST', proxyById: new Map(), observer,
+    runProxied: async () => new Response('unexpected'),
+    runDirectFetch: async () => new Response(null, { status: 204 }),
+    runDirectConnect: okDirectConnect, socketDial: () => stubSocketDial,
+  })
+  expect((await fetcher('https://api.openai.com', { method: 'POST', body: '界'.repeat(30000) })).status).toBe(204)
+  expect(calls[0]?.children[0]?.body).toEqual({ kind: 'text', text: '界'.repeat(30000) })
+})
+
+test('a throwing observer callback getter cannot replace a healthy response', async () => {
+  const { repo } = fakeBackoffs()
+  const call = Object.defineProperty({}, 'beginAttempt', {
+    get() { throw new ProxyDialError('callback lookup failed', 'tcp-connect') },
+  })
+  const observer: DialObserver = { beginCall: () => call }
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'upstream', fallbackList: [{ id: 'a' }],
+    runtimeLocation: 'TEST', proxyById: new Map([['a', proxyA]]), observer,
+    runProxied: async () => new Response('healthy'),
+    runDirectFetch: async () => new Response('unexpected'),
+    runDirectConnect: okDirectConnect, socketDial: () => stubSocketDial,
+  })
+  expect(await (await fetcher('https://api.openai.com', { method: 'GET' })).text()).toBe('healthy')
+  expect(await repo.listForUpstream('upstream')).toEqual([])
+})
+
+test('a response callback failure leaves HTTP status and body available', async () => {
+  const { repo } = fakeBackoffs()
+  const original = new Response('rate limit', { status: 429, headers: { 'retry-after': '7' } })
+  const observer: DialObserver = { beginCall: () => ({
+    beginAttempt: () => ({ onResponse() { throw new Error('capture failed') } }),
+  }) }
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'upstream', fallbackList: [{ id: 'direct_fetch' }],
+    runtimeLocation: 'TEST', proxyById: new Map(), observer,
+    runProxied: async () => new Response('unexpected'),
+    runDirectFetch: async () => original,
+    runDirectConnect: okDirectConnect, socketDial: () => stubSocketDial,
+  })
+  const response = await fetcher('https://api.openai.com', { method: 'GET' })
+  expect(response).toBe(original)
+  expect(response.status).toBe(429)
+  expect(response.headers.get('retry-after')).toBe('7')
+  expect(await response.text()).toBe('rate limit')
+})
+
+test('an error callback failure cannot change abort propagation', async () => {
+  const { repo } = fakeBackoffs()
+  const abort = new DOMException('stopped', 'AbortError')
+  let laterFetches = 0
+  const observer: DialObserver = { beginCall: () => ({
+    beginAttempt: () => ({ onFetchError() { throw new Error('callback failed') } }),
+  }) }
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'upstream', fallbackList: [{ id: 'a' }, { id: 'direct_fetch' }],
+    runtimeLocation: 'TEST', proxyById: new Map([['a', proxyA]]), observer,
+    runProxied: async () => { throw abort },
+    runDirectFetch: async () => { laterFetches += 1; return new Response('unexpected') },
+    runDirectConnect: okDirectConnect, socketDial: () => stubSocketDial,
+  })
+  await expect(fetcher('https://api.openai.com', { method: 'GET' })).rejects.toBe(abort)
+  expect(laterFetches).toBe(0)
+})
+
+test('inherited RequestInit values are not misreported as default method and empty body', async () => {
+  const { repo } = fakeBackoffs()
+  const { observer, calls } = observedCalls()
+  const init = Object.create({ method: 'POST', body: 'inherited text' }) as RequestInit
+  const runtimeRequest = new Request('https://example.com', init)
+  expect(runtimeRequest.method).toBe('POST')
+  expect(await runtimeRequest.text()).toBe('inherited text')
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'upstream', fallbackList: [{ id: 'direct_fetch' }],
+    runtimeLocation: 'TEST', proxyById: new Map(), observer,
+    runProxied: async () => new Response('unexpected'),
+    runDirectFetch: async () => new Response('ok'),
+    runDirectConnect: okDirectConnect, socketDial: () => stubSocketDial,
+  })
+  await fetcher('https://example.com', init)
+  expect(calls[0]?.children[0]?.method).toBe('unknown')
+  expect(calls[0]?.children[0]?.body).toEqual({ kind: 'unobserved' })
+})
+
+test('an observed error response is not read or locked before its consumer cancels it', async () => {
+  const { repo } = fakeBackoffs()
+  let pulls = 0
+  let cancellations = 0
+  let seenStatus: number | undefined
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) { pulls += 1; controller.enqueue(Uint8Array.of(1)) },
+    cancel() { cancellations += 1 },
+  }, { highWaterMark: 0 })
+  const observer: DialObserver = { beginCall: () => ({
+    beginAttempt: () => ({ onResponse(response) { seenStatus = response.status; return response } }),
+  }) }
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'upstream', fallbackList: [{ id: 'direct_fetch' }],
+    runtimeLocation: 'TEST', proxyById: new Map(), observer,
+    runProxied: async () => new Response('unexpected'),
+    runDirectFetch: async () => new Response(body, { status: 429 }),
+    runDirectConnect: okDirectConnect, socketDial: () => stubSocketDial,
+  })
+  const response = await fetcher('https://api.openai.com', { method: 'GET' })
+  expect(seenStatus).toBe(429)
+  expect(pulls).toBe(0)
+  expect(response.body?.locked).toBe(false)
+  await response.body?.cancel('discard')
+  expect(pulls).toBe(0)
+  expect(cancellations).toBe(1)
+})
+
+test('no-body responses still notify the transport child', async () => {
+  const { repo } = fakeBackoffs()
+  let status: number | undefined
+  const observer: DialObserver = { beginCall: () => ({
+    beginAttempt: () => ({ onResponse(response) { status = response.status; return response } }),
+  }) }
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'upstream', fallbackList: [{ id: 'direct_fetch' }],
+    runtimeLocation: 'TEST', proxyById: new Map(), observer,
+    runProxied: async () => new Response('unexpected'),
+    runDirectFetch: async () => new Response(null, { status: 204 }),
+    runDirectConnect: okDirectConnect, socketDial: () => stubSocketDial,
+  })
+  const response = await fetcher('https://api.openai.com', { method: 'GET' })
+  expect(status).toBe(204)
+  expect(response.body).toBeNull()
+})
+
+test('without an observer the original Response is returned unchanged', async () => {
+  const { repo } = fakeBackoffs()
+  const original = new Response('ok')
+  const fetcher = createFetcher({
+    proxyBackoffs: repo, upstreamId: 'upstream', fallbackList: [{ id: 'direct_fetch' }],
+    runtimeLocation: 'TEST', proxyById: new Map(),
+    runProxied: async () => new Response('unexpected'),
+    runDirectFetch: async () => original,
+    runDirectConnect: okDirectConnect, socketDial: () => stubSocketDial,
+  })
+  expect(await fetcher('https://api.openai.com', { method: 'GET' })).toBe(original)
 })

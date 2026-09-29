@@ -1,5 +1,12 @@
 export { createFetcher } from './fetcher.ts'
-export type { CreateFetcherInput } from './fetcher.ts'
+export type {
+  CreateFetcherInput,
+  DialAttemptInput,
+  DialAttemptObserver,
+  DialCallObserver,
+  DialObserver,
+  PreparedDialBody,
+} from './fetcher.ts'
 
 export { loadProxyCatalog } from './proxy-catalog.ts'
 export type { ProxyCatalog, ProxyEntry } from './proxy-catalog.ts'

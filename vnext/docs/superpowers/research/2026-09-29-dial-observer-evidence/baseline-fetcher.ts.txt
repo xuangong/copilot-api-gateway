@@ -28,44 +28,9 @@ import {
 } from '@vibe-core/proxy-repo'
 import type { Fetcher } from '@vibe-core/upstream'
 
-// Bytes are borrowed only for the synchronous beginAttempt callback. An
-// observer retaining them must copy its bounded prefix before dispatch.
-export type PreparedDialBody =
-  | { kind: 'text'; text: string }
-  | { kind: 'bytes'; bytes: Uint8Array }
-  | { kind: 'empty' }
-  | { kind: 'unobserved' }
-
-export interface DialAttemptInput {
-  transport: 'proxy' | 'direct_connect' | 'direct_fetch'
-  transportId: string
-  method: string
-  url: string
-  requestHeaders: Headers | Readonly<Record<string, string>> | undefined
-  /** Prepared bytes can be observed, but they do not prove a socket write. */
-  body: PreparedDialBody
-  startedAt: number
-}
-
-export interface DialAttemptObserver {
-  /** Must leave the source body unread and unlocked until the consumer pulls or cancels. */
-  onResponse?(response: Response): Response
-  onFetchError?(category: 'network' | 'abort' | 'unknown'): void
-}
-
-export interface DialCallObserver {
-  onPreDispatchFailure?(category: 'body' | 'config' | 'abort' | 'unknown'): void
-  beginAttempt?(input: DialAttemptInput): DialAttemptObserver | undefined
-}
-
-export interface DialObserver {
-  beginCall(input: { upstreamId: string; url: string; startedAt: number }): DialCallObserver | undefined
-}
-
 export interface CreateFetcherInput {
   proxyBackoffs: Pick<ProxyBackoffRepo, 'listForUpstream' | 'recordDialFailure' | 'recordDialSuccess'>
   upstreamId: string
-  observer?: DialObserver
   fallbackList: readonly ProxyFallbackEntry[]
   proxyById: Map<string, ProxyEntry>
   /** Location tag the request landed in; applies each entry's `colos` whitelist. */
@@ -127,18 +92,9 @@ export const createFetcher = (input: CreateFetcherInput): Fetcher => {
     hasMaterializedTransport && hasDirectFetch && list.indexOf(DIRECT_FETCH_ID) < list.length - 1
 
   return (url, init) => {
-    let call: DialCallObserver | undefined
-    if (input.observer) {
-      try {
-        call = input.observer.beginCall({ upstreamId: input.upstreamId, url, startedAt: Date.now() })
-      } catch {
-        // Diagnostics never participate in the dial policy.
-      }
-    }
     // Reject streaming bodies upfront whenever any materialized entry is in
     // play. The two-pass dial can replay a request and a stream is single-shot.
     if (hasMaterializedTransport && init.body instanceof ReadableStream) {
-      notifyPreDispatchFailure(call, 'body')
       return Promise.reject(
         new Error(
           'streaming request bodies are not replayable through direct-connect or proxy transports',
@@ -152,7 +108,6 @@ export const createFetcher = (input: CreateFetcherInput): Fetcher => {
       createReplayableRequest(url, init),
       directFetchBeforeMaterialized,
       hasDirectFetch,
-      call,
     )
   }
 }
@@ -164,19 +119,11 @@ const runFallbacks = async (
   request: ReplayableRequest,
   directFetchBeforeMaterialized: boolean,
   hasDirectFetch: boolean,
-  call: DialCallObserver | undefined,
 ): Promise<Response> => {
   // A direct-fetch attempt before a materialized transport can consume
   // Blob/FormData bodies. Build the replayable byte form first so every later
   // attempt observes one body.
-  if (directFetchBeforeMaterialized) {
-    try {
-      await request.materialized()
-    } catch (error) {
-      notifyPreDispatchFailure(call, isAbortError(error) ? 'abort' : 'body')
-      throw error
-    }
-  }
+  if (directFetchBeforeMaterialized) await request.materialized()
   const errors: unknown[] = []
   const implicitFetch = { attempted: false, allPreDispatch: true }
 
@@ -186,13 +133,7 @@ const runFallbacks = async (
   // per-request store round-trip.
   const skip = new Set<string>()
   if (list.some((id) => !isDirectFallbackId(id))) {
-    let active: Awaited<ReturnType<CreateFetcherInput['proxyBackoffs']['listForUpstream']>>
-    try {
-      active = await input.proxyBackoffs.listForUpstream(input.upstreamId)
-    } catch (error) {
-      notifyPreDispatchFailure(call, isAbortError(error) ? 'abort' : 'config')
-      throw error
-    }
+    const active = await input.proxyBackoffs.listForUpstream(input.upstreamId)
     const now = Math.floor(Date.now() / 1000)
     for (const b of active) if (b.expiresAt > now) skip.add(b.proxyId)
   }
@@ -201,33 +142,20 @@ const runFallbacks = async (
   for (const id of list) {
     if (skip.has(id)) continue
     triedThisCall.add(id)
-    const result = await tryOne(id, input, request, url, errors, implicitFetch, call)
+    const result = await tryOne(id, input, request, url, errors, implicitFetch)
     if (result) return result
   }
 
   for (const id of list) {
     if (triedThisCall.has(id)) continue
-    const result = await tryOne(id, input, request, url, errors, implicitFetch, call)
+    const result = await tryOne(id, input, request, url, errors, implicitFetch)
     if (result) return result
   }
 
   if (!hasDirectFetch && implicitFetch.attempted && implicitFetch.allPreDispatch && !request.signal?.aborted) {
     // Only classified socket.opened rejections reached here. The configured
     // two-pass chain is exhausted; runtime fetch is the one final attempt.
-    let fetchInit: RequestInit
-    try {
-      fetchInit = request.fetchInit()
-    } catch (error) {
-      notifyPreDispatchFailure(call, isAbortError(error) ? 'abort' : 'body')
-      throw error
-    }
-    const attempt = beginDirectFetchAttempt(call, url, fetchInit)
-    try {
-      return observeResponse(attempt, await input.runDirectFetch(url, fetchInit))
-    } catch (error) {
-      notifyFetchError(attempt, error)
-      throw error
-    }
+    return input.runDirectFetch(url, request.fetchInit())
   }
 
   // A single fallback entry that failed once produces just one error — surface
@@ -243,33 +171,23 @@ const tryOne = async (
   url: string,
   errors: unknown[],
   implicitFetch: { attempted: boolean; allPreDispatch: boolean },
-  call: DialCallObserver | undefined,
 ): Promise<Response | null> => {
   implicitFetch.attempted = true
   if (id !== DIRECT_CONNECT_ID) implicitFetch.allPreDispatch = false
   let directSocketDial: SocketDial | undefined
-  let attempt: DialAttemptObserver | undefined
-  let dispatched = false
-  let preDispatchCategory: 'body' | 'config' = 'body'
   try {
     if (id === DIRECT_FETCH_ID) {
       // Direct egress is the runtime's fetch — it never raises ProxyDialError,
       // so we don't touch the backoff table for this entry.
-      const fetchInit = request.fetchInit()
-      attempt = beginDirectFetchAttempt(call, url, fetchInit)
-      dispatched = true
-      return observeResponse(attempt, await input.runDirectFetch(url, fetchInit))
+      return await input.runDirectFetch(url, request.fetchInit())
     }
     if (id === DIRECT_CONNECT_ID) {
       const materialized = await request.materialized()
-      preDispatchCategory = 'config'
       directSocketDial = input.socketDial()
-      attempt = beginMaterializedAttempt(call, 'direct_connect', id, url, materialized)
-      dispatched = true
-      return observeResponse(attempt, await input.runDirectConnect(materialized.target, materialized.request, {
+      return await input.runDirectConnect(materialized.target, materialized.request, {
         socketDial: directSocketDial,
         signal: request.signal,
-      }))
+      })
     }
     const config = input.proxyById.get(id)
     if (!config) {
@@ -278,11 +196,9 @@ const tryOne = async (
       // for THIS entry so the chain advances instead of killing the whole call.
       // No backoff write — the row is gone.
       errors.push(new ProxyDialError(`unknown proxy id in fallback list: ${id}`, 'config'))
-      notifyPreDispatchFailure(call, 'config')
       return null
     }
     const materialized = await request.materialized()
-    preDispatchCategory = 'config'
     // An explicit request signal joins the dialer's timeout controller so its
     // caller can stop an in-flight handshake before the per-proxy deadline.
     const options: RunProxiedRequestOptions = {
@@ -290,8 +206,6 @@ const tryOne = async (
       signal: request.signal,
     }
     if (config.dialTimeoutMs !== null) options.dialTimeoutMs = config.dialTimeoutMs
-    attempt = beginMaterializedAttempt(call, 'proxy', id, url, materialized)
-    dispatched = true
     const response = await input.runProxied(
       config.config,
       materialized.target,
@@ -306,10 +220,8 @@ const tryOne = async (
     } catch (recordErr) {
       console.warn(`failed to clear proxy backoff for ${id}/${input.upstreamId}:`, recordErr)
     }
-    return observeResponse(attempt, response)
+    return response
   } catch (err) {
-    if (dispatched) notifyFetchError(attempt, err)
-    else notifyPreDispatchFailure(call, isAbortError(err) ? 'abort' : preDispatchCategory)
     // Explicit cancellation propagates immediately so the chain does not
     // continue against later fallback entries.
     if (isAbortError(err)) throw err
@@ -352,91 +264,4 @@ const tryOne = async (
     }
     throw err
   }
-}
-
-const notifyPreDispatchFailure = (
-  call: DialCallObserver | undefined,
-  category: 'body' | 'config' | 'abort' | 'unknown',
-): void => {
-  try { call?.onPreDispatchFailure?.(category) } catch { /* best effort */ }
-}
-
-const notifyFetchError = (attempt: DialAttemptObserver | undefined, error: unknown): void => {
-  try {
-    attempt?.onFetchError?.(isAbortError(error) ? 'abort' : error instanceof Error ? 'network' : 'unknown')
-  } catch { /* best effort */ }
-}
-
-const observeResponse = (attempt: DialAttemptObserver | undefined, response: Response): Response => {
-  if (!attempt) return response
-  try {
-    const observed = attempt.onResponse?.(response)
-    return observed instanceof Response ? observed : response
-  } catch { return response }
-}
-
-const beginAttempt = (
-  call: DialCallObserver | undefined,
-  input: DialAttemptInput,
-): DialAttemptObserver | undefined => {
-  try { return call?.beginAttempt?.(input) } catch { return undefined }
-}
-
-const beginMaterializedAttempt = (
-  call: DialCallObserver | undefined,
-  transport: 'proxy' | 'direct_connect',
-  transportId: string,
-  url: string,
-  materialized: MaterializedRequest,
-): DialAttemptObserver | undefined => {
-  if (!call) return undefined
-  const { method, headers, body } = materialized.request
-  return beginAttempt(call, {
-    transport, transportId, method, url, requestHeaders: headers,
-    body: body ? { kind: 'bytes', bytes: body } : { kind: 'empty' },
-    startedAt: Date.now(),
-  })
-}
-
-const beginDirectFetchAttempt = (
-  call: DialCallObserver | undefined,
-  url: string,
-  init: RequestInit,
-): DialAttemptObserver | undefined => {
-  if (!call) return undefined
-  // Data descriptors avoid invoking userland RequestInit accessors earlier
-  // than runtime fetch would. Unknown shapes stay unobserved.
-  let method = 'unknown'
-  let requestHeaders: Headers | undefined
-  let body: PreparedDialBody = { kind: 'unobserved' }
-  try {
-    const prototype: unknown = Object.getPrototypeOf(init)
-    const hasDefaultSlots = prototype === Object.prototype || prototype === null
-    const methodSlot = Object.getOwnPropertyDescriptor(init, 'method')
-    if (methodSlot === undefined && hasDefaultSlots) method = 'GET'
-    else if (methodSlot && 'value' in methodSlot) {
-      if (typeof methodSlot.value === 'string') method = methodSlot.value
-      else if (methodSlot.value === undefined) method = 'GET'
-    }
-    const headerSlot = Object.getOwnPropertyDescriptor(init, 'headers')
-    if (headerSlot && 'value' in headerSlot && headerSlot.value instanceof Headers) {
-      requestHeaders = headerSlot.value
-    }
-    const bodySlot = Object.getOwnPropertyDescriptor(init, 'body')
-    if ((bodySlot === undefined && hasDefaultSlots) || (bodySlot && 'value' in bodySlot && bodySlot.value == null)) {
-      body = { kind: 'empty' }
-    }
-    else if (bodySlot && 'value' in bodySlot) {
-      const value: unknown = bodySlot.value
-      if (typeof value === 'string') body = { kind: 'text', text: value }
-      else if (value instanceof Uint8Array) body = { kind: 'bytes', bytes: value }
-      else if (value instanceof ArrayBuffer) body = { kind: 'bytes', bytes: new Uint8Array(value) }
-    }
-  } catch {
-    // Proxy traps and unusual BodyInit objects must not affect transport.
-  }
-  return beginAttempt(call, {
-    transport: 'direct_fetch', transportId: DIRECT_FETCH_ID, method, url, requestHeaders, body,
-    startedAt: Date.now(),
-  })
 }

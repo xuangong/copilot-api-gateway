@@ -1,0 +1,99 @@
+{
+  "result": "PASS",
+  "boundary": "injected transport differential; observer absent",
+  "baseline": "19f0bff2",
+  "cases": [
+    {
+      "mode": "direct",
+      "trace": [
+        "signal",
+        "body",
+        "fetch:fixture 😀"
+      ],
+      "identical": true,
+      "status": 429,
+      "text": "fixture body"
+    },
+    {
+      "mode": "direct-error",
+      "trace": [
+        "signal",
+        "body",
+        "fetch:fixture 😀"
+      ],
+      "synchronous": false,
+      "name": "Error",
+      "message": "fetch fixture"
+    },
+    {
+      "mode": "signal-getter",
+      "trace": [
+        "signal"
+      ],
+      "synchronous": true,
+      "name": "Error",
+      "message": "signal fixture"
+    },
+    {
+      "mode": "body-getter",
+      "trace": [
+        "body"
+      ],
+      "synchronous": true,
+      "name": "Error",
+      "message": "body fixture"
+    },
+    {
+      "mode": "raw",
+      "trace": [
+        "body",
+        "signal",
+        "body",
+        "signal",
+        "body",
+        "raw:fixture 😀"
+      ],
+      "identical": true,
+      "status": 429,
+      "text": "fixture body"
+    },
+    {
+      "mode": "raw-fetch",
+      "trace": [
+        "body",
+        "signal",
+        "body",
+        "signal",
+        "body",
+        "raw:fixture 😀",
+        "fetch:102,105,120,116,117,114,101,32,240,159,152,128"
+      ],
+      "identical": true,
+      "status": 429,
+      "text": "fixture body"
+    },
+    {
+      "mode": "missing-proxy",
+      "trace": [
+        "body",
+        "signal",
+        "backoffs"
+      ],
+      "synchronous": false,
+      "name": "ProxyDialError",
+      "message": "unknown proxy id in fallback list: missing"
+    },
+    {
+      "mode": "abort",
+      "trace": [
+        "signal",
+        "body",
+        "fetch:fixture 😀"
+      ],
+      "synchronous": false,
+      "name": "AbortError",
+      "message": "fixture abort"
+    }
+  ],
+  "runtime": "1.3.0"
+}

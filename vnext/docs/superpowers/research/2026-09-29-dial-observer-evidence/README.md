@@ -1,0 +1,11 @@
+# D02 generic dial observation evidence
+
+The optional framework callback observes actual transport invocations, including two-pass proxy fallback and implicit runtime-fetch fallback. It is not connected to production dumps in this package. A parent that fails preparation/configuration has no fabricated child, and zero children does not prove no provider call. Callback errors cannot change transport/backoff/abort behavior. The gateway remains responsible for bounded UTF-8 capture, safe fields, response wrapping and execution-only activation.
+
+## Independent differential probe
+
+`differential-output.json` compares the final candidate in a clean verification tree against `19f0bff2` across eight injected-transport scenarios with observation absent. Getter order, synchronous versus asynchronous errors, response identity, status/body and fallback trace agree. This is not a live provider or socket-wire test.
+
+The exact probe and baseline source are archived as text. To replay, copy the probe to a scratch `.ts`, create adjacent `task-D02-dial-baseline/fetcher.ts` from the archived baseline, and symlink `replayable-request.ts` and `node_modules` from the checkout's dial package into that baseline directory. Set `VNEXT_PROBE_ROOT` to the candidate checkout and run with Bun. Each imported dial module must receive its own `ProxyDialError` class: the first cross-worktree fixture accidentally mixed classes, changing `instanceof` classification in the baseline only; the corrected probe uses the matching constructors.
+
+The implementation's dial suite passed 40 tests, covering observed fallback/parent grouping/cancellation, callback failures, inherited RequestInit data and absence of observation. Independent spec/quality review passed with 13 extra probes. Full clean CI passed: 4,309 tests, one existing skip, zero failures, all typechecks/purity/lint (36 inherited warnings)/build/Workers dry-run gates. Optional input.observer getter hardening is recorded for final triage. Trusted internal provider RequestInit is the supported capture path; hostile Proxy traps can have arbitrary side effects during reflection, so the diagnostic interface does not promise side-effect-free introspection of arbitrary embedded JavaScript objects. No response wrapper, provider activation, deployment or memory-performance claim is made here.
