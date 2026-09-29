@@ -1,3 +1,4 @@
+import { selectedTierFrames } from "../shared/execution-tier"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 import { responsesFormatGuard, responsesFormatMismatchMessage } from '@vibe-llm/provider-llm'
 import { TranslatorValidationError } from '@vibe-llm/translate/errors'
@@ -441,6 +442,7 @@ export const messagesAttempt = {
       } else {
         frames = parseMessagesStream(upstreamResp.body, args.ctx.downstreamAbortSignal !== undefined ? { signal: args.ctx.downstreamAbortSignal } : {})
       }
+      frames = selectedTierFrames("messages", frames, execution?.serviceTier)
       const { events: decorated } = withUpstreamTelemetry(observeUpstreamFrames(upstreamResp, frames, upstreamLooksJson), {
         abortSignal: args.ctx.downstreamAbortSignal,
         protocol: 'messages',

@@ -1,0 +1,333 @@
+{
+  "passed": true,
+  "runtime": "Actual Bun loopback gateway + CopilotProvider + loopback synthetic upstream + temporary SQLite",
+  "results": [
+    {
+      "label": "responses-fast-json",
+      "status": 200,
+      "dispatches": 1,
+      "model": "claude-opus-4.8-fast",
+      "tier": "priority"
+    },
+    {
+      "label": "responses-fast-stream",
+      "status": 200,
+      "dispatches": 1,
+      "model": "claude-opus-4.8-fast",
+      "tier": "priority"
+    },
+    {
+      "label": "messages-fast-json",
+      "status": 200,
+      "dispatches": 1,
+      "model": "claude-opus-4.8-fast",
+      "tier": "fast"
+    },
+    {
+      "label": "messages-fast-stream",
+      "status": 200,
+      "dispatches": 1,
+      "model": "claude-opus-4.8-fast",
+      "tier": "fast"
+    },
+    {
+      "label": "responses-base",
+      "status": 200,
+      "dispatches": 1,
+      "model": "claude-opus-4.8",
+      "tier": "default"
+    },
+    {
+      "label": "responses-pin",
+      "status": 200,
+      "dispatches": 1,
+      "model": "claude-opus-4.8-fast",
+      "tier": "priority"
+    },
+    {
+      "label": "responses-fallback",
+      "status": 200,
+      "dispatches": 1,
+      "model": "claude-sonnet-4.6",
+      "tier": "default"
+    },
+    {
+      "label": "messages-missing",
+      "status": 400,
+      "dispatches": 0
+    },
+    {
+      "label": "messages-via-responses-fast",
+      "status": 200,
+      "dispatches": 1,
+      "model": "claude-opus-4.8-fast",
+      "tier": "fast"
+    },
+    {
+      "label": "messages-via-responses-stream",
+      "status": 200,
+      "dispatches": 1,
+      "model": "claude-opus-4.8-fast",
+      "tier": "fast"
+    },
+    {
+      "label": "messages-via-responses-missing",
+      "status": 400,
+      "dispatches": 0
+    },
+    {
+      "label": "responses-via-messages-fast",
+      "status": 200,
+      "dispatches": 1,
+      "model": "claude-opus-4.8-fast",
+      "tier": "priority"
+    },
+    {
+      "label": "responses-via-messages-stream",
+      "status": 200,
+      "dispatches": 1,
+      "model": "claude-opus-4.8-fast",
+      "tier": "priority"
+    },
+    {
+      "label": "responses-via-messages-fallback",
+      "status": 200,
+      "dispatches": 1,
+      "model": "claude-sonnet-4.6",
+      "tier": "default"
+    },
+    {
+      "label": "responses-retry",
+      "status": 200,
+      "dispatches": 2,
+      "model": "claude-opus-4.8-fast",
+      "tier": "priority"
+    },
+    {
+      "label": "count-tokens-context",
+      "status": 200,
+      "dispatches": 1,
+      "model": "claude-opus-4.8-1m-internal",
+      "tier": "none"
+    },
+    {
+      "label": "count-tokens-effort",
+      "status": 200,
+      "dispatches": 1,
+      "model": "claude-opus-4.8-high",
+      "tier": "none"
+    }
+  ],
+  "refreshes": 1,
+  "rows": [
+    {
+      "incoming_model": "alias-messages-fast-json",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 10
+    },
+    {
+      "incoming_model": "alias-messages-fast-json",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 50
+    },
+    {
+      "incoming_model": "alias-messages-fast-stream",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 10
+    },
+    {
+      "incoming_model": "alias-messages-fast-stream",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 50
+    },
+    {
+      "incoming_model": "alias-messages-via-responses-fast",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 10
+    },
+    {
+      "incoming_model": "alias-messages-via-responses-fast",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 50
+    },
+    {
+      "incoming_model": "alias-messages-via-responses-stream",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 10
+    },
+    {
+      "incoming_model": "alias-messages-via-responses-stream",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 50
+    },
+    {
+      "incoming_model": "alias-responses-base",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 5
+    },
+    {
+      "incoming_model": "alias-responses-base",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 25
+    },
+    {
+      "incoming_model": "alias-responses-fallback",
+      "model": "claude-sonnet-4.6",
+      "model_key": "claude-sonnet-4.6",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 3
+    },
+    {
+      "incoming_model": "alias-responses-fallback",
+      "model": "claude-sonnet-4.6",
+      "model_key": "claude-sonnet-4.6",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 15
+    },
+    {
+      "incoming_model": "alias-responses-fast-json",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 10
+    },
+    {
+      "incoming_model": "alias-responses-fast-json",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 50
+    },
+    {
+      "incoming_model": "alias-responses-fast-stream",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 10
+    },
+    {
+      "incoming_model": "alias-responses-fast-stream",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 50
+    },
+    {
+      "incoming_model": "alias-responses-pin",
+      "model": "claude-opus-4.8-fast",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 10
+    },
+    {
+      "incoming_model": "alias-responses-pin",
+      "model": "claude-opus-4.8-fast",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 50
+    },
+    {
+      "incoming_model": "alias-responses-retry",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 10
+    },
+    {
+      "incoming_model": "alias-responses-retry",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 50
+    },
+    {
+      "incoming_model": "alias-responses-via-messages-fallback",
+      "model": "claude-sonnet-4.6",
+      "model_key": "claude-sonnet-4.6",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 3
+    },
+    {
+      "incoming_model": "alias-responses-via-messages-fallback",
+      "model": "claude-sonnet-4.6",
+      "model_key": "claude-sonnet-4.6",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 15
+    },
+    {
+      "incoming_model": "alias-responses-via-messages-fast",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 10
+    },
+    {
+      "incoming_model": "alias-responses-via-messages-fast",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 50
+    },
+    {
+      "incoming_model": "alias-responses-via-messages-stream",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 10
+    },
+    {
+      "incoming_model": "alias-responses-via-messages-stream",
+      "model": "claude-opus-4.8",
+      "model_key": "claude-opus-4.8-fast",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 50
+    }
+  ],
+  "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c05-fast-runtime-GU8L10"
+}

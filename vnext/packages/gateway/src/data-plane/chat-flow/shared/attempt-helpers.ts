@@ -1,3 +1,4 @@
+import { selectedTierFrames } from "./execution-tier"
 /**
  * Pure helpers for constructing telemetry payloads inside `attempt.ts`.
  * Kept free of I/O so unit tests can drive them with stub bindings.
@@ -54,7 +55,7 @@ export function telemetryModelIdentity(
     model: input.publicModel,
     upstream: binding.upstream,
     modelKey,
-    ...(execution ? { executedModelKey: execution.modelKey } : {}),
+    ...(execution ? { executedModelKey: execution.modelKey, ...(execution.serviceTier ? { executedServiceTier: execution.serviceTier } : {}) } : {}),
     cost: (binding.provider.getPricingForModelKey(modelKey) ?? null) as TelemetryModelIdentity['cost'],
   }
 }
@@ -126,6 +127,7 @@ export function providerResponseToExecuteResult<T>(
       args.providerResp.responsesAdapter,
     ) as AsyncIterable<ProtocolFrame<T>>
   }
+  events = selectedTierFrames(args.protocol, events, args.providerResp.execution?.serviceTier)
   const { events: decorated } = withUpstreamTelemetry(events, {
     abortSignal: args.abortSignal,
     protocol: args.protocol,

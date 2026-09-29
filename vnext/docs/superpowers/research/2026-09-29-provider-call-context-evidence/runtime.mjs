@@ -1,3 +1,4 @@
+import { serve } from 'bun'
 import assert from 'node:assert/strict'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -30,7 +31,7 @@ const makeResponse=async(label,sse,metadata)=>{
  frame:frame=>{counters.frame++;return normalize(frame,label)},
  }}:{})}
 }
-const server=Bun.serve({hostname:'127.0.0.1',port:0,fetch:async request=>{
+const server=serve({hostname:'127.0.0.1',port:0,fetch:async request=>{
  const url=new URL(request.url),label=url.searchParams.get('label'),sse=url.searchParams.get('sse')==='1',metadata=url.searchParams.get('metadata')!=='0',chat=url.searchParams.get('chat')==='1'
  const telemetryCtx={apiKeyId:'synthetic-key',incomingModel:`alias-${label}`,userAgent:'synthetic',requestId:label,isStreaming:sse,runtimeLocation:'bun',requestStartedAt:Date.now(),sourceApi:chat?'chat-completions':'responses',metrics:new PerformanceRecorder(sse)}
  const binding={upstream:'synthetic-upstream',model:{id:'synthetic-public',providerModelKey:'synthetic-base'},provider:{fetch:async()=>{counters.provider++;return makeResponse(label,sse,metadata)},getPricingForModelKey:key=>({input:key.endsWith('-fast')?20:2,output:key.endsWith('-fast')?40:4})}}
@@ -44,7 +45,7 @@ try{
  const results=await Promise.all(cases.map(async([label,sse,chat,metadata])=>{
   const response=await fetch(`http://127.0.0.1:${server.port}/?label=${label}&sse=${+sse}&chat=${+chat}&metadata=${+metadata}`),text=await response.text();assert.equal(response.status,200,text)
   if(metadata){assert(text.includes(`canonical-${label}`),`Missing adapter output ${label}`);assert(!text.includes(`wire-${label}`),`Leaked wire output ${label}`)}else assert(text.includes(`wire-${label}`))
-  for(const[other]of cases)if(other!==label)assert(!text.includes(`canonical-${other}\"`),`Foreign call output ${label}/${other}`)
+  for(const[other]of cases)if(other!==label)assert(!text.includes(`canonical-${other}"`),`Foreign call output ${label}/${other}`)
   return{label,sse,chat,metadata,status:response.status}
  }))
  await Promise.all(pending)

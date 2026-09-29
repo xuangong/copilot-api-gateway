@@ -13,12 +13,10 @@
  *   - `display_name` — `model.name ?? source.display_name ?? model.id`.
  *   - `context_window` / `max_context_window` —
  *     `capabilities.limits.max_context_window_tokens ?? source ?? 128k`.
- *   - `service_tiers`, `input_modalities`, `supported_reasoning_levels`,
- *     `default_reasoning_level` — vNext does not carry modality/reasoning/
- *     pricing structs, so these ride through from the resolved catalog `source`
- *     (or BASELINE on miss) unchanged. Operators wanting richer Codex
- *     capabilities should ensure the model appears in the exact-version Codex
- *     catalog — the bundled snapshot is the fallback surface.
+ *   - `service_tiers` — only the chosen upstream endpoint's catalog-proved
+ *     Fast lane; bundled model metadata cannot establish account availability.
+ *   - `input_modalities`, `supported_reasoning_levels`, and
+ *     `default_reasoning_level` retain their existing catalog fallbacks.
  *   - `multi_agent_version = 'v2'` is stamped ONLY when the exact catalog
  *     proves Ultra semantics AND the resulting model advertises Max reasoning
  *     (same rule as reference; here `advertisedReasoning` only mutates when
@@ -86,6 +84,8 @@ const BASELINE = {
  */
 export interface CodexSynthesizeModel {
   id: string
+  service_tiers?: Record<string, readonly string[]>
+  supported_endpoints?: readonly string[]
   name?: string
   chat?: {
     image_detail_original?: boolean
@@ -129,10 +129,18 @@ export const synthesizeCatalogEntry = (
     ?? (source.input_modalities as readonly ('text' | 'image')[] | undefined)
     ?? BASELINE.input_modalities
 
+  const endpoints = model.supported_endpoints
+  const tierEndpoint = endpoints === undefined ? "responses"
+    : endpoints.includes("/responses") ? "responses"
+    : endpoints.includes("/v1/messages") ? "messages"
+    : endpoints.some(path => path === "/chat/completions" || path === "/v1/chat/completions") ? "chat_completions" : undefined
   const entry: CatalogModel = {
     ...source,
     // Upstream transport support does not imply a gateway upgrade endpoint.
     prefer_websockets: false,
+    service_tiers: tierEndpoint && model.service_tiers?.[tierEndpoint]?.includes("priority")
+      ? [{ id: "priority", name: "Fast" }] : [],
+    additional_speed_tiers: [],
     slug: model.id,
     display_name: displayName,
     input_modalities: [...inputModalities],

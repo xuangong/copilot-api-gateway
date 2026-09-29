@@ -151,21 +151,10 @@ function computeCombinations(
  * public model id. Non-Claude entries pass through untouched.
  */
 export function mergeClaudeVariants(models: ModelsResponse): ModelsResponse {
-  const groups = new Map<string, Array<Model>>()
-  const order: Array<string> = []
-
-  for (const model of models.data) {
-    const key = isClaudeModel(model.id) ? copilotPublicModelId(model.id) : model.id
-    if (!groups.has(key)) {
-      groups.set(key, [])
-      order.push(key)
-    }
-    groups.get(key)!.push(model)
-  }
-
+  const index = copilotVariantIndex(models.data)
   return {
     object: models.object,
-    data: order.map((key) => mergeVariantGroup(groups.get(key)!)),
+    data: [...index.families].map(([id, models]) => ({ ...mergeVariantGroup(models), id })),
   }
 }
 
@@ -442,4 +431,94 @@ export function resolveCopilotRawModel(
     exactBase ??
     firstPreferred(candidates)
   )?.id ?? modelId
+}
+
+/** The canonical Claude exception is inherited from the reference catalog contract. */
+export function copilotVariantIndex(models: readonly Model[]) {
+  const ids = new Set(models.map(model => model.id.replace(CLAUDE_DATE_SUFFIX, "")))
+  const fastBase = (id: string): string | undefined => {
+    const dateless = id.replace(CLAUDE_DATE_SUFFIX, "")
+    if (!dateless.endsWith("-fast")) return undefined
+    const base = dateless.slice(0, -5)
+    return ids.has(base) || STANDARD_CLAUDE_BASE_ID.test(base) ? base : undefined
+  }
+  const publicIdOf = (id: string): string => copilotPublicModelId(fastBase(id) ?? id)
+  const families = new Map<string, Model[]>()
+  for (const model of models) {
+    const key = publicIdOf(model.id)
+    const siblings = families.get(key)
+    if (siblings) siblings.push(model)
+    else families.set(key, [model])
+  }
+  return { families, publicIdOf, isFast: (id: string) => fastBase(id) !== undefined }
+}
+
+export interface CopilotVariantSelection {
+  readonly modelKey: string
+  readonly serviceTier?: "default" | "priority"
+}
+
+const FAST_PATHS: Record<string, string> = {
+  responses: "/responses", messages: "/v1/messages", chat_completions: "/chat/completions",
+}
+
+function supportsFastEndpoint(model: Model, endpoint: string): boolean {
+  const path = FAST_PATHS[endpoint]
+  // A new lane must be proved by the catalog, not the legacy endpoint heuristic.
+  return path !== undefined && model.capabilities?.type === "chat"
+    && model.supported_endpoints?.includes(path) === true
+}
+
+export function selectCopilotVariant(
+  models: ModelsResponse,
+  modelId: string,
+  endpoint: string,
+  hints: VariantHints & { fast?: boolean } = {},
+): CopilotVariantSelection {
+  if (!FAST_PATHS[endpoint] && endpoint !== "messages_count_tokens") return { modelKey: modelId }
+  const index = copilotVariantIndex(models.data)
+  const exact = models.data.find(model => model.id === modelId)
+  const baseId = index.publicIdOf(normalizeAnthropicVersion(modelId))
+  // Count-tokens keeps ordinary resolution but never opts into a Fast lane.
+  if (endpoint === "messages_count_tokens") {
+    if (exact && exact.id !== baseId) return { modelKey: exact.id }
+    const ordinary = { ...models, data: models.data.filter(model => !index.isFast(model.id)) }
+    return { modelKey: resolveCopilotRawModel(ordinary, modelId, hints) }
+  }
+  // Public base ids are selectable; concrete suffixed/date raw ids are pins.
+  if (exact && exact.id !== baseId) {
+    return { modelKey: exact.id, serviceTier: index.isFast(exact.id) && supportsFastEndpoint(exact, endpoint) ? "priority" : "default" }
+  }
+  const family = index.families.get(baseId) ?? []
+  if (hints.fast || (family.length > 0 && family.every(model => index.isFast(model.id)))) {
+    const fast = firstPreferred(family.filter(model => index.isFast(model.id)
+      && supportsFastEndpoint(model, endpoint)
+      && (!hints.context1m || variantSupports1m(model))
+      && variantSupportsEffort(model, hints.reasoningEffort)))
+    if (fast) return { modelKey: fast.id, serviceTier: "priority" }
+  }
+  const ordinary = { ...models, data: models.data.filter(model => !index.isFast(model.id)) }
+  return { modelKey: resolveCopilotRawModel(ordinary, modelId, hints), serviceTier: "default" }
+}
+
+/** Keep raw pins and labels while exposing their shared family and proved lanes. */
+export function catalogWithCopilotVariants(models: ModelsResponse): ModelsResponse {
+  const index = copilotVariantIndex(models.data)
+  const data = models.data.map(model => {
+    const publicId = index.publicIdOf(model.id)
+    const family = index.families.get(publicId) ?? []
+    const selectable = model.id === publicId ? family : [model]
+    const serviceTiers = Object.fromEntries(Object.keys(FAST_PATHS).map(endpoint => [endpoint,
+      selectable.some(sibling => index.isFast(sibling.id) && supportsFastEndpoint(sibling, endpoint)) ? ["priority"] : [],
+    ]))
+    return { ...model, variant_family: publicId, service_tiers: serviceTiers,
+      variant_models: family.map(sibling => ({ id: sibling.id, name: sibling.name, ...(sibling.display_name ? { display_name: sibling.display_name } : {}) })) }
+  })
+  // Fast-only canonical Claude catalogs still need a callable public family.
+  for (const [id, family] of index.families) {
+    if (data.some(model => model.id === id)) continue
+    const first = data.find(model => family.some(sibling => sibling.id === model.id))
+    if (first && family.some(model => index.isFast(model.id))) data.push({ ...first, id, version: id })
+  }
+  return { ...models, data }
 }

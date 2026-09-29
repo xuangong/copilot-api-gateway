@@ -1,3 +1,4 @@
+import { selectedTierFrames } from "../shared/execution-tier"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 import { invocationSourceApi } from '../shared/invocation-source-api'
 import { responsesFormatGuard, responsesFormatMismatchMessage } from '@vibe-llm/provider-llm'
@@ -219,7 +220,7 @@ export const chatCompletionsAttempt = {
       const stream = upstreamIsJson
         ? await readUpstreamJsonAsFrames(upstreamResp.body, upstreamResp)
         : parseChatCompletionsStream(upstreamResp.body, { signal: args.ctx.downstreamAbortSignal })
-      const { events: decorated } = withUpstreamTelemetry(observeUpstreamFrames(upstreamResp, stream, upstreamIsJson), {
+      const { events: decorated } = withUpstreamTelemetry(observeUpstreamFrames(upstreamResp, selectedTierFrames("chat_completions", stream, execution?.serviceTier), upstreamIsJson), {
         abortSignal: args.ctx.downstreamAbortSignal,
         protocol: 'chat_completions',
       })

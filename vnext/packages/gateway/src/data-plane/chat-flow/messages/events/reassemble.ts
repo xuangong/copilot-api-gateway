@@ -50,6 +50,8 @@ const blockToOutput = (block: PartialBlock): Record<string, unknown> => {
 
 const mergeUsage = (target: MessagesUsage, sample: Partial<MessagesUsage> | undefined): void => {
   if (!sample) return
+  if (typeof sample.speed === "string") target.speed = sample.speed
+  if (sample.service_tier !== undefined) target.service_tier = sample.service_tier
   if (typeof sample.input_tokens === 'number') target.input_tokens = sample.input_tokens
   if (typeof sample.output_tokens === 'number') target.output_tokens = sample.output_tokens
   if (typeof sample.cache_creation_input_tokens === 'number') {

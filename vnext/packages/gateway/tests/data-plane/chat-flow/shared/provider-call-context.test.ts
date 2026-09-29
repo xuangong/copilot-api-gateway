@@ -192,3 +192,18 @@ for (const scenario of ["json", "malformed", "upstream-error", "adapter-error"] 
     expect(frameCalls).toBe(0)
   })
 }
+
+test("Responses dispatch retains original Messages provenance for strict Fast selection", async () => {
+  const translator = getTranslator("responses", "responses")
+  if (!translator) throw new Error("missing identity translator")
+  let source: string | undefined
+  const attempt = await responsesAttempt.generate({
+    payload: { model: "gpt-base", input: [], service_tier: "priority" }, auth: {},
+    ctx: { downstreamAbortSignal: undefined }, telemetryCtx: { ...telemetryCtx, sourceApi: "messages" }, interceptors: [],
+    selectBinding: async () => ({ kind: "ok", binding: { ...binding, provider: {
+      ...binding.provider, fetch: async (request) => { source = request.sourceProtocol; return response("provenance", false) },
+    } }, targetEndpoint: "responses", translator, bareModel: "gpt-base" }),
+  })
+  expect(source).toBe("messages")
+  if (attempt.type === "events") await Array.fromAsync(attempt.events)
+})

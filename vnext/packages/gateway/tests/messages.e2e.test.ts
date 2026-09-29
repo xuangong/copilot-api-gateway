@@ -178,7 +178,7 @@ test('POST /v1/messages leaves a catalog source model unchanged when mappings ar
   }), env)
 
   expect(res.status).toBe(200)
-  expect(capturedUpstreamModel).toBe('claude-3-5-sonnet')
+  expect(capturedUpstreamModel).toBe(MODEL_ID)
 })
 
 test('POST /v1/messages routes the source model through enabled key mappings', async () => {
@@ -197,8 +197,8 @@ test('POST /v1/messages routes the source model through enabled key mappings', a
   }), env)
 
   expect(res.status).toBe(200)
-  // Copilot normalizes the selected public destination to its provider key.
-  expect(capturedUpstreamModel).toBe('claude-3-5-sonnet')
+  // The mapped destination is an exact raw catalog pin.
+  expect(capturedUpstreamModel).toBe(MODEL_ID)
   expect((await res.json() as { model?: unknown }).model).toBe(destination)
 })
 

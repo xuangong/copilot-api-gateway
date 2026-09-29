@@ -8,7 +8,8 @@ import {
   hasContext1mBeta,
   parseAnthropicBeta,
   parseCompositeModelId,
-  resolveCopilotRawModel,
+  selectCopilotVariant,
+  type CopilotVariantSelection,
   thinkingCapabilitiesFor,
 } from "../../variants"
 import type { CopilotInterceptor, Invocation } from "@vibe-llm/protocols/common"
@@ -49,11 +50,14 @@ export const createVariantAndBetaFilteringInterceptor = (
   accountType: AccountType,
   getBaseUrl: () => string | undefined,
   fetcher?: Fetcher,
+  onSelection?: (selection: CopilotVariantSelection) => void,
+  sourceProtocol?: string,
 ): CopilotInterceptor => {
   return async (inv, _ctx, run) => {
     const kind = KIND_BY_ENDPOINT[inv.endpoint]
     if (kind !== null && kind !== undefined) {
-      await applyVariantAndBetaFiltering(inv, kind, getCopilotToken(), accountType, getBaseUrl(), fetcher)
+      const error = await applyVariantAndBetaFiltering(inv, kind, getCopilotToken(), accountType, getBaseUrl(), fetcher, onSelection, sourceProtocol)
+      if (error) return error
     }
     return run()
   }
@@ -66,7 +70,9 @@ const applyVariantAndBetaFiltering = async (
   accountType: AccountType,
   baseUrl?: string,
   fetcher?: Fetcher,
-): Promise<void> => {
+  onSelection?: (selection: CopilotVariantSelection) => void,
+  sourceProtocol?: string,
+): Promise<Response | undefined> => {
   const { payload, headers } = inv
   const rawModelId = typeof payload.model === "string" ? payload.model : undefined
 
@@ -91,14 +97,18 @@ const applyVariantAndBetaFiltering = async (
   const wantContext1m = hasContext1mBeta(clientBeta) || compositeContext1m
   const modelId = typeof payload.model === "string" ? payload.model : undefined
 
-  if (modelId?.startsWith("claude-") && copilotToken) {
+  const wantFast = payload.speed === "fast" || payload.service_tier === "priority"
+  const requiresFast = wantFast && (sourceProtocol === "messages" || (!sourceProtocol && kind === "messages"))
+  let selection: CopilotVariantSelection | undefined
+  if (modelId && copilotToken && (modelId.startsWith("claude-") || wantFast || modelId.endsWith("-fast"))) {
     try {
       const rawModels = await getCachedRawModels(copilotToken, accountType, baseUrl, fetcher)
-      const resolved = resolveCopilotRawModel(rawModels, modelId, {
-        context1m: wantContext1m,
-        reasoningEffort: effectiveEffort,
+      const exactPin = rawModels.data.find(model => model.id === rawModelId)
+      selection = selectCopilotVariant(rawModels, exactPin?.id ?? modelId, inv.endpoint, {
+        context1m: wantContext1m, reasoningEffort: effectiveEffort, fast: wantFast,
       })
-      if (resolved !== modelId) payload.model = resolved
+      const resolved = selection.modelKey
+      payload.model = resolved
       // Thinking adaptation lives here, not in its own interceptor, because
       // this is the only place holding the raw_models catalog — and because
       // the anthropic-beta decision below reads `thinking.type`, so it has to
@@ -109,9 +119,18 @@ const applyVariantAndBetaFiltering = async (
           thinkingCapabilitiesFor(rawModels, resolved),
         )
       }
-    } catch (e) {
-      console.error("[variants] resolve failed:", e)
+    } catch {
+      console.warn("[variants] catalog unavailable")
     }
+  }
+
+  if (requiresFast && inv.endpoint !== "messages_count_tokens" && selection?.serviceTier !== "priority") {
+    return Response.json({ type: "error", error: { type: "invalid_request_error", message: "Fast mode is not supported for this model and endpoint." } }, { status: 400 })
+  }
+  if (inv.endpoint !== "messages_count_tokens" && modelId) {
+    onSelection?.(selection ?? { modelKey: typeof payload.model === "string" ? payload.model : modelId, serviceTier: "default" })
+    if (payload.speed === "fast" || payload.speed === "standard") delete payload.speed
+    if (kind === "chat_completions") delete payload.service_tier
   }
 
   if (betaHeader !== undefined || compositeContext1m) {
@@ -127,6 +146,7 @@ const applyVariantAndBetaFiltering = async (
     delete headers["Anthropic-Beta"]
     if (filtered.length > 0) headers["anthropic-beta"] = filtered.join(",")
   }
+  return undefined
 }
 
 const consumeReasoningEffortHeader = (headers: Record<string, string>): string | undefined => {

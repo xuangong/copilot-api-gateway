@@ -1,4 +1,5 @@
 import { responsesFormatGuard, responsesFormatMismatchMessage } from '@vibe-llm/provider-llm'
+import type { CopilotVariantSelection } from "./variants"
 import { rememberRawModels } from "./raw-models-cache"
 /**
  * CopilotProvider — extracted to @vibe-llm/provider-copilot in Plan 2c.
@@ -123,11 +124,10 @@ export class CopilotProvider implements LlmModelProvider {
     this.refreshSession = cfg.refreshSession
     this.prepareSession = cfg.prepareSession
 
-    const variantFiltering = createVariantAndBetaFilteringInterceptor(() => this.copilotToken, this.accountType, () => this.baseUrl, this.fetcher)
-    this.messagesChain = [variantFiltering, withContextManagementBetaAligned, withInitiatorHeader, ...messagesPayloadInterceptors]
-    this.messagesCountTokensChain = [variantFiltering, withContextManagementBetaAligned, withInitiatorHeader, ...messagesCountTokensPayloadInterceptors]
-    this.responsesChain = [variantFiltering, withInitiatorHeader, ...responsesPayloadInterceptors]
-    this.chatCompletionsChain = [variantFiltering, withInitiatorHeader, ...chatCompletionsPayloadInterceptors]
+    this.messagesChain = [withContextManagementBetaAligned, withInitiatorHeader, ...messagesPayloadInterceptors]
+    this.messagesCountTokensChain = [withContextManagementBetaAligned, withInitiatorHeader, ...messagesCountTokensPayloadInterceptors]
+    this.responsesChain = [withInitiatorHeader, ...responsesPayloadInterceptors]
+    this.chatCompletionsChain = [withInitiatorHeader, ...chatCompletionsPayloadInterceptors]
     this.embeddingsChain = embeddingsPayloadInterceptors
   }
 
@@ -177,7 +177,13 @@ export class CopilotProvider implements LlmModelProvider {
       requestStartedAt: Date.now(),
       downstreamAbortSignal: req.signal,
     }
-    const interceptors = this.interceptorsFor(req.endpoint)
+    let selection: CopilotVariantSelection | undefined
+    const variantFiltering = createVariantAndBetaFilteringInterceptor(
+      () => this.copilotToken, this.accountType, () => this.baseUrl, this.fetcher,
+      selected => { selection = Object.freeze({ ...selected }) }, req.sourceProtocol,
+    )
+    const chain = this.interceptorsFor(req.endpoint)
+    const interceptors = req.endpoint === "embeddings" ? chain : [variantFiltering, ...chain]
     const requireModel = req.requireModel ?? req.endpoint !== 'messages_count_tokens'
 
     const preservesFormat = responsesFormatGuard(req.sourceProtocol, req.endpoint, req.payload)
@@ -205,7 +211,9 @@ export class CopilotProvider implements LlmModelProvider {
         }),
       )
     })
-    return { status: response.status, headers: response.headers, body: response.body }
+    return { status: response.status, headers: response.headers, body: response.body,
+      ...(response.ok && selection ? { execution: selection } : {}),
+    }
   }
 
   /**

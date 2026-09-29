@@ -25,6 +25,8 @@ export type {
 } from "./models"
 
 export {
+  catalogWithCopilotVariants,
+  copilotVariantIndex,
   buildCompositeModelId,
   composeModelOptions,
   parseCompositeModelId,

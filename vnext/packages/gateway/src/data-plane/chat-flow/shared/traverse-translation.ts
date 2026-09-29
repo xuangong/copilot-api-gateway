@@ -1,3 +1,4 @@
+import { selectedTierBody, selectedTierEvent, selectedTierRequest } from "./execution-tier"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 /**
  * Cross-protocol attempt traversal. Calls the source translator to produce a
@@ -82,6 +83,7 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
       fallbackMaxOutputTokens: args.fallbackMaxOutputTokens,
       model: args.model,
     })) as Record<string, unknown>
+    hubPayload = selectedTierRequest(args.sourceProtocol, args.hubProtocol, args.sourcePayload, hubPayload)
     if (args.sourceProtocol === 'responses' && (args.hubProtocol === 'chat_completions' || args.hubProtocol === 'messages')) {
       customToolNames = selectedCustomToolNames(args.sourcePayload as unknown as ResponsesPayload)
       // Reverse translation only needs these request-side envelope fields. Keep
@@ -113,8 +115,8 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
   const echoEventText = async function* (events: AsyncIterable<unknown>): AsyncIterable<unknown> {
     for await (const event of events) {
       if (sourceText !== undefined && event !== null && typeof event === 'object' && 'response' in event) {
-        yield { ...event, response: echoText(event.response) }
-      } else yield event
+        yield selectedTierEvent(args.sourceProtocol, { ...event, response: echoText(event.response) }, executionTier)
+      } else yield selectedTierEvent(args.sourceProtocol, event, executionTier)
     }
   }
 
@@ -147,6 +149,7 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
   // Hoist into a typed local so the cast below sees the narrowed `LlmEventResult`.
   // (TS does not propagate type-guard narrowing across the assignment.)
   const innerEvents: LlmEventResult<ProtocolFrame<HubFrame>> = inner
+  const executionTier = innerEvents.modelIdentity.executedServiceTier
 
   // Forward hub-shape frames downstream verbatim. respond.ts decides per
   // request mode (streaming vs non-streaming) whether to apply the translator:
@@ -195,13 +198,13 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     // `instructions`, `metadata`, `tool_choice`, `tools` which the upstream
     // Chat-Completions response never carries.
     (async (hubJson, ctx) =>
-      echoText(await args.translator.translateBody(hubJson, {
+      selectedTierBody(args.sourceProtocol, echoText(await args.translator.translateBody(hubJson, {
         signal: ctx?.signal ?? new AbortController().signal,
         fallbackMaxOutputTokens: ctx?.fallbackMaxOutputTokens,
         model: ctx?.model,
         sourcePayload: sourceSnapshot,
         customToolNames,
-      }))) as LlmEventResult<ProtocolFrame<SourceFrame>>['translateBody'],
+      })), executionTier)) as LlmEventResult<ProtocolFrame<SourceFrame>>['translateBody'],
     // translateEvents: respond.ts streaming branch unwraps hub frames, runs
     // these through the translator, then re-wraps as source frames before SSE
     // encoding. The translator function here consumes BARE hub events (not

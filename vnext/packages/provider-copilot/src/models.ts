@@ -53,6 +53,7 @@ export interface Model {
   id: string
   model_picker_enabled: boolean
   name: string
+  display_name?: string
   object: string
   preview: boolean
   vendor: string
@@ -68,6 +69,9 @@ export interface Model {
     state: string
     terms: string
   }
+  variant_family?: string
+  variant_models?: Array<{ id: string; name: string; display_name?: string }>
+  service_tiers?: Record<string, string[]>
   available_combinations?: Array<{ context1m: boolean; effort?: string }>
 }
 

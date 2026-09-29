@@ -1,0 +1,134 @@
+{
+  "passed": true,
+  "runtime": "Bun actual loopback HTTP + gateway attempts/responders + temporary SQLite, synthetic provider",
+  "results": [
+    {
+      "label": "unary",
+      "sse": false,
+      "chat": false,
+      "metadata": true,
+      "status": 200
+    },
+    {
+      "label": "stream",
+      "sse": true,
+      "chat": false,
+      "metadata": true,
+      "status": 200
+    },
+    {
+      "label": "chat-unary",
+      "sse": false,
+      "chat": true,
+      "metadata": true,
+      "status": 200
+    },
+    {
+      "label": "chat-stream",
+      "sse": true,
+      "chat": true,
+      "metadata": true,
+      "status": 200
+    },
+    {
+      "label": "fallback",
+      "sse": false,
+      "chat": false,
+      "metadata": false,
+      "status": 200
+    }
+  ],
+  "counters": {
+    "frame": 10,
+    "result": 2,
+    "provider": 5
+  },
+  "snapshots": [
+    "unary",
+    "stream",
+    "fallback"
+  ],
+  "rows": [
+    {
+      "incoming_model": "alias-chat-stream",
+      "model": "synthetic-public",
+      "model_key": "synthetic-base-fast",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 20
+    },
+    {
+      "incoming_model": "alias-chat-stream",
+      "model": "synthetic-public",
+      "model_key": "synthetic-base-fast",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 40
+    },
+    {
+      "incoming_model": "alias-chat-unary",
+      "model": "synthetic-public",
+      "model_key": "synthetic-base-fast",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 20
+    },
+    {
+      "incoming_model": "alias-chat-unary",
+      "model": "synthetic-public",
+      "model_key": "synthetic-base-fast",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 40
+    },
+    {
+      "incoming_model": "alias-fallback",
+      "model": "synthetic-public",
+      "model_key": "synthetic-base",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 2
+    },
+    {
+      "incoming_model": "alias-fallback",
+      "model": "synthetic-public",
+      "model_key": "synthetic-base",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 4
+    },
+    {
+      "incoming_model": "alias-stream",
+      "model": "synthetic-public",
+      "model_key": "synthetic-base-fast",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 20
+    },
+    {
+      "incoming_model": "alias-stream",
+      "model": "synthetic-public",
+      "model_key": "synthetic-base-fast",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 40
+    },
+    {
+      "incoming_model": "alias-unary",
+      "model": "synthetic-public",
+      "model_key": "synthetic-base-fast",
+      "dimension": "input",
+      "tokens": 5,
+      "unit_price": 20
+    },
+    {
+      "incoming_model": "alias-unary",
+      "model": "synthetic-public",
+      "model_key": "synthetic-base-fast",
+      "dimension": "output",
+      "tokens": 3,
+      "unit_price": 40
+    }
+  ],
+  "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/provider-call-context-grOeii"
+}

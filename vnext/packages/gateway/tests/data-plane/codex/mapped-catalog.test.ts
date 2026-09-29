@@ -17,7 +17,7 @@ test.each(["coding", "gpt-alternate"])("Codex alias %s inherits its destination'
     slug: alias, display_name: alias, input_modalities: ["text", "image"], support_verbosity: true,
     supported_reasoning_levels: [{ effort: "high", description: "High" }],
     default_reasoning_level: "high", context_window: 256000,
-    service_tiers: ["default", "fast"], base_instructions: "Target instructions",
+    service_tiers: [], base_instructions: "Target instructions",
   })])
 })
 

@@ -1,3 +1,4 @@
+import { catalogWithCopilotVariants } from "@vibe-llm/provider-copilot"
 import { CatalogCoordinator, CatalogDeadline, CatalogUnavailableError, type CatalogResult } from "./catalog-coordinator.ts"
 import { getRequestSignal } from "../../shared/request-signal.ts"
 import { validCatalogModels } from "../../repo/catalogs.ts"
@@ -318,8 +319,9 @@ export async function listProviderBindings(
       provider.setModelCatalog?.(models)
       const enabledFlags = resolveEffectiveFlags(defaultsForUpstream(upstream.provider), [upstream.flagOverrides])
       const disabled = new Set(upstream.disabledPublicModelIds)
-      for (const model of models.data ?? []) {
-        const publicId = upstream.provider === 'copilot' ? copilotPublicModelId(model.id) : model.id
+      const listedModels = upstream.provider === "copilot" ? catalogWithCopilotVariants(models) : models
+      for (const model of listedModels.data ?? []) {
+        const publicId = upstream.provider === 'copilot' ? model.variant_family ?? copilotPublicModelId(model.id) : model.id
         if (disabled.has(publicId)) continue
         bindings.push({
           upstream: upstream.id,
@@ -353,7 +355,9 @@ export async function listProviderBindings(
     try {
       const models = await requestCatalog(opts.copilot, directFetcher, opts.signal ?? getRequestSignal())
       const enabledFlags = defaultsForUpstream('copilot')
-      for (const model of models.data ?? []) {
+      provider.setModelCatalog?.(models)
+      const listedModels = catalogWithCopilotVariants(models)
+      for (const model of listedModels.data ?? []) {
         bindings.push({
           upstream: 'copilot:request',
           kind: 'copilot',

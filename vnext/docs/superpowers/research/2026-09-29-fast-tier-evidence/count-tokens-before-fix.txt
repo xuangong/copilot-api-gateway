@@ -1,0 +1,30 @@
+[upstream] b87d94e1 sync request started, timeout=none
+[upstream] b87d94e1 sync request completed: 200
+[upstream] 1d9c5efc sync request started, timeout=none
+[upstream] 1d9c5efc sync request completed: 200
+[upstream] 58224f73 sync request started, timeout=none
+[upstream] 58224f73 sync request completed: 200
+Failed to call responses: 401 {"error":{"message":"synthetic stale credential"}}
+84 |   ['count-tokens-effort', {}, {model:base,messages:[],speed:'fast',output_config:{effort:'high'}}, `${base}-high`],
+85 |  ]) {
+86 |   const result=await provider.fetch({endpoint:'messages_count_tokens',sourceApi:'anthropic',sourceProtocol:'messages',payload,headers:new Headers({...headers,'x-fixture-case':label})})
+87 |   assert.equal(result.status,200);assert.equal(result.execution,undefined,label)
+88 |   assert.equal((await new Response(result.body).json()).input_tokens,6)
+89 |   const calls=seen.filter(x=>x.label===label);assert.equal(calls.length,1);assert.equal(calls[0].body.model,expectedModel,label)
+                                                                                       ^
+AssertionError: count-tokens-context
++ actual - expected
+
++ 'claude-opus-4.8'
+- 'claude-opus-4.8-1m-internal'
+                  ^
+
+ generatedMessage: false,
+     actual: "claude-opus-4.8",
+   expected: "claude-opus-4.8-1m-internal",
+   operator: "strictEqual",
+       code: "ERR_ASSERTION"
+
+      at /Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/.superpowers/sdd/2026-09-29-reference-adoption-follow-up/task-C05-runtime.mjs:89:83
+
+Bun v1.3.0 (macOS arm64)

@@ -175,7 +175,7 @@ test('POST /v1beta Gemini routes the normalized URL model through enabled key ma
   }), env)
 
   expect(res.status).toBe(200)
-  expect(capturedUpstreamModel).toBe('claude-3-5-sonnet')
+  expect(capturedUpstreamModel).toBe(MODEL_ID)
   const body = await res.json() as { modelVersion?: unknown }
   expect(body.modelVersion).toBe(MODEL_ID)
 })
@@ -193,7 +193,7 @@ test('POST /v1beta Gemini routes a normalized source to distinct destination for
   }), env)
 
   expect(res.status).toBe(200)
-  expect(capturedUpstreamModel).toBe('claude-3-5-sonnet')
+  expect(capturedUpstreamModel).toBe(MODEL_ID)
   expect(await res.text()).toContain(`"modelVersion":"${MODEL_ID}"`)
 })
 
@@ -226,7 +226,7 @@ test('POST /v1beta Gemini leaves stream source unchanged when mappings are disab
   }), env)
 
   expect(res.status).toBe(200)
-  expect(capturedUpstreamModel).toBe('claude-3-5-sonnet')
+  expect(capturedUpstreamModel).toBe(MODEL_ID)
   expect(await res.text()).toContain(`"modelVersion":"${MODEL_ID}"`)
 })
 

@@ -1,3 +1,4 @@
+import { selectedTierFrames } from "../shared/execution-tier"
 import type { GatewayRequestContext } from "../shared/gateway-ctx.ts"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 import { fetchWithPerformance, observeUpstreamFrames, observeUpstreamJson } from "../shared/performance-upstream"
@@ -310,6 +311,7 @@ export const responsesAttempt = {
         payload: upstreamPayload,
         headers,
         sourceApi: 'openai',
+        sourceProtocol: invocation.sourceApi,
         flags: { isStreaming: invocation.payload.stream === true },
         signal: args.ctx.downstreamAbortSignal,
         action: invocation.action,
@@ -353,6 +355,7 @@ export const responsesAttempt = {
           upstreamResp.responsesAdapter,
         )
       }
+      frames = selectedTierFrames("responses", frames, execution?.serviceTier)
       const { events: decorated } = withUpstreamTelemetry(observeUpstreamFrames(upstreamResp, frames, upstreamLooksJson), {
         abortSignal: args.ctx.downstreamAbortSignal,
         protocol: 'responses',
