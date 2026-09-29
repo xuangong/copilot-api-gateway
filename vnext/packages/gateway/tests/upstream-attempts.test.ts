@@ -80,6 +80,61 @@ test("prepared request stays untruncated at 64 KiB and truncates one byte over",
   }
 })
 
+test("base64 prefixes omit page padding at binary and capture boundaries", async () => {
+  const lengths = [0, 1, 2, 3, 4095, 4096, 4097, 8191, 8192, 8193, 65535, 65536, 65537, 262143, 262144, 262145]
+  for (const length of lengths) {
+    const input = Uint8Array.from({ length }, (_, index) => (index * 31 + 17) % 256)
+    const collector = new UpstreamExchangeCollector()
+    const attempt = begin(collector)
+    if (!attempt) throw new Error("attempt omitted")
+    attempt.observePreparedRequest({ prefix: input, totalBytes: length })
+    const stream = attempt.observeResponse(200, [], new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(input.subarray(0, 3))
+        controller.enqueue(input.subarray(3, 4097))
+        controller.enqueue(input.subarray(4097))
+        controller.close()
+      },
+    }))
+    await new Response(stream).arrayBuffer()
+    const snapshot = collector.finish()
+    const item = snapshot.attempts[0]
+    if (!item) throw new Error("snapshot omitted")
+    for (const [body, limit] of [[item.request, UPSTREAM_ATTEMPT_LIMITS.requestPrefix], [item.response, UPSTREAM_ATTEMPT_LIMITS.responsePrefix]] as const) {
+      const decoded = Uint8Array.from(atob(body.prefixBase64), char => char.charCodeAt(0))
+      expect(decoded).toEqual(input.subarray(0, limit))
+      expect(body.capturedBytes).toBe(Math.min(length, limit))
+      expect(body.totalBytes).toBe(length)
+      expect(body.truncated).toBe(length > limit)
+    }
+    expect(safeUpstreamExchangesForPersistence(snapshot)).toEqual(snapshot)
+  }
+})
+
+test("base64 preserves a partial final page when the aggregate byte budget is exhausted", async () => {
+  const collector = new UpstreamExchangeCollector()
+  const input = Uint8Array.from({ length: UPSTREAM_ATTEMPT_LIMITS.responsePrefix + 1 }, (_, index) => index % 256)
+  for (let index = 0; index < 4; index++) {
+    const attempt = begin(collector)
+    if (!attempt) throw new Error("attempt omitted")
+    attempt.observePreparedRequest({ prefix: input.subarray(0, 17), totalBytes: 17 })
+    const stream = attempt.observeResponse(200, [], new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(input); controller.close() },
+    }))
+    await new Response(stream).arrayBuffer()
+  }
+  const snapshot = collector.finish()
+  expect(snapshot.capturedBodyBytes).toBe(UPSTREAM_ATTEMPT_LIMITS.totalBodyBytes)
+  const last = snapshot.attempts[3]
+  if (!last) throw new Error("snapshot omitted")
+  const remaining = UPSTREAM_ATTEMPT_LIMITS.totalBodyBytes - 4 * 17 - 3 * UPSTREAM_ATTEMPT_LIMITS.responsePrefix
+  expect(remaining % 4096).toBe(4028)
+  expect(last.response.capturedBytes).toBe(remaining)
+  expect(last.response.truncated).toBe(true)
+  expect(Uint8Array.from(atob(last.response.prefixBase64), char => char.charCodeAt(0))).toEqual(input.subarray(0, remaining))
+  expect(safeUpstreamExchangesForPersistence(snapshot)).toEqual(snapshot)
+})
+
 test("16 KiB combined header and independent 64 KiB metadata budgets stop at exact byte limits", () => {
   const type: readonly [string, string] = ["Content-Type", "application/json"]
   const length: readonly [string, string] = ["Content-Length", "999999999999999"]

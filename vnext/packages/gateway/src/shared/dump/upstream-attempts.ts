@@ -1,6 +1,8 @@
 // Request-scoped HTTP adapter observation. This module never opens a socket,
 // parses a protocol, or drains a stream on the capture branch.
 
+import { Buffer } from "node:buffer"
+
 export const UPSTREAM_ATTEMPT_LIMITS = Object.freeze({
   attempts: 8,
   requestPrefix: 64 * 1024,
@@ -120,16 +122,8 @@ class BytePrefix {
   }
 
   base64(): string {
-    const binary: string[] = []
-    let remaining = this.length
-    for (const page of this.pages) {
-      const count = Math.min(page.byteLength, remaining)
-      for (let offset = 0; offset < count; offset += 8192) {
-        binary.push(String.fromCharCode(...page.subarray(offset, Math.min(count, offset + 8192))))
-      }
-      remaining -= count
-    }
-    return btoa(binary.join(""))
+    // The captured length excludes unused bytes in the final bounded page.
+    return Buffer.concat(this.pages, this.length).toString("base64")
   }
 }
 
