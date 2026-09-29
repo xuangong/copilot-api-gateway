@@ -27,6 +27,10 @@ export interface CapturedAttemptBody {
   readonly terminal?: UpstreamAttemptTerminal
 }
 
+// Only successful collector publication registers these frozen body objects.
+// Identity proves native Base64 encoding, not the validity of other fields.
+const internallyEncodedBodies = new WeakSet<object>()
+
 export interface UpstreamAttemptSnapshot {
   readonly id: string
   readonly parentCallId: string
@@ -397,6 +401,10 @@ export class UpstreamExchangeCollector {
       capturedBodyBytes: this.capturedBodyBytes, metadataBytes: this.metadataBytes,
       metadataTruncated: this.metadataTruncated,
     })
+    for (const item of this.finished.attempts) {
+      internallyEncodedBodies.add(item.request)
+      internallyEncodedBodies.add(item.response)
+    }
     // Publish only after every conversion succeeds. Captures and pending stream
     // callbacks can still retain an item, so release its pages in place.
     for (const item of this.attempts) {
@@ -471,7 +479,7 @@ export function safeUpstreamExchangesForPersistence(input: unknown): UpstreamExc
     if (typeof prefixBase64 !== "string" || prefixBase64.length !== maxEncoded) throw new Error("invalid upstream body prefix")
     const padding = prefixBase64.endsWith("==") ? 2 : prefixBase64.endsWith("=") ? 1 : 0
     if (prefixBase64.length / 4 * 3 - padding !== capturedBytes
-      || /[^A-Za-z0-9+/]/.test(prefixBase64.slice(0, prefixBase64.length - padding))) throw new Error("invalid upstream body prefix")
+      || (!internallyEncodedBodies.has(raw) && /[^A-Za-z0-9+/]/.test(prefixBase64.slice(0, prefixBase64.length - padding)))) throw new Error("invalid upstream body prefix")
     if (raw.truncated !== (observedBytes !== null && observedBytes > capturedBytes)) throw new Error("invalid upstream truncation")
     if (side === "request") {
       if (source === "unobserved" && (observedBytes !== null || totalBytes !== null || capturedBytes !== 0)) throw new Error("unobserved request has bytes")
