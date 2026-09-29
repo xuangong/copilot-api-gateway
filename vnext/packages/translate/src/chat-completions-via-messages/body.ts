@@ -1,3 +1,4 @@
+import { TranslatorValidationError } from '../errors.ts'
 /**
  * Non-streaming translator: hub Anthropic Messages JSON response → OpenAI
  * Chat Completions JSON response. Pairs with `./events.ts` for streamed
@@ -19,6 +20,7 @@ export interface ChatCompletionResponse {
       role: 'assistant'
       content: string | null
       tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>
+      reasoning_opaque?: string
       reasoning_text?: string
       refusal?: string
     }
@@ -53,12 +55,15 @@ function mapStopReason(stopReason: string | null | undefined): ChatCompletionRes
 export function translateMessagesToChatBody(msg: MessagesResponse): ChatCompletionResponse {
   const textParts: string[] = []
   const reasoningParts: string[] = []
+  let reasoningOpaque: string | undefined
+  let reasoningBlocks = 0
   const toolCalls: NonNullable<ChatCompletionResponse['choices'][0]['message']['tool_calls']> = []
 
   const blocks = (msg.content ?? []) as Array<{
     type: string
     text?: string
     thinking?: string
+    signature?: string
     id?: string
     name?: string
     input?: unknown
@@ -68,8 +73,12 @@ export function translateMessagesToChatBody(msg: MessagesResponse): ChatCompleti
       case 'text':
         if (block.text) textParts.push(block.text)
         break
+      case 'redacted_thinking':
+        throw new TranslatorValidationError('Redacted thinking cannot be represented by Chat.', 'content')
       case 'thinking':
-        if (block.thinking) reasoningParts.push(block.thinking)
+        reasoningBlocks++
+        if (typeof block.signature === 'string') reasoningOpaque = block.signature
+        if (typeof block.thinking === 'string') reasoningParts.push(block.thinking)
         break
       case 'tool_use':
         if (block.id && block.name) {
@@ -82,6 +91,8 @@ export function translateMessagesToChatBody(msg: MessagesResponse): ChatCompleti
         break
     }
   }
+
+  if (reasoningBlocks > 1 && reasoningOpaque !== undefined) throw new TranslatorValidationError('Multiple signed reasoning blocks cannot be represented by Chat.', 'content')
 
   const usage = (msg.usage ?? {}) as {
     input_tokens?: number
@@ -105,6 +116,7 @@ export function translateMessagesToChatBody(msg: MessagesResponse): ChatCompleti
           role: 'assistant',
           content: textParts.length > 0 ? textParts.join('') : null,
           ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+          ...(reasoningOpaque !== undefined ? { reasoning_opaque: reasoningOpaque } : {}),
           ...(reasoningParts.length > 0 ? { reasoning_text: reasoningParts.join('') } : {}),
           ...(msg.stop_reason === 'refusal' ? { refusal: messagesRefusalExplanation((msg as MessagesResponse & { stop_details?: { category?: string | null; explanation?: string | null } }).stop_details) } : {}),
         },

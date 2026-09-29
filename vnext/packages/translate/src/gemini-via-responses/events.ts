@@ -1,3 +1,4 @@
+import { assertClientRepresentableResponseEvent } from "../shared/client-opaque-state.ts"
 /**
  * Stream translator: hub OpenAI Responses SSE events → Gemini-shaped
  * generateContent stream chunks. Pairs with `./request.ts` and runs
@@ -206,12 +207,12 @@ function* reasoningItemDoneEvents(
   outputIndex: number,
   state: State,
 ): Generator<GeminiStreamEvent> {
-  for (const [summaryIndex, summary] of item.summary.entries()) {
-    const key = partKey(outputIndex, summaryIndex)
-    if (!summary.text || state.emittedReasoningKeys.has(key)) continue
-    state.emittedReasoningKeys.add(key)
-    yield geminiCandidateEvent([{ text: summary.text, thought: true }])
-  }
+  const signature = (item as RespOutputReasoning & { encrypted_content?: string }).encrypted_content
+  const text = (item.summary ?? []).map(summary => summary.text ?? '').join('')
+  const key = partKey(outputIndex, 0)
+  if (state.emittedReasoningKeys.has(key)) return
+  state.emittedReasoningKeys.add(key)
+  yield geminiCandidateEvent([{ text, thought: true, ...(typeof signature === 'string' ? { thoughtSignature: signature } : {}) }])
 }
 
 function functionCallDoneEvent(
@@ -291,22 +292,16 @@ export async function* translateResponsesToGeminiEvents(
 
   try {
     for await (const raw of events) {
+      assertClientRepresentableResponseEvent(raw)
       if (!raw || typeof raw !== 'object') continue
       const event = raw as RespEvent
       if (typeof event.type !== 'string') continue
 
       switch (event.type) {
         case 'response.reasoning_summary_text.delta':
-        case 'response.reasoning_summary_text.done': {
-          const ev = event as RespReasoningDeltaEvent | RespReasoningDoneEvent
-          const text = ev.type === 'response.reasoning_summary_text.delta' ? ev.delta : ev.text
-          if (!text) break
-          const key = partKey(ev.output_index, ev.summary_index)
-          if (ev.type === 'response.reasoning_summary_text.done' && state.emittedReasoningKeys.has(key)) break
-          state.emittedReasoningKeys.add(key)
-          yield geminiCandidateEvent([{ text, thought: true }])
+        case 'response.reasoning_summary_text.done':
+          // A signature can arrive only on item.done. Emit the complete Part there.
           break
-        }
 
         case 'response.output_text.delta':
         case 'response.output_text.done': {
@@ -361,6 +356,9 @@ export async function* translateResponsesToGeminiEvents(
         case 'response.completed':
         case 'response.incomplete':
         case 'response.failed':
+          for (const [index, item] of ((event as RespTerminalEvent).response.output ?? []).entries()) {
+            if (item.type === 'reasoning') yield* reasoningItemDoneEvents(item as RespOutputReasoning, index, state)
+          }
           yield handleTerminal(event as RespTerminalEvent, state, options.model)
           return
 

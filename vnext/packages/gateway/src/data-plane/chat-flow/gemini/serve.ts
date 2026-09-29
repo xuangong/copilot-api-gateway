@@ -1,3 +1,4 @@
+import { createRequestAffinity, type RequestAffinity } from "../../shared/affinity-request"
 import { PerformanceRecorder } from "../../observability/performance-recorder"
 // vnext/packages/gateway/src/data-plane/chat-flow/gemini/serve.ts
 /**
@@ -57,7 +58,7 @@ export interface GeminiServeArgs {
 type GeminiPayload = Record<string, unknown> & { stream?: boolean }
 
 type GeminiServeAuth = GeminiAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
-type GeminiExtra = { readonly incomingModel: string; readonly routedModel: string; readonly upstreamPin?: string }
+type GeminiExtra = { readonly affinity?: RequestAffinity; readonly incomingModel: string; readonly routedModel: string; readonly upstreamPin?: string }
 
 const geminiHooks: ServeTemplateHooks<
   GeminiPayload,
@@ -88,10 +89,12 @@ const geminiHooks: ServeTemplateHooks<
       throw new Error('Gemini request must provide a model')
     }
     const resolved = resolveKeyModel(requestedModel, ctx.auth.routingPolicy)
+    const affinity = await createRequestAffinity("gemini", { ...payload, model: resolved.routedModel }, ctx.auth)
     return {
       kind: 'continue',
       payload,
       extra: {
+        affinity,
         incomingModel: resolved.incomingModel,
         routedModel: resolved.routedModel,
         ...(resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {}),
@@ -111,6 +114,7 @@ const geminiHooks: ServeTemplateHooks<
     if (!extra) throw new Error('Gemini preprocessing must provide routing data')
     return geminiAttempt.generate({
       payload: { ...a.payload },
+      affinity: extra.affinity,
       model: extra.routedModel,
       forceStream: a.extras.forceStream === true,
       auth: extra.upstreamPin ? { ...a.auth, pin: extra.upstreamPin } : a.auth,
@@ -122,6 +126,7 @@ const geminiHooks: ServeTemplateHooks<
 
   respond: (r, c) => respondGemini(r, {
     wantsStream: c.wantsStream,
+    affinity: c.extra?.affinity,
     downstreamAbortController: c.downstreamAbortController,
     telemetryCtx: c.telemetryCtx,
     ...(c.dump !== undefined && c.dump !== null && { dump: c.dump as DumpAccumulator }),

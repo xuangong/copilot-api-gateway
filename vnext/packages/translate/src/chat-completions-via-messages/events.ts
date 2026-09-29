@@ -1,3 +1,4 @@
+import { TranslatorValidationError } from '../errors.ts'
 /**
  * Stream translator: hub Anthropic Messages SSE → OpenAI Chat Completions
  * SSE chunks. Consumes typed `MessagesEvent`s and yields `ChatSSEChunk`s.
@@ -51,6 +52,8 @@ interface InputUsage {
 interface ToolCallSlot {
   blockIndex: number
   toolCallIndex: number
+  initialInput?: unknown
+  hasDeltas?: boolean
 }
 
 interface State {
@@ -64,6 +67,8 @@ interface State {
   /** URLs already emitted as annotations, to keep repeat searches from duplicating sources. */
   citedUrls: Set<string>
   reasoningBlockIndex?: number
+  reasoningBlocks?: number
+  hasOpaqueReasoning?: boolean
   terminated: boolean
 }
 
@@ -179,19 +184,22 @@ function translateOne(ev: MessagesEvent, state: State): ChatSSEChunk[] | 'DONE' 
         id?: string
         name?: string
         data?: string
+        input?: unknown
+        thinking?: string
+        signature?: string
         content?: unknown
       }
       if (block.type === 'thinking') {
+        state.reasoningBlocks = (state.reasoningBlocks ?? 0) + 1
+        state.hasOpaqueReasoning ||= typeof block.signature === 'string'
+        if (state.reasoningBlocks > 1 && state.hasOpaqueReasoning) throw new TranslatorValidationError('Multiple signed reasoning blocks cannot be represented by Chat.', 'content')
         state.reasoningBlockIndex = ev.index
-        return []
+        return [makeChunk(state, { ...(typeof block.thinking === 'string' ? { reasoning_text: block.thinking } : {}), ...(typeof block.signature === 'string' ? { reasoning_opaque: block.signature } : {}) })]
       }
-      if (block.type === 'redacted_thinking') {
-        state.reasoningBlockIndex = ev.index
-        return block.data ? [makeChunk(state, { reasoning_opaque: block.data })] : []
-      }
+      if (block.type === 'redacted_thinking') throw new TranslatorValidationError('Redacted thinking cannot be represented by Chat.', 'content')
       if (block.type === 'tool_use') {
         const toolCallIndex = state.nextToolCallIndex++
-        state.toolCalls.set(ev.index, { blockIndex: ev.index, toolCallIndex })
+        state.toolCalls.set(ev.index, { blockIndex: ev.index, toolCallIndex, initialInput: block.input })
         return [
           makeChunk(state, {
             tool_calls: [
@@ -231,12 +239,15 @@ function translateOne(ev: MessagesEvent, state: State): ChatSSEChunk[] | 'DONE' 
             ? [makeChunk(state, { reasoning_text: delta.thinking })]
             : []
         case 'signature_delta':
+          state.hasOpaqueReasoning = true
+          if ((state.reasoningBlocks ?? 0) > 1) throw new TranslatorValidationError('Multiple signed reasoning blocks cannot be represented by Chat.', 'content')
           return state.reasoningBlockIndex === ev.index && delta.signature
             ? [makeChunk(state, { reasoning_opaque: delta.signature })]
             : []
         case 'input_json_delta': {
           const slot = state.toolCalls.get(ev.index)
           if (!slot || !delta.partial_json) return []
+          slot.hasDeltas = true
           return [
             makeChunk(state, {
               tool_calls: [
@@ -251,8 +262,11 @@ function translateOne(ev: MessagesEvent, state: State): ChatSSEChunk[] | 'DONE' 
       }
       return []
     }
-    case 'content_block_stop':
-      return []
+    case 'content_block_stop': {
+      const slot = state.toolCalls.get(ev.index)
+      if (!slot || slot.hasDeltas || slot.initialInput === undefined) return []
+      return [makeChunk(state, { tool_calls: [{ index: slot.toolCallIndex, function: { arguments: JSON.stringify(slot.initialInput) } }] })]
+    }
     case 'message_delta': {
       const evDelta = ev.delta as { stop_reason?: string | null; stop_details?: { category?: string | null; explanation?: string | null } }
       const evUsage = ev.usage as

@@ -69,7 +69,7 @@ function partsFromToolCalls(
         // Leave args empty if upstream returned malformed JSON.
       }
     }
-    return { functionCall: { name: tc.function.name, args } }
+    return { functionCall: { id: tc.id, name: tc.function.name, args } }
   })
 }
 
@@ -81,8 +81,9 @@ export function translateMessagesToGeminiBody(
   const candidates: GeminiCandidate[] = chat.choices.map((choice, index) => {
     const parts: GeminiPart[] = []
     const reasoning = (choice.message as { reasoning_text?: string }).reasoning_text
-    if (typeof reasoning === 'string' && reasoning) {
-      parts.push({ text: reasoning, thought: true })
+    const signature = choice.message.reasoning_opaque
+    if (typeof reasoning === 'string' || signature !== undefined) {
+      parts.push({ text: reasoning ?? '', thought: true, ...(signature !== undefined ? { thoughtSignature: signature } : {}) })
     }
     if (choice.message.content) {
       parts.push({ text: choice.message.content })

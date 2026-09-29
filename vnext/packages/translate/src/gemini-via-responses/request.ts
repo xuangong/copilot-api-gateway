@@ -60,6 +60,7 @@ interface ResponsesFunctionCallOutputItem {
   status: 'completed'
 }
 interface ResponsesReasoningItem {
+  encrypted_content?: string
   type: 'reasoning'
   id: string
   summary: Array<{ type: 'summary_text'; text: string }>
@@ -203,6 +204,7 @@ const buildAssistantInputItems = (
           flushPendingContent(input, pendingContent, 'assistant')
           input.push({
             type: 'reasoning',
+            ...(typeof part.thoughtSignature === 'string' ? { encrypted_content: part.thoughtSignature } : {}),
             id: geminiReasoningId(turnIndex, partIndex),
             summary: [{ type: 'summary_text', text: thoughtText }],
           })

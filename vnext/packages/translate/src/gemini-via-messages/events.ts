@@ -31,7 +31,8 @@ export interface GeminiUsageMetadata {
 export interface GeminiPart {
   text?: string
   thought?: boolean
-  functionCall?: { name: string; args: Record<string, unknown> }
+  thoughtSignature?: string
+  functionCall?: { id?: string; name: string; args: Record<string, unknown> }
 }
 
 export interface GeminiGroundingChunk {
@@ -62,6 +63,8 @@ interface ToolCallDraft {
 }
 
 interface ChoiceState {
+  thoughtText?: string
+  signature?: string
   toolCalls: Map<number, ToolCallDraft>
   /**
    * URL citations seen so far, deduped by URL and kept in arrival order.
@@ -141,7 +144,7 @@ function flushToolCallParts(cs: ChoiceState): GeminiPart[] {
         // Drop malformed JSON; the stream must still finalize.
       }
     }
-    parts.push({ functionCall: { name: draft.name, args } })
+    parts.push({ functionCall: { ...(draft.id !== undefined ? { id: draft.id } : {}), name: draft.name, args } })
   }
   cs.toolCalls.clear()
   return parts
@@ -165,9 +168,8 @@ function buildChunkResponses(state: State, chunk: ChatSSEChunk): GeminiStreamRes
     const liveParts: GeminiPart[] = []
     const delta = choice.delta
 
-    if (typeof delta.reasoning_text === 'string' && delta.reasoning_text) {
-      liveParts.push({ text: delta.reasoning_text, thought: true })
-    }
+    if (typeof delta.reasoning_text === 'string') cs.thoughtText = (cs.thoughtText ?? '') + delta.reasoning_text
+    if (typeof delta.reasoning_opaque === 'string') cs.signature = (cs.signature ?? '') + delta.reasoning_opaque
     if (typeof delta.content === 'string' && delta.content) {
       liveParts.push({ text: delta.content })
     }
@@ -203,7 +205,9 @@ function buildChunkResponses(state: State, chunk: ChatSSEChunk): GeminiStreamRes
 
     const finishReason = mapFinishReason(choice.finish_reason)
     if (finishReason !== undefined) {
-      const trailingParts = flushToolCallParts(cs)
+      const trailingParts: GeminiPart[] = []
+      if (cs.thoughtText !== undefined || cs.signature !== undefined) trailingParts.push({ text: cs.thoughtText ?? '', thought: true, ...(cs.signature !== undefined ? { thoughtSignature: cs.signature } : {}) })
+      trailingParts.push(...flushToolCallParts(cs))
       // Grounding rides on the candidate, so it can only be emitted once the
       // turn's sources are all in — i.e. on the finish chunk.
       const groundingMetadata = buildGroundingMetadata(cs)

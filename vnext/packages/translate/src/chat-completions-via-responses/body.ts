@@ -1,3 +1,5 @@
+import { assertClientRepresentableResponseItem } from "../shared/client-opaque-state.ts"
+import { TranslatorValidationError } from '../errors.ts'
 /**
  * Non-streaming translator: Responses upstream JSON → Chat Completion JSON.
  *
@@ -9,7 +11,9 @@
  * are mapped (`input_tokens`/`output_tokens` → `prompt_tokens`/`completion_tokens`).
  */
 interface ResponsesOutputItem {
-  type: 'message' | 'function_call'
+  type: 'message' | 'function_call' | 'reasoning'
+  summary?: Array<{ text?: string }>
+  encrypted_content?: string
   role?: string
   content?: Array<{ type: string; text?: string; refusal?: string }>
   call_id?: string
@@ -40,7 +44,7 @@ interface ChatCompletion {
   model: string
   choices: Array<{
     index: 0
-    message: { role: 'assistant'; content: string | null; refusal?: string; tool_calls?: ChatToolCall[] }
+    message: { role: 'assistant'; content: string | null; refusal?: string; reasoning_text?: string; reasoning_opaque?: string; tool_calls?: ChatToolCall[] }
     finish_reason: 'stop' | 'length' | 'tool_calls'
   }>
   usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
@@ -51,7 +55,16 @@ export function translateResponsesToChatBody(body: unknown): ChatCompletion {
   const text: string[] = []
   const refusals: string[] = []
   const toolCalls: ChatToolCall[] = []
+  const reasoning: string[] = []
+  let opaque: string | undefined
+  let reasoningBlocks = 0
   for (const item of r.output ?? []) {
+    assertClientRepresentableResponseItem(item)
+    if (item.type === 'reasoning') {
+      reasoningBlocks++
+      reasoning.push((item.summary ?? []).map(part => part.text ?? '').join(''))
+      if (typeof item.encrypted_content === 'string') opaque = item.encrypted_content
+    }
     if (item.type === 'message' && Array.isArray(item.content)) {
       for (const part of item.content) {
         if (part.type === 'output_text' && typeof part.text === 'string') text.push(part.text)
@@ -72,6 +85,9 @@ export function translateResponsesToChatBody(body: unknown): ChatCompletion {
 
   const content = text.length > 0 ? text.join('') : (toolCalls.length > 0 ? null : '')
   const message: ChatCompletion['choices'][number]['message'] = { role: 'assistant', content }
+  if (reasoningBlocks > 1 && opaque !== undefined) throw new TranslatorValidationError('Multiple signed reasoning blocks cannot be represented by Chat.', 'output')
+  if (reasoning.length) message.reasoning_text = reasoning.join('')
+  if (opaque !== undefined) message.reasoning_opaque = opaque
   if (refusals.length > 0) message.refusal = refusals.join('')
   if (toolCalls.length > 0) message.tool_calls = toolCalls
 

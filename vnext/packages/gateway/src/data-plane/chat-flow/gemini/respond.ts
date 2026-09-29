@@ -1,3 +1,5 @@
+import { AffinityEgress, guardAffinityFrames } from "../../../shared/affinity/egress"
+import type { RequestAffinity } from "../../shared/affinity-request"
 import { translateStream } from "../shared/translate-stream"
 // vnext/packages/gateway/src/data-plane/chat-flow/gemini/respond.ts
 /**
@@ -54,6 +56,7 @@ import { collectMessagesProtocolEventsToResult } from '../messages/events/reasse
 import { collectResponsesProtocolEventsToResult } from '../responses/events/reassemble'
 
 export interface RespondGeminiOptions {
+  readonly affinity?: RequestAffinity
   /**
    * True when the URL verb was `streamGenerateContent` (client wants SSE).
    * False when it was `generateContent` (client wants a single JSON envelope).
@@ -142,7 +145,7 @@ const renderEventsAsSSE = (
   const events: AsyncIterable<unknown> = result.translateEvents && isHubProtocol
     ? applyTranslatorEventsForStreaming(
         consumeHubFramesWithState(
-          result.events as AsyncIterable<ProtocolFrame<unknown>>,
+          guardAffinityFrames(result.events as AsyncIterable<ProtocolFrame<unknown>>, options.affinity),
           state,
           options.dump,
           hubProtocol,
@@ -152,9 +155,9 @@ const renderEventsAsSSE = (
         result.modelIdentity.model,
         state,
       )
-    : consumeWithState(result.events, state, options.dump)
+    : consumeWithState(guardAffinityFrames(guardAffinityFrames(result.events as AsyncIterable<ProtocolFrame<unknown>>, options.affinity), options.affinity), state, options.dump)
   async function* observedEvents(): AsyncGenerator<unknown> {
-    for await (const event of events) {
+    for await (const event of new AffinityEgress(options.affinity).gemini(events)) {
       options.telemetryCtx?.metrics?.observeOutput("gemini", event)
       yield event
     }
@@ -349,12 +352,12 @@ const renderEventsAsJson = async (
     hubProtocol === 'chat_completions'
   const events = isHubProtocol
     ? consumeHubFramesWithState(
-        result.events as AsyncIterable<ProtocolFrame<unknown>>,
+        guardAffinityFrames(result.events as AsyncIterable<ProtocolFrame<unknown>>, options.affinity),
         state,
         options.dump,
         hubProtocol,
       )
-    : consumeWithState(result.events, state, options.dump)
+    : consumeWithState(guardAffinityFrames(guardAffinityFrames(result.events as AsyncIterable<ProtocolFrame<unknown>>, options.affinity), options.affinity), state, options.dump)
   try {
     // Dispatch reassembly on hub protocol.
     // Gemini has no native hub, so all production bindings are cross-protocol
@@ -383,7 +386,7 @@ const renderEventsAsJson = async (
     if (options.telemetryCtx || options.dump) {
       waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
     }
-    return Response.json(finalBody)
+    return Response.json(await new AffinityEgress(options.affinity).body("gemini", finalBody))
   } catch (err) {
     state.failedAfter()
     if (options.telemetryCtx || options.dump) {

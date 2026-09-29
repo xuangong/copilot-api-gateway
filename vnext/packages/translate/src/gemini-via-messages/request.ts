@@ -1,3 +1,5 @@
+import { translateGeminiToChat as translateSignedGeminiToChat } from '../gemini-via-chat-completions/request.ts'
+import type { GeminiPayload as StructuredGeminiPayload } from '../shared/gemini-via/types.ts'
 /**
  * Request translator: client Gemini generateContent payload → hub Anthropic
  * Messages payload.
@@ -242,7 +244,8 @@ export function translateGeminiToMessages(
   payload: GeminiPayload,
   options: TranslateGeminiToMessagesOptions,
 ): MessagesPayload {
-  const chat = translateGeminiToChat(payload, options.model)
+  const signed = (payload as unknown as StructuredGeminiPayload).contents?.some(content => content.parts.some(part => part.thought === true || part.thoughtSignature !== undefined || part.functionCall?.id !== undefined || part.functionResponse?.id !== undefined))
+  const chat = signed ? translateSignedGeminiToChat(payload as unknown as StructuredGeminiPayload, options) : translateGeminiToChat(payload, options.model)
   const messages = translateChatToMessages(chat, {
     fallbackMaxOutputTokens: options.fallbackMaxOutputTokens,
   })
@@ -256,7 +259,7 @@ export function translateGeminiToMessages(
   const wantsSearch = (payload.tools as GeminiToolGroup[] | undefined)?.some(
     group => group.googleSearch !== undefined || group.googleSearchRetrieval !== undefined,
   )
-  if (wantsSearch) {
+  if (wantsSearch && !signed) {
     const out = messages as MessagesPayload & { tools?: unknown[] }
     out.tools = [...(out.tools ?? []), { type: 'web_search_20250305', name: 'web_search' }]
   }

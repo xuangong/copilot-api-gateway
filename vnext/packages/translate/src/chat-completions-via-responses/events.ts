@@ -1,3 +1,5 @@
+import { assertClientRepresentableResponseEvent } from "../shared/client-opaque-state.ts"
+import { TranslatorValidationError } from '../errors.ts'
 /**
  * Streaming translator: Responses SSE upstream → Chat Completions SSE client.
  *
@@ -22,6 +24,8 @@
  *    the search resolved; they become `delta.annotations` (see below).
  */
 interface ChatChoiceDelta {
+  reasoning_text?: string
+  reasoning_opaque?: string
   role?: 'assistant'
   content?: string
   refusal?: string
@@ -82,6 +86,7 @@ interface ResponsesEvent {
     error?: { message?: string }
     incomplete_details?: { reason?: string }
     usage?: ResponsesUsage
+    output?: NonNullable<ResponsesEvent["item"]>[]
   }
   message?: string
   error?: { message?: string }
@@ -95,6 +100,8 @@ interface ResponsesEvent {
     call_id?: string
     name?: string
     arguments?: string
+    encrypted_content?: string
+    summary?: Array<{ text?: string }>
     results?: Array<{ url?: string; title?: string }>
   }
 }
@@ -180,6 +187,9 @@ export async function* translateResponsesToChatSSE(
   let model = ''
   let created = Math.floor(Date.now() / 1000)
   let sawToolCall = false
+  let reasoningBlocks = 0
+  let hasOpaqueReasoning = false
+  const emittedReasoning = new Set<number>()
   let finish: string | null = null
   let started = false
   let usage: ResponsesUsage | undefined
@@ -188,6 +198,7 @@ export async function* translateResponsesToChatSSE(
   const emittedRefusalParts = new Set<string>()
 
   for await (const ev of events as AsyncIterable<ResponsesEvent>) {
+    assertClientRepresentableResponseEvent(ev)
     if (ev.type === "error" || ev.type === "response.failed") {
       throw new Error(ev.message ?? ev.error?.message ?? ev.response?.error?.message ?? "Upstream Responses stream failed.")
     }
@@ -234,6 +245,14 @@ export async function* translateResponsesToChatSSE(
       })
       continue
     }
+    if (ev.type === 'response.output_item.done' && ev.item?.type === 'reasoning') {
+      emittedReasoning.add(ev.output_index ?? 0)
+      reasoningBlocks++
+      hasOpaqueReasoning ||= typeof ev.item.encrypted_content === 'string'
+      if (reasoningBlocks > 1 && hasOpaqueReasoning) throw new TranslatorValidationError('Multiple signed reasoning blocks cannot be represented by Chat.', 'output')
+      yield makeChunk(id, model, created, { reasoning_text: (ev.item.summary ?? []).map(part => part.text ?? '').join(''), ...(typeof ev.item.encrypted_content === 'string' ? { reasoning_opaque: ev.item.encrypted_content } : {}) })
+      continue
+    }
     if (ev.type === 'response.output_item.done' && ev.item?.type === 'web_search_call') {
       // Deliberately does NOT set `sawToolCall`: the search already ran
       // server-side, so surfacing it as a pending call would make the client
@@ -250,6 +269,13 @@ export async function* translateResponsesToChatSSE(
       continue
     }
     if (ev.type === 'response.completed' || ev.type === 'response.incomplete') {
+      for (const [index, item] of (ev.response?.output ?? []).entries()) {
+        if (item.type !== 'reasoning' || emittedReasoning.has(index)) continue
+        reasoningBlocks++
+        hasOpaqueReasoning ||= typeof item.encrypted_content === 'string'
+        if (reasoningBlocks > 1 && hasOpaqueReasoning) throw new TranslatorValidationError('Multiple signed reasoning blocks cannot be represented by Chat.', 'output')
+        yield makeChunk(id, model, created, { reasoning_text: (item.summary ?? []).map(part => part.text ?? '').join(''), ...(typeof item.encrypted_content === 'string' ? { reasoning_opaque: item.encrypted_content } : {}) })
+      }
       const reason = ev.response?.incomplete_details?.reason
       if (reason === 'max_output_tokens') finish = 'length'
       else if (sawToolCall) finish = 'tool_calls'

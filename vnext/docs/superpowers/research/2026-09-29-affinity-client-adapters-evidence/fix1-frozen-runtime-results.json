@@ -1,0 +1,358 @@
+{
+  "task-C01-client-adapters-bounds-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "runtime": "actual authenticated Bun gateway/SQLite Chat/Gemini via independent Node HTTP upstream",
+    "nodeVersion": "v22.23.2",
+    "cases": [
+      "cross-translator-overflow-rejected-early",
+      "upstream-stream-cancelled",
+      "no-success-terminal",
+      "error-not-cancelled-metrics",
+      "no-success-snapshot"
+    ],
+    "outcomes": [
+      {
+        "protocol": "chat",
+        "hub": "up_chat",
+        "streaming": true,
+        "chunksSent": 9,
+        "upstreamCancelled": true
+      },
+      {
+        "protocol": "chat",
+        "hub": "up_chat",
+        "streaming": false,
+        "chunksSent": 9,
+        "upstreamCancelled": true
+      },
+      {
+        "protocol": "chat",
+        "hub": "up_messages",
+        "streaming": true,
+        "chunksSent": 9,
+        "upstreamCancelled": true
+      },
+      {
+        "protocol": "chat",
+        "hub": "up_messages",
+        "streaming": false,
+        "chunksSent": 9,
+        "upstreamCancelled": true
+      },
+      {
+        "protocol": "gemini",
+        "hub": "up_chat",
+        "streaming": true,
+        "chunksSent": 9,
+        "upstreamCancelled": true
+      },
+      {
+        "protocol": "gemini",
+        "hub": "up_chat",
+        "streaming": false,
+        "chunksSent": 9,
+        "upstreamCancelled": true
+      },
+      {
+        "protocol": "gemini",
+        "hub": "up_messages",
+        "streaming": true,
+        "chunksSent": 9,
+        "upstreamCancelled": true
+      },
+      {
+        "protocol": "gemini",
+        "hub": "up_messages",
+        "streaming": false,
+        "chunksSent": 9,
+        "upstreamCancelled": true
+      }
+    ],
+    "totalChunksPerRequest": 40,
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-app-runtime-fFdSjw"
+  },
+  "task-C01-client-adapters-d1-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "runtime": "actual app/workerd/WebCrypto/D1 Chat/Gemini through all three hubs",
+    "cases": [
+      "chat-up_chat-json-replay-wrongkey",
+      "chat-up_chat-sse-replay-wrongkey",
+      "chat-up_messages-json-replay-wrongkey",
+      "chat-up_messages-sse-replay-wrongkey",
+      "chat-up_responses-json-replay-wrongkey",
+      "chat-up_responses-sse-replay-wrongkey",
+      "gemini-up_chat-json-replay-wrongkey",
+      "gemini-up_chat-sse-replay-wrongkey",
+      "gemini-up_messages-json-replay-wrongkey",
+      "gemini-up_messages-sse-replay-wrongkey",
+      "gemini-up_responses-json-replay-wrongkey",
+      "gemini-up_responses-sse-replay-wrongkey"
+    ],
+    "calls": 24,
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-clients-d1-48rRwz"
+  },
+  "task-C01-client-adapters-edge-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "runtime": "actual Bun HTTP/SQLite + OpenAI6.33.0",
+    "cases": [
+      "openai6.33.0-up_chat-normal-native-aggregate-replay",
+      "openai6.33.0-up_chat-split-native-aggregate-replay",
+      "openai6.33.0-up_messages-normal-native-aggregate-replay",
+      "openai6.33.0-up_responses-normal-native-aggregate-replay",
+      "gemini-multiple-candidates-json",
+      "gemini-multiple-candidates-sse",
+      "gemini-up_chat-json-suppression-no-carrier",
+      "gemini-up_chat-sse-suppression-no-carrier",
+      "gemini-up_messages-json-suppression-no-carrier",
+      "gemini-up_messages-sse-suppression-no-carrier",
+      "gemini-up_responses-json-suppression-no-carrier",
+      "gemini-up_responses-sse-suppression-no-carrier",
+      "chat-role-tamper-zero-inference",
+      "gemini-role-tamper-zero-inference",
+      "chat-up_chat-foreign-state-preserved",
+      "chat-up_messages-foreign-state-preserved",
+      "chat-up_responses-foreign-state-preserved",
+      "gemini-up_chat-required-function-zero-inference",
+      "gemini-up_messages-required-function-zero-inference",
+      "gemini-up_responses-required-function-zero-inference",
+      "gemini-up_chat-required-nontext-zero-inference",
+      "gemini-up_messages-required-nontext-zero-inference",
+      "gemini-up_responses-required-nontext-zero-inference"
+    ],
+    "calls": 25,
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-client-adapters-iMlEpn"
+  },
+  "task-C01-client-adapters-review-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "cases": [
+      "chat-degradation-preserves-refusal",
+      "chat-program-output-json-rejection",
+      "chat-program-output-sse-rejection",
+      "gemini-program-output-json-rejection",
+      "gemini-program-output-sse-rejection"
+    ],
+    "runtime": "actual Bun HTTP/SQLite independent review regressions",
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-client-adapters-gYBw8H"
+  },
+  "task-C01-client-adapters-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "runtime": "actual authenticated Bun HTTP + loopback hubs + SQLite + Google2.24.0",
+    "cases": [
+      "chat-up_chat-json-replay-auth-whole-block",
+      "chat-up_chat-sse-replay-auth-whole-block",
+      "chat-up_messages-json-replay-auth-whole-block",
+      "chat-up_messages-sse-replay-auth-whole-block",
+      "chat-up_responses-json-replay-auth-whole-block",
+      "chat-up_responses-sse-replay-auth-whole-block",
+      "gemini-up_chat-json-replay-auth-whole-block",
+      "gemini-up_chat-sse-replay-auth-whole-block",
+      "gemini-up_messages-json-replay-auth-whole-block",
+      "gemini-up_messages-sse-replay-auth-whole-block",
+      "gemini-up_responses-json-replay-auth-whole-block",
+      "gemini-up_responses-sse-replay-auth-whole-block",
+      "cross-source-domain-zero-inference",
+      "chat-json-independent-choices",
+      "chat-sse-independent-choices",
+      "chat-split-native-chat-signature",
+      "gemini-split-native-chat-signature",
+      "google-2.24.0-up_chat-native-history-replay",
+      "google-2.24.0-up_messages-native-history-replay",
+      "google-2.24.0-up_responses-native-history-replay"
+    ],
+    "calls": 52,
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-client-adapters-EL1S0T"
+  },
+  "task-C01-client-adapters-unsupported-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "cases": [
+      "chat-make-compaction-json-typed-rejection",
+      "chat-make-compaction-sse-typed-rejection",
+      "chat-make-agent-json-typed-rejection",
+      "chat-make-agent-sse-typed-rejection",
+      "gemini-make-compaction-json-typed-rejection",
+      "gemini-make-compaction-sse-typed-rejection",
+      "gemini-make-agent-json-typed-rejection",
+      "gemini-make-agent-sse-typed-rejection"
+    ],
+    "runtime": "actual Bun HTTP/SQLite nonrepresentable opaque output rejection",
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-client-adapters-juaylS"
+  },
+  "task-C01-execution-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "runtime": "actual Bun CodexProvider + loopback HTTP + real SQLite",
+    "cases": [
+      "normal-exact",
+      "lite-exact",
+      "config-zero-network",
+      "revision-zero-network",
+      "incarnation-zero-network",
+      "expired-config-zero-network",
+      "expired-revision-zero-network",
+      "401-replacement-no-retry",
+      "oauth-pending-replacement-no-recursive-mint"
+    ],
+    "networkCalls": 4,
+    "oauth": 1,
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-execution-runtime-9Jg03i"
+  },
+  "task-C01-integration-bounds-node-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "runtime": "actual authenticated Bun gateway/SQLite Responses via independent Node HTTP upstream",
+    "nodeVersion": "v22.23.2",
+    "cases": [
+      "cross-translator-overflow-rejected-early",
+      "upstream-stream-cancelled",
+      "no-success-terminal",
+      "error-not-cancelled-metrics",
+      "no-success-snapshot"
+    ],
+    "outcomes": [
+      {
+        "streaming": true,
+        "chunksSent": 9,
+        "upstreamCancelled": true
+      },
+      {
+        "streaming": false,
+        "chunksSent": 9,
+        "upstreamCancelled": true
+      }
+    ],
+    "totalChunksPerRequest": 40,
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-app-runtime-287JU7"
+  },
+  "task-C01-integration-bounds-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "runtime": "actual authenticated Bun/SQLite Responses via Messages streaming HTTP",
+    "cases": [
+      "cross-translator-overflow-rejected-early",
+      "upstream-stream-cancelled",
+      "no-success-terminal",
+      "error-not-cancelled-metrics",
+      "no-success-snapshot"
+    ],
+    "outcomes": [
+      {
+        "streaming": true,
+        "chunksSent": 9,
+        "upstreamCancelled": true
+      },
+      {
+        "streaming": false,
+        "chunksSent": 9,
+        "upstreamCancelled": true
+      }
+    ],
+    "totalChunksPerRequest": 40,
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-app-runtime-YLiWhy"
+  },
+  "task-C01-integration-companion-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "runtime": "actual authenticated Bun/SQLite Messages via Responses stream",
+    "cases": [
+      "partial-final-companion-complete",
+      "complete-companion-raw-replay",
+      "conflicting-companion-no-signed-success"
+    ],
+    "calls": 3,
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-app-runtime-5Sd6n6"
+  },
+  "task-C01-integration-d1-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "runtime": "actual app/workerd/WebCrypto/D1 durable store",
+    "cases": [
+      "authenticated-egress",
+      "wrong-key-zero-egress",
+      "pin-conflict-zero-egress",
+      "immediate-durable-continuation",
+      "config-replacement-zero-egress"
+    ],
+    "calls": 2,
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-app-d1-PMHA7p"
+  },
+  "task-C01-integration-fix1-app-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "runtime": "actual authenticated Bun app + loopback CustomProvider + real SQLite",
+    "cases": [
+      "native-json",
+      "same-target",
+      "wrong-key-zero-egress",
+      "wrong-owner-zero-egress",
+      "pin-conflict-zero-egress",
+      "immediate-durable-continuation",
+      "optional-degradation",
+      "foreign-pass-through",
+      "sse-canonical-carrier",
+      "sse-immediate-continuation",
+      "messages-whole-thinking",
+      "messages-tamper-zero-egress",
+      "messages-optional-degradation",
+      "messages-sse-roundtrip",
+      "responses-via-messages-json-sse",
+      "messages-via-responses-json-sse",
+      "nested-agent-message",
+      "nested-slot-substitution-zero-egress",
+      "wrong-companion-zero-egress",
+      "wrong-domain-zero-egress",
+      "mixed-required-zero-egress",
+      "configuration-replacement-zero-egress",
+      "key-mapping-same-target",
+      "key-mapping-pin-zero-egress",
+      "disabled-target-zero-egress",
+      "official-openai-6.33-stream-replay",
+      "official-anthropic-0.80-stream-replay"
+    ],
+    "calls": 29,
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-app-runtime-9cdHzc"
+  },
+  "task-C01-integration-lazy-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "runtime": "actual authenticated Bun/HTTP/SQLite lazy affinity",
+    "cases": [
+      "ordinary-no-secret-initialization",
+      "key-owner-change-before-first-signature-rejected",
+      "captured-old-target-never-authorizes-replacement-replay"
+    ],
+    "calls": 3,
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-lazy-runtime-z2IejU"
+  },
+  "task-C01-integration-providers-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "runtime": "actual Bun providers + loopback HTTP + real SQLite authority",
+    "cases": [
+      "copilot-fast-exact-and-replacement-zero-io",
+      "copilot-context-header-exact-and-replacement-zero-io",
+      "copilot-effort-header-exact-and-replacement-zero-io",
+      "azure-deployment-exact-and-replacement-zero-io",
+      "copilot-401-replacement-no-refresh-retry",
+      "aborted-preparation-zero-io"
+    ],
+    "inferenceCalls": 5,
+    "sessionPreparations": 4,
+    "refreshes": 0,
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-provider-runtime-PrRvG9"
+  },
+  "task-C01-integration-sse-json-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "runtime": "actual authenticated Bun/SQLite source JSON from explicit upstream SSE",
+    "cases": [
+      "messages-json-via-messages-sse-and-replay",
+      "responses-json-via-messages-sse-and-replay",
+      "messages-json-via-responses-sse-and-replay",
+      "responses-json-via-responses-sse-and-replay"
+    ],
+    "calls": 8,
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-app-runtime-qj759h"
+  },
+  "task-C01-integration-tool-fields-runtime-client-fix1-frozen.log": {
+    "passed": true,
+    "runtime": "actual authenticated Bun/SQLite native Messages JSON",
+    "cases": [
+      "ordinary-tool-json-fields-not-opaque",
+      "ordinary-tool-sse-fields-not-opaque",
+      "source-json-upstream-sse-fields-preserved"
+    ],
+    "calls": 3,
+    "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c01-app-runtime-DYQGHw"
+  }
+}

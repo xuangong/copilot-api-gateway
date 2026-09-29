@@ -1,3 +1,4 @@
+import { createRequestAffinity, type RequestAffinity } from "../../shared/affinity-request"
 import { PerformanceRecorder } from "../../observability/performance-recorder"
 // vnext/packages/gateway/src/data-plane/chat-flow/chat-completions/serve.ts
 /**
@@ -56,7 +57,7 @@ type ChatCompletionsPayload = Record<string, unknown> & {
  * necessary — the kit needs apiKeyId for quota, attempt does not.
  */
 type ChatCompletionsServeAuth = ChatCompletionsAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
-type ChatCompletionsExtra = { readonly incomingModel: string; readonly upstreamPin?: string }
+type ChatCompletionsExtra = { readonly affinity?: RequestAffinity; readonly incomingModel: string; readonly upstreamPin?: string }
 
 const chatCompletionsHooks: ServeTemplateHooks<
   ChatCompletionsPayload,
@@ -83,10 +84,11 @@ const chatCompletionsHooks: ServeTemplateHooks<
 
   preProcess: async (payload, ctx) => {
     const resolved = resolveKeyModel(payload.model, ctx.auth.routingPolicy)
+    const affinity = await createRequestAffinity("chat_completions", { ...payload, model: resolved.routedModel }, ctx.auth)
     return {
       kind: 'continue',
       payload: { ...payload, model: resolved.routedModel },
-      extra: { incomingModel: resolved.incomingModel, ...(resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {}) },
+      extra: { affinity, incomingModel: resolved.incomingModel, ...(resolved.upstreamPin ? { upstreamPin: resolved.upstreamPin } : {}) },
     }
   },
 
@@ -94,6 +96,7 @@ const chatCompletionsHooks: ServeTemplateHooks<
 
   runAttempt: (a) => chatCompletionsAttempt.generate({
     payload: a.payload,
+    affinity: a.extra?.affinity,
     auth: a.extra?.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
     // Same as messages/serve.ts: the web-search shim resolves engines from the
     // caller's key, so the interceptors need the id.
@@ -104,6 +107,7 @@ const chatCompletionsHooks: ServeTemplateHooks<
 
   respond: (r, c) => respondChatCompletions(r, {
     wantsStream: c.wantsStream,
+    affinity: c.extra?.affinity,
     includeUsageChunk: c.payload.stream_options?.include_usage === true,
     downstreamAbortController: c.downstreamAbortController,
     telemetryCtx: c.telemetryCtx,

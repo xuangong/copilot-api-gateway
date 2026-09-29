@@ -100,5 +100,12 @@ export const suppressThoughtParts: GeminiInterceptor = async (ctx, _requestCtx, 
   const inner = result.translateEvents
   const wrappedTranslate: NonNullable<typeof result.translateEvents> = (events, tCtx) =>
     suppressThoughtPartsFromEvents(inner(events, tCtx))
-  return { ...result, translateEvents: wrappedTranslate }
+  const translateBody = result.translateBody
+  return { ...result, translateEvents: wrappedTranslate, ...(translateBody ? { translateBody: async (body, tCtx) => {
+    const translated = await translateBody(body, tCtx)
+    if (!translated || typeof translated !== "object" || !Array.isArray((translated as GeminiFrameLike).candidates)) return translated
+    async function* one() { yield translated }
+    for await (const event of suppressThoughtPartsFromEvents(one())) return event
+    return { candidates: [] }
+  } } : {}) }
 }

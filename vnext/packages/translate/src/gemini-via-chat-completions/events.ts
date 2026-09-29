@@ -25,7 +25,6 @@ import type {
 import { chatReasoningText } from '../shared/chat-reasoning-text.ts'
 import {
   appendGeminiThoughtSignature,
-  flushGeminiThoughtSignature,
   type GeminiThoughtSignatureState,
   parseStrictJsonObject,
   signGeminiPart,
@@ -92,6 +91,7 @@ interface ChatToolCallDraft {
 }
 
 interface ChoiceState extends GeminiThoughtSignatureState {
+  thoughtText?: string
   toolCalls: Record<number, ChatToolCallDraft>
   /**
    * URL citations seen so far on this choice, deduped by URL and kept in
@@ -191,7 +191,7 @@ const flushToolCallParts = (state: ChoiceState): GeminiPart[] => {
   for (const [, toolCall] of entries) {
     if (!toolCall.name) continue
     parts.push(
-      signGeminiPart(state, {
+      {
         functionCall: {
           ...(toolCall.id !== undefined ? { id: toolCall.id } : {}),
           name: toolCall.name,
@@ -199,7 +199,7 @@ const flushToolCallParts = (state: ChoiceState): GeminiPart[] => {
             ? parseStrictJsonObject(toolCall.argsJson, 'Chat Completions tool call arguments')
             : {},
         },
-      }),
+      },
     )
   }
   state.toolCalls = {}
@@ -214,16 +214,14 @@ const buildCandidate = (
   const delta = choice.delta ?? {}
 
   const reasoning = chatReasoningText(delta)
-  if (reasoning) {
-    parts.push({ text: reasoning, thought: true })
-  }
+  if (reasoning !== undefined) state.thoughtText = (state.thoughtText ?? '') + reasoning
 
-  if (typeof delta.reasoning_opaque === 'string' && delta.reasoning_opaque) {
+  if (typeof delta.reasoning_opaque === 'string') {
     appendGeminiThoughtSignature(state, delta.reasoning_opaque)
   }
 
   if (typeof delta.content === 'string' && delta.content) {
-    parts.push(signGeminiPart(state, { text: delta.content }))
+    parts.push({ text: delta.content })
   }
 
   if (delta.tool_calls) accumulateToolCalls(delta.tool_calls, state)
@@ -231,8 +229,11 @@ const buildCandidate = (
 
   const finishReason = mapFinishReason(choice.finish_reason)
   if (finishReason) {
+    if (state.thoughtText !== undefined || state.pendingThoughtSignature !== undefined) {
+      parts.push(signGeminiPart(state, { text: state.thoughtText ?? '', thought: true }))
+      state.thoughtText = undefined
+    }
     parts.push(...flushToolCallParts(state))
-    parts.push(...flushGeminiThoughtSignature(state))
   }
 
   if (!parts.length && !finishReason) return null

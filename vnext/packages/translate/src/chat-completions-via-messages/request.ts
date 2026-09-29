@@ -37,7 +37,7 @@ type ChatContent = ChatMessage['content']
 interface AnthropicTextBlock { type: 'text'; text: string }
 interface AnthropicImageBlock { type: 'image'; source: { type: 'base64' | 'url'; media_type?: string; data?: string; url?: string } }
 interface AnthropicToolUseBlock { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
-interface AnthropicThinkingBlock { type: 'thinking'; thinking: string }
+interface AnthropicThinkingBlock { type: 'thinking'; thinking: string; signature?: string }
 interface AnthropicToolResultBlock { type: 'tool_result'; tool_use_id: string; content?: string }
 type UserBlock = AnthropicTextBlock | AnthropicImageBlock | AnthropicToolResultBlock
 type AssistantBlock = AnthropicTextBlock | AnthropicToolUseBlock | AnthropicThinkingBlock
@@ -105,7 +105,7 @@ function userBlocksFromContent(content: ChatContent): UserBlock[] {
 function assistantBlocks(m: ChatMessage): AssistantBlock[] {
   const blocks: AssistantBlock[] = []
   const reasoning = chatReasoningText(m)
-  if (reasoning) blocks.push({ type: 'thinking', thinking: reasoning })
+  if (reasoning !== undefined || typeof m.reasoning_opaque === 'string') blocks.push({ type: 'thinking', thinking: reasoning ?? '', ...(typeof m.reasoning_opaque === 'string' ? { signature: m.reasoning_opaque } : {}) })
   if (typeof m.content === 'string' && m.content) blocks.push({ type: 'text', text: m.content })
   const assistant = m as ChatMessage & { refusal?: string | null }
   let hasRefusalPart = false

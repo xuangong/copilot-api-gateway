@@ -38,7 +38,11 @@ export async function selectAffinityCandidate<T extends Candidate>(candidates: r
   const prepared: Array<{ candidate: T; target: AffinityExecutionTarget | undefined }> = []
   for (const candidate of candidates) {
     options.signal?.throwIfAborted()
-    if (affinity.analysis.hasOwned && candidate.targetEndpoint === "chat_completions") continue
+    if (["responses", "messages"].includes(affinity.protocol) && candidate.targetEndpoint === "chat_completions") continue
+    // These Chat dialects intentionally erase opaque signatures. Owned source
+    // state must never reach that lossy interceptor as an apparently exact route.
+    const flags = new Set(candidate.binding.enabledFlags ?? [])
+    if (candidate.targetEndpoint === "chat_completions" && (flags.has("reasoning-content-dialect") || flags.has("vendor-deepseek"))) continue
     if (affinity.analysis.hasRequiredOwned && candidate.targetEndpoint !== affinity.protocol) continue
     const translator = getTranslator(affinity.protocol, candidate.targetEndpoint)
     if (!translator) continue

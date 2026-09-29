@@ -1,3 +1,5 @@
+import { assertClientRepresentableResponseEvent } from "@vibe-llm/translate/shared/client-opaque-state"
+import { chatReasoningText } from "@vibe-llm/translate/shared/chat-reasoning-text"
 import { decodeOpaqueValue } from "@vibe-llm/protocols/common"
 import { InvalidAffinityStateError, MAX_AFFINITY_PAYLOAD_BYTES } from "./carrier.ts"
 import type { ProtocolFrame } from "@vibe-core/result"
@@ -45,6 +47,7 @@ export async function* guardAffinityFrames<T>(frames: AsyncIterable<ProtocolFram
   if (!affinity) { yield* frames; return }
   const blocks = new Map<number, { thinking: string; signature: string }>()
   const summaries = new Map<string, string>()
+  const chatBlocks = new Map<number, { thinking: string; signature: string }>()
   const checkOpaque = (value: string) => {
     if (value.length > MAX_AFFINITY_PAYLOAD_BYTES || decodeOpaqueValue(value).bytes.length > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
   }
@@ -73,6 +76,18 @@ export async function* guardAffinityFrames<T>(frames: AsyncIterable<ProtocolFram
   for await (const frame of frames) {
     if (frame.type !== "event" || !object(frame.event)) { yield frame; continue }
     const event = frame.event
+    if (affinity.protocol === "chat_completions" || affinity.protocol === "gemini") assertClientRepresentableResponseEvent(event)
+    if (Array.isArray(event.choices)) for (const choice of event.choices) {
+      if (!object(choice) || !object(choice.delta)) continue
+      const index = typeof choice.index === "number" ? choice.index : 0
+      const value = chatBlocks.get(index) ?? { thinking: "", signature: "" }
+      value.thinking += chatReasoningText(choice.delta) ?? ""
+      if (typeof choice.delta.reasoning_opaque === "string") value.signature += choice.delta.reasoning_opaque
+      boundedBlock(value)
+      if (choice.finish_reason != null) { checkOpaque(value.signature); chatBlocks.delete(index) }
+      else chatBlocks.set(index, value)
+      if (chatBlocks.size > 1024) throw new InvalidAffinityStateError()
+    }
     const index = typeof event.index === "number" ? event.index : -1
     if (event.type === "content_block_start" && object(event.content_block) && event.content_block.type === "thinking") {
       const content = event.content_block
@@ -116,7 +131,9 @@ export class AffinityEgress {
     if (!state?.actual) return Promise.resolve(value)
     if (protocol === "responses" && value.type === "compaction"
       && state.plaintextCompactions?.has(JSON.stringify([value.id, value.encrypted_content]))) return Promise.resolve(value)
-    const signable = protocol === "responses" ? hasOpaque(value)
+    const signable = protocol === "chat_completions" ? typeof value.reasoning_opaque === "string"
+      : protocol === "gemini" ? typeof value.thoughtSignature === "string"
+      : protocol === "responses" ? hasOpaque(value)
       : value.type === "thinking" ? typeof value.signature === "string" : value.type === "redacted_thinking" && typeof value.data === "string"
     if (!signable) return value
     const codec = state.codec ?? await state.loadCodec?.()
@@ -130,6 +147,9 @@ export class AffinityEgress {
   }
   async body<T>(protocol: AffinityProtocol, body: T): Promise<T> {
     if (!object(body) || !this.affinity?.actual) return body
+    if (protocol === "chat_completions" && Array.isArray(body.choices)) return { ...body, choices: await Promise.all(body.choices.map(async choice => object(choice) && object(choice.message) ? { ...choice, message: await this.item(protocol, choice.message) } : choice)) } as T
+    if (protocol === "gemini" && Array.isArray(body.candidates)) return { ...body, candidates: await Promise.all(body.candidates.map(async candidate => object(candidate) && object(candidate.content) && Array.isArray(candidate.content.parts)
+      ? { ...candidate, content: { ...candidate.content, parts: await Promise.all(candidate.content.parts.map(part => object(part) ? this.item(protocol, part) : part)) } } : candidate)) } as T
     const key = protocol === "responses" ? "output" : "content"
     const values = body[key]
     if (!Array.isArray(values)) return body
@@ -147,6 +167,46 @@ export class AffinityEgress {
       }
       return this.item(protocol, item)
     })) } as T
+  }
+  async *chat<T>(frames: AsyncIterable<ProtocolFrame<T>>): AsyncGenerator<ProtocolFrame<T>> {
+    if (!this.affinity?.actual) { yield* frames; return }
+    const states = new Map<number, { thinking: string; signature: string; hasSignature: boolean; hasThinking: boolean }>()
+    const finished = new Set<number>()
+    const pending = () => [...states.values()].some(state => state.hasSignature || state.hasThinking)
+    for await (const frame of frames) {
+      if (frame.type === "done" && pending()) throw new InvalidAffinityStateError()
+      if (frame.type !== "event" || !object(frame.event) || !Array.isArray(frame.event.choices)) { yield frame; continue }
+      const choices: unknown[] = []
+      for (const choice of frame.event.choices) {
+        if (!object(choice) || !object(choice.delta)) { choices.push(choice); continue }
+        const index = typeof choice.index === "number" ? choice.index : 0
+        const delta = choice.delta
+        if (finished.has(index)) throw new InvalidAffinityStateError()
+        const state = states.get(index) ?? { thinking: "", signature: "", hasSignature: false, hasThinking: false }
+        const thinking = chatReasoningText(delta)
+        state.hasThinking ||= thinking !== undefined
+        state.thinking += thinking ?? ""
+        if (typeof delta.reasoning_opaque === "string") { state.signature += delta.reasoning_opaque; state.hasSignature = true }
+        boundedBlock(state)
+        const { reasoning_opaque: _opaque, reasoning_text: _text, reasoning_content: _content, reasoning: _reasoning, ...visible } = delta
+        if (choice.finish_reason != null) {
+          if (state.hasThinking || state.hasSignature) visible.reasoning_text = state.thinking
+          if (state.hasSignature) {
+            const item = await this.item("chat_completions", { reasoning_text: state.thinking, reasoning_opaque: state.signature })
+            visible.reasoning_opaque = item.reasoning_opaque
+          }
+          states.delete(index)
+          finished.add(index)
+        } else states.set(index, state)
+        if (states.size + finished.size > 1024) throw new InvalidAffinityStateError()
+        choices.push({ ...choice, delta: visible })
+      }
+      yield { ...frame, event: { ...frame.event, choices } as T }
+    }
+    if (pending()) throw new InvalidAffinityStateError()
+  }
+  async *gemini(frames: AsyncIterable<unknown>): AsyncGenerator<unknown> {
+    for await (const frame of frames) yield await this.body("gemini", frame)
   }
   async responseEvent<T>(event: T): Promise<T> {
     if (!object(event) || !this.affinity?.actual) return event

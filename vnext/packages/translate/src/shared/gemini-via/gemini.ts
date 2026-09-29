@@ -81,6 +81,9 @@ const GEMINI_PART_FIELD_TO_KIND: Record<GeminiPartDataField, GeminiPartKind> = {
 const GEMINI_PART_DATA_FIELDS = Object.keys(GEMINI_PART_FIELD_TO_KIND) as GeminiPartDataField[]
 
 export const geminiPartKind = (part: GeminiPart): GeminiPartKind | null => {
+  if (typeof part.thoughtSignature === "string" && (part.thought !== true || typeof part.text !== "string")) {
+    throw new TranslatorValidationError("This signed Gemini Part cannot be represented by the available upstream protocols.", "contents.parts")
+  }
   const presentFields = GEMINI_PART_DATA_FIELDS.filter(field => part[field] !== undefined)
   if (presentFields.length === 1) return GEMINI_PART_FIELD_TO_KIND[presentFields[0]!]
   if (presentFields.length > 1) {

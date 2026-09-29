@@ -38,7 +38,7 @@ interface ResponsesMessageItem {
 }
 interface ResponsesFunctionCallItem { type: 'function_call'; call_id: string; name: string; arguments: string }
 interface ResponsesFunctionCallOutputItem { type: 'function_call_output'; call_id: string; output: string }
-interface ResponsesReasoningItem { type: 'reasoning'; id: string; summary: Array<{ type: 'summary_text'; text: string }> }
+interface ResponsesReasoningItem { encrypted_content?: string; type: 'reasoning'; id: string; summary: Array<{ type: 'summary_text'; text: string }> }
 type ResponsesInputItem = ResponsesMessageItem | ResponsesFunctionCallItem | ResponsesFunctionCallOutputItem | ResponsesReasoningItem
 
 type ResponsesTool =
@@ -87,7 +87,7 @@ function translateInput(messages: ChatMessage[]): ResponsesInputItem[] {
     if (m.role === 'assistant') {
       const am = m as ChatMessage & { refusal?: string | null; tool_calls?: Array<{ id: string; function: { name: string; arguments?: string } }> }
       const reasoning = chatReasoningText(am)
-      if (reasoning) out.push({ type: 'reasoning', id: `rs_${crypto.randomUUID().replaceAll('-', '')}`, summary: [{ type: 'summary_text', text: reasoning }] })
+      if (reasoning !== undefined || typeof am.reasoning_opaque === 'string') out.push({ ...(typeof am.reasoning_opaque === 'string' ? { encrypted_content: am.reasoning_opaque } : {}), type: 'reasoning', id: `rs_${crypto.randomUUID().replaceAll('-', '')}`, summary: [{ type: 'summary_text', text: reasoning ?? '' }] })
       const content: Array<{ type: string; text?: string; refusal?: string }> = []
       if (typeof am.content === 'string' && am.content.length > 0) content.push({ type: 'output_text', text: am.content })
       let hasRefusalPart = false

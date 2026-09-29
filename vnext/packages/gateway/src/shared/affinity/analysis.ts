@@ -1,10 +1,11 @@
+import { chatReasoningText } from "@vibe-llm/translate/shared/chat-reasoning-text"
 import { decodeOpaqueValue, splitOpaqueTrailer } from "@vibe-llm/protocols/common"
 import { affinityTargetMatch, parseAffinityExecutionTarget } from "@vibe-llm/provider-llm"
 import type { AffinityExecutionTarget } from "@vibe-llm/provider-llm"
 import { AFFINITY_MARKER, MAX_AFFINITY_WIRE_CHARS, MAX_AFFINITY_PAYLOAD_BYTES, InvalidAffinityStateError } from "./carrier.ts"
 import type { AffinityCodec, AffinityField, DecodedAffinity } from "./carrier.ts"
 
-export type AffinityProtocol = "responses" | "messages"
+export type AffinityProtocol = "responses" | "messages" | "chat_completions" | "gemini"
 export type AffinityCandidateClass = "exact" | "compatible" | "degraded" | "unavailable"
 type JsonObject = Record<string, unknown>
 type Path = readonly (string | number)[]
@@ -37,6 +38,10 @@ function canonical(value: unknown): unknown {
 }
 
 function slots(protocol: AffinityProtocol, item: JsonObject): Slot[] {
+  if (protocol === "chat_completions") return typeof item.reasoning_opaque === "string"
+    ? [{ key: "reasoning_opaque", field: { domain: "chat_completions/reasoning/reasoning_opaque", block: JSON.stringify({ reasoning_text: chatReasoningText(item) ?? "" }) } }] : []
+  if (protocol === "gemini") return typeof item.thoughtSignature === "string"
+    ? [{ key: "thoughtSignature", field: { domain: "gemini/part/thoughtSignature", block: JSON.stringify(canonical(Object.fromEntries(Object.entries(item).filter(([key]) => key !== "thoughtSignature")))) } }] : []
   const type = item.type
   if (typeof type !== "string") return []
   let keys: string[] = []
@@ -120,6 +125,27 @@ async function blocks(protocol: AffinityProtocol, body: JsonObject): Promise<Blo
       found.push({ path: ["input", index], slots: slots(protocol, item),
         required: ["compaction", "compaction_summary", "context_compaction", "program", "program_output"].includes(String(item.type)), unsafeToRemove: false })
     }
+  } else if (protocol === "gemini") {
+    if (!Array.isArray(body.contents)) return found
+    body.contents.forEach((content, index) => {
+      if (!object(content) || !Array.isArray(content.parts)) return
+      if (content.role !== "model" && content.parts.some(part => object(part) && typeof part.thoughtSignature === "string" && part.thoughtSignature.startsWith(AFFINITY_MARKER))) throw new InvalidAffinityStateError()
+      const hasTool = content.parts.some(part => object(part) && part.functionCall !== undefined)
+      content.parts.forEach((part, partIndex) => {
+        if (!object(part)) return
+        const optional = part.thought === true && typeof part.text === "string" && Object.keys(part).every(key => ["text", "thought", "thoughtSignature"].includes(key))
+        found.push({ path: ["contents", index, "parts", partIndex], slots: slots(protocol, part), required: !optional, unsafeToRemove: content.role !== "model" || hasTool })
+      })
+    })
+  } else if (protocol === "chat_completions") {
+    if (!Array.isArray(body.messages)) return found
+    body.messages.forEach((message, index) => {
+      if (!object(message)) return
+      if (message.role !== "assistant" && typeof message.reasoning_opaque === "string" && message.reasoning_opaque.startsWith(AFFINITY_MARKER)) throw new InvalidAffinityStateError()
+      const next = body.messages instanceof Array ? body.messages[index + 1] : undefined
+      found.push({ path: ["messages", index], slots: slots(protocol, message), required: false,
+        unsafeToRemove: message.role !== "assistant" || (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) || (object(next) && next.role === "tool") })
+    })
   } else {
     if (!Array.isArray(body.messages)) return found
     const messages = body.messages
@@ -140,6 +166,8 @@ async function blocks(protocol: AffinityProtocol, body: JsonObject): Promise<Blo
 
 export function containsAffinityMarker(protocol: AffinityProtocol, body: Readonly<JsonObject>): boolean {
   const marked = (value: unknown) => typeof value === "string" && value.startsWith(AFFINITY_MARKER)
+  if (protocol === "chat_completions") return Array.isArray(body.messages) && body.messages.some(message => object(message) && marked(message.reasoning_opaque))
+  if (protocol === "gemini") return Array.isArray(body.contents) && body.contents.some(content => object(content) && Array.isArray(content.parts) && content.parts.some(part => object(part) && marked(part.thoughtSignature)))
   if (protocol === "responses") return Array.isArray(body.input) && body.input.some(item => {
     if (!object(item)) return false
     if (item.type === "agent_message" && Array.isArray(item.content)) return item.content.some(block => object(block) && block.type === "encrypted_content" && marked(block.encrypted_content))
@@ -207,6 +235,15 @@ export async function analyzeAffinityRequest(protocol: AffinityProtocol, body: R
       const removedMessages = new Set<number>()
       for (const block of [...owned].reverse()) {
         if (shouldRemove(block, target)) {
+          if (protocol === "chat_completions") {
+            const message = at(copy, block.path)
+            if (!object(message)) throw new InvalidAffinityStateError()
+            for (const key of ["reasoning_text", "reasoning_content", "reasoning", "reasoning_opaque", "reasoning_items"]) delete message[key]
+            // The loose Chat schema can carry refusal, audio, or provider payloads.
+            // Remove only a bare role with absent/empty text after stripping reasoning.
+            if (Object.keys(message).every(key => key === "role" || (key === "content" && (message.content == null || message.content === "")))) removedMessages.add(Number(block.path[1]))
+            continue
+          }
           const parent = at(copy, block.path.slice(0, -1))
           const index = block.path.at(-1)
           if (!Array.isArray(parent) || typeof index !== "number") throw new InvalidAffinityStateError()
@@ -219,6 +256,8 @@ export async function analyzeAffinityRequest(protocol: AffinityProtocol, body: R
           for (const { key, state } of block.decoded) item[key] = state.value
         }
       }
+      if (protocol === "chat_completions" && Array.isArray(copy.messages)) copy.messages = copy.messages.filter((_, index) => !removedMessages.has(index))
+      if (protocol === "gemini" && Array.isArray(copy.contents)) copy.contents = copy.contents.filter(content => !object(content) || content.role !== "model" || !Array.isArray(content.parts) || content.parts.length > 0)
       if (protocol === "messages" && Array.isArray(copy.messages)) copy.messages = copy.messages.filter((message, index) =>
         !removedMessages.has(index) || !object(message) || message.role !== "assistant" || !Array.isArray(message.content) || message.content.length > 0)
       return copy

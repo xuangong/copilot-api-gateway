@@ -1,3 +1,4 @@
+import { chatReasoningText } from "@vibe-llm/translate/shared/chat-reasoning-text"
 import { chatCompletionsErrorPayloadMessage } from '@vibe-llm/protocols/chat'
 import type {
   ChatCompletionsStreamEvent,
@@ -63,19 +64,17 @@ export async function reassembleChatCompletions(
   let id = ''
   let model = ''
   let created = 0
-  let content = ''
-  let reasoningText = ''
-  let reasoningOpaque = ''
-  let hasReasoningOpaque = false
-  const reasoningItems: ChatCompletionsReasoningItem[] = []
-  const annotations: ChatCompletionsAnnotation[] = []
-  let finishReason: string = 'stop'
   let lastUsage: ChatCompletionsResult['usage'] | undefined
-
-  const toolCallsMap = new Map<number, { id: string; name: string; arguments: string }>()
   const chunkExtras: Record<string, unknown> = {}
-  const choiceExtras: Record<string, unknown> = {}
-  const messageExtras: Record<string, unknown> = {}
+  const states = new Map<number, ReturnType<typeof createChoice>>()
+  function createChoice() {
+    return {
+      content: "", reasoningText: "", reasoningOpaque: "", hasReasoningText: false, hasReasoningOpaque: false,
+      reasoningItems: [] as ChatCompletionsReasoningItem[], annotations: [] as ChatCompletionsAnnotation[], finishReason: "stop",
+      toolCallsMap: new Map<number, { id: string; name: string; arguments: string }>(),
+      choiceExtras: {} as Record<string, unknown>, messageExtras: {} as Record<string, unknown>,
+    }
+  }
 
   for await (const rawChunk of chunks) {
     const chunk = rawChunk as ChunkWithSidecar
@@ -100,37 +99,42 @@ export async function reassembleChatCompletions(
     if (!choices) continue
 
     for (const choice of choices) {
-      captureExtras(choice, KNOWN_CHOICE_KEYS, choiceExtras)
+      const index = typeof choice.index === "number" ? choice.index : 0
+      const state = states.get(index) ?? createChoice()
+      states.set(index, state)
+      captureExtras(choice, KNOWN_CHOICE_KEYS, state.choiceExtras)
       const delta = choice.delta as Record<string, unknown> | undefined
       if (!delta) continue
-      captureExtras(delta, KNOWN_DELTA_KEYS, messageExtras)
+      captureExtras(delta, KNOWN_DELTA_KEYS, state.messageExtras)
 
       if (typeof delta.content === 'string') {
-        content += delta.content
+        state.content += delta.content
       }
-      if (typeof delta.reasoning_text === 'string') {
-        reasoningText += delta.reasoning_text
+      const reasoning = chatReasoningText(delta)
+      if (reasoning !== undefined) {
+        state.hasReasoningText = true
+        state.reasoningText += reasoning
       }
       if (typeof delta.reasoning_opaque === 'string') {
-        reasoningOpaque += delta.reasoning_opaque
-        hasReasoningOpaque = true
+        state.reasoningOpaque += delta.reasoning_opaque
+        state.hasReasoningOpaque = true
       }
       if (Array.isArray(delta.reasoning_items)) {
-        reasoningItems.push(...(delta.reasoning_items as ChatCompletionsReasoningItem[]))
+        state.reasoningItems.push(...(delta.reasoning_items as ChatCompletionsReasoningItem[]))
       }
       // Citations arrive as whole entries, never as partial deltas, so a plain
       // concat is the correct accumulation (unlike tool_calls, which are
       // index-keyed and streamed piecewise).
       if (Array.isArray(delta.annotations)) {
-        annotations.push(...(delta.annotations as ChatCompletionsAnnotation[]))
+        state.annotations.push(...(delta.annotations as ChatCompletionsAnnotation[]))
       }
 
       if (Array.isArray(delta.tool_calls)) {
         for (const toolCall of delta.tool_calls as Array<Record<string, unknown>>) {
           const idx = toolCall.index as number
-          const existing = toolCallsMap.get(idx)
+          const existing = state.toolCallsMap.get(idx)
           if (!existing) {
-            toolCallsMap.set(idx, {
+            state.toolCallsMap.set(idx, {
               id: (toolCall.id as string) ?? '',
               name: ((toolCall.function as Record<string, unknown>)?.name as string) ?? '',
               arguments: ((toolCall.function as Record<string, unknown>)?.arguments as string) ?? '',
@@ -147,31 +151,37 @@ export async function reassembleChatCompletions(
       }
 
       if (choice.finish_reason) {
-        finishReason = choice.finish_reason as string
+        state.finishReason = choice.finish_reason as string
       }
     }
   }
 
-  const toolCalls: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> = []
-  const sortedIndices = [...toolCallsMap.keys()].sort((a, b) => a - b)
-  for (const idx of sortedIndices) {
-    const toolCall = toolCallsMap.get(idx)!
-    toolCalls.push({
-      id: toolCall.id,
-      type: 'function',
-      function: { name: toolCall.name, arguments: toolCall.arguments },
-    })
-  }
+  if (states.size === 0) states.set(0, createChoice())
+  const resultChoices: ChatCompletionsResult["choices"] = []
+  for (const [index, state] of [...states].sort(([left], [right]) => left - right)) {
+    const toolCalls: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> = []
+    const sortedIndices = [...state.toolCallsMap.keys()].sort((a, b) => a - b)
+    for (const idx of sortedIndices) {
+      const toolCall = state.toolCallsMap.get(idx)
+      if (!toolCall) continue
+      toolCalls.push({
+        id: toolCall.id,
+        type: 'function',
+        function: { name: toolCall.name, arguments: toolCall.arguments },
+      })
+    }
 
-  const message: ChatCompletionsResult['choices'][number]['message'] = {
-    role: 'assistant',
-    content: content || null,
-    ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
-    ...(reasoningText && { reasoning_text: reasoningText }),
-    ...(hasReasoningOpaque ? { reasoning_opaque: reasoningOpaque } : {}),
-    ...(reasoningItems.length > 0 && { reasoning_items: reasoningItems }),
-    ...(annotations.length > 0 && { annotations }),
-    ...messageExtras,
+    const message: ChatCompletionsResult['choices'][number]['message'] = {
+      role: 'assistant',
+      content: state.content || null,
+      ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
+      ...(state.hasReasoningText ? { reasoning_text: state.reasoningText } : {}),
+      ...(state.hasReasoningOpaque ? { reasoning_opaque: state.reasoningOpaque } : {}),
+      ...(state.reasoningItems.length > 0 && { reasoning_items: state.reasoningItems }),
+      ...(state.annotations.length > 0 && { annotations: state.annotations }),
+      ...state.messageExtras,
+    }
+    resultChoices.push({ index, message, finish_reason: state.finishReason, ...state.choiceExtras })
   }
 
   const result: ChatCompletionsResult = {
@@ -179,14 +189,7 @@ export async function reassembleChatCompletions(
     object: 'chat.completion',
     created,
     model,
-    choices: [
-      {
-        index: 0,
-        message,
-        finish_reason: finishReason,
-        ...choiceExtras,
-      },
-    ],
+    choices: resultChoices,
     ...(lastUsage && { usage: lastUsage }),
     ...chunkExtras,
   }

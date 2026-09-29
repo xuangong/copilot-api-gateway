@@ -91,8 +91,11 @@ interface ChatTargetRequest {
   web_search_options?: Record<string, never>
 }
 
-const appendOpaque = (current: string | null, signature?: string): string | null =>
-  typeof signature === 'string' ? `${current ?? ''}${signature}` : current
+const appendOpaque = (current: string | null, signature?: string): string | null => {
+  if (typeof signature !== 'string') return current
+  if (current !== null) throw new TranslatorValidationError('Multiple signed Parts cannot be represented by one Chat reasoning field.', 'contents.parts')
+  return signature
+}
 
 const inlineDataToContentPart = (part: GeminiPart): ChatContentPart | null => {
   const url = geminiInlineDataUrl(part)
@@ -124,6 +127,9 @@ const buildAssistantMessage = (
   turnIndex: number,
   unmatchedToolCallIds: GeminiToolCallIds,
 ): ChatMessage | null => {
+  if (content.parts.some(part => typeof part.thoughtSignature === 'string') && content.parts.filter(part => part.thought === true && typeof part.text === 'string').length > 1) {
+    throw new TranslatorValidationError('A signed thought cannot be combined with other thought Parts in one Chat reasoning field.', 'contents.parts')
+  }
   const visibleParts: GeminiPart[] = []
   const thoughtTexts: string[] = []
   const toolCalls: ChatToolCall[] = []

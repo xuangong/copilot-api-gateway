@@ -1,3 +1,5 @@
+import { AffinityRoutingUnavailableError } from "../../../shared/affinity/analysis.ts"
+import { materializeAffinity, selectAffinityCandidate, type RequestAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 // vnext/packages/gateway/src/data-plane/chat-flow/gemini/attempt.ts
 /**
@@ -78,6 +80,7 @@ export type GeminiAttemptResult = LlmExecuteResult<ProtocolFrame<unknown>>
 export type GeminiAttemptAuth = SelectBindingAuth
 
 export interface GeminiAttemptArgs {
+  readonly affinity?: RequestAffinity
   readonly dump?: DumpAccumulator | null
   readonly payload: Record<string, unknown> & { stream?: boolean }
   /**
@@ -131,13 +134,13 @@ export type SelectGeminiBindingResult =
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
 
 export type SelectGeminiBinding = (
-  args: { model: string; auth: GeminiAttemptAuth; dump?: DumpAccumulator | null },
+  args: { model: string; auth: GeminiAttemptAuth; dump?: DumpAccumulator | null; affinity?: RequestAffinity; affinityOptions?: AffinityPreparationOptions },
 ) => Promise<SelectGeminiBindingResult>
 
 const pickTargetForGemini = (endpoints: ModelEndpoints): EndpointKey | null =>
   selectPair('gemini', endpoints)
 
-const defaultSelectBinding: SelectGeminiBinding = async ({ model, auth, dump }) => {
+const defaultSelectBinding: SelectGeminiBinding = async ({ model, auth, dump, affinity, affinityOptions }) => {
   const { candidates, sawModel, bareModel, catalogUnavailable } = await enumerateBindingCandidates({
     model,
     pickTarget: pickTargetForGemini,
@@ -150,7 +153,7 @@ const defaultSelectBinding: SelectGeminiBinding = async ({ model, auth, dump }) 
   })
   if (catalogUnavailable) return { kind: 'catalog-unavailable', bareModel }
   if (!sawModel) return { kind: 'model-not-found', bareModel }
-  const first = candidates[0]
+  const first = await selectAffinityCandidate(candidates, affinity, bareModel, affinityOptions)
   if (!first) return { kind: 'no-eligible-binding', bareModel }
   const translator = getTranslator('gemini', first.targetEndpoint)
   if (!translator) return { kind: 'no-translator', bareModel, targetEndpoint: first.targetEndpoint }
@@ -168,7 +171,13 @@ const defaultSelectBinding: SelectGeminiBinding = async ({ model, auth, dump }) 
 export const geminiAttempt = {
   generate: async (args: GeminiAttemptArgs): Promise<GeminiAttemptResult> => {
     const selectFn = args.selectBinding ?? defaultSelectBinding
-    const sel = await selectFn({ model: args.model, auth: args.auth, dump: args.dump })
+    let sel: Awaited<ReturnType<typeof selectFn>>
+    try {
+      sel = await selectFn({ model: args.model, auth: args.auth, dump: args.dump, affinity: args.affinity, affinityOptions: { signal: args.ctx.downstreamAbortSignal, inheritedHeaders: args.inheritedHeaders } })
+    } catch (error) {
+      if (error instanceof AffinityRoutingUnavailableError) return llmInternalErrorResult(error.status, error)
+      throw error
+    }
 
     if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(MODEL_CATALOG_UNAVAILABLE))
     if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
@@ -186,7 +195,7 @@ export const geminiAttempt = {
       endpoint: sel.targetEndpoint,
       enabledFlags: new Set(sel.binding.enabledFlags ?? []),
       sourceApi: 'gemini',
-      payload: args.payload as Record<string, unknown>,
+      payload: materializeAffinity(args.affinity, args.payload, sel.bareModel),
       headers: {},
     }
     const chain: ReadonlyArray<GeminiInterceptor> = args.interceptors ?? geminiInterceptors
@@ -198,7 +207,7 @@ export const geminiAttempt = {
     const terminal = async (): Promise<GeminiAttemptResult> => {
       return await traverseTranslation({
         dump: args.dump,
-        sourcePayload: args.payload as Record<string, unknown>,
+        sourcePayload: invocation.payload,
         sourceProtocol: 'gemini',
         hubProtocol,
         translator: sel.translator,
@@ -206,6 +215,8 @@ export const geminiAttempt = {
           return (await hubAttempt.generate({
             selectBinding: async () => ({ ...sel, translator: getTranslator(hubProtocol, hubProtocol)! }),
             payload: innerArgs.payload as never,
+            affinity: args.affinity,
+            affinityMaterialized: true,
             auth: innerArgs.auth as never,
             ctx: { downstreamAbortSignal: innerArgs.signal } as never,
             dump: innerArgs.dump,

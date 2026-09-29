@@ -1,3 +1,4 @@
+import { selectAffinityCandidate, type RequestAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 /**
  * Routing helper for the chat-completions handler.
@@ -42,6 +43,8 @@ type EnumerateFn = (args: {
 }) => Promise<EnumerateResult>
 
 export interface SelectBindingArgs {
+  readonly affinity?: RequestAffinity
+  readonly affinityOptions?: AffinityPreparationOptions
   readonly dump?: DumpAccumulator | null
   readonly model: string
   readonly auth: SelectBindingAuth
@@ -89,7 +92,7 @@ export async function selectBindingForChatCompletions(
   if (catalogUnavailable) return { kind: 'catalog-unavailable', bareModel }
   if (!sawModel) return { kind: 'model-not-found', bareModel }
 
-  const first = candidates[0]
+  const first = await selectAffinityCandidate(candidates, args.affinity, bareModel, args.affinityOptions)
   if (!first) return { kind: 'no-eligible-binding', bareModel }
 
   const translator = getTranslator('chat_completions', first.targetEndpoint)

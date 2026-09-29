@@ -1,4 +1,5 @@
-import { fetchAffinityUpstream, affinityFence, acceptAffinityExecution, type RequestAffinity } from "../../shared/affinity-request"
+import { AffinityRoutingUnavailableError } from "../../../shared/affinity/analysis.ts"
+import { materializeAffinity, fetchAffinityUpstream, affinityFence, acceptAffinityExecution, type RequestAffinity } from "../../shared/affinity-request"
 import { selectedTierFrames } from "../shared/execution-tier"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 import { invocationSourceApi } from '../shared/invocation-source-api'
@@ -101,13 +102,21 @@ const readUpstreamJsonAsFrames = async (
 
 export const chatCompletionsAttempt = {
   generate: async (args: ChatCompletionsAttemptArgs): Promise<ChatCompletionsAttemptResult> => {
-    const selectFn = args.selectBinding ?? ((a) => selectBindingForChatCompletions(a))
-    const sel = await selectFn({ model: args.payload.model, auth: args.auth, dump: args.dump })
+    const selectFn = args.selectBinding ?? ((a) => selectBindingForChatCompletions({ ...a, affinity: args.affinity, affinityOptions: { signal: args.ctx.downstreamAbortSignal, inheritedHeaders: args.inheritedHeaders } }))
+    let sel: Awaited<ReturnType<typeof selectFn>>
+    try {
+      sel = await selectFn({ model: args.payload.model, auth: args.auth, dump: args.dump })
+    } catch (error) {
+      if (error instanceof AffinityRoutingUnavailableError) return llmInternalErrorResult(error.status, error)
+      throw error
+    }
 
     if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(MODEL_CATALOG_UNAVAILABLE))
     if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
     if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
     if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for chat_completions → ${sel.targetEndpoint}`))
+
+    const payload = args.affinityMaterialized ? args.payload : materializeAffinity(args.affinity, args.payload, sel.bareModel)
 
     if (sel.targetEndpoint !== 'chat_completions') {
       // Cross-protocol attempt: delegate to the hub attempt via
@@ -125,7 +134,7 @@ export const chatCompletionsAttempt = {
       const hubAttempt = (args.hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
       return await traverseTranslation({
         dump: args.dump,
-        sourcePayload: args.payload as Record<string, unknown>,
+        sourcePayload: payload,
         sourceProtocol: 'chat_completions',
         hubProtocol,
         translator: sel.translator,
@@ -156,7 +165,7 @@ export const chatCompletionsAttempt = {
       endpoint: 'chat_completions',
       enabledFlags: new Set(sel.binding.enabledFlags ?? []),
       sourceApi: invocationSourceApi(args.telemetryCtx.sourceApi, 'chat_completions'),
-      payload: args.payload as Record<string, unknown>,
+      payload,
       headers: { ...(args.inheritedHeaders ?? {}) },
     }
     const chain = args.interceptors ?? chatCompletionsInterceptors
