@@ -1,0 +1,18 @@
+{
+  "vnext/packages/gateway/src/data-plane/chat-flow/responses/attempt.ts": {
+    "forward": [
+      {
+        "ours": "        if (parsed.status === 'failed') diagnose({ type: 'response.failed', response: parsed })\n        const json = upstreamResp.responsesAdapter?.result?.(parsed) ?? parsed\n",
+        "theirs": "        const json = invocation.action === 'compact' && upstreamResp.compactAdapter\n          ? { ...parsed, ...upstreamResp.compactAdapter(parsed) }\n          : upstreamResp.responsesAdapter?.result?.(parsed) ?? parsed\n",
+        "resolved": "        if (parsed.status === 'failed') diagnose({ type: 'response.failed', response: parsed })\n        const json = invocation.action === 'compact' && upstreamResp.compactAdapter\n          ? { ...parsed, ...upstreamResp.compactAdapter(parsed) }\n          : upstreamResp.responsesAdapter?.result?.(parsed) ?? parsed\n"
+      }
+    ],
+    "reverse": [
+      {
+        "ours": "        if (parsed.status === 'failed') diagnose({ type: 'response.failed', response: parsed })\n        const json = invocation.action === 'compact' && upstreamResp.compactAdapter\n          ? { ...parsed, ...upstreamResp.compactAdapter(parsed) }\n          : upstreamResp.responsesAdapter?.result?.(parsed) ?? parsed\n",
+        "theirs": "        const json = upstreamResp.responsesAdapter?.result?.(parsed) ?? parsed\n",
+        "resolved": "        if (parsed.status === 'failed') diagnose({ type: 'response.failed', response: parsed })\n        const json = upstreamResp.responsesAdapter?.result?.(parsed) ?? parsed\n"
+      }
+    ]
+  }
+}

@@ -15,7 +15,7 @@ import type {
   UpstreamAdapter,
 } from '@vibe-core/upstream'
 import type { ProtocolFrame } from '@vibe-core/result'
-import type { ResponsesResult, ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
+import type { ResponsesCompactionResult, ResponsesResult, ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
 import type {
   EndpointKey,
   ModelPricing,
@@ -50,6 +50,8 @@ export interface ProviderResponsesAdapter {
 export interface ProviderResponse extends TransportProviderResponse {
   readonly execution?: ProviderExecutionIdentity
   readonly responsesAdapter?: ProviderResponsesAdapter
+  /** Native compact JSON is restored before observation and lifecycle synthesis. */
+  readonly compactAdapter?: (result: ResponsesCompactionResult) => ResponsesCompactionResult
 }
 
 export type SourceApi = 'anthropic' | 'openai' | 'gemini'

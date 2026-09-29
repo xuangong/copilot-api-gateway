@@ -3,9 +3,9 @@
 // provider-codex/src/fetch.ts.
 //
 // vNext adaptations:
-//   - Both terminal callers return raw `Response`. The provider layer wraps
-//     into `ProviderResponse { status, headers, body }` — no stream/JSON
-//     parsing at this boundary (attempt.ts owns the SSE + JSON decoding).
+//   - Public transport callers retain native Response. Prepared entrypoints
+//     carry call-local protocol adapters to the provider; attempt.ts owns
+//     SSE / JSON decoding and applies adapters before observing source data.
 //   - `opts.call.fetcher` → `opts.fetcher` (Fetcher passed in directly).
 //   - `opts.call.wrapUpstreamCall(fn)` → inline `await fn()` (TTFT timing lands
 //     with the telemetry circle; see CUTOVER TODO).
@@ -39,7 +39,9 @@ import {
 } from './constants'
 import type { Fetcher } from './fetcher'
 import { sha256UuidFromParts, uuidV7 } from './ids'
-import type { CodexProviderModel } from './models'
+import { codexModelUsesResponsesLite, type CodexProviderModel } from './models'
+import { encodeCodexResponsesLiteRequest, createCodexResponsesLiteAdapter, restoreCodexResponsesCompactionResult, type CodexResponsesBody as LiteBody, type CodexResponsesLiteRequest } from './responses-lite'
+import type { ProviderResponse } from '@vibe-llm/provider-llm'
 import { parseCodexQuotaHeaders, putCodexQuota } from './quota'
 import type { CodexAccountCredential, CodexQuotaSnapshotEntryMap } from './state'
 import type {
@@ -116,7 +118,8 @@ export interface CallCodexResponsesOptions extends CodexBackendCallBase {
 }
 
 export interface CallCodexResponsesCompactOptions extends CodexBackendCallBase {
-  body: Omit<CanonicalResponsesCompactPayload, 'model' | 'store'>
+  // Keep declarations until Lite encoding has captured their provenance.
+  body: Omit<CanonicalResponsesPayload, 'model'>
 }
 
 export interface CallCodexAlphaSearchOptions extends CodexBackendCallBase {
@@ -129,18 +132,40 @@ type CodexResponsesBody =
 
 // ─── Entry points ──────────────────────────────────────────────────────────
 
-export const callCodexResponses = async (opts: CallCodexResponsesOptions): Promise<Response> => {
-  const ready = await prepareCodexCall(opts)
-  if (!ready.ok) return ready.response
-  return await performStreamingResponsesCall(opts, ready.accessToken, false)
+export interface CodexPreparedCallResult {
+  response: Response
+  responsesAdapter?: ProviderResponse['responsesAdapter']
+  compactAdapter?: ProviderResponse['compactAdapter']
 }
 
-export const callCodexResponsesCompact = async (
-  opts: CallCodexResponsesCompactOptions,
-): Promise<Response> => {
+export const callCodexResponses = async (opts: CallCodexResponsesOptions): Promise<Response> =>
+  (await callCodexResponsesPrepared(opts)).response
+
+export const callCodexResponsesCompact = async (opts: CallCodexResponsesCompactOptions): Promise<Response> =>
+  (await callCodexResponsesCompactPrepared(opts)).response
+
+export const callCodexResponsesPrepared = (opts: CallCodexResponsesOptions): Promise<CodexPreparedCallResult> =>
+  callPreparedResponses(opts, false)
+
+export const callCodexResponsesCompactPrepared = (opts: CallCodexResponsesCompactOptions): Promise<CodexPreparedCallResult> =>
+  callPreparedResponses(opts, true)
+
+const callPreparedResponses = async (
+  opts: CallCodexResponsesOptions,
+  compact: boolean,
+): Promise<CodexPreparedCallResult> => {
   const ready = await prepareCodexCall(opts)
-  if (!ready.ok) return ready.response
-  return await performUnaryCompactCall(opts, ready.accessToken, false)
+  if (!ready.ok) return { response: ready.response }
+  const prepared = await prepareResponsesHttpCall(opts, compact)
+  const response = await performPreparedResponsesCall(opts, ready.accessToken, compact, prepared)
+  const lite = prepared.lite
+  return {
+    response,
+    ...(lite && (compact
+      ? { compactAdapter: (result: Parameters<typeof restoreCodexResponsesCompactionResult>[0]) =>
+          restoreCodexResponsesCompactionResult(result, lite.callableIdentities, lite.generatedPrefix) }
+      : { responsesAdapter: createCodexResponsesLiteAdapter(lite) })),
+  }
 }
 
 export const callCodexAlphaSearch = async (
@@ -243,7 +268,7 @@ const rateLimitedUntil = (
 
 // ─── Identity / turn metadata ──────────────────────────────────────────────
 
-interface CodexRequestIdentity {
+export interface CodexRequestIdentity {
   installationId: string
   sessionId: string
   threadId: string
@@ -323,6 +348,7 @@ const IDENTITY_MIRRORED_CLIENT_METADATA_KEYS = new Set<string>([
   'x-codex-window-id',
   'turn_id',
   'x-codex-turn-metadata',
+  'ws_request_header_x_openai_internal_codex_responses_lite',
 ])
 
 const buildCodexRequestIdentity = async (
@@ -466,7 +492,9 @@ const buildCodexResponsesBody = (
 //     the prepared body with a fresh token
 //   - other: returned verbatim
 
-interface PreparedCodexHttpCall {
+export interface PreparedCodexHttpCall {
+  originalBody?: LiteBody
+  lite?: CodexResponsesLiteRequest
   body: Record<string, unknown>
   identity: CodexRequestIdentity
   turnMetadataJson: string | null
@@ -507,6 +535,7 @@ const dispatchCodexHttpCall = async (
   headers.set('thread-id', prepared.identity.threadId)
   headers.set('x-client-request-id', prepared.identity.clientRequestId)
   headers.set('x-codex-window-id', prepared.identity.windowId)
+  if (prepared.lite) headers.set('x-openai-internal-codex-responses-lite', 'true')
   if (prepared.turnMetadataJson !== null) headers.set('x-codex-turn-metadata', prepared.turnMetadataJson)
 
   if (!prepared.bodyPrepared) {
@@ -578,92 +607,60 @@ const refreshAccessTokenForRetry = async (
   }
 }
 
-// ─── Streaming responses call ──────────────────────────────────────────────
-
-const performStreamingResponsesCall = async (
+// Responses preparation is outside the auth retry: serialized bytes, prefix
+// provenance and request identity all belong to this one logical call.
+const prepareResponsesHttpCall = async (
   opts: CallCodexResponsesOptions,
-  accessToken: CodexAccessTokenLease,
-  alreadyRetried: boolean,
-  preparedCall?: PreparedCodexHttpCall,
-): Promise<Response> => {
-  let prepared = preparedCall
-  if (!prepared) {
-    const clientTurnMetadata = parseClientTurnMetadataJson(
-      trimHeader(opts.headers, 'x-codex-turn-metadata'),
-    )
-    const clientMetadata = clientCodexClientMetadata(opts.body)
-    const identity = await buildCodexRequestIdentity(
-      opts,
-      opts.body,
-      clientMetadata,
-      clientTurnMetadata,
-    )
-    const hasCompactionTrigger = (opts.body.input as ResponsesInputItem[]).some(
-      (item: ResponsesInputItem) => (item as { type?: unknown }).type === 'compaction_trigger',
-    )
-    const metadata: CodexTurnMetadataOptions = hasCompactionTrigger
-      ? CODEX_RESPONSES_COMPACTION_V2_TURN_METADATA
-      : { requestKind: 'turn' }
-    const turnMetadataJson = buildCodexTurnMetadataJson(identity, metadata, clientTurnMetadata)
-    prepared = codexHttpCall(buildCodexResponsesBody(opts, identity, turnMetadataJson), identity, turnMetadataJson)
-  }
-  const response = await dispatchCodexHttpCall(
-    opts,
-    accessToken,
-    CODEX_RESPONSES_PATH,
-    'text/event-stream',
-    prepared,
+  compact: boolean,
+): Promise<PreparedCodexHttpCall> => {
+  const clientTurnMetadata = parseClientTurnMetadataJson(trimHeader(opts.headers, 'x-codex-turn-metadata'))
+  const clientMetadata = clientCodexClientMetadata(opts.body)
+  const identity = await buildCodexRequestIdentity(opts, opts.body, clientMetadata, clientTurnMetadata)
+  const input = opts.body.input as ResponsesInputItem[]
+  const hasCompactionTrigger = !compact && (opts.body.input as ResponsesInputItem[]).some(
+    item => (item as { type?: unknown }).type === 'compaction_trigger',
   )
-
-  if (response.status === 401 && !alreadyRetried) {
-    const fresh = await refreshAccessTokenForRetry(opts, accessToken)
-    if (!fresh.ok) return fresh.response
-    return await performStreamingResponsesCall(opts, fresh.accessToken, true, prepared)
+  const metadata: CodexTurnMetadataOptions = compact
+    ? { requestKind: 'compaction' }
+    : hasCompactionTrigger ? CODEX_RESPONSES_COMPACTION_V2_TURN_METADATA : { requestKind: 'turn' }
+  const turnMetadataJson = buildCodexTurnMetadataJson(identity, metadata, clientTurnMetadata)
+  const originalBody = { ...opts.body, input } as LiteBody
+  const lite = codexModelUsesResponsesLite(opts.model)
+    ? encodeCodexResponsesLiteRequest(originalBody, identity.threadId)
+    : undefined
+  const encoded = lite?.body ?? originalBody
+  const body = compact
+    ? { ...toCompactPayloadShape(encoded), model: opts.model.id }
+    : buildCodexResponsesBody({ ...opts, body: encoded }, identity, turnMetadataJson)
+  return {
+    ...codexHttpCall(body, identity, turnMetadataJson),
+    originalBody,
+    lite,
+    bodyText: JSON.stringify(body),
+    bodyPrepared: true,
+    accountId: opts.account.chatgptAccountId,
   }
-
-  if (response.ok) return ensureSseContentType(response)
-  return response
 }
 
-// ─── Unary compact call ────────────────────────────────────────────────────
-
-const performUnaryCompactCall = async (
-  opts: CallCodexResponsesCompactOptions,
+const performPreparedResponsesCall = async (
+  opts: CallCodexResponsesOptions,
   accessToken: CodexAccessTokenLease,
-  alreadyRetried: boolean,
-  preparedCall?: PreparedCodexHttpCall,
+  compact: boolean,
+  prepared: PreparedCodexHttpCall,
+  alreadyRetried = false,
 ): Promise<Response> => {
-  let prepared = preparedCall
-  if (!prepared) {
-    const clientTurnMetadata = parseClientTurnMetadataJson(
-      trimHeader(opts.headers, 'x-codex-turn-metadata'),
-    )
-    const clientMetadata = clientCodexClientMetadata(opts.body)
-    const identity = await buildCodexRequestIdentity(
-      opts,
-      opts.body,
-      clientMetadata,
-      clientTurnMetadata,
-    )
-    const metadata: CodexTurnMetadataOptions = { requestKind: 'compaction' }
-    const turnMetadataJson = buildCodexTurnMetadataJson(identity, metadata, clientTurnMetadata)
-    prepared = codexHttpCall({ ...opts.body, model: opts.model.id }, identity, turnMetadataJson)
-  }
   const response = await dispatchCodexHttpCall(
-    opts,
-    accessToken,
-    CODEX_RESPONSES_COMPACT_PATH,
-    'application/json',
+    opts, accessToken,
+    compact ? CODEX_RESPONSES_COMPACT_PATH : CODEX_RESPONSES_PATH,
+    compact ? 'application/json' : 'text/event-stream',
     prepared,
   )
-
   if (response.status === 401 && !alreadyRetried) {
     const fresh = await refreshAccessTokenForRetry(opts, accessToken)
     if (!fresh.ok) return fresh.response
-    return await performUnaryCompactCall(opts, fresh.accessToken, true, prepared)
+    return performPreparedResponsesCall(opts, fresh.accessToken, compact, prepared, true)
   }
-
-  return response
+  return response.ok && !compact ? ensureSseContentType(response) : response
 }
 
 // ─── Alpha search call ─────────────────────────────────────────────────────
@@ -750,7 +747,8 @@ const synthetic429 = (message: string, retryAtIso: string, now: Date): Response 
 // content-type header, so we synthesize it on the way through. Body stream
 // is preserved verbatim.
 const ensureSseContentType = (response: Response): Response => {
-  if (response.headers.get('content-type')?.includes('text/event-stream')) return response
+  const contentType = response.headers.get('content-type') ?? ''
+  if (contentType.includes('text/event-stream') || contentType.includes('application/json')) return response
   const headers = new Headers(response.headers)
   headers.set('content-type', 'text/event-stream')
   return new Response(response.body, {

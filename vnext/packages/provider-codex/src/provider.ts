@@ -21,10 +21,9 @@ import { ensureCodexAccessToken, mintCodexAccessToken, rejectCodexAccessToken } 
 import { assertCodexUpstreamRecord, type CodexUpstreamConfig } from './config'
 import {
   callCodexAlphaSearch,
-  callCodexResponses,
-  callCodexResponsesCompact,
-  toCompactPayloadShape,
-  type CanonicalResponsesCompactPayload,
+  callCodexResponsesPrepared,
+  callCodexResponsesCompactPrepared,
+  type CodexPreparedCallResult,
 } from './fetch'
 import { directFetcher, type Fetcher } from './fetcher'
 import { codexResponsesBoundary } from './interceptors/responses'
@@ -172,6 +171,7 @@ export class CodexProvider implements LlmModelProvider {
       downstreamAbortSignal: req.signal,
     }
 
+    let preparedResult: CodexPreparedCallResult | undefined
     const upstreamResp = await runInterceptors(inv, ctx, codexResponsesBoundary, async () => {
       const { account, credential } = await readCodexCredential(this.upstreamId, this.config.accounts[0].chatgptAccountId, this.writeTarget)
       const { model: _ignored, ...wireBody } = inv.payload as Record<string, unknown>
@@ -185,21 +185,18 @@ export class CodexProvider implements LlmModelProvider {
         fetcher: this.fetcher,
         executionFetcher: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req),
       }
-      return inv.action === 'compact'
-        ? await callCodexResponsesCompact({
-            ...backendCallBase,
-            body: toCompactPayloadShape(wireBody as never) as Omit<
-              CanonicalResponsesCompactPayload,
-              'model' | 'store'
-            >,
-          })
-        : await callCodexResponses({ ...backendCallBase, body: wireBody as never })
+      preparedResult = inv.action === 'compact'
+        ? await callCodexResponsesCompactPrepared({ ...backendCallBase, body: wireBody })
+        : await callCodexResponsesPrepared({ ...backendCallBase, body: wireBody })
+      return preparedResult.response
     })
 
     return {
       status: upstreamResp.status,
       headers: upstreamResp.headers,
       body: upstreamResp.body,
+      responsesAdapter: preparedResult?.responsesAdapter,
+      compactAdapter: preparedResult?.compactAdapter,
     }
   }
 

@@ -1,0 +1,7 @@
+{
+  "vnext/packages/provider-codex/src/fetch.ts": "74681ebc12f730beee46397cb077548e156ecc606641b53c4a29f802ee171698",
+  "vnext/packages/provider-codex/src/provider.ts": "ebe6815de4c750b096bd0394e25a9c4cb5aeb67512c392829bd3800d3bfaa626",
+  "vnext/packages/provider-llm/src/types.ts": "e0de0743eb926133cabd8096ff3a34e4d2974cfd1b914640e3abd0c163bfe490",
+  "vnext/packages/gateway/src/data-plane/chat-flow/responses/attempt.ts": "272d69a3d3ee03231615efe1f6876da8140b12ac2d89ee50d520b9e296f1ef85",
+  "vnext/packages/gateway/tests/codex-responses-lite.sqlite.test.ts": "49972577d4449c24b903edf5c2e28c29ccfbad7c8cdeafa22ffd8bdb57261cbc"
+}

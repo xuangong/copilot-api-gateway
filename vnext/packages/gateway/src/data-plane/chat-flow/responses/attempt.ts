@@ -346,7 +346,9 @@ export const responsesAttempt = {
         // JSON.parse failures land in the outer try/catch below — they surface
         // as an internal-error result populated with `performance` ctx.
         const parsed = await readUpstreamResponsesJson(upstreamResp.body)
-        const json = upstreamResp.responsesAdapter?.result?.(parsed) ?? parsed
+        const json = invocation.action === 'compact' && upstreamResp.compactAdapter
+          ? { ...parsed, ...upstreamResp.compactAdapter(parsed) }
+          : upstreamResp.responsesAdapter?.result?.(parsed) ?? parsed
         observeUpstreamJson(upstreamResp, json)
         frames = synthesizeResponsesFramesFromJson(json)
       } else {

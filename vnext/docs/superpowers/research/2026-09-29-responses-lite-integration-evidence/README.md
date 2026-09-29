@@ -1,0 +1,11 @@
+# Responses Lite production dispatch integration
+
+Base: a3f6f125e2a49163f2926a6d40de71f57627a37e. Catalog-selected Responses Lite now uses an explicit prepared-call contract, typed per-call generation/compact inverse adapters, stable serialized bytes and identity across authentication retry. Standard callers cannot activate Lite with headers/client metadata. The compact path encodes the full request before selecting transport fields. Canonical source observation and durable continuation receive restored shapes.
+
+Writer: 531 focused regressions pass, including 21 real temporary SQLite cases. Root actual Bun gateway/CodexProvider/independent loopback upstream/temporary SQLite probe covers 12 cases. Final frozen runtime, independent review and full CI are recorded before acceptance.
+
+The synthetic runtime explicitly opts into one-day retention and uses client fetch abort to verify actual upstream HTTP cancellation. It does not claim reader-only cancellation, live provider/account acceptance, or deployment. Raw HTTP diagnostics intentionally remain raw; canonical protocol observations/history receive restoration. No migration or configuration change.
+
+Final acceptance: independent spec/quality review Approved with no task findings. Root frozen 12-case actual HTTP/Codex/SQLite acceptance passes. Full ci:local: 4718 pass, one existing skip, zero failures, all purity/types/lint/UI build/Workers dry-run gates pass; 35 inherited lint warnings remain. Frozen product SHA map accompanies this evidence. One protected user attempt file required the exact documented merge: retain its failure diagnostic before the new compact restoration branch. Both dirty worktrees pass forward merge and exact reverse-byte recovery.
+
+Earlier foundation dependency installation follow-through: main and implementation installs initially hit cross-volume EXDEV despite backend=copy. Only the new uuid package's exact verified bytes were copied into its missing node_modules location, then both frozen-lock installs pass (462 installs/515 packages, no changes). Main protected-user regressions pass 71/71 with 182 assertions and protocol/provider/gateway strict typechecks. This does not replace the separately documented incomplete full isolated reinstall.
