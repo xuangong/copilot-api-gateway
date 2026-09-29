@@ -38,7 +38,7 @@ export async function collectDumpFiles(db: SqlDatabase, files: FileProvider, now
   // LIMIT applies BEFORE claim/reference checks. The dedicated partial index
   // bounds candidate traversal even when all candidates are referenced/claimed.
   const candidates = await db.prepare(`SELECT file_key, collect_after FROM spilled_files INDEXED BY idx_dump_files_collectible
-    WHERE state != 'owned' AND owner_kind IN ('dump-request', 'dump-response')
+    WHERE state != 'owned' AND owner_kind IN ('dump-request', 'dump-response', 'dump-upstream')
       AND file_key GLOB 'dumps/v1/*' AND collect_after <= ?
       AND (collect_after, file_key) > (?, ?)
     ORDER BY collect_after, file_key LIMIT ?`)
@@ -52,7 +52,7 @@ export async function collectDumpFiles(db: SqlDatabase, files: FileProvider, now
   const claimed = await db.prepare(`UPDATE spilled_files SET claim_token = ?, claimed_at = ?
     WHERE file_key IN (SELECT value FROM json_each(?))
       AND state != 'owned' AND collect_after <= ?
-      AND owner_kind IN ('dump-request', 'dump-response') AND file_key GLOB 'dumps/v1/*'
+      AND owner_kind IN ('dump-request', 'dump-response', 'dump-upstream') AND file_key GLOB 'dumps/v1/*'
       AND (claim_token IS NULL OR claimed_at <= ?)
       AND NOT EXISTS (SELECT 1 FROM dump_file_references AS refs WHERE refs.file_key = spilled_files.file_key)
     RETURNING file_key`)

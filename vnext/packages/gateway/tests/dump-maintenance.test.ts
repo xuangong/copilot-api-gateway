@@ -26,9 +26,9 @@ beforeEach(async () => {
   raw.run("UPDATE api_keys SET owner_id = 'disabled-owner' WHERE id = 'disabled'")
 })
 afterEach(async () => { raw.close(); await rm(root, { recursive: true, force: true }) })
-function record(id: string, owner = "active", time = now, request: string | null = null, response: string | null = null) {
-  raw.run(`INSERT INTO dump_records (key_id, id, created_at, meta_json, request_headers_json, request_body_descriptor, response_body_descriptor)
-    VALUES (?, ?, ?, '{}', '[]', ?, ?)`, [owner, id, time, request === null ? null : JSON.stringify({ key: request, type: "bytes" }), response === null ? null : JSON.stringify({ key: response, type: "bytes" })])
+function record(id: string, owner = "active", time = now, request: string | null = null, response: string | null = null, upstream: string | null = null) {
+  raw.run(`INSERT INTO dump_records (key_id, id, created_at, meta_json, request_headers_json, request_body_descriptor, response_body_descriptor, upstream_exchanges_descriptor)
+    VALUES (?, ?, ?, '{}', '[]', ?, ?, ?)`, [owner, id, time, request === null ? null : JSON.stringify({ key: request, type: "bytes" }), response === null ? null : JSON.stringify({ key: response, type: "bytes" }), upstream === null ? null : JSON.stringify({ key: upstream, type: "upstreamExchanges", version: 1 })])
 }
 async function stage(key: string, id: string, after = 0, kind = "dump-request", owner = "active") {
   raw.run("INSERT INTO spilled_files (file_key, owner_kind, owner_key, state, collect_after) VALUES (?, ?, ?, 'staged', ?)", [key, kind, JSON.stringify([owner, id]), after])
@@ -42,8 +42,8 @@ function metadata(key: string) {
 }
 const maintenance = () => import("../src/maintenance.ts")
 
-test.each(["request", "response"] as const)("reference guards reject claimed, absent, retired and mismatched %s files", async side => {
-  const attach = (id: string, key: string) => record(id, "active", now, side === "request" ? key : null, side === "response" ? key : null)
+test.each(["request", "response", "upstream"] as const)("reference guards reject claimed, absent, retired and mismatched %s files", async side => {
+  const attach = (id: string, key: string) => record(id, "active", now, side === "request" ? key : null, side === "response" ? key : null, side === "upstream" ? key : null)
   await stage("dumps/v1/claimed", "claimed", 0, `dump-${side}`)
   raw.run("UPDATE spilled_files SET claim_token = 'collector', claimed_at = 0")
   expect(() => attach("claimed", "dumps/v1/claimed")).toThrow()
@@ -62,6 +62,7 @@ test("descriptor and ownership updates cannot attach collectible files or abando
   expect(() => raw.run("UPDATE dump_records SET request_body_descriptor = ?", [JSON.stringify({ key: "dumps/v1/new", type: "bytes" })])).toThrow()
   expect(() => raw.run("UPDATE dump_records SET id = 'renamed'")).toThrow()
   expect(() => raw.run("UPDATE dump_records SET response_body_descriptor = ?", [JSON.stringify({ key: "dumps/v1/new", type: "bytes" })])).toThrow()
+  expect(() => raw.run("UPDATE dump_records SET upstream_exchanges_descriptor = ?", [JSON.stringify({ key: "dumps/v1/new", type: "upstreamExchanges", version: 1 })])).toThrow()
   expect(() => raw.run("UPDATE dump_records SET request_body_descriptor = NULL")).toThrow()
   raw.run("UPDATE dump_records SET meta_json = '{}' ")
   expect(metadata("dumps/v1/owned")?.state).toBe("owned")
@@ -98,6 +99,9 @@ test("collector preserves fresh stages, owned/reference bodies and non-dump file
   record("owned", "active", now, "dumps/v1/owned")
   await stage("dumps/v1/referenced", "referenced", 0, "dump-response")
   record("referenced", "active", now, null, "dumps/v1/referenced")
+  await stage("dumps/v1/upstream-referenced", "upstream-referenced", 0, "dump-upstream")
+  record("upstream-referenced", "active", now, null, null, "dumps/v1/upstream-referenced")
+  await stage("dumps/v1/upstream-orphan", "upstream-orphan", 0, "dump-upstream")
   // Legacy/inconsistent metadata must still be protected by a live descriptor.
   raw.run("UPDATE spilled_files SET state = 'retired', collect_after = 0 WHERE file_key = 'dumps/v1/referenced'")
   await stage("dumps/v1/retired", "retired")
@@ -105,10 +109,11 @@ test("collector preserves fresh stages, owned/reference bodies and non-dump file
   raw.run("DELETE FROM dump_records WHERE id = 'retired'")
   await stage("other/file", "other")
   await stage("dumps/v1/other-kind", "other-kind", 0, "attachment")
-  expect(await collectDumpFiles(db, files, now)).toBe(2)
+  expect(await collectDumpFiles(db, files, now)).toBe(3)
   expect(await files.get("dumps/v1/expired")).toBeNull()
   expect(await files.get("dumps/v1/retired")).toBeNull()
-  for (const key of ["fresh", "owned", "referenced", "other-kind"]) expect(await files.get(`dumps/v1/${key}`)).not.toBeNull()
+  for (const key of ["fresh", "owned", "referenced", "upstream-referenced", "other-kind"]) expect(await files.get(`dumps/v1/${key}`)).not.toBeNull()
+  expect(await files.get("dumps/v1/upstream-orphan")).toBeNull()
   expect(await files.get("other/file")).not.toBeNull()
 })
 

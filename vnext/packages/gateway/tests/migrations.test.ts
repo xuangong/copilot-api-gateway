@@ -23,6 +23,22 @@ const snapshot = (db: Database) =>
 const listSql = () => readdirSync(dir).filter((f) => f.endsWith(".sql"))
 
 describe("migration corpus", () => {
+  test("upstream sidecar migration keeps legacy rows capture-unavailable and applies once", () => {
+    const db = new Database(":memory:")
+    try {
+      db.exec("CREATE TABLE _migrations (name TEXT PRIMARY KEY)")
+      for (const file of listSql().sort().filter(file => file < "0016_")) {
+        db.exec(readFileSync(`${dir}/${file}`, "utf8"))
+        db.run("INSERT INTO _migrations (name) VALUES (?)", [file])
+      }
+      db.run("INSERT INTO dump_records (key_id, id, created_at, meta_json, request_headers_json) VALUES ('legacy-key', 'legacy-record', 1, '{}', '[]')")
+      applyMigrations(db, dir)
+      applyMigrations(db, dir)
+      expect(db.query<{ upstream_exchanges_descriptor: string | null }, []>("SELECT upstream_exchanges_descriptor FROM dump_records").get()?.upstream_exchanges_descriptor).toBeNull()
+      expect(db.query("SELECT name FROM _migrations WHERE name = '0016_dump_upstream_exchanges.sql'").all()).toHaveLength(1)
+    } finally { db.close() }
+  })
+
   test("Host key migration preserves existing keys and records its upgrade only once", () => {
     const db = new Database(":memory:")
     try {

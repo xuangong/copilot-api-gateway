@@ -1,0 +1,32 @@
+import { unstable_splitSqlQuery } from '/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/node_modules/.bun/wrangler@4.97.0+01d2f64f02d20ae6/node_modules/wrangler/wrangler-dist/cli.js'
+import { Miniflare } from '/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/vnext/node_modules/.bun/miniflare@4.20260601.0/node_modules/miniflare/dist/src/index.js'
+import { readdir, readFile } from 'node:fs/promises'
+import assert from 'node:assert/strict'
+const dir=process.env.VNEXT_PROBE_ROOT+'/vnext/packages/gateway/migrations'
+const runtime = new Miniflare({ modules:true, compatibilityDate:'2025-06-01', d1Databases:{ DB:'reference-adoption-smoke' }, script:'export default { fetch() { return new Response("synthetic local D1") } }' })
+try {
+  const db=await runtime.getD1Database('DB')
+  for (const name of (await readdir(dir)).filter(x=>x.endsWith('.sql')).sort()) {
+    for (const statement of unstable_splitSqlQuery(await readFile(dir+'/'+name,'utf8'))) await db.prepare(statement).run()
+    console.log('applied '+name)
+  }
+  const sql = async (statement, ...args) => db.prepare(statement).bind(...args).run()
+  const state = async (key) => db.prepare("SELECT state FROM spilled_files WHERE file_key=?").bind(key).first('state')
+  const descriptor = key => JSON.stringify({key, type:'upstreamExchanges', version:1})
+  const insert = (id,key) => sql("INSERT INTO dump_records (key_id,id,created_at,meta_json,request_headers_json,upstream_exchanges_descriptor) VALUES ('fixture-key',?,0,'{}','[]',?)",id,descriptor(key))
+  const stage = (key,id) => sql("INSERT INTO spilled_files (file_key,owner_kind,owner_key,state,collect_after) VALUES (?,'dump-upstream',?,'staged',0)",key,JSON.stringify(['fixture-key',id]))
+  await assert.rejects(insert('missing','dumps/v1/missing'))
+  await stage('dumps/v1/claimed','claimed')
+  await sql("UPDATE spilled_files SET claim_token='fixture-claim', claimed_at=0 WHERE file_key='dumps/v1/claimed'")
+  await assert.rejects(insert('claimed','dumps/v1/claimed'))
+  await stage('dumps/v1/owned','owned')
+  await insert('owned','dumps/v1/owned')
+  assert.equal(await state('dumps/v1/owned'),'owned')
+  assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM dump_file_references WHERE file_key='dumps/v1/owned'").first('n'),1)
+  await assert.rejects(sql("UPDATE dump_records SET upstream_exchanges_descriptor=NULL WHERE id='owned'"))
+  await assert.rejects(sql("INSERT OR REPLACE INTO dump_records (key_id,id,created_at,meta_json,request_headers_json) VALUES ('fixture-key','owned',0,'{}','[]')"))
+  await sql("DELETE FROM dump_records WHERE id='owned'")
+  assert.equal(await state('dumps/v1/owned'),'retired')
+  assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM dump_file_references WHERE file_key='dumps/v1/owned'").first('n'),0)
+  console.log(JSON.stringify({result:'PASS',missingGuard:true,claimedGuard:true,adoption:true,referenceView:true,updateGuard:true,replaceGuard:true,retirement:true,runtime:'local Miniflare D1'}))
+} finally { await runtime.dispose() }

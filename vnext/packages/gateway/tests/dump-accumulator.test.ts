@@ -35,6 +35,7 @@ import {
 import { FileDumpStore } from "../src/repo/dump-store.ts"
 import { EventTargetChannelBroker } from "../src/shared/runtime/event-target-channel-broker.ts"
 import { dumpCodec } from "../src/shared/dump/codec.ts"
+import { UpstreamExchangeCollector } from "../src/shared/dump/upstream-attempts.ts"
 import {
   DumpAccumulator,
   openDumpAccumulator,
@@ -172,6 +173,46 @@ test("openDumpAccumulator returns instance when retention configured", async () 
     streamError: null,
   })
   expect(acc).toBeInstanceOf(DumpAccumulator)
+})
+
+test("optional collector writes an empty envelope while an unattached dump keeps legacy null", async () => {
+  const ctx = await setupCtx(3600)
+  const c = await makeContext("/v1/responses")
+  const first = openDumpAccumulator(c, "POST", apiKey(3600), { bytes: new Uint8Array(), streamError: null })
+  if (!first) throw new Error("dump expected")
+  first.attachUpstreamExchangeCollector(new UpstreamExchangeCollector())
+  first.finalize(200, [])
+  await ctx.drain()
+  expect((await ctx.store.get("k1", first.recordId))?.upstreamExchanges?.attempts).toEqual([])
+
+  const second = openDumpAccumulator(c, "POST", apiKey(3600), { bytes: new Uint8Array(), streamError: null })
+  if (!second) throw new Error("dump expected")
+  second.finalize(200, [])
+  await ctx.drain()
+  expect((await ctx.store.get("k1", second.recordId))?.upstreamExchanges).toBeNull()
+})
+
+test("broker publication can read the committed sidecar and canonical row", async () => {
+  const ctx = await setupCtx(3600)
+  let published = false
+  initDumpBroker({
+    async publish(keyId, meta) {
+      const row = await ctx.store.get(keyId, meta.id)
+      expect(row?.upstreamExchanges?.attempts).toEqual([])
+      expect(ctx.raw.query<{ upstream_exchanges_descriptor: string | null }, []>("SELECT upstream_exchanges_descriptor FROM dump_records").get()?.upstream_exchanges_descriptor).not.toBeNull()
+      published = true
+      await ctx.broker.publish(keyId, meta)
+    },
+    subscribe: ctx.broker.subscribe.bind(ctx.broker),
+    closeChannel: ctx.broker.closeChannel.bind(ctx.broker),
+  })
+  const c = await makeContext("/v1/responses")
+  const acc = openDumpAccumulator(c, "POST", apiKey(3600), { bytes: new Uint8Array(), streamError: null })
+  if (!acc) throw new Error("dump expected")
+  acc.attachUpstreamExchangeCollector(new UpstreamExchangeCollector())
+  acc.finalize(200, [])
+  await ctx.drain()
+  expect(published).toBe(true)
 })
 
 test("finalize(status, headers) records payload bytes + isStream from frames", async () => {

@@ -58,4 +58,5 @@ export const dumpRecordToWire = (record: StoredDumpRecord): DumpRecord => ({
     headers: record.response.headers,
     body: responseBodyToWire(record.response.body, contentTypeOf(record.response.headers)),
   },
+  upstreamExchanges: record.upstreamExchanges ?? null,
 })

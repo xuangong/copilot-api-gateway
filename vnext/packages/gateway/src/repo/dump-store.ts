@@ -13,6 +13,7 @@
 //     'custom' (the vNext catch-all).
 
 import { DUMP_FILE_PREFIX, SPILLED_FILE_STAGE_GRACE_MS } from "../shared/dump/spilled-files-policy.ts"
+import { safeUpstreamExchangesForPersistence } from "../shared/dump/upstream-attempts.ts"
 import type { DumpListOptions, DumpStore } from "../shared/dump/store-contract.ts"
 import type {
   DumpMetadata,
@@ -34,7 +35,7 @@ const HOUR_MS = 60 * 60 * 1000
 
 interface BodyDescriptor {
   key: string
-  type: "bytes" | "events"
+  type: "bytes" | "events" | "upstreamExchanges"
 }
 
 interface DumpRow {
@@ -46,6 +47,7 @@ interface DumpRow {
   response_headers_json: string | null
   request_body_descriptor: string | null
   response_body_descriptor: string | null
+  upstream_exchanges_descriptor: string | null
 }
 
 const KNOWN_UPSTREAM_KINDS: ReadonlySet<UpstreamKind> = new Set(["copilot", "custom", "azure", "sdf"])
@@ -72,7 +74,7 @@ const hourBucket = (ms: number): string => {
   return `${y}${m}${d}${h}`
 }
 
-const bodyPath = (keyId: string, bucket: string, recordId: string, side: "req" | "resp"): string =>
+const bodyPath = (keyId: string, bucket: string, recordId: string, side: "req" | "resp" | "up"): string =>
   `${DUMP_FILE_PREFIX}${keyId}/${bucket}/${recordId}-${crypto.randomUUID()}.${side}.gz`
 
 // gzip/gunzip via Bun's native helpers (Bun 1.3 does not expose
@@ -148,11 +150,26 @@ export class FileDumpStore implements DumpStore {
       : record.response.body.type === "none"
         ? null
         : bodyPath(keyId, bucket, record.meta.id, "resp")
-    const staged = [
+    // Validate and encode from a strict safe-field projection before a file
+    // key is staged or a sidecar is created. A malformed optional capture
+    // cannot prevent the canonical dump from being written.
+    let upstreamBytes: Uint8Array | null = null
+    if (record.upstreamExchanges != null) {
+      try {
+        const safe = safeUpstreamExchangesForPersistence(record.upstreamExchanges)
+        upstreamBytes = await gzip(new TextEncoder().encode(JSON.stringify(safe)))
+      } catch { /* optional sidecar */ }
+    }
+    let upstreamFileKey = upstreamBytes === null ? null : bodyPath(keyId, bucket, record.meta.id, "up")
+    const coreStaged = [
       ...(requestFileKey === null ? [] : [{ fileKey: requestFileKey, ownerKind: "dump-request" }]),
       ...(responseFileKey === null ? [] : [{ fileKey: responseFileKey, ownerKind: "dump-response" }]),
     ]
-    if (staged.length > 0) {
+    let staged = [
+      ...coreStaged,
+      ...(upstreamFileKey === null ? [] : [{ fileKey: upstreamFileKey, ownerKind: "dump-upstream" }]),
+    ]
+    const stage = async (keys: typeof staged): Promise<void> => {
       await this.db
         .prepare(
           `INSERT INTO spilled_files (file_key, owner_kind, owner_key, state, collect_after)
@@ -164,8 +181,31 @@ export class FileDumpStore implements DumpStore {
              ?
            FROM json_each(?)`,
         )
-        .bind(keyId, record.meta.id, Date.now() + SPILLED_FILE_STAGE_GRACE_MS, JSON.stringify(staged))
+        .bind(keyId, record.meta.id, Date.now() + SPILLED_FILE_STAGE_GRACE_MS, JSON.stringify(keys))
         .run()
+    }
+    if (staged.length > 0) {
+      try {
+        await stage(staged)
+      } catch (error) {
+        if (upstreamFileKey === null) throw error
+        // The batch statement is atomic. Retry core staging without the
+        // optional key if only sidecar staging was rejected.
+        upstreamFileKey = null
+        upstreamBytes = null
+        staged = coreStaged
+        if (staged.length > 0) await stage(staged)
+      }
+    }
+    const retireUpstreamStage = async (): Promise<void> => {
+      if (upstreamFileKey === null) return
+      // A late external put can finish after the stage was collected. Upsert
+      // a retired tombstone and fence the old collector's pending SQL delete.
+      await this.db.prepare(`INSERT INTO spilled_files (file_key, owner_kind, owner_key, state, collect_after)
+        VALUES (?, 'dump-upstream', json_array(?, ?), 'retired', 0)
+        ON CONFLICT(file_key) DO UPDATE SET state = 'retired', collect_after = 0, claim_token = NULL, claimed_at = NULL
+        WHERE spilled_files.state != 'owned'`)
+        .bind(upstreamFileKey, keyId, record.meta.id).run()
     }
     try {
       const requestDescriptor = record.request.body.decodedByteLength === 0
@@ -181,27 +221,52 @@ export class FileDumpStore implements DumpStore {
         responseDescriptor = await putRawBody(this.files, responseFileKey!, new TextEncoder().encode(JSON.stringify(record.response.body.events)), "events")
       }
 
+      let upstreamDescriptor: { key: string; type: "upstreamExchanges"; version: 1 } | null = null
+      if (upstreamFileKey !== null && upstreamBytes !== null) {
+        try {
+          await this.files.put(upstreamFileKey, upstreamBytes)
+          upstreamDescriptor = { key: upstreamFileKey, type: "upstreamExchanges", version: 1 }
+        } catch {
+          // Even a partially successful external put remains collectible.
+          try { await retireUpstreamStage() }
+          catch { /* keep the canonical dump independent of the sidecar */ }
+        }
+      }
+
       // Strip the in-memory `upstream` field; the ref is rebuilt from the join
       // at read time so renames and deletes are honored on historical rows.
       const { upstream: _upstream, ...metaToStore } = record.meta
 
       // Files before row — a partial failure leaves orphan files the sweep
       // collects, never an orphan row whose detail fetch would 404.
-      await this.db.prepare(
-        `INSERT INTO dump_records
-         (key_id, id, created_at, upstream_id, meta_json, request_headers_json, response_headers_json, request_body_descriptor, response_body_descriptor)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).bind(
-        keyId,
-        record.meta.id,
-        record.meta.completedAt,
-        record.meta.upstream?.id ?? null,
-        JSON.stringify(metaToStore),
-        JSON.stringify(record.request.headers),
-        record.response.body.type === "none" ? null : JSON.stringify(record.response.headers),
-        requestDescriptor === null ? null : JSON.stringify(requestDescriptor),
-        responseDescriptor === null ? null : JSON.stringify(responseDescriptor),
-      ).run()
+      const insertRow = async (sidecar: typeof upstreamDescriptor): Promise<void> => {
+        await this.db.prepare(
+          `INSERT INTO dump_records
+           (key_id, id, created_at, upstream_id, meta_json, request_headers_json, response_headers_json, request_body_descriptor, response_body_descriptor, upstream_exchanges_descriptor)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).bind(
+          keyId,
+          record.meta.id,
+          record.meta.completedAt,
+          record.meta.upstream?.id ?? null,
+          JSON.stringify(metaToStore),
+          JSON.stringify(record.request.headers),
+          record.response.body.type === "none" ? null : JSON.stringify(record.response.headers),
+          requestDescriptor === null ? null : JSON.stringify(requestDescriptor),
+          responseDescriptor === null ? null : JSON.stringify(responseDescriptor),
+          sidecar === null ? null : JSON.stringify(sidecar),
+        ).run()
+      }
+      try {
+        await insertRow(upstreamDescriptor)
+      } catch (error) {
+        if (upstreamDescriptor === null) throw error
+        // A slow sidecar put may outlive its stage's grace period while core
+        // body stages remain valid. Retry only the canonical row without the
+        // optional descriptor, then collect the orphan sidecar.
+        try { await retireUpstreamStage() } catch { /* optional cleanup */ }
+        await insertRow(null)
+      }
     } catch (error) {
       // A put can outlive staging grace: collection may have already removed
       // its file/metadata before the put finishes and INSERT is rejected.
@@ -254,7 +319,7 @@ export class FileDumpStore implements DumpStore {
   async get(keyId: ApiKeyId, recordId: DumpRecordId): Promise<StoredDumpRecord | null> {
     const row = await this.db.prepare(
       "SELECT d.upstream_id, u.name AS upstream_name, u.provider AS upstream_provider, "
-      + "d.meta_json, d.request_headers_json, d.response_headers_json, d.request_body_descriptor, d.response_body_descriptor "
+      + "d.meta_json, d.request_headers_json, d.response_headers_json, d.request_body_descriptor, d.response_body_descriptor, d.upstream_exchanges_descriptor "
       + "FROM dump_records d LEFT JOIN upstreams u ON u.id = d.upstream_id "
       + "JOIN api_keys k ON k.id = d.key_id AND k.dump_retention_seconds IS NOT NULL "
       + "WHERE d.key_id = ? AND d.id = ? AND d.created_at >= ? - k.dump_retention_seconds * 1000",
@@ -269,6 +334,17 @@ export class FileDumpStore implements DumpStore {
     const requestDescriptor = row.request_body_descriptor ? JSON.parse(row.request_body_descriptor) as BodyDescriptor : null
     const responseHeaders = row.response_headers_json ? JSON.parse(row.response_headers_json) as Array<[string, string]> : null
     const responseDescriptor = row.response_body_descriptor ? JSON.parse(row.response_body_descriptor) as BodyDescriptor : null
+    const upstreamDescriptor = row.upstream_exchanges_descriptor
+      ? JSON.parse(row.upstream_exchanges_descriptor) as { key?: unknown; type?: unknown; version?: unknown }
+      : null
+    let upstreamKey: string | null = null
+    if (upstreamDescriptor !== null) {
+      const candidate = upstreamDescriptor.key
+      if (typeof candidate !== "string" || upstreamDescriptor.type !== "upstreamExchanges" || upstreamDescriptor.version !== 1) {
+        throw new Error("invalid upstream exchanges descriptor")
+      }
+      upstreamKey = candidate
+    }
 
     const request: StoredDumpRequest = {
       method: meta.method,
@@ -298,7 +374,11 @@ export class FileDumpStore implements DumpStore {
       headers: responseHeaders ?? [],
       body: responseBody,
     }
-    return { meta, request, response }
+    const upstreamExchanges = upstreamKey === null
+      ? null
+      : safeUpstreamExchangesForPersistence(JSON.parse(new TextDecoder("utf-8", { fatal: true })
+        .decode(await fetchBody(this.files, { key: upstreamKey, type: "upstreamExchanges" }))) as unknown)
+    return { meta, request, response, upstreamExchanges }
   }
 
   // vNext has no `api_keys.deleted_at`, so unlike the reference impl there is

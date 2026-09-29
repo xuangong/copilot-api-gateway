@@ -19,6 +19,7 @@
 import type { ProtocolFrame } from "@vibe-core/result"
 import type { UpstreamKind } from "@vibe-llm/protocols/common"
 import type { DumpRecordId, UpstreamId } from "../../repo/branded-ids.ts"
+import type { UpstreamExchanges } from "./upstream-attempts.ts"
 
 export type { DumpRecordId } from "../../repo/branded-ids.ts"
 
@@ -108,12 +109,16 @@ export type StoredDumpRecord = {
   meta: DumpMetadata
   request: StoredDumpRequest
   response: StoredDumpResponse
+  // Null means capture was unavailable (including legacy rows). A present
+  // envelope with an empty attempts array means capture ran but saw no call.
+  upstreamExchanges?: UpstreamExchanges | null
 }
 
 export type DumpWriteRecord = {
   meta: DumpMetadata
   request: DumpWriteRequest
   response: StoredDumpResponse
+  upstreamExchanges?: UpstreamExchanges | null
 }
 
 // --- Wire shape (serialized JSON over the dashboard's control plane) ---
@@ -144,4 +149,5 @@ export type DumpRecord = {
   meta: DumpMetadata
   request: DumpRequest
   response: DumpResponse
+  upstreamExchanges: UpstreamExchanges | null
 }

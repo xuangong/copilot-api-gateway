@@ -18,6 +18,8 @@ export interface DumpStore {
 
   // Write body files BEFORE the metadata row so a partial failure leaves
   // orphan files (sweep-collectable), not orphan rows (broken records).
+  // The optional upstreamExchanges sidecar may degrade to a null descriptor
+  // while the canonical request/response dump still commits.
   put(keyId: ApiKeyId, record: DumpWriteRecord): Promise<void>
 
   // Newest-first, paginated by ULID cursor. Reads enforce the API key's

@@ -6,6 +6,7 @@ import type { FileGetResult, FileProvider } from "@vibe-core/platform"
 import { app } from "../src/app.ts"
 import { initRepo } from "../src/repo/index.ts"
 import { FileDumpStore } from "../src/repo/dump-store.ts"
+import { UpstreamExchangeCollector } from "../src/shared/dump/upstream-attempts.ts"
 import { initDumpStore, resetDumpRegistryForTests } from "../src/shared/dump/registry.ts"
 import { isDevAuthEnabled } from "../src/control-plane/auth/dev-auth.ts"
 import type { ApiKey, User, UserSession } from "../src/repo/types.ts"
@@ -85,7 +86,7 @@ test("dump readers require an explicit owner or admin identity through app.fetch
     await repo.keyAssignments.assign(apiKeyId("dump_owned"), userId("dump_assignee"), userId("dump_owner"))
 
     const t = Date.now()
-    const put = async (keyId: string, id: string, completedAt: number) => {
+    const put = async (keyId: string, id: string, completedAt: number, withCapture = false) => {
       const meta: DumpMetadata = {
         id: dumpRecordId(id), startedAt: completedAt - 5, completedAt, method: "POST",
         path: "/v1/responses", status: 200, upstream: null, model: null,
@@ -100,9 +101,20 @@ test("dump readers require an explicit owner or admin identity through app.fetch
         },
         response: { status: 200, headers: [], body: { type: "none" } },
       }
+      if (withCapture) {
+        const collector = new UpstreamExchangeCollector(completedAt - 5)
+        const attempt = collector.begin({
+          parentCallId: "call-1", upstreamId: "upstream-1", method: "POST", operation: "responses.create",
+          url: "https://token@secret.invalid/path?credential=secret",
+          requestHeaders: [["Authorization", "Bearer secret"], ["X-Account-Credential", "secret"]],
+        })
+        attempt?.observePreparedRequest({ prefix: Uint8Array.of(0xff, 0xfe), totalBytes: 2 })
+        attempt?.observeResponse(204, [], null)
+        record.upstreamExchanges = collector.finish(completedAt)
+      }
       await store.put(apiKeyId(keyId), record)
     }
-    await put("dump_owned", "01H0000000000000000000AAAA", t)
+    await put("dump_owned", "01H0000000000000000000AAAA", t, true)
     await put("dump_owned", "01H0000000000000000000AAAB", t)
     await put("dump_owned", "01H0000000000000000000OLD0", t - 3_700_000)
     await put("dump_ownerless", "01H0000000000000000000NONE", t)
@@ -131,11 +143,17 @@ test("dump readers require an explicit owner or admin identity through app.fetch
     expect((await request(exportPath, "dump_assignee")).status).toBe(403)
     expect((await request(exportPath, "dump_other")).status).toBe(403)
     const original = await (await request("/api/keys/dump_owned/records/01H0000000000000000000AAAA", "dump_owner")).json()
+    expect((original as { upstreamExchanges: { attempts: Array<{ request: { prefixBase64: string } }> } }).upstreamExchanges.attempts[0]?.request.prefixBase64).toBe("//4=")
+    expect(JSON.stringify(original)).not.toContain("secret")
+    expect((await (await request("/api/keys/dump_owned/records/01H0000000000000000000AAAB", "dump_owner")).json() as { upstreamExchanges: unknown }).upstreamExchanges).toBeNull()
     const exported = await request(exportPath, "dump_owner")
     expect(exported.status).toBe(200)
     expect(exported.headers.get("Cache-Control")).toBe("no-store")
     expect(exported.headers.get("Content-Disposition")).toContain("attachment")
-    expect((await exported.json() as { format: string }).format).toBe("gateway-dump-redacted-v1")
+    const exportedBody = await exported.json() as { format: string }
+    expect(exportedBody.format).toBe("gateway-dump-redacted-v1")
+    expect(JSON.stringify(exportedBody)).not.toContain("//4=")
+    expect(JSON.stringify(exportedBody)).not.toContain("upstreamExchanges")
     expect(await (await request("/api/keys/dump_owned/records/01H0000000000000000000AAAA", "dump_owner")).json()).toEqual(original)
     expect((await request(exportPath, "dump_admin")).status).toBe(200)
     expect((await request("/api/keys/dump_ownerless/records/01H0000000000000000000NONE/export", "dump_admin")).status).toBe(200)

@@ -18,6 +18,8 @@ import type { ProtocolFrame } from "@vibe-core/result"
 import type { TelemetryModelIdentity } from "@vibe-llm/protocols/common"
 
 import { getDumpBroker, getDumpStore } from "./registry.ts"
+import { UpstreamExchangeCollector } from "./upstream-attempts.ts"
+import type { UpstreamExchanges } from "./upstream-attempts.ts"
 import type { RequestBody } from "./request-body.ts"
 import type {
   DumpErrorMeta,
@@ -90,6 +92,7 @@ export class DumpAccumulator {
   private outputTokens: number | null = null
   private errorMeta: DumpErrorMeta | null = null
   private readonly preparedRequestBody: Promise<PreparedDumpRequestBody>
+  private upstreamExchangeCollector: UpstreamExchangeCollector | null = null
   // Pre-allocated at construction so `finalize(Response)` can echo it as an
   // `X-Dump-Record-Id` header before the write completes. The write path
   // uses this same id to persist the dump row.
@@ -120,6 +123,10 @@ export class DumpAccumulator {
   // encapsulation.
   get keyId(): string {
     return this.apiKey.id
+  }
+
+  attachUpstreamExchangeCollector(collector: UpstreamExchangeCollector): void {
+    this.upstreamExchangeCollector ??= collector
   }
 
   error(kind: "upstream" | "gateway", upstream?: string): void {
@@ -257,6 +264,11 @@ export class DumpAccumulator {
     // this write persists.
     const completedAt = Date.now()
     const recordId = this.recordId
+    let upstreamExchanges: UpstreamExchanges | null = null
+    if (this.upstreamExchangeCollector !== null) {
+      try { upstreamExchanges = this.upstreamExchangeCollector.finish(completedAt) }
+      catch { /* optional capture cannot fail the canonical dump */ }
+    }
 
     // Prefer the accumulator's frame log so dumps reflect the gateway's
     // frame sequence regardless of negotiated wire shape; passthrough
@@ -295,6 +307,7 @@ export class DumpAccumulator {
     try {
       const record: DumpWriteRecord = {
         meta,
+        upstreamExchanges,
         request: {
           method: this.requestSnapshot.method,
           path: this.requestSnapshot.path,
