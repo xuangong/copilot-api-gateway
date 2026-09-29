@@ -150,8 +150,8 @@ test('remote quota changes refresh in background without configuration revision 
   initBackground({ waitUntil: p => { pending.push(p) } })
   await cache.view.upstreams.getById('codex')
   const revision = await repo.configurationRevision!()
-  const state = codexState()
-  const account = state.accounts[0]
+  const state = (await repo.upstreams.getById<ReturnType<typeof codexState>>('codex'))?.state
+  const account = state?.accounts[0]
   if (!account) throw new Error('missing fixture account')
   account.quotaSnapshot = { unknown: { fetchedAt: Date.now(), data: { observed_at: new Date().toISOString(), primary_used_percent: 90 } } }
   db.query('UPDATE upstreams SET state_json = ? WHERE id = ?').run(JSON.stringify(state), 'codex')

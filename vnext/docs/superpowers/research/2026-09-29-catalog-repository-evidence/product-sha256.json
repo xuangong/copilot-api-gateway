@@ -1,0 +1,15 @@
+{
+  "vnext/apps/platform-bun/src/bun-sqlite-repo.ts": "e0d8535e38789c290c90a5b1ae57879d8938b3a7b5e58abd7576cb311c8cd0c3",
+  "vnext/apps/platform-cloudflare/src/d1-repo.ts": "44fefcba802fde88b77f34b8639c1ca68486d674fbc59f9066f97df88d989514",
+  "vnext/packages/gateway/migrations/0018_catalog_coordination.sql": "4cd6c7c21a3814228cb0561c22b413eea2098594abba4adb6f31daab4c098fbd",
+  "vnext/packages/gateway/src/repo/catalogs.ts": "593b967f9fab8ab2b99e2c2870adb0e32229c66fc3d381d7300a50a32eebfb4c",
+  "vnext/packages/gateway/src/repo/configuration-cache.ts": "d1ea57741e8db3ff5e2a9ab691422cfd4e68dcc30acf156b834f3453624a17b2",
+  "vnext/packages/gateway/src/repo/public.ts": "3c0b944375ebd2859707f0a06966557641ed68dbc430f653ef98b1bef5fe189e",
+  "vnext/packages/gateway/src/repo/shared/catalogs.ts": "b5423cbb7aa062724d002fdd5960b91a4190c00fd8c58d7ff3a22d51487fa72a",
+  "vnext/packages/gateway/src/repo/shared/repos.ts": "780856a4cc66e75b0c6e31cb9a8fecbd47d5a35df41cddbc8238d871b51fa2a6",
+  "vnext/packages/gateway/src/repo/types.ts": "2c8de8484c2c5bcd937f88bf20c7ed0142fcbbe212e09d5bbd49565729532dd0",
+  "vnext/packages/gateway/tests/catalog-repo.sqlite.test.ts": "d227d1d42ca96fd10a168c93574e9b214d1d7599536cc5acb72cb4c32c3d851e",
+  "vnext/packages/gateway/tests/control-plane-upstreams.test.ts": "54c2fd88198d184a5d694df5c0727cb0f6f3258f539b4c9aec40ab08afffd5b9",
+  "vnext/packages/gateway/tests/integration/shared-provider-state.test.ts": "0000201893e58326cdab38eeb9c9529095d575d572519b7cb0783ff220bdba13",
+  "vnext/packages/gateway/tests/schema-baseline.txt": "a4024a8948afc45190b8f1015bdcf163d928627f8cff61e2c40867177c675880"
+}

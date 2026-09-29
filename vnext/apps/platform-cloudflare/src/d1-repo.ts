@@ -190,6 +190,7 @@ export class D1Repo implements Repo {
   apiKeys: Repo["apiKeys"]
   github: Repo["github"]
   upstreams: Repo["upstreams"]
+  catalogs: Repo["catalogs"]
   usage: Repo["usage"]
   cache: Repo["cache"]
   latency: Repo["latency"]
@@ -215,6 +216,7 @@ export class D1Repo implements Repo {
     this.apiKeys = shared.apiKeys
     this.github = shared.github
     this.upstreams = shared.upstreams
+    this.catalogs = shared.catalogs
     this.usage = shared.usage
     this.cache = shared.cache
     this.latency = shared.latency

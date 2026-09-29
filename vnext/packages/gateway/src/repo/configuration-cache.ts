@@ -284,7 +284,7 @@ export function observeConfigurationWrites(repo: Repo, changed: () => void, stat
     apiKeys: ['save', 'patchModelMappings', 'delete', 'deleteAll', 'ensureAgentHostKey', 'revokeAgentHostKey'],
     users: ['create', 'update', 'delete'],
     sessions: ['create', 'deleteByUserId', 'deleteExpired'],
-    upstreams: ['save', 'createIfAbsent', 'patchMetadata', 'delete', 'deleteAll'],
+    upstreams: ['save', 'createIfAbsent', 'replaceCredentials', 'patchMetadata', 'delete', 'deleteAll'],
     proxies: ['insert', 'save', 'patch', 'delete', 'deleteAll'],
   } as const
   for (const [group, names] of Object.entries(methods)) {

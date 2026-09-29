@@ -1,3 +1,4 @@
+import { SharedCatalogRepo } from "./catalogs.ts"
 import { queryUsageOverview, type UsageOverviewQuery } from "../usage-overview"
 import { SharedAgentRemoteContinuationRepo } from "./agent-remote-continuations.ts"
 import { SharedPerformanceMetricsRepo } from "../performance-metrics"
@@ -56,7 +57,7 @@ import type { BackoffRow, ProxyBackoffRepo, ProxyFallbackEntry, ProxyRecord, Pro
 
 const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_month, quota_tokens_per_month, quota_cost_per_month, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref, web_search_jina_key, web_search_jina_ref, web_search_passthrough_upstream, web_search_passthrough_model, dump_retention_seconds, model_mappings_enabled, model_mappings, responses_retention_seconds"
 const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at, github_host, source"
-const UPSTREAM_COLS = "row_incarnation, id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, state_json, proxy_fallback_list_json, created_at, updated_at"
+const UPSTREAM_COLS = "catalog_generation, row_incarnation, id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, state_json, proxy_fallback_list_json, created_at, updated_at"
 const USAGE_DIM_COLS = "key_id, incoming_model, model, upstream, model_key, client, hour, dimension, tokens, unit_price"
 const USAGE_REQ_COLS = "key_id, incoming_model, model, upstream, model_key, client, hour, requests"
 const LATENCY_COLS = "key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss"
@@ -202,6 +203,7 @@ function parseState(raw: unknown): unknown {
 
 function toUpstreamRecord(row: UpstreamSqlRow): StoredUpstreamRecord {
   return {
+    catalogGeneration: row.catalog_generation,
     rowIncarnation: row.row_incarnation,
     id: row.id,
     ownerId: row.owner_id || undefined,
@@ -522,6 +524,7 @@ const UPSTREAM_WRITE_ATTEMPTS = 8
 interface UpstreamSqlRow {
   id: string
   row_incarnation: string
+  catalog_generation: number
   owner_id: string | null
   provider: UpstreamRecord<unknown>["provider"]
   name: string
@@ -579,7 +582,7 @@ class SharedUpstreamRepo implements UpstreamRepo {
 
   async save(upstream: UpstreamRecord<unknown>): Promise<void> {
     await this.x.run(
-      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (0, lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET owner_id = excluded.owner_id, provider = excluded.provider, name = excluded.name, enabled = excluded.enabled, sort_order = excluded.sort_order, config_json = excluded.config_json, flag_overrides = excluded.flag_overrides, disabled_public_model_ids = excluded.disabled_public_model_ids, state_json = excluded.state_json, proxy_fallback_list_json = excluded.proxy_fallback_list_json, updated_at = excluded.updated_at`,
       this.insertBinds(upstream),
     )
@@ -587,7 +590,7 @@ class SharedUpstreamRepo implements UpstreamRepo {
 
   async createIfAbsent(upstream: UpstreamRecord<unknown>): Promise<StoredUpstreamRecord | null> {
     const row = await this.x.first<UpstreamSqlRow>(
-      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (0, lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO NOTHING RETURNING ${UPSTREAM_COLS}`,
       this.insertBinds(upstream),
     )
@@ -612,10 +615,35 @@ class SharedUpstreamRepo implements UpstreamRepo {
           new Date().toISOString(), target.id, target.rowIncarnation, row.owner_id, row.provider,
           row.name, row.enabled, row.sort_order, row.config_json, row.flag_overrides, row.disabled_public_model_ids, row.proxy_fallback_list_json],
       )
-      if (saved) return toUpstreamRecord(saved)
+      // AFTER triggers have finished before this read; RETURNING itself sees
+      // the pre-trigger catalog generation. Preserve the new authorized owner.
+      if (saved) return toUpstreamRecord(await this.readWriteTarget(target.id, {
+        rowIncarnation: target.rowIncarnation, ownerId: next.ownerId, provider: row.provider,
+      }))
     }
     await this.readWriteTarget(target.id, target)
     throw new UpstreamContentionError(target.id)
+  }
+
+  async replaceCredentials(target: StoredUpstreamRecord, replacement: { config: Record<string, unknown>; state: unknown }): Promise<StoredUpstreamRecord> {
+    const row = await this.readWriteTarget(target.id, target)
+    const current = toUpstreamRecord(row)
+    if (current.catalogGeneration !== target.catalogGeneration
+      || JSON.stringify(current.config) !== JSON.stringify(target.config)
+      || serializeState(current.state) !== serializeState(target.state)) {
+      throw new UpstreamContentionError(target.id)
+    }
+    const matched = await this.x.first<{ id: string }>(`UPDATE upstreams
+      SET config_json = ?, state_json = ?, catalog_generation = catalog_generation + 1, updated_at = ?
+      WHERE id = ? AND row_incarnation = ? AND owner_id IS ? AND provider = ?
+        AND catalog_generation = ? AND config_json IS ? AND state_json IS ? RETURNING id`,
+    [JSON.stringify(replacement.config), serializeState(replacement.state), new Date().toISOString(),
+      target.id, target.rowIncarnation, row.owner_id, row.provider, target.catalogGeneration, row.config_json, row.state_json])
+    if (!matched) {
+      await this.readWriteTarget(target.id, target)
+      throw new UpstreamContentionError(target.id)
+    }
+    return toUpstreamRecord(await this.readWriteTarget(target.id, target))
   }
 
   private async readWriteTarget(id: string, target?: UpstreamWriteTarget): Promise<UpstreamSqlRow> {
@@ -1248,6 +1276,7 @@ class SharedPerformanceRepo implements PerformanceRepo {
 }
 
 export function buildSharedRepo(x: SqlExecutor): Repo {
+  const upstreams = new SharedUpstreamRepo(x)
   return {
     configurationRevision: async () => {
       const row = await x.first<{ revision: number }>("SELECT revision FROM configuration_revision WHERE id = 1", [])
@@ -1256,7 +1285,8 @@ export function buildSharedRepo(x: SqlExecutor): Repo {
     },
     apiKeys: new SharedApiKeyRepo(x),
     github: new SharedGitHubRepo(x),
-    upstreams: new SharedUpstreamRepo(x),
+    upstreams,
+    catalogs: new SharedCatalogRepo(x, upstreams),
     usage: new SharedUsageRepo(x),
     cache: new SharedCacheRepo(x),
     latency: new SharedLatencyRepo(x),

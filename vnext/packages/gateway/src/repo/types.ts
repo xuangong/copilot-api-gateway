@@ -1,3 +1,4 @@
+import type { CatalogRepo } from "./catalogs.ts"
 import type { UsageOverview, UsageOverviewQuery } from "./usage-overview"
 import type { PerformanceMetricsRepo } from "./performance-metrics"
 import type { BillingDimension, ModelPricing, UpstreamRecord, UpstreamKind } from "@vibe-llm/protocols/common"
@@ -175,7 +176,7 @@ export interface GitHubRepo {
   clearActiveIdForUser(ownerId: UserId): Promise<void>
 }
 
-export type StoredUpstreamRecord<TState = unknown> = CoreStoredUpstreamRecord<TState, UpstreamKind>
+export type StoredUpstreamRecord<TState = unknown> = CoreStoredUpstreamRecord<TState, UpstreamKind> & { catalogGeneration: number }
 export type UpstreamMetadata = Pick<UpstreamRecord<unknown>,
   'ownerId' | 'name' | 'enabled' | 'sortOrder' | 'config' | 'flagOverrides' | 'disabledPublicModelIds' | 'proxyFallbackList'>
 
@@ -188,6 +189,9 @@ export interface UpstreamRepo {
   /** Explicit whole-record replacement for creation and administrative import. */
   save(upstream: UpstreamRecord<unknown>): Promise<void>
   createIfAbsent(upstream: UpstreamRecord<unknown>): Promise<StoredUpstreamRecord | null>
+  /** Explicit import CAS against the complete prior stored snapshot. Conflicts
+   * never replay: callers must re-read and validate their credential revision. */
+  replaceCredentials(target: StoredUpstreamRecord, replacement: { config: Record<string, unknown>; state: unknown }): Promise<StoredUpstreamRecord>
   /** Pure synchronous updater may replay; never writes the private state column. */
   patchMetadata(target: UpstreamWriteTarget & { id: string }, updater: (current: UpstreamMetadata) => UpstreamMetadata): Promise<StoredUpstreamRecord>
   delete(id: UpstreamId): Promise<boolean>
@@ -505,6 +509,7 @@ export interface Repo {
   apiKeys: ApiKeyRepo
   github: GitHubRepo
   upstreams: UpstreamRepo
+  catalogs: CatalogRepo
   usage: UsageRepo
   cache: CacheRepo
   latency: LatencyRepo

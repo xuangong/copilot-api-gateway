@@ -500,10 +500,16 @@ test('editor model GET reads the shared cache; explicit refresh failure retains 
     const edited = await app.request(`/api/upstreams/${upstream.id}/models`)
     expect((await edited.json() as { models: Array<{ id: string }> }).models).toEqual([])
     await store.repo.upstreams.save(upstream)
+    // Reverting the configuration still advances discovery generation. An old
+    // generation must not become eligible again just because its bytes match.
+    const reverted = await app.request(`/api/upstreams/${upstream.id}/models`)
+    expect((await reverted.json() as { models: Array<{ id: string }>; cached: boolean })).toMatchObject({ models: [], cached: false })
+    expect(calls).toBe(1)
+    expect((await app.request(`/api/upstreams/${upstream.id}/models?refresh=1`)).status).toBe(200)
     globalThis.fetch = (async () => { calls++; return new Response('down', { status: 400 }) }) as typeof fetch
     const cached = await app.request(`/api/upstreams/${upstream.id}/models`)
     expect((await cached.json() as { models: Array<{ id: string }>; disabledPublicModelIds: string[] }).models.map((m) => m.id)).toEqual(['known'])
-    expect(calls).toBe(1)
+    expect(calls).toBe(2)
     expect((await app.request(`/api/upstreams/${upstream.id}/models?refresh=1`)).status).toBe(502)
     const retained = await app.request(`/api/upstreams/${upstream.id}/models`)
     expect((await retained.json() as { models: Array<{ id: string }> }).models.map((m) => m.id)).toEqual(['known'])

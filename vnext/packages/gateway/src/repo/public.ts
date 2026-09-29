@@ -10,3 +10,5 @@ export { initRepo } from './index.ts'
 export type { Repo } from './types.ts'
 export type { SqlExecutor } from './shared/executor.ts'
 export { buildSharedRepo } from './shared/repos.ts'
+
+export type { CatalogRepo, CatalogIdentity, CatalogLease, CatalogSnapshot, CatalogObservation, CatalogModels, CatalogFailure, CatalogErrorCode } from "./catalogs.ts"
