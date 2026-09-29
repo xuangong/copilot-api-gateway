@@ -223,21 +223,44 @@ export async function* synthesizeResponsesFramesFromJson(
 
 // ─── Main attempt ─────────────────────────────────────────────────────────
 
+async function selectResponsesAttempt(args: ResponsesAttemptArgs) {
+  const selectFn = args.selectBinding ?? defaultSelectBinding
+  let sel: Awaited<ReturnType<typeof selectFn>>
+  try {
+    sel = await selectFn({ model: args.payload.model, auth: args.auth, dump: args.dump, affinity: args.affinity, affinityOptions: { signal: args.ctx.downstreamAbortSignal, inheritedHeaders: args.inheritedHeaders, action: args.action } })
+  } catch (error) {
+    if (error instanceof AffinityRoutingUnavailableError) return llmInternalErrorResult(error.status, error)
+    throw error
+  }
+
+  if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(MODEL_CATALOG_UNAVAILABLE))
+  if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
+  if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
+  if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for responses → ${sel.targetEndpoint}`))
+
+  return sel
+}
+
+/** Shared routing/affinity eligibility without interceptors, tools or inference. */
+export async function validateResponsesAttempt(args: ResponsesAttemptArgs): Promise<ResponsesAttemptResult> {
+  const selection = await selectResponsesAttempt(args)
+  if ("type" in selection) return selection
+  const response: ResponsesResult & { created_at: number; store: false } = {
+    id: `resp_${crypto.randomUUID().replaceAll("-", "")}`, object: "response", created_at: Math.floor(Date.now() / 1000),
+    status: "completed", model: selection.bareModel, output: [], error: null, incomplete_details: null, store: false,
+  }
+  async function* events(): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
+    yield eventFrame({ type: "response.created", sequence_number: 0, response: { ...response, status: "in_progress" } })
+    yield eventFrame({ type: "response.completed", sequence_number: 1, response })
+  }
+  return llmEventResult(events(), { incomingModel: args.telemetryCtx.incomingModel, model: selection.bareModel,
+    modelKey: selection.bareModel, upstream: selection.binding.upstream, cost: null })
+}
+
 export const responsesAttempt = {
   generate: async (args: ResponsesAttemptArgs): Promise<ResponsesAttemptResult> => {
-    const selectFn = args.selectBinding ?? defaultSelectBinding
-    let sel: Awaited<ReturnType<typeof selectFn>>
-    try {
-      sel = await selectFn({ model: args.payload.model, auth: args.auth, dump: args.dump, affinity: args.affinity, affinityOptions: { signal: args.ctx.downstreamAbortSignal, inheritedHeaders: args.inheritedHeaders, action: args.action } })
-    } catch (error) {
-      if (error instanceof AffinityRoutingUnavailableError) return llmInternalErrorResult(error.status, error)
-      throw error
-    }
-
-    if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(MODEL_CATALOG_UNAVAILABLE))
-    if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
-    if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
-    if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for responses → ${sel.targetEndpoint}`))
+    const sel = await selectResponsesAttempt(args)
+    if ("type" in sel) return sel
 
     const invocation: Invocation = {
       endpoint: 'responses',

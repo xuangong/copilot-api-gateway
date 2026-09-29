@@ -1,3 +1,4 @@
+import type { ResponsesLocalContinuationResolver } from "./local-continuation.ts"
 import { expandShimCompactionItems } from "./interceptors/with-responses-compact-shim"
 import type { CanonicalResponsesPayload } from "@vibe-llm/protocols/responses"
 import { createRequestAffinity, type RequestAffinity } from "../../shared/affinity-request"
@@ -50,6 +51,7 @@ import type { DispatchObsCtx } from '../shared/obs-ctx.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import type { ApiKeyId, ResponsesItemId } from '../../../repo/branded-ids.ts'
 import {
+  appendPreviousResponseItems,
   expandPreviousResponseId,
   PreviousResponseNotFoundError,
 } from '../../dispatch/responses-store-bridge.ts'
@@ -57,6 +59,7 @@ import { renderPreviousResponseNotFound } from '../../errors/forward.ts'
 import { getResponsesStore } from '../../../data-plane/runtime/responses-store.ts'
 import {
   responsesAttempt,
+  validateResponsesAttempt,
   type ResponsesAttemptAuth,
   type ResponsesAttemptResult,
 } from './attempt.ts'
@@ -66,6 +69,10 @@ import { createResponsesTurn, type ResponsesTurn } from './turn.ts'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
 export interface ResponsesServeArgs {
+  readonly localContinuation?: ResponsesLocalContinuationResolver
+  readonly warmup?: boolean
+  /** Source create state after expansion, before routing. Never an auth context. */
+  readonly onPrepared?: (payload: Record<string, unknown>, compactTriggered: boolean) => void
   /** Pre-parsed JSON body from http.ts (`await c.req.json()`). */
   readonly raw: unknown
   readonly auth: DataPlaneAuthCtx
@@ -138,25 +145,33 @@ const responsesHooks: ServeTemplateHooks<
     // payload.input so the snapshot writer persists the full input
     // history for the next turn.
     try {
-      if (payload.previous_response_id && (ctx.auth.responsesRetentionSeconds ?? 0) <= 0) {
-        throw new PreviousResponseNotFoundError(payload.previous_response_id as ResponsesItemId)
-      }
+      const resolver = ctx.extras.localContinuation as ResponsesLocalContinuationResolver | undefined
+      const local = payload.previous_response_id ? resolver?.resolve(payload.previous_response_id) : undefined
       const store = getResponsesStore()
-      await expandPreviousResponseId(
-        payload as { previous_response_id?: string | null; input?: unknown },
-        store,
-        (ctx.auth.apiKeyId ?? null) as ApiKeyId | null,
-        payload.store !== false && (ctx.auth.responsesRetentionSeconds ?? 0) > 0
-          ? ctx.auth.responsesRetentionSeconds : undefined,
-      )
+      if (local) {
+        payload = { ...local.create, ...payload }
+        appendPreviousResponseItems(payload, local.items)
+      } else {
+        if (payload.previous_response_id && (ctx.auth.responsesRetentionSeconds ?? 0) <= 0) {
+          throw new PreviousResponseNotFoundError(payload.previous_response_id as ResponsesItemId)
+        }
+        await expandPreviousResponseId(
+          payload as { previous_response_id?: string | null; input?: unknown }, store,
+          (ctx.auth.apiKeyId ?? null) as ApiKeyId | null,
+          payload.store !== false && (ctx.auth.responsesRetentionSeconds ?? 0) > 0
+            ? ctx.auth.responsesRetentionSeconds : undefined,
+        )
+      }
       payload = expandShimCompactionItems(payload as unknown as CanonicalResponsesPayload) as unknown as ResponsesPayload
       const expanded = (payload as { input?: unknown }).input
       const retentionSeconds = ctx.auth.responsesRetentionSeconds ?? 0
-      const onCompleted = retentionSeconds > 0 && ctx.auth.apiKeyId && payload.store !== false && ctx.extras.action !== "compact"
+      const onCompleted = !ctx.extras.warmup && retentionSeconds > 0 && ctx.auth.apiKeyId && payload.store !== false && ctx.extras.action !== "compact"
         ? createResponseSnapshotWriter({ store, apiKeyId: ctx.auth.apiKeyId as ApiKeyId, retentionSeconds, fallbackModel: payload.model, compactTriggered })
         : undefined
       const inputItems = Array.isArray(expanded) ? expanded : []
       const mergedInputItems = onCompleted ? structuredClone(inputItems) : inputItems
+      const onPrepared = ctx.extras.onPrepared as ResponsesServeArgs["onPrepared"]
+      onPrepared?.(payload, compactTriggered)
       const resolved = resolveKeyModel(payload.model, ctx.auth.routingPolicy)
       const affinity = await createRequestAffinity("responses", { ...payload, model: resolved.routedModel }, ctx.auth)
       return {
@@ -193,7 +208,7 @@ const responsesHooks: ServeTemplateHooks<
     // Compact wire is synchronous: force JSON regardless of caller's `stream`.
     (input.extras.action as 'generate' | 'compact' | undefined) === 'compact' ? false : p.stream === true,
 
-  runAttempt: (a) => responsesAttempt.generate({
+  runAttempt: (a) => (a.extras.warmup ? validateResponsesAttempt : responsesAttempt.generate)({
     payload: a.payload,
     affinity: a.extra?.affinity,
     auth: a.extra?.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
@@ -228,7 +243,7 @@ export function startResponsesTurn(args: ResponsesServeArgs): ResponsesTurn {
     const common = { wantsStream: args.action !== "compact" && raw?.stream === true, downstreamAbortController: abortController, upstreamAbortController, finalizeDump: true, dump: args.dump as DumpAccumulator | null }
     if (prepared.kind === "response") return { result: { kind: "bridged-response" as const, response: prepared.response }, options: common }
     const c = prepared.context
-    return { result: prepared.result, options: { ...common, affinity: c.extra?.affinity, onCompleted: c.extra?.onCompleted, mergedInputItems: c.extra?.mergedInputItems, telemetryCtx: c.telemetryCtx } }
+    return { result: prepared.result, options: { ...common, affinity: c.extra?.affinity, onCompleted: c.extra?.onCompleted, mergedInputItems: c.extra?.mergedInputItems, telemetryCtx: args.warmup ? undefined : c.telemetryCtx } }
   }, { wantsStream: args.action !== "compact" && raw?.stream === true, downstreamAbortController: abortController, upstreamAbortController, finalizeDump: true, dump: args.dump as DumpAccumulator | null })
   void turn.completion.finally(() => args.signal?.removeEventListener("abort", onAbort))
   return turn
@@ -254,7 +269,7 @@ async function prepareResponses(args: ResponsesServeArgs, upstreamAbortControlle
       // image calls. They were dedicated args on the old serve; the
       // kit's RunAttemptArgs only standardises payload/auth/telemetry,
       // so per-endpoint passthroughs live in `extras`.
-      extras: { requestId: args.requestId, userAgent: args.userAgent, action: args.action, abortUpstream: () => upstreamAbortController.abort() },
+      extras: { localContinuation: args.localContinuation, warmup: args.warmup, onPrepared: args.onPrepared, requestId: args.requestId, userAgent: args.userAgent, action: args.action, abortUpstream: () => upstreamAbortController.abort() },
       dump: args.dump ?? null,
     },
     kitDeps,

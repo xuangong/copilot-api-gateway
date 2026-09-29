@@ -355,11 +355,18 @@ export const openDumpAccumulator = (
   apiKey: ApiKey,
   requestBody: RequestBody,
 ): DumpAccumulator | null => {
+  return openTransportDump({ method, path: c.req.path, headers: c.req.raw.headers }, apiKey, requestBody)
+}
+
+/** Plain metadata boundary shared by HTTP and per-message transports. */
+export function openTransportDump(
+  request: { method: string; path: string; headers: Headers }, apiKey: ApiKey, requestBody: RequestBody,
+): DumpAccumulator | null {
   if (apiKey.dumpRetentionSeconds === null) return null
   const requestSnapshot: RequestSnapshot = {
-    method,
-    path: c.req.path,
-    headers: headerPairs(c.req.raw.headers),
+    method: request.method,
+    path: request.path,
+    headers: headerPairs(request.headers),
     bodyByteLength: requestBody.bytes.byteLength,
     streamError: requestBody.streamError,
   }

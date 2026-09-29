@@ -158,6 +158,15 @@ export class ConfigurationCache {
     return this.createView(async () => snapshot)
   }
 
+  /** Socket messages need a revision read begun for this turn, not an older
+   * coalesced refresh or the HTTP authorization lease. Session revocation is
+   * authoritative even on repositories whose revision excludes session rows. */
+  async freshPinnedView(): Promise<Repo> {
+    await this.pending?.catch(() => {})
+    const snapshot = await this.load()
+    return this.createView(async () => snapshot, true)
+  }
+
   private refresh(): Promise<Snapshot> {
     if (this.pending) return this.pending
     this.pending = this.load().catch(cause => {
@@ -218,7 +227,7 @@ export class ConfigurationCache {
     throw new ConfigurationUnavailableError()
   }
 
-  private createView(get: () => Promise<Snapshot>): Repo {
+  private createView(get: () => Promise<Snapshot>, freshSessions = false): Repo {
     const raw = this.raw
     // Proxy fallback methods stay bound to the authoritative repo, particularly
     // compare-and-swap credential writes. Never mutate a cached entity in place.
@@ -238,7 +247,7 @@ export class ConfigurationCache {
         listByOwner: async id => copy([...(await get()).keys.values()].filter(k => k.ownerId === id)),
       }),
       sessions: overlay(raw.sessions, {
-        findByToken: async token => this.findSession(token, await get()),
+        findByToken: async token => freshSessions ? raw.sessions.findByToken(token) : this.findSession(token, await get()),
       }),
       users: overlay(raw.users, {
         getById: async id => copy((await get()).users.get(id) ?? null),

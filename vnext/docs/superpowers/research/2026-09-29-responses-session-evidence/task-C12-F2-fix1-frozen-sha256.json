@@ -1,0 +1,18 @@
+{
+  "vnext/packages/gateway/src/control-plane/auth/session-auth.ts": "3435d6ec6a1355cbaa332c013b68dc6338a81d83b5b1c80cff3e95474b443713",
+  "vnext/packages/gateway/src/control-plane/lib/api-keys.ts": "3514b2367b5a82d8cde5a097886316c61a685e3847e13eabb5d16b5db9e8a03f",
+  "vnext/packages/gateway/src/data-plane/chat-flow/responses/attempt.ts": "fee3d9046d98ea1e2b6f469a0283dbf4972d68e40cf7cefc26f7d36bd80548a8",
+  "vnext/packages/gateway/src/data-plane/chat-flow/responses/local-continuation.ts": "98f2fadd9f5cc3a7d3c14e655ece2c482e271d3f2312f3a94510ccd8950b8b18",
+  "vnext/packages/gateway/src/data-plane/chat-flow/responses/serve.ts": "75efcf6502ccc8c6eade331461adf22b3261dc978cea151d7ff2ce493a43d592",
+  "vnext/packages/gateway/src/data-plane/chat-flow/responses/session-limits.ts": "c0aca496de0cca6887226064fb0eabeca813cf6a62a912d40ec51f154fc0803d",
+  "vnext/packages/gateway/src/data-plane/chat-flow/responses/session-protocol.ts": "bc8b196ff735c41fc2c6b9e98fd415de7ad27978fd45506b064c88738080f166",
+  "vnext/packages/gateway/src/data-plane/chat-flow/responses/session.ts": "de7680257fa83c62c40d8959edbf7d533628c2dc1f6088a4256901ca0b0932c6",
+  "vnext/packages/gateway/src/data-plane/dispatch/responses-store-bridge.ts": "cb721ee2c392924c36829a861e46353df0ba480125f5904b13a1a61782e22091",
+  "vnext/packages/gateway/src/repo/configuration-cache.ts": "2bc815540dbbd8c2c3c276a218ccdd2b84e484f44ab5da1dd2cee0cfaeba6fa7",
+  "vnext/packages/gateway/src/repo/index.ts": "3c04dd0417b1c13b5437d6d022746a43af06c28112bea8e4b331c15922128c77",
+  "vnext/packages/gateway/src/shared/credential-auth.ts": "416748ba42f4dce3f01a1eb8b50510e53b56e694af68245282c76882e26f68c3",
+  "vnext/packages/gateway/src/shared/dump/accumulator.ts": "3b1d4689fbae15d405ebdf8e4b84e4d86070dd9f9f12a8a41b03847c80671616",
+  "vnext/packages/gateway/tests/configuration-fresh.sqlite.test.ts": "d1285c6a65030014f0f019f83e0e50f37135828b953e3d015cf90b703d631ccf",
+  "vnext/packages/gateway/tests/data-plane/chat-flow/responses/session-limits.test.ts": "4e0b9c71c4c41939014859b936f4041e1350d438e84d6de93c0b478dd7477d8c",
+  "vnext/packages/gateway/tests/data-plane/chat-flow/responses/session.sqlite.test.ts": "c32c07c519422d08f8b0aedb02606ee2c98765cbaccf72d3a07ffc4b90d79f94"
+}

@@ -30,12 +30,16 @@ export async function expandPreviousResponseId(
   const id = raw as ResponsesItemId
   const snap = await store.load(id, apiKeyId, { refreshRetentionSeconds })
   if (!snap) throw new PreviousResponseNotFoundError(id)
+  appendPreviousResponseItems(payload, snap.items)
+}
+
+export function appendPreviousResponseItems(payload: { previous_response_id?: string | null; input?: unknown }, items: readonly unknown[]): void {
   const existing = Array.isArray(payload.input)
     ? (payload.input as unknown[])
     : typeof payload.input === 'string' && payload.input.length > 0
       ? [{ type: 'message', role: 'user', content: payload.input } as unknown]
       : []
-  payload.input = [...snap.items, ...existing]
+  payload.input = [...items, ...existing]
   delete payload.previous_response_id
 }
 
@@ -52,20 +56,21 @@ export async function savePostTurnSnapshot(
   },
 ): Promise<void> {
   const now = Date.now()
-  const isItemType = (item: unknown, type: string): boolean =>
-    typeof item === 'object' && item !== null && 'type' in item && item.type === type
-  const hasCompactOutput = args.outputItems.some(item =>
-    isItemType(item, 'compaction') || isItemType(item, 'compaction_summary'))
   await store.save({
     responseId: args.responseId,
     apiKeyId: args.apiKeyId,
     model: args.model,
     // A completed trigger's returned output is the canonical continuation
     // window, including any retained neighbors and every compact item.
-    items: args.compactTriggered && hasCompactOutput
-      ? [...args.outputItems]
-      : [...args.inputItems, ...args.outputItems],
+    items: responseContinuationItems(args.inputItems, args.outputItems, args.compactTriggered),
     createdAt: now,
     expiresAt: snapshotExpiresAt(now, args.retentionSeconds),
   })
+}
+
+/** The same canonical compaction window is used by durable and private state. */
+export function responseContinuationItems(input: readonly unknown[], output: readonly unknown[], compactTriggered = false): unknown[] {
+  const hasCompactOutput = output.some(item => typeof item === "object" && item !== null && "type" in item
+    && (item.type === "compaction" || item.type === "compaction_summary"))
+  return compactTriggered && hasCompactOutput ? [...output] : [...input, ...output]
 }

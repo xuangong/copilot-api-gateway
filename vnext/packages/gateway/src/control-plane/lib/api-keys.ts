@@ -6,21 +6,13 @@
  * creation time to match the legacy default — control-plane PATCH flips it
  * off when an admin disables web search for a given key.
  */
-import { getRepo, getDataPlaneRepo, hasConfigurationSnapshot } from '../../repo/index.ts'
+import { getRepo } from '../../repo/index.ts'
 import type { ApiKey } from '../../repo/types.ts'
-import type { ApiKeyRoutingPolicy } from '../../shared/api-key-model-mappings.ts'
 import { DEFAULT_API_KEY_MODEL_MAPPINGS } from '../../shared/api-key-model-mappings.ts'
 import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 
 export type { ApiKey }
-
-export interface ValidatedApiKey {
-  id: ApiKeyId
-  name: string
-  ownerId?: UserId
-  responsesRetentionSeconds: number
-  routingPolicy: ApiKeyRoutingPolicy
-}
+export { validateApiKey, type ValidatedApiKey } from '../../shared/credential-auth.ts'
 
 function cloneModelMappings(mappings: readonly { source: string; destination: string }[]) {
   return mappings.map((mapping) => ({ ...mapping }))
@@ -78,19 +70,6 @@ export async function rotateApiKey(id: ApiKeyId): Promise<ApiKey | null> {
 
 export function deleteApiKey(id: ApiKeyId): Promise<boolean> {
   return getRepo().apiKeys.delete(id)
-}
-
-export async function validateApiKey(rawKey: string): Promise<ValidatedApiKey | null> {
-  const repo = hasConfigurationSnapshot() ? getDataPlaneRepo() : getRepo()
-  const key = await repo.apiKeys.findByRawKey(rawKey)
-  if (!key) return null
-  const routingPolicy: ApiKeyRoutingPolicy = key.modelMappingsInvalid
-    ? { modelMappingsEnabled: false, modelMappings: [] }
-    : {
-        modelMappingsEnabled: key.modelMappingsEnabled,
-        modelMappings: cloneModelMappings(key.modelMappings),
-      }
-  return { id: key.id, name: key.name, ownerId: key.ownerId, routingPolicy, responsesRetentionSeconds: key.responsesRetentionSeconds ?? 0 }
 }
 
 export async function touchApiKeyLastUsed(id: ApiKeyId): Promise<void> {

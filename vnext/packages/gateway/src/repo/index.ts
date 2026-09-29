@@ -58,4 +58,9 @@ export async function withConfigurationSnapshot<T>(run: () => Promise<T>): Promi
   return requestRepo.run(await configuration.pinnedView(), run)
 }
 
+/** Per-message authority for long-lived transports; ordinary HTTP keeps its lease. */
+export async function withFreshConfigurationSnapshot<T>(run: () => Promise<T>): Promise<T> {
+  return requestRepo.run(configuration ? await configuration.freshPinnedView() : getRepo(), run)
+}
+
 export function hasConfigurationSnapshot(): boolean { return requestRepo.getStore() !== undefined }

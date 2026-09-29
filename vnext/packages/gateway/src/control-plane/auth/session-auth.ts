@@ -13,30 +13,17 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import { getRuntimeLocation } from '@vibe-core/platform'
 import { getDataPlaneRepo, getRepo as getRawRepo, hasConfigurationSnapshot } from '../../repo/index.ts'
-import { ADMIN_EMAILS, type AccountType } from '../../shared/config/constants.ts'
-import { validateApiKey } from '../lib/api-keys.ts'
+import type { AccountType } from '../../shared/config/constants.ts'
+import { extractHeaderCredential, resolveCredential, type FullAuthCtx } from '../../shared/credential-auth.ts'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
 import { resolveControlPlaneFetcher } from '../upstreams/proxy-resolution.ts'
 import { dmrBoundKey, isDmrCompatEnabled, isDmrPath } from '../../data-plane/dmr/config.ts'
-import type { ApiKeyRoutingPolicy } from '../../shared/api-key-model-mappings.ts'
-import type { ApiKeyId, SessionToken, UserId } from '../../repo/branded-ids.ts'
 
 import { isDevAuthEnabled } from './dev-auth.ts'
 
-const getRepo = () => hasConfigurationSnapshot() ? getDataPlaneRepo() : getRawRepo()
+export type { FullAuthCtx } from '../../shared/credential-auth.ts'
 
-interface FullAuthCtx {
-  userId?: UserId
-  isAdmin?: boolean
-  isUser?: boolean
-  apiKeyId?: ApiKeyId
-  responsesRetentionSeconds?: number
-  routingPolicy?: ApiKeyRoutingPolicy
-  authKind?: 'public' | 'session' | 'apiKey'
-  authenticatedAt?: number
-  copilot?: { copilotToken: string; accountType: AccountType }
-  githubToken?: string
-}
+const getRepo = () => hasConfigurationSnapshot() ? getDataPlaneRepo() : getRawRepo()
 
 function extractKey(c: Context): string | null {
   const url = new URL(c.req.url)
@@ -50,15 +37,8 @@ function extractKey(c: Context): string | null {
 
   const fromQuery = url.searchParams.get('key')
   if (present(fromQuery)) return fromQuery
-  const apiKey = c.req.header('x-api-key')
-  if (present(apiKey)) return apiKey
-  const goog = c.req.header('x-goog-api-key')
-  if (present(goog)) return goog
-  const auth = c.req.header('authorization')
-  if (auth?.toLowerCase().startsWith('bearer ')) {
-    const bearer = auth.slice(7)
-    if (present(bearer)) return bearer
-  }
+  const headerKey = extractHeaderCredential(c.req.raw.headers, value => present(value))
+  if (headerKey) return headerKey
   const cookie = c.req.header('cookie') ?? ''
   const m = cookie.match(/(?:^|;\s*)session_token=([^\s;]+)/)
   if (m && m[1]) return m[1]
@@ -80,56 +60,9 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
     await next()
     return
   }
-  let resolvedUserId: UserId | undefined
   let ctx: FullAuthCtx | undefined
-  try {
-    if (key.startsWith('ses_')) {
-      const repo = getRepo()
-      const session = await repo.sessions.findByToken(key as SessionToken)
-      if (session && new Date(session.expiresAt) > new Date()) {
-        const user = await repo.users.getById(session.userId)
-        if (user && !user.disabled) {
-          const isAdmin = !!(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))
-          ctx = {
-            userId: session.userId,
-            isAdmin,
-            isUser: true,
-            authKind: 'session',
-            authenticatedAt: session.authenticatedAt,
-          }
-          resolvedUserId = session.userId
-        }
-      }
-    } else {
-      const result = await validateApiKey(key)
-      if (result) {
-        ctx = {
-          userId: result.ownerId,
-          isUser: !!result.ownerId,
-          apiKeyId: result.id,
-          routingPolicy: result.routingPolicy,
-          responsesRetentionSeconds: result.responsesRetentionSeconds,
-          authKind: 'apiKey',
-        }
-        resolvedUserId = result.ownerId
-      } else {
-        // Try User Key (legacy: users.user_key column) for llm-relay / older clients.
-        const user = await getRepo().users.findByKey(key)
-        if (user && !user.disabled) {
-          const isAdmin = !!(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))
-          ctx = {
-            userId: user.id,
-            isAdmin,
-            isUser: true,
-            authKind: 'session',
-          }
-          resolvedUserId = user.id
-        }
-      }
-    }
-  } catch {
-    // Swallow — handlers see no auth context and decide what to do.
-  }
+  try { ctx = await resolveCredential(key) } catch { /* Public-route policy remains in middleware. */ }
+  const resolvedUserId = ctx?.userId
 
   const credentialManagementPath = c.req.method === 'POST' && (
     c.req.path === '/api/upstreams/codex/preview' ||
