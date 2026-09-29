@@ -8,7 +8,7 @@
 
 import type { EndpointKey, ModelPricing } from '@vibe-llm/protocols/common'
 import { BILLING_DIMENSIONS } from '@vibe-llm/protocols/common'
-import { parseEndpoints, normalizeStringRecord } from '@vibe-llm/provider-llm'
+import { parseEndpoints, normalizeStringRecord, parseOpaqueCompatibilityMap, type OpaqueCompatibilityMap } from '@vibe-llm/provider-llm'
 
 export type CustomAuthStyle = 'bearer' | 'anthropic' | 'none'
 
@@ -110,6 +110,7 @@ export const CUSTOM_PATH_OVERRIDE_KEYS = [
 export type CustomPathOverrideKey = (typeof CUSTOM_PATH_OVERRIDE_KEYS)[number]
 
 export interface CustomProviderConfig {
+  opaqueCompatibility?: OpaqueCompatibilityMap
   name: string
   baseUrl: string
   /** Required unless `authStyle` is `'none'`. */
@@ -330,5 +331,6 @@ export function normalizeCustomConfig(config: Record<string, unknown>): CustomPr
     modelsEndpoint,
     defaultHeaders: normalizeStringRecord(config.defaultHeaders, 'defaultHeaders'),
     models: parseManualModels(config.models),
+    opaqueCompatibility: parseOpaqueCompatibilityMap(config.opaqueCompatibility),
   }
 }

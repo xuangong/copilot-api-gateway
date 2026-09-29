@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "runtime": "actual Azure provider + loopback HTTP + real SQLite authority",
+  "cases": [
+    "responses-declaration-matches-actual-surface",
+    "messages-declaration-matches-actual-surface",
+    "configuration-replacement-zero-inference"
+  ],
+  "calls": 2
+}

@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "runtime": "actual app/workerd/WebCrypto/D1 durable store",
+  "cases": [
+    "authenticated-egress",
+    "wrong-key-zero-egress",
+    "declared-required-cross-upstream-replay",
+    "immediate-durable-continuation",
+    "stale-config-zero-egress"
+  ],
+  "calls": 3
+}

@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "runtime": "actual authenticated Bun HTTP + loopback provider + real SQLite",
+  "cases": [
+    "owner-create-retains-declaration",
+    "session-only-configuration",
+    "explicit-owner-required-state-replay",
+    "other-key-and-owner-zero-inference",
+    "authorized-global-compatible-private-other-owner-excluded",
+    "unrelated-edit-retains-and-foreign-edit-denied",
+    "strict-create-validation",
+    "export-import-and-validation",
+    "removal-invalidates-required-compatibility"
+  ],
+  "calls": 3
+}

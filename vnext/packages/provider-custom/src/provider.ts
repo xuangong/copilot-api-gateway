@@ -7,6 +7,12 @@
 import { BILLING_DIMENSIONS, type EndpointKey, type ModelPricing } from '@vibe-llm/protocols/common'
 import {
   HTTPError,
+  parseOpaqueCompatibilityMap,
+  opaqueCompatibilityForTarget,
+  parseAffinityExecutionTarget,
+  type OpaqueCompatibilityMap,
+  type AffinityExecutionTarget,
+  type BindingModel,
   probeViaModels,
   type LlmModelProvider,
   type ProviderAffinityAuthority,
@@ -46,6 +52,7 @@ export class CustomProvider implements LlmModelProvider {
   readonly kind = 'custom' as const
   readonly name: string
   readonly supportedEndpoints: readonly EndpointKey[]
+  private readonly opaqueCompatibility?: OpaqueCompatibilityMap
   private readonly baseUrl: string
   private readonly apiKey: string
   private readonly authStyle: CustomAuthStyle
@@ -66,6 +73,7 @@ export class CustomProvider implements LlmModelProvider {
   private readonly executionFetcher?: ExecutionFetcherForRequest
 
   constructor(cfg: CustomProviderConfig, fetcher: Fetcher = directFetcher, executionFetcher?: ExecutionFetcherForRequest, private readonly affinityAuthority?: ProviderAffinityAuthority) {
+    this.opaqueCompatibility = parseOpaqueCompatibilityMap(cfg.opaqueCompatibility)
     const authStyle = cfg.authStyle ?? 'bearer'
     if (authStyle !== 'none' && !cfg.apiKey) {
       throw new Error('Custom provider requires an apiKey')
@@ -172,15 +180,25 @@ export class CustomProvider implements LlmModelProvider {
     return model
   }
 
+  getOpaqueCompatibilityForModel(model: Readonly<BindingModel>) {
+    return opaqueCompatibilityForTarget(this.opaqueCompatibility, model.id)
+  }
+
+  private withCompatibility(target: AffinityExecutionTarget | undefined) {
+    if (!target) return undefined
+    const compatibility = opaqueCompatibilityForTarget(this.opaqueCompatibility, target.model)
+    return compatibility ? parseAffinityExecutionTarget({ ...target, compatibility }) : target
+  }
+
   async prepareAffinityExecution(req: Readonly<ProviderRequest>) {
     const model = this.affinityModel(req)
-    return model ? this.affinityAuthority?.prepare(model) : undefined
+    return this.withCompatibility(model ? await this.affinityAuthority?.prepare(model) : undefined)
   }
 
   async fetch(req: ProviderRequest): Promise<ProviderResponse> {
     const model = this.affinityModel(req)
     const affinityExecution = req.beforeInference ? await this.prepareAffinityExecution(req)
-      : model ? this.affinityAuthority?.capture(model) : undefined
+      : this.withCompatibility(model ? this.affinityAuthority?.capture(model) : undefined)
     const ordinary = resolveExecutionFetcher(this.fetcher, this.executionFetcher, req)
     const fenced: Fetcher = async (url, init) => {
       req.signal?.throwIfAborted()

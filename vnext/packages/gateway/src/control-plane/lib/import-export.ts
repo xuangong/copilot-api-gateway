@@ -6,6 +6,8 @@
  * always write v2. Secrets may be redacted on export and restored from
  * live state on import via unredactWithLive().
  */
+import { parseOpaqueCompatibilityMap } from '@vibe-llm/provider-llm'
+import { parseAzureOpaqueCompatibility } from '@vibe-llm/provider-azure'
 import type { UpstreamKind } from '@vibe-llm/protocols/common'
 import type { ApiKey, GitHubAccount, UpstreamRecord } from '../../repo/types.ts'
 
@@ -69,7 +71,13 @@ function redactConfigBlob(value: unknown): unknown {
 }
 
 function redactUpstream(u: UpstreamRecord<unknown>): UpstreamRecord<unknown> {
-  return { ...u, config: redactConfigBlob(u.config) as Record<string, unknown> }
+  const config = redactConfigBlob(u.config) as Record<string, unknown>
+  // Exact model keys may contain words such as "token"; declarations contain no secrets.
+  if (u.provider === 'custom' || u.provider === 'azure') {
+    const declaration = u.provider === 'azure' ? parseAzureOpaqueCompatibility(u.config.opaqueCompatibility) : parseOpaqueCompatibilityMap(u.config.opaqueCompatibility)
+    if (declaration !== undefined) config.opaqueCompatibility = declaration
+  }
+  return { ...u, config }
 }
 
 function unredactConfigBlob(incoming: unknown, live: unknown): unknown {
@@ -184,6 +192,8 @@ export function parseConfigBundle(payload: unknown): ImportResult {
         if (!rec.config || typeof rec.config !== 'object' || Array.isArray(rec.config)) {
           throw new ImportError('upstreams entry config must be object')
         }
+        if (rec.provider === 'custom') parseOpaqueCompatibilityMap(rec.config.opaqueCompatibility)
+        if (rec.provider === 'azure') parseAzureOpaqueCompatibility(rec.config.opaqueCompatibility)
         redactedCount += countRedactedInBlob(rec.config)
       }
       upstreams = raw as UpstreamRecord<unknown>[]
@@ -238,7 +248,12 @@ export function unredactWithLive(
   const upstreams = incoming.upstreams.map((u) => {
     const here = liveUpstreamsById.get(u.id)
     if (!here) return u
-    return { ...u, config: unredactConfigBlob(u.config, here.config) as Record<string, unknown> }
+    const config = unredactConfigBlob(u.config, here.config) as Record<string, unknown>
+    if ((u.provider === 'custom' || u.provider === 'azure') && u.config.opaqueCompatibility !== undefined) {
+      config.opaqueCompatibility = u.provider === 'azure'
+        ? parseAzureOpaqueCompatibility(u.config.opaqueCompatibility) : parseOpaqueCompatibilityMap(u.config.opaqueCompatibility)
+    }
+    return { ...u, config }
   })
   return { ...incoming, apiKeys, githubAccounts, upstreams }
 }

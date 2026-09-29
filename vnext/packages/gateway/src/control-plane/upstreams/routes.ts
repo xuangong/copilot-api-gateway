@@ -29,7 +29,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { Env } from '../../app.ts'
-import type { UpstreamKind, EndpointKey } from '@vibe-llm/protocols/common'
+import type { UpstreamKind } from '@vibe-llm/protocols/common'
 import { zValidator } from '../middleware/zod-validator.ts'
 import { loadOwned } from '../shared/ownership.ts'
 import { getRepo } from '../../repo/index.ts'
@@ -46,8 +46,7 @@ import { normalizeProxyFallbackList } from '@vibe-core/proxy-repo'
 import type { Fetcher } from '@vibe-core/upstream'
 import { clearRawModelsCache } from '@vibe-llm/provider-copilot'
 import { CustomProvider, normalizeCustomConfig } from '@vibe-llm/provider-custom'
-import { parseEndpoints, normalizeStringRecord } from '@vibe-llm/provider-llm'
-import { AzureProvider } from '@vibe-llm/provider-azure'
+import { AzureProvider, normalizeAzureConfig } from '@vibe-llm/provider-azure'
 import type { AzureProviderConfig as PkgAzureConfig } from '@vibe-llm/provider-azure'
 import { SdfProvider } from '@vibe-llm/provider-sdf'
 import type { SdfProviderConfig as PkgSdfConfig } from '@vibe-llm/provider-sdf'
@@ -58,6 +57,7 @@ import { codexCredentialsRouter } from './codex-credentials-routes.ts'
 import { UpstreamGoneError, UpstreamReplacedError, UpstreamContentionError } from '@vibe-core/upstream-repo'
 
 export interface AuthCtx {
+  authKind?: "session" | "apiKey"
   isAdmin?: boolean
   isUser?: boolean
   userId?: UserId
@@ -90,16 +90,6 @@ const upstreamBody = z.object({
     .optional(),
 })
 
-interface AzureProviderConfig {
-  name: string
-  endpoint: string
-  apiKey: string
-  deployment: string
-  apiVersion: string
-  endpoints: EndpointKey[]
-  defaultHeaders?: Record<string, string>
-  deployments?: Array<{ name: string; model: string }>
-}
 
 interface SdfProviderConfig {
   name: string
@@ -167,43 +157,6 @@ function normalizeProvider(provider: unknown): UpstreamKind {
   throw new Error('Unknown provider')
 }
 
-function parseAzureDeployments(value: unknown): AzureProviderConfig['deployments'] {
-  if (value === undefined || value === null) return undefined
-  if (!Array.isArray(value)) throw new Error('deployments must be an array of { name, model }')
-  const out: Array<{ name: string; model: string }> = []
-  for (const entry of value) {
-    if (!entry || typeof entry !== 'object') throw new Error('deployments[] entry must be an object')
-    const e = entry as { name?: unknown; model?: unknown }
-    if (typeof e.name !== 'string' || !e.name.trim()) throw new Error('deployments[].name required')
-    if (typeof e.model !== 'string' || !e.model.trim()) throw new Error('deployments[].model required')
-    out.push({ name: e.name.trim(), model: e.model.trim() })
-  }
-  return out.length > 0 ? out : undefined
-}
-
-function normalizeAzureConfig(config: Record<string, unknown>): AzureProviderConfig {
-  if (typeof config.name !== 'string' || !config.name.trim()) throw new Error('azure config.name required')
-  if (typeof config.endpoint !== 'string' || !config.endpoint.trim()) throw new Error('azure config.endpoint required')
-  if (typeof config.apiKey !== 'string' || !config.apiKey) throw new Error('azure config.apiKey required')
-  if (typeof config.deployment !== 'string' || !config.deployment.trim()) {
-    throw new Error('azure config.deployment required')
-  }
-  if (typeof config.apiVersion !== 'string' || !config.apiVersion.trim()) {
-    throw new Error('azure config.apiVersion required')
-  }
-  const defaultHeaders = normalizeStringRecord(config.defaultHeaders, 'defaultHeaders')
-  const deployments = parseAzureDeployments(config.deployments)
-  return {
-    name: config.name.trim(),
-    endpoint: config.endpoint.trim().replace(/\/+$/, ''),
-    apiKey: config.apiKey,
-    deployment: config.deployment.trim(),
-    apiVersion: config.apiVersion.trim(),
-    endpoints: parseEndpoints(config.endpoints, ['chat_completions']),
-    defaultHeaders,
-    deployments,
-  }
-}
 
 function normalizeCopilotConfig(config: Record<string, unknown>): Record<string, unknown> {
   if (typeof config.githubToken !== 'string' || !config.githubToken) {
@@ -323,7 +276,7 @@ function writeError(error: unknown): Response {
 function mergeEditableConfig(current: Record<string, unknown>, incoming: Record<string, unknown>): Record<string, unknown> {
   const merged = { ...current }
   for (const [key, value] of Object.entries(incoming)) {
-    if (value === '***') continue
+    if (value === '***' && key !== 'opaqueCompatibility') continue
     if (key === 'defaultHeaders' && value && typeof value === 'object' && !Array.isArray(value)) {
       const old = current.defaultHeaders && typeof current.defaultHeaders === 'object' ? current.defaultHeaders as Record<string, unknown> : {}
       merged[key] = Object.fromEntries(Object.entries(value).map(([header, entry]) => [header, entry === '***' ? old[header] : entry]))
@@ -459,6 +412,7 @@ upstreamsRouter.get('/', async (c) => {
 })
 
 upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
+  if (c.get('auth')?.authKind === 'apiKey') return jsonError('Upstream mutation requires a user session', 403)
   const admin = isAdmin(c)
   const userId = authUserId(c)
   if (!admin && !userId) return jsonError('Forbidden', 403)
@@ -502,6 +456,7 @@ upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
 })
 
 upstreamsRouter.patch('/:id', zValidator('json', upstreamBody), async (c) => {
+  if (c.get('auth')?.authKind === 'apiKey') return jsonError('Upstream mutation requires a user session', 403)
   const admin = isAdmin(c)
   const id = c.req.param('id') as UpstreamId
   const existing = await loadOwned(c.get('auth'), () => getRepo().upstreams.getById(id))
@@ -541,6 +496,7 @@ upstreamsRouter.patch('/:id', zValidator('json', upstreamBody), async (c) => {
 })
 
 upstreamsRouter.delete('/:id', async (c) => {
+  if (c.get('auth')?.authKind === 'apiKey') return jsonError('Upstream mutation requires a user session', 403)
   const id = c.req.param('id') as UpstreamId
   const existing = await loadOwned(c.get('auth'), () => getRepo().upstreams.getById(id))
   if (!existing) return jsonError('upstream not found', 404)

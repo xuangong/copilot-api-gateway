@@ -1,3 +1,5 @@
+import { parseOpaqueCompatibilityMap } from "@vibe-llm/provider-llm"
+import { parseAzureOpaqueCompatibility } from "@vibe-llm/provider-azure"
 import type { UpstreamRecord } from "../../repo/types.ts"
 import { BILLING_DIMENSIONS } from "@vibe-llm/protocols/common"
 import { parseCustomChatMetadata } from "@vibe-llm/provider-custom"
@@ -110,6 +112,12 @@ export function publicUpstreamConfig(upstream: UpstreamRecord<unknown>): Record<
       break
     default:
       return {}
+  }
+  if (source.opaqueCompatibility !== undefined) {
+    try {
+      out.opaqueCompatibility = upstream.provider === "azure"
+        ? parseAzureOpaqueCompatibility(source.opaqueCompatibility) : parseOpaqueCompatibilityMap(source.opaqueCompatibility)
+    } catch { /* Invalid stored declarations grant no public fields. */ }
   }
   secret(out, source, "apiKey")
   if (source.endpoints) out.endpoints = strings(source.endpoints)

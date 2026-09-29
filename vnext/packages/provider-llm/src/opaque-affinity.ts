@@ -33,6 +33,21 @@ export function parseOpaqueCompatibilityDeclaration(value: unknown): OpaqueCompa
   return Object.freeze({ version: 1, key: identifier(data.key), scope: data.scope })
 }
 
+/** Exact model/deployment keys only. Empty maps explicitly clear a saved declaration. */
+export type OpaqueCompatibilityMap = Readonly<Record<string, OpaqueCompatibilityDeclaration>>
+
+export function parseOpaqueCompatibilityMap(value: unknown): OpaqueCompatibilityMap | undefined {
+  if (value === undefined) return undefined
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError("Invalid opaque compatibility map")
+  const entries = Object.entries(value).map(([key, declaration]) =>
+    [identifier(key), parseOpaqueCompatibilityDeclaration(declaration)] as const)
+  return Object.freeze(Object.fromEntries(entries))
+}
+
+export function opaqueCompatibilityForTarget(map: OpaqueCompatibilityMap | undefined, target: string): OpaqueCompatibilityDeclaration | undefined {
+  return map && Object.hasOwn(map, target) ? map[target] : undefined
+}
+
 export function parseAffinityExecutionTarget(value: unknown): AffinityExecutionTarget {
   const data = record(value, ["provider", "upstreamId", "upstreamIncarnation", "credentialSubject", "credentialRevision", "model", "compatibility"])
   return Object.freeze({ provider: identifier(data.provider), upstreamId: identifier(data.upstreamId),

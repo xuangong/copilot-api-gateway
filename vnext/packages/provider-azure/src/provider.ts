@@ -14,6 +14,11 @@
 import type { EndpointKey, ModelPricing } from '@vibe-llm/protocols/common'
 import {
   HTTPError,
+  opaqueCompatibilityForTarget,
+  parseAffinityExecutionTarget,
+  type OpaqueCompatibilityMap,
+  type AffinityExecutionTarget,
+  type BindingModel,
   fillEmptyNamespaceDescriptions,
   probeViaModels,
   type LlmModelProvider,
@@ -28,7 +33,10 @@ import {
 import { fetchWithRetry, mergeHeaders, parseJsonBody, truncateBody } from '@vibe-core/http'
 import { directFetcher, type Fetcher } from '@vibe-core/upstream'
 
+import { parseAzureOpaqueCompatibility } from './config'
+
 export interface AzureProviderConfig {
+  opaqueCompatibility?: OpaqueCompatibilityMap
   name: string
   endpoint: string
   apiKey: string
@@ -65,6 +73,7 @@ export class AzureProvider implements LlmModelProvider {
   readonly kind = 'azure' as const
   readonly name: string
   readonly supportedEndpoints: readonly EndpointKey[]
+  private readonly opaqueCompatibility?: OpaqueCompatibilityMap
   private readonly endpoint: string
   private readonly apiKey: string
   private readonly deployment: string
@@ -82,6 +91,7 @@ export class AzureProvider implements LlmModelProvider {
   private readonly executionFetcher?: ExecutionFetcherForRequest
 
   constructor(cfg: AzureProviderConfig, fetcher: Fetcher = directFetcher, executionFetcher?: ExecutionFetcherForRequest, private readonly affinityAuthority?: ProviderAffinityAuthority) {
+    this.opaqueCompatibility = parseAzureOpaqueCompatibility(cfg.opaqueCompatibility)
     if (!cfg.apiKey) throw new Error('Azure provider requires an apiKey')
     if (!cfg.endpoint) throw new Error('Azure provider requires an endpoint')
     if (!cfg.deployment) throw new Error('Azure provider requires a deployment')
@@ -151,15 +161,30 @@ export class AzureProvider implements LlmModelProvider {
     return model
   }
 
+  getOpaqueCompatibilityForModel(model: Readonly<BindingModel>) {
+    const surfaces = new Set(Object.keys(model.endpoints).map(endpoint => surfaceForEndpoint(endpoint as EndpointKey)).filter(surface => surface !== null))
+    const declarations = [...surfaces].map(surface => opaqueCompatibilityForTarget(this.opaqueCompatibility,
+      `${surface}:${surface === "anthropic" ? model.id : this.resolveDeployment({ model: model.id })}`))
+    const first = declarations[0]
+    return first && declarations.every(value => value?.version === first.version && value.key === first.key && value.scope === first.scope) ? first : undefined
+  }
+
+  private withCompatibility(target: AffinityExecutionTarget | undefined, endpoint: EndpointKey) {
+    if (!target) return undefined
+    const surface = surfaceForEndpoint(endpoint)
+    const compatibility = surface ? opaqueCompatibilityForTarget(this.opaqueCompatibility, `${surface}:${target.model}`) : undefined
+    return compatibility ? parseAffinityExecutionTarget({ ...target, compatibility }) : target
+  }
+
   async prepareAffinityExecution(req: Readonly<ProviderRequest>) {
     const model = this.affinityModel(req)
-    return model ? this.affinityAuthority?.prepare(model) : undefined
+    return this.withCompatibility(model ? await this.affinityAuthority?.prepare(model) : undefined, req.endpoint)
   }
 
   async fetch(req: ProviderRequest): Promise<ProviderResponse> {
     const model = this.affinityModel(req)
     const affinityExecution = req.beforeInference ? await this.prepareAffinityExecution(req)
-      : model ? this.affinityAuthority?.capture(model) : undefined
+      : this.withCompatibility(model ? this.affinityAuthority?.capture(model) : undefined, req.endpoint)
     const ordinary = resolveExecutionFetcher(this.fetcher, this.executionFetcher, req)
     const fenced: Fetcher = async (url, init) => {
       req.signal?.throwIfAborted()
