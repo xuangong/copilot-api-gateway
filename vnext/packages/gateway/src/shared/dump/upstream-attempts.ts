@@ -125,6 +125,11 @@ class BytePrefix {
     // The captured length excludes unused bytes in the final bounded page.
     return Buffer.concat(this.pages, this.length).toString("base64")
   }
+
+  release(): void {
+    this.pages.length = 0
+    this.length = 0
+  }
 }
 
 interface MutableAttempt {
@@ -355,6 +360,12 @@ export class UpstreamExchangeCollector {
       capturedBodyBytes: this.capturedBodyBytes, metadataBytes: this.metadataBytes,
       metadataTruncated: this.metadataTruncated,
     })
+    // Publish only after every conversion succeeds. Captures and pending stream
+    // callbacks can still retain an item, so release its pages in place.
+    for (const item of this.attempts) {
+      item.requestPrefix.release()
+      item.responsePrefix.release()
+    }
     return this.finished
   }
 }
@@ -417,9 +428,10 @@ export function safeUpstreamExchangesForPersistence(input: unknown): UpstreamExc
     const capturedBytes = count(raw.capturedBytes, side === "request" ? UPSTREAM_ATTEMPT_LIMITS.requestPrefix : UPSTREAM_ATTEMPT_LIMITS.responsePrefix)
     const prefixBase64 = raw.prefixBase64
     const maxEncoded = Math.ceil(capturedBytes / 3) * 4
-    if (typeof prefixBase64 !== "string" || prefixBase64.length !== maxEncoded
-      || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(prefixBase64)
-      || atob(prefixBase64).length !== capturedBytes) throw new Error("invalid upstream body prefix")
+    if (typeof prefixBase64 !== "string" || prefixBase64.length !== maxEncoded) throw new Error("invalid upstream body prefix")
+    const padding = prefixBase64.endsWith("==") ? 2 : prefixBase64.endsWith("=") ? 1 : 0
+    if (prefixBase64.length / 4 * 3 - padding !== capturedBytes
+      || /[^A-Za-z0-9+/]/.test(prefixBase64.slice(0, prefixBase64.length - padding))) throw new Error("invalid upstream body prefix")
     if (raw.truncated !== (observedBytes !== null && observedBytes > capturedBytes)) throw new Error("invalid upstream truncation")
     if (side === "request") {
       if (source === "unobserved" && (observedBytes !== null || totalBytes !== null || capturedBytes !== 0)) throw new Error("unobserved request has bytes")
