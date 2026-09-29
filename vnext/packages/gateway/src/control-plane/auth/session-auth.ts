@@ -136,7 +136,8 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
     c.req.path === '/api/upstreams/codex/import' ||
     /^\/api\/upstreams\/[^/]+\/credentials\/refresh$/.test(c.req.path)
   )
-  if (ctx && resolvedUserId && !hasConfigurationSnapshot() && !credentialManagementPath) {
+  const quotaObservationPath = c.req.method === 'GET' && /^\/api\/upstreams\/[^/]+\/codex\/quota$/.test(c.req.path)
+  if (ctx && resolvedUserId && !hasConfigurationSnapshot() && !credentialManagementPath && !quotaObservationPath) {
     // Resolve the user's copilot upstream so data-plane handlers (web search,
     // image generation) can reach into auth.copilot/githubToken without each
     // route having to repeat the lookup.

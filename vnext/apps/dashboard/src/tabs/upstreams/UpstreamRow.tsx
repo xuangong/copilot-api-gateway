@@ -1,3 +1,4 @@
+import { CodexQuotaPanel } from "./CodexQuotaPanel"
 import { useState, type DragEvent, type KeyboardEvent } from "react"
 import { ProviderAvatar } from "./KindChip"
 import { useT } from "../../state/i18n"
@@ -209,6 +210,8 @@ export function UpstreamRow({
           </button>
         </div>
       </div>
+
+      {u.provider === "codex" ? <CodexQuotaPanel key={`${u.id}:${u.updatedAt}`} upstreamId={u.id} /> : null}
 
       <div className="mt-3 text-xs">
         <div className="flex items-center justify-between mb-1.5">

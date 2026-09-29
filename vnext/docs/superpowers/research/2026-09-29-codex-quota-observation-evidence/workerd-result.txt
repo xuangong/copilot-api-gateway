@@ -1,0 +1,9 @@
+GET /api/upstreams/quota/codex/quota → 403 0ms
+GET /api/upstreams/quota/codex/quota → 403 1ms
+GET /api/upstreams/quota/codex/quota → 404 3ms
+GET /api/upstreams/missing/codex/quota → 404 1ms
+GET /api/upstreams/quota/codex/quota → 200 1ms
+GET /api/upstreams/quota/codex/quota → 200 0ms
+GET /api/upstreams/quota/codex/quota → 200 26ms
+GET /api/upstreams/quota/codex/quota → 200 1ms
+{"runtime":"actual app/workerd/D1","passed":true,"ownerAdminAuth":true,"foreignMissingEquivalent":true,"sessionOnly":true,"lastObservedStale":true,"unknownVersusZero":true,"fixedFreshness":true,"sanitizedDto":true,"zeroWrites":true,"outbound":0,"scratch":"/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c09-quota-runtime-rqeOIu"}

@@ -1,0 +1,42 @@
+import { resolve } from "node:path"
+const sourceRoot = process.env.C09_SOURCE_ROOT
+if (!sourceRoot) throw new Error("C09_SOURCE_ROOT required")
+const root = resolve(sourceRoot)
+let outboundCalls = 0
+// This isolated fixture never permits external traffic.
+globalThis.fetch = async (input) => {
+  const url = input instanceof Request ? input.url : String(input)
+  outboundCalls++
+  void url
+  throw new Error("Unexpected external request in synthetic browser fixture")
+}
+const { bootstrapBunPlatform } = await import(`${root}/apps/platform-bun/src/bootstrap.ts`)
+const { app } = await import(`${root}/packages/gateway/src/app.ts`)
+const { getRepo } = await import(`${root}/packages/gateway/src/repo/index.ts`)
+bootstrapBunPlatform({ dbPath: `${process.cwd()}/fixture.sqlite`, filesRoot: `${process.cwd()}/files` })
+const { initSocketDial } = await import(`${root}/packages/platform/src/index.ts`)
+initSocketDial(async () => { throw new Error("External socket blocked by synthetic browser fixture") })
+const repo = getRepo()
+const now = new Date().toISOString(), ownerId = "00000000-0000-4000-a000-0000000000a1"
+const token = `ses_${crypto.randomUUID().replaceAll("-", "")}`
+await repo.users.create({ id: ownerId, name: "Synthetic UI Admin", email: "test@local.dev", createdAt: now, disabled: false })
+await repo.sessions.create({ token, userId: ownerId, createdAt: now, authenticatedAt: Date.now(), expiresAt: new Date(Date.now()+3600_000).toISOString() })
+const imported = await app.fetch(new Request("http://local/api/upstreams/codex/import", {method:"POST",headers:{cookie:`session_token=${token}`,"content-type":"application/json"},body:JSON.stringify({document:JSON.stringify({tokens:{access_token:"synthetic-ui-access",account_id:"synthetic-ui-account"}}),sourceIndex:0,name:"Synthetic quota account",enabled:false,proxyFallbackList:[{id:"direct_fetch"}]})}))
+if(imported.status !== 201)throw new Error(`Fixture import: ${imported.status} ${await imported.text()}`)
+const importedData=await imported.json() as {upstream:{id:string}}
+const id=importedData.upstream.id
+const fetchedAt=Date.now()-3*86400000
+await repo.upstreams.saveState<{accounts:Array<Record<string,unknown>>}>(id,current=>({...current,accounts:current.accounts.map(account=>({...account,quotaSnapshot:{stale:{fetchedAt,data:{observed_at:new Date(fetchedAt-1000).toISOString(),primary_used_percent:0,secondary_used_percent:100}},unknown:{fetchedAt:Date.now(),data:{observed_at:now}},fresh:{fetchedAt:Date.now(),data:{observed_at:now,primary_used_percent:42}}}}))}))
+let quotaReads=0,credentialCalls=0,modelReads=0
+const baseline=JSON.stringify(await repo.upstreams.getById(id))
+const server=Bun.serve({hostname:"127.0.0.1",port:0,fetch:async request=>{
+ const url=new URL(request.url)
+ if(url.pathname==="/api/models"){modelReads++;return Response.json({object:"list",data:[]})}
+ if(url.pathname.endsWith("/codex/quota"))quotaReads++
+ if(url.pathname.endsWith("/credentials/refresh"))credentialCalls++
+ if(url.pathname==="/__verify")return Response.json({quotaReads,credentialCalls,outboundCalls,modelReads,unchanged:JSON.stringify(await repo.upstreams.getById(id))===baseline})
+ return app.fetch(request)
+}})
+await Bun.write(`${process.cwd()}/connection.json`,JSON.stringify({port:server.port,token,pid:process.pid,sourceRoot:root}))
+const stop=()=>{server.stop(true);process.exit(0)}
+process.once("SIGTERM",stop);process.once("SIGINT",stop)

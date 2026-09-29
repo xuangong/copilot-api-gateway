@@ -6,7 +6,6 @@
 
 import { getUpstreamRepo } from '@vibe-core/upstream-repo'
 import { codexBearerEffect, ignoreGoneCodexEffect, updateCodexCredential, type CodexAccessTokenLease } from "./credential-effects"
-import { readCodexUpstreamState } from './state'
 
 export interface CodexQuotaSnapshot {
   observed_at: string
@@ -121,26 +120,84 @@ export const computeCodexQuotaTtlMs = (snapshot: CodexQuotaSnapshot, now: Date):
   return Math.max(TTL_FLOOR_MS, ...horizons)
 }
 
-// Returns all fresh quota snapshots keyed by active limit. Stale buckets read as
-// absent — the next upstream response for that active limit will overwrite it.
-// state_json is unbounded, so freshness is gated inline by
-// computeCodexQuotaTtlMs.
+export interface CodexQuotaObservation {
+  data: CodexQuotaSnapshot
+  observedAt: string
+  fetchedAt: number
+  freshUntil: number
+  freshness: "fresh" | "stale"
+}
+
+export type CodexQuotaObservationMap = Record<string, CodexQuotaObservation>
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+const timestamp = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 &&
+  Number.isFinite(new Date(value).getTime()) ? value : null
+
+const isoDate = (value: unknown): string | null => {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)) return null
+  const ms = Date.parse(value)
+  if (timestamp(ms) === null) return null
+  const normalized = new Date(ms).toISOString()
+  // Date.parse normalizes impossible calendar dates such as February 30.
+  return normalized.slice(0, 19) === value.slice(0, 19) ? normalized : null
+}
+
+function publicSnapshot(value: unknown): CodexQuotaSnapshot | null {
+  if (!isRecord(value)) return null
+  const observedAt = isoDate(value.observed_at)
+  if (!observedAt) return null
+  const data: CodexQuotaSnapshot = { observed_at: observedAt }
+  for (const key of ["active_limit", "plan_type"] as const) {
+    const field = value[key]
+    if (typeof field === "string" && field.trim() && field.length <= 128) data[key] = field.trim()
+  }
+  for (const key of ["primary_used_percent", "secondary_used_percent", "primary_window_minutes", "secondary_window_minutes", "credits_balance"] as const) {
+    const field = value[key]
+    if (typeof field === "number" && Number.isFinite(field) && field >= 0) data[key] = field
+  }
+  for (const key of ["primary_reset_after_at", "secondary_reset_after_at", "ratelimited_until"] as const) {
+    const field = isoDate(value[key])
+    if (field) data[key] = field
+  }
+  if (typeof value.credits_has_credits === "boolean") data.credits_has_credits = value.credits_has_credits
+  return data
+}
+
+// Project the already-authorized row without loading credentials, renewing a
+// token, or rereading a possibly replaced row. Malformed buckets are isolated.
+export function readCodexQuotaObservations(
+  rawState: unknown,
+  accountId: string,
+  now = Date.now(),
+): CodexQuotaObservationMap | null {
+  if (!isRecord(rawState) || !Array.isArray(rawState.accounts) || rawState.accounts.length !== 1) return null
+  const account: unknown = rawState.accounts[0]
+  if (!isRecord(account) || account.chatgptAccountId !== accountId || !isRecord(account.quotaSnapshot)) return null
+  const observations: CodexQuotaObservationMap = {}
+  for (const [key, entry] of Object.entries(account.quotaSnapshot)) {
+    if (!key.trim() || key.length > 128 || isUnsafeActiveLimitKey(key) || !isRecord(entry)) continue
+    const fetchedAt = timestamp(entry.fetchedAt)
+    const data = publicSnapshot(entry.data)
+    if (fetchedAt === null || !data) continue
+    // Anchor to receipt time, never the time at which the dashboard is opened.
+    const freshUntil = fetchedAt + computeCodexQuotaTtlMs(data, new Date(fetchedAt))
+    if (timestamp(freshUntil) === null) continue
+    observations[key] = { data, observedAt: data.observed_at, fetchedAt, freshUntil,
+      freshness: now < freshUntil ? "fresh" : "stale" }
+  }
+  return Object.keys(observations).length ? observations : null
+}
+
 export const getCodexQuota = async (
   upstreamId: string,
   accountId: string,
-): Promise<CodexQuotaSnapshotMap | null> => {
-  const fresh = await getUpstreamRepo().getById(upstreamId)
-  if (!fresh) return null
-  const state = readCodexUpstreamState(fresh.state)
-  const account = state.accounts.find((a) => a.chatgptAccountId === accountId)
-  if (!account?.quotaSnapshot) return null
-  const now = new Date()
-  const freshSnapshots: CodexQuotaSnapshotMap = {}
-  for (const [key, entry] of Object.entries(account.quotaSnapshot)) {
-    const ttlMs = computeCodexQuotaTtlMs(entry.data, now)
-    if (now.getTime() - entry.fetchedAt <= ttlMs) freshSnapshots[key] = entry.data
-  }
-  return Object.keys(freshSnapshots).length ? freshSnapshots : null
+): Promise<CodexQuotaObservationMap | null> => {
+  const row = await getUpstreamRepo().getById(upstreamId)
+  return row?.provider === "codex" ? readCodexQuotaObservations(row.state, accountId) : null
 }
 
 export const putCodexQuota = async (

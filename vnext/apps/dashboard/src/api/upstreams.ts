@@ -199,3 +199,29 @@ export function getUpstreamCatalog(id: string, refresh = false): Promise<Upstrea
     query: refresh ? { refresh: "1" } : undefined,
   })
 }
+
+export interface CodexQuotaObservation {
+  data: {
+    observed_at: string
+    active_limit?: string
+    plan_type?: string
+    primary_used_percent?: number
+    primary_window_minutes?: number
+    primary_reset_after_at?: string
+    secondary_used_percent?: number
+    secondary_window_minutes?: number
+    secondary_reset_after_at?: string
+    credits_has_credits?: boolean
+    credits_balance?: number
+    ratelimited_until?: string
+  }
+  observedAt: string
+  fetchedAt: number
+  freshUntil: number
+  freshness: "fresh" | "stale"
+}
+export type CodexQuotaResponse = { quota: Record<string, CodexQuotaObservation> | null }
+
+export function getCodexQuota(id: string, signal?: AbortSignal): Promise<CodexQuotaResponse> {
+  return api(`/api/upstreams/${encodeURIComponent(id)}/codex/quota`, { signal })
+}

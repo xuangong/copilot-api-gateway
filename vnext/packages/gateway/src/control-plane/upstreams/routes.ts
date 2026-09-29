@@ -53,6 +53,7 @@ import { SdfProvider } from '@vibe-llm/provider-sdf'
 import type { SdfProviderConfig as PkgSdfConfig } from '@vibe-llm/provider-sdf'
 
 import { serializeUpstream } from './public-dto.ts'
+import { codexQuotaRouter } from './codex-quota-routes.ts'
 import { codexCredentialsRouter } from './codex-credentials-routes.ts'
 import { UpstreamGoneError, UpstreamReplacedError, UpstreamContentionError } from '@vibe-core/upstream-repo'
 
@@ -444,6 +445,7 @@ export const upstreamsRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
 
 upstreamsRouter.get('/_health', (c) => c.json({ scope: 'control-plane:upstreams', status: 'scaffold' }))
 upstreamsRouter.route('/', codexCredentialsRouter)
+upstreamsRouter.route('/', codexQuotaRouter)
 
 upstreamsRouter.get('/', async (c) => {
   const admin = isAdmin(c)

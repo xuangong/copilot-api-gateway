@@ -11,7 +11,7 @@ import {
   CodexOAuthSessionTerminatedError,
   readCodexUpstreamState, type CodexUpstreamState, type Fetcher,
   ensureCodexAccessToken, invalidateCodexAccessToken, putCodexQuota, readCodexCredential,
-  persistCodexTerminalState, codexBearerEffect,
+  persistCodexTerminalState, codexBearerEffect, readCodexQuotaObservations,
 } from "@vibe-llm/provider-codex"
 import type { UpstreamRecord } from "../src/repo/types.ts"
 import type { ProviderRequest } from "@vibe-llm/provider-llm"
@@ -589,3 +589,23 @@ test("provider constructed from an older same-owner row uses its reimported cred
   await Promise.all(f.pending)
   expect(sent).toEqual(["Bearer access-replacement", "Bearer access-replacement"])
 })
+
+for (const gate of ["future", "expired", "utilization"] as const) {
+  test(`quota display freshness does not change ${gate} dispatch gate`, async () => {
+    const initial = state()
+    const account = initial.accounts[0]
+    if (!account) throw new Error("missing fixture account")
+    account.quotaSnapshot = { standard: { fetchedAt: Date.now() - 30 * 86_400_000,
+      data: { observed_at: "2020-01-01T00:00:00.000Z", primary_used_percent: 100,
+        ...(gate === "utilization" ? {} : { ratelimited_until: new Date(Date.now() + (gate === "future" ? 300_000 : -300_000)).toISOString() }) } } }
+    account.quotaSnapshot.stale = { fetchedAt: 1, data: { observed_at: "2020-01-01T00:00:00.000Z", primary_used_percent: 42 } }
+    expect(readCodexQuotaObservations(initial, "account")?.stale?.freshness).toBe("stale")
+    const f = await fixture(initial)
+    let requests = 0
+    const p = await provider(async () => { requests++; return Response.json({ output: [] }) }, initial)
+    const response = await p.fetch(request())
+    expect(response.status).toBe(gate === "future" ? 429 : 200)
+    expect(requests).toBe(gate === "future" ? 0 : 1)
+    await Promise.all(f.pending)
+  })
+}
