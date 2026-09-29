@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer"
 import type { ResponsesStreamEvent } from "@vibe-llm/protocols/responses"
 import { createResponsesTurn, isResponsesTurnTerminal, responsesTerminalBody, type ResponsesTurn, type ResponsesTurnOptions, type RespondResponsesInput } from "./turn"
 import { COMMENT_KEEPALIVE_FRAME, startSseKeepalive } from "../shared/sse-keepalive"
@@ -15,6 +16,7 @@ export async function renderResponsesTurn(turn: ResponsesTurn): Promise<Response
   if (!turn.wantsStream || metadata.status >= 400) {
     headers.set("content-type", "application/json")
     let body: unknown = metadata.body
+    let serialized: { body: unknown; json: string | undefined } | undefined
     let failed = metadata.status >= 400
     let onAbort: (() => void) | undefined
     const delivered = Promise.withResolvers<void>()
@@ -24,7 +26,8 @@ export async function renderResponsesTurn(turn: ResponsesTurn): Promise<Response
           if (event.type === "error") failed = true
           if (isResponsesTurnTerminal(event)) {
             body = responsesTerminalBody(event)
-            turn.recordSentPayloadBytes(encoder.encode(JSON.stringify(body)).byteLength)
+            serialized = { body, json: JSON.stringify(body) }
+            turn.recordSentPayloadBytes(serialized.json === undefined ? 0 : Buffer.byteLength(serialized.json, "utf8"))
             // The canonical terminal already passed tail validation and snapshot
             // persistence. Keep draining under turn.completion/waitUntil, without
             // charging usage/metrics/dump storage latency to HTTP delivery.
@@ -38,7 +41,12 @@ export async function renderResponsesTurn(turn: ResponsesTurn): Promise<Response
       })])
     } finally { if (onAbort) turn.abortController.signal.removeEventListener("abort", onAbort) }
     headers.set("content-type", "application/json")
-    return Response.json(body, { status: metadata.status >= 400 ? metadata.status : failed ? 502 : metadata.status, headers })
+    const init = { status: metadata.status >= 400 ? metadata.status : failed ? 502 : metadata.status, headers }
+    // Reuse the counted JSON without a second serialization or counting buffer.
+    // Abort may replace the body; undefined JSON retains native platform behavior.
+    return serialized && serialized.body === body && serialized.json !== undefined
+      ? new Response(serialized.json, init)
+      : Response.json(body, init)
   }
   headers.set("content-type", "text/event-stream")
   headers.set("cache-control", "no-cache")
