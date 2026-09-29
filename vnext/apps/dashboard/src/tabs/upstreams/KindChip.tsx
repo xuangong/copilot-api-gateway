@@ -8,6 +8,8 @@ const RING: Record<Provider, string> = {
   azure: "ring-sky-400/40",
   custom: "ring-fuchsia-400/40",
   sdf: "ring-amber-400/40",
+  codex: "ring-slate-400/40",
+  "claude-code": "ring-slate-400/40",
 }
 
 const BADGE_BG: Record<Provider, string> = {
@@ -15,6 +17,8 @@ const BADGE_BG: Record<Provider, string> = {
   azure: "bg-sky-500 text-white",
   custom: "bg-fuchsia-500 text-white",
   sdf: "bg-amber-500 text-white",
+  codex: "bg-slate-500 text-white",
+  "claude-code": "bg-slate-500 text-white",
 }
 
 const FRAME_FALLBACK: Record<Provider, string> = {
@@ -22,6 +26,8 @@ const FRAME_FALLBACK: Record<Provider, string> = {
   azure: "bg-sky-900/40 text-sky-200",
   custom: "bg-fuchsia-900/40 text-fuchsia-200",
   sdf: "bg-amber-900/40 text-amber-200",
+  codex: "bg-slate-900/40 text-slate-200",
+  "claude-code": "bg-slate-900/40 text-slate-200",
 }
 
 const LETTER: Record<Provider, string> = {
@@ -29,6 +35,8 @@ const LETTER: Record<Provider, string> = {
   azure: "A",
   custom: "X",
   sdf: "S",
+  codex: "C",
+  "claude-code": "C",
 }
 
 const FULL_LABEL: Record<Provider, string> = {
@@ -36,6 +44,8 @@ const FULL_LABEL: Record<Provider, string> = {
   azure: "Azure",
   custom: "Custom",
   sdf: "SDF",
+  codex: "Codex",
+  "claude-code": "Claude Code",
 }
 
 interface Props {

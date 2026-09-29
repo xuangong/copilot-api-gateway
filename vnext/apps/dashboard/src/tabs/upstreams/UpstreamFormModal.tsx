@@ -10,11 +10,11 @@ import { CatalogRequestGate, catalogDraftIdentity } from "./catalog-request-gate
 import { isFreshCredential } from "./duplicate-draft"
 import type { PortableUpstreamDraft } from "./duplicate-draft"
 
-type Provider = "copilot" | "azure" | "custom" | "sdf"
+type Provider = UpstreamRecord["provider"]
 
 interface Props {
   mode:
-    | { kind: "create"; provider: Exclude<Provider, "copilot">; presetId?: string; draft?: PortableUpstreamDraft }
+    | { kind: "create"; provider: "azure" | "custom" | "sdf"; presetId?: string; draft?: PortableUpstreamDraft }
     | { kind: "edit"; row: UpstreamRecord }
   flagCatalog: api.FlagCatalog | null
   ensureFlagCatalog: () => Promise<api.FlagCatalog>
@@ -381,12 +381,12 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
     }
     setSaving(true)
     try {
-      if (provider === "copilot") {
+      if (provider === "copilot" || provider === "codex" || provider === "claude-code") {
         if (!editingId) {
           toast(t("dash.errAddCopilotViaDeviceFlow"), "error")
           return
         }
-        await api.patchUpstream(editingId, { name: form.name.trim(), flagOverrides: form.flagOverrides })
+        await api.patchUpstream(editingId, { name: form.name.trim(), flagOverrides: form.flagOverrides, disabledPublicModelIds: disabledIds })
         toast(t("dash.toastUpdated"), "success")
         onSaved()
         return
@@ -725,7 +725,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           </div>
         ) : null}
 
-        {provider !== "copilot" && provider !== "sdf" ? (
+        {(provider === "custom" || provider === "azure") ? (
           <div className="border-t border-themed pt-3 mt-3">
             <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">{t("dash.servedEndpointsLabel")}</h4>
             <p className="text-xs text-themed-dim mb-2">
@@ -798,7 +798,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
           </details>
         ) : null}
 
-        {provider !== "copilot" && provider !== "sdf" && (
+        {(provider === "custom" || provider === "azure") && (
           <div className="border-t border-themed pt-3 mt-4">
             <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">
               {t("dash.disabledModelsLabel")}

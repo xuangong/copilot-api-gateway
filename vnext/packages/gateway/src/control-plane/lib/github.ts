@@ -13,6 +13,7 @@ import type {
   UpstreamRecord,
 } from '../../repo/types.ts'
 import type { GitHubAccountId, UpstreamId, UserId } from '../../repo/branded-ids.ts'
+import { UpstreamGoneError, UpstreamReplacedError } from '@vibe-core/upstream-repo'
 import { normalizeProxyFallbackList } from '@vibe-core/proxy-repo'
 
 export type { GitHubAccount, GitHubUser }
@@ -50,40 +51,35 @@ async function mirrorCopilotUpstream(
   opts: AddGithubAccountOpts = {},
 ): Promise<void> {
   const id = copilotUpstreamRowId(ownerId, user.id)
-  const existing = await getRepo().upstreams.getById(id)
+  const repo = getRepo().upstreams
+  let existing = await repo.getById(id)
   const now = new Date().toISOString()
-  const record: UpstreamRecord<unknown> = {
-    id,
-    ownerId: ownerId || undefined,
-    provider: 'copilot',
-    name: existing?.name ?? user.login ?? `Copilot ${user.id}`,
-    enabled: existing?.enabled ?? true,
-    sortOrder: existing?.sortOrder ?? 0,
-    config: {
-      githubToken: token,
-      accountType,
-      user: {
-        id: user.id,
-        login: user.login,
-        name: user.name,
-        avatar_url: user.avatar_url,
-      },
-      ...(opts.githubHost ? { githubHost: opts.githubHost } : {}),
-      ...(opts.source ? { source: opts.source } : {}),
-    },
-    flagOverrides: existing?.flagOverrides ?? {},
-    disabledPublicModelIds: existing?.disabledPublicModelIds ?? [],
-    state: opts.copilotApiEndpoint
-      ? { ...((existing?.state as Record<string, unknown> | null) ?? {}), copilotApiEndpoint: opts.copilotApiEndpoint }
-      : (existing?.state ?? null),
-    proxyFallbackList:
-      opts.proxyFallbackList === undefined
-        ? (existing?.proxyFallbackList ?? [])
-        : normalizeProxyFallbackList(opts.proxyFallbackList),
-    createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
+  const config = {
+    githubToken: token, accountType,
+    user: { id: user.id, login: user.login, name: user.name, avatar_url: user.avatar_url },
+    ...(opts.githubHost ? { githubHost: opts.githubHost } : {}),
+    ...(opts.source ? { source: opts.source } : {}),
   }
-  await getRepo().upstreams.save(record)
+  const chain = opts.proxyFallbackList === undefined ? undefined : normalizeProxyFallbackList(opts.proxyFallbackList)
+  if (!existing) {
+    const record: UpstreamRecord<unknown> = {
+      id, ownerId: ownerId || undefined, provider: 'copilot', name: user.login || `Copilot ${user.id}`,
+      enabled: true, sortOrder: 0, config, flagOverrides: {}, disabledPublicModelIds: [],
+      state: opts.copilotApiEndpoint ? { copilotApiEndpoint: opts.copilotApiEndpoint } : null,
+      proxyFallbackList: chain ?? [], createdAt: now, updatedAt: now,
+    }
+    if (await repo.createIfAbsent(record)) return
+    existing = await repo.getById(id)
+    if (!existing) throw new UpstreamGoneError(id)
+  }
+  if (existing.provider !== 'copilot' || (existing.ownerId || '') !== ownerId) throw new UpstreamReplacedError(id)
+  const updated = await repo.patchMetadata(existing, current => ({
+    ...current, config, proxyFallbackList: chain ?? current.proxyFallbackList,
+  }))
+  if (opts.copilotApiEndpoint) {
+    const endpoint = opts.copilotApiEndpoint
+    await repo.saveState<Record<string, unknown> | null>(id, current => ({ ...current, copilotApiEndpoint: endpoint }), updated)
+  }
 }
 
 // === Global (admin / legacy) ===

@@ -49,8 +49,11 @@ import { CustomProvider, normalizeCustomConfig } from '@vibe-llm/provider-custom
 import { parseEndpoints, normalizeStringRecord } from '@vibe-llm/provider-llm'
 import { AzureProvider } from '@vibe-llm/provider-azure'
 import type { AzureProviderConfig as PkgAzureConfig } from '@vibe-llm/provider-azure'
-import { SdfProvider, substrateTokenExpiry } from '@vibe-llm/provider-sdf'
+import { SdfProvider } from '@vibe-llm/provider-sdf'
 import type { SdfProviderConfig as PkgSdfConfig } from '@vibe-llm/provider-sdf'
+
+import { serializeUpstream } from './public-dto.ts'
+import { UpstreamGoneError, UpstreamReplacedError, UpstreamContentionError } from '@vibe-core/upstream-repo'
 
 export interface AuthCtx {
   isAdmin?: boolean
@@ -150,8 +153,8 @@ function normalizeFlagOverrides(value: unknown): Record<string, boolean> {
   const known = new Set(getFlagCatalog().map((f) => f.id))
   const out: Record<string, boolean> = {}
   for (const [k, v] of Object.entries(value)) {
-    if (!known.has(k)) throw new Error(`unknown flag override: ${k}`)
-    if (typeof v !== 'boolean') throw new Error(`flag override must be boolean: ${k}`)
+    if (!known.has(k)) throw new Error('unknown flag override')
+    if (typeof v !== 'boolean') throw new Error('flag override must be boolean')
     out[k] = v
   }
   return out
@@ -159,7 +162,7 @@ function normalizeFlagOverrides(value: unknown): Record<string, boolean> {
 
 function normalizeProvider(provider: unknown): UpstreamKind {
   if (provider === 'copilot' || provider === 'custom' || provider === 'azure' || provider === 'sdf') return provider
-  throw new Error(`Unknown provider: ${String(provider)}`)
+  throw new Error('Unknown provider')
 }
 
 function parseAzureDeployments(value: unknown): AzureProviderConfig['deployments'] {
@@ -294,62 +297,37 @@ function normalizeConfig(provider: UpstreamKind, config: unknown): Record<string
   return normalizeCopilotConfig(raw)
 }
 
-/**
- * The moment an sdf upstream's Substrate token died, ISO 8601 — or undefined if
- * it has not (or if we cannot tell). Present means expired; there is no
- * "expired: false" to reason about.
- *
- * This exists because redactConfig, below, hides the token from the dashboard.
- * The browser therefore cannot run this check itself, so the server runs it and
- * ships the verdict as its own field. Read the raw config here, BEFORE
- * redaction — swap the order and this only ever sees '***'.
- *
- * Deliberately a hint and nothing more: it never gates dispatch. See
- * substrateTokenExpiry's contract for why an unexpired `exp` proves nothing.
- */
-function tokenExpiredAt(upstream: UpstreamRecord<unknown>): string | undefined {
-  if (upstream.provider !== 'sdf') return undefined
-  const token = (upstream.config as { substrateToken?: unknown } | null)?.substrateToken
-  if (typeof token !== 'string' || !token) return undefined
-  const exp = substrateTokenExpiry(token)
-  if (exp === null || exp * 1000 > Date.now()) return undefined
-  return new Date(exp * 1000).toISOString()
-}
+class UpstreamInputError extends Error {}
 
-function safeModelBudgetTokens(value: unknown): value is { min?: number; max?: number } {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  return Object.entries(value).every(([key, bound]) =>
-    (key === 'min' || key === 'max') && typeof bound === 'number' && Number.isFinite(bound) && bound >= 0)
-}
-
-function redactConfig(value: unknown, path: readonly string[], customModels: boolean): unknown {
-  if (Array.isArray(value)) return value.map((item) => redactConfig(item, [...path, '[]'], customModels))
-  if (!value || typeof value !== 'object') return value
-  const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(value)) {
-    if (path.length === 0 && k === 'defaultHeaders' && v && typeof v === 'object' && !Array.isArray(v)) {
-      out[k] = Object.fromEntries(Object.entries(v).map(([header, headerValue]) => [header, headerValue ? '***' : headerValue]))
-    } else if (k === 'budget_tokens' && customModels && path.join('.') === 'models.[].chat.reasoning' && safeModelBudgetTokens(v)) {
-      out[k] = { ...v }
-    } else if (/token|api[-_]?key|authorization|password|secret|credential/i.test(k)) {
-      out[k] = v ? '***' : v
-    } else {
-      out[k] = redactConfig(v, [...path, k], customModels)
-    }
+function input<T>(validate: () => T): T {
+  try { return validate() }
+  catch (error) {
+    let message = error instanceof Error ? error.message : 'Invalid upstream input'
+    // Provider validators may name arbitrary submitted keys or values. Keep
+    // useful field guidance without returning the submitted credential text.
+    if (/^(unknown endpoint|unknown cost dimension|unknown pathOverrides key):/.test(message)) message = message.slice(0, message.indexOf(':'))
+    if (message.startsWith('defaultHeaders.')) message = 'defaultHeaders values must be strings'
+    throw new UpstreamInputError(message)
   }
-  return out
 }
 
-function serializeUpstream(upstream: UpstreamRecord<unknown>): Omit<UpstreamRecord<unknown>, 'config'> & {
-  config: Record<string, unknown>
-  tokenExpiredAt?: string
-} {
-  const expiredAt = tokenExpiredAt(upstream)
-  return {
-    ...upstream,
-    config: redactConfig(upstream.config, [], upstream.provider === 'custom') as Record<string, unknown>,
-    ...(expiredAt ? { tokenExpiredAt: expiredAt } : {}),
+function writeError(error: unknown): Response {
+  if (error instanceof UpstreamGoneError || error instanceof UpstreamReplacedError) return jsonError('upstream not found', 404)
+  if (error instanceof UpstreamContentionError) return jsonError('upstream changed; please retry', 409)
+  if (error instanceof UpstreamInputError) return jsonError(error.message)
+  return jsonError('failed to save upstream', 500)
+}
+
+function mergeEditableConfig(current: Record<string, unknown>, incoming: Record<string, unknown>): Record<string, unknown> {
+  const merged = { ...current }
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === '***') continue
+    if (key === 'defaultHeaders' && value && typeof value === 'object' && !Array.isArray(value)) {
+      const old = current.defaultHeaders && typeof current.defaultHeaders === 'object' ? current.defaultHeaders as Record<string, unknown> : {}
+      merged[key] = Object.fromEntries(Object.entries(value).map(([header, entry]) => [header, entry === '***' ? old[header] : entry]))
+    } else merged[key] = value
   }
+  return merged
 }
 
 /**
@@ -482,8 +460,9 @@ upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
   if (!admin && !userId) return jsonError('Forbidden', 403)
   try {
     const body = c.req.valid('json')
-    const provider = normalizeProvider(body.provider)
+    const provider = input(() => normalizeProvider(body.provider))
     if (typeof body.name !== 'string' || !body.name.trim()) return jsonError('name required')
+    const name = body.name.trim()
     const now = new Date().toISOString()
     // Admin can target any owner via body.ownerId (including '' for global).
     // When unset, default to the admin's own userId rather than '' so newly
@@ -492,11 +471,11 @@ upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
       ? (typeof body.ownerId === 'string' ? body.ownerId : (userId ?? ''))
       : userId
     if (ownerId === undefined) return jsonError('ownerId required', 400)
-    const upstream: UpstreamRecord<unknown> = {
-      id: upstreamId(provider, body.name),
+    const upstream: UpstreamRecord<unknown> = input(() => ({
+      id: upstreamId(provider, name),
       ownerId,
       provider,
-      name: body.name.trim(),
+      name,
       enabled: body.enabled !== false,
       sortOrder: Number.isFinite(body.sortOrder) ? Number(body.sortOrder) : 0,
       config: normalizeConfig(provider, body.config),
@@ -506,7 +485,7 @@ upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
       proxyFallbackList: normalizeProxyFallbackList(body.proxyFallbackList ?? []),
       createdAt: now,
       updatedAt: now,
-    }
+    }))
     await getRepo().upstreams.save(upstream)
     await invalidateUpstreamCaches(null, upstream)
     return new Response(JSON.stringify({ upstream: serializeUpstream(upstream) }), {
@@ -514,7 +493,7 @@ upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
       headers: { 'Content-Type': 'application/json' },
     })
   } catch (err) {
-    return jsonError(err instanceof Error ? err.message : String(err))
+    return writeError(err)
   }
 })
 
@@ -533,45 +512,27 @@ upstreamsRouter.patch('/:id', zValidator('json', upstreamBody), async (c) => {
     if (existing.provider === 'copilot' && body.config !== undefined) {
       return jsonError('config of copilot upstreams is managed by device-flow auth')
     }
-    // Shallow-merge config keys onto existing, then re-normalise. The literal
-    // '***' value means "keep current" — the UI uses this sentinel when the
-    // admin left the password field blank, since list/get redact secrets.
-    let mergedConfig: Record<string, unknown> | undefined
-    if (body.config !== undefined) {
-      const incoming = body.config as Record<string, unknown>
-      const merged: Record<string, unknown> = { ...existing.config }
-      for (const [k, v] of Object.entries(incoming)) {
-        if (v === '***') continue
-        merged[k] = v
+    if ((existing.provider === 'codex' || existing.provider === 'claude-code') && body.config !== undefined) {
+      return jsonError('credential-provider config is managed by authorization')
+    }
+    const next = await getRepo().upstreams.patchMetadata(existing, current => input(() => {
+      const name = typeof body.name === 'string' ? body.name.trim() : current.name
+      if (!name) throw new Error('name required')
+      return {
+        ownerId: admin && typeof body.ownerId === 'string' && body.ownerId ? body.ownerId : current.ownerId,
+        name,
+        enabled: body.enabled ?? current.enabled,
+        sortOrder: body.sortOrder ?? current.sortOrder,
+        config: body.config === undefined ? current.config : normalizeConfig(existing.provider, mergeEditableConfig(current.config, body.config)),
+        flagOverrides: body.flagOverrides === undefined ? current.flagOverrides : normalizeFlagOverrides(body.flagOverrides),
+        disabledPublicModelIds: body.disabledPublicModelIds === undefined ? current.disabledPublicModelIds : normalizeDisabledPublicModelIds(body.disabledPublicModelIds),
+        proxyFallbackList: body.proxyFallbackList === undefined ? current.proxyFallbackList : normalizeProxyFallbackList(body.proxyFallbackList),
       }
-      mergedConfig = merged
-    }
-    const nextOwnerId = admin && typeof body.ownerId === 'string' && body.ownerId ? body.ownerId : existing.ownerId
-    const next: UpstreamRecord<unknown> = {
-      ...existing,
-      ownerId: nextOwnerId,
-      name: typeof body.name === 'string' ? body.name.trim() : existing.name,
-      enabled: typeof body.enabled === 'boolean' ? body.enabled : existing.enabled,
-      sortOrder: Number.isFinite(body.sortOrder) ? Number(body.sortOrder) : existing.sortOrder,
-      config: mergedConfig !== undefined ? normalizeConfig(existing.provider, mergedConfig) : existing.config,
-      flagOverrides:
-        body.flagOverrides !== undefined ? normalizeFlagOverrides(body.flagOverrides) : existing.flagOverrides,
-      disabledPublicModelIds:
-        body.disabledPublicModelIds === undefined
-          ? existing.disabledPublicModelIds
-          : normalizeDisabledPublicModelIds(body.disabledPublicModelIds),
-      proxyFallbackList:
-        body.proxyFallbackList === undefined
-          ? existing.proxyFallbackList
-          : normalizeProxyFallbackList(body.proxyFallbackList),
-      updatedAt: new Date().toISOString(),
-    }
-    if (!next.name) return jsonError('name required')
-    await getRepo().upstreams.save(next)
+    }))
     await invalidateUpstreamCaches(existing, next)
     return c.json({ upstream: serializeUpstream(next) })
   } catch (err) {
-    return jsonError(err instanceof Error ? err.message : String(err))
+    return writeError(err)
   }
 })
 

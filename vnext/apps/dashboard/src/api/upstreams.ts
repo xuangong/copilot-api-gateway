@@ -67,8 +67,8 @@ export interface UpstreamPatch {
   proxyFallbackList?: ProxyFallbackEntry[]
   config?: Record<string, unknown>
 }
-export function patchUpstream(id: string, body: UpstreamPatch): Promise<UpstreamRecord> {
-  return api<UpstreamRecord>(`/api/upstreams/${encodeURIComponent(id)}`, { method: "PATCH", body })
+export function patchUpstream(id: string, body: UpstreamPatch): Promise<{ upstream: UpstreamRecord }> {
+  return api<{ upstream: UpstreamRecord }>(`/api/upstreams/${encodeURIComponent(id)}`, { method: "PATCH", body })
 }
 
 export interface CreateUpstreamBody {
@@ -80,8 +80,8 @@ export interface CreateUpstreamBody {
   proxyFallbackList?: ProxyFallbackEntry[]
   ownerId?: string
 }
-export function createUpstream(body: CreateUpstreamBody): Promise<UpstreamRecord> {
-  return api<UpstreamRecord>("/api/upstreams", { method: "POST", body })
+export function createUpstream(body: CreateUpstreamBody): Promise<{ upstream: UpstreamRecord }> {
+  return api<{ upstream: UpstreamRecord }>("/api/upstreams", { method: "POST", body })
 }
 
 export function deleteUpstream(id: string): Promise<{ ok: true }> {

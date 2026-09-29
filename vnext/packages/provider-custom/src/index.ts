@@ -16,6 +16,7 @@ export {
   CUSTOM_AUTH_STYLES,
   CUSTOM_PATH_OVERRIDE_KEYS,
   normalizeCustomConfig,
+  parseCustomChatMetadata,
   validateUpstreamPath,
 } from './config'
 export { customProviderPlugin } from './plugin'

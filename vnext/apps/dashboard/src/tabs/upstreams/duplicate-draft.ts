@@ -70,7 +70,9 @@ function clonePortableValue(value: unknown): unknown {
 }
 
 export function createPortableUpstreamDraft(source: UpstreamRecord, name: string): PortableUpstreamDraft {
-  if (source.provider === "copilot") throw new Error("Copilot OAuth upstreams cannot be duplicated")
+  if (source.provider !== "custom" && source.provider !== "azure" && source.provider !== "sdf") {
+    throw new Error("OAuth upstreams cannot be duplicated")
+  }
   const config: Record<string, unknown> = {}
   for (const key of PORTABLE_CONFIG_FIELDS[source.provider]) {
     const copied = clonePortableValue(source.config[key])

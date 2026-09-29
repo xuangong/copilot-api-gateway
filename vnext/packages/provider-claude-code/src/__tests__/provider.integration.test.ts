@@ -32,15 +32,15 @@ const ANTHROPIC_MODELS = 'https://api.anthropic.com/v1/models?limit=100'
 // ─── In-memory UpstreamRepo ────────────────────────────────────────────────
 
 class InMemoryUpstreamRepo implements UpstreamRepo {
-  private rows = new Map<string, UpstreamRecord<unknown>>()
+  private rows = new Map<string, UpstreamRecord<unknown> & { rowIncarnation: string }>()
 
   put(record: UpstreamRecord<unknown>): void {
-    this.rows.set(record.id, structuredClone(record))
+    this.rows.set(record.id, { ...structuredClone(record), rowIncarnation: crypto.randomUUID() })
   }
 
-  async getById<TState = unknown>(id: string): Promise<UpstreamRecord<TState> | null> {
+  async getById<TState = unknown>(id: string): Promise<(UpstreamRecord<TState> & { rowIncarnation: string }) | null> {
     const row = this.rows.get(id)
-    return row ? (structuredClone(row) as UpstreamRecord<TState>) : null
+    return row ? (structuredClone(row) as UpstreamRecord<TState> & { rowIncarnation: string }) : null
   }
 
   async saveState<TState>(id: string, updater: (current: TState) => TState): Promise<void> {

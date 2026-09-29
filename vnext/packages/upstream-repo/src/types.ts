@@ -1,5 +1,14 @@
 import type { UpstreamRecord } from '@vibe-core/upstream'
 
+export type StoredUpstreamRecord<TState = unknown, TProvider extends string = string> =
+  UpstreamRecord<TProvider, TState> & { rowIncarnation: string }
+
+export interface UpstreamWriteTarget {
+  rowIncarnation: string
+  ownerId?: string
+  provider: string
+}
+
 /**
  * Provider-facing upstream repo surface.
  *
@@ -19,12 +28,13 @@ export interface UpstreamRepo {
    * they must narrow (usually via a provider-side assertion). Typed callers
    * pin the shape, e.g. `getById<CodexUpstreamState>(id)`.
    */
-  getById<TState = unknown>(id: string): Promise<UpstreamRecord<string, TState> | null>
+  getById<TState = unknown>(id: string): Promise<StoredUpstreamRecord<TState> | null>
   /**
    * Atomic read-modify-write of the `state` column. The updater sees the
-   * current state coerced to `TState`; the return value replaces it. Backends
-   * implement this in a single transaction so concurrent rotations don't
-   * clobber each other. Throws `UpstreamGoneError` if no row exists for `id`.
+   * current state coerced to `TState`; the return value replaces it. The pure,
+   * synchronous updater may replay boundedly when another connection wins CAS.
+   * Throws typed gone, replaced-target or contention errors. An optional target
+   * fences a preceding authorized read across a multi-step operation.
    */
-  saveState<TState>(id: string, updater: (current: TState) => TState): Promise<void>
+  saveState<TState>(id: string, updater: (current: TState) => TState, target?: UpstreamWriteTarget): Promise<void>
 }

@@ -1,7 +1,7 @@
 import { upstreamConfiguration } from "./upstream-configuration.ts"
 import { cachedProxyHealth } from "./proxy-health-cache.ts"
 import { waitUntil } from '@vibe-core/platform'
-import type { Repo, ApiKey, User, UserSession, UpstreamRecord } from './types.ts'
+import type { Repo, ApiKey, User, UserSession, StoredUpstreamRecord as UpstreamRecord } from './types.ts'
 import type { UpstreamId } from './branded-ids.ts'
 import type { ProxyRecord } from '@vibe-core/proxy-repo'
 
@@ -273,9 +273,9 @@ export class ConfigurationCache {
  * The DB revision also catches writes made by other processes/direct SQL. */
 export function observeConfigurationWrites(repo: Repo, changed: () => void, stateChanged?: (id: string) => Promise<unknown>): void {
   const saveState = repo.upstreams.saveState.bind(repo.upstreams)
-  repo.upstreams.saveState = async (id, updater) => {
+  repo.upstreams.saveState = async (id, updater, target) => {
     try {
-      await saveState(id, updater)
+      await saveState(id, updater, target)
       if (stateChanged) await stateChanged(id)
       else changed()
     } catch (error) { changed(); throw error }
@@ -284,7 +284,7 @@ export function observeConfigurationWrites(repo: Repo, changed: () => void, stat
     apiKeys: ['save', 'patchModelMappings', 'delete', 'deleteAll', 'ensureAgentHostKey', 'revokeAgentHostKey'],
     users: ['create', 'update', 'delete'],
     sessions: ['create', 'deleteByUserId', 'deleteExpired'],
-    upstreams: ['save', 'delete', 'deleteAll'],
+    upstreams: ['save', 'createIfAbsent', 'patchMetadata', 'delete', 'deleteAll'],
     proxies: ['insert', 'save', 'patch', 'delete', 'deleteAll'],
   } as const
   for (const [group, names] of Object.entries(methods)) {

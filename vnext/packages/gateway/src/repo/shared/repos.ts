@@ -15,6 +15,8 @@ import type {
   GitHubRepo,
   UpstreamRecord,
   UpstreamRepo,
+  StoredUpstreamRecord,
+  UpstreamMetadata,
   InviteCode,
   InviteCodeRepo,
   KeyAssignment,
@@ -48,12 +50,13 @@ import { latencyBucketForMs } from "../../repo/performance-histogram.ts"
 import type { SqlExecutor } from "./executor"
 import { BILLING_DIMENSIONS, unitPriceForDimension } from "@vibe-llm/protocols/common"
 import type { BillingDimension, ModelPricing } from "@vibe-llm/protocols/common"
-import { UpstreamGoneError } from "@vibe-core/upstream-repo"
+import { UpstreamGoneError, UpstreamReplacedError, UpstreamContentionError } from "@vibe-core/upstream-repo"
+import type { UpstreamWriteTarget } from "@vibe-core/upstream-repo"
 import type { BackoffRow, ProxyBackoffRepo, ProxyFallbackEntry, ProxyRecord, ProxyRepo } from "@vibe-core/proxy-repo"
 
 const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_month, quota_tokens_per_month, quota_cost_per_month, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref, web_search_jina_key, web_search_jina_ref, web_search_passthrough_upstream, web_search_passthrough_model, dump_retention_seconds, model_mappings_enabled, model_mappings, responses_retention_seconds"
 const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at, github_host, source"
-const UPSTREAM_COLS = "id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, state_json, proxy_fallback_list_json, created_at, updated_at"
+const UPSTREAM_COLS = "row_incarnation, id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, state_json, proxy_fallback_list_json, created_at, updated_at"
 const USAGE_DIM_COLS = "key_id, incoming_model, model, upstream, model_key, client, hour, dimension, tokens, unit_price"
 const USAGE_REQ_COLS = "key_id, incoming_model, model, upstream, model_key, client, hour, requests"
 const LATENCY_COLS = "key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss"
@@ -197,8 +200,9 @@ function parseState(raw: unknown): unknown {
   }
 }
 
-function toUpstreamRecord(row: any): UpstreamRecord<unknown> {
+function toUpstreamRecord(row: UpstreamSqlRow): StoredUpstreamRecord {
   return {
+    rowIncarnation: row.row_incarnation,
     id: row.id,
     ownerId: row.owner_id || undefined,
     provider: row.provider,
@@ -513,10 +517,42 @@ class SharedGitHubRepo implements GitHubRepo {
   }
 }
 
+const UPSTREAM_WRITE_ATTEMPTS = 8
+
+interface UpstreamSqlRow {
+  id: string
+  row_incarnation: string
+  owner_id: string | null
+  provider: UpstreamRecord<unknown>["provider"]
+  name: string
+  enabled: number
+  sort_order: number
+  config_json: string
+  flag_overrides: string
+  disabled_public_model_ids: string
+  state_json: string | null
+  proxy_fallback_list_json: string
+  created_at: string
+  updated_at: string
+}
+
+function assertSynchronous(value: unknown): void {
+  if (value && typeof value === "object" && "then" in value && typeof value.then === "function") {
+    throw new TypeError("Upstream updater must be synchronous")
+  }
+}
+
+function serializeState(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  const json = JSON.stringify(value)
+  if (json === undefined) throw new TypeError("Upstream state must be JSON serializable")
+  return json
+}
+
 class SharedUpstreamRepo implements UpstreamRepo {
   constructor(private x: SqlExecutor) {}
 
-  async list(opts: { ownerId?: UserId; includeDisabled?: boolean } = {}): Promise<UpstreamRecord<unknown>[]> {
+  async list(opts: { ownerId?: UserId; includeDisabled?: boolean } = {}): Promise<StoredUpstreamRecord[]> {
     const where: string[] = []
     const binds: unknown[] = []
     if (opts.ownerId !== undefined) {
@@ -528,31 +564,67 @@ class SharedUpstreamRepo implements UpstreamRepo {
     return (await this.x.all(sql, binds)).map(toUpstreamRecord)
   }
 
-  async getById<TState = unknown>(id: UpstreamId): Promise<UpstreamRecord<TState> | null> {
+  async getById<TState = unknown>(id: UpstreamId): Promise<StoredUpstreamRecord<TState> | null> {
     const row = await this.x.first(`SELECT ${UPSTREAM_COLS} FROM upstreams WHERE id = ?`, [id])
-    return row ? (toUpstreamRecord(row) as UpstreamRecord<TState>) : null
+    return row ? (toUpstreamRecord(row) as StoredUpstreamRecord<TState>) : null
+  }
+
+  private insertBinds(upstream: UpstreamRecord<unknown>): unknown[] {
+    return [upstream.id, upstream.ownerId ?? "", upstream.provider, upstream.name,
+      upstream.enabled ? 1 : 0, upstream.sortOrder, JSON.stringify(upstream.config ?? {}),
+      JSON.stringify(upstream.flagOverrides ?? {}), JSON.stringify(upstream.disabledPublicModelIds ?? []),
+      serializeState(upstream.state), JSON.stringify(upstream.proxyFallbackList ?? []),
+      upstream.createdAt, upstream.updatedAt]
   }
 
   async save(upstream: UpstreamRecord<unknown>): Promise<void> {
     await this.x.run(
-      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET owner_id = excluded.owner_id, provider = excluded.provider, name = excluded.name, enabled = excluded.enabled, sort_order = excluded.sort_order, config_json = excluded.config_json, flag_overrides = excluded.flag_overrides, disabled_public_model_ids = excluded.disabled_public_model_ids, state_json = excluded.state_json, proxy_fallback_list_json = excluded.proxy_fallback_list_json, updated_at = excluded.updated_at`,
-      [
-        upstream.id,
-        upstream.ownerId ?? "",
-        upstream.provider,
-        upstream.name,
-        upstream.enabled ? 1 : 0,
-        upstream.sortOrder,
-        JSON.stringify(upstream.config ?? {}),
-        JSON.stringify(upstream.flagOverrides ?? {}),
-        JSON.stringify(upstream.disabledPublicModelIds ?? []),
-        upstream.state === null || upstream.state === undefined ? null : JSON.stringify(upstream.state),
-        JSON.stringify(upstream.proxyFallbackList ?? []),
-        upstream.createdAt,
-        upstream.updatedAt,
-      ],
+      this.insertBinds(upstream),
     )
+  }
+
+  async createIfAbsent(upstream: UpstreamRecord<unknown>): Promise<StoredUpstreamRecord | null> {
+    const row = await this.x.first<UpstreamSqlRow>(
+      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO NOTHING RETURNING ${UPSTREAM_COLS}`,
+      this.insertBinds(upstream),
+    )
+    return row ? toUpstreamRecord(row) : null
+  }
+
+  async patchMetadata(target: UpstreamWriteTarget & { id: string }, updater: (current: UpstreamMetadata) => UpstreamMetadata): Promise<StoredUpstreamRecord> {
+    for (let attempt = 0; attempt < UPSTREAM_WRITE_ATTEMPTS; attempt++) {
+      const row = await this.readWriteTarget(target.id, target)
+      const current = toUpstreamRecord(row)
+      const next = updater({ ownerId: current.ownerId, name: current.name, enabled: current.enabled,
+        sortOrder: current.sortOrder, config: current.config, flagOverrides: current.flagOverrides,
+        disabledPublicModelIds: current.disabledPublicModelIds, proxyFallbackList: current.proxyFallbackList })
+      assertSynchronous(next)
+      const saved = await this.x.first<UpstreamSqlRow>(
+        `UPDATE upstreams SET owner_id = ?, name = ?, enabled = ?, sort_order = ?, config_json = ?, flag_overrides = ?, disabled_public_model_ids = ?, proxy_fallback_list_json = ?, updated_at = ?
+         WHERE id = ? AND row_incarnation = ? AND owner_id IS ? AND provider = ?
+         AND name IS ? AND enabled IS ? AND sort_order IS ? AND config_json IS ? AND flag_overrides IS ? AND disabled_public_model_ids IS ? AND proxy_fallback_list_json IS ?
+         RETURNING ${UPSTREAM_COLS}`,
+        [next.ownerId ?? "", next.name, next.enabled ? 1 : 0, next.sortOrder, JSON.stringify(next.config),
+          JSON.stringify(next.flagOverrides), JSON.stringify(next.disabledPublicModelIds), JSON.stringify(next.proxyFallbackList),
+          new Date().toISOString(), target.id, target.rowIncarnation, row.owner_id, row.provider,
+          row.name, row.enabled, row.sort_order, row.config_json, row.flag_overrides, row.disabled_public_model_ids, row.proxy_fallback_list_json],
+      )
+      if (saved) return toUpstreamRecord(saved)
+    }
+    await this.readWriteTarget(target.id, target)
+    throw new UpstreamContentionError(target.id)
+  }
+
+  private async readWriteTarget(id: string, target?: UpstreamWriteTarget): Promise<UpstreamSqlRow> {
+    const row = await this.x.first<UpstreamSqlRow>(`SELECT ${UPSTREAM_COLS} FROM upstreams WHERE id = ?`, [id])
+    if (!row) throw new UpstreamGoneError(id)
+    if (target && (row.row_incarnation !== target.rowIncarnation || (row.owner_id || undefined) !== (target.ownerId || undefined) || row.provider !== target.provider)) {
+      throw new UpstreamReplacedError(id)
+    }
+    return row
   }
 
   async delete(id: UpstreamId): Promise<boolean> {
@@ -564,22 +636,28 @@ class SharedUpstreamRepo implements UpstreamRepo {
     await this.x.run("DELETE FROM upstreams", [])
   }
 
-  async saveState<TState>(id: UpstreamId, updater: (current: TState) => TState): Promise<void> {
-    // Serial read-modify-write: SqlExecutor has no tx primitive, so concurrent
-    // rotations are last-write-wins. Codex OAuth rotation is bounded by a single
-    // refresh call in-flight per upstream, so contention is negligible.
-    const row = await this.x.first<{ state_json: string | null }>(
-      "SELECT state_json FROM upstreams WHERE id = ?",
-      [id],
-    )
-    if (!row) throw new UpstreamGoneError(id)
-    const current = parseState(row.state_json) as TState
-    const next = updater(current)
-    const nextJson = next === null || next === undefined ? null : JSON.stringify(next)
-    await this.x.run(
-      "UPDATE upstreams SET state_json = ?, updated_at = ? WHERE id = ?",
-      [nextJson, new Date().toISOString(), id],
-    )
+  async saveState<TState>(id: UpstreamId, updater: (current: TState) => TState, expected?: UpstreamWriteTarget): Promise<void> {
+    let row = await this.readWriteTarget(id, expected)
+    const target = expected ?? { rowIncarnation: row.row_incarnation, ownerId: row.owner_id || undefined, provider: row.provider }
+    for (let attempt = 0; attempt < UPSTREAM_WRITE_ATTEMPTS; attempt++) {
+      const next = updater(parseState(row.state_json) as TState)
+      assertSynchronous(next)
+      const nextJson = serializeState(next)
+      const binds = [id, target.rowIncarnation, row.owner_id, row.provider, row.state_json]
+      // Even a no-op must validate its target after the updater: deletion or
+      // a winning credential write may have invalidated the initial read.
+      const matched = nextJson === row.state_json
+        ? await this.x.first<{ id: string }>("SELECT id FROM upstreams WHERE id = ? AND row_incarnation = ? AND owner_id IS ? AND provider = ? AND state_json IS ?", binds)
+        : await this.x.first<{ id: string }>(
+          "UPDATE upstreams SET state_json = ?, updated_at = ? WHERE id = ? AND row_incarnation = ? AND owner_id IS ? AND provider = ? AND state_json IS ? RETURNING id",
+          [nextJson, new Date().toISOString(), ...binds],
+        )
+      // RETURNING proves this row matched even when configuration triggers
+      // make the driver's affected-row count exceed one.
+      if (matched) return
+      row = await this.readWriteTarget(id, target)
+    }
+    throw new UpstreamContentionError(id)
   }
 }
 

@@ -101,6 +101,9 @@ test("Azure and SDF drafts keep portable settings but no credential, identity, o
 
 test("Copilot OAuth cannot become a duplicate draft, and redaction markers are not credentials", () => {
   expect(() => createPortableUpstreamDraft(source("copilot", { githubToken: "***" }), "copy")).toThrow()
+  for (const provider of ["codex", "claude-code"] as const) {
+    expect(() => createPortableUpstreamDraft(source(provider, { accounts: [] }), "copy")).toThrow("cannot be duplicated")
+  }
   expect(isFreshCredential("***")).toBe(false)
   expect(isFreshCredential("  ***  ")).toBe(false)
   expect(isFreshCredential("  ")).toBe(false)

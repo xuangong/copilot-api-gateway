@@ -20,8 +20,8 @@ export interface ProxyFallbackEntry {
 
 export interface UpstreamRecord {
   id: string
-  ownerId: string
-  provider: "copilot" | "azure" | "custom" | "sdf"
+  ownerId?: string
+  provider: "copilot" | "azure" | "custom" | "sdf" | "codex" | "claude-code"
   name: string
   enabled: boolean
   sortOrder: number

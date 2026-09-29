@@ -2,10 +2,12 @@
  * Control-plane upstreams router tests — Week 5a-impl.
  *
  * Covers the 8 endpoints ported from old src/routes/control-plane.ts.
- * Uses an in-memory Repo + a pre-middleware to inject `c.set('auth', ...)`.
+ * Uses real SQLite upstream storage with a lightweight GitHub fixture and a pre-middleware to inject `c.set('auth', ...)`.
  */
-import { test, expect, beforeEach } from 'bun:test'
+import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
+import { Database } from 'bun:sqlite'
+import { BunSqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
 import { initRepo } from '../src/repo/index.ts'
 import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord, GitHubAccount } from '../src/repo/types.ts'
@@ -17,25 +19,16 @@ import {
 import { listUpstreamModels } from '../src/data-plane/providers/registry.ts'
 import { initCache } from '../src/data-plane/cache/index.ts'
 import { MemoryCache } from '@vibe-core/cache'
+import type { SdfProviderConfig } from '@vibe-llm/provider-sdf'
 
 function inMemoryRepo() {
-  const upstreams = new Map<string, UpstreamRecord>()
+  const db = new Database(':memory:')
+  const upstreams = new BunSqliteRepo(db).upstreams
   const deletedGithub: Array<{ userId: number; ownerId?: string }> = []
   const ghAccounts = new Map<string, GitHubAccount>()
 
   const repo = {
-    upstreams: {
-      list: async (opts?: { ownerId?: string; includeDisabled?: boolean }) => {
-        let arr = [...upstreams.values()]
-        if (opts?.ownerId !== undefined) arr = arr.filter((u) => u.ownerId === opts.ownerId)
-        if (!opts?.includeDisabled) arr = arr.filter((u) => u.enabled)
-        return arr
-      },
-      getById: async (id: string) => upstreams.get(id) ?? null,
-      save: async (u: UpstreamRecord) => { upstreams.set(u.id, u) },
-      delete: async (id: string) => upstreams.delete(id),
-      deleteAll: async () => { upstreams.clear() },
-    },
+    upstreams,
     github: {
       listAccounts: async () => [...ghAccounts.values()],
       listAccountsByOwner: async () => [],
@@ -55,8 +48,10 @@ function inMemoryRepo() {
     },
   } as unknown as Repo
 
-  return { repo, upstreams, deletedGithub }
+  return { repo, db, deletedGithub }
 }
+
+afterEach(() => { store.db.close() })
 
 function buildApp(auth: AuthCtx) {
   const app = new Hono()
@@ -344,7 +339,7 @@ test('DELETE copilot upstream cascades to github_accounts', async () => {
   const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${u.id}`, { method: 'DELETE' })
   expect(res.status).toBe(200)
   expect(store.deletedGithub).toEqual([{ userId: 42, ownerId: '' }])
-  expect(store.upstreams.has(u.id)).toBe(false)
+  expect(await store.repo.upstreams.getById(u.id)).toBeNull()
 })
 
 test('POST /api/upstreams/:id/test missing → 404', async () => {
@@ -575,30 +570,32 @@ async function createSdf(config: Record<string, unknown>) {
   })
 }
 
-const BASE_SDF = { name: 'img', substrateToken: 'tok' }
+const BASE_SDF = { name: 'img', substrateToken: 'tok' } satisfies SdfProviderConfig
 
 test('POST /api/upstreams accepts a full sdf tuning block', async () => {
-  const res = await createSdf({
+  const config = {
     ...BASE_SDF,
     taxonomy: { experience: 'BizChat', agent: 'Societas', inferenceStep: 'GenerateResponse', trafficType: 'Production' },
     cos: { serviceTier: 'default' },
     passport: { enabled: true, apiBase: 'https://sdf.passport.microsoft.net' },
-  })
+  } satisfies SdfProviderConfig
+  const res = await createSdf(config)
   expect(res.status).toBe(201)
-  const saved = [...store.upstreams.values()][0]
-  const cfg = saved?.config as any
-  expect(cfg.taxonomy.agent).toBe('Societas')
-  expect(cfg.cos.serviceTier).toBe('default')
-  expect(cfg.passport.apiBase).toBe('https://sdf.passport.microsoft.net')
+  const saved = (await store.repo.upstreams.list({ includeDisabled: true }))[0]
+  const cfg = saved?.config
+  expect(cfg?.taxonomy).toEqual(config.taxonomy)
+  expect(cfg?.cos).toEqual(config.cos)
+  expect(cfg?.passport).toEqual(config.passport)
 })
 
 test('POST /api/upstreams omits empty sdf sub-objects rather than persisting {}', async () => {
   const res = await createSdf({ ...BASE_SDF, taxonomy: {}, cos: {}, passport: {} })
   expect(res.status).toBe(201)
-  const cfg = [...store.upstreams.values()][0]?.config as any
-  expect(cfg.taxonomy).toBeUndefined()
-  expect(cfg.cos).toBeUndefined()
-  expect(cfg.passport).toBeUndefined()
+  const cfg = (await store.repo.upstreams.list({ includeDisabled: true }))[0]?.config
+  expect(cfg).toBeDefined()
+  expect(cfg?.taxonomy).toBeUndefined()
+  expect(cfg?.cos).toBeUndefined()
+  expect(cfg?.passport).toBeUndefined()
 })
 
 for (const bad of [
@@ -610,7 +607,7 @@ for (const bad of [
   test(`POST /api/upstreams rejects an invalid sdf ${bad.label}`, async () => {
     const res = await createSdf({ ...BASE_SDF, ...bad.config })
     expect(res.status).toBe(400)
-    expect(store.upstreams.size).toBe(0)
+    expect(await store.repo.upstreams.list({ includeDisabled: true })).toHaveLength(0)
   })
 }
 

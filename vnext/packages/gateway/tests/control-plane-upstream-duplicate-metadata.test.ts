@@ -75,7 +75,7 @@ test('valid custom budget metadata and pricing survive POST, GET, duplicate draf
   expect((await platform.repo.upstreams.getById(duplicate?.id ?? ''))?.config).toMatchObject({ apiKey: 'copy-secret' })
 })
 
-test('only numeric custom model budgets pass through the list redaction exception', async () => {
+test('public config allowlist preserves numeric model budgets and omits unknown fields', async () => {
   const created = await post({
     provider: 'custom',
     ownerId: 'owner-1',
@@ -97,6 +97,7 @@ test('only numeric custom model budgets pass through the list redaction exceptio
   })
   const [redacted] = await list()
   if (!redacted) throw new Error('Expected redacted upstream')
-  expect(redacted.config.models).toEqual([{ id: 'm', chat: { reasoning: { budget_tokens: '***' } } }])
-  expect(redacted.config.other).toEqual({ budget_tokens: '***', 'X-API-Key': '***' })
+  expect(redacted.config.models).toEqual([{ id: 'm', chat: { reasoning: { budget_tokens: { min: 1 } } } }])
+  expect(redacted.config.other).toBeUndefined()
+  expect(JSON.stringify(redacted)).not.toContain('hidden')
 })

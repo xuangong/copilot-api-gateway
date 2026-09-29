@@ -10,3 +10,18 @@ export class UpstreamGoneError extends Error {
     this.name = 'UpstreamGoneError'
   }
 }
+
+/** A stale operation must never cross a row replacement or ownership boundary. */
+export class UpstreamReplacedError extends Error {
+  constructor(readonly upstreamId: string) {
+    super('Upstream write target has changed')
+    this.name = 'UpstreamReplacedError'
+  }
+}
+
+export class UpstreamContentionError extends Error {
+  constructor(readonly upstreamId: string) {
+    super('Upstream changed too frequently to complete the write')
+    this.name = 'UpstreamContentionError'
+  }
+}

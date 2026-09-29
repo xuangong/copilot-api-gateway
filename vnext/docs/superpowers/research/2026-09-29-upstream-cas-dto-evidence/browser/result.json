@@ -1,0 +1,37 @@
+{
+  "passed": true,
+  "sourceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext",
+  "providers": [
+    {
+      "provider": "codex",
+      "name": "C08 codex edited",
+      "statePreserved": true,
+      "configPreserved": true
+    },
+    {
+      "provider": "claude-code",
+      "name": "C08 claude-code edited",
+      "statePreserved": true,
+      "configPreserved": true
+    }
+  ],
+  "writes": [
+    {
+      "method": "PATCH",
+      "body": {
+        "name": "C08 codex edited",
+        "flagOverrides": {},
+        "disabledPublicModelIds": []
+      }
+    },
+    {
+      "method": "PATCH",
+      "body": {
+        "name": "C08 claude-code edited",
+        "flagOverrides": {},
+        "disabledPublicModelIds": []
+      }
+    }
+  ],
+  "pageErrors": []
+}

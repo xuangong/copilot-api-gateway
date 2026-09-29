@@ -1,9 +1,10 @@
 import type { UsageOverview, UsageOverviewQuery } from "./usage-overview"
 import type { PerformanceMetricsRepo } from "./performance-metrics"
-import type { BillingDimension, ModelPricing, UpstreamRecord } from "@vibe-llm/protocols/common"
+import type { BillingDimension, ModelPricing, UpstreamRecord, UpstreamKind } from "@vibe-llm/protocols/common"
 import type { ProxyRepo, ProxyBackoffRepo } from "@vibe-core/proxy-repo"
 import type { ApiKeyId, DeviceCodeToken, GitHubAccountId, InviteCodeId, ResponsesItemId, SessionToken, UpstreamId, UserId } from "./branded-ids.ts"
 import type { ApiKeyModelMapping } from '../shared/api-key-model-mappings.ts'
+import type { UpstreamWriteTarget, StoredUpstreamRecord as CoreStoredUpstreamRecord } from '@vibe-core/upstream-repo'
 
 export type { SearchConfig, WebSearchProviderName } from "../shared/web-search-providers.ts"
 export type { ApiKeyModelMapping, ApiKeyRoutingPolicy } from '../shared/api-key-model-mappings.ts'
@@ -174,20 +175,25 @@ export interface GitHubRepo {
   clearActiveIdForUser(ownerId: UserId): Promise<void>
 }
 
+export type StoredUpstreamRecord<TState = unknown> = CoreStoredUpstreamRecord<TState, UpstreamKind>
+export type UpstreamMetadata = Pick<UpstreamRecord<unknown>,
+  'ownerId' | 'name' | 'enabled' | 'sortOrder' | 'config' | 'flagOverrides' | 'disabledPublicModelIds' | 'proxyFallbackList'>
+
 export interface UpstreamRepo {
-  list(opts?: { ownerId?: UserId; includeDisabled?: boolean }): Promise<UpstreamRecord<unknown>[]>
+  list(opts?: { ownerId?: UserId; includeDisabled?: boolean }): Promise<StoredUpstreamRecord[]>
   /** TState defaults to `unknown` — non-typed callers get an `unknown` state
    *  they must narrow themselves (usually via a provider-side assertion).
    *  Typed callers pin the shape, e.g. `getById<CodexUpstreamState>(id)`. */
-  getById<TState = unknown>(id: UpstreamId): Promise<UpstreamRecord<TState> | null>
+  getById<TState = unknown>(id: UpstreamId): Promise<StoredUpstreamRecord<TState> | null>
+  /** Explicit whole-record replacement for creation and administrative import. */
   save(upstream: UpstreamRecord<unknown>): Promise<void>
+  createIfAbsent(upstream: UpstreamRecord<unknown>): Promise<StoredUpstreamRecord | null>
+  /** Pure synchronous updater may replay; never writes the private state column. */
+  patchMetadata(target: UpstreamWriteTarget & { id: string }, updater: (current: UpstreamMetadata) => UpstreamMetadata): Promise<StoredUpstreamRecord>
   delete(id: UpstreamId): Promise<boolean>
   deleteAll(): Promise<void>
-  /** Atomic read-modify-write of the `state` column. The updater sees the
-   *  current state coerced to TState; the return value replaces it. Backends
-   *  implement this in a single transaction so concurrent rotations don't
-   *  clobber each other. Throws if no row exists for `id`. */
-  saveState<TState>(id: UpstreamId, updater: (current: TState) => TState): Promise<void>
+  /** Cross-connection CAS; pure synchronous updater may replay boundedly. */
+  saveState<TState>(id: UpstreamId, updater: (current: TState) => TState, target?: UpstreamWriteTarget): Promise<void>
 }
 
 export interface UsageRepo {

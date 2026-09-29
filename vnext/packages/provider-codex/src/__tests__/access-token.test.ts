@@ -56,6 +56,7 @@ const makeRecord = (state: CodexUpstreamState): UpstreamRecord<CodexUpstreamStat
 // override `getById` per call — needed for the refresh-race recovery
 // scenarios where the second `getById` observes a sibling-rotated row.
 class RecordingRepo implements UpstreamRepo {
+  private readonly rowIncarnation = crypto.randomUUID()
   row: UpstreamRecord<CodexUpstreamState> | null
   writes: Array<{ id: string; nextState: CodexUpstreamState }> = []
   getByIdCalls = 0
@@ -74,15 +75,15 @@ class RecordingRepo implements UpstreamRepo {
     this.saveErrorOnce = err
   }
 
-  async getById<TState = unknown>(id: string): Promise<UpstreamRecord<TState> | null> {
+  async getById<TState = unknown>(id: string): Promise<(UpstreamRecord<TState> & { rowIncarnation: string }) | null> {
     this.getByIdCalls++
     if (id !== UPSTREAM_ID) return null
     if (this.getByIdOverrides.length > 0) {
       const fn = this.getByIdOverrides.shift()!
       const r = await fn()
-      return r ? (structuredClone(r) as UpstreamRecord<TState>) : null
+      return r ? ({ ...structuredClone(r) as UpstreamRecord<TState>, rowIncarnation: this.rowIncarnation }) : null
     }
-    return this.row ? (structuredClone(this.row) as UpstreamRecord<TState>) : null
+    return this.row ? ({ ...structuredClone(this.row) as UpstreamRecord<TState>, rowIncarnation: this.rowIncarnation }) : null
   }
 
   async saveState<TState>(id: string, updater: (current: TState) => TState): Promise<void> {

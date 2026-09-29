@@ -12,10 +12,12 @@
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
+import { Database } from 'bun:sqlite'
+import { BunSqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
 import { initRepo } from '../src/repo/index.ts'
 import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
 import type {
-  GitHubAccount, Repo, UpstreamRecord,
+  GitHubAccount, Repo,
 } from '../src/repo/types.ts'
 import { authRouter, type AuthCtx } from '../src/control-plane/auth/routes.ts'
 import { copilotUpstreamRowId } from '../src/control-plane/lib/github.ts'
@@ -33,7 +35,8 @@ function inMemoryRepo() {
     activeByOwner: new Map(),
     globalActive: { id: null },
   }
-  const upstreams = new Map<string, UpstreamRecord>()
+  const db = new Database(':memory:')
+  const upstreams = new BunSqliteRepo(db).upstreams
 
   function ownerKey(ownerId?: string) {
     return ownerId ?? ''
@@ -91,13 +94,7 @@ function inMemoryRepo() {
         gh.activeByOwner.delete(ownerId)
       },
     },
-    upstreams: {
-      list: async () => [...upstreams.values()],
-      getById: async (id: string) => upstreams.get(id) ?? null,
-      save: async (u: UpstreamRecord) => { upstreams.set(u.id, u) },
-      delete: async (id: string) => upstreams.delete(id),
-      deleteAll: async () => { upstreams.clear() },
-    },
+    upstreams,
     keyAssignments: {
       assign: async () => { }, unassign: async () => { }, listByUser: async () => [],
       listByKey: async () => [], deleteByKey: async () => { }, deleteByUser: async () => { },
@@ -109,7 +106,7 @@ function inMemoryRepo() {
     },
   } as unknown as Repo
 
-  return { repo, gh, upstreams }
+  return { repo, gh, db }
 }
 
 function buildApp(auth?: AuthCtx) {
@@ -147,6 +144,7 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = realFetch
+  store.db.close()
 })
 
 // --- POST /github ---
@@ -244,7 +242,7 @@ test('POST /github/poll complete saves account + mirrors upstream', async () => 
 
   // mirrored into upstreams
   const upId = copilotUpstreamRowId('u1', 42)
-  const up = store.upstreams.get(upId)
+  const up = await store.repo.upstreams.getById(upId)
   expect(up).toBeDefined()
   expect(up?.provider).toBe('copilot')
   expect(up?.name).toBe('octo')
