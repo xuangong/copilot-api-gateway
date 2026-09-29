@@ -1,0 +1,1294 @@
+{
+  "schemaVersion": 1,
+  "stagePurpose": "Accepted D08 legacy capacity evidence with explicit comparator-equivalent ordering exception",
+  "originalSourceSha": "8f39d0d6dacac78c77ecf2704631fbd3cf7fa734",
+  "candidateBaseSha": "cce086c355521ba99bd6aad3429d85b99ec66910",
+  "originalOracleRunDirectory": "original-detail-json-oracle-tBye8f1C",
+  "counts": {
+    "harnessFiles": 10,
+    "originalBaselineConfigs": 16,
+    "originalBaselineResults": 16,
+    "originalOracleParityConfigs": 16,
+    "originalOracleParityResults": 16,
+    "repairedMetricConfigs": 16,
+    "repairedMetricResults": 16,
+    "repairedParityConfigs": 16,
+    "repairedParityResults": 16
+  },
+  "excluded": [
+    "databases",
+    "node_modules",
+    "large sql-events and plans",
+    "host logs",
+    "production credentials"
+  ],
+  "files": [
+    {
+      "path": "harness/fixture.mjs.txt",
+      "sourceRelativeToW": "d08-acceptance/fixture.mjs",
+      "role": "restorable-harness-script",
+      "sha256": "b1c3c578b88b4e2d217e6e39d0929b0045d9c9ac11c2383ee655e622244bb972",
+      "bytes": 9376
+    },
+    {
+      "path": "harness/instrumentation.mjs.txt",
+      "sourceRelativeToW": "d08-acceptance/instrumentation.mjs",
+      "role": "restorable-harness-script",
+      "sha256": "cd9788d69436e5ff73a057518c2a02ba33fa5a5b122a94d9d4b4d6e6a8b3c6be",
+      "bytes": 4953
+    },
+    {
+      "path": "harness/sqlite-host.ts.txt",
+      "sourceRelativeToW": "d08-acceptance/sqlite-host.ts",
+      "role": "restorable-harness-script",
+      "sha256": "a90da2b05b22062f1a334a4bd7975d5e97f6be2c889bd5a79931c2382c0b08d3",
+      "bytes": 3194
+    },
+    {
+      "path": "harness/workerd-host.mjs.txt",
+      "sourceRelativeToW": "d08-acceptance/workerd-host.mjs",
+      "role": "restorable-harness-script",
+      "sha256": "7046ad7d4667d5ac342409dcbe519654230c0fbb567927368afdb2221093e3bc",
+      "bytes": 4383
+    },
+    {
+      "path": "harness/workerd-entry.ts.txt",
+      "sourceRelativeToW": "d08-acceptance/workerd-entry.ts.txt",
+      "role": "restorable-harness-script",
+      "sha256": "4f33f04c776e16f9b496e043b7f11a9168d542309febd7a40ef3d3bb04392418",
+      "bytes": 1689
+    },
+    {
+      "path": "harness/whole-load.ts.txt",
+      "sourceRelativeToW": "d08-acceptance/whole-load.ts",
+      "role": "restorable-harness-script",
+      "sha256": "7c8b39d16d5bddde8d7ba7fd889a718bc9c48335cf1e6f3e5ef52b013c0d027f",
+      "bytes": 12361
+    },
+    {
+      "path": "harness/run-detail-baseline.sh.txt",
+      "sourceRelativeToW": "d08-acceptance/run-detail-baseline.sh",
+      "role": "restorable-harness-script",
+      "sha256": "3d918f4cd2ce726e62b8b3e05d7a68d663ea3c23fe428a066fc2ce7b8e948c75",
+      "bytes": 6355
+    },
+    {
+      "path": "harness/compare-detail-json.py.txt",
+      "sourceRelativeToW": "d08-acceptance/compare-detail-json.py",
+      "role": "restorable-harness-script",
+      "sha256": "94123748280b34a3727d0f1e33cd9c7bff63ded81ce5868437d6eae7e4c4e88e",
+      "bytes": 6188
+    },
+    {
+      "path": "harness/summarize-detail.py.txt",
+      "sourceRelativeToW": "d08-acceptance/summarize-detail.py",
+      "role": "restorable-harness-script",
+      "sha256": "b0a24e7b697cee28fc80e186b4c8a4b4ca07c510854bf2a264b8d54ec09307c9",
+      "bytes": 2351
+    },
+    {
+      "path": "harness/config.example.json.txt",
+      "sourceRelativeToW": "d08-acceptance/config.example.json",
+      "role": "restorable-example-config",
+      "sha256": "aa49548ef72f6d9df66e792e9388d3d3c19c9eeb85c3979cf9371d114f811b28",
+      "bytes": 666
+    },
+    {
+      "path": "runs/sqlite-realistic-baseline/admin-today.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-realistic-baseline/admin-today.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "dd94a4db2f8dd53bb9030d64aca4b5c9ec04b74da059387fda71203a52e7acd3",
+      "bytes": 649
+    },
+    {
+      "path": "runs/sqlite-realistic-baseline/admin-today.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-realistic-baseline/admin-today.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "1cc4f7a52d41cb680c57171579f58b5fda2d929871f8f6fd0843d91dfdfa141e",
+      "bytes": 1570
+    },
+    {
+      "path": "runs/sqlite-realistic-baseline/admin-28d.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-realistic-baseline/admin-28d.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "a554c6dbefb6881ebbfe53fb92b2537cf503573c8d49d27cffcfa94438d64ef7",
+      "bytes": 645
+    },
+    {
+      "path": "runs/sqlite-realistic-baseline/admin-28d.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-realistic-baseline/admin-28d.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "6ed1a3e7c5239f6bb6e89bbdd27f4cbcc24023d86d7afd5e817cf70193ff22f4",
+      "bytes": 1937
+    },
+    {
+      "path": "runs/sqlite-realistic-baseline/viewer-today.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-realistic-baseline/viewer-today.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "54915fac92dd2e26056a9f6b620246f6bb22d268785c827ef6fe97ccae7f1662",
+      "bytes": 652
+    },
+    {
+      "path": "runs/sqlite-realistic-baseline/viewer-today.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-realistic-baseline/viewer-today.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "3569e59c14163b17692a1257b46ac3934ed76937916a621825a5a830ce9cdd62",
+      "bytes": 1571
+    },
+    {
+      "path": "runs/sqlite-realistic-baseline/viewer-28d.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-realistic-baseline/viewer-28d.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "af44f5804a1965f49882a59546bc4f96cdcb0295260f52306c37bf80dcf0b669",
+      "bytes": 648
+    },
+    {
+      "path": "runs/sqlite-realistic-baseline/viewer-28d.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-realistic-baseline/viewer-28d.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "43785342fc503e937d19a4d375c7d02a63afb6e68c6c475e2ab87f9ba8b84a38",
+      "bytes": 1924
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/admin-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/admin-today.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "ec7430b8a245bf8feca9e77a536a7fd4455a3076440a142ded1620f3e9e317fd",
+      "bytes": 833
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/admin-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/admin-today.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "935cbf39ece254ed05e73e0d8fd9aa70acc9da7993ee761cfecaa0ec08071a44",
+      "bytes": 1798
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/admin-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/admin-28d.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "93b744dfd677a5058b597629e1c04bd1fe4445d0364a2c747c12fef5a75a7b49",
+      "bytes": 829
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/admin-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/admin-28d.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "9413f4cb8ba747885f08ce3c7054566dedacf8f2456b888bccc2a76bd16900de",
+      "bytes": 2240
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/viewer-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/viewer-today.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "6f2ae179fae6b97cc27f492b7ad120771c0cf209ba09b0aeb311c22fce976e6f",
+      "bytes": 836
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/viewer-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/viewer-today.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "5167375e3cb4bea8540399b5cee6f699fdfd6d3fc279ffeb43a97cbcc6091335",
+      "bytes": 1776
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/viewer-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/viewer-28d.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "1823244d858d3e71effa82fc9d03d0c5a16146d258b2d887f3ca1c003dedec87",
+      "bytes": 832
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/viewer-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/viewer-28d.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "ed74d8a23ca58b8720c3b9f430c1f0187508358d266975fd9249210b7ed2ea31",
+      "bytes": 2244
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/fixture-manifest.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/fixture-manifest.json",
+      "role": "frozen-original-oracle-host-evidence",
+      "sha256": "ab83e4d7406d756544e68563e8ca085fb4f479802b1967b0fb63e13fa23f0261",
+      "bytes": 769
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/exit-status.txt",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-realistic/exit-status.txt",
+      "role": "frozen-original-oracle-host-evidence",
+      "sha256": "ed990c0ab60ea212b6f821bdc375acff7dc8bf57e5e48a21f1da0886fb8e9212",
+      "bytes": 102
+    },
+    {
+      "path": "runs/sqlite-high-baseline/admin-today.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-high-baseline/admin-today.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "d99904125929ec6cd50886817e1e09903c1d93c736cc7bccf6e7c9025fabedbc",
+      "bytes": 639
+    },
+    {
+      "path": "runs/sqlite-high-baseline/admin-today.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-high-baseline/admin-today.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "402f4d2b70fd673d0b4174b53e4da742699838192371531decca15d29e041858",
+      "bytes": 1568
+    },
+    {
+      "path": "runs/sqlite-high-baseline/admin-28d.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-high-baseline/admin-28d.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "46449cb7992e0c751500723c4ffe556aad385df900dd215eae965c798d9bf3f6",
+      "bytes": 635
+    },
+    {
+      "path": "runs/sqlite-high-baseline/admin-28d.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-high-baseline/admin-28d.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "75720e42ab78c8eb36095e8b225f8874101b8b7e9633152db8cd8432c3bc8d76",
+      "bytes": 1941
+    },
+    {
+      "path": "runs/sqlite-high-baseline/viewer-today.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-high-baseline/viewer-today.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "b2b02f40e424d123f2829ffcdbc0e33612fbb0b897f81c4ea57de7124808a824",
+      "bytes": 642
+    },
+    {
+      "path": "runs/sqlite-high-baseline/viewer-today.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-high-baseline/viewer-today.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "4dff0366d785bf992e5158f9f1b4190f80de7917fbc43f32985336f93d2ef81f",
+      "bytes": 1555
+    },
+    {
+      "path": "runs/sqlite-high-baseline/viewer-28d.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-high-baseline/viewer-28d.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "522c5a7d1b065580b1166e3130620b21052f2fd4f759e91dd379e7d7873859ec",
+      "bytes": 638
+    },
+    {
+      "path": "runs/sqlite-high-baseline/viewer-28d.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/sqlite-high-baseline/viewer-28d.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "e6c67a59ac54e3c7659f4ee669005d05b886af7f1d0c67d02ccd69c9682bf9c9",
+      "bytes": 1939
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-high/admin-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-high/admin-today.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "04ba8dec60df2e77ec0e1d995bf7de63d8010b0a950d90c52185eac79cce9505",
+      "bytes": 823
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-high/admin-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-high/admin-today.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "81d95a2c065b53e894aebdff9621a27e38f2520fe2b91ff2bc7e337fdcef61ac",
+      "bytes": 1785
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-high/admin-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-high/admin-28d.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "759a2115d50367492c31f820f94b9401508200956ec5d4d3175e7347cdc2d164",
+      "bytes": 819
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-high/admin-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-high/admin-28d.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "c74d69dc7462911da76fd9d53f08f227222b16678b9bf17aba7fcdb997c650b1",
+      "bytes": 2252
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-high/viewer-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-high/viewer-today.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "7cb967a9c441cb8bf9b406c0073e4bed027cc36d2dfa31a2258e16f94c286741",
+      "bytes": 826
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-high/viewer-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-high/viewer-today.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "ee890415cd6127e162686b67922b2f137ebc74a847cb55be7a11c0047e07a312",
+      "bytes": 1775
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-high/viewer-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-high/viewer-28d.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "ad17b8c3e49d64cda8c4e8d5f52bba1299846ed507021e79645a9114fa62ffed",
+      "bytes": 822
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-high/viewer-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-high/viewer-28d.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "b098621698a7172f2ea10a15c1def0245735fbc6a880a7ba4b8e2e6f5cac4b5d",
+      "bytes": 2258
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-high/fixture-manifest.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-high/fixture-manifest.json",
+      "role": "frozen-original-oracle-host-evidence",
+      "sha256": "8f23b86d008c951ea9adfb31a288d5d92513e7d7d2b1e61d18bc16527878f539",
+      "bytes": 790
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/sqlite-high/exit-status.txt",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-high/exit-status.txt",
+      "role": "frozen-original-oracle-host-evidence",
+      "sha256": "ed990c0ab60ea212b6f821bdc375acff7dc8bf57e5e48a21f1da0886fb8e9212",
+      "bytes": 102
+    },
+    {
+      "path": "runs/workerd-realistic-baseline/admin-today.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-realistic-baseline/admin-today.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "0cef63511f50e432dfbfd417ce2003e04e9881704ea63af0962538144c17dc9e",
+      "bytes": 650
+    },
+    {
+      "path": "runs/workerd-realistic-baseline/admin-today.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-realistic-baseline/admin-today.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "dce72804dd06b03da4680a34599ca0404359a05485a50241dd1c950d2b32b026",
+      "bytes": 1571
+    },
+    {
+      "path": "runs/workerd-realistic-baseline/admin-28d.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-realistic-baseline/admin-28d.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "15ec63ccce43f0a90141b6f95fa247282634ef5f1b27cb9b66e5744e32379ca3",
+      "bytes": 646
+    },
+    {
+      "path": "runs/workerd-realistic-baseline/admin-28d.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-realistic-baseline/admin-28d.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "409ac922176035bd5ff6401ee683135c0964a178a79155732a08358ba9dba89a",
+      "bytes": 1926
+    },
+    {
+      "path": "runs/workerd-realistic-baseline/viewer-today.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-realistic-baseline/viewer-today.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "e726a36949a586509b96fd10c64994efcc95f601d16e3b2452ac330045d960c8",
+      "bytes": 653
+    },
+    {
+      "path": "runs/workerd-realistic-baseline/viewer-today.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-realistic-baseline/viewer-today.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "3c58c8895beb25d871326d2efba5a6a94972a29edc53d3597a066607765d8da7",
+      "bytes": 1555
+    },
+    {
+      "path": "runs/workerd-realistic-baseline/viewer-28d.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-realistic-baseline/viewer-28d.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "734e0ea2df1bf263d2af13d995040e0cf92a72e805a092f2c0cc927c3548bf6b",
+      "bytes": 649
+    },
+    {
+      "path": "runs/workerd-realistic-baseline/viewer-28d.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-realistic-baseline/viewer-28d.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "aa67f2254fdd0fdcb1523ff5abbf7cc1a8d0199ac248324d40f60c00b54dd671",
+      "bytes": 1923
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/admin-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/admin-today.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "eab418acc8aacc1cec85f1c5cd503739b7786879d486100645061497810650dc",
+      "bytes": 834
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/admin-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/admin-today.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "6752ea2bc55b92ad815310791a8bcf61c85e9b41a088368156876c66ade52cc3",
+      "bytes": 1778
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/admin-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/admin-28d.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "db1f6e40f5086533476ee4589cf99a1e0f4a9c0717200a98bb8ff80d86104cd3",
+      "bytes": 830
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/admin-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/admin-28d.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "2860a5f1991a83c7fbcbe6817db6a582ff30f8d7c6070aaf0af221cc16d83a62",
+      "bytes": 2229
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/viewer-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/viewer-today.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "290ce033ff7df8278e314a5dc5cabb638e8bb99d4cf9f00d8f37c8196f4b8614",
+      "bytes": 837
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/viewer-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/viewer-today.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "4615063b82eceba902e2fd86cc206b22a82a09eaec8c3d19c59cb7a89080ca94",
+      "bytes": 1763
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/viewer-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/viewer-28d.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "64c3319ac579aec36006a0ab0404f604e32d345c155a37fdce3a1acbea8ada98",
+      "bytes": 833
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/viewer-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/viewer-28d.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "2f85217df5dc39101b6507a686ae4c13b8727d4420e046a68c82af29b9f44483",
+      "bytes": 2227
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/fixture-manifest.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/fixture-manifest.json",
+      "role": "frozen-original-oracle-host-evidence",
+      "sha256": "4fd9733c192a2ef8c9f763291d1d78ddb9210e23a64649aec0abefe62a0758b0",
+      "bytes": 3909
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/exit-status.txt",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-realistic/exit-status.txt",
+      "role": "frozen-original-oracle-host-evidence",
+      "sha256": "ed990c0ab60ea212b6f821bdc375acff7dc8bf57e5e48a21f1da0886fb8e9212",
+      "bytes": 102
+    },
+    {
+      "path": "runs/workerd-high-baseline/admin-today.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-high-baseline/admin-today.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "5e20c9ca2dbbc7fcaecde88793e09bf08901a3a5b018b634c7b84c73d0d2781f",
+      "bytes": 640
+    },
+    {
+      "path": "runs/workerd-high-baseline/admin-today.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-high-baseline/admin-today.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "2467f9375c0034628071c50d0260e25059cee7d195013ac2773f5a6edb5477a6",
+      "bytes": 1559
+    },
+    {
+      "path": "runs/workerd-high-baseline/admin-28d.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-high-baseline/admin-28d.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "7695921e810af93a91ee2a29c1ee3b467abe27a7f27be1a5b34ad6babe5db09f",
+      "bytes": 636
+    },
+    {
+      "path": "runs/workerd-high-baseline/admin-28d.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-high-baseline/admin-28d.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "dafa7cf76822c62332ae19240d58b1ba3ba8855fac156fb3c746ce0500203974",
+      "bytes": 1939
+    },
+    {
+      "path": "runs/workerd-high-baseline/viewer-today.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-high-baseline/viewer-today.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "a8119866343ae3fd120ddec31b871651a340da7bd7b4ca79ecc4b52f8c92bc4e",
+      "bytes": 643
+    },
+    {
+      "path": "runs/workerd-high-baseline/viewer-today.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-high-baseline/viewer-today.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "25f93000d992d62bebd06d2dbece44ad3348258497af7c15c1c70e835f51a06f",
+      "bytes": 1596
+    },
+    {
+      "path": "runs/workerd-high-baseline/viewer-28d.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-high-baseline/viewer-28d.config.json",
+      "role": "original-baseline-config.json",
+      "sha256": "df85c2ba453356564bb34d6d1aafae5026963f313a0bab6970969a85927442ca",
+      "bytes": 639
+    },
+    {
+      "path": "runs/workerd-high-baseline/viewer-28d.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/workerd-high-baseline/viewer-28d.result.json",
+      "role": "original-baseline-result.json",
+      "sha256": "fd0bfa1a502cc23af4f1884d638a433d7a8a022a01c9ed0b81617cec5f91929d",
+      "bytes": 1956
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-high/admin-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-high/admin-today.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "869607ab08ae07f0c70862ec77db4401335c8f7f211c567351020cb8befd7db0",
+      "bytes": 824
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-high/admin-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-high/admin-today.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "6d13a21ac7a8191a5e5222200ae363fa1e8064d4d6b4b8aac6dbd8d4a922a0a4",
+      "bytes": 1774
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-high/admin-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-high/admin-28d.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "6aa74c5a02b10fd375f7b061d450bcd4ad7f3c6d766a936e45189091fdb2b2cf",
+      "bytes": 820
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-high/admin-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-high/admin-28d.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "a160526eded32d522344c218d5b44189f5593d8cf8b807ab7f98709d3b2841cb",
+      "bytes": 2253
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-high/viewer-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-high/viewer-today.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "1e1504fea2f1a531e6a6c46c20810f15fe783014b9b46f5654833d232a3d0335",
+      "bytes": 827
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-high/viewer-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-high/viewer-today.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "f90a7fe4c52343f940886e6ab4cd557a63496b300435a42fa8025d1c34863904",
+      "bytes": 1810
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-high/viewer-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-high/viewer-28d.parity.config.json",
+      "role": "frozen-original-oracle-parity.config.json",
+      "sha256": "905c2168fb065b97f1501bae36effe0e25e2d0b30dad07145fbe08d82ec7eb06",
+      "bytes": 823
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-high/viewer-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-high/viewer-28d.parity.result.json",
+      "role": "frozen-original-oracle-parity.result.json",
+      "sha256": "0b1789f336b440ff170389829fbb25d0781c09968919795a275b51118e9e5b2d",
+      "bytes": 2259
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-high/fixture-manifest.json",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-high/fixture-manifest.json",
+      "role": "frozen-original-oracle-host-evidence",
+      "sha256": "ed26f0c4b4aa7a416a63f90a748e43eea0eb0a4c3f7f7221cd4aec9ab5bb60f1",
+      "bytes": 3935
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/workerd-high/exit-status.txt",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/workerd-high/exit-status.txt",
+      "role": "frozen-original-oracle-host-evidence",
+      "sha256": "4bac451acbf1623530c92cf9e5acc264d6e72a240c8ca4b9b21dd76e7286ebe5",
+      "bytes": 102
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/provenance.txt",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/provenance.txt",
+      "role": "frozen-original-oracle-provenance",
+      "sha256": "c481ccb2f5aeb83e3d430e2802744891d91f6b69cd536b2bc91d125211289147",
+      "bytes": 382
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/product-status.txt",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/product-status.txt",
+      "role": "frozen-original-oracle-provenance",
+      "sha256": "ff909c9de844a7c084f9b49151803aadfc89f10ddd571cbb28b48249f14b4e4e",
+      "bytes": 69
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/product-files.sha256",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/product-files.sha256",
+      "role": "frozen-original-oracle-provenance",
+      "sha256": "e3eaf305a05cb5016ecf36801cdd56bc86e1ffe91ccd033c444f81d886a08d1e",
+      "bytes": 1501
+    },
+    {
+      "path": "runs/original-detail-json-oracle-tBye8f1C/harness.sha256",
+      "sourceRelativeToW": "d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/harness.sha256",
+      "role": "frozen-original-oracle-provenance",
+      "sha256": "b2634afd7d43bdb04f90a8468ec140f15f74cd972c4fc7781395458e299c21f1",
+      "bytes": 882
+    },
+    {
+      "path": "provenance/source-counts.json",
+      "sourceRelativeToW": "d08-acceptance/runs/source-counts.json",
+      "role": "fixture-source-counts",
+      "sha256": "a7f5cba379eed7fc16df5131f1e10109186b2cdfd085d69cad61b1e372de0c88",
+      "bytes": 444
+    },
+    {
+      "path": "provenance/original-source-archive.sha256.txt",
+      "sourceRelativeToW": "d08-acceptance/runs/original-source-8f39d0d6dacac78c77ecf2704631fbd3cf7fa734.tar.sha256",
+      "role": "original-source-archive-digest",
+      "sha256": "4652727b2d84cb7d992924e6f47bcab9264473e2603b8b90932876a98206e020",
+      "bytes": 272
+    },
+    {
+      "path": "provenance/original-baseline-results.md",
+      "sourceRelativeToW": "task-D08-baseline-results.md",
+      "role": "original-baseline-narrative",
+      "sha256": "527b7b86f919a338643671ca53c1325c77a9845ec685f8ad9a9dd628d6d2bedb",
+      "bytes": 4458
+    },
+    {
+      "path": "provenance/candidate-source-manifest.json",
+      "sourceRelativeToW": "task-D08-capacity-manifest.json",
+      "role": "candidate-revision2-source-hashes",
+      "sha256": "1fac90557ed0cdebbd338e059f091cec423c7a849114d530d35f516fe5f7d9b0",
+      "bytes": 1531
+    },
+    {
+      "path": "provenance/archive-dependency-provenance.md",
+      "sourceRelativeToW": "task-D08-archive-dependency-provenance.md",
+      "role": "oracle-dependency-provenance",
+      "sha256": "214140f8e02a12b9c767b72a46e383bf697324eacfc0906b4acdc611486747f2",
+      "bytes": 3688
+    },
+    {
+      "path": "provenance/archive-dependency-lock-audit.json",
+      "sourceRelativeToW": "d08-acceptance/archive-dependency-lock-audit.json",
+      "role": "oracle-installed-package-audit",
+      "sha256": "4b99b88c8ef7e897489ff7012f95c339475f4a0b591bffa0b9557227d3b43cd7",
+      "bytes": 42562
+    },
+    {
+      "path": "README.md",
+      "sourceRelativeToW": "d08-capacity-evidence-stage/README.md",
+      "role": "stage-readme-and-restoration",
+      "sha256": "a82ce0b58ee0304c2f9cd3e5472ecfa8318c0de426eb3f38ab54fd1d601bc0d5",
+      "bytes": 11087
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/comparison.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/comparison.json",
+      "role": "repaired-diagnostic",
+      "sha256": "18d484d0a1be2db435a7d1f97d9b6fe18ecc8e89e0a24d35c163b75d1fc8044c",
+      "bytes": 10005
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/comparison.md",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/comparison.md",
+      "role": "repaired-diagnostic",
+      "sha256": "18843a7e76cf1040f42eece9f3bc845c927c00a9519a5e29c3200a16243eae4c",
+      "bytes": 1487
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/harness.sha256",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/harness.sha256",
+      "role": "repaired-diagnostic",
+      "sha256": "b2634afd7d43bdb04f90a8468ec140f15f74cd972c4fc7781395458e299c21f1",
+      "bytes": 882
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/json-parity-check.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/json-parity-check.json",
+      "role": "repaired-diagnostic",
+      "sha256": "93c3bb0c0cffdc259f5303981ab781b9acbeca44a06add127f6edfb5255df1a2",
+      "bytes": 8362
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/product-files.sha256",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/product-files.sha256",
+      "role": "repaired-diagnostic",
+      "sha256": "e56daf3bde95da0db87a4f620d5140ec9e8c6d71ff58046d63055bcc8be7d563",
+      "bytes": 1082
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/product-status.txt",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/product-status.txt",
+      "role": "repaired-diagnostic",
+      "sha256": "27babbb4f53a5901fcc8291d376e3ab70dfcbc3a4c7163ee4251b20155e004fd",
+      "bytes": 490
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/provenance.txt",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/provenance.txt",
+      "role": "repaired-diagnostic",
+      "sha256": "0fc5777b9c8873b68b643d6cf27b3d496ea44cd1a723535ee934be83a9aa2e90",
+      "bytes": 255
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/admin-28d.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/admin-28d.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "6149beec25a816a82c602185df491f66f435ac996f29739521b41ec4ea3ee60f",
+      "bytes": 686
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/admin-28d.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/admin-28d.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "26b96af5392406f57932fc78b78a73cda23faa0c92b845b0104d4dfbf58aff56",
+      "bytes": 1953
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/admin-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/admin-28d.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "2a6c6f9194ece74a0b10a356b6a70dad8a6cb1276f83b5c2a454d774e5ba71cc",
+      "bytes": 685
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/admin-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/admin-28d.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "9026217673f044376e1a53d5b0c6b82150ccc37842600c89a26536d8bcd1e233",
+      "bytes": 2242
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/admin-today.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/admin-today.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "7d05bd6abd0a3048e1bf36b42e658b851a252f0ff7fe57b82bc21aedd387c399",
+      "bytes": 690
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/admin-today.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/admin-today.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "274f98cab775f56940de47e1660bc6b17edda132c38e11a50512f4a0ba6f9436",
+      "bytes": 1598
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/admin-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/admin-today.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "fbf5b4dc9e906c3aee393d2bf15b1825bd36da56175bbf4093a70a2a1e422bfd",
+      "bytes": 689
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/admin-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/admin-today.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "39e5884fd4fd37567692aad29f10f104f6056ee115ffc7b2c1d283c8bd622998",
+      "bytes": 1787
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/exit-status.txt",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/exit-status.txt",
+      "role": "repaired-diagnostic",
+      "sha256": "d671c94bc9cfcee982461c844f572777ac87bfb2758446f47e7be5e4d977223c",
+      "bytes": 204
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/fixture-manifest.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/fixture-manifest.json",
+      "role": "repaired-diagnostic",
+      "sha256": "8f23b86d008c951ea9adfb31a288d5d92513e7d7d2b1e61d18bc16527878f539",
+      "bytes": 790
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/viewer-28d.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/viewer-28d.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "cee4217501ce086e605bb01e88cf28ef26681b353348143a542807bb8dcc09bd",
+      "bytes": 689
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/viewer-28d.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/viewer-28d.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "e273fada6d01c4f1edb4962e2c63f1877e869dfe312ed566b3427fc7f9a2004c",
+      "bytes": 1945
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/viewer-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/viewer-28d.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "ed65c51db75fddfd68c8201efc2c8cc2d9cf1ded6c45dd8af323c963b396b703",
+      "bytes": 688
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/viewer-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/viewer-28d.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "1868f34bf1e1e9ff903286c4a299cc60153a4bee4fa23afeac6061908423f1eb",
+      "bytes": 2233
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/viewer-today.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/viewer-today.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "ea6881727bbc8877b0f22bbae4bc2d2e4cb34f349d029f360d44becd6b5e659e",
+      "bytes": 693
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/viewer-today.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/viewer-today.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "62ae8299d670d60b1ad4d7a5dfabef9ec892bd6e5452d28d5eacb584e6a42b30",
+      "bytes": 1578
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/viewer-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/viewer-today.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "2f4531103a70c64e56023d6377c5202cb1f1240f1a23c8d2f2fc74a95f08d452",
+      "bytes": 692
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-high/viewer-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-high/viewer-today.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "f7066a5d626d055de92643a6703859135f9c092d5e4f597ea356c2d645d6a1fe",
+      "bytes": 1784
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-28d.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-28d.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "d75671953d7f1166f02391d67be2b84575e6fc3a7cd82a012ef36ed9dfe75dba",
+      "bytes": 696
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-28d.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-28d.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "3be26edc4daf35f9676817d614b730dacc16b13cfcb663559041fbfc7365508b",
+      "bytes": 1971
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-28d.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "f94d7a1a147ffd4923c8432dde731920b208119e9a11781d276c5817fb5bf125",
+      "bytes": 695
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-28d.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "3ea230721968d09014467dc5acb91069df1614ba6579d19b74620122e376bede",
+      "bytes": 2236
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-today.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-today.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "985f5283d5d4a179445a42723ac38b405c5e1af6eda9f5e2f33d26a6fda24eca",
+      "bytes": 700
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-today.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-today.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "b85b24de06bfce4961a3dac9ff8404d35a004b36cbce3d62bb6861dcec21d9a6",
+      "bytes": 1599
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-today.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "cd6d2055c258e0e5d11664ea12295f084302c69ceb3c9380fd3d190a42941bfc",
+      "bytes": 699
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/admin-today.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "2a1fc26753b7b01ef471335ecc0c211711e23a89a6de3afab0d99a0c2ea03823",
+      "bytes": 1764
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/exit-status.txt",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/exit-status.txt",
+      "role": "repaired-diagnostic",
+      "sha256": "d671c94bc9cfcee982461c844f572777ac87bfb2758446f47e7be5e4d977223c",
+      "bytes": 204
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/fixture-manifest.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/fixture-manifest.json",
+      "role": "repaired-diagnostic",
+      "sha256": "ab83e4d7406d756544e68563e8ca085fb4f479802b1967b0fb63e13fa23f0261",
+      "bytes": 769
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-28d.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-28d.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "72ce36fe42b3a295b9895bc6df9ff75c5bf5ed43b16bef1e2ae6fc402595b7d0",
+      "bytes": 699
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-28d.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-28d.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "8be749275ab4d87d3baa6677ad091d27fea4950ef405d45220771cac3ff96f2b",
+      "bytes": 1968
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-28d.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "45552a40aac5e7895fa1bdb8d512fc40ddc80ef48d58ebddc4db37eadc2a685d",
+      "bytes": 698
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-28d.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "6458d8736659529118ed4b974431fffa4a88f062c4a3ee9e3c7911dff63a8837",
+      "bytes": 2251
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-today.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-today.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "5570d32750638bbda26195734740eb289ce7d16c9a544591de6f74c1cf0d3a63",
+      "bytes": 703
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-today.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-today.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "393b71f44ee861f85e670953de73b5d1751bdbbba8e17c293dffc42253c76642",
+      "bytes": 1594
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-today.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "f3618a1666902cf786c90318811a660902213fa424306dd6cae47809b5203f2e",
+      "bytes": 702
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/sqlite-realistic/viewer-today.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "a74a46e9e21352c7f79a4bc5497c277c216c7010ffbcd522de38f3ed1b2ea026",
+      "bytes": 1784
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/admin-28d.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/admin-28d.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "95d3bee58efa8ba4ed2995f0db454b6ee077e3c13cee1de925bc4c9fe2661848",
+      "bytes": 687
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/admin-28d.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/admin-28d.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "75dc88abd7dad721992a1938768c4d8c35a51574535fa27685d990a8ed93efb3",
+      "bytes": 1943
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/admin-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/admin-28d.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "7c732968babb6789134dee5b68b1d18d263be170e3b3d4ccb6cd4ab2cd4cbf24",
+      "bytes": 686
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/admin-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/admin-28d.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "76351cc98b5a6ac800ea4f18331f9dcbb8d9686b8d22ca7437035fad67bda8ae",
+      "bytes": 2245
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/admin-today.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/admin-today.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "8380780e6402bcca26a8157cbee7b9788c1067696e6cf635e109f83d5dbf2f3f",
+      "bytes": 691
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/admin-today.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/admin-today.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "158c707418682a909ca20da970463ef72c97a703cf1637b90c2fb702cd75233d",
+      "bytes": 1581
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/admin-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/admin-today.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "c0a20befaf3dcc818ee486506b94377077743ec8a9d9f955ef106018b86749dc",
+      "bytes": 690
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/admin-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/admin-today.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "855d24268ffaff6d7dd1ea73b640625eec73df94c33e2fcef4fdd69ad36160bc",
+      "bytes": 1778
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/exit-status.txt",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/exit-status.txt",
+      "role": "repaired-diagnostic",
+      "sha256": "d671c94bc9cfcee982461c844f572777ac87bfb2758446f47e7be5e4d977223c",
+      "bytes": 204
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/fixture-manifest.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/fixture-manifest.json",
+      "role": "repaired-diagnostic",
+      "sha256": "ed26f0c4b4aa7a416a63f90a748e43eea0eb0a4c3f7f7221cd4aec9ab5bb60f1",
+      "bytes": 3935
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/viewer-28d.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/viewer-28d.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "795e3192cd0b85a414bdf4219a6d217d16f7ae6642ef055ae555bab402f72e0e",
+      "bytes": 690
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/viewer-28d.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/viewer-28d.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "89c4783be6c050eb13808ab7bda7677f8ea5a7dd0e7f7956949c8375c938da20",
+      "bytes": 1943
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/viewer-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/viewer-28d.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "04cc456cfb3ae363b8a9f318414b5415031ed884992944b0d015fab04c31cad2",
+      "bytes": 689
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/viewer-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/viewer-28d.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "cb1a56043a7d13f136eb502ea4639eefc312095a4b4d5afb245e8dce2c815af5",
+      "bytes": 2236
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/viewer-today.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/viewer-today.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "6d31b1ff0e820ec9b2b25444c502699b6eb5c7293cc55b8ac09c8176b039a4d9",
+      "bytes": 694
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/viewer-today.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/viewer-today.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "5b811079f8b2a42c3c22ee361ae5f123f7112bf193e2407def0decf63ca49a7b",
+      "bytes": 1574
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/viewer-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/viewer-today.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "c6968750dbda7c5ba2cfdcad402e6ea4d6b3eae5684027b561d5ca7f50b552ec",
+      "bytes": 693
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-high/viewer-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-high/viewer-today.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "eac4e36ae995e89703095741ba93045272ae411c2745cf8f790396114bb1fa70",
+      "bytes": 1759
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/admin-28d.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/admin-28d.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "39da9118d9a41cceea97c9f07157908d7cb84b397367b0f9a733093d2a930353",
+      "bytes": 697
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/admin-28d.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/admin-28d.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "a530bc3f9cf9709989cd81bd23dacf50d518080080a53debaa5e1909932782f5",
+      "bytes": 1941
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/admin-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/admin-28d.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "552fefdaf844b59c1f22cbfdcdf1a38cf2ba401872a57654d31b6033ffe16cd6",
+      "bytes": 696
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/admin-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/admin-28d.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "9bb4bbe9c840e2dc7d5273b0af87174e16046dedabe1eac64e93064e6eb08b57",
+      "bytes": 2234
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/admin-today.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/admin-today.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "b29881971918d7f4b64ce812c9ee41eb833fd119ea25995fe342dca1e84f1db7",
+      "bytes": 701
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/admin-today.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/admin-today.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "cfe31a0fe4012cfef1a6de8cfe686576aacef79742927d31f010b40180067d4d",
+      "bytes": 1587
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/admin-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/admin-today.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "ccf214da48c0cee953a02f71b0c664461e1c5110ff73ae4b19f1e6c50ef7e7bf",
+      "bytes": 700
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/admin-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/admin-today.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "9f485bba23856249baf8449a4de380db0521f429169cdbf1c76ac34526e5ed69",
+      "bytes": 1775
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/exit-status.txt",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/exit-status.txt",
+      "role": "repaired-diagnostic",
+      "sha256": "d671c94bc9cfcee982461c844f572777ac87bfb2758446f47e7be5e4d977223c",
+      "bytes": 204
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/fixture-manifest.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/fixture-manifest.json",
+      "role": "repaired-diagnostic",
+      "sha256": "4fd9733c192a2ef8c9f763291d1d78ddb9210e23a64649aec0abefe62a0758b0",
+      "bytes": 3909
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-28d.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-28d.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "3918f6e9d6072b7b81991f6d8f57e17bbf3be95f67fbd7ca55d711edc2c61590",
+      "bytes": 700
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-28d.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-28d.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "24405b5330fbe81c2781473bcdc3686ed00ba391c4dcd95409fdb39b35cf79dc",
+      "bytes": 1940
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-28d.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-28d.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "2d82a87f2bcf3686eb8f5f17023c2323f9f879de12c81b515198f6bfe5510b3d",
+      "bytes": 699
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-28d.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-28d.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "949f61f1fdba89c7ff681a0c9835e40c8fadf1159623e2030bf6c9e75a9fbda1",
+      "bytes": 2232
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-today.metric.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-today.metric.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "a07e1d6e3e9e36b301deedb54312e0a275d4c390babf44b02e337f65e5add72c",
+      "bytes": 704
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-today.metric.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-today.metric.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "def1b9a833a672ae9cb84e56e1fe644b8124643a1f2275186c2889174c05c29b",
+      "bytes": 1589
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-today.parity.config.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-today.parity.config.json",
+      "role": "repaired-diagnostic",
+      "sha256": "cab8414e7ad468c57fc26a7f5712cb9e3aa0575bd80810f495914ac2ccfa2508",
+      "bytes": 703
+    },
+    {
+      "path": "runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-today.parity.result.json",
+      "sourceRelativeToW": "d08-acceptance/runs/repaired-detail-qumZYkMT/workerd-realistic/viewer-today.parity.result.json",
+      "role": "repaired-diagnostic",
+      "sha256": "f34883a3a039898ad72f1880dae6b8f914393eaac7e9c7a7529170e5a100ae3c",
+      "bytes": 1777
+    },
+    {
+      "path": "provenance/task-D08-capacity-ordering-proof.json",
+      "sourceRelativeToW": "task-D08-capacity-ordering-proof.json",
+      "role": "independent-review-and-proof",
+      "sha256": "ab6e8e1eebc7b04591e0949f26b682694f07010dd34c8e8e4cf58cca43ee6e8e",
+      "bytes": 1264
+    },
+    {
+      "path": "provenance/task-D08-capacity-ordering-review.md",
+      "sourceRelativeToW": "task-D08-capacity-ordering-review.md",
+      "role": "independent-review-and-proof",
+      "sha256": "623a2564dd0b65688888da390bb3011f3a915c300896da992ba4658c1dd4f48b",
+      "bytes": 7861
+    },
+    {
+      "path": "provenance/task-D08-capacity-fix1-report.md",
+      "sourceRelativeToW": "task-D08-capacity-fix1-report.md",
+      "role": "independent-review-and-proof",
+      "sha256": "310f7d75bbad984eec052c8935adc445d8415948bba31565b4d6882b628de8b0",
+      "bytes": 4354
+    },
+    {
+      "path": "provenance/task-D08-capacity-fix1-review.md",
+      "sourceRelativeToW": "task-D08-capacity-fix1-review.md",
+      "role": "independent-review-and-proof",
+      "sha256": "97a41371dd7fd8ee088b5b7161074ab31bf6a7560f3676755cf552483358913b",
+      "bytes": 5002
+    },
+    {
+      "path": "provenance/task-D08-capacity-review.md",
+      "sourceRelativeToW": "task-D08-capacity-review.md",
+      "role": "independent-review-and-proof",
+      "sha256": "5bf3c14c80460f3b6007d6e3398b20f8f2dc9e1be7b7d668fa19e1c38c470a7b",
+      "bytes": 7228
+    },
+    {
+      "path": "harness/capture-existing-sqlite.ts.txt",
+      "sourceRelativeToW": "d08-acceptance/capture-existing-sqlite.ts",
+      "role": "restorable-ordering-diagnostic",
+      "sha256": "fe3cde16e37aab53585c5508204487c997b5f1faeef527248430c653a092992c",
+      "bytes": 1049
+    },
+    {
+      "path": "harness/inspect-ordering.ts.txt",
+      "sourceRelativeToW": "d08-acceptance/inspect-ordering.ts",
+      "role": "restorable-ordering-diagnostic",
+      "sha256": "1c857d5cecd98cf2f561c1e1973bef4d661499e4c3dc803da09de33cf49081c3",
+      "bytes": 2587
+    },
+    {
+      "path": "harness/compare-consumer-reducers.ts.txt",
+      "sourceRelativeToW": "d08-capacity-adapter-check/compare-consumer-reducers.ts",
+      "role": "actual-consumer-offline-proof",
+      "sha256": "40de3975116b4fea72f756dfcee7b1260a25019953ba5911cd732eb361ab4c0f",
+      "bytes": 13983
+    },
+    {
+      "path": "provenance/root-consumer-reducer-proof.json",
+      "sourceRelativeToW": "d08-capacity-adapter-check/root-consumer-reducer-proof.json",
+      "role": "actual-consumer-offline-proof",
+      "sha256": "2a012caf54a4f1b447bd7ac1bce39854585af57a156de48626c2e4a7b8ea9574",
+      "bytes": 3054
+    }
+  ]
+}

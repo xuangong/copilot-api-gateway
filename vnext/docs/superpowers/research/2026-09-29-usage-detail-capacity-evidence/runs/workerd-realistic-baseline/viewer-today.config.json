@@ -1,0 +1,15 @@
+{
+  "repositoryRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify",
+  "origin": "http://127.0.0.1:57736",
+  "mode": "baseline",
+  "output": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/.superpowers/sdd/2026-09-29-reference-adoption-follow-up/d08-acceptance/runs/workerd-realistic-baseline/viewer-today.result.json",
+  "now": "2026-10-31T12:00:00.000Z",
+  "view": "today",
+  "zoneMode": "utc",
+  "isAdmin": false,
+  "headers": {
+    "authorization": "Bearer ses_d08_viewer"
+  },
+  "fixtureHash": "f5aaf1b53700a534b40f1b559fd506da212a0acad06b83abadcaa22dee7d795c",
+  "fixtureProfile": "realistic"
+}

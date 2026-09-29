@@ -1,0 +1,32 @@
+{
+  "version": "d08-whole-load-v1",
+  "name": "realistic",
+  "profile": {
+    "keys": 8,
+    "categories": 6,
+    "owners": 4,
+    "assignees": 3,
+    "days": 117,
+    "width": 0
+  },
+  "now": "2026-10-31T12:00:00.000Z",
+  "minimumCoverage": {
+    "usedKeys": 8,
+    "incoming": 6,
+    "routed": 6,
+    "clients": 6,
+    "mappingsForWideIncoming": 6,
+    "assignmentsOnOneKey": 4,
+    "assignedOnlyKeysForViewer": 8
+  },
+  "principals": {
+    "admin": "ses_d08_admin",
+    "owned": "ses_d08_owner-0000",
+    "assignedOnly": "ses_d08_viewer",
+    "apiKey": "synthetic-d08-key-0000",
+    "sharedOwner": "owner-0000",
+    "sharedViewer": "viewer"
+  },
+  "fixtureHash": "f5aaf1b53700a534b40f1b559fd506da212a0acad06b83abadcaa22dee7d795c",
+  "sourceStatementsCount": 14401
+}

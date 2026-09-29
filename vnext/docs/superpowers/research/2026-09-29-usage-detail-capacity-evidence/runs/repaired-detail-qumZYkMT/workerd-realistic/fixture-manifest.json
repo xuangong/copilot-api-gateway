@@ -1,0 +1,124 @@
+{
+  "version": "d08-whole-load-v1",
+  "name": "realistic",
+  "profile": {
+    "keys": 8,
+    "categories": 6,
+    "owners": 4,
+    "assignees": 3,
+    "days": 117,
+    "width": 0
+  },
+  "now": "2026-10-31T12:00:00.000Z",
+  "minimumCoverage": {
+    "usedKeys": 8,
+    "incoming": 6,
+    "routed": 6,
+    "clients": 6,
+    "mappingsForWideIncoming": 6,
+    "assignmentsOnOneKey": 4,
+    "assignedOnlyKeysForViewer": 8
+  },
+  "principals": {
+    "admin": "ses_d08_admin",
+    "owned": "ses_d08_owner-0000",
+    "assignedOnly": "ses_d08_viewer",
+    "apiKey": "synthetic-d08-key-0000",
+    "sharedOwner": "owner-0000",
+    "sharedViewer": "viewer"
+  },
+  "fixtureHash": "f5aaf1b53700a534b40f1b559fd506da212a0acad06b83abadcaa22dee7d795c",
+  "sourceStatementsCount": 14401,
+  "migrations": [
+    {
+      "name": "0001_baseline.sql",
+      "sha256": "fddc2d7029555f5b86c419f6635b6afcc60ef5d82a49d492374bea1591f556c1"
+    },
+    {
+      "name": "0002_drop_duplicate_cache_index.sql",
+      "sha256": "46a1ec40ec3134284face3ab7c32da39c4e7daf9650fe678fb0ea4dabfd6d632"
+    },
+    {
+      "name": "0003_quota_per_month.sql",
+      "sha256": "8b83191e2dd3b78660d6c56544bc068b9a8c7ff9bd4c8c8aca5c92ebb70b3acf"
+    },
+    {
+      "name": "0004_quota_cost_per_month.sql",
+      "sha256": "d4821fe933d934fa86e7cbbb32bae6ac7315456df53e83c06bd5c62a08f42847"
+    },
+    {
+      "name": "0005_web_search_jina_per_key.sql",
+      "sha256": "d1ae00ed3687b66479e54a4d19eba85bb3a6371d2e100c292283acc90d813165"
+    },
+    {
+      "name": "0006_web_search_passthrough_per_key.sql",
+      "sha256": "8aae552a780967399881298db9fe75c98b98f1a8c6dfbb8f56dfdfae960ec9b6"
+    },
+    {
+      "name": "0007_api_key_model_mappings.sql",
+      "sha256": "ad731d53bafca6f9e84cfd3c3bad3ff478d9c7165571f232119608eacac92e27"
+    },
+    {
+      "name": "0008_usage_incoming_model.sql",
+      "sha256": "275b0b3e87fb68a56c9a10cf06418d8eb956c6b410687679255000150861bf35"
+    },
+    {
+      "name": "0009_performance_metrics.sql",
+      "sha256": "2afaca04b3be603ea69551658562b4c4e222a0025d503578abb453462161d9c1"
+    },
+    {
+      "name": "0010_configuration_revision.sql",
+      "sha256": "0f9365d97154ce2f0a8854ede16478f22372991b7a2666c3d2735d6cf7bb0810"
+    },
+    {
+      "name": "0011_agent_remote_continuations.sql",
+      "sha256": "2fd78e0ce6620aefb601c30cb4ac0899fe354b4b7454cc18006da6b4e8007a5b"
+    },
+    {
+      "name": "0012_session_authentication_time.sql",
+      "sha256": "791357db5928ad1e13d1fa7c6eeb41a989cbdb948f0568b12367e2736f67dc4a"
+    },
+    {
+      "name": "0013_responses_retention.sql",
+      "sha256": "7afd0138f7a17a7ac6f4e91717c22e52887471da5983bf8c1df8338658d7ecba"
+    },
+    {
+      "name": "0014_agent_remote_host_keys.sql",
+      "sha256": "03289289e89bf69c186f3c0f5d3e53e7a217bf5304d7257c01e6965fdfb9f8a2"
+    },
+    {
+      "name": "0015_dump_maintenance.sql",
+      "sha256": "4ff2e283bd9270f965c829d261c1686894f387d029762d0d8aa3949d1ff82518"
+    },
+    {
+      "name": "0016_dump_upstream_exchanges.sql",
+      "sha256": "d66ae24b92a5f2f9df14ab4ebcdd0d08a223a2c98c4ca6bd3caa2732200e6cc0"
+    },
+    {
+      "name": "0017_upstream_row_incarnation.sql",
+      "sha256": "273cc47595b20d4021956bc6c8c8dbaa0ec17e3e29b213227b76b4da4f64f6fe"
+    },
+    {
+      "name": "0018_catalog_coordination.sql",
+      "sha256": "4cd6c7c21a3814228cb0561c22b413eea2098594abba4adb6f31daab4c098fbd"
+    },
+    {
+      "name": "0019_catalog_attempt_outcomes.sql",
+      "sha256": "62c40aed14cc757b9f586c98c10d252115de427056fa0884136d2ec824e17722"
+    },
+    {
+      "name": "0020_api_key_affinity_secret.sql",
+      "sha256": "05f988bbb03efce8741002d3dec89f58a7f90e3f69658638b4e75fab5afdb91f"
+    },
+    {
+      "name": "0021_setup_leases.sql",
+      "sha256": "80b17c2ba30716b803fb0c6ee83ac846e0729ab2c8ebd755d3e855b60c545d27"
+    }
+  ],
+  "shape": {
+    "usedKeys": 15,
+    "incoming": 23,
+    "routed": 15,
+    "clients": 15
+  }
+}

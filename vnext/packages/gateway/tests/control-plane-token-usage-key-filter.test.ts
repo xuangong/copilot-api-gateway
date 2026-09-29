@@ -1,3 +1,5 @@
+import { sessionAuthMiddleware } from "../src/control-plane/auth/session-auth"
+import { deriveViewContext } from "../src/control-plane/lib/view-context"
 import { expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
 import { Hono } from "hono"
@@ -137,4 +139,70 @@ test("legacy shared branch filters only by owner-scoped HMAC key references", as
   } finally {
     db.close()
   }
+})
+
+test("actual app retains legacy as_user behavior and the existing overview grant allow/deny/revocation boundary", async () => {
+  const db = new Database(":memory:")
+  try {
+    const repo = new BunSqliteRepo(db)
+    initRepo(repo)
+    await seed(repo)
+    const ownResult = await detail("owner")
+    // Legacy detail does not resolve as_user; the capacity repair must not add
+    // a new authorization path. Overview already uses the real grant resolver.
+    expect(await detail("owner", "&as_user=other")).toEqual(ownResult)
+    const overview = () => app.request(`/api/token-usage/overview?start=${start}&end=${end}&axis=key&as_user=other`, {
+      headers: { cookie: "session_token=ses_detail_owner" },
+    }, { SERVER_SECRET: "detail-secret" })
+    expect((await overview()).status).toBe(403)
+    await repo.observabilityShares.share(userId("other"), userId("owner"), userId("other"))
+    const response = await overview()
+    expect(response.status).toBe(200)
+    const body = await response.json() as { breakdown: { rows: Array<{ value: string }> } }
+    expect(body.breakdown.rows.map(row => row.value)).toEqual([
+      sharedKeyRef("other", "assigned", "detail-secret"), sharedKeyRef("other", "foreign", "detail-secret"),
+    ])
+    expect(await detail("owner", "&as_user=other")).toEqual(ownResult)
+    await repo.observabilityShares.unshare(userId("other"), userId("owner"))
+    expect((await overview()).status).toBe(403)
+    expect(await detail("owner", "&as_user=other")).toEqual(ownResult)
+  } finally { db.close() }
+})
+
+
+test("composed session/grant harness exercises shared detail HMAC and revocation with real SQLite", async () => {
+  const db = new Database(":memory:")
+  try {
+    const repo = new BunSqliteRepo(db)
+    initRepo(repo)
+    await seed(repo)
+    // Explicit composition: production legacy registration does not merge view
+    // into auth. This tests the existing shared branch, not that missing wiring.
+    const sharedApp = new Hono()
+    sharedApp.use("*", sessionAuthMiddleware)
+    sharedApp.use("*", async (c, next) => {
+      const auth = c.get("auth") as TokenUsageAuthCtx
+      const view = await deriveViewContext(c, auth)
+      if ("denied" in view) return c.json({ error: "Forbidden" }, 403)
+      c.set("auth", { ...auth, ...view })
+      return next()
+    })
+    sharedApp.route("/api", tokenUsageRouter)
+    const request = (suffix = "", participants = false) => sharedApp.request(
+      participants ? "/api/token-usage/participants?as_user=owner" : path(`&as_user=owner${suffix}`),
+      { headers: { cookie: "session_token=ses_detail_viewer" } }, { SERVER_SECRET: "detail-secret" })
+    expect((await request()).status).toBe(403)
+    await repo.observabilityShares.share(userId("owner"), userId("viewer"), userId("owner"))
+    const response = await request()
+    expect(response.status).toBe(200)
+    const rows = await response.json() as Array<{ keyId: string }>
+    expect(rows.map(row => row.keyId)).toEqual([sharedKeyRef("owner", "both", "detail-secret"), sharedKeyRef("owner", "owned", "detail-secret")])
+    expect(await (await request("&key_id=owned")).json()).toEqual([])
+    expect(await (await request(`&key_id=${sharedKeyRef("other", "assigned", "detail-secret")}`)).json()).toEqual([])
+    expect(await (await request(`&key_id=${sharedKeyRef("owner", "owned", "detail-secret")}`)).json()).toEqual([expect.objectContaining({ keyId: sharedKeyRef("owner", "owned", "detail-secret"), requests: 5 })])
+    expect(await (await request("", true)).json()).toEqual([])
+    await repo.observabilityShares.unshare(userId("owner"), userId("viewer"))
+    expect((await request()).status).toBe(403)
+    expect((await request("", true)).status).toBe(403)
+  } finally { db.close() }
 })

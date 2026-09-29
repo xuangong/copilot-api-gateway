@@ -1,0 +1,17 @@
+{
+  "repositoryRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify",
+  "origin": "http://127.0.0.1:PORT_FROM_ISOLATED_HOST",
+  "mode": "baseline",
+  "output": "/ABSOLUTE/SCRATCH/PATH/realistic-admin-28d-baseline.json",
+  "now": "2026-10-31T12:00:00.000Z",
+  "view": "28d",
+  "zoneMode": "utc",
+  "isAdmin": true,
+  "headers": { "cookie": "session_token=ses_d08_admin" },
+  "fixtureHash": "REPLACE_AFTER_SEED",
+  "fixtureProfile": "realistic",
+  "filters": { "user": "", "key": "", "client": "", "model": "", "incomingModel": null },
+  "concurrency": 4,
+  "seriesChunkHours": 168,
+  "projectionPrefix": "/api/token-usage/projections"
+}

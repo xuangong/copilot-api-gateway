@@ -19,13 +19,12 @@ import { sharedKeyRef } from "../lib/redact-shared-view"
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../repo/index.ts'
-import type { ApiKey } from '../../repo/types.ts'
+import type { UsageKeyMetadata } from '../../repo/types.ts'
 import { aggregateUsageForDisplay, type DisplayUsageRecord } from './aggregate.ts'
 import {
   redactForSharedView,
   getServerSecret,
 } from '../lib/redact-shared-view.ts'
-import { getOwnedKeyIdsForScope } from '../lib/view-context.ts'
 import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 
 export interface TokenUsageAuthCtx {
@@ -39,22 +38,20 @@ export interface TokenUsageAuthCtx {
 
 type Vars = { auth: TokenUsageAuthCtx }
 
-async function getUserKeys(userId: UserId): Promise<ApiKey[]> {
+async function getUserKeys(userId: UserId): Promise<UsageKeyMetadata[]> {
   const repo = getRepo()
   const [ownKeys, assignments] = await Promise.all([
     repo.apiKeys.listByOwner(userId),
     repo.keyAssignments.listByUser(userId),
   ])
-  const keyMap = new Map<string, ApiKey>(ownKeys.map((k) => [k.id, k]))
-  if (assignments.length > 0) {
-    const assignedKeys = await Promise.all(
-      assignments.filter((a) => !keyMap.has(a.keyId)).map((a) => repo.apiKeys.getById(a.keyId)),
-    )
-    for (const k of assignedKeys) {
-      if (k) keyMap.set(k.id, k)
-    }
-  }
-  return [...keyMap.values()]
+  // Preserve own-first and assignment iteration order, including deleted targets.
+  const ids = [...new Set([...ownKeys.map(k => k.id), ...assignments.map(a => a.keyId)])]
+  if (ids.length === 0) return []
+  const metadata = new Map((await repo.usage.queryKeyMetadata(ids)).map(k => [k.keyId, k]))
+  return ids.flatMap(id => {
+    const key = metadata.get(id)
+    return key ? [key] : []
+  })
 }
 
 function enrichWithKeyName(
@@ -95,32 +92,23 @@ tokenUsageRouter.get('/token-usage/participants', async (c) => {
   if (!auth.isAdmin && !auth.userId && !auth.apiKeyId) return c.json({ error: 'Unauthorized' }, 401)
   if (auth.isViewingShared || auth.apiKeyId) return c.json([])
 
-  const keys = auth.isAdmin ? await repo.apiKeys.list() : await getUserKeys(auth.userId!)
-  const assignmentsPerKey = await Promise.all(keys.map((k) => repo.keyAssignments.listByKey(k.id)))
-
-  const wantedUserIds = new Set<string>()
-  for (const k of keys) if (k.ownerId) wantedUserIds.add(k.ownerId)
-  for (const list of assignmentsPerKey) for (const a of list) wantedUserIds.add(a.userId)
-  const named = await Promise.all([...wantedUserIds].map((id) => repo.users.getById(id as UserId)))
-  const nameOf = new Map<string, string>()
-  for (const u of named) if (u) nameOf.set(u.id, u.name)
-
-  return c.json(
-    keys.map((k, i) => {
-      // Being given access to a key does not entitle you to the roster of who
-      // else has it; the Keys tab draws the same line (KeyRow.tsx only lists
-      // assignees to the owner).
-      const maySeeAssignees = auth.isAdmin || k.ownerId === auth.userId
-      return {
-        keyId: k.id,
-        ownerId: k.ownerId ?? null,
-        ownerName: k.ownerId ? (nameOf.get(k.ownerId) ?? null) : null,
-        sharedWith: maySeeAssignees
-          ? assignmentsPerKey[i]!.map((a) => ({ id: a.userId, name: nameOf.get(a.userId) ?? a.userId.slice(0, 8) }))
-          : [],
-      }
-    }),
-  )
+  const keys = auth.isAdmin
+    ? await repo.usage.queryKeyMetadata()
+    : auth.userId ? await getUserKeys(auth.userId) : []
+  const visibleIds = keys.filter(k => auth.isAdmin || k.ownerId === auth.userId).map(k => k.keyId)
+  const assignments = visibleIds.length ? await repo.usage.queryAssigneeMetadata(visibleIds) : []
+  const sharedWith = new Map<ApiKeyId, Array<{ id: UserId; name: string }>>()
+  for (const assignment of assignments) {
+    const list = sharedWith.get(assignment.keyId) ?? []
+    list.push({ id: assignment.userId, name: assignment.name ?? assignment.userId.slice(0, 8) })
+    sharedWith.set(assignment.keyId, list)
+  }
+  return c.json(keys.map(k => ({
+    keyId: k.keyId,
+    ownerId: k.ownerId,
+    ownerName: k.ownerId ? k.ownerName : null,
+    sharedWith: sharedWith.get(k.keyId) ?? [],
+  })))
 })
 
 tokenUsageRouter.get("/token-usage/overview", async (c) => {
@@ -183,9 +171,9 @@ tokenUsageRouter.get('/token-usage', async (c) => {
   // Shared view: owned-only keys, redact keyIds
   if (!auth.apiKeyId && auth.isViewingShared && auth.ownerId) {
     const ownerId = auth.ownerId
-    const ids = await getOwnedKeyIdsForScope(ownerId)
-    if (ids.length === 0) return c.json([])
     const ownedKeys = await repo.apiKeys.listByOwner(ownerId)
+    const ids = ownedKeys.map(k => k.id)
+    if (ids.length === 0) return c.json([])
     const secret = getServerSecret(c.env as unknown as Record<string, string | undefined>)
     const matchingIds = keyId
       ? ids.filter((id) => sharedKeyRef(ownerId, id, secret) === keyId)
@@ -205,49 +193,43 @@ tokenUsageRouter.get('/token-usage', async (c) => {
   }
 
   let queryOpts: { keyId?: ApiKeyId; keyIds?: ApiKeyId[]; start: string; end: string }
-  let keys: ApiKey[]
+  let keys: UsageKeyMetadata[]
 
   if (auth.apiKeyId) {
     // An API key is narrower than a coexisting session identity. Ignore a
     // caller-supplied key_id rather than letting it widen the scope.
     queryOpts = { keyId: auth.apiKeyId, start, end }
-    const key = await repo.apiKeys.getById(auth.apiKeyId)
-    keys = key ? [key] : []
+    keys = await repo.usage.queryKeyMetadata([auth.apiKeyId])
   } else if (auth.isAdmin) {
     queryOpts = { keyId, start, end }
-    keys = await repo.apiKeys.list()
+    keys = await repo.usage.queryKeyMetadata()
   } else if (auth.userId) {
     const userKeys = await getUserKeys(auth.userId)
     if (userKeys.length === 0) return c.json([])
-    if (keyId && !userKeys.some((k) => k.id === keyId)) return c.json([])
+    if (keyId && !userKeys.some((k) => k.keyId === keyId)) return c.json([])
     queryOpts = keyId
       ? { keyId, start, end }
-      : { keyIds: userKeys.map((k) => k.id), start, end }
+      : { keyIds: userKeys.map((k) => k.keyId), start, end }
     keys = userKeys
   } else {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 
   const records = await repo.usage.query(queryOpts)
-  const nameMap = new Map<string, string>(keys.map((k) => [k.id, k.name]))
+  const nameMap = new Map<string, string>(keys.map((k) => [k.keyId, k.keyName]))
   const display = aggregateUsageForDisplay(records)
 
   if (auth.isAdmin && !auth.apiKeyId) {
-    const ownerIdMap = new Map<string, UserId | undefined>(keys.map((k) => [k.id, k.ownerId]))
-    const userIds = new Set(keys.map((k) => k.ownerId).filter(Boolean) as UserId[])
-    const users = await Promise.all([...userIds].map((id) => repo.users.getById(id)))
-    const userNameMap = new Map<string, string>()
-    for (const u of users) {
-      if (u) userNameMap.set(u.id, u.name)
-    }
+    const metadata = new Map<string, UsageKeyMetadata>(keys.map(k => [k.keyId, k]))
     return c.json(
       display.map((r) => {
-        const ownerId = ownerIdMap.get(r.keyId)
+        const key = metadata.get(r.keyId)
+        const ownerId = key?.ownerId
         return {
           ...r,
           keyName: nameMap.get(r.keyId) ?? r.keyId.slice(0, 8),
           ownerId: ownerId ?? '',
-          ownerName: ownerId ? (userNameMap.get(ownerId) ?? '') : '',
+          ownerName: ownerId ? (key?.ownerName ?? '') : '',
         }
       }),
     )

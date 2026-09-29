@@ -1,0 +1,4 @@
+admin-today parity exit=0
+admin-28d parity exit=0
+viewer-today parity exit=1
+viewer-28d parity exit=1

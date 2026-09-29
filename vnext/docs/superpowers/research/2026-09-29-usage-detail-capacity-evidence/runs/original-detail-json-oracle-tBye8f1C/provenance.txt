@@ -1,0 +1,7 @@
+checkout=/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/.superpowers/sdd/2026-09-29-reference-adoption-follow-up/d08-acceptance/original-source-8f39d0d6dacac78c77ecf2704631fbd3cf7fa734
+label=original-detail-json-oracle
+pass_mode=parity-only
+TZ=Asia/Shanghai
+bun=/Users/zhangxian/.bun/bin/bun
+sourceSha=8f39d0d6dacac78c77ecf2704631fbd3cf7fa734
+noGitArchive=true

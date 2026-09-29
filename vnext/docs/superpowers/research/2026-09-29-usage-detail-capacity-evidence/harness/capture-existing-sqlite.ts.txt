@@ -1,0 +1,14 @@
+import { Database } from "bun:sqlite"
+import { pathToFileURL } from "node:url"
+import { resolve } from "node:path"
+import { sqliteExecutor } from "./instrumentation.mjs"
+const [root, dbPath, output] = process.argv.slice(2)
+if (!root || !dbPath || !output) throw new Error("root db output required")
+const source = (p: string) => import(pathToFileURL(resolve(root,p)).href)
+const [{buildSharedRepo},{initRepo},{app}] = await Promise.all([source("vnext/packages/gateway/src/repo/shared/repos.ts"),source("vnext/packages/gateway/src/repo/index.ts"),source("vnext/packages/gateway/src/app.ts")])
+const db = new Database(dbPath,{readonly:true})
+initRepo(buildSharedRepo(sqliteExecutor(db,[],()=>({}))))
+const response=await app.fetch(new Request("http://127.0.0.1" + (process.argv[5] ?? "/api/token-usage?start=2026-10-31T00&end=2026-11-01T00"),{headers:{Authorization:"Bearer ses_d08_viewer"}}),{SERVER_SECRET:"synthetic-d08-secret"})
+await Bun.write(output,await response.text())
+console.log(JSON.stringify({status:response.status,output}))
+db.close()

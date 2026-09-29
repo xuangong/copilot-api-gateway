@@ -1,0 +1,69 @@
+{
+  "sourceFile": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/apps/dashboard/src/state/usage.ts",
+  "sourceSha256": "52b7d47c9e77678242384c923efdea4634535b104ad7a56651c7aaf0f7a317fa",
+  "importedSourceSha256": {
+    "api/usage.ts": "80dc339d40234e0d23b94f064b093ca30050177f6a05159ea81dd35540086bfb",
+    "state/usage-model-dimensions.ts": "2607ffee7fe94ab37783004d6ecae9b45294c8bc9ad43016e0c027365335cefe",
+    "tabs/usage/participants.ts": "23164a9e1e80b811b863e7f03d0ff4276bd47afa23eedd67e6624c454f0f34d9",
+    "state/time-buckets.ts": "fd4d4b61bfca82da7bdcca1f1650f6e0d95f24e050252ad4cae044c07d580ade",
+    "state/timezone.ts": "1755548dfd20c5619eef37e6a41f0c75e5dbe249e0ffa284a9c6f1152dca1d5d",
+    "state/usage-strip.ts": "3c865b56773b1b4a9f690c4bc20f6852500ee2114a2b4140db93795c60cde21a",
+    "state/usage-forecast.ts": "2e345853d95f5913785c15ecc6d6e303dc93cd028b64e6542e744ad5dd30cdcb",
+    "state/i18n.ts": "0965056523c195d1c5874c1cd7ca2eadc90b3c821096f151467dad42582bc41c"
+  },
+  "frozenNow": "2026-10-31T12:00:00.000Z",
+  "localZone": "Asia/Shanghai",
+  "isAdmin": false,
+  "participants": "empty index; no user-filter case",
+  "capturedInput": {
+    "today": {
+      "originalSha256": "59e25cfd53f5393194a49a34b0cb6f3f10efaa98099011ba77a09553f4e72d1e",
+      "repairedSha256": "2d9e9d6aac2bd6366c00339ff0f2a1cad7bd7dbcbbb9ba4bafcf7155ec2312a6",
+      "rows": 1464,
+      "movedPositions": 4,
+      "numericPayloadEqualAtMovedPositions": true
+    },
+    "28d": {
+      "originalSha256": "86db07d329d9513fe99536df98e92f20612e7660390f51450db7d82b73fa5729",
+      "repairedSha256": "bc163e794807a85a5c63d6590cf5f344aad311088cb5a51dd38512ca599a2ac5",
+      "rows": 40069,
+      "movedPositions": 16,
+      "numericPayloadEqualAtMovedPositions": true
+    },
+    "strip": {
+      "originalSha256": "f17eeaae8fd3a6bacc93bc30f02b9aac70cf9e5f45424eb2a782e6a469d81c65",
+      "repairedSha256": "9b82f54b14557b8b12351303a8b9d5117584b78daa1f8184acaac6ea060d07da",
+      "rows": 167021,
+      "movedPositions": 20,
+      "numericPayloadEqualAtMovedPositions": true
+    }
+  },
+  "actualReducerExtraction": [
+    "summary",
+    "distributions",
+    "chart",
+    "strip",
+    "rowTokens",
+    "EMPTY_SUMMARY"
+  ],
+  "actualImportedHelpers": [
+    "adaptUsageRow",
+    "filterUsageRows",
+    "buildDistribution",
+    "buildIncomingModelDistribution",
+    "buildRoutedModelDistribution",
+    "buildTimeBuckets",
+    "utcHourToBucketKey",
+    "buildRollingStrip",
+    "rankForecastCandidates"
+  ],
+  "scenarios": 130,
+  "numericFieldsCompared": 610093,
+  "differences": [],
+  "limitations": [
+    "Captured responses are assigned-viewer; no admin or participant-route body was replayed",
+    "Local mode re-buckets the same captured UTC rowsets; it is not a complete local-zone HTTP range fetch",
+    "Chart series are matched by unique display labels in these cases; duplicate labels fail the script",
+    "Distribution and chart array order/palette are excluded; every identity's numeric payload is compared exactly"
+  ]
+}

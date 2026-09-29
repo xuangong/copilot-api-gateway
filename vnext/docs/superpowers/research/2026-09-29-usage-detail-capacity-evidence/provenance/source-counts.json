@@ -1,0 +1,24 @@
+{
+  "realistic": {
+    "rows": 9539,
+    "usedKeys": 15,
+    "incoming": 23,
+    "routed": 15,
+    "clients": 15,
+    "requestRows": 4822,
+    "wideMappings": 9,
+    "viewerKeys": 8,
+    "firstKeyAssignments": 4
+  },
+  "high": {
+    "rows": 334331,
+    "usedKeys": 1008,
+    "incoming": 418,
+    "routed": 410,
+    "clients": 410,
+    "requestRows": 167218,
+    "wideMappings": 404,
+    "viewerKeys": 1001,
+    "firstKeyAssignments": 402
+  }
+}

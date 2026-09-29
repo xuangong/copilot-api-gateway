@@ -1,0 +1,238 @@
+// Offline, read-only comparison of captured synthetic detail bodies through actual dashboard reducers.
+// Usage: TZ=Asia/Shanghai bun compare-consumer-reducers.ts /absolute/verify/checkout /absolute/output.json
+import assert from "node:assert/strict"
+import { createHash } from "node:crypto"
+import { readFile, writeFile } from "node:fs/promises"
+import { resolve } from "node:path"
+import { createRequire } from "node:module"
+import { pathToFileURL } from "node:url"
+
+const checkout = resolve(process.argv[2] ?? "")
+const output = resolve(process.argv[3] ?? "")
+assert(checkout.startsWith("/") && process.argv[2]?.startsWith("/"), "Pass absolute verification checkout")
+assert(process.argv[3]?.startsWith("/"), "Pass absolute output path")
+assert.equal(Intl.DateTimeFormat().resolvedOptions().timeZone, "Asia/Shanghai", "Set TZ=Asia/Shanghai")
+const sourceRoot = `${checkout}/vnext/apps/dashboard/src`
+const sourceFile = `${sourceRoot}/state/usage.ts`
+const sourceText = await readFile(sourceFile, "utf8")
+const require = createRequire(import.meta.url)
+const ts = require(`${checkout}/vnext/node_modules/typescript/lib/typescript.js`) as typeof import("typescript")
+const tree = ts.createSourceFile(sourceFile, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+const sha = (bytes: string) => createHash("sha256").update(bytes).digest("hex")
+const sourceSha256 = sha(sourceText)
+const importedPaths = ["api/usage.ts", "state/usage-model-dimensions.ts", "tabs/usage/participants.ts",
+  "state/time-buckets.ts", "state/timezone.ts", "state/usage-strip.ts", "state/usage-forecast.ts", "state/i18n.ts"]
+const importedSourceSha256 = Object.fromEntries(await Promise.all(importedPaths.map(async path =>
+  [path, sha(await readFile(`${sourceRoot}/${path}`, "utf8"))] as const)))
+const readModule = (path: string) => import(pathToFileURL(`${sourceRoot}/${path}`).href)
+const [api, models, people, buckets, timezone, strip, forecast, i18n] = await Promise.all([
+  readModule("api/usage.ts"), readModule("state/usage-model-dimensions.ts"),
+  readModule("tabs/usage/participants.ts"), readModule("state/time-buckets.ts"),
+  readModule("state/timezone.ts"), readModule("state/usage-strip.ts"),
+  readModule("state/usage-forecast.ts"), readModule("state/i18n.ts"),
+])
+
+function declaration(name: string): any {
+  let found: any
+  const visit = (node: any) => {
+    if (ts.isVariableDeclaration(node) && node.name.getText(tree) === name) found = node
+    ts.forEachChild(node, visit)
+  }
+  visit(tree)
+  assert(found, `Missing actual source declaration: ${name}`)
+  return found
+}
+function compile(source: string, scope: Record<string, unknown>): any {
+  const code = ts.transpileModule(source, { compilerOptions: {
+    target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None,
+  } }).outputText
+  return new Function(...Object.keys(scope), code)(...Object.values(scope))
+}
+function extractedMemo(name: string, scope: Record<string, unknown>): unknown {
+  const initializer = declaration(name).initializer
+  assert(ts.isCallExpression(initializer) && initializer.expression.getText(tree) === "useMemo", `Expected ${name} useMemo`)
+  const callback = initializer.arguments[0]
+  assert(ts.isArrowFunction(callback), `Expected ${name} arrow callback`)
+  return compile(`const __callback = ${callback.getText(tree)}; return __callback();`, scope)
+}
+const emptySummary = compile(`return (${declaration("EMPTY_SUMMARY").initializer.getText(tree)});`, {})
+let rowTokensNode: any
+tree.forEachChild((node: any) => {
+  if (ts.isFunctionDeclaration(node) && node.name?.getText(tree) === "rowTokens") rowTokensNode = node
+})
+assert(rowTokensNode, "Missing actual rowTokens helper")
+const rowTokens = compile(`${rowTokensNode.getText(tree)}\nreturn rowTokens;`, {})
+const now = "2026-10-31T12:00:00.000Z"
+const FrozenDate = new Proxy(Date, {
+  construct(target, args) { return Reflect.construct(target, args.length ? args : [now]) },
+  get(target, key) { return Reflect.get(target, key) },
+})
+const common = { ...models, ...people, ...buckets, ...timezone, ...strip, rowTokens,
+  EMPTY_SUMMARY: emptySummary, Date: FrozenDate, t: i18n.t }
+
+const fields = ["requests", "input", "output", "cacheRead", "cacheCreation", "costUSD"]
+type Difference = { scenario: string; path: string; original: unknown; repaired: unknown; absoluteDelta?: number }
+const differences: Difference[] = []
+let numericFieldsCompared = 0
+function same(scenario: string, path: string, left: unknown, right: unknown) {
+  if (typeof left === "number" && typeof right === "number") {
+    numericFieldsCompared++
+    if (!Object.is(left, right)) differences.push({ scenario, path, original: left, repaired: right,
+      absoluteDelta: Math.abs(left - right) })
+  } else if (left !== right) differences.push({ scenario, path, original: left, repaired: right })
+}
+function sameArray(scenario: string, path: string, left: unknown[], right: unknown[]) {
+  same(scenario, `${path}.length`, left.length, right.length)
+  for (let i = 0; i < Math.min(left.length, right.length); i++) same(scenario, `${path}[${i}]`, left[i], right[i])
+}
+function compareSummary(scenario: string, left: any, right: any) {
+  for (const field of fields) same(scenario, `summary.${field}`, left[field], right[field])
+}
+function compareDistributions(scenario: string, left: any, right: any) {
+  for (const axis of ["byRoutedModel", "byIncomingModel", "byKey", "byClient", "byUser"]) {
+    const a = new Map<string, any>(left[axis].map((row: any) => [row.id, row]))
+    const b = new Map<string, any>(right[axis].map((row: any) => [row.id, row]))
+    same(scenario, `${axis}.rows`, left[axis].length, right[axis].length)
+    sameArray(scenario, `${axis}.identities`, [...a.keys()].sort(), [...b.keys()].sort())
+    for (const [id, row] of a) {
+      const other = b.get(id)
+      if (!other) continue
+      for (const field of fields) same(scenario, `${axis}[${JSON.stringify(id)}].${field}`, row[field], other[field])
+      same(scenario, `${axis}[${JSON.stringify(id)}].label`, row.label, other.label)
+      sameArray(scenario, `${axis}[${JSON.stringify(id)}].routedModels`, row.routedModels ?? [], other.routedModels ?? [])
+    }
+  }
+}
+function compareChart(scenario: string, left: any, right: any) {
+  sameArray(scenario, "chart.bucketKeys", left.bucketKeys, right.bucketKeys)
+  sameArray(scenario, "chart.labels", left.labels, right.labels)
+  same(scenario, "chart.isDaily", left.isDaily, right.isDaily)
+  sameArray(scenario, "chart.cacheData", left.cacheData ?? [], right.cacheData ?? [])
+  const a = new Map<string, any>(left.series.map((row: any) => [row.label, row]))
+  const b = new Map<string, any>(right.series.map((row: any) => [row.label, row]))
+  // These captured viewer cases have unique display labels. Refuse a collision
+  // rather than claiming label matching is an identity check in other fixtures.
+  assert.equal(a.size, left.series.length, `Ambiguous original chart labels: ${scenario}`)
+  assert.equal(b.size, right.series.length, `Ambiguous repaired chart labels: ${scenario}`)
+  same(scenario, "chart.seriesCount", left.series.length, right.series.length)
+  sameArray(scenario, "chart.seriesIdentities", [...a.keys()].sort(), [...b.keys()].sort())
+  for (const [label, row] of a) {
+    const other = b.get(label)
+    if (!other) continue
+    sameArray(scenario, `chart[${JSON.stringify(label)}].data`, row.data, other.data)
+    sameArray(scenario, `chart[${JSON.stringify(label)}].cost`, row.cost, other.cost)
+  }
+}
+function compareStrip(scenario: string, left: any[], right: any[]) {
+  same(scenario, "strip.length", left.length, right.length)
+  const peakA = Math.max(0, ...left.map(cell => cell.dayCostUSD))
+  const peakB = Math.max(0, ...right.map(cell => cell.dayCostUSD))
+  for (let i = 0; i < Math.min(left.length, right.length); i++) {
+    const a = left[i], b = right[i]
+    for (const field of ["endKey", "label", "costUSD", "tokens", "dayCostUSD", "dayTokens"]) {
+      same(scenario, `strip[${i}].${field}`, a[field], b[field])
+    }
+    same(scenario, `strip[${i}].shade`, strip.costShadeLevel(a.costUSD), strip.costShadeLevel(b.costUSD))
+    same(scenario, `strip[${i}].fill`, strip.dayFillRatio(a.dayCostUSD, peakA), strip.dayFillRatio(b.dayCostUSD, peakB))
+  }
+  for (const budget of [1, 7000, forecast.DEFAULT_BUDGET_USD]) {
+    const a = forecast.rankForecastCandidates(left, budget)
+    const b = forecast.rankForecastCandidates(right, budget)
+    same(scenario, `forecast(${budget}).length`, a.length, b.length)
+    for (let i = 0; i < Math.min(a.length, b.length); i++) {
+      for (const field of ["elapsed", "startKey", "startLabel", "spentUSD", "remainingDays", "dailyUSD", "rawDailyUSD", "overspent"]) {
+        same(scenario, `forecast(${budget})[${i}].${field}`, a[i][field], b[i][field])
+      }
+    }
+  }
+}
+
+const baseFilters = { user: "", key: "", client: "", model: "", incomingModel: null as string | null }
+const selections = [
+  ["all", {}], ["key-0000", { key: "key-0000" }],
+  ["client-nfc", { client: "é" }], ["client-nfd", { client: "e\u0301" }],
+  ["model-nfc", { model: "模型é" }], ["model-nfd", { model: "模型e\u0301" }],
+  ["incoming-unicode", { incomingModel: "中|+文" }],
+  ["key-client-nfc", { key: "key-0000", client: "é" }],
+  ["key-client-nfd", { key: "key-0000", client: "e\u0301" }],
+  ["key-model-nfc", { key: "key-0000", model: "模型é" }],
+  ["key-model-nfd", { key: "key-0000", model: "模型e\u0301" }],
+  ["key-client-model-nfc", { key: "key-0000", client: "é", model: "模型é" }],
+  ["key-client-model-nfd", { key: "key-0000", client: "e\u0301", model: "模型e\u0301" }],
+] as const
+const participants = people.indexParticipants([])
+const captures: Record<string, Record<string, any[]>> = {}
+const inputProof: Record<string, unknown> = {}
+for (const kind of ["today", "28d", "strip"]) {
+  captures[kind] = {}
+  const originals = await readFile(`/tmp/d08-capacity-original-${kind}.json`, "utf8")
+  const repaired = await readFile(`/tmp/d08-capacity-repaired-${kind}.json`, "utf8")
+  const left = JSON.parse(originals), right = JSON.parse(repaired)
+  assert(Array.isArray(left) && Array.isArray(right), `${kind} bodies must be arrays`)
+  same(kind, "body.length", left.length, right.length)
+  let moved = 0, numericPayloadEqualAtMovedPositions = true
+  for (let i = 0; i < Math.min(left.length, right.length); i++) {
+    if (JSON.stringify(left[i]) !== JSON.stringify(right[i])) {
+      moved++
+      const metric = (r: any) => JSON.stringify({ requests: r.requests, tokens: r.tokens, cost: r.cost })
+      if (metric(left[i]) !== metric(right[i])) numericPayloadEqualAtMovedPositions = false
+    }
+  }
+  captures[kind]!.original = left.map(api.adaptUsageRow)
+  captures[kind]!.repaired = right.map(api.adaptUsageRow)
+  inputProof[kind] = { originalSha256: sha(originals), repairedSha256: sha(repaired),
+    rows: left.length, movedPositions: moved, numericPayloadEqualAtMovedPositions }
+}
+
+let scenarios = 0
+for (const kind of ["today", "28d"]) {
+  for (const mode of ["utc", "local"]) {
+    for (const [selection, patch] of selections) {
+      const filters = { ...baseFilters, ...patch }
+      for (const metric of ["tokens", "requests"]) {
+        const scenario = `${kind}/${mode}/${selection}/${metric}`
+        const results: Record<string, any> = {}
+        for (const side of ["original", "repaired"]) {
+          const data = captures[kind]![side]!
+          const filtered = models.filterUsageRows(data, filters, participants)
+          const scope = { ...common, data, filtered, filters, participants, isAdmin: false,
+            range: kind, mode, periodOffset: 0, endDate: null, metric }
+          results[side] = {
+            summary: extractedMemo("summary", scope),
+            distributions: extractedMemo("distributions", scope),
+            chart: extractedMemo("chart", scope),
+          }
+        }
+        compareSummary(scenario, results.original.summary, results.repaired.summary)
+        compareDistributions(scenario, results.original.distributions, results.repaired.distributions)
+        compareChart(scenario, results.original.chart, results.repaired.chart)
+        scenarios++
+      }
+      if (kind === "28d") {
+        const scenario = `${kind}/${mode}/${selection}/strip`
+        const result: Record<string, any> = {}
+        for (const side of ["original", "repaired"]) {
+          result[side] = extractedMemo("strip", { ...common, range: kind, mode,
+            stripRows: captures.strip![side]!, filters, participants })
+        }
+        compareStrip(scenario, result.original, result.repaired)
+        scenarios++
+      }
+    }
+  }
+}
+const report = { sourceFile, sourceSha256, importedSourceSha256,
+  frozenNow: now, localZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  isAdmin: false, participants: "empty index; no user-filter case", capturedInput: inputProof,
+  actualReducerExtraction: ["summary", "distributions", "chart", "strip", "rowTokens", "EMPTY_SUMMARY"],
+  actualImportedHelpers: ["adaptUsageRow", "filterUsageRows", "buildDistribution", "buildIncomingModelDistribution",
+    "buildRoutedModelDistribution", "buildTimeBuckets", "utcHourToBucketKey", "buildRollingStrip", "rankForecastCandidates"],
+  scenarios, numericFieldsCompared, differences,
+  limitations: ["Captured responses are assigned-viewer; no admin or participant-route body was replayed",
+    "Local mode re-buckets the same captured UTC rowsets; it is not a complete local-zone HTTP range fetch",
+    "Chart series are matched by unique display labels in these cases; duplicate labels fail the script",
+    "Distribution and chart array order/palette are excluded; every identity's numeric payload is compared exactly"],
+}
+await writeFile(output, JSON.stringify(report, null, 2) + "\n")
+console.log(JSON.stringify({ output, scenarios, numericFieldsCompared, differences: differences.length }))
+if (differences.length || Object.values(inputProof).some((value: any) => !value.numericPayloadEqualAtMovedPositions)) process.exitCode = 1

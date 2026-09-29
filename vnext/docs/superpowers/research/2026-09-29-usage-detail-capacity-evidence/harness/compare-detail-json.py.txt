@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""Compare complete canonical JSON bodies from a frozen-source oracle and repair."""
+import json
+import pathlib
+import sys
+
+if len(sys.argv) != 3:
+    raise SystemExit("Usage: python3 compare-detail-json.py REPAIRED_RUN ORIGINAL_ORACLE_RUN")
+scratch = pathlib.Path(__file__).resolve().parent
+repaired = pathlib.Path(sys.argv[1]).resolve()
+oracle = pathlib.Path(sys.argv[2]).resolve()
+errors = []
+compared = []
+unavailable = []
+
+
+def read(path):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        errors.append(f"{path}: {exc}")
+        return {}
+
+
+def observations(result, label, require_hash):
+    rows = result.get("observations")
+    if not isinstance(rows, list):
+        errors.append(f"{label}: missing observations")
+        return {}
+    by_path = {row.get("path"): row for row in rows}
+    if len(by_path) != len(rows):
+        errors.append(f"{label}: duplicate or absent HTTP path")
+    if require_hash:
+        if result.get("captureJsonHash") is not True:
+            errors.append(f"{label}: JSON hashing was not enabled")
+        for path, row in by_path.items():
+            if row.get("status") == 200 and not row.get("jsonContentSha256"):
+                errors.append(f"{label}: missing complete JSON hash for {path}")
+    return by_path
+
+
+for profile in ("realistic", "high"):
+    for case in ("admin-today", "admin-28d", "viewer-today", "viewer-28d"):
+        repaired_by_runtime = {}
+        for runtime in ("sqlite", "workerd"):
+            label = f"{runtime}/{profile}/{case}"
+            old = read(scratch / "runs" / f"{runtime}-{profile}-baseline" / f"{case}.result.json")
+            metric = read(repaired / f"{runtime}-{profile}" / f"{case}.metric.result.json")
+            new = read(repaired / f"{runtime}-{profile}" / f"{case}.parity.result.json")
+            original = read(oracle / f"{runtime}-{profile}" / f"{case}.parity.result.json")
+            if not all((old, metric, new, original)):
+                continue
+            hashes = {value.get("fixtureHash") for value in (old, metric, new, original)}
+            if len(hashes) != 1:
+                errors.append(f"{label}: fixture source hashes differ")
+            if not metric.get("complete") or not new.get("complete"):
+                errors.append(f"{label}: repaired whole load is incomplete")
+            old_rows = observations(old, f"{label} retained original", False)
+            metric_rows = observations(metric, f"{label} repaired metric", False)
+            new_rows = observations(new, f"{label} repaired parity", True)
+            original_rows = observations(original, f"{label} original oracle", old.get("complete") is True)
+            paths = set(old_rows)
+            if set(metric_rows) != paths or set(new_rows) != paths or set(original_rows) != paths:
+                errors.append(f"{label}: HTTP family paths differ")
+            if len(paths) != (3 if case.endswith("28d") else 2):
+                errors.append(f"{label}: incomplete HTTP family set")
+            for path in paths & set(metric_rows) & set(new_rows):
+                if metric_rows[path].get("status") != 200 or new_rows[path].get("status") != 200:
+                    errors.append(f"{label}: repaired non-200 HTTP response on {path}")
+                if metric_rows[path].get("decodedBodyBytes") != new_rows[path].get("decodedBodyBytes"):
+                    errors.append(f"{label}: repaired metric/parity byte count changed on {path}")
+            repaired_by_runtime[runtime] = new_rows
+            if old.get("complete"):
+                if not original.get("complete"):
+                    errors.append(f"{label}: original-source oracle did not reproduce a successful baseline")
+                for path in paths & set(original_rows) & set(new_rows):
+                    before = original_rows[path]
+                    after = new_rows[path]
+                    retained = old_rows[path]
+                    if before.get("status") != retained.get("status") or before.get("decodedBodyBytes") != retained.get("decodedBodyBytes"):
+                        errors.append(f"{label}: original-source oracle does not reproduce retained HTTP size/status on {path}")
+                    if before.get("jsonContentSha256") != after.get("jsonContentSha256"):
+                        errors.append(f"{label}: complete JSON content differs on {path}")
+                    else:
+                        compared.append({"case": label, "path": path, "jsonContentSha256": after.get("jsonContentSha256")})
+            else:
+                unavailable.append({"case": label, "reason": "Retained original endpoint failed; no original successful JSON payload exists"})
+        sqlite_rows = repaired_by_runtime.get("sqlite", {})
+        workerd_rows = repaired_by_runtime.get("workerd", {})
+        if set(sqlite_rows) != set(workerd_rows):
+            errors.append(f"{profile}/{case}: repaired SQLite/workerd HTTP paths differ")
+        for path in set(sqlite_rows) & set(workerd_rows):
+            if sqlite_rows[path].get("jsonContentSha256") != workerd_rows[path].get("jsonContentSha256"):
+                errors.append(f"{profile}/{case}: repaired SQLite/workerd complete JSON differs on {path}")
+
+report = {
+    "status": "passed" if not errors else "failed",
+    "repairedRun": str(repaired),
+    "originalSourceOracleRun": str(oracle),
+    "comparedSuccessfulOriginalEndpoints": compared,
+    "originalFailedEndpointsWithoutContentOracle": unavailable,
+    "errors": errors,
+    "limitations": [
+        "Retained original baseline files contain status, byte counts and SQL totals, but no original response bodies or hashes.",
+        "The original-source oracle is a new run from the frozen original source, not a recovered original response.",
+        "Canonical JSON hashing preserves array order and sorts object keys; it is run outside metric timing.",
+    ],
+}
+(repaired / "json-parity-check.json").write_text(json.dumps(report, indent=2) + "\n")
+print(json.dumps({"status": report["status"], "compared": len(compared), "unavailable": len(unavailable), "errors": errors}))
+raise SystemExit(1 if errors else 0)

@@ -1,0 +1,378 @@
+{
+  "rows": [
+    {
+      "runtime": "sqlite",
+      "profile": "realistic",
+      "case": "admin-today",
+      "original": {
+        "complete": true,
+        "httpRequests": 2,
+        "decodedBodyBytes": 23750,
+        "sqlStatements": 39,
+        "elapsedMs": 8.766666999999998,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 2,
+        "decodedBodyBytes": 23750,
+        "sqlStatements": 11,
+        "elapsedMs": 12.211959,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      }
+    },
+    {
+      "runtime": "sqlite",
+      "profile": "realistic",
+      "case": "admin-28d",
+      "original": {
+        "complete": true,
+        "httpRequests": 3,
+        "decodedBodyBytes": 1536438,
+        "sqlStatements": 50,
+        "elapsedMs": 49.306125,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 3,
+        "decodedBodyBytes": 1536438,
+        "sqlStatements": 17,
+        "elapsedMs": 30.680874999999997,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      }
+    },
+    {
+      "runtime": "sqlite",
+      "profile": "realistic",
+      "case": "viewer-today",
+      "original": {
+        "complete": true,
+        "httpRequests": 2,
+        "decodedBodyBytes": 15537,
+        "sqlStatements": 44,
+        "elapsedMs": 12.098457999999999,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 2,
+        "decodedBodyBytes": 15537,
+        "sqlStatements": 14,
+        "elapsedMs": 6.758749999999999,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      }
+    },
+    {
+      "runtime": "sqlite",
+      "profile": "realistic",
+      "case": "viewer-28d",
+      "original": {
+        "complete": true,
+        "httpRequests": 3,
+        "decodedBodyBytes": 1225057,
+        "sqlStatements": 59,
+        "elapsedMs": 31.649415999999995,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 3,
+        "decodedBodyBytes": 1225057,
+        "sqlStatements": 22,
+        "elapsedMs": 30.361875,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      }
+    },
+    {
+      "runtime": "sqlite",
+      "profile": "high",
+      "case": "admin-today",
+      "original": {
+        "complete": true,
+        "httpRequests": 2,
+        "decodedBodyBytes": 518849,
+        "sqlStatements": 2224,
+        "elapsedMs": 26.148917,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 2,
+        "decodedBodyBytes": 518849,
+        "sqlStatements": 11,
+        "elapsedMs": 20.561125,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      }
+    },
+    {
+      "runtime": "sqlite",
+      "profile": "high",
+      "case": "admin-28d",
+      "original": {
+        "complete": true,
+        "httpRequests": 3,
+        "decodedBodyBytes": 53060504,
+        "sqlStatements": 2632,
+        "elapsedMs": 1234.523084,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 3,
+        "decodedBodyBytes": 53060504,
+        "sqlStatements": 17,
+        "elapsedMs": 986.418584,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      }
+    },
+    {
+      "runtime": "sqlite",
+      "profile": "high",
+      "case": "viewer-today",
+      "original": {
+        "complete": true,
+        "httpRequests": 2,
+        "decodedBodyBytes": 387576,
+        "sqlStatements": 3818,
+        "elapsedMs": 36.202,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 2,
+        "decodedBodyBytes": 387576,
+        "sqlStatements": 14,
+        "elapsedMs": 48.944791,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      }
+    },
+    {
+      "runtime": "sqlite",
+      "profile": "high",
+      "case": "viewer-28d",
+      "original": {
+        "complete": true,
+        "httpRequests": 3,
+        "decodedBodyBytes": 43032207,
+        "sqlStatements": 4826,
+        "elapsedMs": 962.82,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 3,
+        "decodedBodyBytes": 43032207,
+        "sqlStatements": 22,
+        "elapsedMs": 1222.718792,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": null
+      }
+    },
+    {
+      "runtime": "workerd",
+      "profile": "realistic",
+      "case": "admin-today",
+      "original": {
+        "complete": true,
+        "httpRequests": 2,
+        "decodedBodyBytes": 23750,
+        "sqlStatements": 39,
+        "elapsedMs": 16.700583999999996,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 328
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 2,
+        "decodedBodyBytes": 23750,
+        "sqlStatements": 11,
+        "elapsedMs": 29.979917,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 399
+      }
+    },
+    {
+      "runtime": "workerd",
+      "profile": "realistic",
+      "case": "admin-28d",
+      "original": {
+        "complete": true,
+        "httpRequests": 3,
+        "decodedBodyBytes": 1536438,
+        "sqlStatements": 50,
+        "elapsedMs": 102.50425,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 17703
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 3,
+        "decodedBodyBytes": 1536438,
+        "sqlStatements": 17,
+        "elapsedMs": 72.99975,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 17787
+      }
+    },
+    {
+      "runtime": "workerd",
+      "profile": "realistic",
+      "case": "viewer-today",
+      "original": {
+        "complete": true,
+        "httpRequests": 2,
+        "decodedBodyBytes": 15537,
+        "sqlStatements": 44,
+        "elapsedMs": 17.919416,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 14446
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 2,
+        "decodedBodyBytes": 15537,
+        "sqlStatements": 14,
+        "elapsedMs": 11.216915999999998,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 14523
+      }
+    },
+    {
+      "runtime": "workerd",
+      "profile": "realistic",
+      "case": "viewer-28d",
+      "original": {
+        "complete": true,
+        "httpRequests": 3,
+        "decodedBodyBytes": 1225057,
+        "sqlStatements": 59,
+        "elapsedMs": 78.32608300000001,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 45764
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 3,
+        "decodedBodyBytes": 1225057,
+        "sqlStatements": 22,
+        "elapsedMs": 69.178333,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 45897
+      }
+    },
+    {
+      "runtime": "workerd",
+      "profile": "high",
+      "case": "admin-today",
+      "original": {
+        "complete": true,
+        "httpRequests": 2,
+        "decodedBodyBytes": 518849,
+        "sqlStatements": 2224,
+        "elapsedMs": 427.353792,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 10848
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 2,
+        "decodedBodyBytes": 518849,
+        "sqlStatements": 11,
+        "elapsedMs": 51.325208,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 16282
+      }
+    },
+    {
+      "runtime": "workerd",
+      "profile": "high",
+      "case": "admin-28d",
+      "original": {
+        "complete": true,
+        "httpRequests": 3,
+        "decodedBodyBytes": 53060504,
+        "sqlStatements": 2632,
+        "elapsedMs": 3294.9936669999997,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 629825
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 3,
+        "decodedBodyBytes": 53060504,
+        "sqlStatements": 17,
+        "elapsedMs": 2654.811916,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 636265
+      }
+    },
+    {
+      "runtime": "workerd",
+      "profile": "high",
+      "case": "viewer-today",
+      "original": {
+        "complete": false,
+        "httpRequests": 2,
+        "decodedBodyBytes": 85107,
+        "sqlStatements": 3817,
+        "elapsedMs": 808.095333,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 5219
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 2,
+        "decodedBodyBytes": 387576,
+        "sqlStatements": 14,
+        "elapsedMs": 70.849875,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 524545
+      }
+    },
+    {
+      "runtime": "workerd",
+      "profile": "high",
+      "case": "viewer-28d",
+      "original": {
+        "complete": false,
+        "httpRequests": 3,
+        "decodedBodyBytes": 85128,
+        "sqlStatements": 4824,
+        "elapsedMs": 1159.226458,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 6627
+      },
+      "repaired": {
+        "complete": true,
+        "httpRequests": 3,
+        "decodedBodyBytes": 43032207,
+        "sqlStatements": 22,
+        "elapsedMs": 2699.995208,
+        "d1RowsRead": null,
+        "d1RowsReadKnownSubtotal": 1655037
+      }
+    }
+  ],
+  "limits": [
+    "Single-run HTTP-family diagnostics, not production benchmarks or React paint.",
+    "Elapsed times exclude source seeding and separate JSON hashing; encoded wire bytes were not measured.",
+    "Rows-read known subtotal is incomplete. Failed original loads have no successful size or latency denominator.",
+    "Statement totals include auth and metadata; fixed route budgets are separately verified."
+  ]
+}

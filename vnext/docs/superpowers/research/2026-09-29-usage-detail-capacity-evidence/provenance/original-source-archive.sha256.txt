@@ -1,0 +1,1 @@
+c6fc70c9a039bdc3d1b6e429f16c34a6a06e8fb150e47b9d2c745a9213be6af8  /Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/.superpowers/sdd/2026-09-29-reference-adoption-follow-up/d08-acceptance/runs/original-source-8f39d0d6dacac78c77ecf2704631fbd3cf7fa734.tar

@@ -1,0 +1,33 @@
+"""Summarize original versus repaired HTTP diagnostics without treating errors as successes."""
+from pathlib import Path
+import json
+import sys
+
+scratch = Path(__file__).resolve().parent
+repaired = Path(sys.argv[1]).resolve()
+rows = []
+for runtime in ('sqlite', 'workerd'):
+    for profile in ('realistic', 'high'):
+        for case in ('admin-today', 'admin-28d', 'viewer-today', 'viewer-28d'):
+            old = json.loads((scratch / 'runs' / f'{runtime}-{profile}-baseline' / f'{case}.result.json').read_text())
+            new = json.loads((repaired / f'{runtime}-{profile}' / f'{case}.metric.result.json').read_text())
+            assert old['fixtureHash'] == new['fixtureHash']
+            assert new['complete'], (runtime, profile, case, new['failure'])
+            fields = ('complete', 'httpRequests', 'decodedBodyBytes', 'sqlStatements', 'elapsedMs', 'd1RowsRead', 'd1RowsReadKnownSubtotal')
+            rows.append({'runtime': runtime, 'profile': profile, 'case': case,
+                         'original': {k: old[k] for k in fields}, 'repaired': {k: new[k] for k in fields}})
+report = {'rows': rows, 'limits': ['Single-run HTTP-family diagnostics, not production benchmarks or React paint.',
+    'Elapsed times exclude source seeding and separate JSON hashing; encoded wire bytes were not measured.',
+    'Rows-read known subtotal is incomplete. Failed original loads have no successful size or latency denominator.',
+    'Statement totals include auth and metadata; fixed route budgets are separately verified.']}
+(repaired / 'comparison.json').write_text(json.dumps(report, indent=2) + '\n')
+lines = ['| Runtime | Profile | View | Original SQL | Repaired SQL | Original bytes | Repaired bytes | Original ms | Repaired ms |',
+         '| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |']
+for row in rows:
+    a, b = row['original'], row['repaired']
+    values = [row['runtime'], row['profile'], row['case'], str(a['sqlStatements']) if a['complete'] else 'FAILED', str(b['sqlStatements']),
+              str(a['decodedBodyBytes']) if a['complete'] else 'FAILED', str(b['decodedBodyBytes']),
+              f"{a['elapsedMs']:.2f}" if a['complete'] else 'FAILED', f"{b['elapsedMs']:.2f}"]
+    lines.append('| ' + ' | '.join(values) + ' |')
+(repaired / 'comparison.md').write_text('\n'.join(lines) + '\n')
+print('\n'.join(lines))

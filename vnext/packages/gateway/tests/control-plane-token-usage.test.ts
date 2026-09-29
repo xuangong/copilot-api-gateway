@@ -39,6 +39,12 @@ function inMemoryRepo() {
       getById: async (id: string) => keys.get(id) ?? null,
     },
     usage: {
+      queryKeyMetadata: async (ids?: readonly string[]) => [...keys.values()]
+        .filter(k => ids === undefined || ids.includes(k.id))
+        .map(k => ({ keyId: k.id, keyName: k.name, ownerId: k.ownerId ?? null,
+          ownerName: k.ownerId ? users.get(k.ownerId)?.name ?? null : null, createdAt: k.createdAt })),
+      queryAssigneeMetadata: async (ids: readonly string[]) => assignments.filter(a => ids.includes(a.keyId))
+        .map(a => ({ keyId: a.keyId, userId: a.userId, name: users.get(a.userId)?.name ?? null })),
       query: async (opts: { keyId?: string; keyIds?: string[]; start: string; end: string }) => {
         usageQueryCount += 1
         return usage.filter((u) => {

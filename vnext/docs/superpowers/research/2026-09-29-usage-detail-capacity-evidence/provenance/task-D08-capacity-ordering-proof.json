@@ -1,0 +1,34 @@
+{
+  "results": [
+    {
+      "name": "today",
+      "rows": 1464,
+      "changedPositions": 4,
+      "capturedBodiesMatchRecordedHashes": true,
+      "onlyComparatorEquivalentPermutation": true,
+      "completeRowMultisetIdentical": true,
+      "canonicalMultisetSha256": "8ae3a9fcc02b69ec5c2e1b6a51392a2095bcbdb9254138ea0489b0acd9cc700d"
+    },
+    {
+      "name": "28d",
+      "rows": 40069,
+      "changedPositions": 16,
+      "capturedBodiesMatchRecordedHashes": true,
+      "onlyComparatorEquivalentPermutation": true,
+      "completeRowMultisetIdentical": true,
+      "canonicalMultisetSha256": "33748e660bf754129a1edbc72da9cd8f6c5cc3a95a70ab155aa41be057a82404"
+    },
+    {
+      "name": "strip",
+      "rows": 167021,
+      "changedPositions": 20,
+      "capturedBodiesMatchRecordedHashes": true,
+      "onlyComparatorEquivalentPermutation": true,
+      "completeRowMultisetIdentical": true,
+      "canonicalMultisetSha256": "d596a214ec487cc639833d33d5dd8c1b1f2e4df056946786404c59f23a24f9e0"
+    }
+  ],
+  "comparator": "hour.localeCompare then keyId then incomingModel then model then client",
+  "sourceData": "retained isolated SQLite original and repaired fixture DBs, readonly capture",
+  "limits": "No other ordering relaxation or numeric tolerance"
+}

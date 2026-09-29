@@ -1,0 +1,35 @@
+// Scratch-only request-scoped measurement around the actual app and real D1.
+import { AsyncLocalStorage } from "node:async_hooks"
+import { app } from "__ROOT__/vnext/packages/gateway/src/app.ts"
+import { initRepo } from "__ROOT__/vnext/packages/gateway/src/repo/index.ts"
+import { D1Repo } from "__ROOT__/vnext/apps/platform-cloudflare/src/d1-repo.ts"
+import { instrumentD1, summary } from "__SCRATCH__/instrumentation.mjs"
+const events = []
+const context = new AsyncLocalStorage()
+let initialized = false
+let requestNumber = 0
+export default {
+  async fetch(request, env) {
+    if (!initialized) {
+      initRepo(new D1Repo(instrumentD1(env.DB, events, () => context.getStore() ?? {})))
+      initialized = true
+    }
+    const url = new URL(request.url)
+    if (url.pathname === "/__fixture/sql-events") return Response.json(events)
+    if (url.pathname === "/__fixture/reset-events" && request.method === "POST") {
+      events.length = 0
+      return Response.json({ ok: true })
+    }
+    const requestId = String(++requestNumber)
+    return context.run({ requestId }, async () => {
+      const result = await app.fetch(request, env)
+      const response = new Response(result.body, result)
+      const stats = summary(events.filter(event => event.requestId === requestId))
+      response.headers.set("x-d08-sql-statements", String(stats.statements))
+      if (stats.rowsRead !== null) response.headers.set("x-d08-d1-rows-read", String(stats.rowsRead))
+      response.headers.set("x-d08-d1-rows-read-known", String(stats.rowsReadKnownSubtotal))
+      response.headers.set("x-d08-d1-rows-read-statements", String(stats.rowsReadAvailableStatements))
+      return response
+    })
+  },
+}

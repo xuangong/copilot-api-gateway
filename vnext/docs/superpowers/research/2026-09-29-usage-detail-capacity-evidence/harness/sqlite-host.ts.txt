@@ -1,0 +1,64 @@
+// Scratch isolated real-app host. NOT run in preparation.
+// Usage later: bun sqlite-host.ts /absolute/accepted/checkout realistic
+import { Database } from "bun:sqlite"
+import { AsyncLocalStorage } from "node:async_hooks"
+import { createHash } from "node:crypto"
+import { mkdtemp, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join, resolve } from "node:path"
+import { pathToFileURL } from "node:url"
+import { descriptor, sourceStatements, sessionStatements } from "./fixture.mjs"
+import { sqliteExecutor, sqlitePlans, summary } from "./instrumentation.mjs"
+
+const checkout = process.argv[2]
+if (!checkout) throw new Error("Pass an explicit checkout path")
+const profile = process.argv[3] ?? "realistic"
+const source = (path: string) => import(pathToFileURL(resolve(checkout, path)).href)
+const [{ initSqlite }, { buildSharedRepo }, { initRepo }, { app }] = await Promise.all([
+  source("vnext/apps/platform-bun/src/bun-sqlite-repo.ts"),
+  source("vnext/packages/gateway/src/repo/shared/repos.ts"),
+  source("vnext/packages/gateway/src/repo/index.ts"),
+  source("vnext/packages/gateway/src/app.ts"),
+])
+const directory = await mkdtemp(join(tmpdir(), "d08-acceptance-"))
+const db = new Database(join(directory, "fixture.sqlite"), { create: true })
+initSqlite(db)
+const digest = createHash("sha256")
+let sourceStatementsCount = 0
+db.transaction(() => {
+  for (const statement of sourceStatements(profile)) {
+    digest.update(`${JSON.stringify(statement)}\n`)
+    db.query(statement.sql).run(...statement.binds)
+    sourceStatementsCount++
+  }
+  for (const statement of sessionStatements(profile)) db.query(statement.sql).run(...statement.binds)
+})()
+const fixtureHash = digest.digest("hex")
+await writeFile(join(directory, "fixture-manifest.json"), JSON.stringify({ ...descriptor(profile), fixtureHash, sourceStatementsCount }, null, 2))
+
+type Event = { requestId?: string; sql: string; binds: unknown[]; operation: string; elapsedMs: number; rowsRead: number | null }
+const events: Event[] = []
+const context = new AsyncLocalStorage<{ requestId: string }>()
+initRepo(buildSharedRepo(sqliteExecutor(db, events, () => context.getStore() ?? {})))
+let requestId = 0
+const server = Bun.serve({
+  hostname: "127.0.0.1", port: 0,
+  async fetch(request: Request) {
+    const current = String(++requestId)
+    return context.run({ requestId: current }, async () => {
+      const result = await app.fetch(request, { SERVER_SECRET: "synthetic-d08-secret" })
+      const response = new Response(result.body, result)
+      response.headers.set("x-d08-sql-statements", String(summary(events.filter(e => e.requestId === current)).statements))
+      return response
+    })
+  },
+})
+console.log(JSON.stringify({ origin: `http://127.0.0.1:${server.port}`, directory, fixtureHash, profile,
+  note: "Synthetic loopback host. SQL/EXPLAIN evidence is written on SIGINT. No production data." }))
+process.on("SIGINT", async () => {
+  await server.stop(false)
+  await writeFile(join(directory, "sql-events.json"), JSON.stringify(events, null, 2))
+  await writeFile(join(directory, "sqlite-plans.json"), JSON.stringify(sqlitePlans(db, events), null, 2))
+  db.close()
+  process.exit(0)
+})

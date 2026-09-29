@@ -1,0 +1,95 @@
+// Scratch host seams. Preparation did not execute these adapters.
+export function summary(events) {
+  const complete = events.every(e => typeof e.rowsRead === "number")
+  return { statements: events.length, elapsedSqlMs: events.reduce((n, e) => n + e.elapsedMs, 0),
+    rowsRead: complete ? events.reduce((n, e) => n + e.rowsRead, 0) : null,
+    rowsReadKnownSubtotal: events.reduce((n, e) => n + (e.rowsRead ?? 0), 0),
+    rowsReadAvailableStatements: events.filter(e => typeof e.rowsRead === "number").length }
+}
+
+// Use after applying actual migrations and fixture seeding; all binds are synthetic.
+// Supply buildSharedRepo(sqliteExecutor(...)) to actual initRepo/app.
+export function sqliteExecutor(db, events, context = () => ({})) {
+  const invoke = (operation, sql, binds) => {
+    const start = performance.now()
+    const event = { ...context(), operation, sql, binds: [...binds], rowsRead: null }
+    try {
+      const statement = db.query(sql)
+      const value = operation === "all" ? statement.all(...binds) : operation === "first" ? statement.get(...binds) : statement.run(...binds)
+      event.rowsReturned = operation === "all" ? value.length : operation === "first" ? Number(value != null) : 0
+      return operation === "run" ? { changes: Number(value.changes) } : value ?? null
+    } catch (error) { event.error = String(error); throw error }
+    finally { event.elapsedMs = performance.now() - start; events.push(event) }
+  }
+  return { all: async (sql, binds) => invoke("all", sql, binds), first: async (sql, binds) => invoke("first", sql, binds), run: async (sql, binds) => invoke("run", sql, binds) }
+}
+
+// Instrument executions, not prepare()/bind(). Do not double count batch members.
+// Native .first() hides result meta: keep rowsRead=null for it. That is deliberate.
+// A separately-labelled diagnostic may execute all()[0] to obtain metadata, but
+// must never mix that changed execution path into the native latency baseline.
+export function instrumentD1(db, events, context = () => ({})) {
+  const native = new WeakMap()
+  const descriptions = new WeakMap()
+  const record = async (info, operation, work) => {
+    const start = performance.now()
+    const event = { ...context(), ...info, operation, rowsRead: null }
+    try {
+      const value = await work()
+      const result = operation === "first" ? null : value
+      event.rowsRead = typeof result?.meta?.rows_read === "number" ? result.meta.rows_read : null
+      event.meta = result?.meta ?? null
+      event.rowsReturned = operation === "first" ? Number(value != null) : value.results?.length ?? 0
+      return value
+    } catch (error) { event.error = String(error); throw error }
+    finally { event.elapsedMs = performance.now() - start; events.push(event) }
+  }
+  const wrap = (statement, sql, binds) => {
+    const wrapper = {
+      bind: (...next) => wrap(statement.bind(...next), sql, next),
+      first: (...args) => record({ sql, binds }, "first", () => statement.first(...args)),
+      all: (...args) => record({ sql, binds }, "all", () => statement.all(...args)),
+      run: (...args) => record({ sql, binds }, "run", () => statement.run(...args)),
+    }
+    native.set(wrapper, statement)
+    descriptions.set(wrapper, { sql, binds })
+    return wrapper
+  }
+  return {
+    prepare: sql => wrap(db.prepare(sql), sql, []),
+    async batch(statements) {
+      const start = performance.now()
+      const raw = statements.map(s => {
+        const underlying = native.get(s)
+        if (!underlying) throw new Error("D1 batch contains a statement outside this request collector")
+        return underlying
+      })
+      let results
+      try { results = await db.batch(raw); return results }
+      finally {
+        statements.forEach((statement, i) => {
+          const result = results?.[i]
+          events.push({ ...context(), ...descriptions.get(statement), operation: "batch", batchIndex: i,
+            // Batch wall time is attributed once; this is not a per-statement duration.
+            elapsedMs: i === 0 ? performance.now() - start : 0, meta: result?.meta ?? null,
+            rowsRead: typeof result?.meta?.rows_read === "number" ? result.meta.rows_read : null,
+            rowsReturned: result?.results?.length ?? 0, error: results ? undefined : "Batch failed" })
+        })
+      }
+    },
+  }
+}
+
+// Run outside the timed load against the SAME real DB and the captured bind sets.
+// Do not log/execute an EXPLAIN for each page during timing.
+export function sqlitePlans(db, events) {
+  const chosen = new Map()
+  for (const event of events) {
+    if (!/^\s*(WITH|SELECT)\b/i.test(event.sql)) continue
+    // Caller should retain first/middle/last pages too when their bind plans differ.
+    const key = `${event.sql}\n${event.binds.length}`
+    if (!chosen.has(key)) chosen.set(key, { sql: event.sql, binds: event.binds,
+      plan: db.query(`EXPLAIN QUERY PLAN ${event.sql}`).all(...event.binds) })
+  }
+  return [...chosen.values()]
+}

@@ -1,0 +1,56 @@
+{
+  "mode": "baseline",
+  "fixtureHash": "46986861e0cca8e52657b3f1e8d04e8a98e2370168b007d0150101e6da827978",
+  "fixtureProfile": "high",
+  "captureJsonHash": true,
+  "complete": true,
+  "failure": null,
+  "range": {
+    "start": "2026-10-31T00",
+    "end": "2026-11-01T00"
+  },
+  "stripRange": null,
+  "now": "2026-10-31T12:00:00.000Z",
+  "zoneMode": "utc",
+  "localZone": "Asia/Shanghai",
+  "groupBy": "key",
+  "filters": {},
+  "elapsedMs": 36.479833,
+  "httpRequests": 2,
+  "decodedBodyBytes": 387576,
+  "sqlStatements": 3818,
+  "d1RowsRead": null,
+  "d1RowsReadKnownSubtotal": null,
+  "d1RowsReadKnownStatements": null,
+  "completedStreams": [],
+  "observations": [
+    {
+      "path": "/api/token-usage?start=2026-10-31T00&end=2026-11-01T00",
+      "elapsedMs": 22.577958,
+      "status": 200,
+      "decodedBodyBytes": 302490,
+      "sqlStatements": 1008,
+      "d1RowsRead": null,
+      "d1RowsReadKnownSubtotal": null,
+      "d1RowsReadKnownStatements": null,
+      "jsonContentSha256": "366e3a8e0142a294154f61b3a19b1455067a7e2aac77a1e3f17339d71213889d"
+    },
+    {
+      "path": "/api/token-usage/participants",
+      "elapsedMs": 35.678083,
+      "status": 200,
+      "decodedBodyBytes": 85086,
+      "sqlStatements": 2810,
+      "d1RowsRead": null,
+      "d1RowsReadKnownSubtotal": null,
+      "d1RowsReadKnownStatements": null,
+      "jsonContentSha256": "43ff84d72e6898e8ec2227da8b8723f2b1788b22d2700586627782bf3bb6bf72"
+    }
+  ],
+  "limitations": [
+    "Instrumented decoded HTTP body bytes; no compressed/header transfer metric here",
+    "Completion is all HTTP families, not React paint",
+    "Projection adapter absent means proposed request-plan probe, not actual consumer-loader evidence",
+    "SQL and rows-read null means unavailable, never zero"
+  ]
+}

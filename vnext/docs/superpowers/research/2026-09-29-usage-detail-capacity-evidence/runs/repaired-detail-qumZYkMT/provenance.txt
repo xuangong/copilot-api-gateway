@@ -1,0 +1,7 @@
+checkout=/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify
+label=repaired-detail
+pass_mode=metric-and-parity
+TZ=Asia/Shanghai
+bun=/Users/zhangxian/.bun/bin/bun
+sourceSha=cce086c355521ba99bd6aad3429d85b99ec66910
+noGitArchive=false

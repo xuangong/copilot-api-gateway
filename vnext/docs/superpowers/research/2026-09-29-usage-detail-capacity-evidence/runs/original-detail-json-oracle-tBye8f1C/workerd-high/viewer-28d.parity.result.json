@@ -1,0 +1,70 @@
+{
+  "mode": "baseline",
+  "fixtureHash": "46986861e0cca8e52657b3f1e8d04e8a98e2370168b007d0150101e6da827978",
+  "fixtureProfile": "high",
+  "captureJsonHash": true,
+  "complete": false,
+  "failure": "AggregateError: Incomplete whole load",
+  "range": {
+    "start": "2026-10-04T00",
+    "end": "2026-10-31T13"
+  },
+  "stripRange": {
+    "start": "2026-07-07T00",
+    "end": "2026-10-31T13"
+  },
+  "now": "2026-10-31T12:00:00.000Z",
+  "zoneMode": "utc",
+  "localZone": "Asia/Shanghai",
+  "groupBy": "key",
+  "filters": {},
+  "elapsedMs": 1118.826958,
+  "httpRequests": 3,
+  "decodedBodyBytes": 85128,
+  "sqlStatements": 4824,
+  "d1RowsRead": null,
+  "d1RowsReadKnownSubtotal": 6627,
+  "d1RowsReadKnownStatements": 1010,
+  "completedStreams": [],
+  "observations": [
+    {
+      "path": "/api/token-usage?start=2026-10-04T00&end=2026-10-31T13",
+      "elapsedMs": 967.721625,
+      "status": 500,
+      "decodedBodyBytes": 21,
+      "sqlStatements": 1007,
+      "d1RowsRead": null,
+      "d1RowsReadKnownSubtotal": 1408,
+      "d1RowsReadKnownStatements": 3,
+      "jsonHashError": "SyntaxError: JSON Parse error: Unexpected identifier \"Internal\""
+    },
+    {
+      "path": "/api/token-usage?start=2026-07-07T00&end=2026-10-31T13",
+      "elapsedMs": 968.17975,
+      "status": 500,
+      "decodedBodyBytes": 21,
+      "sqlStatements": 1007,
+      "d1RowsRead": null,
+      "d1RowsReadKnownSubtotal": 1408,
+      "d1RowsReadKnownStatements": 3,
+      "jsonHashError": "SyntaxError: JSON Parse error: Unexpected identifier \"Internal\""
+    },
+    {
+      "path": "/api/token-usage/participants",
+      "elapsedMs": 1117.8822089999999,
+      "status": 200,
+      "decodedBodyBytes": 85086,
+      "sqlStatements": 2810,
+      "d1RowsRead": null,
+      "d1RowsReadKnownSubtotal": 3811,
+      "d1RowsReadKnownStatements": 1004,
+      "jsonContentSha256": "43ff84d72e6898e8ec2227da8b8723f2b1788b22d2700586627782bf3bb6bf72"
+    }
+  ],
+  "limitations": [
+    "Instrumented decoded HTTP body bytes; no compressed/header transfer metric here",
+    "Completion is all HTTP families, not React paint",
+    "Projection adapter absent means proposed request-plan probe, not actual consumer-loader evidence",
+    "SQL and rows-read null means unavailable, never zero"
+  ]
+}

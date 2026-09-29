@@ -1,0 +1,6 @@
+07519569bb27f4263158599ef1f8450b2b8b86396bb838663bbfdccdcaa5e411  /Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/bun.lock
+89ad0ba3f721dc51d9e9a0566a59d18ca87a8fef6ada81f69a3559626ab4414c  /Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/package.json
+7ac19955fef7127778d71e8b0c6c66a2b0d7e0d164413963d7ac4ca588563c40  /Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/packages/gateway/src/repo/types.ts
+949a6d3efd49e4d5d8cac617fbd17cb823a7fdaa6534dbc8df2695575079659e  /Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/packages/gateway/src/repo/usage-metadata.ts
+804734a2d64b34aef676d16292263da07c2876977b8fcf3a82dc56d207314bc5  /Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/packages/gateway/src/repo/shared/repos.ts
+83777a4693ed498e8335cb7d859ade7a820122db2b178fc7fe4841c031ddaccc  /Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext/packages/gateway/src/control-plane/token-usage/routes.ts

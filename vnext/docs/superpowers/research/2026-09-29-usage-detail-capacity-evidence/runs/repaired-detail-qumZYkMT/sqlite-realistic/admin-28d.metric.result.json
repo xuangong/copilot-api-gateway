@@ -1,0 +1,67 @@
+{
+  "mode": "baseline",
+  "fixtureHash": "f5aaf1b53700a534b40f1b559fd506da212a0acad06b83abadcaa22dee7d795c",
+  "fixtureProfile": "realistic",
+  "captureJsonHash": false,
+  "complete": true,
+  "failure": null,
+  "range": {
+    "start": "2026-10-04T00",
+    "end": "2026-10-31T13"
+  },
+  "stripRange": {
+    "start": "2026-07-07T00",
+    "end": "2026-10-31T13"
+  },
+  "now": "2026-10-31T12:00:00.000Z",
+  "zoneMode": "utc",
+  "localZone": "Asia/Shanghai",
+  "groupBy": "user",
+  "filters": {},
+  "elapsedMs": 30.680874999999997,
+  "httpRequests": 3,
+  "decodedBodyBytes": 1536438,
+  "sqlStatements": 17,
+  "d1RowsRead": null,
+  "d1RowsReadKnownSubtotal": null,
+  "d1RowsReadKnownStatements": null,
+  "completedStreams": [],
+  "observations": [
+    {
+      "path": "/api/token-usage?start=2026-10-04T00&end=2026-10-31T13",
+      "elapsedMs": 10.845208,
+      "status": 200,
+      "decodedBodyBytes": 321705,
+      "sqlStatements": 6,
+      "d1RowsRead": null,
+      "d1RowsReadKnownSubtotal": null,
+      "d1RowsReadKnownStatements": null
+    },
+    {
+      "path": "/api/token-usage/participants",
+      "elapsedMs": 12.081958999999998,
+      "status": 200,
+      "decodedBodyBytes": 1874,
+      "sqlStatements": 5,
+      "d1RowsRead": null,
+      "d1RowsReadKnownSubtotal": null,
+      "d1RowsReadKnownStatements": null
+    },
+    {
+      "path": "/api/token-usage?start=2026-07-07T00&end=2026-10-31T13",
+      "elapsedMs": 27.937458000000003,
+      "status": 200,
+      "decodedBodyBytes": 1212859,
+      "sqlStatements": 6,
+      "d1RowsRead": null,
+      "d1RowsReadKnownSubtotal": null,
+      "d1RowsReadKnownStatements": null
+    }
+  ],
+  "limitations": [
+    "Instrumented decoded HTTP body bytes; no compressed/header transfer metric here",
+    "Completion is all HTTP families, not React paint",
+    "Projection adapter absent means proposed request-plan probe, not actual consumer-loader evidence",
+    "SQL and rows-read null means unavailable, never zero"
+  ]
+}

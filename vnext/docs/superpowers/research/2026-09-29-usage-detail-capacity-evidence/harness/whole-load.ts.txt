@@ -1,0 +1,210 @@
+// Run later with Bun, only against an isolated, fully seeded fixture host.
+// This is an HTTP-family completion seam, not a browser-render acceptance test.
+import { readFile, writeFile } from "node:fs/promises"
+import { createHash } from "node:crypto"
+import { resolve } from "node:path"
+import { pathToFileURL } from "node:url"
+
+type Range = { start: string; end: string }
+type Filter = { user?: string; key?: string; client?: string; model?: string; incomingModel?: string | null }
+type Page = { rows: unknown[]; hasMore: boolean; nextCursor: string | null }
+type Config = {
+  repositoryRoot: string; origin: string; mode: "baseline" | "projection"; output: string
+  now: string; view: "today" | "week" | "month" | "28d"; zoneMode: "utc" | "local"
+  isAdmin: boolean; headers: Record<string, string>; fixtureHash: string; fixtureProfile: string
+  periodOffset?: number; endDate?: string | null; filters?: Filter; asUser?: string
+  concurrency?: number; seriesChunkHours?: number; projectionPrefix?: string
+  // Separate parity pass only: hashing large JSON bodies adds client CPU/memory.
+  captureJsonHash?: boolean
+  // Optional future adapter: export run({ plan, signal, api }). It must await all
+  // families/strip and return a complete snapshot; use actual product loaders here.
+  projectionAdapter?: string
+}
+type Observation = { path: string; elapsedMs: number; status: number; decodedBodyBytes: number
+  sqlStatements: number | null; d1RowsRead: number | null; d1RowsReadKnownSubtotal: number | null
+  d1RowsReadKnownStatements: number | null; jsonContentSha256?: string; jsonHashError?: string; error?: string }
+
+const canonicalJson = (value: unknown): string => {
+  const text = JSON.stringify(value, (_key, current) =>
+    current && typeof current === "object" && !Array.isArray(current)
+      ? Object.fromEntries(Object.entries(current).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0))
+      : current)
+  if (text === undefined) throw new Error("Response is not JSON")
+  return text
+}
+
+const file = process.argv[2]
+if (!file) throw new Error("Usage: bun whole-load.ts /absolute/path/to/config.json")
+const config: Config = JSON.parse(await readFile(file, "utf8"))
+if (!config.fixtureHash || config.fixtureHash === "REPLACE_AFTER_SEED") throw new Error("Record the shared fixture hash before timing")
+const origin = new URL(config.origin)
+if (!["localhost", "127.0.0.1", "[::1]"].includes(origin.hostname)) throw new Error("Only isolated loopback fixture hosts are allowed")
+const importSource = (path: string) => import(pathToFileURL(resolve(config.repositoryRoot, path)).href)
+const [usageApi, client, usageState, stripState, timezone] = await Promise.all([
+  importSource("vnext/apps/dashboard/src/api/usage.ts"),
+  importSource("vnext/apps/dashboard/src/api/client.ts"),
+  importSource("vnext/apps/dashboard/src/state/usage.ts"),
+  importSource("vnext/apps/dashboard/src/state/usage-strip.ts"),
+  importSource("vnext/apps/dashboard/src/state/timezone.ts"),
+])
+const now = new Date(config.now)
+const range: Range = usageState.computeTimeRange(config.view, config.periodOffset ?? 0, now, config.endDate ?? null, config.zoneMode)
+const stripRange: Range | null = config.view === "28d" ? stripState.computeStripRange(now, timezone.zoneOps(config.zoneMode)) : null
+const observations: Observation[] = []
+const nativeFetch = globalThis.fetch
+const numberHeader = (response: Response, name: string) => {
+  const raw = response.headers.get(name)
+  return raw !== null && raw !== "" && Number.isFinite(Number(raw)) ? Number(raw) : null
+}
+globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+  const url = new URL(input instanceof Request ? input.url : String(input), origin)
+  if (url.origin !== origin.origin) throw new Error("Cross-origin request escaped the fixture host")
+  if (config.asUser) url.searchParams.set("as_user", config.asUser)
+  const headers = new Headers(init?.headers)
+  for (const [name, value] of Object.entries(config.headers)) headers.set(name, value)
+  const start = performance.now()
+  const event: Observation = { path: `${url.pathname}${url.search}`, elapsedMs: 0, status: 0,
+    decodedBodyBytes: 0, sqlStatements: null, d1RowsRead: null,
+    d1RowsReadKnownSubtotal: null, d1RowsReadKnownStatements: null }
+  try {
+    const response = await nativeFetch(url, { ...init, headers })
+    event.status = response.status
+    const body = await response.clone().arrayBuffer()
+    event.decodedBodyBytes = body.byteLength
+    if (config.captureJsonHash) {
+      try {
+        const parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body)) as unknown
+        event.jsonContentSha256 = createHash("sha256").update(canonicalJson(parsed), "utf8").digest("hex")
+      } catch (error) { event.jsonHashError = String(error) }
+    }
+    event.sqlStatements = numberHeader(response, "x-d08-sql-statements")
+    event.d1RowsRead = numberHeader(response, "x-d08-d1-rows-read")
+    event.d1RowsReadKnownSubtotal = numberHeader(response, "x-d08-d1-rows-read-known")
+    event.d1RowsReadKnownStatements = numberHeader(response, "x-d08-d1-rows-read-statements")
+    return response
+  } catch (error) { event.error = String(error); throw error }
+  finally { event.elapsedMs = performance.now() - start; observations.push(event) }
+}) as typeof fetch
+
+function partition(range: Range, maxHours: number): Range[] {
+  if (!Number.isInteger(maxHours) || maxHours < 1 || maxHours > 744) throw new Error("Invalid hour cap")
+  const end = Date.parse(`${range.end}:00:00Z`)
+  const chunks: Range[] = []
+  for (let start = Date.parse(`${range.start}:00:00Z`); start < end;) {
+    const next = Math.min(end, start + maxHours * 3600000)
+    chunks.push({ start: new Date(start).toISOString().slice(0, 13), end: new Date(next).toISOString().slice(0, 13) })
+    start = next
+  }
+  return chunks
+}
+
+async function allFamilies(jobs: Array<() => Promise<unknown>>, concurrency: number): Promise<unknown[]> {
+  if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("Invalid concurrency")
+  let next = 0
+  const results: unknown[] = Array.from({ length: jobs.length })
+  const failures: unknown[] = []
+  await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, async () => {
+    for (;;) {
+      const i = next++
+      const job = jobs[i]
+      if (!job) return
+      try { results[i] = await job() } catch (error) { failures.push(error) }
+    }
+  }))
+  if (failures.length) throw new AggregateError(failures, "Incomplete whole load")
+  return results
+}
+
+const filters = config.filters ?? {}
+const metricQuery = {
+  key_id: filters.key || undefined, client: filters.client || undefined, model: filters.model || undefined,
+  user_id: filters.user || undefined, incoming_model: filters.incomingModel ?? undefined,
+}
+const groupBy = config.isAdmin && !filters.user ? "user" : !filters.key ? "key" : !filters.client ? "client" : !filters.model ? "model" : "total"
+const prefix = config.projectionPrefix ?? "/api/token-usage/projections"
+const completedStreams: Array<{ name: string; pages: number; rows: number }> = []
+const signal = new AbortController().signal
+
+async function traverse(name: string, query: Record<string, unknown>): Promise<unknown[]> {
+  let cursor: string | undefined
+  let pages = 0
+  const seen = new Set<string>()
+  const rows: unknown[] = []
+  do {
+    const response = await client.api(`${prefix}/${name}`, { query: { ...query, cursor }, signal })
+    const page: Page = response.page
+    if (!page || !Array.isArray(page.rows) || typeof page.hasMore !== "boolean") throw new Error(`Invalid page: ${name}`)
+    if (page.hasMore ? typeof page.nextCursor !== "string" || page.nextCursor.length === 0 : page.nextCursor !== null) throw new Error(`Cursor disagreement: ${name}`)
+    if (page.hasMore && page.rows.length === 0) throw new Error(`Empty continuation: ${name}`)
+    rows.push(...page.rows)
+    pages++
+    if (page.nextCursor !== null) {
+      if (seen.has(page.nextCursor)) throw new Error(`Repeated cursor: ${name}`)
+      seen.add(page.nextCursor)
+    }
+    cursor = page.nextCursor ?? undefined
+  } while (cursor !== undefined)
+  completedStreams.push({ name: `${name}:${String(query.axis ?? "")}:${String(query.start ?? "")}`, pages, rows: rows.length })
+  return rows
+}
+
+async function projection() {
+  const plan = { range, stripRange, filters, groupBy, now: config.now, zoneMode: config.zoneMode, concurrency: config.concurrency ?? 4 }
+  if (config.projectionAdapter) {
+    const adapter = await import(pathToFileURL(resolve(config.projectionAdapter)).href)
+    return adapter.run({ plan, signal, api: client.api })
+  }
+  const jobs: Array<() => Promise<unknown>> = []
+  for (const axis of ["key", "client", "model", "incomingModel"]) jobs.push(() => traverse("facets", { ...range, axis, limit: 200 }))
+  jobs.push(() => traverse("participants", { ...range, limit: 200 }))
+  jobs.push(() => client.api(`${prefix}/total`, { query: { ...range, ...metricQuery }, signal }))
+  const distributionAxes = [!filters.key && "key", !filters.client && "client", !filters.model && "model",
+    filters.incomingModel == null && "incomingModel", config.isAdmin && !filters.user && "user"].filter(Boolean)
+  for (const axis of distributionAxes) jobs.push(() => traverse("distribution", { ...range, ...metricQuery, axis, limit: 200 }))
+  if (filters.incomingModel == null) jobs.push(() => traverse("mappings", { ...range, ...metricQuery, limit: 200 }))
+  if (groupBy === "total") {
+    for (const chunk of partition(range, 744)) jobs.push(() => client.api(`${prefix}/time`, { query: { ...chunk, ...metricQuery }, signal }))
+  } else {
+    for (const chunk of partition(range, config.seriesChunkHours ?? 168)) {
+      const hours = (Date.parse(`${chunk.end}:00:00Z`) - Date.parse(`${chunk.start}:00:00Z`)) / 3600000
+      const limit = Math.min(200, Math.floor(744 / hours))
+      jobs.push(() => traverse("series", { ...chunk, ...metricQuery, axis: groupBy, limit }))
+    }
+  }
+  for (const chunk of stripRange ? partition(stripRange, 744) : []) jobs.push(() => client.api(`${prefix}/time`, { query: { ...chunk, ...metricQuery }, signal }))
+  return allFamilies(jobs, config.concurrency ?? 4)
+}
+
+const started = performance.now()
+let complete = false
+let failure: string | null = null
+try {
+  if (config.mode === "baseline") {
+    // Exact currently-loaded HTTP families from state/usage.ts:303-374.
+    // All filters and all table/chart/strip reductions remain browser-local.
+    const jobs = [() => usageApi.fetchTokenUsage(range), () => usageApi.fetchUsageParticipants()]
+    if (stripRange) jobs.push(() => usageApi.fetchTokenUsage(stripRange))
+    await allFamilies(jobs, jobs.length)
+  } else await projection()
+  complete = true
+} catch (error) { failure = String(error) }
+finally { globalThis.fetch = nativeFetch }
+const elapsedMs = performance.now() - started
+const sumIfComplete = (key: "sqlStatements" | "d1RowsRead") => observations.every(r => r[key] !== null)
+  ? observations.reduce((sum, r) => sum + (r[key] ?? 0), 0) : null
+await writeFile(config.output, JSON.stringify({
+  mode: config.mode, fixtureHash: config.fixtureHash, fixtureProfile: config.fixtureProfile,
+  captureJsonHash: config.captureJsonHash === true,
+  complete, failure, range, stripRange, now: config.now, zoneMode: config.zoneMode,
+  localZone: Intl.DateTimeFormat().resolvedOptions().timeZone, groupBy, filters,
+  elapsedMs, httpRequests: observations.length, decodedBodyBytes: observations.reduce((n, r) => n + r.decodedBodyBytes, 0),
+  sqlStatements: sumIfComplete("sqlStatements"), d1RowsRead: sumIfComplete("d1RowsRead"),
+  d1RowsReadKnownSubtotal: observations.some(r => r.d1RowsReadKnownSubtotal !== null)
+    ? observations.reduce((n, r) => n + (r.d1RowsReadKnownSubtotal ?? 0), 0) : null,
+  d1RowsReadKnownStatements: observations.some(r => r.d1RowsReadKnownStatements !== null)
+    ? observations.reduce((n, r) => n + (r.d1RowsReadKnownStatements ?? 0), 0) : null,
+  completedStreams, observations,
+  limitations: ["Instrumented decoded HTTP body bytes; no compressed/header transfer metric here", "Completion is all HTTP families, not React paint",
+    "Projection adapter absent means proposed request-plan probe, not actual consumer-loader evidence", "SQL and rows-read null means unavailable, never zero"],
+}, null, 2))
+if (!complete) process.exitCode = 1

@@ -230,7 +230,23 @@ export interface UpstreamRepo {
   saveState<TState>(id: UpstreamId, updater: (current: TState) => TState, target?: UpstreamWriteTarget): Promise<void>
 }
 
+export interface UsageKeyMetadata {
+  keyId: ApiKeyId
+  keyName: string
+  ownerId: UserId | null
+  ownerName: string | null
+  createdAt: string
+}
+
+export interface UsageAssigneeMetadata {
+  keyId: ApiKeyId
+  userId: UserId
+  name: string | null
+}
+
 export interface UsageRepo {
+  queryKeyMetadata(keyIds?: readonly ApiKeyId[]): Promise<UsageKeyMetadata[]>
+  queryAssigneeMetadata(keyIds: readonly ApiKeyId[]): Promise<UsageAssigneeMetadata[]>
   queryOverview(opts: UsageOverviewQuery): Promise<UsageOverview>
   /** Additive upsert: tokens += excluded.tokens, requests += excluded.requests. */
   record(r: UsageRecord): Promise<void>

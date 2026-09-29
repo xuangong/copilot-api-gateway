@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# Scratch-only future runner. Root owns the runtime slot and invokes this.
+set -u
+set -o pipefail
+
+scratch="$(cd "$(dirname "$0")" && pwd)"
+requested_checkout="${1:?Pass an absolute source checkout}"
+case "$requested_checkout" in /*) ;; *) echo "Checkout must be absolute" >&2; exit 2 ;; esac
+checkout="$(cd "$requested_checkout" && pwd -P)"
+label="${2:?Use repaired-detail or original-detail-json-oracle}"
+pass_mode="${3:-metric-and-parity}"
+case "$label" in repaired-detail|original-detail-json-oracle) ;; *) echo "Unsupported output label" >&2; exit 2 ;; esac
+case "$pass_mode" in metric-and-parity|parity-only) ;; *) echo "Unsupported pass mode" >&2; exit 2 ;; esac
+command -v bun >/dev/null || { echo "Bun is required" >&2; exit 2; }
+command -v python3 >/dev/null || { echo "Python 3 is required" >&2; exit 2; }
+export TZ=Asia/Shanghai
+
+git_root="$(git -C "$checkout" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$git_root" ]; then git_root="$(cd "$git_root" && pwd -P)"; fi
+if [ "$git_root" = "$checkout" ]; then
+  source_sha="$(git -C "$checkout" rev-parse HEAD)" || exit 2
+  no_git_archive=false
+else
+  source_sha="${D08_ARCHIVE_SOURCE_SHA:-}"
+  if ! [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "Archive checkout has no independent Git root; set D08_ARCHIVE_SOURCE_SHA to its verified 40-character source commit" >&2
+    exit 2
+  fi
+  no_git_archive=true
+fi
+
+run_root="$(mktemp -d "$scratch/runs/$label-XXXXXXXX")"
+printf '%s\n' "$run_root"
+printf 'checkout=%s\nlabel=%s\npass_mode=%s\nTZ=%s\nbun=%s\nsourceSha=%s\nnoGitArchive=%s\n' \
+  "$checkout" "$label" "$pass_mode" "$TZ" "$(command -v bun)" "$source_sha" "$no_git_archive" > "$run_root/provenance.txt"
+if [ "$no_git_archive" = false ]; then
+  git -C "$checkout" status --short > "$run_root/product-status.txt" || exit 2
+else
+  printf 'No independent Git checkout; archive source SHA supplied explicitly.\n' > "$run_root/product-status.txt"
+fi
+shasum -a 256 "$scratch/fixture.mjs" "$scratch/whole-load.ts" "$scratch/sqlite-host.ts" "$scratch/workerd-host.mjs" > "$run_root/harness.sha256"
+: > "$run_root/product-files.sha256"
+for relative in vnext/bun.lock vnext/package.json vnext/packages/gateway/src/repo/types.ts vnext/packages/gateway/src/repo/usage-metadata.ts vnext/packages/gateway/src/repo/shared/repos.ts vnext/packages/gateway/src/control-plane/token-usage/routes.ts; do
+  if [ -f "$checkout/$relative" ]; then shasum -a 256 "$checkout/$relative" >> "$run_root/product-files.sha256"; fi
+done
+host_pid=""
+stop_host() {
+  if [ -n "$host_pid" ]; then
+    kill -INT "$host_pid" 2>/dev/null || true
+    wait "$host_pid" 2>/dev/null || true
+    host_pid=""
+  fi
+}
+trap stop_host EXIT
+trap 'stop_host; exit 130' INT
+trap 'stop_host; exit 143' TERM
+overall=0
+
+for runtime in sqlite workerd; do
+  for profile in realistic high; do
+    out="$run_root/$runtime-$profile"
+    mkdir -p "$out"
+    if [ "$runtime" = sqlite ]; then
+      bun "$scratch/sqlite-host.ts" "$checkout" "$profile" > "$out/host.log" 2>&1 &
+    else
+      bun "$scratch/workerd-host.mjs" "$checkout" "$profile" > "$out/host.log" 2>&1 &
+    fi
+    host_pid=$!
+    ready=0
+    for attempt in $(seq 1 1800); do
+      if python3 - "$out/host.log" "$out/host-state.json" <<'PY'
+import json, pathlib, sys
+try:
+    for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
+        try: state = json.loads(line)
+        except json.JSONDecodeError: continue
+        if isinstance(state, dict) and all(k in state for k in ("origin", "directory", "fixtureHash", "profile")):
+            pathlib.Path(sys.argv[2]).write_text(json.dumps(state, indent=2) + "\n")
+            raise SystemExit(0)
+except FileNotFoundError: pass
+raise SystemExit(1)
+PY
+      then ready=1; break; fi
+      if ! kill -0 "$host_pid" 2>/dev/null; then break; fi
+      sleep 0.5
+    done
+    if [ "$ready" -ne 1 ]; then
+      echo "Host did not become ready: $out/host.log" >&2
+      stop_host
+      exit 1
+    fi
+
+    python3 - "$scratch" "$checkout" "$runtime" "$profile" "$out" "$pass_mode" <<'PY'
+import json, pathlib, sys
+scratch, checkout, runtime, profile, out, mode = sys.argv[1:]
+out = pathlib.Path(out)
+state = json.loads((out / "host-state.json").read_text())
+manifest = json.loads((pathlib.Path(state["directory"]) / "fixture-manifest.json").read_text())
+assert state["profile"] == profile and manifest["name"] == profile
+assert state["fixtureHash"] == manifest["fixtureHash"]
+assert state["origin"].startswith("http://127.0.0.1:")
+(out / "fixture-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+base = pathlib.Path(scratch) / "runs" / f"{runtime}-{profile}-baseline"
+for name in ("admin-today", "admin-28d", "viewer-today", "viewer-28d"):
+    old = json.loads((base / f"{name}.config.json").read_text())
+    assert old["fixtureHash"] == state["fixtureHash"], (runtime, profile, name)
+    for kind in (("parity",) if mode == "parity-only" else ("metric", "parity")):
+        config = {**old, "repositoryRoot": checkout, "origin": state["origin"],
+                  "output": str(out / f"{name}.{kind}.result.json"),
+                  "captureJsonHash": kind == "parity"}
+        (out / f"{name}.{kind}.config.json").write_text(json.dumps(config, indent=2) + "\n")
+PY
+    config_status=$?
+    if [ "$config_status" -ne 0 ]; then
+      stop_host
+      exit "$config_status"
+    fi
+
+    if [ "$pass_mode" = parity-only ]; then kinds="parity"; else kinds="metric parity"; fi
+    for kind in $kinds; do
+      for case_name in admin-today admin-28d viewer-today viewer-28d; do
+        bun "$scratch/whole-load.ts" "$out/$case_name.$kind.config.json" > "$out/$case_name.$kind.log" 2>&1
+        status=$?
+        printf '%s %s exit=%s\n' "$case_name" "$kind" "$status" | tee -a "$out/exit-status.txt"
+        if [ "$status" -ne 0 ] || [ ! -s "$out/$case_name.$kind.result.json" ]; then overall=1; fi
+      done
+    done
+    stop_host
+    python3 - "$out/host-state.json" "$out" <<'PY'
+import json, pathlib, shutil, sys
+state = json.loads(pathlib.Path(sys.argv[1]).read_text())
+source = pathlib.Path(state["directory"])
+out = pathlib.Path(sys.argv[2])
+for name in ("sql-events.json", "sqlite-plans.json", "d1-plans.json"):
+    if (source / name).is_file(): shutil.copy2(source / name, out / name)
+PY
+  done
+done
+printf 'run_root=%s\nexit_status=%s\n' "$run_root" "$overall"
+exit "$overall"

@@ -1,0 +1,151 @@
+// Scratch-only synthetic source. Not executed during preparation.
+// Consume the SAME yielded {sql, binds} stream in migrated empty SQLite and D1.
+export const FIXTURE_VERSION = "d08-whole-load-v1"
+export const FROZEN_NOW = "2026-10-31T12:00:00.000Z"
+export const profiles = {
+  realistic: { keys: 8, categories: 6, owners: 4, assignees: 3, days: 117, width: 0 },
+  high: { keys: 1001, categories: 401, owners: 401, assignees: 401, days: 117, width: 0 },
+  // Same identity cardinality with wider strings: row limits are not byte limits.
+  highWide: { keys: 1001, categories: 401, owners: 401, assignees: 401, days: 117, width: 1024 },
+}
+const isoHour = ms => new Date(ms).toISOString().slice(0, 13)
+const id = (prefix, n) => `${prefix}-${String(n).padStart(4, "0")}`
+const dimensions = ["input", "output", "input_cache_read", "input_cache_write", "input_image", "output_image"]
+const dimensionSql = "INSERT INTO usage (key_id,incoming_model,model,upstream,model_key,client,hour,dimension,tokens,unit_price) VALUES (?,?,?,?,?,?,?,?,?,?)"
+const requestSql = "INSERT INTO usage_requests (key_id,incoming_model,model,upstream,model_key,client,hour,requests) VALUES (?,?,?,?,?,?,?,?)"
+
+function* bucket(identity, tokens, requests, prices) {
+  for (const [dimension, quantity] of Object.entries(tokens)) {
+    yield { sql: dimensionSql, binds: [...identity, dimension, quantity, prices[dimension] ?? null] }
+  }
+  if (requests !== null) yield { sql: requestSql, binds: [...identity, requests] }
+}
+
+export function descriptor(name = "realistic") {
+  const profile = profiles[name]
+  if (!profile) throw new Error(`Unknown fixture profile: ${name}`)
+  return {
+    version: FIXTURE_VERSION, name, profile, now: FROZEN_NOW,
+    minimumCoverage: {
+      usedKeys: profile.keys, incoming: profile.categories, routed: profile.categories,
+      clients: profile.categories, mappingsForWideIncoming: profile.categories,
+      assignmentsOnOneKey: profile.assignees + 1, assignedOnlyKeysForViewer: profile.keys,
+    },
+    principals: {
+      admin: "ses_d08_admin", owned: "ses_d08_owner-0000", assignedOnly: "ses_d08_viewer",
+      apiKey: "synthetic-d08-key-0000", sharedOwner: "owner-0000", sharedViewer: "viewer",
+    },
+    // SQL seeds omit sessions deliberately; create current-expiry sessions separately.
+    // That keeps source data/hash identical across performance repetitions.
+  }
+}
+
+export function* sourceStatements(name = "realistic") {
+  const { profile: p } = descriptor(name)
+  const created = "2026-01-01T00:00:00.000Z"
+  const wide = "界".repeat(p.width)
+  const label = (prefix, n) => `${id(prefix, n)}${wide}`
+  const user = (who, display = who, email = `${who}@example.invalid`) => ({
+    sql: "INSERT INTO users (id,name,email,created_at) VALUES (?,?,?,?)", binds: [who, display, email, created],
+  })
+  yield user("admin", "Admin", "test@local.dev")
+  yield user("viewer", "Assigned viewer")
+  for (let i = 0; i < p.owners; i++) yield user(id("owner", i), label("Owner", i))
+  for (let i = 0; i < p.assignees; i++) yield user(id("person", i), label("Person", i))
+  const key = (who, owner, display = who) => ({
+    sql: "INSERT INTO api_keys (id,name,key,created_at,owner_id) VALUES (?,?,?,?,?)",
+    binds: [who, display, `synthetic-d08-${who}`, created, owner],
+  })
+  const assignment = (keyId, userId, owner = "owner-0000") => ({
+    sql: "INSERT INTO key_assignments (key_id,user_id,assigned_by,assigned_at) VALUES (?,?,?,?)",
+    binds: [keyId, userId, owner, created],
+  })
+  for (let i = 0; i < p.keys; i++) {
+    yield key(id("key", i), id("owner", i % p.owners), i === 0 ? "" : label("Key", i))
+    yield assignment(id("key", i), "viewer")
+  }
+  for (let i = 0; i < p.assignees; i++) yield assignment("key-0000", id("person", i))
+  // Same members with different owner-first order; owner also assigned is intentional.
+  yield key("shared-a", "owner-0000")
+  yield key("shared-b", "owner-0001")
+  yield assignment("shared-a", "owner-0001")
+  yield assignment("shared-b", "owner-0000")
+  yield key("owner-also-assigned", "owner-0000")
+  yield assignment("owner-also-assigned", "owner-0000")
+  yield key("ownerless", null)
+  yield assignment("ownerless", "person-0000")
+  yield key("ownerless-empty", null)
+  yield key("idle-key-no-usage", "owner-0000")
+  // A legitimate key whose owner's display name is empty tests null vs empty fallback.
+  yield user("empty-name", "")
+  yield key("empty-owner-name", "empty-name")
+
+  const lastDay = Date.parse("2026-10-31T00:00:00.000Z")
+  for (let d = 0; d < p.days; d++) {
+    const hour = isoHour(lastDay - d * 86400000 + 12 * 3600000)
+    for (let i = 0; i < p.keys; i++) {
+      const c = i % p.categories
+      const identity = [id("key", i), label("incoming", c), label("model", c), "up-a", "price-a", label("client", c), hour]
+      yield* bucket(identity, { input: 100 + i % 13, output: 10 + d % 7 }, 1 + i % 3, { input: 0.125, output: 0.75 })
+    }
+    // One incoming value has >401 distinct raw routed pairs when edge rows are included.
+    for (let c = 0; c < p.categories; c++) {
+      yield* bucket(["key-0000", "wide-incoming", label("model", c), "up-b", "price-b", "mapping-client", hour],
+        { input: 7, input_cache_read: 3 }, 1, { input: 0.25 })
+    }
+  }
+
+  // A single dense identity is cheap but detects every omitted/duplicated UTC
+  // hour and chunk seam, including the 745th London-month hour and exact end.
+  const denseSpans = [
+    [lastDay - (p.days - 1) * 86400000 - 3600000, Date.parse("2026-11-01T02:00:00Z")],
+    [Date.parse("2026-03-28T22:00:00Z"), Date.parse("2026-03-30T02:00:00Z")],
+  ]
+  for (const [start, end] of denseSpans) {
+    for (let ms = start; ms < end; ms += 3600000) {
+      const hour = isoHour(ms)
+      const ordinal = Math.floor(ms / 3600000)
+      yield* bucket(["key-0000", "hourly-boundaries", "hourly-model", "hourly-up", "hourly-price", "hourly-client", hour],
+        { input: 1 + ordinal % 97, input_cache_read: 1 + ordinal % 7 }, 1 + ordinal % 3, { input: 0.125 })
+    }
+  }
+
+  // Edge rows occupy every main 168-hour chart chunk, plus DST/fractional-offset boundaries.
+  const edgeHours = ["2026-10-05T12", "2026-10-12T12", "2026-10-19T12", "2026-10-26T12", "2026-10-31T12",
+    "2026-03-29T00", "2026-03-29T01", "2026-03-29T02", "2026-10-25T00", "2026-10-25T01", "2026-10-25T02",
+    "2026-09-30T18", "2026-09-30T23", "2026-10-31T18", "2026-11-01T00"]
+  for (const hour of edgeHours) {
+    const identity = (tag, model = "edge-model", client = "edge-client", upstream = "edge-up", price = tag, keyId = "key-0000") =>
+      [keyId, tag, model, upstream, price, client, hour]
+    yield* bucket(identity("all-six"), Object.fromEntries(dimensions.map((d, i) => [d, i + 1])), 2, { input: 2, output: 7 })
+    yield* bucket(identity("explicit-zero"), { input: 9, input_cache_read: 3, input_image: 2 }, 0, { input: 0, input_cache_read: 0, input_image: 0 })
+    yield* bucket(identity("observed-zero"), { input: 0 }, null, {})
+    yield* bucket(identity("request-only"), {}, 5, {})
+    yield* bucket(identity("token-only"), { output: 8 }, null, { output: 3 })
+    yield* bucket(identity("unknown-dimension"), { future_dimension: 999 }, null, { future_dimension: 99 })
+    // Same display identity, different complete pricing identities: signed unresolved cancels.
+    yield* bucket(identity("unresolved-cancel", "edge-model", "edge-client", "plus", "p"), { input: 50 }, null, {})
+    yield* bucket(identity("unresolved-cancel", "edge-model", "edge-client", "minus", "p"), { input: -50 }, null, {})
+    yield* bucket(identity("signed-known"), { input: -50, output: 10 }, 0, { input: 2, output: 0 })
+    // Fallback MUST NOT borrow input=9 from a different upstream or model_key.
+    yield* bucket(identity("identity-fallback", "edge-model", "edge-client", "a", "a"), { input: 1, input_cache_read: 4, output: 1, output_image: 5 }, 1, { input: 2, output: 3 })
+    yield* bucket(identity("identity-fallback", "edge-model", "edge-client", "b", "b"), { input: 1, input_cache_read: 4 }, 1, { input: 9 })
+    for (const [incoming, model, client] of [["", "", ""], ["Legacy / unknown", "Unknown", "unknown"], ["unknown", "unknown", "Unknown"],
+      ["a\0b", "c", "管道|+"], ["a", "b\0c", "管道|+"], ["中|+文", "模型é", "é"], ["中|+文", "模型é", "é"]]) {
+      yield* bucket(["key-0000", incoming, model, "edge-labels", "labels", client, hour], { input: 1 }, 1, { input: 0 })
+    }
+    for (const model of ["", "Unknown", "unknown"]) yield* bucket(identity("wide-incoming", model, "mapping-client"), { input: 1 }, 1, { input: 0 })
+    for (const keyId of ["shared-a", "shared-b", "owner-also-assigned", "ownerless", "ownerless-empty", "empty-owner-name", "hard-deleted-key"]) {
+      yield* bucket(identity("participant-edge", "edge-model", "edge-client", "edge-up", "edge", keyId), { input: 2 }, 1, { input: 1 })
+    }
+  }
+}
+
+// Seed current auth separately in BOTH runtimes; no real login data is read.
+export function sessionStatements(name = "realistic", now = new Date()) {
+  const { profile } = descriptor(name)
+  return ["admin", "viewer", ...Array.from({ length: profile.owners }, (_, i) => id("owner", i))].map(userId => ({
+    sql: "INSERT INTO user_sessions (token,user_id,created_at,expires_at) VALUES (?,?,?,?)",
+    binds: [`ses_d08_${userId}`, userId, now.toISOString(), new Date(now.getTime() + 3600000).toISOString()],
+  }))
+}

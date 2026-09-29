@@ -1,0 +1,16 @@
+{
+  "repositoryRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/.superpowers/sdd/2026-09-29-reference-adoption-follow-up/d08-acceptance/original-source-8f39d0d6dacac78c77ecf2704631fbd3cf7fa734",
+  "origin": "http://127.0.0.1:57271",
+  "mode": "baseline",
+  "output": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/.superpowers/sdd/2026-09-29-reference-adoption-follow-up/d08-acceptance/runs/original-detail-json-oracle-tBye8f1C/sqlite-high/admin-28d.parity.result.json",
+  "now": "2026-10-31T12:00:00.000Z",
+  "view": "28d",
+  "zoneMode": "utc",
+  "isAdmin": true,
+  "headers": {
+    "authorization": "Bearer ses_d08_admin"
+  },
+  "fixtureHash": "46986861e0cca8e52657b3f1e8d04e8a98e2370168b007d0150101e6da827978",
+  "fixtureProfile": "high",
+  "captureJsonHash": true
+}

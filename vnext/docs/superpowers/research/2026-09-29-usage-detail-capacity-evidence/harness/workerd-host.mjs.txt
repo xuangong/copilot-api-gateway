@@ -1,0 +1,67 @@
+// Scratch isolated actual workerd app + D1. No runtime validation yet.
+import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { descriptor, sourceStatements, sessionStatements } from './fixture.mjs'
+const root = process.argv[2]
+const profile = process.argv[3] ?? 'realistic'
+assert(root?.startsWith('/'), 'Pass an explicit absolute verification checkout')
+const source = fileURLToPath(new URL('.', import.meta.url))
+const directory = await mkdtemp(join(tmpdir(), 'd08-workerd-'))
+const entry = join(directory, 'entry.ts')
+const bundle = join(directory, 'worker.mjs')
+await writeFile(entry, (await readFile(new URL('./workerd-entry.ts.txt', import.meta.url), 'utf8')).replaceAll('__ROOT__', root).replaceAll('__SCRATCH__', source))
+const build = spawnSync('bun', ['build', entry, '--target=node', '--external=cloudflare:sockets', `--outfile=${bundle}`], { cwd: root, encoding: 'utf8' })
+assert.equal(build.status, 0, build.stderr || build.stdout)
+const { Miniflare } = await import(`${root}/vnext/node_modules/.bun/miniflare@4.20260601.0/node_modules/miniflare/dist/src/index.js`)
+const { unstable_splitSqlQuery } = await import(`${root}/vnext/node_modules/.bun/wrangler@4.97.0+01d2f64f02d20ae6/node_modules/wrangler/wrangler-dist/cli.js`)
+const mf = new Miniflare({ modules: true, modulesRoot: directory, scriptPath: bundle,
+  compatibilityDate: '2025-06-01', compatibilityFlags: ['nodejs_compat'],
+  d1Databases: { DB: 'd08-local' }, d1Persist: join(directory, 'd1'),
+  bindings: { SERVER_SECRET: 'synthetic-d08-secret' },
+  outboundService: async () => { throw new Error('Unexpected D08 fixture egress') },
+})
+try {
+  const db = await mf.getD1Database('DB')
+  const migrations = []
+  for (const name of (await readdir(`${root}/vnext/packages/gateway/migrations`)).filter(name => name.endsWith('.sql')).sort()) {
+    const sql = await readFile(`${root}/vnext/packages/gateway/migrations/${name}`, 'utf8')
+    migrations.push({ name, sha256: createHash('sha256').update(sql).digest('hex') })
+    for (const query of unstable_splitSqlQuery(sql)) await db.prepare(query).run()
+  }
+  const digest = createHash('sha256')
+  let count = 0
+  let batch = []
+  for (const statement of sourceStatements(profile)) {
+    digest.update(`${JSON.stringify(statement)}\n`)
+    batch.push(db.prepare(statement.sql).bind(...statement.binds))
+    count++
+    if (batch.length === 100) { await db.batch(batch); batch = [] }
+  }
+  if (batch.length) await db.batch(batch)
+  for (const statement of sessionStatements(profile)) await db.prepare(statement.sql).bind(...statement.binds).run()
+  const fixtureHash = digest.digest('hex')
+  const shape = await db.prepare(`SELECT count(DISTINCT key_id) AS usedKeys, count(DISTINCT incoming_model) AS incoming,
+    count(DISTINCT model) AS routed, count(DISTINCT client) AS clients FROM usage`).first()
+  const expected = descriptor(profile)
+  for (const name of ['usedKeys','incoming','routed','clients']) assert(shape[name] >= expected.minimumCoverage[name], name)
+  await writeFile(join(directory, 'fixture-manifest.json'), JSON.stringify({ ...expected, fixtureHash, sourceStatementsCount: count, migrations, shape }, null, 2))
+  const origin = (await mf.ready).origin
+  console.log(JSON.stringify({ origin, directory, fixtureHash, profile, runtime: 'actual workerd app + D1', shape }))
+  await new Promise(resolve => { process.once('SIGINT', resolve); process.once('SIGTERM', resolve) })
+  const events = await (await mf.dispatchFetch(`${origin}/__fixture/sql-events`)).json()
+  await writeFile(join(directory, 'sql-events.json'), JSON.stringify(events, null, 2))
+  const plans = []
+  const seen = new Set()
+  for (const event of events) {
+    if (!/^\s*(WITH|SELECT)\b/i.test(event.sql) || seen.has(event.sql)) continue
+    seen.add(event.sql)
+    try { plans.push({ sql: event.sql, binds: event.binds, result: await db.prepare(`EXPLAIN QUERY PLAN ${event.sql}`).bind(...event.binds).all() }) }
+    catch (error) { plans.push({ sql: event.sql, unavailable: String(error) }) }
+  }
+  await writeFile(join(directory, 'd1-plans.json'), JSON.stringify(plans, null, 2))
+} finally { await mf.dispose() }

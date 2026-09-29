@@ -1,0 +1,30 @@
+import { readFileSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
+const canonical=(v:unknown):string=>JSON.stringify(v,(_k,x)=>x&&typeof x==="object"&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a<b?-1:a>b?1:0)):x)
+const cmp=(a:Record<string,string>,b:Record<string,string>)=>["hour","keyId","incomingModel","model","client"].reduce((v,k)=>v||a[k]!.localeCompare(b[k]!),0)
+const results=[]
+for(const name of ["today","28d","strip"]){
+ const old=JSON.parse(readFileSync(`/tmp/d08-capacity-original-${name}.json`,"utf8"))
+ const next=JSON.parse(readFileSync(`/tmp/d08-capacity-repaired-${name}.json`,"utf8"))
+ if(old.length!==next.length)throw Error("length")
+ const caseName=name==="today"?"viewer-today":"viewer-28d"
+ const endpoint=name==="today"?"/api/token-usage?start=2026-10-31T00&end=2026-11-01T00":name==="28d"?"/api/token-usage?start=2026-10-04T00&end=2026-10-31T13":"/api/token-usage?start=2026-07-07T00&end=2026-10-31T13"
+ const expectedRuns=["original-detail-json-oracle-tBye8f1C","repaired-detail-qumZYkMT"]
+ for(const [index,body] of [old,next].entries()){
+  const recorded=JSON.parse(readFileSync(new URL(`./runs/${expectedRuns[index]}/sqlite-high/${caseName}.parity.result.json`,import.meta.url),"utf8"))
+  const observation=recorded.observations.find((v:{path:string})=>v.path===endpoint)
+  if(observation?.jsonContentSha256!==createHash("sha256").update(canonical(body)).digest("hex"))throw Error("captured body not identical to frozen oracle")
+ }
+ let changed=0
+ for(let i=0;i<old.length;i++){
+  if(canonical(old[i])!==canonical(next[i])){changed++;if(cmp(old[i],next[i])!==0)throw Error(`non-tie ${name}:${i}`)}
+  if(i&&cmp(old[i-1],old[i])>0)throw Error("original order")
+  if(i&&cmp(next[i-1],next[i])>0)throw Error("candidate order")
+ }
+ const a=old.map(canonical).sort();const b=next.map(canonical).sort()
+ if(a.some((v:string,i:number)=>v!==b[i]))throw Error("row multiset differs")
+ results.push({name,rows:old.length,changedPositions:changed,capturedBodiesMatchRecordedHashes:true,onlyComparatorEquivalentPermutation:true,completeRowMultisetIdentical:true,canonicalMultisetSha256:createHash("sha256").update(JSON.stringify(a)).digest("hex")})
+}
+const report={results,comparator:"hour.localeCompare then keyId then incomingModel then model then client",sourceData:"retained isolated SQLite original and repaired fixture DBs, readonly capture",limits:"No other ordering relaxation or numeric tolerance"}
+writeFileSync(process.argv[2]!,JSON.stringify(report,null,2)+"\n")
+console.log(JSON.stringify(report))

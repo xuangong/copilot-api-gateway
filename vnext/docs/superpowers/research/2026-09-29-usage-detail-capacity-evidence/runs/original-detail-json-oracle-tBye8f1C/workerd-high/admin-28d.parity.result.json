@@ -1,0 +1,70 @@
+{
+  "mode": "baseline",
+  "fixtureHash": "46986861e0cca8e52657b3f1e8d04e8a98e2370168b007d0150101e6da827978",
+  "fixtureProfile": "high",
+  "captureJsonHash": true,
+  "complete": true,
+  "failure": null,
+  "range": {
+    "start": "2026-10-04T00",
+    "end": "2026-10-31T13"
+  },
+  "stripRange": {
+    "start": "2026-07-07T00",
+    "end": "2026-10-31T13"
+  },
+  "now": "2026-10-31T12:00:00.000Z",
+  "zoneMode": "utc",
+  "localZone": "Asia/Shanghai",
+  "groupBy": "user",
+  "filters": {},
+  "elapsedMs": 3718.481542,
+  "httpRequests": 3,
+  "decodedBodyBytes": 53060504,
+  "sqlStatements": 2632,
+  "d1RowsRead": null,
+  "d1RowsReadKnownSubtotal": 629825,
+  "d1RowsReadKnownStatements": 1018,
+  "completedStreams": [],
+  "observations": [
+    {
+      "path": "/api/token-usage/participants",
+      "elapsedMs": 3028.809833,
+      "status": 200,
+      "decodedBodyBytes": 142715,
+      "sqlStatements": 1816,
+      "d1RowsRead": null,
+      "d1RowsReadKnownSubtotal": 4427,
+      "d1RowsReadKnownStatements": 1010,
+      "jsonContentSha256": "a9344e739764561cc93a47c3c82fa12c5faf90868785cc388efb85b1b7ce741d"
+    },
+    {
+      "path": "/api/token-usage?start=2026-10-04T00&end=2026-10-31T13",
+      "elapsedMs": 3174.294417,
+      "status": 200,
+      "decodedBodyBytes": 10243985,
+      "sqlStatements": 408,
+      "d1RowsRead": null,
+      "d1RowsReadKnownSubtotal": 122266,
+      "d1RowsReadKnownStatements": 4,
+      "jsonContentSha256": "86eb3fe727426fababaea6c5185247a89b03a30d74840d51c63cbe93ce30da94"
+    },
+    {
+      "path": "/api/token-usage?start=2026-07-07T00&end=2026-10-31T13",
+      "elapsedMs": 3617.3146659999998,
+      "status": 200,
+      "decodedBodyBytes": 42673804,
+      "sqlStatements": 408,
+      "d1RowsRead": null,
+      "d1RowsReadKnownSubtotal": 503132,
+      "d1RowsReadKnownStatements": 4,
+      "jsonContentSha256": "98d057f406e94da7fed5e28c15cdea299640888a35ff69e7e3081bd6cc2e68f8"
+    }
+  ],
+  "limitations": [
+    "Instrumented decoded HTTP body bytes; no compressed/header transfer metric here",
+    "Completion is all HTTP families, not React paint",
+    "Projection adapter absent means proposed request-plan probe, not actual consumer-loader evidence",
+    "SQL and rows-read null means unavailable, never zero"
+  ]
+}

@@ -1,0 +1,8 @@
+ M vnext/packages/gateway/src/control-plane/token-usage/routes.ts
+ M vnext/packages/gateway/src/repo/shared/repos.ts
+ M vnext/packages/gateway/src/repo/types.ts
+ M vnext/packages/gateway/tests/control-plane-token-usage-key-filter.test.ts
+ M vnext/packages/gateway/tests/control-plane-token-usage.test.ts
+?? vnext/apps/platform-cloudflare/src/usage-detail-capacity.d1.test.ts
+?? vnext/packages/gateway/src/repo/usage-metadata.ts
+?? vnext/packages/gateway/tests/usage-detail-capacity.test.ts

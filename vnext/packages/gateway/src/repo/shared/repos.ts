@@ -1,3 +1,4 @@
+import { queryUsageKeyMetadata, queryUsageAssigneeMetadata } from "../usage-metadata"
 import { getOrCreateAffinitySecret } from "../affinity-secret.ts"
 import { SharedCatalogRepo } from "./catalogs.ts"
 import { queryUsageOverview, type UsageOverviewQuery } from "../usage-overview"
@@ -779,7 +780,27 @@ function assembleUsageRecords(dimensions: readonly UsageDimensionRow[], requests
   return [...byBucket.values()].sort((a, b) => a.hour.localeCompare(b.hour))
 }
 
+// Usage scopes must stay within D1's bind limit and an empty scope must fail closed.
+function buildUsageRangeQuery(table: string, cols: string, opts: { keyId?: ApiKeyId; keyIds?: ApiKeyId[]; start: string; end: string }): { sql: string; binds: unknown[] } {
+  const predicates: string[] = []
+  const binds: unknown[] = []
+  if (opts.keyIds !== undefined) {
+    predicates.push("key_id IN (SELECT value FROM json_each(?))")
+    binds.push(JSON.stringify(opts.keyIds))
+  }
+  if (opts.keyId !== undefined) {
+    predicates.push("key_id = ?")
+    binds.push(opts.keyId)
+  }
+  predicates.push("hour >= ?", "hour < ?")
+  binds.push(opts.start, opts.end)
+  return { sql: `SELECT ${cols} FROM ${table} WHERE ${predicates.join(" AND ")} ORDER BY hour`, binds }
+}
+
 class SharedUsageRepo implements UsageRepo {
+  queryKeyMetadata(keyIds?: readonly ApiKeyId[]) { return queryUsageKeyMetadata(this.x, keyIds) }
+  queryAssigneeMetadata(keyIds: readonly ApiKeyId[]) { return queryUsageAssigneeMetadata(this.x, keyIds) }
+
   queryOverview(opts: UsageOverviewQuery) { return queryUsageOverview(this.x, opts) }
 
   constructor(private x: SqlExecutor) {}
@@ -828,8 +849,8 @@ class SharedUsageRepo implements UsageRepo {
   }
 
   async query(opts: { keyId?: ApiKeyId; keyIds?: ApiKeyId[]; start: string; end: string }): Promise<UsageRecord[]> {
-    const dimQuery = buildKeyIdRangeQuery("usage", USAGE_DIM_COLS, opts)
-    const reqQuery = buildKeyIdRangeQuery("usage_requests", USAGE_REQ_COLS, opts)
+    const dimQuery = buildUsageRangeQuery("usage", USAGE_DIM_COLS, opts)
+    const reqQuery = buildUsageRangeQuery("usage_requests", USAGE_REQ_COLS, opts)
     const [dimensions, requests] = await Promise.all([
       this.x.all<UsageDimensionRow>(dimQuery.sql, dimQuery.binds),
       this.x.all<UsageRequestRow>(reqQuery.sql, reqQuery.binds),

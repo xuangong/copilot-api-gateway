@@ -1,0 +1,187 @@
+{
+  "status": "failed",
+  "repairedRun": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/.superpowers/sdd/2026-09-29-reference-adoption-follow-up/d08-acceptance/runs/repaired-detail-qumZYkMT",
+  "originalSourceOracleRun": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption/.superpowers/sdd/2026-09-29-reference-adoption-follow-up/d08-acceptance/runs/original-detail-json-oracle-tBye8f1C",
+  "comparedSuccessfulOriginalEndpoints": [
+    {
+      "case": "sqlite/realistic/admin-today",
+      "path": "/api/token-usage/participants",
+      "jsonContentSha256": "7d17cfcf81b7ad3f112769f4b90cf2d929add28a6412352b820874977fbf1c83"
+    },
+    {
+      "case": "sqlite/realistic/admin-today",
+      "path": "/api/token-usage?start=2026-10-31T00&end=2026-11-01T00",
+      "jsonContentSha256": "222e11c51016d806bc778afdb2256d4484fdf60dd4c4e63e742610f463c2a37b"
+    },
+    {
+      "case": "workerd/realistic/admin-today",
+      "path": "/api/token-usage/participants",
+      "jsonContentSha256": "7d17cfcf81b7ad3f112769f4b90cf2d929add28a6412352b820874977fbf1c83"
+    },
+    {
+      "case": "workerd/realistic/admin-today",
+      "path": "/api/token-usage?start=2026-10-31T00&end=2026-11-01T00",
+      "jsonContentSha256": "222e11c51016d806bc778afdb2256d4484fdf60dd4c4e63e742610f463c2a37b"
+    },
+    {
+      "case": "sqlite/realistic/admin-28d",
+      "path": "/api/token-usage/participants",
+      "jsonContentSha256": "7d17cfcf81b7ad3f112769f4b90cf2d929add28a6412352b820874977fbf1c83"
+    },
+    {
+      "case": "sqlite/realistic/admin-28d",
+      "path": "/api/token-usage?start=2026-10-04T00&end=2026-10-31T13",
+      "jsonContentSha256": "e683c6fc68f7f21122b11ab6d33872adc6ba6c4110b86831a51dfe074880ce56"
+    },
+    {
+      "case": "sqlite/realistic/admin-28d",
+      "path": "/api/token-usage?start=2026-07-07T00&end=2026-10-31T13",
+      "jsonContentSha256": "7359e437eb7d38ae785c255bd666aa3c30781569c4e62d44f5f85a0222974924"
+    },
+    {
+      "case": "workerd/realistic/admin-28d",
+      "path": "/api/token-usage/participants",
+      "jsonContentSha256": "7d17cfcf81b7ad3f112769f4b90cf2d929add28a6412352b820874977fbf1c83"
+    },
+    {
+      "case": "workerd/realistic/admin-28d",
+      "path": "/api/token-usage?start=2026-10-04T00&end=2026-10-31T13",
+      "jsonContentSha256": "e683c6fc68f7f21122b11ab6d33872adc6ba6c4110b86831a51dfe074880ce56"
+    },
+    {
+      "case": "workerd/realistic/admin-28d",
+      "path": "/api/token-usage?start=2026-07-07T00&end=2026-10-31T13",
+      "jsonContentSha256": "7359e437eb7d38ae785c255bd666aa3c30781569c4e62d44f5f85a0222974924"
+    },
+    {
+      "case": "sqlite/realistic/viewer-today",
+      "path": "/api/token-usage/participants",
+      "jsonContentSha256": "e42071b42eb7acfc463dd10722e98b7f520ac8673c0eda16b7ff95484662239f"
+    },
+    {
+      "case": "sqlite/realistic/viewer-today",
+      "path": "/api/token-usage?start=2026-10-31T00&end=2026-11-01T00",
+      "jsonContentSha256": "560442b5554afde034674b62a39c029830b68ab1396b95872c4c6ea624d8d972"
+    },
+    {
+      "case": "workerd/realistic/viewer-today",
+      "path": "/api/token-usage/participants",
+      "jsonContentSha256": "e42071b42eb7acfc463dd10722e98b7f520ac8673c0eda16b7ff95484662239f"
+    },
+    {
+      "case": "workerd/realistic/viewer-today",
+      "path": "/api/token-usage?start=2026-10-31T00&end=2026-11-01T00",
+      "jsonContentSha256": "560442b5554afde034674b62a39c029830b68ab1396b95872c4c6ea624d8d972"
+    },
+    {
+      "case": "sqlite/realistic/viewer-28d",
+      "path": "/api/token-usage/participants",
+      "jsonContentSha256": "e42071b42eb7acfc463dd10722e98b7f520ac8673c0eda16b7ff95484662239f"
+    },
+    {
+      "case": "sqlite/realistic/viewer-28d",
+      "path": "/api/token-usage?start=2026-10-04T00&end=2026-10-31T13",
+      "jsonContentSha256": "4856e2f78daf4a93f795f029a968b9de34b09a1b21f1da8157d11254efb0318f"
+    },
+    {
+      "case": "sqlite/realistic/viewer-28d",
+      "path": "/api/token-usage?start=2026-07-07T00&end=2026-10-31T13",
+      "jsonContentSha256": "5d755837fe208311e609c154169de46ad821b3ba194368909a3a8874d15e0cf0"
+    },
+    {
+      "case": "workerd/realistic/viewer-28d",
+      "path": "/api/token-usage/participants",
+      "jsonContentSha256": "e42071b42eb7acfc463dd10722e98b7f520ac8673c0eda16b7ff95484662239f"
+    },
+    {
+      "case": "workerd/realistic/viewer-28d",
+      "path": "/api/token-usage?start=2026-10-04T00&end=2026-10-31T13",
+      "jsonContentSha256": "4856e2f78daf4a93f795f029a968b9de34b09a1b21f1da8157d11254efb0318f"
+    },
+    {
+      "case": "workerd/realistic/viewer-28d",
+      "path": "/api/token-usage?start=2026-07-07T00&end=2026-10-31T13",
+      "jsonContentSha256": "5d755837fe208311e609c154169de46ad821b3ba194368909a3a8874d15e0cf0"
+    },
+    {
+      "case": "sqlite/high/admin-today",
+      "path": "/api/token-usage/participants",
+      "jsonContentSha256": "a9344e739764561cc93a47c3c82fa12c5faf90868785cc388efb85b1b7ce741d"
+    },
+    {
+      "case": "sqlite/high/admin-today",
+      "path": "/api/token-usage?start=2026-10-31T00&end=2026-11-01T00",
+      "jsonContentSha256": "550281cbe383c130921335d6ccb5094d584f653da1175c0ec665c12969e71fd9"
+    },
+    {
+      "case": "workerd/high/admin-today",
+      "path": "/api/token-usage/participants",
+      "jsonContentSha256": "a9344e739764561cc93a47c3c82fa12c5faf90868785cc388efb85b1b7ce741d"
+    },
+    {
+      "case": "workerd/high/admin-today",
+      "path": "/api/token-usage?start=2026-10-31T00&end=2026-11-01T00",
+      "jsonContentSha256": "550281cbe383c130921335d6ccb5094d584f653da1175c0ec665c12969e71fd9"
+    },
+    {
+      "case": "sqlite/high/admin-28d",
+      "path": "/api/token-usage/participants",
+      "jsonContentSha256": "a9344e739764561cc93a47c3c82fa12c5faf90868785cc388efb85b1b7ce741d"
+    },
+    {
+      "case": "sqlite/high/admin-28d",
+      "path": "/api/token-usage?start=2026-10-04T00&end=2026-10-31T13",
+      "jsonContentSha256": "86eb3fe727426fababaea6c5185247a89b03a30d74840d51c63cbe93ce30da94"
+    },
+    {
+      "case": "sqlite/high/admin-28d",
+      "path": "/api/token-usage?start=2026-07-07T00&end=2026-10-31T13",
+      "jsonContentSha256": "98d057f406e94da7fed5e28c15cdea299640888a35ff69e7e3081bd6cc2e68f8"
+    },
+    {
+      "case": "workerd/high/admin-28d",
+      "path": "/api/token-usage/participants",
+      "jsonContentSha256": "a9344e739764561cc93a47c3c82fa12c5faf90868785cc388efb85b1b7ce741d"
+    },
+    {
+      "case": "workerd/high/admin-28d",
+      "path": "/api/token-usage?start=2026-10-04T00&end=2026-10-31T13",
+      "jsonContentSha256": "86eb3fe727426fababaea6c5185247a89b03a30d74840d51c63cbe93ce30da94"
+    },
+    {
+      "case": "workerd/high/admin-28d",
+      "path": "/api/token-usage?start=2026-07-07T00&end=2026-10-31T13",
+      "jsonContentSha256": "98d057f406e94da7fed5e28c15cdea299640888a35ff69e7e3081bd6cc2e68f8"
+    },
+    {
+      "case": "sqlite/high/viewer-today",
+      "path": "/api/token-usage/participants",
+      "jsonContentSha256": "43ff84d72e6898e8ec2227da8b8723f2b1788b22d2700586627782bf3bb6bf72"
+    },
+    {
+      "case": "sqlite/high/viewer-28d",
+      "path": "/api/token-usage/participants",
+      "jsonContentSha256": "43ff84d72e6898e8ec2227da8b8723f2b1788b22d2700586627782bf3bb6bf72"
+    }
+  ],
+  "originalFailedEndpointsWithoutContentOracle": [
+    {
+      "case": "workerd/high/viewer-today",
+      "reason": "Retained original endpoint failed; no original successful JSON payload exists"
+    },
+    {
+      "case": "workerd/high/viewer-28d",
+      "reason": "Retained original endpoint failed; no original successful JSON payload exists"
+    }
+  ],
+  "errors": [
+    "sqlite/high/viewer-today: complete JSON content differs on /api/token-usage?start=2026-10-31T00&end=2026-11-01T00",
+    "sqlite/high/viewer-28d: complete JSON content differs on /api/token-usage?start=2026-10-04T00&end=2026-10-31T13",
+    "sqlite/high/viewer-28d: complete JSON content differs on /api/token-usage?start=2026-07-07T00&end=2026-10-31T13"
+  ],
+  "limitations": [
+    "Retained original baseline files contain status, byte counts and SQL totals, but no original response bodies or hashes.",
+    "The original-source oracle is a new run from the frozen original source, not a recovered original response.",
+    "Canonical JSON hashing preserves array order and sorts object keys; it is run outside metric timing."
+  ]
+}
