@@ -1,0 +1,18 @@
+{
+  "pinnedCodexCommit": "8ff74cc9b11ac54c4c4446ef60a87b49ae657a1f",
+  "runtime": "actual production Worker / workerd 2025-06-01 + nodejs_compat / temporary D1 / independent Node SSE",
+  "run": "c12-client.YLY5pT",
+  "filters": [
+    {
+      "name": "gateway_c12_warmup_generated_continuation",
+      "passed": true
+    },
+    {
+      "name": "gateway_c12_terminal_failure_recovers_full_request",
+      "passed": true
+    }
+  ],
+  "fixtureStopped": true,
+  "warning": "Pinned Rust test harness retains its existing unused import warning in openai_file_mcp.rs:47; no gateway runtime warning was inferred from it.",
+  "boundary": "Pinned client harness uses guarded Miniflare outboundService bridge. Independent cancellation probes use direct workerd loopback fetch."
+}

@@ -1,7 +1,10 @@
-import { getFileProvider, getSqlDatabase, withBackground } from "@vibe-core/platform"
+import { getFileProvider, getSqlDatabase } from "@vibe-core/platform"
 import { sweepMaintenance } from "@vibe-llm/gateway/maintenance"
 import { app } from "@vibe-llm/gateway"
 import { bootstrapCloudflarePlatform, type CloudflareEnv } from "./bootstrap.ts"
+import { createResponsesWebSocketHandler } from "./responses-websocket.ts"
+
+const fetch = createResponsesWebSocketHandler({ app })
 
 export default {
   async scheduled(event: ScheduledController, env: CloudflareEnv, ctx: ExecutionContext) {
@@ -10,6 +13,6 @@ export default {
   },
   fetch(req: Request, env: CloudflareEnv, ctx: ExecutionContext) {
     bootstrapCloudflarePlatform(env, ctx)
-    return withBackground({ waitUntil: p => ctx.waitUntil(p) }, () => app.fetch(req, env, ctx))
+    return fetch(req, env, ctx)
   },
 } satisfies ExportedHandler<CloudflareEnv>

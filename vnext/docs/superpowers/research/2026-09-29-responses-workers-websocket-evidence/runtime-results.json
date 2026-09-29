@@ -1,0 +1,282 @@
+{
+  "task-C12-F1-d1-runtime.mjs": {
+    "exitCode": 0,
+    "passed": true,
+    "log": "/tmp/task-C12-F1-d1-runtime-f4-frozen.log",
+    "result": {
+      "passed": true,
+      "runtime": "actual authenticated workerd/WebCrypto/D1 Responses turn",
+      "cases": [
+        "late-output-sse",
+        "late-error-sse",
+        "tail-frames-sse",
+        "late-usage-sse",
+        "late-output-json",
+        "late-error-json",
+        "tail-frames-json",
+        "late-usage-json"
+      ],
+      "calls": 12,
+      "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c12-f1-d1-QntAqT"
+    }
+  },
+  "task-C12-F4-native-runtime.mjs": {
+    "exitCode": 0,
+    "passed": true,
+    "log": "/tmp/task-C12-F4-native-runtime-f4-frozen.log",
+    "result": {
+      "nativeWorkerdMatrix": true,
+      "directNetwork": true,
+      "compatibilityDate": "2025-06-01",
+      "migrations": 20,
+      "cases": [
+        {
+          "case": "routes_auth_http",
+          "routeStatuses": [
+            101,
+            101,
+            101,
+            101
+          ],
+          "unauthorized": 401,
+          "queryCredential": 400,
+          "cookieOnly": 401,
+          "compact": 404,
+          "httpPost": 200,
+          "acceptedPairs": 4
+        },
+        {
+          "case": "warmup_full_private",
+          "warmupId": "resp_287c92223a554e64a16e07a44cc0b7f7",
+          "warmupUpstreamCalls": 0,
+          "continuationUpstreamCalls": 1,
+          "crossConnectionError": "previous_response_not_found"
+        },
+        {
+          "case": "failure_recovery_terminal_last",
+          "failedTerminal": "response.failed",
+          "recoveryTerminal": "response.completed",
+          "lateLeaked": false
+        },
+        {
+          "case": "external_d1_revocation",
+          "session": 401,
+          "owner": 401,
+          "key": 401,
+          "extraUpstreamCalls": 0
+        }
+      ]
+    }
+  },
+  "task-C12-F4-native-protocol.mjs": {
+    "exitCode": 0,
+    "passed": true,
+    "log": "/tmp/task-C12-F4-native-protocol-f4-frozen.log",
+    "result": {
+      "nativeWorkerdProtocol": true,
+      "directNetwork": true,
+      "compatibilityDate": "2025-06-01",
+      "migrations": 20,
+      "cases": [
+        {
+          "case": "overlap_and_reciprocal_close",
+          "overlapStatus": 409,
+          "extraUpstreamCalls": 0,
+          "peerClose": {
+            "code": 1000,
+            "wasClean": true
+          },
+          "upstreamFinished": false
+        },
+        {
+          "case": "malformed_recovery",
+          "invalidJson": "invalid_json",
+          "unsupported": "unsupported_feature",
+          "subsequentWarmup": "response.completed",
+          "extraUpstreamCalls": 0
+        },
+        {
+          "case": "binary_frame",
+          "error": "unsupported_frame",
+          "nativeCloseCode": 1003,
+          "peerCloseCode": 1003
+        },
+        {
+          "case": "oversize_inbound",
+          "error": "frame_too_large",
+          "nativeCloseCode": 1009,
+          "peerCloseCode": 1009,
+          "extraUpstreamCalls": 0
+        }
+      ]
+    }
+  },
+  "task-C12-F4-durable-runtime.mjs": {
+    "exitCode": 0,
+    "passed": true,
+    "log": "/tmp/task-C12-F4-durable-runtime-f4-frozen.log",
+    "result": {
+      "nativeWorkerdDurable": true,
+      "directNetwork": true,
+      "compatibilityDate": "2025-06-01",
+      "migrations": 20,
+      "firstResponseId": "resp_c12_f4_fixture_1",
+      "snapshotPresentAfterSuccessor": true,
+      "immediateSuccessorCompleted": true,
+      "upstreamCalls": 2
+    }
+  },
+  "task-C12-F4-lifetime-runtime.mjs": {
+    "exitCode": 0,
+    "passed": true,
+    "log": "/tmp/task-C12-F4-lifetime-runtime-f4-frozen.log",
+    "result": {
+      "nativeWorkerdLifetime": true,
+      "directNetwork": true,
+      "compatibilityDate": "2025-06-01",
+      "migrations": 20,
+      "sameSocket": {
+        "firstTurnBytes": 8646382,
+        "secondTurnBytes": 7925581,
+        "totalNativeAcceptedBytes": 16571963,
+        "limitBytes": 16777216,
+        "closeCode": 1009,
+        "completedTerminals": 1
+      },
+      "newSocket": {
+        "nativeAcceptedBytes": 8646382,
+        "completedTerminals": 1,
+        "closeCalls": 0
+      }
+    }
+  },
+  "task-C12-F4-pressure-runtime.mjs": {
+    "exitCode": 0,
+    "passed": true,
+    "log": "/tmp/task-C12-F4-pressure-runtime-f4-frozen.log",
+    "result": {
+      "nativeWorkerdPressure": true,
+      "directNetwork": true,
+      "compatibilityDate": "2025-06-01",
+      "migrations": 20,
+      "cases": [
+        {
+          "case": "readable_lifetime",
+          "closeCode": 1009,
+          "wasClean": false,
+          "frames": 70,
+          "receivedBytes": 16571341,
+          "nativeAcceptedBytes": 16571341,
+          "limitBytes": 16777216,
+          "upstreamFinished": false,
+          "terminalSeen": false
+        },
+        {
+          "case": "paused_native_tcp_reader",
+          "closeCode": 1009,
+          "nativeAcceptedBytes": 16571341,
+          "limitBytes": 16777216,
+          "sentFrames": 70,
+          "lastSentType": "response.output_text.delta",
+          "upstreamFinished": false
+        }
+      ]
+    }
+  },
+  "task-C12-F4-egress-cancel-control.mjs": {
+    "exitCode": 0,
+    "passed": true,
+    "log": "/tmp/task-C12-F4-egress-cancel-control-f4-frozen.log",
+    "result": {
+      "bridgeControl": true,
+      "results": [
+        {
+          "directNetwork": false,
+          "silent": false,
+          "gatewayBase": "http://127.0.0.1:49460",
+          "fixtureBase": "http://127.0.0.1:49456",
+          "createdId": "resp_c12_f4_fixture_1",
+          "close": {
+            "code": 1000,
+            "wasClean": true
+          },
+          "upstreamClose": null,
+          "nativeCloseCalls": [
+            {
+              "code": 1000,
+              "reason": "Response session closed."
+            }
+          ],
+          "nativeCloseEvents": [
+            {
+              "code": 1000,
+              "reason": "fixture control",
+              "wasClean": true
+            }
+          ],
+          "outboundResponseWasCreated": true
+        },
+        {
+          "directNetwork": true,
+          "silent": false,
+          "gatewayBase": "http://127.0.0.1:49596",
+          "fixtureBase": "http://127.0.0.1:49591",
+          "createdId": "resp_c12_f4_fixture_1",
+          "close": {
+            "code": 1000,
+            "wasClean": true
+          },
+          "upstreamClose": {
+            "id": "resp_c12_f4_fixture_1",
+            "mode": "[{\"type\":\"message\",\"role\":\"user\",\"content\":\"held-generation\"}]",
+            "finished": false
+          },
+          "nativeCloseCalls": [
+            {
+              "code": 1000,
+              "reason": "Response session closed."
+            }
+          ],
+          "nativeCloseEvents": [
+            {
+              "code": 1000,
+              "reason": "fixture control",
+              "wasClean": true
+            }
+          ],
+          "outboundResponseWasCreated": true
+        },
+        {
+          "directNetwork": true,
+          "silent": true,
+          "gatewayBase": "http://127.0.0.1:49611",
+          "fixtureBase": "http://127.0.0.1:49606",
+          "createdId": "resp_c12_f4_fixture_1",
+          "close": {
+            "code": 1000,
+            "wasClean": true
+          },
+          "upstreamClose": {
+            "id": "resp_c12_f4_fixture_1",
+            "mode": "[{\"type\":\"message\",\"role\":\"user\",\"content\":\"silent-held-generation\"}]",
+            "finished": false
+          },
+          "nativeCloseCalls": [
+            {
+              "code": 1000,
+              "reason": "Response session closed."
+            }
+          ],
+          "nativeCloseEvents": [
+            {
+              "code": 1000,
+              "reason": "fixture control",
+              "wasClean": true
+            }
+          ],
+          "outboundResponseWasCreated": true
+        }
+      ]
+    }
+  }
+}

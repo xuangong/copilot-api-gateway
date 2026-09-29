@@ -1,0 +1,9 @@
+{
+  "base": "36f77161e12799ebfb4cde1872edb37740c912e8",
+  "paths": {
+    "vnext/apps/platform-cloudflare/src/worker.ts": "925294c0dcc7fdc23192ee3b987703b58234d9294f4ba368813bc5412432e5e6",
+    "vnext/apps/platform-cloudflare/src/responses-websocket.ts": "da1a15f0691ff3245fcadafbf217cd439cd46d13e86c948145ba9dbad5712633",
+    "vnext/apps/platform-cloudflare/src/responses-websocket.workerd.test.ts": "1707d7f69fac77582187a7c97010cdcbf4e8511eb701afc40a674bf7c5397b2b",
+    "vnext/apps/platform-cloudflare/src/responses-websocket-upstream.fixture.mjs": "0e6cf37d1f4b5162e0a251b170d086d4c246774436c5e1907869271cf5024cdc"
+  }
+}
