@@ -258,6 +258,10 @@
       "name": "@vibe-core/service",
       "version": "0.0.0",
     },
+    "packages/setup-local": {
+      "name": "@vibe-llm/setup-local",
+      "version": "0.0.0",
+    },
     "packages/translate": {
       "name": "@vibe-llm/translate",
       "version": "0.0.0",
@@ -668,6 +672,8 @@
     "@vibe-llm/provider-sdf": ["@vibe-llm/provider-sdf@workspace:packages/provider-sdf"],
 
     "@vibe-llm/responses-store": ["@vibe-llm/responses-store@workspace:packages/responses-store"],
+
+    "@vibe-llm/setup-local": ["@vibe-llm/setup-local@workspace:packages/setup-local"],
 
     "@vibe-llm/translate": ["@vibe-llm/translate@workspace:packages/translate"],
 

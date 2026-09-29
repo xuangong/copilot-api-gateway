@@ -3,3 +3,6 @@
 # in git silently ships an old UI. Every consumer builds it — the Bun image via
 # `RUN bun run build:ui`, and the CFW deploy and test scripts via the same.
 packages/gateway/src/shared/edge/ui-pages/dashboard-app/dist/
+
+# Generated, credential-free setup runner and wrappers.
+packages/gateway/src/control-plane/setup/dist/

@@ -1,0 +1,55 @@
+// Isolated setup end-to-end fixture; no real account or client home is accessed.
+import { mkdtemp, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+const root = process.env.VNEXT_PROBE_ROOT
+if (!root?.startsWith("/")) throw new Error("An explicit verification checkout is required")
+const directory = await mkdtemp(join(tmpdir(), "d10b-root-server-"))
+const logs: string[] = []
+let outboundCalls = 0
+let exchanges = 0
+const originalLog = console.log.bind(console)
+for (const level of ["log", "warn", "error"] as const) console[level] = (...parts: unknown[]) => { logs.push(parts.map(String).join(" ")) }
+globalThis.fetch = async () => { outboundCalls++; throw new Error("Fixture egress blocked") }
+const { bootstrapBunPlatform } = await import(`${root}/vnext/apps/platform-bun/src/bootstrap.ts`)
+const { createResponsesWebSocketHandlers } = await import(`${root}/vnext/apps/platform-bun/src/responses-websocket.ts`)
+const { app } = await import(`${root}/vnext/packages/gateway/src/app.ts`)
+const { getRepo } = await import(`${root}/vnext/packages/gateway/src/repo/index.ts`)
+const { initSocketDial } = await import(`${root}/vnext/packages/platform/src/index.ts`)
+const { db } = bootstrapBunPlatform({ dbPath: join(directory, "fixture.sqlite"), filesRoot: join(directory, "files") })
+initSocketDial(async () => { outboundCalls++; throw new Error("Fixture socket egress blocked") })
+const repo = getRepo()
+const now = new Date().toISOString()
+const ownerId = "d10b-root-owner"
+const sessionToken = "ses_d10b_synthetic_owner"
+const keyId = "d10b-root-key"
+const apiKey = "1".repeat(64)
+await repo.users.create({ id: ownerId, name: "Setup Fixture Owner", email: "d10b@example.invalid", createdAt: now, disabled: false })
+await repo.sessions.create({ token: sessionToken, userId: ownerId, createdAt: now, authenticatedAt: Date.now(), expiresAt: new Date(Date.now() + 3_600_000).toISOString() })
+await repo.apiKeys.save({ id: keyId, ownerId, key: apiKey, name: "Setup Fixture Key", createdAt: now, modelMappingsEnabled: false, modelMappings: [] })
+const assignedId = "d10b-root-assigned"
+const assignedSessionToken = "ses_d10b_synthetic_assigned"
+await repo.users.create({ id: assignedId, name: "Setup Assigned Viewer", email: "d10b-assigned@example.invalid", createdAt: now, disabled: false })
+await repo.sessions.create({ token: assignedSessionToken, userId: assignedId, createdAt: now, authenticatedAt: Date.now(), expiresAt: new Date(Date.now() + 3_600_000).toISOString() })
+await repo.keyAssignments.assign(keyId, assignedId, ownerId)
+await repo.upstreams.save({
+  id: "custom:d10b-fixture", ownerId, provider: "custom", name: "D10B Static Catalog", enabled: true, sortOrder: 0,
+  config: { name: "D10B Static Catalog", baseUrl: "http://127.0.0.1:1/v1", authStyle: "none", endpoints: ["responses"], models: ["gpt-5.6-sol", "gpt-setup-fixture-other"] },
+  state: null, flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [{ id: "direct_fetch" }], createdAt: now, updatedAt: now,
+})
+const callbacks = createResponsesWebSocketHandlers({ app })
+const server = Bun.serve({ hostname: "127.0.0.1", port: 0, websocket: callbacks.websocket,
+  async fetch(request, server) {
+    const url = new URL(request.url)
+    if (url.pathname === "/__fixture/state") return Response.json({ exchanges, outboundCalls, keyInLogs: logs.some(line => line.includes(apiKey)), leaseInLogs: logs.some(line => /stl_[0-9a-f]{64}/.test(line)) })
+    if (url.pathname === "/api/setup/exchange") exchanges++
+    return callbacks.fetch(request, server)
+  },
+})
+const state = { origin: `http://127.0.0.1:${server.port}`, directory, keyId, sessionToken, assignedSessionToken, expectedKey: apiKey, pid: process.pid }
+await writeFile(join(directory, "state.json"), JSON.stringify(state, null, 2))
+originalLog(JSON.stringify(state))
+let stopping = false
+const stop = async () => { if (stopping) return; stopping = true; await server.stop(true); db.raw.close(); process.exit(0) }
+process.once("SIGINT", stop)
+process.once("SIGTERM", stop)

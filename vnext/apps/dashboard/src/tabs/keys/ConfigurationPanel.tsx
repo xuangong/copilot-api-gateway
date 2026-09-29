@@ -1,3 +1,5 @@
+import { SetupPanel } from "./SetupPanel"
+import { canSetup } from "./setup-state"
 import { useEffect, useRef, useState } from "react"
 import type { ApiKeyDetail } from "../../api/keys"
 import { useT } from "../../state/i18n"
@@ -405,6 +407,14 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
                 )
               })()}
             </div>
+          ) : null}
+
+          {tab !== "gemini" && canSetup(keyRow, session) && baseUrl ? (
+            <SetupPanel key={`${keyRow.id}:${session?.userId}:${tab}`} keyId={keyRow.id} client={tab} origin={baseUrl}
+              settings={tab === "codex" ? { model: codexModel || null } : {
+                model: claudeBig || null, smallModel: claudeSmall || null,
+                opusModel: selectedClaudeTiers.opus || null, sonnetModel: selectedClaudeTiers.sonnet || null, haikuModel: selectedClaudeTiers.haiku || null,
+              }} />
           ) : null}
 
           {otherGroups.length > 0 ? (

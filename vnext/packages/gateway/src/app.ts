@@ -3,6 +3,7 @@ import { withRequestSignal } from './shared/request-signal.ts'
 import { agentRemoteRouter } from './control-plane/agent-remote/routes.ts'
 import { dataPlane } from './data-plane/routes.ts'
 import { controlPlane } from './control-plane/routes.ts'
+import { setupStaticRouter } from './control-plane/setup/static.ts'
 import { staticPages } from './shared/edge/static-pages.ts'
 import { getRepo, withConfigurationSnapshot } from './repo/index.ts'
 import { ConfigurationUnavailableError } from './repo/configuration-cache.ts'
@@ -143,4 +144,5 @@ app.route('/azure-api.codex', dataPlane)
 
 app.route('/', dataPlane)
 app.route('/', controlPlane)
+app.route('/', setupStaticRouter)
 app.route('/', staticPages)

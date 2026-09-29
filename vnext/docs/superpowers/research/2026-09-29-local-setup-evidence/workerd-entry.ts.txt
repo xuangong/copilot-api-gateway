@@ -1,0 +1,47 @@
+// Scratch-only observer around the real production Cloudflare Worker.
+import { getRepo } from "__ROOT__/vnext/packages/gateway/src/repo/index.ts"
+import { ADMIN_EMAILS } from "__ROOT__/vnext/packages/gateway/src/shared/config/constants.ts"
+import type { SetupLeaseId } from "__ROOT__/vnext/packages/gateway/src/repo/branded-ids.ts"
+import worker from "__ROOT__/vnext/apps/platform-cloudflare/src/worker.ts"
+import { app } from "__ROOT__/vnext/packages/gateway/src/app.ts"
+import { bootstrapCloudflarePlatform } from "__ROOT__/vnext/apps/platform-cloudflare/src/bootstrap.ts"
+
+const captured: string[] = []
+for (const level of ["log", "warn", "error"] as const) {
+  console[level] = (...parts: unknown[]) => {
+    captured.push(parts.map(part => String(part)).join(" "))
+  }
+}
+
+export default {
+  scheduled: worker.scheduled,
+  async fetch(request: Request, env: Parameters<typeof worker.fetch>[1], ctx: Parameters<typeof worker.fetch>[2]) {
+    const url = new URL(request.url)
+    if (url.pathname === "/__fixture/d10-origin") return Response.json({ url: request.url, origin: request.headers.get("origin"), host: request.headers.get("host"), forwardedHost: request.headers.get("x-forwarded-host"), forwardedProto: request.headers.get("x-forwarded-proto") })
+    if (url.pathname === "/__fixture/d10-atomic-consume" && request.method === "POST") {
+      bootstrapCloudflarePlatform(env, ctx)
+      const input = await request.json() as {leaseId: SetupLeaseId; statement: string; binds: Array<string | number | null>; preserveRevision: boolean}
+      const repo = getRepo()
+      const lease = await repo.setupLeases.findById(input.leaseId)
+      if (!lease) throw new Error("fixture lease absent")
+      const key = await repo.apiKeys.getById(lease.keyId)
+      if (!key) throw new Error("fixture key absent")
+      const revision = await env.DB.prepare("SELECT revision FROM configuration_revision WHERE id=1").first<{revision:number}>()
+      if (!revision) throw new Error("fixture revision absent")
+      await env.DB.prepare(input.statement).bind(...input.binds).run()
+      if (input.preserveRevision) await env.DB.prepare("UPDATE configuration_revision SET revision=? WHERE id=1").bind(revision.revision).run()
+      return Response.json({consumed: await repo.setupLeases.consume(lease,key.key,new Date().toISOString(),ADMIN_EMAILS)})
+    }
+    if (url.pathname.startsWith("/__fixture/direct-app/")) {
+      bootstrapCloudflarePlatform(env, ctx)
+      url.pathname = url.pathname.slice("/__fixture/direct-app".length)
+      return app.fetch(new Request(url.toString(), request), env, ctx)
+    }
+    if (request.method === "POST" && url.pathname === "/__fixture/d10-log-scan") {
+      const body = await request.json() as { secrets?: string[] }
+      const secrets = Array.isArray(body.secrets) ? body.secrets : []
+      return Response.json({ leaked: captured.some(line => secrets.some(secret => line.includes(secret))) })
+    }
+    return worker.fetch(request, env, ctx)
+  },
+}

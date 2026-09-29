@@ -15,6 +15,7 @@ COPY apps/platform-bun/package.json apps/platform-bun/
 COPY apps/platform-cloudflare/package.json apps/platform-cloudflare/
 COPY apps/dashboard/package.json apps/dashboard/
 COPY packages/gateway/package.json packages/gateway/
+COPY packages/setup-local/package.json packages/setup-local/
 COPY packages/platform/package.json packages/platform/
 COPY packages/protocols-llm/package.json packages/protocols-llm/
 COPY packages/result/package.json packages/result/

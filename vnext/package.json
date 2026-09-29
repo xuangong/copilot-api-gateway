@@ -9,10 +9,11 @@
   "scripts": {
     "agent-remote:fixture": "bun packages/gateway/tests/fixtures/agent-remote-gateway.ts",
     "test": "bun run build:ui && bun run scripts/check-framework-purity.ts && bun test",
-    "typecheck": "bun run --filter '*' typecheck",
+    "typecheck": "bun run build:setup && bun run --filter '*' typecheck",
     "lint": "eslint .",
-    "build:ui": "bun scripts/build-dashboard.ts",
-    "ci:local": "bun run scripts/check-framework-purity.ts && bun run typecheck && bun test && bun run lint && bun run build:ui && bun run --filter '@vibe-llm/platform-cloudflare' deploy:dry"
+    "build:ui": "bun run build:setup && bun scripts/build-dashboard.ts",
+    "ci:local": "bun run build:setup && bun run scripts/check-framework-purity.ts && bun run typecheck && bun test && bun run lint && bun run build:ui && bun run --filter '@vibe-llm/platform-cloudflare' deploy:dry",
+    "build:setup": "bun scripts/build-setup-assets.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

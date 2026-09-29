@@ -1,0 +1,32 @@
+// Isolated root acceptance: parse a real installed provider and run its command auth.
+use super::*;
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires an explicitly installed temporary D10B client home"]
+async fn installed_setup_provider_parses_and_supplies_bearer() {
+    let config_path = std::env::var("D10B_INSTALLED_CONFIG").expect("isolated config path");
+    let source = std::fs::read_to_string(config_path).expect("read generated config");
+    let config: toml::Value = toml::from_str(&source).expect("native TOML parser");
+    std::assert_eq!(config["model_provider"].as_str(), Some("copilot_gateway"));
+    let mut provider: ModelProviderInfo = config["model_providers"]["copilot_gateway"]
+        .clone().try_into().expect("native provider schema accepts installed bytes");
+    assert!(provider.supports_websockets);
+    assert!(provider.env_key.is_none());
+    let auth = provider.auth.as_ref().expect("native command auth");
+    assert!(std::path::Path::new(&auth.command).is_absolute());
+    std::assert_eq!(auth.args.len(), 3);
+    let server = MockServer::start().await;
+    let response = mount_sse_once_match(
+        &server,
+        header("authorization", format!("Bearer {}", "1".repeat(64))),
+        sse(vec![ev_response_created("resp-d10b"), ev_completed("resp-d10b")]),
+    ).await;
+    // Exercise command authentication through a local HTTP transport. WebSocket
+    // protocol interoperability is covered separately by accepted C12 evidence.
+    provider.base_url = Some(format!("{}/v1", server.uri()));
+    provider.supports_websockets = false;
+    provider.request_max_retries = Some(0);
+    provider.stream_max_retries = Some(0);
+    send_request_with_provider(provider).await;
+    std::assert_eq!(response.single_request().header("authorization"), Some(format!("Bearer {}", "1".repeat(64))));
+}

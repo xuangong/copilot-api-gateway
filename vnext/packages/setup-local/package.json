@@ -1,0 +1,7 @@
+{
+  "name": "@vibe-llm/setup-local",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": { "typecheck": "tsc --noEmit" }
+}
