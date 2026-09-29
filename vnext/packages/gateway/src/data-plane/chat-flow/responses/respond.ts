@@ -17,6 +17,7 @@ export async function renderResponsesTurn(turn: ResponsesTurn): Promise<Response
     let body: unknown = metadata.body
     let failed = metadata.status >= 400
     let onAbort: (() => void) | undefined
+    const delivered = Promise.withResolvers<void>()
     try {
       await Promise.race([(async () => {
         for await (const event of turn.events) {
@@ -24,9 +25,13 @@ export async function renderResponsesTurn(turn: ResponsesTurn): Promise<Response
           if (isResponsesTurnTerminal(event)) {
             body = responsesTerminalBody(event)
             turn.recordSentPayloadBytes(encoder.encode(JSON.stringify(body)).byteLength)
+            // The canonical terminal already passed tail validation and snapshot
+            // persistence. Keep draining under turn.completion/waitUntil, without
+            // charging usage/metrics/dump storage latency to HTTP delivery.
+            delivered.resolve()
           }
         }
-      })(), new Promise<void>(resolve => {
+      })(), delivered.promise, new Promise<void>(resolve => {
         onAbort = () => { failed = true; body = { error: { type: "api_error", message: "Response cancelled." } }; resolve() }
         turn.abortController.signal.addEventListener("abort", onAbort, { once: true })
         if (turn.abortController.signal.aborted) onAbort()
@@ -56,6 +61,7 @@ export async function renderResponsesTurn(turn: ResponsesTurn): Promise<Response
           turn.recordSentPayloadBytes(bytes.byteLength)
           controller.enqueue(bytes)
           keepalive.touch()
+          if (isResponsesTurnTerminal(event)) close()
         }
       } finally {
         keepalive.stop()
