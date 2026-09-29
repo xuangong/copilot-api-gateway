@@ -32,3 +32,10 @@ test.each([true, false, undefined])("Codex alias carries the selected upstream i
   }] }, [alias])
   expect(output.models[0]?.supports_image_detail_original).toBe(supported === true)
 })
+
+test("matched and unmatched Codex rows derive WebSocket preference from the current ingress", () => {
+  const source = { models: [{ slug: "gpt-target", prefer_websockets: true }] }
+  const rows = [{ id: "gpt-target" }, { id: "unmatched" }]
+  expect(assembleCodexCatalog(source, rows).models.map(model => model.prefer_websockets)).toEqual([false, false])
+  expect(assembleCodexCatalog(source, rows, {}, true).models.map(model => model.prefer_websockets)).toEqual([true, true])
+})

@@ -22,6 +22,7 @@ import type { ApiKeyRoutingPolicy } from '../../shared/api-key-model-mappings.ts
 import { getDataPlaneRepo as getRepo } from '../../repo/index.ts'
 import { isCodexUserAgent } from '../codex/catalog.ts'
 import { loadCodexCatalog } from '../codex/models.ts'
+import { currentResponsesWebSocketIngress } from '../../shared/ingress-capability.ts'
 import { collapseModelCatalog, withKeyModelAliases } from './key-model-catalog.ts'
 
 async function listAvailableModels(opts: ListUpstreamModelsOptions, format?: 'gemini') {
@@ -195,7 +196,7 @@ async function handleModelsRequest(c: {
     )
   }
   if (isClaudeCodeUserAgent(ua)) return c.json(toClaudeCodeCatalog(result.models.data))
-  if (isCodexUserAgent(ua)) return c.json(await loadCodexCatalog(ua, result.models.data))
+  if (isCodexUserAgent(ua)) return c.json(await loadCodexCatalog(ua, result.models.data, currentResponsesWebSocketIngress() !== null))
   return c.json(result.models)
 }
 

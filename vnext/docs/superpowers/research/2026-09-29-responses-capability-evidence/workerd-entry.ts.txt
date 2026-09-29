@@ -1,0 +1,105 @@
+// Scratch-only wrapper around the actual production Worker entrypoint.
+// The product's WebSocketPair, auth, session, and HTTP behavior remain authoritative.
+import worker from "__ROOT__/vnext/apps/platform-cloudflare/src/worker.ts"
+import { bootstrapCloudflarePlatform } from "__ROOT__/vnext/apps/platform-cloudflare/src/bootstrap.ts"
+import { app } from "__ROOT__/vnext/packages/gateway/src/app.ts"
+import { withBackground } from "__ROOT__/vnext/packages/platform/src/index.ts"
+
+interface RecordRow {
+  connection_id: number
+  received: Array<Record<string, unknown>>
+  sent: Array<Record<string, unknown>>
+  sent_bytes: number
+  close_calls: Array<{ code: number | null; reason: string | null }>
+  close_events: Array<{ code: number; reason: string; wasClean: boolean }>
+}
+const connections: RecordRow[] = []
+const pairByClient = new WeakMap<WebSocket, { record: RecordRow; accepted: boolean }>()
+let nextId = 1
+let httpPosts = 0
+let observerError: string | undefined
+const NativePair = globalThis.WebSocketPair
+
+function observeJson(value: unknown, into: Array<Record<string, unknown>>) {
+  if (typeof value !== "string") return
+  try {
+    const parsed: unknown = JSON.parse(value)
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) into.push(parsed as Record<string, unknown>)
+  } catch { /* Malformed frames still pass unchanged to the production handler. */ }
+}
+
+// Keep both endpoints native. Only instance methods on the server endpoint are
+// wrapped, so Response({ status: 101, webSocket: pair[0] }) sees the real pair.
+globalThis.WebSocketPair = function ObservedWebSocketPair() {
+  const pair = new NativePair()
+  const server = pair[1]
+  const record: RecordRow = { connection_id: nextId++, received: [], sent: [], sent_bytes: 0, close_calls: [], close_events: [] }
+  const state = { record, accepted: false }
+  pairByClient.set(pair[0], state)
+  const accept = server.accept.bind(server)
+  const send = server.send.bind(server)
+  const close = server.close.bind(server)
+  const addEventListener = server.addEventListener.bind(server)
+  const removeEventListener = server.removeEventListener.bind(server)
+  const wrappedListeners = new WeakMap<object, EventListenerOrEventListenerObject>()
+  server.accept = () => {
+    const result = accept()
+    state.accepted = true
+    return result
+  }
+  server.send = data => {
+    const result = send(data)
+    try {
+      if (typeof data === "string") record.sent_bytes += new TextEncoder().encode(data).byteLength
+      observeJson(data, record.sent)
+    } catch (error) { observerError = String(error) }
+    return result
+  }
+  server.close = (code, reason) => {
+    const result = close(code, reason)
+    try { record.close_calls.push({ code: code ?? null, reason: reason ?? null }) } catch (error) { observerError = String(error) }
+    return result
+  }
+  server.addEventListener = (type, listener, options) => {
+    if ((type !== "message" && type !== "close") || !listener) return addEventListener(type, listener, options)
+    const wrapped: EventListener = event => {
+      try {
+        if (type === "message") observeJson(event.data, record.received)
+        else record.close_events.push({ code: event.code, reason: event.reason, wasClean: event.wasClean })
+      } catch (error) { observerError = String(error) }
+      if (typeof listener === "function") return listener.call(server, event)
+      return listener.handleEvent(event)
+    }
+    wrappedListeners.set(listener, wrapped)
+    return addEventListener(type, wrapped, options)
+  }
+  server.removeEventListener = (type, listener, options) => removeEventListener(type, (type === "message" || type === "close") && listener ? wrappedListeners.get(listener) ?? listener : listener, options)
+  return pair
+} as typeof WebSocketPair
+
+export default {
+  scheduled: worker.scheduled,
+  fetch(request: Request, env: Parameters<typeof worker.fetch>[1], ctx: Parameters<typeof worker.fetch>[2]) {
+    if (request.headers.get("x-c12-bare") === "true") {
+      bootstrapCloudflarePlatform(env, ctx)
+      return withBackground({ waitUntil: promise => ctx.waitUntil(promise) }, () => app.fetch(request, env, ctx))
+    }
+    const path = new URL(request.url).pathname
+    if (request.method === "GET" && path === "/__fixture/c12-observation") {
+      const summary = new URL(request.url).searchParams.get("summary") === "1"
+      return Response.json({ schema_version: 1, connections: summary ? connections.map(({ received, sent, ...rest }) => ({ ...rest, received_count: received.length, sent_count: sent.length, last_sent_type: sent.at(-1)?.type })) : connections,
+        http_posts: httpPosts, observer_error: observerError ?? null })
+    }
+    if (request.method === "POST" && ["/responses", "/v1/responses", "/azure-api.codex/responses", "/azure-api.codex/v1/responses"].includes(path)) httpPosts++
+    return Promise.resolve(worker.fetch(request, env, ctx)).then(response => {
+      if (response.status === 101) {
+        try {
+          const state = response.webSocket ? pairByClient.get(response.webSocket) : undefined
+          if (!state?.accepted) observerError = "101 response without observed accepted native pair"
+          else connections.push(state.record)
+        } catch (error) { observerError = String(error) }
+      }
+      return response
+    })
+  },
+}

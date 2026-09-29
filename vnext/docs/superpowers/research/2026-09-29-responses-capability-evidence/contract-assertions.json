@@ -1,0 +1,22 @@
+[
+  {
+    "pointer": "/codex/responsesWebSocket/mode",
+    "expected": "single_turn"
+  },
+  {
+    "pointer": "/codex/responsesWebSocket/multiplex",
+    "expected": false
+  },
+  {
+    "pointer": "/codex/responsesWebSocket/fork",
+    "expected": false
+  },
+  {
+    "pointer": "/codex/responsesWebSocket/reconnectHistory",
+    "expected": false
+  },
+  {
+    "pointer": "/codex/responsesWebSocket/maxConnectionOutboundBytes",
+    "expected": null
+  }
+]

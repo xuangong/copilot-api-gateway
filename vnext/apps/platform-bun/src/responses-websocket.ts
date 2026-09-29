@@ -1,4 +1,5 @@
 import type { BackgroundExecutor } from "@vibe-core/platform"
+import { withResponsesWebSocketIngress } from "@vibe-llm/gateway/ingress-capability"
 import {
   authorizeResponsesSession,
   createResponsesSession,
@@ -37,7 +38,7 @@ export function createResponsesWebSocketHandlers({ app }: { readonly app: Respon
     async fetch(request: Request, server: Bun.Server<SocketData>): Promise<Response | undefined> {
       if (!isResponsesWebSocketUpgradeRequest(request)) {
         if (new URL(request.url).pathname.startsWith("/v1/")) server.timeout(request, 0)
-        return app.fetch(request)
+        return withResponsesWebSocketIngress({ maxConnectionOutboundBytes: null }, () => app.fetch(request))
       }
       try {
         const authorization = await authorizeResponsesSession(request)

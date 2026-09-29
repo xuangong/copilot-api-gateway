@@ -1,0 +1,40 @@
+{
+  "status": "probe-passed-contract-provided",
+  "sourceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/reference-adoption-verify/vnext",
+  "capabilityPath": "/api/capabilities",
+  "booleanPointer": "/codex/responsesWebSocket/available",
+  "checks": [
+    "native/direct/failure HTTP",
+    "auth",
+    "no-store",
+    "no capability egress",
+    "same-process concurrent isolation",
+    "native 101",
+    "direct 426",
+    "matched/unmatched Codex catalog",
+    "browser native/direct/failure",
+    "browser origin switch and late response"
+  ],
+  "structuredAssertions": 5,
+  "snippets": {
+    "native": "model = \"gpt-capability-unmatched-2026\"\nmodel_provider = \"copilot_gateway\"\n\n[model_providers.copilot_gateway]\nname = \"Copilot Gateway\"\nbase_url = \"http://127.0.0.1:53459/\"\nenv_key = \"OPENAI_API_KEY\"\nwire_api = \"responses\"\nsupports_websockets = true",
+    "direct": "model = \"gpt-capability-unmatched-2026\"\nmodel_provider = \"copilot_gateway\"\n\n[model_providers.copilot_gateway]\nname = \"Copilot Gateway\"\nbase_url = \"http://127.0.0.1:53460/\"\nenv_key = \"OPENAI_API_KEY\"\nwire_api = \"responses\"\nsupports_websockets = false",
+    "failedNative": "model = \"gpt-capability-unmatched-2026\"\nmodel_provider = \"copilot_gateway\"\n\n[model_providers.copilot_gateway]\nname = \"Copilot Gateway\"\nbase_url = \"http://127.0.0.1:53461/\"\nenv_key = \"OPENAI_API_KEY\"\nwire_api = \"responses\"\nsupports_websockets = false"
+  },
+  "fixture": {
+    "reads": {
+      "native": 6,
+      "direct": 5,
+      "failedNative": 2
+    },
+    "outboundCalls": 1,
+    "held": {
+      "reached": 2,
+      "released": 2,
+      "forwarded": 2,
+      "aborted": 1
+    },
+    "holding": false
+  },
+  "pageErrors": []
+}

@@ -102,6 +102,7 @@ export const synthesizeCatalogEntry = (
   model: CodexSynthesizeModel,
   base?: CatalogModel,
   capabilities: CodexCatalogCapabilities = {},
+  ingressWebSocket = false,
 ): CatalogModel => {
   const source: CatalogModel = base ?? BASELINE
 
@@ -136,8 +137,8 @@ export const synthesizeCatalogEntry = (
     : endpoints.some(path => path === "/chat/completions" || path === "/v1/chat/completions") ? "chat_completions" : undefined
   const entry: CatalogModel = {
     ...source,
-    // Upstream transport support does not imply a gateway upgrade endpoint.
-    prefer_websockets: false,
+    // The installed ingress, never upstream metadata, owns this preference.
+    prefer_websockets: ingressWebSocket,
     service_tiers: tierEndpoint && model.service_tiers?.[tierEndpoint]?.includes("priority")
       ? [{ id: "priority", name: "Fast" }] : [],
     additional_speed_tiers: [],

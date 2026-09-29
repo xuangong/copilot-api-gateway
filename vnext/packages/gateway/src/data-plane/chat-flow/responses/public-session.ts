@@ -13,4 +13,5 @@ export { ConfigurationUnavailableError } from "../../../repo/configuration-cache
 export {
   RESPONSES_WS_MAX_INBOUND_BYTES,
   RESPONSES_WS_SEND_HIGH_WATER_BYTES,
+  RESPONSES_WS_UNOBSERVABLE_LIFETIME_BYTES,
 } from "./session-limits.ts"

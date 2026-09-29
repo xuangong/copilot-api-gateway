@@ -1,0 +1,32 @@
+{
+  "passed": true,
+  "runtime": "workerd 2025-06-01 nodejs_compat D1",
+  "native": {
+    "codex": {
+      "responsesWebSocket": {
+        "available": true,
+        "mode": "single_turn",
+        "multiplex": false,
+        "fork": false,
+        "reconnectHistory": false,
+        "maxConnectionOutboundBytes": 16777216
+      }
+    }
+  },
+  "bare": {
+    "codex": {
+      "responsesWebSocket": {
+        "available": false,
+        "mode": "single_turn",
+        "multiplex": false,
+        "fork": false,
+        "reconnectHistory": false,
+        "maxConnectionOutboundBytes": null
+      }
+    }
+  },
+  "concurrentRequests": 4,
+  "capabilityUpstreamCalls": 0,
+  "capabilityRevisionUnchanged": true,
+  "catalogMatchedAndUnmatched": true
+}

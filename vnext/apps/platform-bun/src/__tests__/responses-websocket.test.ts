@@ -88,6 +88,10 @@ test("native Bun socket warmup is local, then same-socket continuation uses the 
   const messages: Record<string, unknown>[] = []
   let socket: WebSocket | undefined
   try {
+    const capability = await fetch(new URL("api/capabilities", server.url), { headers: { authorization: "Bearer sk_c12_f3_fixture" } })
+    expect(capability.status).toBe(200)
+    expect((await capability.json() as { codex: { responsesWebSocket: { available: boolean; maxConnectionOutboundBytes: number | null } } }).codex.responsesWebSocket)
+      .toMatchObject({ available: true, maxConnectionOutboundBytes: null })
     for (const path of ["/responses", "/v1/responses", "/azure-api.codex/responses", "/azure-api.codex/v1/responses"]) {
       expect(await handshake(port, path, "sk_c12_f3_fixture")).toBe(101)
     }

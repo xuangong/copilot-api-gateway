@@ -103,3 +103,15 @@ test("generated Codex provider explicitly uses supported HTTP Responses transpor
     model_providers: { copilot_gateway: { wire_api: "responses", supports_websockets: false } },
   })
 })
+
+test("confirmed ingress enables Codex WebSockets and TOML strings round-trip", () => {
+  const model = "quoted \"model\"\\path\n雪\u007f"
+  const origin = "https://gateway.example/a\\path/\"name\"\n雪"
+  const config = Bun.TOML.parse(codexTomlSnippet(model, origin, true)) as {
+    model: string
+    model_providers: { copilot_gateway: { base_url: string; supports_websockets: boolean } }
+  }
+  expect(config.model).toBe(model)
+  expect(config.model_providers.copilot_gateway.base_url).toBe(origin + "/")
+  expect(config.model_providers.copilot_gateway.supports_websockets).toBe(true)
+})

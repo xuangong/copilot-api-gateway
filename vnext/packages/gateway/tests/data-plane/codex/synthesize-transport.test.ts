@@ -11,6 +11,12 @@ test("Codex catalog never advertises unavailable gateway WebSockets", () => {
   }
 })
 
+test("Codex catalog advertises installed Responses ingress even when source prefers HTTP", () => {
+  const source = { slug: "gpt-5", prefer_websockets: false }
+  expect(synthesizeCatalogEntry({ id: "alias" }, source, {}, true).prefer_websockets).toBe(true)
+  expect(synthesizeCatalogEntry({ id: "unmatched" }, undefined, {}, true).prefer_websockets).toBe(true)
+})
+
 test.each([true, false, undefined])("Codex catalog uses the selected upstream image detail fact %s", (supported) => {
   const source = { slug: "gpt-5", supports_image_detail_original: true, input_modalities: ["text", "image"] }
   const row = { id: "alias", chat: supported === undefined ? undefined : { image_detail_original: supported, modalities: { input: ["text", "image"] } } }

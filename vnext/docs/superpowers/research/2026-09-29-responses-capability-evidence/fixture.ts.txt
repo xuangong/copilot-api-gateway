@@ -1,0 +1,118 @@
+// Draft only: run after the capability route and UI contract are frozen.
+// Three loopback origins share one real Bun Gateway, SQLite repo, and session.
+import { resolve } from "node:path"
+
+const sourceRoot = process.env.C12_CAPABILITY_SOURCE_ROOT
+const capabilityPath = process.env.C12_CAPABILITY_PATH
+if (!sourceRoot || !capabilityPath || !/^\/api\/[a-z0-9/-]+$/.test(capabilityPath)) {
+  throw new Error("C12_CAPABILITY_SOURCE_ROOT and an exact /api/... C12_CAPABILITY_PATH are required")
+}
+const root = resolve(sourceRoot)
+let outboundCalls = 0
+globalThis.fetch = async () => {
+  outboundCalls++
+  throw new Error("Unexpected outbound fetch from isolated capability fixture")
+}
+
+const { bootstrapBunPlatform } = await import(`${root}/apps/platform-bun/src/bootstrap.ts`)
+const { createResponsesWebSocketHandlers } = await import(`${root}/apps/platform-bun/src/responses-websocket.ts`)
+const { app } = await import(`${root}/packages/gateway/src/app.ts`)
+const { getRepo } = await import(`${root}/packages/gateway/src/repo/index.ts`)
+const { initSocketDial } = await import(`${root}/packages/platform/src/index.ts`)
+
+bootstrapBunPlatform({ dbPath: `${process.cwd()}/fixture.sqlite`, filesRoot: `${process.cwd()}/files` })
+initSocketDial(async () => { throw new Error("External socket blocked by capability fixture") })
+const repo = getRepo()
+const now = new Date().toISOString()
+const ownerId = "c12-capability-owner"
+const keyId = "c12-capability-key"
+const apiKey = "sk_c12_capability_fixture_only"
+const sessionToken = `ses_${crypto.randomUUID().replaceAll("-", "")}`
+await repo.users.create({ id: ownerId, name: "C12 Capability Owner", email: "c12-capability@example.invalid", createdAt: now, disabled: false })
+await repo.sessions.create({ token: sessionToken, userId: ownerId, createdAt: now, authenticatedAt: Date.now(), expiresAt: new Date(Date.now() + 3_600_000).toISOString() })
+await repo.apiKeys.save({ id: keyId, ownerId, key: apiKey, name: "C12 Capability Key", createdAt: now, modelMappingsEnabled: false, modelMappings: [] })
+await repo.upstreams.save({
+  id: "custom:c12-capability", ownerId, provider: "custom", name: "C12 Static Catalog", enabled: true, sortOrder: 0,
+  config: { name: "C12 Static Catalog", baseUrl: "http://127.0.0.1:1/v1", authStyle: "none", endpoints: ["responses"],
+    models: ["gpt-5.6-sol", "gpt-capability-unmatched-2026"] },
+  state: null, flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [{ id: "direct_fetch" }], createdAt: now, updatedAt: now,
+})
+
+const controlToken = crypto.randomUUID()
+const reads = { native: 0, direct: 0, failedNative: 0 }
+const held = { reached: 0, released: 0, forwarded: 0, aborted: 0 }
+let hold: { consumed: boolean; release: () => void; promise: Promise<void> } | null = null
+const nativeCallbacks = createResponsesWebSocketHandlers({ app: {
+  async fetch(request: Request) {
+    if (new URL(request.url).pathname === capabilityPath) {
+      const current = hold
+      if (current && !current.consumed) {
+        current.consumed = true
+        held.reached++
+        request.signal.addEventListener("abort", () => { held.aborted++ }, { once: true })
+        await current.promise
+        held.forwarded++
+      }
+    }
+    return app.fetch(request)
+  },
+} })
+const failedCallbacks = createResponsesWebSocketHandlers({ app })
+const native = Bun.serve({ hostname: "127.0.0.1", port: 0, idleTimeout: 255,
+  websocket: nativeCallbacks.websocket,
+  async fetch(request, server) {
+    const path = new URL(request.url).pathname
+    if (path.startsWith("/__fixture/")) {
+      if (request.headers.get("x-fixture-control") !== controlToken) return new Response(null, { status: 403 })
+      if (path === "/__fixture/state" && request.method === "GET") {
+        return Response.json({ reads, outboundCalls, held, holding: hold !== null })
+      }
+      if (path === "/__fixture/hold" && request.method === "POST") {
+        if (hold) return new Response(null, { status: 409 })
+        let release = () => {}
+        const promise = new Promise<void>(resolve => { release = resolve })
+        hold = { consumed: false, release, promise }
+        return Response.json({ armed: true })
+      }
+      if (path === "/__fixture/release" && request.method === "POST") {
+        if (hold) { held.released++; hold.release() }
+        hold = null
+        return Response.json({ released: true })
+      }
+      return new Response(null, { status: 404 })
+    }
+    if (path === capabilityPath) reads.native++
+    return nativeCallbacks.fetch(request, server)
+  },
+})
+const direct = Bun.serve({ hostname: "127.0.0.1", port: 0, idleTimeout: 255,
+  fetch(request) {
+    if (new URL(request.url).pathname === capabilityPath) reads.direct++
+    return app.fetch(request)
+  },
+})
+const failedNative = Bun.serve({ hostname: "127.0.0.1", port: 0, idleTimeout: 255,
+  websocket: failedCallbacks.websocket,
+  fetch(request, server) {
+    if (new URL(request.url).pathname === capabilityPath) {
+      reads.failedNative++
+      return Response.json({ error: "Synthetic capability read failure" }, { status: 503, headers: { "cache-control": "no-store" } })
+    }
+    return failedCallbacks.fetch(request, server)
+  },
+})
+
+await Bun.write(`${process.cwd()}/connection.json`, JSON.stringify({
+  origins: { native: native.url.origin, direct: direct.url.origin, failedNative: failedNative.url.origin },
+  capabilityPath, sessionToken, apiKey, keyId, controlToken, sourceRoot: root, pid: process.pid,
+}))
+console.log("C12 capability fixture ready")
+const stop = () => {
+  hold?.release()
+  native.stop(true)
+  direct.stop(true)
+  failedNative.stop(true)
+  process.exit(0)
+}
+process.once("SIGTERM", stop)
+process.once("SIGINT", stop)

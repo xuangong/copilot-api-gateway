@@ -95,17 +95,25 @@ export function claudeCodeSettingsSnippet(big: string, small: string, baseUrl: s
   return JSON.stringify(snippet, null, 2)
 }
 
-export function codexTomlSnippet(model: string, baseUrl: string): string {
+function tomlBasicString(value: string): string {
+  const scalarValue = Array.from(value, character => {
+    const codePoint = character.codePointAt(0) ?? 0
+    return codePoint >= 0xd800 && codePoint <= 0xdfff ? "\ufffd" : character
+  }).join("")
+  return JSON.stringify(scalarValue).replace(/\x7f/g, "\\u007F")
+}
+
+export function codexTomlSnippet(model: string, baseUrl: string, supportsWebSockets = false): string {
   return [
-    'model = "' + model + '"',
+    'model = ' + tomlBasicString(model),
     'model_provider = "copilot_gateway"',
     "",
     "[model_providers.copilot_gateway]",
     'name = "Copilot Gateway"',
-    'base_url = "' + baseUrl + '/"',
+    'base_url = ' + tomlBasicString(baseUrl + '/'),
     'env_key = "OPENAI_API_KEY"',
     'wire_api = "responses"',
-    'supports_websockets = false',
+    'supports_websockets = ' + supportsWebSockets,
   ].join("\n")
 }
 

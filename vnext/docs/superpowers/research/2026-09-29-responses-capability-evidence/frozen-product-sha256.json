@@ -1,0 +1,27 @@
+{
+  "base": "4f8983af9d433d75b41558f8bf9931e571c30385",
+  "paths": {
+    "vnext/apps/dashboard/src/tabs/keys/ConfigurationPanel.tsx": "4f2821a1212a0ff5721317f9156ef1512425b9b9451c3b51f5fbac0edbcb3c2b",
+    "vnext/apps/dashboard/src/tabs/keys/codex-capability.test.ts": "765e8a2bb4422eef4912a351fba8a802e3bc2b62218364bdb9a9d08cb3b27f47",
+    "vnext/apps/dashboard/src/tabs/keys/codex-capability.ts": "952da03c0f80b846713d047f671b8bc125fbc4c820e0a7ada1eb94b3f47eac0b",
+    "vnext/apps/dashboard/src/tabs/keys/config-snippets.test.ts": "93c601e99ea5c56a303a6340f08f0dd04d57dc470093890c966f6a622e6c638b",
+    "vnext/apps/dashboard/src/tabs/keys/configSnippets.ts": "dc63b3ed8e2431e16db2d2e35fc4553f8a55eb243ed6304e76e9f958dffbfde1",
+    "vnext/apps/platform-bun/src/__tests__/responses-websocket.test.ts": "6e2c1a743dfcf97aa803870145d8729d2babb051c05e724a2e82e777facb8a91",
+    "vnext/apps/platform-bun/src/responses-websocket.ts": "7a68dbaa7ad0c35b70a254e8706d1c3ce2b2782b28448f4b8e4da7cbbbb6b134",
+    "vnext/apps/platform-cloudflare/src/responses-websocket.ts": "40048bb1472c6391c6735b8d912f520c423740f9d0d3719aca9388f8e50b7708",
+    "vnext/apps/platform-cloudflare/src/responses-websocket.workerd.test.ts": "75dca6380663c8c74f74bbdb579ddfe212505caf308490e0bd03f9b4595920e6",
+    "vnext/packages/gateway/package.json": "d6be7287c368c2863fe3b5ed54a1c24328d3c5087a3be820be2338d6c1d14185",
+    "vnext/packages/gateway/src/control-plane/auth/session-auth.ts": "e0d5a5151c112e3cff2e95f8cb7d6903faa501e5c52e8d5157acad9ab1815556",
+    "vnext/packages/gateway/src/control-plane/capabilities/routes.ts": "48a482ed0184b84781c86bcf235ac43cf9a26025a05faae2ee78d2c9d160d77f",
+    "vnext/packages/gateway/src/control-plane/routes.ts": "b77cae97c9cbe47f5f3e1a8598b15c1e3bc81083f3cf073570bfc1fe5f176646",
+    "vnext/packages/gateway/src/data-plane/chat-flow/responses/public-session.ts": "505a31a964ccdd5cc386f4006f15a95431b6f54c32d2039605a91e00e3719000",
+    "vnext/packages/gateway/src/data-plane/codex/models.ts": "66520e48b9eaafc5d74598672c47c580b152a684daaa16e073ba99687b1d560e",
+    "vnext/packages/gateway/src/data-plane/codex/synthesize.ts": "4e762bcff9d57cb7bd5a2f478fb929658cfc5956c86141c681cdc62d1d998dcc",
+    "vnext/packages/gateway/src/data-plane/models/routes.ts": "1c098d3304e585fae3103f3a2dece991cc375211a327ec29587453ff5131c5fb",
+    "vnext/packages/gateway/src/shared/ingress-capability.ts": "fb30964cbab637aa788d0ee4e051eba0c6afc39438f82c7e35e1289624d5bb61",
+    "vnext/packages/gateway/src/shared/platform-ingress-capability.ts": "7e02f835975d86e6d811b4f21190db076a39592e9f1930dd95d2cdd29c4f370f",
+    "vnext/packages/gateway/tests/control-plane/capabilities.test.ts": "1cc4045e06622c749a30f7b13f4aafc109e7ca6cd49607e52d9344735c2d1d84",
+    "vnext/packages/gateway/tests/data-plane/codex/mapped-catalog.test.ts": "7fc573e0a6c699b8617ba81104549d20f705e2256c1e09705010d8120f3faa39",
+    "vnext/packages/gateway/tests/data-plane/codex/synthesize-transport.test.ts": "fb0d5285d1f9a72a4b382a96030f6556d3d84f0919386a1bdb3530d5a2e19575"
+  }
+}

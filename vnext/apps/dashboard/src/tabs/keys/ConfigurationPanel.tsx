@@ -3,6 +3,7 @@ import type { ApiKeyDetail } from "../../api/keys"
 import { useT } from "../../state/i18n"
 import type { ModelCatalog } from "../../state/models"
 import { useToast } from "../../state/toast"
+import { useAuth } from "../../state/auth"
 import { Select } from "../../components/Select"
 import {
   availableClaudeTierSelection,
@@ -14,6 +15,7 @@ import {
   geminiSnippet,
 } from "./configSnippets"
 import type { ClaudeTierSelections } from "./configSnippets"
+import { CodexCapabilityRequestGate, hasConfirmedCodexWebSocketCapability, readCodexWebSocketCapability } from "./codex-capability"
 
 interface Props {
   keyRow: ApiKeyDetail
@@ -84,6 +86,7 @@ function CodeBlock({ language, text, onCopy, copied }: CodeBlockProps) {
 
 export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
   const { push: toast } = useToast()
+  const { session } = useAuth()
   const t = useT()
   const [tab, setTab] = useState<ConfigTab>("claude")
   const [claudeBig, setClaudeBig] = useState<string>("")
@@ -139,6 +142,24 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
   // back to a placeholder if it's somehow missing.
   const keyValue = keyRow.key || "<YOUR_KEY>"
   const baseUrl = typeof window !== "undefined" ? window.location.origin : ""
+  const hasSession = session !== null
+  const capabilityScope = JSON.stringify([baseUrl, hasSession, session?.userId, session?.sessionToken, keyRow.id])
+  const capabilityGate = useRef(new CodexCapabilityRequestGate())
+  const [codexCapability, setCodexCapability] = useState({ scope: "", available: false })
+  useEffect(() => {
+    const gate = capabilityGate.current
+    gate.invalidate()
+    setCodexCapability({ scope: capabilityScope, available: false })
+    if (!baseUrl || !hasSession) return
+    const { ticket, signal } = gate.begin(capabilityScope)
+    void readCodexWebSocketCapability(baseUrl, signal).then(available => {
+      if (gate.accepts(ticket, capabilityScope)) {
+        setCodexCapability({ scope: capabilityScope, available })
+      }
+    })
+    return () => gate.invalidate()
+  }, [baseUrl, capabilityScope, hasSession])
+  const codexWebSocketsAvailable = hasConfirmedCodexWebSocketCapability(codexCapability, capabilityScope)
 
   const doCopy = async (text: string, tag: string, label?: string) => {
     const ok = await copyToClipboard(text)
@@ -317,7 +338,7 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
                 {t("dash.addCodexConfig")}
               </p>
               {(() => {
-                const txt = codexTomlSnippet(codexModel, baseUrl)
+                const txt = codexTomlSnippet(codexModel, baseUrl, codexWebSocketsAvailable)
                 return (
                   <CodeBlock
                     language="toml"

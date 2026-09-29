@@ -61,6 +61,7 @@ export const assembleCodexCatalog = (
   catalog: CodexCatalog,
   models: readonly VNextModelRow[],
   capabilities: CodexCatalogCapabilities = {},
+  ingressWebSocket = false,
 ): CodexCatalog => {
   const catalogBySlug = new Map<string, CatalogModel>()
   for (const model of catalog.models) catalogBySlug.set(model.slug.toLowerCase(), model)
@@ -80,7 +81,7 @@ export const assembleCodexCatalog = (
   for (const row of models) {
     if (!isChatRow(row)) continue
     // Aliases keep their request id while inheriting the target's client capabilities.
-    out.push(synthesizeCatalogEntry(row, matchCatalog(row._mapped_to ?? row.id), capabilities))
+    out.push(synthesizeCatalogEntry(row, matchCatalog(row._mapped_to ?? row.id), capabilities, ingressWebSocket))
   }
   return { models: out }
 }
@@ -88,7 +89,8 @@ export const assembleCodexCatalog = (
 export const loadCodexCatalog = async (
   userAgent: string | undefined,
   models: readonly VNextModelRow[],
+  ingressWebSocket = false,
 ): Promise<CodexCatalog> => {
   const resolution = await resolveCodexCatalog(userAgent)
-  return assembleCodexCatalog(resolution.catalog, models, resolution.capabilities)
+  return assembleCodexCatalog(resolution.catalog, models, resolution.capabilities, ingressWebSocket)
 }

@@ -7,6 +7,7 @@
     ".": "./src/app.ts",
     "./repo": "./src/repo/public.ts",
     "./responses-session": "./src/data-plane/chat-flow/responses/public-session.ts",
+    "./ingress-capability": "./src/shared/platform-ingress-capability.ts",
     "./maintenance": "./src/maintenance.ts",
     "./bootstrap": "./src/bootstrap.ts",
     "./migrations": "./src/migrations-dir.ts"

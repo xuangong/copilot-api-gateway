@@ -1,10 +1,12 @@
 import { withBackground, type BackgroundExecutor } from "@vibe-core/platform"
+import { withResponsesWebSocketIngress } from "@vibe-llm/gateway/ingress-capability"
 import {
   authorizeResponsesSession,
   ConfigurationUnavailableError,
   createResponsesSession,
   isResponsesWebSocketUpgradeRequest,
   ResponsesSessionError,
+  RESPONSES_WS_UNOBSERVABLE_LIFETIME_BYTES,
 } from "@vibe-llm/gateway/responses-session"
 import type { CloudflareEnv } from "./bootstrap.ts"
 
@@ -32,7 +34,10 @@ export function createResponsesWebSocketHandler({ app }: { readonly app: Respons
   return async (request: Request, env: CloudflareEnv, ctx: ExecutionContext): Promise<Response> => {
     const background: BackgroundExecutor = { waitUntil: promise => ctx.waitUntil(promise) }
     if (!isResponsesWebSocketUpgradeRequest(request)) {
-      return withBackground(background, () => app.fetch(request, env, ctx))
+      return withBackground(background, () => withResponsesWebSocketIngress(
+        { maxConnectionOutboundBytes: RESPONSES_WS_UNOBSERVABLE_LIFETIME_BYTES },
+        () => app.fetch(request, env, ctx),
+      ))
     }
 
     try {

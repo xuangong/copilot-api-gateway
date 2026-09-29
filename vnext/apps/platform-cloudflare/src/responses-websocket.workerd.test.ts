@@ -244,6 +244,11 @@ beforeEach(async () => { await fixture.reset() })
 afterAll(async () => { if (fixture) await fixture.stop() })
 
 workerdTest("production Worker upgrades only four exact authenticated routes before 101", async () => {
+  const capability = await fetch(`${fixture.gatewayBase}/api/capabilities`, { headers: { authorization: `Bearer ${KEY}` } })
+  expect(capability.status).toBe(200)
+  expect(capability.headers.get("cache-control")).toBe("no-store")
+  expect((await capability.json() as { codex: { responsesWebSocket: { available: boolean; maxConnectionOutboundBytes: number } } }).codex.responsesWebSocket)
+    .toMatchObject({ available: true, maxConnectionOutboundBytes: 16_777_216 })
   for (const path of ["/responses", "/v1/responses", "/azure-api.codex/responses", "/azure-api.codex/v1/responses"]) {
     const socket = await openSocket(fixture.port, path)
     const closed = new Promise<CloseEvent>(resolve => socket.addEventListener("close", event => resolve(event), { once: true }))
