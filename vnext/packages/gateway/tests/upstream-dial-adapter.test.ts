@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { UpstreamExchangeCollector, UPSTREAM_ATTEMPT_LIMITS } from "../src/shared/dump/upstream-attempts.ts"
-import { createUpstreamDialObservationContext, operationForProviderRequest, type UpstreamOperation } from "../src/shared/dump/upstream-dial-adapter.ts"
+import { boundedUtf8, createUpstreamDialObservationContext, operationForProviderRequest, type UpstreamOperation } from "../src/shared/dump/upstream-dial-adapter.ts"
 
 test("operation comes from the declared provider endpoint and action", () => {
   expect([
@@ -69,6 +69,18 @@ test("bounded text encoding counts malformed UTF-16 and keeps exact mid-codepoin
   expect(request?.truncated).toBe(true)
   const prefix = Uint8Array.from(atob(request?.prefixBase64 ?? ""), char => char.charCodeAt(0))
   expect(Array.from(prefix.slice(-4))).toEqual([97, 97, 0xf0, 0x9f])
+})
+
+test("bounded UTF-8 preserves every byte boundary and counts the uncaptured suffix", () => {
+  const text = "a\u0000é中😀\ud800b\udc00\ud800\ud800\udc00"
+  const encoded = new TextEncoder().encode(text)
+  for (let limit = 0; limit <= encoded.length + 2; limit++) {
+    const result = boundedUtf8(text, limit)
+    expect(result.totalBytes).toBe(encoded.length)
+    expect(result.prefix).toEqual(encoded.subarray(0, limit))
+    expect(result.prefix.buffer.byteLength).toBeLessThanOrEqual(limit)
+  }
+  expect(boundedUtf8("", 0)).toEqual({ prefix: new Uint8Array(0), totalBytes: 0 })
 })
 
 test("prepared byte prefix is copied before dispatch and opaque bodies stay unobserved", () => {

@@ -115,6 +115,8 @@ export function boundedUtf8(text: string, limit: number): { prefix: Uint8Array; 
   const prefix = new Uint8Array(Math.min(limit, text.length * 3))
   let copied = 0
   let totalBytes = 0
+  // Keep this outside the loop: keep-names builds define its name on each creation.
+  const write = (value: number) => { if (copied < limit) prefix[copied++] = value }
   for (let i = 0; i < text.length; i++) {
     let point = text.codePointAt(i) ?? 0xfffd
     if (point > 0xffff) i++
@@ -122,7 +124,6 @@ export function boundedUtf8(text: string, limit: number): { prefix: Uint8Array; 
     const bytes = point < 0x80 ? 1 : point < 0x800 ? 2 : point < 0x10000 ? 3 : 4
     totalBytes += bytes
     if (copied >= limit) continue
-    const write = (value: number) => { if (copied < limit) prefix[copied++] = value }
     if (bytes === 1) write(point)
     else if (bytes === 2) {
       write(0xc0 | (point >> 6))
