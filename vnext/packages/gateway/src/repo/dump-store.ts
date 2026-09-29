@@ -101,25 +101,12 @@ const gunzip = async (input: Uint8Array): Promise<Uint8Array> => {
   return Bun.gunzipSync(bytes)
 }
 
-const putRawBody = async (
-  files: FileProvider,
-  key: string,
-  rawBytes: Uint8Array,
-  type: "bytes" | "events",
-): Promise<BodyDescriptor> => {
-  const gz = await gzip(rawBytes)
-  await files.put(key, gz)
-  return { key, type }
-}
-
 const putPreparedBody = async (
   files: FileProvider,
-  key: string,
-  prepared: PreparedDumpRequestBody,
-): Promise<BodyDescriptor> => {
-  const gz = prepared.encoding === "gzip" ? prepared.bytes : await gzip(prepared.bytes)
-  await files.put(key, gz)
-  return { key, type: "bytes" }
+  key: string | null,
+  bytes: Uint8Array | null,
+): Promise<void> => {
+  if (key !== null && bytes !== null) await files.put(key, bytes)
 }
 
 const fetchBody = async (files: FileProvider, descriptor: BodyDescriptor): Promise<Uint8Array> => {
@@ -208,25 +195,42 @@ export class FileDumpStore implements DumpStore {
         .bind(upstreamFileKey, keyId, record.meta.id).run()
     }
     try {
-      const requestDescriptor = record.request.body.decodedByteLength === 0
+      const requestDescriptor: BodyDescriptor | null = requestFileKey === null ? null : { key: requestFileKey, type: "bytes" }
+      let requestBytes = requestFileKey === null
         ? null
-        : await putPreparedBody(this.files, requestFileKey!, record.request.body)
+        : record.request.body.encoding === "gzip" ? record.request.body.bytes : await gzip(record.request.body.bytes)
 
+      // Prepare serially before starting any uploads. A preparation failure
+      // cannot leave a sibling write running outside the cleanup barrier.
       let responseDescriptor: BodyDescriptor | null = null
+      let responseBytes: Uint8Array | null = null
       if (record.response.body.type === "bytes") {
-        if (record.response.body.body.byteLength > 0) {
-          responseDescriptor = await putRawBody(this.files, responseFileKey!, record.response.body.body, "bytes")
+        if (responseFileKey !== null) {
+          responseBytes = await gzip(record.response.body.body)
+          responseDescriptor = { key: responseFileKey, type: "bytes" }
         }
       } else if (record.response.body.type === "stream") {
-        responseDescriptor = await putRawBody(this.files, responseFileKey!, new TextEncoder().encode(JSON.stringify(record.response.body.events)), "events")
+        responseBytes = await gzip(new TextEncoder().encode(JSON.stringify(record.response.body.events)))
+        responseDescriptor = { key: responseFileKey!, type: "events" }
       }
 
+      // Fixed three-slot batch: only already prepared bytes are uploaded in
+      // parallel. All started writes settle before publication or retirement,
+      // including late/partial writes after an early sibling rejection.
+      const [requestPut, responsePut, upstreamPut] = await Promise.allSettled([
+        putPreparedBody(this.files, requestFileKey, requestBytes),
+        putPreparedBody(this.files, responseFileKey, responseBytes),
+        putPreparedBody(this.files, upstreamFileKey, upstreamBytes),
+      ])
+      requestBytes = responseBytes = upstreamBytes = null
+      if (requestPut.status === "rejected") throw requestPut.reason
+      if (responsePut.status === "rejected") throw responsePut.reason
+
       let upstreamDescriptor: { key: string; type: "upstreamExchanges"; version: 1 } | null = null
-      if (upstreamFileKey !== null && upstreamBytes !== null) {
-        try {
-          await this.files.put(upstreamFileKey, upstreamBytes)
+      if (upstreamFileKey !== null) {
+        if (upstreamPut.status === "fulfilled") {
           upstreamDescriptor = { key: upstreamFileKey, type: "upstreamExchanges", version: 1 }
-        } catch {
+        } else {
           // Even a partially successful external put remains collectible.
           try { await retireUpstreamStage() }
           catch { /* keep the canonical dump independent of the sidecar */ }

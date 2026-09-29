@@ -70,7 +70,7 @@ test("stages three keys before puts, writes one gzip sidecar before row, and dis
   const store = new FileDumpStore(db, files)
   await store.put(keyId, record(snapshot()))
   expect(order).toHaveLength(3)
-  expect(order[2]).toContain(".up.gz")
+  expect(order.filter(key => key.endsWith(".up.gz"))).toHaveLength(1)
   expect(descriptor()).not.toBeNull()
   const rows = raw.query<{ owner_kind: string; state: string }, []>("SELECT owner_kind, state FROM spilled_files ORDER BY owner_kind").all()
   expect(rows).toEqual([
