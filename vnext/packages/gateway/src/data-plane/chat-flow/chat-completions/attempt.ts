@@ -186,8 +186,9 @@ export const chatCompletionsAttempt = {
       // upstream.name + upstreamModel.id + provider.getPricingForModelKey).
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const publicModel = sel.bareModel
-      const providerModelKey = initialProviderModelKey(bindingForTelemetry, publicModel)
       upstreamResp = await fetchWithPerformance(args.telemetryCtx.metrics, "chat_completions", providerReq, () => binding.provider.fetch(providerReq))
+      const execution = upstreamResp.execution ? Object.freeze({ ...upstreamResp.execution }) : undefined
+      const providerModelKey = execution?.modelKey ?? initialProviderModelKey(bindingForTelemetry, publicModel)
       if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
         // Wrap the ProviderResponse shape into a Response so readUpstreamError
         // can buffer body + headers using the standard helper. The performance
@@ -223,7 +224,7 @@ export const chatCompletionsAttempt = {
         protocol: 'chat_completions',
       })
       const identityInput = { incomingModel: args.telemetryCtx.incomingModel, publicModel }
-      const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, identityInput)
+      const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, identityInput, execution)
       const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
       return llmEventResult(
         decorated,
@@ -232,7 +233,7 @@ export const chatCompletionsAttempt = {
         undefined,
         undefined,
         undefined,
-        modelIdentityResolver(bindingForTelemetry, identityInput),
+        modelIdentityResolver(bindingForTelemetry, identityInput, execution),
       )
     }
 

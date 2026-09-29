@@ -15,6 +15,8 @@ export interface TelemetryModelIdentity {
   readonly model: string
   readonly upstream: string
   readonly modelKey: string
+  /** Exact provider-selected pricing identity; response model echoes cannot override it. */
+  readonly executedModelKey?: string
   readonly cost: ModelPricing | null
   /**
    * Set when the attempt traversed a translator (cross-protocol fan-out).

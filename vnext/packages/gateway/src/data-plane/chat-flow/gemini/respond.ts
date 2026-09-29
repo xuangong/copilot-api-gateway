@@ -126,7 +126,7 @@ const renderEventsAsSSE = (
   result: LlmEventResult<unknown>,
   options: RespondGeminiOptions,
 ): Response => {
-  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
+  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model, result.modelIdentity.executedModelKey)
   const onClientAbort = (): void => {
     options.telemetryCtx?.metrics?.finish("cancelled")
     if (options.telemetryCtx || options.dump) waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
@@ -339,7 +339,7 @@ const renderEventsAsJson = async (
   result: LlmEventResult<unknown>,
   options: RespondGeminiOptions,
 ): Promise<Response> => {
-  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
+  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model, result.modelIdentity.executedModelKey)
   // Cross-protocol buffered results contain hub ProtocolFrames. Preserve those
   // frames for the hub reassembler while observing their contained events;
   // the streaming path remains on the bare Gemini bridge above.

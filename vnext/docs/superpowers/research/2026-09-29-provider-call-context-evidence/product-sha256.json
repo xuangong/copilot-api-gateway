@@ -1,0 +1,16 @@
+{
+  "vnext/bun.lock": "d3d6ba4d76615ec1dedecdb144709c9ab2567f71c23f65e97000a6f25f9e3922",
+  "vnext/packages/gateway/src/data-plane/chat-flow/chat-completions/attempt.ts": "db20ca29d5bb95fba682932311232a940ffd85fa3fbb8a2dd221d2b89db93f11",
+  "vnext/packages/gateway/src/data-plane/chat-flow/chat-completions/respond.ts": "9d5c552625379fcbb845ab563414954967c9e176445cf73e055c612d5b2f01e0",
+  "vnext/packages/gateway/src/data-plane/chat-flow/gemini/respond.ts": "1ae6de8f23d39b95d4d26d4931d76c1b302ca911ea1700ad334c182230e6cfa8",
+  "vnext/packages/gateway/src/data-plane/chat-flow/messages/attempt.ts": "f2024a18d5c6cf58bf25635847238860b553c5f9f6a4b7a70b95bf36e021ffa6",
+  "vnext/packages/gateway/src/data-plane/chat-flow/messages/respond.ts": "b15d5a7ddceb826b3c28f71eced79b32799983b92ac040be3cc1c002c2bb048b",
+  "vnext/packages/gateway/src/data-plane/chat-flow/responses/attempt.ts": "bc501e6ed968484fe9f1bcb7932fcd82167aafa3cc3b79917741d9b7fc981e3e",
+  "vnext/packages/gateway/src/data-plane/chat-flow/responses/respond.ts": "8cd78d9cbf50c0e454a84e957dcfa28c707551ae23bffbfe2c4a8bfa9693e56a",
+  "vnext/packages/gateway/src/data-plane/chat-flow/shared/attempt-helpers.ts": "804ae9b5327b8fd891edff28070309bf307547986cedf703db92188a5f957dfb",
+  "vnext/packages/gateway/src/data-plane/chat-flow/shared/respond-telemetry.ts": "bd40fecc40eb45337cf3b268d38d8459790e71d69c1830b3c40433bfacbb2fee",
+  "vnext/packages/gateway/tests/data-plane/chat-flow/shared/provider-call-context.test.ts": "c3861bef394a0bacf346a2cbd8d786531a139b7ed543c0bdddb3cc1df1ca3ef7",
+  "vnext/packages/protocols-llm/src/common/result.ts": "f086263f6dcde7b890e5fce4803abc885ff9e8a9c2b3b6440879956a6f42bcda",
+  "vnext/packages/provider-llm/package.json": "b33d1d54400720b8b47e3a2eac5161ad60aa02dd9d5a39a50089fcd0a147d823",
+  "vnext/packages/provider-llm/src/types.ts": "854d1fc9e34d631dc08b9de4c09d9b2ad6174359fc1c69e1dc99f16eee1f423d"
+}

@@ -101,8 +101,8 @@ export class SourceStreamState {
   persisted = false
   usage: UsageInfo
 
-  constructor(initialModelKey: string, publicModel = initialModelKey) {
-    this.modelKey = initialModelKey
+  constructor(initialModelKey: string, publicModel = initialModelKey, readonly executedModelKey?: string) {
+    this.modelKey = executedModelKey ?? initialModelKey
     this.publicModel = publicModel
     this.usage = { tokens: {} }
   }
@@ -117,6 +117,7 @@ export class SourceStreamState {
   }
 
   rememberModelKey(key: unknown): void {
+    if (this.executedModelKey !== undefined) return
     if (typeof key !== 'string' || key.length === 0) return
     this.modelKey = pickUsageModelId(key, this.modelKey)
   }
@@ -154,7 +155,7 @@ export function finalModelIdentity(
   observed: string,
   resolveModelIdentity?: (modelKey: string) => TelemetryModelIdentity | null,
 ): TelemetryModelIdentity {
-  if (observed.length === 0) return initial
+  if (initial.executedModelKey !== undefined || observed.length === 0) return initial
   const modelKey = pickUsageModelId(observed, initial.modelKey)
   if (modelKey === initial.modelKey || !resolveModelIdentity) return initial
   return resolveModelIdentity(modelKey) ?? initial

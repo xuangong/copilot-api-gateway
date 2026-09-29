@@ -409,8 +409,9 @@ export const messagesAttempt = {
       }
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const publicModel = sel.bareModel
-      const providerModelKey = initialProviderModelKey(bindingForTelemetry, publicModel)
       upstreamResp = await fetchWithPerformance(args.telemetryCtx.metrics, "messages", providerReq, () => sel.binding.provider.fetch(providerReq))
+      const execution = upstreamResp.execution ? Object.freeze({ ...upstreamResp.execution }) : undefined
+      const providerModelKey = execution?.modelKey ?? initialProviderModelKey(bindingForTelemetry, publicModel)
       if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
         const errResp = new Response(upstreamResp.body, { status: upstreamResp.status, headers: upstreamResp.headers })
         const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
@@ -445,7 +446,7 @@ export const messagesAttempt = {
         protocol: 'messages',
       })
       const identityInput = { incomingModel: args.telemetryCtx.incomingModel, publicModel }
-      const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, identityInput)
+      const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, identityInput, execution)
       const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
       return llmEventResult(
         decorated,
@@ -454,7 +455,7 @@ export const messagesAttempt = {
         undefined,
         undefined,
         undefined,
-        modelIdentityResolver(bindingForTelemetry, identityInput),
+        modelIdentityResolver(bindingForTelemetry, identityInput, execution),
       )
     }
 

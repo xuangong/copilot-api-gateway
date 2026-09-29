@@ -2,8 +2,8 @@
  * @vibe-llm/provider-llm/types — LLM business overlay over the framework
  * UpstreamAdapter contract from @vibe-core/upstream.
  *
- * Re-exports framework transport shapes so consumers don't need a second
- * import line. Defines the LLM-coupled request shapes (ProviderRequest /
+ * Extends framework responses with per-call LLM adaptation and re-exports
+ * the remaining transport shapes. Defines the LLM-coupled request shapes (ProviderRequest /
  * ProviderRequestFlags / SourceApi) that carry EndpointKey and the three
  * source APIs. Defines LlmModelProvider — the business contract every
  * @vibe-llm/provider-* package implements.
@@ -11,9 +11,11 @@
 import type {
   ProbeResult,
   ProviderModelsResponse,
-  ProviderResponse,
+  ProviderResponse as TransportProviderResponse,
   UpstreamAdapter,
 } from '@vibe-core/upstream'
+import type { ProtocolFrame } from '@vibe-core/result'
+import type { ResponsesResult, ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
 import type {
   EndpointKey,
   ModelPricing,
@@ -22,7 +24,33 @@ import type {
 } from '@vibe-llm/protocols/common'
 
 export type { UpstreamKind }
-export type { ProbeResult, ProviderModelsResponse, ProviderResponse }
+export type { ProbeResult, ProviderModelsResponse }
+
+/** Facts selected for this dispatch, independent of the model echoed by the server. */
+export interface ProviderExecutionIdentity {
+  readonly modelKey: string
+  readonly serviceTier?: string
+  /** Opaque non-secret identity only; never a token, API key, or email. */
+  readonly credentialSubject?: string
+  readonly credentialRevision?: string
+}
+
+/**
+ * Adapters must close over immutable preparation data belonging to this call,
+ * never a mutable provider field or cached catalog. Capture preparation once
+ * before auth retries; return the same call-local adapter after the final retry.
+ * JSON results are adapted once before event synthesis; real SSE uses frame.
+ */
+export interface ProviderResponsesAdapter {
+  readonly frame?: (frame: ProtocolFrame<ResponsesStreamEvent>) => ProtocolFrame<ResponsesStreamEvent>
+  readonly result?: (result: ResponsesResult) => ResponsesResult
+}
+
+/** LLM-only extension: transport wrappers must preserve these per-call extras. */
+export interface ProviderResponse extends TransportProviderResponse {
+  readonly execution?: ProviderExecutionIdentity
+  readonly responsesAdapter?: ProviderResponsesAdapter
+}
 
 export type SourceApi = 'anthropic' | 'openai' | 'gemini'
 

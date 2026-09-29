@@ -248,7 +248,7 @@ const renderEventsAsSSE = (
   result: LlmEventResult<ProtocolFrame<ResponsesStreamEvent>>,
   options: RespondResponsesOptions,
 ): Response => {
-  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
+  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model, result.modelIdentity.executedModelKey)
   const onClientAbort = (): void => {
     if (state.cancelled) return
     state.cancelled = true
@@ -343,7 +343,7 @@ const renderEventsAsJson = async (
   result: LlmEventResult<ProtocolFrame<ResponsesStreamEvent>>,
   options: RespondResponsesOptions,
 ): Promise<Response> => {
-  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
+  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model, result.modelIdentity.executedModelKey)
   const onClientAbort = (): void => {
     if (state.cancelled) return
     state.cancelled = true

@@ -62,6 +62,7 @@ import {
 } from '@vibe-llm/protocols/responses'
 import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vibe-llm/provider-llm'
 import {
+  adaptResponsesFrames,
   initialProviderModelKey,
   telemetryModelIdentity,
   modelIdentityResolver,
@@ -315,8 +316,9 @@ export const responsesAttempt = {
       }
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const publicModel = sel.bareModel
-      const providerModelKey = initialProviderModelKey(bindingForTelemetry, publicModel)
       upstreamResp = await fetchWithPerformance(args.telemetryCtx.metrics, "responses", providerReq, () => sel.binding.provider.fetch(providerReq))
+      const execution = upstreamResp.execution ? Object.freeze({ ...upstreamResp.execution }) : undefined
+      const providerModelKey = execution?.modelKey ?? initialProviderModelKey(bindingForTelemetry, publicModel)
       if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
         const errResp = new Response(upstreamResp.body, { status: upstreamResp.status, headers: upstreamResp.headers })
         const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
@@ -341,18 +343,22 @@ export const responsesAttempt = {
       if (upstreamLooksJson) {
         // JSON.parse failures land in the outer try/catch below — they surface
         // as an internal-error result populated with `performance` ctx.
-        const json = await readUpstreamResponsesJson(upstreamResp.body)
+        const parsed = await readUpstreamResponsesJson(upstreamResp.body)
+        const json = upstreamResp.responsesAdapter?.result?.(parsed) ?? parsed
         observeUpstreamJson(upstreamResp, json)
         frames = synthesizeResponsesFramesFromJson(json)
       } else {
-        frames = parseResponsesStream(upstreamResp.body, args.ctx.downstreamAbortSignal !== undefined ? { signal: args.ctx.downstreamAbortSignal } : {})
+        frames = adaptResponsesFrames(
+          parseResponsesStream(upstreamResp.body, args.ctx.downstreamAbortSignal !== undefined ? { signal: args.ctx.downstreamAbortSignal } : {}),
+          upstreamResp.responsesAdapter,
+        )
       }
       const { events: decorated } = withUpstreamTelemetry(observeUpstreamFrames(upstreamResp, frames, upstreamLooksJson), {
         abortSignal: args.ctx.downstreamAbortSignal,
         protocol: 'responses',
       })
       const identityInput = { incomingModel: args.telemetryCtx.incomingModel, publicModel }
-      const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, identityInput)
+      const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, identityInput, execution)
       const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
       return llmEventResult(
         decorated,
@@ -361,7 +367,7 @@ export const responsesAttempt = {
         undefined,
         undefined,
         undefined,
-        modelIdentityResolver(bindingForTelemetry, identityInput),
+        modelIdentityResolver(bindingForTelemetry, identityInput, execution),
       )
     }
 

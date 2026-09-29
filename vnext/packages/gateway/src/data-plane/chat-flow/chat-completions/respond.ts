@@ -206,7 +206,7 @@ const renderEventsAsSSE = (
   result: LlmEventResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
   options: RespondChatCompletionsOptions,
 ): Response => {
-  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
+  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model, result.modelIdentity.executedModelKey)
   const onClientAbort = (): void => {
     options.telemetryCtx?.metrics?.finish("cancelled")
     if (options.telemetryCtx || options.dump) waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
@@ -292,7 +292,7 @@ const renderEventsAsJson = async (
   result: LlmEventResult<ProtocolFrame<ChatCompletionsStreamEvent>>,
   options: RespondChatCompletionsOptions,
 ): Promise<Response> => {
-  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model)
+  const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model, result.modelIdentity.executedModelKey)
   const events = consumeWithState(result.events, state, options.dump)
   try {
     // Dispatch reassembly on hub protocol — same-protocol (or absent) →

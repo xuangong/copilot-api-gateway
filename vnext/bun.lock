@@ -212,6 +212,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@noble/hashes": "^1.8.0",
+        "@vibe-core/result": "workspace:*",
         "@vibe-core/upstream": "workspace:*",
         "@vibe-llm/protocols": "workspace:*",
       },

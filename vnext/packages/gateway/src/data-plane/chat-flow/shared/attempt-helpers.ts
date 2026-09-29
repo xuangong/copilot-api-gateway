@@ -10,7 +10,8 @@ import {
 } from '@vibe-llm/protocols/common'
 import { type ProtocolFrame } from '@vibe-core/result'
 import { parseTargetStreamFrames } from '@vibe-core/result/parse'
-import type { ProviderResponse } from '@vibe-llm/provider-llm'
+import type { ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
+import type { ProviderResponse, ProviderExecutionIdentity, ProviderResponsesAdapter } from '@vibe-llm/provider-llm'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 import { withUpstreamTelemetry } from './upstream-telemetry.ts'
 
@@ -45,12 +46,15 @@ export function telemetryModelIdentity(
   binding: AttemptBindingShape,
   modelKey: string,
   input: TelemetryIdentityInput,
+  execution?: ProviderExecutionIdentity,
 ): TelemetryModelIdentity {
+  modelKey = execution?.modelKey ?? modelKey
   return {
     incomingModel: input.incomingModel,
     model: input.publicModel,
     upstream: binding.upstream,
     modelKey,
+    ...(execution ? { executedModelKey: execution.modelKey } : {}),
     cost: (binding.provider.getPricingForModelKey(modelKey) ?? null) as TelemetryModelIdentity['cost'],
   }
 }
@@ -58,8 +62,9 @@ export function telemetryModelIdentity(
 export function modelIdentityResolver(
   binding: AttemptBindingShape,
   input: TelemetryIdentityInput,
+  execution?: ProviderExecutionIdentity,
 ): (modelKey: string) => TelemetryModelIdentity {
-  return (modelKey) => telemetryModelIdentity(binding, modelKey, input)
+  return (modelKey) => telemetryModelIdentity(binding, modelKey, input, execution)
 }
 
 export function upstreamPerformanceContext(
@@ -76,6 +81,18 @@ export function upstreamPerformanceContext(
     stream: telemetryCtx.isStreaming,
     runtimeLocation: telemetryCtx.runtimeLocation,
   }
+}
+
+/** Capture the adapter before lazy iteration so concurrent calls cannot exchange it. */
+export function adaptResponsesFrames(
+  frames: AsyncIterable<ProtocolFrame<ResponsesStreamEvent>>,
+  adapter?: ProviderResponsesAdapter,
+): AsyncIterable<ProtocolFrame<ResponsesStreamEvent>> {
+  const adapt = adapter?.frame
+  if (!adapt) return frames
+  return (async function* () {
+    for await (const frame of frames) yield adapt(frame)
+  })()
 }
 
 export interface ProviderResponseToExecuteResultArgs<T> {
@@ -101,18 +118,27 @@ export function providerResponseToExecuteResult<T>(
   args: ProviderResponseToExecuteResultArgs<T>,
 ): LlmEventResult<ProtocolFrame<T>> {
   if (!args.providerResp.body) throw new Error('upstream returned empty body')
-  const events = args.toEvents(args.providerResp.body)
+  let events = args.toEvents(args.providerResp.body)
+  if (args.protocol === 'responses') {
+    // The protocol discriminator identifies the parser's event type at this boundary.
+    events = adaptResponsesFrames(
+      events as AsyncIterable<ProtocolFrame<ResponsesStreamEvent>>,
+      args.providerResp.responsesAdapter,
+    ) as AsyncIterable<ProtocolFrame<T>>
+  }
   const { events: decorated } = withUpstreamTelemetry(events, {
     abortSignal: args.abortSignal,
     protocol: args.protocol,
   })
   const publicModel = args.bareModel
   const identityInput = { incomingModel: args.incomingModel, publicModel }
-  const providerModelKey = initialProviderModelKey(args.binding, publicModel)
+  const execution = args.providerResp.execution ? Object.freeze({ ...args.providerResp.execution }) : undefined
+  const providerModelKey = execution?.modelKey ?? initialProviderModelKey(args.binding, publicModel)
   const modelIdentity = telemetryModelIdentity(
     args.binding,
     providerModelKey,
     identityInput,
+    execution,
   )
   return llmEventResult(
     decorated,
@@ -126,7 +152,7 @@ export function providerResponseToExecuteResult<T>(
     undefined,
     undefined,
     undefined,
-    modelIdentityResolver(args.binding, identityInput),
+    modelIdentityResolver(args.binding, identityInput, execution),
   )
 }
 
