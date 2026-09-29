@@ -23,10 +23,11 @@ export async function createRequestAffinity(protocol: AffinityProtocol, source: 
     if (!secret) throw new InvalidAffinityStateError()
     return new AffinityCodec({ ...secret, apiKeyId: key.id, ownerId: key.ownerId })
   })()
+  // Analysis owns the only canonical snapshot; each mutable consumer gets a copy.
   // Ordinary requests need neither key material nor candidate preparation.
   // An owned marker still authenticates eagerly, before any provider I/O.
   const codec = containsAffinityMarker(protocol, source) ? await loadCodec() : undefined
-  return { protocol, codec, loadCodec, analysis: await analyzeAffinityRequest(protocol, source, codec), source: structuredClone(source), plaintextCompactions: new Set() }
+  return { protocol, codec, loadCodec, analysis: await analyzeAffinityRequest(protocol, source, codec), plaintextCompactions: new Set() }
 
 }
 
@@ -47,7 +48,7 @@ export async function selectAffinityCandidate<T extends Candidate>(candidates: r
     const translator = getTranslator(affinity.protocol, candidate.targetEndpoint)
     if (!translator) continue
     try {
-      const source: Record<string, unknown> = { ...structuredClone(affinity.source), model: bareModel }
+      const source: Record<string, unknown> = { ...affinity.analysis.cloneSource(), model: bareModel }
       const translated = await translator.translateRequest(source, { signal: options.signal ?? new AbortController().signal, model: bareModel })
       const payload = selectedTierRequest(affinity.protocol, candidate.targetEndpoint, source, translated as Record<string, unknown>)
       const request: ProviderRequest = {

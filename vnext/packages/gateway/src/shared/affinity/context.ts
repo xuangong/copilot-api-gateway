@@ -7,7 +7,6 @@ export interface RequestAffinity {
   readonly codec?: AffinityCodec
   readonly loadCodec?: () => Promise<AffinityCodec | undefined>
   readonly analysis: AffinityAnalysis
-  readonly source: Record<string, unknown>
   selected?: AffinityExecutionTarget
   actual?: AffinityExecutionTarget
   readonly plaintextCompactions?: Set<string>

@@ -11,7 +11,7 @@ function candidate(prepare?: LlmModelProvider["prepareAffinityExecution"], endpo
   const binding: LlmProviderBinding = { kind: "claude-code", upstream: "up", enabledFlags: new Set(), model: { id: "public", endpoints: { [endpoint]: {} } }, provider }
   return { binding, targetEndpoint: endpoint }
 }
-async function affinity(protocol: "responses" | "messages", source: Record<string, unknown>): Promise<RequestAffinity> { return { protocol, source, codec, analysis: await analyzeAffinityRequest(protocol, source, codec) } }
+async function affinity(protocol: "responses" | "messages", source: Record<string, unknown>): Promise<RequestAffinity> { return { protocol, codec, analysis: await analyzeAffinityRequest(protocol, source, codec) } }
 
 test("unknown-target Claude candidate degrades optional state but rejects required native state before dispatch", async () => {
   const unknown = candidate()
@@ -19,7 +19,7 @@ test("unknown-target Claude candidate degrades optional state but rejects requir
   const foreign = { type: "reasoning", encrypted_content: "foreign" }
   const state = await affinity("responses", { model: "public", input: [signed, foreign] })
   expect(await selectAffinityCandidate([unknown], state, "public")).toBe(unknown)
-  expect(materializeAffinity(state, state.source, "public").input).toEqual([foreign])
+  expect(materializeAffinity(state, {}, "public").input).toEqual([foreign])
   const required = await stampAffinityItem("responses", { type: "compaction", encrypted_content: "native" }, target, codec)
   await expect(selectAffinityCandidate([unknown], await affinity("responses", { input: [required] }), "public")).rejects.toBeInstanceOf(AffinityRoutingUnavailableError)
 })

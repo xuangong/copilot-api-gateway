@@ -174,7 +174,7 @@ test("configured execution targets rank exact then stable declared groups then d
   expect(analysis.rankAuthorizedCandidates(targets, target => target)).toEqual([targets[3], targets[1], targets[2], targets[0]])
   const required = await stampAffinityItem("responses", { type: "compaction", encrypted_content: "required-native-state" }, origin, codec)
   const source = { model: "raw", input: [required] }
-  const state: RequestAffinity = { protocol: "responses", source, codec, analysis: await analyzeAffinityRequest("responses", source, codec) }
+  const state: RequestAffinity = { protocol: "responses", codec, analysis: await analyzeAffinityRequest("responses", source, codec) }
   expect(await selectAffinityCandidate(candidates, state, "raw")).toBe(candidates[3])
   expect(await selectAffinityCandidate(candidates.slice(0, 3), state, "raw")).toBe(candidates[1])
   const chosen = candidates[1]

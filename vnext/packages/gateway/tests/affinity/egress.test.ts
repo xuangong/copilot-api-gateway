@@ -8,7 +8,7 @@ import type { AffinityExecutionTarget } from "@vibe-llm/provider-llm"
 
 const target: AffinityExecutionTarget = { provider: "custom", upstreamId: "up", upstreamIncarnation: "inc", credentialSubject: "subject", credentialRevision: "rev", model: "executed" }
 const codec = new AffinityCodec({ ownerId: "owner", apiKeyId: "key", version: 1, keyId: "kid", secret: new Uint8Array(32).fill(3) })
-async function state(): Promise<RequestAffinity> { return { protocol: "responses", codec, source: {}, analysis: await analyzeAffinityRequest("responses", {}, codec), actual: target, plaintextCompactions: new Set() } }
+async function state(): Promise<RequestAffinity> { return { protocol: "responses", codec, analysis: await analyzeAffinityRequest("responses", {}, codec), actual: target, plaintextCompactions: new Set() } }
 async function* frames(events: Array<Record<string, unknown>>) { for (const event of events) yield eventFrame(event) }
 async function collect<T>(source: AsyncIterable<T>): Promise<T[]> { const values: T[] = []; for await (const item of source) values.push(item); return values }
 

@@ -78,7 +78,7 @@ async function* values<T>(input: T[]): AsyncGenerator<T> { yield* input }
 const chunk = (index: number, delta: Record<string, unknown>, finish: string | null = null): ChatCompletionsStreamEvent => ({ id: "c", object: "chat.completion.chunk", model: "m", created: 1, choices: [{ index, delta, finish_reason: finish }] }) as ChatCompletionsStreamEvent
 
 test("Chat egress aggregates split raw signatures per choice and preserves finish order", async () => {
-  const context = { protocol: "chat_completions" as const, codec, analysis: await analyzeAffinityRequest("chat_completions", {}, codec), source: {}, actual: target }
+  const context = { protocol: "chat_completions" as const, codec, analysis: await analyzeAffinityRequest("chat_completions", {}, codec), actual: target }
   const input: ProtocolFrame<ChatCompletionsStreamEvent>[] = [eventFrame(chunk(1, { reasoning_text: " \n", reasoning_opaque: "a" })), eventFrame(chunk(0, { reasoning_text: "other", reasoning_opaque: "other" }, "stop")), eventFrame(chunk(1, { reasoning_text: " ", reasoning_opaque: "b" }, "stop")), doneFrame()]
   const output = await Array.fromAsync(new AffinityEgress(context).chat(values(input)))
   const events = output.flatMap(frame => frame.type === "event" ? [frame.event] : [])
@@ -130,7 +130,7 @@ test("required Gemini tool state cannot use any existing hub and never prepares 
   let prepares = 0
   const part = await stampAffinityItem("gemini", { functionCall: { id: "a", name: "f", args: {} }, thoughtSignature: "sig" }, target, codec)
   const source = { contents: [{ role: "model", parts: [part] }] }
-  const context = { protocol: "gemini" as const, codec, source, analysis: await analyzeAffinityRequest("gemini", source, codec) }
+  const context = { protocol: "gemini" as const, codec, analysis: await analyzeAffinityRequest("gemini", source, codec) }
   for (const endpoint of ["chat_completions", "messages", "responses"] as const) {
     const provider: LlmModelProvider = { name: "fixture", kind: "custom", supportedEndpoints: [endpoint], getPricingForModelKey: () => null, getModels: async () => ({ object: "list", data: [] }), probe: async () => ({ ok: true }), fetch: async () => { throw new Error("must not infer") }, prepareAffinityExecution: async () => { prepares++; return target } }
     const binding: LlmProviderBinding = { kind: "custom", upstream: "up", enabledFlags: new Set(), model: { id: "m", endpoints: { [endpoint]: {} } }, provider }
@@ -140,7 +140,7 @@ test("required Gemini tool state cannot use any existing hub and never prepares 
 })
 
 test("Chat entrance guard closes an oversized split signature before translators buffer it", async () => {
-  const context = { protocol: "chat_completions" as const, codec, source: {}, analysis: await analyzeAffinityRequest("chat_completions", {}, codec), actual: target }
+  const context = { protocol: "chat_completions" as const, codec, analysis: await analyzeAffinityRequest("chat_completions", {}, codec), actual: target }
   let returned = false
   async function* upstream() {
     try {
@@ -182,7 +182,7 @@ test("Chat reassembly joins split dialect companions using canonical precedence"
 })
 
 test("Chat emits complete reasoning with its one carrier for native SDK object-assignment aggregation", async () => {
-  const context = { protocol: "chat_completions" as const, codec, source: {}, analysis: await analyzeAffinityRequest("chat_completions", {}, codec), actual: target }
+  const context = { protocol: "chat_completions" as const, codec, analysis: await analyzeAffinityRequest("chat_completions", {}, codec), actual: target }
   const output = await Array.fromAsync(new AffinityEgress(context).chat(values([eventFrame(chunk(0, { reasoning_content: "a", content: "live" })), eventFrame(chunk(0, { reasoning_content: "b", reasoning_opaque: "sig" }, "stop")), doneFrame()])))
   const deltas = output.flatMap(frame => frame.type === "event" ? frame.event.choices.map(choice => choice.delta) : [])
   expect(deltas[0]).toEqual({ content: "live" })
@@ -192,7 +192,7 @@ test("Chat emits complete reasoning with its one carrier for native SDK object-a
 })
 
 test("Chat never emits DONE before rejecting unterminated opaque state", async () => {
-  const context = { protocol: "chat_completions" as const, codec, source: {}, analysis: await analyzeAffinityRequest("chat_completions", {}, codec), actual: target }
+  const context = { protocol: "chat_completions" as const, codec, analysis: await analyzeAffinityRequest("chat_completions", {}, codec), actual: target }
   const emitted: unknown[] = []
   await expect((async () => { for await (const frame of new AffinityEgress(context).chat(values([eventFrame(chunk(0, { reasoning_text: "a", reasoning_opaque: "sig" })), doneFrame()]))) emitted.push(frame.type) })()).rejects.toBeInstanceOf(InvalidAffinityStateError)
   expect(emitted).not.toContain("done")
@@ -217,7 +217,7 @@ test("Chat/Gemini reject nonrepresentable Responses output state including termi
     const terminal = { type: "response.completed", response: { output: [item] } }
     await expect(Array.fromAsync(translateResponsesToGeminiEvents(values([terminal])))).rejects.toBeInstanceOf(TranslatorValidationError)
     for (const protocol of ["chat_completions", "gemini"] as const) {
-      const context = { protocol, codec, source: {}, analysis: await analyzeAffinityRequest(protocol, {}, codec), actual: target }
+      const context = { protocol, codec, analysis: await analyzeAffinityRequest(protocol, {}, codec), actual: target }
       await expect(Array.fromAsync(guardAffinityFrames(values([eventFrame(terminal)]), context))).rejects.toBeInstanceOf(TranslatorValidationError)
     }
   }
@@ -242,7 +242,7 @@ for (const type of ["response.output_item.added", "response.output_item.done", "
     await expect(Array.fromAsync(translateResponsesToChatSSE(values([event])))).rejects.toBeInstanceOf(TranslatorValidationError)
     await expect(Array.fromAsync(translateResponsesToGeminiEvents(values([event])))).rejects.toBeInstanceOf(TranslatorValidationError)
     for (const protocol of ["chat_completions", "gemini"] as const) {
-      const context = { protocol, codec, source: {}, analysis: await analyzeAffinityRequest(protocol, {}, codec), actual: target }
+      const context = { protocol, codec, analysis: await analyzeAffinityRequest(protocol, {}, codec), actual: target }
       await expect(Array.fromAsync(guardAffinityFrames(values([eventFrame(event)]), context))).rejects.toBeInstanceOf(TranslatorValidationError)
     }
   })
@@ -260,7 +260,7 @@ test("Chat/Gemini preserve tool business JSON named program_output", async () =>
   const gemini = await Array.fromAsync(translateResponsesToGeminiEvents(values(events)))
   expect(gemini.flatMap(event => "candidates" in event ? event.candidates?.flatMap(candidate => candidate.content?.parts ?? []) ?? [] : [])).toContainEqual(expect.objectContaining({ functionCall: expect.objectContaining({ args: business }) }))
   for (const protocol of ["chat_completions", "gemini"] as const) {
-    const context = { protocol, codec, source: {}, analysis: await analyzeAffinityRequest(protocol, {}, codec), actual: target }
+    const context = { protocol, codec, analysis: await analyzeAffinityRequest(protocol, {}, codec), actual: target }
     const frames = events.map(eventFrame)
     expect(await Array.fromAsync(guardAffinityFrames(values(frames), context))).toEqual(frames)
   }
@@ -285,7 +285,7 @@ test("foreign Gemini signatures on non-thought Parts reject unrepresentable stat
 test("opaque Chat input cannot select a dialect interceptor that discards its signature", async () => {
   const message = await stampAffinityItem("chat_completions", { role: "assistant", content: "answer", reasoning_text: "thought", reasoning_opaque: "sig" }, target, codec)
   const source = { messages: [message] }
-  const context = { protocol: "chat_completions" as const, codec, source, analysis: await analyzeAffinityRequest("chat_completions", source, codec) }
+  const context = { protocol: "chat_completions" as const, codec, analysis: await analyzeAffinityRequest("chat_completions", source, codec) }
   const provider: LlmModelProvider = { name: "fixture", kind: "custom", supportedEndpoints: ["chat_completions"], getPricingForModelKey: () => null, getModels: async () => ({ object: "list", data: [] }), probe: async () => ({ ok: true }), fetch: async () => { throw new Error("must not infer") }, prepareAffinityExecution: async () => target }
   const binding: LlmProviderBinding = { kind: "custom", upstream: "up", enabledFlags: new Set(["reasoning-content-dialect"]), model: { id: "m", endpoints: { chat_completions: {} } }, provider }
   await expect(selectAffinityCandidate([{ binding, targetEndpoint: "chat_completions" }], context, "m")).rejects.toBeInstanceOf(AffinityRoutingUnavailableError)

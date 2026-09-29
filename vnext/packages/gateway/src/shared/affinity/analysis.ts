@@ -186,6 +186,8 @@ export interface AffinityAnalysis {
   classify(target: AffinityExecutionTarget | undefined): AffinityCandidateClass
   /** Input candidates must already satisfy owner/key/alias/disabled/pin policy. */
   rankAuthorizedCandidates<T>(candidates: readonly T[], targetOf: (candidate: T) => AffinityExecutionTarget | undefined): T[]
+  /** Independent carrier-preserving input for candidate preparation. */
+  cloneSource(): JsonObject
   /** Fresh clone per attempt. Required mismatch fails before provider invocation. */
   materialize(target: AffinityExecutionTarget | undefined): JsonObject
 }
@@ -220,6 +222,7 @@ export async function analyzeAffinityRequest(protocol: AffinityProtocol, body: R
     return result
   }
   return Object.freeze({
+    cloneSource: () => structuredClone(snapshot),
     hasOwned: owned.length > 0,
     hasRequiredOwned: owned.some(block => block.required),
     classify,
