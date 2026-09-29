@@ -1,0 +1,3501 @@
+{
+  "candidate_commit": "12a7a762b831213acd91f0785bce40d6170508e5",
+  "baseline_commit": "e660fb4dfcf1734d10f89e52e2d739b2985c634b",
+  "ordinary_resource_gate": "NOT PASSED; see json-compression-primary.json",
+  "runs": [
+    {
+      "label": "json-compression-baseline-large",
+      "exit_code": 0,
+      "seconds": 267.9267609119415,
+      "manifest": {
+        "maxRequests": 80,
+        "runId": "faa5d772",
+        "blocks": 5,
+        "count": 1,
+        "rate": 1,
+        "concurrency": 1,
+        "timeout": 120000,
+        "cells": [
+          {
+            "protocol": "responses",
+            "upstream": "responses",
+            "scenario": "ok",
+            "bytes": 65536,
+            "stream": false
+          },
+          {
+            "protocol": "responses",
+            "upstream": "responses",
+            "scenario": "ok",
+            "bytes": 65536,
+            "stream": true
+          },
+          {
+            "protocol": "responses",
+            "upstream": "responses",
+            "scenario": "ok",
+            "bytes": 1048576,
+            "stream": false
+          },
+          {
+            "protocol": "responses",
+            "upstream": "responses",
+            "scenario": "ok",
+            "bytes": 1048576,
+            "stream": true
+          },
+          {
+            "protocol": "responses",
+            "upstream": "responses",
+            "scenario": "ok",
+            "bytes": 8388608,
+            "stream": false
+          },
+          {
+            "protocol": "responses",
+            "upstream": "responses",
+            "scenario": "ok",
+            "bytes": 8388608,
+            "stream": true
+          },
+          {
+            "protocol": "responses",
+            "upstream": "responses",
+            "scenario": "ok",
+            "bytes": 33554432,
+            "stream": false
+          },
+          {
+            "protocol": "responses",
+            "upstream": "responses",
+            "scenario": "ok",
+            "bytes": 33554432,
+            "stream": true
+          }
+        ],
+        "offered": 80,
+        "order": "AB BA AB BA AB; sequential variants",
+        "timing": "client clock, TTFE excludes role/headers/created",
+        "body_sizes": "ASCII synthetic history payload bytes; wire_bytes records actual JSON",
+        "telemetry": {
+          "worker_cpu": "external",
+          "isolate_memory": "external"
+        }
+      },
+      "capture_configuration": {
+        "diagnostic_only": false,
+        "key_id": "bench-key",
+        "dump_retention_seconds": 0,
+        "responses_retention_seconds": 0,
+        "note": "No-dump diagnostics do not replace the original capture-enabled acceptance workload."
+      },
+      "dispatch": {
+        "settle_ms": 500,
+        "late_dispatch_limitation": "Single bounded settle; timeout/aborted work needs follow-up observation",
+        "exactly_once_failures": 0,
+        "available": true,
+        "observed_logical_ids": 80,
+        "total_dispatches": 80,
+        "duplicate_dispatches": [],
+        "missing": [],
+        "instrumentation": "One awaited isolated upstream D1 INSERT before response, equal for A/B"
+      },
+      "client_cells": [
+        {
+          "cell": [
+            "A",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 364.598042,
+          "p95_ms": 364.598042,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 364.59766700000006,
+          "lateness_p95_ms": 3.6094999999999686
+        },
+        {
+          "cell": [
+            "A",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 179.308667,
+          "p95_ms": 179.308667,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 156.45383400000003,
+          "lateness_p95_ms": 1.275916000000052
+        },
+        {
+          "cell": [
+            "A",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 336.940792,
+          "p95_ms": 336.940792,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 336.940334,
+          "lateness_p95_ms": 1.2354579999999942
+        },
+        {
+          "cell": [
+            "A",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 260.24366699999996,
+          "p95_ms": 260.24366699999996,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 237.44991700000014,
+          "lateness_p95_ms": 1.2864580000000387
+        },
+        {
+          "cell": [
+            "A",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 716.8125000000002,
+          "p95_ms": 716.8125000000002,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 716.8122500000002,
+          "lateness_p95_ms": 1.3037500000000364
+        },
+        {
+          "cell": [
+            "A",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 803.927083,
+          "p95_ms": 803.927083,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 784.8188750000004,
+          "lateness_p95_ms": 1.356916999999612
+        },
+        {
+          "cell": [
+            "A",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 4189.76425,
+          "p95_ms": 4189.76425,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 4189.763666,
+          "lateness_p95_ms": 1.269249999999829
+        },
+        {
+          "cell": [
+            "A",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 5220.071457999999,
+          "p95_ms": 5220.071457999999,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 5200.348333000001,
+          "lateness_p95_ms": 1.2792920000001686
+        },
+        {
+          "cell": [
+            "B",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 225.45683400000053,
+          "p95_ms": 225.45683400000053,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 225.45670900000005,
+          "lateness_p95_ms": 1.4037499999994907
+        },
+        {
+          "cell": [
+            "B",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 865.5202920000011,
+          "p95_ms": 865.5202920000011,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 844.0543340000004,
+          "lateness_p95_ms": 1.2800409999999829
+        },
+        {
+          "cell": [
+            "B",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 360.91616599999907,
+          "p95_ms": 360.91616599999907,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 360.915332999999,
+          "lateness_p95_ms": 1.2803750000002765
+        },
+        {
+          "cell": [
+            "B",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 296.98183400000016,
+          "p95_ms": 296.98183400000016,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 274.8612499999999,
+          "lateness_p95_ms": 1.1879579999986163
+        },
+        {
+          "cell": [
+            "B",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 1640.2936250000002,
+          "p95_ms": 1640.2936250000002,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 1640.293375000001,
+          "lateness_p95_ms": 1.2849169999990409
+        },
+        {
+          "cell": [
+            "B",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 1960.1048330000012,
+          "p95_ms": 1960.1048330000012,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 1941.8945410000015,
+          "lateness_p95_ms": 1.2323340000002645
+        },
+        {
+          "cell": [
+            "B",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 9760.5945,
+          "p95_ms": 9760.5945,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 9760.594207999999,
+          "lateness_p95_ms": 1.3453750000007858
+        },
+        {
+          "cell": [
+            "B",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 11682.900167000003,
+          "p95_ms": 11682.900167000003,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 11665.813334000002,
+          "lateness_p95_ms": 1.2820409999985714
+        },
+        {
+          "cell": [
+            "B",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 107.10162500000297,
+          "p95_ms": 107.10162500000297,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 107.10137500000565,
+          "lateness_p95_ms": 1.3600839999999152
+        },
+        {
+          "cell": [
+            "B",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 212.2386669999978,
+          "p95_ms": 212.2386669999978,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 192.4091249999983,
+          "lateness_p95_ms": 1.2796660000021802
+        },
+        {
+          "cell": [
+            "B",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 428.2288750000007,
+          "p95_ms": 428.2288750000007,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 428.2282500000001,
+          "lateness_p95_ms": 1.288790999999037
+        },
+        {
+          "cell": [
+            "B",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 423.6518750000032,
+          "p95_ms": 423.6518750000032,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 406.1416670000035,
+          "lateness_p95_ms": 1.2785829999993439
+        },
+        {
+          "cell": [
+            "B",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 2485.7510419999962,
+          "p95_ms": 2485.7510419999962,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 2485.750709,
+          "lateness_p95_ms": 1.7023330000010901
+        },
+        {
+          "cell": [
+            "B",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 2390.985084,
+          "p95_ms": 2390.985084,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 2365.9522089999955,
+          "lateness_p95_ms": 1.2796660000021802
+        },
+        {
+          "cell": [
+            "B",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 9598.815666999995,
+          "p95_ms": 9598.815666999995,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 9598.815458999998,
+          "lateness_p95_ms": 1.2840830000059213
+        },
+        {
+          "cell": [
+            "B",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 14227.525542000003,
+          "p95_ms": 14227.525542000003,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 14209.403250000003,
+          "lateness_p95_ms": 1.3328330000003916
+        },
+        {
+          "cell": [
+            "A",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 137.86341700000048,
+          "p95_ms": 137.86341700000048,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 137.8629579999979,
+          "lateness_p95_ms": 1.3062920000083977
+        },
+        {
+          "cell": [
+            "A",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 171.25524999998743,
+          "p95_ms": 171.25524999998743,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 151.38587499999267,
+          "lateness_p95_ms": 1.3047910000022966
+        },
+        {
+          "cell": [
+            "A",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 427.9890829999931,
+          "p95_ms": 427.9890829999931,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 427.98879200000374,
+          "lateness_p95_ms": 1.3594580000062706
+        },
+        {
+          "cell": [
+            "A",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 398.99824999998964,
+          "p95_ms": 398.99824999998964,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 398.9254169999913,
+          "lateness_p95_ms": 1.2955409999995027
+        },
+        {
+          "cell": [
+            "A",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 1879.767915999997,
+          "p95_ms": 1879.767915999997,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 1879.7670409999992,
+          "lateness_p95_ms": 1.287624999997206
+        },
+        {
+          "cell": [
+            "A",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 1489.3238750000019,
+          "p95_ms": 1489.3238750000019,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 1469.132083000004,
+          "lateness_p95_ms": 1.3037920000060694
+        },
+        {
+          "cell": [
+            "A",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 6955.639083000002,
+          "p95_ms": 6955.639083000002,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 6955.638749999998,
+          "lateness_p95_ms": 1.279500000004191
+        },
+        {
+          "cell": [
+            "A",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 15013.11825,
+          "p95_ms": 15013.11825,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 14993.245291,
+          "lateness_p95_ms": 1.2762499999953434
+        },
+        {
+          "cell": [
+            "A",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 99.06904200000281,
+          "p95_ms": 99.06904200000281,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 99.06870899999922,
+          "lateness_p95_ms": 1.2619580000027781
+        },
+        {
+          "cell": [
+            "A",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 127.54249999999593,
+          "p95_ms": 127.54249999999593,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 111.7711249999993,
+          "lateness_p95_ms": 1.3047499999956926
+        },
+        {
+          "cell": [
+            "A",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 482.26858399999037,
+          "p95_ms": 482.26858399999037,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 482.2682919999934,
+          "lateness_p95_ms": 1.1992500000051223
+        },
+        {
+          "cell": [
+            "A",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 528.168875000003,
+          "p95_ms": 528.168875000003,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 506.541624999998,
+          "lateness_p95_ms": 1.2665830000041751
+        },
+        {
+          "cell": [
+            "A",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 2696.4352910000016,
+          "p95_ms": 2696.4352910000016,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 2696.4347909999924,
+          "lateness_p95_ms": 1.051500000001397
+        },
+        {
+          "cell": [
+            "A",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 2322.9662919999973,
+          "p95_ms": 2322.9662919999973,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 2302.770457999999,
+          "lateness_p95_ms": 1.1230000000068685
+        },
+        {
+          "cell": [
+            "A",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 9301.923540999996,
+          "p95_ms": 9301.923540999996,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 9301.923125000001,
+          "lateness_p95_ms": 1.267374999995809
+        },
+        {
+          "cell": [
+            "A",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 11209.761207999996,
+          "p95_ms": 11209.761207999996,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 11192.910625000004,
+          "lateness_p95_ms": 1.286791999998968
+        },
+        {
+          "cell": [
+            "B",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 145.35654200000863,
+          "p95_ms": 145.35654200000863,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 145.35629199999676,
+          "lateness_p95_ms": 1.3954999999987194
+        },
+        {
+          "cell": [
+            "B",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 160.48154199999408,
+          "p95_ms": 160.48154199999408,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 141.86633399999118,
+          "lateness_p95_ms": 1.283000000010361
+        },
+        {
+          "cell": [
+            "B",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 524.4353330000013,
+          "p95_ms": 524.4353330000013,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 524.4342500000057,
+          "lateness_p95_ms": 1.278667000005953
+        },
+        {
+          "cell": [
+            "B",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 610.32633299999,
+          "p95_ms": 610.32633299999,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 592.9067499999946,
+          "lateness_p95_ms": 1.2813750000059372
+        },
+        {
+          "cell": [
+            "B",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 4046.8502499999886,
+          "p95_ms": 4046.8502499999886,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 4046.8499169999996,
+          "lateness_p95_ms": 1.275708000001032
+        },
+        {
+          "cell": [
+            "B",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 3418.958832999997,
+          "p95_ms": 3418.958832999997,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 3401.3741249999875,
+          "lateness_p95_ms": 1.2820420000061858
+        },
+        {
+          "cell": [
+            "B",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 13557.99783399998,
+          "p95_ms": 13557.99783399998,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 13557.997666999989,
+          "lateness_p95_ms": 1.2730830000073183
+        },
+        {
+          "cell": [
+            "B",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 6617.646707999986,
+          "p95_ms": 6617.646707999986,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 6599.321874999994,
+          "lateness_p95_ms": 1.280583999992814
+        },
+        {
+          "cell": [
+            "B",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 131.92975000001024,
+          "p95_ms": 131.92975000001024,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 131.92933300000732,
+          "lateness_p95_ms": 1.369416999979876
+        },
+        {
+          "cell": [
+            "B",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 163.0949580000015,
+          "p95_ms": 163.0949580000015,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 145.99345800001174,
+          "lateness_p95_ms": 1.2835419999901205
+        },
+        {
+          "cell": [
+            "B",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 361.3433340000047,
+          "p95_ms": 361.3433340000047,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 361.3424170000071,
+          "lateness_p95_ms": 1.2366660000116099
+        },
+        {
+          "cell": [
+            "B",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 321.3744589999842,
+          "p95_ms": 321.3744589999842,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 304.3723749999772,
+          "lateness_p95_ms": 1.3169160000106785
+        },
+        {
+          "cell": [
+            "B",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 1308.7736659999937,
+          "p95_ms": 1308.7736659999937,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 1308.77333299999,
+          "lateness_p95_ms": 1.2755839999881573
+        },
+        {
+          "cell": [
+            "B",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 1287.053958000004,
+          "p95_ms": 1287.053958000004,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 1267.3946250000154,
+          "lateness_p95_ms": 1.2741669999959413
+        },
+        {
+          "cell": [
+            "B",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 5551.752707999985,
+          "p95_ms": 5551.752707999985,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 5551.752540999994,
+          "lateness_p95_ms": 1.2793340000207536
+        },
+        {
+          "cell": [
+            "B",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 10228.332750000001,
+          "p95_ms": 10228.332750000001,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 10209.636209000018,
+          "lateness_p95_ms": 1.2829579999961425
+        },
+        {
+          "cell": [
+            "A",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 137.20504199998686,
+          "p95_ms": 137.20504199998686,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 137.2048749999958,
+          "lateness_p95_ms": 1.408499999990454
+        },
+        {
+          "cell": [
+            "A",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 131.61416699999245,
+          "p95_ms": 131.61416699999245,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 112.5223330000008,
+          "lateness_p95_ms": 1.2822079999896232
+        },
+        {
+          "cell": [
+            "A",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 514.3210419999959,
+          "p95_ms": 514.3210419999959,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 514.3201249999984,
+          "lateness_p95_ms": 1.3307499999937136
+        },
+        {
+          "cell": [
+            "A",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 723.8245419999876,
+          "p95_ms": 723.8245419999876,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 702.5299999999988,
+          "lateness_p95_ms": 1.2729579999868292
+        },
+        {
+          "cell": [
+            "A",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 2751.195915999997,
+          "p95_ms": 2751.195915999997,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 2751.195624999993,
+          "lateness_p95_ms": 1.2830839999951422
+        },
+        {
+          "cell": [
+            "A",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 2243.7201249999925,
+          "p95_ms": 2243.7201249999925,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 2220.4957089999807,
+          "lateness_p95_ms": 1.2811660000006668
+        },
+        {
+          "cell": [
+            "A",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 12800.072875000013,
+          "p95_ms": 12800.072875000013,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 12800.072750000021,
+          "lateness_p95_ms": 1.2902909999829717
+        },
+        {
+          "cell": [
+            "A",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 14543.573291000008,
+          "p95_ms": 14543.573291000008,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 14525.405625000014,
+          "lateness_p95_ms": 1.264666999981273
+        },
+        {
+          "cell": [
+            "A",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 133.45670900002006,
+          "p95_ms": 133.45670900002006,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 133.4564170000085,
+          "lateness_p95_ms": 1.2719579999975394
+        },
+        {
+          "cell": [
+            "A",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 172.88562499999534,
+          "p95_ms": 172.88562499999534,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 151.25400000001537,
+          "lateness_p95_ms": 1.2842079999973066
+        },
+        {
+          "cell": [
+            "A",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 493.11087499998393,
+          "p95_ms": 493.11087499998393,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 493.1100419999857,
+          "lateness_p95_ms": 1.2764160000078846
+        },
+        {
+          "cell": [
+            "A",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 467.60008299999754,
+          "p95_ms": 467.60008299999754,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 447.4751669999969,
+          "lateness_p95_ms": 1.1900000000023283
+        },
+        {
+          "cell": [
+            "A",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 3860.7583339999837,
+          "p95_ms": 3860.7583339999837,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 3860.758041999972,
+          "lateness_p95_ms": 1.0441250000149012
+        },
+        {
+          "cell": [
+            "A",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 6667.563499999989,
+          "p95_ms": 6667.563499999989,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 6646.139166999987,
+          "lateness_p95_ms": 1.2898750000167638
+        },
+        {
+          "cell": [
+            "A",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 13370.139790999994,
+          "p95_ms": 13370.139790999994,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 13370.13949999999,
+          "lateness_p95_ms": 1.2760420000122394
+        },
+        {
+          "cell": [
+            "A",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 8434.422915999981,
+          "p95_ms": 8434.422915999981,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 8413.671999999991,
+          "lateness_p95_ms": 1.2779999999911524
+        },
+        {
+          "cell": [
+            "B",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 201.6804580000171,
+          "p95_ms": 201.6804580000171,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 201.68000000002212,
+          "lateness_p95_ms": 1.3712499999965075
+        },
+        {
+          "cell": [
+            "B",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            65536,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 350.270709000004,
+          "p95_ms": 350.270709000004,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 332.1757090000028,
+          "lateness_p95_ms": 1.2859999999927823
+        },
+        {
+          "cell": [
+            "B",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 641.1389159999962,
+          "p95_ms": 641.1389159999962,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 641.1381249999977,
+          "lateness_p95_ms": 1.2705839999835007
+        },
+        {
+          "cell": [
+            "B",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            1048576,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 647.8082080000022,
+          "p95_ms": 647.8082080000022,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 628.6229170000006,
+          "lateness_p95_ms": 1.2775419999961741
+        },
+        {
+          "cell": [
+            "B",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 4789.374332999985,
+          "p95_ms": 4789.374332999985,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 4789.374083000002,
+          "lateness_p95_ms": 1.2735840000095777
+        },
+        {
+          "cell": [
+            "B",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            8388608,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 5151.894333000004,
+          "p95_ms": 5151.894333000004,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 5131.573708000011,
+          "lateness_p95_ms": 1.2782500000030268
+        },
+        {
+          "cell": [
+            "B",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 9315.357916999987,
+          "p95_ms": 9315.357916999987,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 9315.357583999983,
+          "lateness_p95_ms": 1.278374999994412
+        },
+        {
+          "cell": [
+            "B",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 6007.09375,
+          "p95_ms": 6007.09375,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 5990.347875000036,
+          "lateness_p95_ms": 1.2825829999928828
+        }
+      ],
+      "all_http_200_semantic_transport_terminal_success": true,
+      "colo_counts": {
+        "NRT": 80
+      },
+      "platform_units": {
+        "cpuTime": "microseconds",
+        "wallTime": "microseconds",
+        "memoryUsageBytes": "bytes"
+      },
+      "platform_windows": [
+        {
+          "block": 0,
+          "variant": "A",
+          "start": "2026-09-29T20:49:26.939Z",
+          "end": "2026-09-29T20:49:39.038Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 9,
+                "subrequests": 8
+              },
+              "quantiles": {
+                "cpuTimeP50": 25900,
+                "cpuTimeP95": 603683,
+                "cpuTimeP99": 603683,
+                "memoryUsageBytesP50": 47015480,
+                "memoryUsageBytesP90": 188821540,
+                "memoryUsageBytesP95": 188821540,
+                "memoryUsageBytesP99": 188821540,
+                "memoryUsageBytesP999": 188821540,
+                "wallTimeP50": 712112,
+                "wallTimeP95": 2489419,
+                "wallTimeP99": 2489419
+              }
+            }
+          ]
+        },
+        {
+          "block": 0,
+          "variant": "B",
+          "start": "2026-09-29T20:49:39.342Z",
+          "end": "2026-09-29T20:50:06.165Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 12,
+                "subrequests": 10
+              },
+              "quantiles": {
+                "cpuTimeP50": 41649,
+                "cpuTimeP95": 533953,
+                "cpuTimeP99": 533953,
+                "memoryUsageBytesP50": 66484772,
+                "memoryUsageBytesP90": 199958110,
+                "memoryUsageBytesP95": 199987060,
+                "memoryUsageBytesP99": 199987060,
+                "memoryUsageBytesP999": 199987060,
+                "wallTimeP50": 674789,
+                "wallTimeP95": 2292927,
+                "wallTimeP99": 2292927
+              }
+            }
+          ]
+        },
+        {
+          "block": 1,
+          "variant": "B",
+          "start": "2026-09-29T20:50:06.313Z",
+          "end": "2026-09-29T20:50:36.234Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 9,
+                "subrequests": 8
+              },
+              "quantiles": {
+                "cpuTimeP50": 88464,
+                "cpuTimeP95": 533826,
+                "cpuTimeP99": 533826,
+                "memoryUsageBytesP50": 77484510,
+                "memoryUsageBytesP90": 199958110,
+                "memoryUsageBytesP95": 199958110,
+                "memoryUsageBytesP99": 199958110,
+                "memoryUsageBytesP999": 199958110,
+                "wallTimeP50": 680278,
+                "wallTimeP95": 2518210,
+                "wallTimeP99": 2518210
+              }
+            }
+          ]
+        },
+        {
+          "block": 1,
+          "variant": "A",
+          "start": "2026-09-29T20:50:36.388Z",
+          "end": "2026-09-29T20:51:02.886Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 9,
+                "subrequests": 8
+              },
+              "quantiles": {
+                "cpuTimeP50": 65668,
+                "cpuTimeP95": 620222,
+                "cpuTimeP99": 620222,
+                "memoryUsageBytesP50": 85599100,
+                "memoryUsageBytesP90": 189260700,
+                "memoryUsageBytesP95": 189260700,
+                "memoryUsageBytesP99": 189260700,
+                "memoryUsageBytesP999": 189260700,
+                "wallTimeP50": 551138,
+                "wallTimeP95": 2164990,
+                "wallTimeP99": 2164990
+              }
+            }
+          ]
+        },
+        {
+          "block": 2,
+          "variant": "A",
+          "start": "2026-09-29T20:51:03.011Z",
+          "end": "2026-09-29T20:51:29.805Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 9,
+                "subrequests": 8
+              },
+              "quantiles": {
+                "cpuTimeP50": 72201,
+                "cpuTimeP95": 573076,
+                "cpuTimeP99": 573076,
+                "memoryUsageBytesP50": 73330056,
+                "memoryUsageBytesP90": 189498110,
+                "memoryUsageBytesP95": 189498110,
+                "memoryUsageBytesP99": 189498110,
+                "memoryUsageBytesP999": 189498110,
+                "wallTimeP50": 490365,
+                "wallTimeP95": 2102114,
+                "wallTimeP99": 2102114
+              }
+            }
+          ]
+        },
+        {
+          "block": 2,
+          "variant": "B",
+          "start": "2026-09-29T20:51:29.929Z",
+          "end": "2026-09-29T20:51:59.059Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 13,
+                "subrequests": 11
+              },
+              "quantiles": {
+                "cpuTimeP50": 31162,
+                "cpuTimeP95": 534898,
+                "cpuTimeP99": 534898,
+                "memoryUsageBytesP50": 34489620,
+                "memoryUsageBytesP90": 190815920,
+                "memoryUsageBytesP95": 192263330,
+                "memoryUsageBytesP99": 192263330,
+                "memoryUsageBytesP999": 192263330,
+                "wallTimeP50": 661477,
+                "wallTimeP95": 2673174,
+                "wallTimeP99": 2673174
+              }
+            }
+          ]
+        },
+        {
+          "block": 3,
+          "variant": "B",
+          "start": "2026-09-29T20:51:59.191Z",
+          "end": "2026-09-29T20:52:18.590Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 9,
+                "subrequests": 8
+              },
+              "quantiles": {
+                "cpuTimeP50": 98961,
+                "cpuTimeP95": 520497,
+                "cpuTimeP99": 520497,
+                "memoryUsageBytesP50": 67891390,
+                "memoryUsageBytesP90": 190783070,
+                "memoryUsageBytesP95": 190783070,
+                "memoryUsageBytesP99": 190783070,
+                "memoryUsageBytesP999": 190783070,
+                "wallTimeP50": 730814,
+                "wallTimeP95": 2639776,
+                "wallTimeP99": 2639776
+              }
+            }
+          ]
+        },
+        {
+          "block": 3,
+          "variant": "A",
+          "start": "2026-09-29T20:52:18.705Z",
+          "end": "2026-09-29T20:52:52.571Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 11,
+                "subrequests": 9
+              },
+              "quantiles": {
+                "cpuTimeP50": 21942,
+                "cpuTimeP95": 583463,
+                "cpuTimeP99": 583463,
+                "memoryUsageBytesP50": 61151870,
+                "memoryUsageBytesP90": 189561490,
+                "memoryUsageBytesP95": 190018220,
+                "memoryUsageBytesP99": 190018220,
+                "memoryUsageBytesP999": 190018220,
+                "wallTimeP50": 470701,
+                "wallTimeP95": 2073038,
+                "wallTimeP99": 2073038
+              }
+            }
+          ]
+        },
+        {
+          "block": 4,
+          "variant": "A",
+          "start": "2026-09-29T20:52:52.747Z",
+          "end": "2026-09-29T20:53:26.384Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 9,
+                "subrequests": 8
+              },
+              "quantiles": {
+                "cpuTimeP50": 71753,
+                "cpuTimeP95": 535355,
+                "cpuTimeP99": 535355,
+                "memoryUsageBytesP50": 73592210,
+                "memoryUsageBytesP90": 190018220,
+                "memoryUsageBytesP95": 190018220,
+                "memoryUsageBytesP99": 190018220,
+                "memoryUsageBytesP999": 190018220,
+                "wallTimeP50": 584302,
+                "wallTimeP95": 2200226,
+                "wallTimeP99": 2200226
+              }
+            }
+          ]
+        },
+        {
+          "block": 4,
+          "variant": "B",
+          "start": "2026-09-29T20:53:26.501Z",
+          "end": "2026-09-29T20:53:53.647Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 9,
+                "subrequests": 8
+              },
+              "quantiles": {
+                "cpuTimeP50": 37406,
+                "cpuTimeP95": 517140,
+                "cpuTimeP99": 517140,
+                "memoryUsageBytesP50": 31457664,
+                "memoryUsageBytesP90": 191913900,
+                "memoryUsageBytesP95": 191913900,
+                "memoryUsageBytesP99": 191913900,
+                "memoryUsageBytesP999": 191913900,
+                "wallTimeP50": 672219,
+                "wallTimeP95": 2637082,
+                "wallTimeP99": 2637082
+              }
+            }
+          ]
+        }
+      ],
+      "initial_equals_delayed_refresh": true,
+      "provenance": {
+        "started_at": "2026-09-29T20:49:26.511887+00:00",
+        "runner_sha256": "6e0b094f155a8d60bc600c35343893d01dc8eba098b6a5520c1b80481e59535a",
+        "oracle_sha256": "a0961efc9b081b2f10a9dc21ca5d554bf0297750ae076d4028938e10759e4586",
+        "variants": {
+          "A": {
+            "source_commit": "e660fb4dfcf1734d10f89e52e2d739b2985c634b",
+            "source_manifest_sha256": "78cf8975bb291732961268035f1cba2d352e705e8660fe02ce6f2955083491eb",
+            "deployment_id": "33cfa879-47d1-49fb-8655-aca9343a9eb5",
+            "versions": [
+              {
+                "version_id": "c8217d3e-dfb0-48a6-941b-c7bb173b83b7",
+                "percentage": 100
+              }
+            ]
+          },
+          "B": {
+            "source_commit": "12a7a762b831213acd91f0785bce40d6170508e5",
+            "source_manifest_sha256": "48ee2aeb81aeaf747ec417a9d5772f85df9362f1e6061eb3ef4d61a68b8b3a7d",
+            "deployment_id": "269247e5-4726-4958-a1ac-356071f81e4d",
+            "versions": [
+              {
+                "version_id": "bd4dd2c5-b806-40c8-b869-a34372919cdf",
+                "percentage": 100
+              }
+            ]
+          }
+        }
+      },
+      "raw_sha256": {
+        "metrics/block-0-A.json": "0ec8e261124f06c9f0ec847152cb8d7a0c120b70bce298dd89260d8a960c5128",
+        "metrics-initial/block-0-A.json": "0ec8e261124f06c9f0ec847152cb8d7a0c120b70bce298dd89260d8a960c5128",
+        "metrics/block-0-B.json": "6f24aef49f86d4933748b120731cf716599eb3191f164b3818f899acac4c78b6",
+        "metrics-initial/block-0-B.json": "6f24aef49f86d4933748b120731cf716599eb3191f164b3818f899acac4c78b6",
+        "metrics/block-1-B.json": "8db3bde2b39ac83ae103a5e4639e15c4b7776a2eae99b187b432d9f6c66a6a49",
+        "metrics-initial/block-1-B.json": "8db3bde2b39ac83ae103a5e4639e15c4b7776a2eae99b187b432d9f6c66a6a49",
+        "metrics/block-1-A.json": "3f10fbea4fbc77e39be9ab77ed575ee300988dd769a27792ef36fbffeb12e482",
+        "metrics-initial/block-1-A.json": "3f10fbea4fbc77e39be9ab77ed575ee300988dd769a27792ef36fbffeb12e482",
+        "metrics/block-2-A.json": "69294da310fa9a30f162f84fc9f6b00a000ca1f789092ae221580db337e83d97",
+        "metrics-initial/block-2-A.json": "69294da310fa9a30f162f84fc9f6b00a000ca1f789092ae221580db337e83d97",
+        "metrics/block-2-B.json": "4344b7c4f8418212a134ad865df96004418ac639d65b9b66a6691287eecec304",
+        "metrics-initial/block-2-B.json": "4344b7c4f8418212a134ad865df96004418ac639d65b9b66a6691287eecec304",
+        "metrics/block-3-B.json": "c3b58f80c1bd8ea4a3be8516b23793d82918413a7c0d29c0a3bca866b6380058",
+        "metrics-initial/block-3-B.json": "c3b58f80c1bd8ea4a3be8516b23793d82918413a7c0d29c0a3bca866b6380058",
+        "metrics/block-3-A.json": "7a1b61ce13131f38500f153644d25459800aed3d981c4e4707377d8da1fa95d8",
+        "metrics-initial/block-3-A.json": "7a1b61ce13131f38500f153644d25459800aed3d981c4e4707377d8da1fa95d8",
+        "metrics/block-4-A.json": "74b58a1099b8b2383ced51b6a83505d65942671a74202d01f19339d4cf2f34ae",
+        "metrics-initial/block-4-A.json": "74b58a1099b8b2383ced51b6a83505d65942671a74202d01f19339d4cf2f34ae",
+        "metrics/block-4-B.json": "bc164880737d34fa44e6a0494236ca1c7b46ca046cc8a743e669637360a7ae5a",
+        "metrics-initial/block-4-B.json": "bc164880737d34fa44e6a0494236ca1c7b46ca046cc8a743e669637360a7ae5a",
+        "command.json": "5409c3e4ac75a7defa828601b190489e7707915acfa466e7b4ccbea1768b56e1",
+        "summary.json": "b76f80abfc6d9a8d81f29392d327c7fb695f229f058caaa96711e6e0a09934b5",
+        "requests.jsonl": "575958e9df794003fdee0fb4aa7db864826fe1b0aa83f9ead4d17f69ce8a1ee4",
+        "dispatch.json": "3914b800c96cdbf631f4708506aeda866207b65f944ad5bcc2dae034881f9332",
+        "manifest.json": "79ef7c0704f710102f6c66f070df0d625e586d69a59b32e9557f67301d87e34a",
+        "launch-provenance.json": "0c317aaff20debab0a959e6b7068fb7562dea22ec15b88281a91f65aff720f49",
+        "capture-configuration.json": "9375694e1d9165c005b70bf7377e755734565d1b46410fa0ed190ff3b48ec00d",
+        "metrics-windows.json": "b2d1697287252b399072f675ccb743543c4bd87ebb6da02f7b8f3b8178ece122",
+        "runner.log": "9830382f1804f891e888d9f8ef0defbb4df93819d109577ef969e96da8c258dc",
+        "metrics-final-manifest.json": "cd77d4d1bf5a126894c9f62fceb799d3ded2f5333d60a16812e739e186d0f2ab"
+      }
+    },
+    {
+      "label": "json-compression-baseline-reversed",
+      "exit_code": 0,
+      "seconds": 155.33142590522766,
+      "manifest": {
+        "maxRequests": 20,
+        "runId": "123064d7",
+        "blocks": 5,
+        "count": 1,
+        "rate": 1,
+        "concurrency": 1,
+        "timeout": 120000,
+        "cells": [
+          {
+            "protocol": "responses",
+            "upstream": "responses",
+            "scenario": "ok",
+            "bytes": 33554432,
+            "stream": true
+          },
+          {
+            "protocol": "responses",
+            "upstream": "responses",
+            "scenario": "ok",
+            "bytes": 33554432,
+            "stream": false
+          }
+        ],
+        "offered": 20,
+        "order": "AB BA AB BA AB; sequential variants",
+        "timing": "client clock, TTFE excludes role/headers/created",
+        "body_sizes": "ASCII synthetic history payload bytes; wire_bytes records actual JSON",
+        "telemetry": {
+          "worker_cpu": "external",
+          "isolate_memory": "external"
+        }
+      },
+      "capture_configuration": {
+        "diagnostic_only": false,
+        "key_id": "bench-key",
+        "dump_retention_seconds": 0,
+        "responses_retention_seconds": 0,
+        "note": "No-dump diagnostics do not replace the original capture-enabled acceptance workload."
+      },
+      "dispatch": {
+        "settle_ms": 500,
+        "late_dispatch_limitation": "Single bounded settle; timeout/aborted work needs follow-up observation",
+        "exactly_once_failures": 0,
+        "available": true,
+        "observed_logical_ids": 20,
+        "total_dispatches": 20,
+        "duplicate_dispatches": [],
+        "missing": [],
+        "instrumentation": "One awaited isolated upstream D1 INSERT before response, equal for A/B"
+      },
+      "client_cells": [
+        {
+          "cell": [
+            "A",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 8438.016709,
+          "p95_ms": 8438.016709,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 8413.810917,
+          "lateness_p95_ms": 2.326332999999977
+        },
+        {
+          "cell": [
+            "A",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 7321.185667,
+          "p95_ms": 7321.185667,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 7321.1855,
+          "lateness_p95_ms": 1.2816249999996217
+        },
+        {
+          "cell": [
+            "B",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 8295.872082999998,
+          "p95_ms": 8295.872082999998,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 8278.137749999998,
+          "lateness_p95_ms": 1.380750000000262
+        },
+        {
+          "cell": [
+            "B",
+            0,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 6468.242750000001,
+          "p95_ms": 6468.242750000001,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 6468.2425,
+          "lateness_p95_ms": 1.2829579999997804
+        },
+        {
+          "cell": [
+            "B",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 4957.879291999998,
+          "p95_ms": 4957.879291999998,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 4941.904416999998,
+          "lateness_p95_ms": 1.3688330000004498
+        },
+        {
+          "cell": [
+            "B",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 3086.9982079999972,
+          "p95_ms": 3086.9982079999972,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 3086.9978330000013,
+          "lateness_p95_ms": 1.2874589999992168
+        },
+        {
+          "cell": [
+            "A",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 4274.415332999997,
+          "p95_ms": 4274.415332999997,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 4253.745041000002,
+          "lateness_p95_ms": 1.3256669999973383
+        },
+        {
+          "cell": [
+            "A",
+            1,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 4976.399458,
+          "p95_ms": 4976.399458,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 4976.399000000005,
+          "lateness_p95_ms": 1.350749999997788
+        },
+        {
+          "cell": [
+            "A",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 7653.906500000005,
+          "p95_ms": 7653.906500000005,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 7635.370625000003,
+          "lateness_p95_ms": 1.2775839999958407
+        },
+        {
+          "cell": [
+            "A",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 12426.953000000001,
+          "p95_ms": 12426.953000000001,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 12426.952582999998,
+          "lateness_p95_ms": 1.3407080000033602
+        },
+        {
+          "cell": [
+            "B",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 8946.65533400001,
+          "p95_ms": 8946.65533400001,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 8929.554292,
+          "lateness_p95_ms": 1.3024579999910202
+        },
+        {
+          "cell": [
+            "B",
+            2,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 6526.295624999999,
+          "p95_ms": 6526.295624999999,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 6526.295167000004,
+          "lateness_p95_ms": 2.684957999998005
+        },
+        {
+          "cell": [
+            "B",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 5805.150792,
+          "p95_ms": 5805.150792,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 5789.061499999996,
+          "lateness_p95_ms": 1.271708000000217
+        },
+        {
+          "cell": [
+            "B",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 6939.260750000001,
+          "p95_ms": 6939.260750000001,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 6939.260416000005,
+          "lateness_p95_ms": 1.3495839999959571
+        },
+        {
+          "cell": [
+            "A",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 9287.80075000001,
+          "p95_ms": 9287.80075000001,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 9266.831749999998,
+          "lateness_p95_ms": 1.107957999993232
+        },
+        {
+          "cell": [
+            "A",
+            3,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 11826.623124999998,
+          "p95_ms": 11826.623124999998,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 11826.622791000002,
+          "lateness_p95_ms": 1.3537500000093132
+        },
+        {
+          "cell": [
+            "A",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 10468.371916999997,
+          "p95_ms": 10468.371916999997,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 10423.932207999998,
+          "lateness_p95_ms": 1.3688750000001164
+        },
+        {
+          "cell": [
+            "A",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 12645.026709000012,
+          "p95_ms": 12645.026709000012,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 12645.026375000001,
+          "lateness_p95_ms": 1.3563749999884749
+        },
+        {
+          "cell": [
+            "B",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            true
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 6075.293999999994,
+          "p95_ms": 6075.293999999994,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 6067.729208000004,
+          "lateness_p95_ms": 1.2912920000089798
+        },
+        {
+          "cell": [
+            "B",
+            4,
+            "responses",
+            "responses",
+            "ok",
+            33554432,
+            false
+          ],
+          "offered": 1,
+          "attempted": 1,
+          "completed": 1,
+          "transport_completed": 1,
+          "semantic_success": 1,
+          "timeouts": 0,
+          "passed": 1,
+          "failed": 0,
+          "saturation_drops": 0,
+          "p50_ms": 6028.180291999975,
+          "p95_ms": 6028.180291999975,
+          "p99_ms": null,
+          "p99_available": false,
+          "ttfe_p50_ms": 6028.179999999993,
+          "lateness_p95_ms": 1.3372080000117421
+        }
+      ],
+      "all_http_200_semantic_transport_terminal_success": true,
+      "colo_counts": {
+        "NRT": 20
+      },
+      "platform_units": {
+        "cpuTime": "microseconds",
+        "wallTime": "microseconds",
+        "memoryUsageBytes": "bytes"
+      },
+      "platform_windows": [
+        {
+          "block": 0,
+          "variant": "A",
+          "start": "2026-09-29T20:54:30.748Z",
+          "end": "2026-09-29T20:54:46.513Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 3,
+                "subrequests": 2
+              },
+              "quantiles": {
+                "cpuTimeP50": 567973,
+                "cpuTimeP95": 635385,
+                "cpuTimeP99": 635385,
+                "memoryUsageBytesP50": 28094102,
+                "memoryUsageBytesP90": 129097610,
+                "memoryUsageBytesP95": 129097610,
+                "memoryUsageBytesP99": 129097610,
+                "memoryUsageBytesP999": 129097610,
+                "wallTimeP50": 2309349,
+                "wallTimeP95": 3187349,
+                "wallTimeP99": 3187349
+              }
+            }
+          ]
+        },
+        {
+          "block": 0,
+          "variant": "B",
+          "start": "2026-09-29T20:54:46.987Z",
+          "end": "2026-09-29T20:55:01.758Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 4,
+                "subrequests": 2
+              },
+              "quantiles": {
+                "cpuTimeP50": 2029,
+                "cpuTimeP95": 335794,
+                "cpuTimeP99": 335794,
+                "memoryUsageBytesP50": 130566000,
+                "memoryUsageBytesP90": 197889870,
+                "memoryUsageBytesP95": 197889870,
+                "memoryUsageBytesP99": 197889870,
+                "memoryUsageBytesP999": 197889870,
+                "wallTimeP50": 57210,
+                "wallTimeP95": 1787938,
+                "wallTimeP99": 1787938
+              }
+            }
+          ]
+        },
+        {
+          "block": 1,
+          "variant": "B",
+          "start": "2026-09-29T20:55:01.865Z",
+          "end": "2026-09-29T20:55:09.916Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 3,
+                "subrequests": 2
+              },
+              "quantiles": {
+                "cpuTimeP50": 286173,
+                "cpuTimeP95": 299282,
+                "cpuTimeP99": 299282,
+                "memoryUsageBytesP50": 197889870,
+                "memoryUsageBytesP90": 197939300,
+                "memoryUsageBytesP95": 197939300,
+                "memoryUsageBytesP99": 197939300,
+                "memoryUsageBytesP999": 197939300,
+                "wallTimeP50": 1486220,
+                "wallTimeP95": 1500742,
+                "wallTimeP99": 1500742
+              }
+            }
+          ]
+        },
+        {
+          "block": 1,
+          "variant": "A",
+          "start": "2026-09-29T20:55:10.027Z",
+          "end": "2026-09-29T20:55:19.282Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 4,
+                "subrequests": 2
+              },
+              "quantiles": {
+                "cpuTimeP50": 1796,
+                "cpuTimeP95": 635487,
+                "cpuTimeP99": 635487,
+                "memoryUsageBytesP50": 189083680,
+                "memoryUsageBytesP90": 189124160,
+                "memoryUsageBytesP95": 189124160,
+                "memoryUsageBytesP99": 189124160,
+                "memoryUsageBytesP999": 189124160,
+                "wallTimeP50": 64592,
+                "wallTimeP95": 1975422,
+                "wallTimeP99": 1975422
+              }
+            }
+          ]
+        },
+        {
+          "block": 2,
+          "variant": "A",
+          "start": "2026-09-29T20:55:19.411Z",
+          "end": "2026-09-29T20:55:39.496Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 3,
+                "subrequests": 2
+              },
+              "quantiles": {
+                "cpuTimeP50": 569890,
+                "cpuTimeP95": 685053,
+                "cpuTimeP99": 685053,
+                "memoryUsageBytesP50": 189104370,
+                "memoryUsageBytesP90": 189124180,
+                "memoryUsageBytesP95": 189124180,
+                "memoryUsageBytesP99": 189124180,
+                "memoryUsageBytesP999": 189124180,
+                "wallTimeP50": 2042807,
+                "wallTimeP95": 2624332,
+                "wallTimeP99": 2624332
+              }
+            }
+          ]
+        },
+        {
+          "block": 2,
+          "variant": "B",
+          "start": "2026-09-29T20:55:39.634Z",
+          "end": "2026-09-29T20:55:55.115Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 4,
+                "subrequests": 2
+              },
+              "quantiles": {
+                "cpuTimeP50": 26809,
+                "cpuTimeP95": 301913,
+                "cpuTimeP99": 301913,
+                "memoryUsageBytesP50": 89270030,
+                "memoryUsageBytesP90": 191647860,
+                "memoryUsageBytesP95": 191647860,
+                "memoryUsageBytesP99": 191647860,
+                "memoryUsageBytesP999": 191647860,
+                "wallTimeP50": 84506,
+                "wallTimeP95": 1480457,
+                "wallTimeP99": 1480457
+              }
+            }
+          ]
+        },
+        {
+          "block": 3,
+          "variant": "B",
+          "start": "2026-09-29T20:55:55.225Z",
+          "end": "2026-09-29T20:56:07.975Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 3,
+                "subrequests": 2
+              },
+              "quantiles": {
+                "cpuTimeP50": 277422,
+                "cpuTimeP95": 284340,
+                "cpuTimeP99": 284340,
+                "memoryUsageBytesP50": 190287710,
+                "memoryUsageBytesP90": 190337140,
+                "memoryUsageBytesP95": 190337140,
+                "memoryUsageBytesP99": 190337140,
+                "memoryUsageBytesP999": 190337140,
+                "wallTimeP50": 1394634,
+                "wallTimeP95": 1444274,
+                "wallTimeP99": 1444274
+              }
+            }
+          ]
+        },
+        {
+          "block": 3,
+          "variant": "A",
+          "start": "2026-09-29T20:56:08.088Z",
+          "end": "2026-09-29T20:56:29.207Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 4,
+                "subrequests": 2
+              },
+              "quantiles": {
+                "cpuTimeP50": 1583,
+                "cpuTimeP95": 634224,
+                "cpuTimeP99": 634224,
+                "memoryUsageBytesP50": 187510820,
+                "memoryUsageBytesP90": 187523310,
+                "memoryUsageBytesP95": 187523310,
+                "memoryUsageBytesP99": 187523310,
+                "memoryUsageBytesP999": 187523310,
+                "wallTimeP50": 102568,
+                "wallTimeP95": 2097203,
+                "wallTimeP99": 2097203
+              }
+            }
+          ]
+        },
+        {
+          "block": 4,
+          "variant": "A",
+          "start": "2026-09-29T20:56:29.368Z",
+          "end": "2026-09-29T20:56:52.486Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 3,
+                "subrequests": 2
+              },
+              "quantiles": {
+                "cpuTimeP50": 597406,
+                "cpuTimeP95": 646625,
+                "cpuTimeP99": 646625,
+                "memoryUsageBytesP50": 187523310,
+                "memoryUsageBytesP90": 188035120,
+                "memoryUsageBytesP95": 188035120,
+                "memoryUsageBytesP99": 188035120,
+                "memoryUsageBytesP999": 188035120,
+                "wallTimeP50": 2346078,
+                "wallTimeP95": 2411188,
+                "wallTimeP99": 2411188
+              }
+            }
+          ]
+        },
+        {
+          "block": 4,
+          "variant": "B",
+          "start": "2026-09-29T20:56:52.594Z",
+          "end": "2026-09-29T20:57:04.705Z",
+          "rows": [
+            {
+              "status": "success",
+              "sum": {
+                "errors": 0,
+                "requests": 3,
+                "subrequests": 2
+              },
+              "quantiles": {
+                "cpuTimeP50": 275540,
+                "cpuTimeP95": 290449,
+                "cpuTimeP99": 290449,
+                "memoryUsageBytesP50": 190287710,
+                "memoryUsageBytesP90": 190287710,
+                "memoryUsageBytesP95": 190287710,
+                "memoryUsageBytesP99": 190287710,
+                "memoryUsageBytesP999": 190287710,
+                "wallTimeP50": 1432019,
+                "wallTimeP95": 1560361,
+                "wallTimeP99": 1560361
+              }
+            }
+          ]
+        }
+      ],
+      "initial_equals_delayed_refresh": true,
+      "provenance": {
+        "started_at": "2026-09-29T20:54:30.133159+00:00",
+        "runner_sha256": "6e0b094f155a8d60bc600c35343893d01dc8eba098b6a5520c1b80481e59535a",
+        "oracle_sha256": "a0961efc9b081b2f10a9dc21ca5d554bf0297750ae076d4028938e10759e4586",
+        "variants": {
+          "A": {
+            "source_commit": "e660fb4dfcf1734d10f89e52e2d739b2985c634b",
+            "source_manifest_sha256": "78cf8975bb291732961268035f1cba2d352e705e8660fe02ce6f2955083491eb",
+            "deployment_id": "33cfa879-47d1-49fb-8655-aca9343a9eb5",
+            "versions": [
+              {
+                "version_id": "c8217d3e-dfb0-48a6-941b-c7bb173b83b7",
+                "percentage": 100
+              }
+            ]
+          },
+          "B": {
+            "source_commit": "12a7a762b831213acd91f0785bce40d6170508e5",
+            "source_manifest_sha256": "48ee2aeb81aeaf747ec417a9d5772f85df9362f1e6061eb3ef4d61a68b8b3a7d",
+            "deployment_id": "269247e5-4726-4958-a1ac-356071f81e4d",
+            "versions": [
+              {
+                "version_id": "bd4dd2c5-b806-40c8-b869-a34372919cdf",
+                "percentage": 100
+              }
+            ]
+          }
+        }
+      },
+      "raw_sha256": {
+        "metrics/block-0-A.json": "d08b6eda45d27e6960934c2e9895d12a38ac9d8a17e2a188eebb928e995fccfa",
+        "metrics-initial/block-0-A.json": "d08b6eda45d27e6960934c2e9895d12a38ac9d8a17e2a188eebb928e995fccfa",
+        "metrics/block-0-B.json": "dfe277ff450b49389bcc2082e55013aecc25dd000bd916398e59a5c75dfd1dce",
+        "metrics-initial/block-0-B.json": "dfe277ff450b49389bcc2082e55013aecc25dd000bd916398e59a5c75dfd1dce",
+        "metrics/block-1-B.json": "65bfc2ece2d93624924824cae7d4a4312343b8f342485c4ca11331763281a204",
+        "metrics-initial/block-1-B.json": "65bfc2ece2d93624924824cae7d4a4312343b8f342485c4ca11331763281a204",
+        "metrics/block-1-A.json": "90836b074e008ddaf91a6b2e1a210948cdc8a23111ea4bae9a6c8f4d63d2b8b6",
+        "metrics-initial/block-1-A.json": "90836b074e008ddaf91a6b2e1a210948cdc8a23111ea4bae9a6c8f4d63d2b8b6",
+        "metrics/block-2-A.json": "30bac57164433f4163fc10ba254666a42ad2f8d07a2f2620758a4f6f51b6079a",
+        "metrics-initial/block-2-A.json": "30bac57164433f4163fc10ba254666a42ad2f8d07a2f2620758a4f6f51b6079a",
+        "metrics/block-2-B.json": "7baede363df253dfc9a3e450a19c1f8f3e6aeca8dbbf48017f0129fa8310fc0a",
+        "metrics-initial/block-2-B.json": "7baede363df253dfc9a3e450a19c1f8f3e6aeca8dbbf48017f0129fa8310fc0a",
+        "metrics/block-3-B.json": "e8186d95a5da0bf4ca77410f2e4c98ab2e7984671df2e213244725275bea458d",
+        "metrics-initial/block-3-B.json": "e8186d95a5da0bf4ca77410f2e4c98ab2e7984671df2e213244725275bea458d",
+        "metrics/block-3-A.json": "b440e6c83f2cebfd4e0b8828d49872f92d8d58c2321362056a439fc466798c0c",
+        "metrics-initial/block-3-A.json": "b440e6c83f2cebfd4e0b8828d49872f92d8d58c2321362056a439fc466798c0c",
+        "metrics/block-4-A.json": "53a1ae89b5ff6b0f042b4adcdfe0350540ecdaa5c3d63ecd899443d085f979a5",
+        "metrics-initial/block-4-A.json": "53a1ae89b5ff6b0f042b4adcdfe0350540ecdaa5c3d63ecd899443d085f979a5",
+        "metrics/block-4-B.json": "e3e3c48aa05251f1ec96e97eb5c66bb37d762d36f95247a1dda599333ba1140e",
+        "metrics-initial/block-4-B.json": "e3e3c48aa05251f1ec96e97eb5c66bb37d762d36f95247a1dda599333ba1140e",
+        "command.json": "e02a7d16acdf38efbc87010a9561ef3d282e4c0a679190234de6a0fc70bb0ce0",
+        "summary.json": "bf5dc1469cc91a7e1b96af2899f311e7744055b485b725feb92c290a018fd1e0",
+        "requests.jsonl": "74eb690de99e6901509cd492edfdccd41e8fbdc7077de93ee7619ac9d824d630",
+        "dispatch.json": "eab62ff0f7e5d731dcd6d1d2a7808014f75c5167356b670e83b936509272b6be",
+        "manifest.json": "65bc9820604bc51c46aefd897239db559085ac2568ccbe67ff5e56f3bf8b74d5",
+        "launch-provenance.json": "85d1b07af5863882996f64521260118e5c9c258dd90f09400057cc777036e63f",
+        "capture-configuration.json": "9375694e1d9165c005b70bf7377e755734565d1b46410fa0ed190ff3b48ec00d",
+        "metrics-windows.json": "97afe5cdd0bdd5a9dd2da3d2216a2741b998dcc7ca1ddfe1d8c21bebab4dd2dc",
+        "runner.log": "188a60019cacd7e22de7e9f12f826f0e252b5dcb838cc90bec74997dd6d4409b",
+        "metrics-final-manifest.json": "6205ad115e8715ca2b688df9aaa7bd843f0650ba31bf6d743502c7aa694e320f"
+      }
+    }
+  ],
+  "limitations": [
+    "Single request per mode/size/block: latency quantiles are not distribution estimates.",
+    "Adaptive platform counts are not exact client counts; windows combine modes and, for ascending, sizes.",
+    "Memory quantiles describe shared isolate observations, not per-request peaks or an OOM immunity guarantee.",
+    "The ordinary wrapper does not drain request background work; client cap1 is not a bound on all isolate work.",
+    "Changed order is not a controlled cold-isolate experiment; size, GC, routing and earlier history can affect measurements.",
+    "Baseline original upload did not record a launch source hash; active identities and later source inventory retain that limitation.",
+    "Launch provenance reuses active-version records; this archive does not claim a separate live deployment check at each large-run start.",
+    "These whole-stack results do not establish the isolated resource effect of JSON-origin compression."
+  ]
+}

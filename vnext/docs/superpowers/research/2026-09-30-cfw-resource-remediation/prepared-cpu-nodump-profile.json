@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "experiment": "dump-disabled ordinary 64 KiB Responses local workerd Inspector A/B",
+  "source": {
+    "baseline_commit": "e660fb4dfcf1734d10f89e52e2d739b2985c634b",
+    "candidate_commit": "3e54a222089aa6d04e6f56186df71bcc5f19c176",
+    "candidate_includes_collaboration_overlay": true,
+    "source_manifest_sha256": {
+      "a": "78cf8975bb291732961268035f1cba2d352e705e8660fe02ce6f2955083491eb",
+      "b": "57f243e9da13af430f2322c50c22e7ca5d4efec104f20653e7755e8cda84ccde"
+    },
+    "source_files_verified": {
+      "a": 1389,
+      "b": 2298
+    },
+    "missing_or_mismatched_source_files": 0
+  },
+  "runtime": {
+    "wrangler": "4.97.0",
+    "workerd_package": "1.20260601.1",
+    "node": "v26.0.0",
+    "bun": "1.3.0",
+    "local_state": "independent D1/KV/R2 per variant, synthetic upstream, separate workerd instances"
+  },
+  "sampling": {
+    "dump_retention_seconds_sql_readback": {
+      "a": null,
+      "b": null
+    },
+    "responses_retention_seconds": 0,
+    "input_payload_ascii_characters": 65536,
+    "modes": [
+      "Responses JSON",
+      "Responses SSE"
+    ],
+    "per_variant_mode": {
+      "sequential_warmup_requests": 12,
+      "sequential_profiled_requests": 80
+    },
+    "profiler_requested_interval_microseconds": 100,
+    "profile_passes_per_variant_mode": 1,
+    "all_profiled_responses_http_200": true
+  },
+  "wall_time_not_cpu_ms": {
+    "json": {
+      "a": {
+        "p50": 7.256,
+        "p95": 11.829
+      },
+      "b": {
+        "p50": 7.364,
+        "p95": 11.86
+      }
+    },
+    "sse": {
+      "a": {
+        "p50": 48.605,
+        "p95": 55.324
+      },
+      "b": {
+        "p50": 48.309,
+        "p95": 51.451
+      }
+    }
+  },
+  "inspector_sampling_not_billed_cpu": {
+    "json": {
+      "a": {
+        "all_samples": 760,
+        "all_interval_ms_includes_idle_native_await": 624.22,
+        "entry_js_self_interval_ms_sampling_diagnostic_only": 230.29
+      },
+      "b": {
+        "all_samples": 875,
+        "all_interval_ms_includes_idle_native_await": 643.0,
+        "entry_js_self_interval_ms_sampling_diagnostic_only": 228.63
+      }
+    },
+    "sse": {
+      "a": {
+        "all_samples": 1231,
+        "all_interval_ms_includes_idle_native_await": 3969.47,
+        "entry_js_self_interval_ms_sampling_diagnostic_only": 1551.12
+      },
+      "b": {
+        "all_samples": 1325,
+        "all_interval_ms_includes_idle_native_await": 3901.41,
+        "entry_js_self_interval_ms_sampling_diagnostic_only": 1576.55
+      }
+    }
+  },
+  "catalog_target_self_samples": {
+    "json": {
+      "a": {
+        "createPerRequestFetcher": 2,
+        "authoritativeFetchers": 0,
+        "listVisibleUpstreams": 2
+      },
+      "b": {
+        "createPerRequestFetcher": 3,
+        "authoritativeFetchers": 1,
+        "listVisibleUpstreams": 2
+      }
+    },
+    "sse": {
+      "a": {
+        "createPerRequestFetcher": 1,
+        "authoritativeFetchers": 0,
+        "listVisibleUpstreams": 2
+      },
+      "b": {
+        "createPerRequestFetcher": 3,
+        "authoritativeFetchers": 1,
+        "listVisibleUpstreams": 2
+      }
+    }
+  },
+  "post_run_local_d1": {
+    "a": {
+      "api_key_dump_retention_seconds": null,
+      "dump_records": 0,
+      "responses_snapshots": 0
+    },
+    "b": {
+      "api_key_dump_retention_seconds": null,
+      "dump_records": 0,
+      "responses_snapshots": 0
+    }
+  },
+  "interpretation_limits": [
+    "The candidate catalog fetcher path executed, but only a handful of self samples were observed; cost is not quantifiable and absence of a large hotspot does not prove no cost.",
+    "Single-pass local wall times and Inspector intervals are not Cloudflare billed CPU or statistical equivalence.",
+    "Inspector all-interval totals include idle, native and await time; filtered entry.js intervals remain sampling diagnostics, not billed CPU.",
+    "Synthetic direct-only upstream, dump disabled, ordinary repeated 64 KiB input: no proxy-backed catalog, native upload, larger-payload, memory-retainer, or cloud inference."
+  ],
+  "archive": {
+    "sha256s_manifest_sha256": "25a7378da9db01dd196b206f1b7b9e06ec758d5520a9bf3239295872e4298ceb",
+    "preserved_regular_file_count": 3762,
+    "includes": "source snapshots, runner, local D1 state, raw Inspector profiles, request rows and bundle source"
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "experiment": "local workerd upstream sidecar gzip representation microdiagnostic",
+  "source_commit": "208e7ed30c761b1077266ea2794a6f3b55d01a36",
+  "runtime": "Wrangler 4.97.0 local workerd with nodejs_compat",
+  "variants": {
+    "a": "TextEncoder(JSON string), Blob(bytes), CompressionStream",
+    "b": "Blob(JSON string), CompressionStream",
+    "c": "node:zlib gzipSync(JSON string)"
+  },
+  "zlib_supported_in_local_workerd": true,
+  "order_per_round": "C-A-B-B-A-C; A/B ABBA",
+  "cases": [
+    {
+      "input": "ascii-repeat-64k",
+      "utf8_bytes": 65537,
+      "rounds": 6,
+      "batch_size": 16,
+      "local_median_ms_per_compression": {
+        "a": 0.125,
+        "b": 0.125,
+        "c": 0.0625
+      },
+      "gunzip_matches_original_bytes_for_every_output": true,
+      "compressed_lengths_equal_across_variants": true
+    },
+    {
+      "input": "ascii-nonrepeat-64k",
+      "utf8_bytes": 65540,
+      "rounds": 6,
+      "batch_size": 16,
+      "local_median_ms_per_compression": {
+        "a": 0.625,
+        "b": 0.625,
+        "c": 0.5625
+      },
+      "gunzip_matches_original_bytes_for_every_output": true,
+      "compressed_lengths_equal_across_variants": true
+    },
+    {
+      "input": "chinese-emoji-64k",
+      "utf8_bytes": 60238,
+      "rounds": 6,
+      "batch_size": 16,
+      "local_median_ms_per_compression": {
+        "a": 0.125,
+        "b": 0.125,
+        "c": 0.125
+      },
+      "gunzip_matches_original_bytes_for_every_output": true,
+      "compressed_lengths_equal_across_variants": true
+    },
+    {
+      "input": "escaped-lone-surrogates-64k",
+      "utf8_bytes": 64448,
+      "rounds": 6,
+      "batch_size": 16,
+      "local_median_ms_per_compression": {
+        "a": 0.125,
+        "b": 0.125,
+        "c": 0.0625
+      },
+      "gunzip_matches_original_bytes_for_every_output": true,
+      "compressed_lengths_equal_across_variants": true
+    },
+    {
+      "input": "ascii-repeat-near-1m",
+      "utf8_bytes": 1048541,
+      "rounds": 3,
+      "batch_size": 4,
+      "local_median_ms_per_compression": {
+        "a": 1.5,
+        "b": 1.5,
+        "c": 1.5
+      },
+      "gunzip_matches_original_bytes_for_every_output": true,
+      "compressed_lengths_equal_across_variants": true
+    },
+    {
+      "input": "ascii-nonrepeat-near-1m",
+      "utf8_bytes": 1048544,
+      "rounds": 3,
+      "batch_size": 4,
+      "local_median_ms_per_compression": {
+        "a": 14,
+        "b": 14,
+        "c": 14
+      },
+      "gunzip_matches_original_bytes_for_every_output": true,
+      "compressed_lengths_equal_across_variants": true
+    },
+    {
+      "input": "chinese-emoji-near-1m",
+      "utf8_bytes": 977242,
+      "rounds": 3,
+      "batch_size": 4,
+      "local_median_ms_per_compression": {
+        "a": 2,
+        "b": 2,
+        "c": 2
+      },
+      "gunzip_matches_original_bytes_for_every_output": true,
+      "compressed_lengths_equal_across_variants": true
+    }
+  ],
+  "clock_control": {
+    "synchronous_gzip_count_per_request": 8,
+    "local_performance_now_elapsed_ms": [
+      98,
+      99,
+      99
+    ],
+    "external_client_wall_ms": [
+      119.367,
+      101.65,
+      108.061
+    ]
+  },
+  "allocation_observation": "B removes A's explicit input Uint8Array of original UTF-8 byte length; Blob/zlib/internal buffers, output and peak heap were not measured. Verification TextEncoder array was outside timed spans.",
+  "interpretation": [
+    "A and B had equal local batch median in all seven cases; no stable speedup was detected.",
+    "C is synchronous and blocks the isolate; local elapsed time is not a reason to use it by default.",
+    "Deployed Cloudflare Worker timers advance only after I/O; local workerd timers advance during CPU-only work. Local spans are not billed CPU.",
+    "This micro excludes sidecar validation, JSON serialization, D1/R2, and whole-request behavior."
+  ],
+  "cloudflare_timer_docs": "https://developers.cloudflare.com/workers/runtime-apis/performance/",
+  "archive_manifest_sha256": "020308ef297240be8c3b6de9accfa79ecd861f5af9915faa2e2b4e701030bac1"
+}

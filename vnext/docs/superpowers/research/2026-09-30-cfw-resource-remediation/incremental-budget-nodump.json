@@ -1,0 +1,749 @@
+{
+  "commit": "b99b6d6d5394b4f52c23a2fc7391c98c7908b932",
+  "baseline_commit": "e660fb4dfcf1734d10f89e52e2d739b2985c634b",
+  "run": "incremental-budget-nodump-diagnostic",
+  "diagnostic_only": true,
+  "status": "600 successful exactly-once requests; residual candidate CPU/memory differences remain; not acceptance",
+  "units": {
+    "cpu": "milliseconds",
+    "wall": "milliseconds",
+    "memory": "MiB"
+  },
+  "sampling": "Adaptive invocation counts and shared-isolate memory; not exact attempts or request peak",
+  "capture": {
+    "diagnostic_only": true,
+    "key_id": "bench-nodump",
+    "dump_retention_seconds": null,
+    "responses_retention_seconds": 0,
+    "note": "No-dump diagnostics do not replace the original capture-enabled acceptance workload."
+  },
+  "saved_configuration_readback": [
+    {
+      "variant": "A",
+      "settings": [
+        {
+          "id": "bench-key",
+          "responses_retention_seconds": 0,
+          "dump_retention_seconds": 0
+        },
+        {
+          "id": "bench-nodump",
+          "responses_retention_seconds": 0,
+          "dump_retention_seconds": null
+        }
+      ]
+    },
+    {
+      "variant": "B",
+      "settings": [
+        {
+          "id": "bench-key",
+          "responses_retention_seconds": 0,
+          "dump_retention_seconds": 0
+        },
+        {
+          "id": "bench-nodump",
+          "responses_retention_seconds": 0,
+          "dump_retention_seconds": null
+        }
+      ]
+    }
+  ],
+  "configuration_boundary": "Saved readback confirms separate synthetic bench-nodump null retention and original bench-key retention 0; no configuration was changed or freshly queried by this analysis",
+  "command": {
+    "exit_code": 0,
+    "seconds": 121.4312629699707,
+    "args": [
+      "--blocks",
+      "3",
+      "--count",
+      "50",
+      "--rate",
+      "5",
+      "--concurrency",
+      "16",
+      "--protocols",
+      "responses",
+      "--upstreams",
+      "responses",
+      "--scenarios",
+      "ok",
+      "--sizes",
+      "65536",
+      "--modes",
+      "json,sse",
+      "--max-requests",
+      "600"
+    ]
+  },
+  "offered": 600,
+  "passed": 600,
+  "failed": 0,
+  "timeouts": 0,
+  "drops": 0,
+  "dispatch": {
+    "settle_ms": 500,
+    "late_dispatch_limitation": "Single bounded settle; timeout/aborted work needs follow-up observation",
+    "exactly_once_failures": 0,
+    "available": true,
+    "observed_logical_ids": 600,
+    "total_dispatches": 600,
+    "duplicate_dispatches": [],
+    "missing": [],
+    "instrumentation": "One awaited isolated upstream D1 INSERT before response, equal for A/B"
+  },
+  "cells": [
+    {
+      "cell": [
+        "A",
+        0,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        false
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 88.042958,
+      "p95_ms": 135.78762499999993,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 88.04279200000019,
+      "lateness_p95_ms": 2.6471670000000813
+    },
+    {
+      "cell": [
+        "A",
+        0,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        true
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 122.67195899999933,
+      "p95_ms": 267.4920839999995,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 106.18204100000003,
+      "lateness_p95_ms": 2.2100419999987935
+    },
+    {
+      "cell": [
+        "B",
+        0,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        false
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 90.10754100000122,
+      "p95_ms": 483.614834,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 90.10737499999959,
+      "lateness_p95_ms": 2.1739999999990687
+    },
+    {
+      "cell": [
+        "B",
+        0,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        true
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 148.6734590000051,
+      "p95_ms": 314.749708000003,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 129.9265000000014,
+      "lateness_p95_ms": 2.476375000002008
+    },
+    {
+      "cell": [
+        "B",
+        1,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        false
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 91.88912500000151,
+      "p95_ms": 98.51733300000342,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 91.88887500000419,
+      "lateness_p95_ms": 3.021832999998878
+    },
+    {
+      "cell": [
+        "B",
+        1,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        true
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 126.45587499999965,
+      "p95_ms": 311.8720420000027,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 108.24558300000353,
+      "lateness_p95_ms": 2.745667000002868
+    },
+    {
+      "cell": [
+        "A",
+        1,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        false
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 89.99841699999524,
+      "p95_ms": 242.82391700000153,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 89.99816699999792,
+      "lateness_p95_ms": 2.3515000000043074
+    },
+    {
+      "cell": [
+        "A",
+        1,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        true
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 123.455667000002,
+      "p95_ms": 349.93612500000745,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 105.72812499999418,
+      "lateness_p95_ms": 2.211416999998619
+    },
+    {
+      "cell": [
+        "A",
+        2,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        false
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 90.24216700000397,
+      "p95_ms": 285.968458000003,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 90.24199999999837,
+      "lateness_p95_ms": 2.7776250000024447
+    },
+    {
+      "cell": [
+        "A",
+        2,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        true
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 119.67908299999544,
+      "p95_ms": 127.45558300000266,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 102.36225000000559,
+      "lateness_p95_ms": 2.166749999989406
+    },
+    {
+      "cell": [
+        "B",
+        2,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        false
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 88.07758399999875,
+      "p95_ms": 275.00616699999955,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 88.07754199999908,
+      "lateness_p95_ms": 2.7842080000118585
+    },
+    {
+      "cell": [
+        "B",
+        2,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        true
+      ],
+      "offered": 50,
+      "attempted": 50,
+      "completed": 50,
+      "transport_completed": 50,
+      "semantic_success": 50,
+      "timeouts": 0,
+      "passed": 50,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 123.86837499999092,
+      "p95_ms": 271.8029999999999,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 105.43095799999719,
+      "lateness_p95_ms": 2.189417000001413
+    }
+  ],
+  "windows": [
+    {
+      "block": 0,
+      "variant": "A",
+      "start": "2026-09-29T19:49:15.257Z",
+      "end": "2026-09-29T19:49:35.078Z",
+      "status": "success",
+      "adaptive_counts": {
+        "errors": 0,
+        "requests": 98,
+        "subrequests": 98
+      },
+      "cpu_p50_ms": 6.161,
+      "cpu_p95_ms": 9.537,
+      "memory_p99_MiB": 41.63047409057617,
+      "platform_wall_p50_ms": 189.287,
+      "platform_wall_p95_ms": 242.724,
+      "raw_sha256": "0b27d5ef60966551f688265634956f6aadd08877f5e36f670efa75be430ba36b"
+    },
+    {
+      "block": 0,
+      "variant": "B",
+      "start": "2026-09-29T19:49:35.682Z",
+      "end": "2026-09-29T19:49:55.508Z",
+      "status": "success",
+      "adaptive_counts": {
+        "errors": 0,
+        "requests": 98,
+        "subrequests": 96
+      },
+      "cpu_p50_ms": 6.822,
+      "cpu_p95_ms": 10.833,
+      "memory_p99_MiB": 44.632083892822266,
+      "platform_wall_p50_ms": 189.392,
+      "platform_wall_p95_ms": 252.596,
+      "raw_sha256": "c8bbe616a3e298c3112190a156a4e5e8715c31403b92da49092fd699b86bd3f1"
+    },
+    {
+      "block": 1,
+      "variant": "B",
+      "start": "2026-09-29T19:49:55.628Z",
+      "end": "2026-09-29T19:50:15.540Z",
+      "status": "success",
+      "adaptive_counts": {
+        "errors": 0,
+        "requests": 102,
+        "subrequests": 101
+      },
+      "cpu_p50_ms": 6.878,
+      "cpu_p95_ms": 9.73,
+      "memory_p99_MiB": 48.17490577697754,
+      "platform_wall_p50_ms": 197.377,
+      "platform_wall_p95_ms": 234.687,
+      "raw_sha256": "87fcd6ced9748b3ffae00270349804447ac9bf7407ac7b61e0e96b45b64e1306"
+    },
+    {
+      "block": 1,
+      "variant": "A",
+      "start": "2026-09-29T19:50:15.645Z",
+      "end": "2026-09-29T19:50:35.465Z",
+      "status": "success",
+      "adaptive_counts": {
+        "errors": 0,
+        "requests": 98,
+        "subrequests": 96
+      },
+      "cpu_p50_ms": 5.561,
+      "cpu_p95_ms": 8.611,
+      "memory_p99_MiB": 27.957794189453125,
+      "platform_wall_p50_ms": 186.607,
+      "platform_wall_p95_ms": 246.973,
+      "raw_sha256": "e48474c1ba5a96a6c9c0d28e43383db9a2dffdea5f7becdc0bc1ced5dbb01dfe"
+    },
+    {
+      "block": 2,
+      "variant": "A",
+      "start": "2026-09-29T19:50:35.578Z",
+      "end": "2026-09-29T19:50:55.389Z",
+      "status": "success",
+      "adaptive_counts": {
+        "errors": 0,
+        "requests": 104,
+        "subrequests": 103
+      },
+      "cpu_p50_ms": 5.931,
+      "cpu_p95_ms": 8.026,
+      "memory_p99_MiB": 34.00541305541992,
+      "platform_wall_p50_ms": 184.412,
+      "platform_wall_p95_ms": 215.035,
+      "raw_sha256": "ce3424d0cb5dd04be1f2eeabe91b7d1abf455f0a29f62fd67ce8f6cf9f678c0f"
+    },
+    {
+      "block": 2,
+      "variant": "B",
+      "start": "2026-09-29T19:50:55.496Z",
+      "end": "2026-09-29T19:51:15.318Z",
+      "status": "success",
+      "adaptive_counts": {
+        "errors": 0,
+        "requests": 93,
+        "subrequests": 92
+      },
+      "cpu_p50_ms": 6.322,
+      "cpu_p95_ms": 9.771,
+      "memory_p99_MiB": 36.48547172546387,
+      "platform_wall_p50_ms": 190.109,
+      "platform_wall_p95_ms": 230.746,
+      "raw_sha256": "4b32ffbe6bcb057781f4847de9c0f339382f9c3619c2d1df13361a5e01c7321c"
+    }
+  ],
+  "paired_observations": [
+    {
+      "block": 0,
+      "cpu_p50_delta_ms": 0.6610000000000005,
+      "cpu_p50_relative": 0.10728777795812383,
+      "cpu_p95_relative": 0.13589178987102857,
+      "memory_p99_delta_MiB": 3.0016098022460938,
+      "memory_contextual_threshold_MiB": 4.163047409057618
+    },
+    {
+      "block": 1,
+      "cpu_p50_delta_ms": 1.3170000000000002,
+      "cpu_p50_relative": 0.23682790864952352,
+      "cpu_p95_relative": 0.12995006387179187,
+      "memory_p99_delta_MiB": 20.217111587524414,
+      "memory_contextual_threshold_MiB": 2.7957794189453127
+    },
+    {
+      "block": 2,
+      "cpu_p50_delta_ms": 0.391,
+      "cpu_p50_relative": 0.06592480188838312,
+      "cpu_p95_relative": 0.21741839023174703,
+      "memory_p99_delta_MiB": 2.4800586700439453,
+      "memory_contextual_threshold_MiB": 3.400541305541992
+    }
+  ],
+  "paired_client_p95": [
+    {
+      "block": 0,
+      "mode": "json",
+      "baseline_p95_ms": 135.78762499999993,
+      "candidate_p95_ms": 483.614834,
+      "delta_ms": 347.82720900000004,
+      "relative": 2.5615530796712895,
+      "crosses_original_contextual_investigation_threshold": true
+    },
+    {
+      "block": 0,
+      "mode": "sse",
+      "baseline_p95_ms": 267.4920839999995,
+      "candidate_p95_ms": 314.749708000003,
+      "delta_ms": 47.25762400000349,
+      "relative": 0.17666924304198695,
+      "crosses_original_contextual_investigation_threshold": true
+    },
+    {
+      "block": 1,
+      "mode": "json",
+      "baseline_p95_ms": 242.82391700000153,
+      "candidate_p95_ms": 98.51733300000342,
+      "delta_ms": -144.3065839999981,
+      "relative": -0.5942848866901245,
+      "crosses_original_contextual_investigation_threshold": false
+    },
+    {
+      "block": 1,
+      "mode": "sse",
+      "baseline_p95_ms": 349.93612500000745,
+      "candidate_p95_ms": 311.8720420000027,
+      "delta_ms": -38.06408300000476,
+      "relative": -0.10877437418044211,
+      "crosses_original_contextual_investigation_threshold": false
+    },
+    {
+      "block": 2,
+      "mode": "json",
+      "baseline_p95_ms": 285.968458000003,
+      "candidate_p95_ms": 275.00616699999955,
+      "delta_ms": -10.96229100000346,
+      "relative": -0.03833391653286233,
+      "crosses_original_contextual_investigation_threshold": false
+    },
+    {
+      "block": 2,
+      "mode": "sse",
+      "baseline_p95_ms": 127.45558300000266,
+      "candidate_p95_ms": 271.8029999999999,
+      "delta_ms": 144.34741699999722,
+      "relative": 1.132531142241091,
+      "crosses_original_contextual_investigation_threshold": true
+    }
+  ],
+  "same_version_sequential_comparison": {
+    "other_run": "incremental-budget-baseline-pilot",
+    "other_report_sha256": "6f81c11eedcffaf114c00baec8efd962c889fb576c3cb66d5edd34e82823ae7e",
+    "identical_saved_variant_launch_provenance": true,
+    "identical_runner_and_oracle": true,
+    "rows": [
+      {
+        "block": 0,
+        "dump_on": {
+          "A": {
+            "cpu_p50_ms": 8.195,
+            "cpu_p95_ms": 11.582,
+            "memory_p99_MiB": 43.65337371826172,
+            "platform_wall_p50_ms": 353.735
+          },
+          "B": {
+            "cpu_p50_ms": 10.963,
+            "cpu_p95_ms": 47.576,
+            "memory_p99_MiB": 48.54840278625488,
+            "platform_wall_p50_ms": 542.467
+          }
+        },
+        "no_dump": {
+          "A": {
+            "cpu_p50_ms": 6.161,
+            "cpu_p95_ms": 9.537,
+            "memory_p99_MiB": 41.63047409057617,
+            "platform_wall_p50_ms": 189.287
+          },
+          "B": {
+            "cpu_p50_ms": 6.822,
+            "cpu_p95_ms": 10.833,
+            "memory_p99_MiB": 44.632083892822266,
+            "platform_wall_p50_ms": 189.392
+          }
+        }
+      },
+      {
+        "block": 1,
+        "dump_on": {
+          "A": {
+            "cpu_p50_ms": 8.171,
+            "cpu_p95_ms": 11.272,
+            "memory_p99_MiB": 45.67762756347656,
+            "platform_wall_p50_ms": 345.885
+          },
+          "B": {
+            "cpu_p50_ms": 10.382,
+            "cpu_p95_ms": 13.862,
+            "memory_p99_MiB": 52.82238960266113,
+            "platform_wall_p50_ms": 541.01
+          }
+        },
+        "no_dump": {
+          "A": {
+            "cpu_p50_ms": 5.561,
+            "cpu_p95_ms": 8.611,
+            "memory_p99_MiB": 27.957794189453125,
+            "platform_wall_p50_ms": 186.607
+          },
+          "B": {
+            "cpu_p50_ms": 6.878,
+            "cpu_p95_ms": 9.73,
+            "memory_p99_MiB": 48.17490577697754,
+            "platform_wall_p50_ms": 197.377
+          }
+        }
+      },
+      {
+        "block": 2,
+        "dump_on": {
+          "A": {
+            "cpu_p50_ms": 7.724,
+            "cpu_p95_ms": 9.687,
+            "memory_p99_MiB": 51.27290344238281,
+            "platform_wall_p50_ms": 355.754
+          },
+          "B": {
+            "cpu_p50_ms": 10.501,
+            "cpu_p95_ms": 14.739,
+            "memory_p99_MiB": 47.14214324951172,
+            "platform_wall_p50_ms": 540.813
+          }
+        },
+        "no_dump": {
+          "A": {
+            "cpu_p50_ms": 5.931,
+            "cpu_p95_ms": 8.026,
+            "memory_p99_MiB": 34.00541305541992,
+            "platform_wall_p50_ms": 184.412
+          },
+          "B": {
+            "cpu_p50_ms": 6.322,
+            "cpu_p95_ms": 9.771,
+            "memory_p99_MiB": 36.48547172546387,
+            "platform_wall_p50_ms": 190.109
+          }
+        }
+      }
+    ],
+    "boundary": "Separate sequential cohorts, not randomized same-request counterfactuals. Differences of these summaries are not a precise capture CPU/memory attribution."
+  },
+  "provenance": {
+    "A": {
+      "source_commit": "e660fb4dfcf1734d10f89e52e2d739b2985c634b",
+      "deployment_id": "33cfa879-47d1-49fb-8655-aca9343a9eb5",
+      "versions": [
+        {
+          "version_id": "c8217d3e-dfb0-48a6-941b-c7bb173b83b7",
+          "percentage": 100
+        }
+      ],
+      "source_manifest_sha256": "78cf8975bb291732961268035f1cba2d352e705e8660fe02ce6f2955083491eb"
+    },
+    "B": {
+      "source_commit": "b99b6d6d5394b4f52c23a2fc7391c98c7908b932",
+      "deployment_id": "c244b83c-2223-4743-8c70-894cb756d926",
+      "versions": [
+        {
+          "version_id": "3832ee53-4797-4d8c-ab9e-acc2a37a8a9d",
+          "percentage": 100
+        }
+      ],
+      "source_manifest_sha256": "e41bc032ca5c0de2f9987c94a6ee0059a65c1ceccd7c7703a4effd9151bb873b",
+      "wrapper_sha256": "215b1d6250a68fd7f48f10d58af334066e6ca02a4e34bd2c83b234129d4548cf",
+      "config_sha256": "f2fd9681e283555bd11884f9773d1fb988aeb48e14a29f5a392f9ee18bd86353"
+    }
+  },
+  "boundaries": [
+    "Null retention is diagnostic configuration for a distinct synthetic key; original enabled capture acceptance workload is preserved.",
+    "All six sampled windows report success only; no sampled CPU/memory-limit outcome was observed.",
+    "Disabling dump capture did not eliminate the observed A/B CPU gap in this cohort; this does not isolate a core-code cause from environment/history.",
+    "Core-path work, request/history/placement differences, and isolate memory history are not separated by these aggregate metrics.",
+    "This 600-request diagnostic does not close the original dump-enabled gates, 4000-request ordinary qualification, large/history workloads, or soak.",
+    "Only read-only Cloudflare metric collection and local artifact analysis were performed."
+  ],
+  "raw_sha256": {
+    "requests.jsonl": "43569bdb9b3f81dddc036a1a8fb9e2a82527fe20547fab9980a41de27e3ba4f4",
+    "summary.json": "4bc9b650ad1f849403c67dd43968d798db6cb11fd5ab6675ba285d15e0a89581",
+    "dispatch.json": "7470163e204f3c248f36d662b4d46a0abed7b466c76ee96561a66edd7697915b",
+    "manifest.json": "babc48fa03beda83dc5d18889786459520a10e6fed9366135bbfa05ea6b0e17a",
+    "command.json": "40c1f69dc4d7e9ea83cbe92f1bf4cb9bde15c3658f8948d3e8ebdcaf4a194d99",
+    "runner.log": "e0615d79806cc3d4b05fe23ef04e59d90889991032fa4e7506fc977a8172aa0d",
+    "capture-configuration.json": "52c57e9c31ea7792ac36343c2cea371a8cdd290f56739cf28dae4477e79f6534",
+    "launch-provenance.json": "c7a622905c42d28eee69c21839b00267ee4b4492132c305bd577e1fe2224b046",
+    "metrics-windows.json": "2202cc15867b5a8265b72ae18df87db861f6cb01c378ba1ec0722d4125df858e"
+  },
+  "settings_readback_sha256": "431550d9c493dd481c7bc30e8d52c5bbeaf014aec0b6e34f71a034e73b76c023"
+}

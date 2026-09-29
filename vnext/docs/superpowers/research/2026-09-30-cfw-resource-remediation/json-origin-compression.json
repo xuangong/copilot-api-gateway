@@ -1,0 +1,55 @@
+{
+  "candidate_commit": "12a7a762b831213acd91f0785bce40d6170508e5",
+  "base_commit": "3e54a222089aa6d04e6f56186df71bcc5f19c176",
+  "change": "Pass the two JSON-origin inputs directly to Blob compression while preserving byte input and Bun fallback.",
+  "correctness": {
+    "review": {
+      "spec": "PASS",
+      "quality": "Approved"
+    },
+    "red": {
+      "pass": 11,
+      "fail": 1
+    },
+    "green": {
+      "pass": 12,
+      "fail": 0,
+      "assertions": 75
+    },
+    "focused": {
+      "pass": 84,
+      "fail": 0,
+      "assertions": 365
+    },
+    "actual_workerd": {
+      "cases": 22,
+      "gzip_pairs": 23,
+      "decoded_mismatches": 0,
+      "independent_decoder": "Python gzip"
+    },
+    "evidence_manifest_sha256": "0f4c51d0c7067aa16d466609504ac01260f9e6838c5c296498fa94e43606bea2"
+  },
+  "frozen_ci": {
+    "exit_code": 0,
+    "command": "bun run ci:local",
+    "source_commit": "12a7a762b831213acd91f0785bce40d6170508e5",
+    "started_at": "2026-09-29T20:27:46.084383+00:00",
+    "seconds": 131.63219809532166,
+    "log_sha256": "5896c95a9dff0864904a2538e33abcd0f0a76c7af5cc2f7f09ef40b884fc0443",
+    "results": {
+      "pass": 5240,
+      "skip": 2,
+      "fail": 0,
+      "assertions": 227526
+    },
+    "boundary": "Exact frozen product plus preserved original collaboration overlay; same-lock dependencies reused, not clean install."
+  },
+  "resource_gate": "NOT PASSED; 4000 ordinary requests succeeded, but CPU p50 crossed the original threshold in 2/5 pairs, memory p99 in 4/5, and client p95 in 3/10 cells. CPU p95 improved in all five pairs. See json-compression-primary.json.",
+  "limits": [
+    "Removal of explicit input arrays does not establish lower overall allocation, peak memory, CPU, or latency.",
+    "The existing local compression microbenchmark measured equal A/B medians.",
+    "String liveness across asynchronous compression may offset array savings.",
+    "Real SQLite tests cover SQL behavior; workerd parity uses a recording SQL adapter, not D1 validation.",
+    "Original collaboration overlay is retained and same-lock dependencies reused."
+  ]
+}

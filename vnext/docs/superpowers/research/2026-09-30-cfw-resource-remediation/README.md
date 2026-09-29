@@ -1,6 +1,6 @@
 # CFW resource remediation — in progress
 
-Production has not been deployed. Memory/performance acceptance remains open; catalog and affinity rollback compatibility work is queued behind the user's explicit resource priority. The latest reviewed resource code is `b99b6d6d`. Its ordinary CFW pilot completed with 600/600 successes and full CI passed, but the original CPU, memory and latency investigation gates are still exceeded. Upload concurrency is retained as a candidate, not accepted as a completed performance fix.
+Production has not been deployed. Memory/performance acceptance remains open; catalog and affinity rollback compatibility work is queued behind the user's explicit resource priority. The latest reviewed resource code is `12a7a762`, with frozen full CI passing (5,240 tests, 2 skipped). Its predeclared 4,000-request ordinary CFW comparison completed with all requests semantically successful and dispatched exactly once, but resource qualification did not pass: CPU p50 crossed its threshold in 2/5 pairs, memory p99 in 4/5, and client p95 in 3/10 cells. CPU p95 improved in all five pairs; this does not cancel the adverse gates. Upload concurrency remains provisional. Sections below retain earlier measurements; older checkpoints are not current performance estimates.
 
 ## Frozen code changes
 
@@ -25,16 +25,16 @@ The single-snapshot run isolates that change. The container-copy remote run comb
 
 New runs record runner/oracle hashes and frozen deployed source/artifact metadata at launch. Original-baseline upload provenance remains subject to the explicit limitation in the initial assessment: its source inventory is captured now and active version identity is verified; the original upload did not record a run-local source hash.
 
-## Verification and remaining gates
+## Early container-copy checkpoint
 
 - Task-scoped independent code review: approved, no blocking code findings.
 - Frozen `93161c65` full `ci:local`: 5176 passed, 2 skipped, 0 failed; typecheck, framework checks, lint, UI build and Worker dry-run succeeded. Lint reports 35 warnings on unchanged paths. Same-lock dependency reuse remains the pre-existing clean-install qualification gap.
-- Cloudflare GraphQL metrics collection reached its API budget on the first collection pass. Failed responses are retained, and collection resumes after the specified five-minute cooldown. Missing metrics are not treated as successful outcomes.
+- Cloudflare GraphQL metrics collection reached its API budget on the first collection pass. Failed responses were retained and subsequent collection completed after cooldown. Missing metrics were not treated as successful outcomes.
 - D1 read-only probes locate baseline and both repair-lab databases in APAC/KIX. This removes a simple cross-region database explanation for the measured difference; it does not control every placement/network variable.
 - Original-baseline ascending large workload: 80/80 successes; all platform windows report success only. Altered-history 32 MiB SSE-before-JSON workload: 20/20 successes; all platform windows report success only. Both have exactly one dispatch per logical request and zero client drops.
-- Ordinary pilot Worker CPU p50 remains 57.48–59.02 ms versus baseline 8.71–9.29 ms. This remains a release blocker.
+- This early ordinary pilot had Worker CPU p50 of 57.48–59.02 ms versus baseline 8.71–9.29 ms, blocking acceptance of that checkpoint. Later repairs substantially reduced this cost; the latest paired results are reported below.
 - Health/model route probe: 360/360 client successes, CPU p50 approximately 0.5–1.7 ms for both builds where adaptive samples exist. One baseline model window has no samples. This narrows investigation to inference-specific work without claiming every entrypoint cost is identical.
-- Actual local workerd V8 profiling found a request-diagnostic UTF-8 loop creating a function for every captured character. esbuild keep-names adds repeated name-property definitions. A scoped repair and remote qualification are in progress.
+- Actual local workerd V8 profiling found a request-diagnostic UTF-8 loop creating a function for every captured character. esbuild keep-names adds repeated name-property definitions. The subsequent scoped repair and remote measurements are reported below.
 - Still required: qualify the next repair remotely, final paired primary measurement, protocol matrix and soak as appropriate.
 - No global memory-leak, OOM-immunity, lower-memory or faster-throughput claim follows from the current experiments.
 
@@ -101,7 +101,7 @@ The shorter background lifetime does not justify accepting higher CPU. The effec
 
 A separate [prepared-upload timing diagnostic](./prepared-uploads-timing.json) observed 12/12 successful exactly-once requests and fulfilled registered background work. All ten non-warmup observations overlapped the puts; mean completion was 645.7 ms and mean R2 envelope 389.8 ms. These sequential diagnostic cohorts differ in source ownership changes and network timing. They support an upload-wait reduction, not a precise production speedup or a CPU/memory benefit.
 
-A repeat of the serial `04cad3ff` pilot exited 2: the baseline A had 28 client concurrency-cap drops in its final SSE cell, while all 300 candidate requests and the 272 attempted baseline requests passed. The 572 observed dispatches were exactly once. This failed run is retained and is not treated as a completed paired acceptance run. The [repeat metrics](./owned-prefix-repeat.json) are complete and success-only, but this does not undo the unsent client drops. The two fully completed paired blocks show serial-candidate CPU p50 of 15.797 / 16.337 ms versus baseline 8.759 / 9.421 ms. This weakens a simple claim that upload parallelism alone caused the earlier CPU increase. The delayed baseline SSE requests had approximately 2 ms scheduling lateness; their 19.5–22.1 second wait has not been assigned to a layer. A same-deployment native-put scheduling diagnostic is running before choosing the final policy.
+A repeat of the serial `04cad3ff` pilot exited 2: the baseline A had 28 client concurrency-cap drops in its final SSE cell, while all 300 candidate requests and the 272 attempted baseline requests passed. The 572 observed dispatches were exactly once. This failed run is retained and is not treated as a completed paired acceptance run. The [repeat metrics](./owned-prefix-repeat.json) are complete and success-only, but this does not undo the unsent client drops. The two fully completed paired blocks show serial-candidate CPU p50 of 15.797 / 16.337 ms versus baseline 8.759 / 9.421 ms. This weakens a simple claim that upload parallelism alone caused the earlier CPU increase. The delayed baseline SSE requests had approximately 2 ms scheduling lateness; their 19.5–22.1 second wait has not been assigned to a layer. The subsequent same-deployment native-put diagnostic is reported below; the final policy remains subject to ordinary resource acceptance.
 
 
 The frozen `208e7ed3` ascending large workload also completed with runner exit 0: 80/80 semantic successes, 80 exactly-once dispatches, no dropped offers, and ten success-only platform windows. It covers 64 KiB, 1 MiB, 8 MiB and 32 MiB with JSON before SSE. This result does not replace the still-pending changed-history repeat on the final candidate or ordinary resource acceptance.
@@ -135,7 +135,7 @@ Operation counters with 32-character fragments show incremental JSON input propo
 Frozen `b99b6d6d` full `ci:local` exited 0: 5216 passed, 2 skipped, 0 failed and 227389 assertions in the full suite. Typecheck, framework purity, lint, UI build and Worker dry-run all passed; lint reports the same 35 existing warnings. The earlier focused-test archival gap is supplemented by this complete raw CI log and SHA-256 metadata. The pre-existing same-lock dependency reuse/clean-install gap remains. No production code was deployed by the dry-run.
 
 
-## Latest ordinary resource gate: still open
+## Incremental-budget checkpoint: resource gate remained open
 
 The [incremental-budget ordinary pilot](./incremental-budget-pilot.json), using the uninstrumented wrapper and unchanged enabled capture, exited 0 in 121.37 seconds. All 600 requests passed the semantic oracle, all dispatched exactly once, and there were no drops or timeouts. All six platform windows report success only. Source-map and archived artifact checks confirm that neither upload-mode nor resource-timing diagnostic code was present. A read-only deployment check after the run confirmed that the baseline still had the expected version set.
 
@@ -150,7 +150,56 @@ CPU p50 and p95 exceed the original 10% relative investigation threshold in all 
 
 The final `b99b6d6d` [protocol matrix](./incremental-budget-matrix.json) preserves the prior fixture result: candidate108/108 versus baseline90/108, with all216 logical requests dispatched once. The runner exits2 because of the18 baseline failures; this is not described as a globally successful command. This is one request per cell and verifies fixture semantics, including intentional refusal/failure cases, rather than a production failure rate.
 
+The additional [no-dump diagnostic](./incremental-budget-nodump.json) also completed with 600/600 semantic successes, exactly-once dispatch and no drops or timeouts. All six platform windows report success only. CPU p50 was 6.161 / 5.561 / 5.931 ms for baseline and 6.822 / 6.878 / 6.322 ms for candidate; candidate CPU p95 remained 13.59% / 13.00% / 21.74% higher. Baseline/candidate memory p99 was 41.63/44.63, 27.96/48.17 and 34.01/36.49 MiB. The middle pair's 20.22 MiB increase is retained as adverse evidence, not identified as a leak. Three of six client p95 cells exceed both original investigation thresholds. This uses a separate synthetic key with null dump retention; the capture-enabled key retains its original zero/unlimited setting. The sequential enabled/disabled cohorts cannot be subtracted precisely to price the capture feature, and disabled capture cannot replace release qualification. A residual exists outside the enabled-dump cohort, so capture alone has not explained the regression.
+
 
 A subsequent exact-source local workerd [CPU profile](./prepared-cpu-profile.json) compared the deployed baseline with the frozen `208e7ed3` source plus its recorded original overlay. Both source manifests matched every deployed-source hash before copying. Four profiles used 12 warmups followed by 80 sequential 64 KiB requests, with capture enabled. The candidate's storage-boundary Base64 slice/alphabet scan appeared at the same emitted line in JSON and SSE (38 / 35 position ticks); sidecar serialization/compression also appeared. These are sampled local stack observations, not billed cloud CPU or a measurement of the entire residual.
 
 Readback found185 dump records in each local database; the candidate had185 sidecars and555 staged/owned file rows versus the baseline370 file rows. This verifies an additional stored representation per request. Sidecar and canonical dump semantics remain different; the finding does not authorize dropping capture. Raw evidence is privately archived with a 30-file verified SHA-256 manifest; the sanitized summary records the archive hash. The next narrow experiment can eliminate repeated alphabet scanning only for private, internally generated, frozen body identities, while retaining the complete external validation and all count/relationship checks.
+
+## Internal prefix provenance
+
+`3e54a222` implements that narrow optimization with a private WeakSet of body objects created and frozen by the collector itself. Persistence skips only the repeated Base64 alphabet scan and its slice for those exact identities. Safe-field projection and all length, padding, count, source, side, metadata and cross-field checks remain. Cloned, deserialized, inherited, proxy and frozen-lookalike bodies receive full validation; safe-projection output is not registered. The weak set does not retain its members strongly, and the implementation does not trust a whole snapshot merely because its body came from the collector.
+
+Formal review passed. Focused validation reports 85 passes and 49,425 assertions; typecheck, scoped lint and framework purity passed. Actual previous/current modules produced identical results or rejections across 55,884 cases, including inconsistent snapshots produced through collector APIs. A 64 KiB request plus 5,001-byte response fixture changed repeated alphabet scanning from two calls over 94,050 string units to zero; external clones and safe-projection output retained the original two scans. These are operation counts, not a measured cloud CPU improvement.
+
+The frozen [prefix-provenance ordinary pilot](./prefix-provenance-pilot.json) exited 0 in 122.71 seconds, with 600/600 semantic and transport successes, exactly-once dispatch and no drops/timeouts. All six refreshed platform windows report success only. Initial collection was early: the final baseline/candidate adaptive counts changed from 84/15 to 101/98; both initial files are retained and sampled counts are not exact client counters.
+
+| Block | Baseline / candidate CPU p50 ms | Baseline / candidate memory p99 MiB |
+| --- | --- | --- |
+| 0 | 10.131 / 12.233 | 41.24 / 46.41 |
+| 1 | 10.591 / 10.194 | 40.55 / 52.63 |
+| 2 | 8.925 / 10.412 | 49.99 / 57.36 |
+
+Two of three CPU-p50 and CPU-p95 pairs exceed the original 10% investigation threshold; all three memory-p99 pairs exceed max(10%, 2 MiB), and four of six client-p95 cells exceed both latency thresholds. Resource acceptance remains OPEN. Different preceding cohorts cannot establish an isolated WeakSet speedup; the removed scan is verified, while aggregate baseline parity is not. This pilot does not substitute for the predeclared 4000-request qualification.
+
+## Compression representation experiment
+
+The [local workerd compression microdiagnostic](./prepared-cpu-compression-micro.json) compared explicit UTF-8 bytes followed by Blob/CompressionStream against a Blob created directly from the JSON string. Seven ASCII, Chinese/emoji and escaped-surrogate cases cover approximately 64 KiB and 1 MiB, with repetitive and nonrepeating data. Every compressed output decoded to the original bytes. Batched ABBA medians were equal for both paths in all seven cases; no stable speedup was detected.
+
+The direct-string path avoids one explicit input Uint8Array. Blob's internal conversion and buffers were not measured, so this is an allocation hypothesis, not a peak-memory result. Local `node:zlib.gzipSync` was also supported and decoded correctly, but its synchronous behavior and inconclusive whole-request benefit do not justify changing the Cloudflare default. The local timer control advanced during CPU-only work; deployed Workers have different timer semantics. The unchanged compression format, failure handling and enabled capture remain requirements for any subsequent product experiment.
+
+
+## JSON-origin compression and primary qualification
+
+`12a7a762` passes the two JSON-origin dump inputs directly to Blob compression, eliminating their explicit caller-side UTF-8 arrays. Binary inputs, Bun byte fallback, single stringification, optional-sidecar behavior, storage ordering and persisted gzip bytes remain unchanged. Formal independent review approved the change; actual old/new workerd cases and an independent Python decoder found zero differences in 23 gzip pairs. See the [compression evidence](./json-origin-compression.json). Equal local A/B microbenchmark medians remain disclosed: fewer explicit arrays do not prove lower total allocation, CPU or peak memory.
+
+The exact frozen candidate, including the original collaboration overlay, passed `ci:local`: 5,240 pass, 2 skip, 0 fail, 227,526 assertions; typecheck, purity, lint, UI build and Worker dry-run passed. The existing 35 lint warnings and same-lock dependency reuse remain. Source manifests, exact inventory membership, baseline artifact archive, all candidate artifacts, the ordinary wrapper source map, actual zero/zero retention settings and active A/B versions were checked before the primary run.
+
+The first semantic canary failed because the baseline's first JSON request took 1.233 seconds and a cap-1 client dropped its second offer; the seven attempted requests passed and dispatched once. That failed evidence is retained. A separate cap-2 semantic canary passed 8/8 with exactly-once dispatch. The 4,000-request primary keeps the original 5 paired blocks, 200 requests per JSON/SSE cell, 64 KiB payload, 5 arrivals/second, concurrency cap 16 and 120-second timeout. Its gates are unchanged.
+
+The [completed primary](./json-compression-primary.json) exited 0 in 803.562 seconds: 4,000/4,000 HTTP and semantic successes, 4,000 exactly-once dispatches, no drops or timeouts. All ten platform windows report success only, and their raw metric hashes remained identical across the initial collection and two delayed refreshes. Source/artifact inventories, actual retention and active versions matched before and after the run. Dump retention zero means enabled/unlimited; Responses retention zero disables the durable continuation writer.
+
+| Block | Baseline / candidate CPU p50 ms | CPU p95 ms | Memory p99 MiB | Platform wall p50 ms |
+| --- | --- | --- | --- | --- |
+| 0 | 8.029 / 10.107 | 16.134 / 15.385 | 49.746 / 64.171 | 399.437 / 560.108 |
+| 1 | 11.392 / 9.383 | 15.635 / 13.176 | 48.201 / 88.862 | 392.770 / 547.364 |
+| 2 | 10.827 / 9.619 | 15.501 / 13.934 | 59.096 / 64.357 | 399.082 / 527.825 |
+| 3 | 11.130 / 9.817 | 16.089 / 14.135 | 54.474 / 60.754 | 395.728 / 521.996 |
+| 4 | 8.013 / 9.827 | 15.590 / 14.142 | 47.914 / 66.527 | 382.888 / 520.805 |
+
+CPU p95 improves by 4.64–15.73%, but CPU p50 exceeds +10% in blocks 0 and 4. Memory p99 exceeds max(10%, 2 MiB) in blocks 0, 1, 3 and 4; the largest paired difference is +40.661 MiB. Client terminal p95 exceeds both +10% and +20 ms in block 0 JSON, block 2 SSE and block 3 JSON. SSE median first-event and terminal latency improves in all five pairs, while the ordinary resource gate remains open. Platform memory is a shared-isolate quantile, not a per-request peak or evidence of a leak. This whole-stack comparison does not isolate the effect of JSON-origin compression.
+
+The next diagnostics separate upstream capture plus sidecar persistence from canonical dumps, and logical SSE event count from physical read count. They retain exact source/feature identities and fail-closed semantic checks. Reduced capture is solely an experimental control; it cannot qualify a release. Both client delivery and full background completion remain relevant because earlier HTTP delivery does not eliminate CPU or retained buffers.
+
+The latest [large-body and changed-history checks](./json-compression-large-history.json) also completed: ascending 64 KiB, 1 MiB, 8 MiB and 32 MiB with JSON before SSE passed 80/80; 32 MiB with SSE before JSON passed 20/20. Both internal commands exited 0, with exactly one dispatch per request and zero drops/timeouts. All twenty platform windows report success only; initial and delayed-refresh raw files are byte-identical. These single-request cells establish successful execution for the tested histories, not stable latency quantiles, a per-request memory bound or OOM immunity. They do not close the failed ordinary resource gate.
