@@ -1,3 +1,4 @@
+import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 /**
  * Server-tool plugin contract — Week 4b-1 scaffold.
  *
@@ -122,6 +123,7 @@ export type ServerToolRegistration<TInvocation, TRequest> = (
  * consume them directly instead of via ctx.
  */
 export interface ServerToolRequestCtx {
+  readonly dump?: DumpAccumulator | null
   readonly store: import('./private-payload-store').PrivatePayloadStore
   readonly apiKeyId: ApiKeyId
   /** Immutable inbound model alias for server-tool subcall usage attribution. */

@@ -1,3 +1,4 @@
+import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 import { invocationSourceApi } from '../shared/invocation-source-api'
 import { responsesFormatGuard, responsesFormatMismatchMessage } from '@vibe-llm/provider-llm'
 import { TranslatorValidationError } from '@vibe-llm/translate/errors'
@@ -48,6 +49,7 @@ export type ChatCompletionsAttemptResult = LlmExecuteResult<ProtocolFrame<ChatCo
 export type ChatCompletionsAttemptAuth = SelectBindingAuth
 
 export interface ChatCompletionsAttemptArgs {
+  readonly dump?: DumpAccumulator | null
   readonly payload: Record<string, unknown> & { model: string; stream?: boolean }
   readonly auth: ChatCompletionsAttemptAuth
   readonly ctx: RequestContext
@@ -58,7 +60,7 @@ export interface ChatCompletionsAttemptArgs {
    */
   readonly telemetryCtx: TelemetryRequestContext
   /** Injected for tests; defaults to {@link selectBindingForChatCompletions}. */
-  readonly selectBinding?: (args: { model: string; auth: ChatCompletionsAttemptAuth }) => Promise<SelectBindingResult>
+  readonly selectBinding?: (args: { model: string; auth: ChatCompletionsAttemptAuth; dump?: DumpAccumulator | null }) => Promise<SelectBindingResult>
   /** Overridable interceptor chain (defaults to the production registry). */
   readonly interceptors?: ReadonlyArray<ChatCompletionsStreamInterceptor>
   readonly inheritedHeaders?: Record<string, string>
@@ -96,7 +98,7 @@ const readUpstreamJsonAsFrames = async (
 export const chatCompletionsAttempt = {
   generate: async (args: ChatCompletionsAttemptArgs): Promise<ChatCompletionsAttemptResult> => {
     const selectFn = args.selectBinding ?? ((a) => selectBindingForChatCompletions(a))
-    const sel = await selectFn({ model: args.payload.model, auth: args.auth })
+    const sel = await selectFn({ model: args.payload.model, auth: args.auth, dump: args.dump })
 
     if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(MODEL_CATALOG_UNAVAILABLE))
     if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
@@ -118,6 +120,7 @@ export const chatCompletionsAttempt = {
       const hubProtocol = sel.targetEndpoint as HubAttemptProtocol
       const hubAttempt = (args.hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
       return await traverseTranslation({
+        dump: args.dump,
         sourcePayload: args.payload as Record<string, unknown>,
         sourceProtocol: 'chat_completions',
         hubProtocol,
@@ -128,6 +131,7 @@ export const chatCompletionsAttempt = {
             payload: innerArgs.payload as never,
             auth: innerArgs.auth as never,
             ctx: { downstreamAbortSignal: innerArgs.signal } as never,
+            dump: innerArgs.dump,
             telemetryCtx: innerArgs.inheritedTelemetryCtx,
             inheritedHeaders: innerArgs.inheritedHeaders,
             snapshotMode: innerArgs.snapshotMode,

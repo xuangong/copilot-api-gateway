@@ -32,6 +32,7 @@ export async function serveCountTokens(args: CountTokensServeArgs): Promise<Resp
   const forwardPayload = { ...payload, model: resolved.routedModel }
 
   const binding = await resolveBinding(resolved.routedModel, 'messages_count_tokens', {
+    dump: args.dump,
     ownerId: args.auth.userId,
     copilot: args.auth.copilot,
     pin: resolved.upstreamPin,

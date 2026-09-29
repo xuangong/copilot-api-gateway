@@ -115,6 +115,7 @@ const geminiHooks: ServeTemplateHooks<
       forceStream: a.extras.forceStream === true,
       auth: extra.upstreamPin ? { ...a.auth, pin: extra.upstreamPin } : a.auth,
       ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal },
+      dump: a.dump as DumpAccumulator | null,
       telemetryCtx: a.telemetryCtx,
     })
   },

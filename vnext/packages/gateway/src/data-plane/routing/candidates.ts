@@ -1,3 +1,4 @@
+import type { DumpAccumulator } from "../../shared/dump/accumulator.ts"
 /**
  * Enumerate candidate bindings for a model id, given a client-protocol
  * specific endpoint priority chain. Replaces resolveBinding(model, endpoint)
@@ -15,6 +16,7 @@ export interface BindingCandidate {
 }
 
 export interface EnumerateOptions {
+  dump?: DumpAccumulator | null
   ownerId?: string
   copilot?: CreateProviderOptions
   pin?: string
@@ -78,6 +80,7 @@ export async function enumerateBindingCandidates(args: {
     ownerId: opts.ownerId,
     pin: upstreamPin,
     copilot: opts.copilot,
+    dump: opts.dump,
     onCatalogError: (upstreamId) => {
       if (!upstreamPin || upstreamId === undefined || upstreamId === upstreamPin) incomplete = true
     },

@@ -1,3 +1,4 @@
+import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 import { responsesFormatGuard, responsesFormatMismatchMessage } from '@vibe-llm/provider-llm'
 import { TranslatorValidationError } from '@vibe-llm/translate/errors'
 import { fetchWithPerformance, observeUpstreamFrames, observeUpstreamJson } from "../shared/performance-upstream"
@@ -78,6 +79,7 @@ export type MessagesAttemptAuth = SelectBindingAuth
  * messages → messages).
  */
 export interface MessagesAttemptArgs {
+  readonly dump?: DumpAccumulator | null
   readonly payload: Record<string, unknown> & { model: string; stream?: boolean }
   readonly auth: MessagesAttemptAuth
   readonly ctx: RequestContext
@@ -125,17 +127,18 @@ export type SelectMessagesBindingResult =
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
 
 export type SelectMessagesBinding = (
-  args: { model: string; auth: MessagesAttemptAuth },
+  args: { model: string; auth: MessagesAttemptAuth; dump?: DumpAccumulator | null },
 ) => Promise<SelectMessagesBindingResult>
 
 const pickTargetForMessages = (endpoints: ModelEndpoints): EndpointKey | null =>
   selectPair('messages', endpoints)
 
-const defaultSelectBinding: SelectMessagesBinding = async ({ model, auth }) => {
+const defaultSelectBinding: SelectMessagesBinding = async ({ model, auth, dump }) => {
   const { candidates, sawModel, bareModel, catalogUnavailable } = await enumerateBindingCandidates({
     model,
     pickTarget: pickTargetForMessages,
     opts: {
+      dump,
       ownerId: auth.ownerId,
       copilot: auth.copilot,
       pin: auth.pin,
@@ -315,7 +318,7 @@ export async function* synthesizeMessagesFramesFromJson(
 export const messagesAttempt = {
   generate: async (args: MessagesAttemptArgs): Promise<MessagesAttemptResult> => {
     const selectFn = args.selectBinding ?? defaultSelectBinding
-    const sel = await selectFn({ model: args.payload.model, auth: args.auth })
+    const sel = await selectFn({ model: args.payload.model, auth: args.auth, dump: args.dump })
 
     // Root parity: 404 envelope uses the legacy "No messages upstream available
     // for model: <id>. Run GET /v1/models for available ids." message so SDK
@@ -334,6 +337,7 @@ export const messagesAttempt = {
       const hubProtocol = sel.targetEndpoint as HubAttemptProtocol
       const hubAttempt = (args.hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
       return await traverseTranslation({
+        dump: args.dump,
         sourcePayload: args.payload as Record<string, unknown>,
         sourceProtocol: 'messages',
         hubProtocol,
@@ -345,6 +349,7 @@ export const messagesAttempt = {
             auth: innerArgs.auth as never,
             // Hosted tools in the hub still need this key's search settings.
             ctx: { ...args.ctx, downstreamAbortSignal: innerArgs.signal },
+            dump: innerArgs.dump,
             telemetryCtx: innerArgs.inheritedTelemetryCtx,
             inheritedHeaders: innerArgs.inheritedHeaders,
             snapshotMode: innerArgs.snapshotMode,

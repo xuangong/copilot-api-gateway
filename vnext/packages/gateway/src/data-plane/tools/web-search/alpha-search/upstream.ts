@@ -1,3 +1,4 @@
+import type { DumpAccumulator } from "../../../../shared/dump/accumulator.ts"
 /**
  * Passthrough dispatcher for alpha_search. Resolves the configured
  * OpenAI-search upstream (codex or custom kind) via the shared binding
@@ -27,6 +28,7 @@ const pickAlphaSearch = (endpoints: Record<string, unknown>): EndpointKey | null
 export const resolveAlphaSearchDispatcher = async (args: {
   config: { upstreamId: string; model: string }
   auth: DataPlaneAuthCtx
+  dump?: DumpAccumulator | null
 }): Promise<AlphaSearchDispatcher> => {
   const { config, auth } = args
   if (config.upstreamId === '') {
@@ -35,7 +37,7 @@ export const resolveAlphaSearchDispatcher = async (args: {
   const { candidates } = await enumerateBindingCandidates({
     model: config.model,
     pickTarget: pickAlphaSearch as never,
-    opts: { ownerId: auth.userId, copilot: auth.copilot, pin: config.upstreamId },
+    opts: { dump: args.dump, ownerId: auth.userId, copilot: auth.copilot, pin: config.upstreamId },
   })
   const candidate = candidates.find((c) => c.binding.upstream === config.upstreamId)
   if (candidate === undefined) {

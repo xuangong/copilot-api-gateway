@@ -1,3 +1,4 @@
+import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 // vnext/packages/gateway/src/data-plane/chat-flow/gemini/attempt.ts
 /**
  * Gemini generateContent attempt orchestrator.
@@ -77,6 +78,7 @@ export type GeminiAttemptResult = LlmExecuteResult<ProtocolFrame<unknown>>
 export type GeminiAttemptAuth = SelectBindingAuth
 
 export interface GeminiAttemptArgs {
+  readonly dump?: DumpAccumulator | null
   readonly payload: Record<string, unknown> & { stream?: boolean }
   /**
    * Bare model name (without provider routing prefix). Comes from the URL path
@@ -129,17 +131,18 @@ export type SelectGeminiBindingResult =
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
 
 export type SelectGeminiBinding = (
-  args: { model: string; auth: GeminiAttemptAuth },
+  args: { model: string; auth: GeminiAttemptAuth; dump?: DumpAccumulator | null },
 ) => Promise<SelectGeminiBindingResult>
 
 const pickTargetForGemini = (endpoints: ModelEndpoints): EndpointKey | null =>
   selectPair('gemini', endpoints)
 
-const defaultSelectBinding: SelectGeminiBinding = async ({ model, auth }) => {
+const defaultSelectBinding: SelectGeminiBinding = async ({ model, auth, dump }) => {
   const { candidates, sawModel, bareModel, catalogUnavailable } = await enumerateBindingCandidates({
     model,
     pickTarget: pickTargetForGemini,
     opts: {
+      dump,
       ownerId: auth.ownerId,
       copilot: auth.copilot,
       pin: auth.pin,
@@ -165,7 +168,7 @@ const defaultSelectBinding: SelectGeminiBinding = async ({ model, auth }) => {
 export const geminiAttempt = {
   generate: async (args: GeminiAttemptArgs): Promise<GeminiAttemptResult> => {
     const selectFn = args.selectBinding ?? defaultSelectBinding
-    const sel = await selectFn({ model: args.model, auth: args.auth })
+    const sel = await selectFn({ model: args.model, auth: args.auth, dump: args.dump })
 
     if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(MODEL_CATALOG_UNAVAILABLE))
     if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
@@ -194,6 +197,7 @@ export const geminiAttempt = {
 
     const terminal = async (): Promise<GeminiAttemptResult> => {
       return await traverseTranslation({
+        dump: args.dump,
         sourcePayload: args.payload as Record<string, unknown>,
         sourceProtocol: 'gemini',
         hubProtocol,
@@ -204,6 +208,7 @@ export const geminiAttempt = {
             payload: innerArgs.payload as never,
             auth: innerArgs.auth as never,
             ctx: { downstreamAbortSignal: innerArgs.signal } as never,
+            dump: innerArgs.dump,
             telemetryCtx: innerArgs.inheritedTelemetryCtx,
             inheritedHeaders: innerArgs.inheritedHeaders,
             snapshotMode: innerArgs.snapshotMode,

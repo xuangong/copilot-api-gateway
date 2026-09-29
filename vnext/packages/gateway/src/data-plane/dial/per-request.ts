@@ -14,7 +14,7 @@
  * request instead of paying a second `upstreams.list()` round-trip.
  */
 import { getDataPlaneRepo as getRepo } from '../../repo/index.ts'
-import { createFetcher, loadProxyCatalog } from '@vibe-core/dial'
+import { createFetcher, loadProxyCatalog, type DialObserver } from '@vibe-core/dial'
 import { getSocketDial } from '@vibe-core/platform'
 import { isDirectFallbackId } from '@vibe-core/proxy-repo'
 import { runDirectConnectRequest, runProxiedRequest } from '@vibe-core/proxy'
@@ -31,7 +31,7 @@ interface DialableUpstream {
 export async function createPerRequestFetcher(
   runtimeLocation: string,
   preFetchedUpstreams?: readonly DialableUpstream[],
-): Promise<(upstreamId: string) => Fetcher> {
+): Promise<(upstreamId: string, observer?: DialObserver) => Fetcher> {
   const repo = getRepo()
   const upstreams = preFetchedUpstreams ?? (await repo.upstreams.list())
   const fallbackById = new Map(upstreams.map((u) => [u.id, u.proxyFallbackList] as const))
@@ -45,7 +45,7 @@ export async function createPerRequestFetcher(
 
   const { proxyById, parseErrors } = await loadProxyCatalog(repo.proxies, referencedProxyIds)
 
-  return (upstreamId) => {
+  return (upstreamId, observer) => {
     // Fail loud on an unknown upstream id. Silently substituting `[]` would
     // route through direct-fetch only, masking a stale api-key→upstream binding
     // as a working proxy bypass.
@@ -65,6 +65,7 @@ export async function createPerRequestFetcher(
     return createFetcher({
       proxyBackoffs: repo.proxyBackoffs,
       upstreamId,
+      observer,
       fallbackList: list,
       runtimeLocation,
       proxyById,
@@ -74,4 +75,20 @@ export async function createPerRequestFetcher(
       socketDial: getSocketDial,
     })
   }
+}
+
+/** Request-token Copilot has no stored row and has always used runtime fetch. */
+export function createObservedDirectFetcher(upstreamId: string, observer: DialObserver): Fetcher {
+  return createFetcher({
+    upstreamId,
+    observer,
+    fallbackList: [{ id: 'direct_fetch' }],
+    proxyById: new Map(),
+    proxyBackoffs: getRepo().proxyBackoffs,
+    runtimeLocation: '',
+    runProxied: runProxiedRequest,
+    runDirectFetch: directFetcher,
+    runDirectConnect: runDirectConnectRequest,
+    socketDial: getSocketDial,
+  })
 }

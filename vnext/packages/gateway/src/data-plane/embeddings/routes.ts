@@ -78,6 +78,7 @@ export async function embeddingsHandler(
     ...(typeof sourceBody.input === 'string' ? { input: [sourceBody.input] } : {}),
   }
   const binding = await resolveBinding(resolved.routedModel, 'embeddings', {
+    dump,
     ownerId: auth.userId,
     copilot: auth.copilot,
     pin: resolved.upstreamPin,

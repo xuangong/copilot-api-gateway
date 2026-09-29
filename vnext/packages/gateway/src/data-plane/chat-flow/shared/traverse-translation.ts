@@ -1,3 +1,4 @@
+import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 /**
  * Cross-protocol attempt traversal. Calls the source translator to produce a
  * hub-protocol payload, invokes the hub attempt, and forwards the returned
@@ -41,6 +42,7 @@ import { performanceTargetFromProtocol } from './respond-telemetry.ts'
 type TranslatorProtocol = 'chat_completions' | 'messages' | 'responses' | 'gemini'
 
 export interface InnerAttemptArgs {
+  dump?: DumpAccumulator | null
   payload: Record<string, unknown>
   auth: unknown
   inheritedHeaders: Record<string, string>
@@ -52,6 +54,7 @@ export interface InnerAttemptArgs {
 }
 
 export interface TraverseTranslationArgs<HubFrame, SourceFrame> {
+  dump?: DumpAccumulator | null
   sourcePayload: Record<string, unknown>
   sourceProtocol: TranslatorProtocol
   hubProtocol: TranslatorProtocol
@@ -116,6 +119,7 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
   }
 
   const inner = await args.innerAttempt({
+    dump: args.dump,
     payload: hubPayload,
     auth: args.auth,
     inheritedHeaders: args.inheritedHeaders,

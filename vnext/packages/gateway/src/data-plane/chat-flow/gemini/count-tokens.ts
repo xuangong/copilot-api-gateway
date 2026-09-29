@@ -41,6 +41,7 @@ export async function serveGeminiCountTokens(args: GeminiCountTokensServeArgs): 
   const messagesPayload = translateGeminiToMessages(geminiPayload, { model: resolved.routedModel })
 
   const binding = await resolveBinding(resolved.routedModel, 'messages_count_tokens', {
+    dump: args.dump,
     ownerId: args.auth.userId,
     copilot: args.auth.copilot,
     pin: resolved.upstreamPin,

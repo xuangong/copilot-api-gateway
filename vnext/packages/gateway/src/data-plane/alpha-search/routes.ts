@@ -19,6 +19,8 @@
 import type { Context } from 'hono'
 import { z } from 'zod'
 import type { Env } from '../../app.ts'
+import type { DumpAccumulator } from '../../shared/dump/accumulator.ts'
+import { openRequestDump, parseJsonBody } from '../chat-flow/shared/dump-open.ts'
 import type { ApiKeyId } from '../../repo/branded-ids.ts'
 import { getDataPlaneRepo as getRepo } from '../../repo/index.ts'
 import { readAuth } from '../chat-flow/shared/gateway-ctx.ts'
@@ -96,9 +98,23 @@ const filtersFromSettings = (settings: AlphaSearchRequest['settings']): WebSearc
 }
 
 export const alphaSearchHandler = async (c: Context<{ Bindings: Env }>): Promise<Response> => {
+  const { requestBody, dump } = await openRequestDump(c, readAuth(c), c.req.method)
+  try {
+    const response = await runAlphaSearch(c, requestBody.bytes, dump)
+    return dump ? dump.finalize(response) : response
+  } catch (error) {
+    dump?.failed(error)
+    dump?.finalize(500, [])
+    throw error
+  }
+}
+
+const runAlphaSearch = async (
+  c: Context<{ Bindings: Env }>, bytes: Uint8Array, dump: DumpAccumulator | null,
+): Promise<Response> => {
   let raw: unknown
   try {
-    raw = await c.req.json()
+    raw = parseJsonBody(bytes)
   } catch {
     return c.json({ error: { message: 'Invalid JSON body' } }, 400)
   }
@@ -119,9 +135,11 @@ export const alphaSearchHandler = async (c: Context<{ Bindings: Env }>): Promise
   const passthroughModel = callerKey?.webSearchPassthroughModel ?? ''
 
   if (passthroughUpstream !== '' && passthroughModel !== '') {
+    dump?.requestedModel(passthroughModel)
     const dispatcher = await resolveAlphaSearchDispatcher({
       config: { upstreamId: passthroughUpstream, model: passthroughModel },
       auth,
+      dump,
     })
     const headers = new Headers()
     const turnMetadata = c.req.header('x-codex-turn-metadata')

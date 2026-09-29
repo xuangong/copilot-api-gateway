@@ -191,6 +191,7 @@ const responsesHooks: ServeTemplateHooks<
     payload: a.payload,
     auth: a.extra?.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
     ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId },
+    dump: a.dump as DumpAccumulator | null,
     telemetryCtx: a.telemetryCtx,
     requestId: a.extras.requestId as string,
     userAgent: a.extras.userAgent as string,

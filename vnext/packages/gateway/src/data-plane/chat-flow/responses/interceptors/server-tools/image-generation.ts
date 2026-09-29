@@ -1,3 +1,4 @@
+import type { DumpAccumulator } from "../../../../../shared/dump/accumulator.ts"
 /**
  * Responses `image_generation` server-tool plugin (Spec 13-D).
  *
@@ -1022,6 +1023,7 @@ const errorFromBody = (body: string, status: number): { type?: string; code: str
 // fields — the plugin uses process-global `waitUntil()` and `getRuntimeLocation()`
 // from `@vibe-core/platform` (see file-header adaptation notes).
 export interface ShimState {
+  dump?: DumpAccumulator | null
   config: MaterializedImageGenerationConfig
   apiKeyId: ApiKeyId
   /** Immutable model alias from the outer Responses request. */
@@ -1143,7 +1145,7 @@ const resolveImageCandidate = async (
       // `upstreamIds` below is a second, narrower filter (the caller's pinned
       // set) applied post-enumeration; it cannot substitute for the scope,
       // which decides what is enumerable in the first place.
-      opts: { ...(state.bindingScope ?? {}) },
+      opts: { ...(state.bindingScope ?? {}), dump: state.dump },
     })
   } catch (e) {
     return { ok: false, error: serverError(e) }
@@ -1691,6 +1693,7 @@ export const imageGenerationServerTool: ServerToolRegistration<Invocation, Serve
     incomingModel: requestCtx.incomingModel ?? config.model,
     upstreamIds: requestCtx.upstreamIds ?? null,
     bindingScope: requestCtx.bindingScope,
+    dump: requestCtx.dump,
     downstreamAbortSignal: requestCtx.abortSignal,
     imageDispatchCount: 0,
   }

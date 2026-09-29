@@ -94,6 +94,7 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
   const resolved = resolveKeyModel(payload.model, auth.routingPolicy)
   const forwardPayload: GenerationsPayload = { ...payload, model: resolved.routedModel }
   const binding = await resolveBinding(resolved.routedModel, 'images_generations', {
+    dump,
     ownerId: auth.userId,
     copilot: auth.copilot,
     pin: resolved.upstreamPin,
@@ -225,6 +226,7 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
 
   const resolved = resolveKeyModel(model, auth.routingPolicy)
   const binding = await resolveBinding(resolved.routedModel, 'images_edits', {
+    dump,
     ownerId: auth.userId,
     copilot: auth.copilot,
     pin: resolved.upstreamPin,

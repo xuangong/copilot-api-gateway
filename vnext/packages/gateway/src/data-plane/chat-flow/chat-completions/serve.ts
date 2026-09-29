@@ -98,6 +98,7 @@ const chatCompletionsHooks: ServeTemplateHooks<
     // Same as messages/serve.ts: the web-search shim resolves engines from the
     // caller's key, so the interceptors need the id.
     ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId },
+    dump: a.dump as DumpAccumulator | null,
     telemetryCtx: a.telemetryCtx,
   }),
 

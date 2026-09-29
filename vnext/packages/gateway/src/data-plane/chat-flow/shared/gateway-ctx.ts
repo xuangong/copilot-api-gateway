@@ -9,6 +9,13 @@
  * existing callers don't have to change paths during the spec-3 transition.
  */
 import type { Context } from 'hono'
+import type { RequestContext } from '@vibe-llm/protocols/common'
+import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
+
+/** Gateway-only execution context; protocol contracts do not own diagnostic state. */
+export interface GatewayRequestContext extends RequestContext {
+  readonly dump?: DumpAccumulator | null
+}
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import type { DispatchObsCtx } from './obs-ctx.ts'
 

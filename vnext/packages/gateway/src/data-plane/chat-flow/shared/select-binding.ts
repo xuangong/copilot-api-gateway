@@ -1,3 +1,4 @@
+import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 /**
  * Routing helper for the chat-completions handler.
  *
@@ -41,6 +42,7 @@ type EnumerateFn = (args: {
 }) => Promise<EnumerateResult>
 
 export interface SelectBindingArgs {
+  readonly dump?: DumpAccumulator | null
   readonly model: string
   readonly auth: SelectBindingAuth
   /** Injected in tests; defaults to `enumerateBindingCandidates`. */
@@ -77,6 +79,7 @@ export async function selectBindingForChatCompletions(
     model: args.model,
     pickTarget: pickTargetForChatCompletions,
     opts: {
+      dump: args.dump,
       ownerId: args.auth.ownerId,
       copilot: args.auth.copilot,
       pin: args.auth.pin,

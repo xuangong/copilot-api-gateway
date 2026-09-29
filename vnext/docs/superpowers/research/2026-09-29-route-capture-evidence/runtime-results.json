@@ -1,0 +1,134 @@
+{
+  "runtime": "actual local workerd+D1+R2+loopback HTTP",
+  "expectCapture": true,
+  "calls": [
+    {
+      "owner": "a",
+      "kind": "discovery"
+    },
+    {
+      "owner": "b",
+      "kind": "discovery"
+    },
+    {
+      "owner": "a",
+      "kind": "execution"
+    },
+    {
+      "owner": "b",
+      "kind": "execution"
+    },
+    {
+      "owner": "a",
+      "kind": "execution"
+    }
+  ],
+  "results": [
+    {
+      "owner": "a",
+      "attempt": {
+        "id": "attempt-1",
+        "parentCallId": "call_1",
+        "upstreamId": "up-a",
+        "order": 1,
+        "startedOffsetMs": 24,
+        "completedOffsetMs": 73,
+        "method": "POST",
+        "operation": "responses.create",
+        "url": "url_omitted",
+        "requestHeaders": [
+          [
+            "content-type",
+            "application/json"
+          ]
+        ],
+        "responseHeaders": [
+          [
+            "content-length",
+            "562"
+          ],
+          [
+            "content-type",
+            "text/event-stream"
+          ]
+        ],
+        "omittedRequestHeaders": 1,
+        "omittedResponseHeaders": 4,
+        "status": 200,
+        "representation": "fetch-body",
+        "request": {
+          "source": "prepared",
+          "observedBytes": 102,
+          "totalBytes": 102,
+          "capturedBytes": 102,
+          "prefixBase64": "eyJtb2RlbCI6ImZpeHR1cmUtbW9kZWwiLCJpbnB1dCI6W3sidHlwZSI6Im1lc3NhZ2UiLCJyb2xlIjoidXNlciIsImNvbnRlbnQiOiJpbnB1dC1hIn1dLCJzdHJlYW0iOnRydWV9",
+          "truncated": false
+        },
+        "response": {
+          "source": "fetch-body",
+          "observedBytes": 562,
+          "totalBytes": 562,
+          "capturedBytes": 562,
+          "prefixBase64": "ZGF0YTogeyJ0eXBlIjoicmVzcG9uc2UuY3JlYXRlZCIsInJlc3BvbnNlIjp7ImlkIjoicmVzcF9hIiwib2JqZWN0IjoicmVzcG9uc2UiLCJtb2RlbCI6ImZpeHR1cmUtbW9kZWwiLCJzdGF0dXMiOiJpbl9wcm9ncmVzcyIsIm91dHB1dCI6W10sInVzYWdlIjp7ImlucHV0X3Rva2VucyI6Mywib3V0cHV0X3Rva2VucyI6MiwidG90YWxfdG9rZW5zIjo1fX19CgpkYXRhOiB7InR5cGUiOiJyZXNwb25zZS5jb21wbGV0ZWQiLCJyZXNwb25zZSI6eyJpZCI6InJlc3BfYSIsIm9iamVjdCI6InJlc3BvbnNlIiwibW9kZWwiOiJmaXh0dXJlLW1vZGVsIiwic3RhdHVzIjoiY29tcGxldGVkIiwib3V0cHV0IjpbeyJpZCI6Im1zZ19hIiwidHlwZSI6Im1lc3NhZ2UiLCJyb2xlIjoiYXNzaXN0YW50Iiwic3RhdHVzIjoiY29tcGxldGVkIiwiY29udGVudCI6W3sidHlwZSI6Im91dHB1dF90ZXh0IiwidGV4dCI6InJlcGx5LWEtW29iamVjdCBPYmplY3RdIiwiYW5ub3RhdGlvbnMiOltdfV19XSwidXNhZ2UiOnsiaW5wdXRfdG9rZW5zIjozLCJvdXRwdXRfdG9rZW5zIjoyLCJ0b3RhbF90b2tlbnMiOjV9fX0KCg==",
+          "truncated": false,
+          "terminal": "eof"
+        },
+        "errorCategory": null
+      }
+    },
+    {
+      "owner": "b",
+      "attempt": {
+        "id": "attempt-1",
+        "parentCallId": "call_1",
+        "upstreamId": "up-b",
+        "order": 1,
+        "startedOffsetMs": 29,
+        "completedOffsetMs": 57,
+        "method": "POST",
+        "operation": "responses.create",
+        "url": "url_omitted",
+        "requestHeaders": [
+          [
+            "content-type",
+            "application/json"
+          ]
+        ],
+        "responseHeaders": [
+          [
+            "content-length",
+            "310"
+          ],
+          [
+            "content-type",
+            "application/json"
+          ]
+        ],
+        "omittedRequestHeaders": 1,
+        "omittedResponseHeaders": 4,
+        "status": 200,
+        "representation": "fetch-body",
+        "request": {
+          "source": "prepared",
+          "observedBytes": 103,
+          "totalBytes": 103,
+          "capturedBytes": 103,
+          "prefixBase64": "eyJtb2RlbCI6ImZpeHR1cmUtbW9kZWwiLCJpbnB1dCI6W3sidHlwZSI6Im1lc3NhZ2UiLCJyb2xlIjoidXNlciIsImNvbnRlbnQiOiJpbnB1dC1iIn1dLCJzdHJlYW0iOmZhbHNlfQ==",
+          "truncated": false
+        },
+        "response": {
+          "source": "fetch-body",
+          "observedBytes": 310,
+          "totalBytes": 310,
+          "capturedBytes": 310,
+          "prefixBase64": "eyJpZCI6InJlc3BfYiIsIm9iamVjdCI6InJlc3BvbnNlIiwibW9kZWwiOiJmaXh0dXJlLW1vZGVsIiwic3RhdHVzIjoiY29tcGxldGVkIiwib3V0cHV0IjpbeyJpZCI6Im1zZ19iIiwidHlwZSI6Im1lc3NhZ2UiLCJyb2xlIjoiYXNzaXN0YW50Iiwic3RhdHVzIjoiY29tcGxldGVkIiwiY29udGVudCI6W3sidHlwZSI6Im91dHB1dF90ZXh0IiwidGV4dCI6InJlcGx5LWItW29iamVjdCBPYmplY3RdIiwiYW5ub3RhdGlvbnMiOltdfV19XSwidXNhZ2UiOnsiaW5wdXRfdG9rZW5zIjozLCJvdXRwdXRfdG9rZW5zIjoyLCJ0b3RhbF90b2tlbnMiOjV9fQ==",
+          "truncated": false,
+          "terminal": "eof"
+        },
+        "errorCategory": null
+      }
+    }
+  ],
+  "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/d02-route-runtime-BufKQW",
+  "passed": true
+}

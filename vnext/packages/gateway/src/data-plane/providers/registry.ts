@@ -21,8 +21,11 @@ import { claudeCodeProviderPlugin } from '@vibe-llm/provider-claude-code'
 import { customProviderPlugin } from '@vibe-llm/provider-custom'
 import { sdfProviderPlugin } from '@vibe-llm/provider-sdf'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
-import { createPerRequestFetcher } from '../dial/per-request.ts'
-import type { Fetcher } from '@vibe-core/upstream'
+import { createPerRequestFetcher, createObservedDirectFetcher } from '../dial/per-request.ts'
+import { directFetcher, type Fetcher } from '@vibe-core/upstream'
+import type { ProviderPluginContext, ExecutionFetcherForRequest } from '@vibe-llm/provider-llm'
+import type { DumpAccumulator } from '../../shared/dump/accumulator.ts'
+import { operationForProviderRequest } from '../../shared/dump/upstream-dial-adapter.ts'
 import { supportsOriginalImageDetail } from './catalog-image-detail.ts'
 
 export interface CreateProviderOptions {
@@ -31,6 +34,7 @@ export interface CreateProviderOptions {
 }
 
 export interface ListUpstreamModelsOptions {
+  dump?: DumpAccumulator | null
   ownerId?: string
   copilot?: CreateProviderOptions
   /**
@@ -52,8 +56,8 @@ export interface ListUpstreamModelsOptions {
   onCatalogError?: (upstreamId?: string) => void
 }
 
-export function createCopilotProvider(opts: CreateProviderOptions): LlmModelProvider {
-  return new CopilotProvider({ copilotToken: opts.copilotToken, accountType: opts.accountType })
+export function createCopilotProvider(opts: CreateProviderOptions, executionFetcher?: ExecutionFetcherForRequest): LlmModelProvider {
+  return new CopilotProvider({ copilotToken: opts.copilotToken, accountType: opts.accountType }, directFetcher, executionFetcher)
 }
 
 /**
@@ -76,6 +80,7 @@ export async function createProviderFromUpstream(
   upstream: UpstreamRecord<unknown>,
   copilot?: CreateProviderOptions,
   fetcherForUpstream?: (upstreamId: string) => Fetcher,
+  executionFetcherForUpstream?: ProviderPluginContext["executionFetcherForUpstream"],
 ): Promise<LlmModelProvider | null> {
   const plugin = PROVIDER_PLUGINS.get(upstream.provider)
   if (!plugin) return null
@@ -84,6 +89,7 @@ export async function createProviderFromUpstream(
     deferCredentials: true,
     copilotFallback: copilot,
     fetcherForUpstream,
+    executionFetcherForUpstream,
   })
 }
 
@@ -341,11 +347,25 @@ export async function listProviderBindings(
   // routing/binding-resolver.ts:45), not only /v1/models — that is intended.
   const fetcherForUpstream = await createPerRequestFetcher(getRuntimeLocation(), upstreams)
 
+  // Ordinary and observed execution share one catalog and fallback policy.
+  // The accumulator owns the context so translated/re-entrant selections share IDs.
+  const observation = (() => {
+    try { return opts.dump?.upstreamDialObservation() } catch { return undefined }
+  })()
+  const executionFetcherForUpstream: ProviderPluginContext['executionFetcherForUpstream'] = observation
+    ? (upstreamId, request) => {
+        const operation = operationForProviderRequest(request)
+        return operation
+          ? fetcherForUpstream(upstreamId, observation.forOperation({ upstreamId, operation }))
+          : fetcherForUpstream(upstreamId)
+      }
+    : undefined
+
   const bindings: LlmProviderBinding[] = []
   for (const upstream of upstreams) {
     if (!upstream.enabled || (opts.pin && upstream.id !== opts.pin)) continue
     try {
-      const provider = await createProviderFromUpstream(upstream, opts.copilot, fetcherForUpstream)
+      const provider = await createProviderFromUpstream(upstream, opts.copilot, fetcherForUpstream, executionFetcherForUpstream)
       if (!provider) throw new Error('Unable to construct model provider')
       const models = await getCachedModels(upstream, provider)
       provider.setModelCatalog?.(models)
@@ -376,7 +396,13 @@ export async function listProviderBindings(
   // Request-scoped Copilot fallback: if no stored Copilot upstream produced
   // bindings, synthesize one from the per-request token in opts.copilot.
   if (!upstreams.some((upstream) => upstream.provider === 'copilot') && opts.copilot) {
-    const provider = createCopilotProvider(opts.copilot)
+    const provider = createCopilotProvider(opts.copilot, observation ? (request) => {
+      const operation = operationForProviderRequest(request)
+      const upstreamId = 'copilot_request'
+      return operation
+        ? createObservedDirectFetcher(upstreamId, observation.forOperation({ upstreamId, operation }))
+        : directFetcher
+    } : undefined)
     try {
       const models = await provider.getModels()
       if (!validModels(models)) throw new Error('Invalid upstream model catalog')

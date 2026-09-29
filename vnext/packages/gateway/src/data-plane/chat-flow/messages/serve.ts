@@ -103,6 +103,7 @@ const messagesHooks: ServeTemplateHooks<
     // engines from their key, so without it every Messages request looks like
     // it has no key and never searches.
     ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId },
+    dump: a.dump as DumpAccumulator | null,
     telemetryCtx: a.telemetryCtx,
     // `extras` is the kit's only per-request passthrough slot; the hooks object
     // is module-level and so cannot close over serveMessages' args.

@@ -1,3 +1,5 @@
+import type { GatewayRequestContext } from "../shared/gateway-ctx.ts"
+import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 import { fetchWithPerformance, observeUpstreamFrames, observeUpstreamJson } from "../shared/performance-upstream"
 // vnext/packages/gateway/src/data-plane/chat-flow/responses/attempt.ts
 /**
@@ -86,6 +88,7 @@ export type ResponsesAttemptResult =
 export type ResponsesAttemptAuth = SelectBindingAuth
 
 export interface ResponsesAttemptArgs {
+  readonly dump?: DumpAccumulator | null
   readonly payload: Record<string, unknown> & { model: string; stream?: boolean; input?: unknown; tools?: unknown }
   readonly auth: ResponsesAttemptAuth
   readonly ctx: RequestContext
@@ -131,17 +134,18 @@ export type SelectResponsesBindingResult =
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
 
 export type SelectResponsesBinding = (
-  args: { model: string; auth: ResponsesAttemptAuth },
+  args: { model: string; auth: ResponsesAttemptAuth; dump?: DumpAccumulator | null },
 ) => Promise<SelectResponsesBindingResult>
 
 const pickTargetForResponses = (endpoints: ModelEndpoints): EndpointKey | null =>
   selectPair('responses', endpoints)
 
-const defaultSelectBinding: SelectResponsesBinding = async ({ model, auth }) => {
+const defaultSelectBinding: SelectResponsesBinding = async ({ model, auth, dump }) => {
   const { candidates, sawModel, bareModel, catalogUnavailable } = await enumerateBindingCandidates({
     model,
     pickTarget: pickTargetForResponses,
     opts: {
+      dump,
       ownerId: auth.ownerId,
       copilot: auth.copilot,
       pin: auth.pin,
@@ -216,7 +220,7 @@ export async function* synthesizeResponsesFramesFromJson(
 export const responsesAttempt = {
   generate: async (args: ResponsesAttemptArgs): Promise<ResponsesAttemptResult> => {
     const selectFn = args.selectBinding ?? defaultSelectBinding
-    const sel = await selectFn({ model: args.payload.model, auth: args.auth })
+    const sel = await selectFn({ model: args.payload.model, auth: args.auth, dump: args.dump })
 
     if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(MODEL_CATALOG_UNAVAILABLE))
     if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
@@ -265,6 +269,7 @@ export const responsesAttempt = {
         const hubProtocol = sel.targetEndpoint as HubAttemptProtocol
         const hubAttempt = (args.hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
         return await traverseTranslation({
+          dump: args.dump,
           sourcePayload: invocation.payload,
           sourceProtocol: 'responses',
           hubProtocol,
@@ -272,9 +277,10 @@ export const responsesAttempt = {
           innerAttempt: async (innerArgs) => {
             return (await hubAttempt.generate({
               selectBinding: async () => ({ ...sel, translator: getTranslator(hubProtocol, hubProtocol)! }),
-            payload: innerArgs.payload as never,
+              payload: innerArgs.payload as never,
               auth: innerArgs.auth as never,
               ctx: { downstreamAbortSignal: innerArgs.signal } as never,
+              dump: innerArgs.dump,
               telemetryCtx: innerArgs.inheritedTelemetryCtx,
               inheritedHeaders: innerArgs.inheritedHeaders,
               snapshotMode: innerArgs.snapshotMode,
@@ -366,8 +372,9 @@ export const responsesAttempt = {
       // against /images/generations) and has to re-enumerate bindings for a
       // different model. Without the caller's scope that enumeration sees only
       // globally-owned upstreams and mis-reports a reachable model as absent.
-      const chainCtx: RequestContext = {
+      const chainCtx: GatewayRequestContext = {
         ...args.ctx,
+        dump: args.dump,
         incomingModel: args.telemetryCtx.incomingModel,
         targetEndpoint: sel.targetEndpoint,
         bindingScope: {

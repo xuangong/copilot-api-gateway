@@ -1,3 +1,4 @@
+import type { DumpAccumulator } from "../../shared/dump/accumulator.ts"
 /**
  * Binding resolver — Week 5a-impl port of old src/lib/binding-resolver.ts.
  *
@@ -21,6 +22,7 @@ export { parseModelRouting } from './model-routing.ts'
 export type { ModelRoutingHint } from './model-routing.ts'
 
 export interface ResolveBindingOptions {
+  dump?: DumpAccumulator | null
   ownerId?: string
   copilot?: CreateProviderOptions
   pin?: string
@@ -40,6 +42,7 @@ export async function resolveBinding(
     ownerId: opts.ownerId,
     pin: upstreamPin,
     copilot: opts.copilot,
+    dump: opts.dump,
     onCatalogError: (upstreamId) => {
       if (!upstreamPin || upstreamId === undefined || upstreamId === upstreamPin) incomplete = true
     },

@@ -1,3 +1,4 @@
+import type { GatewayRequestContext } from "../../shared/gateway-ctx.ts"
 /**
  * Server-tool shim core (Spec 13 Phase 13-B).
  *
@@ -1097,6 +1098,7 @@ export const withResponsesServerToolShim = (
   store: PrivatePayloadStore,
 ): ResponsesInterceptor => async (ctx, gatewayCtx, run) => {
   const requestCtx: ServerToolRequestCtx = {
+    dump: (gatewayCtx as GatewayRequestContext).dump,
     store,
     apiKeyId: (gatewayCtx.apiKeyId ?? '') as ApiKeyId,
     ...(gatewayCtx.incomingModel !== undefined ? { incomingModel: gatewayCtx.incomingModel } : {}),

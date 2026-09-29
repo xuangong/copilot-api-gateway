@@ -19,6 +19,7 @@ import type { TelemetryModelIdentity } from "@vibe-llm/protocols/common"
 
 import { getDumpBroker, getDumpStore } from "./registry.ts"
 import { UpstreamExchangeCollector } from "./upstream-attempts.ts"
+import { createUpstreamDialObservationContext } from "./upstream-dial-adapter.ts"
 import type { UpstreamExchanges } from "./upstream-attempts.ts"
 import type { RequestBody } from "./request-body.ts"
 import type {
@@ -93,6 +94,7 @@ export class DumpAccumulator {
   private errorMeta: DumpErrorMeta | null = null
   private readonly preparedRequestBody: Promise<PreparedDumpRequestBody>
   private upstreamExchangeCollector: UpstreamExchangeCollector | null = null
+  private upstreamObservation: ReturnType<typeof createUpstreamDialObservationContext> | null = null
   // Pre-allocated at construction so `finalize(Response)` can echo it as an
   // `X-Dump-Record-Id` header before the write completes. The write path
   // uses this same id to persist the dump row.
@@ -127,6 +129,12 @@ export class DumpAccumulator {
 
   attachUpstreamExchangeCollector(collector: UpstreamExchangeCollector): void {
     this.upstreamExchangeCollector ??= collector
+  }
+
+  upstreamDialObservation(): ReturnType<typeof createUpstreamDialObservationContext> {
+    this.upstreamExchangeCollector ??= new UpstreamExchangeCollector(this.startedAt)
+    this.upstreamObservation ??= createUpstreamDialObservationContext(this.upstreamExchangeCollector)
+    return this.upstreamObservation
   }
 
   error(kind: "upstream" | "gateway", upstream?: string): void {

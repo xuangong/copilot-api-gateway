@@ -74,6 +74,7 @@ export type PreProcessResult<TPayload, TExtra> =
   | { kind: 'short-circuit'; response: Response; extra: TExtra }
 
 export interface RunAttemptArgs<TPayload, TExtra, TAuth, TTelemetryCtx> {
+  readonly dump?: KitDumpSink | null
   readonly payload: TPayload
   /** Endpoint-specific data returned by preProcess. This carries routing data
    * without allowing preprocessing to alter the request auth context. */
@@ -242,6 +243,7 @@ export async function serveTemplate<
 
   // 7. runAttempt.
   const result = await hooks.runAttempt({
+    dump: input.dump ?? null,
     payload,
     extra,
     auth: input.auth,

@@ -1,0 +1,84 @@
+import { Miniflare } from '../../../vnext/node_modules/.bun/miniflare@4.20260601.0/node_modules/miniflare/dist/src/index.js'
+import { unstable_splitSqlQuery } from '../../../vnext/node_modules/.bun/wrangler@4.97.0+01d2f64f02d20ae6/node_modules/wrangler/wrangler-dist/cli.js'
+import { readdir, readFile, writeFile, mkdtemp } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import { gunzipSync } from 'node:zlib'
+import { spawnSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
+import assert from 'node:assert/strict'
+const root=process.env.VNEXT_PROBE_ROOT
+assert(root,'VNEXT_PROBE_ROOT required')
+const expectCapture=process.env.EXPECT_CAPTURE!=='0'
+const scratch=await mkdtemp(`${tmpdir()}/d02-route-runtime-`)
+const entry=`${scratch}/worker.ts`,bundle=`${scratch}/worker.mjs`
+await writeFile(entry,(await readFile(new URL('./task-D02-route-worker.ts',import.meta.url),'utf8')).replaceAll('__ROOT__',root))
+const build=spawnSync('bun',['build',entry,'--target=node',`--outfile=${bundle}`],{cwd:root,encoding:'utf8'})
+assert.equal(build.status,0,build.stderr)
+const calls=[]
+const secret='SYNTHETIC_UPSTREAM_CREDENTIAL_SENTINEL'
+const origin=createServer(async(req,res)=>{
+ let body='';for await(const chunk of req)body+=chunk
+ const owner=req.url.includes('/a/')?'a':'b'
+ if(req.url.endsWith('/models')){calls.push({owner,kind:'discovery'});res.setHeader('content-type','application/json');res.end(JSON.stringify({data:[{id:'fixture-model',object:'model'}]}));return}
+ calls.push({owner,kind:'execution'})
+ const payload=JSON.parse(body)
+ const text=`reply-${owner}-${String(payload.input)}`
+ const final={id:`resp_${owner}`,object:'response',model:'fixture-model',status:'completed',output:[{id:`msg_${owner}`,type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text,annotations:[]}]}],usage:{input_tokens:3,output_tokens:2,total_tokens:5}}
+ res.setHeader('x-private-upstream-token',secret)
+ if(payload.stream){res.setHeader('content-type','text/event-stream');res.end(`data: ${JSON.stringify({type:'response.created',response:{...final,status:'in_progress',output:[]}})}\n\ndata: ${JSON.stringify({type:'response.completed',response:final})}\n\n`)}
+ else {res.setHeader('content-type','application/json');res.end(JSON.stringify(final))}
+})
+await new Promise(resolve=>origin.listen(0,'127.0.0.1',resolve))
+const address=origin.address();assert(address && typeof address!=='string')
+const mf=new Miniflare({modules:true,modulesRoot:scratch,scriptPath:bundle,compatibilityDate:'2026-06-01',compatibilityFlags:['nodejs_compat'],d1Databases:{DB:'d02-route'},r2Buckets:{FILES:'d02-files'}})
+try{
+ const db=await mf.getD1Database('DB')
+ for(const name of(await readdir(`${root}/vnext/packages/gateway/migrations`)).filter(n=>n.endsWith('.sql')).sort())for(const sql of unstable_splitSqlQuery(await readFile(`${root}/vnext/packages/gateway/migrations/${name}`,'utf8')))await db.prepare(sql).run()
+ const now=new Date().toISOString(),expires=new Date(Date.now()+3600000).toISOString()
+ for(const owner of ['a','b']){
+  await db.prepare('INSERT INTO users(id,name,email,created_at) VALUES(?,?,?,?)').bind(owner,owner,`${owner}@example.invalid`,now).run()
+  await db.prepare('INSERT INTO user_sessions(token,user_id,created_at,expires_at) VALUES(?,?,?,?)').bind(`ses_${owner}`,owner,now,expires).run()
+  await db.prepare('INSERT INTO api_keys(id,name,key,created_at,owner_id,dump_retention_seconds) VALUES(?,?,?,?,?,?)').bind(`key-${owner}`,owner,`raw-${owner}`,now,owner,3600).run()
+  const config={name:owner,baseUrl:`http://127.0.0.1:${address.port}/${secret}/${owner}/v1`,apiKey:secret,endpoints:['responses']}
+  await db.prepare('INSERT INTO upstreams(id,owner_id,provider,name,config_json,proxy_fallback_list_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').bind(`up-${owner}`,owner,'custom',owner,JSON.stringify(config),'[{"id":"direct_fetch"}]',now,now).run()
+ }
+ await db.prepare('INSERT INTO api_keys(id,name,key,created_at,owner_id,dump_retention_seconds) VALUES(?,?,?,?,?,NULL)').bind('key-off','off','raw-off',now,'a').run()
+ const send=async(owner,stream)=>{
+  const response=await mf.dispatchFetch('http://local/v1/responses',{method:'POST',headers:{authorization:`Bearer raw-${owner}`,'content-type':'application/json'},body:JSON.stringify({model:'fixture-model',input:`input-${owner}`,stream})})
+  const text=await response.text();assert.equal(response.status,200,text);assert(text.includes(`reply-${owner==='off'?'a':owner}`),text)
+ }
+ await Promise.all([send('a',true),send('b',false)])
+ await send('off',false)
+ assert.equal((await (await mf.dispatchFetch('http://local/__fixture/drain')).json()).pending,0)
+ const rows=(await db.prepare('SELECT key_id,id AS record_id,upstream_exchanges_descriptor FROM dump_records ORDER BY key_id').all()).results
+ assert.equal(rows.length,2);assert.deepEqual(rows.map(r=>r.key_id),['key-a','key-b'])
+ const results=[];const bucket=await mf.getR2Bucket('FILES')
+ for(const row of rows){
+  const owner=row.key_id.slice(-1), path=`http://local/api/keys/${row.key_id}/records/${row.record_id}`
+  const detailResponse=await mf.dispatchFetch(path,{headers:{cookie:`session_token=ses_${owner}`}})
+  assert.equal(detailResponse.status,200);const detail=await detailResponse.json()
+  assert.equal((await mf.dispatchFetch(path,{headers:{cookie:`session_token=ses_${owner==='a'?'b':'a'}`}})).status,403)
+  if(!expectCapture){assert.equal(row.upstream_exchanges_descriptor,null);results.push({owner,capture:null});continue}
+  assert(row.upstream_exchanges_descriptor,'No capture sidecar')
+  const descriptor=JSON.parse(row.upstream_exchanges_descriptor),file=await bucket.get(descriptor.key);assert(file)
+  const sidecar=JSON.parse(gunzipSync(Buffer.from(await file.arrayBuffer())).toString())
+  assert(!JSON.stringify(sidecar).includes(secret));assert(!JSON.stringify(detail).includes(secret))
+  assert.equal(sidecar.attempts.length,1)
+  const attempt=sidecar.attempts[0]
+  assert.equal(attempt.upstreamId,`up-${owner}`);assert.equal(attempt.parentCallId,'call_1');assert.equal(attempt.operation,'responses.create')
+  assert.deepEqual(detail.upstreamExchanges,sidecar)
+  const requestPrefix=Buffer.from(attempt.request.prefixBase64,'base64'),responsePrefix=Buffer.from(attempt.response.prefixBase64,'base64')
+  assert(requestPrefix.toString().includes(`input-${owner}`));assert(!requestPrefix.toString().includes(`input-${owner==='a'?'b':'a'}`))
+  assert(responsePrefix.toString().includes(`reply-${owner}`));assert(!responsePrefix.toString().includes(`reply-${owner==='a'?'b':'a'}`))
+  assert.equal(attempt.request.capturedBytes,requestPrefix.length);assert.equal(attempt.request.totalBytes,requestPrefix.length)
+  assert.equal(attempt.response.capturedBytes,responsePrefix.length);assert.equal(attempt.response.observedBytes,responsePrefix.length)
+  if(attempt.response.terminal==='eof')assert.equal(attempt.response.totalBytes,responsePrefix.length)
+  else assert.equal(attempt.response.totalBytes,null)
+  assert.equal(attempt.url,'url_omitted');assert.equal(attempt.status,200)
+  const exported=await mf.dispatchFetch(`${path}/export`,{headers:{cookie:`session_token=ses_${owner}`}});assert.equal(exported.status,200);const exportText=await exported.text();assert(!exportText.includes(secret))
+  results.push({owner,attempt})
+ }
+ assert.equal(calls.filter(c=>c.kind==='execution').length,3)
+ assert(calls.filter(c=>c.kind==='discovery').length>=2)
+ console.log(JSON.stringify({runtime:'actual local workerd+D1+R2+loopback HTTP',expectCapture,calls,results,scratch,passed:true}))
+}finally{await mf.dispose();origin.closeAllConnections();await new Promise(resolve=>origin.close(resolve))}
