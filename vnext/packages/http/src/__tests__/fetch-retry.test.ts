@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { fetchWithRetry } from '../fetch-retry.ts'
+import { fetchOnStream } from '../fetch-on-stream.ts'
 
 const realFetch = globalThis.fetch
 
@@ -148,5 +149,204 @@ describe('fetchWithRetry', () => {
     controller.abort(reason)
     await expect(reading).rejects.toBe(reason)
     expect(calls[0]?.init?.signal?.aborted).toBe(true)
+  })
+})
+
+function earlyRawResponse(initialStatus: number) {
+  const encoder = new TextEncoder()
+  const streams: Array<{ readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> }> = []
+  let attempts = 0
+  let releaseWrite: () => void = () => {}
+  let releaseClose: () => void = () => {}
+  let closeStarted: () => void = () => {}
+  const firstCloseStarted = new Promise<void>(resolve => { closeStarted = resolve })
+  const closeGate = new Promise<void>(resolve => { releaseClose = resolve })
+  let oldWriteSettled = false
+  let oldWriterLockedAtRetry: boolean | undefined
+  const releaseOld = () => {
+    releaseWrite()
+    releaseClose()
+  }
+  const fetchImpl = async (_url: string, init: RequestInit): Promise<Response> => {
+    attempts++
+    const id = attempts
+    if (id === 2) oldWriterLockedAtRetry = streams[0]?.writable.locked
+    if (!(init.body instanceof Uint8Array)) throw new Error("expected original byte body")
+    let responseController: ReadableStreamDefaultController<Uint8Array> | undefined
+    const readable = new ReadableStream<Uint8Array>({
+      start(controller) { responseController = controller },
+    })
+    let writes = 0
+    const writable = new WritableStream<Uint8Array>({
+      write() {
+        writes++
+        if (writes === 1) return
+        if (writes === 2) {
+          const status = id === 1 ? initialStatus : 200
+          responseController?.enqueue(encoder.encode(`HTTP/1.1 ${status} Test\r\nContent-Length: 4\r\n\r\ntail`))
+        }
+        if (id !== 1) return
+        return new Promise<void>((_resolve, reject) => {
+          releaseWrite = () => {
+            oldWriteSettled = true
+            reject(new Error("fixture transport closed"))
+          }
+        })
+      },
+    })
+    streams.push({ readable, writable })
+    return fetchOnStream({ readable, writable }, {
+      method: "POST", path: "/synthetic", headers: { Host: "fixture.invalid" }, body: init.body,
+    }, undefined, {
+      signal: init.signal ?? undefined,
+      closeTransport: () => {
+        if (id !== 1) return
+        closeStarted()
+        return closeGate
+      },
+    })
+  }
+  return {
+    fetchImpl, firstCloseStarted, releaseOld, streams,
+    get attempts() { return attempts },
+    get oldWriteSettled() { return oldWriteSettled },
+    get oldWriterLockedAtRetry() { return oldWriterLockedAtRetry },
+  }
+}
+
+describe("fetchWithRetry over a raw byte stream", () => {
+  for (const status of [429, 500]) {
+    test(`waits for discarded ${status} transport cleanup before retrying`, async () => {
+      const raw = earlyRawResponse(status)
+      const pending = fetchWithRetry("https://fixture.invalid/synthetic", {
+        method: "POST", body: new Uint8Array(32768), fetchImpl: raw.fetchImpl,
+        maxRetries: 1, retryDelay: 1,
+      })
+      await raw.firstCloseStarted
+      try {
+        await new Promise(resolve => setTimeout(resolve, 20))
+        expect(raw.attempts).toBe(1)
+        expect(raw.oldWriteSettled).toBe(false)
+        expect(raw.streams[0]?.writable.locked).toBe(true)
+      } finally {
+        raw.releaseOld()
+      }
+      const response = await pending
+      expect(response.status).toBe(200)
+      expect(raw.attempts).toBe(2)
+      expect(raw.oldWriteSettled).toBe(true)
+      expect(raw.oldWriterLockedAtRetry).toBe(false)
+      expect(await response.text()).toBe("tail")
+      expect(raw.streams.every(stream => !stream.readable.locked && !stream.writable.locked)).toBe(true)
+    })
+  }
+
+  test("caller abort stays prompt after backoff while cleanup is pending", async () => {
+    const raw = earlyRawResponse(429)
+    const caller = new AbortController()
+    const reason = new Error("client left")
+    const pending = fetchWithRetry("https://fixture.invalid/synthetic", {
+      method: "POST", body: new Uint8Array(32768), fetchImpl: raw.fetchImpl,
+      maxRetries: 1, retryDelay: 1, signal: caller.signal,
+    })
+    await raw.firstCloseStarted
+    await new Promise(resolve => setTimeout(resolve, 20))
+    try {
+      caller.abort(reason)
+      const result = await Promise.race([
+        pending.then(() => "resolved", error => error),
+        new Promise(resolve => setTimeout(() => resolve("abort was delayed"), 100)),
+      ])
+      expect(result).toBe(reason)
+      expect(raw.attempts).toBe(1)
+      expect(raw.oldWriteSettled).toBe(false)
+    } finally {
+      raw.releaseOld()
+      await pending.catch(() => {})
+    }
+    expect(raw.streams.every(stream => !stream.readable.locked && !stream.writable.locked)).toBe(true)
+  })
+
+  test("header timeout is cleared while discarded response cleanup waits", async () => {
+    const raw = earlyRawResponse(500)
+    let firstSignal: AbortSignal | null | undefined
+    const fetchImpl = (url: string, init: RequestInit) => {
+      if (raw.attempts === 0) firstSignal = init.signal
+      return raw.fetchImpl(url, init)
+    }
+    const pending = fetchWithRetry("https://fixture.invalid/synthetic", {
+      method: "POST", body: new Uint8Array(32768), fetchImpl,
+      maxRetries: 1, retryDelay: 1, timeout: 50,
+    })
+    await raw.firstCloseStarted
+    try {
+      await new Promise(resolve => setTimeout(resolve, 80))
+      expect(firstSignal?.aborted).toBe(false)
+      expect(raw.attempts).toBe(1)
+    } finally {
+      raw.releaseOld()
+    }
+    const response = await pending
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe("tail")
+  })
+
+  for (const status of [200, 413, 429, 500]) {
+    test(`delivers final ${status} body without cancelling it`, async () => {
+      const raw = earlyRawResponse(status)
+      const response = await fetchWithRetry("https://fixture.invalid/synthetic", {
+        method: "POST", body: new Uint8Array(32768), fetchImpl: raw.fetchImpl,
+        maxRetries: 0, retryDelay: 0,
+      })
+      expect(response.status).toBe(status)
+      expect(raw.attempts).toBe(1)
+      expect(raw.oldWriteSettled).toBe(false)
+      raw.releaseOld()
+      expect(await response.text()).toBe("tail")
+      expect(raw.streams.every(stream => !stream.readable.locked && !stream.writable.locked)).toBe(true)
+    })
+  }
+
+  test("retries a bodyless status response after the configured delay", async () => {
+    let attempts = 0
+    const started = performance.now()
+    let secondStart = 0
+    const fetchImpl = async (): Promise<Response> => {
+      attempts++
+      if (attempts === 1) return new Response(null, { status: 503 })
+      secondStart = performance.now()
+      return new Response("tail", { status: 200 })
+    }
+    const response = await fetchWithRetry("https://fixture.invalid/synthetic", {
+      fetchImpl, maxRetries: 1, retryDelay: 30,
+    })
+    expect(attempts).toBe(2)
+    expect(secondStart - started).toBeGreaterThanOrEqual(25)
+    expect(await response.text()).toBe("tail")
+  })
+
+  test("a rejected discarded-body cancellation does not replace the HTTP retry", async () => {
+    let attempts = 0
+    let cancelCalled = false
+    const fetchImpl = async (): Promise<Response> => {
+      attempts++
+      if (attempts === 1) {
+        const body = new ReadableStream<Uint8Array>({
+          cancel() {
+            cancelCalled = true
+            throw new Error("cleanup failed")
+          },
+        })
+        return new Response(body, { status: 503 })
+      }
+      if (attempts === 2) return new Response("tail", { status: 200 })
+      throw new Error("unexpected extra retry")
+    }
+    const response = await fetchWithRetry("https://fixture.invalid/synthetic", {
+      fetchImpl, maxRetries: 1, retryDelay: 0,
+    })
+    expect(cancelCalled).toBe(true)
+    expect(attempts).toBe(2)
+    expect(await response.text()).toBe("tail")
   })
 })

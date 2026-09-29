@@ -16,18 +16,29 @@ export interface FetchOptions extends RequestInit {
   fetchImpl?: FetchLike
 }
 
-function waitForRetry(delay: number, signal?: AbortSignal | null): Promise<void> {
+function waitForRetry(delay: number, signal?: AbortSignal | null, cleanup?: Promise<void>): Promise<void> {
   if (signal?.aborted) return Promise.reject(signal.reason)
   return new Promise((resolve, reject) => {
+    let delayElapsed = false
+    let cleanupFinished = cleanup === undefined
+    const complete = () => {
+      if (!delayElapsed || !cleanupFinished) return
+      signal?.removeEventListener("abort", onAbort)
+      resolve()
+    }
     const onAbort = () => {
       clearTimeout(timer)
       reject(signal?.reason)
     }
     const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort)
-      resolve()
+      delayElapsed = true
+      complete()
     }, delay)
     signal?.addEventListener("abort", onAbort, { once: true })
+    void cleanup?.then(
+      () => { cleanupFinished = true; complete() },
+      () => { cleanupFinished = true; complete() },
+    )
   })
 }
 
@@ -69,9 +80,9 @@ export async function fetchWithRetry(
           return response
         }
         const delay = Math.min(retryDelay * Math.pow(2, attempt), 10000)
-        void response.body?.cancel().catch(() => {})
+        const cleanup = response.body?.cancel().catch(() => {})
         console.log(`[fetch] Attempt ${attempt + 1} got HTTP ${response.status}, retrying in ${delay}ms...`)
-        await waitForRetry(delay, callerSignal)
+        await waitForRetry(delay, callerSignal, cleanup)
         continue
       }
 
