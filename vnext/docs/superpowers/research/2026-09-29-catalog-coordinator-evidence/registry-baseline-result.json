@@ -1,0 +1,13 @@
+{
+  "runtime": "two actual local workerd isolates + shared D1 + loopback HTTP",
+  "coordination": false,
+  "beforeRelease": 2,
+  "discovery": 2,
+  "execution": 2,
+  "cachedOpenNoDiscovery": true,
+  "foreignOwner404": true,
+  "dispatchAfterDiscoveryCleanup": true,
+  "explicitFailureRetainsCatalog": false,
+  "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c02-registry-runtime-FSYzD9",
+  "passed": true
+}

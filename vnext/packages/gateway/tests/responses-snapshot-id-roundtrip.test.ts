@@ -17,7 +17,7 @@
 import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
-import { initRepo } from '../src/repo/index.ts'
+import { initCatalogTestRepo as initRepo, syntheticCopilotTokenResponse } from './helpers/catalog-test-repo.ts'
 import { initResponsesStore } from '../src/data-plane/runtime/responses-store.ts'
 import {
   __resetPlatformForTests,
@@ -69,7 +69,7 @@ const originalFetch = globalThis.fetch
 function installFetch(handler: (req: Request) => Promise<Response> | Response) {
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const req = input instanceof Request ? input : new Request(input as string, init)
-    return Promise.resolve(handler(req))
+    return Promise.resolve(syntheticCopilotTokenResponse(req) ?? handler(req))
   }) as typeof fetch
 }
 
@@ -107,7 +107,7 @@ test('round-trip: responses→responses identity preserves id across turns', asy
   installFetch((req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
-      return new Response(JSON.stringify({ data: [stubModel(RESP_MODEL)] }), {
+      return new Response(JSON.stringify({ object: 'list', data: [stubModel(RESP_MODEL)] }), {
         status: 200, headers: { 'content-type': 'application/json' },
       })
     }
@@ -188,7 +188,7 @@ for (const stream of [false, true]) {
         const pending: Promise<unknown>[] = []
         installFetch((req) => {
           if (new URL(req.url).pathname.endsWith('/models')) {
-            return Response.json({ data: [stubModel(RESP_MODEL)] })
+            return Response.json({ object: 'list', data: [stubModel(RESP_MODEL)] })
           }
           const response = {
             id: 'resp_policy', object: 'response', model: RESP_MODEL, status: 'completed',
@@ -242,7 +242,7 @@ for (const retention of [0, 86400]) {
       items: [{ type: 'message', role: 'user', content: 'old input' }], createdAt: Date.now(), expiresAt })
     let forwarded: unknown = null
     installFetch(async (req) => {
-      if (new URL(req.url).pathname.endsWith('/models')) return Response.json({ data: [stubModel(RESP_MODEL)] })
+      if (new URL(req.url).pathname.endsWith('/models')) return Response.json({ object: 'list', data: [stubModel(RESP_MODEL)] })
       forwarded = await req.json()
       return Response.json({ id: 'resp_unsaved', object: 'response', model: RESP_MODEL,
         output: [], usage: { input_tokens: 1, output_tokens: 0, total_tokens: 1 } })
@@ -281,7 +281,7 @@ for (const requestedStore of [undefined, true]) {
     await store.save({ responseId: 'resp_active', apiKeyId: 'k1', model: RESP_MODEL,
       items: [{ type: 'message', role: 'user', content: 'old input' }], createdAt: now - 10000, expiresAt: now + 60000 })
     installFetch((req) => new URL(req.url).pathname.endsWith('/models')
-      ? Response.json({ data: [stubModel(RESP_MODEL)] })
+      ? Response.json({ object: 'list', data: [stubModel(RESP_MODEL)] })
       : Response.json({ id: 'resp_renewed', object: 'response', model: RESP_MODEL, output: [], usage: { input_tokens: 1, output_tokens: 0, total_tokens: 1 } }))
     const wrapper = buildApp({ apiKeyId: 'k1', userId: 'u1', responsesRetentionSeconds: 259200,
       copilot: { copilotToken: 'tkn', accountType: 'individual' } } as DataPlaneAuthCtx)

@@ -72,3 +72,13 @@ test('a fetcher over a malformed proxy throws naming the id, not the url', async
   expect(err!.message).not.toContain(FAKE_PASSWORD)
   expect(err!.message).not.toContain('node.example.com')
 })
+
+test('explicit discovery proxy source overrides the pinned repository proxy', async () => {
+  await repo.proxies.save({ id: 'px', name: 'valid', url: 'http://proxy.invalid:8080', dialTimeoutSeconds: null })
+  const row = upstreamRow({ proxyFallbackList: [{ id: 'px' }] })
+  const fetcher = await createPerRequestFetcher(LOC, [row], {
+    proxies: { list: async () => [{ id: 'px', name: 'edited', url: MALFORMED_URL, dialTimeoutSeconds: null, createdAt: NOW, updatedAt: NOW }] },
+    proxyBackoffs: repo.proxyBackoffs,
+  })
+  await expect(fetcher(row.id)('https://example.invalid', {})).rejects.toThrow('malformed proxy px')
+})

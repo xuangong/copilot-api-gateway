@@ -3,7 +3,10 @@
 // fallback-aware fetcher can be injected here without a cast. `url` is a
 // string (not string | URL) because that is what every implementation of it
 // accepts; fetchWithRetry normalises before calling.
-export type FetchLike = (url: string, init: RequestInit) => Promise<Response>
+export type FetchLike = ((url: string, init: RequestInit) => Promise<Response>) & {
+  /** Optional lifetime owned by an injected transport, including retry waits. */
+  readonly signal?: AbortSignal
+}
 
 export interface FetchOptions extends RequestInit {
   maxRetries?: number
@@ -47,7 +50,8 @@ export async function fetchWithRetry(
   init?: FetchOptions,
 ): Promise<Response> {
   const { maxRetries = 3, retryDelay = 1000, timeout, fetchImpl = fetch, ...requestInit } = init ?? {}
-  const callerSignal = init?.signal
+  const lifetime = (fetchImpl as FetchLike).signal
+  const callerSignal = lifetime && init?.signal ? AbortSignal.any([lifetime, init.signal]) : lifetime ?? init?.signal
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (callerSignal?.aborted) throw callerSignal.reason

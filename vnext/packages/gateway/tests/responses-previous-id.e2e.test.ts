@@ -2,7 +2,7 @@
 import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
-import { initRepo } from '../src/repo/index.ts'
+import { initCatalogTestRepo as initRepo, syntheticCopilotTokenResponse } from './helpers/catalog-test-repo.ts'
 import { initResponsesStore } from '../src/data-plane/runtime/responses-store.ts'
 import {
   __resetPlatformForTests,
@@ -46,7 +46,7 @@ const originalFetch = globalThis.fetch
 function installFetch(handler: (req: Request) => Promise<Response> | Response) {
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const req = input instanceof Request ? input : new Request(input as string, init)
-    return Promise.resolve(handler(req))
+    return Promise.resolve(syntheticCopilotTokenResponse(req) ?? handler(req))
   }) as typeof fetch
 }
 
@@ -85,7 +85,7 @@ test('responses + previous_response_id expands snapshot and clears the field', a
   installFetch((req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
-      return new Response(JSON.stringify({ data: [stubModel(MODEL_ID)] }), {
+      return new Response(JSON.stringify({ object: 'list', data: [stubModel(MODEL_ID)] }), {
         status: 200, headers: { 'content-type': 'application/json' },
       })
     }
@@ -139,7 +139,7 @@ test('responses maps the model after expanding previous_response_id', async () =
   let observed: { model?: unknown; input?: unknown[]; previous_response_id?: unknown } | null = null
   installFetch(async (req) => {
     const url = new URL(req.url)
-    if (url.pathname.endsWith('/models')) return new Response(JSON.stringify({ data: [stubModel(MODEL_ID)] }), { headers: { 'content-type': 'application/json' } })
+    if (url.pathname.endsWith('/models')) return new Response(JSON.stringify({ object: 'list', data: [stubModel(MODEL_ID)] }), { headers: { 'content-type': 'application/json' } })
     if (url.pathname.endsWith('/responses')) {
       observed = await req.json() as typeof observed
       return new Response(JSON.stringify({ id: 'resp_new', object: 'response', model: MODEL_ID, output: [], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }), { headers: { 'content-type': 'application/json' } })
@@ -177,7 +177,7 @@ test('responses continuation keeps current source model when routing is disabled
   let observed: { model?: unknown; previous_response_id?: unknown } | null = null
   installFetch(async (req) => {
     const url = new URL(req.url)
-    if (url.pathname.endsWith('/models')) return new Response(JSON.stringify({ data: [stubModel(source)] }), { headers: { 'content-type': 'application/json' } })
+    if (url.pathname.endsWith('/models')) return new Response(JSON.stringify({ object: 'list', data: [stubModel(source)] }), { headers: { 'content-type': 'application/json' } })
     if (url.pathname.endsWith('/responses')) {
       observed = await req.json() as typeof observed
       return new Response(JSON.stringify({ id: 'resp_new', object: 'response', model: source, output: [], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }), { headers: { 'content-type': 'application/json' } })
@@ -205,7 +205,7 @@ test('responses + unknown previous_response_id returns 400 with verbatim envelop
   installFetch((req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
-      return new Response(JSON.stringify({ data: [stubModel(MODEL_ID)] }), {
+      return new Response(JSON.stringify({ object: 'list', data: [stubModel(MODEL_ID)] }), {
         status: 200, headers: { 'content-type': 'application/json' },
       })
     }
@@ -284,7 +284,7 @@ test('responses + previous_response_id owned by another api key returns 400', as
   installFetch((req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
-      return new Response(JSON.stringify({ data: [stubModel(MODEL_ID)] }), {
+      return new Response(JSON.stringify({ object: 'list', data: [stubModel(MODEL_ID)] }), {
         status: 200, headers: { 'content-type': 'application/json' },
       })
     }
@@ -315,7 +315,7 @@ test('responses non-stream saves snapshot using upstream response.id', async () 
   installFetch((req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
-      return new Response(JSON.stringify({ data: [stubModel(MODEL_ID)] }), {
+      return new Response(JSON.stringify({ object: 'list', data: [stubModel(MODEL_ID)] }), {
         status: 200, headers: { 'content-type': 'application/json' },
       })
     }
@@ -369,7 +369,7 @@ test('responses stream saves snapshot when response.completed fires', async () =
   installFetch((req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
-      return new Response(JSON.stringify({ data: [stubModel(MODEL_ID)] }), {
+      return new Response(JSON.stringify({ object: 'list', data: [stubModel(MODEL_ID)] }), {
         status: 200, headers: { 'content-type': 'application/json' },
       })
     }
@@ -434,7 +434,7 @@ for (const stream of [false, true]) {
       let continuation: Record<string, unknown> | undefined
       const output = { type: 'message', id: 'message_1', role: 'assistant', content: [{ type: 'output_text', text: 'durable reply' }] }
       installFetch(async (req) => {
-        if (new URL(req.url).pathname.endsWith('/models')) return Response.json({ data: [stubModel(MODEL_ID)] })
+        if (new URL(req.url).pathname.endsWith('/models')) return Response.json({ object: 'list', data: [stubModel(MODEL_ID)] })
         if (new URL(req.url).pathname.endsWith('/responses')) {
           const payload = await req.json() as Record<string, unknown>
           calls++

@@ -43,7 +43,14 @@ export interface CatalogFailure {
   lastErrorCode: CatalogErrorCode | null
 }
 
+export type CatalogTerminal =
+  | { token: string; outcome: "success"; publicationVersion: number }
+  | { token: string; outcome: "failure"; code: CatalogErrorCode }
+
 export interface CatalogObservation extends CatalogFailure {
+  /** Raw SQL publication counter, including an obsolete or invalid snapshot. */
+  publicationVersion: number
+  terminal: CatalogTerminal | null
   upstream: StoredUpstreamRecord
   /** Authoritative referenced rows, including credentials; never serialize to clients. */
   proxies: ProxyRecord[]
@@ -57,13 +64,14 @@ export interface CatalogRepo {
   /** Coherent raw row/proxy observation; four attempts before typed contention. */
   read(id: UpstreamId, catalogRevision: number): Promise<CatalogObservation | null>
   /** Null means lost eligibility. Inspect read() for a competing lease/backoff.
+   * Automatic callers supply the observed publication version to reject stale acquisition.
    * Freshness and enabled/owner visibility remain the coordinator's decision. */
-  tryAcquire(identity: CatalogIdentity, options?: { explicit?: boolean; leaseMs?: number }): Promise<CatalogLease | null>
+  tryAcquire(identity: CatalogIdentity, options?: { explicit?: boolean; leaseMs?: number; expectedPublicationVersion?: number }): Promise<CatalogLease | null>
   /** Null means publication was fenced out; it must never be installed in L1. */
   publish(lease: CatalogLease, models: CatalogModels, options?: { freshnessMs?: number }): Promise<CatalogSnapshot | null>
   recordFailure(lease: CatalogLease, code: CatalogErrorCode, options?: { backoffMs?: number }): Promise<CatalogFailure | null>
   /** Caller supplies every revision still active in the rolling deployment. */
-  deleteInactiveRevisions(options: { activeRevisions: readonly number[]; inactiveBeforeMs: number; limit: number }): Promise<number>
+  deleteInactiveRevisions(options: { activeRevisions: readonly number[]; inactiveBeforeMs: number; limit: number; maximumRevision?: number }): Promise<number>
 }
 
 function canonical(value: unknown): unknown {

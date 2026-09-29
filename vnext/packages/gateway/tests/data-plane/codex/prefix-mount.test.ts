@@ -13,7 +13,7 @@
  */
 import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { app } from '../../../src/app.ts'
-import { initRepo } from '../../../src/repo/index.ts'
+import { initCatalogTestRepo as initRepo } from '../../helpers/catalog-test-repo.ts'
 import { __resetPlatformForTests, initBackground, initRuntimeLocation } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../../../src/repo/types.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
@@ -43,6 +43,7 @@ const stubModel = (id: string): Model => ({
 
 const upstream: UpstreamRecord = {
   id: 'copilot:u1',
+  ownerId: OWNER,
   provider: 'copilot',
   name: 'u1',
   enabled: true,

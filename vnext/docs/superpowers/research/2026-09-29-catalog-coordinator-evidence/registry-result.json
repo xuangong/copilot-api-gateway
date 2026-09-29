@@ -1,0 +1,17 @@
+{
+  "runtime": "two actual local workerd isolates + shared D1 + loopback HTTP",
+  "coordination": true,
+  "beforeRelease": 1,
+  "discovery": 2,
+  "execution": 2,
+  "cachedOpenNoDiscovery": true,
+  "foreignOwner404": true,
+  "dispatchAfterDiscoveryCleanup": true,
+  "explicitFailureRetainsCatalog": true,
+  "actualTransportCancellation": {
+    "cancelDiscovery": 1,
+    "cancelClosed": true
+  },
+  "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/c02-registry-runtime-opkTZh",
+  "passed": true
+}

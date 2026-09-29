@@ -23,11 +23,13 @@ import type { SdfProviderConfig } from '@vibe-llm/provider-sdf'
 
 function inMemoryRepo() {
   const db = new Database(':memory:')
-  const upstreams = new BunSqliteRepo(db).upstreams
+  const sqlRepo = new BunSqliteRepo(db)
+  const upstreams = sqlRepo.upstreams
   const deletedGithub: Array<{ userId: number; ownerId?: string }> = []
   const ghAccounts = new Map<string, GitHubAccount>()
 
   const repo = {
+    ...sqlRepo,
     upstreams,
     github: {
       listAccounts: async () => [...ghAccounts.values()],
@@ -364,6 +366,7 @@ test('POST /api/upstreams/:id/test custom → 200 via probe', async () => {
       config: { name: 'a', baseUrl: 'https://api.example.com/v1', apiKey: 'sk-x', endpoints: ['chat_completions'] },
       flagOverrides: {},
       disabledPublicModelIds: [],
+      proxyFallbackList: [{ id: "direct_fetch" }],
       createdAt: now, updatedAt: now,
     }
     await store.repo.upstreams.save(u)
@@ -865,24 +868,23 @@ test('POST /:id/test reports a chain it cannot resolve instead of degrading to d
   const body = await res.json() as { error?: string; ok?: boolean }
   expect(body.ok).toBeUndefined()
   expect(body.error).toContain(`failed to resolve proxy chain for upstream ${upstream.id}`)
-  expect(body.error).toContain('proxy store unavailable')
+  expect(body.error).toContain('configuration temporarily unavailable')
 })
 
 test('GET /:id/models reports a chain it cannot resolve instead of degrading to direct', async () => {
   const upstream = chainedCustomUpstream()
   await store.repo.upstreams.save(upstream)
-  initRepo(repoWithBrokenProxyStore())
+  store.db.exec("DROP TABLE proxies")
 
   const res = await withStubbedDirectFetch(
     { object: 'list', data: [{ id: 'm1' }] },
     () => buildApp({ isAdmin: true }).request(`/api/upstreams/${upstream.id}/models?refresh=1`),
   )
 
-  expect(res.status).toBe(400)
+  expect(res.status).toBe(502)
   const body = await res.json() as { error?: string; models?: unknown }
   expect(body.models).toBeUndefined()
-  expect(body.error).toContain(`failed to resolve proxy chain for upstream ${upstream.id}`)
-  expect(body.error).toContain('proxy store unavailable')
+  expect(body.error).toContain('unavailable')
 })
 
 /**
@@ -947,5 +949,45 @@ test('the admin routes dial through the upstream chain and name a dangling proxy
   expect(testBody.ok).toBe(false)
   expect(testBody.error).toContain('px_dangling')
   expect(modelsRes.status).toBe(502)
-  expect(modelsBody.error).toContain('px_dangling')
+  expect(modelsBody.error).toContain('upstream_error')
+})
+
+test('owned disabled upstream editor can refresh while data-plane discovery excludes it', async () => {
+  const original = globalThis.fetch
+  let calls = 0
+  globalThis.fetch = (async () => { calls++; return Response.json({ data: [{ id: 'known' }] }) }) as typeof fetch
+  try {
+    const row = { ...chainedCustomUpstream(), ownerId: 'editor-owner', enabled: false, proxyFallbackList: [{ id: 'direct_fetch' }] }
+    await store.repo.upstreams.save(row)
+    const editor = buildApp({ userId: 'editor-owner', isUser: true })
+    expect((await editor.request(`/api/upstreams/${row.id}/models?refresh=1`)).status).toBe(200)
+    expect(calls).toBe(1)
+    expect((await listUpstreamModels({ ownerId: 'editor-owner' })).data).toEqual([])
+    const stored = await store.repo.upstreams.getById(row.id)
+    if (!stored) throw new Error('missing row')
+    await store.repo.upstreams.patchMetadata(stored, r => ({ ...r, disabledPublicModelIds: ['known'] }))
+    const read = await editor.request(`/api/upstreams/${row.id}/models`)
+    expect(await read.json()).toMatchObject({ cached: true, disabledPublicModelIds: ['known'], models: [{ id: 'known' }] })
+    expect(calls).toBe(1)
+  } finally { globalThis.fetch = original }
+})
+
+test('editor refresh loses authorization when ownership changes during discovery', async () => {
+  const original = globalThis.fetch
+  let started: () => void = () => {}, release: () => void = () => {}
+  const ready = new Promise<void>(resolve => { started = resolve })
+  const held = new Promise<void>(resolve => { release = resolve })
+  globalThis.fetch = (async () => { started(); await held; return Response.json({ data: [{ id: 'private' }] }) }) as typeof fetch
+  try {
+    const row = { ...chainedCustomUpstream(), ownerId: 'old-owner', proxyFallbackList: [{ id: 'direct_fetch' }] }
+    await store.repo.upstreams.save(row)
+    const pending = buildApp({ userId: 'old-owner', isUser: true }).request(`/api/upstreams/${row.id}/models?refresh=1`)
+    await ready
+    const stored = await store.repo.upstreams.getById(row.id)
+    if (!stored) throw new Error('missing row')
+    await store.repo.upstreams.patchMetadata(stored, r => ({ ...r, ownerId: 'new-owner' }))
+    release()
+    expect((await pending).status).toBe(404)
+    expect((await store.repo.catalogs.read(row.id, 5))?.snapshot).toBeNull()
+  } finally { release(); globalThis.fetch = original }
 })

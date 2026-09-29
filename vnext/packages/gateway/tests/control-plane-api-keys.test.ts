@@ -7,7 +7,7 @@
  */
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/repo/index.ts'
+import { initCatalogTestRepo as initRepo } from './helpers/catalog-test-repo.ts'
 import type {
   ApiKey,
   KeyAssignment,

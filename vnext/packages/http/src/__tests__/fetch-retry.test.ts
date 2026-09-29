@@ -350,3 +350,31 @@ describe("fetchWithRetry over a raw byte stream", () => {
     expect(await response.text()).toBe("tail")
   })
 })
+
+test('a discovery fetcher lifetime cancels retry backoff even without RequestInit.signal', async () => {
+  const controller = new AbortController()
+  let calls = 0
+  const fetchImpl = Object.assign(async () => { calls++; return new Response('retry', { status: 503 }) }, { signal: controller.signal })
+  const pending = fetchWithRetry('https://example.invalid', { fetchImpl, retryDelay: 50 })
+  await Bun.sleep(5)
+  controller.abort(new Error('discovery ended'))
+  await expect(pending).rejects.toThrow('discovery ended')
+  expect(calls).toBe(1)
+})
+
+for (const abortLifetime of [false, true]) test(`composed retry cancellation honors ${abortLifetime ? 'transport lifetime' : 'request'} signal`, async () => {
+  const lifetime = new AbortController(), request = new AbortController()
+  let calls = 0
+  const fetchImpl = Object.assign(async (_: string, init: RequestInit) => {
+    calls++
+    expect(init.signal?.aborted).toBe(false)
+    return new Response('retry', { status: 503 })
+  }, { signal: lifetime.signal })
+  const pending = fetchWithRetry('https://example.invalid', { fetchImpl, signal: request.signal, retryDelay: 1000 })
+  await Bun.sleep(5)
+  const selected = abortLifetime ? lifetime : request
+  selected.abort(new Error('selected cancel'))
+  await expect(pending).rejects.toThrow('selected cancel')
+  expect(calls).toBe(1)
+  expect((abortLifetime ? request : lifetime).signal.aborted).toBe(false)
+})

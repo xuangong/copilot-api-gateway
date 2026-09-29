@@ -3,8 +3,7 @@ import { setupTestPlatform } from '../_setup-platform.ts'
 import { getDataPlaneRepo } from '../../src/repo/index.ts'
 import { ensureCodexAccessToken, CodexOAuthSessionTerminatedError, putCodexQuota, readCodexUpstreamState, readCodexCredential } from '@vibe-llm/provider-codex'
 import { ensureClaudeCodeAccessToken, putClaudeCodeQuota, readClaudeCodeUpstreamState, parseClaudeCodeQuotaHeaders } from '@vibe-llm/provider-claude-code'
-import { refreshModelsCache, listUpstreamModels } from '../../src/data-plane/providers/registry.ts'
-import type { LlmModelProvider } from '@vibe-llm/provider-llm'
+import { readCachedModels, listUpstreamModels, MODEL_CATALOG_REVISION } from '../../src/data-plane/providers/registry.ts'
 
 const accountId = '00000000-0000-4000-8000-000000000001'
 const codexState = () => readCodexUpstreamState({ accounts: [{ chatgptAccountId: accountId, refresh_token: 'old-refresh', state: 'active', state_updated_at: '2026-01-01', openaiDeviceId: accountId, accessToken: { token: 'old-access', expiresAt: Date.now() + 3_600_000, refreshedAt: '2026-01-01' }, quotaSnapshot: null }] })
@@ -79,7 +78,12 @@ for (const provider of ['codex', 'claude-code']) test(`${provider} quota writes 
     const view = getDataPlaneRepo()
     const upstream = await view.upstreams.getById(provider)
     if (!upstream) throw new Error('missing fixture upstream')
-    await refreshModelsCache(upstream, { getModels: async () => ({ object: 'list', data: [{ id: 'fixture-model', object: 'model', capabilities: { type: 'chat' } }] }) } as unknown as LlmModelProvider)
+    const observation = await repo.catalogs.read(provider, MODEL_CATALOG_REVISION)
+    if (!observation) throw new Error('missing catalog observation')
+    const lease = await repo.catalogs.tryAcquire(observation.identity)
+    if (!lease) throw new Error('missing catalog lease')
+    await repo.catalogs.publish(lease, { object: 'list', data: [{ id: 'fixture-model', object: 'model', capabilities: { type: 'chat' } }] })
+    await readCachedModels(upstream)
     const revision = await repo.configurationRevision!()
     if (provider === 'codex') await putCodexQuota(await codexObservation(), { observed_at: new Date().toISOString(), primary_used_percent: 20 })
     else await putClaudeCodeQuota(provider, parseClaudeCodeQuotaHeaders(new Headers({ 'anthropic-ratelimit-unified-status': 'allowed' })))

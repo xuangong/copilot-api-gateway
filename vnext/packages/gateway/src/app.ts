@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { withRequestSignal } from './shared/request-signal.ts'
 import { agentRemoteRouter } from './control-plane/agent-remote/routes.ts'
 import { dataPlane } from './data-plane/routes.ts'
 import { controlPlane } from './control-plane/routes.ts'
@@ -17,6 +18,8 @@ export interface Env {
 }
 
 export const app = new Hono<{ Bindings: Env; Variables: { performanceStartedAt: number } }>()
+
+app.use('*', (c, next) => withRequestSignal(c.req.raw.signal, next))
 
 app.use('*', async (c, next) => {
   c.set("performanceStartedAt", performance.now())

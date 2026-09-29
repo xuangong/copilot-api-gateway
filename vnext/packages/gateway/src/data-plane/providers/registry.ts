@@ -1,15 +1,15 @@
-import { upstreamConfiguration } from "../../repo/upstream-configuration.ts"
-import { createHash } from "node:crypto"
+import { CatalogCoordinator, CatalogDeadline, CatalogUnavailableError, type CatalogResult } from "./catalog-coordinator.ts"
+import { getRequestSignal } from "../../shared/request-signal.ts"
+import { validCatalogModels } from "../../repo/catalogs.ts"
 import { ConfigurationUnavailableError } from "../../repo/configuration-cache.ts"
 /** Provider bindings use shared configuration and retained model catalogs.
  * Credential preparation is deferred until discovery or selected dispatch. */
 import type { AccountType } from '../../shared/config/constants.ts'
 import { defaultsForUpstream, resolveEffectiveFlags } from '../flags/index.ts'
-import type { UpstreamRecord } from '../../repo/types.ts'
+import type { Repo, StoredUpstreamRecord, UpstreamRecord } from '../../repo/types.ts'
 import type { UserId } from '../../repo/branded-ids.ts'
-import { getDataPlaneRepo as getRepo } from '../../repo/index.ts'
+import { getDataPlaneRepo as getRepo, getRepo as getAuthoritativeRepo } from '../../repo/index.ts'
 import { __registerPlatformReset, getRuntimeLocation, waitUntil } from '@vibe-core/platform'
-import { getCache } from '../../data-plane/cache/index.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import { copilotModelEndpoints, copilotPublicModelId } from '@vibe-llm/provider-copilot'
 import type { LlmModelProvider, LlmProviderBinding, LlmProviderPlugin } from '@vibe-llm/provider-llm'
@@ -34,6 +34,7 @@ export interface CreateProviderOptions {
 }
 
 export interface ListUpstreamModelsOptions {
+  signal?: AbortSignal
   dump?: DumpAccumulator | null
   ownerId?: string
   copilot?: CreateProviderOptions
@@ -56,8 +57,8 @@ export interface ListUpstreamModelsOptions {
   onCatalogError?: (upstreamId?: string) => void
 }
 
-export function createCopilotProvider(opts: CreateProviderOptions, executionFetcher?: ExecutionFetcherForRequest): LlmModelProvider {
-  return new CopilotProvider({ copilotToken: opts.copilotToken, accountType: opts.accountType }, directFetcher, executionFetcher)
+export function createCopilotProvider(opts: CreateProviderOptions, executionFetcher?: ExecutionFetcherForRequest, fetcher: Fetcher = directFetcher): LlmModelProvider {
+  return new CopilotProvider({ copilotToken: opts.copilotToken, accountType: opts.accountType }, fetcher, executionFetcher)
 }
 
 /**
@@ -175,143 +176,73 @@ function modelToBindingModel(
 }
 
 
-/** A refresh deadline never expires the last successful catalog. */
-const MODELS_REFRESH_MS = 120_000
-const MODELS_RETRY_MS = 30_000
-// Bump when provider discovery or projected catalog metadata changes. This is
-// independent of the per-upstream configuration hash below.
-export const MODEL_CATALOG_REVISION = 4
-interface ModelsSnapshot {
-  codeRevision: number
-  revision: string
-  refreshedAt: number
-  models: ModelsResponse
+// Version 5 adopts the SQL-owned discovery projection; legacy KV catalogs are incompatible.
+export const MODEL_CATALOG_REVISION = 5
+let coordinators = new WeakMap<Repo, CatalogCoordinator>()
+
+function withCatalogSignal(fetcher: Fetcher, signal: AbortSignal): Fetcher {
+  return Object.assign((url: string, init: RequestInit) => {
+    if (signal.aborted) return Promise.reject(signal.reason)
+    return fetcher(url, { ...init, signal: init?.signal ? AbortSignal.any([signal, init.signal]) : signal })
+  }, { signal })
 }
-interface ModelsMemo extends ModelsSnapshot { refreshAfter: number }
-const modelsMemo = new Map<string, ModelsMemo>()
-const modelsRefreshes = new Map<string, Promise<ModelsResponse>>()
-
-function rememberModels(key: string, entry: ModelsMemo): void {
-  const upstreamKey = key.slice(0, key.lastIndexOf('@'))
-  for (const previous of modelsMemo.keys()) {
-    if (previous.slice(0, previous.lastIndexOf('@')) === upstreamKey) modelsMemo.delete(previous)
-  }
-  modelsMemo.set(key, entry)
-  while (modelsMemo.size > 512) modelsMemo.delete(modelsMemo.keys().next().value!)
-}
-
-
-// Quota telemetry changes state/updatedAt on every response, but does not
-// change model availability. Hash configuration rather than exposing credentials
-// in storage keys; actual config/credential changes still get a new catalog.
-const modelsRevision = (upstream: UpstreamRecord<unknown>): string =>
-  createHash('sha256').update(upstreamConfiguration(upstream)).digest('hex')
-const modelsCacheKey = (upstream: UpstreamRecord<unknown>): string =>
-  `models:${upstream.id}@${modelsRevision(upstream)}`
-// A stable storage key avoids accumulating permanent entries on every edit.
-// The revision in the value prevents reuse across configuration changes.
-const modelsSnapshotKey = (upstream: UpstreamRecord<unknown>): string =>
-  `models:snapshot:${upstream.id}`
-
-function validModels(models: ModelsResponse): boolean {
-  return models != null && Array.isArray(models.data) &&
-    models.data.every((model) => model != null && typeof model.id === 'string' && model.id.length > 0)
-}
-
-/** Explicit probes still report refresh errors; only automatic discovery uses stale data. */
-export function refreshModelsCache(
-  upstream: UpstreamRecord<unknown>,
-  provider: LlmModelProvider,
-): Promise<ModelsResponse> {
-  const key = modelsCacheKey(upstream)
-  const pending = modelsRefreshes.get(key)
-  if (pending) return pending
-  const refresh = (async () => {
-    const models = await provider.getModels()
-    if (!validModels(models)) throw new Error('Invalid upstream model catalog')
-    const snapshot: ModelsSnapshot = {
-      codeRevision: MODEL_CATALOG_REVISION,
-      revision: modelsRevision(upstream), refreshedAt: Date.now(), models,
-    }
-    rememberModels(key, { ...snapshot, refreshAfter: snapshot.refreshedAt + MODELS_REFRESH_MS })
-    try {
-      await getCache().set(modelsSnapshotKey(upstream), snapshot, null)
-    } catch {
-      // Storage failure must not discard the successful isolate-local snapshot.
-    }
-    return models
-  })().finally(() => { modelsRefreshes.delete(key) })
-  modelsRefreshes.set(key, refresh)
-  return refresh
-}
-
-async function loadModelsSnapshot(upstream: UpstreamRecord<unknown>): Promise<ModelsMemo | null> {
-  const key = modelsCacheKey(upstream)
-  let snapshot = modelsMemo.get(key)
-  if (!snapshot) try {
-    const l2 = await getCache().get<ModelsSnapshot>(modelsSnapshotKey(upstream))
-    if (l2?.codeRevision === MODEL_CATALOG_REVISION && l2.revision === modelsRevision(upstream)
-      && Number.isFinite(l2.refreshedAt) && validModels(l2.models)) {
-      snapshot = { ...l2, refreshAfter: l2.refreshedAt + MODELS_REFRESH_MS }
-    }
-  } catch {
-    // A degraded L2 never invalidates the local snapshot.
-  }
-  // Another caller may have refreshed/backed off while this request read L2.
-  const current = modelsMemo.get(key)
-  if (current && (!snapshot || current.refreshedAt >= snapshot.refreshedAt)) snapshot = current
-  if (snapshot) rememberModels(key, snapshot)
-  return snapshot ?? null
-}
-
-/** Editor reads known catalog data without contacting the upstream. */
-export async function readCachedModels(upstream: UpstreamRecord<unknown>): Promise<ModelsResponse | null> {
-  return (await loadModelsSnapshot(upstream))?.models ?? null
-}
-
-async function getCachedModels(
-  upstream: UpstreamRecord<unknown>,
-  provider: LlmModelProvider,
-): Promise<ModelsResponse> {
-  const key = modelsCacheKey(upstream)
-  const snapshot = await loadModelsSnapshot(upstream)
-  if (!snapshot) return refreshModelsCache(upstream, provider)
-  if (snapshot.refreshAfter > Date.now()) return snapshot.models
-
-  // Return known routes immediately while the next complete catalog is fetched.
-  // Concurrent readers use the same refresh and failed discovery is retried later.
-  snapshot.refreshAfter = Date.now() + MODELS_RETRY_MS
-  const refresh = refreshModelsCache(upstream, provider).catch(() => {
-    const retained = modelsMemo.get(key)
-    if (retained) retained.refreshAfter = Date.now() + MODELS_RETRY_MS
-    console.warn('[registry] catalog refresh failed; retaining snapshot', {
-      upstream: upstream.id, provider: upstream.provider, stage: 'models_refresh',
-    })
+async function authoritativeFetchers(result: Pick<CatalogResult, "upstream" | "proxies">) {
+  return createPerRequestFetcher(getRuntimeLocation(), [result.upstream], {
+    proxies: { list: async () => [...result.proxies] }, proxyBackoffs: getAuthoritativeRepo().proxyBackoffs,
   })
-  try {
-    waitUntil(refresh)
-  } catch {
-    // Direct library/test callers may not have a platform background executor.
-    await refresh
+}
+function coordinator(): CatalogCoordinator {
+  const repo = getAuthoritativeRepo()
+  let current = coordinators.get(repo)
+  if (!current) {
+    current = new CatalogCoordinator({
+      catalogs: repo.catalogs, catalogRevision: MODEL_CATALOG_REVISION, background: waitUntil,
+      discover: async (observation, signal) => {
+        const factory = await authoritativeFetchers(observation)
+        // Request-token fallback cannot be published as a stored account's catalog.
+        const provider = await createProviderFromUpstream(observation.upstream, undefined,
+          id => withCatalogSignal(factory(id), signal))
+        if (!provider) throw new CatalogUnavailableError("unavailable")
+        const models = await provider.getModels()
+        if (!validCatalogModels(models)) throw new CatalogUnavailableError("invalid_catalog")
+        return { ...models, data: models.data.map(model => ({ ...model })) }
+      },
+    })
+    coordinators.set(repo, current)
   }
-  return snapshot.models
+  return current
 }
-
-/** Clears isolate-local state, preserving shared storage. Test-only. */
-export function _clearModelsMemoForTest(): void {
-  modelsMemo.clear()
-  modelsRefreshes.clear()
+export interface CatalogReadOptions { signal?: AbortSignal; isVisible?: (row: StoredUpstreamRecord) => boolean }
+export function refreshModelsCache(upstream: StoredUpstreamRecord, options: CatalogReadOptions = {}): Promise<CatalogResult | null> {
+  return coordinator().read({ expected: upstream, mode: "explicit", signal: options.signal ?? getRequestSignal(), isVisible: options.isVisible ?? (() => true) })
 }
-
+export function readCachedModels(upstream: StoredUpstreamRecord, options: CatalogReadOptions = {}): Promise<CatalogResult | null> {
+  return coordinator().read({ expected: upstream, mode: "cache-only", signal: options.signal ?? getRequestSignal(), isVisible: options.isVisible ?? (() => true) })
+}
+function validModels(models: ModelsResponse): boolean {
+  return models != null && Array.isArray(models.data) && models.data.every(model => model != null && typeof model.id === "string" && model.id.length > 0)
+}
+async function requestCatalog(opts: CreateProviderOptions, fetcher: Fetcher, signal?: AbortSignal): Promise<ModelsResponse> {
+  const deadline = new CatalogDeadline(20_000, signal)
+  try {
+    deadline.check()
+    const discovery = createCopilotProvider(opts, undefined, withCatalogSignal(fetcher, deadline.signal))
+    const models = await deadline.wait(discovery.getModels())
+    if (!validModels(models)) throw new CatalogUnavailableError("invalid_catalog")
+    return models
+  } finally { deadline.dispose() }
+}
+/** Clears isolate-local state without touching shared SQL. */
+export function _clearModelsMemoForTest(): void { coordinators = new WeakMap() }
 __registerPlatformReset(_clearModelsMemoForTest)
 
-function sortUpstreams(upstreams: UpstreamRecord<unknown>[]): UpstreamRecord<unknown>[] {
+function sortUpstreams(upstreams: StoredUpstreamRecord[]): StoredUpstreamRecord[] {
   return upstreams.sort((a, b) =>
     a.sortOrder - b.sortOrder || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
   )
 }
 
-async function listVisibleUpstreams(ownerId?: UserId, allOwners = false): Promise<UpstreamRecord<unknown>[]> {
+async function listVisibleUpstreams(ownerId?: UserId, allOwners = false): Promise<StoredUpstreamRecord[]> {
   if (allOwners) return sortUpstreams(await getRepo().upstreams.list({}))
   if (ownerId !== undefined) {
     const [globalUpstreams, ownerUpstreams] = await Promise.all([
@@ -327,7 +258,7 @@ async function listVisibleUpstreams(ownerId?: UserId, allOwners = false): Promis
 export async function listProviderBindings(
   opts: ListUpstreamModelsOptions = {},
 ): Promise<LlmProviderBinding[]> {
-  let upstreams: UpstreamRecord<unknown>[]
+  let upstreams: StoredUpstreamRecord[]
   try {
     upstreams = await listVisibleUpstreams(opts.ownerId as UserId | undefined, opts.allOwners)
   } catch (err) {
@@ -362,12 +293,28 @@ export async function listProviderBindings(
     : undefined
 
   const bindings: LlmProviderBinding[] = []
-  for (const upstream of upstreams) {
+  for (const expected of upstreams) {
+    let upstream = expected
     if (!upstream.enabled || (opts.pin && upstream.id !== opts.pin)) continue
     try {
-      const provider = await createProviderFromUpstream(upstream, opts.copilot, fetcherForUpstream, executionFetcherForUpstream)
-      if (!provider) throw new Error('Unable to construct model provider')
-      const models = await getCachedModels(upstream, provider)
+      const requestOnly = upstream.provider === "copilot" && !upstream.config.githubToken ? opts.copilot : undefined
+      const accepted = requestOnly ? null : await coordinator().read({
+        expected, mode: "automatic", signal: opts.signal ?? getRequestSignal(),
+        isVisible: row => row.enabled && (opts.allOwners === true || !row.ownerId || row.ownerId === opts.ownerId),
+      })
+      if (!accepted && !requestOnly) continue
+      if (accepted) upstream = accepted.upstream
+      const currentFetcher = accepted ? await authoritativeFetchers(accepted) : fetcherForUpstream
+      const currentExecution: ProviderPluginContext["executionFetcherForUpstream"] = observation ? (id, request) => {
+        const operation = operationForProviderRequest(request)
+        return currentFetcher(id, operation ? observation.forOperation({ upstreamId: id, operation }) : undefined)
+      } : executionFetcherForUpstream
+      const provider = await createProviderFromUpstream(upstream, requestOnly, currentFetcher, currentExecution)
+      if (!provider) throw new CatalogUnavailableError("unavailable")
+      let models: ModelsResponse
+      if (accepted) models = accepted.snapshot.models as unknown as ModelsResponse
+      else if (requestOnly) models = await requestCatalog(requestOnly, currentFetcher(upstream.id), opts.signal ?? getRequestSignal())
+      else throw new CatalogUnavailableError("unavailable")
       provider.setModelCatalog?.(models)
       const enabledFlags = resolveEffectiveFlags(defaultsForUpstream(upstream.provider), [upstream.flagOverrides])
       const disabled = new Set(upstream.disabledPublicModelIds)
@@ -387,7 +334,7 @@ export async function listProviderBindings(
       if (opts.strictCatalog) throw err
       console.warn(
         `[registry] upstream ${upstream.id} (${upstream.provider}) contributed no models:`,
-        err instanceof Error ? err.message : String(err),
+        err instanceof CatalogUnavailableError ? err.code : "unavailable",
       )
       continue
     }
@@ -404,8 +351,7 @@ export async function listProviderBindings(
         : directFetcher
     } : undefined)
     try {
-      const models = await provider.getModels()
-      if (!validModels(models)) throw new Error('Invalid upstream model catalog')
+      const models = await requestCatalog(opts.copilot, directFetcher, opts.signal ?? getRequestSignal())
       const enabledFlags = defaultsForUpstream('copilot')
       for (const model of models.data ?? []) {
         bindings.push({

@@ -5,7 +5,7 @@ import type { UpstreamRepo } from "../types.ts"
 import {
   catalogFingerprint, validCatalogModels,
   type CatalogErrorCode, type CatalogFailure, type CatalogIdentity, type CatalogLease,
-  type CatalogModels, type CatalogObservation, type CatalogRepo, type CatalogSnapshot,
+  type CatalogModels, type CatalogObservation, type CatalogRepo, type CatalogSnapshot, type CatalogTerminal,
 } from "../catalogs.ts"
 import type { SqlExecutor } from "./executor.ts"
 
@@ -18,6 +18,10 @@ const OWNED = `upstream_id = ? AND catalog_revision = ? AND row_incarnation = ?
   AND lease_until_ms > ${NOW} AND ${CURRENT}`
 
 interface CatalogRow {
+  completed_lease_token: string | null
+  completed_outcome: string | null
+  completed_error_code: string | null
+  completed_publication_version: number | null
   publication_version: number | null
   row_incarnation: string | null
   configuration_generation: number | null
@@ -75,6 +79,16 @@ function failure(row: CatalogRow): CatalogFailure {
   }
 }
 
+function terminal(row: CatalogRow): CatalogTerminal | null {
+  if (!row.completed_lease_token) return null
+  if (row.completed_outcome === "success" && row.completed_publication_version !== null
+    && Number.isSafeInteger(row.completed_publication_version) && row.completed_publication_version > 0) {
+    return { token: row.completed_lease_token, outcome: "success", publicationVersion: row.completed_publication_version }
+  }
+  const code = ERROR_CODES.find(value => value === row.completed_error_code)
+  return row.completed_outcome === "failure" && code ? { token: row.completed_lease_token, outcome: "failure", code } : null
+}
+
 export class SharedCatalogRepo implements CatalogRepo {
   constructor(private readonly sql: SqlExecutor, private readonly upstreams: UpstreamRepo) {}
 
@@ -104,8 +118,9 @@ export class SharedCatalogRepo implements CatalogRepo {
         && row.configuration_generation === identity.configurationGeneration
         && row.configuration_fingerprint === identity.configurationFingerprint
       return {
-        upstream, proxies, identity, databaseNowMs: row.database_now_ms,
+        upstream, proxies, identity, databaseNowMs: row.database_now_ms, publicationVersion: row.publication_version ?? 0,
         snapshot: current ? snapshot(row, identity) : null,
+        terminal: current ? terminal(row) : null,
         lease: current && row.lease_token !== null && row.lease_until_ms !== null
           ? { identity: { ...identity }, token: row.lease_token, leaseUntilMs: row.lease_until_ms } : null,
         ...(current ? failure(row) : { failureCount: 0, retryAtMs: 0, lastErrorCode: null }),
@@ -114,9 +129,10 @@ export class SharedCatalogRepo implements CatalogRepo {
     throw new UpstreamContentionError(id)
   }
 
-  async tryAcquire(identity: CatalogIdentity, options: { explicit?: boolean; leaseMs?: number } = {}): Promise<CatalogLease | null> {
+  async tryAcquire(identity: CatalogIdentity, options: { explicit?: boolean; leaseMs?: number; expectedPublicationVersion?: number } = {}): Promise<CatalogLease | null> {
     validateIdentity(identity)
     const leaseMs = integer(options.leaseMs ?? 30_000, 1, 300_000)
+    if (options.expectedPublicationVersion !== undefined) integer(options.expectedPublicationVersion, 0, Number.MAX_SAFE_INTEGER)
     const i = identity
     await this.sql.run(`INSERT INTO model_catalogs
       (upstream_id, catalog_revision, row_incarnation, configuration_generation, configuration_fingerprint, last_used_at_ms)
@@ -126,6 +142,10 @@ export class SharedCatalogRepo implements CatalogRepo {
     [i.catalogRevision, i.configurationFingerprint, i.upstreamId, ...currentBinds(i)])
     const token = crypto.randomUUID()
     const row = await this.sql.first<{ lease_until_ms: number }>(`UPDATE model_catalogs SET
+      completed_lease_token = CASE WHEN configuration_generation < ? THEN NULL ELSE completed_lease_token END,
+      completed_outcome = CASE WHEN configuration_generation < ? THEN NULL ELSE completed_outcome END,
+      completed_error_code = CASE WHEN configuration_generation < ? THEN NULL ELSE completed_error_code END,
+      completed_publication_version = CASE WHEN configuration_generation < ? THEN NULL ELSE completed_publication_version END,
       models_json = CASE WHEN configuration_generation < ? THEN NULL ELSE models_json END,
       refreshed_at_ms = CASE WHEN configuration_generation < ? THEN NULL ELSE refreshed_at_ms END,
       refresh_after_ms = CASE WHEN configuration_generation < ? THEN NULL ELSE refresh_after_ms END,
@@ -134,11 +154,13 @@ export class SharedCatalogRepo implements CatalogRepo {
       last_error_code = CASE WHEN configuration_generation < ? THEN NULL ELSE last_error_code END,
       configuration_generation = ?, configuration_fingerprint = ?, lease_token = ?, lease_until_ms = ${NOW} + ?, last_used_at_ms = ${NOW}
       WHERE upstream_id = ? AND catalog_revision = ? AND row_incarnation = ? AND configuration_generation <= ?
+      AND (? IS NULL OR publication_version = ?)
       AND (configuration_generation < ? OR (configuration_fingerprint = ? AND (lease_token IS NULL OR lease_until_ms <= ${NOW})
         AND (? = 1 OR retry_at_ms <= ${NOW}))) AND ${CURRENT}
       RETURNING lease_until_ms`,
-    [...Array.from({ length: 7 }, () => i.configurationGeneration), i.configurationFingerprint, token, leaseMs,
-      i.upstreamId, i.catalogRevision, i.rowIncarnation, i.configurationGeneration, i.configurationGeneration,
+    [...Array.from({ length: 11 }, () => i.configurationGeneration), i.configurationFingerprint, token, leaseMs,
+      i.upstreamId, i.catalogRevision, i.rowIncarnation, i.configurationGeneration,
+      options.expectedPublicationVersion ?? null, options.expectedPublicationVersion ?? null, i.configurationGeneration,
       i.configurationFingerprint, options.explicit ? 1 : 0, ...currentBinds(i)])
     return row ? { identity: { ...identity }, token, leaseUntilMs: row.lease_until_ms } : null
   }
@@ -147,6 +169,8 @@ export class SharedCatalogRepo implements CatalogRepo {
     if (!validCatalogModels(models)) throw new TypeError("Invalid model catalog")
     const freshnessMs = integer(options.freshnessMs ?? 120_000, 1, 86_400_000)
     const row = await this.sql.first<CatalogRow>(`UPDATE model_catalogs SET models_json = ?, publication_version = publication_version + 1,
+      completed_lease_token = lease_token, completed_outcome = 'success', completed_error_code = NULL,
+      completed_publication_version = publication_version + 1,
       refreshed_at_ms = ${NOW}, refresh_after_ms = ${NOW} + ?, lease_token = NULL, lease_until_ms = NULL,
       failure_count = 0, retry_at_ms = 0, last_error_code = NULL, last_used_at_ms = ${NOW}
       WHERE ${OWNED} RETURNING *`, [JSON.stringify(models), freshnessMs, ...leaseBinds(lease)])
@@ -160,21 +184,24 @@ export class SharedCatalogRepo implements CatalogRepo {
     const row = await this.sql.first<CatalogRow>(`UPDATE model_catalogs SET
       retry_at_ms = ${NOW} + COALESCE(?, MIN(300000, CAST(30000 * (1 << MIN(failure_count, 4)) * ? AS INTEGER))),
       failure_count = MIN(failure_count + 1, 2147483647), last_error_code = ?,
+      completed_lease_token = lease_token, completed_outcome = 'failure', completed_error_code = ?, completed_publication_version = NULL,
       lease_token = NULL, lease_until_ms = NULL, last_used_at_ms = ${NOW}
-      WHERE ${OWNED} RETURNING *`, [delay, jitter, code, ...leaseBinds(lease)])
+      WHERE ${OWNED} RETURNING *`, [delay, jitter, code, code, ...leaseBinds(lease)])
     return row ? failure(row) : null
   }
 
-  async deleteInactiveRevisions(options: { activeRevisions: readonly number[]; inactiveBeforeMs: number; limit: number }): Promise<number> {
+  async deleteInactiveRevisions(options: { activeRevisions: readonly number[]; inactiveBeforeMs: number; limit: number; maximumRevision?: number }): Promise<number> {
     const limit = integer(options.limit, 1, 512)
     integer(options.inactiveBeforeMs, 0, Number.MAX_SAFE_INTEGER)
     if (options.activeRevisions.length === 0 || options.activeRevisions.length > 32) throw new TypeError("Active catalog revisions required")
     for (const revision of options.activeRevisions) integer(revision, 1, Number.MAX_SAFE_INTEGER)
+    if (options.maximumRevision !== undefined) integer(options.maximumRevision, 1, Number.MAX_SAFE_INTEGER)
     const rows = await this.sql.all<{ upstream_id: string }>(`DELETE FROM model_catalogs WHERE rowid IN (
       SELECT rowid FROM model_catalogs WHERE catalog_revision NOT IN (${options.activeRevisions.map(() => "?").join(",")})
+      AND (? IS NULL OR catalog_revision <= ?)
       AND last_used_at_ms < ? AND (lease_token IS NULL OR lease_until_ms <= ${NOW})
       ORDER BY last_used_at_ms, upstream_id, catalog_revision LIMIT ?
-    ) RETURNING upstream_id`, [...options.activeRevisions, options.inactiveBeforeMs, limit])
+    ) RETURNING upstream_id`, [...options.activeRevisions, options.maximumRevision ?? null, options.maximumRevision ?? null, options.inactiveBeforeMs, limit])
     return rows.length
   }
 }

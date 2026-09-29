@@ -16,7 +16,7 @@
 import { test, expect, afterEach, beforeEach, describe } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../../../app.ts'
-import { initRepo } from '../../../repo/index.ts'
+import { initCatalogTestRepo as initRepo, syntheticCopilotTokenResponse } from '../../../../tests/helpers/catalog-test-repo.ts'
 import {
   __resetPlatformForTests,
   initBackground,
@@ -104,7 +104,7 @@ function installFetch(
   }
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const req = input instanceof Request ? input : new Request(input as string, init)
-    return Promise.resolve(handler(req))
+    return Promise.resolve(syntheticCopilotTokenResponse(req) ?? handler(req))
   }) as typeof fetch
   return captured
 }

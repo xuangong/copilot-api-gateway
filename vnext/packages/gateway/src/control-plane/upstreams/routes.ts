@@ -602,7 +602,7 @@ upstreamsRouter.post('/:id/test', async (c) => {
     // would have served anyway.
     if (result.ok) {
       try {
-        await refreshModelsCache(upstream, provider)
+        await refreshModelsCache(upstream, { signal: c.req.raw.signal })
       } catch {}
     }
     return c.json(result)
@@ -616,32 +616,22 @@ upstreamsRouter.get('/:id/models', async (c) => {
     getRepo().upstreams.getById(c.req.param('id') as UpstreamId),
   )
   if (!upstream) return jsonError('upstream not found', 404)
-  if (c.req.query('refresh') !== '1') {
-    const models = await readCachedModels(upstream)
-    return c.json({
-      models: (models?.data ?? []).map((m) => ({ id: m.id, name: m.name ?? m.id })),
-      disabledPublicModelIds: upstream.disabledPublicModelIds,
-      cached: models !== null,
-    })
-  }
-  // Same split as /:id/test — a fetcher that cannot be built is an
-  // infrastructure fault reported with its own context, not the 502 "failed to
-  // list models" the catch below reports for a real dial.
-  let fetcherFor: ((upstreamId: string) => Fetcher) | undefined
   try {
-    fetcherFor = await upstreamFetcher(upstream)
-  } catch (err) {
-    return jsonError(proxyChainError(upstream.id, err), 400)
-  }
-  try {
-    const provider = await createProviderFromUpstream(upstream, undefined, fetcherFor)
-    if (!provider) {
-      return jsonError(`unable to construct ${upstream.provider} provider for upstream ${upstream.id}`, 502)
+    const options = { signal: c.req.raw.signal }
+    const result = c.req.query('refresh') === '1'
+      ? await refreshModelsCache(upstream, options)
+      : await readCachedModels(upstream, options)
+    if (!result) {
+      const current = await loadOwned(c.get('auth'), () => getRepo().upstreams.getById(upstream.id as UpstreamId))
+      if (!current || current.rowIncarnation !== upstream.rowIncarnation || current.provider !== upstream.provider
+        || current.ownerId !== upstream.ownerId || c.req.query('refresh') === '1') return jsonError('upstream not found', 404)
     }
-    const models = await refreshModelsCache(upstream, provider)
-    const list = (models.data ?? []).map((m) => ({ id: m.id, name: m.name ?? m.id }))
-    return c.json({ models: list, disabledPublicModelIds: upstream.disabledPublicModelIds })
-  } catch (err) {
-    return jsonError(`failed to list models: ${err instanceof Error ? err.message : String(err)}`, 502)
+    return c.json({
+      models: (result?.snapshot.models.data ?? []).map(m => ({ id: m.id, name: m.name ?? m.id })),
+      disabledPublicModelIds: result?.upstream.disabledPublicModelIds ?? upstream.disabledPublicModelIds,
+      ...(c.req.query('refresh') !== '1' ? { cached: result !== null } : {}),
+    })
+  } catch (error) {
+    return jsonError(`failed to list models: ${error instanceof Error ? error.message : "unavailable"}`, 502)
   }
 })

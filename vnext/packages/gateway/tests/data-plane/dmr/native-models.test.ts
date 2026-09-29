@@ -14,7 +14,7 @@
  */
 import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../../../src/repo/index.ts'
+import { initCatalogTestRepo as initRepo, syntheticCopilotTokenResponse } from '../../helpers/catalog-test-repo.ts'
 import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../../../src/repo/types.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
@@ -62,7 +62,7 @@ const stubRepo = (upstreams: UpstreamRecord[]): Repo => ({
 
 const originalFetch = globalThis.fetch
 function serve(models: Model[]) {
-  globalThis.fetch = (async () => new Response(
+  globalThis.fetch = (async (input: RequestInfo | URL) => syntheticCopilotTokenResponse(input instanceof Request ? input : new Request(input)) ?? new Response(
     JSON.stringify({ object: 'list', data: models } satisfies ModelsResponse),
     { status: 200, headers: { 'content-type': 'application/json' } },
   )) as unknown as typeof fetch

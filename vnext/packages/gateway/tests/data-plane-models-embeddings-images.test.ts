@@ -8,7 +8,7 @@
  */
 import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/repo/index.ts'
+import { initCatalogTestRepo as initRepo, syntheticCopilotTokenResponse } from './helpers/catalog-test-repo.ts'
 import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
@@ -59,7 +59,7 @@ type FetchHandler = (req: Request) => Promise<Response> | Response
 function installFetch(handler: FetchHandler) {
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const req = input instanceof Request ? input : new Request(input as string, init)
-    return Promise.resolve(handler(req))
+    return Promise.resolve(syntheticCopilotTokenResponse(req) ?? handler(req))
   }) as typeof fetch
 }
 

@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
-import { initRepo } from '../src/repo/index.ts'
+import { initCatalogTestRepo as initRepo } from './helpers/catalog-test-repo.ts'
 import { initResponsesStore } from '../src/data-plane/runtime/responses-store.ts'
 import { __resetPlatformForTests, initBackground, initRuntimeLocation } from '@vibe-core/platform'
 import { InMemoryResponsesSnapshotStore } from '@vibe-llm/responses-store'

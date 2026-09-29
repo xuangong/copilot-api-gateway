@@ -19,6 +19,8 @@ import { getSocketDial } from '@vibe-core/platform'
 import { isDirectFallbackId } from '@vibe-core/proxy-repo'
 import { runDirectConnectRequest, runProxiedRequest } from '@vibe-core/proxy'
 import { directFetcher, type Fetcher } from '@vibe-core/upstream'
+import type { Repo } from '../../repo/types.ts'
+import type { ProxyRepo } from '@vibe-core/proxy-repo'
 import type { ProxyFallbackEntry } from '@vibe-core/proxy-repo'
 
 /** Only the two fields the dial layer needs, so both the framework
@@ -31,6 +33,7 @@ interface DialableUpstream {
 export async function createPerRequestFetcher(
   runtimeLocation: string,
   preFetchedUpstreams?: readonly DialableUpstream[],
+  source?: { proxies: Pick<ProxyRepo, "list">; proxyBackoffs: Repo["proxyBackoffs"] },
 ): Promise<(upstreamId: string, observer?: DialObserver) => Fetcher> {
   const repo = getRepo()
   const upstreams = preFetchedUpstreams ?? (await repo.upstreams.list())
@@ -43,7 +46,7 @@ export async function createPerRequestFetcher(
     }
   }
 
-  const { proxyById, parseErrors } = await loadProxyCatalog(repo.proxies, referencedProxyIds)
+  const { proxyById, parseErrors } = await loadProxyCatalog(source?.proxies ?? repo.proxies, referencedProxyIds)
 
   return (upstreamId, observer) => {
     // Fail loud on an unknown upstream id. Silently substituting `[]` would
@@ -63,7 +66,7 @@ export async function createPerRequestFetcher(
       }
     }
     return createFetcher({
-      proxyBackoffs: repo.proxyBackoffs,
+      proxyBackoffs: source?.proxyBackoffs ?? repo.proxyBackoffs,
       upstreamId,
       observer,
       fallbackList: list,

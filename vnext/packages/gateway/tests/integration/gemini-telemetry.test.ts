@@ -26,7 +26,7 @@
 import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../../src/app.ts'
-import { initRepo } from '../../src/repo/index.ts'
+import { initCatalogTestRepo as initRepo } from '../helpers/catalog-test-repo.ts'
 import { initBackground, initRuntimeLocation, __resetPlatformForTests } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../../src/repo/types.ts'
 import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'

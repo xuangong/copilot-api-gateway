@@ -7,12 +7,10 @@ import { _clearModelsMemoForTest } from '../../src/data-plane/providers/registry
 test('a catalog outage preserves API models, key aliases and Responses inference across isolates', async () => {
   const platform = setupTestPlatform()
   const originalFetch = globalThis.fetch
-  const originalNow = Date.now
   const background: Promise<unknown>[] = []
   initBackground({ waitUntil: (p) => { background.push(p) } })
-  let now = originalNow()
-  Date.now = () => now
   let catalogDown = false
+  let catalogCalls = 0
   let inferenceCalls = 0
   const headers = { 'x-api-key': 'catalog-fixture', 'content-type': 'application/json' }
   const drain = async () => { await Promise.all(background.splice(0)) }
@@ -32,6 +30,7 @@ test('a catalog outage preserves API models, key aliases and Responses inference
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const request = input instanceof Request ? input : new Request(input, init)
       if (new URL(request.url).pathname.endsWith('/models')) {
+        catalogCalls++
         if (catalogDown) return new Response('catalog unavailable', { status: 400 })
         return Response.json({ data: [{ id: 'gpt-6-astra' }] })
       }
@@ -52,7 +51,8 @@ test('a catalog outage preserves API models, key aliases and Responses inference
       expect(body.data.map((m) => m.id)).toContain('client-astra')
     }
     await assertCatalog()
-    now += 365 * 24 * 60 * 60 * 1000
+    platform.db.exec("UPDATE model_catalogs SET refreshed_at_ms = 1, refresh_after_ms = 2")
+    _clearModelsMemoForTest()
     catalogDown = true
     for (const restart of [false, true]) {
       if (restart) _clearModelsMemoForTest()
@@ -67,10 +67,10 @@ test('a catalog outage preserves API models, key aliases and Responses inference
       await drain()
     }
     expect(inferenceCalls).toBe(2)
+    expect(catalogCalls).toBe(2)
   } finally {
     await Promise.allSettled(background)
     globalThis.fetch = originalFetch
-    Date.now = originalNow
     __resetPlatformForTests()
     platform.db.close()
   }

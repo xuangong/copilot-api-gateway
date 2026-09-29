@@ -1,5 +1,7 @@
 import { test, expect, afterEach, beforeEach, spyOn } from 'bun:test'
-import { initRepo } from '../src/repo/index.ts'
+import { Database } from 'bun:sqlite'
+import { BunSqliteRepo } from '../../../apps/platform-bun/src/bun-sqlite-repo.ts'
+import { initRepo, getRepo } from '../src/repo/index.ts'
 import { __resetPlatformForTests, initRuntimeLocation, initBackground } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
 import {
@@ -50,18 +52,22 @@ const stubUpstream = (overrides: Partial<UpstreamRecord> = {}): UpstreamRecord =
   ...overrides,
 })
 
-const stubRepo = (upstreams: UpstreamRecord[]): Repo => ({
-  upstreams: {
-    list: async () => upstreams,
-    getById: async (id: string) => upstreams.find((upstream) => upstream.id === id) ?? null,
-  },
-} as unknown as Repo)
+const databases: Database[] = []
+async function stubRepo(upstreams: UpstreamRecord[]): Promise<Repo> {
+  const db = new Database(':memory:')
+  databases.push(db)
+  const repo = new BunSqliteRepo(db)
+  for (const row of upstreams) await repo.upstreams.save(row)
+  return repo
+}
 
 // Monkey-patch CopilotProvider.getModels via global fetch override is overkill —
 // stub the network by mocking the Copilot models endpoint with globalThis.fetch.
 const originalFetch = globalThis.fetch
 function stubFetch(models: Model[]) {
-  globalThis.fetch = (async () => new Response(JSON.stringify({ object: 'list', data: models } satisfies ModelsResponse), {
+  globalThis.fetch = (async (input: RequestInfo | URL) => new Response(JSON.stringify(String(input).includes('/copilot_internal/')
+    ? { token: 'synthetic-session', expires_at: originalNow() / 1000 + 3600 }
+    : { object: 'list', data: models } satisfies ModelsResponse), {
     status: 200,
     headers: { 'content-type': 'application/json' },
   })) as typeof fetch
@@ -83,10 +89,11 @@ afterEach(async () => {
   globalThis.fetch = originalFetch
   __resetPlatformForTests()
   _clearModelsMemoForTest()
+  for (const db of databases.splice(0)) db.close()
 })
 
 test('listProviderBindings expands stored Copilot upstream into per-model bindings', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  initRepo(await stubRepo([stubUpstream()]))
   stubFetch([stubModel('gpt-4o'), stubModel('o3-mini')])
   const bindings = await listProviderBindings({ copilot: { copilotToken: 'tkn', accountType: 'individual' } })
   expect(bindings.map((b) => b.model.id).sort()).toEqual(['gpt-4o', 'o3-mini'])
@@ -95,7 +102,7 @@ test('listProviderBindings expands stored Copilot upstream into per-model bindin
 })
 
 test('listProviderBindings preserves a provider model key apart from its public alias', async () => {
-  initRepo(stubRepo([stubUpstream({
+  initRepo(await stubRepo([stubUpstream({
     provider: 'claude-code',
     config: {
       accounts: [{
@@ -139,14 +146,14 @@ test('listProviderBindings preserves a provider model key apart from its public 
 })
 
 test('listProviderBindings hides disabledPublicModelIds', async () => {
-  initRepo(stubRepo([stubUpstream({ disabledPublicModelIds: ['o3-mini'] })]))
+  initRepo(await stubRepo([stubUpstream({ disabledPublicModelIds: ['o3-mini'] })]))
   stubFetch([stubModel('gpt-4o'), stubModel('o3-mini')])
   const bindings = await listProviderBindings({ copilot: { copilotToken: 'tkn', accountType: 'individual' } })
   expect(bindings.map((b) => b.model.id)).toEqual(['gpt-4o'])
 })
 
 test('listProviderBindings hides all Copilot raw variants when its public base is disabled', async () => {
-  initRepo(stubRepo([stubUpstream({ disabledPublicModelIds: ['claude-opus-4.7'] })]))
+  initRepo(await stubRepo([stubUpstream({ disabledPublicModelIds: ['claude-opus-4.7'] })]))
   stubFetch([stubModel('claude-opus-4.7'), stubModel('claude-opus-4.7-xhigh'), stubModel('claude-opus-4.7-1m-internal')])
   const bindings = await listProviderBindings({ copilot: { copilotToken: 'tkn', accountType: 'individual' } })
   expect(bindings).toEqual([])
@@ -161,7 +168,7 @@ test('listProviderBindings strictCatalog propagates upstream discovery failures 
 })
 
 test('listProviderBindings falls back to request-scoped Copilot when no stored upstream', async () => {
-  initRepo(stubRepo([]))
+  initRepo(await stubRepo([]))
   stubFetch([stubModel('gpt-4o')])
   const bindings = await listProviderBindings({ copilot: { copilotToken: 'tkn', accountType: 'individual' } })
   expect(bindings).toHaveLength(1)
@@ -169,7 +176,7 @@ test('listProviderBindings falls back to request-scoped Copilot when no stored u
 })
 
 test('listUpstreamModels dedupes by model id and attaches provenance', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  initRepo(await stubRepo([stubUpstream()]))
   stubFetch([stubModel('gpt-4o'), stubModel('gpt-4o')])
   const resp = await listUpstreamModels({ copilot: { copilotToken: 'tkn', accountType: 'individual' } })
   expect(resp.data).toHaveLength(1)
@@ -178,7 +185,7 @@ test('listUpstreamModels dedupes by model id and attaches provenance', async () 
 
 test('listUpstreamModels with dedupe:false keeps one entry per upstream', async () => {
   initRepo(
-    stubRepo([
+    await stubRepo([
       stubUpstream({ id: 'copilot:u1', name: 'u1' }),
       stubUpstream({ id: 'copilot:u2', name: 'u2' }),
     ]),
@@ -201,12 +208,7 @@ test('listUpstreamModels with dedupe:false keeps one entry per upstream', async 
 test('listUpstreamModels allOwners ignores owner scoping', async () => {
   const mine = stubUpstream({ id: 'copilot:mine', name: 'mine', ownerId: 'usr_a' as UpstreamRecord['ownerId'] })
   const theirs = stubUpstream({ id: 'copilot:theirs', name: 'theirs', sortOrder: 1, ownerId: 'usr_b' as UpstreamRecord['ownerId'] })
-  const ownerAware = {
-    upstreams: {
-      list: async (opts: { ownerId?: string } = {}) =>
-        opts.ownerId === undefined ? [mine, theirs] : [mine, theirs].filter((u) => u.ownerId === opts.ownerId),
-    },
-  } as unknown as Repo
+  const ownerAware = await stubRepo([mine, theirs])
 
   initRepo(ownerAware)
   stubFetch([stubModel('gpt-4o')])
@@ -252,7 +254,7 @@ const customUpstream = (overrides: Partial<UpstreamRecord> = {}): UpstreamRecord
 })
 
 test('GET /api/models projects configured Custom endpoints into dashboard selectors', async () => {
-  initRepo(stubRepo([
+  initRepo(await stubRepo([
     customUpstream({
       id: 'custom:claude',
       config: { name: 'claude-service', baseUrl: 'https://api.example.com/v1', apiKey: 'test',
@@ -289,10 +291,7 @@ test('derived endpoint metadata follows owner, disabled model, and pin selection
     config: { name: 'second', baseUrl: 'https://api.example.com/v1', apiKey: 'test',
       endpoints: ['responses'], models: ['gpt-second'] },
   })
-  initRepo({ upstreams: {
-    list: async (opts: { ownerId?: string } = {}) =>
-      opts.ownerId === undefined ? [first, second] : [first, second].filter((upstream) => upstream.ownerId === opts.ownerId),
-  } } as unknown as Repo)
+  initRepo(await stubRepo([first, second]))
 
   const owned = (await listUpstreamModels({ ownerId: 'owner-a', pin: 'custom:first' })).data
   expect(owned.map((model) => [model.id, (model as Model & { supported_endpoints?: string[] }).supported_endpoints])).toEqual([
@@ -304,7 +303,7 @@ test('derived endpoint metadata follows owner, disabled model, and pin selection
 })
 
 test('restricted Custom models never advertise embedding, image, or chat routes they cannot bind', async () => {
-  initRepo(stubRepo([
+  initRepo(await stubRepo([
     customUpstream({
       id: 'custom:messages',
       config: { name: 'messages-only', baseUrl: 'https://api.example.com/v1', apiKey: 'test',
@@ -330,7 +329,7 @@ test('restricted Custom models never advertise embedding, image, or chat routes 
 })
 
 test('discovered capability types do not override restricted Custom endpoints', async () => {
-  initRepo(stubRepo([customUpstream({ config: {
+  initRepo(await stubRepo([customUpstream({ config: {
     name: 'messages-only', baseUrl: 'https://api.example.com/v1', apiKey: 'test', endpoints: ['messages'],
   } })]))
   stubFetch([
@@ -345,7 +344,7 @@ test('discovered capability types do not override restricted Custom endpoints', 
 })
 
 test('Custom discovery publishes only bound endpoint metadata while retaining vendor fields', async () => {
-  initRepo(stubRepo([customUpstream({ config: {
+  initRepo(await stubRepo([customUpstream({ config: {
     name: 'my-llm', baseUrl: 'https://api.example.com/v1', apiKey: 'test', endpoints: ['chat_completions'],
   } })]))
   stubFetch([{ ...stubModel('claude-sonnet-4-6'), vendor: 'vendor-name',
@@ -360,7 +359,7 @@ test('Custom discovery publishes only bound endpoint metadata while retaining ve
 })
 
 test('raw explicit supported_endpoints remains authoritative in public catalog', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  initRepo(await stubRepo([stubUpstream()]))
   stubFetch([{ ...stubModel('gpt-5'), supported_endpoints: [] } as Model])
   const rows = (await listUpstreamModels({ copilot: { copilotToken: 'test', accountType: 'individual' } })).data
   expect((rows[0] as Model & { supported_endpoints?: string[] }).supported_endpoints).toEqual([])
@@ -410,7 +409,7 @@ test('createProviderFromUpstream does not require copilot opts for custom/azure'
 
 // Endpoint inference per provider kind — custom/azure must NOT use copilot heuristic.
 test('listProviderBindings: copilot model endpoints follow copilot heuristic', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  initRepo(await stubRepo([stubUpstream()]))
   stubFetch([stubModel('claude-3.7-sonnet'), stubModel('gpt-5'), stubModel('text-embedding-3', 'embeddings')])
   const bindings = await listProviderBindings({ copilot: { copilotToken: 't', accountType: 'individual' } })
   const byId = new Map(bindings.map((b) => [b.model.id, b.model.endpoints]))
@@ -421,7 +420,7 @@ test('listProviderBindings: copilot model endpoints follow copilot heuristic', a
 })
 
 test('listProviderBindings: a custom messages endpoint does not imply count tokens', async () => {
-  initRepo(stubRepo([customUpstream({ config: {
+  initRepo(await stubRepo([customUpstream({ config: {
     name: 'my-llm', baseUrl: 'https://api.example.com/v1', apiKey: 'sk-secret', endpoints: ['messages'],
   } })]))
   stubFetch([stubModel('model-a')])
@@ -432,7 +431,7 @@ test('listProviderBindings: a custom messages endpoint does not imply count toke
 })
 
 test('listProviderBindings: custom model advertises explicitly configured count tokens', async () => {
-  initRepo(stubRepo([customUpstream({ config: {
+  initRepo(await stubRepo([customUpstream({ config: {
     name: 'my-llm', baseUrl: 'https://api.example.com/v1', apiKey: 'sk-secret', endpoints: ['messages', 'messages_count_tokens'],
   } })]))
   stubFetch([stubModel('model-a')])
@@ -443,7 +442,7 @@ test('listProviderBindings: custom model advertises explicitly configured count 
 })
 
 test('listProviderBindings: custom model endpoints derive from supportedEndpoints (no copilot heuristic)', async () => {
-  initRepo(stubRepo([customUpstream()]))
+  initRepo(await stubRepo([customUpstream()]))
   // Even a model named "claude-3.7-sonnet" on a custom upstream must NOT
   // get `messages` — that's copilot-specific. It should reflect the
   // upstream's declared endpoints (chat_completions + embeddings here).
@@ -460,7 +459,7 @@ test('listProviderBindings: custom model endpoints derive from supportedEndpoint
 })
 
 test('listProviderBindings: custom embedding model id tokens narrow to embeddings (bge/e5/voyage/nomic/mistral-embed)', async () => {
-  initRepo(stubRepo([customUpstream()]))
+  initRepo(await stubRepo([customUpstream()]))
   // Models without explicit capabilities.type=embeddings — pure id-token detection.
   stubFetch([
     stubModel('bge-large-en-v1.5'),
@@ -477,7 +476,7 @@ test('listProviderBindings: custom embedding model id tokens narrow to embedding
 })
 
 test('listProviderBindings: azure model endpoints derive from supportedEndpoints (no copilot heuristic)', async () => {
-  initRepo(stubRepo([azureUpstream({ config: {
+  initRepo(await stubRepo([azureUpstream({ config: {
     name: 'my-azure',
     endpoint: 'https://az.openai.azure.com',
     apiKey: 'az-secret',
@@ -497,10 +496,8 @@ test('listProviderBindings: azure model endpoints derive from supportedEndpoints
   expect(ep.chat_completions).toEqual({})
 })
 
-test('L2: second call backfills L1 when L1 was cleared mid-life', async () => {
-  // Use config without githubToken so the plugin skips token exchange and
-  // takes the copilotFallback path directly — keeping fetchCount = models-only.
-  initRepo(stubRepo([stubUpstream({ config: {} })]))
+test('SQL publication backfills L1 after an isolate restart', async () => {
+  initRepo(await stubRepo([customUpstream()]))
   const l2 = new MemoryCache()
   initCache(l2)
 
@@ -514,19 +511,19 @@ test('L2: second call backfills L1 when L1 was cleared mid-life', async () => {
   }) as typeof fetch
 
   // First call: both L1 and L2 are empty → fetch upstream + write both.
-  await listProviderBindings({ copilot: { copilotToken: 't', accountType: 'individual' } })
+  await listProviderBindings()
   expect(fetchCount).toBe(1)
 
   // Clear L1 only (simulating a CFW isolate restart). L2 still has the entry.
   _clearModelsMemoForTest()
 
   // Second call: L1 miss + L2 hit → no upstream fetch.
-  await listProviderBindings({ copilot: { copilotToken: 't', accountType: 'individual' } })
+  await listProviderBindings()
   expect(fetchCount).toBe(1)
 })
 
-test('L2: a failing get is treated as a miss, not a 5xx', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+test('legacy KV outages do not affect SQL catalog discovery', async () => {
+  initRepo(await stubRepo([stubUpstream()]))
   initCache({
     async get() { throw new Error('kv down') },
     async set() {},
@@ -539,15 +536,21 @@ test('L2: a failing get is treated as a miss, not a 5xx', async () => {
 
 // Keep the actual provider, registry and both cache layers; only the upstream
 // HTTP response and time are controlled.
-function catalogFixture() {
+async function catalogFixture() {
   let now = originalNow()
   spyOn(Date, 'now').mockImplementation(() => now)
   const upstream = customUpstream()
-  initRepo(stubRepo([upstream]))
+  initRepo(await stubRepo([upstream]))
   const l2 = new MemoryCache()
   initCache(l2)
   stubFetch([stubModel('gpt-6-astra')])
-  return { upstream, l2, advance: (ms = 121_000) => { now += ms } }
+  const db = databases.at(-1)
+  if (!db) throw new Error('missing fixture db')
+  return { upstream, l2, db, advance: (ms = 121_000) => {
+    now += ms
+    db.query('UPDATE model_catalogs SET refreshed_at_ms = refreshed_at_ms - ?, refresh_after_ms = refresh_after_ms - ?, retry_at_ms = MAX(0, retry_at_ms - ?)').run(ms, ms, ms)
+    _clearModelsMemoForTest()
+  } }
 }
 
 const catalogIds = async () => (await listUpstreamModels({ strictCatalog: true })).data.map((m) => m.id)
@@ -557,7 +560,7 @@ function failCatalog() {
 }
 
 test('catalog refresh failure retains last successful models in L1 and across isolate restarts', async () => {
-  const { advance } = catalogFixture()
+  const { advance } = await catalogFixture()
   expect(await catalogIds()).toEqual(['gpt-6-astra'])
   advance(365 * 24 * 60 * 60 * 1000)
   failCatalog()
@@ -569,7 +572,7 @@ test('catalog refresh failure retains last successful models in L1 and across is
 })
 
 test('slow refresh does not block routing and replaces the old snapshot only after success', async () => {
-  const { advance } = catalogFixture()
+  const { advance } = await catalogFixture()
   await catalogIds()
   advance()
   let release: (r: Response) => void = () => {}
@@ -582,6 +585,7 @@ test('slow refresh does not block routing and replaces the old snapshot only aft
       Bun.sleep(100).then(() => 'blocked'),
     ])
     expect(result).toEqual(Array.from({ length: 5 }, () => ['gpt-6-astra']))
+    for (let turn = 0; turn < 20 && requests === 0; turn++) await Bun.sleep(5)
     expect(requests).toBe(1)
   } finally {
     release(new Response(JSON.stringify({ object: 'list', data: [stubModel('new-model')] })))
@@ -593,7 +597,7 @@ test('slow refresh does not block routing and replaces the old snapshot only aft
 })
 
 test('failed refresh backs off but a later successful refresh discovers changes', async () => {
-  const { advance } = catalogFixture()
+  const { advance } = await catalogFixture()
   await catalogIds()
   advance()
   failCatalog()
@@ -610,7 +614,7 @@ test('failed refresh backs off but a later successful refresh discovers changes'
 })
 
 test('a successful empty catalog removes previously discovered models', async () => {
-  const { advance } = catalogFixture()
+  const { advance } = await catalogFixture()
   await catalogIds()
   advance()
   stubFetch([])
@@ -619,8 +623,8 @@ test('a successful empty catalog removes previously discovered models', async ()
   expect(await catalogIds()).toEqual([])
 })
 
-test('L2 read failure does not discard a stale L1 catalog', async () => {
-  const { advance } = catalogFixture()
+test('legacy KV outages cannot discard a SQL-backed catalog', async () => {
+  const { advance } = await catalogFixture()
   await catalogIds()
   advance()
   initCache({ async get() { throw new Error('offline') }, async set() {}, async delete() {} })
@@ -630,25 +634,29 @@ test('L2 read failure does not discard a stale L1 catalog', async () => {
 })
 
 test('manual refresh reports failure without replacing a successful catalog', async () => {
-  const { upstream } = catalogFixture()
+  const { upstream } = await catalogFixture()
   await catalogIds()
   const provider = await createProviderFromUpstream(upstream)
   if (!provider) throw new Error('missing fixture provider')
   failCatalog()
-  await expect(refreshModelsCache(upstream, provider)).rejects.toThrow()
+  const stored = await getRepo().upstreams.getById(upstream.id)
+  if (!stored) throw new Error('missing stored row')
+  await expect(refreshModelsCache(stored)).rejects.toThrow()
   expect(await catalogIds()).toEqual(['gpt-6-astra'])
 })
 
 test('an edited upstream cannot inherit the previous configuration snapshot', async () => {
-  const { upstream } = catalogFixture()
+  const { upstream } = await catalogFixture()
   await catalogIds()
-  upstream.config = { githubToken: 'changed-credential' }
+  const stored = await getRepo().upstreams.getById(upstream.id)
+  if (!stored) throw new Error('missing stored row')
+  await getRepo().upstreams.patchMetadata(stored, row => ({ ...row, config: { ...row.config, apiKey: 'changed-credential' } }))
   failCatalog()
   await expect(catalogIds()).rejects.toThrow()
 })
 
 test('unversioned legacy catalogs are discarded after an upgrade', async () => {
-  const { upstream, l2 } = catalogFixture()
+  const { upstream, l2 } = await catalogFixture()
   await l2.set(`models:${upstream.id}@${upstream.updatedAt}`, {
     object: 'list', data: [stubModel('gpt-6-astra')],
   }, 120)
@@ -656,20 +664,17 @@ test('unversioned legacy catalogs are discarded after an upgrade', async () => {
   await expect(catalogIds()).rejects.toThrow()
 })
 
-test('the prior pricing code revision in L2 is discarded after restart', async () => {
-  const { upstream, l2 } = catalogFixture()
+test('a different SQL catalog revision is discarded after restart', async () => {
+  const { db } = await catalogFixture()
   await catalogIds()
-  const key = `models:snapshot:${upstream.id}`
-  const saved = await l2.get<Record<string, unknown>>(key)
-  expect(saved).not.toBeNull()
-  await l2.set(key, { ...saved, codeRevision: 2 }, null)
+  db.exec('UPDATE model_catalogs SET catalog_revision = 2')
   _clearModelsMemoForTest()
   failCatalog()
   await expect(catalogIds()).rejects.toThrow()
 })
 
-test('loading L2 into a new isolate does not postpone its refresh deadline', async () => {
-  const { advance } = catalogFixture()
+test('loading SQL into a new isolate does not postpone its refresh deadline', async () => {
+  const { advance } = await catalogFixture()
   await catalogIds()
   advance(110_000)
   _clearModelsMemoForTest()
@@ -681,17 +686,58 @@ test('loading L2 into a new isolate does not postpone its refresh deadline', asy
   expect(await catalogIds()).toEqual(['new-model'])
 })
 
-test('malformed Copilot catalogs cannot overwrite a successful snapshot', async () => {
-  let now = originalNow()
-  spyOn(Date, 'now').mockImplementation(() => now)
-  initRepo(stubRepo([stubUpstream({ config: {} })]))
-  initCache(new MemoryCache())
-  const opts = { copilot: { copilotToken: 'fixture', accountType: 'individual' as const }, strictCatalog: true }
+test('malformed Copilot catalogs cannot overwrite a successful SQL snapshot', async () => {
+  initRepo(await stubRepo([stubUpstream()]))
   stubFetch([stubModel('gpt-6-astra')])
-  expect((await listUpstreamModels(opts)).data.map((m) => m.id)).toEqual(['gpt-6-astra'])
-  now += 121_000
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
+  const db = databases.at(-1)
+  if (!db) throw new Error('missing db')
+  db.exec('UPDATE model_catalogs SET refreshed_at_ms = refreshed_at_ms - 121000, refresh_after_ms = refresh_after_ms - 121000')
+  _clearModelsMemoForTest()
   globalThis.fetch = (async () => Response.json({ error: 'temporary failure' })) as typeof fetch
-  expect((await listUpstreamModels(opts)).data.map((m) => m.id)).toEqual(['gpt-6-astra'])
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
   await drainRefresh()
-  expect((await listUpstreamModels(opts)).data.map((m) => m.id)).toEqual(['gpt-6-astra'])
+  expect(await catalogIds()).toEqual(['gpt-6-astra'])
+})
+
+test('concurrent request signal scopes cancel only their own discovery transports', async () => {
+  const { withRequestSignal } = await import('../src/shared/request-signal.ts')
+  initRepo(await stubRepo([
+    customUpstream({ id: 'a', config: { baseUrl: 'https://a.invalid/v1', apiKey: 'fixture' } }),
+    customUpstream({ id: 'b', config: { baseUrl: 'https://b.invalid/v1', apiKey: 'fixture' } }),
+  ]))
+  const a = new AbortController(), b = new AbortController()
+  const signals = new Map<string, AbortSignal>()
+  let releaseB: () => void = () => {}
+  const heldB = new Promise<void>(resolve => { releaseB = resolve })
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input, init)
+    const host = new URL(request.url).hostname
+    signals.set(host, request.signal)
+    if (host === 'a.invalid') return new Promise<Response>((_, reject) => {
+      request.signal.addEventListener('abort', () => reject(request.signal.reason), { once: true })
+    })
+    await heldB
+    return Response.json({ data: [{ id: 'b-model' }] })
+  }) as typeof fetch
+  const first = withRequestSignal(a.signal, () => listProviderBindings({ pin: 'a' }))
+  const second = withRequestSignal(b.signal, () => listProviderBindings({ pin: 'b' }))
+  for (let turn = 0; turn < 100 && signals.size < 2; turn++) await Bun.sleep(2)
+  expect(signals.size).toBe(2)
+  a.abort()
+  expect(await first).toEqual([])
+  expect(signals.get('a.invalid')?.aborted).toBe(true)
+  expect(signals.get('b.invalid')?.aborted).toBe(false)
+  releaseB()
+  expect((await second).map(row => row.model.id)).toEqual(['b-model'])
+})
+
+test('request-token Copilot discovery never creates a persisted catalog identity', async () => {
+  const repo = await stubRepo([stubUpstream({ config: {} })])
+  initRepo(repo)
+  stubFetch([stubModel('request-only')])
+  expect((await listProviderBindings({ copilot: { copilotToken: 'request-token', accountType: 'individual' } })).map(row => row.model.id)).toEqual(['request-only'])
+  const db = databases.at(-1)
+  if (!db) throw new Error('missing db')
+  expect(db.query('SELECT count(*) AS count FROM model_catalogs').get()).toEqual({ count: 0 })
 })
