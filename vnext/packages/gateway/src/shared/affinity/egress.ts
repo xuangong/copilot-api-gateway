@@ -2,6 +2,7 @@ import { assertClientRepresentableResponseEvent } from "@vibe-llm/translate/shar
 import { chatReasoningText } from "@vibe-llm/translate/shared/chat-reasoning-text"
 import { decodeOpaqueValue } from "@vibe-llm/protocols/common"
 import { InvalidAffinityStateError, MAX_AFFINITY_PAYLOAD_BYTES } from "./carrier.ts"
+import { JsonStringBudget } from "./json-string-budget.ts"
 import type { ProtocolFrame } from "@vibe-core/result"
 import { stampAffinityItem } from "./analysis.ts"
 import type { RequestAffinity } from "./context.ts"
@@ -36,18 +37,19 @@ function hasOpaque(item: Record<string, unknown>): boolean {
 function itemKey(item: Record<string, unknown>, index: number): string {
   return typeof item.id === "string" && item.id ? `id:${item.id}` : `index:${index}`
 }
-function boundedBlock(block: { thinking: string; signature: string }): void {
+function boundedBlock(block: { thinkingBudget: JsonStringBudget; signature: string }): void {
+  // {"thinking":...} adds 13 bytes around its JSON string value.
   if (block.signature.length > MAX_AFFINITY_PAYLOAD_BYTES
-    || new TextEncoder().encode(JSON.stringify({ thinking: block.thinking })).length > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
+    || block.thinkingBudget.byteLength + 13 > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
 }
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value) }
 // Run before translators and JSON reassemblers, which may otherwise hide an
 // unbounded signature/companion buffer. Throwing closes the upstream iterator.
 export async function* guardAffinityFrames<T>(frames: AsyncIterable<ProtocolFrame<T>>, affinity: RequestAffinity | undefined): AsyncGenerator<ProtocolFrame<T>> {
   if (!affinity) { yield* frames; return }
-  const blocks = new Map<number, { thinking: string; signature: string }>()
-  const summaries = new Map<string, string>()
-  const chatBlocks = new Map<number, { thinking: string; signature: string }>()
+  const blocks = new Map<number, { thinkingBudget: JsonStringBudget; signature: string; rawSignature: boolean }>()
+  const summaries = new Map<string, JsonStringBudget>()
+  const chatBlocks = new Map<number, { thinkingBudget: JsonStringBudget; signature: string }>()
   const checkOpaque = (value: string) => {
     if (value.length > MAX_AFFINITY_PAYLOAD_BYTES || decodeOpaqueValue(value).bytes.length > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
   }
@@ -80,8 +82,8 @@ export async function* guardAffinityFrames<T>(frames: AsyncIterable<ProtocolFram
     if (Array.isArray(event.choices)) for (const choice of event.choices) {
       if (!object(choice) || !object(choice.delta)) continue
       const index = typeof choice.index === "number" ? choice.index : 0
-      const value = chatBlocks.get(index) ?? { thinking: "", signature: "" }
-      value.thinking += chatReasoningText(choice.delta) ?? ""
+      const value = chatBlocks.get(index) ?? { thinkingBudget: new JsonStringBudget(), signature: "" }
+      value.thinkingBudget.append(chatReasoningText(choice.delta) ?? "")
       if (typeof choice.delta.reasoning_opaque === "string") value.signature += choice.delta.reasoning_opaque
       boundedBlock(value)
       if (choice.finish_reason != null) { checkOpaque(value.signature); chatBlocks.delete(index) }
@@ -91,25 +93,30 @@ export async function* guardAffinityFrames<T>(frames: AsyncIterable<ProtocolFram
     const index = typeof event.index === "number" ? event.index : -1
     if (event.type === "content_block_start" && object(event.content_block) && event.content_block.type === "thinking") {
       const content = event.content_block
-      blocks.set(index, { thinking: typeof content.thinking === "string" ? content.thinking : "", signature: typeof content.signature === "string" ? content.signature : "" })
+      const signature = typeof content.signature === "string" ? content.signature : ""
+      blocks.set(index, { thinkingBudget: new JsonStringBudget(typeof content.thinking === "string" ? content.thinking : ""), signature, rawSignature: /[^A-Za-z0-9+/_=\s-]/.test(signature) })
     }
     const block = blocks.get(index)
     if (block && event.type === "content_block_delta" && object(event.delta)) {
-      if (event.delta.type === "signature_delta" && typeof event.delta.signature === "string") block.signature += event.delta.signature
-      if (event.delta.type === "thinking_delta" && typeof event.delta.thinking === "string") block.thinking += event.delta.thinking
+      if (event.delta.type === "signature_delta" && typeof event.delta.signature === "string") {
+        block.signature += event.delta.signature
+        block.rawSignature ||= /[^A-Za-z0-9+/_=\s-]/.test(event.delta.signature)
+      }
+      if (event.delta.type === "thinking_delta" && typeof event.delta.thinking === "string") block.thinkingBudget.append(event.delta.thinking)
     }
     if (block) {
       boundedBlock(block)
       // Base64 validity can change as fragments arrive; enforce decoded bytes at
       // completion, and UTF-16 bytes immediately for definitely raw strings.
-      if (/[^A-Za-z0-9+/_=\s-]/.test(block.signature) && block.signature.length * 2 > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
+      if (block.rawSignature && block.signature.length * 2 > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
       if (event.type === "content_block_stop") { checkOpaque(block.signature); blocks.delete(index) }
     }
     const key = String(event.item_id ?? event.output_index ?? "")
     if (event.type === "response.reasoning_summary_text.delta" && typeof event.delta === "string") {
-      const text = (summaries.get(key) ?? "") + event.delta
-      if (new TextEncoder().encode(JSON.stringify(text)).length > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
-      summaries.set(key, text)
+      const budget = summaries.get(key) ?? new JsonStringBudget()
+      budget.append(event.delta)
+      if (budget.byteLength > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
+      summaries.set(key, budget)
     }
     if (event.type === "response.output_item.done") summaries.delete(key)
     if (event.type === "content_block_start") checkMessageBlock(event.content_block)
@@ -170,7 +177,7 @@ export class AffinityEgress {
   }
   async *chat<T>(frames: AsyncIterable<ProtocolFrame<T>>): AsyncGenerator<ProtocolFrame<T>> {
     if (!this.affinity?.actual) { yield* frames; return }
-    const states = new Map<number, { thinking: string; signature: string; hasSignature: boolean; hasThinking: boolean }>()
+    const states = new Map<number, { thinking: string; thinkingBudget: JsonStringBudget; signature: string; hasSignature: boolean; hasThinking: boolean }>()
     const finished = new Set<number>()
     const pending = () => [...states.values()].some(state => state.hasSignature || state.hasThinking)
     for await (const frame of frames) {
@@ -182,10 +189,11 @@ export class AffinityEgress {
         const index = typeof choice.index === "number" ? choice.index : 0
         const delta = choice.delta
         if (finished.has(index)) throw new InvalidAffinityStateError()
-        const state = states.get(index) ?? { thinking: "", signature: "", hasSignature: false, hasThinking: false }
+        const state = states.get(index) ?? { thinking: "", thinkingBudget: new JsonStringBudget(), signature: "", hasSignature: false, hasThinking: false }
         const thinking = chatReasoningText(delta)
         state.hasThinking ||= thinking !== undefined
         state.thinking += thinking ?? ""
+        state.thinkingBudget.append(thinking ?? "")
         if (typeof delta.reasoning_opaque === "string") { state.signature += delta.reasoning_opaque; state.hasSignature = true }
         boundedBlock(state)
         const { reasoning_opaque: _opaque, reasoning_text: _text, reasoning_content: _content, reasoning: _reasoning, ...visible } = delta
@@ -229,7 +237,7 @@ export class AffinityEgress {
   }
   async *messages<T>(frames: AsyncIterable<ProtocolFrame<T>>): AsyncGenerator<ProtocolFrame<T>> {
     if (!this.affinity?.actual) { yield* frames; return }
-    const blocks = new Map<number, { thinking: string; signature: string }>()
+    const blocks = new Map<number, { thinking: string; thinkingBudget: JsonStringBudget; signature: string }>()
     for await (const frame of frames) {
       if (frame.type !== "event" || !object(frame.event)) { yield frame; continue }
       const event = frame.event
@@ -237,7 +245,8 @@ export class AffinityEgress {
       if (event.type === "content_block_start" && object(event.content_block)) {
         const block = event.content_block
         if (block.type === "thinking") {
-          blocks.set(index, { thinking: typeof block.thinking === "string" ? block.thinking : "", signature: typeof block.signature === "string" ? block.signature : "" })
+          const thinking = typeof block.thinking === "string" ? block.thinking : ""
+          blocks.set(index, { thinking, thinkingBudget: new JsonStringBudget(thinking), signature: typeof block.signature === "string" ? block.signature : "" })
           const accumulated = blocks.get(index)
           if (accumulated) boundedBlock(accumulated)
           const { signature: _signature, ...rest } = block
@@ -253,7 +262,11 @@ export class AffinityEgress {
       if (!block && event.type === "content_block_delta" && object(event.delta) && event.delta.type === "signature_delta") throw new InvalidAffinityStateError()
       if (block && event.type === "content_block_delta" && object(event.delta)) {
         if (event.delta.type === "signature_delta" && typeof event.delta.signature === "string") { block.signature += event.delta.signature; boundedBlock(block); continue }
-        if (event.delta.type === "thinking_delta" && typeof event.delta.thinking === "string") { block.thinking += event.delta.thinking; boundedBlock(block) }
+        if (event.delta.type === "thinking_delta" && typeof event.delta.thinking === "string") {
+          block.thinking += event.delta.thinking
+          block.thinkingBudget.append(event.delta.thinking)
+          boundedBlock(block)
+        }
       }
       if (block && event.type === "content_block_stop") {
         if (block.signature) {
