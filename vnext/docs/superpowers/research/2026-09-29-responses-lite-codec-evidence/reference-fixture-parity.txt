@@ -1,0 +1,1 @@
+PASS: all fixture bodies match pinned reference after package/type names, statement semicolons, expect<unknown>, and explicit present guards replacing non-null assertions. All parameterized source values and runtime assertions preserved.

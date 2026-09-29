@@ -177,8 +177,8 @@ function modelToBindingModel(
 }
 
 
-// Version 5 adopts the SQL-owned discovery projection; legacy KV catalogs are incompatible.
-export const MODEL_CATALOG_REVISION = 5
+// Version 6 discovers authoritative Codex Responses Lite metadata; older catalogs must refresh.
+export const MODEL_CATALOG_REVISION = 6
 let coordinators = new WeakMap<Repo, CatalogCoordinator>()
 
 function withCatalogSignal(fetcher: Fetcher, signal: AbortSignal): Fetcher {

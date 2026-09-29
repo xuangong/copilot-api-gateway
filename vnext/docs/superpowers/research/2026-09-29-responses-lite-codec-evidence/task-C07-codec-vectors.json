@@ -1,0 +1,20 @@
+{
+  "instructions": "规则：中文 🚀\nKeep history.",
+  "vectors": [
+    {
+      "thread": "",
+      "toolsId": "at_d25a152f-bce8-55af-a9e9-0338d7a4b40c",
+      "instructionsId": "msg_00661c6d-f6b9-5103-a88a-fcd97e92c939"
+    },
+    {
+      "thread": "thread-a",
+      "toolsId": "at_800b8906-420a-5c99-a25e-f25cc54ad11e",
+      "instructionsId": "msg_f93bb2fb-c45b-5653-afc4-4d8e5380dc0d"
+    },
+    {
+      "thread": "线程-🚀",
+      "toolsId": "at_56595826-dc7f-5a47-a74f-197405113ccb",
+      "instructionsId": "msg_840c9e2e-0c4d-5624-9a74-e790b6ffe306"
+    }
+  ]
+}

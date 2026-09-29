@@ -2,6 +2,42 @@
 // Verbatim port of the response/output/stream-event types and
 // `isResponsesTerminalEvent` helper. Types only — no zod schemas.
 
+// Native callable declarations are also carried by additional_tools and search results.
+export interface ResponsesFunctionTool {
+  type: 'function'
+  name: string
+  description?: string
+  parameters?: unknown
+  strict?: boolean | null
+  [key: string]: unknown
+}
+
+export interface ResponsesCustomTool {
+  type: 'custom'
+  name: string
+  description?: string
+  format?: unknown
+  [key: string]: unknown
+}
+
+export interface ResponsesNamespaceTool {
+  type: 'namespace'
+  name: string
+  description: string
+  tools: (ResponsesFunctionTool | ResponsesCustomTool)[]
+  [key: string]: unknown
+}
+
+export type ResponsesTool = ResponsesFunctionTool | ResponsesCustomTool | ResponsesNamespaceTool
+  | ({ type: string } & Record<string, unknown>)
+
+export interface ResponsesAdditionalToolsItem {
+  type: 'additional_tools'
+  role: 'developer'
+  id?: string | null
+  tools: ResponsesTool[]
+}
+
 // ── Input-side mirror types referenced from output items / stream events ──
 
 export type ResponsesInputContent = ResponsesInputText | ResponsesInputImage
@@ -14,7 +50,7 @@ export interface ResponsesInputText {
 export interface ResponsesInputImage {
   type: 'input_image'
   image_url: string
-  detail: 'auto' | 'low' | 'high'
+  detail?: 'auto' | 'low' | 'high' | 'original'
 }
 
 export interface ResponsesInputReasoning {
@@ -35,7 +71,7 @@ export interface ResponsesFunctionCallOutputItem {
 export interface ResponsesCustomToolCallOutputItem {
   type: 'custom_tool_call_output'
   call_id: string
-  output: string
+  output: string | ResponsesInputContent[]
   id?: string
   status?: string
 }
@@ -74,6 +110,7 @@ export interface ResponsesToolSearchCallItem extends ResponsesPermissiveItem<'to
 }
 
 export interface ResponsesToolSearchOutputItem extends ResponsesPermissiveItem<'tool_search_output'> {
+  tools?: ResponsesTool[]
   call_id?: string
   output?: unknown
 }
@@ -204,6 +241,7 @@ export interface ResponsesFunctionCallItem {
   id?: string
   call_id: string
   name: string
+  namespace?: string
   arguments: string
   status?: 'completed' | 'in_progress' | 'incomplete'
   caller?: ResponsesToolCaller | null
@@ -246,6 +284,7 @@ export interface ResponsesInputImageGenerationCall {
 // this union — canonicalize lifts it to `ResponsesInputMessage` at wire
 // boundary so post-canonicalize code always sees the explicit discriminator.
 export type ResponsesInputItem =
+  | ResponsesAdditionalToolsItem
   | ResponsesInputMessage
   | ResponsesFunctionCallItem
   | ResponsesFunctionCallOutputItem
@@ -297,12 +336,18 @@ export interface ResponsesCompactionResult {
 }
 
 export interface ResponsesResult {
+  tools?: ResponsesTool[] | null
+  instructions?: string | null
+  parallel_tool_calls?: boolean | null
+  reasoning?: { effort?: string | null; summary?: string | null; context?: string | null; [key: string]: unknown } | null
+  tool_choice?: unknown
+  service_tier?: string | null
   id: string
   object: string
   model: string
   output: ResponsesOutputItem[]
   output_text?: string
-  status: 'completed' | 'incomplete' | 'failed' | 'in_progress'
+  status: 'queued' | 'completed' | 'incomplete' | 'failed' | 'in_progress'
   incomplete_details: { reason: string } | null
   error: { message: string; code: string; type?: string } | null
   usage?: {
@@ -323,6 +368,7 @@ export interface ResponsesResult {
 }
 
 export type ResponsesOutputItem =
+  | ResponsesAdditionalToolsItem
   | ResponsesOutputMessage
   | ResponsesOutputFunctionCall
   | ResponsesFunctionCallOutputItem
@@ -377,6 +423,7 @@ export interface ResponsesOutputFunctionCall {
   id?: string
   call_id: string
   name: string
+  namespace?: string
   arguments: string
   status: string
 }
@@ -439,6 +486,7 @@ export interface ResponsesOutputImageGenerationCall {
 export type ResponsesStreamEvent = ResponsesStreamEventVariant & { sequence_number?: number }
 
 export type ResponsesStreamEventVariant =
+  | { type: 'response.queued'; response: ResponsesResult }
   | { type: 'response.created'; response: ResponsesResult }
   | { type: 'response.in_progress'; response: ResponsesResult }
   | {

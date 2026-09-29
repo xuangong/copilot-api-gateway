@@ -1,0 +1,14 @@
+{
+  "vnext/bun.lock": "d11bd35f35dd46125851c77f92e9948089adfc30ce16091306c345cc7d675ffe",
+  "vnext/packages/gateway/src/data-plane/providers/registry.ts": "a94bfcf0a0140714c08e63bf78e71aa54ac81b08320fa04bc8f88b44097efb49",
+  "vnext/packages/gateway/tests/catalog-maintenance.test.ts": "df9f5824f884b873ea8804649671871b0d84471c16eefefe67c4452648a61629",
+  "vnext/packages/protocols-llm/src/responses/events.ts": "7333215c38bf87bdf55de96a6e7b5f702bf30c73231a1063b4e26bb66f86c9b3",
+  "vnext/packages/protocols-llm/src/responses/index.ts": "52ba46b50f0ae853b6ef7c048836712a25aafa909e466e9080d1b633124e2d53",
+  "vnext/packages/provider-codex/package.json": "06350e73b85b5999fe94bc99aa8d79813a700ab839c7b4f8fb7ff4f72908c63c",
+  "vnext/packages/provider-codex/src/__tests__/models-lite.test.ts": "e00700deed9157cb5b52344c6fa6d6bf82c5a4597bff9031caa7ae9ccb25f470",
+  "vnext/packages/provider-codex/src/__tests__/responses-lite-adapter.test.ts": "fb430fdc40b5a2244b541bebb396c2b8568ce5db6f2d3d39bbedc98af7406544",
+  "vnext/packages/provider-codex/src/__tests__/responses-lite.test.ts": "6a25d42d7a7c62eb4dda31e2552cc7250ef19ef4e3fec3a2101d2c580d4d7a57",
+  "vnext/packages/provider-codex/src/index.ts": "45342ad7ec0b2e1b70a71cdbd443a9da91de64b5b0b5b094c905e59246fc3236",
+  "vnext/packages/provider-codex/src/models.ts": "ff2d4965018a23a6113907ac4ad73448dac4191dbdbd301116bd51627ea69f95",
+  "vnext/packages/provider-codex/src/responses-lite.ts": "b42b4017c8537b09b85fcbddb7d90df40163debc859470ae2f9b7434d3ed36a8"
+}

@@ -1,0 +1,102 @@
+{
+  "vnext/packages/protocols-llm/src/responses/events.ts": {
+    "inputs": {
+      "base": "78afb04b3bcf8dedcd907fd2f9312198e654894bedb0db4f2e94f8d0c2027570",
+      "user": "a354b5ec824d4e1053485ba22985d3a4ea728034203698be74216b6db30182ad",
+      "candidate": "7333215c38bf87bdf55de96a6e7b5f702bf30c73231a1063b4e26bb66f86c9b3"
+    },
+    "forward": [
+      {
+        "ours": "  tools?: Array<{ type: string; [key: string]: unknown }> | null\n  tool_choice?: unknown\n",
+        "theirs": "  tools?: ResponsesTool[] | null\n  instructions?: string | null\n  parallel_tool_calls?: boolean | null\n  reasoning?: { effort?: string | null; summary?: string | null; context?: string | null; [key: string]: unknown } | null\n  tool_choice?: unknown\n  service_tier?: string | null\n",
+        "resolved": "  tools?: ResponsesTool[] | null\n  instructions?: string | null\n  parallel_tool_calls?: boolean | null\n  reasoning?: { effort?: string | null; summary?: string | null; context?: string | null; [key: string]: unknown } | null\n  tool_choice?: unknown\n  service_tier?: string | null\n"
+      }
+    ],
+    "forwardNormalizations": [
+      {
+        "before": "export interface ResponsesAdditionalToolsItem {\n  type: 'additional_tools'\n  role: 'developer'\n  id?: string | null\n  tools: ResponsesTool[]\n}\n\n",
+        "after": "",
+        "count": 1
+      },
+      {
+        "before": "export interface ResponsesAdditionalToolsItem extends ResponsesPermissiveItem<'additional_tools'> {\n  tools: Array<{ type: string; [key: string]: unknown }>\n}",
+        "after": "export type ResponsesAdditionalToolsItem =\n  | {\n    type: 'additional_tools'\n    role: 'developer'\n    id?: string | null\n    tools: ResponsesTool[]\n  }\n  | (ResponsesPermissiveItem<'additional_tools'> & {\n    tools: Array<{ type: string; [key: string]: unknown }>\n  })",
+        "count": 1
+      },
+      {
+        "before": "  name: string\n  namespace?: string\n  arguments: string",
+        "after": "  name: string\n  arguments: string",
+        "count": 2
+      },
+      {
+        "before": "export type ResponsesInputItem =\n  | ResponsesAdditionalToolsItem\n",
+        "after": "export type ResponsesInputItem =\n",
+        "count": 1
+      },
+      {
+        "before": "export type ResponsesOutputItem =\n  | ResponsesAdditionalToolsItem\n",
+        "after": "export type ResponsesOutputItem =\n",
+        "count": 1
+      }
+    ],
+    "forwardResolvedSha256": "7219159c9e1466388492cbd665d926630935cde69bf96e83ee90fb0149add2bb",
+    "mergedSha256": "53776e65170c846367ef2869ca67f904f6f7ea0d6d592bf870276a1fbf453f5c",
+    "reverse": [
+      {
+        "ours": "// Native callable declarations are also carried by additional_tools and search results.\nexport interface ResponsesFunctionTool {\n  type: 'function'\n  name: string\n  description?: string\n  parameters?: unknown\n  strict?: boolean | null\n  [key: string]: unknown\n}\n\nexport interface ResponsesCustomTool {\n  type: 'custom'\n  name: string\n  description?: string\n  format?: unknown\n  [key: string]: unknown\n}\n\nexport interface ResponsesNamespaceTool {\n  type: 'namespace'\n  name: string\n  description: string\n  tools: (ResponsesFunctionTool | ResponsesCustomTool)[]\n  [key: string]: unknown\n}\n\nexport type ResponsesTool = ResponsesFunctionTool | ResponsesCustomTool | ResponsesNamespaceTool\n  | ({ type: string } & Record<string, unknown>)\n\n",
+        "theirs": "",
+        "resolved": ""
+      }
+    ],
+    "reverseResolvedSha256": "cacf975d221f77143ba8a0988c67c2c2347286397ab0ef2cc94ce1edc59fde8e",
+    "reverseNormalizations": [
+      {
+        "before": "export type ResponsesAdditionalToolsItem =\n  | {\n    type: 'additional_tools'\n    role: 'developer'\n    id?: string | null\n    tools: ResponsesTool[]\n  }\n  | (ResponsesPermissiveItem<'additional_tools'> & {\n    tools: Array<{ type: string; [key: string]: unknown }>\n  })",
+        "after": "export interface ResponsesAdditionalToolsItem extends ResponsesPermissiveItem<'additional_tools'> {\n  tools: Array<{ type: string; [key: string]: unknown }>\n}",
+        "count": 1
+      },
+      {
+        "before": "export interface ResponsesResult {\n",
+        "after": "export interface ResponsesResult {\n  tools?: Array<{ type: string; [key: string]: unknown }> | null\n  tool_choice?: unknown\n",
+        "count": 1
+      },
+      {
+        "before": "export type ResponsesStreamEventVariant =\n",
+        "after": "export type ResponsesStreamEventVariant =\n  | { type: 'response.queued'; response: ResponsesResult }\n",
+        "count": 1
+      }
+    ],
+    "restoredUserSha256": "a354b5ec824d4e1053485ba22985d3a4ea728034203698be74216b6db30182ad",
+    "forwardRawCanonicalSha256": "3d8644969338e4505384d9d91c5558e947559dede4f68bb2f90be689060c819d",
+    "reverseRawCanonicalSha256": "f307845129787ca3f75d4d816d95b3374be373bdd89033d946becd0559f42551"
+  },
+  "vnext/packages/protocols-llm/src/responses/index.ts": {
+    "inputs": {
+      "base": "b7d0d3548d5d70f26ad74f1594dac3a0359eb0c1f04f915a2cd2157608da0dd8",
+      "user": "01c4760c6eccdad145a9151e69ff13f81c253666fc7773a9b42fb532caa9b561",
+      "candidate": "52ba46b50f0ae853b6ef7c048836712a25aafa909e466e9080d1b633124e2d53"
+    },
+    "forward": [],
+    "forwardNormalizations": [
+      {
+        "before": "export type {\n  ResponsesTool,\n  ResponsesAdditionalToolsItem,",
+        "after": "export type {\n  ResponsesTool,",
+        "count": 1
+      }
+    ],
+    "forwardResolvedSha256": "b9cc8fa880c34ff9f3720777030fce54255a403b37e4ee84d7813aacb52f3ea3",
+    "mergedSha256": "205d3940f08db4d47ec25dfa9d834d945667db09640875003c863da317c2e11c",
+    "reverse": [
+      {
+        "ours": "  ResponsesTool,\n",
+        "theirs": "",
+        "resolved": ""
+      }
+    ],
+    "reverseResolvedSha256": "01c4760c6eccdad145a9151e69ff13f81c253666fc7773a9b42fb532caa9b561",
+    "reverseNormalizations": [],
+    "restoredUserSha256": "01c4760c6eccdad145a9151e69ff13f81c253666fc7773a9b42fb532caa9b561",
+    "forwardRawCanonicalSha256": "b9cc8fa880c34ff9f3720777030fce54255a403b37e4ee84d7813aacb52f3ea3",
+    "reverseRawCanonicalSha256": "67b09a18a1533cba43881b104bc7f02dbab33f05ad6bb11f4ea958ad10030ba7"
+  }
+}

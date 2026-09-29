@@ -1,0 +1,75 @@
+import * as codec from '__ROOT__/vnext/packages/provider-codex/src/responses-lite.ts'
+import * as models from '__ROOT__/vnext/packages/provider-codex/src/models.ts'
+const oracle=__VECTORS__
+const equal=(left,right,label)=>{if(JSON.stringify(left)!==JSON.stringify(right))throw new Error(label)}
+const check=(condition,label)=>{if(!condition)throw new Error(label)}
+const throws=(callback,label)=>{let rejected=false;try{callback()}catch{rejected=true}check(rejected,label)}
+export async function runCodecProbe(){
+ const results=[]
+ const tools=[{type:'function',name:'lookup',description:'fixture',parameters:{type:'object'}},{type:'custom',name:'shell',description:'fixture'}]
+ const original={instructions:oracle.instructions,tools,input:[{type:'message',role:'user',content:'synthetic'}],parallel_tool_calls:true,tool_choice:'required',reasoning:{effort:'high'}}
+ const originalText=JSON.stringify(original)
+ for(const vector of oracle.vectors){
+  const prepared=codec.encodeCodexResponsesLiteRequest(original,vector.thread)
+  equal(prepared.body.input[0].id,vector.toolsId,'Independent Python UUIDv5 tools vector')
+  equal(prepared.body.input[1].id,vector.instructionsId,'Independent Python UUIDv5 instructions vector')
+  equal(prepared.body.parallel_tool_calls,false,'Lite parallel false');equal(prepared.body.reasoning.context,'all_turns','Lite context');equal(prepared.body.tool_choice,'required','Caller choice')
+  check(!('tools'in prepared.body)&&!('instructions'in prepared.body),'No standard duplicate fields')
+  equal(JSON.stringify(original),originalText,'Caller unchanged')
+ }
+ results.push('independent-UUIDv5-empty-ascii-Chinese-emoji-and-immutable-encoding')
+ const create=type=>codec.encodeCodexResponsesLiteRequest({input:[],tools:[{type,name:'same',description:'fixture',...(type==='function'?{parameters:{type:'object'}}:{})}]},type)
+ const a=create('custom'),b=create('function'),adapterA=codec.createCodexResponsesLiteAdapter(a),adapterB=codec.createCodexResponsesLiteAdapter(b)
+ const addedA={type:'event',event:{type:'response.output_item.added',output_index:0,item:{id:'shared',type:'function_call',name:'same',namespace:'functions',call_id:'callA',arguments:'',status:'in_progress'}}}
+ const addedB={type:'event',event:{type:'response.output_item.added',output_index:0,item:{id:'shared',type:'custom_tool_call',name:'same',namespace:'functions',call_id:'callB',input:''}}}
+ equal(adapterA.frame(addedA).event.item.type,'custom_tool_call','A custom restore')
+ equal(adapterB.frame(addedB).event.item.type,'function_call','B function restore')
+ const delta=adapterA.frame({type:'event',event:{type:'response.function_call_arguments.delta',item_id:'shared',output_index:0,delta:'echo 你好'}})
+ equal(delta.event.type,'response.custom_tool_call_input.delta','A lifecycle isolated')
+ const done=adapterB.frame({type:'event',event:{type:'response.custom_tool_call_input.done',item_id:'shared',output_index:0,input:'{}'}})
+ equal(done.event.type,'response.function_call_arguments.done','B lifecycle isolated');equal(done.event.arguments,'{}','Function arguments');equal(done.event.name,'same','Function done name')
+ const unary=adapterA.result({id:'response',object:'response',status:'completed',model:'synthetic',tools:[],instructions:'wire',output:[{...addedA.event.item,arguments:'echo 你好',status:'completed'}]})
+ equal(unary.output[0].type,'custom_tool_call','Unary callable type');equal(unary.output[0].input,'echo 你好','Unary UTF8 data');check(!('namespace'in unary.output[0]),'Flat namespace restore');equal(unary.tools,a.requestEchoes.tools,'Caller tools echoed');check(!('instructions'in unary),'Absent instructions echo')
+ equal(adapterA.frame({type:'done'}),{type:'done'},'Terminal frame retained')
+ results.push('concurrent-adapters-shared-item-id-opposite-callable-kinds-and-unary-echoes')
+ const historyCarrier={type:'additional_tools',role:'developer',id:'at_caller',tools:[tools[0]]}
+ const seed=codec.encodeCodexResponsesLiteRequest({instructions:oracle.instructions,tools:[tools[1]],input:[historyCarrier]},'compact')
+ const callerCopy=structuredClone(seed.body.input[1])
+ const prepared=codec.encodeCodexResponsesLiteRequest({instructions:oracle.instructions,tools:[tools[1]],input:[historyCarrier,callerCopy,{type:'message',role:'user',content:'keep me'}]},'compact')
+ const modified={...prepared.body.input[1],content:[{type:'input_text',text:'modified caller content'}]}
+ const output=[...prepared.body.input.slice(0,2),callerCopy,modified,{type:'message',role:'user',content:'keep me'}]
+ const compact=codec.restoreCodexResponsesCompactionResult({id:'compact',object:'response.compaction',created_at:1,output},prepared.callableIdentities,prepared.generatedPrefix)
+ equal(compact.output,[historyCarrier,callerCopy,modified,{type:'message',role:'user',content:'keep me'}],'Only generated compact prefix inverted')
+ const noEcho=codec.restoreCodexResponsesCompactionResult({output:[modified]},prepared.callableIdentities,prepared.generatedPrefix)
+ equal(noEcho.output,[modified],'No invented caller carriers without prefix')
+ results.push('compact-prefix-provenance-identical-caller-copy-and-modified-lookalike')
+ const searched={type:'tool_search_output',id:'search',call_id:'search-call',tools:[tools[1]]}
+ const searchPrepared=codec.encodeCodexResponsesLiteRequest({input:[{type:'message',role:'user',content:'before'},searched]},'search')
+ equal(searchPrepared.body.input[2],searched,'Search declaration stays at source position');equal(searchPrepared.body.input[0].tools,[],'Search tools not promoted')
+ equal(codec.restoreCodexResponsesResult({output:[{...addedA.event.item,name:'shell'}],status:'completed'},searchPrepared.callableIdentities).output[0].type,'custom_tool_call','Search callable indexed')
+ throws(()=>codec.encodeCodexResponsesLiteRequest({input:[],tools:[{type:'custom',name:'same'},{type:'namespace',name:'functions',description:'',tools:[{type:'function',name:'same',parameters:{}}]}]},'collision'),'Namespace/type collision rejected')
+ results.push('search-history-position-inverse-map-and-collision-rejection')
+ let closed=false
+ async function* source(){try{yield addedA;yield {type:'done'}}finally{closed=true}}
+ for await(const _frame of codec.restoreCodexResponsesFrames(source(),a.callableIdentities,a.requestEchoes)){void _frame;break}
+ check(closed,'Frame adapter closes canceled upstream iterator')
+ let observedError=false
+ async function* failedSource(){yield addedA;throw new Error('synthetic stream failure')}
+ try{for await(const _frame of codec.restoreCodexResponsesFrames(failedSource(),a.callableIdentities,a.requestEchoes)){void _frame}}catch(error){observedError=error.message==='synthetic stream failure'}
+ check(observedError,'Frame adapter does not hide source failure')
+ results.push('iterator-cancellation-and-error-propagation')
+ for(const flag of [undefined,false,true]){
+  const raw={slug:'model',display_name:'Synthetic',context_window:1000,...(flag===undefined?{}:{use_responses_lite:flag})}
+  const parsed=await models.fetchCodexCatalog({accessToken:'synthetic',accountId:'synthetic',fetcher:async()=>Response.json({models:[raw]})})
+  const model=models.codexRawToProviderModel(parsed[0])
+  equal(models.codexModelUsesResponsesLite(model),flag===true,'Catalog Lite flag')
+ }
+ for(const flag of ['true',1,null,{}]){
+  let rejected=false
+  try{await models.fetchCodexCatalog({accessToken:'synthetic',accountId:'synthetic',fetcher:async()=>Response.json({models:[{slug:'model',display_name:'Synthetic',context_window:1000,use_responses_lite:flag}]})})}catch{rejected=true}
+  check(rejected,'Malformed catalog Lite flag rejected')
+ }
+ results.push('strict-catalog-absent-false-true-and-malformed-values')
+ return {passed:true,groups:results,uuidVectors:oracle.vectors.length,productionLiteDispatch:false}
+}
+export default{async fetch(){try{return Response.json(await runCodecProbe())}catch(error){return Response.json({passed:false,error:error.message},{status:500})}}}

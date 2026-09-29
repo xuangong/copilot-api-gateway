@@ -36,6 +36,7 @@ export interface CodexRawModel {
   input_modalities?: readonly ('text' | 'image')[]
   reasoning_efforts?: readonly string[]
   default_reasoning_effort?: string
+  use_responses_lite?: boolean
   image_detail_original?: boolean
 }
 
@@ -44,6 +45,7 @@ export interface CodexProviderModel {
   display_name: string
   owned_by: 'openai'
   kind: 'chat'
+  providerData: { useResponsesLite: boolean }
   limits: { max_context_window_tokens: number }
   endpoints: { responses: Record<string, never> }
   pricing?: ModelPricing
@@ -106,7 +108,7 @@ export const fetchCodexCatalog = async (opts: {
 }
 
 const isPlainRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null
+  typeof v === 'object' && v !== null && !Array.isArray(v)
 
 // Fail loud on malformed upstream catalog responses: a missing field signals
 // an upstream contract change we need to notice. New optional fields
@@ -170,7 +172,24 @@ const assertRawModel = (value: unknown): CodexRawModel => {
     raw.image_detail_original = value.supports_image_detail_original
   }
 
+  if (value.use_responses_lite !== undefined) {
+    if (typeof value.use_responses_lite !== "boolean") {
+      throw new TypeError(`Codex model entry ${slug} use_responses_lite not a boolean`)
+    }
+    raw.use_responses_lite = value.use_responses_lite
+  }
+
   return raw
+}
+
+export const codexModelUsesResponsesLite = (model: { id: string; providerData?: unknown }): boolean => {
+  const providerData = model.providerData
+  if (providerData === undefined) return false
+  if (!isPlainRecord(providerData)) throw new TypeError(`Codex model ${model.id} providerData is not an object`)
+  const value = providerData.useResponsesLite
+  if (value === undefined) return false
+  if (typeof value !== "boolean") throw new TypeError(`Codex model ${model.id} providerData.useResponsesLite is not a boolean`)
+  return value
 }
 
 // Codex exposes only the Responses endpoint. Pricing is looked up from the
@@ -205,6 +224,7 @@ export const codexRawToProviderModel = (raw: CodexRawModel): CodexProviderModel 
     display_name: raw.display_name,
     owned_by: 'openai',
     kind: 'chat',
+    providerData: { useResponsesLite: raw.use_responses_lite ?? false },
     limits: { max_context_window_tokens: raw.context_window },
     endpoints: { responses: {} },
     ...(pricing ? { pricing } : {}),

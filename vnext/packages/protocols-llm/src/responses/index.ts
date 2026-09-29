@@ -66,6 +66,8 @@ export type ResponsesRequestPayload = Omit<ResponsesPayload, 'input'> & {
 }
 
 export type {
+  ResponsesTool,
+  ResponsesAdditionalToolsItem,
   ResponsesStreamEvent,
   ResponsesStreamEventVariant,
   ResponsesResult,
