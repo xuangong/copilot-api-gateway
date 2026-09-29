@@ -1,7 +1,13 @@
 import type { UpstreamRecord } from '@vibe-core/upstream'
 
 export type StoredUpstreamRecord<TState = unknown, TProvider extends string = string> =
-  UpstreamRecord<TProvider, TState> & { rowIncarnation: string }
+  UpstreamRecord<TProvider, TState> & {
+    rowIncarnation: string
+    /** Authoritative configuration generation when supplied by the storage
+     * adapter. Credential replacement/configuration changes advance it;
+     * routine token/quota state updates do not. Absence grants no affinity. */
+    catalogGeneration?: number
+  }
 
 export interface UpstreamWriteTarget {
   rowIncarnation: string

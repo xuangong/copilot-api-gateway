@@ -5,7 +5,7 @@ import type { CodexAccessTokenEntry } from "./state"
 import {
   codexBearerEffect, ignoreGoneCodexEffect, persistCodexTerminalState,
   readCodexCredential, updateCodexCredential,
-  type CodexAccessTokenLease, type CodexCredentialSnapshot,
+  type CodexAccessTokenLease, type CodexCredentialSnapshot, type CodexCredentialTarget,
 } from "./credential-effects"
 
 export type { CodexAccessTokenEntry, CodexAccessTokenLease }
@@ -14,6 +14,10 @@ export interface CodexMintResult {
   accessToken: CodexAccessTokenEntry
   refreshToken: string
 }
+
+/** Per-request fence for the exact snapshot whose refresh token will be sent.
+ * Runs at every mint, including internal invalid-grant/CAS recovery. */
+export type CodexBeforeMint = (credential: Readonly<CodexCredentialTarget>) => Promise<void>
 
 export type CodexTokenMint = (refreshToken: string, signal?: AbortSignal) => Promise<CodexMintResult>
 
@@ -108,6 +112,7 @@ export const ensureCodexAccessToken = async (
   expected?: UpstreamWriteTarget,
   signal?: AbortSignal,
   coalescingScope?: object,
+  beforeMint?: CodexBeforeMint,
 ): Promise<CodexAccessTokenLease> => {
   assertNotAborted(signal)
   if (signal) {
@@ -120,7 +125,7 @@ export const ensureCodexAccessToken = async (
       const lease = await waitForOwnedOperation((async () => {
         const snapshot = await readCodexCredential(upstreamId, accountId, expected)
         assertNotAborted(owned.signal)
-        return await ensureInner(snapshot, mint, force, true, owned.signal)
+        return await ensureInner(snapshot, mint, force, true, owned.signal, beforeMint)
       })(), owned.signal)
       assertNotAborted(owned.signal)
       return lease
@@ -131,10 +136,10 @@ export const ensureCodexAccessToken = async (
   const snapshot = await readCodexCredential(upstreamId, accountId, expected)
   const { credential, account } = snapshot
   const key = JSON.stringify([upstreamId, accountId, credential.rowIncarnation, credential.ownerId,
-    credential.credentialRevision, account.refresh_token, account.accessToken?.token, force, scopeNumber(coalescingScope)])
+    credential.credentialRevision, account.refresh_token, account.accessToken?.token, force, scopeNumber(coalescingScope ?? beforeMint)])
   const existing = inFlightEnsures.get(key)
   if (existing) return await existing
-  const promise = ensureInner(snapshot, mint, force, true)
+  const promise = ensureInner(snapshot, mint, force, true, undefined, beforeMint)
   inFlightEnsures.set(key, promise)
   try { return await promise } finally { inFlightEnsures.delete(key) }
 }
@@ -145,6 +150,7 @@ const ensureInner = async (
   force: boolean,
   recoveryAllowed: boolean,
   signal?: AbortSignal,
+  beforeMint?: CodexBeforeMint,
 ): Promise<CodexAccessTokenLease> => {
   assertNotAborted(signal)
   const { credential, account } = snapshot
@@ -164,6 +170,10 @@ const ensureInner = async (
   }
   const effect = { credential, tokenKind: "refresh" as const, token: account.refresh_token }
   let minted: CodexMintResult
+  if (beforeMint) {
+    await beforeMint(credential)
+    assertNotAborted(signal)
+  }
   try {
     minted = await waitForOwnedOperation(signal ? mint(account.refresh_token, signal) : mint(account.refresh_token), signal)
   } catch (error) {
@@ -181,7 +191,7 @@ const ensureInner = async (
         // Preserve the existing single invalid_grant recovery with the current
         // refresh token and a newly captured effect identity.
         if (error.code === "invalid_grant" && recoveryAllowed && current.account.state === "active") {
-          return await ensureInner(current, mint, false, false, signal)
+          return await ensureInner(current, mint, false, false, signal, beforeMint)
         }
       }
       assertNotAborted(signal)
@@ -206,7 +216,7 @@ const ensureInner = async (
     const changed = current.credential.credentialRevision !== credential.credentialRevision ||
       current.account.refresh_token !== account.refresh_token
     if (changed && recoveryAllowed && current.account.state === "active" && current.account.refresh_token !== null) {
-      return await ensureInner(current, mint, false, false, signal)
+      return await ensureInner(current, mint, false, false, signal, beforeMint)
     }
     throw new CodexCredentialUnavailableError()
   }
@@ -218,6 +228,7 @@ export const refreshCodexAccessTokenForRetry = async (
   failed: CodexAccessTokenLease,
   mint: CodexTokenMint,
   signal?: AbortSignal,
+  beforeMint?: CodexBeforeMint,
 ): Promise<CodexAccessTokenLease> => {
   assertNotAborted(signal)
   if (!failed.renewable) {
@@ -231,7 +242,7 @@ export const refreshCodexAccessTokenForRetry = async (
   if (winner && (winner.token !== failed.token || winner.credential.credentialRevision !== target.credentialRevision)) return winner
   await invalidateCodexAccessToken(failed)
   // A sibling can rotate between the first read and invalidation CAS.
-  return await ensureCodexAccessToken(target.upstreamId, target.accountId, mint, false, target, signal)
+  return await ensureCodexAccessToken(target.upstreamId, target.accountId, mint, false, target, signal, undefined, beforeMint)
 }
 
 export const mintCodexAccessToken = async (refreshToken: string, fetcher: Fetcher, signal?: AbortSignal): Promise<CodexMintResult> => {

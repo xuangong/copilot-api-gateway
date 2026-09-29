@@ -1,3 +1,4 @@
+import { codexAffinityTarget, CodexAffinityChangedError } from "./affinity-execution"
 // Codex terminal HTTP flow for /codex/responses (streaming) and
 // /codex/responses/compact (unary). Ported from copilot-gateway/packages/
 // provider-codex/src/fetch.ts.
@@ -41,7 +42,7 @@ import type { Fetcher } from './fetcher'
 import { sha256UuidFromParts, uuidV7 } from './ids'
 import { codexModelUsesResponsesLite, type CodexProviderModel } from './models'
 import { encodeCodexResponsesLiteRequest, createCodexResponsesLiteAdapter, restoreCodexResponsesCompactionResult, type CodexResponsesBody as LiteBody, type CodexResponsesLiteRequest } from './responses-lite'
-import type { ProviderResponse } from '@vibe-llm/provider-llm'
+import type { ProviderRequest, ProviderResponse } from '@vibe-llm/provider-llm'
 import { parseCodexQuotaHeaders, putCodexQuota } from './quota'
 import type { CodexAccountCredential, CodexQuotaSnapshotEntryMap } from './state'
 import type {
@@ -111,6 +112,7 @@ interface CodexBackendCallBase {
   signal?: AbortSignal
   fetcher: Fetcher
   executionFetcher?: Fetcher
+  beforeInference?: ProviderRequest["beforeInference"]
 }
 
 export interface CallCodexResponsesOptions extends CodexBackendCallBase {
@@ -134,6 +136,8 @@ type CodexResponsesBody =
 
 export interface CodexPreparedCallResult {
   response: Response
+  execution?: ProviderResponse["execution"]
+  affinityExecution?: ProviderResponse["affinityExecution"]
   responsesAdapter?: ProviderResponse['responsesAdapter']
   compactAdapter?: ProviderResponse['compactAdapter']
 }
@@ -161,6 +165,8 @@ const callPreparedResponses = async (
   const lite = prepared.lite
   return {
     response,
+    execution: { modelKey: opts.model.id },
+    affinityExecution: prepared.affinityExecution,
     ...(lite && (compact
       ? { compactAdapter: (result: Parameters<typeof restoreCodexResponsesCompactionResult>[0]) =>
           restoreCodexResponsesCompactionResult(result, lite.callableIdentities, lite.generatedPrefix) }
@@ -186,7 +192,9 @@ export const callCodexAlphaSearch = async (
 const prepareCodexCall = async (
   opts: CodexBackendCallBase,
 ): Promise<{ ok: true; accessToken: CodexAccessTokenLease } | { ok: false; response: Response }> => {
-  const { account } = await readCodexCredential(opts.upstreamId, opts.account.chatgptAccountId, opts.credential)
+  opts.signal?.throwIfAborted()
+  const { account, credential } = await readCodexCredential(opts.upstreamId, opts.account.chatgptAccountId, opts.credential)
+  await preflightAffinity(opts, credential)
   if (account.state !== 'active') {
     return { ok: false, response: synthetic503(account.state === 'access_rejected' ? 'access_rejected' : 'credential_unavailable') }
   }
@@ -206,6 +214,8 @@ const prepareCodexCall = async (
       false,
       opts.credential,
       opts.signal,
+      undefined,
+      affinityMintFence(opts),
     )
     return { ok: true, accessToken: entry }
   } catch (err) {
@@ -493,6 +503,7 @@ const buildCodexResponsesBody = (
 //   - other: returned verbatim
 
 export interface PreparedCodexHttpCall {
+  affinityExecution?: ProviderResponse["affinityExecution"]
   originalBody?: LiteBody
   lite?: CodexResponsesLiteRequest
   body: Record<string, unknown>
@@ -544,6 +555,21 @@ const dispatchCodexHttpCall = async (
     prepared.bodyPrepared = true
   }
 
+  // Re-read only non-secret authority for the lease used on this dispatch.
+  // OAuth refresh may change tokens; it must never silently adopt a replaced
+  // account/configuration for already materialized opaque input.
+  opts.signal?.throwIfAborted()
+  const current = await readCodexCredential(opts.upstreamId, accountId, accessToken.credential)
+  const sameCredential = current.credential.credentialRevision === accessToken.credential.credentialRevision
+    && current.credential.configurationGeneration === opts.credential.configurationGeneration
+  const affinityExecution = sameCredential ? codexAffinityTarget(current.credential, opts.model.id) : undefined
+  opts.signal?.throwIfAborted()
+  if (opts.beforeInference) {
+    if (!affinityExecution) throw new CodexAffinityChangedError()
+    await opts.beforeInference(affinityExecution)
+  }
+  prepared.affinityExecution = affinityExecution
+  opts.signal?.throwIfAborted()
   const response = await (opts.executionFetcher ?? opts.fetcher)(`${CODEX_BACKEND_BASE}${path}`, {
     method: 'POST',
     headers,
@@ -588,13 +614,36 @@ const dispatchCodexHttpCall = async (
   return response
 }
 
+function affinityMintFence(opts: CodexBackendCallBase) {
+  if (!opts.beforeInference) return undefined
+  return async (credential: Readonly<CodexCredentialTarget>): Promise<void> => {
+    // Validate both the exact token-manager snapshot and current authority.
+    // An outer ensure fence alone does not cover its internal recovery loops.
+    await preflightAffinity(opts, credential)
+    const current = await readCodexCredential(opts.upstreamId, credential.accountId, credential)
+    await preflightAffinity(opts, current.credential)
+  }
+}
+
+async function preflightAffinity(opts: CodexBackendCallBase, credential: CodexCredentialTarget): Promise<void> {
+  opts.signal?.throwIfAborted()
+  if (!opts.beforeInference) return
+  const target = codexAffinityTarget(credential, opts.model.id)
+  if (!target) throw new CodexAffinityChangedError()
+  await opts.beforeInference(target)
+  opts.signal?.throwIfAborted()
+}
+
 // Recovery selects authoritative credentials before touching the failed bearer.
 const refreshAccessTokenForRetry = async (
   opts: CodexBackendCallBase,
   failed: CodexAccessTokenLease,
 ): Promise<{ ok: true; accessToken: CodexAccessTokenLease } | { ok: false; response: Response }> => {
   try {
-    const accessToken = await refreshCodexAccessTokenForRetry(failed, (refresh, signal) => mintAccessToken(opts, refresh, signal), opts.signal)
+    opts.signal?.throwIfAborted()
+    const current = await readCodexCredential(opts.upstreamId, opts.account.chatgptAccountId, opts.credential)
+    await preflightAffinity(opts, current.credential)
+    const accessToken = await refreshCodexAccessTokenForRetry(failed, (refresh, signal) => mintAccessToken(opts, refresh, signal), opts.signal, affinityMintFence(opts))
     return { ok: true, accessToken }
   } catch (err) {
     if (err instanceof CodexOAuthSessionTerminatedError) {

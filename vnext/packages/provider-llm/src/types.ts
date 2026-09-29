@@ -1,5 +1,5 @@
 import type { BindingModel } from "./binding"
-import type { OpaqueCompatibilityDeclaration } from "./opaque-affinity"
+import type { AffinityExecutionTarget, OpaqueCompatibilityDeclaration } from "./opaque-affinity"
 /**
  * @vibe-llm/provider-llm/types — LLM business overlay over the framework
  * UpstreamAdapter contract from @vibe-core/upstream.
@@ -50,6 +50,7 @@ export interface ProviderResponsesAdapter {
 
 /** LLM-only extension: transport wrappers must preserve these per-call extras. */
 export interface ProviderResponse extends TransportProviderResponse {
+  readonly affinityExecution?: AffinityExecutionTarget
   readonly execution?: ProviderExecutionIdentity
   readonly responsesAdapter?: ProviderResponsesAdapter
   /** Native compact JSON is restored before observation and lifecycle synthesis. */
@@ -65,6 +66,11 @@ export interface ProviderRequestFlags {
 }
 
 export interface ProviderRequest {
+  /** For providers implementing prepareAffinityExecution: called after final
+   * model/account resolution, before credential refresh and every inference
+   * dispatch (including auth retries). May run multiple times; must be pure
+   * apart from authoritative reads. Rejection must prevent the next I/O. */
+  beforeInference?: (target: AffinityExecutionTarget) => Promise<void>
   endpoint: EndpointKey
   /** Schema-validated JSON object. NOT a string. Interceptors mutate fields directly. */
   payload: unknown
@@ -108,6 +114,12 @@ export type InboundHeaderMatcher = string | RegExp
  * Also narrows fetch's request type from `unknown` to `ProviderRequest`.
  */
 export interface LlmModelProvider extends UpstreamAdapter {
+  /** Read only: use an already accepted catalog and authoritative credential
+   * metadata. Never refresh credentials, discover models, or send inference.
+   * Undefined means this provider cannot prove an affinity target; callers
+   * must not forward recognized gateway carriers to that candidate. */
+  prepareAffinityExecution?(request: Readonly<ProviderRequest>): Promise<AffinityExecutionTarget | undefined>
+
   /** Pure trusted-provider declaration for a discovered candidate. Never infer
    * this from caller input or arbitrary remote catalog fields. The registry
    * validates and reconstructs it on every binding rebuild, including cache hits. */

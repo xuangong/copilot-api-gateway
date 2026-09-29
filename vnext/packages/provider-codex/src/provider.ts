@@ -17,6 +17,7 @@
  *   - Access-token / quota / models / catalog logic is unchanged in shape.
  *   - Credential effects capture row identity, revision and the used token.
  */
+import { codexAffinityTarget } from "./affinity-execution"
 import { ensureCodexAccessToken, mintCodexAccessToken, rejectCodexAccessToken } from './access-token'
 import { assertCodexUpstreamRecord, type CodexUpstreamConfig } from './config'
 import {
@@ -65,6 +66,7 @@ export class CodexProvider implements LlmModelProvider {
   readonly supportedEndpoints = CODEX_SUPPORTED
   private readonly upstreamId: string
   private readonly writeTarget: UpstreamWriteTarget
+  private readonly configurationGeneration?: number
   private readonly config: CodexUpstreamConfig
   private readonly fetcher: Fetcher
   private readonly executionFetcher?: ExecutionFetcherForRequest
@@ -82,14 +84,16 @@ export class CodexProvider implements LlmModelProvider {
     this.writeTarget = {
       rowIncarnation: record.rowIncarnation, ownerId: record.ownerId, provider: record.provider,
     }
-    this.config = record.config
+    this.configurationGeneration = "catalogGeneration" in record && typeof record.catalogGeneration === "number"
+      && Number.isSafeInteger(record.catalogGeneration) && record.catalogGeneration >= 0 ? record.catalogGeneration : undefined
+    this.config = structuredClone(record.config)
     this.name = record.name
     this.fetcher = fetcher
     this.executionFetcher = executionFetcher
   }
 
   setModelCatalog(models: ProviderModelsResponse): void {
-    this.catalogCache = models.data as CodexProviderModel[]
+    this.catalogCache = structuredClone(models.data) as CodexProviderModel[]
   }
 
   async getModels(): Promise<ProviderModelsResponse> {
@@ -139,6 +143,20 @@ export class CodexProvider implements LlmModelProvider {
     return pricingForCodexModelKey(modelKey)
   }
 
+  async prepareAffinityExecution(req: Readonly<ProviderRequest>) {
+    req.signal?.throwIfAborted()
+    if (req.endpoint !== "responses" || !req.payload || typeof req.payload !== "object") return undefined
+    const modelId = "model" in req.payload ? req.payload.model : undefined
+    // Catalog misses must remain misses: selection cannot refresh OAuth/models.
+    const model = this.catalogCache?.find(candidate => candidate.id === modelId)
+    if (!model) return undefined
+    const { credential, account } = await readCodexCredential(this.upstreamId, this.config.accounts[0].chatgptAccountId, this.writeTarget)
+    req.signal?.throwIfAborted()
+    if (account.state !== "active") return undefined
+    if (credential.configurationGeneration !== this.configurationGeneration) return undefined
+    return codexAffinityTarget(credential, model.id)
+  }
+
   async fetch(req: ProviderRequest): Promise<ProviderResponse> {
     if (req.endpoint === 'alpha_search') {
       return await this.callAlphaSearch(req)
@@ -184,6 +202,7 @@ export class CodexProvider implements LlmModelProvider {
         signal: req.signal,
         fetcher: this.fetcher,
         executionFetcher: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req),
+        beforeInference: req.beforeInference,
       }
       preparedResult = inv.action === 'compact'
         ? await callCodexResponsesCompactPrepared({ ...backendCallBase, body: wireBody })
@@ -195,6 +214,8 @@ export class CodexProvider implements LlmModelProvider {
       status: upstreamResp.status,
       headers: upstreamResp.headers,
       body: upstreamResp.body,
+      affinityExecution: preparedResult?.affinityExecution,
+      execution: preparedResult?.execution,
       responsesAdapter: preparedResult?.responsesAdapter,
       compactAdapter: preparedResult?.compactAdapter,
     }
@@ -212,7 +233,7 @@ export class CodexProvider implements LlmModelProvider {
     if (!this.catalogCache) await this.getModels()
     const hit = this.catalogCache?.find((m) => m.id === modelId)
     if (!hit) throw new Error(`CodexProvider: unknown model '${modelId}'`)
-    return hit
+    return structuredClone(hit)
   }
 
   // Alpha search skips interceptors — the codex CLI SearchRequest shape is

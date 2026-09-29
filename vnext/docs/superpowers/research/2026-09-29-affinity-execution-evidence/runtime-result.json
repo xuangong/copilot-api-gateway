@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "runtime": "actual Bun CodexProvider + loopback HTTP + real SQLite",
+  "cases": [
+    "normal-exact",
+    "lite-exact",
+    "config-zero-network",
+    "revision-zero-network",
+    "incarnation-zero-network",
+    "expired-config-zero-network",
+    "expired-revision-zero-network",
+    "401-replacement-no-retry",
+    "oauth-pending-replacement-no-recursive-mint"
+  ],
+  "networkCalls": 4,
+  "oauth": 1
+}

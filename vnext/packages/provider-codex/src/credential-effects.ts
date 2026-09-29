@@ -12,6 +12,7 @@ export interface CodexCredentialTarget extends UpstreamWriteTarget {
   accountId: string
   provider: "codex"
   credentialRevision: string | null
+  configurationGeneration?: number
 }
 
 export interface CodexCredentialSnapshot {
@@ -47,6 +48,9 @@ export const readCodexCredential = async (
     credential: {
       upstreamId, accountId, rowIncarnation: row.rowIncarnation,
       ownerId: row.ownerId, provider: "codex", credentialRevision: account.credentialRevision ?? null,
+      ...(typeof row.catalogGeneration === "number"
+        && Number.isSafeInteger(row.catalogGeneration) && row.catalogGeneration >= 0
+        ? { configurationGeneration: row.catalogGeneration } : {}),
     },
     account,
   }
