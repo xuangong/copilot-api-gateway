@@ -81,14 +81,15 @@ const bodyPath = (keyId: string, bucket: string, recordId: string, side: "req" |
 // CompressionStream globally). Cloudflare Workers do expose CompressionStream;
 // when this runs there we'd wrap that instead — for the Bun runtime we take
 // the direct route.
-const gzip = async (input: Uint8Array): Promise<Uint8Array> => {
+const gzip = async (input: Uint8Array | string): Promise<Uint8Array> => {
   // Both sinks below reject a SharedArrayBuffer-backed view; nothing in the
   // gateway ever produces one, so narrow once here instead of at each call.
-  const bytes = input as Uint8Array<ArrayBuffer>
+  const part = input as Uint8Array<ArrayBuffer> | string
   if (typeof CompressionStream !== "undefined") {
-    const stream = new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip")))
+    const stream = new Response(new Blob([part]).stream().pipeThrough(new CompressionStream("gzip")))
     return new Uint8Array(await stream.arrayBuffer())
   }
+  const bytes = typeof part === "string" ? new TextEncoder().encode(part) : part
   return Bun.gzipSync(bytes)
 }
 
@@ -144,7 +145,7 @@ export class FileDumpStore implements DumpStore {
     if (record.upstreamExchanges != null) {
       try {
         const safe = safeUpstreamExchangesForPersistence(record.upstreamExchanges)
-        upstreamBytes = await gzip(new TextEncoder().encode(JSON.stringify(safe)))
+        upstreamBytes = await gzip(JSON.stringify(safe) ?? "")
       } catch { /* optional sidecar */ }
     }
     let upstreamFileKey = upstreamBytes === null ? null : bodyPath(keyId, bucket, record.meta.id, "up")
@@ -210,7 +211,7 @@ export class FileDumpStore implements DumpStore {
           responseDescriptor = { key: responseFileKey, type: "bytes" }
         }
       } else if (record.response.body.type === "stream") {
-        responseBytes = await gzip(new TextEncoder().encode(JSON.stringify(record.response.body.events)))
+        responseBytes = await gzip(JSON.stringify(record.response.body.events) ?? "")
         responseDescriptor = { key: responseFileKey!, type: "events" }
       }
 
