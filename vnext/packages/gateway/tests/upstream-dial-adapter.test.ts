@@ -83,6 +83,30 @@ test("bounded UTF-8 preserves every byte boundary and counts the uncaptured suff
   expect(boundedUtf8("", 0)).toEqual({ prefix: new Uint8Array(0), totalBytes: 0 })
 })
 
+test("bounded UTF-8 reserves only captured bytes for short prepared bodies", () => {
+  for (const text of ["plain ASCII", "é", "中", "😀", "a\ud800z"]) {
+    const expected = new TextEncoder().encode(text)
+    const result = boundedUtf8(text, UPSTREAM_ATTEMPT_LIMITS.requestPrefix)
+    expect(result.prefix).toEqual(expected)
+    expect(result.prefix.buffer.byteLength).toBe(expected.byteLength)
+  }
+})
+
+test("bounded UTF-8 matches native encoding across malformed surrogate boundaries", () => {
+  const units = [0, 0x7f, 0x80, 0x7ff, 0x800, 0xd7ff, 0xd800, 0xdbff, 0xdc00, 0xdfff, 0xe000, 0xffff]
+  const encoder = new TextEncoder()
+  for (const first of units) for (const second of units) for (const third of units) {
+    const text = String.fromCharCode(first, second, third)
+    const expected = encoder.encode(text)
+    for (let limit = 0; limit <= expected.length + 1; limit++) {
+      const result = boundedUtf8(text, limit)
+      expect(result.totalBytes).toBe(expected.length)
+      expect(result.prefix).toEqual(expected.subarray(0, limit))
+      expect(result.prefix.buffer.byteLength).toBe(result.prefix.byteLength)
+    }
+  }
+})
+
 test("prepared byte prefix is copied before dispatch and opaque bodies stay unobserved", () => {
   const collector = new UpstreamExchangeCollector()
   const context = createUpstreamDialObservationContext(collector)
