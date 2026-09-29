@@ -293,7 +293,7 @@ workerdTest("native workerd socket keeps warmup private and reauthorizes every t
   }
 }, 30_000)
 
-workerdTest("a failed native turn closes, and a new socket sends a full upstream request", async () => {
+workerdTest("a failed native turn is followed by a full upstream request on a new socket", async () => {
   let first: WebSocket | undefined
   let second: WebSocket | undefined
   try {

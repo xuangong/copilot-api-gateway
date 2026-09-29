@@ -1,0 +1,1417 @@
+diff --git a/vnext/apps/dashboard/src/api/usage.test.ts b/vnext/apps/dashboard/src/api/usage.test.ts
+index 2319f0e8..0ae8941b 100644
+--- a/vnext/apps/dashboard/src/api/usage.test.ts
++++ b/vnext/apps/dashboard/src/api/usage.test.ts
+@@ -1,5 +1,5 @@
+ import { expect, test } from "bun:test"
+-import { adaptUsageRow, type ServerUsageRow } from "./usage"
++import { adaptUsageRow, fetchUsageDistributionPage, fetchUsageFacetPage, fetchUsageSeriesPage, fetchUsageTime, type ServerUsageRow } from "./usage"
+ 
+ test("adapts missing incoming model from an older server as a legacy row", () => {
+   const oldServerRow: ServerUsageRow = {
+@@ -23,3 +23,38 @@ test("preserves an incoming model emitted by a newer server", () => {
+ 
+   expect(adaptUsageRow(serverRow).incomingModel).toBe("caller-alias")
+ })
++
++test("projection adapters preserve empty incoming identity, opaque cursor, AbortSignal and pricing metadata", async () => {
++  const prior = globalThis.fetch
++  const calls: Array<{ url: string; signal: AbortSignal | null | undefined }> = []
++  const metrics = { requests: 0, input: 0, output: 0, cacheRead: 0, cacheCreation: 0,
++    costUSD: 0, hasRecords: true, unpricedTokens: 0, unpricedDimensionRows: 1, observedDimensions: ["input"] }
++  globalThis.fetch = Object.assign(async (url: RequestInfo | URL, init?: RequestInit) => {
++    calls.push({ url: String(url), signal: init?.signal })
++    return new Response(JSON.stringify({ range: { start: "2026-09-01T00", end: "2026-09-02T00" },
++      page: { rows: [{ value: "", metrics, hours: [{ hour: "2026-09-01T00", metrics }] }], hasMore: false, nextCursor: null },
++      buckets: [{ hour: "2026-09-01T00", metrics }], unfilteredHasRecords: true }),
++    { headers: { "content-type": "application/json" } })
++  }, { preconnect: prior.preconnect })
++  try {
++    const signal = new AbortController().signal
++    const query = { start: "2026-09-01T00", end: "2026-09-02T00", incoming_model: "", cursor: "p1.opaque" }
++    await fetchUsageFacetPage({ start: query.start, end: query.end, axis: "incomingModel" }, signal)
++    await fetchUsageDistributionPage({ ...query, axis: "incomingModel" }, signal)
++    const series = await fetchUsageSeriesPage({ ...query, axis: "model", limit: 1 }, signal)
++    const time = await fetchUsageTime({ start: query.start, end: query.end, incoming_model: "" }, signal)
++    expect(calls.map(call => new URL(call.url, "http://local").pathname)).toEqual([
++      "/api/token-usage/projections/facets", "/api/token-usage/projections/distribution",
++      "/api/token-usage/projections/series", "/api/token-usage/projections/time",
++    ])
++    for (const [index, call] of calls.entries()) {
++      const url = new URL(call.url, "http://local")
++      expect(url.searchParams.has("incoming_model")).toBe(index !== 0)
++      if (index !== 0) expect(url.searchParams.get("incoming_model")).toBe("")
++      expect(url.searchParams.get("cursor")).toBe(index === 1 || index === 2 ? "p1.opaque" : null)
++      expect(call.signal).toBe(signal)
++    }
++    expect(series.page.rows[0]?.hours[0]?.metrics.unpricedDimensionRows).toBe(1)
++    expect(time.buckets[0]?.metrics.observedDimensions).toEqual(["input"])
++  } finally { globalThis.fetch = prior }
++})
+diff --git a/vnext/apps/dashboard/src/api/usage.ts b/vnext/apps/dashboard/src/api/usage.ts
+index 1d8cb2ce..523a77c6 100644
+--- a/vnext/apps/dashboard/src/api/usage.ts
++++ b/vnext/apps/dashboard/src/api/usage.ts
+@@ -139,3 +139,92 @@ export interface UsageOverview {
+ export function fetchUsageOverview(query: UsageOverviewQuery, signal?: AbortSignal): Promise<UsageOverview> {
+   return api<UsageOverview>("/api/token-usage/overview", { query: { ...query }, signal })
+ }
++
++// C2 transport only. UsageTab moves to these complete traversals in C3-C6.
++export interface UsageProjectionFilters {
++  readonly start: string
++  readonly end: string
++  readonly key_id?: string
++  readonly client?: string
++  readonly model?: string
++  /** Empty string selects legacy incoming-model records; omitted means all. */
++  readonly incoming_model?: string
++  readonly user_id?: string
++  readonly as_user?: string
++}
++export interface UsageProjectionPageQuery extends UsageProjectionFilters {
++  readonly limit?: number
++  readonly cursor?: string
++}
++export interface UsageProjectionCatalogQuery {
++  readonly start: string
++  readonly end: string
++  readonly as_user?: string
++  readonly limit?: number
++  readonly cursor?: string
++}
++export type UsageProjectionRange = Readonly<Pick<UsageProjectionFilters, "start" | "end">>
++export interface UsageProjectionPage<T> {
++  readonly rows: readonly T[]
++  readonly hasMore: boolean
++  /** Encrypted, query-and-scope-bound continuation; no snapshot guarantee. */
++  readonly nextCursor: string | null
++}
++export interface UsageProjectionFacet {
++  readonly value: string
++  /** Present on key facets, including the existing empty stored name. */
++  readonly name?: string
++  /** Stable participant-set reference for admins; null for other principals. */
++  readonly groupRef?: string | null
++}
++export interface UsageProjectionParticipantEdge {
++  readonly keyId: string
++  readonly role: "owner" | "assignee"
++  readonly userId: string
++  readonly name: string
++}
++export interface UsageProjectionMetricsRow {
++  readonly value: string
++  readonly metrics: UsageOverviewMetrics
++}
++export interface UsageProjectionSeries {
++  readonly value: string
++  readonly hours: readonly { readonly hour: string; readonly metrics: UsageOverviewMetrics }[]
++}
++export type UsageProjectionFacetAxis = "key" | "client" | "model" | "incomingModel"
++export type UsageProjectionDistributionAxis = UsageProjectionFacetAxis | "user"
++export type UsageProjectionSeriesAxis = "key" | "client" | "model" | "user"
++
++export function fetchUsageTotal(query: UsageProjectionFilters, signal?: AbortSignal): Promise<{ range: UsageProjectionRange; total: UsageOverviewMetrics }> {
++  return api("/api/token-usage/projections/total", { query: { ...query }, signal })
++}
++export function fetchUsageFacetPage(query: UsageProjectionCatalogQuery & { readonly axis: UsageProjectionFacetAxis }, signal?: AbortSignal): Promise<{
++  range: UsageProjectionRange; axis: UsageProjectionFacetAxis; page: UsageProjectionPage<UsageProjectionFacet>
++}> {
++  return api("/api/token-usage/projections/facets", { query: { ...query }, signal })
++}
++export function fetchUsageParticipantPage(query: UsageProjectionCatalogQuery, signal?: AbortSignal): Promise<{
++  range: UsageProjectionRange; page: UsageProjectionPage<UsageProjectionParticipantEdge>
++}> {
++  return api("/api/token-usage/projections/participants", { query: { ...query }, signal })
++}
++export function fetchUsageDistributionPage(query: UsageProjectionPageQuery & { readonly axis: UsageProjectionDistributionAxis }, signal?: AbortSignal): Promise<{
++  range: UsageProjectionRange; axis: UsageProjectionDistributionAxis; page: UsageProjectionPage<UsageProjectionMetricsRow>
++}> {
++  return api("/api/token-usage/projections/distribution", { query: { ...query }, signal })
++}
++export function fetchUsageMappingPage(query: UsageProjectionPageQuery, signal?: AbortSignal): Promise<{
++  range: UsageProjectionRange; page: UsageProjectionPage<{ readonly incomingModel: string; readonly model: string }>
++}> {
++  return api("/api/token-usage/projections/mappings", { query: { ...query }, signal })
++}
++export function fetchUsageTime(query: UsageProjectionFilters, signal?: AbortSignal): Promise<{
++  range: UsageProjectionRange; unfilteredHasRecords: boolean; buckets: readonly { readonly hour: string; readonly metrics: UsageOverviewMetrics }[]
++}> {
++  return api("/api/token-usage/projections/time", { query: { ...query }, signal })
++}
++export function fetchUsageSeriesPage(query: UsageProjectionPageQuery & { readonly axis: UsageProjectionSeriesAxis }, signal?: AbortSignal): Promise<{
++  range: UsageProjectionRange; axis: UsageProjectionSeriesAxis; page: UsageProjectionPage<UsageProjectionSeries>
++}> {
++  return api("/api/token-usage/projections/series", { query: { ...query }, signal })
++}
+diff --git a/vnext/docs/superpowers/research/2026-09-29-usage-consumer-adoption-design.md b/vnext/docs/superpowers/research/2026-09-29-usage-consumer-adoption-design.md
+index 70431757..8a32beff 100644
+--- a/vnext/docs/superpowers/research/2026-09-29-usage-consumer-adoption-design.md
++++ b/vnext/docs/superpowers/research/2026-09-29-usage-consumer-adoption-design.md
+@@ -40,7 +40,7 @@ Add separate narrow projection endpoints/methods, rather than repeatedly computi
+ - `facets`: one requested raw axis, range and authorized scope only, page size <=200; no active filters. Key rows include existing names/fallbacks and enough visibility-safe participant metadata to reconstruct `buildDimensions`.
+ - `distribution`: one selected axis and active filters, <=200 categories; denominator is the separate full total, never this page. Incoming-to-routed mapping is a separately paged set of raw pairs, not `GROUP_CONCAT` or a truncated nested array.
+ - `time`: full filtered UTC-hour totals, <=744 hours per request, no category payload.
+-- `series`: selected axis × UTC hour; page series identities, never flattened cells that split a series unpredictably. Enforce `hours * seriesLimit <= 744` as a concrete starting response bound; for example 168 hours × 4 series. Return a series catalog and its sparse hour cells plus continuation. A zero-metric record still has presence.
++- `series`: selected axis × UTC hour; page complete series identities, never flattened cells that split a series unpredictably. The C2 fix3 contract permits at most 200 identities and 744 actual occupied `(normalized identity,hour)` cells per response, within a <=744-hour range. Choose the maximal BINARY-ordered identity prefix fitting both bounds; an excluded candidate sets `hasMore` even when fewer than `limit` identities were returned. Return sparse hour cells plus continuation. A zero-metric or request-only record still has presence. This replaces the original `hours * seriesLimit <= 744` starting rule after same-fixture C2 cost evidence showed severe page amplification.
+ 
+ All reuse the exact foundation accounting projection and server-resolved authorization. Add `user_id` as a filter only with explicit route authorization and existing participant visibility semantics; it selects entire keys the user can reach and intersects other filters. It does not attribute individual requests. `user` grouping means the identical participant-set identity and label from `usageAttribution`, including unknown/deleted-key `_admin` fallback. Resolve key→group in fixed-count queries, not N lookups; do not multiply shared-key metrics across people. Share a pure attribution helper or exhaustive parity fixtures instead of recreating an owner-only SQL shortcut. `as_user` on every new route must independently recheck the session grant; shared key refs and filters remain HMAC scoped. No shared Usage picker is introduced.
+ 
+diff --git a/vnext/packages/gateway/src/control-plane/token-usage/routes.ts b/vnext/packages/gateway/src/control-plane/token-usage/routes.ts
+index 256ebb86..5ad8d2ab 100644
+--- a/vnext/packages/gateway/src/control-plane/token-usage/routes.ts
++++ b/vnext/packages/gateway/src/control-plane/token-usage/routes.ts
+@@ -26,6 +26,7 @@ import {
+   getServerSecret,
+ } from '../lib/redact-shared-view.ts'
+ import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
++import { projectionRouter } from './projections.ts'
+ 
+ export interface TokenUsageAuthCtx {
+   authKind?: "public" | "session" | "apiKey"
+@@ -65,6 +66,7 @@ function enrichWithKeyName(
+ }
+ 
+ export const tokenUsageRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
++tokenUsageRouter.route('/token-usage/projections', projectionRouter)
+ 
+ /**
+  * GET /token-usage/participants — who can use each key in scope.
+diff --git a/vnext/packages/gateway/src/repo/shared/repos.ts b/vnext/packages/gateway/src/repo/shared/repos.ts
+index 0881cb53..660770b2 100644
+--- a/vnext/packages/gateway/src/repo/shared/repos.ts
++++ b/vnext/packages/gateway/src/repo/shared/repos.ts
+@@ -2,6 +2,10 @@ import { queryUsageKeyMetadata, queryUsageAssigneeMetadata } from "../usage-meta
+ import { getOrCreateAffinitySecret } from "../affinity-secret.ts"
+ import { SharedCatalogRepo } from "./catalogs.ts"
+ import { queryUsageOverview, type UsageOverviewQuery } from "../usage-overview"
++import { queryUsageProjectionTotal, queryUsageProjectionTime, queryUsageProjectionFacets, queryUsageProjectionParticipants,
++  queryUsageProjectionDistribution, queryUsageProjectionMappings, queryUsageProjectionSeries,
++  type UsageProjectionQuery, type UsagePageQuery, type UsageFacetQuery, type UsageParticipantQuery,
++  type UsageDistributionQuery, type UsageSeriesQuery } from "../usage-projections"
+ import { SharedAgentRemoteContinuationRepo } from "./agent-remote-continuations.ts"
+ import { SharedSetupLeaseRepo } from "./setup-leases.ts"
+ import { SharedPerformanceMetricsRepo } from "../performance-metrics"
+@@ -802,6 +806,13 @@ class SharedUsageRepo implements UsageRepo {
+   queryAssigneeMetadata(keyIds: readonly ApiKeyId[]) { return queryUsageAssigneeMetadata(this.x, keyIds) }
+ 
+   queryOverview(opts: UsageOverviewQuery) { return queryUsageOverview(this.x, opts) }
++  queryProjectionTotal(opts: UsageProjectionQuery) { return queryUsageProjectionTotal(this.x, opts) }
++  queryProjectionTime(opts: UsageProjectionQuery) { return queryUsageProjectionTime(this.x, opts) }
++  queryProjectionFacets(opts: UsageFacetQuery) { return queryUsageProjectionFacets(this.x, opts) }
++  queryProjectionParticipants(opts: UsageParticipantQuery) { return queryUsageProjectionParticipants(this.x, opts) }
++  queryProjectionDistribution(opts: UsageDistributionQuery) { return queryUsageProjectionDistribution(this.x, opts) }
++  queryProjectionMappings(opts: UsagePageQuery) { return queryUsageProjectionMappings(this.x, opts) }
++  queryProjectionSeries(opts: UsageSeriesQuery) { return queryUsageProjectionSeries(this.x, opts) }
+ 
+   constructor(private x: SqlExecutor) {}
+ 
+diff --git a/vnext/packages/gateway/src/repo/types.ts b/vnext/packages/gateway/src/repo/types.ts
+index 4ec1de51..6528d39c 100644
+--- a/vnext/packages/gateway/src/repo/types.ts
++++ b/vnext/packages/gateway/src/repo/types.ts
+@@ -1,6 +1,7 @@
+ import type { ApiKeyAffinitySecret } from "./affinity-secret.ts"
+ import type { CatalogRepo } from "./catalogs.ts"
+ import type { UsageOverview, UsageOverviewQuery } from "./usage-overview"
++import type { UsageProjectionQuery, UsagePageQuery, UsageFacetQuery, UsageProjectionTotal, UsageProjectionTime, UsageFacetResult, UsageMappingResult, UsageParticipantQuery, UsageParticipantResult, UsageDistributionQuery, UsageDistributionResult, UsageSeriesQuery, UsageSeriesResult } from "./usage-projections"
+ import type { PerformanceMetricsRepo } from "./performance-metrics"
+ import type { BillingDimension, ModelPricing, UpstreamRecord, UpstreamKind } from "@vibe-llm/protocols/common"
+ import type { ProxyRepo, ProxyBackoffRepo } from "@vibe-core/proxy-repo"
+@@ -248,6 +249,13 @@ export interface UsageRepo {
+   queryKeyMetadata(keyIds?: readonly ApiKeyId[]): Promise<UsageKeyMetadata[]>
+   queryAssigneeMetadata(keyIds: readonly ApiKeyId[]): Promise<UsageAssigneeMetadata[]>
+   queryOverview(opts: UsageOverviewQuery): Promise<UsageOverview>
++  queryProjectionTotal(opts: UsageProjectionQuery): Promise<UsageProjectionTotal>
++  queryProjectionTime(opts: UsageProjectionQuery): Promise<UsageProjectionTime>
++  queryProjectionFacets(opts: UsageFacetQuery): Promise<UsageFacetResult>
++  queryProjectionParticipants(opts: UsageParticipantQuery): Promise<UsageParticipantResult>
++  queryProjectionMappings(opts: UsagePageQuery): Promise<UsageMappingResult>
++  queryProjectionDistribution(opts: UsageDistributionQuery): Promise<UsageDistributionResult>
++  queryProjectionSeries(opts: UsageSeriesQuery): Promise<UsageSeriesResult>
+   /** Additive upsert: tokens += excluded.tokens, requests += excluded.requests. */
+   record(r: UsageRecord): Promise<void>
+   /** Replacement upsert (used by data-transfer import): clears bucket's
+diff --git a/vnext/packages/gateway/src/repo/usage-overview.ts b/vnext/packages/gateway/src/repo/usage-overview.ts
+index e89925aa..2dd3ddb2 100644
+--- a/vnext/packages/gateway/src/repo/usage-overview.ts
++++ b/vnext/packages/gateway/src/repo/usage-overview.ts
+@@ -61,7 +61,7 @@ export function validateUsageOverview(q: UsageOverviewQuery): void {
+   if (!Number.isInteger(q.limit ?? 100) || (q.limit ?? 100) < 1 || (q.limit ?? 100) > 200) throw new Error("limit must be 1..200")
+   if (q.cursor !== undefined && (!/^(0|[1-9]\d*)$/.test(q.cursor) || !Number.isSafeInteger(Number(q.cursor)))) throw new Error("Invalid cursor")
+ }
+-interface Row {
++export interface UsageAccountingRow {
+   value: string
+   requests: number
+   input: number
+@@ -79,25 +79,33 @@ interface Row {
+   input_image_seen: number
+   output_image_seen: number
+ }
+-function metrics(r?: Row): UsageOverviewMetrics {
++export function usageMetrics(r?: UsageAccountingRow): UsageOverviewMetrics {
+   return { requests: r?.requests ?? 0, input: r?.input ?? 0, output: r?.output ?? 0,
+     cacheRead: r?.cacheRead ?? 0, cacheCreation: r?.cacheCreation ?? 0, costUSD: r?.costUSD ?? 0,
+     hasRecords: (r?.records ?? 0) > 0, unpricedTokens: r?.unpricedTokens ?? 0, unpricedDimensionRows: r?.unpricedDimensionRows ?? 0,
+     observedDimensions: BILLING_DIMENSIONS.filter(d => r && r[`${d}_seen`] > 0) }
+ }
+-export async function queryUsageOverview(x: SqlExecutor, q: UsageOverviewQuery): Promise<UsageOverview> {
+-  validateUsageOverview(q)
++export type UsageAccountingQuery = Pick<UsageOverviewQuery, "start" | "end" | "keyId" | "keyIds" | "client" | "model" | "incomingModel"> & {
++  readonly filterKeyIds?: readonly ApiKeyId[]
++  readonly forceEmpty?: boolean
++}
++
++export function buildUsageAccounting(q: UsageAccountingQuery, extra?: { readonly ctes?: string; readonly cteBinds?: readonly unknown[]; readonly condition?: string; readonly binds?: readonly unknown[] }): { cte: string; args: unknown[]; sums: string } {
+   const binds: unknown[] = [q.start, q.end]
+   const conditions = ["hour >= ?", "hour < ?"]
+   if (q.keyIds !== undefined) conditions.push("key_id IN (SELECT value FROM scope_keys)")
++  if (q.filterKeyIds !== undefined) conditions.push("key_id IN (SELECT value FROM filter_keys)")
++  if (q.forceEmpty) conditions.push("1=0")
+   for (const [column, value] of [["key_id", q.keyId], ["client", q.client], ["model", q.model], ["incoming_model", q.incomingModel]] as const) {
+     if (value != null) { conditions.push(`${column} = ?`); binds.push(value) }
+   }
++  if (extra?.condition) { conditions.push(extra.condition); binds.push(...(extra.binds ?? [])) }
+   const where = conditions.join(" AND ")
+   const dimensions = BILLING_DIMENSIONS.map(d => `'${d}'`).join(",")
+   // Resolve historical null snapshots before collapsing upstream/model_key.
+   const scope = q.keyIds === undefined ? "" : "scope_keys AS (SELECT value FROM json_each(?)),"
+-  const cte = `WITH ${scope} resolved AS MATERIALIZED (
++  const filter = q.filterKeyIds === undefined ? "" : "filter_keys AS (SELECT value FROM json_each(?)),"
++  const cte = `WITH ${scope}${filter}${extra?.ctes ?? ""} resolved AS MATERIALIZED (
+     SELECT u.*, CASE WHEN dimension IN (${dimensions}) THEN COALESCE(unit_price, CASE WHEN dimension IN ('input_cache_read','input_cache_write','input_image','output_image') THEN (
+       SELECT p.unit_price FROM usage p WHERE p.key_id=u.key_id AND p.incoming_model=u.incoming_model
+       AND p.model=u.model AND COALESCE(p.upstream,'')=COALESCE(u.upstream,'') AND p.model_key=u.model_key
+@@ -120,21 +128,28 @@ export async function queryUsageOverview(x: SqlExecutor, q: UsageOverviewQuery):
+       cost AS costUSD,unpriced AS unpricedTokens,unpricedDimensionRows,${BILLING_DIMENSIONS.map(d => `dimension='${d}' AS ${d}_seen`).join(",")}
+     FROM dims UNION ALL
+     SELECT key_id,incoming_model,model,client,hour,requests,0,0,0,0,0,0,0,0,0,0,0,0,0
+-    FROM usage_requests WHERE ${where}
++    FROM usage_requests u WHERE ${where}
+   )`
+   const sums = ["requests", "input", "output", "cacheRead", "cacheCreation", "costUSD", "unpricedTokens", "unpricedDimensionRows", ...BILLING_DIMENSIONS.map(d => `${d}_seen`)].map(n => `COALESCE(SUM(${n}),0) AS ${n}`).join(",") + ",COUNT(*) AS records"
++  const args = [...(q.keyIds === undefined ? [] : [JSON.stringify(q.keyIds)]),
++    ...(q.filterKeyIds === undefined ? [] : [JSON.stringify(q.filterKeyIds)]), ...(extra?.cteBinds ?? []), ...binds, ...binds]
++  return { cte, args, sums }
++}
++
++export async function queryUsageOverview(x: SqlExecutor, q: UsageOverviewQuery): Promise<UsageOverview> {
++  validateUsageOverview(q)
++  const { cte, args, sums } = buildUsageAccounting(q)
+   const bucket = q.bucket === "hour" ? "hour" : "substr(hour,1,10)"
+   const axis = axes[q.axis]
+   const limit = q.limit ?? 100, offset = Number(q.cursor ?? 0)
+-  const args = [...(q.keyIds === undefined ? [] : [JSON.stringify(q.keyIds)]), ...binds, ...binds]
+   const [total, buckets, page] = await Promise.all([
+-    x.all<Row>(`${cte} SELECT '' AS value,${sums} FROM entries`, args),
+-    x.all<Row>(`${cte} SELECT ${bucket} AS value,${sums} FROM entries GROUP BY ${bucket} ORDER BY value COLLATE BINARY`, args),
+-    x.all<Row>(`${cte} SELECT ${axis} AS value,${sums} FROM entries GROUP BY ${axis} ORDER BY value COLLATE BINARY LIMIT ? OFFSET ?`, [...args, limit + 1, offset]),
++    x.all<UsageAccountingRow>(`${cte} SELECT '' AS value,${sums} FROM entries`, args),
++    x.all<UsageAccountingRow>(`${cte} SELECT ${bucket} AS value,${sums} FROM entries GROUP BY ${bucket} ORDER BY value COLLATE BINARY`, args),
++    x.all<UsageAccountingRow>(`${cte} SELECT ${axis} AS value,${sums} FROM entries GROUP BY ${axis} ORDER BY value COLLATE BINARY LIMIT ? OFFSET ?`, [...args, limit + 1, offset]),
+   ])
+   const hasMore = page.length > limit
+-  return { range: { start: q.start, end: q.end, bucket: q.bucket }, total: metrics(total[0]),
+-    buckets: buckets.map(r => ({ bucket: r.value, ...metrics(r) })),
+-    breakdown: { axis: q.axis, rows: page.slice(0, limit).map(r => ({ value: r.value, ...metrics(r) })),
++  return { range: { start: q.start, end: q.end, bucket: q.bucket }, total: usageMetrics(total[0]),
++    buckets: buckets.map(r => ({ bucket: r.value, ...usageMetrics(r) })),
++    breakdown: { axis: q.axis, rows: page.slice(0, limit).map(r => ({ value: r.value, ...usageMetrics(r) })),
+       hasMore, nextCursor: hasMore ? String(offset + limit) : null } }
+ }
+diff --git a/vnext/packages/gateway/src/control-plane/token-usage/projections.ts b/vnext/packages/gateway/src/control-plane/token-usage/projections.ts
+new file mode 100644
+index 00000000..f6180384
+--- /dev/null
++++ b/vnext/packages/gateway/src/control-plane/token-usage/projections.ts
+@@ -0,0 +1,222 @@
++import { createHash } from "node:crypto"
++import { Hono, type Context } from "hono"
++import type { Env } from "../../app"
++import type { ApiKeyId, UserId } from "../../repo/branded-ids"
++import { getRepo } from "../../repo"
++import type { Repo, UsageKeyMetadata, UsageAssigneeMetadata } from "../../repo/types"
++import { validateUsageProjection, type UsageProjectionAxis, type UsageMetricAxis, type UsageSeriesAxis, type UsageProjectionQuery } from "../../repo/usage-projections"
++import { deriveViewContext } from "../lib/view-context"
++import { getServerSecret, sharedKeyRef } from "../lib/redact-shared-view"
++import type { TokenUsageAuthCtx } from "./routes"
++
++type Vars = { auth: TokenUsageAuthCtx }
++type Kind = "total" | "facets" | "participants" | "distribution" | "mappings" | "time" | "series"
++type Parsed = {
++  start: string; end: string; axis?: string; limit?: number; cursor?: string
++  keyFilter?: string; client?: string; model?: string; incomingModel?: string
++  userId?: string; asUser?: string
++}
++
++const bad = (message: string): never => { throw new Error(message) }
++const encode = (bytes: Uint8Array): string => Buffer.from(bytes).toString("base64url")
++function decode(value: string): Uint8Array<ArrayBuffer> {
++  if (!/^[A-Za-z0-9_-]+$/.test(value)) return bad("Invalid cursor")
++  const bytes = Buffer.from(value, "base64url")
++  if (bytes.toString("base64url") !== value) return bad("Invalid cursor")
++  const copy = new Uint8Array(bytes.length)
++  copy.set(bytes)
++  return copy
++}
++async function cipherKey(secret: string): Promise<CryptoKey> {
++  const source = new TextEncoder().encode(`usage-projection-cursor-v1:${secret}`)
++  const digest = await crypto.subtle.digest("SHA-256", source)
++  return crypto.subtle.importKey("raw", digest, "AES-GCM", false, ["encrypt", "decrypt"])
++}
++async function encryptCursor(secret: string, binding: string, last: string): Promise<string> {
++  const iv = crypto.getRandomValues(new Uint8Array(12))
++  const payload = new TextEncoder().encode(JSON.stringify({ version: 1, binding, last }))
++  const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await cipherKey(secret), payload)
++  return `p1.${encode(iv)}.${encode(new Uint8Array(encrypted))}`
++}
++async function decryptCursor(secret: string, binding: string, cursor: string): Promise<string> {
++  const parts = cursor.split(".")
++  if (parts.length !== 3 || parts[0] !== "p1" || !parts[1] || !parts[2]) return bad("Invalid cursor")
++  const iv = decode(parts[1])
++  const ciphertext = decode(parts[2])
++  if (iv.length !== 12 || ciphertext.length < 17) return bad("Invalid cursor")
++  let payload: unknown
++  try {
++    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, await cipherKey(secret), ciphertext)
++    payload = JSON.parse(new TextDecoder().decode(plain))
++  } catch { return bad("Invalid cursor") }
++  if (!payload || typeof payload !== "object" || !("version" in payload) || payload.version !== 1 ||
++    !("binding" in payload) || payload.binding !== binding || !("last" in payload) || typeof payload.last !== "string") return bad("Cursor scope or query changed")
++  return payload.last
++}
++
++function parse(c: Context<{ Bindings: Env; Variables: Vars }>): Parsed {
++  const query = (name: string) => c.req.query(name)
++  const limitRaw = query("limit")
++  if (limitRaw !== undefined && !/^[1-9]\d*$/.test(limitRaw)) return bad("limit must be 1..200")
++  const limit = limitRaw === undefined ? undefined : Number(limitRaw)
++  if (limit !== undefined && (!Number.isSafeInteger(limit) || limit > 200)) return bad("limit must be 1..200")
++  return { start: query("start") ?? "", end: query("end") ?? "", axis: query("axis"), limit,
++    cursor: query("cursor"), keyFilter: query("key_id") || undefined,
++    client: query("client") || undefined, model: query("model") || undefined,
++    incomingModel: query("incoming_model"), userId: query("user_id") || undefined,
++    asUser: query("as_user") || undefined }
++}
++
++function attribution(metadata: readonly UsageKeyMetadata[], assignees: readonly UsageAssigneeMetadata[]) {
++  const byKey = new Map<string, UsageAssigneeMetadata[]>()
++  for (const item of assignees) {
++    const list = byKey.get(item.keyId) ?? []
++    list.push(item)
++    byKey.set(item.keyId, list)
++  }
++  // Raw key IDs can be object-prototype property names such as "__proto__".
++  const refs: Record<string, string> = Object.create(null)
++  const members = new Map<string, Set<string>>()
++  for (const key of metadata) {
++    const people = [
++      ...(key.ownerId ? [{ id: key.ownerId, name: key.ownerName ?? key.ownerId.slice(0, 8) }] : []),
++      ...(byKey.get(key.keyId) ?? []).map(item => ({ id: item.userId, name: item.name ?? item.userId.slice(0, 8) }))
++        .sort((a, b) => a.name.localeCompare(b.name)),
++    ]
++    const legacyId = people.length > 1 ? `shared:${people.map(p => p.id).sort().join("+")}` : people[0]?.id ?? "_admin"
++    refs[key.keyId] = legacyId === "_admin" ? "_admin" : `g_${createHash("sha256").update(legacyId).digest("base64url")}`
++    members.set(key.keyId, new Set(people.map(p => p.id)))
++  }
++  return { refs, members }
++}
++
++async function loadAttribution(repo: Repo, keyIds?: readonly ApiKeyId[]) {
++  const metadata = await repo.usage.queryKeyMetadata(keyIds)
++  const assignees = metadata.length ? await repo.usage.queryAssigneeMetadata(metadata.map(item => item.keyId)) : []
++  return { metadata, ...attribution(metadata, assignees) }
++}
++
++function axisFor(kind: Kind, value: string | undefined): UsageProjectionAxis | UsageMetricAxis | UsageSeriesAxis | undefined {
++  if (kind === "facets") {
++    if (value === "key" || value === "client" || value === "model" || value === "incomingModel") return value
++    return bad("Invalid axis")
++  }
++  if (kind === "distribution") {
++    if (value === "key" || value === "client" || value === "model" || value === "incomingModel" || value === "user") return value
++    return bad("Invalid axis")
++  }
++  if (kind === "series") {
++    if (value === "key" || value === "client" || value === "model" || value === "user") return value
++    return bad("Invalid axis")
++  }
++  if (value !== undefined) return bad("Unexpected axis")
++  return undefined
++}
++
++export const projectionRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
++
++async function respond(kind: Kind, c: Context<{ Bindings: Env; Variables: Vars }>) {
++  const auth = c.get("auth") ?? {}
++  if (!auth.apiKeyId && !auth.userId && !auth.isAdmin) return c.json({ error: "Unauthorized" }, 401)
++  let input: Parsed
++  let axis: ReturnType<typeof axisFor>
++  try {
++    input = parse(c)
++    axis = axisFor(kind, input.axis)
++    validateUsageProjection({ start: input.start, end: input.end }, kind === "time" || kind === "series")
++    if ((kind === "total" || kind === "time") && (input.limit !== undefined || input.cursor !== undefined)) bad("This projection does not accept pagination")
++    if ((kind === "facets" || kind === "participants") && ((!auth.apiKeyId && input.keyFilter) || input.client || input.model || input.incomingModel !== undefined || input.userId)) bad("Catalogs do not accept filters")
++  } catch (error) { return c.json({ error: error instanceof Error ? error.message : "Invalid query" }, 400) }
++
++  const repo = getRepo()
++  // A coexisting API key always wins. Still call the native resolver on every
++  // request, but prevent a session's as_user grant from widening API-key scope.
++  const view = await deriveViewContext(c, auth.apiKeyId ? { authKind: "apiKey" } : auth)
++  if ("denied" in view) return c.json({ error: "Not authorized to view this user's observability data" }, 403)
++  const isShared = !auth.apiKeyId && view.isViewingShared && !!view.ownerId
++  const isAdmin = !auth.apiKeyId && !isShared && !!auth.isAdmin
++  if ((input.userId || axis === "user") && !isAdmin) return c.json({ error: "User projection requires admin" }, 403)
++  const secret = getServerSecret(c.env as unknown as Record<string, string | undefined>)
++  let keyIds: ApiKeyId[] | undefined
++  let keyId: ApiKeyId | undefined
++  let forceEmpty = false
++  let principal: string
++  if (auth.apiKeyId) {
++    keyIds = [auth.apiKeyId]
++    principal = `api:${auth.apiKeyId}`
++  } else if (isShared && view.ownerId) {
++    const owner = view.ownerId
++    keyIds = (await repo.apiKeys.listByOwner(owner)).map(item => item.id)
++    if (input.keyFilter) {
++      keyId = keyIds.find(id => sharedKeyRef(owner, id, secret) === input.keyFilter)
++      forceEmpty = keyId === undefined
++    }
++    principal = `shared:${auth.userId}:${owner}`
++  } else if (isAdmin) {
++    keyId = input.keyFilter as ApiKeyId | undefined
++    principal = `admin:${auth.userId ?? ""}`
++  } else if (auth.userId) {
++    keyIds = await repo.apiKeys.listAccessibleIds(auth.userId)
++    keyId = input.keyFilter as ApiKeyId | undefined
++    principal = `session:${auth.userId}`
++  } else return c.json({ error: "Unauthorized" }, 401)
++
++  let fullAttribution: Awaited<ReturnType<typeof loadAttribution>> | undefined
++  if (isAdmin && (input.userId || axis === "user")) fullAttribution = await loadAttribution(repo)
++  const filterKeyIds = input.userId
++    ? fullAttribution?.metadata.filter(item => fullAttribution?.members.get(item.keyId)?.has(input.userId ?? "")).map(item => item.keyId) ?? []
++    : undefined
++  const query: UsageProjectionQuery = { start: input.start, end: input.end, keyId, keyIds,
++    filterKeyIds, forceEmpty, client: input.client, model: input.model, incomingModel: input.incomingModel }
++  const binding = JSON.stringify({ kind, axis: axis ?? null, range: [input.start, input.end],
++    filters: [auth.apiKeyId ? null : input.keyFilter ?? null, input.client ?? null, input.model ?? null,
++      input.incomingModel ?? null, input.userId ?? null, auth.apiKeyId ? null : input.asUser ?? null],
++    principal, scope: createHash("sha256").update(JSON.stringify([...(keyIds ?? [])].sort())).digest("base64url"),
++    userKeys: filterKeyIds === undefined ? null : createHash("sha256").update(JSON.stringify(filterKeyIds.slice().sort())).digest("base64url"),
++    limit: kind === "series" ? input.limit ?? 200 : null,
++    ...(kind === "series" ? { seriesBudget: "occupied-cells-v1" } : {}) })
++  let cursor: string | undefined
++  try { cursor = input.cursor === undefined ? undefined : await decryptCursor(secret, binding, input.cursor) }
++  catch (error) { return c.json({ error: error instanceof Error ? error.message : "Invalid cursor" }, 400) }
++  const pageQuery = { ...query, limit: input.limit, cursor }
++  const wrap = async <T extends { page: { rows: readonly unknown[]; hasMore: boolean; nextCursor: string | null } }>(result: T): Promise<T> => ({
++    ...result, page: { ...result.page, nextCursor: result.page.nextCursor === null ? null : await encryptCursor(secret, binding, result.page.nextCursor) },
++  }) as T
++
++  if (kind === "total") return c.json(await repo.usage.queryProjectionTotal(query))
++  if (kind === "time") return c.json(await repo.usage.queryProjectionTime(query))
++  if (kind === "mappings") return c.json(await wrap(await repo.usage.queryProjectionMappings(pageQuery)))
++  if (kind === "participants") {
++    const visibleRosterKeyIds = auth.apiKeyId || isShared ? [] : undefined
++    const visibleRosterOwnerId = !isAdmin && !auth.apiKeyId && !isShared ? auth.userId : undefined
++    const result = await repo.usage.queryProjectionParticipants({ ...pageQuery, visibleRosterKeyIds, visibleRosterOwnerId })
++    return c.json(await wrap(result))
++  }
++  if (kind === "facets" && axis && axis !== "user") {
++    const result = await repo.usage.queryProjectionFacets({ ...pageQuery, axis })
++    if (axis !== "key") return c.json(await wrap(result))
++    const ids = result.page.rows.map(item => item.value as ApiKeyId)
++    const meta = isAdmin ? await loadAttribution(repo, ids) : { metadata: await repo.usage.queryKeyMetadata(ids), refs: {} as Record<string, string> }
++    const names = new Map(meta.metadata.map(item => [item.keyId, item.keyName]))
++    const rows = result.page.rows.map(item => ({ value: isShared && view.ownerId ? sharedKeyRef(view.ownerId, item.value, secret) : item.value,
++      name: names.get(item.value as ApiKeyId) ?? item.value.slice(0, 8), groupRef: isAdmin ? meta.refs[item.value] ?? "_admin" : null }))
++    return c.json(await wrap({ ...result, page: { ...result.page, rows } }))
++  }
++  if (kind === "distribution" && axis) {
++    const result = await repo.usage.queryProjectionDistribution({ ...pageQuery, axis, groupRefs: fullAttribution?.refs })
++    const rows = axis === "key" && isShared && view.ownerId
++      ? result.page.rows.map(item => ({ ...item, value: sharedKeyRef(view.ownerId as UserId, item.value, secret) })) : result.page.rows
++    return c.json(await wrap({ ...result, page: { ...result.page, rows } }))
++  }
++  if (kind === "series" && axis && axis !== "incomingModel") {
++    const result = await repo.usage.queryProjectionSeries({ ...pageQuery, axis, groupRefs: fullAttribution?.refs })
++    const rows = axis === "key" && isShared && view.ownerId
++      ? result.page.rows.map(item => ({ ...item, value: sharedKeyRef(view.ownerId as UserId, item.value, secret) })) : result.page.rows
++    return c.json(await wrap({ ...result, page: { ...result.page, rows } }))
++  }
++  return c.json({ error: "Invalid projection" }, 400)
++}
++
++for (const kind of ["total", "facets", "participants", "distribution", "mappings", "time", "series"] as const) {
++  projectionRouter.get(`/${kind}`, c => respond(kind, c))
++}
+diff --git a/vnext/packages/gateway/src/repo/usage-projections.ts b/vnext/packages/gateway/src/repo/usage-projections.ts
+new file mode 100644
+index 00000000..1adc6353
+--- /dev/null
++++ b/vnext/packages/gateway/src/repo/usage-projections.ts
+@@ -0,0 +1,261 @@
++import type { ApiKeyId } from "./branded-ids"
++import type { SqlExecutor } from "./shared/executor"
++import { buildUsageAccounting, usageMetrics, type UsageAccountingQuery, type UsageAccountingRow, type UsageOverviewMetrics } from "./usage-overview"
++
++export type UsageProjectionAxis = "key" | "client" | "model" | "incomingModel"
++export type UsageMetricAxis = UsageProjectionAxis | "user"
++export type UsageSeriesAxis = "key" | "client" | "model" | "user"
++export interface UsageProjectionQuery extends UsageAccountingQuery {
++  readonly keyId?: ApiKeyId
++  readonly keyIds?: readonly ApiKeyId[]
++  readonly filterKeyIds?: readonly ApiKeyId[]
++  readonly forceEmpty?: boolean
++}
++export interface UsagePageQuery extends UsageProjectionQuery {
++  readonly limit?: number
++  /** Raw identity cursor at the repo boundary; the HTTP layer encrypts it. */
++  readonly cursor?: string
++}
++export interface UsagePage<T> {
++  readonly rows: readonly T[]
++  readonly hasMore: boolean
++  readonly nextCursor: string | null
++}
++export interface UsageProjectionTotal {
++  readonly range: { readonly start: string; readonly end: string }
++  readonly total: UsageOverviewMetrics
++}
++export interface UsageFacet { readonly value: string; readonly name?: string; readonly groupRef?: string | null }
++export interface UsageFacetQuery extends UsagePageQuery { readonly axis: UsageProjectionAxis }
++export interface UsageFacetResult { readonly range: UsageProjectionTotal["range"]; readonly axis: UsageProjectionAxis; readonly page: UsagePage<UsageFacet> }
++export interface UsageParticipantEdge { readonly keyId: string; readonly role: "owner" | "assignee"; readonly userId: string; readonly name: string }
++export interface UsageParticipantQuery extends UsagePageQuery { readonly visibleRosterKeyIds?: readonly ApiKeyId[]; readonly visibleRosterOwnerId?: string }
++export interface UsageParticipantResult { readonly range: UsageProjectionTotal["range"]; readonly page: UsagePage<UsageParticipantEdge> }
++export interface UsageDistributionQuery extends UsagePageQuery { readonly axis: UsageMetricAxis; readonly groupRefs?: Readonly<Record<string, string>> }
++export interface UsageDistributionResult { readonly range: UsageProjectionTotal["range"]; readonly axis: UsageMetricAxis; readonly page: UsagePage<{ readonly value: string; readonly metrics: UsageOverviewMetrics }> }
++export interface UsageMapping { readonly incomingModel: string; readonly model: string }
++export interface UsageMappingResult { readonly range: UsageProjectionTotal["range"]; readonly page: UsagePage<UsageMapping> }
++export interface UsageProjectionTime { readonly range: UsageProjectionTotal["range"]; readonly unfilteredHasRecords: boolean; readonly buckets: readonly { readonly hour: string; readonly metrics: UsageOverviewMetrics }[] }
++export interface UsageSeriesQuery extends UsagePageQuery { readonly axis: UsageSeriesAxis; readonly groupRefs?: Readonly<Record<string, string>> }
++export interface UsageSeriesResult { readonly range: UsageProjectionTotal["range"]; readonly axis: UsageSeriesAxis; readonly page: UsagePage<{ readonly value: string; readonly hours: readonly { readonly hour: string; readonly metrics: UsageOverviewMetrics }[] }> }
++
++const column: Record<UsageProjectionAxis, string> = { key: "key_id", client: "client", model: "model", incomingModel: "incoming_model" }
++const range = (q: UsageProjectionQuery) => ({ start: q.start, end: q.end })
++
++export function validateUsageProjection(q: UsageProjectionQuery, timed = false): number {
++  const parse = (value: string): number => {
++    if (!/^\d{4}-\d{2}-\d{2}T\d{2}$/.test(value)) throw new Error("Expected UTC hour YYYY-MM-DDTHH")
++    const ms = Date.parse(`${value}:00:00Z`)
++    if (!Number.isFinite(ms) || new Date(ms).toISOString().slice(0, 13) !== value) throw new Error("Invalid UTC hour")
++    return ms
++  }
++  const first = parse(q.start), last = parse(q.end)
++  if (last <= first) throw new Error("end must be after start")
++  const hours = (last - first) / 3600000
++  if (Math.ceil(last / 86400000) - Math.floor(first / 86400000) > 366) throw new Error("Too many UTC calendar buckets")
++  if (timed && hours > 744) throw new Error("Too many UTC hours")
++  return hours
++}
++
++function pageLimit(q: UsagePageQuery): number {
++  const limit = q.limit ?? 200
++  if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error("limit must be 1..200")
++  if (q.cursor !== undefined && typeof q.cursor !== "string") throw new Error("Invalid cursor")
++  return limit
++}
++
++function presence(q: UsageProjectionQuery): { cte: string; args: unknown[] } {
++  const cond = ["hour >= ?", "hour < ?"]
++  const values: unknown[] = [q.start, q.end]
++  if (q.keyIds !== undefined) cond.push("key_id IN (SELECT value FROM scope_keys)")
++  if (q.filterKeyIds !== undefined) cond.push("key_id IN (SELECT value FROM filter_keys)")
++  if (q.forceEmpty) cond.push("1=0")
++  for (const [field, value] of [["key_id", q.keyId], ["client", q.client], ["model", q.model], ["incoming_model", q.incomingModel]] as const) {
++    if (value != null) { cond.push(`${field} = ?`); values.push(value) }
++  }
++  const where = cond.join(" AND ")
++  const scope = q.keyIds === undefined ? "" : "scope_keys AS (SELECT value FROM json_each(?)),"
++  const filter = q.filterKeyIds === undefined ? "" : "filter_keys AS (SELECT value FROM json_each(?)),"
++  return { cte: `WITH ${scope}${filter} presence AS (
++    SELECT key_id,incoming_model,model,client,hour FROM usage WHERE ${where}
++    UNION SELECT key_id,incoming_model,model,client,hour FROM usage_requests WHERE ${where}
++  )`, args: [...(q.keyIds === undefined ? [] : [JSON.stringify(q.keyIds)]),
++    ...(q.filterKeyIds === undefined ? [] : [JSON.stringify(q.filterKeyIds)]), ...values, ...values] }
++}
++
++function page<T>(rows: readonly T[], limit: number, cursorOf: (row: T) => string): UsagePage<T> {
++  const visible = rows.slice(0, limit)
++  const hasMore = rows.length > limit
++  const last = visible.at(-1)
++  return { rows: visible, hasMore, nextCursor: hasMore && last ? cursorOf(last) : null }
++}
++
++export async function queryUsageProjectionTotal(x: SqlExecutor, q: UsageProjectionQuery): Promise<UsageProjectionTotal> {
++  validateUsageProjection(q)
++  const { cte, args, sums } = buildUsageAccounting(q)
++  const rows = await x.all<UsageAccountingRow>(`${cte} SELECT '' AS value,${sums} FROM entries`, args)
++  return { range: range(q), total: usageMetrics(rows[0]) }
++}
++
++export async function queryUsageProjectionTime(x: SqlExecutor, q: UsageProjectionQuery): Promise<UsageProjectionTime> {
++  validateUsageProjection(q, true)
++  const { cte, args, sums } = buildUsageAccounting(q)
++  const unfiltered = presence({ start: q.start, end: q.end, keyIds: q.keyIds })
++  const [buckets, presenceRows] = await Promise.all([
++    x.all<UsageAccountingRow>(`${cte} SELECT hour AS value,${sums} FROM entries GROUP BY hour ORDER BY hour COLLATE BINARY`, args),
++    x.all<{ present: number }>(`${unfiltered.cte} SELECT EXISTS(SELECT 1 FROM presence) AS present`, unfiltered.args),
++  ])
++  return { range: range(q), unfilteredHasRecords: presenceRows[0]?.present === 1,
++    buckets: buckets.map(row => ({ hour: row.value, metrics: usageMetrics(row) })) }
++}
++
++export async function queryUsageProjectionFacets(x: SqlExecutor, q: UsageFacetQuery): Promise<UsageFacetResult> {
++  validateUsageProjection(q)
++  const limit = pageLimit(q)
++  if (!Object.hasOwn(column, q.axis)) throw new Error("Invalid axis")
++  if (q.keyId !== undefined || q.filterKeyIds !== undefined || q.client !== undefined || q.model !== undefined || q.incomingModel !== undefined) throw new Error("Facets do not accept active filters")
++  const { cte, args } = presence(q)
++  const field = column[q.axis]
++  const rows = await x.all<{ value: string }>(`${cte} SELECT DISTINCT ${field} AS value FROM presence
++    WHERE (? IS NULL OR ${field} COLLATE BINARY > ?) ORDER BY value COLLATE BINARY LIMIT ?`,
++    [...args, q.cursor ?? null, q.cursor ?? null, limit + 1])
++  return { range: range(q), axis: q.axis, page: page(rows, limit, row => row.value) }
++}
++
++export async function queryUsageProjectionMappings(x: SqlExecutor, q: UsagePageQuery): Promise<UsageMappingResult> {
++  validateUsageProjection(q)
++  const limit = pageLimit(q)
++  const tuple = q.cursor === undefined ? null : decodeTuple(q.cursor)
++  const { cte, args } = presence(q)
++  const rows = await x.all<UsageMapping>(`${cte} SELECT DISTINCT incoming_model AS incomingModel, model FROM presence
++    WHERE (? IS NULL OR incoming_model COLLATE BINARY > ? OR (incoming_model = ? AND model COLLATE BINARY > ?))
++    ORDER BY incoming_model COLLATE BINARY, model COLLATE BINARY LIMIT ?`,
++    [...args, tuple?.[0] ?? null, tuple?.[0] ?? null, tuple?.[0] ?? null, tuple?.[1] ?? null, limit + 1])
++  return { range: range(q), page: page(rows, limit, row => JSON.stringify([row.incomingModel, row.model])) }
++}
++
++function decodeTuple(value: string): [string, string] {
++  let parsed: unknown
++  try { parsed = JSON.parse(value) } catch { throw new Error("Invalid tuple cursor") }
++  if (!Array.isArray(parsed) || parsed.length !== 2 || typeof parsed[0] !== "string" || typeof parsed[1] !== "string") throw new Error("Invalid tuple cursor")
++  return [parsed[0], parsed[1]]
++}
++
++function decodeEdgeTuple(value: string): [string, number, string] {
++  let parsed: unknown
++  try { parsed = JSON.parse(value) } catch { throw new Error("Invalid tuple cursor") }
++  if (!Array.isArray(parsed) || parsed.length !== 3 || typeof parsed[0] !== "string" || (parsed[1] !== 0 && parsed[1] !== 1) || typeof parsed[2] !== "string") throw new Error("Invalid tuple cursor")
++  return [parsed[0], parsed[1], parsed[2]]
++}
++
++export async function queryUsageProjectionParticipants(x: SqlExecutor, q: UsageParticipantQuery): Promise<UsageParticipantResult> {
++  validateUsageProjection(q)
++  const limit = pageLimit(q)
++  if (q.keyId !== undefined || q.filterKeyIds !== undefined || q.client !== undefined || q.model !== undefined || q.incomingModel !== undefined) throw new Error("Participants do not accept active filters")
++  const tuple = q.cursor === undefined ? null : decodeEdgeTuple(q.cursor)
++  const { cte, args } = presence(q)
++  const ownerRoster = q.visibleRosterKeyIds !== undefined ? "AND p.key_id IN (SELECT value FROM json_each(?))" : ""
++  const ownerRosterArgs = q.visibleRosterKeyIds !== undefined ? [JSON.stringify(q.visibleRosterKeyIds)] : []
++  const assigneeRoster = q.visibleRosterKeyIds !== undefined ? "AND p.key_id IN (SELECT value FROM json_each(?))"
++    : q.visibleRosterOwnerId !== undefined ? "AND p.key_id IN (SELECT id FROM api_keys WHERE owner_id = ?)" : ""
++  const assigneeRosterArgs = q.visibleRosterKeyIds !== undefined ? [JSON.stringify(q.visibleRosterKeyIds)]
++    : q.visibleRosterOwnerId !== undefined ? [q.visibleRosterOwnerId] : []
++  const rows = await x.all<UsageParticipantEdge & { rank: number }>(`${cte}, used_keys AS (SELECT DISTINCT key_id FROM presence), edges AS (
++    SELECT p.key_id AS keyId,0 AS rank,'owner' AS role,k.owner_id AS userId,
++      COALESCE(u.name,substr(k.owner_id,1,8)) AS name
++    FROM used_keys p JOIN api_keys k ON k.id=p.key_id LEFT JOIN users u ON u.id=k.owner_id
++    WHERE NULLIF(k.owner_id,'') IS NOT NULL ${ownerRoster}
++    UNION ALL
++    SELECT p.key_id AS keyId,1 AS rank,'assignee' AS role,a.user_id AS userId,
++      COALESCE(u.name,substr(a.user_id,1,8)) AS name
++    FROM used_keys p JOIN key_assignments a ON a.key_id=p.key_id LEFT JOIN users u ON u.id=a.user_id
++    WHERE 1=1 ${assigneeRoster}
++  ) SELECT keyId,rank,role,userId,name FROM edges
++  WHERE (? IS NULL OR keyId COLLATE BINARY > ? OR (keyId = ? AND rank > ?)
++    OR (keyId = ? AND rank = ? AND userId COLLATE BINARY > ?))
++  ORDER BY keyId COLLATE BINARY,rank,userId COLLATE BINARY LIMIT ?`,
++  [...args, ...ownerRosterArgs, ...assigneeRosterArgs, tuple?.[0] ?? null, tuple?.[0] ?? null, tuple?.[0] ?? null,
++    tuple?.[1] ?? null, tuple?.[0] ?? null, tuple?.[1] ?? null, tuple?.[2] ?? null, limit + 1])
++  const result = page(rows, limit, item => JSON.stringify([item.keyId, item.rank, item.userId]))
++  return { range: range(q), page: { ...result, rows: result.rows.map(({ keyId, role, userId, name }) => ({ keyId, role, userId, name })) } }
++}
++
++const groupMap = (refs: Readonly<Record<string, string>> | undefined): { cte: string; bind: string } => ({
++  cte: "group_map AS MATERIALIZED (SELECT CAST(json_extract(value,'$[0]') AS TEXT) AS key_id,CAST(json_extract(value,'$[1]') AS TEXT) AS group_ref FROM json_each(?)),",
++  bind: JSON.stringify(Object.entries(refs ?? {})),
++})
++
++export async function queryUsageProjectionDistribution(x: SqlExecutor, q: UsageDistributionQuery): Promise<UsageDistributionResult> {
++  validateUsageProjection(q)
++  const limit = pageLimit(q)
++  if (q.axis !== "user" && !Object.hasOwn(column, q.axis)) throw new Error("Invalid axis")
++  const group = q.axis === "user" ? groupMap(q.groupRefs) : null
++  const { cte, args, sums } = buildUsageAccounting(q, group ? { ctes: group.cte, cteBinds: [group.bind] } : undefined)
++  // A scalar lookup lets SQLite seek the materialized map for each entry.
++  const identity = q.axis === "user" ? "COALESCE((SELECT group_ref FROM group_map WHERE group_map.key_id=e.key_id),'_admin')" : `e.${column[q.axis]}`
++  const rows = await x.all<UsageAccountingRow>(`${cte} SELECT ${identity} AS value,${sums} FROM entries e
++    WHERE (? IS NULL OR ${identity} COLLATE BINARY > ?) GROUP BY value ORDER BY value COLLATE BINARY LIMIT ?`,
++    [...args, q.cursor ?? null, q.cursor ?? null, limit + 1])
++  const result = page(rows, limit, item => item.value)
++  return { range: range(q), axis: q.axis, page: { ...result, rows: result.rows.map(item => ({ value: item.value, metrics: usageMetrics(item) })) } }
++}
++
++function presenceDefinition(q: UsageProjectionQuery): { definition: string; args: unknown[] } {
++  const source = presence(q)
++  const scope = q.keyIds === undefined ? "" : "scope_keys AS (SELECT value FROM json_each(?)),"
++  const filter = q.filterKeyIds === undefined ? "" : "filter_keys AS (SELECT value FROM json_each(?)),"
++  const prefix = `WITH ${scope}${filter}`
++  return { definition: `${source.cte.slice(prefix.length)},`,
++    args: source.args.slice(Number(q.keyIds !== undefined) + Number(q.filterKeyIds !== undefined)) }
++}
++
++export async function queryUsageProjectionSeries(x: SqlExecutor, q: UsageSeriesQuery): Promise<UsageSeriesResult> {
++  validateUsageProjection(q, true)
++  const limit = pageLimit(q)
++  if (!["key", "client", "model", "user"].includes(q.axis)) throw new Error("Invalid axis")
++  const group = q.axis === "user" ? groupMap(q.groupRefs) : null
++  const identity = q.axis === "user" ? "COALESCE(g.group_ref,'_admin')"
++    : q.axis === "key" ? "key_id" : `COALESCE(NULLIF(${q.axis},''),'unknown')`
++  const p = presenceDefinition(q)
++  const candidateJoin = group ? "LEFT JOIN group_map g ON g.key_id=presence.key_id" : ""
++  const entryIdentity = q.axis === "user" ? "COALESCE(g.group_ref,'_admin')"
++    : q.axis === "key" ? "e.key_id" : `COALESCE(NULLIF(e.${q.axis},''),'unknown')`
++  const selectionCondition = q.axis === "user"
++    ? "COALESCE((SELECT group_ref FROM group_map WHERE key_id=u.key_id),'_admin') IN (SELECT value FROM page_keys)"
++    : `${identity} IN (SELECT value FROM page_keys)`
++  const ctes = `${group?.cte ?? ""}${p.definition} identity_hours AS MATERIALIZED (
++    SELECT DISTINCT ${identity} AS value,hour FROM presence ${candidateJoin}
++    WHERE (? IS NULL OR ${identity} COLLATE BINARY > ?)
++  ), candidate_keys AS MATERIALIZED (
++    SELECT DISTINCT value FROM identity_hours ORDER BY value COLLATE BINARY LIMIT ?
++  ), candidates AS MATERIALIZED (
++    SELECT value,COUNT(*) AS occupied FROM identity_hours
++    WHERE value COLLATE BINARY IN (SELECT value FROM candidate_keys)
++    GROUP BY value
++  ), ranked AS MATERIALIZED (
++    SELECT value,ROW_NUMBER() OVER (ORDER BY value COLLATE BINARY) AS ordinal,
++      SUM(occupied) OVER (ORDER BY value COLLATE BINARY ROWS UNBOUNDED PRECEDING) AS running_cells
++    FROM candidates
++  ), page_keys AS MATERIALIZED (SELECT value FROM ranked WHERE ordinal <= ? AND running_cells <= 744),`
++  const cteBinds = [...(group ? [group.bind] : []), ...p.args, q.cursor ?? null, q.cursor ?? null, limit + 1, limit]
++  // Both accounting source branches use alias u, so the group lookup stays
++  // correlated to the current usage or usage_requests row.
++  const { cte, args, sums } = buildUsageAccounting(q, { ctes, cteBinds, condition: selectionCondition })
++  const join = group ? "LEFT JOIN group_map g ON g.key_id=e.key_id" : ""
++  type CellRow = UsageAccountingRow & { hour: string; hasMore: number }
++  const rows = await x.all<CellRow>(`${cte}, cells AS (
++    SELECT ${entryIdentity} AS value,e.hour AS hour,${sums} FROM entries e ${join}
++    GROUP BY value,e.hour
++  ) SELECT cells.*,(SELECT COUNT(*) FROM candidates) > (SELECT COUNT(*) FROM page_keys) AS hasMore
++    FROM cells JOIN page_keys USING(value) ORDER BY value COLLATE BINARY,hour COLLATE BINARY`, args)
++  const series = new Map<string, { value: string; hours: { hour: string; metrics: UsageOverviewMetrics }[] }>()
++  for (const item of rows) {
++    let entry = series.get(item.value)
++    if (!entry) { entry = { value: item.value, hours: [] }; series.set(item.value, entry) }
++    entry.hours.push({ hour: item.hour, metrics: usageMetrics(item) })
++  }
++  const visible = [...series.values()]
++  const last = visible.at(-1)
++  const hasMore = rows[0]?.hasMore === 1
++  return { range: range(q), axis: q.axis, page: { rows: visible, hasMore, nextCursor: hasMore && last ? last.value : null } }
++}
+diff --git a/vnext/packages/gateway/tests/control-plane-token-usage-projections.test.ts b/vnext/packages/gateway/tests/control-plane-token-usage-projections.test.ts
+new file mode 100644
+index 00000000..8df980b9
+--- /dev/null
++++ b/vnext/packages/gateway/tests/control-plane-token-usage-projections.test.ts
+@@ -0,0 +1,276 @@
++import { expect, test } from "bun:test"
++import { Database } from "bun:sqlite"
++import { BunSqliteRepo } from "@vibe-llm/platform-bun/src/bun-sqlite-repo.ts"
++import { app } from "../src/app"
++import { initRepo } from "../src/repo/index"
++import type { ApiKeyId, SessionToken, UserId } from "../src/repo/branded-ids"
++import type { ApiKey, UsageRecord, User, UserSession } from "../src/repo/types"
++import { sharedKeyRef } from "../src/control-plane/lib/redact-shared-view"
++
++const keyId = (s: string): ApiKeyId => s as ApiKeyId
++const userId = (s: string): UserId => s as UserId
++const token = (s: string): SessionToken => s as SessionToken
++const base = "/api/token-usage/projections"
++const range = "start=2026-09-01T00&end=2026-09-02T00"
++
++async function fixture() {
++  const db = new Database(":memory:")
++  const repo = new BunSqliteRepo(db)
++  initRepo(repo)
++  for (const id of ["owner", "viewer", "other", "admin"]) {
++    const u: User = { id: userId(id), name: id, email: id === "admin" ? "test@local.dev" : `${id}@example.invalid`, disabled: false, createdAt: "2026-01-01T00:00:00Z" }
++    const session: UserSession = { token: token(`ses_projection_${id}`), userId: u.id, createdAt: u.createdAt, authenticatedAt: Date.now(), expiresAt: new Date(Date.now() + 3600000).toISOString() }
++    await repo.users.create(u)
++    await repo.sessions.create(session)
++  }
++  for (const [id, owner] of [["a", "owner"], ["b", "other"], ["c", "owner"]] as const) {
++    const key: ApiKey = { id: keyId(id), ownerId: userId(owner), name: `Name ${id}`, key: `projection_${id}`, createdAt: "2026-01-01T00:00:00Z", modelMappingsEnabled: false, modelMappings: [] }
++    await repo.apiKeys.save(key)
++    const record: UsageRecord = { keyId: key.id, incomingModel: id === "a" ? "" : "alias", model: "model", modelKey: "price", upstream: null,
++      client: "test", hour: "2026-09-01T00", requests: 1, tokens: { input: 10 }, cost: { input: 1 } }
++    await repo.usage.record(record)
++  }
++  await repo.keyAssignments.assign(keyId("b"), userId("viewer"), userId("other"))
++  await repo.keyAssignments.assign(keyId("a"), userId("viewer"), userId("owner"))
++  return { db, repo }
++}
++
++async function prototypeKeyFixture() {
++  const { db, repo } = await fixture()
++  const key: ApiKey = { id: keyId("__proto__"), ownerId: userId("admin"), name: "Prototype key", key: "projection_proto",
++    createdAt: "2026-01-01T00:00:00Z", modelMappingsEnabled: false, modelMappings: [] }
++  await repo.apiKeys.save(key)
++  await repo.keyAssignments.assign(key.id, userId("viewer"), userId("admin"))
++  for (const [id, requests] of [["__proto__", 7], ["constructor", 11], ["toString", 13]] as const) {
++    await repo.usage.record({ keyId: keyId(id), incomingModel: "", model: "model", modelKey: "price", upstream: null,
++      client: "test", hour: "2026-09-01T00", requests, tokens: {}, cost: {} })
++  }
++  return { db, repo }
++}
++
++function request(path: string, who?: string, apiKey?: string) {
++  return app.request(`${base}/${path}${path.includes("?") ? "&" : "?"}${range}`, { headers: {
++    ...(who ? { cookie: `session_token=ses_projection_${who}` } : {}),
++    ...(apiKey ? { "x-api-key": `projection_${apiKey}` } : {}),
++  } }, { SERVER_SECRET: "projection-test-secret" })
++}
++
++test("real authenticated routes recheck grants and retain API-key precedence with opaque shared cursors", async () => {
++  const { db, repo } = await fixture()
++  try {
++    for (const path of ["total", "facets?axis=key", "participants", "distribution?axis=key", "mappings", "time", "series?axis=key&limit=1"]) {
++      expect((await request(path)).status).toBe(401)
++      expect((await request(path, "viewer", undefined)).status).toBe(200)
++    }
++    const normal = await (await request("facets?axis=key&limit=1", "viewer")).json() as { page: { rows: { value: string }[]; nextCursor: string | null } }
++    expect(normal.page.rows).toEqual([{ value: "a", name: "Name a", groupRef: null }])
++    expect(normal.page.nextCursor).toBeTruthy()
++    expect((await request("distribution?axis=user", "viewer")).status).toBe(403)
++    expect((await request("total?user_id=viewer", "viewer")).status).toBe(403)
++    expect((await request("total?as_user=owner", "viewer")).status).toBe(403)
++    await repo.observabilityShares.share(userId("owner"), userId("viewer"), userId("owner"))
++    const shared = await (await request("facets?axis=key&limit=1&as_user=owner", "viewer")).json() as { page: { rows: { value: string; name: string }[]; nextCursor: string | null } }
++    expect(shared.page.rows[0]).toEqual({ value: sharedKeyRef("owner", "a", "projection-test-secret"), name: "Name a", groupRef: null })
++    expect(shared.page.nextCursor).toBeTruthy()
++    expect(() => JSON.parse(Buffer.from((shared.page.nextCursor ?? "").split(".")[2] ?? "", "base64url").toString("utf8"))).toThrow()
++    const next = await (await request(`facets?axis=key&limit=1&as_user=owner&cursor=${encodeURIComponent(shared.page.nextCursor ?? "")}`, "viewer")).json() as { page: { rows: { value: string }[] } }
++    expect(next.page.rows[0]?.value).toBe(sharedKeyRef("owner", "c", "projection-test-secret"))
++    expect((await request(`facets?axis=key&limit=1&as_user=owner&cursor=${encodeURIComponent(shared.page.nextCursor ?? "")}x`, "viewer")).status).toBe(400)
++    const api = await (await request("total?key_id=b&as_user=other", "admin", "a")).json() as { total: { requests: number } }
++    expect(api.total.requests).toBe(1)
++    const apiFacet = await request("facets?axis=key&key_id=b&as_user=other", "admin", "a")
++    expect(apiFacet.status).toBe(200)
++    expect(((await apiFacet.json()) as { page: { rows: { value: string }[] } }).page.rows.map(item => item.value)).toEqual(["a"])
++    await repo.observabilityShares.unshare(userId("owner"), userId("viewer"))
++    expect((await request(`facets?axis=key&limit=1&as_user=owner&cursor=${encodeURIComponent(shared.page.nextCursor ?? "")}`, "viewer")).status).toBe(403)
++  } finally { db.close() }
++})
++
++test("admin participant grouping and user filter count each shared key once while assigned viewers retain owners", async () => {
++  const { db, repo } = await fixture()
++  try {
++    const roster = await (await request("participants", "viewer")).json() as { page: { rows: { keyId: string; role: string; userId: string }[]; hasMore: boolean } }
++    expect(roster.page.rows.map(item => `${item.keyId}:${item.role}:${item.userId}`)).toEqual([
++      "a:owner:owner", "b:owner:other",
++    ])
++    const adminRoster = await (await request("participants", "admin")).json() as { page: { rows: { keyId: string; role: string; userId: string }[] } }
++    expect(adminRoster.page.rows.map(item => `${item.keyId}:${item.role}:${item.userId}`)).toEqual([
++      "a:owner:owner", "a:assignee:viewer", "b:owner:other", "b:assignee:viewer", "c:owner:owner",
++    ])
++    const user = await (await request("distribution?axis=user&limit=10", "admin")).json() as {
++      page: { rows: { value: string; metrics: { requests: number } }[] }
++    }
++    expect(user.page.rows.map(item => item.metrics.requests).sort()).toEqual([1, 1, 1])
++    const selected = await (await request("total?user_id=viewer", "admin")).json() as { total: { requests: number } }
++    expect(selected.total.requests).toBe(2)
++    const filteredUser = await (await request("distribution?axis=user&user_id=viewer", "admin")).json() as {
++      page: { rows: { metrics: { requests: number } }[] }
++    }
++    expect(filteredUser.page.rows.map(item => item.metrics.requests)).toEqual([1, 1])
++    const series = await (await request("series?axis=user&limit=1", "admin")).json() as { page: { rows: { hours: { metrics: { requests: number } }[] }[] } }
++    expect(series.page.rows[0]?.hours[0]?.metrics.requests).toBe(1)
++    await repo.observabilityShares.share(userId("owner"), userId("viewer"), userId("owner"))
++    const missingKey = await (await request("time?as_user=owner&key_id=not-a-hmac-ref", "viewer")).json() as {
++      unfilteredHasRecords: boolean; buckets: unknown[]
++    }
++    expect(missingKey).toMatchObject({ unfilteredHasRecords: true, buckets: [] })
++  } finally { db.close() }
++})
++
++test("long Unicode and NUL identities continue through encrypted keyset cursors and reject changed scope", async () => {
++  const { db, repo } = await fixture()
++  try {
++    const long = `a${"界\0+|".repeat(1800)}`
++    const key: ApiKey = { id: keyId(long), ownerId: userId("owner"), name: "Long", key: "projection_long", createdAt: "2026-01-01T00:00:00Z", modelMappingsEnabled: false, modelMappings: [] }
++    await repo.apiKeys.save(key)
++    await repo.usage.record({ keyId: key.id, incomingModel: "", model: "model", modelKey: "price", upstream: null,
++      client: "test", hour: "2026-09-01T00", requests: 1, tokens: { input: 1 }, cost: { input: 1 } })
++    await repo.observabilityShares.share(userId("owner"), userId("viewer"), userId("owner"))
++    const first = await (await request("facets?axis=key&as_user=owner&limit=2", "viewer")).json() as { page: { nextCursor: string | null } }
++    expect(first.page.nextCursor).toBeTruthy()
++    expect(first.page.nextCursor?.length).toBeGreaterThan(10000)
++    const next = await (await request(`facets?axis=key&as_user=owner&limit=2&cursor=${encodeURIComponent(first.page.nextCursor ?? "")}`, "viewer")).json() as { page: { rows: { value: string }[] } }
++    expect(next.page.rows.map(item => item.value)).toEqual([sharedKeyRef("owner", "c", "projection-test-secret")])
++    expect((await request(`facets?axis=key&as_user=owner&limit=2&cursor=${encodeURIComponent(first.page.nextCursor ?? "")}&end=2026-09-03T00`, "viewer")).status).toBe(400)
++    await repo.keyAssignments.assign(keyId("c"), userId("viewer"), userId("owner"))
++    const own = await (await request("facets?axis=key&limit=1", "viewer")).json() as { page: { nextCursor: string | null } }
++    await repo.keyAssignments.unassign(keyId("c"), userId("viewer"))
++    expect((await request(`facets?axis=key&limit=1&cursor=${encodeURIComponent(own.page.nextCursor ?? "")}`, "viewer")).status).toBe(400)
++  } finally { db.close() }
++})
++
++test("nonpaged projections reject cursor and limit instead of silently ignoring them", async () => {
++  const { db } = await fixture()
++  try {
++    for (const path of ["total?limit=1", "total?cursor=opaque", "time?limit=1", "time?cursor=opaque"]) {
++      expect((await request(path, "admin")).status).toBe(400)
++    }
++  } finally { db.close() }
++})
++
++test("assigned-only session scopes 1001 keys without SQL bind overflow across every projection", async () => {
++  const { db } = await fixture()
++  try {
++    db.run(`WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i<1000)
++      INSERT INTO api_keys (id,name,key,created_at,owner_id)
++      SELECT printf('bulk-%04d',i),'Bulk','bulk-secret-'||i,'2026-01-01T00:00:00Z','other' FROM n`)
++    db.run(`INSERT INTO key_assignments (key_id,user_id,assigned_by,assigned_at)
++      SELECT id,'viewer','other','2026-01-01T00:00:00Z' FROM api_keys WHERE id LIKE 'bulk-%'`)
++    db.run(`INSERT INTO usage_requests (key_id,incoming_model,model,upstream,model_key,client,hour,requests)
++      SELECT id,'','model',NULL,'price','client','2026-09-01T00',1 FROM api_keys WHERE id LIKE 'bulk-%'`)
++    const paths = ["total", "facets?axis=key", "participants", "distribution?axis=key", "mappings", "time", "series?axis=key&limit=1"]
++    for (const path of paths) {
++      const response = await request(path, "viewer")
++      expect(response.status).toBe(200)
++    }
++    const total = await (await request("total", "viewer")).json() as { total: { requests: number } }
++    expect(total.total.requests).toBe(1003)
++    const facets = await (await request("facets?axis=key", "viewer")).json() as { page: { rows: { value: string }[]; nextCursor: string | null } }
++    expect(facets.page.rows).toHaveLength(200)
++    expect(facets.page.nextCursor).toBeTruthy()
++    const roster = await (await request("participants", "viewer")).json() as { page: { rows: { keyId: string; role: string; userId: string }[]; hasMore: boolean } }
++    expect(roster.page.rows.map(item => `${item.keyId}:${item.role}:${item.userId}`)).toEqual([
++      "a:owner:owner", "b:owner:other", ...Array.from({ length: 198 }, (_, i) => `bulk-${String(i).padStart(4, "0")}:owner:other`),
++    ])
++    expect(roster.page.hasMore).toBe(true)
++  } finally { db.close() }
++})
++
++test("shared grants keep key identities opaque and recheck authorization on every projection", async () => {
++  const { db, repo } = await fixture()
++  try {
++    await repo.observabilityShares.share(userId("owner"), userId("viewer"), userId("owner"))
++    const ref = sharedKeyRef("owner", "a", "projection-test-secret")
++    const paths = ["total", "facets?axis=key", "participants", "distribution?axis=key", "mappings", "time", "series?axis=key&limit=1"]
++    for (const path of paths) expect((await request(`${path}${path.includes("?") ? "&" : "?"}as_user=owner`, "viewer")).status).toBe(200)
++    const facet = await (await request("facets?axis=key&as_user=owner", "viewer")).json() as { page: { rows: { value: string; groupRef: string | null }[] } }
++    expect(facet.page.rows.map(item => item.value)).toEqual([ref, sharedKeyRef("owner", "c", "projection-test-secret")])
++    expect(facet.page.rows.every(item => item.groupRef === null)).toBe(true)
++    const distribution = await (await request("distribution?axis=key&as_user=owner", "viewer")).json() as { page: { rows: { value: string }[] } }
++    expect(distribution.page.rows.map(item => item.value)).toEqual(facet.page.rows.map(item => item.value))
++    const series = await (await request("series?axis=key&limit=1&as_user=owner", "viewer")).json() as { page: { rows: { value: string }[] } }
++    expect(series.page.rows[0]?.value).toBe(ref)
++    const selected = await (await request(`total?as_user=owner&key_id=${encodeURIComponent(ref)}&incoming_model=`, "viewer")).json() as { total: { requests: number } }
++    expect(selected.total.requests).toBe(1)
++    const roster = await (await request("participants?as_user=owner", "viewer")).json() as { page: { rows: unknown[] } }
++    expect(roster.page.rows).toEqual([])
++    await repo.observabilityShares.unshare(userId("owner"), userId("viewer"))
++    for (const path of paths) expect((await request(`${path}${path.includes("?") ? "&" : "?"}as_user=owner`, "viewer")).status).toBe(403)
++  } finally { db.close() }
++})
++
++test("admin user filters intersect key and legacy incoming filters across total, distribution and series", async () => {
++  const { db } = await fixture()
++  try {
++    const query = "user_id=viewer&key_id=a&incoming_model="
++    const total = await (await request(`total?${query}`, "admin")).json() as { total: { requests: number } }
++    expect(total.total.requests).toBe(1)
++    const distribution = await (await request(`distribution?axis=user&${query}`, "admin")).json() as { page: { rows: { metrics: { requests: number } }[] } }
++    expect(distribution.page.rows.map(item => item.metrics.requests)).toEqual([1])
++    const series = await (await request(`series?axis=user&limit=1&${query}`, "admin")).json() as { page: { rows: { hours: { metrics: { requests: number } }[] }[] } }
++    expect(series.page.rows[0]?.hours[0]?.metrics.requests).toBe(1)
++    const empty = await (await request("total?user_id=viewer&key_id=c&incoming_model=", "admin")).json() as { total: { hasRecords: boolean } }
++    expect(empty.total.hasRecords).toBe(false)
++  } finally { db.close() }
++})
++
++test("UTC-hour validation accepts 744 hours and sparse wide series pages, but rejects 745 hours", async () => {
++  const { db } = await fixture()
++  try {
++    const baseRange = "start=2026-09-01T00&end=2026-10-02T00"
++    expect((await request(`time?${baseRange}`, "viewer")).status).toBe(200)
++    expect((await request(`series?axis=key&limit=1&${baseRange}`, "viewer")).status).toBe(200)
++    expect((await request("time?end=2026-10-02T01", "viewer")).status).toBe(400)
++    expect((await request("series?axis=key&limit=1&end=2026-10-02T01", "viewer")).status).toBe(400)
++    const wide = await request("series?axis=key&limit=32", "viewer")
++    expect(wide.status).toBe(200)
++    const body = await wide.json() as { page: { rows: { value: string; hours: unknown[] }[] } }
++    expect(body.page.rows.map(item => item.value)).toEqual(["a", "b"])
++    expect(body.page.rows.every(item => item.hours.length === 1)).toBe(true)
++    expect((await request("total?start=2026-02-30T00", "viewer")).status).toBe(400)
++  } finally { db.close() }
++})
++
++test("admin key facets retain a real __proto__ participant group and default deleted prototype names to _admin", async () => {
++  const { db } = await prototypeKeyFixture()
++  try {
++    const rows: { value: string; name: string; groupRef: string | null }[] = []
++    let cursor: string | undefined
++    do {
++      const response = await request(`facets?axis=key&limit=1${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, "admin")
++      expect(response.status).toBe(200)
++      const body = await response.json() as { page: { rows: typeof rows; nextCursor: string | null } }
++      rows.push(...body.page.rows)
++      cursor = body.page.nextCursor ?? undefined
++    } while (cursor !== undefined)
++    expect(rows.find(item => item.value === "__proto__")).toEqual({ value: "__proto__", name: "Prototype key",
++      groupRef: "g_sySqad_PtvXIR4mA8efiFOk-C-DAJ3NYKBJxssnPPXI" })
++    expect(rows.find(item => item.value === "constructor")).toEqual({ value: "constructor", name: "construc", groupRef: "_admin" })
++    expect(rows.find(item => item.value === "toString")).toEqual({ value: "toString", name: "toString", groupRef: "_admin" })
++  } finally { db.close() }
++})
++
++test("admin user distribution and paged series keep __proto__ ownership apart from deleted-key Admin history", async () => {
++  const { db } = await prototypeKeyFixture()
++  try {
++    const group = "g_sySqad_PtvXIR4mA8efiFOk-C-DAJ3NYKBJxssnPPXI"
++    const distribution = await (await request("distribution?axis=user", "admin")).json() as {
++      page: { rows: { value: string; metrics: { requests: number } }[] }
++    }
++    expect(distribution.page.rows.find(item => item.value === group)?.metrics.requests).toBe(7)
++    expect(distribution.page.rows.find(item => item.value === "_admin")?.metrics.requests).toBe(24)
++    const series: { value: string; hours: { metrics: { requests: number } }[] }[] = []
++    let cursor: string | undefined
++    do {
++      const response = await request(`series?axis=user&limit=1${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, "admin")
++      expect(response.status).toBe(200)
++      const body = await response.json() as { page: { rows: typeof series; nextCursor: string | null } }
++      series.push(...body.page.rows)
++      cursor = body.page.nextCursor ?? undefined
++    } while (cursor !== undefined)
++    expect(series.find(item => item.value === group)?.hours[0]?.metrics.requests).toBe(7)
++    expect(series.find(item => item.value === "_admin")?.hours[0]?.metrics.requests).toBe(24)
++    const owner = await (await request("total?user_id=admin&key_id=__proto__", "admin")).json() as { total: { requests: number } }
++    expect(owner.total.requests).toBe(7)
++  } finally { db.close() }
++})
+diff --git a/vnext/packages/gateway/tests/usage-projections.test.ts b/vnext/packages/gateway/tests/usage-projections.test.ts
+new file mode 100644
+index 00000000..be3a0b30
+--- /dev/null
++++ b/vnext/packages/gateway/tests/usage-projections.test.ts
+@@ -0,0 +1,311 @@
++import { expect, test } from "bun:test"
++import { Database } from "bun:sqlite"
++import { BunSqliteRepo } from "@vibe-llm/platform-bun/src/bun-sqlite-repo.ts"
++import type { ApiKeyId } from "../src/repo/branded-ids"
++import type { UsageRecord } from "../src/repo/types"
++
++const keyId = (value: string): ApiKeyId => value as ApiKeyId
++const start = "2026-09-01T00"
++const end = "2026-09-02T00"
++const row = (change: Partial<UsageRecord> = {}): UsageRecord => ({
++  keyId: keyId("a"), incomingModel: "", model: "model", modelKey: "price", upstream: null,
++  client: "client", hour: start, requests: 2,
++  tokens: { input: 100, output: 9, input_cache_read: 30, input_cache_write: 4, input_image: 2, output_image: 3 },
++  cost: { input: 0.125, output: 0.25 }, ...change,
++})
++
++test("total and time keep historical price resolution, row presence and complete metadata", async () => {
++  const db = new Database(":memory:")
++  try {
++    const repo = new BunSqliteRepo(db)
++    await repo.usage.record(row())
++    await repo.usage.record(row({ keyId: keyId("b"), tokens: {}, requests: 7 }))
++    db.run("UPDATE usage SET unit_price=NULL WHERE dimension IN ('input_cache_read','input_cache_write','input_image','output_image')")
++    db.run("INSERT INTO usage (key_id,incoming_model,model,upstream,model_key,client,hour,dimension,tokens,unit_price) VALUES ('z','','model',NULL,'price','','2026-09-01T01','input',0,NULL)")
++    db.run("INSERT INTO usage (key_id,incoming_model,model,upstream,model_key,client,hour,dimension,tokens,unit_price) VALUES ('z','','model',NULL,'price','','2026-09-01T01','future',50,99)")
++    const total = await repo.usage.queryProjectionTotal({ start, end })
++    const overview = await repo.usage.queryOverview({ start, end, bucket: "hour", axis: "key" })
++    expect(total.total).toEqual(overview.total)
++    const time = await repo.usage.queryProjectionTime({ start, end, keyId: keyId("missing") })
++    expect(time.unfilteredHasRecords).toBe(true)
++    expect(time.buckets).toEqual([])
++    const observed = await repo.usage.queryProjectionTotal({ start, end, keyId: keyId("z") })
++    expect(observed.total).toMatchObject({ hasRecords: true, input: 0, unpricedTokens: 0, unpricedDimensionRows: 1, observedDimensions: ["input"] })
++  } finally { db.close() }
++})
++
++test("facets and mappings exhaust raw identities with binary keysets and empty incoming", async () => {
++  const db = new Database(":memory:")
++  try {
++    const repo = new BunSqliteRepo(db)
++    for (const [key, incoming, model] of [["a", "", "m"], ["b", "", "n"], ["c", "x\0y", "m"], ["d", "x", "y\0m"]] as const) {
++      await repo.usage.record(row({ keyId: keyId(key), incomingModel: incoming, model }))
++    }
++    const values: string[] = []
++    let cursor: string | undefined
++    do {
++      const result = await repo.usage.queryProjectionFacets({ start, end, axis: "key", limit: 1, cursor })
++      values.push(...result.page.rows.map(item => item.value))
++      cursor = result.page.nextCursor ?? undefined
++    } while (cursor !== undefined)
++    expect(values).toEqual(["a", "b", "c", "d"])
++    const pairs = await repo.usage.queryProjectionMappings({ start, end, limit: 10 })
++    expect(pairs.page.rows).toEqual([
++      { incomingModel: "", model: "m" }, { incomingModel: "", model: "n" },
++      { incomingModel: "x", model: "y\0m" }, { incomingModel: "x\0y", model: "m" },
++    ])
++  } finally { db.close() }
++})
++
++test("participant edges page every owner and assignee without hiding ownerless assignments", async () => {
++  const db = new Database(":memory:")
++  try {
++    const repo = new BunSqliteRepo(db)
++    for (const [id, name] of [["owner", "Owner"], ["u1", "User One"], ["u2", "User Two"]] as const) {
++      db.run("INSERT INTO users (id,name,created_at) VALUES (?,?,?)", [id, name, "2026-01-01T00:00:00Z"])
++    }
++    db.run("INSERT INTO api_keys (id,name,key,created_at,owner_id) VALUES ('a','A','secret-a','2026-01-01T00:00:00Z','owner')")
++    db.run("INSERT INTO api_keys (id,name,key,created_at,owner_id) VALUES ('b','B','secret-b','2026-01-01T00:00:00Z',NULL)")
++    db.run("INSERT INTO key_assignments (key_id,user_id,assigned_by,assigned_at) VALUES ('a','owner','owner','2026-01-01')")
++    db.run("INSERT INTO key_assignments (key_id,user_id,assigned_by,assigned_at) VALUES ('a','u1','owner','2026-01-01')")
++    db.run("INSERT INTO key_assignments (key_id,user_id,assigned_by,assigned_at) VALUES ('b','u2','owner','2026-01-01')")
++    await repo.usage.record(row())
++    await repo.usage.record(row({ keyId: keyId("b") }))
++    const edges: string[] = []
++    let cursor: string | undefined
++    do {
++      const response = await repo.usage.queryProjectionParticipants({ start, end, visibleRosterKeyIds: [keyId("a"), keyId("b")], limit: 1, cursor })
++      edges.push(...response.page.rows.map(edge => `${edge.keyId}:${edge.role}:${edge.userId}:${edge.name}`))
++      cursor = response.page.nextCursor ?? undefined
++    } while (cursor !== undefined)
++    expect(edges).toEqual(["a:owner:owner:Owner", "a:assignee:owner:Owner", "a:assignee:u1:User One", "b:assignee:u2:User Two"])
++  } finally { db.close() }
++})
++
++test("assigned-only participant scope retains accessible owners but hides peer assignees", async () => {
++  const db = new Database(":memory:")
++  try {
++    const repo = new BunSqliteRepo(db)
++    for (const id of ["owner", "viewer", "peer"]) {
++      db.run("INSERT INTO users (id,name,created_at) VALUES (?,?,?)", [id, id, "2026-01-01T00:00:00Z"])
++    }
++    db.run("INSERT INTO api_keys (id,name,key,created_at,owner_id) VALUES ('a','A','secret-a','2026-01-01T00:00:00Z','owner')")
++    db.run("INSERT INTO api_keys (id,name,key,created_at,owner_id) VALUES ('b','B','secret-b','2026-01-01T00:00:00Z','viewer')")
++    for (const id of ["a", "b"]) {
++      db.run("INSERT INTO key_assignments (key_id,user_id,assigned_by,assigned_at) VALUES (?,?,?,?)", [id, "peer", "owner", "2026-01-01"])
++      await repo.usage.record(row({ keyId: keyId(id), tokens: {}, requests: 1 }))
++    }
++    const result = await repo.usage.queryProjectionParticipants({ start, end, keyIds: [keyId("a"), keyId("b")], visibleRosterOwnerId: "viewer" })
++    expect(result.page.rows.map(edge => `${edge.keyId}:${edge.role}:${edge.userId}`)).toEqual([
++      "a:owner:owner", "b:owner:viewer", "b:assignee:peer",
++    ])
++  } finally { db.close() }
++})
++
++test("distribution and sparse whole-series pages retain metric metadata and chart fallback identities", async () => {
++  const db = new Database(":memory:")
++  try {
++    const repo = new BunSqliteRepo(db)
++    await repo.usage.record(row({ keyId: keyId("a"), client: "", model: "", hour: start }))
++    await repo.usage.record(row({ keyId: keyId("b"), client: "unknown", model: "unknown", hour: "2026-09-01T01", tokens: {}, requests: 1 }))
++    await repo.usage.record(row({ keyId: keyId("c"), client: "other", model: "other", hour: "2026-09-01T01", tokens: { input: 0 }, cost: {} }))
++    db.run("INSERT INTO usage (key_id,incoming_model,model,upstream,model_key,client,hour,dimension,tokens,unit_price) VALUES ('c','','other',NULL,'price','other','2026-09-01T01','input',0,NULL)")
++    const raw = await repo.usage.queryProjectionDistribution({ start, end, axis: "client", limit: 10 })
++    expect(raw.page.rows.map(item => item.value)).toEqual(["", "other", "unknown"])
++    const first = await repo.usage.queryProjectionSeries({ start, end, axis: "client", limit: 1 })
++    expect(first.page.rows.map(item => item.value)).toEqual(["other"])
++    expect(first.page.rows[0]?.hours).toHaveLength(1)
++    expect(first.page.rows[0]?.hours[0]?.metrics).toMatchObject({ hasRecords: true, input: 0, observedDimensions: ["input"] })
++    const second = await repo.usage.queryProjectionSeries({ start, end, axis: "client", limit: 1, cursor: first.page.nextCursor ?? undefined })
++    expect(second.page.rows.map(item => item.value)).toEqual(["unknown"])
++    expect(second.page.rows[0]?.hours.map(item => item.hour)).toEqual(["2026-09-01T00", "2026-09-01T01"])
++    expect(second.page.hasMore).toBe(false)
++    expect((await repo.usage.queryProjectionSeries({ start, end, axis: "client", limit: 32 })).page.rows.map(item => item.value)).toEqual(["other", "unknown"])
++    const grouped = await repo.usage.queryProjectionDistribution({ start, end, axis: "user", limit: 10, groupRefs: { a: "same", b: "same" } })
++    expect(grouped.page.rows.map(item => item.value)).toEqual(["_admin", "same"])
++    expect(grouped.page.rows[1]?.metrics.requests).toBe(3)
++  } finally { db.close() }
++})
++
++test("whole-series packing bounds actual occupied cells across sparse and dense pages", async () => {
++  const db = new Database(":memory:")
++  try {
++    const repo = new BunSqliteRepo(db)
++    db.run(`WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i<200)
++      INSERT INTO usage_requests (key_id,incoming_model,model,upstream,model_key,client,hour,requests)
++      SELECT printf('s-%03d',i),'',printf('m-%03d',i),NULL,'price',printf('c-%03d',i),?,1 FROM n`, [start])
++    // The first dense series fills exactly 744 cells. The second must remain
++    // whole on the next page, even with a high identity limit.
++    db.run(`WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i<743)
++      INSERT INTO usage_requests (key_id,incoming_model,model,upstream,model_key,client,hour,requests)
++      SELECT 'a-dense','', 'dense',NULL,'price','dense',strftime('%Y-%m-%dT%H',datetime('2026-09-01T00:00:00','+'||i||' hours')),1 FROM n`)
++    const longEnd = "2026-10-02T00"
++    const dense = await repo.usage.queryProjectionSeries({ start, end: longEnd, axis: "key", limit: 200 })
++    expect(dense.page.rows.map(item => item.value)).toEqual(["a-dense"])
++    expect(dense.page.rows[0]?.hours).toHaveLength(744)
++    expect(dense.page.hasMore).toBe(true)
++    expect(dense.page.nextCursor).toBe("a-dense")
++    const sparse = await repo.usage.queryProjectionSeries({ start, end: longEnd, axis: "key", limit: 200, cursor: dense.page.nextCursor ?? undefined })
++    expect(sparse.page.rows).toHaveLength(200)
++    expect(sparse.page.rows.every(item => item.hours.length === 1)).toBe(true)
++    expect(sparse.page.rows.reduce((count, item) => count + item.hours.length, 0)).toBe(200)
++    expect(sparse.page.hasMore).toBe(true)
++    const last = await repo.usage.queryProjectionSeries({ start, end: longEnd, axis: "key", limit: 200, cursor: sparse.page.nextCursor ?? undefined })
++    expect(last.page.rows.map(item => item.value)).toEqual(["s-200"])
++    expect(last.page.hasMore).toBe(false)
++    expect(last.page.nextCursor).toBeNull()
++  } finally { db.close() }
++})
++
++test("packing stops at the first over-budget identity without skipping a smaller successor", async () => {
++  const db = new Database(":memory:")
++  try {
++    const repo = new BunSqliteRepo(db)
++    db.run(`WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i<399)
++      INSERT INTO usage_requests (key_id,incoming_model,model,upstream,model_key,client,hour,requests)
++      SELECT keys.id,'','model',NULL,'price','client',strftime('%Y-%m-%dT%H',datetime('2026-09-01T00:00:00','+'||n.i||' hours')),1
++      FROM n CROSS JOIN (SELECT 'a' AS id UNION ALL SELECT 'b') AS keys`)
++    db.run("INSERT INTO usage_requests (key_id,incoming_model,model,upstream,model_key,client,hour,requests) VALUES ('c','','model',NULL,'price','client',?,1)", [start])
++    const query = { start, end: "2026-09-18T00", axis: "key" as const, limit: 200 }
++    const first = await repo.usage.queryProjectionSeries(query)
++    expect(first.page.rows.map(item => item.value)).toEqual(["a"])
++    expect(first.page.rows[0]?.hours).toHaveLength(400)
++    expect(first.page.hasMore).toBe(true)
++    const second = await repo.usage.queryProjectionSeries({ ...query, cursor: first.page.nextCursor ?? undefined })
++    expect(second.page.rows.map(item => item.value)).toEqual(["b", "c"])
++    expect(second.page.rows.map(item => item.hours.length)).toEqual([400, 1])
++    expect(second.page.hasMore).toBe(false)
++  } finally { db.close() }
++})
++
++test("packing uses normalized identity-hour presence on all axes and adjacent chunks", async () => {
++  const db = new Database(":memory:")
++  try {
++    const repo = new BunSqliteRepo(db)
++    for (const [key, client, model, hour] of [
++      ["a", "", "", start], ["a", "unknown", "unknown", start],
++      ["b", "other", "other", "2026-09-01T01"], ["b", "other", "other", "2026-09-02T00"],
++    ] as const) await repo.usage.record(row({ keyId: keyId(key), client, model, hour, tokens: {}, requests: 1 }))
++    const axes = ["key", "client", "model", "user"] as const
++    for (const axis of axes) {
++      const groupRefs = { a: "group-a", b: "group-b" }
++      const first = await repo.usage.queryProjectionSeries({ start, end, axis, limit: 200, groupRefs })
++      expect(first.page.rows.reduce((count, item) => count + item.hours.length, 0)).toBe(2)
++      expect(first.page.rows.reduce((count, item) => count + item.hours.reduce((sum, cell) => sum + cell.metrics.requests, 0), 0)).toBe(3)
++      expect(first.page.hasMore).toBe(false)
++      const second = await repo.usage.queryProjectionSeries({ start: end, end: "2026-09-03T00", axis, limit: 200, groupRefs })
++      expect(second.page.rows).toHaveLength(1)
++      expect(second.page.rows[0]?.hours.map(cell => cell.hour)).toEqual(["2026-09-02T00"])
++      expect(second.page.rows[0]?.hours[0]?.metrics.requests).toBe(1)
++    }
++  } finally { db.close() }
++})
++
++test("user series prices each selected participant group on every keyset page", async () => {
++  const db = new Database(":memory:")
++  try {
++    const repo = new BunSqliteRepo(db)
++    await repo.usage.record(row({ keyId: keyId("a"), requests: 2 }))
++    await repo.usage.record(row({ keyId: keyId("b"), requests: 7 }))
++    const query = { start, end, axis: "user" as const, limit: 1, groupRefs: { a: "group-a", b: "group-b" } }
++    const first = await repo.usage.queryProjectionSeries(query)
++    expect(first.page.rows.map(item => [item.value, item.hours[0]?.metrics.requests])).toEqual([["group-a", 2]])
++    expect(first.page.hasMore).toBe(true)
++    const second = await repo.usage.queryProjectionSeries({ ...query, cursor: first.page.nextCursor ?? undefined })
++    expect(second.page.rows.map(item => [item.value, item.hours[0]?.metrics.requests])).toEqual([["group-b", 7]])
++    expect(second.page.hasMore).toBe(false)
++  } finally { db.close() }
++})
++
++test("large catalogs, mapping pairs, metrics and participant edges exhaust bounded keyset pages", async () => {
++  const db = new Database(":memory:")
++  try {
++    const repo = new BunSqliteRepo(db)
++    db.run(`WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i<409)
++      INSERT INTO usage_requests (key_id,incoming_model,model,upstream,model_key,client,hour,requests)
++      SELECT 'a','alias',printf('model-%03d',i),NULL,'price',printf('client-%03d',i),?,1 FROM n`, [start])
++    db.run("INSERT INTO api_keys (id,name,key,created_at,owner_id) VALUES ('a','A','secret-a','2026-01-01T00:00:00Z',NULL)")
++    db.run(`WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i<400)
++      INSERT INTO users (id,name,created_at) SELECT printf('u-%03d',i),printf('User %03d',i),'2026-01-01T00:00:00Z' FROM n`)
++    db.run(`INSERT INTO key_assignments (key_id,user_id,assigned_by,assigned_at)
++      SELECT 'a',id,'u-000','2026-01-01T00:00:00Z' FROM users`)
++    async function exhaust<T>(fetch: (cursor?: string) => Promise<{ page: { rows: readonly T[]; nextCursor: string | null } }>) {
++      const rows: T[] = []
++      let cursor: string | undefined
++      do {
++        const result = await fetch(cursor)
++        expect(result.page.rows.length).toBeLessThanOrEqual(200)
++        rows.push(...result.page.rows)
++        cursor = result.page.nextCursor ?? undefined
++      } while (cursor !== undefined)
++      return rows
++    }
++    const models = await exhaust(cursor => repo.usage.queryProjectionFacets({ start, end, axis: "model", cursor }))
++    expect(new Set(models.map(item => item.value)).size).toBe(410)
++    const mappings = await exhaust(cursor => repo.usage.queryProjectionMappings({ start, end, cursor }))
++    expect(new Set(mappings.map(item => JSON.stringify(item))).size).toBe(410)
++    const distributions = await exhaust(cursor => repo.usage.queryProjectionDistribution({ start, end, axis: "client", cursor }))
++    expect(distributions.length).toBe(410)
++    expect(distributions.reduce((sum, item) => sum + item.metrics.requests, 0)).toBe(410)
++    const series = await exhaust(cursor => repo.usage.queryProjectionSeries({ start, end: "2026-09-01T01", axis: "model", cursor }))
++    expect(series.length).toBe(410)
++    expect(series.reduce((sum, item) => sum + (item.hours[0]?.metrics.requests ?? 0), 0)).toBe(410)
++    const edges = await exhaust(cursor => repo.usage.queryProjectionParticipants({ start, end, cursor }))
++    expect(new Set(edges.map(item => item.userId)).size).toBe(401)
++    expect(edges).toHaveLength(401)
++  } finally { db.close() }
++})
++
++test("keyset traversal reflects changes after a page without offset duplicates or snapshot claims", async () => {
++  const db = new Database(":memory:")
++  try {
++    const repo = new BunSqliteRepo(db)
++    for (const key of ["b", "d"]) await repo.usage.record(row({ keyId: keyId(key), tokens: {}, requests: 1 }))
++    const first = await repo.usage.queryProjectionFacets({ start, end, axis: "key", limit: 1 })
++    expect(first.page.rows.map(item => item.value)).toEqual(["b"])
++    await repo.usage.record(row({ keyId: keyId("a"), tokens: {}, requests: 1 }))
++    await repo.usage.record(row({ keyId: keyId("c"), tokens: {}, requests: 1 }))
++    db.run("DELETE FROM usage_requests WHERE key_id='b'")
++    const second = await repo.usage.queryProjectionFacets({ start, end, axis: "key", limit: 1, cursor: first.page.nextCursor ?? undefined })
++    const third = await repo.usage.queryProjectionFacets({ start, end, axis: "key", limit: 1, cursor: second.page.nextCursor ?? undefined })
++    expect([...first.page.rows, ...second.page.rows, ...third.page.rows].map(item => item.value)).toEqual(["b", "c", "d"])
++    expect((await repo.usage.queryProjectionTotal({ start, end })).total.requests).toBe(3)
++  } finally { db.close() }
++})
++
++test("signed cost and unknown prices retain noncancelling completeness metadata at every metric level", async () => {
++  const db = new Database(":memory:")
++  try {
++    const repo = new BunSqliteRepo(db)
++    const insert = (key: string, upstream: string, dimension: string, tokens: number, price: number | null) => {
++      db.run(`INSERT INTO usage (key_id,incoming_model,model,upstream,model_key,client,hour,dimension,tokens,unit_price)
++        VALUES (?,'','model',?,'price','client',?,?,?,?)`, [key, upstream, start, dimension, tokens, price])
++    }
++    insert("a", "one", "input", 100, 0.125)
++    insert("a", "one", "output", -10, 0.25)
++    insert("a", "one", "input_cache_read", 50, null)
++    insert("a", "one", "input_image", 20, null)
++    insert("a", "one", "output_image", 5, null)
++    insert("a", "one", "future", 9, 99)
++    insert("b", "plus", "input", 100, null)
++    insert("b", "minus", "input", -100, null)
++    insert("c", "zero", "input", 0, 0)
++    db.run(`INSERT INTO usage_requests (key_id,incoming_model,model,upstream,model_key,client,hour,requests)
++      VALUES ('d','','model',NULL,'price','client',?,1)`, [start])
++    const total = (await repo.usage.queryProjectionTotal({ start, end })).total
++    const oracle = (await repo.usage.queryOverview({ start, end, bucket: "hour", axis: "key" })).total
++    expect(total).toEqual(oracle)
++    expect(total).toMatchObject({ requests: 1, input: 220, output: 5, cacheRead: 50, hasRecords: true,
++      unpricedTokens: 0, unpricedDimensionRows: 2,
++      observedDimensions: ["input", "input_cache_read", "input_image", "output", "output_image"] })
++    expect(total.costUSD).toBeCloseTo(0.00002, 12)
++    const distribution = await repo.usage.queryProjectionDistribution({ start, end, axis: "key" })
++    expect(distribution.page.rows.find(item => item.value === "b")?.metrics).toMatchObject({ input: 100, unpricedTokens: 0, unpricedDimensionRows: 2 })
++    expect(distribution.page.rows.find(item => item.value === "c")?.metrics).toMatchObject({ hasRecords: true, input: 0, unpricedDimensionRows: 0 })
++    expect(distribution.page.rows.find(item => item.value === "d")?.metrics).toMatchObject({ hasRecords: true, requests: 1, observedDimensions: [] })
++    const time = await repo.usage.queryProjectionTime({ start, end })
++    expect(time.buckets[0]?.metrics).toEqual(total)
++    const series = await repo.usage.queryProjectionSeries({ start, end: "2026-09-01T01", axis: "key" })
++    expect(series.page.rows.find(item => item.value === "b")?.hours[0]?.metrics.unpricedDimensionRows).toBe(2)
++  } finally { db.close() }
++})

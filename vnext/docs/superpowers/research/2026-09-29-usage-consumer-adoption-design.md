@@ -1,6 +1,6 @@
 # D08 consumer adoption: sequential implementation briefs
 
-Date: 2026-09-29. **Source-only design, not implementation or verification.** Read root/vNext AGENTS, the D08 boundary/report/review, current usage/keys hooks, adapters, participants, distribution and time helpers. No product edits, tests, browser/live requests, installation, commit or deployment were performed. Paths below are relative to `vnext/` unless prefixed with the work directory. Foundation fixes were changing during this read; their final names and independent review are prerequisites, not assumed passing evidence.
+Date: 2026-09-29. **Historical design alternative, not the adopted C2-C6 implementation.** This source-only brief originally proposed the sequence below. The later C2 candidate passed its 32-case oracle but failed the full-load cost gate after three correction rounds; its endpoints were removed from the accepted product, and C3-C6 were skipped/deferred without implementation. See the [C2 evaluation](2026-09-29-usage-projections-evaluation/README.md). The accepted overview API, quota consumer and legacy detail repairs are documented separately. Paths below are relative to `vnext/` unless prefixed with the work directory.
 
 ## Recommendation and boundaries
 
