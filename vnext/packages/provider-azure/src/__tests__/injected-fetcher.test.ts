@@ -105,6 +105,26 @@ test('inference goes through the injected fetcher', async () => {
   expect(seen[0]).toContain('/openai/deployments/gpt-4o/chat/completions')
 })
 
+test('deployment discovery stays ordinary and terminal request selects its endpoint', async () => {
+  banDirectFetch()
+  const ordinary: string[] = []
+  const terminal: string[] = []
+  const selected: string[] = []
+  const provider = await azureProviderPlugin.createFromUpstream(makeUpstream(), {
+    fetcherForUpstream: () => recordingFetcher(ordinary, { data: [{ id: 'gpt-4o' }] }),
+    executionFetcherForUpstream: (_id, request) => {
+      selected.push(request.endpoint)
+      return recordingFetcher(terminal, { id: 'chatcmpl-1' })
+    },
+  })
+  await provider?.probe()
+  await provider?.fetch({ endpoint: 'chat_completions', sourceApi: 'openai', headers: new Headers(), payload: { model: 'gpt-4o', messages: [] } })
+  expect(ordinary).toEqual(['https://example.openai.azure.com/openai/deployments?api-version=2024-10-21'])
+  expect(terminal).toHaveLength(1)
+  expect(terminal[0]).toContain('/openai/deployments/gpt-4o/chat/completions')
+  expect(selected).toEqual(['chat_completions'])
+})
+
 test('the plugin hands the upstream fetcher to the provider', async () => {
   banDirectFetch()
   const seen: string[] = []

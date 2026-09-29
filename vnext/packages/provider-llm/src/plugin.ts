@@ -9,7 +9,19 @@
  */
 import type { AccountType, UpstreamKind, UpstreamRecord } from '@vibe-llm/protocols/common'
 import type { Fetcher, UpstreamPlugin } from '@vibe-core/upstream'
-import type { LlmModelProvider } from './types'
+import type { LlmModelProvider, ProviderRequest } from './types'
+
+export type ExecutionFetcherForRequest = (request: Pick<ProviderRequest, 'endpoint' | 'action'>) => Fetcher
+
+/** Diagnostic setup is best effort; a returned fetcher's transport failure is not swallowed. */
+export function resolveExecutionFetcher(
+  ordinary: Fetcher,
+  executionFactory: ExecutionFetcherForRequest | undefined,
+  request: Pick<ProviderRequest, 'endpoint' | 'action'>,
+): Fetcher {
+  if (!executionFactory) return ordinary
+  try { return executionFactory(request) ?? ordinary } catch { return ordinary }
+}
 
 export interface ProviderPluginContext {
   /** Gateway routing constructs providers before selection; defer credential I/O. */
@@ -38,6 +50,8 @@ export interface ProviderPluginContext {
   /** Egress transport for this upstream, resolved from its proxy fallback
    *  list. Absent means the provider keeps its `directFetcher` default. */
   fetcherForUpstream?: (upstreamId: string) => Fetcher
+  /** Selected application call only. Discovery, OAuth and session refresh keep fetcherForUpstream. */
+  executionFetcherForUpstream?: (upstreamId: string, request: Pick<ProviderRequest, 'endpoint' | 'action'>) => Fetcher
 }
 
 export interface LlmProviderPlugin

@@ -246,6 +246,34 @@ const legacySessionId = async (instructions: string, seed: unknown): Promise<str
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
+test('catalog and OAuth refresh stay ordinary while both 401 attempts use endpoint-selected terminal egress', async () => {
+  repo.put(baseRecord())
+  const harness = makeHarness((_call, attempt) => attempt === 1
+    ? new Response('{"error":{"code":"expired_token","message":"stale"}}', { status: 401 })
+    : okSSE())
+  const ordinary: string[] = []
+  const terminal: string[] = []
+  const selected: string[] = []
+  const provider = new CodexProvider(baseRecord(), async (url, init) => {
+    ordinary.push(url)
+    return harness.fetcher(url, init)
+  }, request => {
+    selected.push(`${request.endpoint}:${request.action ?? 'generate'}`)
+    return async (url, init) => {
+      terminal.push(url)
+      return harness.fetcher(url, init)
+    }
+  })
+  expect((await provider.fetch(makeRequest())).status).toBe(200)
+  expect(ordinary).toContain(CODEX_OAUTH_TOKEN_URL)
+  expect(ordinary.some(url => url.includes(CODEX_MODELS_PATH))).toBe(true)
+  expect(terminal).toEqual([
+    `${CODEX_BACKEND_BASE}${CODEX_RESPONSES_PATH}`,
+    `${CODEX_BACKEND_BASE}${CODEX_RESPONSES_PATH}`,
+  ])
+  expect(selected).toEqual(['responses:generate'])
+})
+
 test('outgoing session header uses the legacy seed through first user and ignores tail', async () => {
   repo.put(baseRecord())
   const harness = makeHarness(() => okSSE())

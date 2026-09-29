@@ -57,6 +57,8 @@ import type {
 } from '@vibe-llm/protocols/common'
 import {
   probeViaModels,
+  resolveExecutionFetcher,
+  type ExecutionFetcherForRequest,
   type LlmModelProvider,
   type ProbeResult,
   type ProviderRequest,
@@ -75,16 +77,18 @@ export class CodexProvider implements LlmModelProvider {
   private readonly upstreamId: string
   private readonly config: CodexUpstreamConfig
   private readonly fetcher: Fetcher
+  private readonly executionFetcher?: ExecutionFetcherForRequest
   private readonly effects: CodexCallEffects
   private catalogCache: CodexProviderModel[] | null = null
 
-  constructor(record: UpstreamRecord<unknown>, fetcher: Fetcher = directFetcher) {
+  constructor(record: UpstreamRecord<unknown>, fetcher: Fetcher = directFetcher, executionFetcher?: ExecutionFetcherForRequest) {
     assertCodexUpstreamRecord(record)
     assertCodexUpstreamState(record.state)
     this.upstreamId = record.id
     this.config = record.config
     this.name = record.name
     this.fetcher = fetcher
+    this.executionFetcher = executionFetcher
     this.effects = this.buildEffects()
   }
 
@@ -231,6 +235,7 @@ export class CodexProvider implements LlmModelProvider {
         signal: req.signal,
         effects: this.effects,
         fetcher: this.fetcher,
+        executionFetcher: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req),
       }
       return inv.action === 'compact'
         ? await callCodexResponsesCompact({
@@ -279,6 +284,7 @@ export class CodexProvider implements LlmModelProvider {
       signal: req.signal,
       effects: this.effects,
       fetcher: this.fetcher,
+      executionFetcher: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req),
       body,
     })
     return {

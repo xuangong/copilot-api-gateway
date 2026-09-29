@@ -1,0 +1,103 @@
+{
+  "runtime": "Bun and local workerd",
+  "originCalls": 4,
+  "bun": {
+    "passed": true,
+    "metadata": {
+      "status": 201,
+      "statusText": "Created",
+      "url": "http://127.0.0.1:59310/bytes",
+      "redirected": true,
+      "type": "default"
+    },
+    "cloneBytes": [
+      [
+        0,
+        255,
+        1,
+        2,
+        3,
+        128
+      ],
+      [
+        0,
+        255,
+        1,
+        2,
+        3,
+        128
+      ],
+      [
+        0,
+        255,
+        1,
+        2,
+        3,
+        128
+      ]
+    ],
+    "utf8Bytes": 95542,
+    "prefixBytes": 65536,
+    "parentIds": [
+      "call_1",
+      "call_2",
+      "call_3"
+    ],
+    "terminals": [
+      "eof",
+      "not_consumed",
+      "cancelled"
+    ],
+    "finishThenCancel": true
+  },
+  "workerd": {
+    "passed": true,
+    "metadata": {
+      "status": 201,
+      "statusText": "Created",
+      "url": "http://127.0.0.1:59310/bytes",
+      "redirected": true,
+      "type": "default"
+    },
+    "cloneBytes": [
+      [
+        0,
+        255,
+        1,
+        2,
+        3,
+        128
+      ],
+      [
+        0,
+        255,
+        1,
+        2,
+        3,
+        128
+      ],
+      [
+        0,
+        255,
+        1,
+        2,
+        3,
+        128
+      ]
+    ],
+    "utf8Bytes": 95542,
+    "prefixBytes": 65536,
+    "parentIds": [
+      "call_1",
+      "call_2",
+      "call_3"
+    ],
+    "terminals": [
+      "eof",
+      "not_consumed",
+      "cancelled"
+    ],
+    "finishThenCancel": true
+  },
+  "scratch": "/var/folders/v7/g66mk9zs7cgbrqg7gzgycqlm0000gn/T/d02-adapter-runtime-CzbjEX"
+}

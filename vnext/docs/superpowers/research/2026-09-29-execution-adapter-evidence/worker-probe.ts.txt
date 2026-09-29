@@ -1,0 +1,58 @@
+import { createUpstreamDialObservationContext } from "__ADAPTER_MODULE__"
+import { UpstreamExchangeCollector, safeUpstreamExchangesForPersistence } from "__VNEXT_ROOT__/vnext/packages/gateway/src/shared/dump/upstream-attempts.ts"
+const check = (value: unknown, message: string) => { if (!value) throw new Error(message) }
+const same = (a: unknown, b: unknown, label: string) => check(JSON.stringify(a) === JSON.stringify(b), label)
+export async function runProbe(origin: string) {
+ const collector = new UpstreamExchangeCollector()
+ const context = createUpstreamDialObservationContext(collector)
+ const begin = (operation: string, body: {kind:"text",text:string}|{kind:"empty"}) => {
+  const observer = context.forOperation({upstreamId:"fixture_upstream",operation})
+  const call = observer.beginCall({upstreamId:"fixture_upstream",url:"https://user:secret@fixture.invalid/token/path?key=secret",startedAt:Date.now()})
+  const attempt = call?.beginAttempt?.({transport:"direct_fetch",transportId:"direct_fetch",method:"POST",url:"https://fixture.invalid/secret",requestHeaders:new Headers({"content-type":"application/json; token=secret","x-custom-secret":"secret","authorization":"Bearer secret"}),body,startedAt:Date.now()})
+  check(attempt,"attempt exists")
+  return attempt!
+ }
+ const text = "a".repeat(65535)+"😀"+"中文".repeat(5000)+"\ud800"
+ const first = begin("responses.create",{kind:"text",text})
+ const response = await fetch(origin+"/redirect")
+ const metadata = {status:response.status,statusText:response.statusText,url:response.url,redirected:response.redirected,type:response.type}
+ const wrapped = first.onResponse?.(response) ?? response
+ check(!response.body?.locked,"wrapper must not lock original early")
+ same({status:wrapped.status,statusText:wrapped.statusText,url:wrapped.url,redirected:wrapped.redirected,type:wrapped.type},metadata,"response metadata")
+ const clone = wrapped.clone(), secondClone = clone.clone()
+ for(const copy of [clone,secondClone])same({url:copy.url,redirected:copy.redirected,type:copy.type},{url:metadata.url,redirected:metadata.redirected,type:metadata.type},"clone metadata")
+ const bodies=await Promise.all([wrapped,clone,secondClone].map(async r=>Array.from(new Uint8Array(await r.arrayBuffer()))))
+ for(const body of bodies)same(body,[0,255,1,2,3,128],"clone bytes")
+ const second=begin("images.edit",{kind:"empty"})
+ const opaque=Response.error()
+ check(second.onResponse?.(opaque)===opaque,"status0 identity")
+ const third=begin("responses.compact",{kind:"empty"})
+ let pulls=0, cancelled:unknown
+ const source=new ReadableStream<Uint8Array>({pull(){pulls++},cancel(reason){cancelled=reason}},{highWaterMark:0})
+ const pendingResponse=third.onResponse?.(new Response(source))
+ check(pendingResponse,"pending wrapper")
+ await Promise.resolve();check(pulls===0 && !source.locked,"no pre-read")
+ const reader=pendingResponse!.body!.getReader(), pending=reader.read()
+ await Promise.resolve()
+ await reader.cancel("fixture cancel");await pending
+ check(cancelled==="fixture cancel" && !source.locked,"cancel forwarding and release")
+ const snapshot=safeUpstreamExchangesForPersistence(collector.finish())
+ same(snapshot.attempts.map(a=>a.parentCallId).length,new Set(snapshot.attempts.map(a=>a.parentCallId)).size,"unique parent IDs")
+ const encoded=new TextEncoder().encode(text)
+ check(snapshot.attempts[0]?.request.totalBytes===encoded.byteLength,"exact UTF8 total")
+ const decoded=Uint8Array.from(atob(snapshot.attempts[0]?.request.prefixBase64 ?? ""),c=>c.charCodeAt(0))
+ same(Array.from(decoded),Array.from(encoded.subarray(0,65536)),"byte-cut UTF8 prefix")
+ same(snapshot.attempts[0]?.response.observedBytes,6,"source counted once across clones")
+ check(snapshot.attempts[2]?.response.terminal==="cancelled" && snapshot.attempts[2]?.response.totalBytes===null,"cancel unknown total")
+ check(!JSON.stringify(snapshot).includes("secret"),"safe metadata")
+ const doneCollector=new UpstreamExchangeCollector(),doneContext=createUpstreamDialObservationContext(doneCollector)
+ const doneAttempt=doneContext.forOperation({upstreamId:"fixture_upstream",operation:"responses.create"}).beginCall({upstreamId:"fixture_upstream",url:"https://fixture.invalid",startedAt:Date.now()})?.beginAttempt?.({transport:"direct_fetch",transportId:"direct_fetch",method:"POST",url:"https://fixture.invalid",requestHeaders:undefined,body:{kind:"empty"},startedAt:Date.now()})
+ const lateSource=new ReadableStream<Uint8Array>({pull(){},cancel(){}},{highWaterMark:0})
+ const late=doneAttempt?.onResponse?.(new Response(lateSource));check(late?.body,"late wrapper")
+ const lateReader=late!.body!.getReader(),lateRead=lateReader.read();await Promise.resolve()
+ const frozen=doneCollector.finish();await lateReader.cancel("after finish");await lateRead
+ check(!lateSource.locked,"finish then cancel releases source")
+ same(frozen.attempts[0]?.response.terminal,"not_consumed","finalized status stable")
+ return {passed:true,metadata,cloneBytes:bodies,utf8Bytes:encoded.byteLength,prefixBytes:decoded.byteLength,parentIds:snapshot.attempts.map(a=>a.parentCallId),terminals:snapshot.attempts.map(a=>a.response.terminal),finishThenCancel:true}
+}
+export default { async fetch(_request:Request,env:{ORIGIN:string}) {try{return Response.json(await runProbe(env.ORIGIN))}catch(error){return new Response(String(error),{status:500})}} }

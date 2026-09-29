@@ -13,6 +13,8 @@ import {
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
+  type ExecutionFetcherForRequest,
+  resolveExecutionFetcher,
 } from '@vibe-llm/provider-llm'
 import { fetchWithRetry, mergeHeaders, truncateBody } from '@vibe-core/http'
 import { directFetcher, type Fetcher } from '@vibe-core/upstream'
@@ -60,8 +62,9 @@ export class CustomProvider implements LlmModelProvider {
    * getModels() before any egress, so that path is unaffected either way.
    */
   private readonly fetcher: Fetcher
+  private readonly executionFetcher?: ExecutionFetcherForRequest
 
-  constructor(cfg: CustomProviderConfig, fetcher: Fetcher = directFetcher) {
+  constructor(cfg: CustomProviderConfig, fetcher: Fetcher = directFetcher, executionFetcher?: ExecutionFetcherForRequest) {
     const authStyle = cfg.authStyle ?? 'bearer'
     if (authStyle !== 'none' && !cfg.apiKey) {
       throw new Error('Custom provider requires an apiKey')
@@ -87,6 +90,7 @@ export class CustomProvider implements LlmModelProvider {
         : { id: m.id, name: m.name, ownedBy: m.ownedBy, chat: parseCustomChatMetadata(m.chat, 'models[].chat') },
     )
     this.fetcher = fetcher
+    this.executionFetcher = executionFetcher
     this.manualPricing = new Map()
     for (const m of cfg.models ?? []) {
       if (typeof m !== 'string' && 'upstreamModelId' in m && m.cost) {
@@ -172,7 +176,7 @@ export class CustomProvider implements LlmModelProvider {
     const res = await this.send(
       path,
       { method: 'POST', body, headers: req.headers, signal: req.signal },
-      { operationName: req.operationName, timeout: req.timeout },
+      { operationName: req.operationName, timeout: req.timeout, fetcher: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req) },
       `call ${req.endpoint}`,
     )
     return { status: res.status, headers: res.headers, body: res.body }
@@ -219,7 +223,7 @@ export class CustomProvider implements LlmModelProvider {
   private async send(
     path: string,
     init: RequestInit,
-    opts: { operationName?: string; timeout?: number },
+    opts: { operationName?: string; timeout?: number; fetcher?: Fetcher },
     defaultOpName: string,
   ): Promise<Response> {
     const url = `${this.baseUrl}${path}`
@@ -250,7 +254,7 @@ export class CustomProvider implements LlmModelProvider {
         // subrequest CPU budgets don't tolerate up to 3 retries with
         // exponential backoff; clients (OpenAI/Anthropic SDKs) retry themselves.
         maxRetries: 0,
-        fetchImpl: this.fetcher,
+        fetchImpl: opts.fetcher ?? this.fetcher,
       })
     } catch (err) {
       if (init.signal?.aborted) throw init.signal.reason

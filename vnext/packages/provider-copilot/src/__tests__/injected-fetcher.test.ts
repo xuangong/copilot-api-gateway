@@ -1,7 +1,9 @@
 import { test, expect } from "bun:test"
 import { CopilotProvider } from "../provider"
+import { copilotProviderPlugin } from "../plugin"
 import { clearRawModelsCache } from "../raw-models-cache"
 import type { Fetcher } from "@vibe-core/upstream"
+import type { UpstreamRecord } from "@vibe-llm/protocols/common"
 
 interface SeenCall { url: string; method: string; hasAuth: boolean }
 
@@ -67,6 +69,79 @@ test("CopilotProvider uses injected fetcher instead of global fetch", async () =
   expect(messages[0]!.method).toBe("POST")
   expect(messages[0]!.hasAuth).toBe(true)
   expect(seen.some((c) => c.url.endsWith("/models"))).toBe(true)
+})
+
+test("variant discovery and auth refresh stay ordinary across terminal 401 retry", async () => {
+  clearRawModelsCache()
+  const ordinary: SeenCall[] = []
+  const terminal: SeenCall[] = []
+  let calls = 0
+  const terminalFetcher: Fetcher = async (url, init) => {
+    terminal.push({ url, method: init.method ?? "GET", hasAuth: readAuth(init.headers) })
+    calls++
+    return calls === 1
+      ? new Response('{"error":"unauthorized"}', { status: 401 })
+      : new Response('{"id":"msg_1","type":"message","role":"assistant","content":[]}', { status: 200, headers: { "content-type": "application/json" } })
+  }
+  let refreshes = 0
+  const selected: string[] = []
+  const provider = new CopilotProvider({
+    copilotToken: "stale", accountType: "individual",
+    refreshSession: async () => { refreshes++; return { token: "fresh" } },
+  }, recordingFetcher(ordinary), request => {
+    selected.push(request.endpoint)
+    return terminalFetcher
+  })
+  const result = await provider.fetch({
+    endpoint: "messages", sourceApi: "anthropic", headers: new Headers(),
+    payload: { model: "claude-sonnet-4-5", messages: [{ role: "user", content: "hi" }], max_tokens: 8 },
+  })
+  expect(result.status).toBe(200)
+  expect(ordinary.map(call => call.url)).toEqual(["https://api.githubcopilot.com/models"])
+  expect(terminal).toHaveLength(2)
+  expect(refreshes).toBe(1)
+  expect(selected).toEqual(["messages", "messages"])
+})
+
+test("plugin token exchange uses ordinary egress while both application sends use execution egress", async () => {
+  clearRawModelsCache()
+  const ordinary: SeenCall[] = []
+  const terminal: SeenCall[] = []
+  const ordinaryFetcher = recordingFetcher(ordinary)
+  let sends = 0
+  let exchanges = 0
+  const upstream: UpstreamRecord = {
+    id: "copilot_test", provider: "copilot", name: "copilot", enabled: true, sortOrder: 0,
+    config: { githubToken: "github-token", accountType: "individual" }, state: null,
+    flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [],
+    createdAt: "2026-01-01", updatedAt: "2026-01-01",
+  }
+  const provider = await copilotProviderPlugin.createFromUpstream(upstream, {
+    deferCredentials: true,
+    fetcherForUpstream: () => ordinaryFetcher,
+    getCachedCopilotToken: async (_token, _type, _host, fetcher, options) => {
+      expect(fetcher).toBe(ordinaryFetcher)
+      await fetcher?.("https://github.test/session", { method: "POST" })
+      exchanges++
+      return { token: options?.forceRefresh ? "fresh" : "stale", apiEndpoint: "https://api.githubcopilot.com" }
+    },
+    executionFetcherForUpstream: () => async (url, init) => {
+      terminal.push({ url, method: init.method ?? "GET", hasAuth: readAuth(init.headers) })
+      sends++
+      return sends === 1
+        ? new Response('{"error":"unauthorized"}', { status: 401 })
+        : Response.json({ id: "msg_1", type: "message", role: "assistant", content: [] })
+    },
+  })
+  expect(provider).not.toBeNull()
+  expect((await provider?.fetch({
+    endpoint: "messages", sourceApi: "anthropic", headers: new Headers(),
+    payload: { model: "claude-sonnet-4-5", messages: [{ role: "user", content: "hi" }], max_tokens: 8 },
+  }))?.status).toBe(200)
+  expect(exchanges).toBe(2)
+  expect(ordinary.filter(call => call.url === "https://github.test/session")).toHaveLength(2)
+  expect(ordinary.filter(call => call.url.endsWith("/models"))).toHaveLength(1)
+  expect(terminal).toHaveLength(2)
 })
 
 test("variant resolution's raw model-list lookup goes through the injected fetcher", async () => {

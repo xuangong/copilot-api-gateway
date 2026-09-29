@@ -238,6 +238,31 @@ const isoIn = (ms: number): string => new Date(Date.now() + ms).toISOString()
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
+test('catalog and OAuth refresh stay ordinary while both 401 attempts use endpoint-selected terminal egress', async () => {
+  repo.put(baseRecord())
+  const harness = makeHarness((_call, attempt) => attempt === 1
+    ? new Response('{"error":{"type":"authentication_error","message":"stale"}}', { status: 401 })
+    : okSSE())
+  const ordinary: string[] = []
+  const terminal: string[] = []
+  const selected: string[] = []
+  const provider = new ClaudeCodeProvider(baseRecord(), async (url, init) => {
+    ordinary.push(url)
+    return harness.fetcher(url, init)
+  }, request => {
+    selected.push(request.endpoint)
+    return async (url, init) => {
+      terminal.push(url)
+      return harness.fetcher(url, init)
+    }
+  })
+  expect((await provider.fetch(makeRequest())).status).toBe(200)
+  expect(ordinary).toContain(ANTHROPIC_MODELS)
+  expect(ordinary).toContain(CLAUDE_CODE_OAUTH_TOKEN_URL)
+  expect(terminal).toEqual([ANTHROPIC_MESSAGES, ANTHROPIC_MESSAGES])
+  expect(selected).toEqual(['messages'])
+})
+
 test('200 messages call → ok + quota snapshot persisted in background', async () => {
   repo.put(baseRecord())
   const nowSec = Math.floor(Date.now() / 1000)

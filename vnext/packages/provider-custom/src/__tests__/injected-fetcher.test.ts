@@ -124,6 +124,36 @@ test('inference goes through the injected fetcher', async () => {
   expect(seen).toEqual(['https://open.bigmodel.cn/api/paas/v4/chat/completions'])
 })
 
+test('execution fetcher is selected from the declared endpoint while model discovery stays ordinary', async () => {
+  banDirectFetch()
+  const ordinary: string[] = []
+  const terminal: string[] = []
+  const selected: string[] = []
+  const provider = await customProviderPlugin.createFromUpstream(makeUpstream(), {
+    fetcherForUpstream: () => recordingFetcher(ordinary, MODELS_BODY),
+    executionFetcherForUpstream: (_id, request) => {
+      selected.push(`${request.endpoint}:${request.action ?? 'generate'}`)
+      return recordingFetcher(terminal, { id: 'chatcmpl-1' })
+    },
+  })
+  await provider?.getModels()
+  await provider?.fetch({ endpoint: 'chat_completions', sourceApi: 'openai', headers: new Headers(), payload: { model: 'glm-4.6', messages: [] } })
+  expect(ordinary).toEqual(['https://open.bigmodel.cn/api/paas/v4/models'])
+  expect(terminal).toEqual(['https://open.bigmodel.cn/api/paas/v4/chat/completions'])
+  expect(selected).toEqual(['chat_completions:generate'])
+})
+
+test('a diagnostic fetcher factory failure falls back to the configured ordinary transport', async () => {
+  banDirectFetch()
+  const ordinary: string[] = []
+  const provider = new CustomProvider(CONFIG, recordingFetcher(ordinary, { id: 'chatcmpl-1' }), () => {
+    throw new Error('observer construction failed')
+  })
+  const response = await provider.fetch({ endpoint: 'chat_completions', sourceApi: 'openai', headers: new Headers(), payload: { model: 'glm-4.6', messages: [] } })
+  expect(response.status).toBe(200)
+  expect(ordinary).toEqual(['https://open.bigmodel.cn/api/paas/v4/chat/completions'])
+})
+
 test('a manual model list keeps getModels() off the network entirely', async () => {
   banDirectFetch()
   const seen: string[] = []

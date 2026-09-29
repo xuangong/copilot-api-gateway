@@ -11,6 +11,11 @@ import { CodexProvider } from './provider'
 export const codexProviderPlugin: LlmProviderPlugin = {
   kind: 'codex',
   async createFromUpstream(upstream, ctx) {
-    return new CodexProvider(upstream, ctx.fetcherForUpstream?.(upstream.id))
+    const executionFactory = ctx.executionFetcherForUpstream
+    return new CodexProvider(
+      upstream,
+      ctx.fetcherForUpstream?.(upstream.id),
+      executionFactory ? request => executionFactory(upstream.id, request) : undefined,
+    )
   },
 }

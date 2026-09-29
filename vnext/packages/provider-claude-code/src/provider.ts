@@ -29,6 +29,8 @@ import type { EndpointKey, ModelPricing, UpstreamRecord } from '@vibe-llm/protoc
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
 import {
   probeViaModels,
+  resolveExecutionFetcher,
+  type ExecutionFetcherForRequest,
   type LlmModelProvider,
   type ProbeResult,
   type ProviderModelsResponse,
@@ -72,15 +74,17 @@ export class ClaudeCodeProvider implements LlmModelProvider {
   private readonly upstreamId: string
   private readonly config: ClaudeCodeUpstreamConfig
   private readonly fetcher: Fetcher
+  private readonly executionFetcher?: ExecutionFetcherForRequest
   private catalogCache: ClaudeCodeProviderModel[] | null = null
 
-  constructor(record: UpstreamRecord<unknown>, fetcher: Fetcher = directFetcher) {
+  constructor(record: UpstreamRecord<unknown>, fetcher: Fetcher = directFetcher, executionFetcher?: ExecutionFetcherForRequest) {
     assertClaudeCodeUpstreamRecord(record)
     assertClaudeCodeUpstreamState(record.state)
     this.upstreamId = record.id
     this.config = record.config
     this.name = record.name
     this.fetcher = fetcher
+    this.executionFetcher = executionFetcher
   }
 
   setModelCatalog(models: ProviderModelsResponse): void {
@@ -139,6 +143,7 @@ export class ClaudeCodeProvider implements LlmModelProvider {
           body: bctx.payload,
           signal: req.signal,
           fetcher: this.fetcher,
+          executionFetcher: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req),
           shaped,
           inboundHeaders: req.headers,
         })

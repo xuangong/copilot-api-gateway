@@ -78,6 +78,31 @@ test('sends the full taxonomy + CoS header set', async () => {
   expect(h.get('X-SessionId')).toBe(h.get('X-InteractionId'))
 })
 
+test('passport uses ordinary egress and image application uses endpoint-selected execution egress', async () => {
+  const ordinary: string[] = []
+  const terminal: string[] = []
+  const selected: string[] = []
+  const provider = new SdfProvider({ name: 'sdf-test', substrateToken: tokenWithTid('separate') },
+    async url => {
+      ordinary.push(url)
+      return Response.json({ passport: 'passport-jwt', expiresIn: 3600 })
+    },
+    request => {
+      selected.push(request.endpoint)
+      return async url => { terminal.push(url); return OK() }
+    },
+  )
+  const result = await provider.fetch({
+    endpoint: 'images_generations', payload: { model: 'gpt-image-2', prompt: 'cat' },
+    headers: new Headers(), sourceApi: 'openai',
+  })
+  expect(result.status).toBe(200)
+  expect(ordinary).toHaveLength(1)
+  expect(ordinary[0]).toContain('/v1/passports/')
+  expect(terminal).toEqual(['https://fe-26.qas.bing.net/sdf/images/generations'])
+  expect(selected).toEqual(['images_generations'])
+})
+
 test('config overrides win over the Societas defaults', async () => {
   const calls: Call[] = []
   const restore = stubFetch(calls, 'p')

@@ -64,13 +64,13 @@ export interface BeginUpstreamAttempt {
   readonly method: string
   readonly operation?: string
   readonly url?: string
-  readonly requestHeaders?: ReadonlyArray<readonly [string, string]>
+  readonly requestHeaders?: Iterable<readonly [string, string]>
   readonly startedAt?: number
 }
 
 const SAFE_OPERATIONS = new Set([
   "chat.completions", "responses.create", "messages.create", "embeddings.create",
-  "images.generate", "count_tokens", "search",
+  "images.generate", "images.edit", "responses.compact", "count_tokens", "search",
 ])
 const SAFE_MEDIA_TYPES = new Set([
   "application/json", "application/octet-stream", "text/event-stream", "text/plain",
@@ -201,7 +201,7 @@ export class UpstreamExchangeCollector {
     return new UpstreamAttemptCapture(this, item)
   }
 
-  private addHeaders(item: MutableAttempt, headers: ReadonlyArray<readonly [string, string]>, side: "request" | "response"): void {
+  private addHeaders(item: MutableAttempt, headers: Iterable<readonly [string, string]>, side: "request" | "response"): void {
     if (this.finished !== null) return
     for (const [rawName, rawValue] of headers) {
       // Skip oversized untrusted strings before lowercasing, splitting or
@@ -258,7 +258,7 @@ export class UpstreamExchangeCollector {
     this.capture(item.requestPrefix, input.prefix, UPSTREAM_ATTEMPT_LIMITS.requestPrefix)
   }
 
-  observeResponse(item: MutableAttempt, status: number, headers: ReadonlyArray<readonly [string, string]>, body: ReadableStream<Uint8Array> | null): ReadableStream<Uint8Array> | null {
+  observeResponse(item: MutableAttempt, status: number, headers: Iterable<readonly [string, string]>, body: ReadableStream<Uint8Array> | null): ReadableStream<Uint8Array> | null {
     if (this.finished !== null) return body
     item.status = safeStatus(status)
     this.addHeaders(item, headers, "response")
@@ -371,7 +371,7 @@ export class UpstreamAttemptCapture {
   observePreparedRequest(input: { readonly prefix: Uint8Array; readonly totalBytes: number }): void {
     this.collector.observePreparedRequest(this.item, input)
   }
-  observeResponse(status: number, headers: ReadonlyArray<readonly [string, string]>, body: ReadableStream<Uint8Array> | null): ReadableStream<Uint8Array> | null {
+  observeResponse(status: number, headers: Iterable<readonly [string, string]>, body: ReadableStream<Uint8Array> | null): ReadableStream<Uint8Array> | null {
     return this.collector.observeResponse(this.item, status, headers, body)
   }
   fetchError(category: UpstreamAttemptErrorCategory = "unknown"): void {

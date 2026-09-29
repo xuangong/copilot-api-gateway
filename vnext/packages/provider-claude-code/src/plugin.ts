@@ -11,6 +11,11 @@ import { ClaudeCodeProvider } from './provider'
 export const claudeCodeProviderPlugin: LlmProviderPlugin = {
   kind: 'claude-code',
   async createFromUpstream(upstream, ctx) {
-    return new ClaudeCodeProvider(upstream, ctx.fetcherForUpstream?.(upstream.id))
+    const executionFactory = ctx.executionFetcherForUpstream
+    return new ClaudeCodeProvider(
+      upstream,
+      ctx.fetcherForUpstream?.(upstream.id),
+      executionFactory ? request => executionFactory(upstream.id, request) : undefined,
+    )
   },
 }

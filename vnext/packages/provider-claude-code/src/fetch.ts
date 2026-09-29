@@ -37,6 +37,7 @@ export interface CallClaudeCodeMessagesOptions {
   body: Omit<MessagesPayload, 'model'>
   signal?: AbortSignal
   fetcher: Fetcher
+  executionFetcher?: Fetcher
   /**
    * True when `isClaudeCodeShapedRequest` recognised the caller as a real
    * Claude Code client. The caller's own already-filtered fingerprint then
@@ -167,7 +168,7 @@ const performStreamingMessagesCall = async (
   // client always sets `stream: true`.
   const wireBody = { ...opts.body, model: upstreamModelId, stream: true }
 
-  const response = await opts.fetcher(ANTHROPIC_MESSAGES_ENDPOINT, {
+  const response = await (opts.executionFetcher ?? opts.fetcher)(ANTHROPIC_MESSAGES_ENDPOINT, {
     method: 'POST',
     headers,
     body: JSON.stringify(wireBody),

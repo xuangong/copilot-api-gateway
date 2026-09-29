@@ -113,6 +113,7 @@ interface CodexBackendCallBase {
   signal?: AbortSignal
   effects: CodexCallEffects
   fetcher: Fetcher
+  executionFetcher?: Fetcher
 }
 
 export interface CallCodexResponsesOptions extends CodexBackendCallBase {
@@ -507,7 +508,7 @@ const dispatchCodexHttpCall = async (
     prepared.bodyPrepared = true
   }
 
-  const response = await opts.fetcher(`${CODEX_BACKEND_BASE}${path}`, {
+  const response = await (opts.executionFetcher ?? opts.fetcher)(`${CODEX_BACKEND_BASE}${path}`, {
     method: 'POST',
     headers,
     body: prepared.bodyText,

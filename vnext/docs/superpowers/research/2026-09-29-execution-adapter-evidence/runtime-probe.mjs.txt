@@ -1,0 +1,39 @@
+import { Miniflare } from '../../../vnext/node_modules/.bun/miniflare@4.20260601.0/node_modules/miniflare/dist/src/index.js'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import { fileURLToPath } from 'node:url'
+import { tmpdir } from 'node:os'
+import { spawn, spawnSync } from 'node:child_process'
+import assert from 'node:assert/strict'
+const root=process.env.VNEXT_PROBE_ROOT ?? fileURLToPath(new URL('../../../',import.meta.url))
+const scratch=await mkdtemp(`${tmpdir()}/d02-adapter-runtime-`)
+const entry=`${scratch}/worker.ts`, bundle=`${scratch}/worker.mjs`
+const source=await readFile(new URL('./task-D02-adapter-worker.ts',import.meta.url),'utf8')
+await writeFile(entry, source.replaceAll('__VNEXT_ROOT__',root).replaceAll('__ADAPTER_MODULE__',process.env.VNEXT_ADAPTER_MODULE ?? `${root}/vnext/packages/gateway/src/shared/dump/upstream-dial-adapter.ts`))
+const build=spawnSync('bun',['build',entry,'--target=browser',`--outfile=${bundle}`],{cwd:root,encoding:'utf8'})
+assert.equal(build.status,0,build.stderr)
+let originCalls=0
+const origin=createServer((req,res)=>{
+ originCalls++
+ if(req.url==='/redirect') {res.writeHead(302,{location:'/bytes'});res.end();return}
+ if(req.url==='/bytes') {res.writeHead(201,{'content-type':'application/octet-stream','x-fixture-secret':'never-persist'});res.end(Buffer.from([0,255,1,2,3,128]));return}
+ res.writeHead(404);res.end()
+})
+await new Promise(resolve=>origin.listen(0,'127.0.0.1',resolve))
+const address=origin.address();assert(address && typeof address!=='string')
+const mf=new Miniflare({modules:true,modulesRoot:scratch,scriptPath:bundle,compatibilityDate:'2026-06-01',bindings:{ORIGIN:`http://127.0.0.1:${address.port}`}})
+try {
+ const runner=`${scratch}/bun-runner.mjs`
+ await writeFile(runner, "const {runProbe}=await import('./worker.mjs');console.log(JSON.stringify(await runProbe(process.env.FIXTURE_ORIGIN)))")
+ const bunResult=await new Promise((resolve,reject)=>{
+  const child=spawn('bun',[runner],{env:{...process.env,FIXTURE_ORIGIN:`http://127.0.0.1:${address.port}`}})
+  let stdout='',stderr='';child.stdout.on('data',b=>stdout+=b);child.stderr.on('data',b=>stderr+=b)
+  child.on('error',reject);child.on('close',code=>code===0?resolve(JSON.parse(stdout)):reject(new Error(`Bun fixture failed ${code}: ${stderr}`)))
+ })
+ assert.equal(bunResult.passed,true)
+ const response=await mf.dispatchFetch('http://localhost/')
+ const body=await response.text()
+ assert.equal(response.status,200,body)
+ const result=JSON.parse(body);assert.equal(result.passed,true)
+ console.log(JSON.stringify({runtime:'Bun and local workerd',originCalls,bun:bunResult,workerd:result,scratch}))
+} finally {await mf.dispose();origin.closeAllConnections();await new Promise(resolve=>origin.close(resolve))}

@@ -21,6 +21,8 @@ import {
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
+  type ExecutionFetcherForRequest,
+  resolveExecutionFetcher,
 } from '@vibe-llm/provider-llm'
 import { fetchWithRetry, mergeHeaders, parseJsonBody, truncateBody } from '@vibe-core/http'
 import { directFetcher, type Fetcher } from '@vibe-core/upstream'
@@ -76,8 +78,9 @@ export class AzureProvider implements LlmModelProvider {
    * every inference call — leaves the host through it.
    */
   private readonly fetcher: Fetcher
+  private readonly executionFetcher?: ExecutionFetcherForRequest
 
-  constructor(cfg: AzureProviderConfig, fetcher: Fetcher = directFetcher) {
+  constructor(cfg: AzureProviderConfig, fetcher: Fetcher = directFetcher, executionFetcher?: ExecutionFetcherForRequest) {
     if (!cfg.apiKey) throw new Error('Azure provider requires an apiKey')
     if (!cfg.endpoint) throw new Error('Azure provider requires an endpoint')
     if (!cfg.deployment) throw new Error('Azure provider requires a deployment')
@@ -93,6 +96,7 @@ export class AzureProvider implements LlmModelProvider {
     this.extraDeployments = cfg.deployments ?? []
     this.modelPricing = cfg.models ?? []
     this.fetcher = fetcher
+    this.executionFetcher = executionFetcher
   }
 
   async getModels(): Promise<ProviderModelsResponse> {
@@ -153,6 +157,7 @@ export class AzureProvider implements LlmModelProvider {
       {
         operationName: req.operationName,
         timeout: req.timeout,
+        fetcher: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req),
       },
       `call ${req.endpoint}`,
     )
@@ -208,7 +213,7 @@ export class AzureProvider implements LlmModelProvider {
   private async send(
     endpoint: EndpointKey,
     init: RequestInit,
-    opts: { operationName?: string; timeout?: number },
+    opts: { operationName?: string; timeout?: number; fetcher?: Fetcher },
     defaultOpName: string,
   ): Promise<Response> {
     const bodyIsFormData = init.body instanceof FormData
@@ -248,7 +253,7 @@ export class AzureProvider implements LlmModelProvider {
         // subrequest CPU budgets don't tolerate up to 3 retries with
         // exponential backoff; clients (OpenAI/Anthropic SDKs) retry themselves.
         maxRetries: 0,
-        fetchImpl: this.fetcher,
+        fetchImpl: opts.fetcher ?? this.fetcher,
       })
     } catch (err) {
       if (init.signal?.aborted) throw init.signal.reason

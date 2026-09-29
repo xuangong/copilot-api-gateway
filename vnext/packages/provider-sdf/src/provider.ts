@@ -20,6 +20,8 @@ import {
   type ProviderModelsResponse,
   type ProviderRequest,
   type ProviderResponse,
+  type ExecutionFetcherForRequest,
+  resolveExecutionFetcher,
 } from '@vibe-llm/provider-llm'
 import { fetchWithRetry, mergeHeaders, truncateBody } from '@vibe-core/http'
 import { directFetcher, type Fetcher } from '@vibe-core/upstream'
@@ -102,8 +104,9 @@ export class SdfProvider implements LlmModelProvider {
    * fetcher: the catalogue is hardcoded and they never reach the network.
    */
   private readonly fetcher: Fetcher
+  private readonly executionFetcher?: ExecutionFetcherForRequest
 
-  constructor(cfg: SdfProviderConfig, fetcher: Fetcher = directFetcher) {
+  constructor(cfg: SdfProviderConfig, fetcher: Fetcher = directFetcher, executionFetcher?: ExecutionFetcherForRequest) {
     if (!cfg.substrateToken) throw new Error('SDF provider requires a substrateToken')
     this.name = cfg.name
     this.substrateToken = cfg.substrateToken
@@ -118,6 +121,7 @@ export class SdfProvider implements LlmModelProvider {
     this.passportApiBase = cfg.passport?.apiBase ?? DEFAULT_PASSPORT_API_BASE
     this.tenantId = tenantIdFromToken(cfg.substrateToken)
     this.fetcher = fetcher
+    this.executionFetcher = executionFetcher
   }
 
   async getModels(): Promise<ProviderModelsResponse> {
@@ -224,7 +228,7 @@ export class SdfProvider implements LlmModelProvider {
         // Match Custom/Azure: clients retry; Workers subrequest budget
         // doesn't tolerate extra retries with backoff.
         maxRetries: 0,
-        fetchImpl: this.fetcher,
+        fetchImpl: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req),
       })
     } catch (err) {
       if (req.signal?.aborted) throw req.signal.reason

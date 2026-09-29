@@ -27,8 +27,9 @@ import type {
   ProviderRequest,
   ProviderResponse,
   SourceApi,
+  ExecutionFetcherForRequest,
 } from '@vibe-llm/provider-llm'
-import { probeViaModels } from '@vibe-llm/provider-llm'
+import { probeViaModels, resolveExecutionFetcher } from '@vibe-llm/provider-llm'
 import { HTTPError } from '@vibe-llm/provider-llm'
 import { directFetcher, type Fetcher } from '@vibe-core/upstream'
 import { invalidateRawModelsForToken } from './raw-models-cache'
@@ -104,6 +105,7 @@ export class CopilotProvider implements LlmModelProvider {
   private readonly accountType: AccountType
   private baseUrl?: string
   private readonly fetcher: Fetcher
+  private readonly executionFetcher?: ExecutionFetcherForRequest
   private readonly refreshSession?: () => Promise<{ token: string; baseUrl?: string }>
   private readonly messagesChain: readonly CopilotInterceptor[]
   private readonly messagesCountTokensChain: readonly CopilotInterceptor[]
@@ -111,12 +113,13 @@ export class CopilotProvider implements LlmModelProvider {
   private readonly chatCompletionsChain: readonly CopilotInterceptor[]
   private readonly embeddingsChain: readonly CopilotInterceptor[]
 
-  constructor(cfg: CopilotProviderConfig, fetcher: Fetcher = directFetcher) {
+  constructor(cfg: CopilotProviderConfig, fetcher: Fetcher = directFetcher, executionFetcher?: ExecutionFetcherForRequest) {
     this.copilotToken = cfg.copilotToken
     this.accountType = cfg.accountType
     this.baseUrl = cfg.baseUrl
     this.name = cfg.name ?? 'copilot'
     this.fetcher = fetcher
+    this.executionFetcher = executionFetcher
     this.refreshSession = cfg.refreshSession
     this.prepareSession = cfg.prepareSession
 
@@ -197,7 +200,7 @@ export class CopilotProvider implements LlmModelProvider {
           timeout: req.timeout,
           extraHeaders: inv.headers,
           requireModel,
-          fetcher: this.fetcher,
+          fetcher: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req),
           preparedCall,
         }),
       )
