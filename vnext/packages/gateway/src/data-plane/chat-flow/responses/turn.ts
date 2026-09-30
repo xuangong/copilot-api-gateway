@@ -232,12 +232,15 @@ export interface PreparedResponsesTurn {
   readonly options: ResponsesTurnOptions
 }
 
+type ResponsesTurnInput = RespondResponsesInput | (() => Promise<PreparedResponsesTurn>)
+
 /** Created before preparation starts, so a platform can own completion from
  * turn start. The iterator has one consumer and no producer-side event queue. */
 export function createResponsesTurn(
-  input: RespondResponsesInput | (() => Promise<PreparedResponsesTurn>),
+  input: ResponsesTurnInput,
   initialOptions: ResponsesTurnOptions,
 ): ResponsesTurn {
+  let pendingInput: ResponsesTurnInput | undefined = input
   const abortController = initialOptions.downstreamAbortController ?? new AbortController()
   const upstreamAbortController = initialOptions.upstreamAbortController ?? new AbortController()
   let options = { ...initialOptions, downstreamAbortController: abortController, upstreamAbortController }
@@ -269,11 +272,15 @@ export function createResponsesTurn(
   }
   abortController.signal.addEventListener("abort", onAbort, { once: true })
   const preparation = Promise.resolve().then(async () => {
-    if (typeof input === "function" && abortController.signal.aborted) {
+    // Turn callbacks outlive preparation; release the factory's captured request state once this callback owns it.
+    const ownedInput = pendingInput
+    pendingInput = undefined
+    if (ownedInput === undefined) throw new Error("Responses preparation input is unavailable.")
+    if (typeof ownedInput === "function" && abortController.signal.aborted) {
       ready.resolve({ status: 499, body: { error: { type: "api_error", message: "Response cancelled." } } })
       return
     }
-    const prepared = typeof input === "function" ? await input() : { result: input, options }
+    const prepared = typeof ownedInput === "function" ? await ownedInput() : { result: ownedInput, options }
     result = prepared.result
     options = { ...prepared.options, downstreamAbortController: abortController, upstreamAbortController }
     if (!("kind" in result) && result.type === "events") {

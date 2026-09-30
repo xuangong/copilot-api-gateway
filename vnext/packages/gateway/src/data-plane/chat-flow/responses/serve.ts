@@ -231,12 +231,18 @@ const responsesHooks: ServeTemplateHooks<
   }),
 }
 
+function linkResponsesAbort(signal: AbortSignal | undefined, abortController: AbortController): () => void {
+  if (!signal) return () => {}
+  const onAbort = (): void => abortController.abort(signal.reason)
+  if (signal.aborted) onAbort()
+  else signal.addEventListener("abort", onAbort, { once: true })
+  return () => signal.removeEventListener("abort", onAbort)
+}
+
 export function startResponsesTurn(args: ResponsesServeArgs): ResponsesTurn {
   const abortController = new AbortController()
   const upstreamAbortController = new AbortController()
-  const onAbort = (): void => abortController.abort(args.signal?.reason)
-  if (args.signal?.aborted) onAbort()
-  else args.signal?.addEventListener("abort", onAbort, { once: true })
+  const unlinkAbort = linkResponsesAbort(args.signal, abortController)
   const raw = args.raw as { stream?: unknown } | null
   const turn = createResponsesTurn(async () => {
     const prepared = await prepareResponses(args, upstreamAbortController)
@@ -245,7 +251,7 @@ export function startResponsesTurn(args: ResponsesServeArgs): ResponsesTurn {
     const c = prepared.context
     return { result: prepared.result, options: { ...common, affinity: c.extra?.affinity, onCompleted: c.extra?.onCompleted, mergedInputItems: c.extra?.mergedInputItems, telemetryCtx: args.warmup ? undefined : c.telemetryCtx } }
   }, { wantsStream: args.action !== "compact" && raw?.stream === true, downstreamAbortController: abortController, upstreamAbortController, finalizeDump: true, dump: args.dump as DumpAccumulator | null })
-  void turn.completion.finally(() => args.signal?.removeEventListener("abort", onAbort))
+  void turn.completion.finally(unlinkAbort)
   return turn
 }
 
