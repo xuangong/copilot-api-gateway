@@ -1,3 +1,4 @@
+import { translatedFixture } from "../shared/translated-fixture"
 import { beforeEach, expect, test } from "bun:test"
 import { eventFrame, type ProtocolFrame } from "@vibe-core/result"
 import { llmEventResult } from "@vibe-llm/protocols/common"
@@ -60,6 +61,7 @@ test("an unconsumed turn closes its owned upstream iterator on cancellation", as
   await turn.ready
   turn.abortController.abort()
   const completion = await turn.completion
+  expect(await turn.facts).toMatchObject({ outcome: "cancelled", rawCleanupComplete: true, continuation: "skipped", metadata: { status: "skipped" } })
   expect(returned).toBe(1)
   expect(completion).toEqual({ outcome: "cancelled", cleanupComplete: true })
 })
@@ -70,7 +72,7 @@ test("translated Chat placeholder trailing usage retains sparse measured counts"
     { id: "chat", choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }] },
     { id: "chat", choices: [{ index: 0 }], usage: { completion_tokens: 3 } },
   ])
-  const result = llmEventResult(source, identity, undefined, undefined, undefined, translateChatToResponsesEvents)
+  const result = translatedFixture({ kind: "translated", source: "responses", protocol: "chat_completions" }, source, identity, undefined, undefined, undefined, translateChatToResponsesEvents)
   const wire = await (await respondResponses(result, { wantsStream: true })).text()
   const final = readEvents(wire).at(-1) as { type: string; response?: { usage?: unknown } }
   expect(final.type).toBe("response.completed")
@@ -79,7 +81,7 @@ test("translated Chat placeholder trailing usage retains sparse measured counts"
 
 test("a translator stalled after its terminal fails within the bounded tail lifetime", async () => {
   const { createResponsesTurn } = await import("../../../../src/data-plane/chat-flow/responses/turn")
-  const result = llmEventResult(frames([]), identity, undefined, undefined, undefined, async function* () {
+  const result = translatedFixture({ kind: "translated", source: "responses", protocol: "chat_completions" }, frames([]), identity, undefined, undefined, undefined, async function* () {
     yield terminal
     await new Promise<void>(() => {})
   })
@@ -114,6 +116,7 @@ test("failed upstream metadata cannot keep cleanup pending or invent usage", asy
   const turn = createResponsesTurn(result, { wantsStream: true, dump: dump as never })
   const completion = await Promise.race([(async () => { await Array.fromAsync(turn.events); return turn.completion })(), Bun.sleep(2_500).then(() => null)])
   expect(completion).toEqual({ outcome: "failed", cleanupComplete: false })
+  expect(await turn.facts).toMatchObject({ outcome: "failed", rawCleanupComplete: true, metadata: { status: "timed-out" } })
   expect(observedUsage).toEqual({})
   expect(turn.abortController.signal.aborted).toBe(false)
 }, 3_000)
@@ -193,13 +196,17 @@ test("completion owns a pending snapshot after cancellation while no terminal es
     wantsStream: true, onCompleted: async () => { entered.resolve(); await save.promise },
   })
   void turn.completion.then(() => { settled = true })
+  let factsSettled = false
+  void turn.facts.then(() => { factsSettled = true })
   const output = Array.fromAsync(turn.events)
   await entered.promise
   turn.abortController.abort()
   await Bun.sleep(10)
   expect(settled).toBe(false)
+  expect(factsSettled).toBe(false)
   save.resolve()
   expect(await output).toEqual([])
+  expect(await turn.facts).toMatchObject({ outcome: "cancelled", continuation: "fulfilled", rawCleanupComplete: true })
   expect(await turn.completion).toEqual({ outcome: "cancelled", cleanupComplete: true })
 })
 
@@ -252,5 +259,60 @@ test("telemetry cleanup failure still awaits the dump finalizer", async () => {
   const turn = createResponsesTurn(llmEventResult(frames([terminal]), identity), { wantsStream: true, dump: dump as never, finalizeDump: true })
   await Array.fromAsync(turn.events)
   expect((await turn.completion).cleanupComplete).toBe(false)
+  expect(await turn.facts).toMatchObject({ outcome: "completed", rawCleanupComplete: true })
+  expect(await turn.receipts).toMatchObject({ usage: "skipped", performance: "skipped", dumpMetadata: "rejected", dumpFinalization: "fulfilled" })
   expect(finalized).toBe(true)
+})
+
+
+test("no sinks skip unresolved final metadata without extending completion", async () => {
+  const { createResponsesTurn } = await import("../../../../src/data-plane/chat-flow/responses/turn")
+  const result = { ...llmEventResult(frames([terminal]), identity), finalMetadata: new Promise<never>(() => {}) }
+  const turn = createResponsesTurn(result, { wantsStream: false })
+  const drained = Array.fromAsync(turn.events)
+  expect(await Promise.race([drained.then(() => true), Bun.sleep(100).then(() => false)])).toBe(true)
+  expect(await turn.completion).toEqual({ outcome: "completed", response: terminal.response, cleanupComplete: true })
+  expect(await turn.facts).toMatchObject({ outcome: "completed", rawCleanupComplete: true, metadata: { status: "skipped" } })
+  expect(await turn.receipts).toEqual({ usage: "skipped", performance: "skipped", dumpMetadata: "skipped", dumpFinalization: "skipped" })
+})
+
+
+for (const failure of ["metadata", "history", "dump"] as const) test(`${failure} failure has truthful execution facts and sink receipts`, async () => {
+  const { createResponsesTurn } = await import("../../../../src/data-plane/chat-flow/responses/turn")
+  const md = Promise.withResolvers<{ modelIdentity: typeof identity }>()
+  const result = { ...llmEventResult(frames([terminal]), identity), __interceptorReplaced: true as const,
+    ...(failure === "metadata" ? { finalMetadata: md.promise } : {}) }
+  const turn = createResponsesTurn(result, { wantsStream: true, finalizeDump: true,
+    onCompleted: async () => { if (failure === "history") throw new Error("private storage failure") },
+    dump: { frame() {}, success() {}, failed() {}, finalizeTurn() { if (failure === "dump") throw new Error("dump failed"); return Promise.resolve() } } as never,
+  })
+  const drained = Array.fromAsync(turn.events)
+  if (failure === "metadata") md.reject(new Error("metadata failed"))
+  await drained
+  expect(await turn.facts).toMatchObject({ outcome: failure === "history" ? "failed" : "completed", rawCleanupComplete: true,
+    continuation: failure === "history" ? "rejected" : "fulfilled", metadata: { status: failure === "metadata" ? "rejected" : "observed" } })
+  expect(await turn.receipts).toMatchObject({ usage: "skipped", performance: "skipped", dumpMetadata: "fulfilled", dumpFinalization: failure === "dump" ? "rejected" : "fulfilled" })
+  expect((await turn.completion).cleanupComplete).toBe(failure === "history")
+})
+
+
+test("dump finalization waits on its own receipt after execution facts settle", async () => {
+  const { createResponsesTurn } = await import("../../../../src/data-plane/chat-flow/responses/turn")
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const turn = createResponsesTurn(llmEventResult(frames([terminal]), identity), { wantsStream: true, finalizeDump: true,
+    dump: { frame() {}, success() {}, async finalizeTurn() { entered.resolve(); await release.promise } } as never,
+  })
+  let completed = false
+  let receipts = false
+  void turn.completion.then(() => { completed = true })
+  void turn.receipts.then(() => { receipts = true })
+  const drained = Array.fromAsync(turn.events)
+  try {
+    await entered.promise
+    expect(await turn.facts).toMatchObject({ outcome: "completed", rawCleanupComplete: true })
+    expect(completed).toBe(false)
+    expect(receipts).toBe(false)
+  } finally { release.resolve(); await drained }
+  expect(await turn.receipts).toMatchObject({ dumpMetadata: "fulfilled", dumpFinalization: "fulfilled" })
 })

@@ -1,3 +1,4 @@
+import { translatedFixture } from "../shared/translated-fixture"
 import { expect, test } from 'bun:test'
 import { eventFrame, type ProtocolFrame } from '@vibe-core/result'
 import { llmEventResult, type TelemetryModelIdentity } from '@vibe-llm/protocols/common'
@@ -75,8 +76,7 @@ test('Messages native error event is forwarded and records a failed request', as
 
 test('Messages translated stream receives and outputs the mapped destination', async () => {
   let contextModel = ''
-  const result = llmEventResult(
-    frames() as AsyncIterable<ProtocolFrame<MessagesStreamEvent>>,
+  const result = translatedFixture({ kind: "translated", source: "messages", protocol: "messages" }, frames() as AsyncIterable<ProtocolFrame<MessagesStreamEvent>>,
     identity,
     undefined,
     undefined,

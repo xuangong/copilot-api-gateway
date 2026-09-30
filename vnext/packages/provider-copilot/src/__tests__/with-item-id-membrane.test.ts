@@ -4,6 +4,7 @@ import type { Invocation, RequestContext } from '@vibe-llm/protocols/common'
 import {
   llmEventResult,
   type LlmExecuteResult,
+  type TranslatedLlmEventResult,
   type TelemetryModelIdentity,
 } from '@vibe-llm/protocols/common'
 import { doneFrame, type ProtocolFrame } from '@vibe-core/result'
@@ -48,7 +49,7 @@ const runEvents = (
 const collectEvents = async (
   res: LlmExecuteResult<ProtocolFrame<ResponsesStreamEvent>>,
 ): Promise<ResponsesStreamEvent[]> => {
-  if (res.type !== 'events') throw new Error('expected events')
+  if (res.type !== 'events' || res.producer) throw new Error('expected native events')
   const out: ResponsesStreamEvent[] = []
   for await (const f of res.events) {
     if (f.type === 'event') out.push(f.event)
@@ -213,7 +214,7 @@ describe('withCopilotResponsesItemIdMembrane', () => {
         item: { type: 'totally_unknown_type', id: 'x' },
       } as unknown as ResponsesStreamEvent),
     )
-    if (res.type !== 'events') throw new Error('expected events')
+    if (res.type !== 'events' || res.producer) throw new Error('expected native events')
     await expect(async () => {
       for await (const _f of res.events) { /* drain */ }
     }).toThrow(/Unsupported Copilot Responses output item type/)
@@ -229,7 +230,7 @@ describe('withCopilotResponsesItemIdMembrane', () => {
         { type: 'response.output_item.added', output_index: 0, item } as unknown as ResponsesStreamEvent,
       ),
     )
-    if (res.type !== 'events') throw new Error('expected events')
+    if (res.type !== 'events' || res.producer) throw new Error('expected native events')
     await expect(async () => {
       for await (const _f of res.events) { /* drain */ }
     }).toThrow(/output_item.added twice/)
@@ -256,4 +257,14 @@ describe('withCopilotResponsesItemIdMembrane', () => {
     const completed = events[1] as { response: { output: Array<{ id: string }> } }
     expect(completed.response.output[0]?.id).toBe(added.item.id)
   })
+})
+
+
+test('Copilot Responses item-id membrane leaves a translated producer and both adapters unchanged', async () => {
+  const result: TranslatedLlmEventResult = {
+    type: 'events', producer: { kind: 'translated', source: 'responses', protocol: 'chat_completions' },
+    events: (async function* () { yield { type: 'event' as const, event: { choices: [] } } })(),
+    modelIdentity: stubIdentity, translateBody: body => body, translateEvents: events => events,
+  }
+  expect(await withCopilotResponsesItemIdMembrane(inv([]), baseCtx, async () => result)).toBe(result)
 })

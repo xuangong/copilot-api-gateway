@@ -1,3 +1,4 @@
+import { translatedFixture } from "../shared/translated-fixture"
 import { expect, test, beforeEach } from 'bun:test'
 import { eventFrame, type ProtocolFrame } from '@vibe-core/result'
 import { llmEventResult, type TelemetryModelIdentity } from '@vibe-llm/protocols/common'
@@ -75,8 +76,7 @@ test('Responses response.failed records failed performance without usage', async
 
 test('Responses translated stream receives and outputs the mapped destination', async () => {
   let contextModel = ''
-  const result = llmEventResult(
-    frames() as AsyncIterable<ProtocolFrame<ResponsesStreamEvent>>,
+  const result = translatedFixture({ kind: "translated", source: "responses", protocol: "responses" }, frames() as AsyncIterable<ProtocolFrame<ResponsesStreamEvent>>,
     identity,
     undefined,
     undefined,
@@ -110,7 +110,7 @@ test('Responses persistence honors authoritative finalMetadata over observed res
 
 test('Responses translateBody receives the observed effective model', async () => {
   let model = ''
-  const result = llmEventResult(frames(), identity, undefined, undefined, async (body, ctx) => {
+  const result = translatedFixture({ kind: "translated", source: "responses", protocol: "responses" }, frames(), identity, undefined, undefined, async (body, ctx) => {
     model = ctx.model ?? ''
     return body
   })

@@ -47,11 +47,17 @@ for (const wantsStream of [false, true]) for (const sink of ["usage", "performan
       await entered.promise
       await Bun.sleep(0)
       expect(delivered).toBe(true)
+      expect(await turn.facts).toMatchObject({ outcome: "completed", rawCleanupComplete: true, continuation: "skipped", metadata: { status: "observed" } })
+      let receiptsSettled = false
+      void turn.receipts.then(() => { receiptsSettled = true })
+      await Bun.sleep(0)
+      expect(receiptsSettled).toBe(false)
       expect(settled).toBe(false)
       expect(backgroundSettled).toBe(false)
       release.resolve()
       expect(await response).toContain('"status":"completed"')
       expect(await turn.completion).toMatchObject({ outcome: "completed", cleanupComplete: true })
+      expect(await turn.receipts).toEqual({ usage: "fulfilled", performance: "fulfilled", dumpMetadata: "skipped", dumpFinalization: "skipped" })
       await Promise.all(owned)
       expect(await repo.usage.query({ keyId: "key", start: "2000-01-01T00", end: "2100-01-01T00" })).toMatchObject([{ requests: 1, tokens: { input: 2, output: 1 } }])
       expect(db.query("SELECT SUM(count) AS count FROM performance_metrics WHERE metric = '__requests'").get()).toEqual({ count: 1 })
@@ -83,6 +89,29 @@ for (const wantsStream of [false, true]) test(`${wantsStream ? "SSE" : "JSON"} d
     release.resolve()
     expect(await response).toContain('"status":"completed"')
     expect(await turn.completion).toMatchObject({ outcome: "completed", cleanupComplete: false })
+    expect(await turn.facts).toMatchObject({ outcome: "completed", rawCleanupComplete: true })
+    expect(await turn.receipts).toMatchObject({ usage: "fulfilled", performance: "rejected", dumpFinalization: "fulfilled" })
     expect(finalized).toBe(true)
   } finally { release.resolve(); await response; await turn.completion; db.close() }
+})
+
+
+test("a rejected usage operation skips performance and still finalizes dump", async () => {
+  const { db } = setupTestPlatform()
+  // Fail the real SQLite write, not a fake repository implementation.
+  db.run('DROP TABLE "usage"')
+  let finalized = false
+  const turn = createResponsesTurn(llmEventResult(frames(), identity), { wantsStream: false, finalizeDump: true,
+    dump: { frame() {}, success() {}, async finalizeTurn() { finalized = true } } as never,
+    telemetryCtx: { incomingModel: "model", apiKeyId: "key", userAgent: null, requestId: "request", isStreaming: false,
+      runtimeLocation: "bun", requestStartedAt: Date.now(), sourceApi: "responses", metrics: new PerformanceRecorder(false) },
+  })
+  try {
+    await Array.fromAsync(turn.events)
+    expect(await turn.facts).toMatchObject({ outcome: "completed", rawCleanupComplete: true })
+    expect(await turn.receipts).toEqual({ usage: "rejected", performance: "skipped", dumpMetadata: "fulfilled", dumpFinalization: "fulfilled" })
+    expect((await turn.completion).cleanupComplete).toBe(false)
+    expect(finalized).toBe(true)
+    expect(db.query("SELECT COUNT(*) AS count FROM performance_metrics").get()).toEqual({ count: 0 })
+  } finally { db.close() }
 })

@@ -1,6 +1,8 @@
 import { test, expect } from 'bun:test'
 import {
   llmEventResult,
+  eventProducerProtocol,
+  type TranslatedLlmEventResult,
   llmInternalErrorResult,
   readUpstreamError,
   type TelemetryModelIdentity,
@@ -59,12 +61,17 @@ test('EventResultMetadata shape', () => {
   expect(md.modelIdentity.upstream).toBe('openai-prod')
 })
 
-test('llmEventResult accepts translateBody', () => {
-  async function* gen() { yield 1 as never }
-  const id = { incomingModel: 'incoming-m', model: 'm', upstream: 'u', modelKey: 'k', cost: null }
-  const tb = (j: unknown) => ({ ok: true, j })
-  const r = llmEventResult(gen(), id, undefined, undefined, tb)
-  expect(r.translateBody).toBe(tb)
+test('translated event results require a producer domain and independent adapters', () => {
+  const r: TranslatedLlmEventResult = {
+    type: 'events',
+    producer: { kind: 'translated', source: 'responses', protocol: 'chat_completions' },
+    events: (async function* () {})(),
+    modelIdentity: identity(),
+    translateBody: value => value,
+    translateEvents: values => values,
+  }
+  expect(eventProducerProtocol(r, 'responses')).toBe('chat_completions')
+  expect(() => eventProducerProtocol(r, 'messages')).toThrow('Invalid translated')
 })
 
 test('llmInternalErrorResult accepts reason', () => {

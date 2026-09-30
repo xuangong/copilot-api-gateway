@@ -1,13 +1,14 @@
 // packages/protocols/src/common/result.ts
 import type { ModelPricing } from './index.ts'
+import type { ProtocolFrame } from '@vibe-core/result'
 
 /**
- * Narrow protocol set valid for translator pair telemetry. Kept file-local
- * because only the four chat protocols can appear as a translator source/hub;
+ * Narrow protocol set for translator domains and translator-pair telemetry.
+ * Only the four chat protocols can appear as a translator source/hub;
  * embedding/image endpoints don't traverse the translator. Distinct from
  * `EndpointKey` (which includes `embeddings`, `images_*`, etc.).
  */
-type TranslatorProtocol = 'chat_completions' | 'messages' | 'responses' | 'gemini'
+export type TranslatorProtocol = 'chat_completions' | 'messages' | 'responses' | 'gemini'
 
 export interface TelemetryModelIdentity {
   /** Client-requested model after protocol normalization, before routing. */
@@ -22,7 +23,8 @@ export interface TelemetryModelIdentity {
   /**
    * Set when the attempt traversed a translator (cross-protocol fan-out).
    * `source` is the client-facing protocol; `hub` is the upstream protocol
-   * actually invoked. Absent for same-protocol attempts.
+   * actually invoked. Absent for same-protocol attempts. Telemetry only;
+   * event consumers use the result producer domain instead.
    */
   readonly translatorPair?: {
     readonly source: TranslatorProtocol
@@ -76,9 +78,10 @@ export interface TranslateBodyContext {
   readonly sourcePayload?: Record<string, unknown>
 }
 
-export interface LlmEventResult<T> {
+export interface LlmEventResultMetadata {
   readonly type: 'events'
-  readonly events: AsyncIterable<T>
+  /** Release the concrete upstream body if this result is rejected before iteration. */
+  readonly discardProducer?: () => void | Promise<void>
   readonly modelIdentity: TelemetryModelIdentity
   /**
    * Resolves an upstream-reported model key into this attempt's public model,
@@ -90,34 +93,62 @@ export interface LlmEventResult<T> {
   /** Set by an interceptor when it replaces the upstream event stream. */
   readonly __interceptorReplaced?: true
   readonly finalMetadata?: Promise<EventResultMetadata>
-  /**
-   * Optional escape hatch for cross-protocol attempts that need to translate a
-   * non-streaming hub-protocol JSON envelope back into the client protocol's
-   * shape. Producers populate this only when reusing a translator for a
-   * non-event response (e.g. count-tokens). Most attempts leave it undefined.
-   */
+  /** Convert the complete producer JSON envelope to the source protocol. */
   readonly translateBody?: (
     hubJson: unknown,
     ctx: TranslateBodyContext,
   ) => unknown | Promise<unknown>
-  /**
-   * Optional streaming-side counterpart of `translateBody` for cross-protocol
-   * attempts. When set, `events` carries HUB-shape bare events (NOT wrapped
-   * `ProtocolFrame<HubFrame>` — wrapping happens at the source-protocol
-   * SSE encoder); the SSE renderer in respond.ts is expected to:
-   *   1. unwrap `ProtocolFrame<HubFrame>` → bare hub events,
-   *   2. run them through `translateEvents`,
-   *   3. re-wrap each yielded source event as a `ProtocolFrame<SourceFrame>`,
-   *   4. feed to the source-protocol SSE encoder (`chatCompletionsProtocolFrameToSSEFrame`,
-   *      etc).
-   * This pairs with `translateBody` for the non-streaming branch — together
-   * they let `traverseTranslation` forward hub frames verbatim and defer
-   * translation to respond.ts (per spec §3.7).
-   */
+  /** Map bare producer events to bare source events lazily. `events` itself
+   * retains ProtocolFrame wrappers in the producer domain. JSON consumers use
+   * translateBody independently; they never synthesize a body via this adapter. */
   readonly translateEvents?: (
     events: AsyncIterable<unknown>,
     ctx: TranslateBodyContext,
   ) => AsyncIterable<unknown>
+}
+
+/** Native frames have the endpoint-declared type. No telemetry field selects
+ * their parser or collector. Legacy constructors remain native. */
+export interface NativeLlmEventResult<T> extends LlmEventResultMetadata {
+  readonly producer?: undefined
+  readonly translateBody?: undefined
+  readonly translateEvents?: undefined
+  readonly events: AsyncIterable<T>
+}
+
+/** A translated attempt still owns hub frames. The source adapter chooses
+ * exactly one lazy body/event conversion; the frames are never typed as source. */
+export interface TranslatedLlmEventResult extends LlmEventResultMetadata {
+  readonly producer: {
+    readonly kind: 'translated'
+    readonly source: TranslatorProtocol
+    readonly protocol: TranslatorProtocol
+  }
+  readonly events: AsyncIterable<ProtocolFrame<unknown>>
+  readonly translateBody: NonNullable<LlmEventResultMetadata['translateBody']>
+  readonly translateEvents: NonNullable<LlmEventResultMetadata['translateEvents']>
+}
+
+export type LlmEventResult<T> = NativeLlmEventResult<T> | TranslatedLlmEventResult
+
+/** Validate the runtime boundary without consulting mutable telemetry. */
+export function eventProducerProtocol<T>(result: LlmEventResult<T>, source: TranslatorProtocol): TranslatorProtocol {
+  const producer = result.producer
+  if (!producer) {
+    if (result.translateBody || result.translateEvents) throw new Error('Translated event result is missing its producer domain')
+    return source
+  }
+  if (producer.kind !== 'translated' || producer.source !== source
+    || !['chat_completions', 'messages', 'responses'].includes(producer.protocol)
+    || typeof result.translateBody !== 'function' || typeof result.translateEvents !== 'function') {
+    throw new Error('Invalid translated event producer domain')
+  }
+  return producer.protocol
+}
+
+/** Native-only attempt chains fail explicitly if a translated result leaks in. */
+export function assertNativeEventResult<T>(result: LlmEventResult<T>): asserts result is NativeLlmEventResult<T> {
+  if (result.producer || result.translateBody || result.translateEvents) throw new Error('Native interceptor received a translated event producer')
 }
 
 export interface UpstreamErrorResult {
@@ -153,10 +184,10 @@ export const llmEventResult = <T>(
   modelIdentity: TelemetryModelIdentity,
   performance?: PerformanceTelemetryContext,
   finalMetadata?: Promise<EventResultMetadata>,
-  translateBody?: LlmEventResult<T>['translateBody'],
-  translateEvents?: LlmEventResult<T>['translateEvents'],
+  translateBody?: undefined,
+  translateEvents?: undefined,
   resolveModelIdentity?: LlmEventResult<T>['resolveModelIdentity'],
-): LlmEventResult<T> => ({
+): NativeLlmEventResult<T> => ({
   type: 'events',
   events,
   modelIdentity,

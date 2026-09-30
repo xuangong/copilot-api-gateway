@@ -1,3 +1,4 @@
+import { requireNativeEventResult } from "../../shared/producer-ownership"
 /**
  * Kimi (Moonshot) wire-dialect normalizer for Chat Completions. Flag-gated
  * by `vendor-kimi`. Inbound only: remap flat `usage.cached_tokens` →
@@ -36,8 +37,9 @@ export const withVendorKimiChatCompletionsNormalize: ChatCompletionsInterceptor 
 ) => {
   if (!inv.enabledFlags.has('vendor-kimi')) return await run()
 
-  const result = await run()
-  if (result.type !== 'events') return result
+  const rawResult = await run()
+  if (rawResult.type !== 'events') return rawResult
+  const result = await requireNativeEventResult(rawResult, _ctx.abortUpstream)
 
   return {
     ...result,

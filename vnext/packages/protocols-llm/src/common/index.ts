@@ -89,6 +89,9 @@ export type { AccountType } from './account-type'
 
 export type {
   LlmEventResult,
+  NativeLlmEventResult,
+  TranslatedLlmEventResult,
+  TranslatorProtocol,
   UpstreamErrorResult,
   InternalErrorResult,
   LlmExecuteResult,
@@ -99,6 +102,8 @@ export type {
 } from './result'
 export {
   llmEventResult,
+  eventProducerProtocol,
+  assertNativeEventResult,
   llmInternalErrorResult,
   readUpstreamError,
   upstreamErrorToResponse,

@@ -1,3 +1,5 @@
+import { validateEventProducer } from "../shared/producer-ownership"
+import { collectProducerResult } from "../shared/collect-producer-result"
 import { withCanonicalCompletion } from "@vibe-core/chat-flow-kit"
 import { demandSse } from "../shared/demand-sse"
 import { COMMENT_KEEPALIVE_FRAME } from "../shared/sse-keepalive"
@@ -41,6 +43,7 @@ import { waitUntil } from '@vibe-core/platform'
 import type { ProtocolFrame } from '@vibe-core/result'
 import {
   upstreamErrorToResponse,
+  eventProducerProtocol,
   type LlmEventResult,
   type LlmExecuteResult,
   type UpstreamErrorResult,
@@ -54,9 +57,6 @@ import {
   consumeWithState,
   persistFromEventResult,
 } from './state-bridge.ts'
-import { collectChatCompletionsProtocolEventsToResult } from '../chat-completions/events/to-result'
-import { collectMessagesProtocolEventsToResult } from '../messages/events/reassemble'
-import { collectResponsesProtocolEventsToResult } from '../responses/events/reassemble'
 
 export interface RespondGeminiOptions {
   readonly affinity?: AffinityExecutionState
@@ -120,17 +120,17 @@ const renderEventsAsSSE = (
   options: RespondGeminiOptions,
 ): Response => {
   const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model, result.modelIdentity.executedModelKey)
-  const hubProtocol = result.modelIdentity.translatorPair?.hub
+  const hubProtocol = eventProducerProtocol(result, "gemini")
   const isHubProtocol = hubProtocol === 'responses' ||
     hubProtocol === 'messages' ||
     hubProtocol === 'chat_completions'
   // Observe the hub frames before translation. The resulting Gemini events are
   // client output only: observing them again would overwrite authoritative hub
   // usage and provider model correction with translated Gemini metadata.
-  const events: AsyncIterable<unknown> = result.translateEvents && isHubProtocol
+  const events: AsyncIterable<unknown> = result.producer && isHubProtocol
     ? applyTranslatorEventsForStreaming(
         consumeHubFramesWithState(
-          guardAffinityFrames(result.events as AsyncIterable<ProtocolFrame<unknown>>, options.affinity),
+          guardAffinityFrames(result.events, options.affinity),
           state,
           options.dump,
           hubProtocol,
@@ -140,7 +140,7 @@ const renderEventsAsSSE = (
         result.modelIdentity.model,
         state,
       )
-    : consumeWithState(guardAffinityFrames(guardAffinityFrames(result.events as AsyncIterable<ProtocolFrame<unknown>>, options.affinity), options.affinity), state, options.dump)
+    : consumeWithState(result.events, state, options.dump)
   async function* observedEvents(): AsyncGenerator<unknown> {
     for await (const event of new AffinityEgress(options.affinity).gemini(events)) {
       options.telemetryCtx?.metrics?.observeOutput("gemini", event)
@@ -310,15 +310,9 @@ const reassembleGeminiEvents = async (
  * the gemini-shape `{error: {message}}` envelope. Telemetry persistence runs
  * in both success and error paths.
  *
- * Cross-protocol attempts (Spec 6 Part 4): when `translatorPair` is present,
- * the events array carries HUB-shaped frames. Reassemble using the hub's
- * reassembler, then hand the hub-shaped JSON to `translateBody` to convert
- * back to the gemini JSON envelope before responding.
- *
- * Gemini has no native hub — all successful bindings are cross-protocol.
- * Default fallback for `hubProtocol` is `'chat_completions'` (the most
- * common hub for gemini; `translatorPair` will always be set in practice
- * but the fallback keeps the legacy same-protocol path intact).
+ * Translated results retain hub frames and choose their reassembler from
+ * the validated producer domain. The body adapter then produces Gemini JSON.
+ * Native results retain bare Gemini events regardless of translator telemetry.
  */
 const renderEventsAsJson = async (
   result: LlmEventResult<unknown>,
@@ -330,35 +324,16 @@ const renderEventsAsJson = async (
   // Cross-protocol buffered results contain hub ProtocolFrames. Preserve those
   // frames for the hub reassembler while observing their contained events;
   // the streaming path remains on the bare Gemini bridge above.
-  const hubProtocol = result.modelIdentity.translatorPair?.hub
+  const hubProtocol = eventProducerProtocol(result, "gemini")
   const isHubProtocol = hubProtocol === 'responses' ||
     hubProtocol === 'messages' ||
     hubProtocol === 'chat_completions'
-  const events = isHubProtocol
-    ? consumeHubFramesWithState(
-        guardAffinityFrames(result.events as AsyncIterable<ProtocolFrame<unknown>>, options.affinity),
-        state,
-        options.dump,
-        hubProtocol,
-      )
-    : consumeWithState(guardAffinityFrames(guardAffinityFrames(result.events as AsyncIterable<ProtocolFrame<unknown>>, options.affinity), options.affinity), state, options.dump)
   try {
-    // Dispatch reassembly on hub protocol.
-    // Gemini has no native hub, so all production bindings are cross-protocol
-    // (traverseTranslation always stamps `translatorPair`). When `translatorPair`
-    // is absent (legacy tests / unknown paths), fall back to the native gemini
-    // stream reassembler so existing callers keep working.
-    let reassembled: unknown
-    if (hubProtocol === 'messages') {
-      reassembled = await collectMessagesProtocolEventsToResult(events as never)
-    } else if (hubProtocol === 'responses') {
-      reassembled = await collectResponsesProtocolEventsToResult(events as never)
-    } else if (hubProtocol === 'chat_completions') {
-      reassembled = await collectChatCompletionsProtocolEventsToResult(events as never)
-    } else {
-      // No translatorPair (or unknown hub) — use the legacy gemini reassembler.
-      reassembled = await reassembleGeminiEvents(events)
-    }
+    const reassembled = result.producer && isHubProtocol
+      ? await collectProducerResult(consumeHubFramesWithState(
+          guardAffinityFrames(result.events, options.affinity), state, options.dump, hubProtocol,
+        ), hubProtocol)
+      : await reassembleGeminiEvents(consumeWithState(result.events, state, options.dump))
     // If a translator-supplied body translator is attached, convert the
     // hub-shaped JSON back to the gemini JSON envelope.
     const finalBody = result.translateBody
@@ -422,6 +397,11 @@ const renderExecuteResult = async (
       { status: result.status },
     )
   }
+  await validateEventProducer(result, "gemini", result.discardProducer ? undefined : () => options.downstreamAbortController?.abort()).catch(error => {
+    options.dump?.failed(error)
+    options.telemetryCtx?.metrics?.finish("error")
+    throw error
+  })
   // result.type === 'events'
   return options.wantsStream
     ? renderEventsAsSSE(result, options)

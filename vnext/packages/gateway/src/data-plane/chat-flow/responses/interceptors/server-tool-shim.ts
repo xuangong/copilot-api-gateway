@@ -1,3 +1,4 @@
+import { materializeResponsesSource } from "../interceptor-source"
 import type { GatewayRequestContext } from "../../shared/gateway-ctx.ts"
 /**
  * Server-tool shim core (Spec 13 Phase 13-B).
@@ -954,6 +955,8 @@ export async function* materializeServerToolItems(
 // ctx.payload; vNext ctx.payload is Record<string, unknown>. We access
 // fields ad-hoc and cast when writing.
 async function* runMultiTurnLoop(args: {
+  signal?: AbortSignal
+  abortUpstream?: () => void
   ctx: Invocation
   run: InterceptorRun<LlmExecuteResult<ProtocolFrame<ResponsesStreamEvent>>>
   merge: MergeState
@@ -1055,7 +1058,7 @@ async function* runMultiTurnLoop(args: {
         const resolved = nextResult.resolveModelIdentity?.(modelKey) ?? nextResult.modelIdentity
         return retainIncomingModel(resolved, incomingModel)
       }
-      currentTurn = yield* consumeTurnStreaming(nextResult.events, merge, false, dispatchers, loopState, active)
+      currentTurn = yield* consumeTurnStreaming((await materializeResponsesSource(nextResult, ctx.payload.stream === true, args.signal, args.abortUpstream)).events, merge, false, dispatchers, loopState, active)
       merge.accumulatedUsage = sumUsage(merge.accumulatedUsage, currentTurn.turnUsage)
     }
   } catch (error) {
@@ -1190,8 +1193,9 @@ export const withResponsesServerToolShim = (
       dispatchers.has(finalToolChoice.name))
 
   const merge = createMergeState()
-  const firstResult = await run()
-  if (firstResult.type !== 'events') return firstResult
+  const first = await run()
+  if (first.type !== 'events') return first
+  const firstResult = await materializeResponsesSource(first, ctx.payload.stream === true, gatewayCtx.downstreamAbortSignal, gatewayCtx.abortUpstream)
   merge.lastSeenModel = firstResult.modelIdentity.modelKey
   const turn1Iter = consumeTurnStreaming(firstResult.events, merge, true, dispatchers, loopState, active)
 
@@ -1213,6 +1217,8 @@ export const withResponsesServerToolShim = (
     ...firstResult,
     __interceptorReplaced: true,
     events: runMultiTurnLoop({
+      signal: gatewayCtx.downstreamAbortSignal,
+      abortUpstream: gatewayCtx.abortUpstream,
       ctx,
       run,
       merge,

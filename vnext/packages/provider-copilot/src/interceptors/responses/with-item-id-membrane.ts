@@ -299,7 +299,8 @@ export const withCopilotResponsesItemIdMembrane: ResponsesStreamInterceptor = as
   inv.payload = restoreInputItemIds(inv.payload as CanonicalResponsesPayload) as Record<string, unknown>
 
   const result = await run()
-  if (result.type !== 'events') return result
+  // Only upstream Responses frames contain Copilot's opaque Responses item ids.
+  if (result.type !== 'events' || result.producer) return result
 
   return { ...result, events: normalizeFrames(result.events) }
 }

@@ -1,3 +1,4 @@
+import { upstreamBodyDisposal } from "../shared/producer-ownership"
 import { AffinityRoutingUnavailableError } from "../../../shared/affinity/analysis.ts"
 import { affinityExecutionState, materializeAffinity, fetchAffinityUpstream, affinityFence, acceptAffinityExecution, type AttemptAffinity } from "../../shared/affinity-request"
 import { selectedTierFrames } from "../shared/execution-tier"
@@ -136,6 +137,7 @@ export const chatCompletionsAttempt = {
       const hubProtocol = sel.targetEndpoint as HubAttemptProtocol
       const hubAttempt = (args.hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
       return await traverseTranslation({
+        abortUpstream: args.ctx.abortUpstream,
         dump: args.dump,
         sourcePayload: payload,
         sourceProtocol: 'chat_completions',
@@ -248,7 +250,7 @@ export const chatCompletionsAttempt = {
       const identityInput = { incomingModel: telemetryCtx.incomingModel, publicModel }
       const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, identityInput, execution)
       const performance = upstreamPerformanceContext(telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
-      return llmEventResult(
+      return { ...llmEventResult(
         decorated,
         modelIdentity,
         performance,
@@ -256,7 +258,7 @@ export const chatCompletionsAttempt = {
         undefined,
         undefined,
         modelIdentityResolver(bindingForTelemetry, identityInput, execution),
-      )
+      ), discardProducer: upstreamBodyDisposal(upstreamResp.body) }
     }
 
     try {

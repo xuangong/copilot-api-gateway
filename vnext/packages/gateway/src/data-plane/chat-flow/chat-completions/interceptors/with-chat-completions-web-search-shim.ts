@@ -1,3 +1,4 @@
+import { requireNativeEventResult } from "../../shared/producer-ownership"
 /**
  * Chat Completions web-search shim.
  *
@@ -222,12 +223,13 @@ export const withChatCompletionsWebSearchShim: ChatCompletionsInterceptor = asyn
     ...(ctx.downstreamAbortSignal !== undefined ? { signal: ctx.downstreamAbortSignal } : {}),
   }
 
-  const first = await run()
-  if (first.type !== 'events') return first
+  const rawFirst = await run()
+  if (rawFirst.type !== 'events') return rawFirst
+  const first = await requireNativeEventResult(rawFirst, ctx.abortUpstream)
 
   return {
     ...first,
-    events: driveSearchLoop(first.events, inv, run, session, toolName),
+    events: driveSearchLoop(first.events, inv, run, session, toolName, ctx.abortUpstream),
   }
 }
 
@@ -237,6 +239,7 @@ async function* driveSearchLoop(
   run: () => Promise<ShimResult>,
   session: WebSearchExecutionSession,
   toolName: string,
+  abortUpstream?: () => void,
 ): AsyncGenerator<ProtocolFrame<ChatCompletionsStreamEvent>> {
   let current = firstTurn
   // Turn 1's identity is stamped on every forwarded chunk so a client that
@@ -370,13 +373,14 @@ async function* driveSearchLoop(
       ...toolMessages,
     ]
 
-    const next = await run()
-    if (next.type !== 'events') {
+    const rawNext = await run()
+    if (rawNext.type !== 'events') {
       // Chat Completions has no in-band error frame, so a mid-loop upstream
       // failure has to throw; `attempt.ts` maps it to an internal-error
       // result the same way the whitespace-abort interceptor relies on.
-      throw new Error(`Chat Completions web search shim: upstream turn failed with result type '${next.type}'`)
+      throw new Error(`Chat Completions web search shim: upstream turn failed with result type '${rawNext.type}'`)
     }
+    const next = await requireNativeEventResult(rawNext, abortUpstream)
     current = next.events
   }
 }

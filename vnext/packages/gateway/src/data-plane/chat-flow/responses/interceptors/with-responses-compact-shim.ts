@@ -1,3 +1,4 @@
+import { materializeResponsesSource } from "../interceptor-source"
 import type { GatewayRequestContext } from "../../shared/gateway-ctx.ts"
 // Compact-shim — simulates a `response.compaction` envelope against upstreams
 // that have no native compaction wire.
@@ -212,6 +213,7 @@ const simulateCompaction = async (
   inv: Parameters<ResponsesInterceptor>[0],
   run: ChainRun,
   registerPlaintextCompaction?: GatewayRequestContext["registerPlaintextCompaction"],
+  abortUpstream?: () => void,
 ): Promise<ResponsesRunResult> => {
   const originalPayload = inv.payload as unknown as CanonicalResponsesPayload
 
@@ -259,15 +261,16 @@ const simulateCompaction = async (
   // way out.
   inv.action = 'generate'
 
-  const upstreamResult = await run()
+  const result = await run()
 
-  if (upstreamResult.type !== 'events') {
+  if (result.type !== 'events') {
     // api-error / internal-error from the upstream propagate so the client
     // learns the compaction failed rather than receiving a silent empty
     // envelope.
-    return upstreamResult
+    return result
   }
 
+  const upstreamResult = await materializeResponsesSource(result, inv.payload.stream === true, undefined, abortUpstream)
   const closedItems = new Map<number, ResponsesOutputItem>()
   const observed = (async function* (): AsyncIterable<ProtocolFrame<ResponsesStreamEvent>> {
     for await (const frame of upstreamResult.events) {
@@ -318,5 +321,5 @@ export const withResponsesCompactShim: ResponsesInterceptor = async (inv, ctx, r
   const isCompactShaped = inv.action === 'compact' || containsCompactionTrigger(expandedInput)
   if (!isCompactShaped) return run()
 
-  return simulateCompaction(inv, run, (ctx as GatewayRequestContext).registerPlaintextCompaction)
+  return simulateCompaction(inv, run, (ctx as GatewayRequestContext).registerPlaintextCompaction, ctx.abortUpstream)
 }

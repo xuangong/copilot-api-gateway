@@ -1,3 +1,4 @@
+import { translatedFixture } from "../shared/translated-fixture"
 import { expect, test } from "bun:test"
 import { doneFrame, eventFrame, type ProtocolFrame } from "@vibe-core/result"
 import { llmEventResult } from "@vibe-llm/protocols/common"
@@ -35,7 +36,7 @@ for (const wantsStream of [false, true]) {
         })()
       },
     }
-    const result = llmEventResult(rawFrames, identity, undefined, undefined,
+    const result = translatedFixture({ kind: "translated", source: "responses", protocol: "chat_completions" }, rawFrames, identity, undefined, undefined,
       body => {
         bodyTranslations++
         return translateChatToResponsesBody(body, { sourcePayload: { instructions: "body-only field" } })
@@ -96,7 +97,7 @@ test("a late raw failure prevents a translator's pending success from reaching s
     throw failure
   }
   const raw = rawFrames()
-  const result = llmEventResult(raw, identity, undefined, undefined, undefined, async function* () {
+  const result = translatedFixture({ kind: "translated", source: "responses", protocol: "chat_completions" }, raw, identity, undefined, undefined, undefined, async function* () {
     yield { type: "response.completed", response: { id: "pending", status: "completed", output: [] } }
   })
   const prepared = prepareResponsesSource({ result, rawFrames: raw, wantsStream: true, upstreamAbortController: upstream, observe: observeFrames(observed) })
@@ -110,7 +111,7 @@ test("source cancellation interrupts a pending translated read while retaining t
   const entered = Promise.withResolvers<void>()
   let translatorClosed = false
   const raw: AsyncIterable<ProtocolFrame<unknown>> = (async function* () { yield* chatFrames })()
-  const result = llmEventResult(raw, identity, undefined, undefined, undefined, async function* (_events, context) {
+  const result = translatedFixture({ kind: "translated", source: "responses", protocol: "chat_completions" }, raw, identity, undefined, undefined, undefined, async function* (_events, context) {
     try {
       yield { type: "response.created", response: { id: "cancelled" } }
       entered.resolve()

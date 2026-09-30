@@ -1,3 +1,4 @@
+import { requireNativeEventResult } from "../../shared/producer-ownership"
 import type { ChatCompletionsInterceptor } from './types'
 import { checkWhitespaceOverflow } from '../../shared/whitespace-overflow'
 import type { ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
@@ -52,8 +53,9 @@ export const withToolArgumentWhitespaceAborted: ChatCompletionsInterceptor = asy
   _ctx,
   run,
 ) => {
-  const result = await run()
-  if (result.type !== 'events') return result
+  const rawResult = await run()
+  if (rawResult.type !== 'events') return rawResult
+  const result = await requireNativeEventResult(rawResult, _ctx.abortUpstream)
   const upstream = result.events
 
   return {

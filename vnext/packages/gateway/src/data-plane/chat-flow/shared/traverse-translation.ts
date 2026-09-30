@@ -1,3 +1,4 @@
+import { discardEventProducer } from "./producer-ownership"
 import { selectedTierBody, selectedTierEvent, selectedTierRequest } from "./execution-tier"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 /**
@@ -24,23 +25,15 @@ import { TranslatorValidationError } from '@vibe-llm/translate/errors'
 import { selectedCustomToolNames } from '@vibe-llm/translate/shared/responses-tools'
 import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
 import {
-  llmEventResult,
   llmInternalErrorResult,
-  type LlmEventResult,
+  type TranslatedLlmEventResult,
+  type TranslatorProtocol,
   type LlmExecuteResult,
 } from '@vibe-llm/protocols/common'
 import { type ProtocolFrame } from '@vibe-core/result'
 import type { PairTranslator } from '../../dispatch/translator-registry.ts'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 import { performanceTargetFromProtocol } from './respond-telemetry.ts'
-
-/**
- * File-local alias mirroring `result.ts`'s `TranslatorProtocol`. The
- * `@vibe-llm/protocols/common` package does not currently export this union; we
- * replicate it here so the helper's public signature stays narrow without
- * coupling to a re-export that doesn't yet exist.
- */
-type TranslatorProtocol = 'chat_completions' | 'messages' | 'responses' | 'gemini'
 
 export interface InnerAttemptArgs {
   dump?: DumpAccumulator | null
@@ -54,8 +47,9 @@ export interface InnerAttemptArgs {
   signal?: AbortSignal
 }
 
-export interface TraverseTranslationArgs<HubFrame, SourceFrame> {
+export interface TraverseTranslationArgs<HubFrame> {
   dump?: DumpAccumulator | null
+  abortUpstream?: () => void
   sourcePayload: Record<string, unknown>
   sourceProtocol: TranslatorProtocol
   hubProtocol: TranslatorProtocol
@@ -72,7 +66,7 @@ export interface TraverseTranslationArgs<HubFrame, SourceFrame> {
 }
 
 export async function traverseTranslation<HubFrame, SourceFrame>(
-  args: TraverseTranslationArgs<HubFrame, SourceFrame>,
+  args: TraverseTranslationArgs<HubFrame>,
 ): Promise<LlmExecuteResult<ProtocolFrame<SourceFrame>>> {
   let hubPayload: Record<string, unknown>
   let sourceSnapshot = args.sourcePayload
@@ -146,24 +140,15 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     return { ...inner, reason }
   }
 
-  // Hoist into a typed local so the cast below sees the narrowed `LlmEventResult`.
-  // (TS does not propagate type-guard narrowing across the assignment.)
-  const innerEvents: LlmEventResult<ProtocolFrame<HubFrame>> = inner
+  if (inner.producer || inner.translateBody || inner.translateEvents) {
+    await discardEventProducer(inner, args.abortUpstream)
+    return llmInternalErrorResult(502, new Error('Nested translated event producers are unsupported'), inner.performance, 'translator-producer')
+  }
+  const innerEvents = inner
   const executionTier = innerEvents.modelIdentity.executedServiceTier
 
-  // Forward hub-shape frames downstream verbatim. respond.ts decides per
-  // request mode (streaming vs non-streaming) whether to apply the translator:
-  //   - streaming: the chat-completions / messages / responses respond.ts
-  //     unwraps `ProtocolFrame<HubFrame>` → bare hub events, runs
-  //     `translator.translateEvents`, re-wraps source events into ProtocolFrame
-  //     before SSE encoding;
-  //   - non-streaming: respond.ts dispatches reassembly on
-  //     `modelIdentity.translatorPair.hub`, drains hub frames through the hub
-  //     reassembler into a hub-shape JSON envelope, then calls
-  //     `result.translateBody` to convert the envelope to the source JSON
-  //     shape (per spec §3.7).
-  // The `translatorPair` field on `modelIdentity` (set below) is the discriminator
-  // respond.ts uses for the dispatch.
+  // Preserve opaque hub frames and make their domain independent of telemetry.
+  // The source consumer chooses lazy body or event translation.
   const translatorPair = { source: args.sourceProtocol, hub: args.hubProtocol } as const
   const sourceModelIdentity = {
     ...innerEvents.modelIdentity,
@@ -182,42 +167,40 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
         translatorPair,
       })
     : undefined
-  const result = llmEventResult(
-    // Cast: the events stream is structurally `ProtocolFrame<HubFrame>`, but
-    // the source-protocol LlmExecuteResult is typed as `ProtocolFrame<SourceFrame>`.
-    // respond.ts (the only consumer of this result) discriminates on
-    // `translatorPair` and treats the events as hub-shape — so the cast is sound
-    // at runtime, just outside what TS can prove.
-    innerEvents.events as unknown as AsyncIterable<ProtocolFrame<SourceFrame>>,
-    sourceModelIdentity,
-    innerEvents.performance,
+  const result: TranslatedLlmEventResult = {
+    type: 'events',
+    discardProducer: innerEvents.discardProducer,
+    producer: { kind: 'translated', source: args.sourceProtocol, protocol: args.hubProtocol },
+    events: innerEvents.events,
+    modelIdentity: sourceModelIdentity,
+    performance: innerEvents.performance,
     finalMetadata,
     // Wrap translateBody so the hub→source envelope mapper sees the original
     // client-side request payload. Required by translators (e.g.
     // responses-via-chat-completions/body.ts) that echo back fields like
     // `instructions`, `metadata`, `tool_choice`, `tools` which the upstream
     // Chat-Completions response never carries.
-    (async (hubJson, ctx) =>
+    translateBody: async (hubJson, ctx) =>
       selectedTierBody(args.sourceProtocol, echoText(await args.translator.translateBody(hubJson, {
         signal: ctx?.signal ?? new AbortController().signal,
         fallbackMaxOutputTokens: ctx?.fallbackMaxOutputTokens,
         model: ctx?.model,
         sourcePayload: sourceSnapshot,
         customToolNames,
-      })), executionTier)) as LlmEventResult<ProtocolFrame<SourceFrame>>['translateBody'],
+      })), executionTier),
     // translateEvents: respond.ts streaming branch unwraps hub frames, runs
     // these through the translator, then re-wraps as source frames before SSE
     // encoding. The translator function here consumes BARE hub events (not
     // ProtocolFrame envelopes) and yields BARE source events.
-    ((events, ctx) => echoEventText(args.translator.translateEvents(events, {
+    translateEvents: (events, ctx) => echoEventText(args.translator.translateEvents(events, {
       signal: ctx?.signal ?? new AbortController().signal,
       fallbackMaxOutputTokens: ctx?.fallbackMaxOutputTokens,
       model: ctx?.model,
       sourcePayload: sourceSnapshot,
       customToolNames,
-    }))) as LlmEventResult<ProtocolFrame<SourceFrame>>['translateEvents'],
+    })),
     resolveModelIdentity,
-  )
+  }
   return innerEvents.__interceptorReplaced
     ? { ...result, __interceptorReplaced: true }
     : result

@@ -190,6 +190,7 @@ export const geminiAttempt = {
 
     const terminal = async (): Promise<GeminiAttemptResult> => {
       return await traverseTranslation({
+        abortUpstream: args.ctx.abortUpstream,
         dump,
         sourcePayload: invocation.payload,
         sourceProtocol: 'gemini',

@@ -230,7 +230,9 @@ test('cross-protocol cc→responses: reassembles via hub + translateBody → cc-
   // (b) feeds that reassembled body into translateBody before responding.
   const result: LlmEventResult<ProtocolFrame<ChatCompletionsStreamEvent>> = {
     type: 'events',
-    events: responsesHubFrames() as never,
+    producer: { kind: "translated", source: "chat_completions", protocol: "responses" },
+    events: responsesHubFrames(),
+    translateEvents() { throw new Error("Unexpected fixture event translation") },
     modelIdentity: {
       ...stubIdentity,
       modelKey: 'gpt-x',

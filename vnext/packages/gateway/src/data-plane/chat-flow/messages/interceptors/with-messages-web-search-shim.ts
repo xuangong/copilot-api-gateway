@@ -1,3 +1,4 @@
+import { requireNativeEventResult } from "../../shared/producer-ownership"
 // vnext/packages/gateway/src/data-plane/chat-flow/messages/interceptors/with-messages-web-search-shim.ts
 //
 // Port of copilot-gateway chat/messages/interceptors/web-search-shim.ts to vNext.
@@ -962,6 +963,7 @@ const driveMessagesWebSearchTurns = async function* (
     basePayload: MessagesPayload
     run: () => Promise<LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>>
     provider: ActiveMessagesWebSearchProvider | undefined
+    abortUpstream?: () => void
   },
 ): AsyncGenerator<ProtocolFrame<MessagesStreamEvent>> {
   let current = firstTurn
@@ -1092,16 +1094,17 @@ const driveMessagesWebSearchTurns = async function* (
     }
 
     args.invocation.payload = nextPrepared.payload as unknown as Record<string, unknown>
-    const next = await args.run()
-    if (next.type !== 'events') {
+    const rawNext = await args.run()
+    if (rawNext.type !== 'events') {
       // Messages has an in-band `error` event, but synthesizing one here would
       // lose the upstream status; throwing lets `attempt.ts` map it to a
       // fully-accounted internal-error result.
-      throw new Error(`Messages web search shim: upstream continuation turn failed with result type '${next.type}'`)
+      throw new Error(`Messages web search shim: upstream continuation turn failed with result type '${rawNext.type}'`)
     }
 
     indexBase += highestIndex + 1
     turn += 1
+    const next = await requireNativeEventResult(rawNext, args.abortUpstream)
     current = rewriteMessagesWebSearchEventsToNative(next.events, nextPrepared.state, args.provider)
   }
 }
@@ -1194,8 +1197,9 @@ export const withMessagesWebSearchShim: MessagesInterceptor = async (invocation,
     provider = resolved
   }
 
-  const result = await run()
-  if (result.type !== 'events') return result
+  const rawResult = await run()
+  if (rawResult.type !== 'events') return rawResult
+  const result = await requireNativeEventResult(rawResult, ctx.abortUpstream)
 
   const events = rewriteMessagesWebSearchEventsToNative(result.events, prepared.state, provider)
 
@@ -1205,6 +1209,7 @@ export const withMessagesWebSearchShim: MessagesInterceptor = async (invocation,
   return {
     ...result,
     events: driveMessagesWebSearchTurns(events, {
+      abortUpstream: ctx.abortUpstream,
       invocation,
       basePayload,
       run,

@@ -1,3 +1,4 @@
+import { upstreamBodyDisposal } from "../shared/producer-ownership"
 import { AffinityRoutingUnavailableError } from "../../../shared/affinity/analysis.ts"
 import { affinityExecutionState, fetchAffinityUpstream, materializeAffinity, affinityFence, acceptAffinityExecution, type AttemptAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
 import { selectedTierFrames } from "../shared/execution-tier"
@@ -314,6 +315,7 @@ export const responsesAttempt = {
           requestId,
           userAgent,
           signal: ctx.downstreamAbortSignal,
+          abortUpstream: ctx.abortUpstream,
           fallbackMaxOutputTokens: (sel.binding as { upstreamMaxOutputTokens?: number }).upstreamMaxOutputTokens,
           model: sel.bareModel,
         })
@@ -386,7 +388,7 @@ export const responsesAttempt = {
       const identityInput = { incomingModel: telemetryCtx.incomingModel, publicModel }
       const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, identityInput, execution)
       const performance = upstreamPerformanceContext(telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
-      return llmEventResult(
+      return { ...llmEventResult(
         decorated,
         modelIdentity,
         performance,
@@ -394,7 +396,7 @@ export const responsesAttempt = {
         undefined,
         undefined,
         modelIdentityResolver(bindingForTelemetry, identityInput, execution),
-      )
+      ), discardProducer: upstreamBodyDisposal(upstreamResp.body) }
     }
 
     try {

@@ -1,3 +1,4 @@
+import { translatedFixture } from "../shared/translated-fixture"
 // vnext/packages/gateway/tests/data-plane/chat-flow/gemini/respond.test.ts
 /**
  * Coverage for `gemini/respond.ts` — the renderer that converts a
@@ -225,8 +226,7 @@ test('wantsStream=false + translateBody set: invokes translateBody with hub-reas
     translatorPair: { source: 'gemini', hub: 'chat_completions' },
   }
 
-  const result = llmEventResult(
-    chatHubFrames() as unknown as AsyncIterable<unknown>,
+  const result = translatedFixture({ kind: "translated", source: "gemini", protocol: "chat_completions" }, chatHubFrames() as unknown as AsyncIterable<unknown>,
     identity,
     undefined,
     undefined,
@@ -272,8 +272,7 @@ test('Gemini streaming translator exception marks the hub request failed once', 
     for await (const _event of events) throw new Error('translator failed')
   }
   const response = await respondGemini(
-    llmEventResult(
-      hubFrames(), identity,
+    translatedFixture({ kind: "translated", source: "gemini", protocol: "responses" }, hubFrames(), identity,
       { keyId: 'gemini-stream-translator-failed-key', model: identity.model, modelKey: identity.modelKey, upstream: 'upstream', stream: true, runtimeLocation: 'bun' },
       undefined, undefined, translateEvents,
     ),
@@ -328,8 +327,7 @@ test('Gemini streaming Responses failure records hub failure before translation'
     for await (const _event of events) yield { error: { message: 'translated upstream unavailable' } }
   }
   const response = await respondGemini(
-    llmEventResult(
-      hubFrames(), identity,
+    translatedFixture({ kind: "translated", source: "gemini", protocol: "responses" }, hubFrames(), identity,
       { keyId: 'gemini-stream-responses-failed-key', model: identity.model, modelKey: identity.modelKey, upstream: 'upstream', stream: true, runtimeLocation: 'bun' },
       undefined, undefined, translateEvents,
     ),
@@ -370,8 +368,7 @@ test('Gemini streaming Messages error records hub failure before translation', a
     for await (const _event of events) yield { error: { message: 'translated upstream unavailable' } }
   }
   const response = await respondGemini(
-    llmEventResult(
-      hubFrames(), identity,
+    translatedFixture({ kind: "translated", source: "gemini", protocol: "messages" }, hubFrames(), identity,
       { keyId: 'gemini-stream-messages-failed-key', model: identity.model, modelKey: identity.modelKey, upstream: 'upstream', stream: true, runtimeLocation: 'bun' },
       undefined, undefined, translateEvents,
     ),
@@ -419,8 +416,7 @@ test('Gemini streaming hub success persists usage exactly once from the provider
     }
   }
   const response = await respondGemini(
-    llmEventResult(
-      hubFrames(), identity,
+    translatedFixture({ kind: "translated", source: "gemini", protocol: "responses" }, hubFrames(), identity,
       { keyId: 'gemini-stream-success-key', model: identity.model, modelKey: identity.modelKey, upstream: 'upstream', stream: true, runtimeLocation: 'bun' },
       undefined, undefined, translateEvents,
       (modelKey) => modelKey === datedKey ? { ...identity, modelKey, cost: { input: 2, output: 4 } } : identity,
@@ -466,8 +462,7 @@ test('Gemini nonstream responses hub persists hub usage with public model and pr
     yield { type: 'event', event: { type: 'response.created', response: responseResult } }
     yield { type: 'event', event: { type: 'response.completed', response: responseResult } }
   }
-  const result = llmEventResult(
-    hubFrames(),
+  const result = translatedFixture({ kind: "translated", source: "gemini", protocol: "responses" }, hubFrames(),
     identity,
     { keyId: 'gemini-responses-key', model: alias, modelKey: 'gemini-provider', upstream: 'upstream', stream: false, runtimeLocation: 'bun' },
     undefined,
@@ -519,8 +514,7 @@ test('Gemini nonstream Responses failure persists one failed performance row wit
     }
   }
   const response = await respondGemini(
-    llmEventResult(
-      hubFrames(), identity,
+    translatedFixture({ kind: "translated", source: "gemini", protocol: "responses" }, hubFrames(), identity,
       { keyId: 'gemini-responses-failed-key', model: identity.model, modelKey: identity.modelKey, upstream: 'upstream', stream: false, runtimeLocation: 'bun' },
       undefined, async () => ({ candidates: [] }),
     ),
@@ -561,8 +555,7 @@ test('Gemini nonstream Messages error persists one failed performance row withou
     }
   }
   const response = await respondGemini(
-    llmEventResult(
-      hubFrames(), identity,
+    translatedFixture({ kind: "translated", source: "gemini", protocol: "messages" }, hubFrames(), identity,
       { keyId: 'gemini-messages-failed-key', model: identity.model, modelKey: identity.modelKey, upstream: 'upstream', stream: false, runtimeLocation: 'bun' },
       undefined, async () => ({ candidates: [] }),
     ),
@@ -618,8 +611,7 @@ test('Gemini nonstream messages hub persists message usage and provider key', as
     }
     yield { type: 'event', event: { type: 'message_stop' } }
   }
-  const result = llmEventResult(
-    hubFrames(),
+  const result = translatedFixture({ kind: "translated", source: "gemini", protocol: "messages" }, hubFrames(),
     identity,
     { keyId: 'gemini-messages-key', model: alias, modelKey: providerKey, upstream: 'upstream', stream: false, runtimeLocation: 'bun' },
     undefined,
@@ -692,8 +684,7 @@ test('wantsStream=false + translateBody set with hub=messages: dispatches to mes
     translatorPair: { source: 'gemini', hub: 'messages' },
   }
 
-  const result2 = llmEventResult(
-    messagesHubFrames() as unknown as AsyncIterable<unknown>,
+  const result2 = translatedFixture({ kind: "translated", source: "gemini", protocol: "messages" }, messagesHubFrames() as unknown as AsyncIterable<unknown>,
     identity2,
     undefined,
     undefined,

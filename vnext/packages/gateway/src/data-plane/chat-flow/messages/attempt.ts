@@ -1,3 +1,4 @@
+import { upstreamBodyDisposal } from "../shared/producer-ownership"
 import { AffinityRoutingUnavailableError } from "../../../shared/affinity/analysis.ts"
 import { affinityExecutionState, fetchAffinityUpstream, materializeAffinity, affinityFence, acceptAffinityExecution, type AttemptAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
 import { selectedTierFrames } from "../shared/execution-tier"
@@ -334,6 +335,7 @@ export const messagesAttempt = {
       const hubProtocol = sel.targetEndpoint as HubAttemptProtocol
       const hubAttempt = (args.hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
       return await traverseTranslation({
+        abortUpstream: args.ctx.abortUpstream,
         dump: args.dump,
         sourcePayload: materializeAffinity(args.affinityMaterialized ? undefined : args.affinity, args.payload, sel.bareModel),
         sourceProtocol: 'messages',
@@ -451,7 +453,7 @@ export const messagesAttempt = {
       const identityInput = { incomingModel: telemetryCtx.incomingModel, publicModel }
       const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, identityInput, execution)
       const performance = upstreamPerformanceContext(telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
-      return llmEventResult(
+      return { ...llmEventResult(
         decorated,
         modelIdentity,
         performance,
@@ -459,7 +461,7 @@ export const messagesAttempt = {
         undefined,
         undefined,
         modelIdentityResolver(bindingForTelemetry, identityInput, execution),
-      )
+      ), discardProducer: upstreamBodyDisposal(upstreamResp.body) }
     }
 
     try {

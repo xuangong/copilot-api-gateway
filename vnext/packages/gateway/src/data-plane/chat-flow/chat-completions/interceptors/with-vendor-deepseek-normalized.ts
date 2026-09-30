@@ -1,3 +1,4 @@
+import { requireNativeEventResult } from "../../shared/producer-ownership"
 /**
  * DeepSeek wire-dialect normalizer for Chat Completions. Flag-gated by
  * `vendor-deepseek`. Positioned last in the interceptor chain so it sees
@@ -68,8 +69,9 @@ export const withVendorDeepSeekChatCompletionsNormalize: ChatCompletionsIntercep
 
   inv.payload = rewriteOutboundPayload(inv.payload as JsonObject) as typeof inv.payload
 
-  const result = await run()
-  if (result.type !== 'events') return result
+  const rawResult = await run()
+  if (rawResult.type !== 'events') return rawResult
+  const result = await requireNativeEventResult(rawResult, _ctx.abortUpstream)
 
   return {
     ...result,

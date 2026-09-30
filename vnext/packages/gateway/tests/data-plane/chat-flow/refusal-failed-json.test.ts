@@ -1,3 +1,4 @@
+import { translatedFixture } from "./shared/translated-fixture"
 import { afterEach, beforeEach, expect, test } from "bun:test"
 import { __resetPlatformForTests, initBackground } from "@vibe-core/platform"
 import { eventFrame, type ProtocolFrame } from '@vibe-core/result'
@@ -41,8 +42,7 @@ test('failed Responses JSON reaches native Responses unchanged but fails Chat an
   expect(native.status).toBe(200)
   expect(await native.json()).toMatchObject({ status: 'failed', error: { message: 'Policy denied' } })
 
-  const chat = await respondChatCompletions(llmEventResult(
-    frames(failed) as never,
+  const chat = await respondChatCompletions(translatedFixture({ kind: "translated", source: "chat_completions", protocol: "responses" }, frames(failed) as never,
     { ...baseIdentity, translatorPair: { source: 'chat_completions', hub: 'responses' } },
     undefined, undefined,
     async body => translateResponsesToChatBody(body),
@@ -50,8 +50,7 @@ test('failed Responses JSON reaches native Responses unchanged but fails Chat an
   expect(chat.status).toBe(502)
   expect(await chat.json()).toMatchObject({ error: { message: 'Policy denied' } })
 
-  const messages = await respondMessages(llmEventResult(
-    frames(failed) as never,
+  const messages = await respondMessages(translatedFixture({ kind: "translated", source: "messages", protocol: "responses" }, frames(failed) as never,
     { ...baseIdentity, translatorPair: { source: 'messages', hub: 'responses' } },
     undefined, undefined,
     async body => translateResponsesToMessagesBody(body as Parameters<typeof translateResponsesToMessagesBody>[0]),
@@ -66,8 +65,7 @@ test('completed refusal remains a successful translated result; token-limit inco
     ['incomplete', [{ type: 'output_text', text: 'Partial' }], 'length', 'max_tokens'],
   ] as const) {
     const response = hubResponse(status, [...content])
-    const chat = await respondChatCompletions(llmEventResult(
-      frames(response) as never,
+    const chat = await respondChatCompletions(translatedFixture({ kind: "translated", source: "chat_completions", protocol: "responses" }, frames(response) as never,
       { ...baseIdentity, translatorPair: { source: 'chat_completions', hub: 'responses' } },
       undefined, undefined,
       async body => translateResponsesToChatBody(body),
@@ -75,8 +73,7 @@ test('completed refusal remains a successful translated result; token-limit inco
     expect(chat.status).toBe(200)
     expect(await chat.json()).toMatchObject({ choices: [{ finish_reason: expectedChatFinish }] })
 
-    const messages = await respondMessages(llmEventResult(
-      frames(response) as never,
+    const messages = await respondMessages(translatedFixture({ kind: "translated", source: "messages", protocol: "responses" }, frames(response) as never,
       { ...baseIdentity, translatorPair: { source: 'messages', hub: 'responses' } },
       undefined, undefined,
       async body => translateResponsesToMessagesBody(body as Parameters<typeof translateResponsesToMessagesBody>[0]),

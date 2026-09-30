@@ -1,3 +1,4 @@
+import { mapResponsesSourceFrames } from "../interceptor-source"
 import type { ResponsesInterceptor } from './types'
 import { checkWhitespaceOverflow } from '../../shared/whitespace-overflow'
 import { doneFrame, eventFrame, type ProtocolFrame } from '@vibe-core/result'
@@ -41,35 +42,30 @@ export const withToolArgumentWhitespaceAborted: ResponsesInterceptor = async (
 ) => {
   const result = await run()
   if (result.type !== 'events') return result
-  const upstream = result.events
+  return mapResponsesSourceFrames(result, async function* (upstream): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
+    const whitespaceByIndex = new Map<number, number>()
 
-  return {
-    ...result,
-    events: (async function* (): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
-      const whitespaceByIndex = new Map<number, number>()
-
-      for await (const frame of upstream) {
-        if (frame.type !== 'event' || !isArgumentsDelta(frame.event)) {
-          yield frame
-          continue
-        }
-
-        const event = frame.event
-        const current = whitespaceByIndex.get(event.output_index) ?? 0
-        const { count, exceeded } = checkWhitespaceOverflow(event.delta, current)
-        whitespaceByIndex.set(event.output_index, count)
-
-        if (exceeded) {
-          console.warn(
-            'Copilot: infinite whitespace detected in Responses function call arguments, aborting stream',
-          )
-          yield eventFrame(errorEvent())
-          yield doneFrame()
-          return
-        }
-
+    for await (const frame of upstream) {
+      if (frame.type !== 'event' || !isArgumentsDelta(frame.event)) {
         yield frame
+        continue
       }
-    })(),
-  }
+
+      const event = frame.event
+      const current = whitespaceByIndex.get(event.output_index) ?? 0
+      const { count, exceeded } = checkWhitespaceOverflow(event.delta, current)
+      whitespaceByIndex.set(event.output_index, count)
+
+      if (exceeded) {
+        console.warn(
+          'Copilot: infinite whitespace detected in Responses function call arguments, aborting stream',
+        )
+        yield eventFrame(errorEvent())
+        yield doneFrame()
+        return
+      }
+
+      yield frame
+    }
+  }, _ctx.abortUpstream)
 }

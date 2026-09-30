@@ -1,3 +1,4 @@
+import { requireNativeEventResult } from "../../shared/producer-ownership"
 /**
  * `reasoning_content` wire-dialect translator for Chat Completions.
  *
@@ -93,8 +94,9 @@ export const withReasoningContentDialect: ChatCompletionsInterceptor = async (in
 
   inv.payload = rewriteOutboundPayload(inv.payload as JsonObject) as typeof inv.payload
 
-  const result = await run()
-  if (result.type !== 'events') return result
+  const rawResult = await run()
+  if (rawResult.type !== 'events') return rawResult
+  const result = await requireNativeEventResult(rawResult, _ctx.abortUpstream)
 
   return {
     ...result,

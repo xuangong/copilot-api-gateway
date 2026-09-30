@@ -1,3 +1,4 @@
+import { requireNativeEventResult } from "../../shared/producer-ownership"
 import type { MessagesInterceptor } from './types'
 import { eventFrame, type ProtocolFrame } from '@vibe-core/result'
 import type { MessagesStreamEvent } from '@vibe-llm/protocols/messages'
@@ -141,9 +142,10 @@ export const withThinkingDisplayPromoted: MessagesInterceptor = async (inv, _ctx
     }
   }
 
-  const result = await run()
+  const rawResult = await run()
 
-  if (!shouldExposeOmitted || result.type !== 'events') return result
+  if (!shouldExposeOmitted || rawResult.type !== 'events') return rawResult
+  const result = await requireNativeEventResult(rawResult, _ctx.abortUpstream)
   return {
     ...result,
     events: omitThinkingTextFromProtocolFrames(result.events),

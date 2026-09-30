@@ -1,3 +1,4 @@
+import { translatedFixture } from "./translated-fixture"
 import { expect, test } from "bun:test"
 import type { ProtocolFrame } from "@vibe-core/result"
 import { llmEventResult, type LlmEventResult } from "@vibe-llm/protocols/common"
@@ -52,7 +53,7 @@ test("native Responses wire withholds completion and snapshot after late error",
 for (const [target, translate] of [["responses", translateChatToResponsesEvents], ["messages", translateChatSSEToMessagesEvents]] as const) {
   test(`Chat to ${target} actual wire rejects EOF after finish without DONE`, async () => {
     const upstream = withUpstreamTelemetry(frames([{ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }]), { protocol: "chat_completions" })
-    const result = llmEventResult(upstream.events, identity, undefined, undefined, undefined, translate)
+    const result = translatedFixture({ kind: "translated", source: target, protocol: "chat_completions" }, upstream.events, identity, undefined, undefined, undefined, translate)
     const wire = await (await renderers[target](result)).text()
     expect(wire.match(/event: error/g)).toHaveLength(1)
     expect(wire).not.toContain("response.completed")
@@ -62,7 +63,7 @@ for (const [target, translate] of [["responses", translateChatToResponsesEvents]
 for (const [target, translate] of [["chat_completions", translateResponsesToChatSSE], ["messages", translateResponsesEventsToMessagesEvents]] as const) {
   test(`Responses failure to ${target} actual wire emits one error and no success`, async () => {
     const upstream = withUpstreamTelemetry(frames([{ type: "response.failed", response: { error: { message: "failed upstream" } } }]), { protocol: "responses" })
-    const result = llmEventResult(upstream.events, identity, undefined, undefined, undefined, translate)
+    const result = translatedFixture({ kind: "translated", source: target, protocol: "responses" }, upstream.events, identity, undefined, undefined, undefined, translate)
     const wire = await (await renderers[target](result)).text()
     expect(wire.match(/event: error/g)).toHaveLength(1)
     expect(wire).not.toContain('"finish_reason":"stop"')
@@ -72,7 +73,7 @@ for (const [target, translate] of [["chat_completions", translateResponsesToChat
 }
 test("Responses error to Messages retains context-window classification", async () => {
   const upstream = withUpstreamTelemetry(frames([{ type: "error", code: "context_length_exceeded", message: "too long" }]), { protocol: "responses" })
-  const result = llmEventResult(upstream.events, identity, undefined, undefined, undefined, translateResponsesEventsToMessagesEvents)
+  const result = translatedFixture({ kind: "translated", source: "messages", protocol: "responses" }, upstream.events, identity, undefined, undefined, undefined, translateResponsesEventsToMessagesEvents)
   const wire = await (await renderers.messages(result)).text()
   expect(wire).toContain('"type":"invalid_request_error"')
   expect(wire.match(/event: error/g)).toHaveLength(1)

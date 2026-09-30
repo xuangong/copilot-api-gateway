@@ -1,10 +1,11 @@
+import { disposeEventProducerBody } from "../shared/producer-ownership"
 import { AffinityEgress, guardAffinityFrames } from "../../../shared/affinity/egress"
 import type { AffinityExecutionState } from "../../shared/affinity-request"
 import { StreamTail, closeStream, settleStreamMetadata } from "../shared/stream-tail"
 import { parseSSEStream } from "@vibe-core/result/parse"
 import { waitUntil } from "@vibe-core/platform"
 import { eventFrame, type ProtocolFrame } from "@vibe-core/result"
-import { upstreamErrorToResponse, type LlmEventResult, type LlmExecuteResult } from "@vibe-llm/protocols/common"
+import { upstreamErrorToResponse, type LlmEventResult, type LlmExecuteResult, type EventResultMetadata } from "@vibe-llm/protocols/common"
 import { ResponsesFinalOutput, type ResponsesStreamEvent } from "@vibe-llm/protocols/responses"
 import { forwardUpstreamError } from "../../errors/forward"
 import { SourceStreamState, eventResultMetadata, finalModelIdentity, normalizeStreamEventModel, performanceTargetFromTranslatorPair, recordPerformance, recordUsage } from "../shared/respond-telemetry"
@@ -119,46 +120,28 @@ async function* consumeWithState<T>(
   }
 }
 
-/**
- * Persists usage + performance rows from a drained `LlmEventResult`. Prefers
- * the interceptor-replaced `finalMetadata` over `result.modelIdentity` so
- * an interceptor that replaces the stream (the image-generation shortcut)
- * gets its own corrected identity. Otherwise the model key observed
- * in-stream supersedes the binding-time guess.
- */
-async function persistFromEventResult<T>(
+/** Observe bounded execution metadata before constructing optional sink input. */
+async function prepareProjectionInput<T>(
   result: LlmEventResult<ProtocolFrame<T>>,
   state: SourceStreamState,
   telemetryCtx: TelemetryRequestContext | undefined,
-  dump?: DumpAccumulator | null,
-): Promise<boolean> {
-  if (state.persisted) return true
-  state.persisted = true
+): Promise<{ metadata: ResponsesMetadataObservation; identity: EventResultMetadata["modelIdentity"]; performance: EventResultMetadata["performance"]; settled: boolean }> {
   telemetryCtx?.metrics?.finish(state.cancelled ? "cancelled" : state.failed ? "error" : "success")
   const fallback = { modelIdentity: { ...result.modelIdentity, ...(telemetryCtx ? { incomingModel: telemetryCtx.incomingModel } : {}) }, performance: result.performance }
-  const metadata = state.cancelled ? { settled: true as const, value: fallback }
-    : await settleStreamMetadata(eventResultMetadata(result, telemetryCtx))
-  const md = metadata.settled ? metadata.value : fallback
-  const finalIdentity = result.finalMetadata && !state.cancelled && metadata.settled
+  const observation = state.cancelled ? { settled: true as const, value: { status: "skipped" as const, value: fallback } }
+    : await settleStreamMetadata(eventResultMetadata(result, telemetryCtx).then(
+      value => ({ status: "observed" as const, value }),
+      () => ({ status: "rejected" as const, value: fallback }),
+    ))
+  const status = observation.settled ? observation.value.status : "timed-out"
+  const md = observation.settled ? observation.value.value : fallback
+  const identity = result.finalMetadata && !state.cancelled && status === "observed"
     ? md.modelIdentity
     : finalModelIdentity(md.modelIdentity, state.modelKey, result.resolveModelIdentity)
-  if (dump) {
-    dump.success(finalIdentity, state.usage.tokens)
-    if (state.cancelled) dump.cancelled()
-    else if (state.failed) dump.failed('responses stream failed')
+  return {
+    metadata: { status, source: status === "observed" && result.finalMetadata ? "final" : "attempt", modelIdentity: identity, performance: md.performance },
+    identity, performance: md.performance, settled: status === "observed" || status === "skipped",
   }
-  if (telemetryCtx) {
-    await recordUsage(telemetryCtx, finalIdentity, state.usage.tokens)
-    await recordPerformance(
-      telemetryCtx,
-      md.performance,
-      state.failed && !state.cancelled,
-      undefined,
-      performanceTargetFromTranslatorPair(finalIdentity),
-      finalIdentity,
-    )
-  }
-  return metadata.settled
 }
 
 async function readLegacyJson(response: Response, signal: AbortSignal): Promise<unknown> {
@@ -198,6 +181,30 @@ export interface ResponsesTurnCompletion {
   readonly cleanupComplete: boolean
 }
 
+export interface ResponsesMetadataObservation {
+  readonly status: "observed" | "skipped" | "rejected" | "timed-out"
+  readonly source?: "attempt" | "final"
+  readonly modelIdentity?: EventResultMetadata["modelIdentity"]
+  readonly performance?: EventResultMetadata["performance"]
+}
+
+/** Execution facts are settled before optional projections. They do not certify storage. */
+export interface ResponsesExecutionFacts {
+  readonly outcome: ResponsesTurnCompletion["outcome"]
+  readonly response?: CompletedResponsesSnapshot
+  readonly rawCleanupComplete: boolean
+  readonly continuation: "skipped" | "fulfilled" | "rejected"
+  readonly metadata: ResponsesMetadataObservation
+}
+
+/** Fulfilled means the invoked operation returned; helpers can internally catch storage errors. */
+export interface ResponsesProjectionReceipts {
+  readonly usage: "fulfilled" | "rejected" | "skipped"
+  readonly performance: "fulfilled" | "rejected" | "skipped"
+  readonly dumpMetadata: "fulfilled" | "rejected" | "skipped"
+  readonly dumpFinalization: "fulfilled" | "rejected" | "skipped"
+}
+
 export interface ResponsesTurnMetadata {
   readonly status: number
   readonly headers?: Headers
@@ -208,6 +215,8 @@ export interface ResponsesTurn {
   readonly events: AsyncGenerator<ResponsesStreamEvent>
   readonly abortController: AbortController
   readonly completion: Promise<ResponsesTurnCompletion>
+  readonly facts: Promise<ResponsesExecutionFacts>
+  readonly receipts: Promise<ResponsesProjectionReceipts>
   readonly ready: Promise<ResponsesTurnMetadata>
   readonly wantsStream: boolean
   readonly mergedInputItems: readonly unknown[]
@@ -233,6 +242,15 @@ export function createResponsesTurn(
   let options = { ...initialOptions, downstreamAbortController: abortController, upstreamAbortController }
   const completed = Promise.withResolvers<ResponsesTurnCompletion>()
   const ready = Promise.withResolvers<ResponsesTurnMetadata>()
+  const facts = Promise.withResolvers<ResponsesExecutionFacts>()
+  const receipts = Promise.withResolvers<ResponsesProjectionReceipts>()
+  const sinkReceipts: { -readonly [K in keyof ResponsesProjectionReceipts]: ResponsesProjectionReceipts[K] } = {
+    usage: "skipped", performance: "skipped", dumpMetadata: "skipped", dumpFinalization: "skipped",
+  }
+  let rawCleanupComplete = false
+  let continuation: ResponsesExecutionFacts["continuation"] = "skipped"
+  let metadataObservation: ResponsesMetadataObservation = { status: "skipped" }
+  let factsResolved = false
   let result: RespondResponsesInput | undefined
   let state: SourceStreamState | undefined
   let source: AsyncIterator<ProtocolFrame<ResponsesStreamEvent>> | undefined
@@ -304,32 +322,78 @@ export function createResponsesTurn(
     ready.resolve(metadata)
   })
 
+  function resolveFacts(): void {
+    if (factsResolved) return
+    factsResolved = true
+    facts.resolve(Object.freeze({
+      outcome: abortController.signal.aborted ? "cancelled" : outcome,
+      ...(reusable && !abortController.signal.aborted && outcome === "completed" ? { response: reusable } : {}),
+      rawCleanupComplete, continuation, metadata: Object.freeze(metadataObservation),
+    }))
+  }
+
+  async function invokeSink(name: keyof ResponsesProjectionReceipts, operation: () => void | Promise<void>): Promise<void> {
+    try { await operation(); sinkReceipts[name] = "fulfilled" }
+    catch (error) { sinkReceipts[name] = "rejected"; throw error }
+  }
+
   function finalize(): Promise<void> {
     finalizing ??= (async () => {
       if (settled) return
       const closed = await Promise.all([...(source ? [closeStream(source)] : []), ...(rawIterator ? [closeStream(rawIterator)] : [])])
-      cleanupComplete = closed.every(Boolean)
-      if (result && "kind" in result && result.response.body && !result.response.body.locked && upstreamAbortController.signal.aborted) {
-        cleanupComplete = (await settleStreamMetadata(result.response.body.cancel())).settled && cleanupComplete
+      rawCleanupComplete = closed.every(Boolean)
+      if (result && !("kind" in result) && result.type === "events" && upstreamAbortController.signal.aborted) {
+        rawCleanupComplete = await disposeEventProducerBody(result.discardProducer) && rawCleanupComplete
       }
+      if (result && "kind" in result && result.response.body && !result.response.body.locked && upstreamAbortController.signal.aborted) {
+        rawCleanupComplete = (await settleStreamMetadata(result.response.body.cancel())).settled && rawCleanupComplete
+      }
+      cleanupComplete = rawCleanupComplete
       if (pendingSave) await pendingSave.catch(() => {})
       try {
+        let projection: Awaited<ReturnType<typeof prepareProjectionInput>> | undefined
+        try {
+          // Preserve the original no-sink path: it never observes finalMetadata.
+          if (result && !("kind" in result) && result.type === "events" && state && (options.telemetryCtx || options.dump)) {
+            projection = await prepareProjectionInput(result, state, options.telemetryCtx)
+            metadataObservation = projection.metadata
+            cleanupComplete = projection.settled && cleanupComplete
+          }
+        } finally { resolveFacts() }
         if (result && !("kind" in result)) {
-          if (result.type === "events" && state) {
-            if (options.telemetryCtx || options.dump) cleanupComplete = await persistFromEventResult(result, state, options.telemetryCtx, options.dump) && cleanupComplete
+          if (result.type === "events" && state && projection && !state.persisted) {
+            state.persisted = true
+            const { identity, performance } = projection
+            const sourceState = state
+            const dump = options.dump
+            if (dump) await invokeSink("dumpMetadata", () => {
+              dump.success(identity, sourceState.usage.tokens)
+              if (sourceState.cancelled) dump.cancelled()
+              else if (sourceState.failed) dump.failed("responses stream failed")
+            })
+            const telemetryCtx = options.telemetryCtx
+            if (telemetryCtx) {
+              await invokeSink("usage", () => recordUsage(telemetryCtx, identity, sourceState.usage.tokens))
+              await invokeSink("performance", () => recordPerformance(telemetryCtx, performance, sourceState.failed && !sourceState.cancelled, undefined, performanceTargetFromTranslatorPair(identity), identity))
+            }
           } else if (result.type !== "events" && options.telemetryCtx) {
-            await recordPerformance(options.telemetryCtx, result.performance, true, undefined, result.type === "upstream-error" ? result.targetApi : undefined)
+            const errorResult = result
+            const telemetryCtx = options.telemetryCtx
+            await invokeSink("performance", () => recordPerformance(telemetryCtx, errorResult.performance, true, undefined, errorResult.type === "upstream-error" ? errorResult.targetApi : undefined))
           }
         }
       } finally {
-        if (options.finalizeDump) {
+        const dump = options.dump
+        if (options.finalizeDump && dump?.finalizeTurn) {
           const status = metadata.status >= 400 ? metadata.status : outcome === "failed" && !options.wantsStream ? 502 : metadata.status
-          await options.dump?.finalizeTurn?.(status, [...(metadata.headers ?? new Headers()).entries()], canonicalBody)
+          await invokeSink("dumpFinalization", () => dump.finalizeTurn(status, [...(metadata.headers ?? new Headers()).entries()], canonicalBody))
         }
       }
     })().catch(() => { cleanupComplete = false }).finally(() => {
+      resolveFacts()
       settled = true
       abortController.signal.removeEventListener("abort", onAbort)
+      receipts.resolve(Object.freeze({ ...sinkReceipts }))
       completed.resolve({ outcome: abortController.signal.aborted ? "cancelled" : outcome, ...(reusable && !abortController.signal.aborted && outcome === "completed" ? { response: reusable } : {}), cleanupComplete })
     })
     return finalizing
@@ -405,7 +469,10 @@ export function createResponsesTurn(
       if (!terminal) throw new Error("responses stream ended without terminal lifecycle frame")
       terminal = await egress.responseEvent(terminal)
       if (terminal.type === "response.completed") {
-        await persistCompleted(terminal.response, options, save => { pendingSave = save })
+        await persistCompleted(terminal.response, options, save => {
+          pendingSave = save
+          void save.then(() => { continuation = "fulfilled" }, () => { continuation = "rejected" })
+        })
         outcome = reusableResponse(terminal.response) ? "completed" : "incomplete"
         if (outcome === "completed") reusable = terminal.response as CompletedResponsesSnapshot
       } else outcome = terminal.type === "response.incomplete" ? "incomplete" : "failed"
@@ -450,5 +517,5 @@ export function createResponsesTurn(
   // Register the complete ownership promise now, including pre-consumption abort.
   waitUntil(completed.promise.then(() => {}))
   if (abortController.signal.aborted) onAbort()
-  return { events, abortController, completion: completed.promise, ready: ready.promise, wantsStream: initialOptions.wantsStream, get mergedInputItems() { return options.mergedInputItems ?? [] }, recordSentPayloadBytes: size => options.dump?.recordSentPayloadBytes?.(size) }
+  return { events, abortController, completion: completed.promise, facts: facts.promise, receipts: receipts.promise, ready: ready.promise, wantsStream: initialOptions.wantsStream, get mergedInputItems() { return options.mergedInputItems ?? [] }, recordSentPayloadBytes: size => options.dump?.recordSentPayloadBytes?.(size) }
 }
