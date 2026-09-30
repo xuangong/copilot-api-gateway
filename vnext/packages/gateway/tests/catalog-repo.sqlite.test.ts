@@ -231,15 +231,21 @@ test("code revisions coexist and bounded maintenance preserves active revisions 
   expect(await first.catalogs.deleteInactiveRevisions({ activeRevisions: [5], inactiveBeforeMs: 2, limit: 1 })).toBe(0)
 })
 
-test("catalog reads bypass a pinned configuration view", async () => {
+test("pinned configuration keeps old metadata while authoritative catalogs read sibling writes", async () => {
   const { first, second } = fixture()
   await first.upstreams.save(upstream())
   const cache = new ConfigurationCache(first)
   const pinned = await cache.pinnedView()
+  const authoritativeCatalogs = first.catalogs
+  expect("catalogs" in pinned).toBe(false)
   const prior = present(await second.upstreams.getById("catalog"))
   await second.upstreams.patchMetadata(prior, row => ({ ...row, enabled: false }))
-  expect(present(await pinned.upstreams.getById("catalog")).enabled).toBe(true)
-  expect(present(await pinned.catalogs.read("catalog", 5)).upstream.enabled).toBe(false)
+  const pinnedUpstream = present(await pinned.upstreams.getById("catalog"))
+  expect(pinnedUpstream.enabled).toBe(true)
+  expect(pinnedUpstream.catalogGeneration).toBe(prior.catalogGeneration)
+  const current = present(await authoritativeCatalogs.read("catalog", 5))
+  expect(current.upstream.enabled).toBe(false)
+  expect(current.identity.configurationGeneration).toBe(prior.catalogGeneration + 1)
 })
 
 test("fingerprints use deterministic Unicode key order and ignore mutable state and display", async () => {
