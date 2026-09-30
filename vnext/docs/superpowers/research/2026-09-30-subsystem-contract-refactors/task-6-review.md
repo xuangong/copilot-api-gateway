@@ -1,0 +1,11 @@
+# Task 6 retained payload independent review
+
+Reviewer: root. Date: 2026-10-01. Spec compliance: pass for the approved narrow slice; overall Task 6 remains partial. Task quality: approved.
+
+Reviewed all owned runtime changes, the complete resource policy, new unit/real-SQLite lifecycle regressions, ordinary capture compatibility and UI/export visibility. The owner reserves before eager request preparation, charges backing buffers rather than only views, retains private admitted JSON graphs, and settles preparation before an idempotent release even when terminal lookup/serialization rejects. Store put and broker publication remain inside ownership. The canonical path adds no tee, and legacy admitted chunks copy borrowed views before retention. Overflow removes all payload with separate visible capture metadata without changing inference errors or forwarded bytes.
+
+Pre-freeze source review corrected three data boundaries: hidden/symbol object graphs cannot remain retained; arrays preserve non-enumerable numeric indices and ignore named extras; ordinary toJSON data fields remain exact while accessors/callable serializers are omitted explicitly. Invalid cyclic/BigInt fallback serialization preserves its former asynchronous rejection. The previous large-body prefix-capture regression remains unchanged and passes after rejecting an over-conservative serialization estimate.
+
+Independent frozen-source check: `bun test packages/gateway/tests/dump-capture-budget.test.ts packages/gateway/tests/dump-capture-budget.sqlite.test.ts`: 17 pass, 0 fail, 95 assertions. The implementation report records 190 affected tests and passing gateway/dashboard typechecks and scoped lint. No unresolved correctness finding in this slice.
+
+The documented limitations remain material: metadata/publication concurrency, metadata graphs, upstream sidecars, ingress/results, legacy other-branch tee queues and serializer/codec working memory are outside the aggregate payload owner. Copying diagnostic containers adds CPU/allocation work and needs exact-artifact workerd qualification. This review does not qualify whole-isolate memory, production performance, browser visual appearance or deployment readiness.
