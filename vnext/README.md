@@ -2,6 +2,8 @@
 
 下一代网关重构。旧 `src/` 已下线,vNext 承担生产流量。
 
+子系统视角见 [架构设计](docs/superpowers/specs/2026-09-30-vnext-subsystem-architecture-design.md) 和 [2026-09-30 源码审查](docs/superpowers/research/2026-09-30-subsystem-architecture/README.md)。设计按职责、权威数据、状态生命周期和完成契约划分逻辑子系统,区分现有实现与后续调整;下面的目录图是包视角。
+
 ## 结构
 
 ```
