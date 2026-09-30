@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-30",
+  "status": "ISOLATED_CAPTURE_STORAGE_CANARY_QUALIFIED_ORDINARY_RESOURCES_PENDING",
+  "source": {
+    "productCommit": "b31ad4825271d6abd6cfc2c586c95efaadebfe86",
+    "frozenParentCommit": "6acf49c924f933db31b022f4b3bc590887ac31e7",
+    "sourceManifestSha256": "347606ac74a3e912a111c68a15e8c95be3f7ba69751733f60bc36adf06dbbedc",
+    "sourceFiles": 2315,
+    "harnessManifestSha256": "7b48a733b85c5311f2f81c0a7e4848e12f2d4c5618423d4a35db1381abd74408"
+  },
+  "isolatedWorker": "vnext-p0-2609300125-d",
+  "diagnosticVersions": [
+    {
+      "version_id": "a142f93a-3533-410a-bef4-8e63fcf79115",
+      "percentage": 100
+    }
+  ],
+  "diagnosticDeployment": "e10e4142-ad51-42db-8493-ecfeef42c917",
+  "preflight": {
+    "preservedFailure": {
+      "label": "native-preflight-01",
+      "status": 403,
+      "body": "error code: 1010",
+      "changeForNextObservation": "Explicit existing vnext-cfw-validation User-Agent; no Worker or driver change"
+    },
+    "passedLabel": "native-preflight-02",
+    "statuses": [
+      401,
+      400,
+      400
+    ],
+    "expectedBodies": [
+      "Unauthorized",
+      "Explicit capture mode required",
+      "Explicit capture mode required"
+    ],
+    "unexpectedCaptureOrDumpHeaders": false
+  },
+  "canary": {
+    "runId": "22fbadc8",
+    "offers": 16,
+    "cells": 8,
+    "successfulRequests": 16,
+    "transportCompleted": 16,
+    "drops": 0,
+    "driverRetirementErrors": 0,
+    "originalDispatchValidation": {
+      "valid": true,
+      "available": true,
+      "observation_errors": [],
+      "exactly_once_failures": 0,
+      "expected_logical_ids": 16,
+      "observed_logical_ids": 16,
+      "observed_rows": 16,
+      "total_dispatches": 16,
+      "duplicate_row_ids": [],
+      "duplicate_dispatches": [],
+      "missing": [],
+      "unexpected": [],
+      "settle_ms": 500,
+      "late_dispatch_limitation": "Single bounded settle; timeout/aborted work needs follow-up observation",
+      "instrumentation": "One awaited isolated upstream D1 INSERT before response, equal for A/B"
+    },
+    "driverCommand": {
+      "command": [
+        "/Users/zhangxian/.bun/bin/bun",
+        "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-09-30-cfw-p0-resource-rollback-fixes/L/dump-handoff-cloud-v2/generated/run.ts",
+        "--out",
+        "/Users/zhangxian/.local/share/copilot-gateway-backups/cfw-p0-20260930/capture-ablation/dump-handoff-c-v2-canary-01/runs/canary-01",
+        "--blocks",
+        "2",
+        "--count",
+        "2",
+        "--rate",
+        "5",
+        "--concurrency",
+        "16",
+        "--protocols",
+        "responses",
+        "--upstreams",
+        "responses",
+        "--scenarios",
+        "ok",
+        "--sizes",
+        "65536",
+        "--modes",
+        "json,sse",
+        "--timeout-ms",
+        "120000",
+        "--max-requests",
+        "16",
+        "--require-counts",
+        "yes"
+      ],
+      "cwd": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-09-30-cfw-p0-resource-rollback-fixes/L/dump-handoff-cloud-v2/generated",
+      "pid": 48223,
+      "startedAt": "2026-09-30T04:22:44.090777+00:00",
+      "finishedAt": "2026-09-30T04:22:53.747608+00:00",
+      "exit_code": 0,
+      "child_exit_code": 0,
+      "timedOut": false,
+      "logSha256": "d43f92c9e46db29b80500d9f5d774a953ff2423300069017f2e32940086f0517"
+    },
+    "timingBoundary": "Both modes on one version, buffered through body and background completion; not ordinary client latency."
+  },
+  "storage": {
+    "recordsVerified": 16,
+    "recordBodiesVerified": 16,
+    "ownedFiles": 40,
+    "fullModeRecords": 8,
+    "canonicalOnlyRecords": 8,
+    "retention": {
+      "dump": 0,
+      "responses": 0
+    },
+    "modeHeaderStored": false,
+    "commandExitCode": 0
+  },
+  "delayedCounts": {
+    "httpStatus": 200,
+    "uniqueIds": 16,
+    "totalDispatches": 16,
+    "eachDispatchExactlyOne": true,
+    "observedAfterRestore": true,
+    "boundary": "Original runner counts envelope was not persisted. This separate raw readback is a later observation, not its replacement."
+  },
+  "restore": {
+    "at": "2026-09-30T04:24:09.016836+00:00",
+    "versions": [
+      {
+        "version_id": "bd4dd2c5-b806-40c8-b869-a34372919cdf",
+        "percentage": 100
+      }
+    ],
+    "receipt": "/Users/zhangxian/.local/share/copilot-gateway-backups/cfw-p0-20260930/capture-ablation/dump-handoff-c-v2-canary-01/restore-records/restore-01",
+    "ordinary_archive_verified": true
+  },
+  "independentReview": {
+    "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-09-30-cfw-p0-resource-rollback-fixes/task-1-dump-handoff-cloud-v2-runtime-review.md",
+    "sha256": "4a486635cdf6c8b2c74998d7ca05452b70085652ac5f1df3a79713a7fe36cac4"
+  },
+  "evidenceRoot": "/Users/zhangxian/.local/share/copilot-gateway-backups/cfw-p0-20260930/capture-ablation/dump-handoff-c-v2-canary-01",
+  "artifactSha256": {
+    "deploy-command.json": "a6813829679c843aa9e6b9e58854e6a62eec9bec91822929d087d521f3deebe4",
+    "prebuild-rebuild-comparison.json": "6bf67439e401dc7648604ef9238cb38f9b5fdc0aa10183b5fcf81bfa8f18cc95",
+    "native-preflight-01/summary.json": "b56f34f6fd709f23eccf0534037802fdd73d7c8a83737b8502416a09134e52ef",
+    "native-preflight-02/summary.json": "677abab2565011ab1c94fc5fcfdd7dc97d2c50e4cea0084d55aceffeae76317b",
+    "runs/canary-01/command.json": "ee91cb8fd22563dc0593e7ddeac5b3bf0ffac46507b1b9100c55e2c732ea4d5e",
+    "runs/canary-01/requests.jsonl": "6244066a25bd99d4473f110358855d2c0c18ad3e6d5b17db005e9e09df58bf69",
+    "runs/canary-01/driver-accounting.json": "16ad935db433928c0410f727dca94c59945c7073fbfce896191380e9600c990c",
+    "runs/canary-01/dispatch.json": "c787d2591d41f2d522c8b8664047f224bfc7150e55b982a2084bc7bb28a34f36",
+    "runs/canary-01/summary.json": "a03917f8d151d600c02c1ae0772520e28ff0259b1c6a2acd642b8699fc71ce6c",
+    "storage-command-01/command.json": "65f6948b3f99478b10c3b6925f1feab59a5406b9a40393cb8fb3a2fd4adb0c38",
+    "runs/canary-01/storage-readback/summary.json": "da54288dd91a3732eef58667d12e4da4d4c091afe1f6bb42fa35a82e8e1cd1c7",
+    "run-records/canary-01/after-preflight.json": "d8ca7988010c8c10ad0138c16ba0b8a30fab0956c1b45741d01e456de922283c",
+    "ordinary-archive/archive-index.json": "4f8b6610dc345bb6806fdac839b8bc01d021845165b5dd54a3ff5fb97b16b78e",
+    "restore-completed.json": "3fc19e87ad44da4ed7c9b146397488e3e9d10a2d749f7aebd3e879e36c17ca0f",
+    "delayed-counts-01/receipt.json": "8f972f8e50dafcaede467c9ca2b0b95907aa3fc2e2090cb9e59fd23ba66f8046",
+    "delayed-counts-01/response.raw": "894d678bfbdcb9d7f15461ea974a897e95093bea615614ab097d04e53aa4d4cd",
+    "delayed-counts-01/validated.json": "6822f260ddaacb5757bf078e6ca10265a3221df848a38a07be8585111575afb1"
+  },
+  "remainingGaps": [
+    "Ordinary baseline versus final C CPU, memory and client latency gates remain unmeasured.",
+    "No arbitrary late-dispatch guarantee from bounded observations.",
+    "Catalog/affinity old-writer rollback, one-hour mixed soak and broader failure/cancellation workloads remain open.",
+    "Production was not deployed; vNext integration and push were not performed."
+  ]
+}
