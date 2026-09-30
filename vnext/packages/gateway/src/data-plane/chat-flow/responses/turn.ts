@@ -1,6 +1,5 @@
 import { AffinityEgress, guardAffinityFrames } from "../../../shared/affinity/egress"
 import type { AffinityExecutionState } from "../../shared/affinity-request"
-import { translateStream } from "../shared/translate-stream"
 import { StreamTail, closeStream, settleStreamMetadata } from "../shared/stream-tail"
 import { parseSSEStream } from "@vibe-core/result/parse"
 import { waitUntil } from "@vibe-core/platform"
@@ -11,9 +10,7 @@ import { forwardUpstreamError } from "../../errors/forward"
 import { SourceStreamState, eventResultMetadata, finalModelIdentity, normalizeStreamEventModel, performanceTargetFromTranslatorPair, recordPerformance, recordUsage } from "../shared/respond-telemetry"
 import type { TelemetryRequestContext } from "../shared/telemetry-ctx"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator"
-import { collectChatCompletionsProtocolEventsToResult } from "../chat-completions/events/to-result"
-import { collectResponsesProtocolEventsToResult } from "./events/reassemble"
-import { collectMessagesProtocolEventsToResult } from "../messages/events/reassemble"
+import { prepareResponsesSource } from "./source-result"
 
 export interface CompletedResponsesSnapshot {
   readonly id: string
@@ -164,17 +161,6 @@ async function persistFromEventResult<T>(
   return metadata.settled
 }
 
-// Translation and source-domain affinity both precede transport serialization.
-async function* applyTranslatorEventsForStreaming(
-  hubFrames: AsyncIterable<ProtocolFrame<unknown>>,
-  translateEvents: NonNullable<LlmEventResult<unknown>['translateEvents']>,
-  signal: AbortSignal | undefined,
-  model: string | undefined,
-  onFailure?: () => void,
-): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
-  for await (const event of translateStream(hubFrames, translateEvents, signal, model, onFailure)) yield eventFrame(event as ResponsesStreamEvent)
-}
-
 async function readLegacyJson(response: Response, signal: AbortSignal): Promise<unknown> {
   if (!response.body) return null
   const reader = response.body.getReader()
@@ -250,7 +236,7 @@ export function createResponsesTurn(
   let result: RespondResponsesInput | undefined
   let state: SourceStreamState | undefined
   let source: AsyncIterator<ProtocolFrame<ResponsesStreamEvent>> | undefined
-  let rawIterator: AsyncIterator<ProtocolFrame<ResponsesStreamEvent>> | undefined
+  let rawIterator: AsyncIterator<ProtocolFrame<unknown>> | undefined
   let running = false
   let settled = false
   let cleanupComplete = true
@@ -288,7 +274,7 @@ export function createResponsesTurn(
       state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model, result.modelIdentity.executedModelKey)
       state.cancelled = abortController.signal.aborted
       const iterator = result.events[Symbol.asyncIterator]()
-      let returned: Promise<IteratorResult<ProtocolFrame<ResponsesStreamEvent>>> | undefined
+      let returned: Promise<IteratorResult<ProtocolFrame<unknown>>> | undefined
       rawIterator = {
         next: () => iterator.next(),
         return: () => returned ??= Promise.resolve().then(() => iterator.return?.() ?? { done: true as const, value: undefined }),
@@ -371,23 +357,17 @@ export function createResponsesTurn(
       return
     }
     if (result.type !== "events" || !state) return
-    const ownedFrames = rawIterator ? { [Symbol.asyncIterator]: () => rawIterator as AsyncIterator<ProtocolFrame<ResponsesStreamEvent>> } : result.events
-    const guarded = guardAffinityFrames(ownedFrames, options.affinity)
-    if (!options.wantsStream && result.translateBody) {
-      const observed = consumeWithState(guarded, state, options.dump)
-      const hub = result.modelIdentity.translatorPair?.hub
-      const body = hub === "chat_completions" ? await collectChatCompletionsProtocolEventsToResult(observed as never)
-        : hub === "messages" ? await collectMessagesProtocolEventsToResult(observed as never)
-        : await collectResponsesProtocolEventsToResult(observed)
-      const translated = await result.translateBody(body, { signal: upstreamAbortController.signal, model: state.publicModel })
-      const status = (translated as { status?: string }).status
-      yield eventFrame({ type: status === "failed" ? "response.failed" : status === "incomplete" ? "response.incomplete" : "response.completed", response: translated } as ResponsesStreamEvent)
-      return
-    }
-    const frames = result.translateEvents
-      ? applyTranslatorEventsForStreaming(guarded, result.translateEvents, upstreamAbortController.signal, result.modelIdentity.model, () => upstreamAbortController.abort())
-      : guarded
-    yield* consumeWithState(frames, state, options.dump)
+    const iterator = rawIterator
+    const ownedFrames = iterator ? { [Symbol.asyncIterator]: () => iterator } : result.events
+    const observedState = state
+    const source = prepareResponsesSource({
+      result,
+      rawFrames: guardAffinityFrames(ownedFrames, options.affinity),
+      wantsStream: options.wantsStream,
+      upstreamAbortController,
+      observe: frames => consumeWithState(frames, observedState, options.dump),
+    })
+    yield* source.frames
   }
 
   async function* run(): AsyncGenerator<ResponsesStreamEvent> {

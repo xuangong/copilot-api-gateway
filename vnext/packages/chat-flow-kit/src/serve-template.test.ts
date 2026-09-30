@@ -2,8 +2,9 @@
 /**
  * Kit-level unit suite for serveTemplate. Covers Spec 10 §A5.
  */
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, spyOn, test } from 'bun:test'
 import {
+  prepareTemplate,
   serveTemplate,
   withCanonicalCompletion,
   type KitCanonicalCompletion,
@@ -358,6 +359,63 @@ describe('serveTemplate — quota-gate short-circuit', () => {
 })
 
 describe('serveTemplate — AbortController linking', () => {
+  test("preparation reuses the supplied controller without linking its own signal", async () => {
+    const controller = new AbortController()
+    const listener = spyOn(controller.signal, "addEventListener")
+    let attemptSignal: AbortSignal | undefined
+    try {
+      const prepared = await prepareTemplate(defaultHooks({
+        runAttempt: async a => {
+          attemptSignal = a.downstreamAbortSignal
+          return { kind: "ok", echoed: a.payload.value }
+        },
+      }), defaultInput({ signal: controller.signal, downstreamAbortController: controller }), defaultDeps())
+      expect(attemptSignal).toBe(controller.signal)
+      expect(prepared.kind).toBe("attempt")
+      if (prepared.kind !== "attempt") throw new Error("Expected prepared attempt")
+      expect(prepared.context.downstreamAbortController).toBe(controller)
+      expect(listener).not.toHaveBeenCalled()
+    } finally { listener.mockRestore() }
+  })
+
+  test("preparation keeps an already aborted supplied controller and its original reason", async () => {
+    const controller = new AbortController()
+    const reason = { cause: "cancelled before preparation" }
+    controller.abort(reason)
+    let attemptReason: unknown
+    const prepared = await prepareTemplate(defaultHooks({
+      runAttempt: async a => {
+        attemptReason = a.downstreamAbortSignal.reason
+        return { kind: "ok", echoed: a.payload.value }
+      },
+    }), defaultInput({ signal: controller.signal, downstreamAbortController: controller }), defaultDeps())
+    expect(attemptReason).toBe(reason)
+    if (prepared.kind !== "attempt") throw new Error("Expected prepared attempt")
+    expect(prepared.context.downstreamAbortController).toBe(controller)
+  })
+
+  for (const beforePreparation of [false, true]) {
+    test(`generic controller link retains the inbound reason ${beforePreparation ? "before preparation" : "during the attempt"}`, async () => {
+      const inbound = new AbortController()
+      const reason = { cause: "caller disconnect" }
+      if (beforePreparation) inbound.abort(reason)
+      let attemptSignal: AbortSignal | undefined
+      const prepared = await prepareTemplate(defaultHooks({
+        runAttempt: async a => {
+          attemptSignal = a.downstreamAbortSignal
+          if (!beforePreparation) inbound.abort(reason)
+          return { kind: "ok", echoed: a.payload.value }
+        },
+      }), defaultInput({ signal: inbound.signal }), defaultDeps())
+      expect(attemptSignal).not.toBe(inbound.signal)
+      expect(attemptSignal?.aborted).toBe(true)
+      expect(attemptSignal?.reason).toBe(reason)
+      if (prepared.kind !== "attempt") throw new Error("Expected prepared attempt")
+      if (!attemptSignal) throw new Error("Expected attempt cancellation signal")
+      expect(prepared.context.downstreamAbortController.signal).toBe(attemptSignal)
+    })
+  }
+
   test('inbound signal abort fires the downstream signal observed by runAttempt', async () => {
     const inbound = new AbortController()
     let observedSignal: AbortSignal | undefined

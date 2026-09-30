@@ -273,6 +273,7 @@ async function prepareResponses(args: ResponsesServeArgs, upstreamAbortControlle
       auth,
       obsCtx: { ...args.obsCtx, performanceRecorder: new PerformanceRecorder(false, undefined, args.obsCtx.performanceStartedAt), performanceAbortSignal: args.signal } as KitObsCtx,
       signal: upstreamAbortController.signal,
+      downstreamAbortController: upstreamAbortController,
       // requestId / userAgent ride through extras so the image-gen
       // shortcut inside responsesAttempt can stamp them on upstream
       // image calls. They were dedicated args on the old serve; the

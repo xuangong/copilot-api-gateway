@@ -53,6 +53,8 @@ export interface ServeTemplateInput<TAuth extends KitAuthCtx = KitAuthCtx> {
   readonly auth: TAuth
   readonly obsCtx: KitObsCtx
   readonly signal?: AbortSignal
+  /** Optional endpoint-owned cancellation controller; avoids a second link. */
+  readonly downstreamAbortController?: AbortController
   /** Catch-all bag for endpoint-specific side inputs (e.g. URL-derived
    *  model name + verb, or per-request passthrough fields). Opaque to the kit. */
   readonly extras: Record<string, unknown>
@@ -244,10 +246,11 @@ export async function prepareTemplate<
   if (quotaResp) return { kind: 'response', response: quotaResp, extra }
 
   // 6. Linked AbortController.
-  const controller = new AbortController()
-  if (input.signal) {
-    if (input.signal.aborted) controller.abort()
-    else input.signal.addEventListener('abort', () => controller.abort(), { once: true })
+  const controller = input.downstreamAbortController ?? new AbortController()
+  const signal = input.signal
+  if (signal && signal !== controller.signal) {
+    if (signal.aborted) controller.abort(signal.reason)
+    else signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true })
   }
 
   // 7. runAttempt.
