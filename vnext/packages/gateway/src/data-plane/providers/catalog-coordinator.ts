@@ -3,6 +3,7 @@ import type { ProxyRecord } from "@vibe-core/proxy-repo"
 import type { BackgroundExecutor } from "@vibe-core/platform"
 import type { StoredUpstreamRecord } from "../../repo/types.ts"
 import { validCatalogModels, type CatalogErrorCode, type CatalogIdentity, type CatalogLease, type CatalogModels, type CatalogObservation, type CatalogRepo, type CatalogSnapshot } from "../../repo/catalogs.ts"
+import { CatalogOrdering, CatalogRetention } from "./catalog-retention.ts"
 
 export class CatalogUnavailableError extends Error {
   constructor(readonly code: CatalogErrorCode | "superseded-unavailable") { super(`Model catalog ${code}`) }
@@ -17,13 +18,18 @@ export interface CatalogRequest {
 export interface CatalogResult {
   upstream: StoredUpstreamRecord
   proxies: readonly ProxyRecord[]
+  /** Shared accepted publication: every reader, including cache-only/admin
+   * callers, must treat its graph as read-only or copy before editing. */
   snapshot: CatalogSnapshot
 }
 export interface CatalogCoordinatorDependencies {
   catalogs: CatalogRepo
   discover: (observation: CatalogObservation, signal: AbortSignal) => Promise<CatalogModels>
   catalogRevision: number
-  policy?: { totalBudgetMs?: number; leaseMs?: number; freshnessMs?: number; pollMs?: number }
+  policy?: {
+    totalBudgetMs?: number; leaseMs?: number; freshnessMs?: number; pollMs?: number
+    retainedEntries?: number; retainedModels?: number; retainedBytes?: number
+  }
 }
 
 const sameTarget = (a: StoredUpstreamRecord, b: StoredUpstreamRecord) => a.id === b.id && a.rowIncarnation === b.rowIncarnation
@@ -77,10 +83,10 @@ interface Memo {
 }
 
 export class CatalogCoordinator {
-  private readonly memo = new Map<string, Memo>()
+  private readonly memo: CatalogRetention<Memo>
+  private readonly ordering = new CatalogOrdering()
   private readonly refreshing = new Set<string>()
   private sequence = 0
-  private installAfter = 0
   private readonly budget: number
   private readonly leaseMs: number
   private readonly freshnessMs: number
@@ -94,8 +100,10 @@ export class CatalogCoordinator {
     this.leaseMs = bounded(dependencies.policy?.leaseMs ?? 30_000, 300_000)
     this.freshnessMs = bounded(dependencies.policy?.freshnessMs ?? 120_000, 86_400_000)
     this.pollMs = bounded(dependencies.policy?.pollMs ?? 100, 1000)
+    this.memo = new CatalogRetention({ entries: dependencies.policy?.retainedEntries,
+      models: dependencies.policy?.retainedModels, bytes: dependencies.policy?.retainedBytes })
   }
-  clear(): void { this.memo.clear(); this.installAfter = ++this.sequence }
+  clear(): void { this.memo.clear(); this.ordering.clear(++this.sequence) }
 
   private eligible(request: CatalogRequest, row: StoredUpstreamRecord): boolean {
     return sameTarget(request.expected, row) && request.isVisible(row)
@@ -105,11 +113,10 @@ export class CatalogCoordinator {
     if (!memo?.result || !this.eligible(request, memo.result.upstream)
       || request.expected.catalogGeneration !== memo.identity.configurationGeneration) return undefined
     // Filters are request configuration, deliberately outside discovery identity.
-    memo.result = { ...memo.result, upstream: request.expected }
-    return memo
+    return { ...memo, result: { ...memo.result, upstream: request.expected } }
   }
   private install(observation: CatalogObservation, ticket: number): Memo | null {
-    if (ticket < this.installAfter) return null
+    if (!this.ordering.observe(observation.identity, observation.publicationVersion, ticket, this.sequence)) return null
     const old = this.memo.get(observation.upstream.id)
     if (old && (old.observed > ticket || (old.identity.rowIncarnation === observation.identity.rowIncarnation
       && old.identity.configurationGeneration > observation.identity.configurationGeneration))) return null
@@ -123,14 +130,7 @@ export class CatalogCoordinator {
       freshUntil: performance.now() + Math.max(0, (snapshot?.refreshAfterMs ?? 0) - observation.databaseNowMs),
       retryAfter: performance.now() + Math.max(0, observation.retryAtMs - observation.databaseNowMs),
     }
-    this.memo.delete(observation.upstream.id)
     this.memo.set(observation.upstream.id, memo)
-    while (this.memo.size > 512) {
-      const first = this.memo.keys().next()
-      if (!first.done) this.memo.delete(first.value)
-      // A bounded global fence replaces per-evicted-identity tombstones.
-      this.installAfter = this.sequence
-    }
     return memo
   }
   private refresh(request: CatalogRequest): void {
@@ -166,7 +166,8 @@ export class CatalogCoordinator {
         }
         if (!observation || !this.eligible(request, observation.upstream)) {
           this.memo.delete(request.expected.id)
-          this.installAfter = this.sequence
+          if (!observation || !sameTarget(request.expected, observation.upstream)) this.ordering.invalidate(request.expected.id, this.sequence)
+          else this.ordering.observe(observation.identity, observation.publicationVersion, ticket, this.sequence)
           return null
         }
         const memo = this.install(observation, ticket)
